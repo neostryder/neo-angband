@@ -9,13 +9,16 @@ change between minor versions. This file is maintained going forward - each
 notable change lands in the Unreleased section and moves under a version
 heading when that version is cut.
 
-`0.9.0` is the pre-release line. Everything ships and is tested at `0.9.x`;
-`1.0.0` is reserved for the public release. The bundled mods follow the same
-scheme and turn `1.0.0` with the game rather than ahead of it.
+`0.x` is the pre-release line and `1.0.0` is reserved for the public release.
+Semver on `0.x` means a feature release bumps the MINOR number, so `0.9.0` is
+followed by `0.10.0` rather than by `1.0.0`. The first-party mods follow the same
+scheme and reach `1.0.0` with the game rather than ahead of it - and a mod whose
+released tag is iterated takes a MINOR bump, because a published tag is pinned by
+digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.9.0`. High level, what exists today:
+Current state of the project at version `0.10.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -28,15 +31,30 @@ Current state of the project at version `0.9.0`. High level, what exists today:
   (`@rpgm-tools/neo-angband-cli`).
 - A mod framework (`@rpgm-tools/neo-angband-mod-sdk`): content packs, tile packs, and
   sandboxed scripted plugins, with the base game loaded as a pack itself.
-- Bundled mods riding that framework: `qol` (quality-of-life conveniences),
-  `bug-fixes`, and `neo-linoleum` (a second tile engine - loose packs of
-  individually named PNGs with variant pools - plus the converter that builds
-  one from any tilesheet, via `@rpgm-tools/neo-angband-linoleum`). The game's own tile sets
-  stay core content on the classic tilesheet engine.
+- **No bundled mods.** A fresh install is Angband 4.2.6 and nothing else. Three
+  first-party mods ride that framework, each in its own repository with its own
+  release tags and tests, each installed through the mod manager's *Install a
+  mod...* row at a pinned tag with every file checked against a SHA-256 that ships
+  inside the game: `qol` (quality-of-life conveniences), `bug-fixes`, and
+  `neo-linoleum` (a second tile engine - loose packs of individually named PNGs with
+  variant pools - plus the converter that builds one from any tilesheet, via
+  `@rpgm-tools/neo-angband-linoleum`). The game's own tile sets stay core content on
+  the classic tilesheet engine.
 - The Borg (`@rpgm-tools/neo-angband-borg`): a faithful port of Angband's automatic
-  player, shipped as a bundled mod on the perceive/act agent API.
+  player, riding the perceive/act agent API as a mod rather than living in core.
 
 ### Added
+
+- **A plugin builder in the mod SDK** (`neo-angband-mod-build`, shipped as a bin by
+  `@rpgm-tools/neo-angband-mod-sdk`). It compiles a mod's TypeScript into the single
+  `plugin.js` a mod folder distributes, and enforces the plugin ABI: no non-relative
+  import survives into the output, the mod's own modules are bundled in, the default
+  export is a valid plugin, and a committed `plugin.js` must be a current build of its
+  source. Any mod repository can now build itself; it used to require a checkout of
+  this one.
+- **A `demo-hooks` framework proof** under `packages/web/mods/`. It is the only mod in
+  the build with a `plugin.ts`, and it exists so the ModHooks discovery path and its
+  guards stay exercised now that the real mods are downloads. Dev builds only.
 
 - **An upstream text census, gated in CI** (`packages/cli/src/text-census.ts`,
   `pnpm --filter @rpgm-tools/neo-angband-cli census`). It enumerates every string literal
@@ -73,6 +91,18 @@ Documentation accuracy:
 - `docs/INSTALL.md` advertised in-app text/tile scaling that does not exist.
 
 ### Changed
+
+- **The game bundles no mods.** `qol` and `bug-fixes` moved to their own
+  repositories, joining `neo-linoleum`; `FIRST_PARTY_MOD_IDS` is empty and a release
+  build's discovered mod set is empty with it. All three are in the catalogue and
+  install the same way a third-party mod does. Bundling the author's own mods had been
+  hiding every defect in the install path behind three mods that never used it.
+- **The mods-folder screen stopped claiming a browser without a directory picker has
+  a fixed mod list.** It said "every mod here is one bundled into the app - fully
+  manageable, but a fixed set"; both halves are false. Downloading a mod needs only a
+  network request and the browser's own storage, so Firefox and Safari install mods
+  like anything else, and the screen now says so. The "N bundled with the game" clause
+  is dropped when N is zero rather than sitting on screen as a permanent zero.
 
 - README and `docs/INSTALL.md` are repositioned for an alpha that asks for
   testers: what is unfinished, how to report a difference from the original, and

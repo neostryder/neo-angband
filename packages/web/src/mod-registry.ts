@@ -106,11 +106,12 @@ export interface RecommendedMod {
 /**
  * The catalogue this build ships.
  *
- * ONE ENTRY, and the reason the other first-party mods are absent is not oversight:
- * qol and bug-fixes are still BUNDLED (see FIRST_PARTY_MOD_IDS in mod-store.ts), so
- * offering a download of a mod already in the build would give one id two sources.
- * They join this list if and when they leave the bundle. neo-angband-mod-borg has no
- * release - the repository reserves the name.
+ * EVERY FIRST-PARTY MOD THAT EXISTS IS HERE, because the game now bundles none of them
+ * (FIRST_PARTY_MOD_IDS in mod-store.ts is empty). That is the whole point of the list
+ * rather than a milestone: a fresh install is Angband 4.2.6 and nothing else, and every
+ * mod - mine included - arrives the same way, through the same verification, as
+ * somebody else's. neo-angband-mod-borg is absent because it has no release; the
+ * repository reserves the name.
  *
  * EVERY DIGEST BELOW WAS MEASURED, not transcribed. `node tools/pack.mjs --json` in
  * the mod repository printed them, and each was then re-fetched from
@@ -125,6 +126,57 @@ export interface RecommendedMod {
  * whoever sees it to ignore the one alarm that matters.
  */
 export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
+  {
+    id: "qol",
+    name: "Quality of Life",
+    repo: "neostryder/neo-angband-mod-qol",
+    tag: "v0.10.0",
+    summary: "Conveniences Angband does not have, each one a switch you can turn off",
+    /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
+     * the game being FAITHFUL, not the game being worse. A pre-checked row would make
+     * the default experience something other than 4.2.6. */
+    preChecked: false,
+    approxBytes: 1_689,
+    payload: {
+      kind: "files",
+      files: [
+        {
+          path: "manifest.json",
+          sha256: "a8d90e0114edd2afdc777b96937a94c79295061cd5896383d2f845d9f707e8e9",
+        },
+        {
+          path: "plugin.js",
+          sha256: "e060d8603473fb3e8377097ab5100090575779b7c85b77bfc149b680e6aee8e5",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug-fixes",
+    name: "Bug Fixes",
+    repo: "neostryder/neo-angband-mod-bug-fixes",
+    tag: "v0.10.0",
+    summary: "Fixes for upstream Angband bugs the port keeps on purpose",
+    /* Also clear, and this is the row where that is worth defending. Core keeps
+     * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
+     * turning these on by default would quietly make the game unfaithful for everyone
+     * who never opened the mod list. It also flags the save, permanently. */
+    preChecked: false,
+    approxBytes: 7_942,
+    payload: {
+      kind: "files",
+      files: [
+        {
+          path: "manifest.json",
+          sha256: "674e4b4b8de37e73a0db8443c0dbe3328acf2b603d86767545003046fe4342e1",
+        },
+        {
+          path: "plugin.js",
+          sha256: "12803351c2a6c0ceb122ce6c8f4bc614d4249a5d1e2781247ee6f27e292aa1d7",
+        },
+      ],
+    },
+  },
   {
     id: "neo-linoleum",
     name: "neo-linoleum",

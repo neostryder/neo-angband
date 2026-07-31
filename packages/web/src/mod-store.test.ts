@@ -78,24 +78,33 @@ describe("ModStore - enabled set", () => {
 });
 
 describe("the shipped mod set (isShippedMod)", () => {
-  it("ships exactly the two bundled mods: qol and bug-fixes", () => {
-    /* neo-linoleum was the third until its six converted packs - 9161 files,
-     * 42 MiB of art that belongs to the mod - moved to their own repository. It
-     * is equally first-party and arrives through the installer instead, so it is
-     * in RECOMMENDED_MODS rather than here. */
-    expect([...FIRST_PARTY_MOD_IDS].sort()).toEqual(["bug-fixes", "qol"]);
-    expect(FIRST_PARTY_MOD_IDS).not.toContain("neo-linoleum");
+  it("bundles NO mods at all", () => {
+    /* The de-bundling, stated where the list is. qol and bug-fixes were here;
+     * neo-linoleum left before them when its six converted packs - 9161 files, 42 MiB of
+     * art that belongs to the mod - moved to their own repository. All three are equally
+     * first-party and all three now arrive through RECOMMENDED_MODS, which is the point:
+     * a fresh install is Angband 4.2.6 and nothing else, and the author's own mods take
+     * the same route, through the same verification, as anyone else's.
+     *
+     * The list is not deleted along with its contents. It means "the game vouched for
+     * this by shipping it", which is what grants implicit capability consent - so an
+     * empty list is a statement, not a leftover. */
+    expect(FIRST_PARTY_MOD_IDS).toEqual([]);
   });
 
   it("keeps every first-party id in both builds", () => {
+    /* Vacuous today - the list is empty - and kept because it is the rule, not the
+     * roster: whatever the game bundles is offered in dev AND in release. The last
+     * assertion is what stops the loop above from reading as coverage. */
     for (const id of FIRST_PARTY_MOD_IDS) {
       expect(isShippedMod(id, true)).toBe(true);
       expect(isShippedMod(id, false)).toBe(true);
     }
+    expect(FIRST_PARTY_MOD_IDS.length, "vacuous: nothing is bundled").toBe(0);
   });
 
   it("drops the demo-* framework proofs from a release build only", () => {
-    for (const id of ["demo-modtest", "demo-sandbox", "demo-trusted"]) {
+    for (const id of ["demo-modtest", "demo-sandbox", "demo-trusted", "demo-hooks"]) {
       expect(isShippedMod(id, true)).toBe(true); // dev: proofs stay loadable
       expect(isShippedMod(id, false)).toBe(false); // release: not offered
     }
@@ -126,6 +135,10 @@ describe("the shipped mod set (isShippedMod)", () => {
         shipped || dir.startsWith("demo-"),
         `packages/web/mods/${dir} is neither first-party nor a demo-* proof`,
       ).toBe(true);
+      /* And now that nothing is bundled, EVERY directory must be a demo. A real mod
+       * appearing here again is a scope decision, and it has to come with an edit to
+       * this file rather than turning up in the manager unannounced. */
+      expect(shipped, `packages/web/mods/${dir} is bundled; nothing should be`).toBe(false);
       expect(isShippedMod(dir, false)).toBe(shipped);
 
       const raw = readFileSync(new URL(`${dir}/manifest.json`, modsDir), "utf8");
@@ -141,9 +154,16 @@ describe("the shipped mod set (isShippedMod)", () => {
    * one-liner leaves a player with nothing to decide on - neostryder's 2026-07-27 ask
    * was explicitly for descriptions "as long as will fit".
    */
-  it("gives every shipped mod a substantial description that does not claim to be on by default", () => {
+  it("gives every bundled mod a substantial description that does not claim to be on by default", () => {
+    /* Over every DIRECTORY rather than over FIRST_PARTY_MOD_IDS, which is empty. Written
+     * against the list, this test would have gone silently vacuous the moment the mods
+     * left the bundle - and a dev build still puts these descriptions on screen. */
     const modsDir = new URL("../mods/", import.meta.url);
-    for (const id of FIRST_PARTY_MOD_IDS) {
+    const bundledDirs = readdirSync(modsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(bundledDirs.length).toBeGreaterThan(0);
+    for (const id of bundledDirs) {
       const m = JSON.parse(
         readFileSync(new URL(`${id}/manifest.json`, modsDir), "utf8"),
       ) as { description?: string };
@@ -163,11 +183,13 @@ describe("the shipped mod set (isShippedMod)", () => {
    * globs the manifests on disk, so this is what the mod manager's catalog is
    * actually built from in each build.
    */
-  it("a release build's content catalog is exactly the two shipped mods", () => {
+  it("a release build's content catalog is EMPTY", () => {
+    /* The strongest single statement of the de-bundling, made on the real discovery path
+     * rather than on the predicate: pack.ts globs the manifests on disk, so this is what
+     * the mod manager's catalog is actually built from. In a release build, nothing. */
     vi.stubEnv("DEV", false);
     try {
-      const ids = discoverContentModManifests().map((m) => m.id);
-      expect([...ids].sort()).toEqual(["bug-fixes", "qol"]);
+      expect(discoverContentModManifests().map((m) => m.id)).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -198,9 +220,14 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
   });
 
   it("keeps the first-party identity list separate from the (empty) default-enable list", () => {
-    // Bundled mods are trusted-when-enabled but NOT on by default.
-    expect(FIRST_PARTY_MOD_IDS).toContain("qol");
-    expect(DEFAULT_ENABLED_MODS).not.toContain("qol");
+    /* Both are empty now, and they mean different things: FIRST_PARTY_MOD_IDS is "the
+     * game vouched for this by shipping it" (implicit capability consent) and
+     * DEFAULT_ENABLED_MODS is "this is on before anyone chose it" (which nothing ever is,
+     * by the parity mandate). They coincide at empty today; conflating them would be
+     * wrong the moment either changes. */
+    expect(FIRST_PARTY_MOD_IDS).toEqual([]);
+    expect(DEFAULT_ENABLED_MODS).toEqual([]);
+    for (const id of FIRST_PARTY_MOD_IDS) expect(DEFAULT_ENABLED_MODS).not.toContain(id);
   });
 
   it("honors a stored set verbatim, including an empty one (all off)", () => {
@@ -331,11 +358,18 @@ describe("buildCatalog", () => {
  * These run the real path - the on-disk bundled manifests through pack.ts's
  * enabled-only rule discovery into resolveModRules - rather than hand-built
  * decls, so a manifest that changed its `default` would fail here.
+ *
+ * Driven against demo-hooks. They used to be driven against bug-fixes, which was bundled
+ * and is not any more; what is under test is the HOST's rule lifecycle, not any
+ * particular mod's rules, so the bundled framework proof does the job and the suite stops
+ * depending on which mods happen to ship. A second id appears below as a mod that is NOT
+ * enabled - it needs no manifest, because the whole point is that nothing is discovered
+ * for it.
  */
 describe("a mod's patches exist only while its mod is enabled", () => {
-  const BUG_FIX_FLAGS = (
+  const DEMO_FLAGS = (
     JSON.parse(
-      readFileSync(new URL("../mods/bug-fixes/manifest.json", import.meta.url), "utf8"),
+      readFileSync(new URL("../mods/demo-hooks/manifest.json", import.meta.url), "utf8"),
     ) as { rules?: { flag: string }[] }
   ).rules!.map((r) => r.flag);
 
@@ -361,7 +395,7 @@ describe("a mod's patches exist only while its mod is enabled", () => {
 
   it("declares at least one patch per rule-carrying bundled mod", () => {
     // Guards the tests below from passing vacuously on an empty manifest.
-    expect(BUG_FIX_FLAGS.length).toBeGreaterThan(0);
+    expect(DEMO_FLAGS.length).toBeGreaterThan(1);
   });
 
   it("contributes NO flag while the mod is off, even with a saved choice for it", () => {
@@ -369,41 +403,42 @@ describe("a mod's patches exist only while its mod is enabled", () => {
       resolveModRules(loadEnabledModRuleDecls(), {
         // A remembered opt-out AND a remembered opt-in, both for disabled mods:
         // neither may resurrect a patch whose mod is not enabled.
-        "bugfix.objectListOrder": false,
-        "qol.autoDig": true,
+        "demo-hooks.shout": false,
+        "demo-hooks.tiebreak": true,
       }),
     );
     expect(rules).toEqual({});
     // The distinction that matters: absent, not present-and-false.
-    expect("bugfix.objectListOrder" in rules).toBe(false);
-    expect("qol.autoDig" in rules).toBe(false);
+    expect("demo-hooks.shout" in rules).toBe(false);
+    expect("demo-hooks.tiebreak" in rules).toBe(false);
   });
 
   it("turns the mod's whole patch set on at once when it is enabled", () => {
-    const rules = withEnabled(["bug-fixes"], () =>
+    const rules = withEnabled(["demo-hooks"], () =>
       resolveModRules(loadEnabledModRuleDecls(), {}),
     );
-    expect(Object.keys(rules).sort()).toEqual([...BUG_FIX_FLAGS].sort());
+    expect(Object.keys(rules).sort()).toEqual([...DEMO_FLAGS].sort());
     expect(Object.values(rules).every((v) => v === true)).toBe(true);
-    // Enabling one mod says nothing about another: qol is still off, so its
-    // tweak does not exist.
+    // Enabling one mod says nothing about another: demo-modtest is still off, so
+    // nothing of its appears - and a flag from a mod that is not even installed
+    // certainly does not.
     expect("qol.autoDig" in rules).toBe(false);
   });
 
   it("lets a player take the set minus one, leaving the rest on", () => {
-    const opted = BUG_FIX_FLAGS[0]!;
-    const rules = withEnabled(["bug-fixes"], () =>
+    const opted = DEMO_FLAGS[0]!;
+    const rules = withEnabled(["demo-hooks"], () =>
       resolveModRules(loadEnabledModRuleDecls(), { [opted]: false }),
     );
     expect(rules[opted]).toBe(false);
-    for (const flag of BUG_FIX_FLAGS.filter((f) => f !== opted)) {
-      expect(rules[flag]).toBe(true);
-    }
+    const rest = DEMO_FLAGS.filter((f) => f !== opted);
+    expect(rest.length, "set-minus-one needs a set of at least two").toBeGreaterThan(0);
+    for (const flag of rest) expect(rules[flag]).toBe(true);
   });
 
   it("drops the flags again when the mod goes off, but remembers the opt-out", () => {
     const store = new ModStore(fakeStorage());
-    const opted = BUG_FIX_FLAGS[0]!;
+    const opted = DEMO_FLAGS[0]!;
     store.setRuleChoice(opted, false);
 
     const off = withEnabled([], () =>
@@ -413,11 +448,11 @@ describe("a mod's patches exist only while its mod is enabled", () => {
     // The choice is kept, not deleted - it is simply inert while the mod is off.
     expect(store.getRuleChoices()).toEqual({ [opted]: false });
 
-    const back = withEnabled(["bug-fixes"], () =>
+    const back = withEnabled(["demo-hooks"], () =>
       resolveModRules(loadEnabledModRuleDecls(), store.getRuleChoices()),
     );
     expect(back[opted]).toBe(false);
-    for (const flag of BUG_FIX_FLAGS.filter((f) => f !== opted)) {
+    for (const flag of DEMO_FLAGS.filter((f) => f !== opted)) {
       expect(back[flag]).toBe(true);
     }
   });

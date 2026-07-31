@@ -1,9 +1,15 @@
-# Bundled quality-of-life mod (`qol`)
+# The quality-of-life mod (`qol`)
 
-> STATUS: DESIGN OF RECORD. This page is the source of truth and public
-> changelog for the bundled quality-of-life mod. The mod adds NEW conveniences
-> that are not part of faithful Angband; with it disabled (or a tweak turned off
-> in its Fixes & tweaks submenu) core is byte-identical to faithful 4.2.6 behaviour.
+> **NOT BUNDLED.** The game ships no mods at all; this one lives in
+> [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) and
+> installs through the mod manager's *Install a mod...* row, at a pinned tag,
+> verified against a digest that ships inside the game.
+>
+> STATUS: DESIGN OF RECORD. This page is the source of truth and public changelog
+> for it. The mod adds NEW conveniences that are not part of faithful Angband; with
+> it disabled - or a tweak turned off in its Fixes & tweaks submenu - core is
+> byte-identical to faithful 4.2.6 behaviour, and without it installed the code is
+> not on your machine at all.
 
 ## Why this mod exists
 
@@ -30,13 +36,13 @@ bugs). Balance and rules changes belong in neither - they would be their own mod
 ## How it works (the mod's own code, reversible, faithful-when-off)
 
 Every QoL tweak is a named **patch flag** (`qol.*`) that the mod DECLARES in
-`packages/web/mods/qol/manifest.json` under `rules` (flag / title / description /
+`neo-angband-mod-qol/manifest.json` under `rules` (flag / title / description /
 default). The flag is a conversation between the host and the mod - **core never
 sees it.** Nothing in `packages/core/src` contains the string `qol.autoDig` or a
 dig-on-walk branch.
 
 The tweak's BEHAVIOUR is the mod's own code, in
-`packages/web/mods/qol/hooks.ts`. That file default-exports the entry point every
+`neo-angband-mod-qol/plugin.ts`. That file default-exports the entry point every
 behaviour mod exports:
 
 ```ts
@@ -82,7 +88,7 @@ instead of the faithful no-energy "there is a wall in the way" bump. You never
 step onto the dug-out grid in the same move, and each walk is a single attempt
 (you keep walking to keep digging), matching the source fork.
 
-- The tweak's code: `packages/web/mods/qol/hooks.ts:76`, installing the
+- The tweak's code: `neo-angband-mod-qol/plugin.ts`, installing the
   `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts:96`). It reuses
   two PUBLIC core primitives rather than reimplementing the dig - a reimplemented
   roll would drift from the tunnel command's: `movementTunnelTest`
@@ -100,7 +106,7 @@ step onto the dug-out grid in the same move, and each walk is a single attempt
   is honoured as such.
 - Tests: `packages/core/src/game/auto-dig.test.ts` (core's seam: bump with no
   hook; the returned energy is honoured, zero included) and
-  `packages/web/mods/qol/hooks.test.ts` (the mod's own behaviour and its flag
+  `neo-angband-mod-qol/plugin.test.ts` (the mod's own behaviour and its flag
   gate).
 
 ## QoL ideas that are ALREADY faithful core (not this mod)
@@ -121,7 +127,7 @@ re-implement them:
 
 - `packages/core/src/game/auto-dig.test.ts` - core's side of the seam: the bump
   with no hook, and the hook's returned energy being honoured.
-- `packages/web/mods/qol/hooks.test.ts` - the mod's own behaviour: one dig + a
+- `neo-angband-mod-qol/plugin.test.ts` - the mod's own behaviour: one dig + a
   move and no step with the tweak on, decline with it off, and the known /
   permanent-rock / can't-dig gates.
 - `packages/core/src/session/qol-defaults.test.ts` - faithful core option

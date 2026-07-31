@@ -19,8 +19,13 @@ const MODS_DIR = join(import.meta.dirname, "..", "mods");
 describe("discoverModHookEntries", () => {
   const entries = discoverModHookEntries();
 
-  it("finds the two bundled mods that change behaviour", () => {
-    expect([...entries.keys()].sort()).toEqual(["bug-fixes", "qol"]);
+  it("finds the bundled mods that change behaviour", () => {
+    /* ONE, and it is a demo. The game bundles no real mods any more - qol and bug-fixes
+     * live in their own repositories and arrive as downloads - so demo-hooks is what
+     * keeps this path from going vacuous. A glob that matches nothing passes every
+     * assertion made about what it matched, which is why the mechanism kept a mod of its
+     * own rather than the suite being deleted with the mods that used to feed it. */
+    expect([...entries.keys()].sort()).toEqual(["demo-hooks"]);
   });
 
   it("does NOT find the tiles mod, which contributes no behaviour", () => {
@@ -51,25 +56,25 @@ describe("discoverModHookEntries", () => {
   });
 
   it("the discovered mods really do contribute once their patches are on", () => {
-    const qol = entries.get("qol")!;
-    const bugFixes = entries.get("bug-fixes")!;
-    expect(Object.keys(qol({ "qol.autoDig": true }) ?? {})).toEqual([
-      "walkBlockedByDiggable",
+    const demo = entries.get("demo-hooks")!;
+    expect(Object.keys(demo({ "demo-hooks.tiebreak": true }) ?? {})).toEqual([
+      "objectListTiebreak",
     ]);
-    expect(Object.keys(bugFixes({ "bugfix.miscStrings": true }) ?? {})).toEqual([
-      "messageText",
-    ]);
+    expect(Object.keys(demo({ "demo-hooks.shout": true }) ?? {})).toEqual(["messageText"]);
 
-    /* And the host's fold turns two mods' contributions into the one object core
-     * holds, with both mods' hooks present. */
+    /* And the host's fold turns several contributions into the one object core holds,
+     * with every contributor's hooks present. Two SOURCES rather than two mods, because
+     * one bundled mod is all there is - the fold is what is under test, and it takes a
+     * list. */
     const composed = composeModHooks([
-      qol({ "qol.autoDig": true }) ?? {},
-      bugFixes({ "bugfix.miscStrings": true, "bugfix.noiseScentSave": true }) ?? {},
+      demo({ "demo-hooks.tiebreak": true }) ?? {},
+      demo({ "demo-hooks.shout": true }) ?? {},
+      { saveNoiseScent: () => true },
     ]);
     expect(Object.keys(composed ?? {}).sort()).toEqual([
       "messageText",
+      "objectListTiebreak",
       "saveNoiseScent",
-      "walkBlockedByDiggable",
     ]);
   });
 });
@@ -94,7 +99,7 @@ describe("the bundled mods use the SAME entry-point ABI a folder mod does", () =
 
   it("there are bundled behaviour mods to check", () => {
     // Guards the guard: a glob that matches nothing passes every assertion below.
-    expect(modsWithCode.sort()).toEqual(["bug-fixes", "qol"]);
+    expect(modsWithCode.sort()).toEqual(["demo-hooks"]);
   });
 
   it("declares the api version the host implements", async () => {

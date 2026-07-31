@@ -197,6 +197,57 @@ export function modFolderRow(
   };
 }
 
+/**
+ * The "where these mods came from" line on the mods-folder screen.
+ *
+ * WHY THE BUNDLED CLAUSE IS DROPPED AT ZERO, rather than printed as "0". The game
+ * bundles no mods at all now - FIRST_PARTY_MOD_IDS is empty, and a release build inlines
+ * nothing - so "0 bundled with the game" would be a permanent fixture of this screen: a
+ * number that can only ever be zero, sitting exactly where a player looks to find out
+ * where their mods are. The clause exists to stop the other count reading as the whole
+ * answer, and with nothing bundled there is nothing left for it to disambiguate.
+ *
+ * The other count is always printed, zero included. "0 from this folder" is the sentence
+ * that tells a player the FOLDER is the empty part rather than the game.
+ */
+export function modSourceLine(bundledCount: number, count: number, theirs: string): string {
+  const own = `${String(count)} ${theirs}.`;
+  if (bundledCount === 0) return own[0]!.toUpperCase() + own.slice(1);
+  return `${String(bundledCount)} bundled with the game, ${own}`;
+}
+
+/**
+ * What a browser with no directory picker is told.
+ *
+ * THIS TEXT WAS WRONG, in the way a screen can be wrong for a long time. It said "every
+ * mod here is one bundled into the app - fully manageable, but a fixed set", and both
+ * halves have since stopped being true: the game bundles no mods at all, and installing
+ * one needs nothing this browser lacks - a network request and its own storage. So the
+ * sentence told a Firefox or Safari player that their mod list was fixed, on a screen
+ * they opened to find out how to change it. Telling someone not to look for the thing
+ * that works is worse than saying nothing.
+ *
+ * Exported and pure so the words are testable. It is the words that are the behaviour
+ * here, and the previous version was a template nothing asserted anything about.
+ */
+export function noFolderPickerLines(): ScreenLine[] {
+  return [
+    { text: "This browser cannot be given a mods FOLDER.", color: C_FG },
+    { text: "", color: C_FG },
+    { text: "It has no way to hand a directory to a web page, so that one", color: C_FG },
+    { text: "route is closed here. Downloading is not: Install a mod... needs", color: C_FG },
+    { text: "only a network request and this browser's own storage, and every", color: C_FG },
+    { text: "mod on offer arrives that way - checked against a digest that", color: C_FG },
+    { text: "ships inside the game, so a tampered download never runs.", color: C_FG },
+    { text: "", color: C_FG },
+    { text: "Nothing is missing from your mod list because of your browser.", color: C_GOLD_TEXT },
+    { text: "", color: C_FG },
+    { text: "Chrome and Edge can ALSO be given a folder, which is useful for", color: C_WARN },
+    { text: "a mod you are writing; the desktop build keeps its own, which an", color: C_WARN },
+    { text: "external mod manager can deploy into.", color: C_WARN },
+  ];
+}
+
 /** The one-line badge for a catalog row: enabled state + any warning. */
 function rowLabel(m: CatalogMod): MenuItem {
   const box = m.enabled ? "[x]" : "[ ]";
@@ -715,15 +766,7 @@ async function showModSources(
         { text: "Pick either a folder of mods, or a single mod's folder.", color: C_GOLD_TEXT },
       );
     } else {
-      lines.push(
-        { text: "This browser has no mods folder.", color: C_FG },
-        { text: "", color: C_FG },
-        { text: "It cannot ask you for a directory to read, so every mod here is", color: C_FG },
-        { text: "one bundled into the app - fully manageable, but a fixed set.", color: C_FG },
-        { text: "", color: C_FG },
-        { text: "Chrome and Edge can be given a folder; the desktop build keeps", color: C_WARN },
-        { text: "its own, which an external mod manager can deploy into.", color: C_WARN },
-      );
+      lines.push(...noFolderPickerLines());
     }
   } else if (status.kind === "installed") {
     /* Mods installed from their own repositories and NO folder at all. There is no
@@ -732,10 +775,7 @@ async function showModSources(
     lines.push(
       { text: "Mods installed from their own repositories.", color: C_FG },
       { text: "", color: C_FG },
-      {
-        text: `${status.bundledCount} bundled with the game, ${status.count} installed.`,
-        color: C_FG,
-      },
+      { text: modSourceLine(status.bundledCount, status.count, "installed"), color: C_FG },
       { text: "", color: C_FG },
       { text: "An installed mod's files are kept in this browser's storage, not in", color: C_FG },
       { text: "a folder, so there is no path to show. Each was checked against a", color: C_FG },
@@ -758,15 +798,10 @@ async function showModSources(
       },
       { text: `  ${status.dir ?? "(unknown)"}`, color: C_GOLD_TEXT },
       { text: "", color: C_FG },
-      /* Both numbers, always. "0 mods found in it." is TRUE and reads as "this
-       * game has no mods" while three are listed one screen away - the count is
-       * of the folder, but nothing said so, and nothing said where the others
-       * came from. A player with an empty folder needs to see that the folder is
-       * the empty part. */
-      {
-        text: `${status.bundledCount} bundled with the game, ${status.count} from this folder.`,
-        color: C_FG,
-      },
+      /* The folder count is always given, even at zero: "0 mods found in it." is TRUE
+       * and reads as "this game has no mods" while others are listed one screen away.
+       * A player with an empty folder needs to see that the FOLDER is the empty part. */
+      { text: modSourceLine(status.bundledCount, status.count, "from this folder"), color: C_FG },
       ...(status.count === 0
         ? [{ text: "Nothing has been copied into it yet.", color: C_DIM }]
         : []),

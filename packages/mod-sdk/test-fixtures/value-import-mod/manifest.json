@@ -1,0 +1,11 @@
+{
+  "id": "value-import-mod",
+  "name": "A Mod That Imports The Engine",
+  "version": "0.10.0",
+  "shape": "content",
+  "facets": ["plugin"],
+  "modApi": 1,
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "A build fixture that must FAIL. It imports a VALUE from the engine instead of taking it from ctx.core, which cannot resolve in a mod folder and would give the mod its own copy of engine state if it were bundled in."
+}

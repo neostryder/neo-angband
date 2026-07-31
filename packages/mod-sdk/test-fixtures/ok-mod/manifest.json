@@ -1,0 +1,11 @@
+{
+  "id": "ok-mod",
+  "name": "A Well-Formed Mod",
+  "version": "0.10.0",
+  "shape": "content",
+  "facets": ["plugin"],
+  "modApi": 1,
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "A build fixture, not a mod anyone plays. It takes the engine from ctx.core, imports core for TYPES only, and splits itself over two files so the builder's bundling is proven rather than assumed."
+}

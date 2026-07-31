@@ -1,9 +1,15 @@
-# Core mod seams: how the bundled mods change the game
+# Core mod seams: how a mod changes the game
 
-This page explains, in one place, the small set of CORE seams the bundled `qol`
+This page explains, in one place, the small set of CORE seams the first-party `qol`
 and `bug-fixes` mods use, and why each one is byte-identical to faithful Angband
 4.2.6 when no mod touches it. It is the answer to "what are the new core seams
 and how do they work?".
+
+Neither mod is bundled - both live in their own repositories and install like any
+other. The paths cited below are paths inside those repositories. That matters for
+reading this page: the seams are core's, the bodies are not in this tree, and the
+`ctx.core` shape every citation shows is not a convention the first-party mods
+follow by agreement - it is the only shape that resolves in a mod folder.
 
 The guiding rule (PORT_PLAN.md decisions 2, 18, 23, 24): **core is a faithful
 reproduction of Angband 4.2.6 - everything in official Angband is in core, at its
@@ -177,7 +183,7 @@ every pure content mod - simply ships no `hooks.ts` and is never called.
 
 Three rules make this shape work, and they are the contract a third-party
 behaviour mod must keep (spelled out in the header of
-`packages/web/mods/bug-fixes/hooks.ts`):
+`neo-angband-mod-bug-fixes/plugin.ts`):
 
 1. **The mod reads its OWN flags.** Its flag map is sliced per mod so a mod
    cannot read, or act on, another mod's toggles - its behaviour cannot silently
@@ -194,9 +200,9 @@ behaviour mod must keep (spelled out in the header of
 **The patch bodies are the mods' code, not core's.** There is no `bugfix.*` or
 `qol.*` string in `packages/core/src` outside comments, no staircase repair, no
 duplicate-artifact guard, and no message rewriter. `ensureStairsReachable` lives
-at `packages/web/mods/bug-fixes/stairs.ts:135`; `miscStringFix` at
-`packages/web/mods/bug-fixes/strings.ts:111`; the auto-dig at
-`packages/web/mods/qol/hooks.ts:76`. Delete a mod folder and its behaviour goes
+at `neo-angband-mod-bug-fixes/stairs.ts`; `miscStringFix` at
+`neo-angband-mod-bug-fixes/strings.ts`; the auto-dig at
+`neo-angband-mod-qol/plugin.ts`. Delete a mod folder and its behaviour goes
 with it.
 
 **Default policy (the project owner's ruling, 2026-07-26; wording tightened 2026-07-27).**
@@ -330,7 +336,7 @@ door here is not a refusal, it is a redirection to the door with hinges.
 | Rule discovery | `packages/web/src/pack.ts` (`loadEnabledModRuleDecls`) |
 | Choice persistence + resolver | `packages/web/src/mod-store.ts` |
 | Per-mod hook discovery + fold | `packages/web/src/mod-hooks.ts` |
-| Bundled mods' own hook code | `packages/web/mods/bug-fixes/hooks.ts`, `packages/web/mods/qol/hooks.ts` |
+| Bundled mods' own hook code | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |

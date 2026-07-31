@@ -28,19 +28,26 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   quality-of-life - ships as a mod, never baked into the port. Core ships
   the extensibility SEAMS (part of the mod architecture); mods ship the
   features that ride them.
-- **Bundled mods ship in the box**, off on a fresh install and fully removable,
-  each a separate standalone pack (never combined): a **QoL mod** (UI
-  quality-of-life) and the **`bug-fixes`** mod (upstream crash/corruption/
-  save/determinism patches; see `docs/modding/BUG_FIXES.md`).
-  **`neo-linoleum`** - an alternative loose-pack tile engine, NOT the source of
-  the game's tile sets, which are core content from `lib/tiles/list.txt` - is
-  equally first-party but is NOT bundled: it ships all six upstream sets
-  converted to loose packs, 9161 files of art that belongs to the mod, so it
-  lives in its own repository and arrives through the installer. A converted
-  pack is proven to draw pixel-for-pixel what its tilesheet draws
-  (`docs/LINOLEUM.md`, decision 26). The bundled two are ordinary
-  mods that happen to ship in the box - proof the seams are real, and the
-  reference examples mod authors (and AI agents) learn from.
+- **NO MOD SHIPS IN THE BOX.** A fresh install is Angband 4.2.6 and nothing
+  else. The three first-party mods each live in their own repository, carry their
+  own release tags and tests, and arrive through the mod manager's *Install a
+  mod...* row - the same route, and the same digest verification, a third-party
+  mod uses:
+  - **`qol`** - genuinely new conveniences (`docs/modding/QOL.md`). Not Angband's
+    own `=` options, which ship in core at their upstream defaults.
+  - **`bug-fixes`** - an unofficial patch set for upstream bugs core deliberately
+    keeps (`docs/modding/BUG_FIXES.md`).
+  - **`neo-linoleum`** - an alternative loose-pack tile engine, NOT the source of
+    the game's tile sets, which are core content from `lib/tiles/list.txt`. It
+    ships all six upstream sets converted to loose packs: 9161 files of art that
+    belongs to the mod. A converted pack is proven to draw pixel-for-pixel what
+    its tilesheet draws (`docs/LINOLEUM.md`, decision 26).
+
+  This is the load-bearing form of "the seams are real". A modding system whose
+  author's own mods take a private path into the build is a modding system nobody
+  has tested; bundling them would have hidden every defect in the install path
+  behind three mods that never used it. Emptying the bundle is what forced the
+  download route, the folder code loader and the plugin ABI to actually work.
 - **Cheaty mods are allowed.** A mod may add, patch, replace, or remove
   anything - up to the rules that make the game Angband, or a roguelike at
   all. The engine warns and labels (for example, marking a save's profile
@@ -106,8 +113,11 @@ state of each noted):
   there is no record-schema validation at all.*
 - The base game must consume every surface through the same public API mods
   use. If core needs a private hook, the hook becomes public API instead.
-  *Measured: holds for the bundled mods' hooks - `packages/web/mods/bug-fixes/`
-  and `qol/` import only `@rpgm-tools/neo-angband-core`'s public API and no test hook.*
+  *Measured, and now structurally: the first-party mods are built OUTSIDE this
+  repository against the published `@rpgm-tools/neo-angband-core`, so a private
+  hook is not merely discouraged, it does not resolve. The plugin builder refuses
+  any non-relative import outright, so a mod cannot even reach the engine by name -
+  it receives it as `ctx.core`.*
 
 ## Pack shapes
 
@@ -148,9 +158,10 @@ instead; either way the mod manager's "Where mods come from" row names the exact
 path. See [INSTALL.md](INSTALL.md#where-your-data-lives).
 
 `manifest.json` is validated on load. Every other `.json` at the top level of
-the folder is a record contribution, named after the record type - the same
-layout a bundled mod under `packages/web/mods/` has, so a mod can be developed
-bundled and shipped as a folder with no translation step.
+the folder is a record contribution, named after the record type - and `plugin.js`,
+if present, is code the host loads and runs. That is the whole format: a mod's
+repository root IS a mod folder, which is why the first-party mods can be developed,
+tested and released without ever being translated into something else.
 
 **`load-order.json` belongs to the mod manager, not to the game.** Its shape is
 `{ "order": ["mod-a", "mod-b"] }`, and being listed means two things at once, the
@@ -192,8 +203,13 @@ The narrower reductions in a browser, precisely:
   then reads `NEEDS RECONNECTING`, because a folder that silently stopped being
   read is the failure that looks like the mods vanished.
 - The page is told the folder's *name*, never its path, so only the name is shown.
-- Firefox and Safari cannot pick a directory at all. There the answer is still
-  "bundled mods only", and the manager says so instead of offering a dead row.
+- Firefox and Safari cannot pick a directory at all - the capability does not
+  exist in those engines, so there is no workaround to find. **Nothing is missing
+  from a Firefox or Safari player's mod list because of it**: *Install a mod...*
+  needs only a network request and the browser's own storage, and that is how every
+  mod on offer arrives. The folder route is for a mod you are writing, or one that
+  was never published. The manager says exactly this rather than offering a dead
+  row.
 
 ## Identity and composition
 

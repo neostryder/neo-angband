@@ -1,13 +1,18 @@
-# Bundled bug-fix mod (`bug-fixes`)
+# The bug-fix mod (`bug-fixes`)
 
+> **NOT BUNDLED.** The game ships no mods at all; this one lives in
+> [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes)
+> and installs through the mod manager's *Install a mod...* row, at a pinned tag,
+> verified against a digest that ships inside the game.
+>
 > STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
-> public changelog for the bundled bug-fix mod. The mod package
-> (`packages/web/mods/bug-fixes/`) DECLARES its fixes in `manifest.json` under
-> `rules` (flag / title / description / default) and carries each fix's BODY as
-> its own code: `hooks.ts` (the entry point), `stairs.ts`, `strings.ts`. Nothing
-> in `packages/core/src` holds a `bugfix.*` string, the staircase repair, the
-> duplicate-artifact guard, or the message rewriter - delete this folder and the
-> fixes go with it.
+> public changelog for it. The mod DECLARES its fixes in `manifest.json` under
+> `rules` (flag / title / description / default) and carries each fix's BODY as its
+> own code: `plugin.ts` (the entry point), `stairs.ts`, `strings.ts`. Nothing in
+> `packages/core/src` holds a `bugfix.*` string, the staircase repair, the
+> duplicate-artifact guard, or the message rewriter - and now nothing in this
+> repository holds the fixes either. Do not install the mod and the code does not
+> exist on your machine.
 >
 > Each fix installs one member of `ModHooks`
 > (`packages/core/src/mod/hooks.ts`) - a typed interface of OPTIONAL functions on
@@ -63,10 +68,10 @@ cherry-pick post-tag commits, merged PRs, or issue fixes into core, because
 that would make core diverge from the tag and turn every future upstream
 re-sync into a rebase over local patches.
 
-Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
+Instead, every such fix ships in this single opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
 `content`-shape pack (docs/MODS.md) that declares its patch flags in
-`manifest.json` and carries their code in its own `hooks.ts`; id `bug-fixes`,
+`manifest.json` and carries their code in its own `plugin.ts`; id `bug-fixes`,
 depending on `core`. The mod is **OFF on a fresh install**, like every mod
 (`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
 buggy-as-shipped 4.2.6 - and while the mod is off, **none of its fixes exist**:
@@ -114,7 +119,7 @@ this mod.
   carried as a known issue, with our own mitigation optional.
 
 The mod's flags (each `bugfix.*` declared in
-`packages/web/mods/bug-fixes/manifest.json` under `rules`). Each declares
+`neo-angband-mod-bug-fixes/manifest.json` under `rules`). Each declares
 `default: true`, which means one thing only: ON once this mod is enabled. It does
 not mean on in a fresh install, and it does not mean the flag sits in core
 waiting to be switched - with the mod off the flag is absent entirely. Enabling
@@ -239,7 +244,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   the true root cause, since #4668 showed the two-unknowns case alone did not
   explain every report.
 - Implementation: the mod's `objectListTiebreak` hook
-  (`packages/web/mods/bug-fixes/hooks.ts:89`), serving core's comparator tiebreak
+  (`neo-angband-mod-bug-fixes/plugin.ts`), serving core's comparator tiebreak
   at `packages/core/src/game/obj-list.ts:242`; flag `bugfix.objectListOrder`.
   Port status: the port's comparator is already a lexicographic strict weak order
   and feeds a guaranteed-STABLE `Array.sort`, and it already returns 0 for the
@@ -250,7 +255,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   distance-only tiebreak (`?? 0`, i.e. leave the entries equal). Tests in
   `game/obj-list.test.ts` (core's seam: equal-distance distinct entries stay
   order-equivalent with no hook; an installed hook breaks the tie) and
-  `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's comparator and its flag
+  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's comparator and its flag
   gate).
 
 ### 5. Unique monster "returns" in the kill history (`IMPLEMENTED`, partial upstream)
@@ -266,7 +271,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Port fix approach: when monster shape-change + death bookkeeping is ported,
   guard `original_race` and dedupe unique-death history entries.
 - Implementation: the mod's `historyAdd` hook
-  (`packages/web/mods/bug-fixes/hooks.ts:62`, a one-line `!entry.duplicate`),
+  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!entry.duplicate`),
   serving core's `onPlayerKill` `HIST.SLAY_UNIQUE` write at
   `packages/core/src/session/game.ts:872`; flag `bugfix.uniqueKillHistory`. Core
   computes and passes `duplicate` and holds no opinion about it. The port's
@@ -277,7 +282,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   no longer logs a duplicate "Killed X" entry. No hook => `?? true` => faithful
   4.2.6 logs one per lethal blow. Tests in `session/game.test.ts` (core's seam:
   two kills log two entries with no hook; an installed hook suppresses the
-  second) and `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's predicate
+  second) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate
   and its flag gate).
   Scope note: this is the ONLY `historyAdd` call site that consults the hook -
   core's other `historyAdd` writes are not routed through it, which matches the
@@ -311,7 +316,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   change monster tracking behavior versus uninterrupted play.
 - Port fix approach: persist the noise/scent fields in the save block.
 - Implementation: the mod's `saveNoiseScent` hook
-  (`packages/web/mods/bug-fixes/hooks.ts:72`, a one-line `true`), serving the
+  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `true`), serving the
   live-level snapshot's `includeFlow` argument at
   `packages/core/src/session/save.ts:1203`; core does the writing and the reading
   either way, in `packages/core/src/world/chunk.ts`
@@ -378,7 +383,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   source of truth for "this artifact exists", making duplication impossible by
   construction; optional mitigation is a defensive re-check on creation.
 - Implementation: the mod's `artifactCommit` hook
-  (`packages/web/mods/bug-fixes/hooks.ts:107`, a one-line `!alreadyCreated`),
+  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!alreadyCreated`),
   serving core's commit branch at `packages/core/src/obj/make.ts:987`
   (`makeArtifact`); `MakeDeps` gains an optional `hooks: ModHooks`
   (`obj/make.ts:1119`), threaded from the LIVE `state.modHooks` at the generation
@@ -400,7 +405,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   (`allowArtifacts=false`) do not thread the hooks - artifact creation is inert
   there. Tests in `obj/make.test.ts` (core's seam: an already-created carried
   artifact is re-committed with no hook; a refusing hook clears it and reports
-  failure) and `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's predicate
+  failure) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate
   and its flag gate).
 
 ### 13. Unreachable staircases (`IMPLEMENTED`, no upstream fix)
@@ -436,9 +441,9 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   reproduces the wart, per decision 24 and the owner's 2026-07-26 ruling
   ("Core must retain all warts of the reference code").
 - Implementation: the mod's `levelGenerated` hook
-  (`packages/web/mods/bug-fixes/hooks.ts:121`), whose body is
+  (`neo-angband-mod-bug-fixes/plugin.ts`), whose body is
   `ensureStairsReachable` in the MOD's own file
-  (`packages/web/mods/bug-fixes/stairs.ts:135`) - core carries no staircase
+  (`neo-angband-mod-bug-fixes/stairs.ts`) - core carries no staircase
   repair. It serves core's accept branch inside `cave_generate`'s existing retry
   loop (`packages/core/src/gen/generate.ts:473`); `GenDeps` gains an optional
   `hooks: ModHooks` (`gen/generate.ts:80`), threaded from the LIVE
@@ -477,7 +482,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
     (no hook) really does strand the measured seeds, so moving the repair back
     into core fails the suite and says why (the failure message names the mod -
     `gen.test.ts:489`).
-  - `packages/web/mods/bug-fixes/stairs.test.ts` carries the repair's own tests:
+  - `neo-angband-mod-bug-fixes/stairs.test.ts` carries the repair's own tests:
     the invariant across depths, the measured pre-fix failures as named
     regressions, and mechanical unit tests on a synthetic sealed-pocket level
     (repair, spot-choice rule, RNG-state equality on both paths, the
@@ -537,8 +542,8 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   the local majority. Pooled here, because the convention is "two spaces after a
   sentence" rather than "after a period". Dropping those three rows from
   `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
-- Fix: `miscStringFix` (`packages/web/mods/bug-fixes/strings.ts:111`), installed
-  on the `messageText` hook (`packages/web/mods/bug-fixes/hooks.ts:133`) and
+- Fix: `miscStringFix` (`neo-angband-mod-bug-fixes/strings.ts`), installed
+  on the `messageText` hook (`neo-angband-mod-bug-fixes/plugin.ts`) and
   applied at the host's single message sink (`packages/web/src/main.ts:1244`,
   `state.msg`) so one hook covers every message core or the shell emits. Fold
   kind: a TRANSFORM hook - several mods' rewriters chain in load order, each
