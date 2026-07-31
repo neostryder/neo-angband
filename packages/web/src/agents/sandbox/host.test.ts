@@ -10,7 +10,7 @@ import type {
   AgentActions,
   AgentCapabilities,
   AgentView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { HostToWorker } from "./protocol";
 import { TARGET_MONSTER_CODE } from "./protocol";
 import { createSandboxBridge } from "./host";

@@ -771,7 +771,7 @@ index 84406af23..a92507f0c 100644
 @@ -1,5 +1,13 @@
  import { describe, expect, it } from "vitest";
 -import { MessageLog, paginateMessages, format } from "./messages";
-+import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@neo-angband/core";
++import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@rpgm-tools/neo-angband-core";
 +import {
 +  MessageLog,
 +  messageTypeCode,
@@ -824,8 +824,8 @@ index d72ce5466..5f325e6b3 100644
   * last render as the top status line, and feeds the full history screen.
   */
  
-+import { MSG } from "@neo-angband/core";
-+import type { MessageType } from "@neo-angband/core";
++import { MSG } from "@rpgm-tools/neo-angband-core";
++import type { MessageType } from "@rpgm-tools/neo-angband-core";
 +
  export interface LoggedMessage {
    text: string;

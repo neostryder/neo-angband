@@ -17,7 +17,7 @@
  * variants need Term panel geometry / morgoth_panel data not on the borg model.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { BI } from "../trait/trait-index.js";
 import { trait } from "../item/deps.js";

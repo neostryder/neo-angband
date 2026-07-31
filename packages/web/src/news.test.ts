@@ -7,8 +7,8 @@ import {
   COLOUR_MUD,
   COLOUR_WHITE,
   COLOUR_L_WHITE,
-} from "@neo-angband/core";
-import { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import {
   parseNewsLine,
   showTitleScreen,

@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { dispatchDebug, DEBUG_MENU, STATS_DISABLED_MSG } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
-import type { GameState, WizardDeps } from "@neo-angband/core";
+import type { GameState, WizardDeps } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 /**

@@ -1,6 +1,6 @@
 /**
  * Wizard / debug mode UI: the faithful web command surface over the wizard
- * engine in @neo-angband/core (game/wizard.ts).
+ * engine in @rpgm-tools/neo-angband-core (game/wizard.ts).
  *
  * Every prompt, confirmation and message in this file is transcribed from the
  * C, not described in our own words. The sources are cmd-wizard.c (the
@@ -97,7 +97,7 @@ import {
   attachGameEnv,
   OBJ_MOD_NAMES,
   STAT_MAX,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GamePack,
   GameState,
@@ -114,8 +114,8 @@ import type {
   ObjectBase,
   ObjectKind,
   ProjectionInfo,
-} from "@neo-angband/core";
-import { gearGet } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { gearGet } from "@rpgm-tools/neo-angband-core";
 import { GlyphTerm } from "./term";
 import {
   getCheck,

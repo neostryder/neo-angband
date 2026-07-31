@@ -42,7 +42,7 @@ import {
   equipCmpSummary,
   matchEquipCmpFilter,
   objectInfoTextblock,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   EquipCmpEasyFilter,
   EquipCmpModel,
@@ -52,7 +52,7 @@ import type {
   StoreInclusion,
   Textblock,
   UiEntryPackRecords,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
 import type { ScreenLine } from "./overlay";

@@ -81,7 +81,7 @@ describe("helpGuideLines (curated orientation page)", () => {
 
 describe("RNG invariance", () => {
   it("help.ts never imports the core RNG (pure display, no game-random draw)", () => {
-    expect(HELP_TS_SOURCE).not.toContain("@neo-angband/core");
+    expect(HELP_TS_SOURCE).not.toContain("@rpgm-tools/neo-angband-core");
     expect(HELP_TS_SOURCE).not.toMatch(/\bRng\b/);
   });
 

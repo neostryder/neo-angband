@@ -197,7 +197,19 @@ describe("the arena round trip (generate.c / game-world.c)", () => {
         expect(state.chunk.sqinfoHas(loc(x, y), SQUARE.MARK)).toBe(false);
       }
     }
-    expect(Array.from(state.known.feat).every((f) => f === -1)).toBe(true);
+    /*
+     * ...but the level-entry FOV that follows DOES remember it, and this line used
+     * to assert `every(f => f === -1)` - nothing remembered at all. That was true of
+     * the code and wrong about the game: core had no default updateFov, so the
+     * refresh at the end of changeLevel's arena branch was a no-op and the arena
+     * stayed unknown. Upstream sets PU_UPDATE_VIEW in wiz_light and services it
+     * once `cave` IS the arena, so a player who walks into an arena sees the room
+     * and the opponent. What the wiz_light pass must not do is memorize; what the
+     * entry FOV must do is.
+     */
+    expect(state.known.feat.some((f) => f !== -1)).toBe(true);
+    const at = state.actor.grid.y * state.chunk.width + state.actor.grid.x;
+    expect(state.known.feat[at]).not.toBe(-1);
 
     /* Strike the killing blow: the gate signals the exit. */
     expect(arenaInterceptDeath(state, copy)).toBe(true);

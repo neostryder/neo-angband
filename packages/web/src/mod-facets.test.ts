@@ -27,7 +27,7 @@ import {
   ManifestError,
   type LoadedPack,
   type PackManifest,
-} from "@neo-angband/mod-sdk";
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
 import { activePackSetFrom } from "./pack";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";

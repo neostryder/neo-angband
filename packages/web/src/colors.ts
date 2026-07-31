@@ -19,7 +19,7 @@ import {
   colorToCss,
   restoreColorTable,
   setColorChannel,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT } from "./ui-colors";
 

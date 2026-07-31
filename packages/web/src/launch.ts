@@ -22,8 +22,8 @@
  * front ends that never set these read the same defaults.
  */
 
-import { DEFAULT_LAUNCH_ARGS, host, parseLaunchArgs } from "@neo-angband/core";
-import type { LaunchArgs, LaunchModule, LaunchOutcome } from "@neo-angband/core";
+import { DEFAULT_LAUNCH_ARGS, host, parseLaunchArgs } from "@rpgm-tools/neo-angband-core";
+import type { LaunchArgs, LaunchModule, LaunchOutcome } from "@rpgm-tools/neo-angband-core";
 
 /**
  * modules[] (main.c:63-95) for this port: one display module, the canvas

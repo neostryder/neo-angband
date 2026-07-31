@@ -13,7 +13,7 @@ import {
   spoilMonDesc,
   spoilMonInfo,
   spoilObjDesc,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { renderSpoiler } from "./main-spoil.js";
 
 const pack = loadGamePack();

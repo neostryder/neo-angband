@@ -15,8 +15,8 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { GRAPHICS_MODE_CATALOG, LIGHTING, tileForFeature } from "@neo-angband/core";
-import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
+import { GRAPHICS_MODE_CATALOG, LIGHTING, tileForFeature } from "@rpgm-tools/neo-angband-core";
+import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import { createTileRenderer, isTile, loadTilePrefs, tileCode } from "./tiles";
 

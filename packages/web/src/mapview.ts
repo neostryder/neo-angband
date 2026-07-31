@@ -19,7 +19,7 @@
  * object path, which this port does not model here).
  */
 
-import { DDX, DDY } from "@neo-angband/core";
+import { DDX, DDY } from "@rpgm-tools/neo-angband-core";
 
 /** A single displayed cell: glyph char + resolved CSS color. */
 export interface OverviewGlyph {

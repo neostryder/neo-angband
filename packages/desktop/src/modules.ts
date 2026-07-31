@@ -12,7 +12,7 @@
  * rejects - so if a second module is ever added, both change.
  */
 
-import type { LaunchModule } from "@neo-angband/core/host";
+import type { LaunchModule } from "@rpgm-tools/neo-angband-core/host";
 
 export const LAUNCH_MODULES: readonly LaunchModule[] = [
   { name: "web", help: "Canvas terminal (browser and desktop)" },

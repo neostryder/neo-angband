@@ -7,7 +7,7 @@
  * rules, generation, monsters - into the main-process bundle, 479 kB of code a
  * file write has no use for.
  *
- * So the host is reachable as `@neo-angband/core/host`. Same modules, same
+ * So the host is reachable as `@rpgm-tools/neo-angband-core/host`. Same modules, same
  * single copy of the semantics; just a door that does not open onto the rest.
  */
 

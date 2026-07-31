@@ -64,7 +64,7 @@ confirmed clean after restore (`git diff --stat` empty on both files).
 ## Suites run
 
 - `npx vitest run packages/core/src/gen/gen.test.ts packages/core/src/session/qol-defaults.test.ts` → 2 files, 95/95 pass.
-- `npx pnpm --filter @neo-angband/core build` → exit 0, no TS errors.
+- `npx pnpm --filter @rpgm-tools/neo-angband-core build` → exit 0, no TS errors.
 
 ## Closing count
 

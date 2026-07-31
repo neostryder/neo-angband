@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { RF, RSF } from "@neo-angband/core";
-import type { MonsterRace } from "@neo-angband/core";
+import { RF, RSF } from "@rpgm-tools/neo-angband-core";
+import type { MonsterRace } from "@rpgm-tools/neo-angband-core";
 import { makeCoreResolvers } from "./resolvers.js";
 import { BorgWorld } from "./world/model.js";
 import { makeScenarioView, makeFakeActions } from "./harness.js";

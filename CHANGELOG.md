@@ -19,27 +19,27 @@ Current state of the project at version `0.9.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
-- A headless game engine (`@neo-angband/core`) with no UI dependencies, and
+- A headless game engine (`@rpgm-tools/neo-angband-core`) with no UI dependencies, and
   the Angband 4.2.6 gamedata compiled to a schema-validated core content pack
-  (`@neo-angband/content`).
-- Front-end shells over the same core: a web + PWA app (`@neo-angband/web`),
+  (`@rpgm-tools/neo-angband-content`).
+- Front-end shells over the same core: a web + PWA app (`@rpgm-tools/neo-angband-web`),
   an installable offline experience, an optional Electron desktop wrapper
-  (`@neo-angband/desktop`), and a terminal / developer harness
-  (`@neo-angband/cli`).
-- A mod framework (`@neo-angband/mod-sdk`): content packs, tile packs, and
+  (`@rpgm-tools/neo-angband-desktop`), and a terminal / developer harness
+  (`@rpgm-tools/neo-angband-cli`).
+- A mod framework (`@rpgm-tools/neo-angband-mod-sdk`): content packs, tile packs, and
   sandboxed scripted plugins, with the base game loaded as a pack itself.
 - Bundled mods riding that framework: `qol` (quality-of-life conveniences),
   `bug-fixes`, and `neo-linoleum` (a second tile engine - loose packs of
   individually named PNGs with variant pools - plus the converter that builds
-  one from any tilesheet, via `@neo-angband/linoleum`). The game's own tile sets
+  one from any tilesheet, via `@rpgm-tools/neo-angband-linoleum`). The game's own tile sets
   stay core content on the classic tilesheet engine.
-- The Borg (`@neo-angband/borg`): a faithful port of Angband's automatic
+- The Borg (`@rpgm-tools/neo-angband-borg`): a faithful port of Angband's automatic
   player, shipped as a bundled mod on the perceive/act agent API.
 
 ### Added
 
 - **An upstream text census, gated in CI** (`packages/cli/src/text-census.ts`,
-  `pnpm --filter @neo-angband/cli census`). It enumerates every string literal
+  `pnpm --filter @rpgm-tools/neo-angband-cli census`). It enumerates every string literal
   the C hands to a player-facing call and fails the build if the port does not
   contain one without a documented reason. This exists because code review kept
   passing a port that play sessions then found to be missing messages - a

@@ -44,7 +44,7 @@
  * manifests and reads the enabled set from URL/localStorage.
  */
 
-import { getGraphicsMode, GRAPHICS_NONE } from "@neo-angband/core";
+import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
 import {
   diskPacks,
   type AssetUrlResolver,

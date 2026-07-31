@@ -600,12 +600,10 @@ describe("quaff / read command gates (cmd-obj.c L739 / L917)", () => {
 
   it("player_can_read refuses reading in the dark (no_light, L1173)", () => {
     const { state, handle, msgs, run } = readState();
-    /* noLight only trusts SQUARE_SEEN when a host maintains the view, because a
-     * core-only host that never installs the seam leaves SEEN clear on every
-     * grid and would read as "no light" everywhere. Clearing the flag by hand
-     * therefore only models darkness once the seam is present, so install a
-     * no-op one: the flag is set explicitly here, nothing needs recomputing. */
-    state.updateFov = () => {};
+    /* Clearing SQUARE_SEEN is now the whole of it: noLight reads the flag for every
+     * caller. The `state.updateFov = () => {}` that used to be needed here was
+     * satisfying a seam guard inside noLight, not modelling anything about the
+     * game, and that guard is gone. */
     state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
     expect(run()).toBe(0);
     expect(msgs).toContain("You have no light to read by.");
@@ -1741,13 +1739,24 @@ describe("player_can_read gates the read command (player-util.c L1166)", () => {
     expect(gearGet(state.gear, handle)).toBeNull();
   });
 
-  it("without the updateFov seam no_light cannot fire (core-only hosts)", () => {
-    /* makeState installs no seam and openField leaves SEEN clear everywhere;
-     * reading the flag there would forbid all reading. */
+  it("no_light fires on an unlit grid whether or not a seam is installed", () => {
+    /**
+     * The inverse of what this asserted. noLight used to open with `if
+     * (state.updateFov === undefined) return false`, so a harness state - which
+     * installs no seam, and whose openField leaves SEEN clear - could read scrolls
+     * in the dark. The guard existed because core supplied no default updateFov, so
+     * "no seam" and "unlit" were indistinguishable; core now installs one in
+     * wireGame, every real game maintains SEEN, and the guard is deleted.
+     *
+     * A harness state still installs nothing, which is the point of testing it here:
+     * the rule is now about the FLAG, so an unlit grid refuses and costs no energy
+     * even for a fixture that never had a host.
+     */
     const state = makeState({ playerGrid: loc(5, 5) });
+    expect(state.updateFov).toBeUndefined();
     const msgs: string[] = [];
-    expect(readScroll(state, msgs).energyUsed).toBe(state.z.moveEnergy);
-    expect(msgs).not.toContain("You have no light to read by.");
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    expect(msgs).toContain("You have no light to read by.");
   });
 });
 

@@ -19,7 +19,7 @@
  * blows / spell_power / frequency that the frozen MonsterView does not carry.
  */
 
-import { FEAT } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import type { BorgKill } from "../world/kill.js";
 import type { BorgWorld } from "../world/model.js";
@@ -31,7 +31,7 @@ import {
   STAT_WIS,
   spellStatForClass,
 } from "../trait/trait-index.js";
-import { RSF } from "@neo-angband/core";
+import { RSF } from "@rpgm-tools/neo-angband-core";
 import { MONBLOW, extractEnergy, adjDexSafe } from "./tables.js";
 import {
   trait,

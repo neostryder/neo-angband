@@ -25,7 +25,7 @@ import type {
   CellView,
   ItemView,
   GameConstants,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 /** A cell override in a scenario (all fields optional; sensible floor default). */
 export type ScenarioCell = Partial<CellView>;

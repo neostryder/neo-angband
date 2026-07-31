@@ -1,8 +1,8 @@
 /**
- * @neo-angband/borg item subsystem (P8.5): the per-role sval identity table.
+ * @rpgm-tools/neo-angband-borg item subsystem (P8.5): the per-role sval identity table.
  *
  * The C borg resolves object svals by NAME at init via lookup_sval(tval, name)
- * (reference/src/borg/borg-item-val.c). @neo-angband/core exports the TV_*
+ * (reference/src/borg/borg-item-val.c). @rpgm-tools/neo-angband-core exports the TV_*
  * constants (generated/tvals.ts) but does NOT export the sv_* constants, so this
  * module transcribes the canonical svals as a self-contained table.
  *
@@ -16,7 +16,7 @@
  */
 
 /* Re-export the engine tval constants so callers use one source. */
-export { TV } from "@neo-angband/core";
+export { TV } from "@rpgm-tools/neo-angband-core";
 
 /**
  * Role -> canonical sval, keyed exactly by the sv_/kv_ role name in

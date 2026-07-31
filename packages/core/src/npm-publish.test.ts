@@ -66,7 +66,7 @@ function extensionlessImports(file: string): string[] {
   return found;
 }
 
-describe.each(PUBLISHED)("@neo-angband/%s is publishable", (pkg) => {
+describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
   const root = join(packagesDir, pkg);
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<
     string,
@@ -88,9 +88,26 @@ describe.each(PUBLISHED)("@neo-angband/%s is publishable", (pkg) => {
     expect(specifiers.length).toBeGreaterThan(10);
   });
 
-  it("is not marked private, and publishes publicly with provenance", () => {
+  it("is not marked private, and publishes publicly", () => {
     expect(manifest["private"]).toBeUndefined();
-    expect(manifest["publishConfig"]).toEqual({ access: "public", provenance: true });
+    expect(manifest["publishConfig"]).toEqual({ access: "public" });
+  });
+
+  it("does NOT ask for provenance, which trusted publishing attaches on its own", () => {
+    /* Not a style preference. `provenance: true` forces provenance on EVERY publish,
+     * and provenance cannot be generated outside a cloud CI runner - so it breaks
+     * the one manual publish a brand-new package needs before it has a settings page
+     * to configure a trusted publisher on. The flag looks like a safety improvement,
+     * which is exactly why its absence needs a test rather than a comment. */
+    const publishConfig = manifest["publishConfig"] as Record<string, unknown>;
+    expect(publishConfig["provenance"]).toBeUndefined();
+  });
+
+  it("publishes under the scope the org actually owns", () => {
+    /* The org name IS the scope, and half a rename is worse than none: a package
+     * whose manifest still said the old scope would publish under a name nobody
+     * owns, and npm would answer with a 404 that reads like a network problem. */
+    expect(manifest["name"]).toBe(`@rpgm-tools/neo-angband-${pkg}`);
   });
 
   it("declares where it came from, so npm can show a repository and issues link", () => {
@@ -128,5 +145,41 @@ describe.each(PUBLISHED)("@neo-angband/%s is publishable", (pkg) => {
       expect(existsSync(join(root, js)), `${subpath} -> ${js}`).toBe(true);
       expect(existsSync(join(root, types)), `${subpath} -> ${types}`).toBe(true);
     }
+  });
+});
+
+/**
+ * The release workflow authenticates by identity, not by secret.
+ *
+ * These read the YAML as text rather than parsing it, because what is being
+ * asserted is the ABSENCE of a token - and the shape a reintroduced token would
+ * take is unknown, so a text search over the whole file catches more of them than
+ * a lookup at one key would.
+ */
+describe("publish-npm.yml publishes without a token", () => {
+  const workflow = readFileSync(
+    join(packagesDir, "..", ".github", "workflows", "publish-npm.yml"),
+    "utf8",
+  );
+
+  it("requests the OIDC token GitHub mints for the job", () => {
+    expect(workflow).toMatch(/id-token:\s*write/);
+  });
+
+  it("holds no npm credential of any kind", () => {
+    /* npm's 2026-07-08 changelog stops 2FA-bypass granular tokens publishing in
+     * January 2027. A token added back here would keep working for months and then
+     * stop, at whichever release happened to fall after the cutoff - so the moment
+     * to catch it is when it is added, not when it breaks. */
+    for (const credential of ["NPM_TOKEN", "NODE_AUTH_TOKEN", "_authToken"]) {
+      expect(workflow, credential).not.toContain(credential);
+    }
+  });
+
+  it("asserts the npm version instead of assuming the runner's", () => {
+    /* An npm older than 11.5.1 does not report that it cannot do OIDC. It quietly
+     * falls back to looking for a token, and fails with ENEEDAUTH - which reads as
+     * a permissions problem and sends you to the wrong page. */
+    expect(workflow).toContain("11.5.1");
   });
 });

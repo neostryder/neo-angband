@@ -35,8 +35,8 @@ import {
   bindCore,
   generateLevel,
   genDeps,
-} from "@neo-angband/core";
-import type { CoreRegistries, GamePack, Loc } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GamePack, Loc } from "@rpgm-tools/neo-angband-core";
 import {
   type DepthMetrics,
   collectLevel,

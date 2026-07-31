@@ -26,8 +26,8 @@ import {
   Rng,
   TV,
   makeRuneEnv,
-} from "@neo-angband/core";
-import type { GameState, WizardDeps, ObjPackJson, ConstantsJson } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GameState, WizardDeps, ObjPackJson, ConstantsJson } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 interface FakeWindow {

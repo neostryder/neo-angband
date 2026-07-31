@@ -18,7 +18,7 @@
  * borg's seed-swap made them.
  */
 
-import { Rng } from "@neo-angband/core";
+import { Rng } from "@rpgm-tools/neo-angband-core";
 
 /**
  * The Borg's fixed local seed (upstream borg_rand_local is a constant so

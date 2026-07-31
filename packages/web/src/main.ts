@@ -56,6 +56,7 @@ import {
   squareIsSeen,
   squareIsBelievedWall,
   noteSpots,
+  viewerStateOf,
   knownFeat,
   knownObject,
   loc,
@@ -167,7 +168,7 @@ import {
   buildProb,
   RANDNAME_TOLKIEN,
   playerCanCast,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GamePack,
   GameObject,
@@ -189,10 +190,10 @@ import type {
   MonsterRace,
   MonsterLore,
   LoreDeps,
-} from "@neo-angband/core";
-import { GameEvents } from "@neo-angband/core";
-import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@neo-angband/core";
-import type { AgentController } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { GameEvents } from "@rpgm-tools/neo-angband-core";
+import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
+import type { AgentController } from "@rpgm-tools/neo-angband-core";
 import {
   getGraphicsMode,
   GlyphTable,
@@ -205,16 +206,16 @@ import {
   tileForMonster,
   tileForObject,
   tileForTrap,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   MonsterGlyphInput,
   PrefExprVars,
   TileAtlas,
   TileMap,
   TilePrefsDeps,
-} from "@neo-angband/core";
-import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@neo-angband/core";
-import { setHost } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@rpgm-tools/neo-angband-core";
+import { setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
@@ -237,7 +238,7 @@ import {
   folderPermission,
 } from "./mod-folder";
 import type { PrefsUiCtx } from "./prefs-ui";
-import { CapabilitySet } from "@neo-angband/mod-sdk";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces, diskPackStatus, enabledModIds } from "./pack";
 import {
   defaultModStore,
@@ -396,18 +397,18 @@ import {
   noscoreInvalidatesScore,
   scoreGateNoscore,
   BIRTH_MESSAGE_RECALL_BANNER,
-} from "@neo-angband/core";
-import { markNoscore } from "@neo-angband/core";
-import { ArtifactState } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { markNoscore } from "@rpgm-tools/neo-angband-core";
+import { ArtifactState } from "@rpgm-tools/neo-angband-core";
 import {
   walkTerrainPrompt,
   itemAllowPrompt,
   keyConfirmCount,
   KEY_CONFIRM_PROMPT,
-} from "@neo-angband/core";
-import type { CommandCode } from "@neo-angband/core";
-import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
-import type { WizardDeps } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { CommandCode } from "@rpgm-tools/neo-angband-core";
+import { monsterIsVisible, monsterIsDestroyed } from "@rpgm-tools/neo-angband-core";
+import type { WizardDeps } from "@rpgm-tools/neo-angband-core";
 import { runWizardToggle, runWizardDebugMenu, runSpoilers } from "./wizard";
 import type { WizardUiCtx, WizKeypress } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
@@ -418,7 +419,7 @@ import {
   buildIgnoreItemMenu,
   applyIgnoreItemChoice,
 } from "./ignore-menu";
-import type { Store } from "@neo-angband/core";
+import type { Store } from "@rpgm-tools/neo-angband-core";
 import { runHelp } from "./help";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
@@ -5624,14 +5625,12 @@ const Z: ViewConstants = {
   feelingNeed: constants.feelingNeed,
 };
 
+/* viewerStateOf, not a local copy. The copy that used to live here passed
+ * `state.chunk.depth` as `level`, where cave-view.c:778 reads `p->lev` for the
+ * UNLIGHT view radius - and core's own default had the same slip, because it was
+ * written from this one. One definition in core now, so the two cannot disagree. */
 function viewerState(): ViewerState {
-  return {
-    grid: state.actor.grid,
-    curLight: state.actor.light,
-    blind: (state.actor.player.timed[TMD.BLIND] ?? 0) > 0,
-    hasUnlight: state.actor.unlight,
-    level: state.chunk.depth,
-  };
+  return viewerStateOf(state);
 }
 
 // FOV refresh after the player moves (the loop calls this via updateFov).

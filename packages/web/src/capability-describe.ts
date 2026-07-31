@@ -10,7 +10,7 @@
  * pure so it can be unit-tested and reused by any host (web or Electron).
  */
 
-import { parseCapability } from "@neo-angband/mod-sdk";
+import { parseCapability } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** One capability rendered for consent: a human line plus a power flag. */
 export interface CapabilityDescription {

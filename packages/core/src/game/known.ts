@@ -34,7 +34,12 @@ import {
   featIsQuartz,
 } from "../world/chunk.js";
 import { caveIlluminate } from "../gen/cave.js";
-import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view.js";
+import {
+  squareIsNoEsp,
+  squareIsSeen,
+  squareIsView,
+  type ViewerState,
+} from "../world/view.js";
 import { getLore, loreCountU16 } from "../mon/lore.js";
 import {
   monsterIsCamouflaged,
@@ -858,6 +863,27 @@ export function updateMonsters(state: GameState, full: boolean): void {
     if (!mon) continue;
     updateMon(state, mon, full);
   }
+}
+
+/**
+ * The five player fields updateView reads, taken off a live GameState.
+ *
+ * One definition because there were two, and they agreed on the wrong thing.
+ * `level` is `p->lev` (cave-view.c:778, the UNLIGHT view radius
+ * `2 + p->lev / 6 - cur_light`), and both the web shell and the MCP session were
+ * passing `chunk.depth` - the dungeon depth. Only an UNLIGHT player carrying no
+ * light can see the difference, which is exactly the kind of field that stays
+ * wrong for a year in two copies and is right once in one.
+ */
+export function viewerStateOf(state: GameState): ViewerState {
+  const actor = state.actor;
+  return {
+    grid: actor.grid,
+    curLight: actor.light,
+    blind: (actor.player.timed[TMD.BLIND] ?? 0) > 0,
+    hasUnlight: actor.unlight,
+    level: actor.player.lev,
+  };
 }
 
 /**

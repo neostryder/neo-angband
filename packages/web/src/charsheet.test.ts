@@ -31,13 +31,13 @@ import {
   COLOUR_L_GREEN,
   COLOUR_L_BLUE,
   COLOUR_YELLOW,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
   Loc,
   PlayerPackRecords,
   TerrainRecordJson,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { showCharacterSheet } from "./charsheet";
 import {
   characterSheetLines,
@@ -72,7 +72,7 @@ const uiEntryPacks = {
   uiEntryRenderer: loadRecords("ui_entry_renderer"),
   objectProperty: loadRecords("object_property"),
   playerProperty: loadRecords("player_property"),
-} as unknown as import("@neo-angband/core").UiEntryPackRecords;
+} as unknown as import("@rpgm-tools/neo-angband-core").UiEntryPackRecords;
 
 const players = bindPlayer({
   races: loadRecords("p_race"),

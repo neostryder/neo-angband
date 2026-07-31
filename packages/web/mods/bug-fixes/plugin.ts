@@ -24,7 +24,7 @@
  * ONCE per enabled mod, in load order, and folds the results with composeModHooks
  * (core/mod/hooks.ts) into the single ModHooks core holds.
  *
- * `ctx.core` is the ENGINE, handed in, and this file imports @neo-angband/core for
+ * `ctx.core` is the ENGINE, handed in, and this file imports @rpgm-tools/neo-angband-core for
  * TYPES ONLY. The same source is built to the `plugin.js` that ships in this mod's
  * own repository, and a module fetched from a folder cannot resolve a bare
  * specifier - nor should it, because a bundled copy of core would give the plugin
@@ -51,7 +51,7 @@
  * no private path and no test hook.
  */
 
-import type { Gen, ModHooks } from "@neo-angband/core";
+import type { Gen, ModHooks } from "@rpgm-tools/neo-angband-core";
 import { ensureStairsReachable, type StairsCore } from "./stairs";
 import { miscStringFix } from "./strings";
 

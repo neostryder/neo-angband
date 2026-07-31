@@ -10,7 +10,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { composeModHooks } from "@neo-angband/core";
+import { composeModHooks } from "@rpgm-tools/neo-angband-core";
 import { discoverModHookEntries } from "./mod-hooks";
 import { MOD_API_VERSION } from "./mod-plugin";
 
@@ -78,7 +78,7 @@ describe("the bundled mods use the SAME entry-point ABI a folder mod does", () =
   /*
    * They did not, and that was the thing blocking a mod from being extracted to its
    * own repository at all. A bundled mod's hooks.ts took `flags` and imported
-   * @neo-angband/core directly; a folder mod's plugin.js has `hooks(ctx)` and gets
+   * @rpgm-tools/neo-angband-core directly; a folder mod's plugin.js has `hooks(ctx)` and gets
    * the engine as ctx.core, because a module fetched from a folder cannot resolve a
    * bare specifier. Same job, two signatures, and only one of them could be built
    * into something distributable.
@@ -112,7 +112,10 @@ describe("the bundled mods use the SAME entry-point ABI a folder mod does", () =
       for (const file of readdirSync(join(MODS_DIR, id))) {
         if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
         const src = readFileSync(join(MODS_DIR, id, file), "utf8");
-        const imports = src.match(/^import[\s\S]*?from "@neo-angband\/core";/gm) ?? [];
+        /* Every BARE specifier, rather than the engine's name written out: a scope
+         * rename must not be able to leave this regex matching a string nobody
+         * writes any more. A relative import is a mod's own file and fine. */
+        const imports = src.match(/^import[\s\S]*?from "[^."][^"]*";/gm) ?? [];
         for (const line of imports) {
           expect(line.startsWith("import type"), `${id}/${file}: ${line}`).toBe(true);
         }

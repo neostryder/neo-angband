@@ -21,7 +21,7 @@ documentation lives here under `docs/`.
 
 ## Ratified decisions
 
-1. **Core stack**: a headless TypeScript engine (`@neo-angband/core`) that runs
+1. **Core stack**: a headless TypeScript engine (`@rpgm-tools/neo-angband-core`) that runs
    in browsers, Node, and wrapped desktop shells. No globals: the game is an
    instantiable context, multi-instance by construction.
 2. **Parity bar**: feature parity with 4.2.6, statistically verified via

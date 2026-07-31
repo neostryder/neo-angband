@@ -25,7 +25,7 @@
  *   (tunnel / disarm / open), which is the same grid the borg would end on.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import type { BorgWorld } from "../world/model.js";
 import {

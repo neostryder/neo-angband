@@ -4,7 +4,7 @@
  * Reads reference/lib/gamedata/<file>.txt (Angband 4.2.6, the read-only
  * source of truth) and emits packages/content/pack/<file>.json plus a
  * pack manifest. Run from the built output: `pnpm --filter
- * @neo-angband/content compile` (or `node dist/compile.js`).
+ * @rpgm-tools/neo-angband-content compile` (or `node dist/compile.js`).
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -56,7 +56,7 @@ the port. The baseline must come from compiled C.
 3. **Import it** to a NEW file `packages/cli/baseline/c-stats-baseline-n<N>.json`
    (leave the existing baseline untouched so the delta is reviewable):
    ```
-   pnpm --filter @neo-angband/cli build
+   pnpm --filter @rpgm-tools/neo-angband-cli build
    node dist/main-cimport.js <path-to-stats.db> 20
    ```
    Check `packages/cli/src/main-cimport.ts` for its exact output path/arguments

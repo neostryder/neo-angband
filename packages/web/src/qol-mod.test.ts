@@ -10,7 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { validateManifest } from "@neo-angband/mod-sdk";
+import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadEnabledModRuleDecls } from "./pack";
 import { resolveModRules } from "./mod-store";
 

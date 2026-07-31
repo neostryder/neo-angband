@@ -12,11 +12,11 @@
  *
  * A plugin lives at packages/web/mods/<id>/trusted.ts and default-exports a
  * TrustedPlugin. It imports whatever core symbols it needs (EF codes, Dice,
- * FEAT, ...) directly from @neo-angband/core - it is in-process, so there is no
+ * FEAT, ...) directly from @rpgm-tools/neo-angband-core - it is in-process, so there is no
  * serialization boundary.
  */
 
-import type { ModRegistryHost, GameState } from "@neo-angband/core";
+import type { ModRegistryHost, GameState } from "@rpgm-tools/neo-angband-core";
 
 /** What the host hands a trusted plugin alongside the registry facade. */
 export interface TrustedContext {

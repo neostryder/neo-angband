@@ -18,7 +18,7 @@
  * determinism ratchet stays untripped - a faithful, replayable autoplayer.
  */
 
-import type { AgentController, Rng } from "@neo-angband/core";
+import type { AgentController, Rng } from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "./world/model.js";
 import { makeBorgRng, reseedBorgRng } from "./rng.js";
 import { perceive, makePerceiveMemo } from "./perceive.js";

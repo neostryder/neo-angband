@@ -21,7 +21,7 @@
  */
 
 import type { BorgContext } from "../context.js";
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import { BI } from "../trait/trait-index.js";
 import {
   type StoreDeps,

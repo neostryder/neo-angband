@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FEAT } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
 import { createBorg } from "./controller.js";
 import { makeScenarioView, makeFakeActions } from "./harness.js";
 

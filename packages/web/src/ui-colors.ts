@@ -25,7 +25,7 @@ import {
   COLOUR_DARK,
   COLOUR_L_GREEN,
   COLOUR_L_RED,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 /** Titles, headers, labels, footers, and normal (non-cursor) menu/body text. */
 export const UI_TEXT = colorToCss(COLOUR_WHITE);

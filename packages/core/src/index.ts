@@ -1,5 +1,5 @@
 /**
- * @neo-angband/core - the headless game engine.
+ * @rpgm-tools/neo-angband-core - the headless game engine.
  *
  * Phase 0 scaffold. The engine grows here by dependency order:
  * rng -> dice/expressions -> flags -> world kernel -> entities ->

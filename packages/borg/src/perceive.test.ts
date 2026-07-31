@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FEAT } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "./world/model.js";
 import { perceive, makePerceiveMemo, BORG_EXPIRE_TURNS } from "./perceive.js";
 import { borgReactMessages } from "./perceive-messages.js";

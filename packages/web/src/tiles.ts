@@ -31,8 +31,8 @@ import {
   GRAPHICS_NONE,
   parseTilePrefsInto,
   TileMap,
-} from "@neo-angband/core";
-import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import type { PackFileResolver } from "./pack-files";
 
 // The Graphics-menu mode list, re-exported so the whole tile subsystem is

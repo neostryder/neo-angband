@@ -26,7 +26,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
+import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import { GameHost } from "./host.js";
 import { TOOLS, callTool } from "./tools.js";
 import { depthLabel, renderMap, renderStatus } from "./render.js";

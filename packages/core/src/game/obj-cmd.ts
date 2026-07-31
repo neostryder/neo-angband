@@ -1128,18 +1128,22 @@ export function playerCanRead(
  * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
  *
  * SQUARE_SEEN is maintained by update_view, which this port drives through the
- * `state.updateFov` host seam (game/context.ts L506, wired by the web shell at
- * main.ts:4340). A core-only host that never installs the seam leaves SEEN
- * clear on EVERY grid, so reading the flag there would report "no light"
- * everywhere and make casting and reading permanently impossible - the opposite
- * of upstream, where a lit town square is seen. So when the seam is absent the
- * flag carries no information and no_light answers false, leaving the caller's
- * other conditions (blindness) to decide, exactly as before this was wired.
- * This is a seam guard, not a rule of the game: with a host that maintains the
- * view, which is every playing configuration, the check is upstream's verbatim.
+ * `state.updateFov` host seam. This used to open with a guard - `if
+ * (state.updateFov === undefined) return false` - described in its own comment as
+ * "a seam guard, not a rule of the game", because a host that installed no seam
+ * left SEEN clear on every grid and would have found casting and reading
+ * permanently impossible.
+ *
+ * The guard is gone because its premise is: core installs a DEFAULT updateFov in
+ * wireGame, so startGame and loadGame both maintain SEEN with no host cooperation
+ * and there is no configuration left in which the flag carries no information.
+ * Keeping it would mean a host that deleted the seam silently got non-upstream
+ * spell rules - the guard's whole purpose was to make an unplayable state
+ * playable, and that state cannot happen now.
+ *
+ * So this is upstream verbatim for every caller.
  */
 export function noLight(state: GameState): boolean {
-  if (state.updateFov === undefined) return false;
   return !squareIsSeen(state.chunk, state.actor.grid);
 }
 

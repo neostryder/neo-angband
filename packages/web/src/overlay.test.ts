@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { colorToCss, COLOUR_L_BLUE } from "@neo-angband/core";
+import { colorToCss, COLOUR_L_BLUE } from "@rpgm-tools/neo-angband-core";
 import {
   showLevelMap,
   showFloorList,

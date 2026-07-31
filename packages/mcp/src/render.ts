@@ -22,8 +22,8 @@
  * legend counts), and a square the player has never known renders as a space.
  */
 
-import { FEAT } from "@neo-angband/core";
-import type { AgentView, CellView, ItemView, MonsterView, PlayerView } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
+import type { AgentView, CellView, ItemView, MonsterView, PlayerView } from "@rpgm-tools/neo-angband-core";
 
 /** Feature indices this renderer can name. Anything else draws as `?`. */
 const FEAT_GLYPHS = new Map<number, string>([

@@ -5,7 +5,7 @@
  * same way the C borg's file-scope globals did, without actual globals.
  */
 
-import type { AgentView, AgentActions, Rng } from "@neo-angband/core";
+import type { AgentView, AgentActions, Rng } from "@rpgm-tools/neo-angband-core";
 import type { BorgWorld } from "./world/model.js";
 
 /** Everything a decision subsystem needs, for one think. */

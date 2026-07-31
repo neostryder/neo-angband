@@ -44,7 +44,7 @@ import {
   OPTION_ENTRIES,
   PARITY_BASELINE,
   playerSafeName,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
   GameObject,
@@ -52,7 +52,7 @@ import type {
   UiEntryConfig,
   UiEntryPackRecords,
   UiGridPanel,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import {
   characterSheetLines,

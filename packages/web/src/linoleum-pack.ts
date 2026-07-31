@@ -23,7 +23,7 @@
  * a `pool` lets ONE selector draw from several tiles (chosen by map position, so
  * it is identical on every replay of a seed), and nothing has to be packed into
  * a sheet at fixed coordinates. The format, its parsers and the converter that
- * builds a pack out of a legacy tilesheet live in @neo-angband/linoleum; this
+ * builds a pack out of a legacy tilesheet live in @rpgm-tools/neo-angband-linoleum; this
  * module is the part that draws one.
  *
  * HOW IT REUSES THE PORTED LOOKUP. A loose pack's `selector` is exactly the
@@ -69,8 +69,8 @@
  * glyph. No RNG - pool choice is a hash of the pool id and the grid.
  */
 
-import { parseTilePrefsInto, TileMap } from "@neo-angband/core";
-import type { TilePrefsDeps } from "@neo-angband/core";
+import { parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
+import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
 // bundle. This subpath is pure format code (its md5 is portable - md5.ts).
@@ -78,8 +78,8 @@ import {
   parsePoolsFile,
   parseTargetsFile,
   selectPoolMember,
-} from "@neo-angband/linoleum/targets";
-import type { PoolDefinition, TargetRule } from "@neo-angband/linoleum/targets";
+} from "@rpgm-tools/neo-angband-linoleum/targets";
+import type { PoolDefinition, TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PackFileResolver } from "./pack-files";
 import type { TileBlitter, TileCode } from "./tiles";
 

@@ -15,7 +15,7 @@
  *  4. THE DETERMINISM RATCHET: a level needing no repair is BIT-IDENTICAL to one
  *     generated with no mod at all, for the same seed.
  *
- * Everything is driven through @neo-angband/core's published API, so this also
+ * Everything is driven through @rpgm-tools/neo-angband-core's published API, so this also
  * demonstrates that a third-party level mod needs nothing private.
  */
 
@@ -47,7 +47,7 @@ import {
   squareIsEmpty,
   squareNumWallsAdjacent,
   startGame,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GamePack,
   GenDeps,
@@ -55,8 +55,8 @@ import type {
   MakeDeps,
   ModHooks,
   MonPlaceDeps,
-} from "@neo-angband/core";
-import * as neoCore from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import * as neoCore from "@rpgm-tools/neo-angband-core";
 import plugin from "./plugin";
 
 /**

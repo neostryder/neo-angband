@@ -48,7 +48,7 @@
  * this loop per platform is how the two would have drifted.
  */
 
-import { validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
+import { validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { encodePackPath } from "./pack-files";
 
 /** What the desktop shell exposes for the mods directory. */

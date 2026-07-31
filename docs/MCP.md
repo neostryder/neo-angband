@@ -95,27 +95,49 @@ not, both found by driving it rather than by reading it:
   command that was tried and refused. `act` asks the live registry first, so a
   code a mod added still works.
 
-## The gap this exercise found
+## The gap this exercise found, and where it was actually fixed
 
-`runGameLoop` does not refresh the **derived view state**. It advances the world
-and leaves the field of view and the remembered map alone; the web shell calls
-`updateView` + `noteSpots` itself on every render (`main.ts:5641`).
+Measured on a fresh `startGame` boot, with no host seams wired: of 12740 cells,
+`known` was true for **0** and `inView` for **0** — including the player's own
+square. An agent driving the frozen facade could read its own statistics and see
+monsters, and had **no map at all**.
 
-Measured on a fresh `startGame` boot, before this server compensated: of 12740
-cells, `known` was true for **0** and `inView` for **0** — including the player's
-own square. An agent driving the frozen facade could read its own statistics and
-see monsters, and had **no map at all**.
+The first diagnosis was that `runGameLoop` never refreshes the derived view. That
+was wrong in an instructive way. Core calls `state.updateFov` from about
+twenty-five sites — the level-entry flood, the after-action refresh in
+`player-turn.ts`, every light and terrain effect — and every one of them is `?.`,
+because `updateFov` is a **host seam**. What was missing was not a call. It was a
+**default**: core supplied none, so a host that installed nothing got silence from
+all twenty-five, and this host installed nothing.
 
-Nothing in the repository could have caught it. The Borg's tests run against a
-hand-built fake `AgentView` — `packages/borg/src/harness.ts` says so in its own
-header — so the live perceive path had never been driven by anything but the web
-shell, which refreshes for its own drawing reasons.
+`wireGame` now installs one (`packages/core/src/session/game.ts`), so `startGame`,
+`loadGame` and every acting path maintain the view with no host cooperation. Same
+seed, measured again: **19 known, 59 in view, the player's own square known**. This
+package holds no refresh code at all now, and `packages/core/src/session/game.test.ts`
+fails if a bare `startGame` ever comes back blank.
 
-`GameSession.refreshDerivedView()` does it here. That is the right fix for today
-and the wrong home for it: two hosts now duplicate a refresh that upstream does
-inside `update_stuff`/`handle_stuff`, and a third host would forget. Moving it
-into core's loop is a parity change, and therefore a decision rather than a
-drive-by.
+Three things came out with it, none of which a code reading would have offered:
+
+- **`no_light` was disabled for every seam-less host.** `noLight` opened with `if
+  (state.updateFov === undefined) return false`, described in its own comment as "a
+  seam guard, not a rule of the game" — it existed because SEEN was clear
+  everywhere, which would have made casting and reading permanently impossible. The
+  premise is gone, so the guard is, and spell and scroll rules are upstream's for
+  everyone.
+- **A live crash on arena entry.** `wizLightLevel` refreshed the view immediately,
+  where upstream's `wiz_light` only sets `PU_UPDATE_VIEW` for the next
+  `update_stuff`. On the arena path that ran while `state.chunk` was already the new
+  6×6 level and the player's grid was still the old one: `square out of bounds:
+  75,31`. The web build has always installed a seam, so it was reachable there
+  through `EF_SINGLE_COMBAT`; nothing had driven it.
+- **Both hosts read the wrong field for the UNLIGHT view radius**, passing
+  `chunk.depth` where `cave-view.c:778` reads `p->lev`. There is now one
+  `viewerStateOf` in core and both use it.
+
+Nothing in the repository could have caught the original. The Borg's tests run
+against a hand-built fake `AgentView` — `packages/borg/src/harness.ts` says so in
+its own header — so the live perceive path had never been driven by anything but
+the web shell, which refreshes for its own drawing reasons.
 
 ## What it does not do
 

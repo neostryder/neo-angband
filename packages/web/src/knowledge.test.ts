@@ -4,7 +4,7 @@
  * sort order and membership gating against the C oracle cited per function.
  */
 import { describe, it, expect } from "vitest";
-import { TV, TF, TRF, KF, COLOUR_YELLOW, colorToCss } from "@neo-angband/core";
+import { TV, TF, TRF, KF, COLOUR_YELLOW, colorToCss } from "@rpgm-tools/neo-angband-core";
 import type {
   Feature,
   FeatureRegistry,
@@ -15,7 +15,7 @@ import type {
   EverseenKnowledge,
   Player,
   Rune,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import {
   buildObjGroupOrder,
   objGroupName,

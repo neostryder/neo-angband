@@ -10,8 +10,8 @@
  * needs the live namespace lives here, where no plugin imports it.
  */
 
-import * as neoCore from "@neo-angband/core";
-import type { GameState } from "@neo-angband/core";
+import * as neoCore from "@rpgm-tools/neo-angband-core";
+import type { GameState } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_API_VERSION,
   type ModCoreApi,
@@ -22,7 +22,7 @@ import { diskPacks } from "./disk-packs";
 /**
  * `core` is the module namespace this host itself imported, so a plugin and the
  * game look at ONE set of registries and singletons. A plugin that resolved
- * "@neo-angband/core" for itself from a folder would get a second copy, register
+ * "@rpgm-tools/neo-angband-core" for itself from a folder would get a second copy, register
  * its effect handler on a registry the interpreter never consults, and appear to
  * do nothing at all - a failure mode with no error message anywhere.
  *

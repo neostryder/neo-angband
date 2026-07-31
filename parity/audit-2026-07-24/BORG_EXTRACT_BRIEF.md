@@ -14,7 +14,7 @@ Remove the Borg from the game (web shell + its package graph) WITHOUT deleting
 
 ## Do
 1. `packages/web/src/main.ts`
-   - Remove the import at L185: `import { createBorg, makeCoreResolvers } from "@neo-angband/borg";`
+   - Remove the import at L185: `import { createBorg, makeCoreResolvers } from "@rpgm-tools/neo-angband-borg";`
    - Remove the Borg construction/usage around L6013-6060 (the `agentId === "borg"` branch,
      `createBorg({ resolvers: makeCoreResolvers({...}) })`, and the borg-specific
      configurable-speed handling that exists only to serve it).
@@ -23,9 +23,9 @@ Remove the Borg from the game (web shell + its package graph) WITHOUT deleting
      If removing the Borg branch leaves an agent registry with no entries, that is FINE and
      correct: no built-in agents belong in the port.
    - Remove any now-dead imports/vars/types this creates. Do not leave unused code.
-2. `packages/web/package.json` - remove the `@neo-angband/borg` workspace dependency.
+2. `packages/web/package.json` - remove the `@rpgm-tools/neo-angband-borg` workspace dependency.
 3. Search the WHOLE repo for any other non-test reference reaching borg from game code
-   (`grep -rn "@neo-angband/borg" packages --include=*.ts --include=*.json`, excluding
+   (`grep -rn "@rpgm-tools/neo-angband-borg" packages --include=*.ts --include=*.json`, excluding
    `packages/borg/**`) and remove those too.
 4. DO NOT touch `packages/borg/**` itself -- it stays in the repo, untouched, for the later
    mod phase.

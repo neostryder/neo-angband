@@ -14,8 +14,8 @@
  * decision rather than a feature.
  */
 
-import { loadGamePack } from "@neo-angband/cli";
-import type { GamePack } from "@neo-angband/core";
+import { loadGamePack } from "@rpgm-tools/neo-angband-cli";
+import type { GamePack } from "@rpgm-tools/neo-angband-core";
 import { GameSession, type NewGameOptions } from "./session.js";
 
 export class GameHost {

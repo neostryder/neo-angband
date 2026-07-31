@@ -4,12 +4,16 @@ Two packages go to the public npm registry:
 
 | Package | What it is |
 | --- | --- |
-| [`@neo-angband/core`](https://www.npmjs.com/package/@neo-angband/core) | the headless engine |
-| [`@neo-angband/mod-sdk`](https://www.npmjs.com/package/@neo-angband/mod-sdk) | manifest schema, load-order resolver, record composition |
+| [`@rpgm-tools/neo-angband-core`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-core) | the headless engine |
+| [`@rpgm-tools/neo-angband-mod-sdk`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-mod-sdk) | manifest schema, load-order resolver, record composition |
 
-Everything else in `packages/` stays private: `web`, `desktop`, `cli` and `borg` are
-applications, and `content` and `linoleum` are build-time tools with no consumer
-outside this repository.
+Everything else in `packages/` stays private: `web`, `desktop`, `cli`, `mcp` and
+`borg` are applications, and `content` and `linoleum` are build-time tools with no
+consumer outside this repository.
+
+The scope is `@rpgm-tools` because Neo Angband is an RPGM Tools project, and the
+package names carry the product as a prefix so that `rpgm-tools-forge` can publish
+its own `core` one day without a collision.
 
 ## The one thing to understand about npm
 
@@ -22,7 +26,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.9.1 && git push --tags
+git tag v0.10.0 && git push --tags
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -30,47 +34,99 @@ tag agrees with both `package.json` versions, and publishes. A version already o
 the registry is skipped rather than retried, so re-running a job that
 half-published finishes the rest.
 
+## There is no token, and that is deliberate
+
+Authentication is **trusted publishing**: npm is told, once per package, that this
+repository's `publish-npm.yml` may publish it, and the npm CLI proves it is that
+workflow using a short-lived OIDC identity token that GitHub mints for the job.
+No secret is stored in this repository, so there is none to leak, none to rotate,
+and none to discover has expired at the worst possible moment.
+
+This replaces the granular-access-token setup this document used to describe.
+npm's [2026-07-08 changelog](https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/)
+stops 2FA-bypass tokens from bypassing 2FA for account changes in **early August
+2026**, and stops them publishing at all in **January 2027**. A token-based
+release pipeline set up today would have needed rebuilding within months.
+
 ## First-time setup
 
-Once, by hand. Nothing here is in the repository — a token in a file is a token
-that leaks.
+Once, by hand. Two accounts things and then one settings page per package.
 
-1. **An npm account.** <https://www.npmjs.com/signup>. The account name is public
-   and appears as the publisher on every package page.
+1. **An npm account** — done: `neostryder`. The account name is public and appears
+   as the publisher on every package page.
 2. **Two-factor authentication.** Profile → Account → Two-Factor Authentication.
-   npm requires 2FA on the account for a granular token to be able to publish.
-3. **The organisation.** `@neo-angband` is a *scope*, and a scope that is not your
-   username has to be an organisation: <https://www.npmjs.com/org/create>, name
-   `neo-angband`. **Free** for public packages — the paid tier is only for private
-   ones.
-4. **A granular access token.** Profile → Access Tokens → Generate New Token →
-   **Granular Access Token**. Not a classic token: a classic token can publish
-   anything the account owns, and this one only needs these packages.
-   - Expiration: set one (90 days is reasonable; the workflow fails loudly when it
-     lapses, which is the point).
-   - Packages and scopes: **Read and write**, limited to `@neo-angband/*`.
-   - Organisations: `neo-angband`, **Read and write**.
-5. **The repository secret.** In `neostryder/neo-angband` → Settings → Secrets and
-   variables → Actions → New repository secret, named exactly `NPM_TOKEN`.
-6. **Dry-run it before trusting it.** Actions → publish-npm → Run workflow, with
-   *Pack and check, publish nothing* left ticked. It will pack, verify and print
-   what it would publish. Then untick it, or push a tag.
+   Required to publish by hand, which step 4 needs.
+3. **The organisation** — done: `rpgm-tools`. A scope that is not your username has
+   to be an organisation, and it is **free** for public packages; the paid tier is
+   only for private ones.
+4. **Publish each package once, by hand.** This is the part that cannot be
+   automated away, and it is worth knowing why: a trusted publisher is configured
+   on a package's settings page, and a package that has never been published has no
+   settings page. So version one goes up from your machine:
 
-Nothing else is needed. No author details beyond what is already in the manifests:
-`author` is `neostryder (RPGM Tools)`, with **no email address**, deliberately —
-npm shows the publishing account and that is enough.
+   ```bash
+   pnpm build && pnpm check:npm
+   ```
+
+   ```bash
+   npm login
+   ```
+
+   ```bash
+   cd packages/core && npm publish --access public
+   ```
+
+   ```bash
+   cd packages/mod-sdk && npm publish --access public
+   ```
+
+   `npm publish` opens a browser for the 2FA prompt. These two publishes carry no
+   provenance attestation — provenance can only be generated by CI — so the first
+   version of each package will show no "Built and signed on GitHub Actions" badge
+   and every later one will.
+
+5. **Configure the trusted publisher, per package.** npmjs.com → the package →
+   Settings → Trusted Publisher → GitHub Actions:
+
+   | Field | Value |
+   | --- | --- |
+   | Organization or user | `neostryder` |
+   | Repository | `neo-angband` |
+   | Workflow filename | `publish-npm.yml` |
+   | Environment | *(leave empty)* |
+   | Allowed actions | `npm publish` |
+
+   The workflow filename is the **filename only**, not a path. npm does not verify
+   any of this when you save it — a typo shows up as a failed publish months later,
+   so re-read the row before saving.
+
+6. **Prove it before trusting it.** Actions → publish-npm → Run workflow, with
+   *Pack and check, publish nothing* left ticked. That packs, extracts and imports
+   both tarballs and prints what it would publish, without needing the publisher to
+   be configured at all. Then bump the version, tag, and push.
+
+No author details are needed beyond what is already in the manifests: `author` is
+`neostryder (RPGM Tools)`, with **no email address**, deliberately — npm shows the
+publishing account and that is enough.
 
 ## Bumping a version
 
-The version lives in three places that must agree, and CI enforces two of them:
+The version lives in places that must agree, and CI enforces the first three:
 
 - `packages/core/package.json`
 - `packages/mod-sdk/package.json`
 - the git tag
+- `ENGINE_VERSION` in `packages/core/src/version.ts`
 
-Both packages move together, at the game's version. `0.9.x` is the pre-release
-line; `1.0.0` is reserved for the game's public release, so nothing goes to `1.0.0`
-before the game does.
+Both packages move together, at the game's version. It is **semver**, and `0.x` is
+the pre-release line: a feature release bumps the MINOR number, so `0.9.0` was
+followed by `0.10.0` and the line can run as far as it needs to. `1.0.0` is
+reserved for the game's public release, so nothing goes to `1.0.0` before the game
+does.
+
+Each mod carries its own version and moves on its own schedule. A mod whose
+released tag is iterated takes a MINOR bump rather than a patch, because a
+published tag is pinned by digest in `RECOMMENDED_MODS` and must never be moved.
 
 ## Why the tarball is checked and not just the source
 
@@ -81,9 +137,8 @@ That is not ceremony. On 2026-07-31, with all 6655 tests passing, the engine's
 emitted JavaScript held **4612 extensionless relative import specifiers** —
 `export * from "./rng"` — because tsc emits specifiers verbatim and the source was
 written for `moduleResolution: "bundler"`. Vite resolves those. Node does not. The
-published `@neo-angband/core` would have been unimportable by anyone not using a
-bundler, and nothing in the repository could have noticed, because vitest runs
-through Vite too.
+published engine would have been unimportable by anyone not using a bundler, and
+nothing in the repository could have noticed, because vitest runs through Vite too.
 
 Two things came out of that and both are permanent:
 
@@ -94,24 +149,28 @@ Two things came out of that and both are permanent:
 
 ## If a publish fails
 
-- **`ENEEDAUTH` / `E403`** — the token is missing, expired, or not scoped to
-  `@neo-angband`. Regenerate at step 4 and replace the secret.
+- **`ENEEDAUTH`** — usually not a permissions problem at all. Either npm is older
+  than 11.5.1 (it silently stops trying OIDC and looks for a token that does not
+  exist — the workflow asserts the version to turn this into a clear failure), or
+  the package has no trusted publisher configured yet.
+- **`E403` on a package that does exist** — the trusted publisher's repository,
+  workflow filename or environment does not match this job. npm never validated
+  what was typed into that form; re-read it against the table in step 5.
+- **"has never been published"** — the workflow's own error, not npm's. Step 4 has
+  not been done for that package.
 - **`E402 payment required`** — the scope is being treated as private. Both
   manifests set `publishConfig.access: "public"`; if it still happens, the
   organisation was created as a paid private org.
-- **provenance rejected** — the workflow needs `id-token: write` (it has it) and a
-  public repository. Provenance cannot be attached to a publish run from a laptop,
-  which is a reason to publish from CI and not by hand.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
-  version, delete the tag (`git tag -d v0.9.1 && git push --delete origin v0.9.1`),
+  version, delete the tag (`git tag -d v0.10.0 && git push --delete origin v0.10.0`),
   re-tag.
 
 ## What is deliberately NOT published
 
-- **`@neo-angband/content`** — Angband's gamedata compiled to packs. The engine
-  cannot generate a populated level without it, so a mod test that needs a real
-  dungeon needs content too. Publishing it is a live option, not an oversight; it
-  is held back because it has no consumer yet and every publish is permanent.
+- **`@rpgm-tools/neo-angband-content`** — Angband's gamedata compiled to packs. The
+  engine cannot generate a populated level without it, so a mod test that needs a
+  real dungeon needs content too. Publishing it is a live option, not an oversight;
+  it is held back because it has no consumer yet and every publish is permanent.
 - **A `create-neo-mod` scaffolder** — `docs/MODS.md` describes `neo-pack` as a
   planned validator/bundler CLI. It does not exist yet, and the name is not
   reserved on npm.

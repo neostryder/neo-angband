@@ -41,9 +41,9 @@ populate. The save-path resolvers are intentionally separate and unchanged.
 
 ## Where the Borg lives [CANDIDATE]
 
-- NEW package `packages/borg` (`@neo-angband/borg`), a BUNDLED mod. It depends
-  on `@neo-angband/core` for the agent API TYPES only (AgentView / AgentActions
-  / AgentController / installController) and on `@neo-angband/mod-sdk` for the
+- NEW package `packages/borg` (`@rpgm-tools/neo-angband-borg`), a BUNDLED mod. It depends
+  on `@rpgm-tools/neo-angband-core` for the agent API TYPES only (AgentView / AgentActions
+  / AgentController / installController) and on `@rpgm-tools/neo-angband-mod-sdk` for the
   manifest/capability shapes. It gets NO privileged core import - if the Borg
   needs a datum the facade does not expose, that is a P7 facade gap to close by
   an add-only 1.x bump, NOT a reach into core.

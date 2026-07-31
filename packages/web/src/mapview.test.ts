@@ -17,8 +17,8 @@ import {
   knownFeat,
   knownObject,
   squareMemorize,
-} from "@neo-angband/core";
-import type { GameState, Loc, TerrainRecordJson, PlayerPackRecords } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GameState, Loc, TerrainRecordJson, PlayerPackRecords } from "@rpgm-tools/neo-angband-core";
 import { buildOverview, panLocate, locateRelDesc, locateSectorBanner } from "./mapview";
 import type { OverviewGlyph } from "./mapview";
 

@@ -80,7 +80,7 @@ are documentation-only additions explaining an intentional absence).
 
 ## Suite
 
-- `pnpm --filter @neo-angband/core build` (tsc) — clean, no errors.
+- `pnpm --filter @rpgm-tools/neo-angband-core build` (tsc) — clean, no errors.
 - `npx vitest run` from `packages/core` — **222 files / 2978 tests passed**
   (excludes the borg package per the brief's known-hang warning; borg was
   not touched).

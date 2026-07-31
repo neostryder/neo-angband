@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { colorChannel, colorToCss, resetColorTable } from "@neo-angband/core";
+import { colorChannel, colorToCss, resetColorTable } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { runColorsEditor } from "./colors";
 
