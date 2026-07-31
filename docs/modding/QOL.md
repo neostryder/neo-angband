@@ -89,7 +89,7 @@ step onto the dug-out grid in the same move, and each walk is a single attempt
 (you keep walking to keep digging), matching the source fork.
 
 - The tweak's code: `neo-angband-mod-qol/plugin.ts`, installing the
-  `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts:96`). It reuses
+  `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts:101`). It reuses
   two PUBLIC core primitives rather than reimplementing the dig - a reimplemented
   roll would drift from the tunnel command's: `movementTunnelTest`
   (`packages/core/src/game/cave-cmd.ts:662`, RNG-free, which is what lets the mod

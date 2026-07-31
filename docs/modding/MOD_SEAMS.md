@@ -25,7 +25,7 @@ behaviour by default.
 
 The one seam behind both bundled mods. `GameState.modHooks`
 (`packages/core/src/game/context.ts:712`) is an optional `ModHooks`
-(`packages/core/src/mod/hooks.ts:78`): a plain interface whose every member is an
+(`packages/core/src/mod/hooks.ts:83`): a plain interface whose every member is an
 OPTIONAL function. An absent member means "no mod touches that point", and core
 takes its faithful path with one undefined check:
 
@@ -92,7 +92,7 @@ so a hook that rolls a dig check and then declines has already moved the stream.
 Two enabled mods may both want the same hook. Core deliberately holds exactly ONE
 `ModHooks` and knows nothing about mod identity, ordering, or enablement; the host
 collects each enabled mod's contributions in LOAD order and folds them with
-`composeModHooks` (`packages/core/src/mod/hooks.ts:206`). This is the same
+`composeModHooks` (`packages/core/src/mod/hooks.ts:330`). This is the same
 layering as content: core consumes a composed result, never the pack list.
 
 "Later wins" is not a usable rule here, because the hooks differ in kind. What
@@ -100,27 +100,62 @@ layering as content: core consumes a composed result, never the pack list.
 
 - **VETO hooks** (`levelGenerated`, `artifactCommit`, `historyAdd`) are
   **conjunctive**: every contributor runs and the **first refusal decides**
-  (`hooks.ts:242`, `:250`, `:258`). This is the only safe fold - a mod that
+  (`hooks.ts:366`, `:374`, `:382`). This is the only safe fold - a mod that
   vetoes a duplicate artifact must not be overruled by a later mod that merely
   has no opinion. Note for `levelGenerated` specifically: every contributor still
   runs after an earlier one has REPAIRED the level, because a second mod's
   invariant is not satisfied by the first mod's repair; only a refusal
   short-circuits, since the level is being thrown away anyway.
 - **TRANSFORM hooks** (`messageText`) **chain in load order**, each seeing the
-  previous one's output (`hooks.ts:270`, a `reduce` over the contributors).
+  previous one's output (`hooks.ts:394`, a `reduce` over the contributors).
 - **FIRST-HANDLER hooks** (`walkBlockedByDiggable`) stop at the **first
-  non-`null`** (`hooks.ts:216-222`), so an earlier mod's handling wins and a later
+  non-`null`** (`hooks.ts:340-346`), so an earlier mod's handling wins and a later
   one cannot double-spend the same turn's energy.
 - **ANY hooks** (`saveNoiseScent`) are **disjunctive** - `some()`
-  (`hooks.ts:265`). One mod asking for the data is enough, because the data is
+  (`hooks.ts:389`). One mod asking for the data is enough, because the data is
   additive and a second mod has nothing to object to.
 - **ORDERING hooks** (`objectListTiebreak`) stop at the **first non-zero**
-  answer (`hooks.ts:227-233`), the same way a lexicographic comparator chains.
+  answer (`hooks.ts:351-357`), the same way a lexicographic comparator chains.
 
-`composeModHooks` returns `undefined` when nothing contributed (`hooks.ts:210`),
+`composeModHooks` returns `undefined` when nothing contributed (`hooks.ts:334`),
 so the host leaves the field ABSENT rather than storing an empty object. That
 keeps "no mod loaded" and "a mod loaded that touches nothing" indistinguishable
 from core's side - which is the one thing the seam exists to guarantee.
+
+### What happens when a hook throws
+
+A hook is third-party code running inside a turn, so it can throw. The host wraps
+each mod's contribution with `guardModHooks`
+(`packages/core/src/mod/hooks.ts:258`) BEFORE folding it - guarding per mod is
+what lets the fault be attributed, since the host holds the id and core does not.
+
+A throw becomes that hook's **neutral answer**, which is per-hook and is the same
+value core would have used with no mod loaded at all: `null` for
+`walkBlockedByDiggable`, `0` for `objectListTiebreak`, `true` for the three vetoes
+(`levelGenerated`, `artifactCommit`, `historyAdd`), `false` for `saveNoiseScent`,
+and the raw string for `messageText`. So to the fold, a broken mod reads exactly
+like a mod with no opinion at that point, and the other mods' answers stand.
+`levelGenerated` accepting is the one worth naming: rejecting on a throw would
+re-roll the level, throw again, and re-roll until `cave_generate` gave up - one
+broken hook would make the game unable to reach any level.
+
+The hook is then **not called again** for the rest of the session - per (mod,
+hook), so the mod's other hooks keep working.
+
+Letting the throw escape instead was not the safer option, though it looked like
+it: it does not undo what the mod already did before throwing, it abandons the
+rest of the turn's bookkeeping, and it reaches the shell as a bare exception from
+a function that did not know a mod was inside it - a frozen screen with no name
+on it.
+
+**Guarding is only half the job**, and the other half is the host's:
+`packages/web/src/mod-taint.ts` treats a mid-turn fault as terminal for the
+session. It refuses every further save (the gate is in `persistSave`, not
+`autosave`, because a level change, `S`, the options screen and `pagehide` all
+force a save too), puts the fault on the mod's row in the manager, and puts up a
+modal naming the mod and offering a reload. Before this existed, the *only* thing
+protecting the file was that the autosave sits at the turn's TAIL, so the
+exception unwound past it.
 
 ### Why `null` is the decline sentinel, and not `0` or `false`
 
@@ -128,7 +163,7 @@ For the first-handler fold, the sentinel cannot be a value the hook might
 legitimately want to return. `walkBlockedByDiggable` returns an ENERGY COST, and
 `0` is a real energy cost - so if `0` meant "decline", a mod could not express
 "I handled this action and it costs nothing". `null` keeps the two apart:
-`hooks.ts:219` tests `energy !== null`, so a hook returning `0` HANDLES the walk
+`hooks.ts:343` tests `energy !== null`, so a hook returning `0` HANDLES the walk
 and stops the chain, while `null` passes it to the next mod.
 
 Two honest caveats, both verified in the code rather than assumed:
@@ -161,7 +196,7 @@ host and the mod**:
    in `localStorage` (`neo:modRuleChoices`) - a client setting, like the
    enabled-mod set, NOT part of the savefile.
 4. `packages/web/src/mod-hooks.ts` `resolveModRuleFlagsByMod()` SLICES that map
-   per mod, then `activeModHooks()` (`mod-hooks.ts:91`) calls each enabled mod's
+   per mod, then `activeModHooks()` (`mod-hooks.ts:159`) calls each enabled mod's
    entry point once, in load order, with only that mod's own flags, and folds the
    results with `composeModHooks`.
 5. `packages/web/src/main.ts` passes the composed object to `startGame` /
@@ -177,7 +212,7 @@ export default function <mod>Hooks(
 ```
 
 It is discovered by a glob (`import.meta.glob("../mods/*/hooks.ts")`,
-`mod-hooks.ts:48`) rather than a hardcoded list, so the host knows no mod's id
+`mod-hooks.ts:71`) rather than a hardcoded list, so the host knows no mod's id
 and no mod's flag names. A mod with no behaviour - the linoleum tile pack, and
 every pure content mod - simply ships no `hooks.ts` and is never called.
 
