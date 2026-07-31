@@ -25,7 +25,20 @@ import {
   walkAction,
 } from "@neo-angband/core";
 import type { GamePack, GameState, Loc } from "@neo-angband/core";
-import qolHooks from "./hooks";
+import * as neoCore from "@neo-angband/core";
+import plugin from "./plugin";
+
+/**
+ * The mod's behaviour, driven the way the HOST drives it.
+ *
+ * The entry point is a ModPlugin whose `hooks` takes a context and reads the engine
+ * off `ctx.core` (mods/qol/plugin.ts). The host reduces that to a function of flags
+ * (src/mod-hooks.ts pluginAdapter); this is the same reduction, with the REAL core
+ * namespace passed in - so these tests exercise the shipped path rather than a
+ * signature only they use.
+ */
+const qolHooks = (flags: Readonly<Record<string, boolean>>): ModHooks =>
+  plugin.hooks({ flags, core: neoCore });
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

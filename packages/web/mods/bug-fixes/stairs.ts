@@ -36,14 +36,28 @@
  */
 
 import type { Chunk, Gen, Loc } from "@neo-angband/core";
-import {
-  FEAT,
-  loc,
-  placeStairs,
-  squareIsEmpty,
-  squareIsNoStairs,
-  squareNumWallsAdjacent,
-} from "@neo-angband/core";
+
+/**
+ * The engine primitives this fix needs, HANDED IN rather than imported.
+ *
+ * The mod's entry point receives the live core namespace as `ctx.core` and passes
+ * it down. A folder-loaded plugin.js cannot resolve "@neo-angband/core", and even
+ * where it could - a bundled build - importing it would risk a second copy of the
+ * engine's registries and singletons. See src/mod-plugin.ts's header.
+ *
+ * Declared as a Pick of core's own module type, so it can never drift from what
+ * core actually exports; `typeof import(...)` is type-only syntax and leaves no
+ * trace in the built plugin.js.
+ */
+export type StairsCore = Pick<
+  typeof import("@neo-angband/core"),
+  | "FEAT"
+  | "loc"
+  | "placeStairs"
+  | "squareIsEmpty"
+  | "squareIsNoStairs"
+  | "squareNumWallsAdjacent"
+>;
 
 /**
  * Terrain the player can eventually get through: passable grids, plus doors
@@ -55,26 +69,38 @@ function stairWalkable(c: Chunk, grid: Loc): boolean {
   return c.isPassable(grid) || c.isDoor(grid) || c.isRubble(grid);
 }
 
-/** ddgrid_ddd order: S, N, E, W, SE, SW, NE, NW. */
-const STAIR_DIRS: readonly Loc[] = [
-  loc(0, 1),
-  loc(0, -1),
-  loc(1, 0),
-  loc(-1, 0),
-  loc(1, 1),
-  loc(-1, 1),
-  loc(1, -1),
-  loc(-1, -1),
-];
+/**
+ * ddgrid_ddd order: S, N, E, W, SE, SW, NE, NW.
+ *
+ * A function rather than a module constant because `loc` now arrives with the
+ * engine, and a module-scope constant would have to run before the host had handed
+ * anything over. Called once per repair, which is eight object literals against a
+ * flood fill.
+ */
+function stairDirs(core: StairsCore): readonly Loc[] {
+  const { loc } = core;
+  return [
+    loc(0, 1),
+    loc(0, -1),
+    loc(1, 0),
+    loc(-1, 0),
+    loc(1, 1),
+    loc(-1, 1),
+    loc(1, -1),
+    loc(-1, -1),
+  ];
+}
 
 /** Flood the region the player can walk from `start`, 8-directionally. */
-function walkableRegion(c: Chunk, start: Loc): Uint8Array {
+function walkableRegion(c: Chunk, start: Loc, core: StairsCore): Uint8Array {
+  const { loc } = core;
+  const dirs = stairDirs(core);
   const seen = new Uint8Array(c.width * c.height);
   const stack: Loc[] = [start];
   seen[start.y * c.width + start.x] = 1;
   while (stack.length > 0) {
     const cur = stack.pop() as Loc;
-    for (const dir of STAIR_DIRS) {
+    for (const dir of dirs) {
       const n = loc(cur.x + dir.x, cur.y + dir.y);
       if (!c.inBounds(n)) continue;
       const idx = n.y * c.width + n.x;
@@ -95,7 +121,13 @@ function walkableRegion(c: Chunk, start: Loc): Uint8Array {
  * Deterministic - no RNG draws. Walls are tried 3 -> 0 exactly as alloc_stairs
  * does, so the replacement sits in a corner or alcove like any other stair.
  */
-function findReachableStairSpot(g: Gen, seen: Uint8Array, near: Loc): Loc | null {
+function findReachableStairSpot(
+  g: Gen,
+  seen: Uint8Array,
+  near: Loc,
+  core: StairsCore,
+): Loc | null {
+  const { loc, squareIsEmpty, squareIsNoStairs, squareNumWallsAdjacent } = core;
   const c = g.c;
   const player = g.playerSpot;
   for (let walls = 3; walls >= 0; walls--) {
@@ -132,7 +164,12 @@ function findReachableStairSpot(g: Gen, seen: Uint8Array, near: Loc): Loc | null
  * This is the levelGenerated hook's body; it is exported so the mod's own tests
  * can drive it on a synthetic level as well as through a real generation.
  */
-export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
+export function ensureStairsReachable(
+  g: Gen,
+  quest: boolean,
+  core: StairsCore,
+): boolean {
+  const { FEAT, loc, placeStairs, squareIsEmpty, squareIsNoStairs } = core;
   const c = g.c;
   const start = g.playerSpot;
   /* Sub-chunks (gauntlet's halves, the hard centre's caverns) have no player
@@ -140,7 +177,7 @@ export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
   if (!start) return true;
   if (!stairWalkable(c, start)) return false;
 
-  const seen = walkableRegion(c, start);
+  const seen = walkableRegion(c, start, core);
 
   for (const feat of [FEAT.MORE, FEAT.LESS]) {
     let total = 0;
@@ -159,7 +196,7 @@ export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
      * nothing to guarantee. One already reachable: nothing to do. */
     if (total === 0 || reached > 0) continue;
 
-    let spot = findReachableStairSpot(g, seen, stranded ?? start);
+    let spot = findReachableStairSpot(g, seen, stranded ?? start, core);
     if (!spot && squareIsEmpty(g, start) && !squareIsNoStairs(c, start)) {
       /*
        * Last resort: the player's own grid. Upstream already lays a stair there

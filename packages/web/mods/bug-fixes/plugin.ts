@@ -11,18 +11,26 @@
  * long form (issue / PR / commit per entry).
  *
  * ------------------------------------------------------------------
- * ENTRY POINT CONTRACT - identical in every mod that changes behaviour
+ * ENTRY POINT CONTRACT - one shape, for every mod and every front end
  * ------------------------------------------------------------------
  *
- *   export default function <mod>Hooks(
- *     flags: Readonly<Record<string, boolean>>,
- *   ): ModHooks;
+ * A mod that runs code default-exports a ModPlugin (src/mod-plugin.ts):
  *
- * `flags` is the host's RESOLVED per-patch choice map: every `rules[].flag` this
- * mod declares in its manifest.json, mapped to the value the player's toggles
- * settled on (manifest `default` unless they changed it). The host calls this
- * ONCE per enabled mod, in load order, and folds the results with
- * composeModHooks (mod/hooks.ts) into the single ModHooks core holds.
+ *   export default { api: 1, hooks(ctx) { ... } }
+ *
+ * `ctx.flags` is the host's RESOLVED per-patch choice map: every `rules[].flag`
+ * this mod declares in its manifest.json, mapped to the value the player's toggles
+ * settled on (manifest `default` unless they changed it). The host calls `hooks`
+ * ONCE per enabled mod, in load order, and folds the results with composeModHooks
+ * (core/mod/hooks.ts) into the single ModHooks core holds.
+ *
+ * `ctx.core` is the ENGINE, handed in, and this file imports @neo-angband/core for
+ * TYPES ONLY. The same source is built to the `plugin.js` that ships in this mod's
+ * own repository, and a module fetched from a folder cannot resolve a bare
+ * specifier - nor should it, because a bundled copy of core would give the plugin
+ * its own registries while the game ran on another set. src/mod-plugin.ts's header
+ * has the full argument. stairs.ts is handed the slice it needs for the same
+ * reason.
  *
  * Three rules make this shape work:
  *
@@ -39,17 +47,29 @@
  *     function for a mod the player has not enabled, so returning `{}` here
  *     means "enabled, but every patch off".
  *
- * The mod is a plain ES module importing @neo-angband/core's public API - the
- * same API a third-party mod has. It uses no private path and no test hook.
+ * The mod uses core's public API - the same API a third-party mod has. It touches
+ * no private path and no test hook.
  */
 
 import type { Gen, ModHooks } from "@neo-angband/core";
-import { ensureStairsReachable } from "./stairs";
+import { ensureStairsReachable, type StairsCore } from "./stairs";
 import { miscStringFix } from "./strings";
 
-export default function bugFixesHooks(
-  flags: Readonly<Record<string, boolean>>,
-): ModHooks {
+/**
+ * What this plugin needs from the host's context, structurally. Declared here
+ * rather than imported from src/mod-plugin.ts because this file has to compile in a
+ * standalone mod repository that holds no copy of the host.
+ */
+interface HookCtx {
+  readonly flags: Readonly<Record<string, boolean>>;
+  readonly core: StairsCore;
+}
+
+export default {
+  api: 1,
+
+  hooks(ctx: HookCtx): ModHooks {
+  const { flags, core } = ctx;
   const hooks: ModHooks = {};
 
   /*
@@ -119,7 +139,7 @@ export default function bugFixesHooks(
    */
   if (flags["bugfix.stairsReachable"] === true) {
     hooks.levelGenerated = (gen, quest): boolean =>
-      ensureStairsReachable(gen as Gen, quest);
+      ensureStairsReachable(gen as Gen, quest, core);
   }
 
   /*
@@ -134,4 +154,5 @@ export default function bugFixesHooks(
   }
 
   return hooks;
-}
+  },
+};
