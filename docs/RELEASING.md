@@ -165,12 +165,48 @@ Two things came out of that and both are permanent:
   version, delete the tag (`git tag -d v0.10.0 && git push --delete origin v0.10.0`),
   re-tag.
 
+## The mod repositories are released separately
+
+The game's tag publishes the two npm packages. It does **not** touch the mods, and
+they are not on npm at all — a mod is distributed as a FOLDER the game fetches, so npm
+is not in that path. Releasing one is:
+
+1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
+   `plugin.js` is a current build of its source.
+2. Commit, then tag (`v0.10.0`) and push the tag.
+3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
+   put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
+   from the local build: the digest has to describe the bytes GitHub actually serves, and
+   the two can differ (line endings, a file that was never committed, a tag pointing
+   somewhere unexpected). The same fetch confirms `Access-Control-Allow-Origin: *`, which
+   is what makes an install from the static web build possible at all.
+4. A published tag is **never moved**. Iterating one takes a MINOR bump and a new row,
+   because the old tag's digest is pinned inside every build already shipped.
+
 ## What is deliberately NOT published
 
 - **`@rpgm-tools/neo-angband-content`** — Angband's gamedata compiled to packs. The
   engine cannot generate a populated level without it, so a mod test that needs a
-  real dungeon needs content too. Publishing it is a live option, not an oversight;
-  it is held back because it has no consumer yet and every publish is permanent.
+  real dungeon needs content too.
+
+  **It now has real consumers, so the argument for holding it back is weaker than it
+  was.** `neo-angband-mod-qol` and `neo-angband-mod-bug-fixes` both generate real
+  levels in their tests, and both get the pack from a SIBLING CHECKOUT of this
+  repository (`NEO_ANGBAND_REPO`, or `../neo-angband`) because there is no package to
+  install. That works, their CI does it, and it is the pattern already used for the
+  linoleum packs — but it means each of those repos carries a ~40-line `content.ts`
+  whose only job is to find a directory, and a third-party mod author has to clone a
+  repository with the whole C tree in it to test against real gamedata.
+
+  Publishing would delete both problems and replace them with one `npm i -D`. Against:
+  it is a 2.1 MB data package, every publish is permanent, and it needs the same
+  manual first publish + trusted-publisher setup the other two needed. Owner's call.
 - **A `create-neo-mod` scaffolder** — `docs/MODS.md` describes `neo-pack` as a
   planned validator/bundler CLI. It does not exist yet, and the name is not
-  reserved on npm.
+  reserved on npm. Half its job now exists though: `@rpgm-tools/neo-angband-mod-sdk`
+  ships a `neo-angband-mod-build` bin that compiles a mod's TypeScript into the
+  `plugin.js` a mod folder distributes, and enforces the plugin ABI while doing it.
+- **The mods themselves** — see above. `neo-angband-mod-qol`,
+  `neo-angband-mod-bug-fixes` and `neo-angband-mod-linoleum` are `private: true` and
+  stay that way. Publishing one would create a second way to obtain a mod that
+  nothing in the game checks.

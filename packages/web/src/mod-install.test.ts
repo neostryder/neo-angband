@@ -33,6 +33,8 @@ import {
 } from "./mod-install";
 import { type RecommendedMod, badPath, rawUrl, validateRecommendedMod } from "./mod-registry";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
+import { loadModCode, type ModCodeReport } from "./mod-code";
+import { modPluginContext } from "./mod-context";
 
 const subtle = webcrypto.subtle;
 
@@ -755,5 +757,141 @@ describe("boot reads installed mods", () => {
   it("lists the folder FIRST, so a mod put there deliberately outranks a download", () => {
     const at = main.indexOf("combineDiskReports([folder,");
     expect(at, "the combine call must be present").toBeGreaterThan(0);
+  });
+});
+
+describe("an INSTALLED mod's plugin.js actually runs", () => {
+  /**
+   * The gap this closes, and it is the one that matters most for the de-bundling.
+   *
+   * Every test above proves an installed mod is stored, verified and read back as a
+   * usable pack. None of them proved its CODE runs. Those are different pieces of
+   * machinery: reading a pack goes through `readModDir`, while running its plugin goes
+   * through `installedModSource.codeUrl` -> `buildModuleGraph` -> blob URLs ->
+   * `loadModCode` -> `validateModPlugin`. The game now bundles NO mods, so this chain is
+   * how every mod anybody has arrives at being executed. Before this, it had never been
+   * driven end to end from a real install.
+   *
+   * ONE THING IS FAKED, and only one: `URL.createObjectURL`, which node does not have.
+   * It hands back a `data:` URL over the same bytes, so the module a real browser would
+   * fetch from a blob is the module imported here. The alternative - asserting that the
+   * blob was created - would be a test of the mock.
+   */
+  const RUNNING_PLUGIN = [
+    "export default {",
+    "  api: 1,",
+    "  hooks(ctx) {",
+    "    if (ctx.flags['demo.on'] !== true) return null;",
+    "    return { messageText: (raw) => raw + ' [ran from an installed mod]' };",
+    "  },",
+    "};",
+  ].join("\n");
+
+  /**
+   * The two browser primitives node lacks, and nothing else.
+   *
+   * `URL.createObjectURL` has to be SYNCHRONOUS (production calls it inside
+   * `urlFor`), and a real Blob only yields its bytes asynchronously - so the Blob is
+   * stubbed too, purely to keep the parts it was constructed with reachable. What
+   * comes back is a `data:` URL over exactly those bytes, which means the module a
+   * browser would fetch from a blob: URL is the module imported here. Asserting that a
+   * blob was created instead would be a test of the stub.
+   */
+  let realCreate: unknown;
+  let realRevoke: unknown;
+  let realBlob: unknown;
+
+  beforeEach(() => {
+    const g = globalThis as Record<string, unknown>;
+    realCreate = (URL as unknown as Record<string, unknown>)["createObjectURL"];
+    realRevoke = (URL as unknown as Record<string, unknown>)["revokeObjectURL"];
+    realBlob = g["Blob"];
+    g["Blob"] = class FakeBlob {
+      readonly body: string;
+      readonly type: string;
+      constructor(parts: unknown[], opts?: { type?: string }) {
+        this.body = parts.map((p) => String(p)).join("");
+        this.type = opts?.type ?? "";
+      }
+    };
+    (URL as unknown as Record<string, unknown>)["createObjectURL"] = (blob: {
+      body?: string;
+    }): string =>
+      `data:text/javascript;base64,${Buffer.from(blob.body ?? "", "utf8").toString("base64")}`;
+    (URL as unknown as Record<string, unknown>)["revokeObjectURL"] = (): void => {};
+  });
+
+  afterEach(() => {
+    const g = globalThis as Record<string, unknown>;
+    (URL as unknown as Record<string, unknown>)["createObjectURL"] = realCreate;
+    (URL as unknown as Record<string, unknown>)["revokeObjectURL"] = realRevoke;
+    g["Blob"] = realBlob;
+  });
+
+  /**
+   * A manifest that DECLARES it ships code.
+   *
+   * Not the shared MANIFEST, and the first attempt at this test used it and failed -
+   * usefully. `loadModCode` refuses a pack that ships plugin.js without the "plugin"
+   * facet: "add \"facets\": [\"content\", \"plugin\"], so that running code is something
+   * the mod states". That gate is exactly what should stop a downloaded mod from
+   * executing code it never admitted to carrying, and seeing it fire here is the
+   * evidence it is not decorative. Both real first-party mods declare the facet.
+   */
+  const CODE_MANIFEST = JSON.stringify({
+    id: "demo",
+    name: "Demo",
+    version: "1.0.0",
+    shape: "content",
+    facets: ["content", "plugin"],
+    modApi: 1,
+  });
+
+  /** Install a mod carrying `code`, then load its plugin the way boot does. */
+  async function installAndLoad(code: string): Promise<ModCodeReport> {
+    const files = { "manifest.json": enc(CODE_MANIFEST), "plugin.js": enc(code) };
+    const made = fakeIdb();
+    const { env } = await envFor(files, { idb: made.factory });
+    const result = await installRecommendedMod(await modFor(files), env);
+    expect(result.ok, result.ok ? "" : result.problem).toBe(true);
+
+    const report = await loadInstalledMods({ indexedDB: made.factory });
+    expect(report.problems).toEqual([]);
+    expect(report.packs).toHaveLength(1);
+
+    return await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl!,
+      enabled: () => true,
+      consented: () => [],
+      importer: (url) => import(url),
+    });
+  }
+
+  it("loads, validates and RUNS the plugin the installer stored", async () => {
+    const report = await installAndLoad(RUNNING_PLUGIN);
+    expect(report.problems).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.plugins).toHaveLength(1);
+
+    const hooks = report.plugins[0]!.plugin.hooks!(modPluginContext("demo", { "demo.on": true }));
+    /* Calling the hook, not inspecting its shape: a hook that is present and throws
+     * would satisfy every assertion above. */
+    expect(hooks!.messageText!("you feel a sense of loss")).toBe(
+      "you feel a sense of loss [ran from an installed mod]",
+    );
+  });
+
+  it("contributes nothing when its patch is off, exactly as a bundled mod would", async () => {
+    const report = await installAndLoad(RUNNING_PLUGIN);
+    expect(report.plugins[0]!.plugin.hooks!(modPluginContext("demo", {}))).toBeNull();
+  });
+
+  it("reports a stored plugin that is not a valid plugin, rather than loading it", async () => {
+    /* Guards the guard. If the chain above silently accepted anything, the passing test
+     * would prove only that no exception escaped. */
+    const report = await installAndLoad("export const notADefault = 1;");
+    expect(report.plugins).toEqual([]);
+    expect(report.problems.length + report.skipped.length).toBeGreaterThan(0);
   });
 });
