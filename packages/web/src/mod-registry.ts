@@ -155,20 +155,25 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "bug-fixes",
     name: "Bug Fixes",
     repo: "neostryder/neo-angband-mod-bug-fixes",
-    tag: "v0.10.0",
+    /* v0.11.0, not v0.10.0: that tag's manifest declares `"engine": "4.2.x"` - the
+     * Angband baseline in a field that ranges over the PORT's version - and the
+     * engine gate (mod-engine.ts) now evaluates that field, so v0.10.0 installs and
+     * is then refused. Only `manifest.json` changed; plugin.js's digest is the same
+     * bytes it was at v0.10.0. */
+    tag: "v0.11.0",
     summary: "Fixes for upstream Angband bugs the port keeps on purpose",
     /* Also clear, and this is the row where that is worth defending. Core keeps
      * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
      * turning these on by default would quietly make the game unfaithful for everyone
      * who never opened the mod list. It also flags the save, permanently. */
     preChecked: false,
-    approxBytes: 7_942,
+    approxBytes: 8_001,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "674e4b4b8de37e73a0db8443c0dbe3328acf2b603d86767545003046fe4342e1",
+          sha256: "2be2defaf0ad2d88f7980952f9b32fc74b4d714ca24580e3729e5330e245d52d",
         },
         {
           path: "plugin.js",
@@ -181,23 +186,30 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "neo-linoleum",
     name: "neo-linoleum",
     repo: "neostryder/neo-angband-mod-linoleum",
-    /* v0.9.1, not v0.9.0: that tag exists in that repository at content which shipped
-     * one pack, and moving a published tag is exactly what pinning a tag rather than a
-     * branch is here to prevent. */
-    tag: "v0.9.1",
+    /* v0.10.0. The two tags before it are both still wrong to pin and for different
+     * reasons, which is why the history is worth keeping here: v0.9.0 points at
+     * content that shipped ONE pack, and v0.9.1 declares `"engine": "4.2.x"` - the
+     * Angband baseline in a field that ranges over the PORT's version - which the
+     * engine gate now evaluates and refuses. Moving either tag instead of cutting a
+     * new one is exactly what pinning a tag rather than a branch exists to prevent. */
+    tag: "v0.10.0",
     summary:
       "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
     /* Its absence is the game being faithful, not the game being worse: every tile set
      * it converts is already selectable, drawn by the tilesheet engine. And it is a
      * 25 MiB download. So the row starts clear. */
     preChecked: false,
-    approxBytes: 25_780_914,
+    approxBytes: 25_780_917,
     payload: {
       kind: "archive",
       archives: [
         {
+          /* The only archive whose digest moved: manifest.json travels inside it.
+           * The six tile archives rebuilt byte-identically from the same source art,
+           * which is the packer's determinism claim (tools/pack.mjs) holding on a
+           * different day - so their pins below are unchanged. */
           path: "dist/neo-linoleum-mod.zip",
-          sha256: "444ad879c7550827e4532dd8d53124b63095fe63b73674feb872345a55fe245a",
+          sha256: "347002425bce1d445935d108dae77cdb7fa7583b05ed5cc16f7b41bc03ae6fe4",
         },
         {
           path: "dist/neo-linoleum-original-tiles.zip",
