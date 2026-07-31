@@ -29,20 +29,26 @@ rebuilding the engine for the web era.
   [`reference/`](reference/) as a read-only oracle, and ported code cites the C
   `file:line` it came from. Where behaviour and "improvement" disagree,
   faithfulness wins; quality-of-life changes ship as mods you can turn off.
-- **Web-first.** Play in a browser, install it as an offline PWA, self-host it as
-  static files, or run it as a desktop app - all from the same build. The classic
+- **Web-first, desktop-best.** Play in any current browser - Firefox and Safari
+  included - install it as an offline PWA, self-host it as static files, or run it
+  as a desktop app, all from the same build. The desktop build is the recommended
+  way to play: real saves in a real folder, no network, no browser reclaiming its
+  storage. See [which browser?](docs/INSTALL.md#which-browser). The classic
   multi-window terminal interface becomes one fixed 80x24 surface scaled to your
   screen, with the same keymaps, fully remappable.
-- **Moddable by construction.** The base game is itself a content pack.
-  Declarative, schema-validated packs for content; Linoleum-style tile packs;
-  sandboxed scripted plugins for the exotic. See [docs/MODS.md](docs/MODS.md).
+- **Moddable by construction, and it ships no mods.** The base game is itself a
+  content pack. Declarative, schema-validated packs for content; Linoleum-style
+  tile packs; sandboxed scripted plugins for the exotic. Nothing is bundled - the
+  first-party mods live in their own repositories and install through the same
+  verified route as anyone else's, which is the only way to know that route
+  actually works. See [docs/MODS.md](docs/MODS.md).
 - **Deterministic and seeded** everywhere, with a generator seam plugins can
   extend and a save format built to survive modular content.
 - **Headless core.** The engine has no UI dependencies. Browser, terminal,
   desktop, bots, and plugins all speak the same command-queue and event-bus API.
 
-The bundled **Borg** - a faithful port of Angband's automatic player - rides the
-mod API as its completeness proof (add `?agent=borg` to watch it play; see
+The **Borg** - a faithful port of Angband's automatic player - rides the mod API as
+its completeness proof (add `?agent=borg` to watch it play; see
 [docs/modding/BORG.md](docs/modding/BORG.md)).
 
 ## Get it running
@@ -146,15 +152,13 @@ Honest list, so nobody wastes a report on something already written down:
   display-lever inventory.
 - **No subwindows.** Upstream can put the monster list, messages, and inventory
   in separate terminal windows; the port is one surface.
-- **Mods install, but the catalogue in this build is short.** The mod manager's
-  *Install a mod...* row downloads from the mod's own repository at a pinned tag
-  and verifies every file against a SHA-256 that ships inside the game, so a
-  tampered or truncated download never becomes an installed mod. Today it offers
-  `neo-linoleum`; `qol` and `bug-fixes` are still bundled with the app and are
-  moving to the same route. *Choose a mods folder...* also reads mods from a
-  folder on your computer, in the browser build as well as on the desktop
-  (Chrome/Edge only - Firefox and Safari cannot hand a directory over, which is
-  why the download route matters). Full matrix in
+- **The mod catalogue is short - three entries.** It is not a stub: the game
+  bundles no mods at all, so every mod there is arrives through *Install a
+  mod...*, which downloads from the mod's own repository at a pinned tag and
+  checks every file against a SHA-256 that ships inside the game. A tampered or
+  truncated download never becomes an installed mod. Today it offers `qol`,
+  `bug-fixes` and `neo-linoleum` - all first-party, all installed exactly the way
+  a third-party mod would be. Full matrix in
   [docs/INSTALL.md](docs/INSTALL.md).
 - The save format is pre-1.0 and may still change between versions. Export
   anything you care about.
@@ -198,13 +202,16 @@ maintainers and three decades of contributors whose work this builds on.
 ## Author
 
 Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
-Tools. The first-party mods are by the same author, and each is a standalone mod
-rather than part of the parity core:
+Tools. The first-party mods are by the same author. **None of them is bundled with
+the game**: each has its own repository, its own release tags and its own tests, and
+each installs through the same verified download route a third-party mod would use.
+That is deliberate - a modding system whose author's own mods take a private path is
+a modding system nobody has actually tested.
 
 | Mod | Repository | What it is |
 | --- | --- | --- |
-| [qol](docs/modding/QOL.md) | [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) | Quality-of-life conveniences (bundled) |
-| [bug-fixes](docs/modding/BUG_FIXES.md) | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Patches for upstream bugs core keeps on purpose (bundled) |
+| [qol](docs/modding/QOL.md) | [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) | Quality-of-life conveniences |
+| [bug-fixes](docs/modding/BUG_FIXES.md) | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Patches for upstream bugs core keeps on purpose |
 | [neo-linoleum](docs/LINOLEUM.md) | [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine, and all six of Angband's tile sets converted to its loose-pack format |
 | [borg](docs/BORG_AS_MOD.md) | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player. Not released - the repo holds the name and the plan |
 

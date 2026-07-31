@@ -1,0 +1,26 @@
+{
+  "id": "demo-hooks",
+  "name": "Hooks Demo (behaviour patches)",
+  "version": "0.10.0",
+  "shape": "content",
+  "facets": ["content", "plugin"],
+  "modApi": 1,
+  "dependencies": { "core": "*" },
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "A framework proof, not a mod anyone plays: it keeps the ModHooks entry-point path exercised now that the game bundles no real mods. Two rules, two kinds of hook, and the engine taken from ctx.core the way a downloaded mod must take it. Dev builds only.",
+  "rules": [
+    {
+      "flag": "demo-hooks.tiebreak",
+      "title": "Demo object-list tiebreak",
+      "description": "Delegates to the engine's own objectListStandardCompare through ctx.core, which is the point: a mod reaches the engine by being handed it, never by importing it. Proves an ORDERING hook and a real core call in one.",
+      "default": true
+    },
+    {
+      "flag": "demo-hooks.shout",
+      "title": "Demo message transform",
+      "description": "Upper-cases the message text. Proves a TRANSFORM hook, the fold that composes several of them in load order, and that a rule the player switches off contributes nothing at all.",
+      "default": true
+    }
+  ]
+}

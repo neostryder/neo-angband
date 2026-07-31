@@ -12,7 +12,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
 import { ALL_PACKS } from "@rpgm-tools/neo-angband-linoleum";
 import { describe, expect, it } from "vitest";
@@ -195,10 +195,11 @@ describe("this repository holds no converted tile art, and no way to make any", 
   it("has no bundled neo-linoleum mod folder, under either id", () => {
     expect(existsSync(join(MODS_DIR, "neo-linoleum"))).toBe(false);
     expect(existsSync(join(MODS_DIR, "linoleum"))).toBe(false);
-    /* Guards the guard: MODS_DIR must be a real directory with the mods that DO
-     * ship, or the two assertions above are true of a typo. */
-    expect(readdirSync(MODS_DIR)).toContain("qol");
-    expect(readdirSync(MODS_DIR)).toContain("bug-fixes");
+    /* Guards the guard: MODS_DIR must be a real directory with the mods that ARE in the
+     * build, or the two assertions above are true of a typo. Those are all demos now -
+     * the game bundles no shipping mod at all - so the guard names one of them rather
+     * than a mod that has moved out. */
+    expect(readdirSync(MODS_DIR)).toContain("demo-hooks");
   });
 
   it("has no pack generator, and no build step that would run one", () => {

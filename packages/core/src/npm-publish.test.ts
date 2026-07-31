@@ -183,3 +183,39 @@ describe("publish-npm.yml publishes without a token", () => {
     expect(workflow).toContain("11.5.1");
   });
 });
+
+describe("the mod SDK ships its plugin builder", () => {
+  /**
+   * `neo-angband-mod-build` is the reason the SDK is published rather than merely
+   * versioned: it is what lets a mod repository - anyone's - build the `plugin.js` the
+   * game will load, under the same ABI rules the first-party mods are held to.
+   *
+   * Two ways it could silently stop being usable, and neither shows up in a test of the
+   * tool itself: the `bin` mapping could be dropped, or `files` could stop including
+   * `bin/` so the tarball ships without it. Both leave every existing checkout working
+   * perfectly and every fresh `npm i` broken.
+   */
+  const sdk = JSON.parse(
+    readFileSync(new URL("../../mod-sdk/package.json", import.meta.url), "utf8"),
+  ) as { bin?: Record<string, string>; files?: string[] };
+
+  it("maps the bin under a name a mod author can run", () => {
+    expect(sdk.bin?.["neo-angband-mod-build"]).toBe("bin/neo-angband-mod-build.mjs");
+  });
+
+  it("includes bin/ in the published files, so the tarball actually carries it", () => {
+    expect(sdk.files).toContain("bin");
+  });
+
+  it("and the file the mapping points at exists", () => {
+    /* Guards both of the above: a mapping to a missing file installs a broken command. */
+    const src = readFileSync(
+      new URL("../../mod-sdk/bin/neo-angband-mod-build.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(src.startsWith("#!/usr/bin/env node")).toBe(true);
+    /* The guarantee that is the whole point of the tool living here rather than being
+     * copied into each mod repo. */
+    expect(src).toContain("external-bare-specifiers");
+  });
+});

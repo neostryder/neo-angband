@@ -43,43 +43,54 @@ const RULE_CHOICES_KEY = "neo:modRuleChoices";
 export const DEFAULT_ENABLED_MODS: readonly string[] = [];
 
 /**
- * The first-party BUNDLED mods (identity, NOT a default-enable list). When the
- * user enables one of these in the manager, its capabilities are implicitly
- * consented because it ships inside the app - shipping it IS the trust decision
- * (a third-party plugin still requires explicit per-capability consent). This
- * list is deliberately decoupled from DEFAULT_ENABLED_MODS: bundled mods are
- * trusted-when-enabled but are NOT on by default (parity). The demo mods
- * (demo-*) are not first-party and always require explicit consent.
+ * The mods BUNDLED INTO THE BUILD, which is now none of them.
  *
- * BUNDLED, not first-party: neo-linoleum is equally first-party and is NOT here,
- * because it is no longer in the bundle. Its six converted tile packs are 9161
- * files and 42 MiB - art that belongs to the mod rather than to the game - so it
- * lives in neo-angband-mod-linoleum and arrives through the installer like any
- * other mod. Nothing is lost by its absence from this list: implicit consent is
- * about CAPABILITIES, and a tiles-only mod declares none.
+ * WHAT THIS LIST MEANS, since it is empty and an empty list invites deletion. It is an
+ * identity list, not a default-enable list: a mod on it gets IMPLICIT capability consent
+ * when the player enables it, because shipping a mod inside the app IS the trust
+ * decision. A mod that arrives any other way - the download catalogue, a folder on disk,
+ * an external mod manager - is third-party as far as consent goes, and every capability
+ * it declares has to be granted explicitly. That distinction is why the list survives
+ * being empty: it is the definition of "we vouched for this by shipping it", and there is
+ * currently nothing the game vouches for that way.
+ *
+ * IT WENT EMPTY DELIBERATELY. qol and bug-fixes were here; both now live in their own
+ * repositories and arrive through RECOMMENDED_MODS like neo-linoleum already did. The
+ * game bundles no mod at all, so a fresh install is Angband 4.2.6 and nothing else -
+ * which is the parity mandate stated in code rather than in a document.
+ *
+ * AND EMPTYING THIS LIST IS NOT WHAT DE-BUNDLED THEM. "Bundled" is defined mechanically
+ * by six `import.meta.glob` patterns over `../mods/*` (mod-hooks.ts, pack.ts,
+ * tile-mods.ts): whatever those globs match is inlined into the payload at build time.
+ * Removing an id from here without removing the folder would have left the code in the
+ * bundle and merely stopped consenting to it - the same shape of mistake as a fix that
+ * is "removed from core" by being put behind a flag.
  */
-export const FIRST_PARTY_MOD_IDS: readonly string[] = ["bug-fixes", "qol"];
+export const FIRST_PARTY_MOD_IDS: readonly string[] = [];
 
 /**
- * Whether a bundled mod id is part of the SHIPPED set, i.e. offered to a player
- * in a release build. The shipped set is exactly FIRST_PARTY_MOD_IDS: the
- * minimal QoL mod and the bug-fixes patch set.
+ * Whether a mod id in the build is part of the SHIPPED set, i.e. offered to a player in
+ * a release build.
  *
- * The `demo-*` mods under packages/web/mods/ are not shipped - they are the
- * mod-framework proofs (a content pack that patches a core monster, a sandboxed
- * worker plugin, a trusted in-process plugin) and exist so the SDK's three load
- * paths stay exercised end-to-end in dev and in tests. Shipping them would put
- * three joke entries in the player's mod manager, so every discovery surface
- * (content packs, tile packs, sandbox plugins, trusted plugins) routes through
- * this predicate and drops them from a production build.
+ * The only mods left under packages/web/mods/ are the `demo-*` framework proofs (a
+ * content pack that patches a core monster, a sandboxed worker plugin, a trusted
+ * in-process plugin). They exist so the SDK's three load paths stay exercised
+ * end-to-end in dev and in tests. Shipping them would put three joke entries in the
+ * player's mod manager, so every discovery surface (content packs, tile packs, sandbox
+ * plugins, trusted plugins) routes through this predicate and drops them from a
+ * production build.
  *
- * `dev` defaults to Vite's import.meta.env.DEV so callers just call
- * `isShippedMod(id)`; it is a parameter only so the unit tests can assert both
- * builds without faking the module environment. Note this gates DISCOVERY, not
- * bundling: the eager import.meta.glob still inlines the demo manifests (glob
- * patterns must be static), they are simply never surfaced. They are a few
- * hundred bytes, and keeping the globs identical in both builds means dev and
- * release load mods through the same code path.
+ * So in a release build this currently returns false for everything in the folder, and
+ * that is correct rather than broken: a release ships no bundled mod. The predicate is
+ * not written as `return false` because the folder is the mechanism, not the policy - a
+ * mod added there tomorrow should ship, and a demo added there should not.
+ *
+ * `dev` defaults to Vite's import.meta.env.DEV so callers just call `isShippedMod(id)`;
+ * it is a parameter only so the unit tests can assert both builds without faking the
+ * module environment. Note this gates DISCOVERY, not bundling: the eager
+ * import.meta.glob still inlines the demo manifests (glob patterns must be static),
+ * they are simply never surfaced. They are a few hundred bytes, and keeping the globs
+ * identical in both builds means dev and release load mods through the same code path.
  */
 export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
   return dev || !id.startsWith("demo-");

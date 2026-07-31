@@ -25,6 +25,17 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "//bin": [
+    "The plugin builder ships with the SDK because the rules it enforces ARE the plugin",
+    "ABI, and every mod - first-party included - now lives in its own repository. It",
+    "drives esbuild, which is deliberately NOT a dependency: this package is imported at",
+    "runtime by the web build to validate manifests, and a native binary in that tree",
+    "would cost every consumer for a tool only mod authors run. The bin resolves it when",
+    "it runs and names the remedy when it is missing."
+  ],
+  "bin": {
+    "neo-angband-mod-build": "bin/neo-angband-mod-build.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -35,6 +46,7 @@
   "files": [
     "dist",
     "src",
+    "bin",
     "!**/*.test.ts",
     "!**/*.test.js",
     "!**/*.test.js.map",
@@ -54,5 +66,8 @@
   },
   "scripts": {
     "build": "tsc"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

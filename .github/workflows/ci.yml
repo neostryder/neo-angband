@@ -34,11 +34,12 @@ jobs:
       - run: pnpm lint
       # Catch Vite/PWA build breaks on PRs, not just at deploy time.
       - run: pnpm --dir packages/web bundle
-      # The bundled mods' distributable form. A bundled mod works through Vite's
-      # glob whether or not it can be built into a folder mod's plugin.js, so
-      # nothing else here would notice a source that started importing the engine
-      # again - and that failure only appears in a player's install.
-      - run: pnpm --dir packages/web build-mod-plugins -- --check
+      # The plugin builder moved to packages/mod-sdk (it ships as the
+      # neo-angband-mod-build bin, so a mod repository can build itself), and its
+      # guarantees are proven against fixtures in packages/mod-sdk/src/mod-build.test.ts
+      # under `pnpm test` below - including the failure paths, which the old step over
+      # two correct mods could not exercise. So there is no separate build step here any
+      # more; each mod repository runs the builder over its own source in its own CI.
       # `pnpm test` excludes packages/borg: think.test.ts and foundation.test.ts
       # hang indefinitely (no output, no timeout), so without the exclusion this
       # step burns the whole job limit instead of failing. test:borg runs the two

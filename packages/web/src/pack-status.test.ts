@@ -15,6 +15,8 @@
  * in front of them.
  */
 
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { diskPackStatus } from "./pack";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks } from "./disk-packs";
@@ -40,15 +42,31 @@ function pack(id: string): DiskPack {
   };
 }
 
+/**
+ * Every directory under packages/web/mods/, read rather than listed.
+ *
+ * It was a hardcoded array, which meant adding or removing a mod folder silently changed
+ * what these tests measured while they went on passing. Reading the directory makes the
+ * count a measurement of the build instead of a memory of it.
+ */
+function bundledDirs(): string[] {
+  return readdirSync(join(import.meta.dirname, "..", "mods")).sort();
+}
+
 describe("diskPackStatus reports the folder count AND the bundled count", () => {
   it("gives a bundled count with no folder at all", () => {
     setDiskPacks(NO_DISK_PACKS);
     const s = diskPackStatus();
     expect(s.count).toBe(0);
-    /* The number the misleading message hid. Whatever the shipped set is, it is
-     * not empty - if it were, "0 bundled, 0 from your folder" would be honest
-     * and this whole fix pointless. */
-    expect(s.bundledCount).toBeGreaterThan(0);
+    /* NOT "greater than zero" any more, and the change is the point. The game bundles
+     * no shipping mod: in a release build this count is 0, permanently and correctly.
+     * The old assertion said "whatever the shipped set is, it is not empty" - a premise
+     * that has since died, and one that would have gone on passing here forever because
+     * vitest runs in DEV, where the demo mods make it non-zero.
+     *
+     * So what is pinned instead is AGREEMENT with the predicate that decides the set,
+     * which is the invariant that was always the real one. */
+    expect(s.bundledCount).toBe(bundledDirs().filter((id) => isShippedMod(id)).length);
   });
 
   it("counts exactly what the catalog lists, in either build mode", () => {
@@ -56,20 +74,20 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
     /* The invariant is AGREEMENT, not a fixed number: composeMods admits a
      * bundled directory iff isShippedMod does, so the count must use the same
      * predicate with the same default. isShippedMod's default is
-     * import.meta.env.DEV, so a release build lists 2 and a dev build lists 5 -
-     * pinning a number here would have passed only in release and, worse, would
-     * have hidden the bug this caught: the first version of the count called
-     * isShippedMod(id) meaning "release" while the catalog meant "current mode".
-     *
-     * Every directory under packages/web/mods/, so a new one has to be added
-     * here deliberately. neo-linoleum is NOT one any more - its converted packs
-     * moved to their own repository and it arrives through the installer. */
-    const dirs = ["qol", "bug-fixes", "demo-modtest", "demo-sandbox", "demo-trusted"];
+     * import.meta.env.DEV, so a dev build lists every demo and a release build lists
+     * none - pinning a number here would have hidden the bug this caught: the first
+     * version of the count called isShippedMod(id) meaning "release" while the catalog
+     * meant "current mode". */
+    const dirs = bundledDirs();
     const listed = dirs.filter((id) => isShippedMod(id));
     expect(diskPackStatus().bundledCount).toBe(listed.length);
-    /* And the release set really is the two shipped mods - the property the
-     * demo filter exists for. */
-    expect(dirs.filter((id) => isShippedMod(id, false))).toEqual(["qol", "bug-fixes"]);
+    /* And a RELEASE build offers NONE of them, because every remaining directory is a
+     * demo. That is the de-bundling stated as a measurement rather than as a document: a
+     * fresh install is Angband 4.2.6 and nothing else. If a real mod is ever bundled
+     * again this fails, which is the right moment to have to think about it. */
+    expect(dirs.filter((id) => isShippedMod(id, false))).toEqual([]);
+    /* Guards both lines above: an empty dirs list would satisfy them for free. */
+    expect(dirs.length).toBeGreaterThan(0);
   });
 
   it("keeps the two counts independent", () => {
@@ -99,7 +117,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
      * the folder count and NOT in the catalog, which is exactly why the bundled
      * count cannot be derived by subtracting one from the other. */
     setDiskPacks({
-      packs: [pack("bug-fixes")],
+      packs: [pack("demo-hooks")],
       problems: [],
       available: true,
       dir: "mods",
@@ -111,7 +129,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
     });
     const s = diskPackStatus();
     expect(s.count).toBe(1);
-    expect(s.problems.join(" ")).toContain("bug-fixes");
-    expect(s.bundledCount).toBeGreaterThan(0);
+    expect(s.problems.join(" ")).toContain("demo-hooks");
+    expect(s.bundledCount).toBe(bundledDirs().filter((id) => isShippedMod(id)).length);
   });
 });
