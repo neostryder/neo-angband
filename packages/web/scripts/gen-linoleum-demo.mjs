@@ -36,9 +36,18 @@
  * re-run: it skips a pack whose manifest.txt is already there (delete
  * packages/web/public/mods/neo-linoleum/ to force a rebuild). It never touches core's
  * public/tiles/ - it only writes under public/mods/.
+ *
+ * ATTRIBUTION. This script is the only thing that ever produces converted art, so
+ * it is what has to credit it. public/tiles/CREDITS.md covers the TILESHEETS - the
+ * form the game itself draws - and cutting a sheet into one PNG per tile is a
+ * second, different use of the same art, belonging to the neo-linoleum mod. So the
+ * credit is written HERE, into the output directory, beside the packs. Wherever the
+ * loose files go the credit goes with them, which a file back in public/tiles/
+ * could not promise: these bytes are gitignored and land in a Pages deploy only
+ * when someone passes --packs all.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,6 +113,67 @@ const selected =
 
 note(`building ${selected.length} pack(s): ${selected.map((p) => p.key).join(", ")}`);
 
+/**
+ * The attribution that travels with converted art (see ATTRIBUTION above).
+ *
+ * `present` is the pack keys actually on disk when this is written, so the file
+ * credits what is there rather than what the mod declares - a static list would
+ * claim Shockbolt in a default build that never converted it.
+ *
+ * Deliberately no email address: the author consented to being contactable, which
+ * is not consent to having his address published, and Angband's own docs carry
+ * none for him either.
+ */
+function creditsText(present) {
+  const rows = present.length > 0 ? present.map((k) => `- \`${k}/\``).join("\n") : "- (none built)";
+  return `# Converted tile packs - credits and licences
+
+The packs in this directory are **converted art**, not new art. Each is one PNG per
+tile, cut from the tilesheet of the tile set it is named for, by
+\`packages/web/scripts/gen-linoleum-demo.mjs\` in the Neo Angband repository. They are
+generated at build time and committed nowhere.
+
+They belong to the **neo-linoleum** mod: nothing here is drawn with no mod enabled,
+and the game's own graphics come from \`public/tiles/\` instead, as tilesheets. That
+directory's \`CREDITS.md\` is the credit for the tilesheets. This file is the credit for
+cutting them up, which is a separate use of the same art.
+
+Present in this build:
+
+${rows}
+
+## The art's terms are the source set's terms
+
+Converting does not change who owns a tile or what may be done with it, and **a
+conversion is a modification** - it cuts one sheet into hundreds of separate images,
+so a licence that permits redistribution but not modification does not permit a
+converted pack at all. Each pack carries whatever its source set carried, and the
+five sets' terms differ from each other; they are stated per set in
+\`public/tiles/CREDITS.md\`. Two that matter here:
+
+- **David Gervais' tiles** (\`gervais/\`) - Creative Commons Attribution 3.0, which
+  permits modification. \`public/tiles/CREDITS.md\` is the attribution.
+- **Shockbolt's tiles** (\`shockbolt-dark/\`, \`shockbolt-light/\`) - copyright (C)
+  Raymond "Shockbolt" Gaustadnes 2012. Angband's licence for this set grants no
+  right to modify it, so the conversion is **not** covered by that licence. It is
+  bundled under permission the author granted **Neo Angband specifically**, for use
+  both as the Angband tilesheet and as separate converted tiles, conditional on the
+  project remaining non-commercial. That permission is this project's and travels
+  with neither a fork nor a pack you extract from here. **If you want to use this
+  tileset in a project of your own, contact the author for permission.**
+
+## Packs you build yourself
+
+The same rule, and it is the reason this file exists rather than a blanket licence:
+convert your own copies freely for your own use, and check the source art's licence
+before you share one. State the art's licence in any pack you publish.
+
+The format, the engine and the converter are separate from the art and carry Neo
+Angband's own dual licence (GPL v2 or the Angband licence). See
+https://github.com/neostryder/neo-angband-mod-linoleum
+`;
+}
+
 for (const packConfig of selected) {
   const packRoot = join(outputRoot, packConfig.key);
   if (existsSync(join(packRoot, "manifest.txt"))) {
@@ -127,6 +197,17 @@ for (const packConfig of selected) {
   } catch (error) {
     skip(`${packConfig.key}: conversion failed - ${error.message}`);
   }
+}
+
+/* Written every run, after the loop, so it names the packs that are actually there
+ * - including ones an earlier run built and this one skipped as "already built". */
+const present = linoleum.ALL_PACKS.map((p) => p.key).filter((key) =>
+  existsSync(join(outputRoot, key, "manifest.txt")),
+);
+if (present.length > 0) {
+  mkdirSync(outputRoot, { recursive: true });
+  writeFileSync(join(outputRoot, "CREDITS.md"), creditsText(present), "utf8");
+  note(`wrote CREDITS.md for ${present.length} pack(s): ${present.join(", ")}`);
 }
 
 if (skips.length > 0 && strict) {
