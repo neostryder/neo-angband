@@ -24,7 +24,8 @@ import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angb
 import { isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import { activeModCode } from "./mod-code";
-import { modFaults, type ModProblem } from "./mod-problems";
+import { engineRefusal } from "./mod-engine";
+import { dedupeProblems, modFaults, type ModProblem } from "./mod-problems";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -176,7 +177,9 @@ export function diskPackStatus(): {
      *   r.problems         the pack READER: a manifest that will not validate, a
      *                      folder whose name disagrees with its id, a record file
      *                      that would not parse, a directory that would not open.
-     *   composedProblems() the COMPOSER: a ref no record answers to, a ref two
+     *   composedProblems() the ENGINE GATE (a mod written for a different build of
+     *                      the game, or an `engine` range that will not parse) and
+     *                      the COMPOSER: a ref no record answers to, a ref two
      *                      records both claim, a per-record op against a file with
      *                      no keyable identity, a whole-file replacement that
      *                      discarded core records - and now a pack that could not
@@ -190,14 +193,18 @@ export function diskPackStatus(): {
      *                      console.error - a channel a player does not have.
      *
      * Collecting a diagnosis nobody renders is the same as not collecting it, which
-     * is what four of these five amounted to. */
-    problems: [
+     * is what four of these five amounted to.
+     *
+     * DEDUPED, because the engine gate is deliberately enforced by more than one of
+     * them: a mod shipping records and a plugin is refused on both paths and both say
+     * so. See dedupeProblems. */
+    problems: dedupeProblems([
       ...r.problems,
       ...composedProblems(),
       ...shadowed,
       ...code.problems,
       ...modFaults(),
-    ],
+    ]),
     /* NOT faults: a mod that is off, or waiting for consent, is in the state the
      * player put it in. Kept separate so the manager can explain a plugin that is
      * enabled and still not running (awaiting consent) without calling it broken. */
@@ -253,6 +260,10 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
     const mod = mods.get(id);
     if (!mod) continue;
     const manifest = modManifest(mod.manifest);
+    /* A mod this build refuses composes nothing, so it can conflict with nothing.
+     * Listing its overlaps here would send the player looking for a load-order fix
+     * to a problem they do not have. */
+    if (engineRefusal(manifest)) continue;
     if (!hasFacet(manifest, "content")) continue; // nothing to compose
     packs.push({
       manifest,
@@ -373,6 +384,34 @@ export function activePackSetFrom(
   return packs;
 }
 
+/**
+ * The enabled mods this build refuses on version grounds, with the reason.
+ *
+ * OVER EVERY ENABLED MOD, whatever it contributes - not only the ones that would
+ * have reached the composer. A plugin-only or tiles-only mod has no records and so
+ * never gets as far as activePackSetFrom's facet check, and it is still a mod the
+ * player enabled and is owed an answer about. Running the gate here, ahead of the
+ * facet split, is what makes one refusal cover all three doors.
+ *
+ * Pure over its two inputs for the same reason activePackSetFrom is: the line that
+ * decides whether a mod loads should be assertable without a bundle.
+ */
+export function engineRefusalsFor(
+  mods: ReadonlyMap<string, { manifest: unknown; files: Record<string, unknown> }>,
+  enabledIds: readonly string[],
+): readonly ModProblem[] {
+  const out: ModProblem[] = [];
+  for (const id of enabledIds) {
+    const mod = mods.get(id);
+    /* An enabled id with no mod behind it is the manager's problem to report (the
+     * catalogue's "listed but not installed" line), not a version question. */
+    if (!mod) continue;
+    const refusal = engineRefusal(modManifest(mod.manifest));
+    if (refusal) out.push(refusal);
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ *
  * The composition, and WHEN it happens
  * ------------------------------------------------------------------ */
@@ -382,6 +421,8 @@ interface Composition {
   readonly packs: readonly LoadedPack[];
   readonly composed: ReturnType<typeof composeDroppingBroken>["composed"];
   readonly dropped: ReturnType<typeof composeDroppingBroken>["dropped"];
+  /** Mods held out of the set before composing, because this build is not theirs. */
+  readonly refused: readonly ModProblem[];
   /* The inputs this answer is FOR, so a later call with different inputs cannot be
    * served a stale one. See composition(). */
   readonly forReport: unknown;
@@ -435,7 +476,18 @@ function composition(): Composition {
   const key = enabledIds.join(",");
   if (memo && memo.forReport === report && memo.forEnabled === key) return memo;
 
-  const packs = activePackSetFrom(discoverMods(), enabledIds);
+  const mods = discoverMods();
+  /* THE ENGINE GATE, ahead of the composer. A mod written for a different build of
+   * the game is held out of the set entirely rather than composed and hoped for:
+   * its records were authored against record shapes and ids this build may no longer
+   * have, and a pack that half-applies is the failure mode with no good diagnosis.
+   * The refusal is carried out of here so the manager can say so on that mod's row. */
+  const refused = engineRefusalsFor(mods, enabledIds);
+  const refusedIds = new Set(refused.map((r) => r.id));
+  const packs = activePackSetFrom(
+    mods,
+    enabledIds.filter((id) => !refusedIds.has(id)),
+  );
   /* composeDroppingBroken, NOT composeContentPacks. `composeContentPacks` THROWS on
    * a class of mod mistake its own header says it reports: a `patches` ref whose
    * target does not exist, a duplicate record name, a missing dependency, a
@@ -445,7 +497,7 @@ function composition(): Composition {
    * clearing localStorage. Dropping the offender keeps the rule the rest of the mod
    * system already holds: one broken mod costs that mod, and the player is told. */
   const { composed, dropped } = composeDroppingBroken(packs);
-  memo = { packs, composed, dropped, forReport: report, forEnabled: key };
+  memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key };
   return memo;
 }
 
@@ -461,8 +513,9 @@ export function resetComposition(): void {
  * the same refusals and only one of them says which pack without punctuation.
  */
 function composedProblems(): readonly ModProblem[] {
-  const { composed, dropped } = composition();
+  const { composed, dropped, refused } = composition();
   return [
+    ...refused,
     ...composed.faults.map((f) => ({ id: f.packId, why: f.why })),
     /* A pack that could not be composed AT ALL. Distinguished in the wording,
      * because "this patch did nothing" and "none of this mod loaded" are very

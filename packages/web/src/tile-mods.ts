@@ -50,6 +50,7 @@ import {
   type AssetUrlResolver,
   type DiskPackReport,
 } from "./disk-packs";
+import { engineAllows } from "./mod-engine";
 import { isShippedMod, readEnabledModIds } from "./mod-store";
 import {
   subPackResolver,
@@ -116,6 +117,20 @@ function readModName(raw: unknown, id: string): string {
 }
 
 /**
+ * A manifest's top-level `engine` range, if it declares a readable one.
+ *
+ * TOP-LEVEL, and that distinction is the whole reason this is a named function: a
+ * tiles manifest carries `engine` TWICE with two unrelated meanings. At the root it
+ * is a semver range over the GAME's version; inside each `tilePacks` entry it is
+ * which renderer draws that pack ("tilesheet" or "linoleum"). Reaching for the wrong
+ * one would hand the version gate the string "linoleum".
+ */
+function readEngineRange(raw: unknown): string | undefined {
+  const e = (raw as { engine?: unknown } | null)?.engine;
+  return typeof e === "string" ? e : undefined;
+}
+
+/**
  * True for a manifest declaring the `tiles` FACET - its `shape`, or a `facets`
  * list containing it. Reads the raw JSON rather than a validated PackManifest
  * because tile discovery runs over the glob before normalisation, so it checks
@@ -150,6 +165,17 @@ export function enabledTileModes(input: {
     const raw = input.manifests.get(id);
     if (!raw) continue;
     if (!isTilesMod(raw)) continue;
+    /* The third door the engine gate has to cover. A tiles pack is bytes the
+     * renderer indexes by grafID and by target name, so one written for a build
+     * whose catalogue or naming has moved does not degrade gracefully - it draws
+     * the wrong thing, or nothing, with no error anywhere. Same gate, same wording,
+     * same single implementation as the content and code paths (mod-engine.ts);
+     * pack.ts's engineRefusalsFor is what tells the player, since it runs over
+     * every enabled mod regardless of what the mod contributes. */
+    const range = readEngineRange(raw);
+    if (!engineAllows({ id, ...(range === undefined ? {} : { engine: range }) })) {
+      continue;
+    }
     const modName = readModName(raw, id);
     for (const entry of readTilePacks(raw)) {
       const grafID = typeof entry.grafID === "number" ? entry.grafID : NaN;

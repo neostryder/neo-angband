@@ -23,12 +23,15 @@
  *      listing already said);
  *   2. the mod must be ENABLED - a disabled mod's code does not exist, which is
  *      the same standing rule as a disabled mod's patches;
- *   3. the manifest must declare the `plugin` FACET - `shape: "plugin"`, or a
+ *   3. this build must fall inside the manifest's `engine` range - the shared gate
+ *      every loading path uses (mod-engine.ts), asked here so a pack written for a
+ *      different game does not get its code run while its records are held back;
+ *   4. the manifest must declare the `plugin` FACET - `shape: "plugin"`, or a
  *      `facets` list containing it - so shipping code is a stated intent rather
  *      than a file that happened to be in the folder. A mod that contributes both
  *      records and code declares `"facets": ["content", "plugin"]`;
- *   4. the manifest's `modApi` must match this host's MOD_API_VERSION exactly;
- *   5. the player must have consented to every capability the manifest requests.
+ *   5. the manifest's `modApi` must match this host's MOD_API_VERSION exactly;
+ *   6. the player must have consented to every capability the manifest requests.
  *
  * Only then is the module imported, and only then is its default export shape
  * checked (mod-plugin.ts's validateModPlugin).
@@ -54,6 +57,7 @@
 
 import { hasFacet, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
+import { engineRefusal } from "./mod-engine";
 import type { ModProblem } from "./mod-problems";
 import {
   MOD_API_VERSION,
@@ -158,6 +162,22 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
 
     if (!opts.enabled(id)) {
       skipped.push({ id, why: "not enabled" });
+      continue;
+    }
+    /* THE ENGINE GATE, before the plugin's own ABI check and before any import.
+     * The two are different questions and both are asked here: `engine` is a range
+     * over the GAME's version that any pack may declare, `modApi` an exact integer
+     * the plugin's CODE was compiled against. A mod can pass either and fail the
+     * other. Same rule, same wording, same single implementation as the content and
+     * tiles paths use - mod-engine.ts - so three loaders cannot answer differently.
+     *
+     * Reported here as well as by the content path, rather than deferring to it: a
+     * plugin-only mod in a folder is a case the content path sees, but "some other
+     * reader will mention it" is not a property this loader can check, and the
+     * aggregator dedupes. */
+    const refusal = engineRefusal(pack.manifest);
+    if (refusal) {
+      problems.push({ id, why: refusal.why });
       continue;
     }
     if (!hasFacet(pack.manifest, "plugin")) {
