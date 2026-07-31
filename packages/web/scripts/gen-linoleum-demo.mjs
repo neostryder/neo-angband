@@ -1,24 +1,40 @@
 #!/usr/bin/env node
 /**
- * Build the demonstration Linoleum loose pack the bundled tiles mod declares.
+ * Build the Linoleum loose packs the bundled tiles mod declares.
  *
- * WHY THIS IS GENERATED AND NOT COMMITTED. A loose pack is one PNG per tile:
- * converting the 8x8 Original Tiles sheet (a 220 KiB image) yields ~1500 files
- * and ~2.3 MiB. Committing that many generated binaries to demonstrate a format
- * would be repository noise, and the pack is a pure function of art that is
- * already in the tree - packages/web/public/tiles/old/, the same tile set the
- * game draws with the tilesheet engine. So it is derived at build time instead,
- * from the game's OWN art, which is also the point of the demo: the same tiles,
- * drawn by the other engine, should look identical.
+ * WHY THESE ARE GENERATED AND NOT COMMITTED. A loose pack is one PNG per tile.
+ * Measured: the 8x8 Original set converts to 1499 files / 2.3 MiB, and the 64x64
+ * Shockbolt set to 1584 files / 15 MiB. Committing ~9000 generated binaries to
+ * demonstrate a format would be repository noise, and every pack is a pure
+ * function of art already in the tree - packages/web/public/tiles/ - so they are
+ * derived at build time instead, from the game's OWN art. That is also the point:
+ * the same tiles, drawn by the other engine, should look identical.
  *
- * Run automatically by the web package's `dev` and `bundle` scripts, and cheap
- * to re-run: it skips the work when the pack's manifest.txt is already there
- * (delete packages/web/public/mods/linoleum/ to force a rebuild).
+ * WHICH PACKS. The mod declares all six (grafID 101-106). This script builds a
+ * subset by default, because the packs it does not build are not free:
  *
- * Best-effort by design. If the converter is not built yet (`pnpm build`) or the
- * source art is missing, this warns and exits 0 rather than failing the build:
- * the tile mod's row then finds no pack and the game falls back to ASCII for
- * that row, exactly as a missing tilesheet does. It never touches core's
+ *   - DEFAULT (`original-tiles`): ~2.3 MiB. Cheap enough to sit in every dev
+ *     build and every Pages deploy.
+ *   - ALL SIX (`--packs all`, or NEO_LINOLEUM_PACKS=all): measured at 42 MiB
+ *     across 9124 files, in 9 seconds. The nine seconds are free; the 9124 files
+ *     are not - that is a real cost on a static host, thousands of tiny objects to
+ *     upload on every deploy. So it is opt-in rather than the default, and the
+ *     packs that are not built simply have no row to select. Use it when testing
+ *     the other five, and on the desktop build where the packs are local files.
+ *
+ * A pack that is not built is not a broken row: composeTileModes offers a
+ * declared pack, the engine finds no manifest.txt, and that row falls back to
+ * ASCII exactly as a missing tilesheet does. What used to make that dangerous was
+ * this script's silence - see NOISE below.
+ *
+ * NOISE. Every skip prints, and `--strict` turns skips into a non-zero exit, so a
+ * release build can refuse to ship art-less. Without --strict a missing converter
+ * or missing source art warns and exits 0, because a plain `pnpm dev` before the
+ * first `pnpm build` should not be a hard failure.
+ *
+ * Run automatically by the web package's `dev` and `bundle` scripts, and cheap to
+ * re-run: it skips a pack whose manifest.txt is already there (delete
+ * packages/web/public/mods/linoleum/ to force a rebuild). It never touches core's
  * public/tiles/ - it only writes under public/mods/.
  */
 
@@ -26,50 +42,94 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** The pack key to build, from @neo-angband/linoleum's ALL_PACKS table. */
-const PACK_KEY = "original-tiles";
-
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tilesRoot = join(webRoot, "public", "tiles");
 const outputRoot = join(webRoot, "public", "mods", "linoleum");
-const packRoot = join(outputRoot, PACK_KEY);
+
+/** The one pack cheap enough to build unconditionally (see WHICH PACKS). */
+const DEFAULT_PACK_KEYS = ["original-tiles"];
 
 function note(message) {
   console.log(`[linoleum-demo] ${message}`);
 }
 
-if (existsSync(join(packRoot, "manifest.txt"))) {
-  note(`already built: ${relative(webRoot, packRoot)}`);
-  process.exit(0);
+/**
+ * `--packs a,b` / `--packs all`, else NEO_LINOLEUM_PACKS, else the default.
+ * Returns null for "every pack in ALL_PACKS".
+ */
+function requestedKeys(argv, env) {
+  const flag = argv.indexOf("--packs");
+  const raw = flag >= 0 ? argv[flag + 1] : env.NEO_LINOLEUM_PACKS;
+  if (raw === undefined || raw === "") return DEFAULT_PACK_KEYS;
+  if (raw === "all") return null;
+  return raw
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+}
+
+const strict = process.argv.includes("--strict");
+const wanted = requestedKeys(process.argv, process.env);
+
+/** Report a skip; under --strict this is fatal. */
+const skips = [];
+function skip(message) {
+  note(`skipped - ${message}`);
+  skips.push(message);
 }
 
 let linoleum;
 try {
   linoleum = await import("@neo-angband/linoleum");
 } catch (error) {
-  note(`skipped - the converter is not built yet (run pnpm build): ${error.message}`);
-  process.exit(0);
+  /* Not a skip we can attribute to one pack, and under --strict a build that
+   * cannot even load the converter has nothing to gate. */
+  note(`stopped - the converter is not built yet (run pnpm build): ${error.message}`);
+  process.exit(strict ? 1 : 0);
 }
 
-const packConfig = linoleum.ALL_PACKS.find((pack) => pack.key === PACK_KEY);
-if (packConfig === undefined) {
-  note(`skipped - no pack named '${PACK_KEY}' in ALL_PACKS`);
-  process.exit(0);
+const selected =
+  wanted === null
+    ? linoleum.ALL_PACKS
+    : wanted.map((key) => {
+        const pack = linoleum.ALL_PACKS.find((p) => p.key === key);
+        if (pack === undefined) {
+          /* A typo'd key is a build-script bug, not a missing asset: fail loudly
+           * whatever --strict says, rather than silently building nothing. */
+          note(`FATAL - no pack named '${key}' in ALL_PACKS`);
+          process.exit(1);
+        }
+        return pack;
+      });
+
+note(`building ${selected.length} pack(s): ${selected.map((p) => p.key).join(", ")}`);
+
+for (const packConfig of selected) {
+  const packRoot = join(outputRoot, packConfig.key);
+  if (existsSync(join(packRoot, "manifest.txt"))) {
+    note(`already built: ${relative(webRoot, packRoot)}`);
+    continue;
+  }
+
+  const sourceDir = join(tilesRoot, packConfig.sourceDirectory);
+  if (!existsSync(join(sourceDir, packConfig.imageFile))) {
+    skip(`${packConfig.key}: source art missing (${relative(webRoot, sourceDir)})`);
+    continue;
+  }
+
+  try {
+    mkdirSync(outputRoot, { recursive: true });
+    const result = linoleum.buildPackExport(packConfig, tilesRoot, outputRoot);
+    note(
+      `built ${result.displayName} from ${relative(webRoot, sourceDir)} -> ` +
+        `${relative(webRoot, result.packRoot)} (${result.exactSelectorCount} target rules)`,
+    );
+  } catch (error) {
+    skip(`${packConfig.key}: conversion failed - ${error.message}`);
+  }
 }
 
-const sourceDir = join(tilesRoot, packConfig.sourceDirectory);
-if (!existsSync(join(sourceDir, packConfig.imageFile))) {
-  note(`skipped - source art missing: ${relative(webRoot, sourceDir)}`);
-  process.exit(0);
-}
-
-try {
-  mkdirSync(outputRoot, { recursive: true });
-  const result = linoleum.buildPackExport(packConfig, tilesRoot, outputRoot);
-  note(
-    `built ${result.displayName} from ${relative(webRoot, sourceDir)} -> ` +
-      `${relative(webRoot, result.packRoot)} (${result.exactSelectorCount} target rules)`,
-  );
-} catch (error) {
-  note(`skipped - conversion failed: ${error.message}`);
+if (skips.length > 0 && strict) {
+  note(`FAILING: --strict and ${skips.length} pack(s) did not build`);
+  process.exit(1);
 }

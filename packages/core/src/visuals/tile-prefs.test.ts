@@ -235,11 +235,7 @@ describe("parseTilePrefs: misses and other packs", () => {
   });
 
   it("parses the other three bundled packs without error", () => {
-    for (const [dir, graf, flvr] of [
-      ["adam-bolt", "graf-new.prf", "flvr-new.prf"],
-      ["gervais", "graf-dvg.prf", "flvr-dvg.prf"],
-      ["nomad", "graf-nmd.prf", "flvr-nmd.prf"],
-    ] as const) {
+    for (const [dir, graf, flvr] of OTHER_PACKS) {
       const map = new TileMap();
       parseTilePrefsInto(map, readTiles(`${dir}/${graf}`), deps);
       parseTilePrefsInto(map, readTiles(`${dir}/${flvr}`), deps);
@@ -247,6 +243,48 @@ describe("parseTilePrefs: misses and other packs", () => {
       expect(
         tileForFeature(map, FEAT["FLOOR"] as number, LIGHTING.LOS),
       ).not.toBeNull();
+    }
+  });
+});
+
+/** The bundled packs other than "old", which oldMap above already covers. */
+const OTHER_PACKS = [
+  ["adam-bolt", "graf-new.prf", "flvr-new.prf"],
+  ["gervais", "graf-dvg.prf", "flvr-dvg.prf"],
+  ["nomad", "graf-nmd.prf", "flvr-nmd.prf"],
+] as const;
+
+/**
+ * The PLAYER has a tile, and it lives in the monster table at race 0.
+ *
+ * Every graf-*.prf carries one unconditional `monster:<player>` line (old/
+ * graf-xxx.prf L927, and its equivalent in each of the others). `<player>` is
+ * r_info[0], the same slot grid_data_as_text's is_player branch reads the '@'
+ * from - so a player tile is an ordinary tileForMonster(map, 0) lookup and needs
+ * no separate player-tile path.
+ *
+ * This is here because the port resolved that slot correctly for years and then
+ * drew a text '@' on top of the art anyway: the renderer's player draw site
+ * passed no tile. The bug was one call site, not the mapping - so what is worth
+ * pinning is that ridx 0 IS mapped in every pack the game ships, which is the
+ * fact that makes the missing call a defect rather than a design choice.
+ */
+describe("parseTilePrefs: the player (monster:<player> = race 0)", () => {
+  it("maps race 0 in the Original pack", () => {
+    /* graf-xxx.prf L927: monster:<player>:0x8C:0x80 */
+    expect(tileForMonster(oldMap, 0)).toEqual({ attr: 0x8c, char: 0x80 });
+  });
+
+  it("maps race 0 in every other bundled pack too", () => {
+    for (const [dir, graf, flvr] of OTHER_PACKS) {
+      const map = new TileMap();
+      parseTilePrefsInto(map, readTiles(`${dir}/${graf}`), deps);
+      parseTilePrefsInto(map, readTiles(`${dir}/${flvr}`), deps);
+      const tile = tileForMonster(map, 0);
+      expect(tile, `${dir} has no player tile`).not.toBeNull();
+      /* And it is a TILE, not a re-glyphed '@': the 0x80 bit is what makes the
+       * front end blit art instead of drawing a character. */
+      expect(tile!.attr & 0x80, `${dir}'s player tile lacks the 0x80 bit`).toBe(0x80);
     }
   });
 });

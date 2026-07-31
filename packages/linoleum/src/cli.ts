@@ -55,11 +55,14 @@ const LICENSE_NOTES: Record<string, readonly string[]> = {
 };
 
 const SHOCKBOLT_WARNING: readonly string[] = [
-  "WARNING: Shockbolt's 64x64 tiles are restrictively licensed",
-  "(copyright (C) Raymond Gaustadnes 2012; see reference/docs/copying.rst).",
-  "Modification of the tileset and use or distribution outside Angband are",
-  "NOT permitted. The converted pack is derived from that tileset, so it is",
-  "for PERSONAL USE ONLY and must not be redistributed.",
+  "Shockbolt's 64x64 tiles are copyright (C) Raymond Gaustadnes 2012 and are",
+  "bespoke-licensed (see reference/docs/copying.rst). He granted Neo Angband",
+  "free use of them, as the Angband tilesheet and as separate converted tiles,",
+  "ON THE CONDITION that the project does not profit from sales or other",
+  "income; a game that aims for profit needs a USD 250 licence from him.",
+  "That permission is Neo Angband's and does not travel to your project: if",
+  "you want to use this tileset in your own project, contact the author.",
+  "This converted pack is DERIVED from his art and carries the same terms.",
 ];
 
 interface CliArguments {
@@ -143,7 +146,8 @@ function printLicenseNotes(packKeys: readonly string[]): void {
       console.log("");
     }
   }
-  console.log("Converted packs are not shipped with the port; convert locally.");
+  console.log("Each converted pack is a DERIVATIVE of its source art and carries");
+  console.log("that art's terms. Check them before sharing a pack you built.");
   console.log("");
 }
 

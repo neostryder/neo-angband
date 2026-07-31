@@ -41,12 +41,21 @@
  * are one code path for both engines, and the only engine-specific step is
  * turning a slot back into a picture at blit time (drawTile below).
  *
- * KNOWN LIMITS, both shared with the tilesheet engine so the two agree:
+ * KNOWN LIMITS, all shared with the tilesheet engine so the two agree:
  * - Conditional rules (a legacy `?:` expression, carried in a selector as
- *   `:when:<expr>`) are not evaluated and are skipped. In the four packs the
- *   game ships, every conditional line is an xtra-*.prf `monster:<player>`
- *   remap, and `<player>` is the placeholder race at index 0, which the map
- *   render never draws - so neither engine shows those tiles.
+ *   `:when:<expr>`) are not evaluated and are skipped. In the packs the game
+ *   ships, every conditional line is an xtra-*.prf `monster:<player>` remap
+ *   keyed on $CLASS and $RACE, so a Gnome Druid currently draws the same player
+ *   tile as a Human Warrior instead of its own.
+ *
+ *   This bullet used to say `<player>` was "the placeholder race at index 0,
+ *   which the map render never draws". That was FALSE, and it was the kind of
+ *   false that stops the bug being found: race 0 is exactly what the map render
+ *   draws the player from (grid_data_as_text's is_player branch, ported in
+ *   core/src/visuals/map-text.ts playerGlyph), and the UNconditional
+ *   `monster:<player>` line in every graf-*.prf is a real player tile that both
+ *   engines resolve. What was actually missing was the caller: the player draw
+ *   site passed no tile at all. Fixed; only the $CLASS/$RACE variants remain.
  * - `family` effect metadata (glow/tint/pulse) is parsed but not applied; a
  *   family draws its base asset, which is what the tilesheet shows.
  * - Double-height (overdraw) tiles are not drawn above their cell by either

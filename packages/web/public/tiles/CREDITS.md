@@ -1,18 +1,18 @@
 # Bundled tile packs - credits and licences
 
-Neo Angband bundles four of upstream Angband's freely-licensed tile packs so
-the web shell can render in graphics mode out of the box. Each pack keeps its
-upstream `.png` atlas and its pref files (`graf-*.prf` the attr/char -> tile
-map, `flvr-*.prf` the flavour map, `xtra-*.prf` the extra/overdraw map), copied
-verbatim from Angband 4.2.6 `lib/tiles/`.
+Neo Angband bundles all five of upstream Angband's tile packs - every graphics
+mode in `lib/tiles/list.txt` - so the game can render in graphics mode out of the
+box. Each pack keeps its upstream `.png` atlas and its pref files (`graf-*.prf`
+the attr/char -> tile map, `flvr-*.prf` the flavour map, `xtra-*.prf` the
+extra/overdraw map), copied verbatim from Angband 4.2.6 `lib/tiles/`.
 
-These four packs are CORE content, like upstream: `lib/tiles/list.txt` is game
-data parsed by `grafmode.c`, and each frontend builds its Graphics menu straight
-from that catalog (`main-win.c:2897-2905`). They are offered with no mod enabled
-and no mod is needed for them. A `tiles`-shape mod can add a tile set of its own
-or re-skin one of these, and only those rows are tagged with the mod's name in
-the Graphics screen. ASCII is always the default; a tile pack is opt-in (game
-menu -> Graphics, or the `?tiles=<url>&graf=<id>` URL override).
+These packs are CORE content, like upstream: `lib/tiles/list.txt` is game data
+parsed by `grafmode.c`, and each frontend builds its Graphics menu straight from
+that catalog (`main-win.c:2897-2905`). They are offered with no mod enabled and no
+mod is needed for them. A `tiles`-shape mod can add a tile set of its own or
+re-skin one of these, and only those rows are tagged with the mod's name in the
+Graphics screen. ASCII is always the default; a tile pack is opt-in (game menu ->
+Graphics, or the `?tiles=<url>&graf=<id>` URL override).
 
 ## Packs and their licences
 
@@ -36,34 +36,47 @@ menu -> Graphics, or the `?tiles=<url>&graf=<id>` URL override).
   distributed under the project's standard GNU General Public License,
   version 2, or the Angband licence.
 
-## Not bundled, pending the author's answer
+- **Shockbolt's tiles** (`shockbolt/`, 64x64/128x64) - by Raymond "Shockbolt"
+  Gaustadnes, copyright (C) 2012. Catalogued in `lib/tiles/list.txt` as graphics
+  modes 5 (Dark) and 6 (Light). Angband's own statement, from
+  `docs/copying.rst`, grants permission to use and distribute the tileset with
+  in-development and released versions of Angband as long as no fee is charged
+  for it, and withholds permission to modify it, to incorporate tiles drawn for
+  ToME, or to use or distribute it with other games or projects without the
+  author's explicit permission - non-commercial projects may be granted that;
+  commercial use needs a non-exclusive licence from the author.
 
-- **Shockbolt's tiles** (64x64/128x64, by Raymond "Shockbolt" Gaustadnes,
-  copyright (C) 2012) are part of Angband 4.2.6 — `lib/tiles/shockbolt/`,
-  catalogued in `lib/tiles/list.txt` as graphics modes 5 (Dark) and 6 (Light).
-  They are **not bundled here**, and that is our own caution rather than
-  anything his licence says about this port. His licence *grants* — quoting
-  `docs/copying.rst` — permission to "use the tileset with in-development and
-  released versions of Angband" and to "distribute and make copies of the
-  tileset with in-development and released versions of Angband, as long as no
-  fee is charged for it". It *withholds* modification without permission, tiles
-  drawn for ToME, and "use or distribute the tileset with other games or
-  projects" without explicit permission — non-commercial projects may be
-  granted it; commercial use needs a non-exclusive licence from the author.
+  **This project has that permission.** Raymond granted it directly, in
+  correspondence dated 2026-07-30: free use of the tiles both as the tilesheet
+  made for Angband and as separate individual tiles (which is what the Linoleum
+  loose-pack conversion produces, and is a *modification* of the tileset, so it
+  needed saying explicitly). The condition he set is that the project must not
+  plan to profit from sales or other income; using the tiles in a game that aims
+  for profit is a one-time USD 250 licence from him instead.
 
-  So the grant already covers Angband, and the only real question is one we
-  cannot answer for ourselves: **is a faithful re-implementation of Angband
-  4.2.6 "Angband", or is it "another project"?** Only Raymond can say. Until he
-  has, we take the conservative reading — excluded — because guessing "we count
-  as Angband" would be helping ourselves to someone else's work. Two things
-  follow whatever he answers: converting his sheet to a Linoleum loose pack is a
-  *modification*, which needs its own permission; and anything gated behind a
-  paid RPGM Tools membership is commercial use, which needs a purchased licence
-  rather than permission.
+  **If you want to use this tileset in a project of your own, contact Raymond
+  Gaustadnes for permission.** He asked that this be stated here, and the request
+  is reasonable on its face: our permission is ours, not something this
+  repository can pass along to you. Fork this project and the tiles do not come
+  with a licence - only the art's own terms above apply, and the grant above was
+  given to this project on the strength of its being free.
 
-  A user who owns the Shockbolt pack can point the game at their own copy with
-  the `?tiles=<url>&graf=5` (Dark) or `&graf=6` (Light) URL override, and can
-  convert their own copy for their own use. That is their use of art they hold,
-  not redistribution by us.
+## Conditions that ride along with this art
 
-Sources: Angband 4.2.6 `docs/copying.rst` and `docs/thanks.rst`.
+These are not formalities, and they are the reason this section is longer than
+the others:
+
+- **Neo Angband must stay free of sales and other income to keep using
+  Shockbolt's tiles for free.** Anything gated behind a paid RPGM Tools
+  membership, or any release that charges for the game, is commercial use and
+  needs a purchased licence from Raymond first.
+- **A converted Linoleum pack is derived from his art** and carries the same
+  terms as the sheet it came from. The converter prints those terms when it
+  builds a Shockbolt pack.
+- **The other packs' terms differ from each other** - Adam Bolt's are usable for
+  any purpose, David Gervais' require CC-BY attribution (this file is that
+  attribution), and the Original and Nomad sets are under Angband's dual licence.
+  Do not treat "bundled with Neo Angband" as one licence.
+
+Sources: Angband 4.2.6 `docs/copying.rst` and `docs/thanks.rst`, plus the
+author's own grant to this project as described above.

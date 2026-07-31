@@ -12,6 +12,7 @@ import {
   rehydrateSave,
 } from "./save-blocks";
 import type { SaveManifest } from "./save-blocks";
+import { ENGINE_VERSION } from "../version";
 
 /* A manifest whose save was produced by core + a "frost" mod at 1.2.0. */
 const manifest: SaveManifest = {
@@ -110,7 +111,11 @@ describe("advanceModNoscore (one-way ratchet)", () => {
 describe("coreOnlyManifest", () => {
   it("is core-as-pack-zero and deterministic", () => {
     const m = coreOnlyManifest();
-    expect(m.packs).toEqual([{ id: "core", version: "0.1.0" }]);
+    /* ENGINE_VERSION, not a literal. The literal was the bug: this assertion
+     * used to hardcode "0.1.0" and so agreed with a CORE_PACK_VERSION that had
+     * silently fallen a whole version line behind the engine. Pinning the
+     * relationship instead of the value is what makes the drift impossible. */
+    expect(m.packs).toEqual([{ id: "core", version: ENGINE_VERSION }]);
     expect(m.loadOrder).toEqual(["core"]);
     expect(m.determinism).toBe("deterministic");
     expect(m.modNoscore).toBe(false);

@@ -6,14 +6,46 @@
   "engine": "4.2.x",
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "An alternative tile engine: a much easier way to build your own tile set, plus tile tricks a fixed sheet cannot do. The game's own graphics do NOT come from here - the tile sets Angband ships (Original, Adam Bolt, David Gervais, Nomad) are core content and appear in the Graphics screen with no mod enabled, exactly as upstream, drawn by the classic tilesheet engine. What this mod adds is a second engine and the Linoleum loose-pack format it draws: a directory of individual PNGs addressed by readable target maps (feat/trap/monster/object/flavour by name) instead of one tilesheet plus pixel coordinates, so a set can be edited one file at a time. The format also carries variant POOLS - one symbol, creature or item drawing from several tiles instead of always the same one, chosen by map position so it stays identical on every replay of a seed - and families for shared effect metadata. Enabling this adds one row to the Graphics screen, 'Original Tiles (Linoleum)': the game's own 8x8 art converted to a loose pack at build time and drawn by the loose-pack engine, so you can see the two engines side by side on identical tiles. Build a pack of your own with the converter in the main repository - it converts the six tilesets Angband ships, and the format is plain text plus PNGs, so a hand-authored pack works just as well (docs/LINOLEUM.md) - then point a tilePacks entry at it. Packs you build are yours, and none are redistributed with the game; converting a set is a MODIFICATION of its art, so check its licence before sharing one. Fully removable: disable it and the game's own tile sets are untouched.",
-  "dependencies": { "core": "*" },
+  "description": "An alternative tile engine: a much easier way to build your own tile set, plus tile tricks a fixed sheet cannot do. The game's own graphics do NOT come from here - all five tile sets Angband ships (Original, Adam Bolt, David Gervais, Nomad, and Shockbolt in its Dark and Light modes) are core content and appear in the Graphics screen with no mod enabled, exactly as upstream, drawn by the classic tilesheet engine. What this mod adds is a SECOND engine and the Linoleum loose-pack format it draws: a directory of individual PNGs addressed by readable target maps (feat/trap/monster/object/flavour by name) instead of one tilesheet plus pixel coordinates, so a set can be edited one file at a time. The format also carries variant POOLS - one symbol, creature or item drawing from several tiles instead of always the same one, chosen by map position so it stays identical on every replay of a seed - and families for shared effect metadata. Enabling this adds six rows to the Graphics screen, one per upstream tile set converted to a loose pack, so you can see the two engines side by side on identical art. Build a pack of your own with the converter in the main repository - the format is plain text plus PNGs, so a hand-authored pack works just as well (docs/LINOLEUM.md) - then point a tilePacks entry at it. Converting a set is a MODIFICATION of its art: the Shockbolt packs are shipped under permission granted to Neo Angband specifically, conditional on the project not profiting, so check a set's licence before sharing a pack you built from it. Fully removable: disable it and the game's own tile sets are untouched.",
+  "dependencies": {
+    "core": "*"
+  },
   "tilePacks": [
     {
       "grafID": 101,
       "engine": "linoleum",
       "menuname": "Original Tiles (Linoleum)",
       "path": "original-tiles"
+    },
+    {
+      "grafID": 102,
+      "engine": "linoleum",
+      "menuname": "Adam Bolt's tiles (Linoleum)",
+      "path": "adam-bolt"
+    },
+    {
+      "grafID": 103,
+      "engine": "linoleum",
+      "menuname": "David Gervais' tiles (Linoleum)",
+      "path": "gervais"
+    },
+    {
+      "grafID": 104,
+      "engine": "linoleum",
+      "menuname": "Nomad's tiles (Linoleum)",
+      "path": "nomad"
+    },
+    {
+      "grafID": 105,
+      "engine": "linoleum",
+      "menuname": "Shockbolt Dark (Linoleum)",
+      "path": "shockbolt-dark"
+    },
+    {
+      "grafID": 106,
+      "engine": "linoleum",
+      "menuname": "Shockbolt Light (Linoleum)",
+      "path": "shockbolt-light"
     }
   ]
 }

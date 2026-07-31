@@ -8,10 +8,12 @@ import {
   COLOUR_WHITE,
   COLOUR_L_WHITE,
 } from "@neo-angband/core";
+import { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
 import {
   parseNewsLine,
   showTitleScreen,
   titleKeyChoice,
+  titleLines,
   titleRows,
   titleRowSpans,
 } from "./news";
@@ -147,53 +149,64 @@ describe("title screen keys (main-win.c File menu)", () => {
  * Both are asserted against the reference file itself rather than against news.ts's
  * private NEWS copy, which also pins that copy as verbatim.
  */
-describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", () => {
-  const NEWS_TXT = readFileSync(
-    new URL("../../../reference/lib/screens/news.txt", import.meta.url),
-    "utf8",
-  ).split(/\r?\n/);
+const NEWS_TXT = readFileSync(
+  new URL("../../../reference/lib/screens/news.txt", import.meta.url),
+  "utf8",
+).split(/\r?\n/);
 
-  /** Drop the {colour} markup: a tag occupies NO columns (parseNewsLine). */
-  const strip = (s: string): string => s.replace(/\{[^}]*\}/gu, "");
+/** Drop the {colour} markup: a tag occupies NO columns (parseNewsLine). */
+const strip = (s: string): string => s.replace(/\{[^}]*\}/gu, "");
 
-  /** Per-row colour+glyph, resolved the way showTitleScreen paints it. */
-  function renderTitle(): { ch: string; fg: string }[][] {
-    const cols = 80;
-    const rows = 24;
-    const grid: { ch: string; fg: string }[][] = Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => ({ ch: " ", fg: "" })),
-    );
-    const term = {
-      size: () => ({ cols, rows }),
-      clear: () => {
-        for (const row of grid) for (let x = 0; x < cols; x++) row[x] = { ch: " ", fg: "" };
-      },
-      print: (x: number, y: number, text: string, fg: string) => {
-        for (let i = 0; i < text.length && x + i < cols; i++) {
-          grid[y]![x + i] = { ch: text[i] ?? " ", fg };
-        }
-      },
-      prt: () => undefined,
-      onCellTap: () => undefined,
-      setCursor: () => undefined,
-    };
-    const listeners: ((ev: Event) => void)[] = [];
-    (globalThis as { window?: unknown }).window = {
-      addEventListener: (_t: string, fn: (ev: Event) => void) => listeners.push(fn),
-      removeEventListener: () => undefined,
-    };
-    try {
-      void showTitleScreen(term as unknown as Parameters<typeof showTitleScreen>[0], {
-        canLoad: true,
-        canOpen: true,
-        canQuit: true,
-      });
-    } finally {
-      delete (globalThis as { window?: unknown }).window;
-    }
-    return grid;
+/**
+ * Per-row colour+glyph, resolved the way showTitleScreen paints it. At module
+ * scope because two suites need it: the 'Neo' overlay's clearance checks and the
+ * credit block's placement checks.
+ */
+function renderTitle(): { ch: string; fg: string }[][] {
+  const cols = 80;
+  const rows = 24;
+  const grid: { ch: string; fg: string }[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ ch: " ", fg: "" })),
+  );
+  const term = {
+    size: () => ({ cols, rows }),
+    clear: () => {
+      for (const row of grid) for (let x = 0; x < cols; x++) row[x] = { ch: " ", fg: "" };
+    },
+    print: (x: number, y: number, text: string, fg: string) => {
+      for (let i = 0; i < text.length && x + i < cols; i++) {
+        grid[y]![x + i] = { ch: text[i] ?? " ", fg };
+      }
+    },
+    prt: () => undefined,
+    onCellTap: () => undefined,
+    setCursor: () => undefined,
+  };
+  const listeners: ((ev: Event) => void)[] = [];
+  (globalThis as { window?: unknown }).window = {
+    addEventListener: (_t: string, fn: (ev: Event) => void) => listeners.push(fn),
+    removeEventListener: () => undefined,
+  };
+  try {
+    void showTitleScreen(term as unknown as Parameters<typeof showTitleScreen>[0], {
+      canLoad: true,
+      canOpen: true,
+      canQuit: true,
+    });
+  } finally {
+    delete (globalThis as { window?: unknown }).window;
   }
+  return grid;
+}
 
+/** One rendered row as plain text, trailing blanks trimmed. */
+const rowText = (grid: { ch: string }[][], y: number): string =>
+  (grid[y] ?? [])
+    .map((c) => c.ch)
+    .join("")
+    .replace(/\s+$/u, "");
+
+describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", () => {
   const RED = colorToCss(COLOUR_RED);
 
   it("paints over NO mountain caret, counting the art's spaces too", () => {
@@ -284,5 +297,83 @@ describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", 
   it("still starts at row 0 (row 1 collides once the art is five rows tall)", () => {
     const grid = renderTitle();
     expect(grid[0]!.some((c) => c.fg === RED)).toBe(true);
+  });
+});
+
+/**
+ * Whose game the title screen says this is.
+ *
+ * news.txt's `$VERSION` slot used to show Angband's release number, under art
+ * that reads "Neo Angband" - so the screen named the wrong version of the wrong
+ * program, and the port's own credit sat at the very foot of the screen where it
+ * read as a footnote to Angband's links. Both moved: the port's version takes the
+ * slot beside the title, its credit sits directly under the mountain scene, and
+ * Angband's release is credited in grey down in the link block.
+ *
+ * The constraint that makes this breakable is the ROW BUDGET. Upstream's splash
+ * prompt is pinned to row 23 on an 80x24 terminal (main-win.c:5476), news.txt is
+ * 22 rows, and inserting the port credit makes 23 - exactly full. A second
+ * inserted row would push the help line onto the prompt, which is why Angband's
+ * credit takes over news.txt's blank spacer instead of being inserted.
+ */
+describe("title screen credits (whose version, and where)", () => {
+  const SLATE = colorToCss(colorTextToAttr("slate"));
+
+  it("shows the PORT's version in news.txt's $VERSION slot, not Angband's", () => {
+    const slot = titleLines().find((l) => l.markup.includes(ENGINE_VERSION));
+    expect(slot, `no line carries ${ENGINE_VERSION}`).toBeDefined();
+    /* The regression this pins: the slot showing 4.2.6 under a "Neo Angband"
+     * title. It must be the port's number there and nowhere near Angband's. */
+    expect(strip(slot!.markup)).not.toContain(PARITY_BASELINE);
+    expect(slot!.markup).not.toContain("$VERSION");
+  });
+
+  it("puts the port's credit directly under the mountain scene's ground ridge", () => {
+    const lines = titleLines();
+    /* The ridge is the last row with mountain carets; the credit is the next. */
+    const ridge = lines.findLastIndex((l) => strip(l.markup).includes("^"));
+    const credit = lines.findIndex((l) => l.markup.includes("neostryder"));
+    expect(credit).toBe(ridge + 1);
+    expect(lines[credit]!.centred).toBe(true);
+  });
+
+  it("credits Angband's release in grey, down in the link block", () => {
+    const lines = titleLines();
+    const idx = lines.findIndex((l) => l.markup.includes(PARITY_BASELINE));
+    expect(idx).toBeGreaterThan(lines.findIndex((l) => l.markup.includes("rephial.org")));
+    expect(lines[idx]!.markup).toContain("{slate}");
+    const grid = renderTitle();
+    expect(rowText(grid, idx)).toContain(`Angband ${PARITY_BASELINE}`);
+    expect(grid[idx]!.find((c) => c.ch !== " ")!.fg).toBe(SLATE);
+  });
+
+  it("keeps the whole screen inside the row budget, above upstream's prompt row", () => {
+    /* 23 painted rows (0-22), prompt at 23. One more line anywhere above and the
+     * help row lands under the prompt - the failure this exists to catch. */
+    const lines = titleLines();
+    expect(lines.length).toBe(23);
+    const grid = renderTitle();
+    expect(rowText(grid, 22)).toContain("For help press");
+    expect(rowText(grid, 23)).toContain("(N)ew game");
+  });
+
+  it("moves the quote down a row rather than painting over it", () => {
+    /* The insert shifts everything below the ridge; the quote must survive whole,
+     * one row lower than news.txt has it. */
+    const quote = NEWS_TXT.findIndex((l) => l.includes("When the world is old"));
+    const grid = renderTitle();
+    expect(rowText(grid, quote)).not.toContain("When the world is old");
+    expect(rowText(grid, quote + 1)).toContain("When the world is old");
+  });
+
+  it("re-centres only the two lines the port adds", () => {
+    /* news.txt's rows carry their centring as leading spaces; re-centring one
+     * would shift it. Only the added lines, which have no padding, are centred. */
+    const centred = titleLines().filter((l) => l.centred);
+    expect(centred).toHaveLength(2);
+    expect(centred.map((l) => strip(l.markup))).toEqual([
+      "A port by neostryder / RPGM Tools",
+      `Based on Angband ${PARITY_BASELINE} by the Angband developers`,
+    ]);
   });
 });

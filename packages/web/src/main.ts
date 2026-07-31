@@ -573,6 +573,12 @@ const BIRTH_RNG_KEY = "neo-angband-birth-rng";
 // already-made choice (New/Switch/resume-a-slot) set this one-shot flag so the
 // title is not shown again on that continuation reload.
 const SKIP_TITLE_KEY = "neo-angband-skip-title";
+// One-shot: "the reload that just happened enabled a tile mod, so open the
+// Graphics screen when the game is back". A tiles mod's rows are composed at
+// boot, which makes enabling one correctly invisible until the player goes
+// looking - and a player who does not go looking concludes the mod is broken.
+// Set by the mod manager's apply-and-reload, consumed once at boot.
+const SHOW_GRAPHICS_KEY = "neo-angband-show-graphics";
 interface StoredBirth {
   raceName: string;
   className: string;
@@ -5131,12 +5137,13 @@ async function openModManager(): Promise<void> {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
       game.manifest.modNoscore = advanceModNoscore(game.manifest.modNoscore, mod.affectsGameplay);
     },
-    requestReload: () => {
+    requestReload: (opts) => {
       try {
         autosave(true); // keep the live hero before the page re-composes
         // Applying mods mid-game is a continuation, not a genuine launch: skip
         // the title and resume the same character once the page re-composes.
         sessionStorage.setItem(SKIP_TITLE_KEY, "1");
+        if (opts?.showGraphics) sessionStorage.setItem(SHOW_GRAPHICS_KEY, "1");
       } catch {
         /* best-effort */
       }
@@ -6156,14 +6163,34 @@ function doAnimation(): void {
 }
 
 /**
- * The player's own map glyph. Faithful to grid_data_as_text's g->is_player
- * branch (ui-map.c L289-331): both the colour AND the character come from the
- * x_attr table's race-0 slot ("<player>" in monster.txt), so a pref file or the
- * glyph picker can re-map the '@'. hp_changes_color (the default, normal: true)
- * then recolours by HP decile - white at 90-100%, yellow 70-80%, orange 50-60%,
- * light-red 30-40%, red 0-20%.
+ * The player's own map glyph, and its TILE when a tile set supplies one.
+ *
+ * Faithful to grid_data_as_text's g->is_player branch (ui-map.c L289-331): both
+ * the colour AND the character come from the x_attr table's race-0 slot
+ * ("<player>" in monster.txt), so a pref file or the glyph picker can re-map the
+ * '@'. hp_changes_color (the default, normal: true) then recolours by HP decile -
+ * white at 90-100%, yellow 70-80%, orange 50-60%, light-red 30-40%, red 0-20%.
+ *
+ * THE TILE WAS MISSING, and the reason is worth keeping. Every tile set the game
+ * ships defines the player: `monster:<player>:0x8C:0x80` in graf-xxx.prf L927 and
+ * its equivalent in each of the others. playerGlyph already handles the tile case
+ * correctly - it is why hp_changes_color is skipped when the slot holds a tile
+ * code (upstream's `!(a & 0x80)`) - so the port read the right slot, preserved
+ * the tile bit through it, and then threw the bit away in this function, which
+ * returned a character and a colour and nothing else. Monsters got their tile
+ * from tileForMonster one screen over; the player, who IS race 0 in the very same
+ * monster table, got a '@'. So in graphics mode the whole map drew as art with a
+ * text glyph standing on it - reported from play, on the Linoleum pack, but true
+ * of the tilesheet engine and all six tile sets equally.
+ *
+ * The class/race variants are a separate matter: xtra-*.prf's "special player
+ * pictures" block re-maps `<player>` about 110 times behind `?:` expressions on
+ * $CLASS and $RACE, and NEITHER engine evaluates those yet, so every character
+ * currently draws the same base tile. That is a real gap, tracked separately -
+ * but a base tile is not a partial fix of it, it is what upstream draws when the
+ * expressions are absent.
  */
-function playerMapGlyph(): { ch: string; css: string } {
+function playerMapGlyph(): { ch: string; css: string; tile?: TileDraw } {
   const slot = glyphs.monsterGlyph(0) ?? { attr: COLOUR_WHITE, char: "@" };
   const p = state.actor.player;
   const g = playerGlyph(slot, {
@@ -6171,7 +6198,13 @@ function playerMapGlyph(): { ch: string; css: string } {
     chp: p.chp,
     mhp: p.mhp,
   });
-  return { ch: g.char, css: colorToCss(g.attr) };
+  /* Race 0 in the monster tile table, the same table and the same index the glyph
+   * above came from - not a parallel "player tile" lookup that could disagree
+   * with it. Undefined in ASCII mode, or when a pack resolves no player asset. */
+  const tile = tileMap
+    ? tileDrawFor(tileForMonster(tileMap, 0), state.actor.grid.x, state.actor.grid.y)
+    : undefined;
+  return { ch: g.char, css: colorToCss(g.attr), ...(tile ? { tile } : {}) };
 }
 
 /** True if any visible monster animates (drives the display frame timer). */
@@ -6697,6 +6730,7 @@ function render(targeting?: TargetingOverlay): void {
     term.put(playerScreenX, playerScreenY, {
       ch: pg.ch,
       fg: pg.css,
+      ...(pg.tile ? { tile: pg.tile } : {}),
       ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
     });
   }
@@ -8152,7 +8186,31 @@ async function bootMenus(): Promise<void> {
     /* ESC: round the loop, which puts the title back up. */
   }
 }
-void bootMenus();
+
+/**
+ * Open the Graphics screen once, if the reload that just happened was a mod apply
+ * that newly enabled a tile mod (SHOW_GRAPHICS_KEY).
+ *
+ * A tiles mod contributes Graphics ROWS and nothing else, composed at boot, so
+ * enabling one is meant to leave the map exactly as it was until the player picks
+ * a row. That is correct and it reads as broken - the reported symptom was
+ * "enabling it does nothing and the imagery stayed as text glyphs". So the apply
+ * hands the player straight to the screen where the new rows are.
+ *
+ * One-shot and cleared before the screen opens, so a refresh afterwards does not
+ * reopen it, and a crash inside the menu cannot wedge every future boot in it.
+ */
+async function maybeShowGraphics(): Promise<void> {
+  try {
+    if (sessionStorage.getItem(SHOW_GRAPHICS_KEY) !== "1") return;
+    sessionStorage.removeItem(SHOW_GRAPHICS_KEY);
+  } catch {
+    return; /* no sessionStorage: nothing was ever set */
+  }
+  await runTileModePage(term, tileModeMenu);
+}
+
+void bootMenus().then(maybeShowGraphics);
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen

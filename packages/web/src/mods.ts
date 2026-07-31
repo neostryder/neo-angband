@@ -131,8 +131,16 @@ export interface ModManagerDeps {
   listCatalog: () => CatalogMod[];
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
   conflictLines: () => string[];
-  /** Apply pending changes by reloading (recompose content + reinstall plugins). */
-  requestReload: () => void;
+  /**
+   * Apply pending changes by reloading (recompose content + reinstall plugins).
+   *
+   * `showGraphics` asks the reboot to open the Graphics screen once the game is
+   * back. Enabling a tiles mod is the case that needs it: the mod's rows are
+   * composed at boot, so enabling one is CORRECT to change nothing visible -
+   * and "correct" is not the same as understandable. Reported from play as
+   * "enabling it does nothing and the imagery stayed as text glyphs".
+   */
+  requestReload: (opts?: { showGraphics?: boolean }) => void;
   /**
    * The rule declarations of the currently ENABLED mods (qol / bug-fixes). Each
    * mod's own Fixes & tweaks submenu filters this by `modId`; a disabled mod is
@@ -911,6 +919,11 @@ export async function runModManager(
   deps: ModManagerDeps,
 ): Promise<void> {
   let dirty = false;
+  /* Which tile-contributing mods were already on when this screen opened. Any id
+   * that is enabled at the end and absent here was turned ON here, which is
+   * exactly when the reboot should land on the Graphics screen - see
+   * newTileModEnabled below. */
+  const tileModsAtEntry = enabledTileModIds(deps);
   for (;;) {
     const catalog = deps.listCatalog();
     const items: MenuItem[] = catalog.map(rowLabel);
@@ -1047,15 +1060,38 @@ export async function runModManager(
   }
 
   if (dirty) {
+    /* A newly-enabled tiles mod contributes Graphics rows and nothing else, so
+     * say so here and open that screen after the reload. Without this the player
+     * enables a tile mod, reloads, sees an unchanged ASCII map, and concludes the
+     * mod is broken - which is what happened. */
+    const newTiles = [...enabledTileModIds(deps)].some((id) => !tileModsAtEntry.has(id));
     const pick = await selectFromMenu(
       term,
-      "Apply mod changes?",
+      newTiles ? "Apply mod changes? (adds tile sets to Graphics)" : "Apply mod changes?",
       [
-        { label: "Reload now to apply", color: C_ENABLED },
+        {
+          label: newTiles ? "Reload now, then pick a tile set" : "Reload now to apply",
+          color: C_ENABLED,
+        },
         { label: "Later (changes are saved; apply on next reload)", color: C_FG },
       ],
       "[ a/b or tap ]",
     );
-    if (pick === 0) deps.requestReload();
+    if (pick === 0) deps.requestReload(newTiles ? { showGraphics: true } : undefined);
   }
+}
+
+/**
+ * Ids of the ENABLED mods that contribute tile packs.
+ *
+ * A `tiles`-shape mod need not declare tilePacks (it could re-skin via records),
+ * and a mod of any shape may declare them, so this asks the manifest what it
+ * actually contributes rather than trusting `shape`.
+ */
+function enabledTileModIds(deps: ModManagerDeps): Set<string> {
+  const out = new Set<string>();
+  for (const m of deps.listCatalog()) {
+    if (m.enabled && (m.manifest.tilePacks?.length ?? 0) > 0) out.add(m.id);
+  }
+  return out;
 }
