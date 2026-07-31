@@ -1,5 +1,5 @@
 {
-  "id": "linoleum",
+  "id": "neo-linoleum",
   "name": "neo-linoleum",
   "version": "0.9.0",
   "shape": "tiles",
@@ -14,37 +14,37 @@
     {
       "grafID": 101,
       "engine": "linoleum",
-      "menuname": "Original Tiles (Linoleum)",
+      "menuname": "Original Tiles (neo-linoleum)",
       "path": "original-tiles"
     },
     {
       "grafID": 102,
       "engine": "linoleum",
-      "menuname": "Adam Bolt's tiles (Linoleum)",
+      "menuname": "Adam Bolt's tiles (neo-linoleum)",
       "path": "adam-bolt"
     },
     {
       "grafID": 103,
       "engine": "linoleum",
-      "menuname": "David Gervais' tiles (Linoleum)",
+      "menuname": "David Gervais' tiles (neo-linoleum)",
       "path": "gervais"
     },
     {
       "grafID": 104,
       "engine": "linoleum",
-      "menuname": "Nomad's tiles (Linoleum)",
+      "menuname": "Nomad's tiles (neo-linoleum)",
       "path": "nomad"
     },
     {
       "grafID": 105,
       "engine": "linoleum",
-      "menuname": "Shockbolt Dark (Linoleum)",
+      "menuname": "Shockbolt Dark (neo-linoleum)",
       "path": "shockbolt-dark"
     },
     {
       "grafID": 106,
       "engine": "linoleum",
-      "menuname": "Shockbolt Light (Linoleum)",
+      "menuname": "Shockbolt Light (neo-linoleum)",
       "path": "shockbolt-light"
     }
   ]

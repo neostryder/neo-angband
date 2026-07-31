@@ -208,6 +208,7 @@ import {
 } from "@neo-angband/core";
 import type {
   MonsterGlyphInput,
+  PrefExprVars,
   TileAtlas,
   TileMap,
   TilePrefsDeps,
@@ -1064,6 +1065,37 @@ const tileDeps: TilePrefsDeps = {
 };
 
 /**
+ * ANGBAND_SYS (init.c L84, set per front end in main.c L508). The C's values name
+ * its terminal modules - gcu, sdl, sdl2, x11, win - and none of them is this one,
+ * so the port takes its own. Only lib/customize/font.prf tests $SYS, and that is
+ * a font/keymap file no tile pack loads; the tile packs test $RACE and $CLASS.
+ */
+const ANGBAND_SYS = "web";
+
+/**
+ * The `?:` expression variables for a pref-file parse: upstream's $SYS, $RACE and
+ * $CLASS (ui-prefs.c L553-560), read from the LIVE character.
+ *
+ * This is what selects a pack's "special player pictures" - every bundled pack
+ * ships an xtra-*.prf whose `monster:<player>` lines sit behind
+ * `[AND [EQU $CLASS ...] [EQU $RACE ...] ]`. Upstream re-reads the pref file with
+ * these in hand at reset_visuals(true), which runs after birth (ui-display.c
+ * L2703) and again on every graphics-mode change (main-win.c L1769).
+ *
+ * Returns nothing at all before a character exists, which is the correct
+ * pre-birth state: every conditional block bypasses and the pack's unconditional
+ * player line stands.
+ */
+function playerPrefVars(): PrefExprVars {
+  try {
+    const p = state.actor.player;
+    return { SYS: ANGBAND_SYS, RACE: p.race.name, CLASS: p.cls.name };
+  } catch {
+    return { SYS: ANGBAND_SYS };
+  }
+}
+
+/**
  * The x_attr/x_char tables (ui-prefs.c L46-56), allocated and seeded from
  * gamedata exactly as textui_prefs_init does at startup (L1427-1452, ending in
  * reset_visuals(false)). EVERY ASCII draw of a monster, object, flavour, trap
@@ -1146,7 +1178,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     const pack = await loadLinoleumPack({
       resolve: tileResolverFor(entry),
       menuname: entry.menuname,
-      deps: tileDeps,
+      deps: { ...tileDeps, vars: playerPrefVars() },
     });
     // Ignore a stale load if the mode changed while we were fetching.
     if (currentGrafID !== grafID) return;
@@ -1173,7 +1205,10 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   tileset = ts;
   tileMap = null;
   renderBackground();
-  const map = await loadTilePrefs(resolve, mode, tileDeps);
+  const map = await loadTilePrefs(resolve, mode, {
+    ...tileDeps,
+    vars: playerPrefVars(),
+  });
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
@@ -5985,6 +6020,15 @@ function knownObjectShown(x: number, y: number): ReturnType<typeof knownObject> 
 // a walk (open/close cancel it without spending it on an unrelated tap).
 let pendingChestAction: "open" | "disarm" | null = null;
 
+/**
+ * Dev-only: the TERMINAL cell the player was last painted into. The player is
+ * drawn in a pass of its own after the cell loop, so nothing else knows where it
+ * ended up, and an automated check that wants the player's pixels would otherwise
+ * have to re-derive the camera clamp and the letterbox. Stripped from a
+ * production bundle with the __neo hook that reads it.
+ */
+let lastPlayerCell: { x: number; y: number } | null = null;
+
 function gridIndex(x: number, y: number): number {
   return y * state.chunk.width + x;
 }
@@ -6667,7 +6711,12 @@ function render(targeting?: TargetingOverlay): void {
                   attr: colorCharToAttr(mem.attr),
                   css: colorToCss(colorCharToAttr(mem.attr)),
                 };
-          term.put(screenX, screenY, { ch: under.ch, fg: under.css, ...cursorBg });
+          term.put(screenX, screenY, {
+            ch: under.ch,
+            fg: under.css,
+            ...cursorBg,
+            ...(memTile ? { bgTile: memTile } : {}),
+          });
         }
         /* Detected monsters show even out of view - that is the point. */
         const marked = monsterAt.get(idx);
@@ -6678,6 +6727,7 @@ function render(targeting?: TargetingOverlay): void {
             fg: drawnMon.css,
             ...cursorBg,
             ...(drawnMon.tile ? { tile: drawnMon.tile } : {}),
+            ...(memTile ? { bgTile: memTile } : {}),
           });
         }
         if (pathColour !== undefined) {
@@ -6702,12 +6752,20 @@ function render(targeting?: TargetingOverlay): void {
       // whatever is "on top" of the grid without the terrain's own bg. A
       // graphics tile (drawn.tile), when present and loaded, blits over the
       // cell; the terminal falls back to ch/fg if the atlas is not ready.
+      //
+      // The terrain tile rides along as bgTile whenever something COVERS the
+      // terrain, which is grid_data_as_text's (tap, tcp) pair: the terrain
+      // attr/char saved before the trap/object/monster arms overwrite (ap, cp)
+      // (ui-map.c L186-189). `drawn === t` is the case upstream skips the
+      // foreground blit for entirely (tap == ap && tcp == cp), so there is
+      // nothing to lay under.
       term.put(screenX, screenY, {
         ch: drawn.ch,
         fg: drawn.css,
         ...(drawn.bg !== undefined ? { bg: drawn.bg } : {}),
         ...cursorBg,
         ...(drawn.tile ? { tile: drawn.tile } : {}),
+        ...(drawn !== t && t.tile ? { bgTile: t.tile } : {}),
       });
     }
   }
@@ -6726,11 +6784,19 @@ function render(targeting?: TargetingOverlay): void {
       !!targeting &&
       state.actor.grid.x === targeting.cursor.x &&
       state.actor.grid.y === targeting.cursor.y;
+    /* Dev-only: where the player's cell landed on the canvas, so automated
+     * verification can crop exactly that cell (see the __neo.tiles() probe). */
+    if (import.meta.env.DEV) lastPlayerCell = { x: playerScreenX, y: playerScreenY };
     const pg = playerMapGlyph();
+    /* The player is painted in its own pass, so it has to fetch its own (tap,
+     * tcp): the TERRAIN of its grid, not whatever object it is standing on -
+     * grid_data_as_text saves the pair before the object arm runs at all. */
+    const pTerrain = terrainGlyph(state.actor.grid.x, state.actor.grid.y, LIGHTING.LOS);
     term.put(playerScreenX, playerScreenY, {
       ch: pg.ch,
       fg: pg.css,
       ...(pg.tile ? { tile: pg.tile } : {}),
+      ...(pTerrain.tile ? { bgTile: pTerrain.tile } : {}),
       ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
     });
   }
@@ -8210,7 +8276,24 @@ async function maybeShowGraphics(): Promise<void> {
   await runTileModePage(term, tileModeMenu);
 }
 
-void bootMenus().then(maybeShowGraphics);
+/**
+ * reset_visuals(true) at ui_leave_init (ui-display.c L2700-2703): re-read the
+ * graphics pref file now that the character is known.
+ *
+ * The boot pass at module scope runs before birth or a save load has settled, so
+ * every `?:[EQU $CLASS ...]` block in the pack's xtra file bypassed and the
+ * player drew the pack's generic figure. bootMenus() resolving is the port's
+ * ui_leave_init: a game is in play and its race and class are final.
+ *
+ * A no-op in ASCII, and the atlas refetch is a cache hit, so the visible cost is
+ * one reparse and one repaint.
+ */
+async function resetVisualsForCharacter(): Promise<void> {
+  if (!currentGrafID || currentGrafID === GRAPHICS_NONE) return;
+  await applyTileMode(currentGrafID);
+}
+
+void bootMenus().then(resetVisualsForCharacter).then(maybeShowGraphics);
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen
@@ -8637,6 +8720,18 @@ if (import.meta.env.DEV) {
       atlasReady: !!tileset && tileset.ready,
       mapLoaded: !!tileMap,
       tileCells: term.tileCellCount(),
+      // The two-pass (tap, tcp) draw: cells whose foreground tile has the
+      // terrain tile under it, so an alpha tile shows floor and not UI_BG.
+      bgTileCells: term.bgTileCellCount(),
+      // Which player picture the pack's `?:` blocks selected, and for whom.
+      // race/cls are what fed $RACE/$CLASS into the parse.
+      race: state.actor.player.race.name,
+      cls: state.actor.player.cls.name,
+      playerTile: tileMap ? tileForMonster(tileMap, 0) : null,
+      // Canvas rect of the player's own cell, for a pixel-exact crop.
+      playerRect: lastPlayerCell
+        ? term.cellRect(lastPlayerCell.x, lastPlayerCell.y)
+        : null,
     }),
     setTileMode: (id: number): Promise<void> => applyTileMode(id, true),
     // The live x_attr/x_char tables (ui-prefs.c), so a verification pass can

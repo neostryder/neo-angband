@@ -265,12 +265,12 @@ describe("tilePackResolver", () => {
   it("puts a bundled pack under the site path the bundle serves mods from", async () => {
     const resolve = tilePackResolver({
       source: { kind: "bundle", base: BUNDLED_MODS_BASE },
-      modId: "linoleum",
+      modId: "neo-linoleum",
       path: "original-tiles",
     });
-    expect(await resolve?.("manifest.txt")).toBe("mods/linoleum/original-tiles/manifest.txt");
+    expect(await resolve?.("manifest.txt")).toBe("mods/neo-linoleum/original-tiles/manifest.txt");
     expect(await resolve?.("images/8/floor.png")).toBe(
-      "mods/linoleum/original-tiles/images/8/floor.png",
+      "mods/neo-linoleum/original-tiles/images/8/floor.png",
     );
   });
 

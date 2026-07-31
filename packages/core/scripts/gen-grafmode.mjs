@@ -100,12 +100,12 @@ const out = `// Generated from reference/lib/tiles/list.txt by
 // The graphics-mode catalog METADATA (functional data) from Angband's tile
 // list. Faithful to grafmode.c's parse of name/directory/size/pref/extra.
 //
-// NO TILE IMAGE ASSETS are bundled: the tile art packs (adam-bolt, gervais,
-// shockbolt, nomad) carry their own licenses - Shockbolt's is NOT freely
-// redistributable for commercial use - so only this metadata is ported. A web
-// front end loads a user-supplied tile pack from a configurable base URL and
-// builds file paths from \`directory\`/\`file\` (see packages/web). ASCII is the
-// default and the game runs fully with no tile pack present.
+// This file is METADATA ONLY - no tile images. The art for all five packs ships
+// with the web build at packages/web/public/tiles/, and each pack's terms differ
+// (see that directory's CREDITS.md). A front end builds file paths from
+// \`directory\`/\`file\`, and can be pointed at a pack of the player's own with
+// \`?tiles=<base-url>\`. ASCII is the default and the game runs fully with no tile
+// pack present.
 
 import type { GraphicsMode } from "./grafmode";
 

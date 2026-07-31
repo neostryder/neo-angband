@@ -18,6 +18,9 @@ import {
   resolveModRules,
   DEFAULT_ENABLED_MODS,
   FIRST_PARTY_MOD_IDS,
+  RENAMED_MOD_IDS,
+  migrateModIdKeys,
+  migrateModIds,
   type StorageLike,
 } from "./mod-store";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
@@ -77,7 +80,7 @@ describe("the shipped mod set (isShippedMod)", () => {
   it("ships exactly the three bundled mods: qol, bug-fixes, linoleum", () => {
     expect([...FIRST_PARTY_MOD_IDS].sort()).toEqual([
       "bug-fixes",
-      "linoleum",
+      "neo-linoleum",
       "qol",
     ]);
   });
@@ -162,7 +165,7 @@ describe("the shipped mod set (isShippedMod)", () => {
     vi.stubEnv("DEV", false);
     try {
       const ids = discoverContentModManifests().map((m) => m.id);
-      expect([...ids].sort()).toEqual(["bug-fixes", "linoleum", "qol"]);
+      expect([...ids].sort()).toEqual(["bug-fixes", "neo-linoleum", "qol"]);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -186,7 +189,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
     // fresh install boots pure Angband 4.2.6 with zero mods on, regardless of
     // which bundled mods were discovered.
     expect(DEFAULT_ENABLED_MODS).toEqual([]);
-    const discovered = ["bug-fixes", "qol", "linoleum", "demo-x"];
+    const discovered = ["bug-fixes", "qol", "neo-linoleum", "demo-x"];
     expect(resolveEnabledIds({ url: null, stored: null, discovered })).toEqual(
       [],
     );
@@ -199,7 +202,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
   });
 
   it("honors a stored set verbatim, including an empty one (all off)", () => {
-    const discovered = ["bug-fixes", "qol", "linoleum"];
+    const discovered = ["bug-fixes", "qol", "neo-linoleum"];
     expect(resolveEnabledIds({ url: null, stored: [], discovered })).toEqual([]);
     expect(
       resolveEnabledIds({ url: null, stored: ["qol"], discovered }),
@@ -211,7 +214,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
       resolveEnabledIds({
         url: ["demo-modtest"],
         stored: ["qol"],
-        discovered: ["bug-fixes", "qol", "linoleum", "demo-modtest"],
+        discovered: ["bug-fixes", "qol", "neo-linoleum", "demo-modtest"],
       }),
     ).toEqual(["demo-modtest"]);
   });
@@ -452,5 +455,80 @@ describe("readEnabledModIds (the one live reader)", () => {
     expect(
       readEnabledModIds({ discovered: ["a", "b"], diskOrder: ["b", "a"] }),
     ).toEqual(["b", "a"]);
+  });
+});
+
+/**
+ * A mod id is DURABLE state - the saved enabled set, the per-mod choice map, and
+ * an external manager's load-order.json all record it - so renaming one without
+ * a migration silently turns the mod off for anyone who had it on. The symptom
+ * ("the tile sets stopped appearing in Graphics") points nowhere near the rename.
+ */
+describe("renamed mod ids keep working", () => {
+  it("maps the old id to the new one in a saved enabled set", () => {
+    expect(RENAMED_MOD_IDS["linoleum"]).toBe("neo-linoleum");
+    expect(
+      resolveEnabledIds({
+        url: null,
+        stored: ["qol", "linoleum"],
+        discovered: ["qol", "neo-linoleum"],
+      }),
+    ).toEqual(["qol", "neo-linoleum"]);
+  });
+
+  it("maps it in the ?mods= override and in an external load order too", () => {
+    expect(
+      resolveEnabledIds({ url: ["linoleum"], stored: null, discovered: ["neo-linoleum"] }),
+    ).toEqual(["neo-linoleum"]);
+    expect(
+      resolveEnabledIds({
+        url: null,
+        stored: [],
+        discovered: ["neo-linoleum"],
+        diskOrder: ["linoleum"],
+      }),
+    ).toEqual(["neo-linoleum"]);
+  });
+
+  it("honours an OFF choice recorded against the old id", () => {
+    /* The choice map is keyed by id as well, so a player who turned the mod off
+     * must not find it back on after the rename. */
+    expect(
+      resolveEnabledIds({
+        url: null,
+        stored: ["neo-linoleum"],
+        discovered: ["neo-linoleum"],
+        choices: { linoleum: false },
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not list the mod twice when a store straddles the rename", () => {
+    expect(migrateModIds(["linoleum", "neo-linoleum", "qol"])).toEqual([
+      "neo-linoleum",
+      "qol",
+    ]);
+    /* And the NEW key wins when both are in the choice map: it was set later. */
+    expect(migrateModIdKeys({ linoleum: false, "neo-linoleum": true })).toEqual({
+      "neo-linoleum": true,
+    });
+  });
+
+  it("leaves every other id alone", () => {
+    expect(migrateModIds(["qol", "bug-fixes", "demo-modtest"])).toEqual([
+      "qol",
+      "bug-fixes",
+      "demo-modtest",
+    ]);
+  });
+
+  it("the shipped set names the NEW id, and the mod folder matches it", () => {
+    expect(FIRST_PARTY_MOD_IDS).toContain("neo-linoleum");
+    expect(FIRST_PARTY_MOD_IDS).not.toContain("linoleum");
+    const manifest = JSON.parse(
+      readFileSync(new URL("../mods/neo-linoleum/manifest.json", import.meta.url), "utf8"),
+    ) as { id: string; name: string };
+    expect(manifest.id).toBe("neo-linoleum");
+    expect(manifest.name).toBe("neo-linoleum");
   });
 });

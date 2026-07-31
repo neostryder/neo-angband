@@ -101,10 +101,23 @@ describe("parsePrefNum (parser.c strtol base 0)", () => {
     expect(parsePrefNum("-12")).toBe(-12);
     expect(parsePrefNum(" 42 ")).toBe(42);
   });
-  it("rejects a token that is not wholly a number", () => {
-    expect(parsePrefNum("12x")).toBeNull();
+  it("stops at the first unusable character instead of rejecting the token", () => {
+    /* strtol's leniency (parser.c L315-320 errors only when `z == tok`), and it
+     * is load-bearing: every `monster:<player>` line in shockbolt/xtra-shb.prf
+     * ends with a trailing `#` comment, and requiring a clean token dropped all
+     * 132 of them. */
+    expect(parsePrefNum("12x")).toBe(12);
+    expect(parsePrefNum("0x87 #  ")).toBe(0x87);
+    /* "0x" with no hex digits is the leading 0, and "08" stops before the 8. */
+    expect(parsePrefNum("0x")).toBe(0);
+    expect(parsePrefNum("08")).toBe(0);
+  });
+
+  it("rejects a token with no number in it at all", () => {
     expect(parsePrefNum("")).toBeNull();
-    expect(parsePrefNum("0x")).toBeNull();
+    expect(parsePrefNum("   ")).toBeNull();
+    expect(parsePrefNum("red")).toBeNull();
+    expect(parsePrefNum("-")).toBeNull();
   });
 });
 
@@ -205,10 +218,10 @@ describe("processPrefText: the glyph directives write the GlyphTable", () => {
     const fidx = FEAT["FLOOR"] as number;
     const before = t.featGlyph(LIGHTING.LOS, fidx)!;
     processPrefText(
-      "?:[EQU $GRAF none]\nfeat:FLOOR:*:4:37\n?:1\nfeat:GRANITE:*:4:38",
+      "?:[EQU $CLASS Mage]\nfeat:FLOOR:*:4:37\n?:1\nfeat:GRANITE:*:4:38",
       deps,
       glyphTableSink(t),
-      { vars: { GRAF: "old" } },
+      { vars: { CLASS: "Ranger" } },
     );
     expect(t.featGlyph(LIGHTING.LOS, fidx)).toEqual(before);
     expect(t.featGlyph(LIGHTING.LOS, FEAT["GRANITE"] as number)).toEqual({
