@@ -28,6 +28,10 @@ const SRC_DIR = import.meta.dirname;
 const MODS_DIR = join(import.meta.dirname, "..", "mods");
 const read = (name: string): string => readFileSync(join(SRC_DIR, name), "utf8");
 
+/** Lower-cased with all whitespace runs collapsed, so a prose assertion is about
+ * what a document says and not about where its lines happen to wrap. */
+const flat = (text: string): string => text.toLowerCase().replace(/\s+/g, " ");
+
 describe("coreTileModes", () => {
   it("offers ALL SIX upstream tile sets with NO mod involved", () => {
     // grafmode.c is core: the catalog exists whether or not anything is modded.
@@ -143,11 +147,86 @@ describe("BUNDLED_TILE_DIRECTORIES", () => {
     expect(BUNDLED_TILE_DIRECTORIES).toContain("shockbolt");
     const credits = readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8").toLowerCase();
     expect(credits).toContain("gaustadnes");
-    expect(credits).toContain("with the author's permission");
     expect(credits).toContain("non-commercial");
     expect(credits).toContain("contact");
     // And no contact ADDRESS: he consented to being asked, not to being listed.
     expect(credits).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  });
+
+  it("credits the TILESHEET here, and says where the converted tiles are credited", () => {
+    /* This file's scope is public/tiles/, which is tilesheets - the form the game
+     * itself draws. Cutting a sheet into one PNG per tile is a second, different
+     * use of the same art and it belongs to the neo-linoleum mod, so it is
+     * credited beside those files (see the generator's own test below).
+     *
+     * Both halves are asserted, because a split credit fails in two directions: a
+     * file that still claims the conversion over-states what public/tiles/ holds,
+     * and a file that drops the conversion without a pointer reads as a credit
+     * someone quietly deleted. */
+    // Whitespace-collapsed: these are claims about what the file SAYS, and every
+    // one of them is long enough that the 80-column wrap falls inside it.
+    const credits = flat(readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8"));
+    expect(credits).toContain("the tilesheet is bundled here with the author's permission");
+    expect(credits).not.toContain("both as the tilesheet and as converted");
+    expect(credits).toContain("public/mods/neo-linoleum/credits.md");
+  });
+});
+
+describe("converted tile packs carry their own attribution", () => {
+  /*
+   * The converted loose packs are the neo-linoleum mod's, they are gitignored, and
+   * ONE script produces them - so that script is what has to credit them. There is
+   * no other file in a position to: a credit back in public/tiles/ cannot promise to
+   * travel with bytes that land in a deploy only when someone passes --packs all.
+   *
+   * Comments are stripped before any source assertion. The generator's header
+   * explains this attribution scheme at length, so an un-stripped `toContain` here
+   * would be satisfied by the prose describing the behaviour instead of by the
+   * behaviour - see term.test.ts for where that trap was found.
+   */
+  const stripComments = (src: string): string =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  const GEN = join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs");
+  const OUT_DIR = join(MODS_DIR, "..", "public", "mods", "neo-linoleum");
+  const code = stripComments(readFileSync(GEN, "utf8"));
+
+  it("writes the credit into the pack directory, not somewhere else", () => {
+    expect(code).toContain('writeFileSync(join(outputRoot, "CREDITS.md")');
+    // Named from what is on disk, so a default build does not credit art it never
+    // converted - the whole reason this is generated rather than committed.
+    expect(code).toContain("creditsText(present)");
+    expect(code).toMatch(/const present = linoleum\.ALL_PACKS\.map/);
+  });
+
+  it("states the three things Shockbolt's permission actually requires", () => {
+    // Copyright, the non-commercial condition, and the ask-him-yourself pointer.
+    // Plus the fact that makes the conversion need permission at all: Angband's
+    // own licence for the set grants no right to modify it.
+    const text = flat(code);
+    expect(text).toContain("gaustadnes");
+    expect(text).toContain("non-commercial");
+    expect(text).toContain("contact the author for permission");
+    expect(text).toContain("a conversion is a modification");
+    expect(text).toContain("neo angband specifically");
+    // No address, same reason as public/tiles/CREDITS.md.
+    expect(code).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  });
+
+  it("has actually emitted it, in a checkout where the packs were built", () => {
+    /* The strongest form of the check and the only one that is behaviour rather
+     * than source. Skipped on a clean checkout, where no pack is built and there is
+     * nothing for a credit to sit beside. */
+    if (!existsSync(OUT_DIR)) return;
+    const built = readdirSync(OUT_DIR).filter((n) =>
+      existsSync(join(OUT_DIR, n, "manifest.txt")),
+    );
+    if (built.length === 0) return;
+    const emitted = readFileSync(join(OUT_DIR, "CREDITS.md"), "utf8");
+    for (const key of built) {
+      expect(emitted, `${key} is built but uncredited`).toContain(`\`${key}/\``);
+    }
+    expect(emitted.toLowerCase()).toContain("gaustadnes");
   });
 });
 
@@ -337,16 +416,19 @@ describe("bundled mods", () => {
       unknown
     >;
 
-  it("never declares a tile pack for art we may not redistribute", () => {
-    // The runtime no longer filters Shockbolt - a player who owns it may wrap it
-    // in a mod of their own, and that must work. So the licence line is held
-    // HERE instead: nothing WE ship may declare it.
-    const banned = new Set(
-      GRAPHICS_MODE_CATALOG.filter((m) => m.directory === "shockbolt").map(
-        (m) => m.grafID,
-      ),
-    );
-    expect(banned.size).toBe(2); // 5 and 6; fails loudly if the catalog changes
+  it("never re-skins a row upstream's own catalog assigns", () => {
+    /* This began as a licence guard - "nothing WE ship may declare Shockbolt" -
+     * while the art was withheld. That reason is gone: the art ships with the
+     * author's permission and neo-linoleum declares converted Shockbolt packs at
+     * 101-106, its own ids. What remains is the real rule, and it is broader: a
+     * bundled mod claims grafIDs of its own and leaves upstream's numbering alone.
+     *
+     * Held against the CATALOG rather than against coreTileModes(), which is what
+     * distinguishes it from the last test in this file. coreTileModes filters to art
+     * that is on disk, so removing a tile set would quietly shrink the set of ids
+     * that test protects; this one does not move. */
+    const banned = new Set(GRAPHICS_MODE_CATALOG.map((m) => m.grafID));
+    expect([...banned].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
     for (const id of readdirSync(MODS_DIR)) {
       const packs = manifestOf(id).tilePacks;
       if (!Array.isArray(packs)) continue;

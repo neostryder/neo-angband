@@ -38,9 +38,8 @@ Graphics, or the `?tiles=<url>&graf=<id>` URL override).
 
 - **Shockbolt's tiles** (`shockbolt/`, 64x64/128x64) - by Raymond "Shockbolt"
   Gaustadnes, copyright (C) 2012. Catalogued in `lib/tiles/list.txt` as graphics
-  modes 5 (Dark) and 6 (Light). **Bundled here, both as the tilesheet and as
-  converted individual tiles, with the author's permission.** Angband's own
-  statement of the licence, from `docs/copying.rst`:
+  modes 5 (Dark) and 6 (Light). **The tilesheet is bundled here with the author's
+  permission.** Angband's own statement of the licence, from `docs/copying.rst`:
 
   > The Shockbolt Angband 64x64/128x64 tileset is copyright (C) Raymond
   > Gaustadnes 2012.
@@ -71,6 +70,12 @@ Graphics, or the `?tiles=<url>&graf=<id>` URL override).
   the author for permission** - the permission above is this project's, not
   something this repository can pass along, and it holds only while the project
   stays non-commercial.
+
+  This file covers `public/tiles/` - the tilesheets, which is what the game itself
+  draws. Cutting a sheet into one PNG per tile is a separate use of the art and it
+  belongs to the neo-linoleum mod, so it is credited with those files rather than
+  here: `public/mods/neo-linoleum/CREDITS.md`, written beside each pack by
+  `scripts/gen-linoleum-demo.mjs`. The author's permission covers both forms.
 
 The five packs' terms differ from each other, so do not treat "bundled with Neo
 Angband" as one licence. Sources: Angband 4.2.6 `docs/copying.rst` and
