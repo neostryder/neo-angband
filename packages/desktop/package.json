@@ -1,6 +1,6 @@
 {
   "name": "@neo-angband/desktop",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
@@ -39,11 +39,17 @@
       {
         "from": "../web/dist-web",
         "to": "web",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": ["nsis", "portable", "zip"],
+      "target": [
+        "nsis",
+        "portable",
+        "zip"
+      ],
       "icon": "build/icon.ico"
     },
     "portable": {
@@ -54,12 +60,19 @@
       "include": "build/installer.nsh"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.games",
       "icon": "build/icon.png"
     },
     "linux": {
-      "target": ["AppImage", "deb", "tar.gz"],
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
       "category": "Game",
       "maintainer": "neostryder <neostryder@users.noreply.github.com>",
       "icon": "build/icon.png"

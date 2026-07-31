@@ -26,12 +26,12 @@ reference/build*/
 # not committed.
 packages/web/public/mods/
 
-# Shockbolt tileset: bespoke license (copyright Raymond Gaustadnes), NOT
-# CC-BY. Permitted only with Angband proper and only non-commercially, and
-# needs the author's explicit permission for other projects. Kept locally as
-# porting reference but never distributed; users self-convert via linoleum
-# pulling from the official Angband repo.
-reference/lib/tiles/shockbolt/
+# The Shockbolt tileset used to be excluded here. It is now DISTRIBUTED, with
+# the author's permission - Raymond Gaustadnes granted this project free use of
+# the tiles both as the Angband tilesheet and converted to separate tiles, on the
+# condition that the project does not profit from sales or other income. See
+# packages/web/public/tiles/CREDITS.md for the grant and its conditions, which
+# ride along with the art: a commercial release needs a licence from the author.
 
 # Stray compiled output from plugin sources under mods/ (source is *.ts)
 packages/web/mods/**/*.js

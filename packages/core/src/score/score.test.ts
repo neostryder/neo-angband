@@ -15,6 +15,7 @@ import {
 } from "./score";
 import { MAX_HISCORES, WINNING_HOW } from "./types";
 import type { HighScore, ScoreStore } from "./types";
+import { ENGINE_VERSION } from "../version";
 import { OptionState } from "../player/options";
 
 /**
@@ -80,6 +81,15 @@ describe("totalPoints (score.c L28)", () => {
 });
 
 describe("buildScore (score.c build_score, L216)", () => {
+  it("stamps the ENGINE version into `what` when the caller names no buildid", () => {
+    /* score.c stamps the global `buildid`. The port's default used to be its own
+     * "0.1.0" literal, so when the engine went to 0.9.0 every score kept claiming
+     * a version the game had not been for a whole release line - and no test
+     * noticed, because every other case here passes an explicit buildid. */
+    const e = buildScore(stubPlayer({}), { diedFrom: "old age", turn: 1, depth: 0 });
+    expect(e.what).toBe(ENGINE_VERSION);
+  });
+
   it("captures the player fields, truncating who/how, day = TODAY when alive", () => {
     const p = stubPlayer({
       au: 777,

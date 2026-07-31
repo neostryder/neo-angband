@@ -10,9 +10,10 @@
  * port-vs-C disparity; these tests pin the fix.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@neo-angband/core";
+import { ALL_PACKS } from "@neo-angband/linoleum";
 import { describe, expect, it } from "vitest";
 import {
   BUNDLED_TILE_DIRECTORIES,
@@ -28,15 +29,22 @@ const MODS_DIR = join(import.meta.dirname, "..", "mods");
 const read = (name: string): string => readFileSync(join(SRC_DIR, name), "utf8");
 
 describe("coreTileModes", () => {
-  it("offers the bundled upstream tile sets with NO mod involved", () => {
+  it("offers ALL SIX upstream tile sets with NO mod involved", () => {
     // grafmode.c is core: the catalog exists whether or not anything is modded.
+    //
+    // This asserted four modes while Shockbolt's art was withheld on licence
+    // grounds - the port's one deliberate deviation from the C's menu. Raymond
+    // Gaustadnes granted this project free non-commercial use, the art ships, and
+    // the deviation is gone: a stock install offers exactly what list.txt lists.
     const modes = coreTileModes({});
-    expect(modes.map((m) => m.grafID)).toEqual([1, 2, 3, 4]);
+    expect(modes.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(modes.map((m) => m.menuname)).toEqual([
       "Original Tiles",
       "Adam Bolt's tiles",
       "David Gervais' tiles",
       "Nomad's tiles",
+      "Shockbolt Dark",
+      "Shockbolt Light",
     ]);
     // No mod attribution: these rows are the game's own content, and the menu
     // tags a row ONLY when a mod supplied it.
@@ -49,18 +57,34 @@ describe("coreTileModes", () => {
     expect(modes.every((m) => m.resolve === undefined)).toBe(true);
   });
 
-  it("omits catalog modes whose art is not bundled (Shockbolt)", () => {
-    // Shockbolt (5, 6) is in list.txt but its licence forbids redistribution, so
-    // its art does not ship and the rows would be dead. This is the one
-    // deliberate deviation from the C's menu.
-    const modes = coreTileModes({});
-    expect(modes.some((m) => m.grafID === 5 || m.grafID === 6)).toBe(false);
+  it("still omits a catalogued mode whose art is genuinely absent", () => {
+    // The filter is what the Shockbolt case used to exercise, and it still has a
+    // job: a row with no atlas on disk would render nothing. Pinned with an
+    // injected catalog now that every real mode ships.
+    const modes = coreTileModes({
+      catalog: [
+        ...GRAPHICS_MODE_CATALOG,
+        {
+          grafID: 99,
+          menuname: "Nonexistent",
+          directory: "not-on-disk",
+          file: "99x99.png",
+          pref: "graf-non.prf",
+          cellWidth: 99,
+          cellHeight: 99,
+          alphablend: 0,
+          overdrawRow: 0,
+          overdrawMax: 0,
+        },
+      ],
+    });
+    expect(modes.some((m) => m.grafID === 99)).toBe(false);
   });
 
   it("offers the WHOLE catalog once the player supplies their own pack", () => {
     // With ?tiles=<url> we cannot know what the pack holds, and neither does
     // upstream - it lists what list.txt says and degrades if an image is
-    // missing. So the bundled-art restriction lifts and Shockbolt is reachable.
+    // missing, so the bundled-art restriction lifts entirely.
     const modes = coreTileModes({ customBaseUrl: true });
     expect(modes.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6]);
   });
@@ -109,9 +133,16 @@ describe("BUNDLED_TILE_DIRECTORIES", () => {
     }
   });
 
-  it("does not ship Shockbolt's art, whose licence forbids redistribution", () => {
-    expect(onDisk).not.toContain("shockbolt");
-    expect(BUNDLED_TILE_DIRECTORIES).not.toContain("shockbolt");
+  it("ships Shockbolt's art, under the permission its author granted", () => {
+    // The inverse of this assertion stood here while the art was withheld. The
+    // grant is conditional on the project not profiting from sales or other
+    // income, so this test doubles as the place that fails loudly if someone
+    // removes the art again - and CREDITS.md is where the condition is recorded.
+    expect(onDisk).toContain("shockbolt");
+    expect(BUNDLED_TILE_DIRECTORIES).toContain("shockbolt");
+    const credits = readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8");
+    expect(credits).toContain("Gaustadnes");
+    expect(credits.toLowerCase()).toContain("profit");
   });
 });
 
@@ -135,27 +166,32 @@ describe("composeTileModes", () => {
       mods: [pack({ grafID: 2, menuname: "Adam Bolt's tiles", path: "tiles" })],
     });
     // Same rows, same order - the mod replaced one, it did not append a duplicate.
-    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4]);
+    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(out[1]?.modName).toBe("A Mod");
     expect(out[1]?.path).toBe("tiles");
     // Untouched rows stay untagged, so the menu still distinguishes them.
     expect(out.filter((m) => m.modName !== undefined)).toHaveLength(1);
   });
 
-  it("appends a mode core does not offer - how a Shockbolt pack mod would work", () => {
+  it("appends a mode core does not offer - a grafID outside upstream's catalog", () => {
+    /* This used to use Shockbolt's mode 5 as the example of "a mode core does not
+     * offer". Core offers all six catalog modes now, so the only way a mod can
+     * APPEND rather than replace is with a grafID upstream never assigned - which
+     * is what neo-linoleum actually does (101). Using a real out-of-catalog id
+     * keeps the test about the append path instead of about a licence. */
     const out = composeTileModes({
       core,
       mods: [
         pack({
-          grafID: 5,
-          menuname: "Shockbolt Dark",
-          modName: "my-shockbolt",
-          path: "tiles",
+          grafID: 101,
+          menuname: "Original Tiles (Linoleum)",
+          modName: "neo-linoleum",
+          path: "original-tiles",
         }),
       ],
     });
-    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5]);
-    expect(out[4]?.modName).toBe("my-shockbolt");
+    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6, 101]);
+    expect(out[6]?.modName).toBe("neo-linoleum");
   });
 
   it("does not mutate the core list it was given", () => {
@@ -201,7 +237,7 @@ describe("composeTileModes", () => {
         pack({ grafID: 3, modId: "second", modName: "Second" }),
       ],
     });
-    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4]);
+    expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(out[2]?.modName).toBe("First");
   });
 });
@@ -358,27 +394,55 @@ describe("bundled mods", () => {
    * reference each other, so nothing but this notices when one moves - and the
    * failure is a Graphics row that loads nothing.
    */
-  it("puts the generated demo pack exactly where the bundled resolver looks", async () => {
+  it("puts every declared pack exactly where the bundled resolver looks", async () => {
+    /* This used to grep the generator for `const PACK_KEY = "..."` and compare it
+     * to the manifest's single tilePack. Both halves aged out at once - the mod
+     * declares six packs now and the generator builds a configurable subset - and
+     * the grep is the weaker check anyway: it pins how the script is WRITTEN.
+     *
+     * What actually has to hold is a chain of three links, none of which is in a
+     * position to notice the others breaking:
+     *   1. every path the manifest declares is a real converter pack key, or the
+     *      row can never be built at all;
+     *   2. the generator writes under public/mods/<modId>/<key>;
+     *   3. the runtime resolver asks for <BUNDLED_MODS_BASE>/<modId>/<path>.
+     * The generated PNGs are gitignored, so links 2 and 3 are checked against the
+     * filesystem only when a build has actually run here (see below); link 1 needs
+     * no artefacts and is the one that catches a typo'd path in the manifest. */
+    const declared = manifestOf("linoleum").tilePacks as { path: string }[];
+    expect(declared.length).toBeGreaterThan(0);
+
+    const keys = new Set(ALL_PACKS.map((p) => p.key));
+    for (const { path } of declared) {
+      expect(keys, `manifest declares '${path}', not a converter pack key`).toContain(
+        path,
+      );
+    }
+
     const gen = readFileSync(
       join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs"),
       "utf8",
     );
-    const key = /const PACK_KEY = "([^"]+)"/u.exec(gen)?.[1];
-    expect(key, "the generator must name a pack key").toBeTruthy();
-    // The generator's output root, as it spells it.
     expect(gen).toMatch(/join\(webRoot, "public", "mods", "linoleum"\)/);
 
-    const declared = (manifestOf("linoleum").tilePacks as { path?: string }[])[0]?.path;
-    expect(declared).toBe(key);
-
-    const resolve = tilePackResolver({
-      source: { kind: "bundle", base: BUNDLED_MODS_BASE },
-      modId: "linoleum",
-      path: declared,
-    });
-    expect(await resolve?.("manifest.txt")).toBe(
-      `mods/linoleum/${key as string}/manifest.txt`,
-    );
+    for (const { path } of declared) {
+      const resolve = tilePackResolver({
+        source: { kind: "bundle", base: BUNDLED_MODS_BASE },
+        modId: "linoleum",
+        path,
+      });
+      const url = await resolve?.("manifest.txt");
+      expect(url).toBe(`mods/linoleum/${path}/manifest.txt`);
+      /* When this checkout HAS built the pack, the resolved URL must name a file
+       * that exists - the strongest form of the check, and the one that would have
+       * caught a resolver/generator disagreement directly. Skipped rather than
+       * failed on a clean checkout, where no pack is built and there is nothing to
+       * disagree about. */
+      const onDisk = join(MODS_DIR, "..", "public", url!);
+      if (existsSync(dirname(onDisk))) {
+        expect(existsSync(onDisk), `${path}: built but ${url} is not there`).toBe(true);
+      }
+    }
   });
 
   it("no longer claims the game's own tile sets as a mod's contribution", () => {

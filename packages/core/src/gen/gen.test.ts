@@ -559,7 +559,13 @@ describe("full level generation", () => {
     expect(hooked.objects.length).toBe(faithful.objects.length);
   });
 
-  it("generates valid levels across the deep profile pool", () => {
+  /* 20s, not the 5s default. This is the heaviest test in the suite - many seeds
+   * driven end to end through the deep generators - and it measured 5353ms against
+   * the 5s default while 350 other files competed for the machine, so it failed a
+   * full-suite run and passed alone. Nothing about "did any deep generator throw"
+   * is expressed by a wall-clock bound, so the bound was only ever noise; a
+   * generous ceiling still catches a hang. */
+  it("generates valid levels across the deep profile pool", { timeout: 20_000 }, () => {
     /* Post-enablement, depth 30/60 select cavern/moria/labyrinth/lair/gauntlet/
      * hard_centre (proven by the choose() test). Drive many seeds end-to-end
      * through generateLevel and require every level to be structurally valid -
