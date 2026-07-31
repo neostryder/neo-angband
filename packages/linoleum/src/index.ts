@@ -20,6 +20,7 @@ export type { PackConfig } from "./packs.js";
 export {
   buildPackExport,
   compatibilityVariantRank,
+  GENERATED_BY,
   convertPacks,
   effectProfileFor,
   selectCompatibilityEntry,
