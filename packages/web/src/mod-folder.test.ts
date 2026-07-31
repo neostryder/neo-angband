@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { problemLines } from "./mod-problems";
 import {
   folderModSource,
   folderPermission,
@@ -324,13 +325,13 @@ describe("permission", () => {
     expect(r.kind).toBe("picked");
     expect(r.packs).toEqual([]);
     expect(r.problems).toHaveLength(1);
-    expect(r.problems[0]).toContain("Reconnect");
+    expect(problemLines(r.problems)[0]).toContain("Reconnect");
   });
 
   it("says so when permission was refused outright", async () => {
     const handle = dirHandle("mods", {}, { state: "denied" });
     const r = await readModDir(folderModSource(handle));
-    expect(r.problems[0]).toContain("refused");
+    expect(problemLines(r.problems)[0]).toContain("refused");
   });
 });
 
@@ -380,7 +381,7 @@ describe("reading a mods folder", () => {
     const handle = dirHandle("downloads", { "manifest.json": MANIFEST("hound-mod") });
     const r = await readModDir(folderModSource(handle));
     expect(r.packs).toEqual([]);
-    expect(r.problems[0]).toContain("rename the folder");
+    expect(problemLines(r.problems)[0]).toContain("rename the folder");
   });
 
   it("honours load-order.json and reports an id that is not installed", async () => {
@@ -391,7 +392,7 @@ describe("reading a mods folder", () => {
     });
     const r = await readModDir(folderModSource(handle));
     expect(r.order).toEqual(["b-mod", "a-mod"]);
-    expect(r.problems).toEqual(['load-order.json lists "ghost", which is not installed']);
+    expect(problemLines(r.problems)).toEqual(['load-order.json lists "ghost", which is not installed']);
   });
 
   it("keeps the packs when load-order.json is corrupt", async () => {
@@ -402,7 +403,7 @@ describe("reading a mods folder", () => {
     const r = await readModDir(folderModSource(handle));
     expect(r.packs.map((p) => p.manifest.id)).toEqual(["a-mod"]);
     expect(r.order).toEqual([]);
-    expect(r.problems[0]).toContain("load-order.json could not be read");
+    expect(problemLines(r.problems)[0]).toContain("load-order.json could not be read");
   });
 
   it("never binds a pack's own load-order.json as a record file", async () => {
@@ -423,7 +424,7 @@ describe("reading a mods folder", () => {
     });
     const r = await readModDir(folderModSource(handle));
     expect(r.packs.map((p) => p.manifest.id)).toEqual(["a-mod"]);
-    expect(r.problems).toEqual(["screenshots: no manifest.json, so it is not a mod folder"]);
+    expect(problemLines(r.problems)).toEqual(["screenshots: no manifest.json, so it is not a mod folder"]);
   });
 
   it("reports a hand-edited manifest instead of booting with it", async () => {
@@ -434,7 +435,7 @@ describe("reading a mods folder", () => {
     const r = await readModDir(folderModSource(handle));
     expect(r.packs.map((p) => p.manifest.id)).toEqual(["b-mod"]);
     expect(r.problems).toHaveLength(1);
-    expect(r.problems[0]).toContain("a-mod:");
+    expect(problemLines(r.problems)[0]).toContain("a-mod:");
   });
 
   it("loses one bad record file, not the whole pack", async () => {
@@ -448,7 +449,11 @@ describe("reading a mods folder", () => {
     const r = await readModDir(folderModSource(handle));
     expect(r.packs).toHaveLength(1);
     expect(Object.keys(r.packs[0]!.files)).toEqual(["object"]);
-    expect(r.problems[0]).toContain("a-mod/monster.json");
+    /* The id is now carried beside the line rather than prefixed into it, so the
+     * mod manager can put this on a-mod's own row (mod-problems.ts). problemLines
+     * puts it back, which is why the separator is ": " and not "/". */
+    expect(r.problems[0]?.id).toBe("a-mod");
+    expect(problemLines(r.problems)[0]).toContain("a-mod: monster.json");
   });
 
   it("ignores files that are not JSON at all", async () => {

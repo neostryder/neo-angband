@@ -15,6 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { problemLines } from "./mod-problems";
 import {
   NO_DISK_PACKS,
   combineDiskReports,
@@ -133,7 +134,7 @@ describe("loadDiskPacks: a folder that is not a usable mod", () => {
     });
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.packs).toEqual([]);
-    expect(r.problems).toEqual(["screenshots: no manifest.json, so it is not a mod folder"]);
+    expect(problemLines(r.problems)).toEqual(["screenshots: no manifest.json, so it is not a mod folder"]);
   });
 
   it("reports a manifest that fails validation, and keeps the good packs", async () => {
@@ -150,8 +151,8 @@ describe("loadDiskPacks: a folder that is not a usable mod", () => {
     });
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.packs.map((p) => p.manifest.id)).toEqual(["good"]);
-    expect(r.problems.join(" ")).toContain("bad");
-    expect(r.problems.join(" ")).toContain("semver");
+    expect(problemLines(r.problems).join(" ")).toContain("bad");
+    expect(problemLines(r.problems).join(" ")).toContain("semver");
   });
 
   it("refuses a folder whose manifest claims a different id", async () => {
@@ -164,7 +165,7 @@ describe("loadDiskPacks: a folder that is not a usable mod", () => {
     });
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.packs).toEqual([]);
-    expect(r.problems[0]).toContain("rename the folder");
+    expect(problemLines(r.problems)[0]).toContain("rename the folder");
   });
 
   it("keeps a pack when ONE of its record files is unreadable", async () => {
@@ -179,7 +180,10 @@ describe("loadDiskPacks: a folder that is not a usable mod", () => {
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.packs).toHaveLength(1);
     expect(Object.keys(r.packs[0]!.files)).toEqual(["monster"]);
-    expect(r.problems[0]).toContain("a/object.json");
+    /* The mod's id is carried beside the line now, not prefixed into it, so the
+     * manager can show this on pack a's own row (mod-problems.ts). */
+    expect(r.problems[0]?.id).toBe("a");
+    expect(problemLines(r.problems)[0]).toContain("a: object.json");
   });
 
   it("survives an index that is not JSON at all", async () => {
@@ -187,7 +191,7 @@ describe("loadDiskPacks: a folder that is not a usable mod", () => {
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.available).toBe(true);
     expect(r.packs).toEqual([]);
-    expect(r.problems[0]).toContain("Could not read the mods folder");
+    expect(problemLines(r.problems)[0]).toContain("Could not read the mods folder");
   });
 
   it("survives an index of the wrong shape", async () => {
@@ -233,7 +237,7 @@ describe("loadDiskPacks: load-order.json", () => {
     });
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.order).toEqual([]);
-    expect(r.problems).toEqual(['load-order.json lists "ghost", which is not installed']);
+    expect(problemLines(r.problems)).toEqual(['load-order.json lists "ghost", which is not installed']);
   });
 
   it("treats a missing or malformed order as no order", async () => {
@@ -507,8 +511,7 @@ describe("combineDiskReports", () => {
     ]);
     expect(out.packs.map((p) => p.manifest.id)).toEqual(["shared", "other"]);
     // Reported, not dropped in silence: the player has two mods claiming one name.
-    expect(out.problems).toEqual([
-      "shared: two sources offer this mod (folder you chose and installed); the folder you chose one is loaded",
+    expect(problemLines(out.problems)).toEqual(["shared: two sources offer this mod (folder you chose and installed); the folder you chose one is loaded",
     ]);
   });
 
@@ -567,9 +570,13 @@ describe("combineDiskReports", () => {
 
   it("concatenates each source's own problems", () => {
     const out = combineDiskReports([
-      report("picked", "my-mods/", ["a"], { problems: ["a folder gripe"] }),
-      report("installed", null, ["b"], { problems: ["an install gripe"] }),
+      report("picked", "my-mods/", ["a"], {
+        problems: [{ id: null, why: "a folder gripe" }],
+      }),
+      report("installed", null, ["b"], {
+        problems: [{ id: "b", why: "an install gripe" }],
+      }),
     ]);
-    expect(out.problems).toEqual(["a folder gripe", "an install gripe"]);
+    expect(problemLines(out.problems)).toEqual(["a folder gripe", "b: an install gripe"]);
   });
 });

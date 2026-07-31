@@ -254,6 +254,7 @@ import {
   FIRST_PARTY_MOD_IDS,
 } from "./mod-store";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
+import { faultMessage, reportModFault } from "./mod-problems";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -8698,7 +8699,15 @@ for (const loaded of activeModCode().plugins) {
     installedPluginIds.add(loaded.id);
   } catch (err) {
     /* One mod's bad register() loses that mod and nothing else. A third-party
-     * plugin throwing must not take the game, or the other mods, down. */
+     * plugin throwing must not take the game, or the other mods, down.
+     *
+     * REPORTED as well as logged: a console.error is not a channel a player has, so
+     * this mod was enabled, consented to, listed as loaded, and registering nothing,
+     * with the only evidence in devtools. */
+    reportModFault(
+      loaded.id,
+      `register() failed, so its effects, rooms and commands are not installed: ${faultMessage(err)}`,
+    );
     console.error(`[mod:${loaded.id}] register() failed:`, err);
   }
 }

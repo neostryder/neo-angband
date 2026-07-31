@@ -18,6 +18,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { problemLines } from "./mod-problems";
 import { diskPackStatus } from "./pack";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks } from "./disk-packs";
 import type { DiskPack } from "./disk-packs";
@@ -129,7 +130,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
     });
     const s = diskPackStatus();
     expect(s.count).toBe(1);
-    expect(s.problems.join(" ")).toContain("demo-hooks");
+    expect(problemLines(s.problems).join(" ")).toContain("demo-hooks");
     expect(s.bundledCount).toBe(bundledDirs().filter((id) => isShippedMod(id)).length);
   });
 });

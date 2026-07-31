@@ -15,7 +15,7 @@
 
 import type { GamePack, UiEntryPackRecords } from "@rpgm-tools/neo-angband-core";
 import {
-  composeContentPacks,
+  composeDroppingBroken,
   computeConflictReport,
   hasFacet,
   resolveLoadOrder,
@@ -23,6 +23,8 @@ import {
 import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
+import { activeModCode } from "./mod-code";
+import { modFaults, type ModProblem } from "./mod-problems";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -107,10 +109,16 @@ function discoverMods(): Map<
     const mod = mods.get(m[1]);
     if (mod) mod.files[m[2]] = val;
   }
-  /* Packs from the user's mods DIRECTORY, read at boot (disk-packs.ts) and
-   * latched before this runs. Merged into the same map because a disk pack is
-   * not a different KIND of pack - same manifest, same record files - it just
-   * arrived by being copied into a folder instead of by being bundled.
+  /* Packs from the user's mods DIRECTORY, read at boot (disk-packs.ts). Merged
+   * into the same map because a disk pack is not a different KIND of pack - same
+   * manifest, same record files - it just arrived by being copied into a folder
+   * instead of by being bundled.
+   *
+   * THIS COMMENT USED TO SAY "latched before this runs", AND IT WAS FALSE from the
+   * day the mods directory was added: this ran at module scope, and main.ts latches
+   * in its own body, which ES module order puts second. See composition() below for
+   * the measurement. It is true now because nothing here runs until something asks
+   * for content, and the first ask comes after boot.
    *
    * A disk pack with a bundled pack's id LOSES, deliberately: shadowing a
    * first-party mod would let a folder silently redefine what "bug-fixes" is,
@@ -140,14 +148,19 @@ export function diskPackStatus(): {
   dir: string | null;
   count: number;
   bundledCount: number;
-  problems: readonly string[];
+  problems: readonly ModProblem[];
+  skipped: readonly ModProblem[];
   kind: ModDirKind;
   origins: readonly ModOrigin[];
 } {
   const r = diskPacks();
-  const shadowed = r.packs
+  const shadowed: ModProblem[] = r.packs
     .filter((p) => bundledModIds().has(p.manifest.id))
-    .map((p) => `${p.manifest.id}: a bundled mod already uses this id; renaming it makes it loadable`);
+    .map((p) => ({
+      id: p.manifest.id,
+      why: "a bundled mod already uses this id; renaming it makes it loadable",
+    }));
+  const code = activeModCode();
   return {
     available: r.available,
     dir: r.dir,
@@ -157,15 +170,38 @@ export function diskPackStatus(): {
      * out of the catalog, so counting them here would disagree with the list the
      * player is looking at. */
     bundledCount: [...bundledModIds()].filter((id) => isShippedMod(id)).length,
-    /* composed.problems carries what the COMPOSER refused, which is a different
-     * class from what the pack READER could not read (r.problems): a ref no
-     * record answers to, a ref two records both claim, a per-record op against a
-     * file with no keyable identity, and a mod that replaced a whole file and
-     * discarded core records with it. Those used to be dropped in silence, which
-     * meant a mod author's patch could do nothing and say nothing - so they are
-     * surfaced in the same list the manager already shows, or collecting them
-     * would have been pointless. */
-    problems: [...r.problems, ...composedProblems(), ...shadowed],
+    /* EVERY SOURCE THAT KNOWS WHY A MOD IS NOT WORKING, in one list. Five of them,
+     * and only the first two were reaching a screen before 2026-07-31:
+     *
+     *   r.problems         the pack READER: a manifest that will not validate, a
+     *                      folder whose name disagrees with its id, a record file
+     *                      that would not parse, a directory that would not open.
+     *   composedProblems() the COMPOSER: a ref no record answers to, a ref two
+     *                      records both claim, a per-record op against a file with
+     *                      no keyable identity, a whole-file replacement that
+     *                      discarded core records - and now a pack that could not
+     *                      be composed at all.
+     *   shadowed           a disk pack wearing a bundled mod's id.
+     *   code.problems      the CODE loader: an unimportable plugin, an ABI
+     *                      mismatch, plugin.js without the declared facet. Computed
+     *                      on every failure path since the loader was written and
+     *                      read by nothing.
+     *   modFaults()        hooks() or register() throwing, which had gone to
+     *                      console.error - a channel a player does not have.
+     *
+     * Collecting a diagnosis nobody renders is the same as not collecting it, which
+     * is what four of these five amounted to. */
+    problems: [
+      ...r.problems,
+      ...composedProblems(),
+      ...shadowed,
+      ...code.problems,
+      ...modFaults(),
+    ],
+    /* NOT faults: a mod that is off, or waiting for consent, is in the state the
+     * player put it in. Kept separate so the manager can explain a plugin that is
+     * enabled and still not running (awaiting consent) without calling it broken. */
+    skipped: code.skipped,
     kind: r.kind,
     /* Every contributing source, not just the primary one: boot combines a folder
      * with any mods installed from repositories, and `kind`/`dir` can only describe
@@ -337,27 +373,105 @@ export function activePackSetFrom(
   return packs;
 }
 
-function activePackSet(): LoadedPack[] {
-  return activePackSetFrom(discoverMods(), enabledModIds());
+/* ------------------------------------------------------------------ *
+ * The composition, and WHEN it happens
+ * ------------------------------------------------------------------ */
+
+/** One composition: what went in, what came out, and what had to be left out. */
+interface Composition {
+  readonly packs: readonly LoadedPack[];
+  readonly composed: ReturnType<typeof composeDroppingBroken>["composed"];
+  readonly dropped: ReturnType<typeof composeDroppingBroken>["dropped"];
+  /* The inputs this answer is FOR, so a later call with different inputs cannot be
+   * served a stale one. See composition(). */
+  readonly forReport: unknown;
+  readonly forEnabled: string;
+}
+
+let memo: Composition | null = null;
+
+/**
+ * The active pack set and the pack composed from it, computed on FIRST USE and
+ * recomputed if the inputs have changed since.
+ *
+ * THIS USED TO BE TWO MODULE-SCOPE CONSTS, AND THAT WAS A REAL DEFECT (measured
+ * 2026-07-31, not reasoned): a mod from the mods DIRECTORY could never contribute a
+ * single record.
+ *
+ * main.ts imports this module STATICALLY (main.ts:247) and latches the mods
+ * directory in its own module BODY (main.ts:492, `setDiskPacks`). ES module
+ * evaluation runs every static dependency before the importer's body, so
+ * `discoverMods()` at module scope read `diskPacks()` while it was still
+ * NO_DISK_PACKS - every time, on every platform. Verified in the running dev server
+ * with a probe on both sides: pack.ts's module scope saw `available: false`, and the
+ * boot block found the probe already written. The comment in discoverMods claiming
+ * disk packs were "latched before this runs" had been wrong since the day the mods
+ * directory was added, and nothing could see it:
+ *
+ *   - the mod MANAGER lists a folder mod correctly, because it calls
+ *     discoverContentModManifests() at runtime, long after boot;
+ *   - so a player could see the mod, enable it, reload, and watch it do nothing;
+ *   - `presentNamespaces()` then omitted its namespace, which tells loadGame to
+ *     QUARANTINE that still-enabled mod's live entities on the next reload - the
+ *     exact "added a mod mid-game and my content vanished" failure the present set
+ *     exists to prevent, caused by the thing that computes it;
+ *   - and `enabledModIds()` read `diskPacks().order`, so an external manager's
+ *     load-order.json was ignored for composition too.
+ *
+ * The plugin half was fine and that is what hid it: loadModCode is CALLED from the
+ * boot block, after the latch, so a folder mod's plugin.js ran and its records did
+ * not. A mod that is code-only - which both first-party mods are - works perfectly.
+ *
+ * KEYED ON THE INPUTS rather than a bare `let memo`, because a memo that fills on
+ * first touch is one early caller away from being the same bug again: some future
+ * line in main.ts's body that reads content before the boot block would freeze the
+ * empty answer permanently, silently, and identically. Comparing the latched report
+ * by identity and the enabled ids by value costs nothing and cannot be got wrong by
+ * a caller.
+ */
+function composition(): Composition {
+  const report = diskPacks();
+  const enabledIds = enabledModIds();
+  const key = enabledIds.join(",");
+  if (memo && memo.forReport === report && memo.forEnabled === key) return memo;
+
+  const packs = activePackSetFrom(discoverMods(), enabledIds);
+  /* composeDroppingBroken, NOT composeContentPacks. `composeContentPacks` THROWS on
+   * a class of mod mistake its own header says it reports: a `patches` ref whose
+   * target does not exist, a duplicate record name, a missing dependency, a
+   * dependency cycle. Every one of those comes from a mod, and every one of them
+   * turned this module into an exception before the canvas existed - a blank page,
+   * with no mod manager to open and no way to turn the offending mod off short of
+   * clearing localStorage. Dropping the offender keeps the rule the rest of the mod
+   * system already holds: one broken mod costs that mod, and the player is told. */
+  const { composed, dropped } = composeDroppingBroken(packs);
+  memo = { packs, composed, dropped, forReport: report, forEnabled: key };
+  return memo;
+}
+
+/** Forget the composition, so a test can compose again over different inputs. */
+export function resetComposition(): void {
+  memo = null;
 }
 
 /**
- * The active pack set, snapshotted once at module load, and the pack composed
- * from it. Core alone is record-identical; enabled mods add/patch/replace/remove
- * through the mod-sdk compose engine. Both `composed` and presentNamespaces()
- * derive from this ONE snapshot so the namespaces reported present always match
- * the pack the game is actually bound to (they must never drift).
+ * What the composer refused, for diskPackStatus.
+ *
+ * Attributed from `faults` rather than parsed back out of `problems`: the two carry
+ * the same refusals and only one of them says which pack without punctuation.
  */
-const activePacks = activePackSet();
-const composed = composeContentPacks(activePacks);
-
-/**
- * What the composer refused, for diskPackStatus (declared here, beside the
- * composition it reads, and reached from above by hoisting - `composed` is a
- * module-scope const and diskPackStatus only ever runs after module init).
- */
-function composedProblems(): readonly string[] {
-  return composed.problems;
+function composedProblems(): readonly ModProblem[] {
+  const { composed, dropped } = composition();
+  return [
+    ...composed.faults.map((f) => ({ id: f.packId, why: f.why })),
+    /* A pack that could not be composed AT ALL. Distinguished in the wording,
+     * because "this patch did nothing" and "none of this mod loaded" are very
+     * different things to read on a row. */
+    ...dropped.map((d) => ({
+      id: d.id,
+      why: `none of this mod's content loaded - the game composed without it: ${d.why}`,
+    })),
+  ];
 }
 
 /**
@@ -373,28 +487,60 @@ function composedProblems(): readonly string[] {
  * concern here.
  */
 export function presentNamespaces(): ReadonlySet<string> {
-  return new Set(activePacks.map((p) => p.manifest.id));
+  /* The packs that actually COMPOSED, not the ones that were asked for. A pack
+   * composeDroppingBroken had to leave out contributes no records, so calling its
+   * namespace present would tell loadGame to rehydrate orphans against content that
+   * is not in the game - the mirror image of the quarantine hazard this set exists to
+   * avoid, and a worse one, because a rehydrated entity has nothing behind it. */
+  const { packs, dropped } = composition();
+  const gone = new Set(dropped.map((d) => d.id));
+  return new Set(packs.map((p) => p.manifest.id).filter((id) => !gone.has(id)));
 }
 
 // DEV-only diagnostic: proves an enabled mod's changes reach the running
 // game's content. Stripped from production builds (import.meta.env.DEV).
+//
+// GETTERS, not values. This block used to read the composition eagerly, which was
+// harmless while the composition was itself a module-scope const and is not now: the
+// first read is what fixes the answer, and a diagnostic that composed at module load
+// would freeze the pre-boot one and hand every later reader the empty pack. A probe
+// that changes the thing it measures is worse than no probe.
 if (import.meta.env.DEV) {
-  const monsters = composed.records["monster"] as
-    | { name?: string; "hit-points"?: number }[]
-    | undefined;
-  const grip = monsters?.find(
-    (r) => typeof r.name === "string" && r.name.startsWith("Grip"),
-  );
+  const monsters = (): { name?: string; "hit-points"?: number }[] =>
+    (composition().composed.records["monster"] ?? []) as {
+      name?: string;
+      "hit-points"?: number;
+    }[];
   (globalThis as Record<string, unknown>)["__neoPack"] = {
-    enabledMods: enabledModIds(),
-    monsterCount: monsters?.length ?? 0,
-    grip: grip ? { name: grip.name, hp: grip["hit-points"] } : null,
-    hasModberry: !!monsters?.some((r) => r.name === "Modberry Slime"),
+    get enabledMods() {
+      return enabledModIds();
+    },
+    get monsterCount() {
+      return monsters().length;
+    },
+    get grip() {
+      const g = monsters().find(
+        (r) => typeof r.name === "string" && r.name.startsWith("Grip"),
+      );
+      return g ? { name: g.name, hp: g["hit-points"] } : null;
+    },
+    get hasModberry() {
+      return monsters().some((r) => r.name === "Modberry Slime");
+    },
+    /* Which mods actually reached the composition, and which could not - the two
+     * questions a mod author asks first, and the pair the old probe could not
+     * answer at all. */
+    get composedMods() {
+      return composition().packs.map((p) => p.manifest.id);
+    },
+    get droppedMods() {
+      return composition().dropped.map((d) => ({ id: d.id, why: d.why }));
+    },
   };
 }
 
 function records(name: string): unknown[] {
-  const recs = composed.records[name];
+  const recs = composition().composed.records[name];
   if (!recs) throw new Error(`pack file not found: ${name}.json`);
   return recs;
 }
