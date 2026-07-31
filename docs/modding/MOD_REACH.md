@@ -24,7 +24,7 @@ is not a capability - it is called out as such.
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:78`) |
+| `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:83`) |
 | Named behaviour-dispatch points enumerated (tables/switches where the game looks up what to DO by key or index) | **25** |
 | ...of those, a mod's CODE can add to or override | **5** |
 | ...of those 5, reachable by a mod that is NOT compiled into the web bundle | **0** |
@@ -46,7 +46,7 @@ code and resource seam is closed to it.
 
 ### The 7 behaviour hooks, and what each can change
 
-`ModHooks` (`packages/core/src/mod/hooks.ts:78`) is a typed interface of optional
+`ModHooks` (`packages/core/src/mod/hooks.ts:83`) is a typed interface of optional
 functions on `GameState.modHooks` (`packages/core/src/game/context.ts:712`). See
 `MOD_SEAMS.md` for the fold rules. What each one can actually change:
 
@@ -280,7 +280,7 @@ globs over a directory inside the web package:
 - trusted plugins: `import.meta.glob("../../../mods/*/trusted.ts")`,
   `packages/web/src/agents/trusted/discover.ts:19`
 - behaviour hooks: `import.meta.glob("../mods/*/hooks.ts")`,
-  `packages/web/src/mod-hooks.ts:48`
+  `packages/web/src/mod-hooks.ts:71`
 
 `import.meta.glob` patterns must be static and are resolved and inlined at bundle
 time (acknowledged at `packages/web/src/mod-store.ts:75-79`). Both are then
@@ -684,7 +684,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 
 | # | Capability | Today | What would have to exist |
 | --- | --- | --- | --- |
-| 1 | **A mod can supply CODE without being compiled into the app** | **no** | A runtime module-loading path (desktop: load a mod's JS from the mods folder; web: dynamic `import()` of a served URL, or an accepted "web is reduced" split). Everything below is blocked on this: 100% of the code seams that DO exist are behind two build-time `import.meta.glob`s (`mod-hooks.ts:48`, `agents/trusted/discover.ts:19`) plus `isShippedMod`. |
+| 1 | **A mod can supply CODE without being compiled into the app** | **no** | A runtime module-loading path (desktop: load a mod's JS from the mods folder; web: dynamic `import()` of a served URL, or an accepted "web is reduced" split). Everything below is blocked on this: 100% of the code seams that DO exist are behind two build-time `import.meta.glob`s (`mod-hooks.ts:71`, `agents/trusted/discover.ts:19`) plus `isShippedMod`. |
 | 2 | **Per-record patching of the other 20 gamedata files** | **no** (silently dropped, `loader.ts:119`) | A stable per-record KEY that does not depend on a unique string `name` - a composite key for `object_base`/`trap`, and a synthetic index or `(tval, sval)` key for the 6 files whose names collide in core's own data (`object` 45 dups, `ego_item` 28, `vault` 3, `brand`, `slay`, `chest_trap`). Plus a loud error when an op targets a passthrough file, so it can never be silent again. |
 | 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in ~20 `switch` statements (26-case blow effects ×2, 37-case project-feat, 27-case store, 11-case project-obj, …). Converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. |
 | 4 | **Monster combat is moddable** | **no** | `blow_effects.json` accepts a 31st record but its behaviour is `combat/mon-melee.ts:460` (and again `:750`). Needs a blow-effect registry, and needs the duplicated switch collapsed to one body first. |

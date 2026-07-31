@@ -38,13 +38,19 @@
  * call site on its faithful path.
  */
 
-import { composeModHooks, type ModHooks } from "@rpgm-tools/neo-angband-core";
+import {
+  composeModHooks,
+  guardModHooks,
+  type ModHookFault,
+  type ModHooks,
+} from "@rpgm-tools/neo-angband-core";
 import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";
 import { validateModPlugin, type ModPlugin } from "./mod-plugin";
 import { modPluginContext, modOwnFiles } from "./mod-context";
 import { faultMessage, reportModFault } from "./mod-problems";
+import { taintSession } from "./mod-taint";
 
 /**
  * The one-argument adapter both paths are reduced to before the fold: a mod's
@@ -160,9 +166,37 @@ export function activeModHooks(): ModHooks | undefined {
     const entry = folder.get(id) ?? entries.get(id);
     if (!entry) continue;
     const hooks = entry(flags);
-    if (hooks) contributions.push(hooks);
+    /* GUARDED BEFORE THE FOLD, per mod, so the guard is the only thing that holds
+     * the mod's id: core's fold sees plain ModHooks and stays ignorant of which
+     * mod contributed what, which is the arrangement its comment promises. Guard
+     * first and fold second also means a throwing hook reaches the fold as that
+     * hook's neutral answer, so a broken mod reads to the fold exactly like a mod
+     * with no opinion at that point - rather than taking the other mods' answers
+     * down with it. */
+    if (hooks) contributions.push(guardModHooks(hooks, (fault) => hookThrew(id, fault)));
   }
   return composeModHooks(contributions);
+}
+
+/**
+ * A mod's hook threw while the game was mid-turn.
+ *
+ * TWO CHANNELS, because they answer different questions and are read at
+ * different times. reportModFault puts it on that mod's row in the manager, where
+ * the player looks when they eventually wonder what is wrong with it.
+ * taintSession stops the save and gets the player told NOW - the turn they are
+ * standing in has already finished half-done, and every further turn they play
+ * before reloading is time they will lose.
+ */
+function hookThrew(id: string, fault: ModHookFault): void {
+  const why = faultMessage(fault.error);
+  reportModFault(
+    id,
+    `its ${String(fault.hook)} hook threw mid-turn, so that hook is off for the rest ` +
+      `of this session and the game has stopped saving: ${why}`,
+  );
+  taintSession({ id, hook: String(fault.hook), why });
+  console.error(`[mod:${id}] ${String(fault.hook)}() threw mid-turn:`, fault.error);
 }
 
 /**

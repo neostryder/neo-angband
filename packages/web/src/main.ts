@@ -255,6 +255,7 @@ import {
 } from "./mod-store";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
+import { onSessionTaint, sessionTaint, taintNotice } from "./mod-taint";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -4895,14 +4896,21 @@ let suppressSave = false;
 
 /**
  * savefile_save / save_game_checked (ui-game.c:1052, :1173): write the game and
- * report whether it worked. A `true` return with nothing written is not possible
- * here - the only ways out are the "nothing to save" short-circuits, which
- * upstream does not have and which are not failures.
+ * report whether it worked. A `true` return with nothing written means the save
+ * was not OFFERED - the "nothing to save" short-circuits and the mod-taint
+ * refusal below - as opposed to offered and rejected, which is the `false` this
+ * reports and the only thing the player can do anything about.
  *
  * The port used to swallow every failure silently, so a quota-exceeded
  * localStorage write left the player playing on believing they were saved.
  */
 function persistSave(): boolean {
+  /* A mod's hook threw mid-turn (mod-taint.ts), so this state may be half-updated
+   * and must not go over the last good save. THE ONLY GATE THAT MATTERS: the tail
+   * autosave is not the sole writer - a level change, the 'S' command, the options
+   * screen and pagehide all force a save, so gating autosave() alone would leave
+   * four ways to overwrite the file the moment the player walked downstairs. */
+  if (sessionTaint()) return true;
   if (suppressSave || birthPending) return true; // a throwaway claims no slot
   const id = getActiveId();
   if (!id) return true; // no active slot (e.g. the picker is up): nothing to save
@@ -7914,6 +7922,29 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushSaveOnExit();
 });
 
+/* A mod's hook threw mid-turn (mod-taint.ts): the save has been refused from this
+ * point on, and the player has to be told THAT, not merely that some mod is
+ * unhappy - every turn they keep playing is a turn they will lose on reload.
+ *
+ * DEFERRED with setTimeout because the fault surfaces inside core, halfway
+ * through a turn: opening a modal from there would put an overlay up while the
+ * turn is still unwinding, and the tail render would paint the map back over it.
+ * A macrotask lands after advance() has finished, which is the same trick
+ * pumpStep uses to let the turn's own tail complete. */
+onSessionTaint((t) => {
+  setTimeout(() => {
+    void openModal(async () => {
+      await showTextScreen(
+        term,
+        "A mod stopped the game mid-turn",
+        taintNotice(t).map((text) => ({ text })),
+        "[ Press ESC for the reload prompt ]",
+      );
+      if (await confirmYesNo("Reload from the last save now? ")) location.reload();
+    });
+  }, 0);
+});
+
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
 // The core SoundEngine subscribes to the "sound" event and plays a sample from
 // the pack. The Dubtrain pack (CC-BY 4.0) ships bundled in public/sounds/ as the
@@ -8809,6 +8840,12 @@ if (import.meta.env.DEV) {
     // Emit a message through the live sink (verification aid): exercises the
     // W1.6 routing state.msg -> event bus -> subscribers.
     msg: (text: string): void => state.msg?.(text),
+    // Whether a mod's hook has broken this session, and therefore whether the
+    // game is still writing saves (mod-taint.ts). Null while it is healthy.
+    // Drive a real fault with the demo-hooks.explode rule, then read this - the
+    // refusal itself is measurable from outside by watching the slot stop
+    // changing, which is the only check that cannot be satisfied by a flag.
+    modTaint: (): unknown => sessionTaint(),
   };
 }
 

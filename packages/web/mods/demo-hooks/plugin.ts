@@ -54,6 +54,24 @@ export default {
       hooks.messageText = (raw) => raw.toUpperCase();
     }
 
+    if (flags["demo-hooks.explode"] === true) {
+      /* A hook that MUST fail, on purpose, and the only one in the tree.
+       *
+       * Everything downstream of a mid-turn throw - the guard's neutral answer, the
+       * session taint, the refused save, the modal that names the mod - is reachable
+       * in vitest, and was only ever reached there. A path whose sole exercise is a
+       * test is a path nobody has watched a player walk down: the modal could paint
+       * under the map, the save could keep being written, and every test would still
+       * be green. So the fault is available in the running game too.
+       *
+       * OFF by default, and it takes precedence over `shout` because both want
+       * messageText and a mod's contribution holds one function per hook. Deliberate:
+       * the flag exists to break something, so it must not be silently outranked. */
+      hooks.messageText = (): string => {
+        throw new Error("demo-hooks.explode: this hook fails on purpose");
+      };
+    }
+
     /* Null, not {}. An empty contribution and no contribution are indistinguishable in
      * effect and different in kind, and core's composeModHooks returns undefined for the
      * empty case so that every call site stays one undefined check on its faithful path. */

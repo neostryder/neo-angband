@@ -10,8 +10,8 @@
  * left to the comment that describes it.
  */
 
-import { describe, expect, it } from "vitest";
-import { composeModHooks, type ModHooks } from "./hooks.js";
+import { describe, expect, it, vi } from "vitest";
+import { composeModHooks, guardModHooks, type ModHookFault, type ModHooks } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 
 const STATE = {} as GameState;
@@ -250,5 +250,189 @@ describe("the fold ignores empty contributors without dropping real ones", () =>
   it("a single contributor is passed through, not wrapped away", () => {
     const composed = composeModHooks([{ saveNoiseScent: () => true }]);
     expect(composed?.saveNoiseScent?.()).toBe(true);
+  });
+});
+
+/* --- guardModHooks -----------------------------------------------------------
+ *
+ * The neutral answer per hook is the whole content of this function, and each one
+ * is a different value chosen for a different reason. A generic "return
+ * undefined" would be a silent refusal for the vetoes, a crash for the
+ * comparator and an erased message for the transform - so every one is pinned
+ * here separately rather than left to the fold's own tests, which never see a
+ * throw.
+ */
+
+const THROWS = (): never => {
+  throw new Error("boom");
+};
+
+/** A guarded contribution plus the faults it reported, for the tests below. */
+function guarded(hooks: ModHooks): { hooks: ModHooks; faults: ModHookFault[] } {
+  const faults: ModHookFault[] = [];
+  return { hooks: guardModHooks(hooks, (f) => faults.push(f)), faults };
+}
+
+describe("guardModHooks: a throwing hook answers with nothing, per hook's meaning", () => {
+  it("walkBlockedByDiggable declines, so core bumps the wall", () => {
+    const { hooks } = guarded({ walkBlockedByDiggable: THROWS });
+    expect(hooks.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBeNull();
+  });
+
+  it("objectListTiebreak stays equal, so the stable sort keeps collect order", () => {
+    const { hooks } = guarded({ objectListTiebreak: THROWS });
+    expect(hooks.objectListTiebreak?.({ dy: 0, dx: 0 }, { dy: 1, dx: 1 })).toBe(0);
+  });
+
+  it("levelGenerated ACCEPTS, so one broken hook cannot make levels unreachable", () => {
+    /* Rejecting on a throw would re-roll, throw again, re-roll again - and
+     * cave_generate gives up after its limit. The player would be unable to
+     * descend at all, which is a far worse failure than the mod not applying. */
+    const { hooks } = guarded({ levelGenerated: THROWS });
+    expect(hooks.levelGenerated?.({}, false)).toBe(true);
+  });
+
+  it("artifactCommit commits, which is what core does with no hook", () => {
+    const { hooks } = guarded({ artifactCommit: THROWS });
+    expect(hooks.artifactCommit?.(7, true)).toBe(true);
+  });
+
+  it("historyAdd writes the entry rather than eating the player's history", () => {
+    const { hooks } = guarded({ historyAdd: THROWS });
+    expect(hooks.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: false })).toBe(true);
+  });
+
+  it("saveNoiseScent omits them, the upstream behaviour", () => {
+    const { hooks } = guarded({ saveNoiseScent: THROWS });
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+  });
+
+  it("messageText returns the RAW message, never an empty one", () => {
+    /* The neutral value for a transform is its input. Falling back to "" would
+     * delete a line the player needed to read, and nothing downstream could tell
+     * that a message had gone missing. */
+    const { hooks } = guarded({ messageText: THROWS });
+    expect(hooks.messageText?.("You feel a sudden chill.")).toBe("You feel a sudden chill.");
+  });
+});
+
+describe("guardModHooks: what it reports, and to whom", () => {
+  it("names the hook and hands back the error untouched", () => {
+    const err = new Error("cannot read properties of undefined");
+    const { hooks, faults } = guarded({
+      historyAdd: () => {
+        throw err;
+      },
+    });
+    hooks.historyAdd?.({ what: "x", type: 0, duplicate: false });
+    expect(faults).toEqual([{ hook: "historyAdd", error: err }]);
+  });
+
+  it("passes a non-Error throw through as it was thrown", () => {
+    const { hooks, faults } = guarded({
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- a mod may throw anything
+      messageText: () => {
+        throw "a string";
+      },
+    });
+    hooks.messageText?.("hi");
+    expect(faults[0]?.error).toBe("a string");
+  });
+
+  it("carries no mod id, because core is not told one", () => {
+    /* The host wraps ONE mod at a time and holds the id in the closure it passes
+     * in. If a fault ever grew an `id`, core would be carrying mod identity -
+     * the exact thing composeModHooks' comment promises it does not do. */
+    const { hooks, faults } = guarded({ saveNoiseScent: THROWS });
+    hooks.saveNoiseScent?.();
+    expect(Object.keys(faults[0] ?? {}).sort()).toEqual(["error", "hook"]);
+  });
+});
+
+describe("guardModHooks: a hook that threw is not called again", () => {
+  it("stops calling the thrower and reports it once", () => {
+    const fn = vi.fn(THROWS);
+    const { hooks, faults } = guarded({ saveNoiseScent: fn });
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(faults).toHaveLength(1);
+  });
+
+  it("latches per HOOK, so the mod's other hooks keep working", () => {
+    const { hooks, faults } = guarded({
+      historyAdd: THROWS,
+      messageText: (s) => s.toUpperCase(),
+    });
+    hooks.historyAdd?.({ what: "x", type: 0, duplicate: false });
+    expect(hooks.messageText?.("still here")).toBe("STILL HERE");
+    expect(faults.map((f) => f.hook)).toEqual(["historyAdd"]);
+  });
+});
+
+describe("guardModHooks: it wraps, and does not invent", () => {
+  it("leaves an absent hook absent", () => {
+    /* If the guard stubbed every member, "a disabled mod's patches do not exist"
+     * would stop being true the moment any mod was enabled: composeModHooks would
+     * see seven functions from a mod that contributed one. */
+    const { hooks } = guarded({ messageText: (s) => s });
+    expect(hooks.messageText).toBeTypeOf("function");
+    expect(hooks.historyAdd).toBeUndefined();
+    expect(hooks.levelGenerated).toBeUndefined();
+    expect(hooks.artifactCommit).toBeUndefined();
+    expect(hooks.saveNoiseScent).toBeUndefined();
+    expect(hooks.walkBlockedByDiggable).toBeUndefined();
+    expect(hooks.objectListTiebreak).toBeUndefined();
+  });
+
+  it("an empty contribution stays empty, so the fold still returns undefined", () => {
+    expect(Object.keys(guardModHooks({}, () => {}))).toEqual([]);
+    expect(composeModHooks([guardModHooks({}, () => {})])).toBeUndefined();
+  });
+
+  it("passes every argument through untouched", () => {
+    let seen: unknown[] = [];
+    const { hooks } = guarded({
+      walkBlockedByDiggable: (s, g, d) => ((seen = [s, g, d]), 25),
+    });
+    expect(hooks.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(25);
+    expect(seen).toEqual([STATE, GRID, DEPS]);
+  });
+
+  it("does not report anything while nothing throws", () => {
+    const { hooks, faults } = guarded({ messageText: (s) => `${s}!` });
+    expect(hooks.messageText?.("hi")).toBe("hi!");
+    expect(faults).toEqual([]);
+  });
+});
+
+describe("guarded contributions fold like any other", () => {
+  it("a thrower reads to the fold as a mod with no opinion, not as a veto", () => {
+    /* This is the reason to guard BEFORE folding rather than after. A broken
+     * historyAdd must not suppress the entry, and must not stop the other mod's
+     * historyAdd from being asked. */
+    const composed = composeModHooks([
+      guardModHooks({ historyAdd: THROWS }, () => {}),
+      { historyAdd: () => true },
+    ]);
+    expect(composed?.historyAdd?.({ what: "x", type: 0, duplicate: false })).toBe(true);
+  });
+
+  it("a thrower in a transform chain drops out and the rest still apply", () => {
+    const composed = composeModHooks([
+      { messageText: (s) => `${s}-a` },
+      guardModHooks({ messageText: THROWS }, () => {}),
+      { messageText: (s) => `${s}-c` },
+    ]);
+    expect(composed?.messageText?.("x")).toBe("x-a-c");
+  });
+
+  it("a thrower declining lets a later mod handle the walk", () => {
+    const composed = composeModHooks([
+      guardModHooks({ walkBlockedByDiggable: THROWS }, () => {}),
+      { walkBlockedByDiggable: () => 100 },
+    ]);
+    expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(100);
   });
 });

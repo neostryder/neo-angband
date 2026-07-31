@@ -55,6 +55,11 @@
  * folds them into a single object (see composeModHooks). This is the same
  * layering as content: core consumes a composed result and never the pack list.
  *
+ * A hook is arbitrary third-party code running inside a turn, so it can throw.
+ * guardModHooks wraps one mod's contribution and turns a throw into that hook's
+ * neutral answer - see its comment for why that is the least-bad of the three
+ * options, and for the half of the job it deliberately leaves to the host.
+ *
  * DETERMINISM
  *
  * Two of these run inside the generation and object pipelines, where an extra
@@ -203,6 +208,125 @@ export interface ModHooks {
  * absent rather than storing an empty object - keeping "no mod loaded" and "a
  * mod loaded that touches nothing" indistinguishable from core's side.
  */
+/**
+ * A mod's hook function threw. Reported to whoever guarded it (guardModHooks).
+ *
+ * Carries no mod id, because core does not know one - the host wraps ONE mod's
+ * contribution at a time and already holds the id in the closure it passes in.
+ */
+export interface ModHookFault {
+  /** Which extension point threw, by its ModHooks member name. */
+  readonly hook: keyof ModHooks;
+  /** Whatever the mod threw, unwrapped and uninterpreted. */
+  readonly error: unknown;
+}
+
+/**
+ * ONE mod's contribution, with every hook wrapped so a throw cannot escape into
+ * the middle of a turn.
+ *
+ * WHY THIS IS NOT "CATCH AND CARRY ON REGARDLESS". An uncaught throw here lands
+ * in the middle of core - halfway through a move, a generation pass or an object
+ * roll - and unwinds the rest of the turn. It does not undo what the mod already
+ * did before it threw, so the state is no LESS inconsistent for the abort; it is
+ * more, because the turn's remaining bookkeeping never ran. And it reaches the
+ * host as a bare exception from a function the host did not know a mod was
+ * inside, so the player gets a frozen screen and no name.
+ *
+ * So a throwing hook is treated as a mod that DECLINED to answer at that point,
+ * and the neutral answer is per-hook - it has to be, because "no opinion" is
+ * `true` for a veto, `null` for a handler, `0` for a comparator and the input
+ * itself for a transform. Those values live HERE, next to the fold rule in
+ * composeModHooks that already spells out each hook's kind, rather than in the
+ * host: two copies of "what does this hook mean by nothing" is the pair that
+ * drifts.
+ *
+ * WHAT THIS DOES NOT DO, deliberately: it does not make the session safe. The
+ * mod ran arbitrary code against live state and stopped partway. Neutralising
+ * the hook keeps the game on its feet long enough to say so; it is the HOST's
+ * job to treat the fault as terminal for the session - stop writing saves and
+ * tell the player to reload (packages/web/src/mod-taint.ts). A guard without
+ * that second half would be the worst outcome of the three: quietly wrong.
+ *
+ * LATCHED PER HOOK. Once a hook has thrown it is not called again for the rest
+ * of the session. A hook that throws on a bad monster will throw on the next
+ * one too, and an exception per call turns one fault into a storm of them; more
+ * importantly, "sometimes the mod's rule applies and sometimes it doesn't" is
+ * harder to reason about than "it stopped applying at the point it broke". The
+ * mod's other hooks are untouched - the latch is per (mod, hook), not per mod.
+ */
+export function guardModHooks(
+  hooks: ModHooks,
+  onFault: (fault: ModHookFault) => void,
+): ModHooks {
+  const out: ModHooks = {};
+  const stopped = new Set<keyof ModHooks>();
+
+  function guard<T>(hook: keyof ModHooks, run: () => T, neutral: T): T {
+    if (stopped.has(hook)) return neutral;
+    try {
+      return run();
+    } catch (error) {
+      stopped.add(hook);
+      onFault({ hook, error });
+      return neutral;
+    }
+  }
+
+  const walk = hooks.walkBlockedByDiggable;
+  if (walk) {
+    /* null is DECLINE, so core bumps the wall as it would with no mod loaded. */
+    out.walkBlockedByDiggable = (state, grid, deps): number | null =>
+      guard("walkBlockedByDiggable", () => walk(state, grid, deps), null);
+  }
+
+  const tiebreak = hooks.objectListTiebreak;
+  if (tiebreak) {
+    /* 0 is "still equal", which is exactly faithful core's answer. */
+    out.objectListTiebreak = (a, b): number =>
+      guard("objectListTiebreak", () => tiebreak(a, b), 0);
+  }
+
+  const level = hooks.levelGenerated;
+  if (level) {
+    /* ACCEPT. Rejecting on a throw would re-roll the level, and cave_generate
+     * would then re-roll it again on the next throw, and so on until it gives
+     * up - one broken hook would make the game unable to reach any level. */
+    out.levelGenerated = (gen, quest): boolean =>
+      guard("levelGenerated", () => level(gen, quest), true);
+  }
+
+  const artifact = hooks.artifactCommit;
+  if (artifact) {
+    /* COMMIT, which is what core does unconditionally without the hook. */
+    out.artifactCommit = (aidx, alreadyCreated): boolean =>
+      guard("artifactCommit", () => artifact(aidx, alreadyCreated), true);
+  }
+
+  const history = hooks.historyAdd;
+  if (history) {
+    /* WRITE the entry: faithful core writes every entry it reaches. Suppressing
+     * on a throw would delete history the player earned. */
+    out.historyAdd = (entry): boolean =>
+      guard("historyAdd", () => history(entry), true);
+  }
+
+  const noise = hooks.saveNoiseScent;
+  if (noise) {
+    /* OMIT them, the upstream behaviour. */
+    out.saveNoiseScent = (): boolean => guard("saveNoiseScent", () => noise(), false);
+  }
+
+  const text = hooks.messageText;
+  if (text) {
+    /* The raw message, unrestated - never an empty string, which would silently
+     * eat a message the player needed to read. */
+    out.messageText = (raw): string => guard("messageText", () => text(raw), raw);
+  }
+
+  return out;
+}
+
 export function composeModHooks(
   contributions: readonly ModHooks[],
 ): ModHooks | undefined {
