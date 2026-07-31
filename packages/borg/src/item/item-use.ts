@@ -10,11 +10,11 @@
  * intentionally omitted (goal management is P8.6's concern).
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import type { BorgWorld } from "../world/model";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import type { BorgWorld } from "../world/model.js";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
 import {
   trait,
   borgSlot,
@@ -26,13 +26,13 @@ import {
   clockOf,
   equipsItem,
   activateHandle,
-} from "./deps";
+} from "./deps.js";
 import {
   Spell,
   borgSpell,
   borgSpellFail,
   borgSpellOkayFail,
-} from "./magic";
+} from "./magic.js";
 
 /* ------------------------------------------------------------------ *
  * Potions

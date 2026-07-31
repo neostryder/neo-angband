@@ -20,27 +20,27 @@
  * cautious until a host wires real engine data.
  */
 
-import type { BorgContext } from "./context";
-import type { FactsResolver } from "./danger";
+import type { BorgContext } from "./context.js";
+import type { FactsResolver } from "./danger/index.js";
 import {
   borgDanger,
   borgLos,
   getDangerGlobals,
   getFearCaches,
   getDangerState,
-} from "./danger";
-import type { Flow, FlowHooks } from "./flow";
-import type { ItemDeps } from "./item";
-import { createFlow } from "./flow";
-import { BI } from "./trait";
-import { borgPrepared } from "./trait";
+} from "./danger/index.js";
+import type { Flow, FlowHooks } from "./flow/index.js";
+import type { ItemDeps } from "./item/index.js";
+import { createFlow } from "./flow/index.js";
+import { BI } from "./trait/index.js";
+import { borgPrepared } from "./trait/index.js";
 import {
   borgCountSell,
   borgFirstEmptyInventorySlot,
   createStoreMemory,
   type StoreDeps,
   type StoreMemory,
-} from "./store";
+} from "./store/index.js";
 import {
   Spell,
   borgReadScroll,
@@ -48,8 +48,8 @@ import {
   borgSpellLegal,
   borgSpellOkayFail,
   SVAL,
-} from "./item";
-import type { BorgWorld } from "./world/model";
+} from "./item/index.js";
+import type { BorgWorld } from "./world/model.js";
 
 /**
  * Injection points a host supplies via createBorg. All optional; each defaults

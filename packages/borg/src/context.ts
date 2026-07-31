@@ -6,7 +6,7 @@
  */
 
 import type { AgentView, AgentActions, Rng } from "@neo-angband/core";
-import type { BorgWorld } from "./world/model";
+import type { BorgWorld } from "./world/model.js";
 
 /** Everything a decision subsystem needs, for one think. */
 export interface BorgContext {

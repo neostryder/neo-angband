@@ -17,14 +17,14 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "./context";
+import type { BorgContext } from "./context.js";
 import {
   getThinkSession,
   primeSession,
   buildStoreDeps,
-} from "./think-session";
-import { borgThinkStore } from "./store";
-import { borgThinkDungeon } from "./think-ladder";
+} from "./think-session.js";
+import { borgThinkStore } from "./store/index.js";
+import { borgThinkDungeon } from "./think-ladder.js";
 
 /** Keypad direction (1-9, 5 = center) from a signed (dx, dy) step. */
 export function keypadDir(dx: number, dy: number): number {

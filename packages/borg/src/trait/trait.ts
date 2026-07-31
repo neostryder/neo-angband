@@ -28,7 +28,7 @@
  */
 
 import type { ItemView, PlayerView } from "@neo-angband/core";
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import {
   BI,
   BI_MAX,
@@ -39,7 +39,7 @@ import {
   BORG_INVEN,
   BORG_EQUIP,
   BORG_QUILL,
-} from "./trait-index";
+} from "./trait-index.js";
 import {
   ADJ_STR_HOLD,
   BORG_ADJ_DEX_TA,
@@ -58,14 +58,14 @@ import {
   BORG_DIG,
   modifyStatValue,
   statToIndex,
-} from "./tables";
-import { hasFlag, mod, resLevel, hasBrand3, slayMult, present } from "./item-util";
+} from "./tables.js";
+import { hasFlag, mod, resLevel, hasBrand3, slayMult, present } from "./item-util.js";
 import {
   resolveOpts,
   type BorgTraitOpts,
   type ResolvedOpts,
-} from "./config";
-import { resetDerived, addHas, type BorgDerived } from "./state";
+} from "./config.js";
+import { resetDerived, addHas, type BorgDerived } from "./state.js";
 
 /* Equipment body-slot indices (AgentView.equipment() order == game equip slots,
  * matching INVEN_WIELD..INVEN_FEET; generated/equip-slots.ts EQUIP_*). */

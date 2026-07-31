@@ -26,13 +26,13 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import type { BorgWorld } from "../world/model";
+import type { BorgContext } from "../context.js";
+import type { BorgWorld } from "../world/model.js";
 import {
   GOAL_DARK,
   GOAL_DIGGING,
-} from "../world/model";
-import { distance } from "../think";
+} from "../world/model.js";
+import { distance } from "../think.js";
 import {
   AUTO_FLOW_MAX,
   AUTO_MAX_X,
@@ -51,7 +51,7 @@ import {
   featIsShop,
   inBoundsFully,
   trait,
-} from "./flow-consts";
+} from "./flow-consts.js";
 
 /** Map width used to flatten borg_data[y][x] into a single typed array. */
 const W = AUTO_MAX_X;

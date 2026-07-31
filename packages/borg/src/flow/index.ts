@@ -17,28 +17,28 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { GOAL_BORE } from "../world/model";
+import type { BorgContext } from "../context.js";
+import { GOAL_BORE } from "../world/model.js";
 import {
   createFlowState,
   defaultFlowHooks,
   type FlowHooks,
   type FlowState,
-} from "./flow";
+} from "./flow.js";
 import {
   borgFlowStairBoth,
   borgFlowStairLess,
   borgFlowStairMore,
-} from "./flow-stairs";
-import { borgFlowTake, borgFlowTakeScum } from "./flow-take";
+} from "./flow-stairs.js";
+import { borgFlowTake, borgFlowTakeScum } from "./flow-take.js";
 import {
   borgFlowKill,
   borgFlowKillAim,
   borgFlowKillCorridor,
   borgFlowKillDirect,
-} from "./flow-kill";
-import { borgFlowDark } from "./flow-dark";
-import { borgFlowGlyph } from "./flow-glyph";
+} from "./flow-kill.js";
+import { borgFlowDark } from "./flow-dark.js";
+import { borgFlowGlyph } from "./flow-glyph.js";
 import {
   borgFlowLight,
   borgFlowRecover,
@@ -47,16 +47,16 @@ import {
   borgFlowVault,
   borgFlowVein,
   borgTwitchy,
-} from "./flow-misc";
+} from "./flow-misc.js";
 
-export * from "./flow-consts";
-export * from "./flow";
-export * from "./flow-stairs";
-export * from "./flow-take";
-export * from "./flow-kill";
-export * from "./flow-dark";
-export * from "./flow-glyph";
-export * from "./flow-misc";
+export * from "./flow-consts.js";
+export * from "./flow.js";
+export * from "./flow-stairs.js";
+export * from "./flow-take.js";
+export * from "./flow-kill.js";
+export * from "./flow-dark.js";
+export * from "./flow-glyph.js";
+export * from "./flow-misc.js";
 
 /**
  * The bound flow facade the think ladder drives. Holds one FlowState; every

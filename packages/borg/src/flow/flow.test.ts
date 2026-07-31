@@ -6,13 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 import type { AgentCommand } from "@neo-angband/core";
-import { BorgWorld } from "../world/model";
-import { perceive, makePerceiveMemo } from "../perceive";
-import { makeScenarioView, makeFakeActions, type Scenario } from "../harness";
-import { makeBorgRng } from "../rng";
-import type { BorgContext } from "../context";
+import { BorgWorld } from "../world/model.js";
+import { perceive, makePerceiveMemo } from "../perceive.js";
+import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
+import type { BorgContext } from "../context.js";
 import { FEAT } from "@neo-angband/core";
-import { BI } from "./flow-consts";
+import { BI } from "./flow-consts.js";
 import {
   borgFlowClear,
   borgFlowCommit,
@@ -21,8 +21,8 @@ import {
   borgFlowSpread,
   createFlowState,
   dataIdx,
-} from "./flow";
-import { createFlow } from "./index";
+} from "./flow.js";
+import { createFlow } from "./index.js";
 
 /** Build a seeded BorgContext from a scenario, with optional trait overrides. */
 function makeCtx(

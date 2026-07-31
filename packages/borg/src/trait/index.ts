@@ -10,11 +10,11 @@
  * - config seams (BorgTraitOpts, defaults) and the derived side-state store.
  */
 
-export * from "./trait-index";
-export * from "./tables";
-export * from "./config";
-export * from "./state";
-export * from "./item-util";
-export * from "./trait";
-export * from "./power";
-export * from "./prepared";
+export * from "./trait-index.js";
+export * from "./tables.js";
+export * from "./config.js";
+export * from "./state.js";
+export * from "./item-util.js";
+export * from "./trait.js";
+export * from "./power.js";
+export * from "./prepared.js";

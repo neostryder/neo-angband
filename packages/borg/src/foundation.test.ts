@@ -7,12 +7,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createBorg } from "./controller";
-import { perceive, makePerceiveMemo } from "./perceive";
-import { BorgWorld } from "./world/model";
-import { makeScenarioView, makeFakeActions } from "./harness";
-import { makeBorgRng, reseedBorgRng, BORG_LOCAL_SEED } from "./rng";
-import { keypadDir, distance } from "./think";
+import { createBorg } from "./controller.js";
+import { perceive, makePerceiveMemo } from "./perceive.js";
+import { BorgWorld } from "./world/model.js";
+import { makeScenarioView, makeFakeActions } from "./harness.js";
+import { makeBorgRng, reseedBorgRng, BORG_LOCAL_SEED } from "./rng.js";
+import { keypadDir, distance } from "./think.js";
 
 describe("world model + perception", () => {
   it("folds the player, map, monsters, and floor into the world model", () => {

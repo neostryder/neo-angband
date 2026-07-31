@@ -11,12 +11,12 @@
  * nothing (the safe default). borg_remove_stuff lives in junk.ts (borgRemoveStuff).
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { TV } from "./svals";
-import type { ItemDeps } from "./deps";
-import { trait, isAware, isIdent, itemValue } from "./deps";
-import { mod as modOf } from "../trait/item-util";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { TV } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
+import { trait, isAware, isIdent, itemValue } from "./deps.js";
+import { mod as modOf } from "../trait/item-util.js";
 
 /** Wear-specific seams. */
 export interface WearDeps extends ItemDeps {

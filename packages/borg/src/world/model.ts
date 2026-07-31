@@ -9,9 +9,9 @@
  * subsystems (flow, danger, power, fight, think) read the same shape.
  */
 
-import { BorgMap } from "./grid";
-import { BorgKills } from "./kill";
-import { BorgTakes } from "./take";
+import { BorgMap } from "./grid.js";
+import { BorgKills } from "./kill.js";
+import { BorgTakes } from "./take.js";
 
 /** Goal types (borg-trait.h). goal.type selects the active flow. */
 export const GOAL_KILL = 1; /* Monsters */

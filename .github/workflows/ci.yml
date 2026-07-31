@@ -50,3 +50,13 @@ jobs:
       # program too, so a break in the runnable harness (loader, entry wiring)
       # surfaces in CI even if the vitest path stays green.
       - run: pnpm --filter @neo-angband/cli scenarios
+      # The published-package check: packs @neo-angband/core and mod-sdk, extracts
+      # each into an empty directory and imports every entry point with plain Node.
+      # This is the step that would have caught 4612 extensionless import
+      # specifiers, which every test here missed because vitest resolves through
+      # Vite. See docs/RELEASING.md.
+      - run: pnpm check:npm
+      # The MCP server, spawned and spoken to. Its 25 tests drive the tools
+      # directly with no transport, so nothing else here would notice a break in
+      # the stdio wiring - and a client's only symptom is a disconnect.
+      - run: node packages/mcp/tools/smoke.mjs

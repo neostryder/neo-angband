@@ -3,7 +3,7 @@
  * committed upstream parity baseline (packages/cli/baseline/c-stats-baseline.json).
  *
  * Usage:
- *   node --import ./register.mjs dist/main-cimport.js <stats.db> [depthMax]
+ *   node dist/main-cimport.js <stats.db> [depthMax]
  *
  * See packages/cli/baseline/README.md for how to build the C main-stats tool
  * and produce <stats.db>. The sqlite3 CLI must be on PATH (or set $NEO_SQLITE3).
@@ -12,9 +12,9 @@
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { writeFileSync } from "node:fs";
-import { importCStats } from "./c-stats";
-import { serializeReport } from "./stats";
-import { C_BASELINE_URL } from "./baseline";
+import { importCStats } from "./c-stats.js";
+import { serializeReport } from "./stats.js";
+import { C_BASELINE_URL } from "./baseline.js";
 
 function main(): void {
   const db = process.argv[2];

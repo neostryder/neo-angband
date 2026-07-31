@@ -16,7 +16,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runCallCensus } from "./call-census";
+import { runCallCensus } from "./call-census.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 

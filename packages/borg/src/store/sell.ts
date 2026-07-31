@@ -20,11 +20,11 @@
  * "no goal" follows the C convention.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import type { ItemView, AgentCommand } from "@neo-angband/core";
-import { BI, CLASS_WARRIOR } from "../trait/trait-index";
-import { mod as modOf, resLevel } from "../trait/item-util";
-import { TV, SVAL } from "../item/svals";
+import { BI, CLASS_WARRIOR } from "../trait/trait-index.js";
+import { mod as modOf, resLevel } from "../trait/item-util.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   type StoreDeps,
   BORG_HOME,
@@ -45,14 +45,14 @@ import {
   isBookTval,
   recordSold,
   createStoreMemory,
-} from "./store";
+} from "./store.js";
 import {
   borgNoticeHome,
   borgPowerHomeFrom,
   noticeHomeEmpty,
   noticeHomeFull,
   noticeHomeSingle,
-} from "./home";
+} from "./home.js";
 
 const ELEMENTS = [
   "ACID", "ELEC", "FIRE", "COLD", "POIS", "LIGHT", "DARK",

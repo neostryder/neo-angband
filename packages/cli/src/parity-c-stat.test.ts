@@ -36,9 +36,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
-import { perLevelSd, runStatsBatch, type StatsReport } from "./stats";
-import { loadCBaseline } from "./baseline";
+import { loadGamePack } from "./pack.js";
+import { perLevelSd, runStatsBatch, type StatsReport } from "./stats.js";
+import { loadCBaseline } from "./baseline.js";
 import {
   bonferroni,
   distributionTest,
@@ -46,7 +46,7 @@ import {
   normalTwoTailedP,
   poolDistributionTests,
   type DistributionTest,
-} from "./stat-test";
+} from "./stat-test.js";
 
 const cbase = loadCBaseline();
 

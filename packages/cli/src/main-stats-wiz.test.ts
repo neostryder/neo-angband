@@ -4,13 +4,13 @@
  * alone.
  */
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
-import { runWizStats } from "./main-stats";
+import { loadGamePack } from "./pack.js";
+import { runWizStats } from "./main-stats.js";
 import {
   DEFAULT_DISCONNECT_PARAMS,
   DEFAULT_OBJ_MON_PARAMS,
   DEFAULT_PIT_PARAMS,
-} from "./wiz-stats";
+} from "./wiz-stats.js";
 
 const pack = loadGamePack();
 

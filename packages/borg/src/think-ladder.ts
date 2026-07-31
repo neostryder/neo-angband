@@ -32,14 +32,14 @@
 
 import type { AgentCommand } from "@neo-angband/core";
 import { FEAT } from "@neo-angband/core";
-import type { BorgContext } from "./context";
-import { distance } from "./think";
+import type { BorgContext } from "./context.js";
+import { distance } from "./think.js";
 import {
   BI,
   borgNotice,
   borgPrepared,
   borgRestock,
-} from "./trait";
+} from "./trait/index.js";
 import {
   GOAL_BORE,
   GOAL_FLEE,
@@ -51,8 +51,8 @@ import {
   GOAL_VAULT,
   GOAL_DIGGING,
   GOAL_RECOVER,
-} from "./world/model";
-import { borgFlowOld } from "./flow";
+} from "./world/model.js";
+import { borgFlowOld } from "./flow/index.js";
 import {
   borgAttack,
   borgCaution,
@@ -63,8 +63,8 @@ import {
   borgDimensionDoor,
   borgShadowShift,
   getFightState,
-} from "./fight";
-import { getDangerGlobals, borgDanger } from "./danger";
+} from "./fight/index.js";
+import { getDangerGlobals, borgDanger } from "./danger/index.js";
 import {
   BorgNeed,
   borgMaintainLight,
@@ -85,14 +85,14 @@ import {
   Spell,
   SVAL,
   TV,
-} from "./item";
-import { borgChooseShop, borgCountSell } from "./store";
+} from "./item/index.js";
+import { borgChooseShop, borgCountSell } from "./store/index.js";
 import {
   buildItemDeps,
   buildStoreDeps,
   type ThinkSession,
-} from "./think-session";
-import { borgNearMonsterType } from "./perceive-facts";
+} from "./think-session.js";
+import { borgNearMonsterType } from "./perceive-facts.js";
 
 /* ------------------------------------------------------------------ helpers */
 

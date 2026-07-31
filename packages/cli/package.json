@@ -20,14 +20,14 @@
   },
   "scripts": {
     "build": "tsc",
-    "stats": "node --import ./register.mjs dist/main-stats.js",
-    "stats:baseline": "node --import ./register.mjs dist/main-baseline.js",
-    "c:import": "node --import ./register.mjs dist/main-cimport.js",
-    "c:parity": "node --import ./register.mjs dist/main-cparity.js",
-    "scenarios": "node --import ./register.mjs dist/main-scenarios.js",
-    "spoil": "node --import ./register.mjs dist/main-spoil.js",
-    "census": "node --import ./register.mjs dist/main-census.js",
-    "call-census": "node --import ./register.mjs dist/main-call-census.js"
+    "stats": "node dist/main-stats.js",
+    "stats:baseline": "node dist/main-baseline.js",
+    "c:import": "node dist/main-cimport.js",
+    "c:parity": "node dist/main-cparity.js",
+    "scenarios": "node dist/main-scenarios.js",
+    "spoil": "node dist/main-spoil.js",
+    "census": "node dist/main-census.js",
+    "call-census": "node dist/main-call-census.js"
   },
   "dependencies": {
     "@neo-angband/core": "workspace:*"

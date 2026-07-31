@@ -16,7 +16,7 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import {
   BI,
   CLASS_MAGE,
@@ -24,28 +24,28 @@ import {
   CLASS_PRIEST,
   CLASS_DRUID,
   CLASS_WARRIOR,
-} from "../trait/trait-index";
-import { trait } from "../item/deps";
-import { borgDanger, getDangerGlobals, getFearCaches, borgLos } from "../danger";
-import { FEAT, ddx_ddd, ddy_ddd } from "../flow/flow-consts";
-import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
-import { TV, SVAL } from "../item/svals";
+} from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
+import { borgDanger, getDangerGlobals, getFearCaches, borgLos } from "../danger/index.js";
+import { FEAT, ddx_ddd, ddy_ddd } from "../flow/flow-consts.js";
+import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   Spell,
   borgSpell,
   borgSpellFail,
   borgSpellOkay,
   borgSpellOkayFail,
-} from "../item/magic";
+} from "../item/magic.js";
 import {
   borgZapRod,
   borgReadScroll,
   borgUseStaff,
   borgUseStaffFail,
   borgActivateItem,
-} from "../item/item-use";
-import { getFightState, idiv, iabs, type FightState } from "./state";
-import { borgTarget } from "./projection";
+} from "../item/item-use.js";
+import { getFightState, idiv, iabs, type FightState } from "./state.js";
+import { borgTarget } from "./projection.js";
 
 function avoidance(ctx: BorgContext): number {
   return getDangerGlobals(ctx.world).avoidance;

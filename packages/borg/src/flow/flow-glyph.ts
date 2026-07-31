@@ -11,10 +11,10 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
-import { GOAL_MISC } from "../world/model";
-import { AUTO_MAX_X, AUTO_MAX_Y, FEAT } from "./flow-consts";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
+import { GOAL_MISC } from "../world/model.js";
+import { AUTO_MAX_X, AUTO_MAX_Y, FEAT } from "./flow-consts.js";
 import {
   borgFlowClear,
   borgFlowCommit,
@@ -23,8 +23,8 @@ import {
   borgFlowSpread,
   dataIdx,
   type FlowState,
-} from "./flow";
-import { borgFlowReverse } from "./flow-misc";
+} from "./flow.js";
+import { borgFlowReverse } from "./flow-misc.js";
 
 /* The 24-grid open-room search offsets (borg-flow.c borg_ddx_ddd/borg_ddy_ddd). */
 // prettier-ignore

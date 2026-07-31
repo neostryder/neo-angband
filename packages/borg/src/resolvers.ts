@@ -19,10 +19,10 @@ import {
   MON_SPELL_ENTRIES,
   type MonsterRace,
 } from "@neo-angband/core";
-import type { BorgResolvers } from "./think-session";
-import type { BlowFacts, FactsResolver, MonsterFacts } from "./danger/facts";
-import { defaultResolveMonsterFacts } from "./danger/facts";
-import { borgMonBlowEffect } from "./danger/tables";
+import type { BorgResolvers } from "./think-session.js";
+import type { BlowFacts, FactsResolver, MonsterFacts } from "./danger/facts.js";
+import { defaultResolveMonsterFacts } from "./danger/facts.js";
+import { borgMonBlowEffect } from "./danger/tables.js";
 
 /** What the host supplies to build real resolvers. */
 export interface CoreResolverInput {

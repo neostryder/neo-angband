@@ -22,8 +22,8 @@
  * the death message just prunes it immediately, matching upstream timing.
  */
 
-import type { BorgWorld } from "./world/model";
-import { distance } from "./think";
+import type { BorgWorld } from "./world/model.js";
+import { distance } from "./think.js";
 
 /** prefix_kill[] (borg-messages.c:64): the borg killed something. */
 const PREFIX_KILL: readonly string[] = [

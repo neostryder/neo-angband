@@ -52,7 +52,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { stripComments } from "./text-census";
+import { stripComments } from "./text-census.js";
 
 /** One upstream function: where it is defined and where it is called from. */
 export interface CFunction {

@@ -7,23 +7,23 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BorgWorld } from "../world/model";
-import { perceive, makePerceiveMemo } from "../perceive";
-import { makeScenarioView, makeFakeActions, type Scenario } from "../harness";
-import { makeBorgRng } from "../rng";
-import type { BorgContext } from "../context";
+import { BorgWorld } from "../world/model.js";
+import { perceive, makePerceiveMemo } from "../perceive.js";
+import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
+import type { BorgContext } from "../context.js";
 import { RSF, FEAT } from "@neo-angband/core";
-import { BI } from "../trait/trait-index";
-import { MONBLOW } from "./tables";
-import type { MonsterFacts } from "./facts";
+import { BI } from "../trait/trait-index.js";
+import { MONBLOW } from "./tables.js";
+import type { MonsterFacts } from "./facts.js";
 import {
   borgDanger,
   borgDangerOneKill,
   borgDangerPhysical,
   borgDangerSpell,
-} from "./danger";
-import { getDangerGlobals, getFearCaches } from "./state";
-import { borgFearRegional } from "./fear";
+} from "./danger.js";
+import { getDangerGlobals, getFearCaches } from "./state.js";
+import { borgFearRegional } from "./fear.js";
 
 /** Build a seeded BorgContext, applying trait overrides after perceive. */
 function makeCtx(

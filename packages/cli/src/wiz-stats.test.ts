@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
-import { disconnectStats, objMonStats, pitStats } from "./wiz-stats";
+import { loadGamePack } from "./pack.js";
+import { disconnectStats, objMonStats, pitStats } from "./wiz-stats.js";
 
 const pack = loadGamePack();
 

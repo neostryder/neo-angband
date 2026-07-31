@@ -21,17 +21,17 @@
  */
 
 import { FEAT } from "@neo-angband/core";
-import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
-import type { BorgGrid } from "../world/grid";
-import type { BorgWorld } from "../world/model";
+import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
+import type { BorgGrid } from "../world/grid.js";
+import type { BorgWorld } from "../world/model.js";
 import {
   BI,
   CLASS_WARRIOR,
   CLASS_MAGE,
   CLASS_PRIEST,
   CLASS_NECROMANCER,
-} from "../trait/trait-index";
-import { BORG_DIG } from "../trait/tables";
+} from "../trait/trait-index.js";
+import { BORG_DIG } from "../trait/tables.js";
 
 export { FEAT };
 /**

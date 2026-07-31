@@ -27,7 +27,7 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgWorld } from "../world/model";
+import type { BorgWorld } from "../world/model.js";
 
 /** The combat cluster's mutable scratch state (one per Borg). */
 export interface FightState {

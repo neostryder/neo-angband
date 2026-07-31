@@ -8,6 +8,7 @@
     { "path": "packages/linoleum" },
     { "path": "packages/cli" },
     { "path": "packages/web" },
-    { "path": "packages/desktop" }
+    { "path": "packages/desktop" },
+    { "path": "packages/mcp" }
   ]
 }

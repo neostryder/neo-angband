@@ -5,8 +5,8 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { loadGamePack } from "./pack";
-import { formatScenarioResults, runScenarios } from "./scenarios";
+import { loadGamePack } from "./pack.js";
+import { formatScenarioResults, runScenarios } from "./scenarios.js";
 
 function main(): void {
   const print = process.argv.slice(2).includes("--print");
