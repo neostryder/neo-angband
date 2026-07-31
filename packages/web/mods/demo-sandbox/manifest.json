@@ -3,7 +3,7 @@
   "name": "Sandbox Demo Wanderer",
   "version": "1.0.0",
   "shape": "plugin",
-  "engine": "4.2.x",
+  "engine": ">=0.1.0",
   "capabilities": [
     "state:player.read",
     "state:monsters.read",

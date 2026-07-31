@@ -32,6 +32,8 @@ export type {
 } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
 export { satisfies, SemverError } from "./semver.js";
+export { engineVerdict } from "./engine.js";
+export type { EngineVerdict } from "./engine.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
 export { composeContentPacks, composeDroppingBroken } from "./loader.js";
 export type { ComposedContent, ComposeFault, DroppedPack, LoadedPack } from "./loader.js";

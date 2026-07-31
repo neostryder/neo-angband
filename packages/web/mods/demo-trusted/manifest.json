@@ -3,7 +3,7 @@
   "name": "Trusted Demo (system override)",
   "version": "1.0.0",
   "shape": "plugin",
-  "engine": "4.2.x",
+  "engine": ">=0.1.0",
   "capabilities": [
     "registry:effect",
     "registry:room",
