@@ -6,12 +6,12 @@
  * Upstream provenance: reference/src/cave.c (scatter, scatter_ext).
  */
 
-import { distance } from "../loc";
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import type { Rng } from "../rng";
-import type { Chunk } from "./chunk";
-import { los } from "./view";
+import { distance } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import type { Chunk } from "./chunk.js";
+import { los } from "./view.js";
 
 export type ScatterPred = (c: Chunk, grid: Loc) => boolean;
 

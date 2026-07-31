@@ -18,8 +18,8 @@
  * null to proceed, rather than assertions.
  */
 
-import { FEAT } from "../generated";
-import type { Store } from "./store";
+import { FEAT } from "../generated/index.js";
+import type { Store } from "./store.js";
 
 /**
  * do_cmd_buy (store.c:1667-1670): purchasing requires standing in a store.

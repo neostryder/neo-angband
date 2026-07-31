@@ -29,13 +29,13 @@
  * drift from make_fake_artifact's real behaviour is caught.
  */
 
-import type { Artifact } from "../obj/types";
-import type { Constants } from "../constants";
-import type { ObjRegistry } from "../obj/bind";
-import { ODESC, objectDesc } from "../obj/desc";
-import { objectPrep } from "../obj/make";
-import { knownDescOf } from "./describe";
-import type { GameState } from "./context";
+import type { Artifact } from "../obj/types.js";
+import type { Constants } from "../constants.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { ODESC, objectDesc } from "../obj/desc.js";
+import { objectPrep } from "../obj/make.js";
+import { knownDescOf } from "./describe.js";
+import type { GameState } from "./context.js";
 
 /** The dlev/clev/turn stamp history_add_with_flags reads off live state. */
 export interface HistoryStamp {

@@ -15,13 +15,13 @@
  * dereferenced a global that always exists there).
  */
 
-import { EF, EFFECT_ENTRIES, TMD } from "../generated";
+import { EF, EFFECT_ENTRIES, TMD } from "../generated/index.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "./interpreter";
-import { effectCalculateValue } from "./interpreter";
+} from "./interpreter.js";
+import { effectCalculateValue } from "./interpreter.js";
 
 /** can_disturb / lore argument used all over the timed calls. */
 function notPlayerOrUnaware(context: EffectHandlerContext): boolean {

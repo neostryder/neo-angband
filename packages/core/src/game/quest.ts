@@ -20,16 +20,16 @@
  * free.
  */
 
-import { FEAT } from "../generated";
-import type { Loc } from "../loc";
-import type { MonsterRegistry } from "../mon/bind";
-import type { MonsterRace } from "../mon/types";
-import type { Monster } from "../mon/monster";
-import type { Player, PlayerQuest } from "../player/player";
-import { scatter } from "../world/scatter";
-import type { GameState } from "./context";
-import { pushObject } from "./project-feat";
-import { floorPile } from "./floor";
+import { FEAT } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { MonsterRegistry } from "../mon/bind.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { Monster } from "../mon/monster.js";
+import type { Player, PlayerQuest } from "../player/player.js";
+import { scatter } from "../world/scatter.js";
+import type { GameState } from "./context.js";
+import { pushObject } from "./project-feat.js";
+import { floorPile } from "./floor.js";
 
 /** One record of quest.json (quest.txt): a guardian, its depth and count. */
 export interface QuestRecordJson {

@@ -22,38 +22,38 @@
  * delete_monster_idx on a kill, mirroring mon_take_hit for player kills.
  */
 
-import { KF, MON_MSG, ORIGIN, RF } from "../generated";
-import type { Rng } from "../rng";
-import type { GameObject } from "../obj/object";
-import { tvalIsMoney } from "../obj/object";
-import type { MakeDeps } from "../obj/make";
+import { KF, MON_MSG, ORIGIN, RF } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsMoney } from "../obj/object.js";
+import type { MakeDeps } from "../obj/make.js";
 import {
   applyMagic,
   copyArtifactData,
   makeGold,
   makeObject,
   objectPrep,
-} from "../obj/make";
-import type { ObjRegistry } from "../obj/bind";
-import { tvalFindIdx } from "../obj/bind";
-import type { Monster } from "../mon/monster";
-import { monCreateDropCount, monsterCarry } from "../mon/make";
+} from "../obj/make.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import type { Monster } from "../mon/monster.js";
+import { monCreateDropCount, monsterCarry } from "../mon/make.js";
 import {
   monsterIsCamouflaged,
   monsterIsUnique,
   monsterIsVisible,
-} from "../mon/predicate";
-import { monsterScaredByDamage, monsterWake } from "../mon/take-hit";
-import { MON_TMD } from "../generated";
-import type { LoreStore } from "../mon/lore";
-import { getLore, loreTreasure } from "../mon/lore";
-import type { GameState } from "./context";
-import { deleteMonster } from "./context";
-import { monsterPrimaryGroupSize } from "./mon-group";
-import { monsterRevertShape } from "./mon-shape";
-import { formatMonsterMessage, formatPainMessage } from "./mon-message";
-import type { FloorEnv } from "./floor";
-import { dropNear, floorExcise, floorPile } from "./floor";
+} from "../mon/predicate.js";
+import { monsterScaredByDamage, monsterWake } from "../mon/take-hit.js";
+import { MON_TMD } from "../generated/index.js";
+import type { LoreStore } from "../mon/lore.js";
+import { getLore, loreTreasure } from "../mon/lore.js";
+import type { GameState } from "./context.js";
+import { deleteMonster } from "./context.js";
+import { monsterPrimaryGroupSize } from "./mon-group.js";
+import { monsterRevertShape } from "./mon-shape.js";
+import { formatMonsterMessage, formatPainMessage } from "./mon-message.js";
+import type { FloorEnv } from "./floor.js";
+import { dropNear, floorExcise, floorPile } from "./floor.js";
 
 /** Everything monsterDeath needs beyond the GameState (all built in wireGame). */
 export interface MonsterDeathDeps {

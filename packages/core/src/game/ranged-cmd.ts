@@ -27,36 +27,36 @@
  * 010/011; player-attack.c:1137-1140, 1255-1259, 1296-1299).
  */
 
-import { MON_MSG, MSG, RF, STAT, TMD } from "../generated";
-import { distance, loc } from "../loc";
-import type { Loc } from "../loc";
-import { adj_str_blow } from "../player/calcs";
-import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged";
+import { MON_MSG, MSG, RF, STAT, TMD } from "../generated/index.js";
+import { distance, loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { adj_str_blow } from "../player/calcs.js";
+import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged.js";
 import {
   learnBrandSlayFromLaunch,
   learnBrandSlayFromThrow,
-} from "../combat/brand-slay";
+} from "../combat/brand-slay.js";
 import {
   equipLearnOnRangedAttack,
   missileLearnOnRangedAttack,
-} from "../obj/knowledge";
-import { objectWeightOne, tvalIsAmmo, tvalIsSharpMissile } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { ODESC } from "../obj/desc";
-import { projectPath } from "../world/project";
-import { monsterIsObvious, monsterIsDestroyed, monsterIsVisible } from "../mon/predicate";
-import { getLore } from "../mon/lore";
-import { monTakeHit } from "../mon/take-hit";
-import { playerClearTimed } from "../player/timed";
-import { gearGet, gearObjectForUse } from "./gear";
-import { dropNear, floorPile, floorObjectForUse, itemIsAvailable } from "./floor";
-import { invenTakeoff, playerConfuseDir } from "./obj-cmd";
-import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
-import type { GameState, PlayerCommand } from "./context";
-import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target";
-import { describeObject } from "./describe";
-import { formatMonsterMessage, formatPainMessage, monMessageSoundType } from "./mon-message";
-import type { ActionRegistry } from "./player-turn";
+} from "../obj/knowledge.js";
+import { objectWeightOne, tvalIsAmmo, tvalIsSharpMissile } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { ODESC } from "../obj/desc.js";
+import { projectPath } from "../world/project.js";
+import { monsterIsObvious, monsterIsDestroyed, monsterIsVisible } from "../mon/predicate.js";
+import { getLore } from "../mon/lore.js";
+import { monTakeHit } from "../mon/take-hit.js";
+import { playerClearTimed } from "../player/timed.js";
+import { gearGet, gearObjectForUse } from "./gear.js";
+import { dropNear, floorPile, floorObjectForUse, itemIsAvailable } from "./floor.js";
+import { invenTakeoff, playerConfuseDir } from "./obj-cmd.js";
+import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target.js";
+import { describeObject } from "./describe.js";
+import { formatMonsterMessage, formatPainMessage, monMessageSoundType } from "./mon-message.js";
+import type { ActionRegistry } from "./player-turn.js";
 
 /* Keypad direction deltas (ddx/ddy), indexed by keypad digit 1..9. */
 const DDX = [0, -1, 0, 1, -1, 0, 1, -1, 0, 1];

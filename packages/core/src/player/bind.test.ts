@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { colorCharToAttr } from "../color";
-import { OF, PF, STAT } from "../generated";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords, PRaceRecordJson, ClassRecordJson } from "./bind";
-import { SKILL } from "./types";
+import { colorCharToAttr } from "../color.js";
+import { OF, PF, STAT } from "../generated/index.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords, PRaceRecordJson, ClassRecordJson } from "./bind.js";
+import { SKILL } from "./types.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

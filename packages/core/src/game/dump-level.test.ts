@@ -9,10 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { SQUARE } from "../generated";
-import { dumpLevel, dumpLevelBody, dumpLevelEscapedString } from "./dump-level";
-import { GRANITE, addMon, featureReg, makeRace, makeState, monReg } from "./harness";
+import { loc } from "../loc.js";
+import { SQUARE } from "../generated/index.js";
+import { dumpLevel, dumpLevelBody, dumpLevelEscapedString } from "./dump-level.js";
+import { GRANITE, addMon, featureReg, makeRace, makeState, monReg } from "./harness.js";
 
 /** The <pre> block's rows, without the surrounding markup. */
 function mapRows(html: string): string[] {

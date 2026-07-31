@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated";
-import { Rng } from "../rng";
-import { TMD_MAX } from "./types";
-import type { TakeHitTarget, TakeHitHooks } from "./take-hit";
-import { playerApplyDamageReduction, takeHit } from "./take-hit";
+import { TMD } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { TMD_MAX } from "./types.js";
+import type { TakeHitTarget, TakeHitHooks } from "./take-hit.js";
+import { playerApplyDamageReduction, takeHit } from "./take-hit.js";
 
 function target(overrides: Partial<TakeHitTarget> = {}): TakeHitTarget {
   return {

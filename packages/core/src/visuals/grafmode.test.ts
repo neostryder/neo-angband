@@ -7,8 +7,8 @@ import {
   GRAPHICS_NONE,
   getGraphicsMode,
   isDoubleHeightTile,
-} from "./grafmode";
-import { GRAPHICS_MODE_CATALOG as DATA } from "./grafmode-data";
+} from "./grafmode.js";
+import { GRAPHICS_MODE_CATALOG as DATA } from "./grafmode-data.js";
 
 describe("graphics-mode catalog", () => {
   it("parses the six shipped modes from list.txt, in order", () => {

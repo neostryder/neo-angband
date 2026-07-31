@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { buildProb } from "../obj/randname";
-import { playerRandomName } from "./player";
+import { Rng } from "../rng.js";
+import { buildProb } from "../obj/randname.js";
+import { playerRandomName } from "./player.js";
 
 /**
  * player_random_name (player.c L375): randname_make(RANDNAME_TOLKIEN, 4, 8,

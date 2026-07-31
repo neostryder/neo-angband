@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { KF, MON_TMD, RF } from "../generated";
-import { Rng } from "../rng";
-import { loc } from "../loc";
-import { KF_SIZE } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { blankMonster } from "./monster";
-import type { Monster } from "./monster";
-import type { LoreStore } from "./lore";
-import { getLore } from "./lore";
-import { getRandomMonsterObject, stealMonsterItem } from "./steal";
-import type { StealEnv } from "./steal";
-import { makeRace } from "../game/harness";
+import { FlagSet } from "../bitflag.js";
+import { KF, MON_TMD, RF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { loc } from "../loc.js";
+import { KF_SIZE } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { blankMonster } from "./monster.js";
+import type { Monster } from "./monster.js";
+import type { LoreStore } from "./lore.js";
+import { getLore } from "./lore.js";
+import { getRandomMonsterObject, stealMonsterItem } from "./steal.js";
+import type { StealEnv } from "./steal.js";
+import { makeRace } from "../game/harness.js";
 
 /** A minimal held object carrying only the fields the steal core reads. */
 function heldObject(

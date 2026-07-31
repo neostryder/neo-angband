@@ -29,22 +29,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { Dice } from "./dice";
-import { EffectBuilder } from "./effects/effect";
-import { EF, MSG, PROJ, RF, RSF, TF, TMD, TV } from "./generated";
-import { SKILL } from "./player/types";
-import { resolvePits } from "./gen/gen-monster";
-import { bindMonsters } from "./mon/bind";
-import type { MonsterPackRecords } from "./mon/bind";
-import { ObjRegistry } from "./obj/bind";
-import { EL_INFO_HATES, EL_INFO_IGNORE } from "./obj/types";
-import type { ObjPackJson } from "./obj/types";
-import { bindPlayer } from "./player/bind";
-import type { PlayerPackRecords } from "./player/bind";
-import { FeatureRegistry } from "./world/feature";
-import type { TerrainRecordJson } from "./world/feature";
-import { bindProjections } from "./world/projection";
-import type { ProjectionRecordJson } from "./world/projection";
+import { Dice } from "./dice.js";
+import { EffectBuilder } from "./effects/effect.js";
+import { EF, MSG, PROJ, RF, RSF, TF, TMD, TV } from "./generated/index.js";
+import { SKILL } from "./player/types.js";
+import { resolvePits } from "./gen/gen-monster.js";
+import { bindMonsters } from "./mon/bind.js";
+import type { MonsterPackRecords } from "./mon/bind.js";
+import { ObjRegistry } from "./obj/bind.js";
+import { EL_INFO_HATES, EL_INFO_IGNORE } from "./obj/types.js";
+import type { ObjPackJson } from "./obj/types.js";
+import { bindPlayer } from "./player/bind.js";
+import type { PlayerPackRecords } from "./player/bind.js";
+import { FeatureRegistry } from "./world/feature.js";
+import type { TerrainRecordJson } from "./world/feature.js";
+import { bindProjections } from "./world/projection.js";
+import type { ProjectionRecordJson } from "./world/projection.js";
 
 /* ------------------------------------------------------------------ *
  * Pack loading

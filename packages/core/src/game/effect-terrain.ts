@@ -24,46 +24,46 @@
  *   the race name stands in for the quake and DARKEN_AREA target messages.
  */
 
-import { ELEM, FEAT, EF, MON_TMD, RF, SQUARE, TF, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { DDGRID_DDD, distance, loc, locEq, locSum } from "../loc";
+import { ELEM, FEAT, EF, MON_TMD, RF, SQUARE, TF, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { DDGRID_DDD, distance, loc, locEq, locSum } from "../loc.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
   Source,
-} from "../effects/interpreter";
-import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import { liveObjectIsKnownArtifact } from "../obj/artifact-known";
-import { equipLearnElement } from "../obj/knowledge";
-import { featIsBright } from "../world/chunk";
-import { los } from "../world/view";
+} from "../effects/interpreter.js";
+import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { liveObjectIsKnownArtifact } from "../obj/artifact-known.js";
+import { equipLearnElement } from "../obj/knowledge.js";
+import { featIsBright } from "../world/chunk.js";
+import { los } from "../world/view.js";
 import {
   caveFindDecoy,
   monsterIsDecoyed,
   monsterTargetMonster,
-} from "./effect-mon-origin";
-import type { GameState } from "./context";
+} from "./effect-mon-origin.js";
+import type { GameState } from "./context.js";
 import {
   deleteMonster,
   monsterSwap,
   movePlayer,
   squareIsEmpty,
   squareMonster,
-} from "./context";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { floorExcise, floorPile } from "./floor";
+} from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { floorExcise, floorPile } from "./floor.js";
 import {
   squareForget,
   squareKnowPile,
   squareMemorize,
   squareMemoryBad,
   squareSensePile,
-} from "./known";
-import { pushObject } from "./project-feat";
-import { squareIsVisibleTrap, squareIsWarded } from "./trap";
+} from "./known.js";
+import { pushObject } from "./project-feat.js";
+import { squareIsVisibleTrap, squareIsWarded } from "./trap.js";
 
 /** msg() over the effect context's optional message sink. */
 function say(ctx: EffectHandlerContext, text: string): void {

@@ -13,15 +13,15 @@
  * buildEffectContext).
  */
 
-import type { Loc } from "../loc";
-import type { EffectContext, EffectHandlerContext } from "../effects/interpreter";
-import type { TakeHitHooks } from "../player/take-hit";
-import type { GameState } from "./context";
-import type { CastContext } from "./project-cast";
-import type { TeleportEnv } from "./effect-teleport";
-import type { GeneralEffectEnv } from "./effect-general";
-import type { ItemEffectEnv } from "./effect-item";
-import type { SummonEffectEnv } from "./effect-summon";
+import type { Loc } from "../loc.js";
+import type { EffectContext, EffectHandlerContext } from "../effects/interpreter.js";
+import type { TakeHitHooks } from "../player/take-hit.js";
+import type { GameState } from "./context.js";
+import type { CastContext } from "./project-cast.js";
+import type { TeleportEnv } from "./effect-teleport.js";
+import type { GeneralEffectEnv } from "./effect-general.js";
+import type { ItemEffectEnv } from "./effect-item.js";
+import type { SummonEffectEnv } from "./effect-summon.js";
 
 /** Everything the game-layer effect handlers need beyond the EffectContext. */
 export interface GameEffectEnv {
@@ -59,9 +59,9 @@ export interface GameEffectEnv {
    * object_flavor_aware side effect. Absent, awareness is left unchanged (the
    * worldless rule); the ignore/notice consequences ride flavorDeps.
    */
-  flavor?: import("../obj/knowledge").FlavorKnowledge;
+  flavor?: import("../obj/knowledge.js").FlavorKnowledge;
   /** object_flavor_aware's ignore/notice side effects, used with `flavor`. */
-  flavorDeps?: import("../obj/knowledge").FlavorAwareDeps;
+  flavorDeps?: import("../obj/knowledge.js").FlavorAwareDeps;
   /** Summoning seams: the summon table and live placement (effect-summon.ts). */
   summon?: SummonEffectEnv;
   /**
@@ -69,7 +69,7 @@ export interface GameEffectEnv {
    * the MON_TMD_CHANGED timer (the SHAPECHANGE monster spell). Built by
    * wireGame; absent, the timer stands and the form is unchanged.
    */
-  monShape?: import("../mon/timed").MonShapeHooks;
+  monShape?: import("../mon/timed.js").MonShapeHooks;
 }
 
 /** Attach a game environment to an effect context for the game handlers. */

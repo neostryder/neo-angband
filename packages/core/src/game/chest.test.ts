@@ -1,27 +1,27 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { SQUARE, STAT, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { SKILL } from "../player/types";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState, makeObject, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { tvalIsChest } from "../obj/object";
-import { CHEST_QUERY } from "../obj/chest";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { registerGeneralHandlers } from "./effect-general";
-import { basicPlayerActor } from "./project-cast";
-import { floorCarry, floorPile } from "./floor";
-import { createDefaultRegistry, processPlayer } from "./player-turn";
-import type { CaveCmdDeps } from "./cave-cmd";
-import { installCaveCommands } from "./cave-cmd";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
+import { bindConstants } from "../constants.js";
+import { SQUARE, STAT, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState, makeObject, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { tvalIsChest } from "../obj/object.js";
+import { CHEST_QUERY } from "../obj/chest.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { registerGeneralHandlers } from "./effect-general.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { createDefaultRegistry, processPlayer } from "./player-turn.js";
+import type { CaveCmdDeps } from "./cave-cmd.js";
+import { installCaveCommands } from "./cave-cmd.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
 import {
   chestCheck,
   chestDeath,
@@ -29,8 +29,8 @@ import {
   countChests,
   doCmdDisarmChest,
   doCmdOpenChest,
-} from "./chest";
-import type { ChestCmdDeps, ChestEffectsBundle } from "./chest";
+} from "./chest.js";
+import type { ChestCmdDeps, ChestEffectsBundle } from "./chest.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

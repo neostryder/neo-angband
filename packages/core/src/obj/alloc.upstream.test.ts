@@ -14,13 +14,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FlagSet } from "../bitflag";
-import { KF, TV } from "../generated";
-import { KF_SIZE, OF_SIZE } from "./types";
-import type { ObjectKind } from "./types";
-import { Rng } from "../rng";
-import { ObjAllocState } from "./make";
-import type { Constants } from "../constants";
+import { FlagSet } from "../bitflag.js";
+import { KF, TV } from "../generated/index.js";
+import { KF_SIZE, OF_SIZE } from "./types.js";
+import type { ObjectKind } from "./types.js";
+import { Rng } from "../rng.js";
+import { ObjAllocState } from "./make.js";
+import type { Constants } from "../constants.js";
 
 function makeKind(
   kidx: number,

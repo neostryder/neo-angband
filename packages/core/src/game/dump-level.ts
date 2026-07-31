@@ -16,11 +16,11 @@
  * the user directory / a download (see packages/web/src/userdir.ts).
  */
 
-import { floorPile } from "./floor";
-import { squareIsEmpty, squareIsPlayer } from "./context";
-import { squareIsTrap, squareIsPlayerTrap, squareIsWebbed } from "./trap";
-import { squareIsVault, squareIsNoStairs } from "../gen/util";
-import type { GameState } from "./context";
+import { floorPile } from "./floor.js";
+import { squareIsEmpty, squareIsPlayer } from "./context.js";
+import { squareIsTrap, squareIsPlayerTrap, squareIsWebbed } from "./trap.js";
+import { squareIsVault, squareIsNoStairs } from "../gen/util.js";
+import type { GameState } from "./context.js";
 
 /** dump_level_escaped_string (gen-util.c L1000-1026). */
 export function dumpLevelEscapedString(s: string): string {

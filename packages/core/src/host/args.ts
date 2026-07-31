@@ -23,8 +23,8 @@
  * end has a console and a filesystem. Nothing here quits or writes.
  */
 
-import { ALL_HOST_DIRS } from "./raw";
-import type { HostDir } from "./io";
+import { ALL_HOST_DIRS } from "./raw.js";
+import type { HostDir } from "./io.js";
 
 /** option.h:23. Upstream truncates -u<who> into a buffer of this size. */
 export const PLAYER_NAME_LEN = 32;

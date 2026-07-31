@@ -17,12 +17,12 @@
  *   cave, and a decoy only exists once the create-decoy effect is ported.
  */
 
-import { FlagSet } from "../bitflag";
-import type { Rng } from "../rng";
-import { MFLAG, RF } from "../generated";
-import { MON_GROUP, monSpellsOfTypes, RSF_SIZE } from "./types";
-import type { Monster } from "./monster";
-import { GROUP_TYPE } from "./monster";
+import { FlagSet } from "../bitflag.js";
+import type { Rng } from "../rng.js";
+import { MFLAG, RF } from "../generated/index.js";
+import { MON_GROUP, monSpellsOfTypes, RSF_SIZE } from "./types.js";
+import type { Monster } from "./monster.js";
+import { GROUP_TYPE } from "./monster.js";
 
 /* ------------------------------------------------------------------ */
 /* Permanent monster properties                                        */

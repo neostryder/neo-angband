@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { RF } from "../generated";
-import { distance, loc, locEq } from "../loc";
-import { addMon, makeState, monReg } from "./harness";
-import { thrustAway } from "./thrust";
+import { RF } from "../generated/index.js";
+import { distance, loc, locEq } from "../loc.js";
+import { addMon, makeState, monReg } from "./harness.js";
+import { thrustAway } from "./thrust.js";
 
 const plainRace = monReg.races.find(
   (r) => r.rarity > 0 && !r.flags.has(RF.UNIQUE),

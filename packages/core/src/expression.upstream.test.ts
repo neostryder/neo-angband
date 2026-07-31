@@ -17,7 +17,7 @@ import {
   EXPRESSION_ERR_INVALID_OPERATOR,
   Expression,
   expressionTestCopy,
-} from "./expression";
+} from "./expression.js";
 
 describe("z-expression/expression upstream", () => {
   // C: test_alloc

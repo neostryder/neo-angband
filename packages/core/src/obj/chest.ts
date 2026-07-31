@@ -23,10 +23,10 @@
  * follow-up, not required for this port.
  */
 
-import type { Rng } from "../rng";
-import type { EffectRecordJson } from "./types";
-import type { GameObject } from "./object";
-import { tvalIsChest } from "./object";
+import type { Rng } from "../rng.js";
+import type { EffectRecordJson } from "./types.js";
+import type { GameObject } from "./object.js";
+import { tvalIsChest } from "./object.js";
 
 /** enum chest_query (obj-chest.h): what chest_check/count_chests look for. */
 export const CHEST_QUERY = {

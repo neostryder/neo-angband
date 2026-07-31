@@ -11,21 +11,21 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-import { FlagSet } from "../bitflag";
-import { Dice } from "../dice";
-import { RF } from "../generated";
-import { Rng } from "../rng";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import type { MonsterBlow, MonsterRace } from "../mon/types";
-import { RF_SIZE } from "../mon/types";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { monMeleeAttack, type DefenderState } from "./mon-melee";
+import { FlagSet } from "../bitflag.js";
+import { Dice } from "../dice.js";
+import { RF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import type { MonsterBlow, MonsterRace } from "../mon/types.js";
+import { RF_SIZE } from "../mon/types.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { monMeleeAttack, type DefenderState } from "./mon-melee.js";
 
 function packJson<T>(name: string): T[] {
   return (

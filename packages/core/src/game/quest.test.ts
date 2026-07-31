@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { FEAT } from "../generated";
-import { addMon, makeRace, makeState, monReg } from "./harness";
+import { loc } from "../loc.js";
+import { FEAT } from "../generated/index.js";
+import { addMon, makeRace, makeState, monReg } from "./harness.js";
 import {
   bindQuests,
   isQuest,
   playerQuestsReset,
   questCheck,
-} from "./quest";
-import type { QuestRecordJson } from "./quest";
+} from "./quest.js";
+import type { QuestRecordJson } from "./quest.js";
 
 /** The shipped quest table (quest.txt / quest.json). */
 const QUEST_RECORDS: QuestRecordJson[] = [

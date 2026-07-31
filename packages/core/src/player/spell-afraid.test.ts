@@ -7,12 +7,12 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
-import { spellChance } from "./spell";
+import { TMD } from "../generated/index.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
+import { spellChance } from "./spell.js";
 
 function loadRecords<T>(name: string): T[] {
   return (

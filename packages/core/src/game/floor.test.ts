@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
 import {
   dropNear,
   floorCarry,
@@ -21,9 +21,9 @@ import {
   scanFloor,
   scanItems,
   USE_MODE,
-} from "./floor";
-import { invenCarry } from "./gear";
-import { GRANITE, makeState } from "./harness";
+} from "./floor.js";
+import { invenCarry } from "./gear.js";
+import { GRANITE, makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

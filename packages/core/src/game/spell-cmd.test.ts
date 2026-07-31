@@ -1,26 +1,26 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { addMonster, updateMonsterDistances } from "./context";
-import type { GameState, PlayerCommand } from "./context";
-import { gearGet } from "./gear";
-import { playerBookHasUnlearnedSpells, playerCanCast } from "./spell-cmd";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { addMonster, updateMonsterDistances } from "./context.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { gearGet } from "./gear.js";
+import { playerBookHasUnlearnedSpells, playerCanCast } from "./spell-cmd.js";
 import {
   playerObjectToBook,
   spellByIndex,
   spellChance,
   spellOkayToCast,
   spellOkayToStudy,
-} from "../player/spell";
-import { convertManaToHp } from "../player/combat-regen";
-import { PF, SQUARE, STAT, TMD } from "../generated";
-import { blankMonster } from "../mon/monster";
-import type { MonsterRace } from "../mon/types";
-import { processPlayer } from "./player-turn";
-import type { ActionRegistry } from "./player-turn";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
+} from "../player/spell.js";
+import { convertManaToHp } from "../player/combat-regen.js";
+import { PF, SQUARE, STAT, TMD } from "../generated/index.js";
+import { blankMonster } from "../mon/monster.js";
+import type { MonsterRace } from "../mon/types.js";
+import { processPlayer } from "./player-turn.js";
+import type { ActionRegistry } from "./player-turn.js";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

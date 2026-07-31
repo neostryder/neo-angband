@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { COLOUR_DARK, colorTextToAttr } from "../color";
-import { OF, PROJ, RSF } from "../generated";
-import { calcBonuses } from "../player/calcs";
-import { SKILL } from "../player/types";
-import { makeState, monReg, plReg } from "../game/harness";
-import { buildLoreColorState } from "../game/lore-color";
-import type { MonsterRace } from "./types";
-import { blowColorFor, spellColorFor } from "./lore-describe";
-import type { LoreColorState } from "./lore-describe";
+import { COLOUR_DARK, colorTextToAttr } from "../color.js";
+import { OF, PROJ, RSF } from "../generated/index.js";
+import { calcBonuses } from "../player/calcs.js";
+import { SKILL } from "../player/types.js";
+import { makeState, monReg, plReg } from "../game/harness.js";
+import { buildLoreColorState } from "../game/lore-color.js";
+import type { MonsterRace } from "./types.js";
+import { blowColorFor, spellColorFor } from "./lore-describe.js";
+import type { LoreColorState } from "./lore-describe.js";
 
 /** attr of a colour name (the same normalisation the port uses). */
 const attr = (name: string): number => {

@@ -1,19 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, KF, OF } from "../generated";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson } from "./types";
-import { buildCurseTimedFoil } from "./object";
-import { doRandart, artifactGenName, RANDNAME_TOLKIEN } from "./randart";
+import { ELEM, KF, OF } from "../generated/index.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
+import { buildCurseTimedFoil } from "./object.js";
+import { doRandart, artifactGenName, RANDNAME_TOLKIEN } from "./randart.js";
 import {
   EFPROP,
   removeContradictory,
   removeContradictoryActivation,
-} from "./randart-build";
-import { buildProb } from "./randname";
-import { collectArtifactData, artifactPower } from "./randart-data";
-import { Rng } from "../rng";
-import type { Artifact } from "./types";
+} from "./randart-build.js";
+import { buildProb } from "./randname.js";
+import { collectArtifactData, artifactPower } from "./randart-data.js";
+import { Rng } from "../rng.js";
+import type { Artifact } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

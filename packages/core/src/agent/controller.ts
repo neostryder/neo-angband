@@ -23,18 +23,18 @@
  * leaves the mode untouched.
  */
 
-import type { GameState, PlayerCommand } from "../game/context";
-import { createAgentView } from "./perceive";
-import { createAgentActions } from "./act";
-import { AgentCapabilityError } from "./types";
+import type { GameState, PlayerCommand } from "../game/context.js";
+import { createAgentView } from "./perceive.js";
+import { createAgentActions } from "./act.js";
+import { AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
   AgentController,
   AgentSession,
   ControllerOptions,
-} from "./types";
+} from "./types.js";
 
-export { AgentCapabilityError } from "./types";
+export { AgentCapabilityError } from "./types.js";
 
 /**
  * Capabilities every controller needs at install: it must be able to drive

@@ -28,10 +28,10 @@
  * drift degrades gracefully instead of crashing the browser.
  */
 
-import type { GameState } from "../game/context";
-import type { PlayerClass, PlayerProperty, PlayerRace } from "./types";
-import { OF } from "../generated/object-flags";
-import { PF } from "../generated/player-flags";
+import type { GameState } from "../game/context.js";
+import type { PlayerClass, PlayerProperty, PlayerRace } from "./types.js";
+import { OF } from "../generated/object-flags.js";
+import { PF } from "../generated/player-flags.js";
 
 /** One row of the abilities browser: an ability's display name/desc/group. */
 export interface AbilityRow {

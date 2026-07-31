@@ -19,12 +19,12 @@
  * supplied by session/game.ts).
  */
 
-import { OF, PF, TMD } from "../generated";
-import { sourcePlayer } from "../effects/interpreter";
-import { playerOfHasWorld } from "./world";
-import { squareIsLit } from "../world/view";
-import type { EffectRecordJson } from "../obj/types";
-import type { Player } from "../player/player";
+import { OF, PF, TMD } from "../generated/index.js";
+import { sourcePlayer } from "../effects/interpreter.js";
+import { playerOfHasWorld } from "./world.js";
+import { squareIsLit } from "../world/view.js";
+import type { EffectRecordJson } from "../obj/types.js";
+import type { Player } from "../player/player.js";
 import {
   calcSpells,
   classMagicRealms,
@@ -36,24 +36,24 @@ import {
   objCanStudy,
   playerObjectToBook,
   PY_SPELL,
-} from "../player/spell";
-import { scanItems, USE_MODE } from "./floor";
-import type { SpellChanceEnv } from "../player/spell";
-import { convertManaToHp } from "../player/combat-regen";
-import type { GameState, PlayerCommand } from "./context";
+} from "../player/spell.js";
+import { scanItems, USE_MODE } from "./floor.js";
+import type { SpellChanceEnv } from "../player/spell.js";
+import { convertManaToHp } from "../player/combat-regen.js";
+import type { GameState, PlayerCommand } from "./context.js";
 import {
   buildObjectEffectChain,
   effectRecordsNeedAim,
   noLight,
   playerConfuseDir,
   playerGetResumeNormalShape,
-} from "./obj-cmd";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { gearGet } from "./gear";
-import { buildEffectContext } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import type { ActionRegistry } from "./player-turn";
-import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
+} from "./obj-cmd.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { gearGet } from "./gear.js";
+import { buildEffectContext } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { ActionRegistry } from "./player-turn.js";
+import { targetFix, targetGet, targetOkay, targetRelease } from "./target.js";
 
 /** Hooks for messages and unported systems; all optional. */
 export interface SpellCmdEnv extends SpellChanceEnv {

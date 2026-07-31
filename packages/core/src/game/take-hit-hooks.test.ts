@@ -16,10 +16,10 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MSG, PF } from "../generated";
-import { startGame } from "../session/game";
-import type { GamePack, StartedGame } from "../session/game";
-import { worldTakeHit } from "./world";
+import { MSG, PF } from "../generated/index.js";
+import { startGame } from "../session/game.js";
+import type { GamePack, StartedGame } from "../session/game.js";
+import { worldTakeHit } from "./world.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

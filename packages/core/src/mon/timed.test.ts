@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, RF } from "../generated";
-import { Rng } from "../rng";
-import { bindMonsters } from "./bind";
-import type { MonsterPackRecords } from "./bind";
-import { blankMonster } from "./monster";
+import { MFLAG, MON_TMD, RF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "./bind.js";
+import type { MonsterPackRecords } from "./bind.js";
+import { blankMonster } from "./monster.js";
 import {
   MON_TMD_FLG_NOFAIL,
   monClearTimed,
@@ -12,8 +12,8 @@ import {
   monIncTimed,
   monsterEffectLevel,
   monTimedNameToIdx,
-} from "./timed";
-import type { MonsterRace } from "./types";
+} from "./timed.js";
+import type { MonsterRace } from "./types.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(
@@ -143,8 +143,8 @@ describe("mon_inc/dec/clear_timed (mon-timed.c)", () => {
 
 describe("timed-resist lore learning (mon-timed.c L107-110)", () => {
   it("a visible monster resisting via its race flag teaches that flag", async () => {
-    const { installMonTimedLore } = await import("./timed");
-    const { getLore } = await import("./lore");
+    const { installMonTimedLore } = await import("./timed.js");
+    const { getLore } = await import("./lore.js");
 
     const race = raceWhere((r) => r.flags.has(RF.NO_SLEEP));
     const mon = blankMonster(race);
@@ -160,8 +160,8 @@ describe("timed-resist lore learning (mon-timed.c L107-110)", () => {
   });
 
   it("an invisible monster's resist teaches nothing", async () => {
-    const { installMonTimedLore } = await import("./timed");
-    const { getLore } = await import("./lore");
+    const { installMonTimedLore } = await import("./timed.js");
+    const { getLore } = await import("./lore.js");
 
     const race = raceWhere((r) => r.flags.has(RF.NO_SLEEP));
     const mon = blankMonster(race); /* not visible */

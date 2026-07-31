@@ -32,15 +32,15 @@ import {
   COLOUR_RED,
   COLOUR_VIOLET,
   COLOUR_WHITE,
-} from "./color";
-import { GameEvents } from "./events";
-import { MSG } from "./generated/message";
-import { MessageLog, Messages, MSG_GENERIC } from "./msg";
+} from "./color.js";
+import { GameEvents } from "./events.js";
+import { MSG } from "./generated/message.js";
+import { MessageLog, Messages, MSG_GENERIC } from "./msg.js";
 import {
   messageLookupByName,
   messageLookupBySoundName,
   messageSoundName,
-} from "./sound/engine";
+} from "./sound/engine.js";
 
 interface EventState {
   lastmsg: string | null;

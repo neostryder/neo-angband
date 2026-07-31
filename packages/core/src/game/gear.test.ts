@@ -1,19 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { OBJ_MOD, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import { objectPrep } from "../obj/make";
-import type { GameObject, StackLimits } from "../obj/object";
-import { bindPlayer } from "../player/bind";
-import { registerBookKinds } from "../player/spell";
-import { blankPlayer } from "../player/player";
-import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge";
-import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
-import type { KnownDesc } from "../obj/known-object";
-import { Rng } from "../rng";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
+import { bindConstants } from "../constants.js";
+import { OBJ_MOD, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import { registerBookKinds } from "../player/spell.js";
+import { blankPlayer } from "../player/player.js";
+import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge.js";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
+import type { KnownDesc } from "../obj/known-object.js";
+import { Rng } from "../rng.js";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
 import {
   calcInventory,
   gearGet,
@@ -23,7 +23,7 @@ import {
   wieldAll,
   wieldObject,
   wieldSlot,
-} from "./gear";
+} from "./gear.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -1,20 +1,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KF, TV } from "../generated";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson, ObjectKind } from "./types";
-import { objectNew, tvalCanHaveFlavor } from "./object";
-import { FlavorKnowledge } from "./knowledge";
-import { flavorInit } from "./flavor";
-import { registerBookKinds } from "../player/spell";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { buildProb, randnameMake } from "./randname";
-import { Rng } from "../rng";
-import { ODESC } from "./desc";
-import { makeState } from "../game/harness";
-import { describeObject } from "../game/describe";
-import type { GameState } from "../game/context";
+import { KF, TV } from "../generated/index.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson, ObjectKind } from "./types.js";
+import { objectNew, tvalCanHaveFlavor } from "./object.js";
+import { FlavorKnowledge } from "./knowledge.js";
+import { flavorInit } from "./flavor.js";
+import { registerBookKinds } from "../player/spell.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { buildProb, randnameMake } from "./randname.js";
+import { Rng } from "../rng.js";
+import { ODESC } from "./desc.js";
+import { makeState } from "../game/harness.js";
+import { describeObject } from "../game/describe.js";
+import type { GameState } from "../game/context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

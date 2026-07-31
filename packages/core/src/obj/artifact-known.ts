@@ -12,9 +12,9 @@
  * Attribution: neostryder / RPGM Tools.
  */
 
-import { OBJ_NOTICE } from "./knowledge";
-import type { GameObject } from "./object";
-import type { Artifact } from "./types";
+import { OBJ_NOTICE } from "./knowledge.js";
+import type { GameObject } from "./object.js";
+import type { Artifact } from "./types.js";
 
 /**
  * object_is_known_artifact for a LIVE object (obj-knowledge.c L552): upstream

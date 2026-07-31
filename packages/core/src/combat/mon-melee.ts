@@ -34,14 +34,14 @@
  * RNG is drawn by the attach).
  */
 
-import type { Rng, RandomValue } from "../rng";
-import type { Loc } from "../loc";
-import { locEq } from "../loc";
-import type { Monster } from "../mon/monster";
-import type { BlowMethod } from "../mon/types";
-import type { Player } from "../player/player";
-import { ELEM, MON_TMD, PROJ, RF, STAT, TMD } from "../generated";
-import { STUN_DAM_REDUCTION, STUN_HIT_REDUCTION, testHit } from "./hit";
+import type { Rng, RandomValue } from "../rng.js";
+import type { Loc } from "../loc.js";
+import { locEq } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import type { BlowMethod } from "../mon/types.js";
+import type { Player } from "../player/player.js";
+import { ELEM, MON_TMD, PROJ, RF, STAT, TMD } from "../generated/index.js";
+import { STUN_DAM_REDUCTION, STUN_HIT_REDUCTION, testHit } from "./hit.js";
 
 /** A defender's combat AC contribution (upstream p->state.ac + p->state.to_a). */
 export interface DefenderState {

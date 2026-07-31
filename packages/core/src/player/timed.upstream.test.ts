@@ -17,19 +17,19 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, OF, TMD } from "../generated";
-import { timedNameToIdx } from "../effects/effect";
-import { Rng } from "../rng";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
-import type { TimedEffect } from "./types";
-import { TMD_MAX } from "./types";
+import { EF, OF, TMD } from "../generated/index.js";
+import { timedNameToIdx } from "../effects/effect.js";
+import { Rng } from "../rng.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
+import type { TimedEffect } from "./types.js";
+import { TMD_MAX } from "./types.js";
 import type {
   PlayerIncCheckHooks,
   PlayerIncCheckQueries,
   PlayerTimedHooks,
   PlayerTimedTarget,
-} from "./timed";
+} from "./timed.js";
 import {
   playerClearTimed,
   playerDecTimed,
@@ -37,7 +37,7 @@ import {
   playerIncTimed,
   playerSetTimed,
   playerTimedGradeEq,
-} from "./timed";
+} from "./timed.js";
 
 function packJson<T>(name: string): T[] {
   return (

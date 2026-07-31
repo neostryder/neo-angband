@@ -4,9 +4,9 @@ import {
   EverseenKnowledge,
   runeDesc,
   type FlavorAwareDeps,
-} from "./knowledge";
-import { Rng } from "../rng";
-import type { ObjectKind } from "./types";
+} from "./knowledge.js";
+import { Rng } from "../rng.js";
+import type { ObjectKind } from "./types.js";
 
 /** A minimal kind carrying just the index FlavorKnowledge keys on. */
 const kindOf = (kidx: number): ObjectKind => ({ kidx }) as ObjectKind;
@@ -122,7 +122,7 @@ describe("object_flavor_aware (obj-knowledge.c L2266)", () => {
 });
 
 describe("EverseenKnowledge (object_kind/ego everseen, save.c L397/L533)", () => {
-  const egoOf = (eidx: number) => ({ eidx }) as unknown as import("./types").EgoItem;
+  const egoOf = (eidx: number) => ({ eidx }) as unknown as import("./types.js").EgoItem;
 
   it("tracks kind + ego everseen independently and is idempotent", () => {
     const ek = new EverseenKnowledge();
@@ -167,7 +167,7 @@ describe("EverseenKnowledge (object_kind/ego everseen, save.c L397/L533)", () =>
 describe("runeDesc (obj-knowledge.c L344-403)", () => {
   const env = {
     curses: [null, { desc: "makes you hungry" }],
-  } as unknown as import("./knowledge").RuneEnv;
+  } as unknown as import("./knowledge.js").RuneEnv;
 
   it("renders the fixed combat strings by index", () => {
     expect(runeDesc(env, { variety: "combat", index: 0, name: "x" })).toBe(

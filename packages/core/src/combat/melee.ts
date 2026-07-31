@@ -31,34 +31,34 @@
  * L803/L811/L826). With the option off the path is byte-identical to standard.
  */
 
-import type { Rng } from "../rng";
-import type { Brand, Slay } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { objectWeightOne } from "../obj/object";
-import { MON_TMD } from "../generated";
-import type { Monster } from "../mon/monster";
-import { monsterIsLiving } from "../mon/predicate";
-import { monTakeHit, monsterWake } from "../mon/take-hit";
-import type { MonTakeHitHooks } from "../mon/take-hit";
-import { MON_TMD_FLG_NOTIFY, monClearTimed } from "../mon/timed";
-import type { Player } from "../player/player";
-import { SKILL } from "../player/types";
-import { adj_dex_th, adj_str_td } from "../player/calcs";
-import type { CritActor, HitType } from "./hit";
+import type { Rng } from "../rng.js";
+import type { Brand, Slay } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { objectWeightOne } from "../obj/object.js";
+import { MON_TMD } from "../generated/index.js";
+import type { Monster } from "../mon/monster.js";
+import { monsterIsLiving } from "../mon/predicate.js";
+import { monTakeHit, monsterWake } from "../mon/take-hit.js";
+import type { MonTakeHitHooks } from "../mon/take-hit.js";
+import { MON_TMD_FLG_NOTIFY, monClearTimed } from "../mon/timed.js";
+import type { Player } from "../player/player.js";
+import { SKILL } from "../player/types.js";
+import { adj_dex_th, adj_str_td } from "../player/calcs.js";
+import type { CritActor, HitType } from "./hit.js";
 import {
   BTH_PLUS_ADJ,
   applyDeadliness,
   criticalMelee,
   oCriticalMelee,
   testHit,
-} from "./hit";
+} from "./hit.js";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
   objectToDam,
   objectToHit,
-} from "./brand-slay";
-import type { AttackModifier, TempBrandSlay } from "./brand-slay";
+} from "./brand-slay.js";
+import type { AttackModifier, TempBrandSlay } from "./brand-slay.js";
 
 /**
  * The subset of upstream `struct player_state` that combat reads. Supplied by

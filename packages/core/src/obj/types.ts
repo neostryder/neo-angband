@@ -16,9 +16,9 @@
  * records therefore stay raw as well.
  */
 
-import { flagSize, FlagSet } from "../bitflag";
-import { ELEM, ELEMENT_ENTRIES, KF, OBJ_MOD, OF, TVAL_ENTRIES } from "../generated";
-import type { RandomValue } from "../rng";
+import { flagSize, FlagSet } from "../bitflag.js";
+import { ELEM, ELEMENT_ENTRIES, KF, OBJ_MOD, OF, TVAL_ENTRIES } from "../generated/index.js";
+import type { RandomValue } from "../rng.js";
 
 /** TV_MAX: number of tvals (list-tvals.h). */
 export const TV_MAX = TVAL_ENTRIES.length;

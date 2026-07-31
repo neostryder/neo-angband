@@ -24,8 +24,8 @@
  * add-order sequence.
  */
 
-import type { GameState } from "./context";
-import { checkForInscrip } from "./pickup";
+import type { GameState } from "./context.js";
+import { checkForInscrip } from "./pickup.js";
 
 /** One gear object ignore_drop is willing to drop. */
 export interface IgnoreDropTarget {

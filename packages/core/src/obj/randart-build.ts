@@ -44,26 +44,26 @@
  *   randint1 then m_bonus (left-to-right textual order).
  */
 
-import { ELEM, KF, OBJ_MOD, OF, STAT_ENTRIES, TV } from "../generated";
-import { ART_IDX } from "../generated/randart-properties";
-import type { Rng } from "../rng";
-import type { ObjRegistry } from "./bind";
-import type { CurseTimedFoil } from "./object";
-import { copyBrands, copySlays, curseTimedIncFoiled } from "./object";
-import { INHIBIT_POWER } from "./power";
-import type { ArtifactSetData } from "./randart-data";
+import { ELEM, KF, OBJ_MOD, OF, STAT_ENTRIES, TV } from "../generated/index.js";
+import { ART_IDX } from "../generated/randart-properties.js";
+import type { Rng } from "../rng.js";
+import type { ObjRegistry } from "./bind.js";
+import type { CurseTimedFoil } from "./object.js";
+import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
+import { INHIBIT_POWER } from "./power.js";
+import type { ArtifactSetData } from "./randart-data.js";
 import type {
   Artifact,
   EffectRecordJson,
   ElementInfo,
   ObjectKind,
-} from "./types";
+} from "./types.js";
 import {
   EL_INFO_IGNORE,
   ELEM_BASE_MIN,
   ELEM_HIGH_MIN,
   OBJ_MOD_MAX,
-} from "./types";
+} from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /* Constants (obj-randart.h, obj-power.h)                              */

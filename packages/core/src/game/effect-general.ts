@@ -26,37 +26,37 @@
  * (#24).
  */
 
-import { EF, MON_TMD, OF, PROJ, TMD } from "../generated";
-import { DDGRID, distance, loc, locSum } from "../loc";
-import { PROJECT } from "../world/project";
-import { GLYPH_DECOY } from "../effects/effect";
+import { EF, MON_TMD, OF, PROJ, TMD } from "../generated/index.js";
+import { DDGRID, distance, loc, locSum } from "../loc.js";
+import { PROJECT } from "../world/project.js";
+import { GLYPH_DECOY } from "../effects/effect.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
+} from "../effects/interpreter.js";
 import {
   DIR_TARGET,
   effectCalculateValue,
   sourcePlayer,
-} from "../effects/interpreter";
+} from "../effects/interpreter.js";
 import {
   handleTIMED_INC as baseHandleTIMED_INC,
   timedIncEffectApplyToPlayer,
-} from "../effects/handlers";
+} from "../effects/handlers.js";
 import {
   equipLearnFlag,
   shapeLearnOnAssume,
   sustainFlag,
-} from "../obj/knowledge";
-import { ODESC } from "../obj/desc";
-import { describeObject } from "./describe";
-import type { EffectRecordJson } from "../obj/types";
-import type { Shape } from "../player/types";
-import { buildObjectEffectChain } from "./obj-cmd";
-import { OBJ_PROPERTY } from "../obj/types";
-import type { ObjectProperty } from "../obj/types";
-import { STAT_MAX } from "../player/types";
+} from "../obj/knowledge.js";
+import { ODESC } from "../obj/desc.js";
+import { describeObject } from "./describe.js";
+import type { EffectRecordJson } from "../obj/types.js";
+import type { Shape } from "../player/types.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
+import { OBJ_PROPERTY } from "../obj/types.js";
+import type { ObjectProperty } from "../obj/types.js";
+import { STAT_MAX } from "../player/types.js";
 import {
   PY_MAX_EXP,
   playerExpGain,
@@ -65,28 +65,28 @@ import {
   playerScrambleStats,
   playerStatDec,
   playerStatInc,
-} from "../player/exp";
-import type { ExpDeps } from "../player/exp";
-import { monIncTimed } from "../mon/timed";
-import { monsterWake } from "../mon/take-hit";
-import { loreDoProbe } from "../mon/lore";
-import { monsterIsVisible } from "../mon/predicate";
-import { featIsTrapHolding } from "../world/chunk";
-import { squareIsView } from "../world/view";
-import { lookupTrap } from "../world/trap";
-import type { GameState } from "./context";
-import { gameEnv } from "./effect-game-env";
+} from "../player/exp.js";
+import type { ExpDeps } from "../player/exp.js";
+import { monIncTimed } from "../mon/timed.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { loreDoProbe } from "../mon/lore.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { featIsTrapHolding } from "../world/chunk.js";
+import { squareIsView } from "../world/view.js";
+import { lookupTrap } from "../world/trap.js";
+import type { GameState } from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
 import {
   caveFindDecoy,
   destroyDecoy,
   monsterTargetMonster,
-} from "./effect-mon-origin";
-import { floorPile } from "./floor";
-import { castProjection, playerCastSource } from "./project-cast";
-import { pushObject } from "./project-feat";
-import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap";
-import type { TrapDeps } from "./trap";
-import { dungeonGetNextLevel } from "./quest";
+} from "./effect-mon-origin.js";
+import { floorPile } from "./floor.js";
+import { castProjection, playerCastSource } from "./project-cast.js";
+import { pushObject } from "./project-feat.js";
+import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap.js";
+import type { TrapDeps } from "./trap.js";
+import { dungeonGetNextLevel } from "./quest.js";
 
 /**
  * The general-handler seams, grouped on the game effect environment

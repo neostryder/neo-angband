@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, MON_TMD, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated";
-import { FlagSet } from "../bitflag";
-import { Rng } from "../rng";
-import { distance, loc, locDiff } from "../loc";
-import type { Loc } from "../loc";
-import { makeNoise } from "../world/flow";
-import { GROUP_TYPE } from "../mon/monster";
-import { MON_GROUP, RSF_SIZE } from "../mon/types";
-import { newOfFlags } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { TRF_SIZE } from "../world/trap";
-import type { GameState, RunState } from "./context";
-import { updateMonsterDistances } from "./context";
-import { monsterAddToGroup, monsterGroupStart } from "./mon-group";
-import { squareIsWebbed } from "./trap";
+import { FEAT, MFLAG, MON_TMD, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { Rng } from "../rng.js";
+import { distance, loc, locDiff } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { makeNoise } from "../world/flow.js";
+import { GROUP_TYPE } from "../mon/monster.js";
+import { MON_GROUP, RSF_SIZE } from "../mon/types.js";
+import { newOfFlags } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { TRF_SIZE } from "../world/trap.js";
+import type { GameState, RunState } from "./context.js";
+import { updateMonsterDistances } from "./context.js";
+import { monsterAddToGroup, monsterGroupStart } from "./mon-group.js";
+import { squareIsWebbed } from "./trap.js";
 import {
   STAGGER,
   getMove,
@@ -29,8 +29,8 @@ import {
   monsterTurnShouldStagger,
   processMonsterTimed,
   shortRange,
-} from "./monster-turn";
-import { GRANITE, featureReg, addMon, makeRace, makeBlow, makeState } from "./harness";
+} from "./monster-turn.js";
+import { GRANITE, featureReg, addMon, makeRace, makeBlow, makeState } from "./harness.js";
 
 const LAVA = featureReg.byCodeName("LAVA").fidx;
 

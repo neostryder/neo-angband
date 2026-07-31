@@ -1,47 +1,47 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { EF, KF, SQUARE, TMD, TV } from "../generated";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { loc } from "../loc";
+import { bindConstants } from "../constants.js";
+import { EF, KF, SQUARE, TMD, TV } from "../generated/index.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { loc } from "../loc.js";
 import {
   EffectRegistry,
-} from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { bindTraps } from "../world/trap";
-import type { TrapRecordJson } from "../world/trap";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { FlavorKnowledge } from "../obj/knowledge";
-import { MonAllocTable } from "../mon/make";
-import { getLore } from "../mon/lore";
-import type { ExpDeps } from "../player/exp";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { registerGeneralHandlers } from "./effect-general";
-import { registerTeleportHandlers } from "./effect-teleport";
-import { registerTerrainHandlers } from "./effect-terrain";
-import { registerSummonHandlers } from "./effect-summon";
-import { registerDetectHandlers } from "./effect-detect";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerMonsterHandlers } from "./effect-monster";
-import { registerItemHandlers } from "./effect-item";
-import type { EffectEnvDeps } from "./effect-env";
-import type { MonPlaceDeps } from "./mon-place";
-import type { TrapDeps } from "./trap";
-import { squareTrap } from "./trap";
-import { floorCarry, floorPile } from "./floor";
-import { gearAdd } from "./gear";
-import { knownObject, squareIsKnown } from "./known";
-import { updateMonsterDistances } from "./context";
-import type { GameState } from "./context";
-import { FLOOR, GRANITE, addMon, makeRace, makeState, monReg, plReg } from "./harness";
+} from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { bindTraps } from "../world/trap.js";
+import type { TrapRecordJson } from "../world/trap.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { FlavorKnowledge } from "../obj/knowledge.js";
+import { MonAllocTable } from "../mon/make.js";
+import { getLore } from "../mon/lore.js";
+import type { ExpDeps } from "../player/exp.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { registerGeneralHandlers } from "./effect-general.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
+import { registerTerrainHandlers } from "./effect-terrain.js";
+import { registerSummonHandlers } from "./effect-summon.js";
+import { registerDetectHandlers } from "./effect-detect.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerItemHandlers } from "./effect-item.js";
+import type { EffectEnvDeps } from "./effect-env.js";
+import type { MonPlaceDeps } from "./mon-place.js";
+import type { TrapDeps } from "./trap.js";
+import { squareTrap } from "./trap.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { gearAdd } from "./gear.js";
+import { knownObject, squareIsKnown } from "./known.js";
+import { updateMonsterDistances } from "./context.js";
+import type { GameState } from "./context.js";
+import { FLOOR, GRANITE, addMon, makeRace, makeState, monReg, plReg } from "./harness.js";
 import {
   NOSCORE,
   NOSCORE_SCORE_INVALIDATING,
@@ -79,8 +79,8 @@ import {
   wizTeleportRandom,
   wizWipeRecall,
   wizWizardLight,
-} from "./wizard";
-import type { WizardDeps, WizEffectDeps } from "./wizard";
+} from "./wizard.js";
+import type { WizardDeps, WizEffectDeps } from "./wizard.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

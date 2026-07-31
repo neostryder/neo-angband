@@ -15,30 +15,30 @@
  * (not trapped / trapped) are implemented.
  */
 
-import type { Loc } from "../loc";
-import { DDGRID_DDD, locSum } from "../loc";
-import { OF, ORIGIN, TMD } from "../generated";
-import { SKILL } from "../player/types";
-import type { GameObject } from "../obj/object";
-import { tvalIsChest } from "../obj/object";
-import { CHEST_QUERY, CHEST_TRAPS, isTrappedChest } from "../obj/chest";
-import type { ChestQuery } from "../obj/chest";
-import type { MakeDeps } from "../obj/make";
-import { makeObject } from "../obj/make";
-import type { FloorEnv } from "./floor";
-import { dropNear, floorPile } from "./floor";
-import { squareIsSeen } from "../world/view";
-import { sourceChestTrap } from "../effects/interpreter";
-import { buildObjectEffectChain } from "./obj-cmd";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { buildEffectContext } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameState } from "./context";
-import { playerIsTrapsafe } from "./trap";
+import type { Loc } from "../loc.js";
+import { DDGRID_DDD, locSum } from "../loc.js";
+import { OF, ORIGIN, TMD } from "../generated/index.js";
+import { SKILL } from "../player/types.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsChest } from "../obj/object.js";
+import { CHEST_QUERY, CHEST_TRAPS, isTrappedChest } from "../obj/chest.js";
+import type { ChestQuery } from "../obj/chest.js";
+import type { MakeDeps } from "../obj/make.js";
+import { makeObject } from "../obj/make.js";
+import type { FloorEnv } from "./floor.js";
+import { dropNear, floorPile } from "./floor.js";
+import { squareIsSeen } from "../world/view.js";
+import { sourceChestTrap } from "../effects/interpreter.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { buildEffectContext } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameState } from "./context.js";
+import { playerIsTrapsafe } from "./trap.js";
 
 /* CHEST_QUERY / ChestQuery are obj/chest.ts's own exports (the index barrel
  * re-exports that module directly); not re-exported again from here to
- * avoid a duplicate/ambiguous barrel export. Import them from "../obj/chest"
+ * avoid a duplicate/ambiguous barrel export. Import them from "../obj/chest.js"
  * when needed alongside this module's chestCheck/chestDeath/etc. */
 
 /** Hooks for messages and unported subsystems; all optional. */

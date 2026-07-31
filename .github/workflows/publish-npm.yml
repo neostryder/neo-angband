@@ -1,0 +1,105 @@
+# Publish the library packages to npm.
+#
+# THIS IS THE ANSWER TO "who remembers to push updates". npm does not watch a
+# GitHub repository - a publish is a push, and a package sits at whatever version
+# was last pushed to the registry no matter what master says. So the push is
+# automated off a tag: `git tag v0.9.1 && git push --tags` publishes, and nothing
+# else does.
+#
+# Two safety properties, because a publish cannot be taken back (npm unpublish is
+# blocked after 72 hours, and a version number can never be reused even then):
+#
+#   - the tag must AGREE with each package.json version, or the job fails before
+#     publishing anything;
+#   - a version already on the registry is SKIPPED, not retried, so re-running a
+#     job that half-published finishes the rest instead of dying on the first one.
+#
+# Provenance (`--provenance`) makes npm record, cryptographically, which workflow
+# in which repository at which commit built the tarball. It needs `id-token:
+# write` below and a public repository; both hold.
+#
+# Setup, once: an npm access token in the repository secret NPM_TOKEN. A
+# *granular* token scoped to the @neo-angband packages with read+write, not a
+# classic one - see docs/RELEASING.md.
+name: publish-npm
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack and check, publish nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm provenance; without it `--provenance` fails.
+      id-token: write
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # The tarball is what gets published, so the tarball is what gets checked:
+      # packs each package, extracts it into an empty directory and imports it
+      # with plain Node. This is the step that would have caught the engine's
+      # 4612 extensionless import specifiers, which every in-repo test missed
+      # because vitest resolves them through Vite.
+      - run: node tools/check-npm-package.mjs
+
+      - name: The tag must match the package versions
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          fail=0
+          for pkg in core mod-sdk; do
+            have=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$have" != "$tag" ]; then
+              echo "::error::tag $GITHUB_REF_NAME says $tag but packages/$pkg is $have"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          # `npm publish -w` is not available: the workspace is declared in
+          # pnpm-workspace.yaml, which npm does not read. Publishing from inside
+          # each package directory works under either manager, and both packages
+          # have zero dependencies so there is no workspace: range to rewrite.
+          for pkg in core mod-sdk; do
+            name=$(node -p "require('./packages/$pkg/package.json').name")
+            version=$(node -p "require('./packages/$pkg/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on the registry; skipping"
+              continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "dry run: would publish $name@$version"
+              (cd "packages/$pkg" && npm publish --dry-run --provenance --access public)
+              continue
+            fi
+            echo "publishing $name@$version"
+            (cd "packages/$pkg" && npm publish --provenance --access public)
+          done

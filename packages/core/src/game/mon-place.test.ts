@@ -1,32 +1,32 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, ORIGIN, RF, TV } from "../generated";
-import { bindConstants } from "../constants";
-import { loc, locEq } from "../loc";
-import { distance } from "../loc";
-import type { Loc } from "../loc";
-import { MonAllocTable } from "../mon/make";
-import { SummonTable } from "../mon/summon";
-import { MON_GROUP } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { GROUP_TYPE } from "../mon/monster";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
+import { MFLAG, MON_TMD, ORIGIN, RF, TV } from "../generated/index.js";
+import { bindConstants } from "../constants.js";
+import { loc, locEq } from "../loc.js";
+import { distance } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { MonAllocTable } from "../mon/make.js";
+import { SummonTable } from "../mon/summon.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { GROUP_TYPE } from "../mon/monster.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
 import {
   applyMagic,
   ArtifactState,
   makeGold,
   ObjAllocState,
   objectPrep,
-} from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { tvalIsMoney } from "../obj/object";
-import { tvalFindIdx } from "../obj/bind";
-import { deleteMonster, monPop, squareMonster } from "./context";
-import type { GameState } from "./context";
-import { summonGroup } from "./mon-group";
-import { floorPile } from "./floor";
-import { compactMonsters } from "./world";
+} from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { tvalIsMoney } from "../obj/object.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import { deleteMonster, monPop, squareMonster } from "./context.js";
+import type { GameState } from "./context.js";
+import { summonGroup } from "./mon-group.js";
+import { floorPile } from "./floor.js";
+import { compactMonsters } from "./world.js";
 import {
   createMimickedObject,
   monCreateMimickedObject,
@@ -36,11 +36,11 @@ import {
   squareAllowsSummon,
   summonSpecific,
   wipeMonsterCounts,
-} from "./mon-place";
-import type { MimicDeps, MonPlaceDeps, SummonDeps } from "./mon-place";
-import { Rng } from "../rng";
-import type { GameObject } from "../obj/object";
-import { GRANITE, addMon, makeRace, makeState, monReg } from "./harness";
+} from "./mon-place.js";
+import type { MimicDeps, MonPlaceDeps, SummonDeps } from "./mon-place.js";
+import { Rng } from "../rng.js";
+import type { GameObject } from "../obj/object.js";
+import { GRANITE, addMon, makeRace, makeState, monReg } from "./harness.js";
 
 const summons = new SummonTable(monReg.summons, monReg.bases);
 

@@ -25,8 +25,8 @@
  *   note at the placement site below for why it must not also be bumped here.
  */
 
-import { FEAT, ORIGIN, RF, SQUARE } from "../generated";
-import type { Loc } from "../loc";
+import { FEAT, ORIGIN, RF, SQUARE } from "../generated/index.js";
+import type { Loc } from "../loc.js";
 import {
   DDGRID,
   DDGRID_DDD,
@@ -35,33 +35,33 @@ import {
   locDiff,
   locEq,
   locSum,
-} from "../loc";
-import type { Rng } from "../rng";
-import type { Constants } from "../constants";
-import type { Chunk } from "../world/chunk";
+} from "../loc.js";
+import type { Rng } from "../rng.js";
+import type { Constants } from "../constants.js";
+import type { Chunk } from "../world/chunk.js";
 import {
   featIsBright,
   featIsFloor,
   featIsPassable,
   featIsSmooth,
   featIsTrapHolding,
-} from "../world/chunk";
-import type { TrapKind } from "../world/trap";
-import { pickTrapKind } from "../game/trap";
-import { GET_ANGLE_TO_GRID } from "../world/project";
-import type { FeatureRegistry } from "../world/feature";
-import type { GameObject } from "../obj/object";
-import type { MakeDeps, MakeObjectRating } from "../obj/make";
-import { makeGold, makeObject } from "../obj/make";
-import type { Monster, MonsterGroupInfo } from "../mon/monster";
-import { createMonster, type MonAllocTable } from "../mon/make";
-import { createMimickedObject } from "../game/mon-place";
-import { createDrop } from "../game/mon-death";
-import type { LoreStore } from "../mon/lore";
-import type { MonsterRace } from "../mon/types";
-import type { ResolvedPit } from "./gen-monster";
-import { MON_GROUP } from "../mon/types";
-import { scatterExt } from "../world/scatter";
+} from "../world/chunk.js";
+import type { TrapKind } from "../world/trap.js";
+import { pickTrapKind } from "../game/trap.js";
+import { GET_ANGLE_TO_GRID } from "../world/project.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import type { GameObject } from "../obj/object.js";
+import type { MakeDeps, MakeObjectRating } from "../obj/make.js";
+import { makeGold, makeObject } from "../obj/make.js";
+import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
+import { createMonster, type MonAllocTable } from "../mon/make.js";
+import { createMimickedObject } from "../game/mon-place.js";
+import { createDrop } from "../game/mon-death.js";
+import type { LoreStore } from "../mon/lore.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { ResolvedPit } from "./gen-monster.js";
+import { MON_GROUP } from "../mon/types.js";
+import { scatterExt } from "../world/scatter.js";
 
 /* ------------------------------------------------------------------ *
  * Keypad direction helpers (z-type.h / cave.c next_grid).

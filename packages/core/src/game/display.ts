@@ -48,20 +48,20 @@ import {
   COLOUR_WHITE,
   COLOUR_YELLOW,
   colorCharToAttr,
-} from "../color";
-import { MON_TMD, SQUARE, STAT, TMD } from "../generated";
-import { nextGrid } from "../world/view";
-import { EXTRACT_ENERGY } from "../mon/monster";
-import { monsterIsVisible } from "../mon/predicate";
-import { PY_MAX_LEVEL, STAT_MAX, TMD_MAX } from "../player/types";
-import type { TimedEffect } from "../player/types";
-import { modifyStatValue, player_exp, playerHpAttr, playerSpAttr } from "../player/calcs";
-import type { Loc } from "../loc";
-import type { Player } from "../player/player";
-import type { Monster } from "../mon/monster";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
-import { playerIsResting, playerRestingCount } from "./context";
+} from "../color.js";
+import { MON_TMD, SQUARE, STAT, TMD } from "../generated/index.js";
+import { nextGrid } from "../world/view.js";
+import { EXTRACT_ENERGY } from "../mon/monster.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { PY_MAX_LEVEL, STAT_MAX, TMD_MAX } from "../player/types.js";
+import type { TimedEffect } from "../player/types.js";
+import { modifyStatValue, player_exp, playerHpAttr, playerSpAttr } from "../player/calcs.js";
+import type { Loc } from "../loc.js";
+import type { Player } from "../player/player.js";
+import type { Monster } from "../mon/monster.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
+import { playerIsResting, playerRestingCount } from "./context.js";
 
 /** One coloured run of text; color is a COLOUR_* value (see color.ts). */
 export interface DisplayRun {

@@ -26,15 +26,15 @@
  * (rouse in the monster turn, group tracking in get_move) are wired separately.
  */
 
-import { MFLAG, MON_TMD } from "../generated";
-import { distance } from "../loc";
-import { los } from "../world/view";
-import { monsterIsUnique } from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import { GROUP_MAX, GROUP_TYPE } from "../mon/monster";
-import type { Monster, MonsterGroupInfo } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
-import type { GameState, MonsterGroup } from "./context";
+import { MFLAG, MON_TMD } from "../generated/index.js";
+import { distance } from "../loc.js";
+import { los } from "../world/view.js";
+import { monsterIsUnique } from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { GROUP_MAX, GROUP_TYPE } from "../mon/monster.js";
+import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { GameState, MonsterGroup } from "./context.js";
 
 /** Allocate a new (empty) monster group with the given index. */
 export function monsterGroupNew(index: number): MonsterGroup {

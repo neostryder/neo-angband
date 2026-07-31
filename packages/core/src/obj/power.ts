@@ -19,11 +19,11 @@
  *   can be valued; a curse template is adapted by cursePowerObject.
  */
 
-import type { FlagSet } from "../bitflag";
-import { KF, OBJ_MOD, OF, TV } from "../generated";
-import { addGuardi, INT_MAX, INT_MIN, subGuardi } from "../guard";
-import type { ObjRegistry } from "./bind";
-import type { CurseData } from "./object";
+import type { FlagSet } from "../bitflag.js";
+import { KF, OBJ_MOD, OF, TV } from "../generated/index.js";
+import { addGuardi, INT_MAX, INT_MIN, subGuardi } from "../guard.js";
+import type { ObjRegistry } from "./bind.js";
+import type { CurseData } from "./object.js";
 import {
   applyCurseAttributes,
   objectWeightOne,
@@ -32,9 +32,9 @@ import {
   tvalIsLauncher,
   tvalIsLight,
   tvalIsMeleeWeapon,
-} from "./object";
-import type { CurseObject, ElementInfo, ObjectProperty } from "./types";
-import { EL_INFO_IGNORE, ELEM_MAX, OBJ_MOD_MAX, OBJ_PROPERTY, OFT } from "./types";
+} from "./object.js";
+import type { CurseObject, ElementInfo, ObjectProperty } from "./types.js";
+import { EL_INFO_IGNORE, ELEM_MAX, OBJ_MOD_MAX, OBJ_PROPERTY, OFT } from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /* Power algorithm constants (obj-power.h)                              */

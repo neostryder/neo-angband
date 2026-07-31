@@ -28,27 +28,27 @@
  * effect" - faithful for a character with no active buffs.
  */
 
-import { BASIC_COLORS, COLOR_TABLE, colorCharToAttr } from "../color";
-import { FlagSet } from "../bitflag";
-import { OF } from "../generated/object-flags";
-import { PF } from "../generated/player-flags";
-import { TMD } from "../generated/player-timed";
-import { OBJ_MOD } from "../generated/object-modifiers";
-import { STAT } from "../generated/stats";
-import { ELEM, ELEMENT_ENTRIES } from "../generated/elements";
+import { BASIC_COLORS, COLOR_TABLE, colorCharToAttr } from "../color.js";
+import { FlagSet } from "../bitflag.js";
+import { OF } from "../generated/object-flags.js";
+import { PF } from "../generated/player-flags.js";
+import { TMD } from "../generated/player-timed.js";
+import { OBJ_MOD } from "../generated/object-modifiers.js";
+import { STAT } from "../generated/stats.js";
+import { ELEM, ELEMENT_ENTRIES } from "../generated/elements.js";
 import {
   UI_ENTRY_RENDERER,
   UI_ENTRY_RENDERER_ENTRIES,
-} from "../generated/ui-entry-renderers";
-import { EL_INFO_IGNORE, OF_SIZE } from "../obj/types";
-import { SKILL } from "../player/types";
-import { playerFlags } from "../player/calcs";
-import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
-import { gearGet } from "./gear";
-import { knownDescOf } from "./describe";
-import type { Player } from "../player/player";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
+} from "../generated/ui-entry-renderers.js";
+import { EL_INFO_IGNORE, OF_SIZE } from "../obj/types.js";
+import { SKILL } from "../player/types.js";
+import { playerFlags } from "../player/calcs.js";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
+import { gearGet } from "./gear.js";
+import { knownDescOf } from "./describe.js";
+import type { Player } from "../player/player.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
 
 /* ------------------------------------------------------------------ */
 /* Special values (ui-entry-combiner.h)                                */

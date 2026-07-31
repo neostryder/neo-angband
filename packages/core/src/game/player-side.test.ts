@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ELEM, OF, PROJ, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { ObjectKind } from "../obj/types";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
-import type { PlayerProjActor, ProjectPlayerSideContext } from "./project-player";
-import { makePlayerSideEffects } from "./player-side";
-import type { PlayerSideDeps } from "./player-side";
+import { ELEM, OF, PROJ, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import type { PlayerProjActor, ProjectPlayerSideContext } from "./project-player.js";
+import { makePlayerSideEffects } from "./player-side.js";
+import type { PlayerSideDeps } from "./player-side.js";
 
 /** A stub projection actor whose resists the test controls. */
 function stubActor(resists: Partial<Record<number, number>> = {}): PlayerProjActor {

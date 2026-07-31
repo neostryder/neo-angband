@@ -21,23 +21,23 @@
  * health_track).
  */
 
-import { MON_TMD, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import { MDESC, monsterDesc } from "../mon/desc";
-import type { Monster } from "../mon/monster";
+import { MON_TMD, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import { MDESC, monsterDesc } from "../mon/desc.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsDestroyed,
   monsterIsInView,
   monsterIsObvious,
   monsterIsVisible,
-} from "../mon/predicate";
-import { PROJECT, projectable } from "../world/project";
-import { squareIsSeen } from "../world/view";
-import type { GameState } from "./context";
-import { monsterAt, squareMonster } from "./context";
-import { knownObject, squareIsInteresting } from "./known";
-import { squareIsVisibleTrap } from "./trap";
+} from "../mon/predicate.js";
+import { PROJECT, projectable } from "../world/project.js";
+import { squareIsSeen } from "../world/view.js";
+import type { GameState } from "./context.js";
+import { monsterAt, squareMonster } from "./context.js";
+import { knownObject, squareIsInteresting } from "./known.js";
+import { squareIsVisibleTrap } from "./trap.js";
 
 /** Bit flags for target_get_monsters / target_set_closest (target.h). */
 export const TARGET = {

@@ -6,11 +6,11 @@
  * sell side), the birth_no_selling kill-switch, and the owner's purse cap.
  */
 
-import { FEAT } from "../generated";
-import { tvalCanHaveCharges } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { ObjRegistry } from "../obj/bind";
-import { objectValue, objectValueReal } from "../obj/value";
+import { FEAT } from "../generated/index.js";
+import { tvalCanHaveCharges } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { objectValue, objectValueReal } from "../obj/value.js";
 
 /**
  * price_item (store.c L579): the price of `obj` (qty one, or a wand/staff

@@ -12,30 +12,30 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, KF, MFLAG, MON_MSG, ORIGIN, RF } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { bindConstants } from "../constants";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { tvalIsMoney } from "../obj/object";
-import { TV } from "../generated";
-import { monCreateDropCount, monsterCarry } from "../mon/make";
-import { getLore } from "../mon/lore";
-import type { MonsterDrop } from "../mon/types";
-import type { GameState } from "./context";
-import type { Monster } from "../mon/monster";
+import { FEAT, KF, MFLAG, MON_MSG, ORIGIN, RF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { bindConstants } from "../constants.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsMoney } from "../obj/object.js";
+import { TV } from "../generated/index.js";
+import { monCreateDropCount, monsterCarry } from "../mon/make.js";
+import { getLore } from "../mon/lore.js";
+import type { MonsterDrop } from "../mon/types.js";
+import type { GameState } from "./context.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monCreateDrop,
   monsterDeath,
   monsterTakeTerrainDamage,
   monTakeNonplayerHit,
-} from "./mon-death";
-import type { MonsterDeathDeps } from "./mon-death";
-import { addMon, makeRace, makeState } from "./harness";
+} from "./mon-death.js";
+import type { MonsterDeathDeps } from "./mon-death.js";
+import { addMon, makeRace, makeState } from "./harness.js";
 
 /**
  * The upstream sequence for a monster whose drops were generated at placement

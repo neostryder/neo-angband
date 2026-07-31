@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { HIST, STAT } from "../generated";
-import { Rng } from "../rng";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
+import { HIST, STAT } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
 import {
   BIRTH_MESSAGE_RECALL_BANNER,
   BIRTH_STAT_COSTS,
@@ -24,11 +24,11 @@ import {
   rollStats,
   romanToInt,
   sellStat,
-} from "./birth";
-import { calcHitpoints, modifyStatValue, statUseToIndex } from "./calcs";
-import { OptionState } from "./options";
-import { FlavorKnowledge } from "../obj/knowledge";
-import type { ObjectKind } from "../obj/types";
+} from "./birth.js";
+import { calcHitpoints, modifyStatValue, statUseToIndex } from "./calcs.js";
+import { OptionState } from "./options.js";
+import { FlavorKnowledge } from "../obj/knowledge.js";
+import type { ObjectKind } from "../obj/types.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

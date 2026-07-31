@@ -19,11 +19,11 @@
  *   supplied by the caller because this world module does not own knowledge.
  */
 
-import { SQUARE } from "../generated";
-import type { Loc } from "../loc";
-import { distance, loc } from "../loc";
-import type { Chunk } from "./chunk";
-import { los } from "./view";
+import { SQUARE } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { distance, loc } from "../loc.js";
+import type { Chunk } from "./chunk.js";
+import { los } from "./view.js";
 
 /** project.h projection-behaviour flags. */
 export const PROJECT = {

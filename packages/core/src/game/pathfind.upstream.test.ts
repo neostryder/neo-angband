@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { pathfindDirectionTo } from "./player-path";
+import { loc } from "../loc.js";
+import { pathfindDirectionTo } from "./player-path.js";
 
 describe("player/pathfind (reference/src/tests/player/pathfind.c)", () => {
   // upstream: test_dir_to

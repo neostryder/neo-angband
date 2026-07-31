@@ -19,12 +19,12 @@
  *   the player pack model in game/gear.ts); this module is the stocking half.
  */
 
-import type { Constants } from "../constants";
-import { FEAT, OF, ORIGIN, TV } from "../generated";
-import type { ObjRegistry } from "../obj/bind";
-import type { MakeDeps } from "../obj/make";
-import { applyMagic, objectPrep } from "../obj/make";
-import type { GameObject, StackLimits } from "../obj/object";
+import type { Constants } from "../constants.js";
+import { FEAT, OF, ORIGIN, TV } from "../generated/index.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { MakeDeps } from "../obj/make.js";
+import { applyMagic, objectPrep } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   distributeCharges,
   objectMergeable,
@@ -39,13 +39,13 @@ import {
   tvalIsLauncher,
   tvalIsLight,
   tvalIsWeapon,
-} from "../obj/object";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import type { ObjectKind } from "../obj/types";
-import type { PlayerClass } from "../player/types";
-import { objectValue, objectValueReal } from "../obj/value";
-import type { Rng } from "../rng";
-import type { BoundStore, ObjectBuy, StoreOwner } from "./types";
+} from "../obj/object.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import type { ObjectKind } from "../obj/types.js";
+import type { PlayerClass } from "../player/types.js";
+import { objectValue, objectValueReal } from "../obj/value.js";
+import type { Rng } from "../rng.js";
+import type { BoundStore, ObjectBuy, StoreOwner } from "./types.js";
 
 /**
  * A live store: a BoundStore's tables plus a mutable stock and the currently

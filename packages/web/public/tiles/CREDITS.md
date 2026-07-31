@@ -72,10 +72,12 @@ Graphics, or the `?tiles=<url>&graf=<id>` URL override).
   stays non-commercial.
 
   This file covers `public/tiles/` - the tilesheets, which is what the game itself
-  draws. Cutting a sheet into one PNG per tile is a separate use of the art and it
-  belongs to the neo-linoleum mod, so it is credited with those files rather than
-  here: `public/mods/neo-linoleum/CREDITS.md`, written beside each pack by
-  `scripts/gen-linoleum-demo.mjs`. The author's permission covers both forms.
+  draws, and which is all of this art that this repository holds. Cutting a sheet
+  into one PNG per tile is a separate use of the same art and it belongs to the
+  neo-linoleum mod, so the converted packs and their credit live with the mod, in
+  [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
+  and reach a player through the installer rather than from here. The author's
+  permission covers both forms.
 
 The five packs' terms differ from each other, so do not treat "bundled with Neo
 Angband" as one licence. Sources: Angband 4.2.6 `docs/copying.rst` and

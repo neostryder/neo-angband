@@ -36,22 +36,22 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
 import {
   tvalIsArmor,
   tvalIsJewelry,
   tvalIsLight,
   tvalIsWeapon,
-} from "../obj/object";
-import type { GameObject, StackLimits } from "../obj/object";
-import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
-import type { Player } from "../player/player";
-import { Rng } from "../rng";
-import { floorCarry, floorObjectForUse, floorPile } from "./floor";
+} from "../obj/object.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types.js";
+import type { Player } from "../player/player.js";
+import { Rng } from "../rng.js";
+import { floorCarry, floorObjectForUse, floorPile } from "./floor.js";
 import {
   gearAdd,
   gearGet,
@@ -59,12 +59,12 @@ import {
   packIsOverfull,
   packSlotsUsed,
   wieldSlot,
-} from "./gear";
-import type { Gear } from "./gear";
-import { invenTakeoff, invenWield } from "./obj-cmd";
-import type { GameState } from "./context";
-import { describeObject } from "./describe";
-import { makeState } from "./harness";
+} from "./gear.js";
+import type { Gear } from "./gear.js";
+import { invenTakeoff, invenWield } from "./obj-cmd.js";
+import type { GameState } from "./context.js";
+import { describeObject } from "./describe.js";
+import { makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

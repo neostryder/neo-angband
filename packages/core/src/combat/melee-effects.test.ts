@@ -16,26 +16,26 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MON_TMD } from "../generated";
-import { FlagSet } from "../bitflag";
-import { Rng } from "../rng";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { SKILL, SKILL_MAX } from "../player/types";
-import type { MeleeEffectHooks, PlayerCombatState } from "./melee";
-import { pyAttack, pyAttackReal } from "./melee";
+import { MON_TMD } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { SKILL, SKILL_MAX } from "../player/types.js";
+import type { MeleeEffectHooks, PlayerCombatState } from "./melee.js";
+import { pyAttack, pyAttackReal } from "./melee.js";
 
 function load(name: string): unknown {
   return JSON.parse(

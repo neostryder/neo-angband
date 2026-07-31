@@ -23,18 +23,18 @@
  *   likewise skipped there, since combat does not thread the curse table.
  */
 
-import type { Brand, Slay } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { tvalIsLauncher, tvalIsWeapon } from "../obj/object";
-import type { MonsterRace } from "../mon/types";
-import type { Player } from "../player/player";
-import type { RuneEnv } from "../obj/knowledge";
+import type { Brand, Slay } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsLauncher, tvalIsWeapon } from "../obj/object.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { Player } from "../player/player.js";
+import type { RuneEnv } from "../obj/knowledge.js";
 import {
   playerKnowsBrand,
   playerKnowsSlay,
   playerLearnBrand,
   playerLearnSlay,
-} from "../obj/knowledge";
+} from "../obj/knowledge.js";
 
 /** The monster fields brand/slay selection reads. */
 export interface BrandSlayTarget {
@@ -222,7 +222,7 @@ export interface BrandSlayLearnTarget extends BrandSlayTarget {
    * lore_learn_flag_if_visible learns. Optional: absent (worldless
    * tests), only the player-rune half runs.
    */
-  lore?: import("../mon/lore").MonsterLore;
+  lore?: import("../mon/lore.js").MonsterLore;
 }
 
 /** lore_learn_flag_if_visible over the reduced learn target. */

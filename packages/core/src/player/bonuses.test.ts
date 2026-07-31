@@ -7,17 +7,17 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated";
-import { objectNew } from "../obj/object";
-import type { CurseData, GameObject } from "../obj/object";
-import { newElemInfo, zeroRv } from "../obj/types";
-import type { Curse, CurseObject, ObjectKind } from "../obj/types";
-import { FlagSet } from "../bitflag";
-import { Rng } from "../rng";
-import { OF_SIZE } from "./types";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
-import { generatePlayer } from "./birth";
+import { ELEM, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated/index.js";
+import { objectNew } from "../obj/object.js";
+import type { CurseData, GameObject } from "../obj/object.js";
+import { newElemInfo, zeroRv } from "../obj/types.js";
+import type { Curse, CurseObject, ObjectKind } from "../obj/types.js";
+import { FlagSet } from "../bitflag.js";
+import { Rng } from "../rng.js";
+import { OF_SIZE } from "./types.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
+import { generatePlayer } from "./birth.js";
 import {
   adjustSkillScale,
   calcBlows,
@@ -27,9 +27,9 @@ import {
   toCombatState,
   toDefenderState,
   weightLimit,
-} from "./calcs";
-import type { Player } from "./player";
-import { SKILL, SKILL_MAX } from "./types";
+} from "./calcs.js";
+import type { Player } from "./player.js";
+import { SKILL, SKILL_MAX } from "./types.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

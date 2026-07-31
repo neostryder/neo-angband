@@ -43,16 +43,16 @@
  * (everything granted), matching the perceive/act/controller convention.
  */
 
-import { AgentCapabilityError } from "../agent/types";
-import type { AgentCapabilities } from "../agent/types";
-import type { EffectCode } from "../effects/effect";
-import type { EffectDefinition, EffectRegistry } from "../effects/interpreter";
-import type { RoomBuilder, RoomRegistry } from "../gen/room";
-import type { ActionRegistry, PlayerAction } from "../game/player-turn";
-import type { GameState } from "../game/context";
-import type { Monster } from "../mon/monster";
-import type { JsonValue } from "./save-blocks";
-import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary";
+import { AgentCapabilityError } from "../agent/types.js";
+import type { AgentCapabilities } from "../agent/types.js";
+import type { EffectCode } from "../effects/effect.js";
+import type { EffectDefinition, EffectRegistry } from "../effects/interpreter.js";
+import type { RoomBuilder, RoomRegistry } from "../gen/room.js";
+import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
+import type { GameState } from "../game/context.js";
+import type { Monster } from "../mon/monster.js";
+import type { JsonValue } from "./save-blocks.js";
+import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 
 /** The capability each registry facade requires (registry:<domain>). */
 export const REGISTRY_CAPABILITIES = {

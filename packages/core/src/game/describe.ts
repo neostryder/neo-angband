@@ -6,10 +6,10 @@
  * exactly by the player's real knowledge, as upstream does.
  */
 
-import { ODESC, objectDesc } from "../obj/desc";
-import type { KnownDesc } from "../obj/known-object";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
+import { ODESC, objectDesc } from "../obj/desc.js";
+import type { KnownDesc } from "../obj/known-object.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
 
 /** Build the flavour-awareness view object_desc needs from the game state. */
 export function knownDescOf(state: GameState): KnownDesc {

@@ -16,7 +16,7 @@ import {
   Expression,
   expressionTestCopy,
   strtolBase0,
-} from "./expression";
+} from "./expression.js";
 
 describe("z-expression upstream suite", () => {
   it("alloc: copy is a value-equal deep copy", () => {

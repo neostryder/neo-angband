@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SAVEFILE_DESC_LEN, saveDescription } from "./description";
+import { SAVEFILE_DESC_LEN, saveDescription } from "./description.js";
 
 const ALIVE = {
   fullName: "Thorin",

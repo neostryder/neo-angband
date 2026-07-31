@@ -13,16 +13,16 @@
  * player_inc_check (player/timed.ts) against the derived state.
  */
 
-import { ELEM, OF, PF, STAT, TMD } from "../generated";
-import { adj_dex_safe } from "../player/calcs";
-import { playerIncCheck } from "../player/timed";
-import type { PlayerIncCheckQueries } from "../player/timed";
-import { SKILL } from "../player/types";
-import type { TimedEffect } from "../player/types";
-import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object";
-import { gearGet } from "./gear";
-import type { LoreColorState } from "../mon/lore-describe";
-import type { GameState } from "./context";
+import { ELEM, OF, PF, STAT, TMD } from "../generated/index.js";
+import { adj_dex_safe } from "../player/calcs.js";
+import { playerIncCheck } from "../player/timed.js";
+import type { PlayerIncCheckQueries } from "../player/timed.js";
+import { SKILL } from "../player/types.js";
+import type { TimedEffect } from "../player/types.js";
+import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object.js";
+import { gearGet } from "./gear.js";
+import type { LoreColorState } from "../mon/lore-describe.js";
+import type { GameState } from "./context.js";
 
 /** Map a generated-enum name to its index, or -1 when absent. */
 function enumIndex(table: Record<string, number>, name: string): number {

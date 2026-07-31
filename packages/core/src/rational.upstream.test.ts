@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { INT_MAX, INT_MIN, UINT32_MAX } from "./guard";
+import { INT_MAX, INT_MIN, UINT32_MAX } from "./guard.js";
 import {
   mean,
   myRationalConstruct,
@@ -28,8 +28,8 @@ import {
   myRationalSum,
   myRationalToUint,
   variance,
-} from "./rational";
-import type { MyRational } from "./rational";
+} from "./rational.js";
+import type { MyRational } from "./rational.js";
 
 /** A fresh out-parameter; the C declares `struct my_rational f;` uninitialised. */
 function outFrac(): MyRational {

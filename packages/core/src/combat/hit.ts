@@ -15,8 +15,8 @@
  * All integer arithmetic reproduces C semantics (Math.trunc for the C `/`).
  */
 
-import type { RandomChance, Rng } from "../rng";
-import { MON_TMD } from "../generated";
+import type { RandomChance, Rng } from "../rng.js";
+import { MON_TMD } from "../generated/index.js";
 
 /** Adjust BTH per plus-to-hit (player.h BTH_PLUS_ADJ). */
 export const BTH_PLUS_ADJ = 3;

@@ -367,7 +367,7 @@ describe("installRecommendedMod, from an archive", () => {
       summary: "A demo mod.",
       preChecked: false,
       approxBytes: zip.byteLength,
-      payload: { kind: "archive", archive: { path: "pack.zip", sha256: sha } },
+      payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
     };
   }
 
@@ -664,7 +664,7 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
         summary: "A demo tiles mod.",
         preChecked: false,
         approxBytes: zip.byteLength,
-        payload: { kind: "archive", archive: { path: "pack.zip", sha256: sha } },
+        payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
       },
       env,
     );
@@ -711,7 +711,7 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
         summary: "A demo tiles mod.",
         preChecked: false,
         approxBytes: zip.byteLength,
-        payload: { kind: "archive", archive: { path: "pack.zip", sha256: sha } },
+        payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
       },
       env,
     );

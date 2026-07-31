@@ -1,20 +1,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
-import type { EffectContext, EffectPlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerGeneralHandlers } from "./effect-general";
+import { EF, MFLAG } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
+import type { EffectContext, EffectPlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerGeneralHandlers } from "./effect-general.js";
 
 const projections = bindProjections(
   (

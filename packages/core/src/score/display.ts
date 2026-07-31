@@ -10,9 +10,9 @@
  * byte-identical output.
  */
 
-import { COLOUR_L_GREEN, COLOUR_WHITE } from "../color";
-import { SCORES_PER_PAGE } from "./types";
-import type { HighScore, ScoreRow } from "./types";
+import { COLOUR_L_GREEN, COLOUR_WHITE } from "../color.js";
+import { SCORES_PER_PAGE } from "./types.js";
+import type { HighScore, ScoreRow } from "./types.js";
 
 /**
  * Resolvers for the race/class name a record's indices map to

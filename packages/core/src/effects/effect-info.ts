@@ -35,12 +35,12 @@
  *   that don't need a given case can omit it.
  */
 
-import type { Dice } from "../dice";
-import { EF, EFFECT_ENTRIES } from "../generated";
-import { MAX_RAND_DEPTH, type RandomValue } from "../rng";
-import type { ProjectionInfo } from "../world/projection";
-import type { Effect, EffectCode } from "./effect";
-import { effectValidUpstream } from "./effect";
+import type { Dice } from "../dice.js";
+import { EF, EFFECT_ENTRIES } from "../generated/index.js";
+import { MAX_RAND_DEPTH, type RandomValue } from "../rng.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import type { Effect, EffectCode } from "./effect.js";
+import { effectValidUpstream } from "./effect.js";
 
 /* ------------------------------------------------------------------ *
  * Generated-table access (base_descs[] in effects-info.c).

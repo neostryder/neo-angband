@@ -22,13 +22,13 @@
  * DEFERRED.
  */
 
-import type { Rng } from "../rng";
-import { MON_TIMED_ENTRIES, RF } from "../generated";
-import { MON_TMD } from "../generated";
-import type { Monster } from "./monster";
-import { monsterIsObvious, monsterIsUnique } from "./predicate";
-import type { LoreStore } from "./lore";
-import { getLore, loreLearnFlagIfVisible } from "./lore";
+import type { Rng } from "../rng.js";
+import { MON_TIMED_ENTRIES, RF } from "../generated/index.js";
+import { MON_TMD } from "../generated/index.js";
+import type { Monster } from "./monster.js";
+import { monsterIsObvious, monsterIsUnique } from "./predicate.js";
+import type { LoreStore } from "./lore.js";
+import { getLore, loreLearnFlagIfVisible } from "./lore.js";
 
 /** mon-timed.h flags. */
 export const MON_TMD_FLG_NOTIFY = 0x01;

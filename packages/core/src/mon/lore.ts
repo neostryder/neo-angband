@@ -18,13 +18,13 @@
  * file (everything else); the JSON save carries the full record.
  */
 
-import { FlagSet } from "../bitflag";
-import { MON_RACE_FLAG_ENTRIES, RF } from "../generated";
-import type { Rng } from "../rng";
-import { RF_SIZE, RSF_SIZE } from "./types";
-import type { MonsterRace } from "./types";
-import type { Monster } from "./monster";
-import { monsterIsVisible } from "./predicate";
+import { FlagSet } from "../bitflag.js";
+import { MON_RACE_FLAG_ENTRIES, RF } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import { RF_SIZE, RSF_SIZE } from "./types.js";
+import type { MonsterRace } from "./types.js";
+import type { Monster } from "./monster.js";
+import { monsterIsVisible } from "./predicate.js";
 
 const UCHAR_MAX = 255;
 const SHRT_MAX = 32767;

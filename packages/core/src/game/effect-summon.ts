@@ -18,16 +18,16 @@
  * rides the sound system (#26).
  */
 
-import { EF, MSG, TMD } from "../generated";
+import { EF, MSG, TMD } from "../generated/index.js";
 import type {
   EffectHandler,
   EffectRegistry,
-} from "../effects/interpreter";
-import { effectCalculateValue } from "../effects/interpreter";
-import type { SummonTable } from "../mon/summon";
-import { summonSpecific } from "./mon-place";
-import type { MonPlaceDeps, SummonDeps } from "./mon-place";
-import { gameEnv } from "./effect-game-env";
+} from "../effects/interpreter.js";
+import { effectCalculateValue } from "../effects/interpreter.js";
+import type { SummonTable } from "../mon/summon.js";
+import { summonSpecific } from "./mon-place.js";
+import type { MonPlaceDeps, SummonDeps } from "./mon-place.js";
+import { gameEnv } from "./effect-game-env.js";
 
 /** The summoning seam on the game effect environment. */
 export interface SummonEffectEnv {

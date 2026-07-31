@@ -1,13 +1,53 @@
 {
   "name": "@neo-angband/mod-sdk",
   "version": "0.9.0",
-  "private": true,
   "description": "Pack schemas, validation, and tooling for Neo Angband mods (content packs, tile packs, scripted plugins)",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
+  "homepage": "https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neostryder/neo-angband.git",
+    "directory": "packages/mod-sdk"
+  },
+  "bugs": "https://github.com/neostryder/neo-angband/issues",
+  "keywords": [
+    "angband",
+    "neo-angband",
+    "modding",
+    "mod-sdk",
+    "roguelike"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.ts",
+    "!**/*.test.js",
+    "!**/*.test.js.map",
+    "!**/*.test.d.ts",
+    "!**/*.test.d.ts.map",
+    "!**/*.tsbuildinfo",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc"
   }

@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, RF } from "../generated";
-import { Rng } from "../rng";
-import { bindMonsters } from "./bind";
-import type { MonsterPackRecords } from "./bind";
-import { blankMonster } from "./monster";
-import type { Monster } from "./monster";
-import type { MonsterRace } from "./types";
-import { monTakeHit, monsterScaredByDamage, monsterWake } from "./take-hit";
+import { MFLAG, MON_TMD, RF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "./bind.js";
+import type { MonsterPackRecords } from "./bind.js";
+import { blankMonster } from "./monster.js";
+import type { Monster } from "./monster.js";
+import type { MonsterRace } from "./types.js";
+import { monTakeHit, monsterScaredByDamage, monsterWake } from "./take-hit.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

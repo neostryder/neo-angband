@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson, ObjectKind } from "./types";
-import { objectNew, tvalIsJewelry } from "./object";
+import { Rng } from "../rng.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson, ObjectKind } from "./types.js";
+import { objectNew, tvalIsJewelry } from "./object.js";
 import {
   buildRuneList,
   FlavorKnowledge,
@@ -15,8 +15,8 @@ import {
   OBJ_NOTICE,
   objectLearnUnknownRune,
   playerKnowObjectAwareness,
-} from "./knowledge";
-import type { RuneEnv } from "./knowledge";
+} from "./knowledge.js";
+import type { RuneEnv } from "./knowledge.js";
 import {
   KNOWN_STATE,
   objectGrab,
@@ -24,12 +24,12 @@ import {
   objectSee,
   objectSense,
   objectTouch,
-} from "./known-object";
-import type { KnownDesc, KnownFloorDeps, KnownState } from "./known-object";
-import { TV } from "../generated";
-import { deserializePlayer, serializePlayer } from "../session/save";
-import type { SavedPlayer } from "../session/save";
-import { ContentIdResolver } from "../mod/ids";
+} from "./known-object.js";
+import type { KnownDesc, KnownFloorDeps, KnownState } from "./known-object.js";
+import { TV } from "../generated/index.js";
+import { deserializePlayer, serializePlayer } from "../session/save.js";
+import type { SavedPlayer } from "../session/save.js";
+import { ContentIdResolver } from "../mod/ids.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

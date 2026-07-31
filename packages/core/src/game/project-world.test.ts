@@ -1,27 +1,27 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, FEAT, PROJ, SQUARE, TRF, TV } from "../generated";
-import type { Monster } from "../mon/monster";
-import { loc } from "../loc";
-import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
-import type { ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { bindTraps, lookupTrap } from "../world/trap";
-import type { TrapRecordJson } from "../world/trap";
-import { addMon, makeState, monReg } from "./harness";
-import { floorCarry, floorPile } from "./floor";
-import { gearAdd } from "./gear";
+import { ELEM, FEAT, PROJ, SQUARE, TRF, TV } from "../generated/index.js";
+import type { Monster } from "../mon/monster.js";
+import { loc } from "../loc.js";
+import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types.js";
+import type { ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { bindTraps, lookupTrap } from "../world/trap.js";
+import type { TrapRecordJson } from "../world/trap.js";
+import { addMon, makeState, monReg } from "./harness.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { gearAdd } from "./gear.js";
 import {
   placeTrap,
   squareDoorPower,
   squareIsTrap,
   squareSetDoorLock,
   squareTrap,
-} from "./trap";
-import type { TrapDeps } from "./trap";
-import { invenDamage, projectObject } from "./project-obj";
-import { projectFeature } from "./project-feat";
+} from "./trap.js";
+import type { TrapDeps } from "./trap.js";
+import { invenDamage, projectObject } from "./project-obj.js";
+import { projectFeature } from "./project-feat.js";
 
 const trapKinds = bindTraps(
   (

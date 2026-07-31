@@ -8,6 +8,6 @@
  * bundled - the web front end loads a user-supplied pack.
  */
 
-export * from "./types";
-export * from "./engine";
-export * from "./sound-prefs-data";
+export * from "./types.js";
+export * from "./engine.js";
+export * from "./sound-prefs-data.js";

@@ -21,48 +21,48 @@
  * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 
-import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
-import { SKILL } from "../player/types";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import { monsterCarry } from "../mon/make";
-import { MDESC_STANDARD, monsterDesc } from "../mon/desc";
-import { monsterIsVisible } from "../mon/predicate";
-import { reactToSlay } from "../combat/brand-slay";
-import { gearToLabel } from "./project-obj";
-import { squareIsSeen } from "../world/view";
-import type { Player } from "../player/player";
-import type { TimedEffect } from "../player/types";
-import type { ProjectionInfo } from "../world/projection";
-import { adjustDam } from "../world/projection";
-import { playerIncCheck, playerIncTimed } from "../player/timed";
-import { playerExpLose, playerStatDec } from "../player/exp";
-import type { ExpDeps } from "../player/exp";
+import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated/index.js";
+import { SKILL } from "../player/types.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import { monsterCarry } from "../mon/make.js";
+import { MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { reactToSlay } from "../combat/brand-slay.js";
+import { gearToLabel } from "./project-obj.js";
+import { squareIsSeen } from "../world/view.js";
+import type { Player } from "../player/player.js";
+import type { TimedEffect } from "../player/types.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import { adjustDam } from "../world/projection.js";
+import { playerIncCheck, playerIncTimed } from "../player/timed.js";
+import { playerExpLose, playerStatDec } from "../player/exp.js";
+import type { ExpDeps } from "../player/exp.js";
 import {
   playerApplyDamageReduction,
   takeHit,
-} from "../player/take-hit";
-import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
-import { MAX_PVAL } from "../obj/types";
-import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { MakeDeps } from "../obj/make";
-import { objectPrep } from "../obj/make";
-import { ODESC } from "../obj/desc";
-import type { MonBlowEnv } from "../combat/mon-melee";
-import type { GameState } from "./context";
-import type { PlayerProjActor } from "./project-player";
-import { invenDamage } from "./project-obj";
-import { disenchantEquipment } from "./effect-general";
-import { describeObject } from "./describe";
-import { gearObjectForUse } from "./gear";
-import { thrustAway } from "./thrust";
-import { teleportMonster } from "./effect-teleport";
-import type { TeleportEnv } from "./effect-teleport";
-import { makeTakeHitHooks } from "./take-hit-hooks";
-import { makeIncCheckQueries } from "./player-side";
-import { buildMonsterIncHooks, buildSmartLearnEnv } from "./mon-cast";
-import { updateSmartLearn } from "../mon/spell";
+} from "../player/take-hit.js";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
+import { MAX_PVAL } from "../obj/types.js";
+import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import type { MakeDeps } from "../obj/make.js";
+import { objectPrep } from "../obj/make.js";
+import { ODESC } from "../obj/desc.js";
+import type { MonBlowEnv } from "../combat/mon-melee.js";
+import type { GameState } from "./context.js";
+import type { PlayerProjActor } from "./project-player.js";
+import { invenDamage } from "./project-obj.js";
+import { disenchantEquipment } from "./effect-general.js";
+import { describeObject } from "./describe.js";
+import { gearObjectForUse } from "./gear.js";
+import { thrustAway } from "./thrust.js";
+import { teleportMonster } from "./effect-teleport.js";
+import type { TeleportEnv } from "./effect-teleport.js";
+import { makeTakeHitHooks } from "./take-hit-hooks.js";
+import { makeIncCheckQueries } from "./player-side.js";
+import { buildMonsterIncHooks, buildSmartLearnEnv } from "./mon-cast.js";
+import { updateSmartLearn } from "../mon/spell.js";
 
 /** Everything the monster-blow handlers need beyond the GameState. */
 export interface MonBlowDeps {

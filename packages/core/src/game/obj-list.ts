@@ -33,14 +33,14 @@ import {
   COLOUR_SLATE,
   COLOUR_VIOLET,
   COLOUR_WHITE,
-} from "../color";
-import { PROJECT, projectable } from "../world/project";
-import { ODESC } from "../obj/desc";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { tvalIsMoney } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { describeObject } from "./describe";
-import type { GameState } from "./context";
+} from "../color.js";
+import { PROJECT, projectable } from "../world/project.js";
+import { ODESC } from "../obj/desc.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { tvalIsMoney } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { describeObject } from "./describe.js";
+import type { GameState } from "./context.js";
 
 /** Which part of the list an entry falls under. */
 export const OBJECT_LIST_SECTION_LOS = 0;

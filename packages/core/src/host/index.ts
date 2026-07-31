@@ -11,8 +11,8 @@
  * single copy of the semantics; just a door that does not open onto the rest.
  */
 
-export * from "./io";
-export * from "./raw";
-export * from "./bridge";
-export * from "./memory";
-export * from "./args";
+export * from "./io.js";
+export * from "./raw.js";
+export * from "./bridge.js";
+export * from "./memory.js";
+export * from "./args.js";

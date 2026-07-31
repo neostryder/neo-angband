@@ -17,20 +17,20 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startGame } from "../session/game";
-import type { GamePack, StartedGame } from "../session/game";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, ObjectKind, Artifact } from "../obj/types";
-import { objectNew } from "../obj/object";
-import { bindConstants } from "../constants";
-import type { ConstantsJson } from "../constants";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { liveObjectIsKnownArtifact } from "../obj/artifact-known";
-import { KF } from "../generated";
-import { floorCarry } from "./floor";
-import { squareKnowPile } from "./known";
-import { playerPickupItem } from "./pickup";
-import { describeObject } from "./describe";
+import { startGame } from "../session/game.js";
+import type { GamePack, StartedGame } from "../session/game.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, ObjectKind, Artifact } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import { bindConstants } from "../constants.js";
+import type { ConstantsJson } from "../constants.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { liveObjectIsKnownArtifact } from "../obj/artifact-known.js";
+import { KF } from "../generated/index.js";
+import { floorCarry } from "./floor.js";
+import { squareKnowPile } from "./known.js";
+import { playerPickupItem } from "./pickup.js";
+import { describeObject } from "./describe.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

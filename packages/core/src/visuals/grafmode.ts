@@ -21,9 +21,9 @@
  * scripts/gen-grafmode.mjs, which emits grafmode-data.ts.
  */
 
-import { GRAPHICS_MODE_CATALOG } from "./grafmode-data";
+import { GRAPHICS_MODE_CATALOG } from "./grafmode-data.js";
 
-export { GRAPHICS_MODE_CATALOG } from "./grafmode-data";
+export { GRAPHICS_MODE_CATALOG } from "./grafmode-data.js";
 
 /** grafmode.h GRAPHICS_NONE: the ASCII (no-tiles) mode id. */
 export const GRAPHICS_NONE = 0;

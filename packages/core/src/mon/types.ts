@@ -10,15 +10,15 @@
  * and sval names, to be resolved by the object domain later.
  */
 
-import type { FlagSet } from "../bitflag";
-import type { Dice } from "../dice";
+import type { FlagSet } from "../bitflag.js";
+import type { Dice } from "../dice.js";
 import {
   MON_RACE_FLAG_ENTRIES,
   MON_SPELL_ENTRIES,
   MON_TEMP_FLAG_ENTRIES,
-} from "../generated";
-import { flagSize } from "../bitflag";
-import { RSF } from "../generated";
+} from "../generated/index.js";
+import { flagSize } from "../bitflag.js";
+import { RSF } from "../generated/index.js";
 
 /** Byte size of a race FlagSet (upstream RF_SIZE = FLAG_SIZE(RF_MAX)). */
 export const RF_SIZE = flagSize(MON_RACE_FLAG_ENTRIES.length);

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { RF } from "../generated";
+import { RF } from "../generated/index.js";
 import {
   bindMonsterCategories,
   monsterKnowledgeGroups,
   UNCLASSIFIED_CATEGORY,
-} from "./knowledge-groups";
-import type { UiKnowledgeRecordJson } from "./knowledge-groups";
-import type { MonsterRace } from "./types";
+} from "./knowledge-groups.js";
+import type { UiKnowledgeRecordJson } from "./knowledge-groups.js";
+import type { MonsterRace } from "./types.js";
 
 /** A flag set that answers has(idx) from a name list, matching FlagSet.has. */
 function flags(...names: string[]): { has: (i: number) => boolean } {

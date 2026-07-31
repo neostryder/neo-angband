@@ -1,16 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, PROJ, SQUARE, TV } from "../generated";
-import { loc } from "../loc";
-import { EL_INFO_HATES } from "../obj/types";
-import type { ObjPackJson, ObjectKind } from "../obj/types";
-import { ObjRegistry } from "../obj/bind";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { makeState } from "./harness";
-import { floorCarry, floorPile } from "./floor";
-import { gearAdd } from "./gear";
-import { invenDamage, projectObject } from "./project-obj";
+import { ELEM, PROJ, SQUARE, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { EL_INFO_HATES } from "../obj/types.js";
+import type { ObjPackJson, ObjectKind } from "../obj/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { makeState } from "./harness.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { gearAdd } from "./gear.js";
+import { invenDamage, projectObject } from "./project-obj.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

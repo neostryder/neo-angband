@@ -17,16 +17,16 @@
  * pieces do_cmd_use and hit_trap already share.
  */
 
-import { sourceObject } from "../effects/interpreter";
-import type { GameObject } from "../obj/object";
-import type { Curse } from "../obj/types";
-import { playerKnowsCurse, playerLearnCurse } from "../obj/knowledge";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { buildObjectEffectChain } from "./obj-cmd";
-import { buildEffectContext } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import { disturb } from "./player-path";
-import type { GameState } from "./context";
+import { sourceObject } from "../effects/interpreter.js";
+import type { GameObject } from "../obj/object.js";
+import type { Curse } from "../obj/types.js";
+import { playerKnowsCurse, playerLearnCurse } from "../obj/knowledge.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
+import { buildEffectContext } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { disturb } from "./player-path.js";
+import type { GameState } from "./context.js";
 
 /** The pieces do_curse_effect needs: the curses registry and the effect stack. */
 export interface CurseTickDeps {

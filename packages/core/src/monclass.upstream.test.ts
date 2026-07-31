@@ -32,24 +32,24 @@ import {
   COLOUR_L_WHITE,
   COLOUR_RED,
   COLOUR_VIOLET,
-} from "./color";
-import { EF, ELEM, OF, PF, RF, RSF, TMD, TRF } from "./generated";
-import { EffectBuilder } from "./effects/effect";
-import { bindMonsters } from "./mon/bind";
-import type { MonsterPackRecords, MonsterRecordJson } from "./mon/bind";
-import { MON_GROUP } from "./mon/types";
-import { ObjRegistry } from "./obj/bind";
-import type { ObjPackJson, ObjectKindRecordJson } from "./obj/types";
-import { bindPlayer } from "./player/bind";
+} from "./color.js";
+import { EF, ELEM, OF, PF, RF, RSF, TMD, TRF } from "./generated/index.js";
+import { EffectBuilder } from "./effects/effect.js";
+import { bindMonsters } from "./mon/bind.js";
+import type { MonsterPackRecords, MonsterRecordJson } from "./mon/bind.js";
+import { MON_GROUP } from "./mon/types.js";
+import { ObjRegistry } from "./obj/bind.js";
+import type { ObjPackJson, ObjectKindRecordJson } from "./obj/types.js";
+import { bindPlayer } from "./player/bind.js";
 import type {
   ClassRecordJson,
   PlayerPackRecords,
   PlayerTimedRecordJson,
-} from "./player/bind";
-import { buildTempBrandSlay } from "./player/timed";
-import { SKILL } from "./player/types";
-import { bindTraps } from "./world/trap";
-import type { TrapRecordJson } from "./world/trap";
+} from "./player/bind.js";
+import { buildTempBrandSlay } from "./player/timed.js";
+import { SKILL } from "./player/types.js";
+import { bindTraps } from "./world/trap.js";
+import type { TrapRecordJson } from "./world/trap.js";
 
 /* ------------------------------------------------------------------ *
  * Pack loading

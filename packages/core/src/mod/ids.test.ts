@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindCore } from "../session/boot";
-import type { CorePack } from "../session/boot";
+import { bindCore } from "../session/boot.js";
+import type { CorePack } from "../session/boot.js";
 import {
   ContentIdResolver,
   coreId,
@@ -9,7 +9,7 @@ import {
   makeId,
   parseId,
   slug,
-} from "./ids";
+} from "./ids.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -24,8 +24,8 @@
  * the renderer's copy were the one that mattered.
  */
 
-import type { HostCapabilities, HostIo, WriteOutcome } from "./io";
-import { FileMode, FileType, HostDir } from "./io";
+import type { HostCapabilities, HostIo, WriteOutcome } from "./io.js";
+import { FileMode, FileType, HostDir } from "./io.js";
 
 /**
  * The raw operations a real filesystem provides, addressed the way HostIo is:

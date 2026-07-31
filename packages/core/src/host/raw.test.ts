@@ -7,9 +7,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FileMode, FileType, HostDir } from "./io";
-import { ALL_HOST_DIRS, RawFsHost } from "./raw";
-import type { RawFs } from "./raw";
+import { FileMode, FileType, HostDir } from "./io.js";
+import { ALL_HOST_DIRS, RawFsHost } from "./raw.js";
+import type { RawFs } from "./raw.js";
 
 interface Call {
   op: string;

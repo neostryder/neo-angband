@@ -11,10 +11,10 @@
  * later increments; see store/types.ts.
  */
 
-import { FEAT, OF } from "../generated";
-import { tvalFindIdx } from "../obj/bind";
-import type { ObjRegistry } from "../obj/bind";
-import type { ObjectKind } from "../obj/types";
+import { FEAT, OF } from "../generated/index.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { ObjectKind } from "../obj/types.js";
 import type {
   BoundStore,
   ObjectBuy,
@@ -22,7 +22,7 @@ import type {
   StoreItemJson,
   StoreOwner,
   StoreRecordJson,
-} from "./types";
+} from "./types.js";
 
 /** Resolve a FEAT_* name (the store record's `store` key) to its index. */
 function featByName(name: string): number {

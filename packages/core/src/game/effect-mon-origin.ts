@@ -15,25 +15,25 @@
  * edited.
  */
 
-import { MON_MSG, MON_TMD, TMD } from "../generated";
-import { DDGRID, loc, locIsZero, locSum } from "../loc";
-import type { Loc } from "../loc";
-import type { Rng } from "../rng";
-import type { Monster } from "../mon/monster";
+import { MON_MSG, MON_TMD, TMD } from "../generated/index.js";
+import { DDGRID, loc, locIsZero, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsCamouflaged,
   monsterIsUnique,
   monsterIsVisible,
-} from "../mon/predicate";
-import { monsterEffectLevel } from "../mon/timed";
-import { monsterScaredByDamage, monsterWake } from "../mon/take-hit";
-import { los } from "../world/view";
-import { lookupTrap } from "../world/trap";
-import { deleteMonster } from "./context";
-import type { GameState } from "./context";
-import type { GameEffectEnv } from "./effect-game-env";
-import { squareRemoveAllTraps } from "./trap";
-import type { TrapDeps } from "./trap";
+} from "../mon/predicate.js";
+import { monsterEffectLevel } from "../mon/timed.js";
+import { monsterScaredByDamage, monsterWake } from "../mon/take-hit.js";
+import { los } from "../world/view.js";
+import { lookupTrap } from "../world/trap.js";
+import { deleteMonster } from "./context.js";
+import type { GameState } from "./context.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { squareRemoveAllTraps } from "./trap.js";
+import type { TrapDeps } from "./trap.js";
 
 /**
  * CONF_RANDOM_CHANCE (mon-timed.h L31): the percentage chance, per confusion

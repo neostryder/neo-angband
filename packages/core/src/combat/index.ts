@@ -8,8 +8,8 @@
  * directly from "./combat".
  */
 
-export * from "./hit";
-export * from "./brand-slay";
-export * from "./melee";
-export * from "./mon-melee";
-export * from "./ranged";
+export * from "./hit.js";
+export * from "./brand-slay.js";
+export * from "./melee.js";
+export * from "./mon-melee.js";
+export * from "./ranged.js";

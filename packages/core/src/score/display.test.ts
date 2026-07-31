@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { COLOUR_L_GREEN, COLOUR_WHITE } from "../color";
-import { scoreRow, scorePageRows, scoreRows } from "./display";
-import type { ScoreNameResolver } from "./display";
-import type { HighScore } from "./types";
+import { COLOUR_L_GREEN, COLOUR_WHITE } from "../color.js";
+import { scoreRow, scorePageRows, scoreRows } from "./display.js";
+import type { ScoreNameResolver } from "./display.js";
+import type { HighScore } from "./types.js";
 
 /** Resolver mapping a couple of race/class indices; unknown -> null. */
 const names: ScoreNameResolver = {

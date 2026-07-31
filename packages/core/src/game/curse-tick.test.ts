@@ -1,24 +1,24 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TMD, TV } from "../generated";
-import { loc } from "../loc";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import { bindConstants } from "../constants";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerMonsterHandlers } from "./effect-monster";
-import { registerTeleportHandlers } from "./effect-teleport";
-import { basicPlayerActor } from "./project-cast";
-import { makeState, plReg } from "./harness";
-import { processCurseTimeouts } from "./curse-tick";
-import type { CurseTickDeps } from "./curse-tick";
-import type { GameState } from "./context";
-import { Rng } from "../rng";
+import { TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import { bindConstants } from "../constants.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { makeState, plReg } from "./harness.js";
+import { processCurseTimeouts } from "./curse-tick.js";
+import type { CurseTickDeps } from "./curse-tick.js";
+import type { GameState } from "./context.js";
+import { Rng } from "../rng.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

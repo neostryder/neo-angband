@@ -34,16 +34,16 @@
  * mon-vs-mon EAT_ITEM path wires stealMonsterItem from game/mon-cmd.ts.
  */
 
-import { KF } from "../generated";
-import type { Rng } from "../rng";
-import type { GameObject } from "../obj/object";
-import type { Monster } from "./monster";
-import { getLore } from "./lore";
-import type { LoreStore } from "./lore";
-import { monsterIsUnique } from "./predicate";
-import { monsterWake } from "./take-hit";
-import { MON_TMD } from "../generated";
-import { monDecTimed, MON_TMD_FLG_NOTIFY } from "./timed";
+import { KF } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import type { GameObject } from "../obj/object.js";
+import type { Monster } from "./monster.js";
+import { getLore } from "./lore.js";
+import type { LoreStore } from "./lore.js";
+import { monsterIsUnique } from "./predicate.js";
+import { monsterWake } from "./take-hit.js";
+import { MON_TMD } from "../generated/index.js";
+import { monDecTimed, MON_TMD_FLG_NOTIFY } from "./timed.js";
 
 /**
  * get_random_monster_object (mon-util.c L1405): pick one object from the

@@ -7,28 +7,28 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { MSG, ORIGIN, TMD, TV } from "../generated";
-import { STAT } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { SKILL } from "../player/types";
-import { bindConstants } from "../constants";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, objectPrep, ObjAllocState } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { adj_dex_safe } from "../player/calcs";
-import type { DefenderState, MonBlowEnv } from "../combat/mon-melee";
-import { monMeleeAttack } from "../combat/mon-melee";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { makeMonBlowEnv } from "./mon-side";
-import { gearAdd } from "./gear";
-import { addMon, makeBlow, makeRace, makeState, plReg } from "./harness";
-import type { RaceOverrides } from "./harness";
+import { MSG, ORIGIN, TMD, TV } from "../generated/index.js";
+import { STAT } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { SKILL } from "../player/types.js";
+import { bindConstants } from "../constants.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, objectPrep, ObjAllocState } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { adj_dex_safe } from "../player/calcs.js";
+import type { DefenderState, MonBlowEnv } from "../combat/mon-melee.js";
+import { monMeleeAttack } from "../combat/mon-melee.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { makeMonBlowEnv } from "./mon-side.js";
+import { gearAdd } from "./gear.js";
+import { addMon, makeBlow, makeRace, makeState, plReg } from "./harness.js";
+import type { RaceOverrides } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -74,7 +74,7 @@ interface EnvOpts {
 
 interface Setup {
   state: GameState;
-  mon: import("../mon/monster").Monster;
+  mon: import("../mon/monster.js").Monster;
   env: MonBlowEnv;
   msgs: string[];
 }
@@ -128,7 +128,7 @@ function make(
 
 function buildEnvWithMsgs(
   state: GameState,
-  mon: import("../mon/monster").Monster,
+  mon: import("../mon/monster.js").Monster,
   opts: EnvOpts,
   msgs: string[],
 ): MonBlowEnv {

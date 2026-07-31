@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { FEAT } from "../generated";
-import type { Store } from "./store";
+import { FEAT } from "../generated/index.js";
+import type { Store } from "./store.js";
 import {
   enterStoreGuard,
   storeBuyGuard,
   storeRetrieveGuard,
   storeSellGuard,
   storeStashGuard,
-} from "./store-cmd";
+} from "./store-cmd.js";
 
 /** Only `feat` is read by the guards. */
 function storeWithFeat(feat: number): Store {

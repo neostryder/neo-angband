@@ -21,30 +21,30 @@
  * summon effect itself is a stub until monster generation lands).
  */
 
-import { EffectBuilder } from "../effects/effect";
-import type { Effect, EffectBuilderInjections } from "../effects/effect";
-import { sourceMonster } from "../effects/interpreter";
-import type { EffectRegistry } from "../effects/interpreter";
-import { testHit } from "../combat/hit";
-import { checkHit } from "../combat/mon-melee";
-import { chanceOfSpellHit, updateSmartLearn } from "../mon/spell";
-import type { SmartLearnEnv } from "../mon/spell";
-import type { MonsterSpell } from "../mon/types";
-import type { Monster } from "../mon/monster";
-import type { Loc } from "../loc";
-import { buildEffectContext } from "./effect-env";
-import type { EffectEnvDeps } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import type { TeleportEnv } from "./effect-teleport";
-import type { CastContext } from "./project-cast";
-import type { GameState } from "./context";
-import { spellMessageText } from "./mon-message";
-import { disturb } from "./player-path";
-import { ELEM, MSG, OF, PF, TMD } from "../generated";
-import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
-import { playerIncCheck } from "../player/timed";
-import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed";
-import type { TimedEffect } from "../player/types";
+import { EffectBuilder } from "../effects/effect.js";
+import type { Effect, EffectBuilderInjections } from "../effects/effect.js";
+import { sourceMonster } from "../effects/interpreter.js";
+import type { EffectRegistry } from "../effects/interpreter.js";
+import { testHit } from "../combat/hit.js";
+import { checkHit } from "../combat/mon-melee.js";
+import { chanceOfSpellHit, updateSmartLearn } from "../mon/spell.js";
+import type { SmartLearnEnv } from "../mon/spell.js";
+import type { MonsterSpell } from "../mon/types.js";
+import type { Monster } from "../mon/monster.js";
+import type { Loc } from "../loc.js";
+import { buildEffectContext } from "./effect-env.js";
+import type { EffectEnvDeps } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { TeleportEnv } from "./effect-teleport.js";
+import type { CastContext } from "./project-cast.js";
+import type { GameState } from "./context.js";
+import { spellMessageText } from "./mon-message.js";
+import { disturb } from "./player-path.js";
+import { ELEM, MSG, OF, PF, TMD } from "../generated/index.js";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
+import { playerIncCheck } from "../player/timed.js";
+import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed.js";
+import type { TimedEffect } from "../player/types.js";
 
 /** Hooks for the UI / lore consequences of casting a monster spell. */
 export interface MonSpellHooks {
@@ -81,11 +81,11 @@ export interface DoMonSpellDeps {
   /** Teleport-family seams (trap predicates, level change; game/trap.ts). */
   teleport?: TeleportEnv;
   /** General-handler seams (trap access for webs; effect-general.ts). */
-  general?: import("./effect-general").GeneralEffectEnv;
+  general?: import("./effect-general.js").GeneralEffectEnv;
   /** Summoning seams (summon table + live placement; effect-summon.ts). */
-  summon?: import("./effect-summon").SummonEffectEnv;
+  summon?: import("./effect-summon.js").SummonEffectEnv;
   /** MON_TMD_CHANGED shapechange hooks (game/mon-shape.ts). */
-  monShape?: import("../mon/timed").MonShapeHooks;
+  monShape?: import("../mon/timed.js").MonShapeHooks;
   hooks?: MonSpellHooks;
 }
 

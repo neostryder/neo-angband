@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { STAT, TMD } from "../generated";
+import { STAT, TMD } from "../generated/index.js";
 import {
   COLOUR_L_BLUE,
   COLOUR_L_GREEN,
   COLOUR_L_UMBER,
   COLOUR_RED,
   COLOUR_YELLOW,
-} from "../color";
-import { SKILL, STAT_MAX } from "../player/types";
-import { makeState } from "./harness";
-import type { CharSheetPanel } from "./char-sheet";
+} from "../color.js";
+import { SKILL, STAT_MAX } from "../player/types.js";
+import { makeState } from "./harness.js";
+import type { CharSheetPanel } from "./char-sheet.js";
 import {
   characterPanels,
   likert,
   maxColor,
   showDepth,
   statTable,
-} from "./char-sheet";
+} from "./char-sheet.js";
 
 function panel(panels: CharSheetPanel[], key: string): CharSheetPanel {
   const p = panels.find((x) => x.key === key);

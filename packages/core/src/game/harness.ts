@@ -5,34 +5,34 @@
  */
 
 import { readFileSync } from "node:fs";
-import { FlagSet } from "../bitflag";
-import { Dice } from "../dice";
-import { Rng } from "../rng";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { SKILL } from "../player/types";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterBlow, MonsterDrop, MonsterRace } from "../mon/types";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
-import type { PlayerCombatState } from "../combat/melee";
-import type { DefenderState } from "../combat/mon-melee";
-import { DEFAULT_GAME_CONSTANTS, addMonster, placePlayer } from "./context";
-import type { GameState, PlayerActor, PlayerCommand } from "./context";
-import { newGear } from "./gear";
-import { newKnownMap } from "./known";
-import { newTargetState } from "./target";
-import { IgnoreSettings } from "../obj/ignore";
-import { makeRuneEnv } from "../obj/knowledge";
+import { FlagSet } from "../bitflag.js";
+import { Dice } from "../dice.js";
+import { Rng } from "../rng.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterBlow, MonsterDrop, MonsterRace } from "../mon/types.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
+import type { PlayerCombatState } from "../combat/melee.js";
+import type { DefenderState } from "../combat/mon-melee.js";
+import { DEFAULT_GAME_CONSTANTS, addMonster, placePlayer } from "./context.js";
+import type { GameState, PlayerActor, PlayerCommand } from "./context.js";
+import { newGear } from "./gear.js";
+import { newKnownMap } from "./known.js";
+import { newTargetState } from "./target.js";
+import { IgnoreSettings } from "../obj/ignore.js";
+import { makeRuneEnv } from "../obj/knowledge.js";
 
 function load(name: string): unknown {
   return JSON.parse(

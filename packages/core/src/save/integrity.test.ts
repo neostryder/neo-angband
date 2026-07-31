@@ -3,8 +3,8 @@ import {
   fnv1aIntegrity,
   stampSavefile,
   verifyStampedSavefile,
-} from "./integrity";
-import type { SaveIntegrity } from "./integrity";
+} from "./integrity.js";
+import type { SaveIntegrity } from "./integrity.js";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 

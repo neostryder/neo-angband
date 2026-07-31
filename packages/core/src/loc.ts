@@ -8,7 +8,7 @@
  * "no direction", 2/4/6/8 orthogonal, 1/3/7/9 diagonal.
  */
 
-import type { Rng } from "./rng";
+import type { Rng } from "./rng.js";
 
 export interface Loc {
   readonly x: number;

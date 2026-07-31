@@ -39,12 +39,12 @@
  * Determinism: no RNG anywhere in this module.
  */
 
-import { colorCharToAttr, colorTextToAttr } from "../color";
-import type { Flavor, ObjectKind } from "../obj/types";
-import type { MonsterRace } from "../mon/types";
-import type { Feature } from "../world/feature";
-import type { TrapKind } from "../world/trap";
-import { LIGHTING } from "./tile-prefs";
+import { colorCharToAttr, colorTextToAttr } from "../color.js";
+import type { Flavor, ObjectKind } from "../obj/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { Feature } from "../world/feature.js";
+import type { TrapKind } from "../world/trap.js";
+import { LIGHTING } from "./tile-prefs.js";
 
 /** One (attr, char) pair - upstream's parallel uint8_t/wchar_t slot pair. */
 export interface GlyphPair {

@@ -19,17 +19,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { bindCore } from "../session/boot";
-import type { CorePack } from "../session/boot";
-import { parseTilePrefs } from "./prefs";
+import { bindCore } from "../session/boot.js";
+import type { CorePack } from "../session/boot.js";
+import { parseTilePrefs } from "./prefs.js";
 import {
   PREF_EXPR_MALFORMED,
   PREF_EXPR_UNKNOWN,
   evalPrefExpr,
   prefExprBypasses,
-} from "./pref-expr";
-import type { PrefExprVars } from "./pref-expr";
-import { tileForMonster } from "./tile-prefs";
+} from "./pref-expr.js";
+import type { PrefExprVars } from "./pref-expr.js";
+import { tileForMonster } from "./tile-prefs.js";
 
 describe("evalPrefExpr: the variables upstream actually has", () => {
   it("expands $RACE, $CLASS and $SYS", () => {

@@ -1,35 +1,35 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, FEAT, RF, TV } from "../generated";
-import { invenCarry } from "../game/gear";
-import { updatePlayerObjectKnowledge } from "../game/known";
-import { GLYPH_DECOY } from "../effects/effect";
-import { sourcePlayer } from "../effects/interpreter";
-import { attachGameEnv } from "../game/effect-game-env";
-import { caveFindDecoy } from "../game/effect-mon-origin";
-import { basicPlayerActor } from "../game/project-cast";
-import { getLore } from "../mon/lore";
-import { runGameLoop, LOOP_STATUS } from "../game/loop";
-import { monsterGroupsVerify } from "../game/mon-group";
-import type { PlayerCommand } from "../game/context";
-import { objectNew } from "../obj/object";
-import { EverseenKnowledge } from "../obj/knowledge";
-import { ContentIdResolver } from "../mod/ids";
-import { serializeGame, serializeMessages, deserializeMessages } from "./save";
-import { MessageLog } from "../msg";
-import type { ObjectKind } from "../obj/types";
-import { describeObject } from "../game/describe";
-import { NOSCORE } from "../game/wizard";
-import { loadGame, saveGame, startGame } from "./game";
-import type { GamePack, StartedGame } from "./game";
+import { EF, FEAT, RF, TV } from "../generated/index.js";
+import { invenCarry } from "../game/gear.js";
+import { updatePlayerObjectKnowledge } from "../game/known.js";
+import { GLYPH_DECOY } from "../effects/effect.js";
+import { sourcePlayer } from "../effects/interpreter.js";
+import { attachGameEnv } from "../game/effect-game-env.js";
+import { caveFindDecoy } from "../game/effect-mon-origin.js";
+import { basicPlayerActor } from "../game/project-cast.js";
+import { getLore } from "../mon/lore.js";
+import { runGameLoop, LOOP_STATUS } from "../game/loop.js";
+import { monsterGroupsVerify } from "../game/mon-group.js";
+import type { PlayerCommand } from "../game/context.js";
+import { objectNew } from "../obj/object.js";
+import { EverseenKnowledge } from "../obj/knowledge.js";
+import { ContentIdResolver } from "../mod/ids.js";
+import { serializeGame, serializeMessages, deserializeMessages } from "./save.js";
+import { MessageLog } from "../msg.js";
+import type { ObjectKind } from "../obj/types.js";
+import { describeObject } from "../game/describe.js";
+import { NOSCORE } from "../game/wizard.js";
+import { loadGame, saveGame, startGame } from "./game.js";
+import type { GamePack, StartedGame } from "./game.js";
 import {
   decodeSavedGame,
   deserializeEverseen,
   encodeSavedGame,
   SAVE_VERSION,
-} from "./save";
-import type { SavedGame } from "./save";
-import type { SaveCodec } from "../save/compress";
+} from "./save.js";
+import type { SavedGame } from "./save.js";
+import type { SaveCodec } from "../save/compress.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

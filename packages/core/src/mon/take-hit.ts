@@ -19,11 +19,11 @@
  * callers.
  */
 
-import { MON_TMD } from "../generated";
-import { MFLAG } from "../generated";
-import type { Rng } from "../rng";
-import type { Monster } from "./monster";
-import { monsterCanBeScared, monsterIsCamouflaged } from "./predicate";
+import { MON_TMD } from "../generated/index.js";
+import { MFLAG } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import type { Monster } from "./monster.js";
+import { monsterCanBeScared, monsterIsCamouflaged } from "./predicate.js";
 import {
   MON_TMD_FLG_NOFAIL,
   MON_TMD_FLG_NOMESSAGE,
@@ -31,7 +31,7 @@ import {
   monClearTimed,
   monDecTimed,
   monIncTimed,
-} from "./timed";
+} from "./timed.js";
 
 /**
  * monster_wake (mon-util.c L686): clear a monster's sleep timer and, with the

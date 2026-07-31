@@ -25,21 +25,21 @@
  * parity/ledger/game-loop.yaml.
  */
 
-import { MON_TMD, OF, PF, STAT, TMD } from "../generated";
-import { TMD_MAX } from "../player/types";
-import { los } from "../world/view";
-import { makeNoise, updateScent } from "../world/flow";
-import { convertManaToHp } from "../player/combat-regen";
+import { MON_TMD, OF, PF, STAT, TMD } from "../generated/index.js";
+import { TMD_MAX } from "../player/types.js";
+import { los } from "../world/view.js";
+import { makeNoise, updateScent } from "../world/flow.js";
+import { convertManaToHp } from "../player/combat-regen.js";
 import {
   MON_TMD_FLG_NOTIFY,
   monClearTimed,
   monDecTimed,
-} from "../mon/timed";
-import { getCommandedMonster } from "./mon-cmd";
-import { adj_con_fix, calcStatIndices } from "../player/calcs";
-import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge";
-import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed";
-import { tickMonsterMarks, updateMonsters } from "./known";
+} from "../mon/timed.js";
+import { getCommandedMonster } from "./mon-cmd.js";
+import { adj_con_fix, calcStatIndices } from "../player/calcs.js";
+import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge.js";
+import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed.js";
+import { tickMonsterMarks, updateMonsters } from "./known.js";
 import {
   caveMonsterCount,
   compactMonsters,
@@ -54,19 +54,19 @@ import {
   processExpDrain,
   processFaintOrStarve,
   rechargeObjects,
-} from "./world";
-import type { Player } from "../player/player";
-import type { GameState, InterruptResponse } from "./context";
-import { playerIsResting, playerRestingIsSpecial } from "./context";
+} from "./world.js";
+import type { Player } from "../player/player.js";
+import type { GameState, InterruptResponse } from "./context.js";
+import { playerIsResting, playerRestingIsSpecial } from "./context.js";
 import {
   givePlayerEnergy,
   processMonsters,
   resetMonsters,
-} from "./scheduler";
-import { disturb } from "./player-path";
-import { processPlayer } from "./player-turn";
-import type { ActionRegistry, PlayerTurnResult } from "./player-turn";
-import { dungeonGetNextLevel } from "./quest";
+} from "./scheduler.js";
+import { disturb } from "./player-path.js";
+import { processPlayer } from "./player-turn.js";
+import type { ActionRegistry, PlayerTurnResult } from "./player-turn.js";
+import { dungeonGetNextLevel } from "./quest.js";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
 const PY_REGEN_NORMAL = 197;

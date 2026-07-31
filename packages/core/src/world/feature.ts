@@ -7,8 +7,8 @@
  * numerically identical to upstream.
  */
 
-import { FlagSet } from "../bitflag";
-import { FEAT, RF, TERRAIN_FLAG_ENTRIES, TF } from "../generated";
+import { FlagSet } from "../bitflag.js";
+import { FEAT, RF, TERRAIN_FLAG_ENTRIES, TF } from "../generated/index.js";
 
 /** Byte size of a terrain FlagSet (upstream TF_SIZE). */
 export const TF_SIZE = Math.ceil(TERRAIN_FLAG_ENTRIES.length / 8);

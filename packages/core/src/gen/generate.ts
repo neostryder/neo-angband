@@ -33,17 +33,17 @@
  * chunk.feeling value.
  */
 
-import type { Constants } from "../constants";
-import { FEAT, RF, SQUARE } from "../generated";
-import { MON_GROUP } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import type { Rng } from "../rng";
-import type { FeatureRegistry } from "../world/feature";
-import type { TrapKind } from "../world/trap";
-import { loc } from "../loc";
-import type { MakeDeps } from "../obj/make";
-import type { CaveBuildContext, DungeonProfiles } from "./cave";
-import type { RoomRegistry } from "./room";
+import type { Constants } from "../constants.js";
+import { FEAT, RF, SQUARE } from "../generated/index.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { Rng } from "../rng.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import type { TrapKind } from "../world/trap.js";
+import { loc } from "../loc.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { CaveBuildContext, DungeonProfiles } from "./cave.js";
+import type { RoomRegistry } from "./room.js";
 import {
   Dun,
   Gen,
@@ -51,7 +51,7 @@ import {
   placeNewMonster,
   type Connector,
   type MonPlaceDeps,
-} from "./util";
+} from "./util.js";
 
 /** Everything the generator needs beyond an RNG and a depth. */
 export interface GenDeps {
@@ -77,7 +77,7 @@ export interface GenDeps {
    * no mod enabled - keeps cave_generate faithful to 4.2.6, unreachable
    * staircases included.
    */
-  hooks?: import("../mod/hooks").ModHooks | undefined;
+  hooks?: import("../mod/hooks.js").ModHooks | undefined;
   /**
    * The cheat_room readout (generate.c:1164-1166 and :1222-1224): with that
    * cheat option on, upstream narrates every rejected level - both the builder
@@ -155,7 +155,7 @@ export interface GenerateOptions {
    * Stored town terrain (chunk_write "Town") for town_gen re-entry without
    * birth_levels_persist (generate.c:1371-1373 / gen-cave.c:2671-2703).
    */
-  townLayout?: import("../world/chunk").Chunk | null;
+  townLayout?: import("../world/chunk.js").Chunk | null;
   /**
    * birth_connect_stairs (gen-util.c:427-433, new_player_spot): lay an arrival
    * staircase on the player's start grid - "up" after a descent, "down" after

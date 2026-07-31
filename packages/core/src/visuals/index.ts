@@ -10,10 +10,10 @@
  * ASCII stays the default.
  */
 
-export * from "./engine";
-export * from "./glyph-table";
-export * from "./grafmode";
-export * from "./map-text";
-export * from "./pref-expr";
-export * from "./prefs";
-export * from "./tile-prefs";
+export * from "./engine.js";
+export * from "./glyph-table.js";
+export * from "./grafmode.js";
+export * from "./map-text.js";
+export * from "./pref-expr.js";
+export * from "./prefs.js";
+export * from "./tile-prefs.js";

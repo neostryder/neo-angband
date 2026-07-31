@@ -10,15 +10,15 @@ import {
   buildVisualsFlicker,
   createVisualsAnimator,
   animateMonsterAttr,
-} from "./engine";
-import type { VisualsRecord } from "./engine";
+} from "./engine.js";
+import type { VisualsRecord } from "./engine.js";
 import {
   COLOUR_DARK,
   COLOUR_L_DARK,
   COLOUR_L_RED,
   COLOUR_RED,
   COLOUR_MAGENTA,
-} from "../color";
+} from "../color.js";
 
 const visuals = JSON.parse(
   readFileSync(new URL("../../../content/pack/visuals.json", import.meta.url), "utf8"),

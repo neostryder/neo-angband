@@ -1,30 +1,30 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, MFLAG, MON_TMD, RF, RSF } from "../generated";
-import { FlagSet } from "../bitflag";
-import { Rng } from "../rng";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { loc, locEq } from "../loc";
-import { OptionState } from "../player/options";
-import { OF_SIZE, PF_SIZE } from "../player/types";
-import { ELEM_MAX } from "../obj/types";
-import { updateSmartLearn } from "../mon/spell";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { RSF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { GRANITE, addMon, makeState, makeRace, monReg, plReg } from "./harness";
-import { updateMonsterDistances } from "./context";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerMonsterHandlers } from "./effect-monster";
-import { registerTeleportHandlers } from "./effect-teleport";
-import { monsterTurn } from "./monster-turn";
-import { buildSmartLearnEnv } from "./mon-cast";
-import type { DoMonSpellDeps } from "./mon-cast";
+import { ELEM, MFLAG, MON_TMD, RF, RSF } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { Rng } from "../rng.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { loc, locEq } from "../loc.js";
+import { OptionState } from "../player/options.js";
+import { OF_SIZE, PF_SIZE } from "../player/types.js";
+import { ELEM_MAX } from "../obj/types.js";
+import { updateSmartLearn } from "../mon/spell.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { RSF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { GRANITE, addMon, makeState, makeRace, monReg, plReg } from "./harness.js";
+import { updateMonsterDistances } from "./context.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
+import { monsterTurn } from "./monster-turn.js";
+import { buildSmartLearnEnv } from "./mon-cast.js";
+import type { DoMonSpellDeps } from "./mon-cast.js";
 import {
   chooseAttackSpell,
   chooseNearbyInjuredKin,
@@ -35,7 +35,7 @@ import {
   monsterSpellFailrate,
   removeBadSpells,
   summonPossible,
-} from "./mon-ranged";
+} from "./mon-ranged.js";
 
 const projections = bindProjections(
   JSON.parse(

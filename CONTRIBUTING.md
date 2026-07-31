@@ -80,8 +80,10 @@ game stays faithful; anything that adds or changes behavior ships as a **mod**.
 - Conveniences, tweaks, and new systems live as mods - see
   [docs/MODS.md](docs/MODS.md) and the modding guides in
   [docs/modding/](docs/modding/).
-- The bundled `qol`, `bug-fixes`, and `neo-linoleum` mods, and the `borg`
-  autoplayer, are the worked examples of this boundary.
+- The first-party `qol`, `bug-fixes` and `neo-linoleum` mods, and the `borg`
+  autoplayer, are the worked examples of this boundary. `qol` and `bug-fixes`
+  are bundled; `neo-linoleum` installs from its own repository, because its six
+  converted tile packs are the mod's art and not the game's.
 
 ## Parity provenance ledger
 

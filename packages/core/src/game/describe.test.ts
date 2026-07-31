@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { TV } from "../generated";
-import { FlagSet } from "../bitflag";
-import { ODESC } from "../obj/desc";
-import { objectNew } from "../obj/object";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { KF_SIZE } from "../obj/types";
-import type { ObjectKind } from "../obj/types";
-import type { Artifact } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
-import { makeState } from "./harness";
-import { describeObject } from "./describe";
+import { TV } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { ODESC } from "../obj/desc.js";
+import { objectNew } from "../obj/object.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { KF_SIZE } from "../obj/types.js";
+import type { ObjectKind } from "../obj/types.js";
+import type { Artifact } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
+import { makeState } from "./harness.js";
+import { describeObject } from "./describe.js";
 
 function rv(base = 0) {
   return { base, dice: 0, sides: 0, mBonus: 0 };

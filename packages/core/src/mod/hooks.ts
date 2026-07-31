@@ -65,7 +65,7 @@
  * with a hook installed and asserting the level is bit-identical.
  */
 
-import type { GameState } from "../game/context";
+import type { GameState } from "../game/context.js";
 
 /**
  * A mod's behaviour contributions. Every member is optional; an absent member

@@ -20,10 +20,14 @@ reference/build*/
 .test-out/
 .test-out-authoring/
 
-# The demonstration Linoleum loose pack, derived at build time from the game's
-# own public/tiles/ art by packages/web/scripts/gen-linoleum-demo.mjs. ~1500
-# generated PNGs; a pure function of art already in the tree, so it is built,
-# not committed.
+# Nothing in this repository writes here any more, and that is the point: mod
+# resources belong to the mod. The six converted Linoleum tile packs (9161 files,
+# 42 MiB) used to be generated into this directory at build time and served from
+# the game's own origin; they now live in neo-angband-mod-linoleum and reach a
+# player through the installer, which writes them into the mod's own folder.
+#
+# The ignore stays so a locally built pack can be dropped in for testing without
+# any chance of being committed.
 packages/web/public/mods/
 
 # The Shockbolt tileset used to be excluded here. It is now DISTRIBUTED, with

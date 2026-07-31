@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FlagSet } from "../bitflag";
-import { PF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { SKILL, PF_SIZE } from "../player/types";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import type { PlayerState } from "../player/calcs";
-import { monsterCarry } from "../mon/make";
-import { createDefaultRegistry } from "./player-turn";
-import { installSteal } from "./steal";
-import { addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
+import { bindConstants } from "../constants.js";
+import { FlagSet } from "../bitflag.js";
+import { PF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { SKILL, PF_SIZE } from "../player/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import type { PlayerState } from "../player/calcs.js";
+import { monsterCarry } from "../mon/make.js";
+import { createDefaultRegistry } from "./player-turn.js";
+import { installSteal } from "./steal.js";
+import { addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

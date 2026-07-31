@@ -13,8 +13,8 @@
  * upstream's two distinct write failures on demand.
  */
 
-import type { HostCapabilities, HostIo, WriteOutcome } from "./io";
-import { FileMode, HostDir } from "./io";
+import type { HostCapabilities, HostIo, WriteOutcome } from "./io.js";
+import { FileMode, HostDir } from "./io.js";
 
 /** Knobs a test uses to provoke the failure paths. */
 export interface MemoryHostOpts {
