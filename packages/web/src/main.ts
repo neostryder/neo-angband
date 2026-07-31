@@ -220,7 +220,12 @@ import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
-import { loadInstalledMods } from "./mod-install";
+import {
+  installRecommendedMod,
+  installedMods,
+  loadInstalledMods,
+  uninstallMod,
+} from "./mod-install";
 import {
   activeModCode,
   folderPluginManifests,
@@ -5167,6 +5172,28 @@ async function openModManager(): Promise<void> {
       } catch {
         return null;
       }
+    },
+    /* The download catalogue. Wired unconditionally: every surface the game runs on
+     * has fetch and IndexedDB, and installRecommendedMod already answers "this
+     * browser will not let the game store downloaded mods" as a result rather than a
+     * throw - so the honest failure is a message on the row, not a hidden row. */
+    modCatalogue: {
+      installed: async () => {
+        const metas = await installedMods(globalThis);
+        return new Map(metas.map((m) => [m.id, m.tag] as const));
+      },
+      install: (mod, onProgress) =>
+        installRecommendedMod(
+          mod,
+          {
+            fetch: (url) => fetch(url),
+            subtle: crypto.subtle,
+            scope: globalThis,
+            now: () => new Date().toISOString(),
+          },
+          onProgress,
+        ),
+      uninstall: (id) => uninstallMod(id, globalThis),
     },
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {

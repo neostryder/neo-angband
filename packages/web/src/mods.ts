@@ -44,6 +44,7 @@ import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
+import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
 import { wrapCssRuns } from "./shop";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 
@@ -165,6 +166,12 @@ export interface ModManagerDeps {
    * screenful of empty boxes over a game running three mods.
    */
   urlModsOverride?: () => readonly string[] | null;
+  /**
+   * The download catalogue, when this surface can install one. Absent on a surface
+   * with no IndexedDB, which is the honest way to say "not here" - the row simply
+   * does not appear, rather than appearing and failing.
+   */
+  modCatalogue?: ModCatalogueDeps;
 }
 
 /**
@@ -931,6 +938,7 @@ export async function runModManager(
       | "conflicts"
       | "profiles"
       | "install"
+      | "download"
       | "folder"
       | "reload"
       | "done";
@@ -955,6 +963,17 @@ export async function runModManager(
     // without it.
     addAction("View conflicts", "conflicts", C_FG, "Which enabled content mods contest the same records.");
     addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
+    if (deps.modCatalogue) {
+      /* Above the folder row deliberately: this is the path that works on every
+       * browser, and the folder picker is the one Firefox and Safari refuse. A
+       * player with no mods should meet the working option first. */
+      addAction(
+        "Install a mod...",
+        "download",
+        C_FG,
+        "Download a mod from its own repository, digest-checked.",
+      );
+    }
     const diskStatus = deps.diskPackStatus?.();
     /* The saved folder's name is read fresh each pass, because picking or
      * forgetting one changes it and the row has to follow. */
@@ -1044,6 +1063,8 @@ export async function runModManager(
       await viewConflicts(term, deps);
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
+    } else if (rk.kind === "download") {
+      if (deps.modCatalogue && (await showModCatalogue(term, deps.modCatalogue))) dirty = true;
     } else if (rk.kind === "install") {
       await showModSources(term, deps.diskPackStatus?.(), deps.modFolder !== undefined);
     } else if (rk.kind === "folder") {
