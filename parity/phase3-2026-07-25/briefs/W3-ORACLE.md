@@ -57,13 +57,13 @@ the port. The baseline must come from compiled C.
    (leave the existing baseline untouched so the delta is reviewable):
    ```
    pnpm --filter @neo-angband/cli build
-   node --import ./register.mjs dist/main-cimport.js <path-to-stats.db> 20
+   node dist/main-cimport.js <path-to-stats.db> 20
    ```
    Check `packages/cli/src/main-cimport.ts` for its exact output path/arguments
    and adjust rather than guessing; `sqlite3` is on PATH.
 
 4. **Measure the port against it** at a matching sample size:
-   `node --import ./register.mjs dist/main-cparity.js <runs> <depthMax>`
+   `node dist/main-cparity.js <runs> <depthMax>`
    (see `packages/cli/src/main-cparity.ts`).
 
 ## Deliverable

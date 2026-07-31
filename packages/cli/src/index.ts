@@ -10,7 +10,7 @@
 export { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
 
 /** Content-pack loader shared by the harnesses. */
-export { loadGamePack } from "./pack";
+export { loadGamePack } from "./pack.js";
 
 /** Monte-Carlo statistics harness (main-stats.c analog). */
 export {
@@ -22,8 +22,8 @@ export {
   serializeReport,
   summarizeReport,
   tvalName,
-} from "./stats";
-export type { DepthMetrics, StatsParams, StatsReport } from "./stats";
+} from "./stats.js";
+export type { DepthMetrics, StatsParams, StatsReport } from "./stats.js";
 
 /**
  * In-game wizard collectors (wiz-stats.c via do_cmd_wiz_collect_*), reachable
@@ -36,7 +36,7 @@ export {
   disconnectStats,
   objMonStats,
   pitStats,
-} from "./wiz-stats";
+} from "./wiz-stats.js";
 export type {
   DisconnectStatsParams,
   DisconnectStatsReport,
@@ -44,8 +44,8 @@ export type {
   ObjMonStatsReport,
   PitStatsParams,
   PitStatsReport,
-} from "./wiz-stats";
-export { runWizStats } from "./main-stats";
+} from "./wiz-stats.js";
+export { runWizStats } from "./main-stats.js";
 
 /** Baseline capture + tolerance comparison (the CI regression guard). */
 export {
@@ -56,14 +56,14 @@ export {
   formatCompareResult,
   loadBaseline,
   writeBaseline,
-} from "./baseline";
+} from "./baseline.js";
 export type {
   CompareOptions,
   CompareResult,
   Diff,
   Tolerance,
-} from "./baseline";
+} from "./baseline.js";
 
 /** Golden-scenario runner (main-test.c analog). */
-export { formatScenarioResults, runScenarios } from "./scenarios";
-export type { ScenarioResult } from "./scenarios";
+export { formatScenarioResults, runScenarios } from "./scenarios.js";
+export type { ScenarioResult } from "./scenarios.js";

@@ -11,21 +11,21 @@ import type {
   ItemView,
   PlayerView,
 } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { BorgWorld } from "../world/model";
-import { makeScenarioView, makeFakeActions } from "../harness";
-import { makeBorgRng } from "../rng";
+import type { BorgContext } from "../context.js";
+import { BorgWorld } from "../world/model.js";
+import { makeScenarioView, makeFakeActions } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
 import {
   BI,
   BI_MAX,
   PREFIX_PREF,
   CLASS_MAGE,
   CLASS_WARRIOR,
-} from "./trait-index";
-import { borgNotice } from "./trait";
-import { borgPower } from "./power";
-import { borgPrepared } from "./prepared";
-import { getDerived } from "./state";
+} from "./trait-index.js";
+import { borgNotice } from "./trait.js";
+import { borgPower } from "./power.js";
+import { borgPrepared } from "./prepared.js";
+import { getDerived } from "./state.js";
 
 /* A complete ItemView from a partial. */
 function item(o: Partial<ItemView>): ItemView {

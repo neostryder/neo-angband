@@ -45,8 +45,8 @@ export {
   homeStore,
   homeWares,
   packSlots,
-} from "./store";
-export type { StoreMemory, StoreDeps, HomeExtras, BuySim } from "./store";
+} from "./store.js";
+export type { StoreMemory, StoreDeps, HomeExtras, BuySim } from "./store.js";
 
 export {
   borgNoticeHome,
@@ -55,8 +55,8 @@ export {
   noticeHomeFull,
   noticeHomeEmpty,
   noticeHomeSingle,
-} from "./home";
-export type { HomeCounts, NoticeHomeOpts } from "./home";
+} from "./home.js";
+export type { HomeCounts, NoticeHomeOpts } from "./home.js";
 
 export {
   borgObjectSimilar,
@@ -67,7 +67,7 @@ export {
   borgThinkShopSellUseless,
   borgThinkShopSell,
   borgCountSell,
-} from "./sell";
+} from "./sell.js";
 
 export {
   borgGoodBuy,
@@ -78,6 +78,6 @@ export {
   borgThinkHomeBuySwapWeapon,
   borgThinkHomeBuySwapArmour,
   borgThinkShopBuy,
-} from "./buy";
+} from "./buy.js";
 
-export { borgChooseShop, borgThinkStore } from "./think-store";
+export { borgChooseShop, borgThinkStore } from "./think-store.js";

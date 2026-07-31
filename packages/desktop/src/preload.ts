@@ -30,8 +30,8 @@ import {
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
-} from "./bridge-channel";
-import type { HostBridgeInfo } from "./bridge-channel";
+} from "./bridge-channel.js";
+import type { HostBridgeInfo } from "./bridge-channel.js";
 
 /** Ask the main process what the platform is, once, at preload time. */
 function platformInfo(): HostBridgeInfo {

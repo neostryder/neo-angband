@@ -26,8 +26,8 @@
  */
 
 /* State + shared enums. */
-export { getFightState, type FightState } from "./state";
-export { BA, BF, BTH_PLUS_ADJ } from "./bf";
+export { getFightState, type FightState } from "./state.js";
+export { BA, BF, BTH_PLUS_ADJ } from "./bf.js";
 
 /* Fight-only projection/targeting helpers. */
 export {
@@ -35,7 +35,7 @@ export {
   borgProjectableDark,
   borgTarget,
   borgTargetUnknownWall,
-} from "./projection";
+} from "./projection.js";
 
 /* Attack: chooser, dispatch and damage estimators. */
 export {
@@ -46,14 +46,14 @@ export {
   borgBestMult,
   borgLaunchBolt,
   borgLaunchArc,
-} from "./attack";
+} from "./attack.js";
 
 /* Defense / maintenance. */
-export { borgDefend } from "./defend";
-export { borgPermaSpell } from "./perm";
+export { borgDefend } from "./defend.js";
+export { borgPermaSpell } from "./perm.js";
 
 /* Caution / heal. */
-export { borgCaution, borgHeal } from "./caution";
+export { borgCaution, borgHeal } from "./caution.js";
 
 /* Escape. */
 export {
@@ -66,7 +66,7 @@ export {
   borgAllowTeleport,
   borgShadowShift,
   borgDimensionDoor,
-} from "./escape";
+} from "./escape.js";
 
 /* Munchkin (stair-scum) attacks. */
-export { borgMunchkinMage, borgMunchkinMelee } from "./munchkin";
+export { borgMunchkinMage, borgMunchkinMelee } from "./munchkin.js";

@@ -8,11 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { RF, RSF } from "@neo-angband/core";
 import type { MonsterRace } from "@neo-angband/core";
-import { makeCoreResolvers } from "./resolvers";
-import { BorgWorld } from "./world/model";
-import { makeScenarioView, makeFakeActions } from "./harness";
-import { MONBLOW } from "./danger/tables";
-import type { BorgContext } from "./context";
+import { makeCoreResolvers } from "./resolvers.js";
+import { BorgWorld } from "./world/model.js";
+import { makeScenarioView, makeFakeActions } from "./harness.js";
+import { MONBLOW } from "./danger/tables.js";
+import type { BorgContext } from "./context.js";
 
 /** A minimal MonsterRace carrying only the fields the resolver reads. */
 function fakeRace(over: Partial<MonsterRace> = {}): MonsterRace {

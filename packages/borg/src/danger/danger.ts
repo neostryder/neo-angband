@@ -20,19 +20,19 @@
  */
 
 import { FEAT } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import type { BorgKill } from "../world/kill";
-import type { BorgWorld } from "../world/model";
-import { AUTO_MAX_X, AUTO_MAX_Y, BORG_VIEW } from "../world/grid";
+import type { BorgContext } from "../context.js";
+import type { BorgKill } from "../world/kill.js";
+import type { BorgWorld } from "../world/model.js";
+import { AUTO_MAX_X, AUTO_MAX_Y, BORG_VIEW } from "../world/grid.js";
 import {
   BI,
   CLASS_MAGE,
   STAT_INT,
   STAT_WIS,
   spellStatForClass,
-} from "../trait/trait-index";
+} from "../trait/trait-index.js";
 import { RSF } from "@neo-angband/core";
-import { MONBLOW, extractEnergy, adjDexSafe } from "./tables";
+import { MONBLOW, extractEnergy, adjDexSafe } from "./tables.js";
 import {
   trait,
   borgDistance,
@@ -43,11 +43,11 @@ import {
   borgProjectablePure,
   ddx_ddd,
   ddy_ddd,
-} from "./geometry";
-import type { MonsterFacts } from "./facts";
-import { BORG_SPELL } from "./globals";
-import type { DangerGlobals } from "./globals";
-import { getDangerState } from "./state";
+} from "./geometry.js";
+import type { MonsterFacts } from "./facts.js";
+import { BORG_SPELL } from "./globals.js";
+import type { DangerGlobals } from "./globals.js";
+import { getDangerState } from "./state.js";
 
 /** C integer division: truncate toward zero. */
 function div(a: number, b: number): number {

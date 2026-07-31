@@ -25,10 +25,10 @@
  */
 
 import type { AgentView } from "@neo-angband/core";
-import { BORG_MARK, BORG_VIEW, BORG_GLOW } from "./world/grid";
-import type { BorgWorld } from "./world/model";
-import { makeLevelFacts } from "./world/model";
-import { borgReactMessages } from "./perceive-messages";
+import { BORG_MARK, BORG_VIEW, BORG_GLOW } from "./world/grid.js";
+import type { BorgWorld } from "./world/model.js";
+import { makeLevelFacts } from "./world/model.js";
+import { borgReactMessages } from "./perceive-messages.js";
 
 /** borg_update expires a tracked record after this many borg-turns unseen. */
 export const BORG_EXPIRE_TURNS = 2000;

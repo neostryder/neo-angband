@@ -10,7 +10,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runCensus } from "./text-census";
+import { runCensus } from "./text-census.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { calls, missing } = runCensus(root);

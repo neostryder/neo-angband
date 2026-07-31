@@ -19,7 +19,7 @@ import {
   PORTABLE_MARKER,
   checkWritable,
   resolveDataBase,
-} from "./data-dir";
+} from "./data-dir.js";
 
 const EXE_DIR = path.resolve("/apps/neo-angband");
 const USER_DATA = path.resolve("/users/somebody/AppData/Roaming/Neo Angband");

@@ -42,10 +42,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
-import { runStatsBatch, type StatsReport } from "./stats";
-import { loadCBaseline } from "./baseline";
-import { distributionTest } from "./stat-test";
+import { loadGamePack } from "./pack.js";
+import { runStatsBatch, type StatsReport } from "./stats.js";
+import { loadCBaseline } from "./baseline.js";
+import { distributionTest } from "./stat-test.js";
 
 const cbase = loadCBaseline();
 

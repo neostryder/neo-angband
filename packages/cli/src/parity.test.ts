@@ -14,16 +14,16 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
-import { BASELINE_PARAMS, deriveSeed, runStatsBatch } from "./stats";
+import { loadGamePack } from "./pack.js";
+import { BASELINE_PARAMS, deriveSeed, runStatsBatch } from "./stats.js";
 import {
   EXACT_TOLERANCE,
   STATISTICAL_TOLERANCE,
   compareReports,
   formatCompareResult,
   loadBaseline,
-} from "./baseline";
-import { runScenarios } from "./scenarios";
+} from "./baseline.js";
+import { runScenarios } from "./scenarios.js";
 
 const pack = loadGamePack();
 

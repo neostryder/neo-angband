@@ -13,14 +13,14 @@
  * the +8 vs BORG_ENCHANT_LIMIT thresholds and the "skip a weak bow" rule.
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
-import { trait, isIdent } from "./deps";
-import { Spell, borgSpellOkayFail, borgSpellFail } from "./magic";
-import { borgReadScroll } from "./item-use";
-import { borgDecurseAny } from "./item-decurse";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
+import { trait, isIdent } from "./deps.js";
+import { Spell, borgSpellOkayFail, borgSpellFail } from "./magic.js";
+import { borgReadScroll } from "./item-use.js";
+import { borgDecurseAny } from "./item-decurse.js";
 
 /** borg_cfg[BORG_ENCHANT_LIMIT] stock default (borg.txt / trait config). */
 const ENCHANT_LIMIT = 12;

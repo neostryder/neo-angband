@@ -19,11 +19,11 @@
  * resolveMonsterFacts) to widen flag-based facts to unseen monsters.
  */
 
-import type { BorgContext } from "./context";
-import { BI } from "./trait";
-import { getFightState } from "./fight";
-import { getDangerGlobals } from "./danger";
-import { CLASS_MAGE, CLASS_PRIEST } from "./trait";
+import type { BorgContext } from "./context.js";
+import { BI } from "./trait/index.js";
+import { getFightState } from "./fight/index.js";
+import { getDangerGlobals } from "./danger/index.js";
+import { CLASS_MAGE, CLASS_PRIEST } from "./trait/index.js";
 
 /** Case-insensitive prefix test (prefix_i in the C). */
 function prefixI(name: string, pfx: string): boolean {

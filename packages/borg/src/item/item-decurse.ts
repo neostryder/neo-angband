@@ -13,18 +13,18 @@
  * ported fully.
  */
 
-import type { BorgContext, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
-import { hasSlot } from "./deps";
-import { Spell, borgSpell, borgSpellOkayFail } from "./magic";
+import type { BorgContext, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
+import { hasSlot } from "./deps.js";
+import { Spell, borgSpell, borgSpellOkayFail } from "./magic.js";
 import {
   borgReadScroll,
   borgUseStaff,
   borgActivateItem,
   borgEquipsStaffFail,
-} from "./item-use";
+} from "./item-use.js";
 
 /** True when any Remove-Curse means is available (decurse.c:43 guard). */
 function decurseMeans(

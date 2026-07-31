@@ -11,11 +11,11 @@ import type {
   SpellbookView,
   SpellView,
 } from "@neo-angband/core";
-import { BorgWorld } from "../world/model";
-import { makeScenarioView, makeFakeActions, type Scenario } from "../harness";
-import { makeBorgRng } from "../rng";
-import type { BorgContext } from "../context";
-import { BI } from "../trait/trait-index";
+import { BorgWorld } from "../world/model.js";
+import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
+import type { BorgContext } from "../context.js";
+import { BI } from "../trait/trait-index.js";
 import {
   SVAL,
   TV,
@@ -34,7 +34,7 @@ import {
   borgRecover,
   borgCrushJunk,
   deviceFail,
-} from "./index";
+} from "./index.js";
 
 /** A complete ItemView from a partial. */
 function item(p: Partial<ItemView>): ItemView {

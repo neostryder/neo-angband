@@ -17,9 +17,9 @@
  * name matching (avoids locale/diacritic issues in Priest spells).
  */
 
-import type { BorgContext, SpellView } from "./types";
-import type { AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
+import type { BorgContext, SpellView } from "./types.js";
+import type { AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
 import {
   classIndexFromName,
   CLASS_MAGE,
@@ -30,8 +30,8 @@ import {
   CLASS_ROGUE,
   CLASS_RANGER,
   CLASS_BLACKGUARD,
-} from "../trait/trait-index";
-import { trait } from "./deps";
+} from "../trait/trait-index.js";
+import { trait } from "./deps.js";
 
 /* Spell method values (borg-magic.h:30-35) - kept for effect classification. */
 export const BORG_MAGIC_ICK = 0;

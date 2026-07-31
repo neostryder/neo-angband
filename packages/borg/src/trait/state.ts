@@ -9,8 +9,8 @@
  * and world/model.ts stays untouched (the file is off-limits to this port).
  */
 
-import type { BorgWorld } from "../world/model";
-import { STAT_MAX } from "./trait-index";
+import type { BorgWorld } from "../world/model.js";
+import { STAT_MAX } from "./trait-index.js";
 
 /** Derived side-state produced by borg_notice. */
 export interface BorgDerived {

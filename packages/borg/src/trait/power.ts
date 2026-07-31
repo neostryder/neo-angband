@@ -18,16 +18,16 @@
  * - spell_chance / spell_stat come from the spell seam / class map.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import { BI, CLASS_MAGE, CLASS_WARRIOR, CLASS_PRIEST, CLASS_DRUID,
   CLASS_NECROMANCER, CLASS_ROGUE, CLASS_RANGER, CLASS_PALADIN, CLASS_BLACKGUARD,
-  STAT_MAX, spellStatForClass } from "./trait-index";
+  STAT_MAX, spellStatForClass } from "./trait-index.js";
 import type { ItemView } from "@neo-angband/core";
-import { present } from "./item-util";
-import { ADJ_STR_HOLD } from "./tables";
-import { resolveOpts, type BorgTraitOpts, type ResolvedOpts } from "./config";
-import { getDerived, has, type BorgDerived } from "./state";
-import { borgPrepared } from "./prepared";
+import { present } from "./item-util.js";
+import { ADJ_STR_HOLD } from "./tables.js";
+import { resolveOpts, type BorgTraitOpts, type ResolvedOpts } from "./config.js";
+import { getDerived, has, type BorgDerived } from "./state.js";
+import { borgPrepared } from "./prepared.js";
 
 const SLOT_WIELD = 0;
 const SLOT_BOW = 1;

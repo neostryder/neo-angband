@@ -119,11 +119,11 @@ finds automatically.
 
    ```
    pnpm --filter @neo-angband/cli build
-   node --import ./register.mjs dist/main-cimport.js <stats.db> 20
+   node dist/main-cimport.js <stats.db> 20
    ```
 
    Review the human-readable diff against the current port any time with:
 
    ```
-   node --import ./register.mjs dist/main-cparity.js 100 8
+   node dist/main-cparity.js 100 8
    ```

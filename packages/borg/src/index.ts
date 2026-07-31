@@ -9,29 +9,29 @@
  * P8.1-P8.7 and wired into the think ladder.
  */
 
-export * from "./world/grid";
-export * from "./world/kill";
-export * from "./world/take";
-export * from "./world/model";
-export * from "./rng";
-export * from "./context";
-export * from "./perceive";
-export * from "./perceive-messages";
-export * from "./perceive-facts";
-export * from "./think";
-export * from "./think-session";
-export * from "./think-ladder";
-export * from "./controller";
-export * from "./activate";
-export * from "./harness";
+export * from "./world/grid.js";
+export * from "./world/kill.js";
+export * from "./world/take.js";
+export * from "./world/model.js";
+export * from "./rng.js";
+export * from "./context.js";
+export * from "./perceive.js";
+export * from "./perceive-messages.js";
+export * from "./perceive-facts.js";
+export * from "./think.js";
+export * from "./think-session.js";
+export * from "./think-ladder.js";
+export * from "./controller.js";
+export * from "./activate.js";
+export * from "./harness.js";
 
 /* Decision subsystems (ported P8.1+). */
-export * from "./trait";
-export * from "./flow";
-export * from "./danger";
-export * from "./item";
-export * from "./fight";
-export * from "./store";
+export * from "./trait/index.js";
+export * from "./flow/index.js";
+export * from "./danger/index.js";
+export * from "./item/index.js";
+export * from "./fight/index.js";
+export * from "./store/index.js";
 
 /* Host wiring: build real resolver seams from the engine's monster registry. */
-export * from "./resolvers";
+export * from "./resolvers.js";

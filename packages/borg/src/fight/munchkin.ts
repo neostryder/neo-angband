@@ -8,14 +8,14 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { BI, CLASS_MAGE, CLASS_NECROMANCER } from "../trait/trait-index";
-import { trait } from "../item/deps";
-import { borgDanger, getDangerGlobals } from "../danger";
-import { FEAT } from "../flow/flow-consts";
-import { getFightState, idiv, iabs } from "./state";
-import { BF } from "./bf";
-import { borgCalculateAttackEffectiveness } from "./attack";
+import type { BorgContext } from "../context.js";
+import { BI, CLASS_MAGE, CLASS_NECROMANCER } from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
+import { borgDanger, getDangerGlobals } from "../danger/index.js";
+import { FEAT } from "../flow/flow-consts.js";
+import { getFightState, idiv, iabs } from "./state.js";
+import { BF } from "./bf.js";
+import { borgCalculateAttackEffectiveness } from "./attack.js";
 
 /** Chebyshev distance. */
 function dist(y1: number, x1: number, y2: number, x2: number): number {

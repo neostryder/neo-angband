@@ -12,12 +12,12 @@
  * crushed - a deliberately safe deviation.
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { CLASS_WARRIOR } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
-import { trait, danger } from "./deps";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { CLASS_WARRIOR } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
+import { trait, danger } from "./deps.js";
 
 /** Options controlling the junk pass. */
 export interface JunkDeps extends ItemDeps {

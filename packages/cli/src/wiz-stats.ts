@@ -42,7 +42,7 @@ import {
   collectLevel,
   deriveSeed,
   emptyDepth,
-} from "./stats";
+} from "./stats.js";
 
 /* ================================================================== *
  * 1. objMonStats <- stats_collect / diving_stats / clearing_stats.

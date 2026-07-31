@@ -20,9 +20,9 @@
  * the P8.5 item/wear and P8.3 trait subsystems and are driven by the caller.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import type { AgentCommand } from "@neo-angband/core";
-import { BI } from "../trait/trait-index";
+import { BI } from "../trait/trait-index.js";
 import {
   type StoreDeps,
   BORG_HOME,
@@ -33,12 +33,12 @@ import {
   borgInventoryFull,
   borgUsesSwaps,
   createStoreMemory,
-} from "./store";
+} from "./store.js";
 import {
   borgThinkHomeSellUseful,
   borgThinkShopSellUseless,
   borgThinkShopSell,
-} from "./sell";
+} from "./sell.js";
 import {
   borgThinkShopBuyUseful,
   borgThinkHomeBuyUseful,
@@ -47,7 +47,7 @@ import {
   borgThinkHomeBuySwapWeapon,
   borgThinkHomeBuySwapArmour,
   borgThinkShopBuy,
-} from "./buy";
+} from "./buy.js";
 
 /**
  * borg_choose_shop (borg-think-store.c:87). Decide the next shop/ware/item goal.

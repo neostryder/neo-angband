@@ -19,18 +19,18 @@
  */
 
 import type { AgentController, Rng } from "@neo-angband/core";
-import { BorgWorld } from "./world/model";
-import { makeBorgRng, reseedBorgRng } from "./rng";
-import { perceive, makePerceiveMemo } from "./perceive";
-import { think } from "./think";
-import { borgNotice, borgPower, BI } from "./trait";
-import { getFightState } from "./fight";
-import type { BorgContext } from "./context";
+import { BorgWorld } from "./world/model.js";
+import { makeBorgRng, reseedBorgRng } from "./rng.js";
+import { perceive, makePerceiveMemo } from "./perceive.js";
+import { think } from "./think.js";
+import { borgNotice, borgPower, BI } from "./trait/index.js";
+import { getFightState } from "./fight/index.js";
+import type { BorgContext } from "./context.js";
 import {
   buildThinkSession,
   installThinkSession,
   type BorgResolvers,
-} from "./think-session";
+} from "./think-session.js";
 
 /** Options for building a Borg. */
 export interface BorgOptions {

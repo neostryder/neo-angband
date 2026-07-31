@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ROSTER_KEY, planOriginMerge } from "./origin-merge";
-import type { OriginSnapshot } from "./origin-merge";
+import { ROSTER_KEY, planOriginMerge } from "./origin-merge.js";
+import type { OriginSnapshot } from "./origin-merge.js";
 
 /** `turn` defaults to 1: a character that has been played at least a moment. */
 function meta(id: string, name: string, updatedAt: number, alive = true, turn = 1) {

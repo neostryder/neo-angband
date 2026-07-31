@@ -5,8 +5,8 @@ import {
   BORG_CONFIRM_MSG_2,
   NOSCORE_BORG,
   borgActivate,
-} from "./activate";
-import type { BorgActivateHost } from "./activate";
+} from "./activate.js";
+import type { BorgActivateHost } from "./activate.js";
 
 /** A host that records what it was told and answers the prompt as directed. */
 function host(

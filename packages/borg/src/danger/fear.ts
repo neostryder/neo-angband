@@ -15,11 +15,11 @@
  * updaters diverge from upstream, and it only ever adds fear the C would skip.
  */
 
-import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
-import type { BorgWorld } from "../world/model";
-import { BI } from "../trait/trait-index";
-import { borgLos, trait } from "./geometry";
-import type { DangerGlobals } from "./globals";
+import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
+import type { BorgWorld } from "../world/model.js";
+import { BI } from "../trait/trait-index.js";
+import { borgLos, trait } from "./geometry.js";
+import type { DangerGlobals } from "./globals.js";
 
 /** borg_fear_region dimensions: [(AUTO_MAX_Y/11)+1][(AUTO_MAX_X/11)+1]. */
 export const FEAR_REGION_H = Math.trunc(AUTO_MAX_Y / 11) + 1; /* 7 */

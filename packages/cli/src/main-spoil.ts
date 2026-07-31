@@ -9,7 +9,7 @@
 
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { loadGamePack } from "./pack";
+import { loadGamePack } from "./pack.js";
 import {
   spoilArtifact,
   spoilMonDesc,

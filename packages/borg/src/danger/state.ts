@@ -9,9 +9,9 @@
  * keeps its exact upstream signature (the state is reached through ctx.world).
  */
 
-import type { BorgWorld } from "../world/model";
-import { createDangerGlobals, type DangerGlobals } from "./globals";
-import { FearCaches } from "./fear";
+import type { BorgWorld } from "../world/model.js";
+import { createDangerGlobals, type DangerGlobals } from "./globals.js";
+import { FearCaches } from "./fear.js";
 
 /** The bundle of danger-time state owned by one Borg. */
 export interface DangerState {
