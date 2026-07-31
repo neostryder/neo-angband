@@ -54,6 +54,7 @@
 
 import { hasFacet, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
+import type { ModProblem } from "./mod-problems";
 import {
   MOD_API_VERSION,
   validateModPlugin,
@@ -81,14 +82,24 @@ export interface LoadedModPlugin {
 
 export interface ModCodeReport {
   readonly plugins: readonly LoadedModPlugin[];
-  /** One line per pack that ships code and could not be used. */
-  readonly problems: readonly string[];
+  /**
+   * One entry per pack that ships code and could not be used.
+   *
+   * ATTRIBUTED, and until 2026-07-31 RENDERED NOWHERE. Every failure path below
+   * appends to this list and `activeModCode()` was read at exactly two places, both
+   * for `.plugins` - so a plugin that failed to import, or targeted the wrong ABI,
+   * or shipped code without declaring the facet, was indistinguishable from a mod
+   * that loaded and did nothing. These now share `skipped`'s attributed shape (the
+   * two lists sit three lines apart and had different ones) and reach the mod
+   * manager through mod-problems.ts.
+   */
+  readonly problems: readonly ModProblem[];
   /**
    * Packs that ship plugin.js and were SKIPPED for a reason that is not a fault -
    * disabled, or awaiting consent. Distinguished from `problems` because a mod
    * manager must not show "broken" for a mod the player simply turned off.
    */
-  readonly skipped: readonly { readonly id: string; readonly why: string }[];
+  readonly skipped: readonly ModProblem[];
 }
 
 const EMPTY: ModCodeReport = { plugins: [], problems: [], skipped: [] };
@@ -122,8 +133,8 @@ export interface LoadModCodeOptions {
 export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeReport> {
   const hostApi = opts.hostApi ?? MOD_API_VERSION;
   const plugins: LoadedModPlugin[] = [];
-  const problems: string[] = [];
-  const skipped: { id: string; why: string }[] = [];
+  const problems: ModProblem[] = [];
+  const skipped: ModProblem[] = [];
 
   const withCode = opts.packs.filter((p) => hasPlugin(p));
   if (withCode.length === 0) return EMPTY;
@@ -132,9 +143,10 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * silence: this is precisely the state the whole system used to be in, and it
      * looked from the outside exactly like a mod that did nothing. */
     for (const pack of withCode) {
-      problems.push(
-        `${pack.manifest.id}: ships ${PLUGIN_FILE}, but this mods folder cannot serve code`,
-      );
+      problems.push({
+        id: pack.manifest.id,
+        why: `ships ${PLUGIN_FILE}, but this mods folder cannot serve code`,
+      });
     }
     return { plugins, problems, skipped };
   }
@@ -149,30 +161,36 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       continue;
     }
     if (!hasFacet(pack.manifest, "plugin")) {
-      problems.push(
-        `${id}: ships ${PLUGIN_FILE} but its manifest does not declare the "plugin" ` +
+      problems.push({
+        id,
+        why:
+          `ships ${PLUGIN_FILE} but its manifest does not declare the "plugin" ` +
           `facet (shape is "${pack.manifest.shape}") - add ` +
           `"facets": ["${pack.manifest.shape}", "plugin"], so that running code is ` +
           `something the mod states`,
-      );
+      });
       continue;
     }
     const declared = pack.manifest.modApi;
     if (declared === undefined) {
-      problems.push(
-        `${id}: ships ${PLUGIN_FILE} but declares no "modApi" in its manifest - ` +
+      problems.push({
+        id,
+        why:
+          `ships ${PLUGIN_FILE} but declares no "modApi" in its manifest - ` +
           `add "modApi": ${hostApi}`,
-      );
+      });
       continue;
     }
     if (declared !== hostApi) {
       /* Both numbers and which way round: a too-new mod needs a newer game, a
        * too-old one needs updating, and only the pair says which. */
-      problems.push(
-        declared > hostApi
-          ? `${id}: targets mod API ${declared}; this build implements ${hostApi} - the mod needs a newer game`
-          : `${id}: targets mod API ${declared}; this build implements ${hostApi} - the mod needs updating for this game`,
-      );
+      problems.push({
+        id,
+        why:
+          declared > hostApi
+            ? `targets mod API ${declared}; this build implements ${hostApi} - the mod needs a newer game`
+            : `targets mod API ${declared}; this build implements ${hostApi} - the mod needs updating for this game`,
+      });
       continue;
     }
     const wanted = pack.manifest.capabilities ?? [];
@@ -194,11 +212,14 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
        * missing, which two import each other (mod-modules.ts). Prefixing it with
        * "<id>/plugin.js could not be read" would put a second, wrong filename in
        * front of the right one, so only the mod is named. */
-      problems.push(`${id}: ${message(e)}`);
+      problems.push({ id, why: message(e) });
       continue;
     }
     if (url === null) {
-      problems.push(`${id}/${PLUGIN_FILE} is listed in the folder but could not be opened`);
+      problems.push({
+        id,
+        why: `${PLUGIN_FILE} is listed in the folder but could not be opened`,
+      });
       continue;
     }
 
@@ -206,7 +227,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     try {
       mod = await doImport(url);
     } catch (e) {
-      problems.push(`${id}/${PLUGIN_FILE} failed to load: ${importAdvice(e)}`);
+      problems.push({ id, why: `${PLUGIN_FILE} failed to load: ${importAdvice(e)}` });
       continue;
     } finally {
       opts.codeUrl.release?.(url);
@@ -215,7 +236,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     const entry = (mod as { default?: unknown } | null)?.default;
     const wrong = validateModPlugin(entry, hostApi);
     if (wrong) {
-      problems.push(`${id}: ${wrong}`);
+      problems.push({ id, why: wrong });
       continue;
     }
     plugins.push({

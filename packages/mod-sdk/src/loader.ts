@@ -46,6 +46,22 @@
  * blank page rather than a message. It is the same shape of channel the pack
  * readers already use (`problems: readonly string[]`), so a host concatenates it
  * into the list it already shows.
+ *
+ * THAT PARAGRAPH WAS ONLY TRUE OF THIS FILE'S OWN REFUSALS, and it read as a
+ * property of composition (2026-07-31). `composePacks` throws ComposeError on a
+ * patch whose target does not exist, and `resolveLoadOrder` throws on a missing
+ * dependency or a cycle - both reached from composeContentPacks, both from a
+ * mod's manifest or contribution, and the host does compose at module scope with
+ * no try. So the one class of mod mistake that stayed loud took the whole game to
+ * a blank page with nothing on screen naming the mod. `composeDroppingBroken`
+ * below is the answer, and it is the rule the rest of the mod system already
+ * follows: one broken mod costs that mod.
+ *
+ * `faults` carries the same refusals as `problems` with the pack id kept SEPARATE
+ * rather than prefixed into the sentence. A host that wants to show a mod its own
+ * problems on its own row cannot get that back out of a formatted line without
+ * parsing this file's message format - which is how a UI comes to depend on
+ * punctuation.
  */
 
 import type { PackManifest } from "./manifest.js";
@@ -66,6 +82,17 @@ export interface LoadedPack {
   files: Record<string, FileContribution>;
 }
 
+/**
+ * One refused operation with the pack that asked for it kept separate from the
+ * sentence, so a host can put a mod's own problems on that mod's own row.
+ */
+export interface ComposeFault {
+  /** The pack whose operation was refused. */
+  packId: string;
+  /** What could not be honoured, with no id prefix. */
+  why: string;
+}
+
 /** The merged content: per-file record arrays, in deterministic order. */
 export interface ComposedContent {
   /** fileName -> composed record array. */
@@ -80,6 +107,32 @@ export interface ComposedContent {
    * A host shows these next to the pack-reading problems it already collects.
    */
   problems: string[];
+  /**
+   * The same refusals, attributed. One entry per line in `problems`, in the same
+   * order, with `packId` split out - so a mod manager can show a mod what IT got
+   * wrong without parsing a sentence.
+   */
+  faults: ComposeFault[];
+}
+
+/** How a refusal is recorded: one call, both channels, no chance to disagree. */
+interface Refusals {
+  readonly problems: string[];
+  readonly faults: ComposeFault[];
+  refuse(packId: string, why: string): void;
+}
+
+function refusals(): Refusals {
+  const problems: string[] = [];
+  const faults: ComposeFault[] = [];
+  return {
+    problems,
+    faults,
+    refuse(packId, why) {
+      problems.push(`${packId}: ${why}`);
+      faults.push({ packId, why });
+    },
+  };
 }
 
 function isNamedRecord(r: unknown): r is JsonRecord {
@@ -163,7 +216,7 @@ function applyPassthroughOps(
   records: readonly unknown[],
   ordered: readonly LoadedPack[],
   providerId: string,
-  problems: string[],
+  refused: Refusals,
 ): unknown[] {
   const hasOps = ordered.some(
     (p) => p.files[file] !== undefined && perRecordOps(p.files[file] as FileContribution).length > 0,
@@ -178,8 +231,9 @@ function applyPassthroughOps(
       const contrib = pack.files[file];
       if (!contrib) continue;
       for (const { kind, ref } of perRecordOps(contrib)) {
-        problems.push(
-          `${pack.manifest.id}: ${file} ${OP_VERB[kind]} "${ref}", but ${file} records have no per-record identity, so only whole-file replacement can change them`,
+        refused.refuse(
+          pack.manifest.id,
+          `${file} ${OP_VERB[kind]} "${ref}", but ${file} records have no per-record identity, so only whole-file replacement can change them`,
         );
       }
     }
@@ -208,7 +262,7 @@ function applyPassthroughOps(
   const removed = new Set<number>();
 
   const reject = (pid: string, kind: OpKind, ref: string, why: string): void => {
-    problems.push(`${pid}: ${file} ${OP_VERB[kind]} "${ref}", but ${why}`);
+    refused.refuse(pid, `${file} ${OP_VERB[kind]} "${ref}", but ${why}`);
   };
 
   /** Resolve a ref to a live index, or report why it cannot be touched. */
@@ -302,7 +356,7 @@ export function composeContentPacks(
   packs: readonly LoadedPack[],
 ): ComposedContent {
   const ordered = orderPacks(packs);
-  const problems: string[] = [];
+  const refused = refusals();
 
   const fileNames = new Set<string>();
   for (const p of ordered) {
@@ -350,8 +404,9 @@ export function composeContentPacks(
       if (providerId !== "") {
         /* Whole-file replacement is destructive and used to be invisible: the
          * previous provider's records simply vanished. Say so. */
-        problems.push(
-          `${p.manifest.id}: ${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records are not name-keyed, so a whole file is the only thing that can be added to it`,
+        refused.refuse(
+          p.manifest.id,
+          `${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records are not name-keyed, so a whole file is the only thing that can be added to it`,
         );
       }
       out[f] = [...contrib.records];
@@ -373,21 +428,113 @@ export function composeContentPacks(
         const contrib = p.files[f];
         if (!contrib) continue;
         for (const { kind, ref } of perRecordOps(contrib)) {
-          problems.push(
-            `${p.manifest.id}: ${f} ${OP_VERB[kind]} "${ref}", but no pack supplies any ${f} records`,
+          refused.refuse(
+            p.manifest.id,
+            `${f} ${OP_VERB[kind]} "${ref}", but no pack supplies any ${f} records`,
           );
         }
       }
       continue;
     }
 
-    out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, problems);
+    out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, refused);
   }
 
   return {
     records: out,
     composedFiles: [...composable].sort(),
     passthroughFiles: [...fileNames].filter((f) => !composable.has(f)).sort(),
-    problems,
+    problems: refused.problems,
+    faults: refused.faults,
   };
+}
+
+/** One pack that was left out of a composition, and why. */
+export interface DroppedPack {
+  /** The pack's id. */
+  readonly id: string;
+  /** What it did that could not be composed, as the thrower said it. */
+  readonly why: string;
+}
+
+/**
+ * Compose, dropping any pack whose contribution or manifest makes composition
+ * IMPOSSIBLE, and reporting which ones went.
+ *
+ * WHY THIS EXISTS. Everything in this file reports rather than throws, and that
+ * made the throwing paths easy to forget: `composePacks` throws ComposeError on a
+ * patch whose target does not exist or a duplicate record name, and
+ * `resolveLoadOrder` throws ResolveError on a missing dependency or a cycle. Both
+ * are reachable from `composeContentPacks` and both are caused by a MOD - so on
+ * the web host, which composes at module scope with no try, one mod's typo was a
+ * blank page. Not a bad message: no page, and therefore no mod manager to open
+ * and no way to turn the offending mod off again. The only exit was clearing
+ * localStorage.
+ *
+ * ONE BROKEN MOD COSTS THAT MOD. That is already the rule everywhere else here -
+ * a bad record file loses one contribution, a plugin that throws at import loses
+ * one plugin, a register() that throws loses one mod - and it is what this
+ * restores for the throwing paths. Each thrown message names its pack
+ * (`<pid>/<file>: ...` from compose.ts, `pack <id> requires ...` from resolve.ts),
+ * so the offender is identified, removed, and composition retried.
+ *
+ * `packs[0]` is the BASE GAME and is never dropped: if it is the pack named, or if
+ * no pack can be identified from the message, everything but the base is dropped
+ * at once. A game with no content cannot start, so that is the floor - and it is
+ * the outcome a player recognises ("my mods are off") rather than a dead tab.
+ *
+ * The loop is bounded by the pack count: every pass either returns or removes one
+ * pack, so it cannot spin.
+ */
+export function composeDroppingBroken(packs: readonly LoadedPack[]): {
+  readonly composed: ComposedContent;
+  readonly dropped: readonly DroppedPack[];
+} {
+  const base = packs[0];
+  let live = [...packs];
+  const dropped: DroppedPack[] = [];
+
+  for (let pass = 0; pass <= packs.length; pass++) {
+    try {
+      return { composed: composeContentPacks(live), dropped };
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      const culprit = live
+        .slice(1)
+        .map((p) => p.manifest.id)
+        .find((id) => namesPack(why, id));
+      if (culprit === undefined) {
+        /* Nobody identifiable, or the base game itself. Fall back to the base
+         * alone, which composes by construction (a single pack is a no-op), and
+         * say so once per mod that lost out rather than pretending they loaded. */
+        for (const p of live.slice(1)) dropped.push({ id: p.manifest.id, why });
+        live = base ? [base] : [];
+        continue;
+      }
+      dropped.push({ id: culprit, why });
+      live = live.filter((p) => p.manifest.id !== culprit);
+    }
+  }
+  /* Unreachable: the base alone always composes. Returning an empty composition
+   * rather than throwing keeps the promise this function exists to make. */
+  return {
+    composed: { records: {}, composedFiles: [], passthroughFiles: [], problems: [], faults: [] },
+    dropped,
+  };
+}
+
+/**
+ * Whether a thrown message is ABOUT this pack.
+ *
+ * Both throwers put the id at a boundary - `${pid}/${file}: ...` and
+ * `pack ${id} requires ...` - so the id is matched with its delimiters rather than
+ * as a substring. A bare `includes(id)` would let the pack "qol" claim a message
+ * about "qol-extras", and then this would drop the wrong mod and leave the broken
+ * one in, which loops until everything is gone.
+ */
+function namesPack(message: string, id: string): boolean {
+  for (const pattern of [`${id}/`, `${id}:`, `pack ${id} `, ` ${id},`, ` ${id} `]) {
+    if (message.includes(pattern)) return true;
+  }
+  return message.endsWith(` ${id}`);
 }

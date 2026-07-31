@@ -50,6 +50,7 @@
 
 import { validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { encodePackPath } from "./pack-files";
+import type { ModProblem } from "./mod-problems";
 
 /** What the desktop shell exposes for the mods directory. */
 interface DesktopModPaths {
@@ -114,8 +115,17 @@ export interface DiskPackReport {
    * one concept, the way a mod manager's active-plugin list is one concept.
    */
   readonly order: readonly string[];
-  /** One line per pack that could not be used, and per unknown ordered id. */
-  readonly problems: readonly string[];
+  /**
+   * One entry per pack that could not be used, and per unknown ordered id.
+   *
+   * ATTRIBUTED (2026-07-31), where these were `${id}: ${message}` strings. The mod
+   * manager shows a mod its own problems on its own row, and it cannot do that with
+   * a formatted line without parsing the prefix this file happened to write. The
+   * ones that belong to the DIRECTORY rather than to a pack - it could not be read
+   * at all, load-order.json names something that is not installed - carry
+   * `id: null`, which is the honest answer rather than a mod picked to hang them on.
+   */
+  readonly problems: readonly ModProblem[];
   /** The directory these came from, to show a player where to put a mod. */
   readonly dir: string | null;
   /** False when this front end has no mods directory at all (a browser tab). */
@@ -304,7 +314,7 @@ export interface ModDirSource {
  * on the desktop shell and in a browser tab.
  */
 export async function readModDir(source: ModDirSource): Promise<DiskPackReport> {
-  const problems: string[] = [];
+  const problems: ModProblem[] = [];
 
   const codeUrl = resolverFor(source);
   const assetUrl = assetResolverFor(source);
@@ -316,7 +326,9 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
     return {
       packs: [],
       order: [],
-      problems: [`Could not read the mods folder: ${message(e)}`],
+      /* The DIRECTORY, not a mod: there is no pack to blame for a folder that
+       * would not open, and every pack in it is equally lost. */
+      problems: [{ id: null, why: `Could not read the mods folder: ${message(e)}` }],
       dir: source.dir(),
       available: true,
       kind: source.kind,
@@ -333,9 +345,11 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
   for (const entry of entries) {
     const { id, files } = entry;
     if (id === "") continue;
-    for (const p of entry.problems ?? []) problems.push(p);
+    /* The SOURCE's own per-pack trouble (a subtree it refused to walk). It knows
+     * which folder it was in, so it is attributed to that folder's id. */
+    for (const p of entry.problems ?? []) problems.push({ id, why: p });
     if (!files.some((f) => f.toLowerCase() === "manifest.json")) {
-      problems.push(`${id}: no manifest.json, so it is not a mod folder`);
+      problems.push({ id, why: "no manifest.json, so it is not a mod folder" });
       continue;
     }
     const pack = await readPack(
@@ -358,11 +372,20 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
     /* A load-order.json that exists and cannot be parsed is worth saying, but it
      * must not cost the player their packs - the enabled set falls back to their
      * own stored choices, which is what a folder with no load order does. */
-    problems.push(`load-order.json could not be read: ${message(e)}`);
+    problems.push({ id: null, why: `load-order.json could not be read: ${message(e)}` });
   }
   for (const id of wanted) {
     if (known.has(id)) order.push(id);
-    else problems.push(`load-order.json lists "${id}", which is not installed`);
+    else {
+      /* NOT attributed to `id`, deliberately: there is no such pack, so there is no
+       * row it could ever appear on, and hanging it off a phantom id would only make
+       * problemsFor return something for a mod the catalogue has never heard of. It
+       * belongs to load-order.json, which belongs to the directory. */
+      problems.push({
+        id: null,
+        why: `load-order.json lists "${id}", which is not installed`,
+      });
+    }
   }
 
   return {
@@ -410,7 +433,7 @@ export function combineDiskReports(
   if (live.length === 1) return live[0] as DiskPackReport;
 
   const packs: DiskPack[] = [];
-  const problems: string[] = [];
+  const problems: ModProblem[] = [];
   const order: string[] = [];
   const owner = new Map<string, DiskPackReport>();
 
@@ -420,10 +443,12 @@ export function combineDiskReports(
       const id = pack.manifest.id;
       const held = owner.get(id);
       if (held !== undefined) {
-        problems.push(
-          `${id}: two sources offer this mod (${describe(held)} and ` +
+        problems.push({
+          id,
+          why:
+            `two sources offer this mod (${describe(held)} and ` +
             `${describe(report)}); the ${describe(held)} one is loaded`,
-        );
+        });
         continue;
       }
       owner.set(id, report);
@@ -623,13 +648,17 @@ async function readPack(
   code: readonly string[],
   assets: readonly string[],
   source: ModDirSource,
-  problems: string[],
+  problems: ModProblem[],
 ): Promise<DiskPack | null> {
   let manifest: PackManifest;
   try {
+    /* THE ManifestError PATH, and it is the earliest one there is: a manifest that
+     * does not validate never becomes a pack, so no later layer - not loadModCode,
+     * not the catalogue - ever sees this mod to have an opinion about it. This line
+     * is the only place its name is ever spoken. */
     manifest = validateManifest(await source.readJson(id, "manifest.json"));
   } catch (e) {
-    problems.push(`${id}: ${message(e)}`);
+    problems.push({ id, why: message(e) });
     return null;
   }
   /* The folder name and the manifest id must agree, because every other surface
@@ -637,7 +666,10 @@ async function readPack(
    * manifest id, and a folder that claims a different one would be enabled under
    * a name the player never sees in their file manager. */
   if (manifest.id !== id) {
-    problems.push(`${id}: manifest says id "${manifest.id}"; rename the folder to match`);
+    problems.push({
+      id,
+      why: `manifest says id "${manifest.id}"; rename the folder to match`,
+    });
     return null;
   }
 
@@ -654,7 +686,7 @@ async function readPack(
     } catch (e) {
       /* One bad record file does not condemn the pack: the composer will simply
        * not see that contribution, and the player is told which file it was. */
-      problems.push(`${id}/${file}: ${message(e)}`);
+      problems.push({ id, why: `${file}: ${message(e)}` });
     }
   }
   return { manifest, files: out, code, assets };

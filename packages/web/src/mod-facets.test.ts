@@ -19,6 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { problemLines } from "./mod-problems";
 import {
   composeContentPacks,
   hasFacet,
@@ -227,7 +228,7 @@ describe("a mod folder that ships code AND records", () => {
     const code = await loadOne(hybridPack(manifest));
     expect(code.plugins).toEqual([]);
     expect(code.problems).toHaveLength(1);
-    const why = code.problems[0] as string;
+    const why = problemLines(code.problems)[0] as string;
     expect(why).toContain("does not declare the \"plugin\" facet");
     /* And the message must name the fix, not just the refusal. */
     expect(why).toContain('"facets": ["content", "plugin"]');
