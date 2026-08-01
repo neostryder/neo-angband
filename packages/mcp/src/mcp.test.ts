@@ -160,12 +160,100 @@ describe("the map an agent actually sees", () => {
     expect(window.rows.length).toBeLessThanOrEqual(7);
   });
 
-  it("legends every monster it draws", () => {
-    /* A labelled glyph with no legend entry is a character an agent cannot ask
-     * about, so the two must agree in count. */
-    const map = renderMap(host.session()!.view, { full: true });
-    const labels = map.rows.join("").match(/[0-9a-z]/gu) ?? [];
-    expect(map.legend.length).toBe(labels.length);
+  it("legends every monster and floor pile it draws, and nothing else", () => {
+    /* This used to count `[0-9a-z]` characters in the map and compare that to
+     * the legend length, which was wrong in both directions the moment the map
+     * started drawing REAL glyphs: a store entrance is `1`-`8` and would be
+     * counted as a legend entry, while a floor `!` or `?` would not be counted
+     * at all. Counted from the VIEW instead - the map and the legend are two
+     * renderings of the same squares, so the squares are what they must agree
+     * on. */
+    const view = host.session()!.view;
+    const map = renderMap(view, { full: true });
+    const monsters = new Map(view.monsters().map((m) => [m.id, m]));
+    let expected = 0;
+    const player = view.player();
+    for (let y = 0; y < view.mapBounds().height; y++) {
+      for (let x = 0; x < view.mapBounds().width; x++) {
+        const cell = view.cell(x, y);
+        if (!cell?.known) continue;
+        if (x === player.grid.x && y === player.grid.y) continue;
+        if (cell.monster !== 0 && monsters.get(cell.monster)?.visible === true) expected++;
+        else if (cell.objectCount > 0) expected++;
+      }
+    }
+    expect(map.legend.length).toBe(expected);
+    for (const line of map.legend) {
+      expect(line, "a legend line must name the square it is about").toMatch(
+        /^. at \d+,\d+ = /u,
+      );
+    }
+  });
+
+  it("draws the characters the GAMEDATA gives, not a table of its own", () => {
+    /* The defect this renderer was rebuilt for. Pinned against the pack rather
+     * than against a literal: a glyph list in here would be the same second
+     * source of truth that got lava wrong (see render.ts's header).
+     *
+     * The TOWN, not the shared dungeon host: it is lit end to end (measured,
+     * 1451 painted cells against 15 for a dark corridor, which is not enough
+     * map to catch anything), and it is where the old scheme actually broke -
+     * the eight store entrances draw `1`-`8`, the very characters it handed out
+     * as monster labels. */
+    const view = bootedHost(4242, 0).session()!.view;
+    const map = renderMap(view, { full: true });
+    const drawn = new Set(map.rows.join("").split(""));
+    drawn.delete(" ");
+    drawn.delete("@");
+
+    const legal = new Set<string>();
+    for (let y = 0; y < view.mapBounds().height; y++) {
+      for (let x = 0; x < view.mapBounds().width; x++) {
+        const c = view.cell(x, y);
+        if (!c) continue;
+        for (const g of [c.glyph, c.trapGlyph, c.objectGlyph]) if (g !== undefined) legal.add(g);
+      }
+    }
+    for (const m of view.monsters()) if (m.glyph !== undefined) legal.add(m.glyph);
+
+    /* Guards the guard: "every character drawn is a legal one" is vacuously
+     * true of a map that draws nothing, which is the exact shape of the
+     * no-known-cells bug two tests up. Counted in CELLS, not in distinct
+     * characters - a corridor legitimately has only a few of the latter. */
+    const painted = map.rows.join("").replace(/[ ]/gu, "").length;
+    expect(painted, "a map of only spaces is the no-known-cells bug").toBeGreaterThan(20);
+    for (const ch of drawn) {
+      expect(legal.has(ch), `"${ch}" is on the map but is no glyph the view reports`).toBe(true);
+    }
+  });
+
+  it("does not show an agent a trap the player has not found", () => {
+    /* Measured before this: over 15 fresh levels, 74 trapped squares, 74 of them
+     * undetected, and the renderer drew `^` on every one. A view field named
+     * `trap` that means "a trap is here" is the trap; `trapGlyph` is the one
+     * that means "the player can see it". */
+    const view = host.session()!.view;
+    let undetected = 0;
+    for (let y = 0; y < view.mapBounds().height; y++) {
+      for (let x = 0; x < view.mapBounds().width; x++) {
+        const c = view.cell(x, y);
+        if (c?.trap === true && c.trapGlyph === undefined) undetected++;
+      }
+    }
+    if (undetected === 0) return; // nothing to prove on a level with no traps
+    const map = renderMap(view, { full: true });
+    const shown = map.rows.join("").split("").filter((ch) => ch === "^").length;
+    expect(shown, `${String(undetected)} undetected traps on this level`).toBe(0);
+  });
+
+  it("resolves the view's glyphs at all - the fallback is not what is running", () => {
+    /* NO_GLYPH is a blank, and a blank is also what an unknown square draws, so
+     * a renderer whose glyph dep silently went missing would look like a mostly
+     * unexplored level rather than like a fault. This is the assertion that
+     * fails if session.ts stops passing `glyphs`. */
+    const view = host.session()!.view;
+    const own = view.cell(view.player().grid.x, view.player().grid.y);
+    expect(own?.glyph, "the live session must supply the glyph dep").toBeTypeOf("string");
   });
 });
 

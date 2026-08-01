@@ -3,7 +3,7 @@
  *
  * This is the whole engine side of the MCP server, and it is deliberately thin:
  * every read goes through core's FROZEN agent view and every write through its
- * act facade (`packages/core/src/agent/`, AGENT_API_VERSION 1.0.0). The MCP
+ * act facade (`packages/core/src/agent/`, AGENT_API_VERSION 1.1.0). The MCP
  * server therefore has exactly the reach a third-party agent mod has - no
  * privileged path, no test hook - which is the property that makes it worth
  * having. If a tool here needs something the facade cannot express, the facade is
@@ -26,6 +26,8 @@
 
 import {
   AGENT_API_VERSION,
+  ContentIdResolver,
+  GlyphTable,
   LOOP_STATUS,
   installController,
   runGameLoop,
@@ -112,6 +114,36 @@ export class GameSession {
       throw new SessionError(`could not start a game: ${message(e)}`);
     }
 
+    /*
+     * THE VIEW DEPS, and this server ran without them for its whole life.
+     *
+     * AgentViewDeps is what unlocks the second breadth of the perceive facade -
+     * namespaced ids (featCode / kindId / raceId), item values and store prices,
+     * and (1.1.0) the glyph layer. Absent deps degrade to omission rather than
+     * throwing, which is the right contract and also why nothing complained:
+     * measured before this was wired, every `inspect` reported its square as
+     * "feat 27" because renderCell's featCode was never present, and every
+     * ItemView came back with no `value`. An agent was being handed the poorer
+     * of two views by accident.
+     *
+     * The glyph table is built from the SAME gamedata registries the shell
+     * builds its own from, so `render` draws the characters the player would
+     * see rather than a second, hand-written idea of them.
+     */
+    const registries = this.game.booted.registries;
+    const glyphs = new GlyphTable({
+      features: registries.features.allFeatures(),
+      kinds: registries.objects.kinds,
+      races: registries.monsters.races,
+      traps: registries.traps,
+      flavors: registries.objects.flavors,
+    });
+    const resolver = new ContentIdResolver({
+      objects: registries.objects,
+      playerRaces: this.game.players.races,
+      playerClasses: this.game.players.classes,
+    });
+
     this.agent = installController(
       this.game.state,
       () => {
@@ -120,6 +152,11 @@ export class GameSession {
         return next;
       },
       {
+        viewDeps: {
+          resolver,
+          reg: registries.objects,
+          glyphs: glyphs.agentGlyphs(),
+        },
         nondeterministic: true,
         onNondeterministic: () => {
           this.nondeterministicTripped = true;

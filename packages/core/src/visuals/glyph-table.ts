@@ -40,6 +40,7 @@
  */
 
 import { colorCharToAttr, colorTextToAttr } from "../color.js";
+import type { AgentGlyphSource } from "../agent/types.js";
 import type { Flavor, ObjectKind } from "../obj/types.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { Feature } from "../world/feature.js";
@@ -180,6 +181,24 @@ export class GlyphTable {
 
   setFlavorGlyph(fidx: number, pair: GlyphPair): void {
     this.flavor[fidx] = { ...pair };
+  }
+
+  /**
+   * This table as the agent API's AgentGlyphSource (agent/types.ts, 1.1.0).
+   *
+   * The characters only: an agent draws text, and the attr half of each pair is
+   * a colour a terminal renderer owns. Handing the LIVE table over (not a copy)
+   * is deliberate - a pref file loaded mid-session must change what an agent
+   * sees at the same moment it changes what the player sees.
+   */
+  agentGlyphs(): AgentGlyphSource {
+    return {
+      featChar: (lighting, fidx) => this.featGlyph(lighting, fidx)?.char,
+      trapChar: (lighting, tidx) => this.trapGlyph(lighting, tidx)?.char,
+      kindChar: (kidx) => this.kindGlyph(kidx)?.char,
+      flavorChar: (fidx) => this.flavorGlyph(fidx)?.char,
+      monsterChar: (ridx) => this.monsterGlyph(ridx)?.char,
+    };
   }
 
   /* ----- enumeration (the dump_* writers walk the whole table) ----- */
