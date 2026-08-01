@@ -49,28 +49,54 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
-        globIgnores: [
-          // Loose tile packs (mods/**) are thousands of small PNGs fetched only
-          // for the tiles a level actually shows, so precaching them would
-          // inflate the install by megabytes of art most players never select.
-          // They are ordinary network fetches; the app itself still works
-          // offline. Measured: all six built packs are 42 MiB over 9124 files.
-          "**/mods/**",
-          // Shockbolt's atlas is a single 17.6 MiB PNG - bigger than the rest of
-          // the app put together, and one of six tile sets, five of which are
-          // small enough to precache. Excluded for the same reason as the loose
-          // packs rather than by raising maximumFileSizeToCacheInBytes past it:
-          // the choice is "is this worth 17.6 MiB of every player's offline
-          // install", and for opt-in art the answer is no. The consequence, and
-          // it is a real one: picking Shockbolt while offline fetches nothing and
-          // the map falls back to ASCII, exactly as a Linoleum pack does.
-          "**/tiles/shockbolt/**",
-        ],
-        // The main bundle now includes the full engine + the bundled Borg
-        // autoplayer, pushing the JS chunk past workbox's 2 MiB precache
-        // default. Raise the cap so the offline PWA precaches the whole app.
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        /* OFFLINE MEANS THE WHOLE GAME, not the parts that were cheap.
+         *
+         * The extensions matter as much as the paths, and this list was missing
+         * two kinds of file that the game cannot use a tileset or a sound without:
+         *
+         *   prf - the pref files (graf-*, flvr-*, xtra-*) that map every feature,
+         *         monster and object to a cell of the atlas. 346 KiB across the
+         *         four packs. Without them a cached PNG is a picture the renderer
+         *         cannot index, so NO tileset worked offline - not just the
+         *         excluded one. The atlas was cached and the map still drew ASCII.
+         *   mp3 - the Dubtrain sample pack, 2.8 MiB. Sound is off by default
+         *         (faithful to upstream), but a player who turns it on and then
+         *         goes offline should keep it.
+         *
+         * txt/md are the two CREDITS files that travel with that art. They are
+         * small and they are the attribution; an offline player should be able to
+         * read who made what they are looking at.
+         *
+         * WHAT WAS EXCLUDED, AND WHY IT NO LONGER IS. Two globIgnores used to sit
+         * here, and neostryder's ruling on both is parity: the installed app, the
+         * static site and the desktop build should differ as little as possible.
+         *
+         *   **&#47;mods/**  - written when the linoleum packs were generated INTO this
+         *                package's public/ directory. They are not: the conversion
+         *                moved to the mod's own repository and nothing here builds
+         *                pack bytes any more, so this pattern has matched nothing
+         *                in a clean checkout for some time. (A stale public/mods/
+         *                may survive in an old working tree; it is gitignored and
+         *                no build step writes it.) Should a mod ever ship inside
+         *                the app again, precaching it is the RIGHT behaviour, not
+         *                a regression.
+         *   shockbolt  - a single 17.6 MiB atlas, and the reason the cap below is
+         *                what it is. It is core data, not opt-in extra: upstream
+         *                ships all four tile sets and so does this port, so
+         *                "install the app, then discover one of its tilesets only
+         *                works online" is exactly the split parity forbids.
+         *
+         * The honest cost, measured rather than estimated: the precache goes from
+         * roughly 5 MiB to roughly 25 MiB, paid once at install. That is the price
+         * of an offline install that can do everything the desktop build can. */
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,prf,mp3,txt,md}"],
+        /* 20 MiB, sized to admit the largest single asset the game ships -
+         * Shockbolt's 64x64.png at 17,564,551 bytes - and not much more. A round
+         * "make it big" number would silently admit whatever asset comes next;
+         * this one has to be revisited deliberately, which is the point. The main
+         * JS chunk (full engine + bundled Borg) is the other thing that would not
+         * fit under workbox's 2 MiB default. */
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
       },
     }),
   ],

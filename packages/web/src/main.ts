@@ -216,7 +216,7 @@ import type {
   TilePrefsDeps,
 } from "@rpgm-tools/neo-angband-core";
 import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@rpgm-tools/neo-angband-core";
-import { setHost } from "@rpgm-tools/neo-angband-core";
+import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
@@ -259,7 +259,7 @@ import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { onSessionTaint, sessionTaint, taintNotice } from "./mod-taint";
 import { runModManager } from "./mods";
-import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
@@ -314,7 +314,7 @@ import {
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
-import { userPath, writeUserFile, downloadUserFile } from "./userdir";
+import { userPath, writeUserFile, downloadUserFile, pickTextFile } from "./userdir";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
@@ -435,7 +435,21 @@ import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { enqueueKeys, isSynthKey } from "./input-queue";
 import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
-import { installAutoUpdate } from "./pwa";
+import {
+  canPromptInstall,
+  captureInstallPrompt,
+  installAutoUpdate,
+  isStandalone,
+  promptInstall,
+} from "./pwa";
+import { installLines, offerInstall, type InstallLine } from "./install-local";
+import {
+  TRANSFER_EXT,
+  decodeTransfer,
+  encodeTransfer,
+  transferFilename,
+  type TransferMeta,
+} from "./save-transfer";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -443,6 +457,9 @@ import { installAutoUpdate } from "./pwa";
 // those were removed for parity (audit 05 FEAT-3): the base game shows nothing
 // that upstream Angband does not.
 installAutoUpdate();
+/* Before anything else can miss it: beforeinstallprompt fires early and once, so
+ * the (I)nstall locally page cannot go looking for it when the player asks. */
+captureInstallPrompt();
 
 // Install the host layer before anything reads or writes a file.
 //
@@ -8175,8 +8192,53 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       canLoad: living || resumedActive,
       canOpen: listRoster().length > 0,
       canQuit: desktopQuitAvailable(),
+      /* Absent under the desktop shell rather than greyed - see TitleOptions. */
+      canInstall: offerInstall({ isDesktop: desktopBridge !== null }),
     }),
   );
+}
+
+/** Tones to this shell's palette, so install-local.ts stays free of the terminal. */
+const INSTALL_TONE: Record<InstallLine["tone"], string> = {
+  head: UI_GOLD,
+  body: UI_TEXT,
+  dim: UI_DIM,
+  good: UI_GOOD,
+  warn: UI_BAD,
+};
+
+/**
+ * The (I)nstall locally page, and the one action it offers.
+ *
+ * ENTER installs, when the browser gave us a prompt to show; showTextScreen
+ * already closes on ENTER, so the install is attached to the same key the player
+ * would press to dismiss the page - which is only honest because the page says so
+ * in the line above the footer, and because a browser that offered no prompt
+ * shows different text there.
+ */
+async function showInstallPage(): Promise<void> {
+  const lines = installLines({
+    isDesktop: desktopBridge !== null,
+    isStandalone: isStandalone(),
+    canPickFolder: folderPickingSupported(),
+    canPromptInstall: canPromptInstall(),
+    caps: host().capabilities,
+  });
+  const offer = canPromptInstall();
+  await showTextScreen(
+    term,
+    "Install Neo Angband on this computer",
+    lines.map((l) => ({ text: l.text, color: INSTALL_TONE[l.tone] })),
+    offer ? "[ ENTER to install - ESC to go back ]" : "[ ESC to go back ]",
+  );
+  if (offer && (await promptInstall())) {
+    await showTextScreen(term, "Installed", [
+      { text: "Neo Angband is installed.", color: UI_GOOD },
+      { text: "", color: UI_TEXT },
+      { text: "Look for it where your other apps live. Your characters are", color: UI_TEXT },
+      { text: "already there - it is this same game in its own window.", color: UI_TEXT },
+    ]);
+  }
 }
 
 /**
@@ -8224,6 +8286,14 @@ async function openRoster(): Promise<BootStep> {
       /* ESC: cancelling the picker steps back one level - to the title - it does
        * not pick, and it does not fall through into character creation. */
       if (res.action === "back") return "back";
+      if (res.action === "export") {
+        await exportCharacter(res.id);
+        continue;
+      }
+      if (res.action === "import") {
+        await importCharacter();
+        continue;
+      }
       if (res.action === "resume") {
         resumeSelected(res.id);
         return "done";
@@ -8235,6 +8305,117 @@ async function openRoster(): Promise<BootStep> {
       return "done";
     }
   });
+}
+
+/**
+ * Write one character to a file the player can carry elsewhere.
+ *
+ * Only a LIVING character can be exported, and not as a policy: a dead slot's
+ * bytes are deleted by markDead, so there is nothing to write. The picker already
+ * refuses the key on a tombstone; this re-checks rather than trusting it, because
+ * the two are edited in different files.
+ */
+async function exportCharacter(id: string): Promise<void> {
+  const meta = listRoster().find((c) => c.id === id);
+  const save = readSlotSave(id);
+  if (!meta || !save) {
+    await showTextScreen(term, "Export character", [
+      { text: "That character has no save to export.", color: UI_BAD },
+      { text: "", color: UI_TEXT },
+      { text: "A character who has died leaves a memorial, not a save.", color: UI_DIM },
+    ]);
+    return;
+  }
+  const transfer: TransferMeta = {
+    name: meta.name,
+    race: meta.race,
+    cls: meta.cls,
+    sex: meta.sex,
+    level: meta.level,
+    depth: meta.depth,
+    maxDepth: meta.maxDepth,
+    turn: meta.turn,
+    alive: meta.alive,
+  };
+  const name = transferFilename(transfer);
+  const ok = downloadUserFile(
+    name,
+    encodeTransfer({
+      meta: transfer,
+      save,
+      engine: ENGINE_VERSION,
+      exportedAt: new Date().toISOString(),
+    }),
+    "application/json",
+  );
+  await showTextScreen(term, "Export character", [
+    ok
+      ? { text: `${meta.name || "(unnamed)"} written to ${name}.`, color: UI_GOOD }
+      : { text: "This browser refused the download.", color: UI_BAD },
+    { text: "", color: UI_TEXT },
+    ...(ok
+      ? [
+          { text: "Open the other copy of the game, come back to this screen,", color: UI_TEXT },
+          { text: "and press Shift-M to bring the character in.", color: UI_TEXT },
+          { text: "", color: UI_TEXT },
+          {
+            text: "This character is still here too. The file is a copy, and playing",
+            color: UI_DIM,
+          },
+          { text: "both is how one of them ends up being the one you regret.", color: UI_DIM },
+        ]
+      : []),
+  ]);
+}
+
+/**
+ * Read a character file and give it a slot of its own.
+ *
+ * ALWAYS a fresh slot. The file carries no id (save-transfer.ts says why), so an
+ * import cannot land on top of a character already here - which matters most in
+ * the case a player will actually hit, importing the same file twice.
+ */
+async function importCharacter(): Promise<void> {
+  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`);
+  if (!picked) return; // cancelled
+  const read = decodeTransfer(picked.text);
+  if (!read.ok) {
+    await showTextScreen(term, "Import character", [
+      { text: `${picked.name} was not imported.`, color: UI_BAD },
+      { text: "", color: UI_TEXT },
+      { text: read.why, color: UI_TEXT },
+    ]);
+    return;
+  }
+  const { meta, save } = read.file;
+  const id = newCharId();
+  const ok = writeSlot(id, save, {
+    id,
+    name: meta.name,
+    race: meta.race,
+    cls: meta.cls,
+    sex: meta.sex,
+    level: meta.level,
+    depth: meta.depth,
+    maxDepth: meta.maxDepth,
+    turn: meta.turn,
+    alive: meta.alive,
+    /* NOW, not the file's exportedAt: this list is ordered by when a character was
+     * last touched HERE, and a months-old export would arrive buried. */
+    updatedAt: Date.now(),
+  });
+  await showTextScreen(term, "Import character", [
+    ok
+      ? { text: `${meta.name} the ${meta.race} ${meta.cls} is now in your roster.`, color: UI_GOOD }
+      : { text: "This browser would not store the character.", color: UI_BAD },
+    { text: "", color: UI_TEXT },
+    ...(ok
+      ? [
+          { text: "In a new slot of their own - nothing you already had was", color: UI_TEXT },
+          { text: "touched. Select them to play.", color: UI_TEXT },
+        ]
+      : [{ text: "Storage is full, or disabled for this site.", color: UI_TEXT }]),
+  ]);
 }
 
 /** IDM_FILE_NEW (main-win.c:3501). */
@@ -8290,6 +8471,12 @@ async function bootMenus(): Promise<void> {
     if (choice === "quit") {
       desktopQuit();
       return;
+    }
+    /* Not a File-menu item and not a way into the game: read it, then back to the
+     * title, the same as ESC out of any other pre-game screen. */
+    if (choice === "install") {
+      await openModal(() => showInstallPage());
+      continue;
     }
     if (choice === "new") {
       if ((await startNewCharacter()) === "done") return;
