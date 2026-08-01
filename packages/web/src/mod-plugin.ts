@@ -60,9 +60,15 @@
  *
  * WHY THE VERSION IS DECLARED AND CHECKED. The API is explicitly unstable until
  * 1.0. That is a reason to fail LOUDLY, not a reason to skip the check: a plugin
- * written against api 1 and loaded by a host that has moved to 2 must be refused
- * with both numbers named, because the alternative is a mod that half-works and a
- * player who reports a game bug.
+ * written against api 1 and loaded by a host that cannot honour api 1 must be
+ * refused with both numbers named, because the alternative is a mod that
+ * half-works and a player who reports a game bug.
+ *
+ * It is NOT a reason to refuse everything the moment the number moves, which is
+ * what an `!==` did until 2026-08-02. The host accepts a WINDOW - see
+ * MOD_API_MIN for the two-release rule that makes the window mean something -
+ * so a bump costs authors a release they have time to make, rather than taking
+ * every mod offline on the day it ships.
  */
 
 /* TYPE-ONLY import of core, deliberately. A mod's own source imports this module
@@ -82,11 +88,84 @@ import type {
  * The ABI version this host implements. Bump ONLY when an existing plugin would
  * misbehave under the new host - adding an optional field is not a bump; changing
  * what an existing call does, or removing anything, is.
- *
- * While the API is unstable (pre-1.0) a bump means every mod stops loading until
- * its author republishes. That is the intended cost: see the header.
  */
 export const MOD_API_VERSION = 1;
+
+/**
+ * The OLDEST ABI this host still accepts. Everything in [MIN, VERSION] loads.
+ *
+ * WHY A WINDOW AND NOT AN EXACT MATCH. Until 2026-08-02 the check was
+ * `declared !== MOD_API_VERSION`, so the day the host bumped to 2, every mod in
+ * existence stopped loading - all at once, before any author had a chance to
+ * react, for a change most of them were not affected by. The header used to call
+ * that "the intended cost", and it is not a cost anyone chose to pay: it is what
+ * falls out of comparing two integers with `!==`.
+ *
+ * THE RULE THAT MAKES THE WINDOW REAL, and it is a promise about behaviour, not
+ * about this number: a host that accepts api N-1 must still HONOUR the api N-1
+ * contract for those plugins. So a bump comes in two releases. The first ships
+ * the new behaviour, keeps MIN where it is, keeps the old behaviour working for
+ * plugins that declared the old number, and starts warning them. The second
+ * raises MIN and deletes the old path. If a change genuinely cannot be
+ * conditioned on the declared version, MIN moves with VERSION in one step - and
+ * that is a decision to take deliberately, which is what having two constants
+ * forces.
+ *
+ * `LoadedModPlugin.api` is the mechanism the first release needs: it carries what
+ * each plugin DECLARED, so the host can branch on it. A window with no record of
+ * who is in it would be a promise nothing could keep.
+ */
+export const MOD_API_MIN = 1;
+
+/** Whether the host can load a plugin at `declared`, and what to say if not. */
+export type ModApiVerdict =
+  | { readonly ok: true; readonly deprecated: false }
+  /** Loads, but is below the current ABI and will stop when MIN next moves. */
+  | { readonly ok: true; readonly deprecated: true; readonly why: string }
+  | { readonly ok: false; readonly why: string };
+
+/**
+ * Judge a declared ABI version against this host's window.
+ *
+ * The bounds are parameters rather than reads of the constants so a test can
+ * drive a window this build does not have - which is the only way to exercise
+ * the deprecation branch while MIN and VERSION are both 1, and therefore the
+ * only way it is more than an untested claim on the day it first matters.
+ */
+export function modApiVerdict(
+  declared: number,
+  host: number = MOD_API_VERSION,
+  min: number = MOD_API_MIN,
+): ModApiVerdict {
+  /* Both numbers, and which way round: "incompatible" alone sends the player to
+   * the wrong place - a too-NEW mod needs a game update, a too-OLD one needs a
+   * mod update, and only the pair of numbers says which. */
+  if (declared > host) {
+    return {
+      ok: false,
+      why: `targets mod API ${declared}; this build implements ${host} - the mod needs a newer game`,
+    };
+  }
+  if (declared < min) {
+    return {
+      ok: false,
+      why:
+        `targets mod API ${declared}; this build implements ${host} and no longer ` +
+        `supports anything below ${min} - the mod needs updating for this game`,
+    };
+  }
+  if (declared < host) {
+    return {
+      ok: true,
+      deprecated: true,
+      why:
+        `targets mod API ${declared} and this build implements ${host}; it is ` +
+        `running on a compatibility path that will be removed - the mod should be ` +
+        `rebuilt against ${host}`,
+    };
+  }
+  return { ok: true, deprecated: false };
+}
 
 /** What the host hands a plugin. Frozen before it is passed. */
 export interface ModPluginContext {
@@ -258,6 +337,7 @@ export function defineModPlugin(plugin: ModPlugin): ModPlugin {
 export function validateModPlugin(
   candidate: unknown,
   hostApi = MOD_API_VERSION,
+  minApi = MOD_API_MIN,
 ): string | null {
   if (candidate === null || candidate === undefined) {
     return "plugin.js has no default export";
@@ -269,14 +349,12 @@ export function validateModPlugin(
   if (typeof p.api !== "number" || !Number.isInteger(p.api)) {
     return `plugin.js does not declare an integer "api" version (this host implements ${hostApi})`;
   }
-  if (p.api !== hostApi) {
-    /* Both numbers, and which way round: "incompatible" alone sends the player to
-     * the wrong place - a too-NEW mod needs a game update, a too-OLD one needs a
-     * mod update, and only the pair of numbers says which. */
-    return p.api > hostApi
-      ? `plugin.js targets mod API ${p.api}; this build implements ${hostApi} - the mod needs a newer game`
-      : `plugin.js targets mod API ${p.api}; this build implements ${hostApi} - the mod needs updating for this game`;
-  }
+  /* The window, not an equality - and the same window the manifest's `modApi` is
+   * judged against, from the same function, because two copies of "which ABIs
+   * does this host take" is the pair that drifts apart at the first bump. A
+   * deprecated-but-accepted plugin is NOT an error here; the loader reports it. */
+  const verdict = modApiVerdict(p.api, hostApi, minApi);
+  if (!verdict.ok) return `plugin.js ${verdict.why}`;
   if (p.hooks !== undefined && typeof p.hooks !== "function") return "plugin.js: hooks is not a function";
   if (p.register !== undefined && typeof p.register !== "function") {
     return "plugin.js: register is not a function";

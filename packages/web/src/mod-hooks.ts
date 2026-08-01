@@ -187,9 +187,9 @@ export function activeModHooks(): ModHooks | undefined {
  *
  * Split out of activeModHooks for the CONFLICT REPORT, which needs to know which
  * mods touch which hook - and had no way to find out, so two mods contributing
- * the same behaviour was invisible. For a first-answer hook that is the worst
- * kind of invisible: the second mod's rule never runs at all, and its author and
- * its player both believe it is working.
+ * the same behaviour was invisible. For a last-answer hook that is the worst
+ * kind of invisible: the earlier mod's rule never runs at all, and its author
+ * and its player both believe it is working.
  *
  * OBSERVED, not declared. A `touches` list in the manifest would be cheaper and
  * would drift the first time an author forgot to update it; calling the factory

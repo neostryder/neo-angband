@@ -307,7 +307,8 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     };
     const composed = composeContentPacks([passthroughCore(), mod]);
     expect(composed.problems).toEqual([
-      'typo: store removes "core:store-blacksmith", but no such record exists in store (identity is store)',
+      'typo: store removes "core:store-blacksmith", but no such record exists in store (identity is store)' +
+        " - it may have been renamed or removed by a newer version of the pack that owns it",
     ]);
     expect(recordsOf(composed, "store")).toHaveLength(2);
   });
@@ -324,18 +325,53 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     expect(recordsOf(composed, "store")[0]?.["turnover"]).toBe(9);
   });
 
-  it("throws (loudly, not silently) for an op on a file nobody supplies records for", () => {
+  it("reports, and no longer throws, for an op on a file nobody supplies records for", () => {
     /* Such a file is classified COMPOSABLE - no pack contributed records, so
-     * nothing failed the name test - and composePacks rejects the dangling ref.
-     * A throw is not the silent drop this suite guards against; pinned here so
-     * the case stays covered one way or the other. */
+     * nothing failed the name test - and this used to be the one path out of
+     * composeContentPacks that threw. Under composeDroppingBroken that cost the
+     * whole mod; here it costs the op, like every other unaddressable ref. */
     const mod: LoadedPack = {
       manifest: manifest("orphan", { core: "*" }),
       files: { trap: { patches: { "core:pit--pit": { visibility: 5 } } } },
     };
-    expect(() => composeContentPacks([passthroughCore(), mod])).toThrow(
-      /trap: patch target core:pit--pit does not exist/,
-    );
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toHaveLength(1);
+    expect(composed.problems[0]).toContain('orphan: trap patches "core:pit--pit"');
+    expect(composed.problems[0]).toContain("no such record exists");
+    expect(composed.faults).toEqual([
+      { packId: "orphan", why: expect.stringContaining("no such record exists") },
+    ]);
+  });
+
+  /* THE ASYMMETRY THAT WAS NEVER CHOSEN. `store` is a passthrough file and `trap`
+   * a composable one, purely because of how core's own records are shaped - and
+   * until 2026-08-02 the identical author mistake was one reported line in the
+   * first case and the loss of the entire pack in the second. Asserted as an
+   * equality between the two paths rather than as two expected strings, because
+   * two strings drift back apart the next time one of them is reworded. */
+  it("refuses an unaddressable ref the same way in both merge phases", () => {
+    const shape = (file: string, ref: string): LoadedPack => ({
+      manifest: manifest("twin", { core: "*" }),
+      files: { [file]: { patches: { [ref]: { visibility: 5 } } } },
+    });
+    const passthrough = composeContentPacks([
+      passthroughCore(),
+      shape("store", "core:store-nowhere"),
+    ]);
+    const composable = composeContentPacks([
+      passthroughCore(),
+      shape("trap", "core:trap-nowhere"),
+    ]);
+    /* The identity clause is deliberately per-phase - a passthrough file's key
+     * is declared in record-key.ts, a composable one's is always the record's
+     * `name` - so it is normalised away and everything else has to match. */
+    const shapeOf = (s: string): string =>
+      s
+        .replace(/core:[a-z-]+/u, "REF")
+        .replace(/store|trap/gu, "FILE")
+        .replace(/\(identity is [^)]*\)/u, "(ID)");
+    expect(passthrough.problems.map(shapeOf)).toEqual(composable.problems.map(shapeOf));
+    expect(passthrough.faults.map((f) => f.packId)).toEqual(composable.faults.map((f) => f.packId));
   });
 
   it("reports a whole-file replacement that discards another pack's records", () => {

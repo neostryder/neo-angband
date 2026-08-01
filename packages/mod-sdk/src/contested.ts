@@ -8,7 +8,9 @@
  *  - GRAPHICS: two mods claiming one grafID. Nothing said so, and until
  *    2026-08-01 the loser was the LATER mod, backwards from every other layer.
  *  - BEHAVIOUR: two mods contributing the same ModHooks member. For a
- *    first-answer hook the second mod's rule simply never runs.
+ *    last-answer hook the earlier mod's rule simply never runs, and until
+ *    2026-08-02 it was the LATER mod's that did not, backwards from the row the
+ *    player reads.
  *  - RULES: two mods declaring the same flag string. `resolveModRules` is a flat
  *    last-wins namespace, so one mod silently reads the other's toggle.
  *  - CONTROLLER: two mods shipping an autoplayer. There is one slot; the second
@@ -42,21 +44,26 @@ export type ContestedLayer =
 /**
  * How a layer resolves several claims on one slot.
  *
- * The three that DISCARD a claim - `last-wins`, `first-answer`, `single-slot` -
+ * EVERY ONE OF THESE IS "THE LATER MOD WINS", which is the point: the mod
+ * manager promises the player one lever ("Move later (loads last, wins
+ * conflicts)"), and a lever that means five different things is not a lever. The
+ * folds differ only in whether there is anything for a winner to win.
+ *
+ * The three that DISCARD a claim - `last-wins`, `last-answer`, `single-slot` -
  * are the ones worth a player's attention; the rest combine, and are reported so
  * the picture is complete rather than because anything is wrong.
  */
 export type Fold =
   | "last-wins" // the last claim in load order takes effect; earlier ones are overwritten
-  | "first-answer" // the first claim with an opinion decides; later ones never run
+  | "last-answer" // the last claim with an opinion decides; earlier ones are never asked
   | "single-slot" // only one may hold it; a later claim displaces the earlier silently
   | "all-must-agree" // every claim runs and any refusal decides
-  | "chained" // each claim transforms the previous one's result
+  | "chained" // each claim transforms the previous one's result, so the last speaks last
   | "any-yes"; // one claim asking is enough
 
 /** Whether a fold silently drops somebody's contribution. */
 export function foldDiscards(fold: Fold): boolean {
-  return fold === "last-wins" || fold === "first-answer" || fold === "single-slot";
+  return fold === "last-wins" || fold === "last-answer" || fold === "single-slot";
 }
 
 /** One mod's claim on one slot. */
@@ -126,8 +133,8 @@ export function describeContested(slot: ContestedSlot, nameOf: NameOf = (id) => 
   switch (slot.fold) {
     case "last-wins":
       return `${who} all change ${slot.what}; ${winner} wins${banded} because it loads last.`;
-    case "first-answer":
-      return `${who} all handle ${slot.what}; only ${winner} runs${banded} - the rest never get asked.`;
+    case "last-answer":
+      return `${who} all handle ${slot.what}; only ${winner} runs${banded} because it loads last - the rest never get asked.`;
     case "single-slot":
       return `${who} each provide ${slot.what}, and there is room for one; ${winner} takes it${banded} and the others do nothing.`;
     case "all-must-agree":
@@ -166,12 +173,13 @@ export function contestedSlots(
   for (const [key, slot] of byKey) {
     const packs = new Set(slot.claims.map((c) => c.packId));
     if (packs.size < 2) continue;
-    const winner =
-      fold === "last-wins" || fold === "single-slot"
-        ? slot.claims[slot.claims.length - 1]?.packId
-        : fold === "first-answer"
-          ? slot.claims[0]?.packId
-          : undefined;
+    /* Every discarding fold now picks the SAME claim - the last one - which is
+     * the property this whole model is for. Kept as a `foldDiscards` test rather
+     * than collapsed into "last unless undefined", so adding a fold that picks
+     * differently has to come here and say so. */
+    const winner = foldDiscards(fold)
+      ? slot.claims[slot.claims.length - 1]?.packId
+      : undefined;
     out.push({
       layer,
       key,

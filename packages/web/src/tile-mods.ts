@@ -211,13 +211,21 @@ export function enabledTileModeClaims(input: {
     const raw = input.manifests.get(id);
     if (!raw) continue;
     if (!isTilesMod(raw)) continue;
-    /* The third door the engine gate has to cover. A tiles pack is bytes the
-     * renderer indexes by grafID and by target name, so one written for a build
-     * whose catalogue or naming has moved does not degrade gracefully - it draws
-     * the wrong thing, or nothing, with no error anywhere. Same gate, same wording,
-     * same single implementation as the content and code paths (mod-engine.ts);
-     * pack.ts's engineRefusalsFor is what tells the player, since it runs over
-     * every enabled mod regardless of what the mod contributes. */
+    /* The third door the engine gate has to cover. Same gate, same wording, same
+     * single implementation as the content and code paths (mod-engine.ts);
+     * pack.ts's engineProblemsFor is what tells the player, since it runs over
+     * every enabled mod regardless of what the mod contributes.
+     *
+     * A TILES PACK IS DATA, so as of 2026-08-02 an out-of-range `engine` labels
+     * it and does not skip it - and that reverses what this comment used to
+     * argue. The old claim was that a tiles pack written for a build whose
+     * naming has moved "does not degrade gracefully - it draws the wrong thing,
+     * or nothing, with no error anywhere". Weighed against the alternative, that
+     * is the better failure: a stale mapping loses individual tiles to the ASCII
+     * fallback, which the player can SEE, whereas refusing the pack loses all of
+     * them and is the outcome the player cannot fix. Pictures are the least
+     * version-sensitive thing a mod ships; making a tileset go dark on an engine
+     * patch its author never saw is the exact cost this pass exists to remove. */
     const range = readEngineRange(raw);
     if (!engineAllows({ id, ...(range === undefined ? {} : { engine: range }) })) {
       continue;
