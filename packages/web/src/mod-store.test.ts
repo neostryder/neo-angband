@@ -367,11 +367,25 @@ describe("buildCatalog", () => {
  * for it.
  */
 describe("a mod's patches exist only while its mod is enabled", () => {
-  const DEMO_FLAGS = (
+  /**
+   * The demo mod's rules, with the DEFAULT each one declares.
+   *
+   * Read rather than assumed. These tests used to assert that enabling the mod made
+   * every flag true, which was an accident of the manifest at the time and not what
+   * `resolveModRules` promises - the promise is "each flag takes its own declared
+   * default until the player chooses otherwise". The moment a rule shipped with
+   * `"default": false` (demo-hooks.explode, which breaks the session on purpose and
+   * must be off unless asked for) the old assertion failed while the behaviour was
+   * exactly right.
+   */
+  const DEMO_RULES = (
     JSON.parse(
       readFileSync(new URL("../mods/demo-hooks/manifest.json", import.meta.url), "utf8"),
-    ) as { rules?: { flag: string }[] }
-  ).rules!.map((r) => r.flag);
+    ) as { rules?: { flag: string; default?: boolean }[] }
+  ).rules!.map((r) => ({ flag: r.flag, on: r.default !== false }));
+  const DEMO_FLAGS = DEMO_RULES.map((r) => r.flag);
+  /** The flags that come on by themselves - what "the whole patch set" means. */
+  const DEMO_ON = DEMO_RULES.filter((r) => r.on).map((r) => r.flag);
 
   /**
    * Run `fn` with pack.ts's enabled-mods key set to `ids`. The web tests run in
@@ -413,32 +427,35 @@ describe("a mod's patches exist only while its mod is enabled", () => {
     expect("demo-hooks.tiebreak" in rules).toBe(false);
   });
 
-  it("turns the mod's whole patch set on at once when it is enabled", () => {
+  it("brings in every rule the mod declares, each at its own default", () => {
     const rules = withEnabled(["demo-hooks"], () =>
       resolveModRules(loadEnabledModRuleDecls(), {}),
     );
     expect(Object.keys(rules).sort()).toEqual([...DEMO_FLAGS].sort());
-    expect(Object.values(rules).every((v) => v === true)).toBe(true);
+    for (const { flag, on } of DEMO_RULES) expect(rules[flag], flag).toBe(on);
+    /* And the ordinary case is still "on": a mod whose patches all defaulted off
+     * would make every assertion below vacuous. */
+    expect(DEMO_ON.length).toBeGreaterThan(1);
     // Enabling one mod says nothing about another: demo-modtest is still off, so
     // nothing of its appears - and a flag from a mod that is not even installed
     // certainly does not.
     expect("qol.autoDig" in rules).toBe(false);
   });
 
-  it("lets a player take the set minus one, leaving the rest on", () => {
-    const opted = DEMO_FLAGS[0]!;
+  it("lets a player take the set minus one, leaving the rest at their defaults", () => {
+    const opted = DEMO_ON[0]!;
     const rules = withEnabled(["demo-hooks"], () =>
       resolveModRules(loadEnabledModRuleDecls(), { [opted]: false }),
     );
     expect(rules[opted]).toBe(false);
-    const rest = DEMO_FLAGS.filter((f) => f !== opted);
+    const rest = DEMO_RULES.filter((r) => r.flag !== opted);
     expect(rest.length, "set-minus-one needs a set of at least two").toBeGreaterThan(0);
-    for (const flag of rest) expect(rules[flag]).toBe(true);
+    for (const { flag, on } of rest) expect(rules[flag], flag).toBe(on);
   });
 
   it("drops the flags again when the mod goes off, but remembers the opt-out", () => {
     const store = new ModStore(fakeStorage());
-    const opted = DEMO_FLAGS[0]!;
+    const opted = DEMO_ON[0]!;
     store.setRuleChoice(opted, false);
 
     const off = withEnabled([], () =>
@@ -452,8 +469,8 @@ describe("a mod's patches exist only while its mod is enabled", () => {
       resolveModRules(loadEnabledModRuleDecls(), store.getRuleChoices()),
     );
     expect(back[opted]).toBe(false);
-    for (const flag of DEMO_FLAGS.filter((f) => f !== opted)) {
-      expect(back[flag]).toBe(true);
+    for (const { flag, on } of DEMO_RULES.filter((r) => r.flag !== opted)) {
+      expect(back[flag], flag).toBe(on);
     }
   });
 });
