@@ -31,7 +31,7 @@
  */
 
 import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
-import { FEAT } from "@rpgm-tools/neo-angband-core";
+import { FEAT } from "./core-api.js";
 import type { BorgContext } from "./context.js";
 import { distance } from "./think.js";
 import {

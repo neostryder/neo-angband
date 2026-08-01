@@ -1,4 +1,4 @@
-# The Borg as a Bundled Mod - Scope and Plan
+# The Borg as a Mod - Scope and Plan
 
 > STATUS: IMPLEMENTED. What this document scoped is now built: the Borg ships
 > as a BUNDLED MOD (`packages/borg`) built on the mod framework's perceive/act
@@ -128,17 +128,61 @@ The same frozen facade is what every other agent mod builds on. Freezing it is
 the point of building the Borg first: the Borg exercises the entire surface, so
 if the Borg plays faithfully, the surface is complete.
 
-## 6. The gap (now closed)
+## 6. Where this actually stands (measured 2026-08-01)
 
-This section described a gap that has since been closed. The mod framework this
-document planned is now built: the plugin runtime, sandbox, capability
-enforcement, read-only `GameState` facade, and controller registration all
-exist, and the Borg rides them as a bundled mod (`packages/borg`). In the plan
-this substrate was P7 (mod ecosystem hardening); P8 (the Borg) rode on it, and
-the Borg was the forcing function that made the substrate concrete and correct
-rather than speculative. It was fully **designed** first (`docs/MODS.md`,
-`docs/modding/MOD_LIFECYCLE.md`); it is now **built** (see
-`docs/modding/MOD_INTEGRATION_PLAN.md` and `docs/modding/BORG.md`).
+The substrate is built. The Borg is ported. **The two are not connected, and no
+player can reach the Borg by any route.** Said plainly here because the previous
+version of this section said "the Borg rides them as a bundled mod
+(`packages/borg`)", and that was not true of anything.
+
+What is true, each of it checked rather than recalled:
+
+| | |
+| --- | --- |
+| The substrate | Built. Plugin runtime, sandbox, capability enforcement, read-only `GameState` facade, `installController`. |
+| The Borg itself | Ported and passing. 72 source files, 135 tests green across nine files. |
+| Who imports `packages/borg` | **Nobody.** Zero references outside the package. |
+| Who calls `installController` | Core's own tests, and `packages/mcp`. Not the web shell, not desktop. |
+| `neostryder/neo-angband-mod-borg` | `.github`, `LICENSE.md`, `README.md`. No tags, no manifest, no plugin. |
+| `RECOMMENDED_MODS` | Says the Borg is "absent because it has no release", which is correct. |
+
+So the Borg is a library with no caller, in a monorepo that does not ship it,
+with an empty repository waiting for it.
+
+### What the move actually costs
+
+Less than the file count suggests. The mod builder refuses a plugin that bundles
+its own copy of the engine — a second set of registries running beside the game's
+— so every value the Borg takes from core has to arrive through `ctx.core`
+instead of a bare import. That sounds like 37 files, which is how many mention
+`@rpgm-tools/neo-angband-core`. It is not: **28 of those are `import type`, which
+compiles to nothing.**
+
+The real runtime coupling is **six symbols across eight files**:
+
+| Symbol | Where |
+| --- | --- |
+| `FEAT` | `danger/danger.ts`, `danger/geometry.ts`, `flow/flow-consts.ts`, `think-ladder.ts` |
+| `RSF` | `danger/danger.ts`, `danger/facts.ts`, `fight/attack.ts` |
+| `TV` | `item/svals.ts` (re-exported) |
+| `Rng` | `rng.ts` |
+| `MON_RACE_FLAG_ENTRIES`, `MON_SPELL_ENTRIES` | `resolvers.ts` |
+
+Four of the six are generated constant tables. One is a class. That is the whole
+of it.
+
+### The one piece that does not exist yet
+
+`ModPlugin` has `hooks`, `register`, `migrateBag` and `uninstall`, and **no
+controller seam**. An autoplayer cannot announce itself the way a behaviour mod
+announces a hook.
+
+It does not need a new seam to work, though: `ctx.core` is the live engine
+namespace, entire, so a plugin can call `ctx.core.installController(ctx.state,
+borg)` from `register()`. Whether that stays the route or a first-class
+`controller?(ctx)` is added is the one open design question here — and it is worth
+answering deliberately, because the answer is the contract every future agent mod
+uses, not just this one.
 
 ## 7. The Borg port plan
 
@@ -203,13 +247,39 @@ where verification effort should be focused (the same porter+independent-verify
 discipline used for the scoring and display slices applies, with extra weight
 on the danger and combat math).
 
-## 8. Recommended build order and acceptance test
+## 8. Build order and acceptance test
 
-1. Build the mod substrate and freeze the perceive/act facade (P7). Validate it
-   against this document's section-3 surface.
-2. Port the Borg as a bundled mod on that facade (P8), in the tier order above.
-3. **Acceptance test:** the bundled procedural Borg plays a faithful game -
-   descends, fights, flees, shops, and dies or wins - driven entirely through
-   the public agent API, with no privileged core access. A Borg that plays
-   correctly proves the agent API is complete. Every subsequent agent mod
-   (third-party or AI-driven) reuses that exact contract.
+Steps 1 and 2 are done. Steps 3-7 are the move described in section 6.
+
+1. ~~Build the mod substrate and freeze the perceive/act facade (P7).~~ Done.
+2. ~~Port the Borg on that facade (P8), in the tier order above.~~ Done:
+   `packages/borg`, 72 files, 135 tests.
+3. **Decide the controller route** — `ctx.core.installController` from
+   `register()`, or a first-class `controller?(ctx)` on `ModPlugin`. This is the
+   contract every future agent mod inherits, so it is a decision and not an
+   implementation detail.
+4. **Thread the six symbols.** One module in the mod, handed `ctx.core` once,
+   re-exporting `FEAT` / `RSF` / `TV` / `Rng` / `MON_RACE_FLAG_ENTRIES` /
+   `MON_SPELL_ENTRIES`. Eight import lines change. Do it in `packages/borg`
+   FIRST, where the full suite can prove it, and copy afterwards.
+5. **Re-examine against what moved since the port.** The Borg was ported before
+   the agent API reached 1.1.0 (the glyph layer), before `ModHooks` grew its
+   current seams, and before the plugin ABI settled. Three gaps are already known
+   and marked in the source: `auxActivation` is a complete port of
+   `borg_attack_aux_activation` that nothing calls, and `decurseCommand` and
+   `borgTestStuff` each accept a `playerHas` seam and drop it.
+6. **The two tests that hang.** `foundation.test.ts` and `think.test.ts` run
+   without output and without a timeout. `think.ts` is the decision ladder, so
+   the untested part is the part that decides. Fix before the tag, not after: the
+   mod's own CI is the only thing that will ever run them again.
+7. **Release it like any other mod** — `npm run verify`, tag, re-fetch every file
+   from `raw.githubusercontent.com` at that tag, hash it, and put the digests in
+   `RECOMMENDED_MODS`. `docs/RELEASING.md` has the procedure and the reason the
+   digest must come from what GitHub serves rather than from the local build.
+
+**Acceptance test:** the procedural Borg plays a faithful game - descends,
+fights, flees, shops, and dies or wins - driven entirely through the public agent
+API, with no privileged core access, **installed from its own repository the way
+a player would install it**. A Borg that plays correctly proves the agent API is
+complete. Every subsequent agent mod (third-party or AI-driven) reuses that exact
+contract.

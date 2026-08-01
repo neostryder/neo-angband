@@ -14,11 +14,8 @@
  * which the package already depends on.
  */
 
-import {
-  MON_RACE_FLAG_ENTRIES,
-  MON_SPELL_ENTRIES,
-  type MonsterRace,
-} from "@rpgm-tools/neo-angband-core";
+import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES } from "./core-api.js";
+import type { MonsterRace } from "@rpgm-tools/neo-angband-core";
 import type { BorgResolvers } from "./think-session.js";
 import type { BlowFacts, FactsResolver, MonsterFacts } from "./danger/facts.js";
 import { defaultResolveMonsterFacts } from "./danger/facts.js";

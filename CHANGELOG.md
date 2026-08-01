@@ -92,6 +92,36 @@ Documentation accuracy:
 
 ### Changed
 
+- **`@rpgm-tools/neo-angband-content` reaches its own pack.** `0.11.0` published
+  the compiled gamedata — 45 files, 2.0 of its 2.3 MB — and declared no `exports`
+  subpath for it, so the one thing that package exists to do threw
+  `ERR_PACKAGE_PATH_NOT_EXPORTED` at every consumer. `0.12.0` adds `./pack` (a
+  Node loader with the pack directory, load order from the manifest, and a
+  missing-file error that names what IS there) and `./pack/*.json` for bundlers.
+  The tarball check that should have caught it was resolving each target path
+  itself and importing the file, which bypasses the exports map entirely; it now
+  installs into a real `node_modules` and imports by bare specifier, and fails
+  when any shipped directory is reached by no subpath.
+- **The project version is checked everywhere it is written down.**
+  `node tools/version.mjs` prints all fourteen sites and fails on drift — it found
+  the CHANGELOG two releases behind on its first run. `set` refuses any number
+  that is not one of the three semver successors of the current one, and refuses
+  `1.0.0` without `--release`. The package manifests are discovered by scanning
+  `packages/`, so a new package is covered the day it is created.
+- **The lint backlog is zero and is now a gate.** 136 warnings, sorted by whether
+  the rule was right about a faithful C port: `no-useless-assignment` (37 hits,
+  all C-style default-init locals) and `no-dupe-else-if` (7 hits, 6 of them fresh
+  RNG rolls the rule reads as duplicates) are off with the counts recorded; the
+  rest were fixed and promoted to error. 51 dead imports gone, and
+  `reportUnusedDisableDirectives` is on so a disable comment cannot rot into a
+  false claim. Deliberate exceptions carry a per-site reason naming the C
+  function — or the gap, which is how three unwired Borg paths became visible.
+- **The Borg reaches the engine through one file.** Its destination is its own mod
+  repository, where the plugin builder refuses a bundled copy of the engine, so
+  every bare value import is a line that has to change on the way out. Measured:
+  37 files mention the package and 28 are `import type`, which compiles to
+  nothing. The real coupling was six symbols across eight files, and they now come
+  through `core-api.ts`, with a census test that fails if a second file grows one.
 - **The game bundles no mods.** `qol` and `bug-fixes` moved to their own
   repositories, joining `neo-linoleum`; `FIRST_PARTY_MOD_IDS` is empty and a release
   build's discovered mod set is empty with it. All three are in the catalogue and
