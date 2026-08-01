@@ -31,15 +31,15 @@ Current state of the project at version `0.13.0`. High level, what exists today:
   (`@rpgm-tools/neo-angband-cli`).
 - A mod framework (`@rpgm-tools/neo-angband-mod-sdk`): content packs, tile packs, and
   sandboxed scripted plugins, with the base game loaded as a pack itself.
-- **No bundled mods.** A fresh install is Angband 4.2.6 and nothing else. Three
+- **No bundled mods.** A fresh install is Angband 4.2.6 and nothing else. Four
   first-party mods ride that framework, each in its own repository with its own
   release tags and tests, each installed through the mod manager's *Install a
   mod...* row at a pinned tag with every file checked against a SHA-256 that ships
-  inside the game: `qol` (quality-of-life conveniences), `bug-fixes`, and
+  inside the game: `qol` (quality-of-life conveniences), `bug-fixes`,
   `neo-linoleum` (a second tile engine - loose packs of individually named PNGs with
   variant pools - plus the converter that builds one from any tilesheet, via
-  `@rpgm-tools/neo-angband-linoleum`). The game's own tile sets stay core content on
-  the classic tilesheet engine.
+  `@rpgm-tools/neo-angband-linoleum`), and `borg` (the autoplayer). The game's own
+  tile sets stay core content on the classic tilesheet engine.
 - The Borg, in its own repository like every other mod: a faithful port of
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
@@ -132,7 +132,10 @@ Documentation accuracy:
 
 ### Changed
 
-- **The Borg left this repository.** `packages/borg` is gone; the port lives in
+- **The Borg left this repository, and is now installable.** It is in the
+  catalogue at `v0.1.0`, so for the first time a player can actually run it -
+  install, enable, and switch on the mod's own *Let the Borg play* toggle, which
+  is a separate act from enabling the mod. `packages/borg` is gone; the port lives in
   [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) at
   `v0.1.0`, where it is a mod a player installs and switches on rather than a
   package with no importer. Its six runtime engine symbols now arrive as ESM live
