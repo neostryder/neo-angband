@@ -29,6 +29,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/publishable.mjs
 import { publishablePackages } from "../../../tools/publishable.mjs";
+// @ts-expect-error -- plain .mjs tooling, no types; see tools/npm-pack-result.mjs
+import { packResult } from "../../../tools/npm-pack-result.mjs";
 
 const packagesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -102,6 +104,52 @@ describe("the publishable set itself", () => {
     for (const app of ["web", "desktop", "cli", "mcp", "borg"]) {
       expect(PUBLISHED, `${app} must not be published`).not.toContain(app);
     }
+  });
+});
+
+describe("`npm pack --json`, whichever npm answers", () => {
+  /*
+   * The release check packs each package and reads back the tarball's filename.
+   * npm 11 answers with an ARRAY of one object; npm 12 answers with an OBJECT
+   * keyed by package name. tools/check-npm-package.mjs read the array shape, so
+   * on npm 12 it threw `object is not iterable` for EVERY package - including
+   * core, which was green in CI the whole time, because CI ran it on the npm
+   * Node 24 bundles and only the release path installed npm@latest.
+   *
+   * Fixing that without a test would just buy the next shape change the same
+   * free pass, and this is a function nothing else can reach: the checker packs
+   * real tarballs at import time, so it cannot be imported by a test. That is
+   * why packResult lives in tools/npm-pack-result.mjs on its own.
+   *
+   * These are recorded outputs, not invented ones - both were captured from a
+   * real `npm pack --json` run.
+   */
+  const NPM_11 = JSON.stringify([
+    { id: "@rpgm-tools/neo-angband-core@0.11.0", filename: "rpgm-tools-neo-angband-core-0.11.0.tgz", size: 4194304 },
+  ]);
+  const NPM_12 = JSON.stringify({
+    "@rpgm-tools/neo-angband-core": {
+      id: "@rpgm-tools/neo-angband-core@0.11.0",
+      filename: "rpgm-tools-neo-angband-core-0.11.0.tgz",
+      size: 4194304,
+    },
+  });
+
+  it.each([
+    ["npm 11 (array of one)", NPM_11],
+    ["npm 12 (keyed by package name)", NPM_12],
+  ])("reads the filename and size out of %s", (_label, stdout) => {
+    const entry = packResult(stdout, "core") as { filename: string; size: number };
+    expect(entry.filename).toBe("rpgm-tools-neo-angband-core-0.11.0.tgz");
+    expect(entry.size).toBe(4194304);
+  });
+
+  it("refuses a shape it does not recognise instead of returning undefined", () => {
+    /* The failure that matters is the QUIET one. Returning an entry with no
+     * filename sends `undefined` into join(), and the error surfaces hundreds of
+     * lines later as a missing tarball rather than as an unknown npm. */
+    expect(() => packResult(JSON.stringify({ ok: true }), "core")).toThrow(/no filename in it/u);
+    expect(() => packResult(JSON.stringify([]), "core")).toThrow(/no filename in it/u);
   });
 });
 

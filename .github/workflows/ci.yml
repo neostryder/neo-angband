@@ -23,9 +23,9 @@ jobs:
       # so skip the ~110 MB download here rather than pay it on every run.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -51,11 +51,21 @@ jobs:
       # program too, so a break in the runnable harness (loader, entry wiring)
       # surfaces in CI even if the vitest path stays green.
       - run: pnpm --filter @rpgm-tools/neo-angband-cli scenarios
-      # The published-package check: packs @rpgm-tools/neo-angband-core and mod-sdk, extracts
+      # The published-package check: packs every publishable package (the list is
+      # DERIVED by tools/publishable.mjs from `private`, not written down), extracts
       # each into an empty directory and imports every entry point with plain Node.
       # This is the step that would have caught 4612 extensionless import
       # specifiers, which every test here missed because vitest resolves through
       # Vite. See docs/RELEASING.md.
+      #
+      # It runs on npm@latest, the same npm publish-npm.yml installs, and NOT on the
+      # npm the runner happens to bundle. That is not tidiness: `npm pack --json`
+      # returns an array on npm 11 and an object keyed by package name on npm 12, and
+      # because this step ran on Node 24's bundled 11.x while only the release path
+      # ever saw 12, the checker was broken for every package with a green CI to
+      # prove otherwise. A tool whose whole job is to find out what npm actually does
+      # has to run on the npm that will do it.
+      - run: npm install -g npm@latest
       - run: pnpm check:npm
       # The MCP server, spawned and spoken to. Its 25 tests drive the tools
       # directly with no transport, so nothing else here would notice a break in
