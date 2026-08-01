@@ -43,6 +43,8 @@
  * archive and a tile are as fetchable as a manifest.
  */
 
+import { compareSemver } from "@rpgm-tools/neo-angband-mod-sdk";
+
 /** Where one file of a mod lives, and what it must hash to. */
 export interface RegistryFile {
   /** Path inside the repository, which is also the path inside the mod folder. */
@@ -350,4 +352,29 @@ export function rawUrl(repo: string, tag: string, path: string): string {
 /** Where a player can go to read the mod's own page. */
 export function repoUrl(mod: RecommendedMod): string {
   return `https://github.com/${mod.repo}/tree/${encodeURIComponent(mod.tag)}`;
+}
+
+/**
+ * Order two release tags: negative if `a` is older, 0 if equal, positive if `a`
+ * is newer, and null when they cannot be ordered.
+ *
+ * WHY ORDER THEM AT ALL, when a catalogue row only has to notice a difference.
+ * Because "different" was being RENDERED as "update", and the two are not the
+ * same claim. A player who installed a mod from its repository at a tag the
+ * shipped catalogue predates would be shown their newer copy with an arrow
+ * pointing at the older one and the word "update" next to it - and pressing
+ * Enter would quietly roll them back. A string `!==` cannot tell those apart,
+ * and neither can a string `<`: it puts v0.9.0 above v0.10.0.
+ *
+ * Null is a real answer, not a fallback. A tag need not be a version at all
+ * (`latest`, a date, a commit-ish), and saying "these differ, in an order I
+ * cannot work out" is honest where guessing a direction is not.
+ */
+export function compareTags(a: string, b: string): number | null {
+  /* The one convention this strips: a leading `v`, which is how every tag in the
+   * catalogue is written and is not part of the version. Nothing else is
+   * normalised - a tag that is not a version should come back null rather than be
+   * bent into one. */
+  const version = (tag: string): string => (/^v\d/u.test(tag) ? tag.slice(1) : tag);
+  return compareSemver(version(a), version(b));
 }

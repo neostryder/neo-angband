@@ -18,7 +18,12 @@ import {
   installSummary,
   progressLine,
 } from "./mod-catalogue";
-import { RECOMMENDED_MODS, usableRecommendedMods, type RecommendedMod } from "./mod-registry";
+import {
+  RECOMMENDED_MODS,
+  compareTags,
+  usableRecommendedMods,
+  type RecommendedMod,
+} from "./mod-registry";
 import { FIRST_PARTY_MOD_IDS } from "./mod-store";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +84,80 @@ describe("catalogueRow", () => {
     /* Nothing is going to be downloaded, so a size there is noise that reads like a
      * pending transfer. */
     expect(catalogueRow(MOD, MOD.tag).label).not.toContain("MiB");
+  });
+});
+
+describe("catalogueRow tells an update from a rollback", () => {
+  /* THE DEFECT THIS PINS. The row was computed with `installedTag !== mod.tag`, so
+   * every difference rendered as `<installed> -> <catalogue>  Enter to update`
+   * whichever way round the two versions stood. A mod author testing their own
+   * release, or any player whose mod moved faster than the game build, would be
+   * shown an arrow pointing at an OLDER version with the word "update" beside it,
+   * and Enter would roll them back. */
+
+  it("calls it an update only when the catalogue is genuinely newer", () => {
+    const row = catalogueRow(MOD, "v0.9.1");
+    expect(row.label.startsWith("[~]")).toBe(true);
+    expect(row.hint).toContain("newer");
+    expect(row.hint).toContain("update");
+  });
+
+  it("orders 0.9.0 BELOW 0.10.0, which a string compare does not", () => {
+    /* The version pair this port actually shipped. As strings, "v0.9.0" sorts
+     * above "v0.10.0". */
+    expect(compareTags("v0.9.0", "v0.10.0")).toBeLessThan(0);
+    expect(catalogueRow(MOD, "v0.9.0").hint).toContain("update");
+  });
+
+  it("does not call a rollback an update", () => {
+    const row = catalogueRow(MOD, "v0.12.0");
+    expect(row.hint).not.toMatch(/update/iu);
+    expect(row.hint).toContain("REPLACE");
+    /* And it does not draw the arrow, which is the part read at a glance. */
+    expect(row.label).not.toContain("->");
+    expect(row.label).toContain("v0.12.0");
+  });
+
+  it("marks the ahead-of-catalogue mod as installed, not as a problem", () => {
+    /* It is not broken and there is nothing to do about it: the player's copy is
+     * newer than the catalogue this build shipped with, which is the ordinary
+     * result of a mod releasing between game builds. */
+    const row = catalogueRow(MOD, "v0.12.0");
+    expect(row.label.startsWith("[x]")).toBe(true);
+    expect(row.color).toBe(catalogueRow(MOD, MOD.tag).color);
+  });
+
+  it("offers the catalogue copy without claiming a direction it cannot work out", () => {
+    /* A tag need not be a version - `latest`, a date, a commit-ish. Saying
+     * "newer" there would be a guess. */
+    expect(compareTags("nightly", "v0.10.0")).toBeNull();
+    const row = catalogueRow(MOD, "nightly");
+    expect(row.label.startsWith("[~]")).toBe(true);
+    expect(row.hint).toContain("cannot be");
+    expect(row.hint).not.toMatch(/newer|update/iu);
+  });
+
+  it("still says nothing at all when the tags match", () => {
+    expect(catalogueRow(MOD, MOD.tag).hint).not.toMatch(/newer|older|REPLACE/u);
+  });
+});
+
+describe("compareTags", () => {
+  it("ignores the leading v that every catalogue tag carries", () => {
+    expect(compareTags("v1.2.3", "v1.2.3")).toBe(0);
+    expect(compareTags("1.2.3", "v1.2.3")).toBe(0);
+  });
+
+  it("orders by component, not lexically", () => {
+    expect(compareTags("v0.2.0", "v0.10.0")).toBeLessThan(0);
+    expect(compareTags("v1.0.0", "v0.99.99")).toBeGreaterThan(0);
+    expect(compareTags("v1.0.2", "v1.0.10")).toBeLessThan(0);
+  });
+
+  it("returns null rather than bending a non-version tag into one", () => {
+    expect(compareTags("latest", "v1.0.0")).toBeNull();
+    expect(compareTags("v1.0", "v1.0.0")).toBeNull();
+    expect(compareTags("v2026-07-31", "v1.0.0")).toBeNull();
   });
 });
 

@@ -31,7 +31,7 @@ export type {
   PackTilePack,
 } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
-export { satisfies, SemverError } from "./semver.js";
+export { compareSemver, satisfies, SemverError } from "./semver.js";
 export { engineVerdict } from "./engine.js";
 export type { EngineVerdict } from "./engine.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
