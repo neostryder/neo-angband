@@ -29,7 +29,7 @@ import { trait } from "../item/deps.js";
 import { borgDanger, getDangerGlobals, getFearCaches, borgLos } from "../danger/index.js";
 import { FEAT, ddx_ddd, ddy_ddd } from "../flow/flow-consts.js";
 import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
-import { TV, SVAL } from "../item/svals.js";
+import { SVAL } from "../item/svals.js";
 import {
   Spell,
   borgSpell,

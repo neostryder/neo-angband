@@ -15,9 +15,14 @@ for (const model of ['grok', 'codex']) {
   if (existsSync(dir)) for (const f of readdirSync(dir).filter(x => x.endsWith('.md')))
     sources.push({ model, file: join(dir, f) });
 }
-// shared files (grok L1-L2, terra L1-L3 bonus)
-if (existsSync('parity_findings_grok.md'))  sources.push({ model: 'grok',  file: 'parity_findings_grok.md' });
-if (existsSync('parity_findings_terra.md')) sources.push({ model: 'terra', file: 'parity_findings_terra.md' });
+// Consolidated per-model dumps (grok L1-L2, terra L1-L3 bonus). These sat in the
+// REPOSITORY ROOT until 2026-08-01, where they collided by name with the per-lane
+// file parity/audit-2026-07-24/parity_findings_grok.md - two different documents,
+// same basename, one 191 findings and one 4.
+for (const model of ['grok', 'terra']) {
+  const file = join(AUD, 'consolidated', `${model}.md`);
+  if (existsSync(file)) sources.push({ model, file });
+}
 
 const field = (block, key) => {
   const m = block.match(new RegExp('^' + key + ':\\s*(.*)$', 'mi'));

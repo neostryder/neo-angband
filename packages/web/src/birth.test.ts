@@ -20,7 +20,6 @@ import {
   Rng,
   colorToCss,
   COLOUR_L_BLUE,
-  COLOUR_WHITE,
   COLOUR_YELLOW,
 } from "@rpgm-tools/neo-angband-core";
 

@@ -35,7 +35,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FEAT, TV } from "../generated/index.js";
+import { TV } from "../generated/index.js";
 import { objectNew } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 import { getLore } from "../mon/lore.js";

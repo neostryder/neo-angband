@@ -1,9 +1,16 @@
 # Parity Closure Checklist (path to certified 4.2.6 parity)
 
-Status: opened 2026-07-15 after a full plan-vs-code audit. This is the governing
-worklist for closing every remaining gap between the port and the 4.2.6 tag
-BEFORE any mod work begins. Ordering: CORE parity gaps first, then verification
-tooling, then (separately, later) mods. Mods are explicitly OUT of scope here.
+> **CLOSED 2026-07-26. All 16 items done, none open.** This is a finished record,
+> not a worklist - nothing here is waiting on anybody. It is kept because each
+> entry says what was closed and how, which is the provenance a future rebase
+> needs. Parity work that comes AFTER this list lives in `docs/PARITY.md` (what
+> parity means and how it is enforced) and `parity/ledger/` (which upstream
+> source each module ports).
+
+Opened 2026-07-15 after a full plan-vs-code audit, as the governing worklist for
+closing every gap between the port and the 4.2.6 tag BEFORE any mod work began.
+Ordering: CORE parity gaps first, then verification tooling, then (separately,
+later) mods. Mods were explicitly OUT of scope here.
 
 Legend: [ ] open, [~] in progress, [x] done.
 

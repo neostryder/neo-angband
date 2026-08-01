@@ -62,14 +62,14 @@ import {
 import type { RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import type { RuneEnv } from "./knowledge.js";
-import { OBJ_NOTICE, objectHasStandardToH, sustainFlag } from "./knowledge.js";
+import { OBJ_NOTICE, sustainFlag } from "./knowledge.js";
 import type { KnownDesc } from "./known-object.js";
 import {
   objectEffectIsKnown,
   objectFullyKnown,
   objectKnownShadow,
 } from "./known-object.js";
-import type { CurseData, GameObject } from "./object.js";
+import type { GameObject } from "./object.js";
 import {
   copyBrands,
   copySlays,
@@ -80,7 +80,6 @@ import {
   tvalIsLight,
   tvalIsMeleeWeapon,
   tvalIsPotion,
-  tvalIsRod,
   tvalIsScroll,
   tvalIsStaff,
   tvalIsUseable,
@@ -771,7 +770,7 @@ function oCalcCrits(
 ): OCritResult {
   if (crit.levels.length === 0) return { dice: 0, fracDice: ratConstruct(0, 1) };
   const maxAdded = sumOCriticals(crit.levels);
-  let power = Math.trunc((power0 * powerNum) / powerDen);
+  const power = Math.trunc((power0 * powerNum) / powerDen);
   const chanceNum = power * crit.chancePowerScaleNumerator;
   const chanceDen =
     power * crit.chancePowerScaleDenominator + crit.chanceAddDenominator;
@@ -1138,7 +1137,7 @@ function oObjKnownDamage(deps: ObjectInfoDeps, obj: GameObject, throwIt: boolean
     let round = average % 1000;
     average = Math.trunc(average / 1000);
     const u1 = ratToUint(fracDice, average);
-    let temp0 = dice * average + Math.trunc((dice * round) / 1000) + u1.value;
+    const temp0 = dice * average + Math.trunc((dice * round) / 1000) + u1.value;
     const fracTemp = ratConstruct(u1.remainder, fracDice.d);
     const u2 = ratToUint(fracTemp, 1000);
     round = ((dice * round) % 1000) + u2.value;

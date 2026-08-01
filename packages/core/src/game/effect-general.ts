@@ -714,7 +714,6 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
   if (!env) return true;
   const { state } = env;
   const p = state.actor.player;
-  const tp = env.teleport ?? {};
 
   /* Calculate target depth (effect-handler-general.c:1167-1169) - through
    * dungeon_get_next_level, so the quest scan and the max_depth clamp both

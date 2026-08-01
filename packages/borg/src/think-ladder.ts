@@ -379,7 +379,9 @@ export function borgThinkDungeon(
   const g = self.goal;
   const flow = session.flow;
   const st = flow.state;
-  const fight = getFightState(w);
+  /* Primes the per-world fight state before the ladder runs; the fight rungs read
+   * it back through the same memo rather than from here. */
+  getFightState(w);
   const dg = getDangerGlobals(w);
   const itemDeps = buildItemDeps(session);
 

@@ -44,7 +44,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
-import { getQuantity, itemSelect, selectFromMenu } from "./overlay";
+import { getQuantity, itemSelect } from "./overlay";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
 

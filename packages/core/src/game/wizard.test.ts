@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { EF, KF, SQUARE, TMD, TV } from "../generated/index.js";
+import { KF, SQUARE, TMD, TV } from "../generated/index.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { loc } from "../loc.js";
 import {

@@ -52,6 +52,10 @@ function borgEquipsItemPresent(ctx: BorgContext, d?: ItemDeps): boolean {
 function decurseCommand(
   ctx: BorgContext,
   d?: ItemDeps,
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted and then
+   * dropped: the sibling above passes it to borgSpellOkayFail and this one does not,
+   * so the spell path here skips a check its own caller applied. A Borg gap, named
+   * rather than silenced. */
   playerHas?: (flag: string) => boolean,
 ): AgentCommand | null {
   return (

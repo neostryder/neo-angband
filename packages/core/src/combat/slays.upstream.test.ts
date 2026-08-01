@@ -13,11 +13,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { FlagSet } from "../bitflag.js";
-import { RF } from "../generated/index.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson, Brand, Slay } from "../obj/types.js";
 import { objectNew, sameMonstersSlain } from "../obj/object.js";
-import type { GameObject } from "../obj/object.js";
 import { RF_SIZE } from "../mon/types.js";
 import type { MonsterRace } from "../mon/types.js";
 import { blankMonster } from "../mon/monster.js";

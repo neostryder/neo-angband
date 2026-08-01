@@ -74,7 +74,7 @@
 
 import { EF, KF, ORIGIN, PROJ, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
-import { PLAYER_EXP, PY_MAX_EXP, playerExpGain, playerExpLose } from "../player/exp.js";
+import { PY_MAX_EXP, playerExpGain, playerExpLose } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
 import { PY_MAX_LEVEL } from "../player/calcs.js";
 import { STAT_MAX } from "../player/types.js";

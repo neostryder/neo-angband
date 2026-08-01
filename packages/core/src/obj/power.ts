@@ -30,11 +30,10 @@ import {
   tvalIsAmmo,
   tvalIsJewelry,
   tvalIsLauncher,
-  tvalIsLight,
   tvalIsMeleeWeapon,
 } from "./object.js";
 import type { CurseObject, ElementInfo, ObjectProperty } from "./types.js";
-import { EL_INFO_IGNORE, ELEM_MAX, OBJ_MOD_MAX, OBJ_PROPERTY, OFT } from "./types.js";
+import { EL_INFO_IGNORE, OBJ_MOD_MAX, OBJ_PROPERTY, OFT } from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /* Power algorithm constants (obj-power.h)                              */
@@ -61,6 +60,7 @@ const INHIBIT_SHOTS = 21;
 const HIGH_TO_AC = 26;
 const VERYHIGH_TO_AC = 36;
 const INHIBIT_AC = 56;
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- obj-power.c's constant block, transcribed whole */
 const AMMO_RESCALER = 20;
 
 /* ------------------------------------------------------------------ */

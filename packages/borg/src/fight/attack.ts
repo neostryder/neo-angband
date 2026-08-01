@@ -1496,7 +1496,14 @@ function auxRodUnknown(ctx: BorgContext, fs: FightState, dam: number, typ: numbe
   return bN;
 }
 
-/** borg_attack_aux_activation (attack.c:3044). */
+/**
+ * borg_attack_aux_activation (attack.c:3044).
+ *
+ * UNWIRED. Ported, and nothing calls it - so the Borg never attacks with an item
+ * activation, which upstream's ladder does consider. This is a real gap, tracked
+ * rather than deleted: the port is right, the call site is missing.
+ */
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- unwired port, see above */
 function auxActivation(ctx: BorgContext, fs: FightState, act: string, rad: number, dam: number, typ: number, aim: boolean): number {
   if (trait(ctx, BI.ISBLIND) || trait(ctx, BI.ISCONFUSED) || trait(ctx, BI.ISIMAGE)) return 0;
   if (fs.simulate && ctx.rng.randint0(100) < 2) return 0;

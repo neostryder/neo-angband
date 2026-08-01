@@ -32,7 +32,7 @@
  * light / trap layers.
  */
 
-import { TF, TRF, TMD } from "../generated/index.js";
+import { TF, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import { qpNew } from "../z-queue.js";
@@ -51,9 +51,7 @@ import {
   squareIsVisibleTrap,
   squareDestroyTrap,
   squareIsWebbed,
-  squareRemoveTrap,
-  squareTrap,
-} from "./trap.js";
+  } from "./trap.js";
 import { DIGGING, calcDiggingChances } from "./cave-cmd.js";
 import { playerConfuseDir } from "./obj-cmd.js";
 import { energyPerMove, walkAction } from "./player-turn.js";
