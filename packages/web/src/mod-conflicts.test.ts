@@ -97,10 +97,10 @@ describe("behaviour: two mods contributing one hook", () => {
       ],
     });
 
-  /* THE WORST CASE, and the one that was silent: for a first-answer hook the
-   * second mod's rule never runs, so its author and its player both believe it
+  /* THE WORST CASE, and the one that was silent: for a last-answer hook the
+   * earlier mod's rule never runs, so its author and its player both believe it
    * is working. */
-  it("puts a first-answer hook in the contested group and says the loser never runs", () => {
+  it("puts a last-answer hook in the contested group and says the loser never runs", () => {
     const { contested, combined } = conflictLines(both("walkBlockedByDiggable"));
     expect(combined).toEqual([]);
     expect(contested).toHaveLength(1);
@@ -108,12 +108,14 @@ describe("behaviour: two mods contributing one hook", () => {
     expect(contested[0]).toContain("diggable rock");
   });
 
-  it("names the FIRST mod as the one that runs, matching composeModHooks", () => {
-    expect(layerSlots(both("walkBlockedByDiggable"))[0]?.winner).toBe("a");
+  /* The report and the fold have to name the SAME mod, and until 2026-08-02
+   * they both named "a" - the earlier one - against the manager's own row. */
+  it("names the LAST mod as the one that runs, matching composeModHooks", () => {
+    expect(layerSlots(both("walkBlockedByDiggable"))[0]?.winner).toBe("b");
   });
 
-  /* Five of the seven hooks combine, so a single "later wins" sentence would be
-   * a lie about most of them. */
+  /* Five of the seven hooks combine. They still resolve later-wins; there is
+   * simply nothing for a winner to win, which is why the line says so. */
   it("puts a veto hook in the combining group, with no winner", () => {
     const { contested, combined } = conflictLines(both("artifactCommit"));
     expect(contested).toEqual([]);

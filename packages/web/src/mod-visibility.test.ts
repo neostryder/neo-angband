@@ -136,11 +136,24 @@ describe("content composes AFTER the mods directory is latched", () => {
 });
 
 describe("one broken mod costs that mod, not the game", () => {
-  it("drops a mod whose patch target does not exist and still starts", async () => {
-    /* composeContentPacks THROWS here (compose.ts "patch target ... does not
-     * exist"), and pack.ts composes with no try, so this used to be a blank page:
-     * no canvas, no mod manager, and therefore no way to turn the offending mod
-     * off again short of clearing localStorage. */
+  /**
+   * NARROWED TWICE, and the second narrowing is 2026-08-02.
+   *
+   * First this whole class of mistake was a BLANK PAGE: composeContentPacks threw
+   * and pack.ts composes with no try, so a mod's typo left no canvas, no mod
+   * manager, and no way to turn the offender off short of clearing localStorage.
+   * composeDroppingBroken made it cost the mod.
+   *
+   * Costing the MOD was still too coarse for a dangling ref. An engine release
+   * that renames one record would take out a mod that patches forty, along with
+   * its code, its rules and its tiles - which is the cost that makes an author
+   * republish on every engine patch. It now costs the OP.
+   *
+   * Both tests are here because both behaviours are still live and they must not
+   * be confused: a bad contribution is skipped, an unsatisfiable dependency graph
+   * still drops the pack, and there is no single op to skip in the second case.
+   */
+  it("costs the PATCH when a ref does not exist, and keeps the rest of the mod", async () => {
     const pack = await import("./pack");
     const broken: DiskPack = {
       manifest: {
@@ -150,25 +163,61 @@ describe("one broken mod costs that mod, not the game", () => {
         shape: "content",
         dependencies: { core: "*" },
       } as DiskPack["manifest"],
-      files: { monster: { patches: { "core:no-such-monster-at-all": { name: "x" } } } },
+      files: {
+        monster: {
+          patches: { "core:no-such-monster-at-all": { name: "x" } },
+          /* The forty that ARE fine, standing in as one. */
+          records: [{ name: "Survivor Hound" }],
+        },
+      },
       code: [],
       assets: [],
     };
     setDiskPacks(folderWith(broken, patchingPack("good", "Grip, the Good Hound")));
-    /* The game composes. */
-    const monsters = pack.loadGamePack().mon.monsters as { name?: string }[];
-    expect(monsters.length).toBeGreaterThan(0);
-    /* The INNOCENT mod still took effect - a blanket "drop every mod" would pass
-     * every other assertion here. */
-    expect(monsters.map((m) => m.name)).toContain("Grip, the Good Hound");
-    /* And the broken one is named, on its own row. */
+    const names = (pack.loadGamePack().mon.monsters as { name?: string }[]).map((m) => m.name);
+
+    expect(names).toContain("Grip, the Good Hound"); // the innocent mod
+    expect(names).toContain("Survivor Hound"); // the rest of the broken one
+
     const mine = problemsFor(pack.diskPackStatus().problems, "broken");
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toContain("none of this mod's content loaded");
+    expect(mine[0]).toContain("core:no-such-monster-at-all");
+    expect(mine[0]).not.toContain("none of this mod's content loaded");
     expect(problemsFor(pack.diskPackStatus().problems, "good")).toEqual([]);
+    /* Its records ARE in the game, so its namespace is present - the quarantine
+     * question has to be answered by what composed, not by whether anything went
+     * wrong. */
+    expect(pack.presentNamespaces().has("broken")).toBe(true);
+  });
+
+  it("still drops the whole pack when the load order itself cannot be resolved", async () => {
+    /* resolveLoadOrder throws on a missing dependency, and that is a statement
+     * about the SET of mods rather than one contribution: there is no op to skip,
+     * and dropping the pack is what makes the others loadable. */
+    const pack = await import("./pack");
+    const orphan: DiskPack = {
+      manifest: {
+        id: "orphan",
+        name: "orphan",
+        version: "1.0.0",
+        shape: "content",
+        dependencies: { "a-mod-that-is-not-installed": "*" },
+      } as DiskPack["manifest"],
+      files: { monster: { records: [{ name: "Never Loaded Hound" }] } },
+      code: [],
+      assets: [],
+    };
+    setDiskPacks(folderWith(orphan, patchingPack("good", "Grip, the Good Hound")));
+    const names = (pack.loadGamePack().mon.monsters as { name?: string }[]).map((m) => m.name);
+
+    expect(names).toContain("Grip, the Good Hound");
+    expect(names).not.toContain("Never Loaded Hound");
+    const mine = problemsFor(pack.diskPackStatus().problems, "orphan");
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toContain("none of this mod's content loaded");
     /* Dropped means ABSENT, so its namespace must not be called present: a
      * rehydrated orphan with no content behind it is worse than a quarantined one. */
-    expect(pack.presentNamespaces().has("broken")).toBe(false);
+    expect(pack.presentNamespaces().has("orphan")).toBe(false);
   });
 });
 

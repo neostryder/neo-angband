@@ -47,9 +47,17 @@ describe("contestedSlots", () => {
     expect(slot?.winner).toBe("other");
   });
 
-  it("gives a first-answer slot to the first claimant", () => {
-    const [slot] = contestedSlots("behaviour", "first-answer", on("h", "x", "frost", "runes"));
-    expect(slot?.winner).toBe("frost");
+  /* THE CONSISTENCY CLAIM, in one assertion: every fold that picks a winner
+   * picks the same claim as last-wins does. A behaviour hook that resolved to
+   * "frost" here while the record layer resolved to "runes" is the state this
+   * model was in until 2026-08-02, and it is what made the manager's one lever
+   * mean two opposite things depending on which layer a mod happened to use. */
+  it("gives a last-answer slot to the last claimant, same as every other winner", () => {
+    const claimants = on("h", "x", "frost", "runes");
+    const [behaviour] = contestedSlots("behaviour", "last-answer", claimants);
+    const [record] = contestedSlots("record", "last-wins", claimants);
+    expect(behaviour?.winner).toBe("runes");
+    expect(behaviour?.winner).toBe(record?.winner);
   });
 
   it("names no winner for a fold that combines", () => {
@@ -72,7 +80,7 @@ describe("foldDiscards", () => {
   /* The three that discard are the ones worth a player's attention; the rest
    * combine and are reported only so the picture is complete. */
   it("is true exactly for the folds that drop somebody's contribution", () => {
-    const discarding: Fold[] = ["last-wins", "first-answer", "single-slot"];
+    const discarding: Fold[] = ["last-wins", "last-answer", "single-slot"];
     const combining: Fold[] = ["all-must-agree", "chained", "any-yes"];
     for (const f of discarding) expect(foldDiscards(f)).toBe(true);
     for (const f of combining) expect(foldDiscards(f)).toBe(false);
@@ -86,11 +94,7 @@ describe("describeContested", () => {
     what: "kobold's speed",
     fold,
     claims: [claim("frost"), claim("runes")],
-    ...(fold === "last-wins" || fold === "single-slot"
-      ? { winner: "runes" }
-      : fold === "first-answer"
-        ? { winner: "frost" }
-        : {}),
+    ...(foldDiscards(fold) ? { winner: "runes" } : {}),
     ...extra,
   });
 
@@ -103,8 +107,12 @@ describe("describeContested", () => {
 
   /* The player needs to know the loser's rule NEVER RUNS here, which is a
    * different and worse outcome than being overwritten. */
-  it("says the losers never run for first-answer", () => {
-    expect(describeContested(slot("first-answer"))).toContain("never get asked");
+  it("says the losers never run for last-answer, and still names load order", () => {
+    const line = describeContested(slot("last-answer"));
+    expect(line).toContain("never get asked");
+    /* The loser needs the same lever named as on every other layer: the reason
+     * runes won is that it loads last, and the fix is to move it. */
+    expect(line).toContain("loads last");
   });
 
   it("says the others do nothing for a single slot", () => {

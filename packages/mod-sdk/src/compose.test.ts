@@ -273,3 +273,84 @@ describe("composePacks", () => {
     expect(() => composePacks([core, dup])).toThrow(/duplicate record/);
   });
 });
+
+/**
+ * THE CLAIM: an engine release that renames one record must not cost a mod
+ * everything else it does.
+ *
+ * The throwing default is right for a mod's own build - the author is there, and
+ * a silent no-op is worse than a failed build. It is wrong for a player's game,
+ * because `composeDroppingBroken` answers a throw by removing the whole pack, so
+ * the same ComposeError that tells an author "fix line 12" tells a player "your
+ * mod is gone". These tests pin the second behaviour, since the first has been
+ * covered since composePacks was written.
+ */
+describe("composePacks with an onRefuse reporter: one bad op costs that op", () => {
+  /** Every refusal, as (packId, why) pairs. */
+  function refusing(): { onRefuse: (id: string, why: string) => void; seen: string[][] } {
+    const seen: string[][] = [];
+    return { onRefuse: (id, why) => void seen.push([id, why]), seen };
+  }
+
+  it("keeps every op that CAN be honoured when one cannot", () => {
+    const { onRefuse, seen } = refusing();
+    const mod: PackContent = {
+      manifest: manifest("frost", { core: "*" }),
+      files: {
+        monster: {
+          records: [{ name: "Ice Kobold", hp: 7 }],
+          fieldPatches: {
+            "core:kobold": [{ op: "set", path: "speed", value: 120 }],
+            "core:renamed-away": [{ op: "set", path: "speed", value: 1 }],
+          },
+        },
+      },
+    };
+    const table = composePacks([core, mod], { onRefuse }).get("monster");
+
+    expect(seen).toEqual([["frost", expect.stringContaining("core:renamed-away")]]);
+    expect(seen[0]?.[1]).toContain("may have been renamed");
+    /* The two survivors are the whole point: the mod's own new monster is in the
+     * game, and its patch to the record that DOES still exist took effect. */
+    expect(table?.get("frost:ice-kobold")?.value["hp"]).toBe(7);
+    expect(table?.get("core:kobold")?.value["speed"]).toBe(120);
+  });
+
+  it("names the pack separately from the sentence, so a host can put it on a row", () => {
+    const { onRefuse, seen } = refusing();
+    composePacks(
+      [core, { manifest: manifest("rude"), files: { monster: { patches: { "core:kobold": { hp: 1 } } } } }],
+      { onRefuse },
+    );
+    expect(seen[0]?.[0]).toBe("rude");
+    expect(seen[0]?.[1]).toContain("does not declare core as a dependency");
+  });
+
+  it("skips only the offending record for a duplicate or nameless add", () => {
+    const { onRefuse, seen } = refusing();
+    const mod: PackContent = {
+      manifest: manifest("sloppy", { core: "*" }),
+      files: {
+        monster: {
+          records: [{ name: "Twin", hp: 1 }, { name: "Twin", hp: 2 }, { hp: 3 }, { name: "Fine", hp: 4 }],
+        },
+      },
+    };
+    const table = composePacks([core, mod], { onRefuse }).get("monster");
+    expect(seen).toHaveLength(2);
+    /* First Twin wins, not last: two records with one name inside ONE pack is
+     * that pack's own bug, not a load-order question, and there is no later mod
+     * for "later wins" to prefer. */
+    expect(table?.get("sloppy:twin")?.value["hp"]).toBe(1);
+    expect(table?.get("sloppy:fine")?.value["hp"]).toBe(4);
+  });
+
+  it("still throws when nobody is listening, so a mod's build fails loudly", () => {
+    const bad: PackContent = {
+      manifest: manifest("bad", { core: "*" }),
+      files: { monster: { patches: { "core:nope": { hp: 1 } } } },
+    };
+    expect(() => composePacks([core, bad])).toThrow(/does not exist/);
+    expect(() => composePacks([core, bad], {})).toThrow(/does not exist/);
+  });
+});

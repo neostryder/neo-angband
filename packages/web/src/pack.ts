@@ -26,7 +26,7 @@ import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angb
 import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import { activeModCode } from "./mod-code";
-import { engineRefusal } from "./mod-engine";
+import { engineAllows, engineProblem } from "./mod-engine";
 import { dedupeProblems, modFaults, type ModProblem } from "./mod-problems";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
@@ -264,8 +264,10 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
     const manifest = modManifest(mod.manifest);
     /* A mod this build refuses composes nothing, so it can conflict with nothing.
      * Listing its overlaps here would send the player looking for a load-order fix
-     * to a problem they do not have. */
-    if (engineRefusal(manifest)) continue;
+     * to a problem they do not have. `engineAllows`, not `engineProblem`: a data
+     * pack outside its declared range has a problem AND composes, so its overlaps
+     * are real and belong in the report. */
+    if (!engineAllows(manifest)) continue;
     if (!hasFacet(manifest, "content")) continue; // nothing to compose
     packs.push({
       manifest,
@@ -412,31 +414,43 @@ export function activePackSetFrom(
 }
 
 /**
- * The enabled mods this build refuses on version grounds, with the reason.
+ * What this build has to say about each enabled mod's engine range, and which of
+ * those mods it is actually holding back.
  *
  * OVER EVERY ENABLED MOD, whatever it contributes - not only the ones that would
  * have reached the composer. A plugin-only or tiles-only mod has no records and so
  * never gets as far as activePackSetFrom's facet check, and it is still a mod the
  * player enabled and is owed an answer about. Running the gate here, ahead of the
- * facet split, is what makes one refusal cover all three doors.
+ * facet split, is what makes one answer cover all three doors.
+ *
+ * TWO LISTS, NOT ONE, since 2026-08-02. `problems` and `blocked` used to be the
+ * same set, because every version mismatch was a refusal. Now a pack with no code
+ * that sits outside its declared range still loads and still gets a line, so the
+ * caller that decides what to compose must read `blocked` - and a caller that
+ * reaches for `problems.length` to mean "held back" is making an error the types
+ * can no longer hide.
  *
  * Pure over its two inputs for the same reason activePackSetFrom is: the line that
  * decides whether a mod loads should be assertable without a bundle.
  */
-export function engineRefusalsFor(
+export function engineProblemsFor(
   mods: ReadonlyMap<string, { manifest: unknown; files: Record<string, unknown> }>,
   enabledIds: readonly string[],
-): readonly ModProblem[] {
-  const out: ModProblem[] = [];
+): { readonly problems: readonly ModProblem[]; readonly blocked: ReadonlySet<string> } {
+  const problems: ModProblem[] = [];
+  const blocked = new Set<string>();
   for (const id of enabledIds) {
     const mod = mods.get(id);
     /* An enabled id with no mod behind it is the manager's problem to report (the
      * catalogue's "listed but not installed" line), not a version question. */
     if (!mod) continue;
-    const refusal = engineRefusal(modManifest(mod.manifest));
-    if (refusal) out.push(refusal);
+    const manifest = modManifest(mod.manifest);
+    const problem = engineProblem(manifest);
+    if (!problem) continue;
+    problems.push(problem);
+    if (!engineAllows(manifest)) blocked.add(id);
   }
-  return out;
+  return { problems, blocked };
 }
 
 /* ------------------------------------------------------------------ *
@@ -504,16 +518,21 @@ function composition(): Composition {
   if (memo && memo.forReport === report && memo.forEnabled === key) return memo;
 
   const mods = discoverMods();
-  /* THE ENGINE GATE, ahead of the composer. A mod written for a different build of
-   * the game is held out of the set entirely rather than composed and hoped for:
-   * its records were authored against record shapes and ids this build may no longer
-   * have, and a pack that half-applies is the failure mode with no good diagnosis.
-   * The refusal is carried out of here so the manager can say so on that mod's row. */
-  const refused = engineRefusalsFor(mods, enabledIds);
-  const refusedIds = new Set(refused.map((r) => r.id));
+  /* THE ENGINE GATE, ahead of the composer - and since 2026-08-02 it holds back
+   * only the packs that ship CODE.
+   *
+   * The old reasoning here was that "a pack that half-applies is the failure mode
+   * with no good diagnosis". That was true when it was written and is not now: a
+   * half-applying pack is exactly what composePacks' onRefuse reporter diagnoses,
+   * op by op, on the mod's own row. Which leaves refusing a pack of JSON with
+   * nothing to recommend it - the author's range says what they TESTED, and
+   * treating that as a demand means every content mod goes dark on an engine
+   * release its author never saw. The line still appears; it just no longer takes
+   * the mod with it. */
+  const { problems: refused, blocked } = engineProblemsFor(mods, enabledIds);
   const packs = activePackSetFrom(
     mods,
-    enabledIds.filter((id) => !refusedIds.has(id)),
+    enabledIds.filter((id) => !blocked.has(id)),
   );
   /* composeDroppingBroken, NOT composeContentPacks. `composeContentPacks` THROWS on
    * a class of mod mistake its own header says it reports: a `patches` ref whose

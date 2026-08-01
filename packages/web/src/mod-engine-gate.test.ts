@@ -30,7 +30,7 @@ import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks, type DiskPack } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE, resetModCode } from "./mod-code";
-import { engineAllows, engineRefusal } from "./mod-engine";
+import { engineAllows, engineBlocksCode, engineProblem } from "./mod-engine";
 import { MOD_API_VERSION } from "./mod-plugin";
 import { problemsFor, resetModFaults } from "./mod-problems";
 import { enabledTileModes } from "./tile-mods";
@@ -92,33 +92,88 @@ describe("the gate measures against the PORT's version, not the parity baseline"
    * ranges over - so the gate has to be pinned to which, or the next author to
    * copy a manifest reintroduces it silently. */
   it("accepts a range over ENGINE_VERSION", () => {
-    expect(engineAllows({ id: "m", engine: `>=${ENGINE_VERSION}` })).toBe(true);
+    expect(engineAllows({ id: "m", engine: `>=${ENGINE_VERSION}`, modApi: 1 })).toBe(true);
   });
 
   it("refuses a range over PARITY_BASELINE", () => {
-    expect(engineAllows({ id: "m", engine: PARITY_BASELINE })).toBe(false);
-    expect(engineAllows({ id: "m", engine: "4.2.x" })).toBe(false);
+    for (const engine of [PARITY_BASELINE, "4.2.x"]) {
+      expect(engineAllows({ id: "m", engine, modApi: 1 })).toBe(false);
+      /* Still WRONG for a data pack, and still said - it just no longer takes
+       * the pack with it. `4.2.x` in that field is an author confusing the
+       * upstream release with the port's version, and they need telling. */
+      expect(engineProblem({ id: "m", engine })?.why).toContain(engine);
+    }
   });
 
   it("says nothing about a mod that declares no range", () => {
-    expect(engineRefusal({ id: "m" })).toBeNull();
+    expect(engineProblem({ id: "m" })).toBeNull();
   });
 
   it("attributes the refusal to the mod, unprefixed", () => {
-    const r = engineRefusal({ id: "old-mod", engine: NEVER });
+    const r = engineProblem({ id: "old-mod", engine: NEVER });
     expect(r?.id).toBe("old-mod");
     expect(r?.why.startsWith("old-mod")).toBe(false);
+  });
+});
+
+/* --- the gate is a gate for code and a label for data ---------------------- */
+
+/**
+ * RATIFIED DECISION 18 IS "THE ENGINE LABELS, IT DOES NOT FORBID", and until
+ * 2026-08-02 this gate applied it backwards: it refused to load a pack of JSON
+ * because of a string in its manifest. The author's range says what they TESTED.
+ * Treating it as a demand means every content mod goes dark on an engine release
+ * its author never saw, which is the cost this whole pass exists to remove.
+ *
+ * Code is the genuine exception: it calls functions, and a renamed function is a
+ * crash rather than a missing tile.
+ */
+describe("an out-of-range engine blocks code and labels data", () => {
+  it("blocks a pack that declares modApi, because that pack ships code", () => {
+    expect(engineAllows({ id: "coded", engine: NEVER, modApi: MOD_API_VERSION })).toBe(false);
+  });
+
+  it("loads a pack with no modApi, and still says why it might misbehave", () => {
+    expect(engineAllows({ id: "data", engine: NEVER })).toBe(true);
+    expect(engineProblem({ id: "data", engine: NEVER })?.why).toContain(NEVER);
+  });
+
+  /* The two audiences can do two different things, so they must not be sent the
+   * same sentence: a code pack's player is being told why it is NOT loading, and
+   * a data pack's player is being told what to suspect if something looks off. */
+  it("does not tell a data pack's player that something needs updating", () => {
+    const data = engineProblem({ id: "data", engine: NEVER })?.why ?? "";
+    const code = engineProblem({ id: "coded", engine: NEVER, modApi: 1 })?.why ?? "";
+    expect(data).not.toMatch(/needs an update/u);
+    expect(data).toContain("its data is loaded");
+    expect(code).toMatch(/needs an update/u);
+  });
+
+  /* The plugin loader is holding a plugin.js it can SEE, and it runs the engine
+   * gate before it checks whether modApi was declared at all - so a code pack
+   * that omitted the field must not buy the lenient path with the omission. */
+  it("blocks a code pack that forgot to declare modApi", () => {
+    expect(engineAllows({ id: "forgot", engine: NEVER })).toBe(true);
+    expect(engineBlocksCode({ id: "forgot", engine: NEVER })).not.toBeNull();
+  });
+
+  it("has nothing to say about either kind when the range fits", () => {
+    const fits = `>=${ENGINE_VERSION}`;
+    expect(engineProblem({ id: "data", engine: fits })).toBeNull();
+    expect(engineBlocksCode({ id: "coded", engine: fits, modApi: 1 })).toBeNull();
   });
 });
 
 /* --- door 1: content ------------------------------------------------------- */
 
 describe("door 1 - a content mod written for another build", () => {
-  it("contributes no records", async () => {
+  /* REVERSED 2026-08-02. This used to assert `not.toContain("Grip of stale")`:
+   * a pack of JSON was refused outright over a string in its manifest. The pack
+   * composes fine - that is the point - so now it loads and gets a line. */
+  it("still contributes its records, because data is not what breaks", async () => {
     const pack = await import("./pack");
     setDiskPacks(folderWith(patchingPack("stale", NEVER)));
-    expect(monsterNames(pack)).not.toContain("Grip of stale");
-    expect(monsterNames(pack)).toContain("Grip, Farmer Maggot's Dog");
+    expect(monsterNames(pack)).toContain("Grip of stale");
   });
 
   it("still contributes when its range covers this build", async () => {
@@ -127,13 +182,14 @@ describe("door 1 - a content mod written for another build", () => {
     expect(monsterNames(pack)).toContain("Grip of current");
   });
 
-  it("is kept OUT of the present set, so loadGame does not rehydrate against absent content", async () => {
-    /* The mirror of the quarantine hazard. A refused mod's namespace being
-     * "present" would tell loadGame its orphaned entities can come back - to
-     * records that are not in the game, because the gate held the pack out. */
+  it("is in the present set, because its records ARE in the game", async () => {
+    /* The quarantine hazard runs both ways, and the answer is the same either
+     * way: `presentNamespaces` must agree with what actually composed, or
+     * loadGame rehydrates entities against content that is not there - or
+     * refuses to rehydrate entities against content that is. */
     const pack = await import("./pack");
     setDiskPacks(folderWith(patchingPack("stale", NEVER)));
-    expect(pack.presentNamespaces().has("stale")).toBe(false);
+    expect(pack.presentNamespaces().has("stale")).toBe(true);
   });
 
   it("says why, on that mod's row", async () => {
@@ -145,24 +201,31 @@ describe("door 1 - a content mod written for another build", () => {
     expect(why.join(" ")).toContain(ENGINE_VERSION);
   });
 
-  it("costs that mod and not the game - a healthy mod beside it still loads", async () => {
+  /* Both packs patch the SAME record, so the surviving name IS the answer to
+   * "did the out-of-range pack take part": load order decides it, and an
+   * out-of-range label must not quietly demote a pack out of that contest. */
+  it("takes part in the load order like any other pack, in both directions", async () => {
     const pack = await import("./pack");
     setDiskPacks(folderWith(patchingPack("stale", NEVER), patchingPack("fine")));
-    const names = monsterNames(pack);
-    expect(names).toContain("Grip of fine");
-    expect(names).not.toContain("Grip of stale");
+    expect(monsterNames(pack)).toContain("Grip of fine");
+
+    resetDiskPacks();
+    setDiskPacks(folderWith(patchingPack("fine"), patchingPack("stale", NEVER)));
+    expect(monsterNames(pack)).toContain("Grip of stale");
   });
 
   /* An unreadable range is the AUTHOR's error and must not be dressed as a version
    * mismatch: a player told "one of them needs an update" about a typo goes looking
-   * for a mod release that will never come. */
+   * for a mod release that will never come. It is still only a LABEL on a data
+   * pack, for the same reason the mismatch is - nothing an author can write in
+   * that field makes their JSON unloadable. */
   it("tells an author their range is unreadable, in different words", async () => {
     const pack = await import("./pack");
     setDiskPacks(folderWith(patchingPack("typo", ">=banana")));
     const why = problemsFor(pack.diskPackStatus().problems, "typo").join(" ");
     expect(why).toContain("manifest");
     expect(why).toContain(">=banana");
-    expect(monsterNames(pack)).not.toContain("Grip of typo");
+    expect(monsterNames(pack)).toContain("Grip of typo");
   });
 });
 
@@ -261,12 +324,17 @@ describe("door 3 - a tiles mod written for another build", () => {
     };
   }
 
-  it("contributes no graphics mode", () => {
+  /* REVERSED 2026-08-02, with the argument that used to be here answered rather
+   * than dropped: yes, a stale mapping can draw the wrong tile or none. That is
+   * a failure the player can SEE, on individual tiles, and the alternative is a
+   * whole tileset going dark on an engine patch its author never saw. Pictures
+   * are the least version-sensitive thing a mod ships. */
+  it("still contributes its graphics mode, and is labelled instead", () => {
     const modes = enabledTileModes({
       manifests: new Map([["tiles-mod", tilesManifest(NEVER)]]),
       enabledIds: ["tiles-mod"],
     });
-    expect(modes).toEqual([]);
+    expect(modes.map((m) => m.grafID)).toEqual([101]);
   });
 
   it("still contributes when its range covers this build", () => {

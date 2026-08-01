@@ -382,14 +382,22 @@ somebody's work:
 | Rule flags | last-wins on a flat namespace | silent; two mods share one toggle |
 | Autoplayer (`controller`) | single slot | silent; the second install wins |
 
-**The fold is part of the answer.** Behaviour hooks do not all resolve the same
-way - two are `first-answer` (the loser's rule NEVER RUNS), three are
-`all-must-agree`, one `chained`, one `any-yes` - so a single "later wins"
-sentence would be a lie about five of the seven. `MOD_HOOK_FOLDS` lives in core
-beside `composeModHooks`, and a test in `hooks.test.ts` OBSERVES each fold from
-what the composition actually does rather than restating the table. Pretending
-the layers resolve alike is the RimWorld trap: XML, then xpath, then C#, each
-with its own effective precedence, so "load order" quietly means three things.
+**The fold is part of the answer**, but it is no longer part of the ANSWER TO
+"WHO WINS". Every layer, and every hook, resolves in favour of the mod that
+loads last; what the fold says is whether there was anything for a winner to
+win. Three folds discard a contribution (`last-wins`, `last-answer`,
+`single-slot`) and three combine them (`all-must-agree`, `chained`, `any-yes`),
+and only the first group needs a player to do anything. Pretending the layers
+resolve alike would be the RimWorld trap - XML, then xpath, then C#, each with
+its own effective precedence, so "load order" quietly means three things - but
+so is pretending they resolve DIFFERENTLY when they do not.
+
+Of the seven behaviour hooks, two are `last-answer` (the earlier mod's rule
+never runs), three `all-must-agree`, one `chained`, one `any-yes`.
+`MOD_HOOK_FOLDS` lives in core beside `composeModHooks`, and a test in
+`hooks.test.ts` OBSERVES each fold from what the composition actually does
+rather than restating the table - including *which* contributor ran, which is
+the half that can be wrong while the table still looks right.
 
 Every claim is **derived from what a mod actually contributes** - the refs in
 its files, the keys its hooks factory returned, the grafIDs its manifest claims.
@@ -408,13 +416,43 @@ cycle) still cannot be launched, and the reason is plain language.
 
 ### One winner rule
 
-"Later wins" is now true of every layer. It was not: `composeTileModes` and
-`enabledTileModes` both gave a contested `grafID` to the FIRST claimant, so
-moving a tiles mod later made it lose - while `mods.ts` shipped a live menu row
-reading *"Move later (loads last, wins conflicts)"*. The player's one lever ran
-backwards for one layer, silently, and the conflict report could not see it.
-The row's POSITION still stays with the first claimant, so the Graphics menu
-does not reshuffle when mods are reordered; only which pack draws it changes.
+**The later mod wins. Everywhere. No exceptions.** `mods.ts` ships a live menu
+row reading *"Move later (loads last, wins conflicts)"*, and that row is the
+specification the rest of this section is measured against.
+
+It was false twice, and the second time was found by re-reading the claim that
+the first fix had made it true:
+
+- **2026-08-01.** `composeTileModes` and `enabledTileModes` both gave a
+  contested `grafID` to the FIRST claimant, so moving a tiles mod later made it
+  lose. Silently, and the conflict report could not see it.
+- **2026-08-02.** `walkBlockedByDiggable` and `objectListTiebreak` were
+  `first-answer`: the composed hook walked the contributions in load order and
+  stopped at the first opinion, so the EARLIER mod's rule ran and the later
+  mod's never did. Both are now asked in reverse load order. For the comparator
+  that means the last mod's ordering is the primary key and earlier ones break
+  the ties it leaves - a lexicographic chain, still a total order, and "later
+  wins" for a comparator.
+
+Two folds look like exceptions and are not. `all-must-agree` (the veto hooks)
+and `any-yes` are not answering "whose answer is used?" at all: `true` from
+`historyAdd` means "I have nothing to say about this entry", not "I insist it be
+written", so two mods suppressing two different things do not disagree. Making
+those last-wins would let a later mod's silence cancel an earlier mod's rule -
+breaking both mods for a consistency nobody asked for. The invariant that
+actually matters is that **no mod's opinion is ever discarded in favour of an
+earlier one**, and those two discard nothing.
+
+Two deliberate carve-outs remain, and neither is a load-order question:
+
+- A contested Graphics row keeps the SLOT the first claimant put it in, so the
+  Graphics menu does not reshuffle when mods are reordered. Only which pack
+  draws it changes - **position, not precedence**.
+- A pack in the mods FOLDER that reuses a bundled pack's id loses to the
+  bundled one (`mergeModSources`, `discoverMods`). That is **identity, not
+  order**: the two are rival candidates for the same mod rather than two mods
+  in a sequence, and letting a folder silently redefine what `bug-fixes` means
+  would leave the player with no way to see which one they had enabled.
 
 ### External managers (Vortex, MO2)
 

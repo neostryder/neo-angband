@@ -57,10 +57,12 @@
 
 import { hasFacet, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
-import { engineRefusal } from "./mod-engine";
+import { engineBlocksCode } from "./mod-engine";
 import type { ModProblem } from "./mod-problems";
 import {
+  MOD_API_MIN,
   MOD_API_VERSION,
+  modApiVerdict,
   validateModPlugin,
   type ModPlugin,
 } from "./mod-plugin";
@@ -73,6 +75,17 @@ export interface LoadedModPlugin {
   readonly id: string;
   readonly manifest: PackManifest;
   readonly plugin: ModPlugin;
+  /**
+   * The ABI version this plugin DECLARED, which is not necessarily
+   * MOD_API_VERSION: the host accepts a window (see MOD_API_MIN), and the whole
+   * point of accepting an older ABI is being able to honour it. A host that took
+   * api N-1 plugins without recording which ones they were could not branch on
+   * it, so the window would be a promise with no mechanism behind it.
+   *
+   * Equal to `manifest.modApi`, and read off the manifest, because that is the
+   * copy the host gated on before it imported anything.
+   */
+  readonly api: number;
   /** Where it was imported from, for diagnostics and the mod manager. */
   readonly url: string;
   /**
@@ -124,6 +137,14 @@ export interface LoadModCodeOptions {
   readonly consented: (id: string) => readonly string[];
   /** This host's ABI version; a parameter only so the tests can drive a mismatch. */
   readonly hostApi?: number;
+  /**
+   * The oldest ABI this host still accepts (MOD_API_MIN). A parameter for the
+   * same reason `hostApi` is, and it is the more important of the two to be able
+   * to drive: while MIN and VERSION are both 1 the window is a single point, so
+   * a test that could not widen it would be asserting nothing about the window
+   * at all - and the branch would first run in anger on the day of a bump.
+   */
+  readonly minApi?: number;
   /** Injected for tests, which have no browser module loader to import a URL with. */
   readonly importer?: (url: string) => Promise<unknown>;
 }
@@ -136,6 +157,7 @@ export interface LoadModCodeOptions {
  */
 export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeReport> {
   const hostApi = opts.hostApi ?? MOD_API_VERSION;
+  const minApi = opts.minApi ?? MOD_API_MIN;
   const plugins: LoadedModPlugin[] = [];
   const problems: ModProblem[] = [];
   const skipped: ModProblem[] = [];
@@ -174,8 +196,14 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * Reported here as well as by the content path, rather than deferring to it: a
      * plugin-only mod in a folder is a case the content path sees, but "some other
      * reader will mention it" is not a property this loader can check, and the
-     * aggregator dedupes. */
-    const refusal = engineRefusal(pack.manifest);
+     * aggregator dedupes.
+     *
+     * STILL A HARD REFUSAL HERE, and only here. Since 2026-08-02 an out-of-range
+     * `engine` is a label on a pack of data and a gate on a pack of code, because
+     * data degrades - a patch at a moved record is one reported line - and code
+     * does not: it calls functions, and a renamed function is a crash. This is
+     * the code path, so this is the gate. */
+    const refusal = engineBlocksCode(pack.manifest);
     if (refusal) {
       problems.push({ id, why: refusal.why });
       continue;
@@ -201,18 +229,17 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       });
       continue;
     }
-    if (declared !== hostApi) {
-      /* Both numbers and which way round: a too-new mod needs a newer game, a
-       * too-old one needs updating, and only the pair says which. */
-      problems.push({
-        id,
-        why:
-          declared > hostApi
-            ? `targets mod API ${declared}; this build implements ${hostApi} - the mod needs a newer game`
-            : `targets mod API ${declared}; this build implements ${hostApi} - the mod needs updating for this game`,
-      });
+    /* THE WINDOW, not an equality. Everything in [MOD_API_MIN, hostApi] loads;
+     * see MOD_API_MIN for the two-release rule that makes accepting an older ABI
+     * a promise rather than a hope. A DEPRECATED plugin is reported and then
+     * loaded - the line is for its author, and taking the mod away to deliver it
+     * would be the behaviour the window exists to replace. */
+    const verdict = modApiVerdict(declared, hostApi, minApi);
+    if (!verdict.ok) {
+      problems.push({ id, why: verdict.why });
       continue;
     }
+    if (verdict.deprecated) problems.push({ id, why: verdict.why });
     const wanted = pack.manifest.capabilities ?? [];
     const granted = new Set(opts.consented(id));
     const missing = wanted.filter((c) => !granted.has(c));
@@ -254,7 +281,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     }
 
     const entry = (mod as { default?: unknown } | null)?.default;
-    const wrong = validateModPlugin(entry, hostApi);
+    const wrong = validateModPlugin(entry, hostApi, minApi);
     if (wrong) {
       problems.push({ id, why: wrong });
       continue;
@@ -263,6 +290,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       id,
       manifest: pack.manifest,
       plugin: entry as ModPlugin,
+      api: declared,
       url,
       data: pack.files,
     });
