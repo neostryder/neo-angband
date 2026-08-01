@@ -48,7 +48,7 @@
  * into the list it already shows.
  *
  * THAT PARAGRAPH WAS ONLY TRUE OF THIS FILE'S OWN REFUSALS, and it read as a
- * property of composition (2026-07-31). `composePacks` throws ComposeError on a
+ * property of composition (2026-07-31). `composePacks` threw ComposeError on a
  * patch whose target does not exist, and `resolveLoadOrder` throws on a missing
  * dependency or a cycle - both reached from composeContentPacks, both from a
  * mod's manifest or contribution, and the host does compose at module scope with
@@ -56,6 +56,17 @@
  * a blank page with nothing on screen naming the mod. `composeDroppingBroken`
  * below is the answer, and it is the rule the rest of the mod system already
  * follows: one broken mod costs that mod.
+ *
+ * AND "ONE BROKEN MOD COSTS THAT MOD" WAS ITSELF TOO COARSE (2026-08-02). The two
+ * merge phases disagreed about the same author mistake: a `fieldPatch` at a ref
+ * that does not exist was one reported line for a passthrough file and the loss
+ * of the ENTIRE PACK for a composable one, because only the second went through
+ * a thrower. Nobody chose that; it fell out of which of the two phases a record
+ * file happened to be classified into. composePacks now takes an `onRefuse`
+ * reporter and this file passes one, so both phases refuse the same op the same
+ * way and in the same words. `composeDroppingBroken` is still here for
+ * resolveLoadOrder's throws, which are about the SET of mods rather than one
+ * contribution and genuinely cannot be composed around.
  *
  * `faults` carries the same refusals as `problems` with the pack id kept SEPARATE
  * rather than prefixed into the sentence. A host that wants to show a mod its own
@@ -68,7 +79,7 @@ import type { PackManifest } from "./manifest.js";
 import { slugify } from "./manifest.js";
 import { resolveLoadOrder } from "./resolve.js";
 import { expandSections } from "./sections.js";
-import { composePacks, mergePatch } from "./compose.js";
+import { composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
 import { keyDescription, keySpecFor, recordKey, RECORD_KEY_SPECS } from "./record-key.js";
@@ -319,7 +330,7 @@ function applyPassthroughOps(
         pid,
         kind,
         ref,
-        `no such record exists in ${file} (identity is ${keyDescription(file)})`,
+        `no such record exists in ${file} (identity is ${keyDescription(file)})${RENAMED_HINT}`,
       );
       return null;
     }
@@ -426,7 +437,10 @@ export function composeContentPacks(
     return { manifest: p.manifest, files };
   });
 
-  const game = composePacks(contents);
+  /* Report, do not throw: a patch aimed at a record the engine has since renamed
+   * costs that patch, not the mod. See ComposePacksOptions for why the throwing
+   * default is still the right answer for a mod's own build. */
+  const game = composePacks(contents, { onRefuse: refused.refuse });
 
   const out: Record<string, unknown[]> = {};
   for (const [file, table] of game) {
@@ -503,7 +517,7 @@ export interface DroppedPack {
  * IMPOSSIBLE, and reporting which ones went.
  *
  * WHY THIS EXISTS. Everything in this file reports rather than throws, and that
- * made the throwing paths easy to forget: `composePacks` throws ComposeError on a
+ * made the throwing paths easy to forget: `composePacks` threw ComposeError on a
  * patch whose target does not exist or a duplicate record name, and
  * `resolveLoadOrder` throws ResolveError on a missing dependency or a cycle. Both
  * are reachable from `composeContentPacks` and both are caused by a MOD - so on
@@ -511,6 +525,15 @@ export interface DroppedPack {
  * blank page. Not a bad message: no page, and therefore no mod manager to open
  * and no way to turn the offending mod off again. The only exit was clearing
  * localStorage.
+ *
+ * WHAT IS LEFT FOR IT TO CATCH. composeContentPacks now hands composePacks an
+ * `onRefuse` reporter, so a bad contribution is a reported line rather than a
+ * throw and never reaches here. What still throws is `resolveLoadOrder`: a
+ * missing dependency or a hard cycle is a statement about the SET of enabled
+ * mods, there is no single op to skip, and dropping a pack is the only move that
+ * makes the rest of them loadable. This is not dead code - it is the same
+ * function with a smaller and better-defined job - and the tests below drive it
+ * through resolve.ts rather than through a patch typo.
  *
  * ONE BROKEN MOD COSTS THAT MOD. That is already the rule everywhere else here -
  * a bad record file loses one contribution, a plugin that throws at import loses

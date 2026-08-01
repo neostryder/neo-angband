@@ -65,7 +65,7 @@ export type {
 export { compareSemver, satisfies, SemverError } from "./semver.js";
 export { engineVerdict } from "./engine.js";
 export type { EngineVerdict } from "./engine.js";
-export { ComposeError, composePacks, mergePatch } from "./compose.js";
+export { ComposeError, composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 export { composeContentPacks, composeDroppingBroken } from "./loader.js";
 export type { ComposedContent, ComposeFault, DroppedPack, LoadedPack } from "./loader.js";
 export {
@@ -78,6 +78,7 @@ export {
 export type { RecordKeySpec } from "./record-key.js";
 export type {
   ComposedRecord,
+  ComposePacksOptions,
   FileContribution,
   JsonRecord,
   JsonValue,

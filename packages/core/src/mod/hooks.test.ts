@@ -151,29 +151,32 @@ describe("transform hooks chain in load order", () => {
   });
 });
 
-describe("first-handler hooks stop at the first taker", () => {
-  it("walkBlockedByDiggable: the first non-null answer wins", () => {
+describe("last-handler hooks stop at the LAST taker", () => {
+  it("walkBlockedByDiggable: the last non-null answer wins", () => {
     const composed = composeModHooks([
       { walkBlockedByDiggable: () => 100 },
       { walkBlockedByDiggable: () => 200 },
     ]);
-    expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(100);
+    expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(200);
   });
 
-  it("walkBlockedByDiggable: a later mod cannot double-spend the energy", () => {
+  it("walkBlockedByDiggable: an earlier mod cannot double-spend the energy", () => {
+    /* Reversed on 2026-08-02. It used to be the LATER mod that was not asked,
+     * which meant moving a mod down the list - the manager's own advice for
+     * winning a conflict - took its auto-dig rule out of play. */
     const ran: string[] = [];
     const composed = composeModHooks([
       { walkBlockedByDiggable: () => (ran.push("a"), 100) },
       { walkBlockedByDiggable: () => (ran.push("b"), 200) },
     ]);
     composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS);
-    expect(ran).toEqual(["a"]);
+    expect(ran).toEqual(["b"]);
   });
 
-  it("walkBlockedByDiggable: declining falls through to the next", () => {
+  it("walkBlockedByDiggable: declining falls back to the one before it", () => {
     const composed = composeModHooks([
-      { walkBlockedByDiggable: () => null },
       { walkBlockedByDiggable: () => 50 },
+      { walkBlockedByDiggable: () => null },
     ]);
     expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(50);
   });
@@ -189,10 +192,10 @@ describe("first-handler hooks stop at the first taker", () => {
   it("walkBlockedByDiggable: zero energy is a HANDLED answer, not a decline", () => {
     /* The decline sentinel is null precisely so that a mod can handle the walk
      * and legitimately charge nothing. Using 0 as the sentinel would make a
-     * free action fall through to the next mod and then to core's bump. */
+     * free action fall through to the mod before it and then to core's bump. */
     const composed = composeModHooks([
-      { walkBlockedByDiggable: () => 0 },
       { walkBlockedByDiggable: () => 999 },
+      { walkBlockedByDiggable: () => 0 },
     ]);
     expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(0);
   });
@@ -290,10 +293,17 @@ function guarded(hooks: ModHooks): { hooks: ModHooks; faults: ModHookFault[] } {
  * with two contributors, in both orders, and the fold is derived from what the
  * composition actually did:
  *
- *  - the answer CHANGES with the order, and only the first contributor ran   -> first-answer
+ *  - the answer CHANGES with the order, one contributor ran, and it was the LAST
+ *    one in load order                                                       -> last-answer
+ *  - the same, but the contributor that ran was the FIRST one                -> first-answer
  *  - the answer changes with the order, and both ran                          -> chained
  *  - the answer is order-independent, and one refusal makes it negative       -> all-must-agree
  *  - the answer is order-independent, and one acceptance makes it positive    -> any-yes
+ *
+ * `first-answer` is not a value MOD_HOOK_FOLDS may hold any more - every layer
+ * resolves last-wins as of 2026-08-02 - but `observe` still names it, because a
+ * fold that regressed to asking the earlier mod should fail this test saying
+ * exactly that rather than saying "not last-answer".
  *
  * TypeScript already forces a row per `keyof ModHooks`; this forces the row to
  * be true.
@@ -429,7 +439,15 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       composeModHooks([probe.yes(backward, "b", 2), probe.yes(backward, "a", 1)]) as ModHooks,
     );
 
-    if (!Object.is(ab, ba)) return forward.length === 1 ? "first-answer" : "chained";
+    if (!Object.is(ab, ba)) {
+      if (forward.length !== 1) return "chained";
+      /* One contributor ran and the other was never asked. WHICH one ran is the
+       * entire difference between the two order-dependent folds, and it is the
+       * half a table can get wrong while still looking right: "a" was passed to
+       * composeModHooks first, so seeing "b" here means the fold asked in
+       * reverse load order and the later mod decided. */
+      return forward[0] === "b" ? "last-answer" : "first-answer";
+    }
 
     const log: string[] = [];
     const mixed = probe.run(

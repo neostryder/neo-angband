@@ -187,22 +187,37 @@ export interface ModHooks {
 /**
  * Fold several mods' contributions into the single ModHooks core holds.
  *
- * Order is LOAD order, and what "later wins" means differs per hook because the
- * hooks differ in kind - which is precisely why this is one written-down function
- * and not a generic merge:
+ * Order is LOAD order, and THE LATER MOD WINS EVERY DISAGREEMENT. That is the
+ * rule the mod manager's own row promises the player ("Move later (loads last,
+ * wins conflicts)") and the rule every other composition layer follows, so this
+ * one obeys it too - see the note below for the two folds that look like
+ * exceptions and are not.
  *
+ *  - LAST-HANDLER hooks (walkBlockedByDiggable) are asked in REVERSE load order
+ *    and stop at the first non-null, so the last mod to have an opinion is the
+ *    one whose handling takes effect and no earlier mod can double-spend the
+ *    energy it already paid out.
+ *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
+ *    mod's comparator is the primary key and earlier ones break the ties it
+ *    leaves, which is a valid total order and is "later wins" for a comparator.
+ *  - TRANSFORM hooks (messageText) compose in load order, each seeing the
+ *    previous one's output - so the last mod still speaks last and has the final
+ *    say over the text that reaches the player.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
- *    every contributor must agree, and the first refusal decides. This is the
- *    only safe fold - a mod that vetoes a duplicate artifact must not be
- *    overruled by a later mod that merely has no opinion.
- *  - TRANSFORM hooks (messageText) compose in order, each seeing the previous
- *    one's output.
- *  - FIRST-HANDLER hooks (walkBlockedByDiggable) stop at the first non-null, so
- *    an earlier mod's handling wins and a later one cannot double-spend energy.
+ *    every contributor runs and any refusal decides.
  *  - ANY hooks (saveNoiseScent) are disjunctive: one mod asking for the data is
  *    enough, because the data is additive and a second mod cannot object.
- *  - ORDERING hooks (objectListTiebreak) stop at the first non-zero answer, the
- *    same way a lexicographic comparator chains.
+ *
+ * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
+ * mods disagree about one thing - whose answer is used?", and a veto hook is not
+ * asking that question. `true` from historyAdd means "I have nothing to say
+ * about this entry", not "I insist it be written": the hook is called once per
+ * entry, and two mods suppressing two different things are not in conflict at
+ * all. Resolving it last-wins would mean a later mod's silence cancelled an
+ * earlier mod's rule, breaking BOTH mods to satisfy a consistency nobody asked
+ * for. Same for saveNoiseScent, where `false` is "I do not need this" and the
+ * data is additive. The consistency that matters is that no mod's opinion is
+ * ever DISCARDED in favour of an earlier one, and these two discard nothing.
  *
  * Returns undefined when nothing contributed, so the caller can leave the field
  * absent rather than storing an empty object - keeping "no mod loaded" and "a
@@ -217,17 +232,19 @@ export interface ModHooks {
  */
 export type ModHookFold =
   | "all-must-agree" // every contributor runs; the first refusal decides
-  | "chained" // each sees the previous one's output
-  | "first-answer" // the first contributor with an opinion decides
+  | "chained" // each sees the previous one's output, so the last one speaks last
+  | "last-answer" // the LAST contributor with an opinion decides; earlier ones are not asked
   | "any-yes"; // one contributor asking for it is enough
 
 /**
  * WHICH FOLD EACH HOOK USES, next to the function that implements it.
  *
  * The conflict report needs this to tell the player whether two mods touching
- * one hook COMBINE or whether one of them is being silently ignored - and those
- * are genuinely different outcomes here, which is why a single "later wins"
- * sentence would be a lie for five of the seven.
+ * one hook COMBINE or whether one of them is being silently ignored. Every fold
+ * here obeys "the later mod wins"; what differs is whether there is anything for
+ * a winner to win, and only `last-answer` leaves a contribution unrun. That
+ * distinction is the whole reason the report names the fold instead of printing
+ * one sentence about load order.
  *
  * It lives in core, beside composeModHooks, because a second copy in the host is
  * the shape that drifts: the host is where the report is rendered, so a hook
@@ -236,8 +253,8 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
-  walkBlockedByDiggable: "first-answer",
-  objectListTiebreak: "first-answer",
+  walkBlockedByDiggable: "last-answer",
+  objectListTiebreak: "last-answer",
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
   historyAdd: "all-must-agree",
@@ -372,9 +389,18 @@ export function composeModHooks(
 
   const out: ModHooks = {};
 
-  const walk = list.map((c) => c.walkBlockedByDiggable).filter(isFn);
+  /* REVERSE load order for both of the last-answer folds, so the mod the player
+   * moved to the bottom of the list is the one that gets asked first and
+   * therefore the one that decides. Reversed here, once, rather than by walking
+   * the array backwards at call time: the reversal is a property of the FOLD, and
+   * a `for (let i = n - 1; ...)` in the hot path is the kind of detail a later
+   * edit quietly straightens out. */
+  const walk = list.map((c) => c.walkBlockedByDiggable).filter(isFn).reverse();
   if (walk.length > 0) {
     out.walkBlockedByDiggable = (state, grid, deps): number | null => {
+      /* Declining is contractually free of observable effect (see the member's
+       * doc), so asking a mod that then declines costs nothing - which is what
+       * makes it safe to ask them in any order at all. */
       for (const fn of walk) {
         const energy = fn(state, grid, deps);
         if (energy !== null) return energy;
@@ -383,9 +409,12 @@ export function composeModHooks(
     };
   }
 
-  const tiebreak = list.map((c) => c.objectListTiebreak).filter(isFn);
+  const tiebreak = list.map((c) => c.objectListTiebreak).filter(isFn).reverse();
   if (tiebreak.length > 0) {
     out.objectListTiebreak = (a, b): number => {
+      /* The last mod's comparator is the primary sort key and the earlier ones
+       * only break the ties it leaves equal - a lexicographic chain, still a
+       * consistent total order, and "the later mod wins" for a comparator. */
       for (const fn of tiebreak) {
         const r = fn(a, b);
         if (r !== 0) return r;

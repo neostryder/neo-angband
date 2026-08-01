@@ -24,6 +24,10 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
 - `MOD_SEAMS.md`: the CORE seams a mod reaches through - the `ModHooks`
   behaviour interface, its per-hook fold rules, and how a patch is turned
   on. Describes what is built.
+- `MOD_COMPATIBILITY.md`: what an engine release may and may not break, and
+  what you have to do about it. The four gates that can strand a mod, what
+  to write in `engine`, the two-release rule for an ABI bump, and the honest
+  gap around `ctx.core`. Read this before publishing anything.
 - `MOD_REACH.md`: the MEASURED answer to "how much of the game can a mod
   actually make over today" - hook count, a census of the port's dispatch
   tables and which are mod-reachable, what data layering really supports,
@@ -202,6 +206,12 @@ Two levels:
 against. Types are exported for TypeScript authors; everything is plain
 JSON at rest. Breaking changes to pack semantics bump the SDK major
 version and are called out in release notes.
+
+**`MOD_COMPATIBILITY.md` is the page that answers "will my mod still work".**
+In one line: a data-only mod should survive engine releases without being
+republished, and a mod that ships code gets a release's warning before an ABI
+change strands it. That page has the mechanisms, the measurements behind them,
+and the one place the promise does not yet hold (`ctx.core`).
 
 ## Licensing for mod authors
 

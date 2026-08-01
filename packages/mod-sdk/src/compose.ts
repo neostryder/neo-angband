@@ -118,17 +118,80 @@ function ownerOf(ref: string): string {
 }
 
 /**
+ * How composePacks should react to a contribution it cannot honour.
+ *
+ * WHY THIS IS AN OPTION AND NOT A DECISION. The same event has two right answers
+ * depending on who is watching. A mod's BUILD should stop dead on a patch aimed
+ * at nothing, because the author is right there and a silent no-op is the worst
+ * thing you can hand them. A player's GAME should not: their mod was fine when it
+ * was published and the record it patches has since moved, and taking the whole
+ * mod away - or the whole game - is a punishment for the engine's change.
+ *
+ * So the throwing behaviour stays the default (every existing caller and the
+ * author-facing tooling keep it) and the host passes a reporter.
+ */
+export interface ComposePacksOptions {
+  /**
+   * Called instead of throwing, with the offending pack's id kept separate from
+   * the sentence so a host can put the line on that mod's own row. The
+   * contribution is then SKIPPED and composition continues.
+   */
+  readonly onRefuse?: (packId: string, why: string) => void;
+}
+
+/**
+ * The tail every "no such record" refusal carries, in both merge phases.
+ *
+ * Said because the likeliest cause is not a typo. A pack that composed when it
+ * was published and does not now is usually pointing at a record the engine or
+ * another pack has since renamed, and an author reading "does not exist" about a
+ * ref they know they got right will go looking in the wrong place.
+ */
+export const RENAMED_HINT =
+  " - it may have been renamed or removed by a newer version of the pack that owns it";
+
+/** How a refused op reads, matched to the passthrough path's wording. */
+const REF_VERB = {
+  patches: "patches",
+  replaces: "replaces",
+  fieldPatches: "fieldPatches",
+  removes: "removes",
+} as const;
+
+/**
  * Compose packs (already in resolved load order) into per-file record
  * maps. Iteration order of each map is deterministic: records appear
  * in the order their owning packs added them.
+ *
+ * ONE BROKEN OP COSTS THAT OP, when `onRefuse` is supplied. Until 2026-08-02 the
+ * only behaviour was to throw, and the caller that mattered - composeContentPacks
+ * on the web host - sat under composeDroppingBroken, which answers a throw by
+ * removing the whole PACK. The result was an asymmetry nobody chose: the 20
+ * passthrough record files reported a missing ref and carried on, and the 24
+ * composable ones took the entire mod down for the same author mistake. A mod
+ * patching forty monsters lost all forty, plus its code and its rules, because
+ * one of the forty had been renamed in the engine.
+ *
+ * That is also the difference between an engine patch that costs mod authors a
+ * release and one that costs them nothing, which is the property this exists for.
  */
 export function composePacks(
   packs: readonly PackContent[],
+  options: ComposePacksOptions = {},
 ): Map<string, Map<PackRef, ComposedRecord>> {
   const game = new Map<string, Map<PackRef, ComposedRecord>>();
+  const onRefuse = options.onRefuse;
 
   for (const pack of packs) {
     const pid = pack.manifest.id;
+
+    /** Report and skip, or throw when nobody is listening. Returns false either way. */
+    const refuse = (why: string, thrown: string): false => {
+      if (!onRefuse) throw new ComposeError(`${pid}/${thrown}`);
+      onRefuse(pid, why);
+      return false;
+    };
+
     for (const [file, contrib] of Object.entries(pack.files)) {
       let table = game.get(file);
       if (!table) {
@@ -136,14 +199,47 @@ export function composePacks(
         game.set(file, table);
       }
 
+      /**
+       * Can `pid` touch `ref`, and does it exist? Reports the same two reasons
+       * the passthrough path reports, in the same words, so one mod's row does
+       * not read differently depending on which of the two merge phases its file
+       * happened to land in.
+       */
+      const addressable = (kind: keyof typeof REF_VERB, ref: PackRef): boolean => {
+        const verb = REF_VERB[kind];
+        if (!table.has(ref)) {
+          const noun = kind === "removes" ? "remove" : kind === "replaces" ? "replace" : kind === "patches" ? "patch" : "fieldPatch";
+          return refuse(
+            `${file} ${verb} "${ref}", but no such record exists in ${file} (identity is the record's name)${RENAMED_HINT}`,
+            `${file}: ${noun} target ${ref} does not exist`,
+          );
+        }
+        if (!mayModify(pack.manifest, ownerOf(ref))) {
+          const act = kind === "removes" ? "remove" : "modify";
+          return refuse(
+            `${file} ${verb} "${ref}", but ${pid} does not declare ${ownerOf(ref)} as a dependency`,
+            `${file}: cannot ${act} ${ref} without declaring ${ownerOf(ref)} as a dependency`,
+          );
+        }
+        return true;
+      };
+
       for (const rec of contrib.records ?? []) {
         const name = rec["name"];
         if (typeof name !== "string" || name.length === 0) {
-          throw new ComposeError(`${pid}/${file}: record without a name`);
+          refuse(
+            `${file} contributes a record with no "name", so nothing can address it and it was left out`,
+            `${file}: record without a name`,
+          );
+          continue;
         }
         const ref = packRef(pid, name);
         if (table.has(ref)) {
-          throw new ComposeError(`${pid}/${file}: duplicate record ${ref}`);
+          refuse(
+            `${file} adds two records that both resolve to "${ref}", so the second was left out`,
+            `${file}: duplicate record ${ref}`,
+          );
+          continue;
         }
         table.set(ref, { ref, owner: pid, modifiedBy: [], value: rec });
       }
@@ -151,16 +247,8 @@ export function composePacks(
       for (const kind of ["patches", "replaces"] as const) {
         for (const [refStr, body] of Object.entries(contrib[kind] ?? {})) {
           const ref = refStr as PackRef;
-          const existing = table.get(ref);
-          if (!existing) {
-            const verb = kind === "patches" ? "patch" : "replace";
-            throw new ComposeError(`${pid}/${file}: ${verb} target ${ref} does not exist`);
-          }
-          if (!mayModify(pack.manifest, ownerOf(ref))) {
-            throw new ComposeError(
-              `${pid}/${file}: cannot modify ${ref} without declaring ${ownerOf(ref)} as a dependency`,
-            );
-          }
+          if (!addressable(kind, ref)) continue;
+          const existing = table.get(ref) as ComposedRecord;
           existing.value =
             kind === "patches" ? mergePatch(existing.value, body) : body;
           existing.modifiedBy.push(pid);
@@ -169,31 +257,15 @@ export function composePacks(
 
       for (const [refStr, ops] of Object.entries(contrib.fieldPatches ?? {})) {
         const ref = refStr as PackRef;
-        const existing = table.get(ref);
-        if (!existing) {
-          throw new ComposeError(
-            `${pid}/${file}: fieldPatch target ${ref} does not exist`,
-          );
-        }
-        if (!mayModify(pack.manifest, ownerOf(ref))) {
-          throw new ComposeError(
-            `${pid}/${file}: cannot modify ${ref} without declaring ${ownerOf(ref)} as a dependency`,
-          );
-        }
+        if (!addressable("fieldPatches", ref)) continue;
+        const existing = table.get(ref) as ComposedRecord;
         existing.value = applyFieldPatch(existing.value, ops);
         existing.modifiedBy.push(pid);
       }
 
       for (const refStr of contrib.removes ?? []) {
         const ref = refStr as PackRef;
-        if (!table.has(ref)) {
-          throw new ComposeError(`${pid}/${file}: remove target ${ref} does not exist`);
-        }
-        if (!mayModify(pack.manifest, ownerOf(ref))) {
-          throw new ComposeError(
-            `${pid}/${file}: cannot remove ${ref} without declaring ${ownerOf(ref)} as a dependency`,
-          );
-        }
+        if (!addressable("removes", ref)) continue;
         table.delete(ref);
       }
     }

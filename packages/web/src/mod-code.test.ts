@@ -20,7 +20,7 @@ import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadModCode, hasPlugin, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
-import { MOD_API_VERSION, validateModPlugin } from "./mod-plugin";
+import { MOD_API_MIN, MOD_API_VERSION, modApiVerdict, validateModPlugin } from "./mod-plugin";
 
 /** A pack that ships code, with whatever manifest overrides a case needs. */
 function codePack(id: string, over: Partial<PackManifest> = {}): DiskPack {
@@ -137,10 +137,22 @@ describe("a folder can supply code", () => {
 });
 
 describe("every gate is applied BEFORE the import", () => {
-  /** Run one case and report whether the module was imported at all. */
-  async function attempt(pack: DiskPack, opts: Partial<Parameters<typeof loadModCode>[0]> = {}) {
+  /**
+   * Run one case and report whether the module was imported at all.
+   *
+   * `pluginApi` is separate from `opts` because the plugin's own `api` field is
+   * re-checked AFTER the import, so a case driving a window this build does not
+   * have has to move the fake module's number too - and overriding `importer`
+   * from a caller would silently kill the counter that makes `imported` mean
+   * anything, which is the one thing this suite exists to measure.
+   */
+  async function attempt(
+    pack: DiskPack,
+    opts: Partial<Parameters<typeof loadModCode>[0]> = {},
+    pluginApi: number = MOD_API_VERSION,
+  ) {
     const importer = vi.fn(() =>
-      Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
+      Promise.resolve({ default: { api: pluginApi, hooks: () => undefined } }),
     );
     const report = await loadModCode({
       packs: [pack],
@@ -194,11 +206,78 @@ describe("every gate is applied BEFORE the import", () => {
     expect(problemLines(newer.report.problems)[0]).toContain(`${MOD_API_VERSION}`);
     expect(problemLines(newer.report.problems)[0]).toContain("newer game");
 
-    const older = await attempt(codePack("past", { modApi: MOD_API_VERSION + 1 }), {
+    /* Below the window's FLOOR, not merely below the current version - the second
+     * of those loads now (see the window suite below). */
+    const older = await attempt(codePack("past", { modApi: MOD_API_VERSION }), {
       hostApi: MOD_API_VERSION + 2,
+      minApi: MOD_API_VERSION + 1,
     });
     expect(older.imported).toBe(0);
     expect(problemLines(older.report.problems)[0]).toContain("needs updating");
+  });
+
+  /**
+   * THE WINDOW. Until 2026-08-02 the ABI check was `declared !== MOD_API_VERSION`,
+   * so the day the host bumped to 2, every mod in existence stopped loading at
+   * once - before any author could react, for a change most were not affected by.
+   *
+   * MOD_API_MIN and MOD_API_VERSION are both 1 today, which makes the window a
+   * single point and every one of these branches unreachable from the constants.
+   * That is exactly why `hostApi` and `minApi` are parameters: a window that could
+   * only be tested at its current width would first run in anger on the day of a
+   * bump, which is the worst possible day to find out it was wrong.
+   */
+  describe("the ABI window: a bump costs a release, not every mod at once", () => {
+    /* A host mid-deprecation: it implements 3 and still honours 2. */
+    const MID = { hostApi: 3, minApi: 2 };
+
+    it("loads a plugin one ABI behind, and says so on its row", async () => {
+      const { report, imported } = await attempt(codePack("olde", { modApi: 2 }), MID, 2);
+      expect(imported).toBe(1);
+      expect(report.plugins.map((p) => p.id)).toEqual(["olde"]);
+      const line = problemLines(report.problems)[0] ?? "";
+      expect(line).toContain("compatibility path");
+      expect(line).toContain("rebuilt against 3");
+    });
+
+    /* The whole mechanism behind the promise. A host that accepted an older ABI
+     * without recording WHICH plugins were on it could not honour it - there
+     * would be nothing to branch on - so the window would be a promise with no
+     * way to keep it. */
+    it("records what each plugin declared, not what the host implements", async () => {
+      const { report } = await attempt(codePack("olde", { modApi: 2 }), MID, 2);
+      expect(report.plugins[0]?.api).toBe(2);
+    });
+
+    it("refuses below the floor, and names the floor rather than the current version", async () => {
+      const { report, imported } = await attempt(codePack("ancient", { modApi: 1 }), MID);
+      expect(imported).toBe(0);
+      expect(problemLines(report.problems)[0]).toContain("no longer supports anything below 2");
+    });
+
+    it("still refuses anything above the host, window or no window", async () => {
+      const { imported } = await attempt(codePack("future", { modApi: 4 }), MID);
+      expect(imported).toBe(0);
+    });
+
+    /* The constants themselves have to stay coherent, and this is the assertion
+     * that fails on a careless bump: raising VERSION without deciding what
+     * happens to MIN is the decision two constants exist to force. */
+    it("keeps the shipped window non-empty and pointing the right way", () => {
+      expect(MOD_API_MIN).toBeLessThanOrEqual(MOD_API_VERSION);
+      expect(modApiVerdict(MOD_API_VERSION)).toEqual({ ok: true, deprecated: false });
+      expect(modApiVerdict(MOD_API_MIN).ok).toBe(true);
+    });
+
+    /* validateModPlugin re-checks the plugin's OWN api field after the import,
+     * against the same window from the same function - two copies of "which ABIs
+     * does this host take" is the pair that drifts apart at the first bump. */
+    it("judges the plugin's own api field by the same window as the manifest", () => {
+      const plugin = { api: 2, hooks: () => undefined };
+      expect(validateModPlugin(plugin, 3, 2)).toBeNull();
+      expect(validateModPlugin(plugin, 3, 3)).toContain("needs updating");
+      expect(validateModPlugin(plugin, 1, 1)).toContain("newer game");
+    });
   });
 
   it("does not import a plugin whose capabilities are not consented", async () => {
