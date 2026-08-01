@@ -124,6 +124,16 @@ Documentation accuracy:
 
 ### Changed
 
+- **The first-party mods take their gamedata from npm.** `qol` (v0.11.0) and
+  `bug-fixes` (v0.12.0) each carried a hand-written `content.ts` that read the
+  compiled pack out of a sibling checkout of this repository, because
+  `@rpgm-tools/neo-angband-content` was not published; both files said in their own
+  headers that they would collapse to one import the day it was. They have. The
+  sparse checkout, `NEO_ANGBAND_REPO` and the plugin builder's dependency on a
+  neighbouring working tree are gone from both, so each mod's CI now proves it
+  against exactly what a third-party author would install. Their catalogue entries
+  are re-pinned; `plugin.js` is byte-identical in both, and only `manifest.json`
+  moved.
 - **A mod can be an autoplayer.** `ModPlugin` gains `controller?(ctx)`: return an
   AgentController and the host binds it as the game's command provider. The host
   owns a single slot rather than letting mods call `ctx.core.installController`

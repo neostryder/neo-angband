@@ -132,19 +132,23 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "qol",
     name: "Quality of Life",
     repo: "neostryder/neo-angband-mod-qol",
-    tag: "v0.10.0",
+    /* v0.11.0: at v0.10.0 this mod's manifest declared no `engine` range at all,
+     * while shipping a plugin.js - the one case where the range matters most, since
+     * a plugin written against one ABI is what a mismatched engine actually breaks.
+     * plugin.js is unchanged, byte for byte; only manifest.json moved. */
+    tag: "v0.11.0",
     summary: "Conveniences Angband does not have, each one a switch you can turn off",
     /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
      * the game being FAITHFUL, not the game being worse. A pre-checked row would make
      * the default experience something other than 4.2.6. */
     preChecked: false,
-    approxBytes: 1_689,
+    approxBytes: 1_713,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "a8d90e0114edd2afdc777b96937a94c79295061cd5896383d2f845d9f707e8e9",
+          sha256: "baeebe16d615c832bce7fa9af07a4841599646a3f89ebe17c20a545abb31981e",
         },
         {
           path: "plugin.js",
@@ -157,12 +161,13 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "bug-fixes",
     name: "Bug Fixes",
     repo: "neostryder/neo-angband-mod-bug-fixes",
-    /* v0.11.0, not v0.10.0: that tag's manifest declares `"engine": "4.2.x"` - the
-     * Angband baseline in a field that ranges over the PORT's version - and the
-     * engine gate (mod-engine.ts) now evaluates that field, so v0.10.0 installs and
-     * is then refused. Only `manifest.json` changed; plugin.js's digest is the same
-     * bytes it was at v0.10.0. */
-    tag: "v0.11.0",
+    /* v0.12.0. Two tags before it are wrong to pin: v0.10.0 declares
+     * `"engine": "4.2.x"` - the Angband baseline in a field that ranges over the
+     * PORT's version - which the engine gate (mod-engine.ts) now evaluates, so it
+     * installs and is then refused; and v0.11.0 predates the mod taking its gamedata
+     * from npm rather than from a checkout of this repository. plugin.js has carried
+     * the same digest through all three: only manifest.json has ever moved. */
+    tag: "v0.12.0",
     summary: "Fixes for upstream Angband bugs the port keeps on purpose",
     /* Also clear, and this is the row where that is worth defending. Core keeps
      * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
@@ -175,7 +180,7 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
       files: [
         {
           path: "manifest.json",
-          sha256: "2be2defaf0ad2d88f7980952f9b32fc74b4d714ca24580e3729e5330e245d52d",
+          sha256: "bc34f7c3b1773752224a3fa8651c3c8e2bd17a42a5b42095b791ff4f21b34890",
         },
         {
           path: "plugin.js",
