@@ -25,7 +25,7 @@ import type { Loc } from "../loc.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { Monster } from "../mon/monster.js";
-import type { Player, PlayerQuest } from "../player/player.js";
+import type { Player } from "../player/player.js";
 import { scatter } from "../world/scatter.js";
 import type { GameState } from "./context.js";
 import { pushObject } from "./project-feat.js";

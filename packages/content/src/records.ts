@@ -232,7 +232,7 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
       parsed = parseLine(raw, lookup);
     } catch (err) {
       if (err instanceof ParseError) {
-        throw new Error(`${where}: ${err.code}: ${err.message}`);
+        throw new Error(`${where}: ${err.code}: ${err.message}`, { cause: err });
       }
       throw err;
     }

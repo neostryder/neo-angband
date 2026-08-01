@@ -276,6 +276,8 @@ export function portHaystack(root: string): string {
    * NUL between files so a phrase cannot straddle two of them - collapsing
    * whitespace would erode any printable separator.
    */
+  /* eslint-disable-next-line no-control-regex -- NUL is the separator this census
+   * joins on precisely because no printable character can collide with it. */
   return parts.join("\u0000").replace(/[^\S\u0000]+/gu, " ");
 }
 

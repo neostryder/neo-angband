@@ -18,7 +18,6 @@ import type { ItemDeps } from "./deps.js";
 import {
   trait,
   borgSlot,
-  hasSlot,
   deviceFail,
   itemLevel,
   isAware,

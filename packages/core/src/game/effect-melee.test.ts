@@ -244,7 +244,7 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
 
   it("show_damage puts the number on both the pain line and the death note", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    const mon = addVisible(state, loc(14, 10), [], 500);
+    addVisible(state, loc(14, 10), [], 500);
     const msgs: string[] = [];
     registry().effectSimple(
       EF.CURSE,

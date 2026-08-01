@@ -53,7 +53,7 @@ import {
 import { mean, variance } from "../rational.js";
 import { objectPower } from "./power.js";
 import type { PowerObject } from "./power.js";
-import type { Artifact, ElementInfo, ObjectKind } from "./types.js";
+import type { Artifact, ElementInfo } from "./types.js";
 import { ELEM_MAX, newOfFlags, OBJ_MOD_MAX, TV_MAX } from "./types.js";
 import type { RandomValue } from "../rng.js";
 

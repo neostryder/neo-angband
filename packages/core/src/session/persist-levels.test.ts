@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MON_TMD } from "../generated/index.js";
 import { loadGame, saveGame, startGame } from "./game.js";
-import type { GamePack, StartedGame } from "./game.js";
+import type { GamePack } from "./game.js";
 import type { Monster } from "../mon/monster.js";
 import type { GameState } from "../game/context.js";
 

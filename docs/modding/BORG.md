@@ -1,8 +1,8 @@
-# The Borg (bundled autoplayer mod)
+# The Borg (first-party autoplayer mod)
 
-The Borg is Neo Angband's built-in automatic player: a faithful TypeScript port
-of Angband 4.2.6's `borg` that plays the game on its own. It ships as a bundled
-mod and is the completeness proof for the whole mod framework - it drives the
+The Borg is Neo Angband's automatic player: a faithful TypeScript port of
+Angband 4.2.6's `borg` that plays the game on its own. It is a MOD, not part of
+core, and it is the completeness proof for the whole mod framework - it drives the
 real game through the same frozen perceive/act agent API any third-party or AI
 agent uses, with no privileged engine access.
 

@@ -11,7 +11,7 @@ import { registerCoreHandlers } from "../effects/handlers.js";
 import { distance, loc, locEq } from "../loc.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
-import { addMon, makeState, makeRace, monReg } from "./harness.js";
+import { addMon, makeState, monReg } from "./harness.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";

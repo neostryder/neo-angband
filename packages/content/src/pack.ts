@@ -81,6 +81,7 @@ export function loadPackFile<T>(name: string): T {
     throw new Error(
       `no pack file "${name}.json" in ${packDir}\n` +
         `available: ${available.join(", ")}`,
+      { cause: error },
     );
   }
 }

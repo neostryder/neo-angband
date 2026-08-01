@@ -4,7 +4,6 @@ import { loc } from "../loc.js";
 import { GROUP_TYPE } from "../mon/monster.js";
 import type { Monster } from "../mon/monster.js";
 import { MON_GROUP } from "../mon/types.js";
-import type { MonsterRace } from "../mon/types.js";
 import { addMon, makeState, makeRace } from "./harness.js";
 import type { GameState } from "./context.js";
 import { deleteMonster } from "./context.js";

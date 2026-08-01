@@ -5,7 +5,7 @@ import { FlagSet } from "../bitflag.js";
 import { PF, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { Rng } from "../rng.js";
-import { SKILL, PF_SIZE } from "../player/types.js";
+import { PF_SIZE } from "../player/types.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";

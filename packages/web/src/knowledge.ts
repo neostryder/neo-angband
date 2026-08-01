@@ -75,7 +75,6 @@ import {
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 
 const FG = UI_TEXT;
-const TITLE_COLOR = UI_TEXT;
 /* COLOUR_YELLOW: display_rune paints the autoinscription in it. */
 const UI_YELLOW = colorToCss(COLOUR_YELLOW);
 
@@ -811,13 +810,14 @@ function objCmpTval(a: ObjectKind, b: ObjectKind, deps: ObjectBrowserDeps): numb
     case TV["OTHER_BOOK"]:
     case TV["DRAG_ARMOR"]:
       break; // leave sorted by sval
-    default:
+    default: {
       if (deps.isAware(a)) return strcmp(a.name, b.name);
       /* Then in tried order, then by flavour text (approximated by kindName's
        * unaware output - the leak-safe flavour string). */
       const t = (deps.wasTried(a) ? 1 : 0) - (deps.wasTried(b) ? 1 : 0);
       if (t) return -t;
       return strcmp(deps.kindName(a, false), deps.kindName(b, false));
+    }
   }
   return a.sval - b.sval;
 }

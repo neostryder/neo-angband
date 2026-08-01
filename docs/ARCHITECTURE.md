@@ -11,7 +11,7 @@
 | `@rpgm-tools/neo-angband-cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
 | `@rpgm-tools/neo-angband-desktop` | Optional Electron desktop wrapper around the same web bundle. |
 | `@rpgm-tools/neo-angband-linoleum` | Linoleum loose-pack tile format: the converter (Node) plus the format readers and portable md5 the web renderer uses. |
-| `@rpgm-tools/neo-angband-borg` | The bundled Borg autoplayer mod. |
+| `@rpgm-tools/neo-angband-borg` | The Borg autoplayer. First-party, and a MOD rather than part of core - it is not shipped inside the build; see `docs/modding/BORG.md`. |
 | `reference/` | The original C tree at parity baseline 4.2.6, buildable, read-only. |
 | `parity/` | Machine-readable provenance ledger mapping port modules to upstream sources. |
 

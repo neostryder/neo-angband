@@ -10,7 +10,7 @@
  * exactly, which is why it is transcribed verbatim rather than regenerated.
  */
 
-/* eslint-disable @typescript-eslint/prefer-enum-initializers */
+ 
 
 /**
  * borg.trait[BI_*] indices. Transcribed 1:1 from borg-trait.h:62-335; the

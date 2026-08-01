@@ -11,12 +11,11 @@
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { FlagSet } from "../bitflag.js";
 import { OF } from "../generated/object-flags.js";
 import { ELEM } from "../generated/elements.js";
 import { STAT } from "../generated/stats.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
-import { newElemInfo, newOfFlags, OBJ_MOD_MAX, OF_SIZE } from "../obj/types.js";
+import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types.js";
 import type { ElementInfo } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { makeState } from "./harness.js";

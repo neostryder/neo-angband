@@ -409,7 +409,9 @@ export function independentCompile(text: string, spec: FileSpec): CompiledFile {
     try {
       parsed = independentParseLine(raw, lookup);
     } catch (err) {
-      throw new Error(`${where}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`${where}: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
     }
     if (parsed === null) continue;
     const cd = table.get(parsed.directive);

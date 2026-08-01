@@ -465,7 +465,7 @@ describe("historyLines (history_display, ui-history.c)", () => {
     expect(lines[1]!.text).toBe("(no history yet)");
   });
 
-  it("formats '%10ld%7d\'  %s' oldest-first, with ' (LOST)' on lost entries", () => {
+  it("formats '%10ld%7d'  %s' oldest-first, with ' (LOST)' on lost entries", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     state.actor.player.hist.push(
       {
@@ -1184,6 +1184,7 @@ describe("tombstoneLines (display_exit_screen, ui-death.c L63-113)", () => {
 
   it("is pure ASCII everywhere", () => {
     for (const l of tombstoneLines(baseDeps)) {
+      /* eslint-disable-next-line no-control-regex -- the ASCII range is the assertion. */
       expect(l.text).toMatch(/^[\x00-\x7f]*$/);
     }
   });

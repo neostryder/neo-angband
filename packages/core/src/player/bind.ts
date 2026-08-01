@@ -51,7 +51,6 @@ import type {
   ClassSpell,
   PlayerElementInfo,
   HistoryChart,
-  HistoryEntry,
   MagicRealm,
   PlayerBody,
   PlayerClass,

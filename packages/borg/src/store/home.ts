@@ -19,9 +19,9 @@
  */
 
 import type { BorgContext } from "../context.js";
-import type { ItemView, StoreItemView } from "@rpgm-tools/neo-angband-core";
+import type { ItemView } from "@rpgm-tools/neo-angband-core";
 import { BI } from "../trait/trait-index.js";
-import { STAT_MAX, STAT_STR, STAT_INT, STAT_WIS, STAT_DEX, STAT_CON,
+import { STAT_STR, STAT_INT, STAT_WIS, STAT_DEX, STAT_CON,
   CLASS_WARRIOR, spellStatForClass } from "../trait/trait-index.js";
 import { hasFlag, mod, resLevel } from "../trait/item-util.js";
 import { TV, SVAL } from "../item/svals.js";

@@ -69,7 +69,6 @@ import { blankMonster } from "../mon/monster.js";
 import { MON_GROUP } from "../mon/types.js";
 import type {
   GameState,
-  ItemTargetRef,
   PlayerActor,
   PlayerCommand,
 } from "../game/context.js";

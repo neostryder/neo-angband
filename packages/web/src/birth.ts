@@ -55,7 +55,6 @@ import type { ScreenLine } from "./overlay";
 import { runBirthOptionsEditor } from "./options";
 import { argForceName, argName } from "./launch";
 import {
-  characterSheetLines,
   charSheetDeps,
   historyBlockLines,
   statHeaderLine,

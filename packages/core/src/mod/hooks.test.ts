@@ -330,7 +330,7 @@ describe("guardModHooks: what it reports, and to whom", () => {
 
   it("passes a non-Error throw through as it was thrown", () => {
     const { hooks, faults } = guarded({
-      // eslint-disable-next-line @typescript-eslint/only-throw-error -- a mod may throw anything
+       
       messageText: () => {
         throw "a string";
       },

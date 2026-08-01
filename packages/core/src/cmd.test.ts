@@ -9,7 +9,6 @@ import {
   cmdVerb,
   makeCommand,
 } from "./cmd.js";
-import type { Command } from "./cmd.js";
 import { loc } from "./loc.js";
 
 describe("command metadata", () => {
@@ -91,7 +90,7 @@ describe("CommandQueue", () => {
   it("repeat duplicates the last non-background command", () => {
     const q = new CommandQueue();
     const seen: string[] = [];
-    q.register("tunnel", (c) => {
+    q.register("tunnel", () => {
       seen.push("tunnel");
       // Stop auto-repeat so the test stays bounded.
       q.setRepeat(0);

@@ -164,13 +164,6 @@ function wield(state: GameState, handle: number, msgs?: string[]): number {
   );
 }
 
-/** The same-kind pack stack of `n`, or undefined. */
-function packStack(state: GameState, kind: unknown, n: number): GameObject | undefined {
-  return state.gear.pack
-    .map((h) => gearGet(state.gear, h))
-    .find((o): o is GameObject => !!o && o.kind === kind && o.number === n);
-}
-
 /**
  * check_similar (the upstream test's own helper, inven-wield.c L149-185): the
  * split and the remainder must agree on kind, flags, el_info, the
