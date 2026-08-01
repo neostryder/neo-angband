@@ -144,19 +144,20 @@ export function coreTileModes(input: {
  * Any other mod mode is appended in contribution order - that is how a player
  * who owns Shockbolt can package it as a mod and have modes 5/6 appear.
  *
- * A mod may override CORE's row but never another mod's: the first contributor
- * of a grafID keeps it, the same first-wins rule enabledTileModes already
- * applies while gathering them.
+ * A mod may override core's row AND another mod's: the LAST contributor of a
+ * grafID takes it, the same last-wins rule enabledTileModes applies while
+ * gathering them, and the same rule every other composition layer uses.
+ *
+ * It was first-wins on both sides until 2026-08-01, which made the mod manager's
+ * "Move later (loads last, wins conflicts)" false for tiles specifically -
+ * moving a tiles mod later made it lose. See lastClaimWins in tile-mods.ts.
  */
 export function composeTileModes(input: {
   core: readonly TileModeEntry[];
   mods: readonly TileModePack[];
 }): TileModeEntry[] {
   const out: TileModeEntry[] = input.core.map((m) => ({ ...m }));
-  const claimed = new Set<number>(); // grafIDs a mod has already taken
   for (const pack of input.mods) {
-    if (claimed.has(pack.grafID)) continue;
-    claimed.add(pack.grafID);
     const entry: TileModeEntry = {
       grafID: pack.grafID,
       menuname: pack.menuname,

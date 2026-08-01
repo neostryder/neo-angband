@@ -246,7 +246,9 @@ import {
 } from "./mod-folder";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces, diskPackStatus, enabledModIds } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, diskPackStatus, enabledModIds, composedRecords } from "./pack";
+import { liveConflictLines } from "./mod-conflicts";
+import { resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   defaultModStore,
   buildCatalog,
@@ -257,6 +259,7 @@ import {
 } from "./mod-store";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
+import { teardownModPlugins } from "./mod-teardown";
 import { onSessionTaint, sessionTaint, taintNotice } from "./mod-taint";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
@@ -5155,7 +5158,7 @@ async function openModManager(): Promise<void> {
         enabled: enabledModIds(),
         consents: store.getConsents(),
       }),
-    conflictLines: () => modConflictLines(enabledModIds()),
+    conflictLines: () => liveConflictLines(),
     // The mods DIRECTORY, so the manager can name a real path instead of
     // describing a capability the shell might or might not have.
     diskPackStatus: () => diskPackStatus(),
@@ -5239,6 +5242,17 @@ async function openModManager(): Promise<void> {
       game.manifest.modNoscore = advanceModNoscore(game.manifest.modNoscore, mod.affectsGameplay);
     },
     requestReload: (opts) => {
+      /* Teardown BEFORE the save, which is the whole reason it is here and not
+       * skipped as ceremony in front of a reload (mod-teardown.ts). The page
+       * re-compose is what actually removes a mod; what this ordering buys is that
+       * the last bytes written for this character are taken AFTER each plugin's
+       * uninstall() has had its say and AFTER the autoplayer has handed
+       * state.nextCommand back to the human. */
+      teardownModPlugins({
+        plugins: activeModCode().plugins,
+        controller: installedController,
+      });
+      installedController = null;
       try {
         autosave(true); // keep the live hero before the page re-composes
         // Applying mods mid-game is a continuation, not a genuine launch: skip
@@ -9081,6 +9095,42 @@ if (import.meta.env.DEV) {
       return modalDepth > 0;
     },
     size: () => term.size(),
+    /**
+     * What the mod system actually did, for the harness and for diagnosing the
+     * failure this whole area keeps producing: a mod that loaded, reported no
+     * problem, and contributed nothing.
+     *
+     * Every field is an OBSERVATION of composed state, not a restatement of the
+     * manifest - `sections` is the resolved on/off after the player's choices and
+     * any `patches` claim, and `records` counts what came out of composition.
+     * Asking the manifest what a mod contributes is how "it is enabled, so it
+     * must be working" survives.
+     */
+    mods: () => {
+      const enabled = enabledModIds();
+      const manifests = discoverContentModManifests().filter((m) => enabled.includes(m.id));
+      const lines = liveConflictLines();
+      return {
+        enabled,
+        sections: Object.fromEntries(
+          [...resolveSectionState(
+            manifests,
+            defaultModStore().getSectionChoices(),
+            new Set(enabled),
+          )].map(([id, table]) => [id, Object.fromEntries(table)]),
+        ),
+        order: sortModOrder(manifests, {
+          pins: defaultModStore().getPins(),
+          current: defaultModStore().getEnabled(),
+        }),
+        conflicts: lines,
+        /* Composed record counts per file, so a section switching off is visible
+         * as a NUMBER rather than as an absence somebody has to go looking for. */
+        records: Object.fromEntries(
+          Object.entries(composedRecords()).map(([file, recs]) => [file, recs.length]),
+        ),
+      };
+    },
     screen: () => term.snapshot(),
     // Appearance-parity snapshot: glyph + CSS colour per cell, for the UI /
     // colour parity harness to diff against a captured C html_screenshot dump.

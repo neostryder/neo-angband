@@ -44,7 +44,11 @@ import {
   type ModHookFault,
   type ModHooks,
 } from "@rpgm-tools/neo-angband-core";
-import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
+import {
+  enabledModIds,
+  loadEnabledModRuleDecls,
+  loadEnabledModSectionFlags,
+} from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";
 import { validateModPlugin, type ModPlugin } from "./mod-plugin";
@@ -135,6 +139,13 @@ export function resolveModRuleFlagsByMod(): Map<string, Record<string, boolean>>
     Object.assign(flags, resolveModRules([decl], choices));
     byMod.set(decl.modId, flags);
   }
+  /* A mod's SECTIONS reach its code through the same map, so one mod can use one
+   * vocabulary for the parts that ship content and the parts that only change
+   * behaviour. The manifest validator refuses a section whose flag a rule already
+   * declares, so this merge cannot give one name two meanings. */
+  for (const [modId, flags] of loadEnabledModSectionFlags()) {
+    byMod.set(modId, { ...(byMod.get(modId) ?? {}), ...flags });
+  }
   return byMod;
 }
 
@@ -157,15 +168,8 @@ export function resolveModRuleFlagsByMod(): Map<string, Record<string, boolean>>
  * twice would silently double every hook it folds.
  */
 export function activeModHooks(): ModHooks | undefined {
-  const entries = discoverModHookEntries();
-  const folder = folderHookEntries();
-  const flagsByMod = resolveModRuleFlagsByMod();
   const contributions: ModHooks[] = [];
-  for (const id of enabledModIds()) {
-    const flags = flagsByMod.get(id) ?? {};
-    const entry = folder.get(id) ?? entries.get(id);
-    if (!entry) continue;
-    const hooks = entry(flags);
+  for (const { id, hooks } of enabledModHookContributions()) {
     /* GUARDED BEFORE THE FOLD, per mod, so the guard is the only thing that holds
      * the mod's id: core's fold sees plain ModHooks and stays ignorant of which
      * mod contributed what, which is the arrangement its comment promises. Guard
@@ -173,9 +177,42 @@ export function activeModHooks(): ModHooks | undefined {
      * hook's neutral answer, so a broken mod reads to the fold exactly like a mod
      * with no opinion at that point - rather than taking the other mods' answers
      * down with it. */
-    if (hooks) contributions.push(guardModHooks(hooks, (fault) => hookThrew(id, fault)));
+    contributions.push(guardModHooks(hooks, (fault) => hookThrew(id, fault)));
   }
   return composeModHooks(contributions);
+}
+
+/**
+ * What each enabled mod actually contributes, in load order, before the fold.
+ *
+ * Split out of activeModHooks for the CONFLICT REPORT, which needs to know which
+ * mods touch which hook - and had no way to find out, so two mods contributing
+ * the same behaviour was invisible. For a first-answer hook that is the worst
+ * kind of invisible: the second mod's rule never runs at all, and its author and
+ * its player both believe it is working.
+ *
+ * OBSERVED, not declared. A `touches` list in the manifest would be cheaper and
+ * would drift the first time an author forgot to update it; calling the factory
+ * and reading the keys back cannot be wrong about what the mod does.
+ *
+ * `hooks()` is a factory over flags and is expected to be free of side effects -
+ * it is called here and again by activeModHooks at start/load, as it already was
+ * for every mod on every new game.
+ */
+export function enabledModHookContributions(): { id: string; hooks: ModHooks }[] {
+  const entries = discoverModHookEntries();
+  const folder = folderHookEntries();
+  const flagsByMod = resolveModRuleFlagsByMod();
+  const out: { id: string; hooks: ModHooks }[] = [];
+  for (const id of enabledModIds()) {
+    const entry = folder.get(id) ?? entries.get(id);
+    if (!entry) continue;
+    const hooks = entry(flagsByMod.get(id) ?? {});
+    /* undefined is "contributed nothing", which is distinct from {} - a plugin
+     * with no `hooks`, or whose `hooks` threw, must not install an empty opinion. */
+    if (hooks) out.push({ id, hooks });
+  }
+  return out;
 }
 
 /**

@@ -106,6 +106,183 @@ export interface PackRule {
 }
 
 /**
+ * ONE NAMED PART OF A MOD - the unit an author can prioritise, a player can
+ * switch off, and a compatibility claim can point at.
+ *
+ * WHY THIS EXISTS. A mod used to be one atom in the load order. That made three
+ * ordinary requests inexpressible, and they turned out to be the same request:
+ *
+ *  - "I clash with frost-realms, but only over the kobold changes" - there was
+ *    nothing to name, so the only way to say it was a `loadAfter`, which is
+ *    binding, unscoped, and silent about the reason.
+ *  - "my tileset should win but my monsters should lose" - a mod has one
+ *    position, so the only answer was to ship two mods.
+ *  - "use this mod but not that part of it" - `rules` did this for BEHAVIOUR
+ *    only (a flag the mod's own hooks.ts reads); a content patch could not be
+ *    switched off at all.
+ *
+ * A section answers all three. Contributions are attributed to it
+ * (FileContribution.sections), it carries its own priority band, and the player
+ * gets one toggle per section.
+ *
+ * RELATION TO `rules`. A rule is exactly a section with a flag and no
+ * contributions: same title/description/default, and its flag reaches the mod's
+ * hooks.ts. `rules` is unchanged and every shipped manifest keeps working - a
+ * section simply also exposes a flag (its `flag`, or its `id`), so one mod can
+ * use one vocabulary for both the fixes it toggles and the content it ships.
+ *
+ * A DISABLED SECTION'S CONTRIBUTIONS DO NOT EXIST. They are dropped before
+ * composition rather than composed and then overridden, for the same reason a
+ * disabled mod contributes no hook: "off" has to mean absent, or core is holding
+ * a mod's data and calling it faithful.
+ */
+export interface PackSection {
+  /** Unique within the mod, lowercase kebab-case. Savefile-visible. */
+  id: string;
+  /** Short menu label ("Kobold rebalance"). */
+  title: string;
+  /** One or two lines under the toggle. */
+  description?: string;
+  /** Whether the section is on when the mod is enabled. Absent means on. */
+  default?: boolean;
+  /**
+   * Where this section sits relative to the rest of the mod (see SectionBand).
+   * Absent is "normal": the section takes its mod's own load-order position.
+   */
+  priority?: SectionBand;
+  /**
+   * The flag name handed to the mod's hooks.ts for this section, when it should
+   * differ from `id` - e.g. a mod migrating from `rules` that wants to keep the
+   * flag string its code already reads. Defaults to `id`.
+   */
+  flag?: string;
+}
+
+/**
+ * How far out of its mod's load-order position a section sits.
+ *
+ * BANDS RATHER THAN A NUMERIC OFFSET, and the reason is stability. An offset
+ * added to a load index means something different the moment the player installs
+ * another mod - "+1" is a different neighbour every time the list changes. A band
+ * is absolute: every `last` section composes after every `normal` one, whatever
+ * else is installed. This is Forge's event-priority scheme (HIGHEST..LOWEST) laid
+ * over a Bethesda-style load order, and it also refuses the arms race an integer
+ * invites, because there is no value above `last`.
+ *
+ * The band dominates the load order for that section only. An author may
+ * therefore jump the queue with their own contributions and cannot touch anyone
+ * else's - which is the authority line this whole model draws. The conflict
+ * report names any section that won because of its band, so it is never silent.
+ */
+export type SectionBand = "first" | "early" | "normal" | "late" | "last";
+
+/** Every band, earliest to latest; the index is the sort key. */
+export const SECTION_BANDS: readonly SectionBand[] = [
+  "first",
+  "early",
+  "normal",
+  "late",
+  "last",
+];
+
+/**
+ * What an author claims about ANOTHER mod.
+ *
+ * None of these bind. A claim about your own mod (a section's band, what it
+ * contributes) is authoritative; a claim about someone else's is evidence for the
+ * sorter and text for the player, and the player's own order outranks all of it.
+ * That asymmetry is the rule the whole compatibility model rests on, and it is
+ * why even `conflicts` cannot refuse a launch.
+ *
+ *  - `prefer-mine` / `prefer-theirs`: a SOFT ordering preference, scoped to the
+ *    sections named in `scope`. Feeds the auto-sort; dropped without ceremony if
+ *    honouring it would contradict a hard edge or another, stronger preference.
+ *  - `conflicts`: "these should not both run." Shown as a loud warning carrying
+ *    the author's own reason, at enable time and in the conflict pane. NOT a
+ *    refusal - NeoForge and Factorio both block here, and this engine
+ *    deliberately does not (ratified decision 18: the engine labels, it does not
+ *    forbid). A third-party author does not get a veto over the player's setup,
+ *    and a stale declaration must stay something the player can walk past.
+ *  - `patches`: "when that mod is present, my section X is the compatibility
+ *    patch for it." The section is then enabled only when the named mod is, and
+ *    ignored otherwise. This is the one claim that produces a FIX rather than a
+ *    winner, which is why it is worth having early - it lets a compatibility
+ *    patch ship inside the mod instead of as a third download.
+ */
+export type CompatClaim = "prefer-mine" | "prefer-theirs" | "conflicts" | "patches";
+
+/** Every claim kind, for validation and for iterating the vocabulary. */
+export const COMPAT_CLAIMS: readonly CompatClaim[] = [
+  "prefer-mine",
+  "prefer-theirs",
+  "conflicts",
+  "patches",
+];
+
+/** One claim this pack makes about another pack (see CompatClaim). */
+export interface PackCompat {
+  /** The other pack's id. Its absence is never an error - claims are about what IS installed. */
+  with: string;
+  /**
+   * Semver range the claim is limited to, so a claim can name the versions that
+   * actually clashed and expire itself when the other mod fixes them. Absent
+   * means every version.
+   */
+  range?: string;
+  /** What is being claimed. */
+  claim: CompatClaim;
+  /**
+   * THIS pack's section ids the claim is about; every id must be one of this
+   * pack's own `sections`. Absent means the whole pack.
+   *
+   * Deliberately scoped to the claimant's own sections and not the other mod's:
+   * an author knows which of their own parts clashed, and naming a section
+   * inside someone else's mod is a guess that goes stale on their next release.
+   */
+  scope?: string[];
+  /**
+   * Why, in the author's words. REQUIRED: this is the sentence the player reads
+   * when deciding whether to care, and a claim with no reason is one they cannot
+   * evaluate - it becomes a warning that is always there and never actionable,
+   * which is how a conflict list turns into wallpaper.
+   */
+  because: string;
+}
+
+/**
+ * The sorting groups, earliest to latest. A pack names one in `group`.
+ *
+ * WHY GROUPS AND NOT ONLY PAIRWISE HINTS. `loadAfter`/`loadBefore` require an
+ * author to have heard of the other mod. That does not scale, and LOOT is the
+ * proof: its pairwise rules need a hand-maintained community masterlist, while
+ * its GROUPS let a plugin be sorted correctly against plugins that did not exist
+ * when it was written. Declaring "I am a cosmetic pack" orders you against every
+ * present and future overhaul for free.
+ *
+ * Kept a flat total order rather than LOOT's group-graph: the graph buys the
+ * ability to insert a group between two others without renumbering, and costs a
+ * second cycle-detection problem on top of the pack graph. A short fixed list
+ * that the engine versions is easier to reason about and sufficient.
+ *
+ * Group edges are SOFT. When a group would contradict a hard dependency the group
+ * edge loses - the same rule LOOT settled on, and for the same reason: the
+ * alternative is a cyclic-interaction error that neither author can fix.
+ */
+export const PACK_GROUPS: readonly string[] = [
+  "framework", // libraries other mods depend on
+  "overhaul", // large changes to the base game
+  "content", // new monsters, items, levels
+  "gameplay", // rule and balance changes
+  "tweaks", // small corrections and quality of life
+  "interface", // display, input, menus
+  "cosmetic", // tiles, colours, text
+  "late", // anything that must see everyone else's result
+];
+
+/** The group a pack with no `group` is sorted as. */
+export const DEFAULT_PACK_GROUP = "content";
+
+/**
  * A capability a scripted plugin requests (MOD_LIFECYCLE section 4). The
  * runtime grants only what a `shape: plugin` pack declares and the user
  * approves; content and tile packs request none. The vocabulary
@@ -233,6 +410,24 @@ export interface PackManifest {
    */
   rules?: PackRule[];
   /**
+   * Named parts of this pack (see PackSection): what a player can switch off
+   * individually, what a section band can reposition, and what a compatibility
+   * claim can point at. Absent means the pack is one indivisible part.
+   */
+  sections?: PackSection[];
+  /**
+   * Which sorting group this pack belongs to (see PACK_GROUPS). Absent means
+   * DEFAULT_PACK_GROUP, so a pack that says nothing still sorts sensibly against
+   * packs that do.
+   */
+  group?: string;
+  /**
+   * What this pack claims about OTHER packs (see PackCompat). Never binding: the
+   * sorter treats ordering claims as preferences it may drop, and `conflicts`
+   * produces a warning the player can walk past.
+   */
+  compat?: PackCompat[];
+  /**
    * Graphics modes this pack contributes (see PackTilePack). Only read for a pack
    * with the `tiles` facet; a content pack that declares them contributes none.
    */
@@ -336,7 +531,10 @@ export function validateManifest(value: unknown): PackManifest {
   ) {
     throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
-  validateRules(m["rules"], id);
+  const ruleFlags = validateRules(m["rules"], id);
+  const sectionIds = validateSections(m["sections"], id, ruleFlags);
+  validateGroup(m["group"], id);
+  validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);
   for (const key of [
     "engine",
@@ -371,9 +569,12 @@ function validateDepMap(deps: unknown, id: string, field: string): void {
   }
 }
 
-/** Validate the optional `rules` array (PackRule[]); throws ManifestError. */
-function validateRules(value: unknown, id: string): void {
-  if (value === undefined) return;
+/**
+ * Validate the optional `rules` array (PackRule[]); returns the flags it
+ * declares so validateSections can refuse a section that reuses one.
+ */
+function validateRules(value: unknown, id: string): Set<string> {
+  if (value === undefined) return new Set();
   if (!Array.isArray(value)) {
     throw new ManifestError(`manifest ${id}: rules must be an array`);
   }
@@ -398,6 +599,154 @@ function validateRules(value: unknown, id: string): void {
     }
     if (typeof r["default"] !== "boolean") {
       throw new ManifestError(`manifest ${id}: rule ${r["flag"]} default must be a boolean`);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Validate the optional `sections` array (PackSection[]); returns the declared
+ * section ids so validateCompat can check every `scope` against them.
+ *
+ * Rejects a duplicate FLAG as well as a duplicate id, and checks the flags a
+ * section exposes against the ones `rules` already declares. Both vocabularies
+ * reach the mod's hooks.ts through one flag map, so a collision between them
+ * would silently give one name two meanings inside the mod's own code.
+ */
+function validateSections(
+  value: unknown,
+  id: string,
+  ruleFlags: ReadonlySet<string>,
+): Set<string> {
+  const ids = new Set<string>();
+  if (value === undefined) return ids;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: sections must be an array`);
+  }
+  const flags = new Set<string>(ruleFlags);
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each section must be an object`);
+    }
+    const s = entry as Record<string, unknown>;
+    if (typeof s["id"] !== "string" || !ID_RE.test(s["id"])) {
+      throw new ManifestError(
+        `manifest ${id}: section id must be lowercase kebab-case, got ${String(s["id"])}`,
+      );
+    }
+    const sid = s["id"];
+    if (ids.has(sid)) {
+      throw new ManifestError(`manifest ${id}: duplicate section id ${sid}`);
+    }
+    ids.add(sid);
+    if (typeof s["title"] !== "string" || s["title"].length === 0) {
+      throw new ManifestError(
+        `manifest ${id}: section ${sid} title must be a non-empty string`,
+      );
+    }
+    if (s["description"] !== undefined && typeof s["description"] !== "string") {
+      throw new ManifestError(`manifest ${id}: section ${sid} description must be a string`);
+    }
+    if (s["default"] !== undefined && typeof s["default"] !== "boolean") {
+      throw new ManifestError(`manifest ${id}: section ${sid} default must be a boolean`);
+    }
+    if (
+      s["priority"] !== undefined &&
+      !SECTION_BANDS.includes(s["priority"] as SectionBand)
+    ) {
+      throw new ManifestError(
+        `manifest ${id}: section ${sid} priority must be one of ${SECTION_BANDS.join(", ")}, got ${String(s["priority"])}`,
+      );
+    }
+    if (s["flag"] !== undefined && (typeof s["flag"] !== "string" || s["flag"].length === 0)) {
+      throw new ManifestError(
+        `manifest ${id}: section ${sid} flag must be a non-empty string`,
+      );
+    }
+    const flag = (s["flag"] as string | undefined) ?? sid;
+    if (flags.has(flag)) {
+      /* Names the OTHER declaration, because "duplicate flag" alone sends an
+       * author looking through their sections when the clash is with a rule. */
+      const clash = ruleFlags.has(flag) ? "a rule" : "another section";
+      throw new ManifestError(
+        `manifest ${id}: section ${sid} exposes the flag ${flag}, which ${clash} already declares`,
+      );
+    }
+    flags.add(flag);
+  }
+  return ids;
+}
+
+/** Validate the optional `group` field against PACK_GROUPS. */
+function validateGroup(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "string" || !PACK_GROUPS.includes(value)) {
+    /* Refused rather than coerced to the default, for the reason tilePacks
+     * records: a typo that silently becomes "content" is a mod that sorts wrong
+     * with no error anywhere. A pack targeting a group a newer engine added
+     * states that with `engine`, which is what that field is for. */
+    throw new ManifestError(
+      `manifest ${id}: group must be one of ${PACK_GROUPS.join(", ")}, got ${String(value)}`,
+    );
+  }
+}
+
+/** Validate the optional `compat` array (PackCompat[]); throws ManifestError. */
+function validateCompat(value: unknown, id: string, sectionIds: ReadonlySet<string>): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: compat must be an array`);
+  }
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each compat entry must be an object`);
+    }
+    const c = entry as Record<string, unknown>;
+    if (typeof c["with"] !== "string" || !ID_RE.test(c["with"])) {
+      throw new ManifestError(
+        `manifest ${id}: compat "with" must be a pack id, got ${String(c["with"])}`,
+      );
+    }
+    const other = c["with"];
+    if (other === id) {
+      throw new ManifestError(`manifest ${id}: compat entry claims against itself`);
+    }
+    if (!COMPAT_CLAIMS.includes(c["claim"] as CompatClaim)) {
+      throw new ManifestError(
+        `manifest ${id}: compat with ${other} claim must be one of ${COMPAT_CLAIMS.join(", ")}, got ${String(c["claim"])}`,
+      );
+    }
+    if (typeof c["because"] !== "string" || c["because"].length === 0) {
+      throw new ManifestError(
+        `manifest ${id}: compat with ${other} needs a "because" - the reason the player reads`,
+      );
+    }
+    if (c["range"] !== undefined && typeof c["range"] !== "string") {
+      throw new ManifestError(`manifest ${id}: compat with ${other} range must be a string`);
+    }
+    if (c["scope"] === undefined) {
+      if (c["claim"] === "patches") {
+        /* A `patches` claim with nothing to enable is the whole mod becoming
+         * conditional on another mod, which is what `dependencies` already says
+         * properly - and says with a version check the sorter can act on. */
+        throw new ManifestError(
+          `manifest ${id}: compat with ${other} claims "patches" but names no scope; use dependencies to make the whole pack conditional`,
+        );
+      }
+      continue;
+    }
+    const scope = c["scope"];
+    if (!Array.isArray(scope) || scope.some((s) => typeof s !== "string")) {
+      throw new ManifestError(
+        `manifest ${id}: compat with ${other} scope must be an array of this pack's section ids`,
+      );
+    }
+    for (const s of scope as string[]) {
+      if (!sectionIds.has(s)) {
+        throw new ManifestError(
+          `manifest ${id}: compat with ${other} scopes "${s}", which is not one of this pack's sections`,
+        );
+      }
     }
   }
 }

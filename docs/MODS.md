@@ -220,6 +220,16 @@ The narrower reductions in a browser, precisely:
 - Packs may add records, and may patch or replace records from packs they
   declare as dependencies. The base game (`core`) is replaceable: total
   conversions are a supported shape, not a hack.
+- A pack may be divided into named **sections** - parts a player can switch off
+  individually, a compatibility claim can point at, and a priority band can move
+  independently of the rest of the pack.
+- A pack may declare what it thinks about ANOTHER pack (`compat`): that it
+  conflicts with it, that one of them should win, or that one of its sections IS
+  the compatibility patch for it. **None of it binds.** An author has total
+  authority over their own pack's contributions and none over the player's load
+  order or anyone else's pack, so even a declared conflict is a warning the
+  player can walk past (decision 18: the engine labels, it does not forbid).
+  See `modding/MOD_LIFECYCLE.md` section 3.
 - Savefiles embed the active pack manifest and per-entity provenance, so a
   save knows exactly which content produced it and can fail gracefully when
   a pack is missing or changed.

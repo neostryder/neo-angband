@@ -11,7 +11,13 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { composeModHooks, guardModHooks, type ModHookFault, type ModHooks } from "./hooks.js";
+import {
+  composeModHooks,
+  guardModHooks,
+  MOD_HOOK_FOLDS,
+  type ModHookFault,
+  type ModHooks,
+} from "./hooks.js";
 import type { GameState } from "../game/context.js";
 
 const STATE = {} as GameState;
@@ -272,6 +278,178 @@ function guarded(hooks: ModHooks): { hooks: ModHooks; faults: ModHookFault[] } {
   const faults: ModHookFault[] = [];
   return { hooks: guardModHooks(hooks, (f) => faults.push(f)), faults };
 }
+
+/**
+ * MOD_HOOK_FOLDS is read by the host to tell a player whether two mods touching
+ * one hook COMBINE or whether one of them is being silently ignored. A table
+ * that merely looks right is the hand-written-mirror failure: mostly correct is
+ * what lets it survive, and the one wrong row is a conflict the report describes
+ * backwards.
+ *
+ * So the fold is OBSERVED here rather than restated. Each hook is composed twice
+ * with two contributors, in both orders, and the fold is derived from what the
+ * composition actually did:
+ *
+ *  - the answer CHANGES with the order, and only the first contributor ran   -> first-answer
+ *  - the answer changes with the order, and both ran                          -> chained
+ *  - the answer is order-independent, and one refusal makes it negative       -> all-must-agree
+ *  - the answer is order-independent, and one acceptance makes it positive    -> any-yes
+ *
+ * TypeScript already forces a row per `keyof ModHooks`; this forces the row to
+ * be true.
+ */
+describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
+  /** Two contributors for one hook, plus how to call the composed result. */
+  interface Probe {
+    /** A contributor that answers positively, tagged so calls can be traced. */
+    yes: (log: string[], tag: string, nth: number) => ModHooks;
+    /** A contributor with no opinion / a refusal. */
+    no: (log: string[], tag: string) => ModHooks;
+    /** Invoke the composed hook and return its answer. */
+    run: (h: ModHooks) => unknown;
+  }
+
+  const PROBES: Record<keyof ModHooks, Probe> = {
+    walkBlockedByDiggable: {
+      /* Distinct answers, so an order-dependent fold is visible in the value. */
+      yes: (log, tag, nth) => ({
+        walkBlockedByDiggable: () => {
+          log.push(tag);
+          return 100 * nth;
+        },
+      }),
+      no: (log, tag) => ({
+        walkBlockedByDiggable: () => {
+          log.push(tag);
+          return null;
+        },
+      }),
+      run: (h) => h.walkBlockedByDiggable?.(STATE, GRID, DEPS),
+    },
+    objectListTiebreak: {
+      yes: (log, tag, nth) => ({
+        objectListTiebreak: () => {
+          log.push(tag);
+          return nth;
+        },
+      }),
+      no: (log, tag) => ({
+        objectListTiebreak: () => {
+          log.push(tag);
+          return 0;
+        },
+      }),
+      run: (h) => h.objectListTiebreak?.({ dy: 0, dx: 0 }, { dy: 0, dx: 0 }),
+    },
+    levelGenerated: {
+      yes: (log, tag) => ({
+        levelGenerated: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        levelGenerated: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.levelGenerated?.({}, false),
+    },
+    artifactCommit: {
+      yes: (log, tag) => ({
+        artifactCommit: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        artifactCommit: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.artifactCommit?.(1, false),
+    },
+    historyAdd: {
+      yes: (log, tag) => ({
+        historyAdd: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        historyAdd: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.historyAdd?.({ what: "x", type: 0, duplicate: false }),
+    },
+    saveNoiseScent: {
+      yes: (log, tag) => ({
+        saveNoiseScent: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        saveNoiseScent: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.saveNoiseScent?.(),
+    },
+    messageText: {
+      yes: (log, tag) => ({
+        messageText: (raw) => {
+          log.push(tag);
+          return raw + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        messageText: (raw) => {
+          log.push(tag);
+          return raw;
+        },
+      }),
+      run: (h) => h.messageText?.("x"),
+    },
+  };
+
+  /** The fold `probe` exhibits, read off composeModHooks' actual behaviour. */
+  function observe(probe: Probe): string {
+    const forward: string[] = [];
+    const ab = probe.run(
+      composeModHooks([probe.yes(forward, "a", 1), probe.yes(forward, "b", 2)]) as ModHooks,
+    );
+    const backward: string[] = [];
+    const ba = probe.run(
+      composeModHooks([probe.yes(backward, "b", 2), probe.yes(backward, "a", 1)]) as ModHooks,
+    );
+
+    if (!Object.is(ab, ba)) return forward.length === 1 ? "first-answer" : "chained";
+
+    const log: string[] = [];
+    const mixed = probe.run(
+      composeModHooks([probe.yes(log, "a", 1), probe.no(log, "b")]) as ModHooks,
+    );
+    return mixed === false ? "all-must-agree" : "any-yes";
+  }
+
+  for (const hook of Object.keys(PROBES) as (keyof ModHooks)[]) {
+    it(`${hook} folds as ${MOD_HOOK_FOLDS[hook]}`, () => {
+      expect(observe(PROBES[hook])).toBe(MOD_HOOK_FOLDS[hook]);
+    });
+  }
+
+  it("covers every hook, so a new one cannot be added without a fold", () => {
+    /* The compiler enforces this for MOD_HOOK_FOLDS; this enforces it for the
+     * probe table, which is the half TypeScript cannot see is incomplete. */
+    expect(Object.keys(PROBES).sort()).toEqual(Object.keys(MOD_HOOK_FOLDS).sort());
+  });
+});
 
 describe("guardModHooks: a throwing hook answers with nothing, per hook's meaning", () => {
   it("walkBlockedByDiggable declines, so core bumps the wall", () => {
