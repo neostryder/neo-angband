@@ -107,7 +107,13 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           fail=0
-          for pkg in core mod-sdk; do
+          # The package list is DERIVED from the manifests (tools/publishable.mjs):
+          # a package is publishable exactly when npm would publish it, i.e. when
+          # it does not carry `private: true`. This loop used to say
+          # `for pkg in core mod-sdk`, one of four hardcoded copies of that list -
+          # and the failure mode of a stale copy HERE is silence, since a package
+          # the loop never names is simply never checked and never published.
+          for pkg in $(node tools/publishable.mjs); do
             have=$(node -p "require('./packages/$pkg/package.json').version")
             if [ "$have" != "$tag" ]; then
               echo "::error::tag $GITHUB_REF_NAME says $tag but packages/$pkg is $have"
@@ -122,9 +128,11 @@ jobs:
         run: |
           # `npm publish -w` is not available: the workspace is declared in
           # pnpm-workspace.yaml, which npm does not read. Publishing from inside
-          # each package directory works under either manager, and both packages
+          # each package directory works under either manager, and these packages
           # have zero dependencies so there is no workspace: range to rewrite.
-          for pkg in core mod-sdk; do
+          #
+          # Derived, not listed - see the note on the version check above.
+          for pkg in $(node tools/publishable.mjs); do
             name=$(node -p "require('./packages/$pkg/package.json').name")
             version=$(node -p "require('./packages/$pkg/package.json').version")
 
