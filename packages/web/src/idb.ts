@@ -147,6 +147,53 @@ export function idbPutMany(
   });
 }
 
+/** Puts and deletes for one store, as one step of an idbApply. */
+export interface IdbWrite {
+  readonly store: string;
+  readonly put?: ReadonlyArray<readonly [string, unknown]>;
+  readonly del?: readonly string[];
+}
+
+/**
+ * Every write, across every store named, in ONE transaction.
+ *
+ * WHY THIS EXISTS RATHER THAN A SEQUENCE OF THE CALLS ABOVE. Upgrading an installed
+ * mod is a SWAP, and a swap done as separate transactions has a moment in the
+ * middle where the player owns neither version. mod-install.ts used to delete the
+ * old copy and then write the new one, so a quota refusal on the write - the most
+ * likely failure there is, since the new copy is what would not fit - destroyed a
+ * mod that had been working, in the name of upgrading it.
+ *
+ * The fix cannot be "write first, then delete", because the meta record lives in a
+ * SECOND store and it is what makes the mod count as installed; two transactions
+ * means a window where the files are v2 and the meta says v1. IndexedDB will span
+ * stores in one transaction, so the honest fix is to ask it to: either the whole
+ * swap lands or none of it does, and a failure leaves the previous install exactly
+ * as it was.
+ *
+ * Deletes run before puts within a store, so a caller can express "replace this
+ * set" without having to order the two lists itself.
+ */
+export function idbApply(db: IDBDatabase, writes: readonly IdbWrite[]): Promise<boolean> {
+  const stores = [...new Set(writes.map((w) => w.store))];
+  if (stores.length === 0) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(stores, "readwrite");
+      for (const w of writes) {
+        const os = tx.objectStore(w.store);
+        for (const key of w.del ?? []) os.delete(key);
+        for (const [key, value] of w.put ?? []) os.put(value, key);
+      }
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 export function idbDelete(db: IDBDatabase, store: string, key: string): Promise<void> {
   return new Promise((resolve) => {
     try {
