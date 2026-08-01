@@ -48,15 +48,17 @@ function borgEquipsItemPresent(ctx: BorgContext, d?: ItemDeps): boolean {
   );
 }
 
-/** Emit the actual decurse command from whatever means is available. */
+/**
+ * Emit the actual decurse command from whatever means is available.
+ *
+ * Takes no playerHas, and that is upstream's shape, not an omission: the MEANS
+ * check above asks borg_spell_okay_fail(REMOVE_CURSE, 40), which needs the
+ * fail-rate inputs, while the command half calls plain borg_spell(REMOVE_CURSE),
+ * which has no fail threshold to compute (decurse.c:111-125).
+ */
 function decurseCommand(
   ctx: BorgContext,
   d?: ItemDeps,
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted and then
-   * dropped: the sibling above passes it to borgSpellOkayFail and this one does not,
-   * so the spell path here skips a check its own caller applied. A Borg gap, named
-   * rather than silenced. */
-  playerHas?: (flag: string) => boolean,
 ): AgentCommand | null {
   return (
     borgReadScroll(ctx, SVAL.scroll.remove_curse!, d) ||
@@ -79,5 +81,5 @@ export function borgDecurseAny(
 ): AgentCommand | null {
   if (!ctx.world.self.trait[BI.FIRST_CURSED]) return null;
   if (!decurseMeans(ctx, d, playerHas)) return null;
-  return decurseCommand(ctx, d, playerHas);
+  return decurseCommand(ctx, d);
 }

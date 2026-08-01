@@ -181,3 +181,61 @@ describe("RngStreams", () => {
     expect(() => new RngStreams().get("nope")).toThrow();
   });
 });
+
+describe("reseed, and why it is not setState", () => {
+  it("reseeds in place and keeps quick mode producing a real stream", () => {
+    const r = new Rng(0x00c0ffee, { quick: true });
+    const first = Array.from({ length: 12 }, () => r.randint0(10));
+    r.reseed(0x00c0ffee);
+    const again = Array.from({ length: 12 }, () => r.randint0(10));
+    expect(again).toEqual(first);
+    // Not merely equal to itself: a generator stuck on one value is also
+    // reproducible, which is exactly how a dead quick RNG hid in the Borg.
+    expect(new Set(first).size).toBeGreaterThan(1);
+  });
+
+  it("reseeds a WELL generator to the same stream a fresh one produces", () => {
+    const r = new Rng(1);
+    r.randint0(100);
+    r.reseed(4242);
+    const fresh = new Rng(4242);
+    expect(Array.from({ length: 20 }, () => r.randDiv(1000))).toEqual(
+      Array.from({ length: 20 }, () => fresh.randDiv(1000)),
+    );
+  });
+
+  it("setState forces quick off, which is load.c's behaviour and not a reseed", () => {
+    /* The C save block carries no Rand_quick, so a restored game always runs
+     * the WELL stream (load.c L388-415). Recorded as intent, because the
+     * asymmetry with getState() is a trap: a quick generator's snapshot cannot
+     * be used to restore it. */
+    const quick = new Rng(0x00c0ffee, { quick: true });
+    const snapshot = quick.getState();
+    expect(snapshot.quick).toBe(true);
+    quick.setState(snapshot);
+    // Same seed, same recorded state - and now a different generator entirely.
+    expect(quick.getState().quick).toBe(false);
+  });
+
+  it("an all-zero WELL table is a fixed point, which is why that path was fatal", () => {
+    /* Not a wish - a measurement, and the mechanism behind the Borg hang: the
+     * WELL step is additive over its own table, so zeros beget zeros. Anything
+     * that hands a live generator this state has silently stopped it. */
+    const dead = new Rng(1);
+    dead.setState({
+      quick: false,
+      value: 0x00c0ffee,
+      state: new Array(RAND_DEG).fill(0),
+      stateI: 0,
+      fixed: false,
+      fixval: 0,
+    });
+    expect(Array.from({ length: 16 }, () => dead.randint0(10))).toEqual(
+      new Array(16).fill(0),
+    );
+    // And reseed is the way back out.
+    dead.reseed(0x00c0ffee);
+    expect(new Set(Array.from({ length: 16 }, () => dead.randint0(10))).size)
+      .toBeGreaterThan(1);
+  });
+});

@@ -1499,11 +1499,13 @@ function auxRodUnknown(ctx: BorgContext, fs: FightState, dam: number, typ: numbe
 /**
  * borg_attack_aux_activation (attack.c:3044).
  *
- * UNWIRED. Ported, and nothing calls it - so the Borg never attacks with an item
- * activation, which upstream's ladder does consider. This is a real gap, tracked
- * rather than deleted: the port is right, the call site is missing.
+ * The C takes a sixth argument, `selection`, and emits `borg_keypress('b' +
+ * selection)` to answer the "which breath?" menu a multi-element activation
+ * raises. Only the five multi-type dragon activations pass anything but -1, and
+ * the frozen AgentActions has no way to carry it: `activate(handle)` is the whole
+ * surface. Omitted here for the same reason and in the same way as auxDragon,
+ * which has shipped without it - see auxActivationMulti.
  */
-/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- unwired port, see above */
 function auxActivation(ctx: BorgContext, fs: FightState, act: string, rad: number, dam: number, typ: number, aim: boolean): number {
   if (trait(ctx, BI.ISBLIND) || trait(ctx, BI.ISCONFUSED) || trait(ctx, BI.ISIMAGE)) return 0;
   if (fs.simulate && ctx.rng.randint0(100) < 2) return 0;
@@ -1513,6 +1515,48 @@ function auxActivation(ctx: BorgContext, fs: FightState, act: string, rad: numbe
   fs.pending = borgActivateItem(ctx, act);
   if (aim) fs.successfulTarget = -1;
   return bN;
+}
+
+/**
+ * The braced multi-element activation cases (attack.c:4768, 4801, 4828, 4855,
+ * 4883): score the activation once per element it can breathe, keep the best,
+ * then re-run that one for real. Same shape as auxDragonMulti, which the dragon
+ * ARMOUR cases already use - upstream writes the loop out five times.
+ *
+ * Upstream also passes the winning index as `selection`, which becomes the
+ * keypress that answers the game's breath menu; see auxActivation on why that
+ * argument has nowhere to go here.
+ */
+function auxActivationMulti(ctx: BorgContext, fs: FightState, act: string, rad: number, dam: number, types: number[]): number {
+  const savedSim = fs.simulate;
+  fs.simulate = true;
+  const values = types.map((t) => auxActivation(ctx, fs, act, rad, dam, t, true));
+  let biggest = 0;
+  for (let x = 1; x < values.length; x++) if (values[x]! > values[biggest]!) biggest = x;
+  fs.simulate = savedSim;
+  if (!fs.simulate) return auxActivation(ctx, fs, act, rad, dam, types[biggest]!, true);
+  return values[biggest]!;
+}
+
+/**
+ * borg_attack_aux_artifact_holcolleth (attack.c:3741): Holcolleth's sleep-II.
+ * Scored by the danger it removes rather than by damage, so it goes through the
+ * sleepSpellIi danger global instead of borgLaunchBolt.
+ */
+function auxArtifactHolcolleth(ctx: BorgContext, fs: FightState): number {
+  if (!borgEquipsItem(ctx, "act_sleepii", true)) return 0;
+  const g = getDangerGlobals(ctx.world);
+  const { x, y } = ctx.world.self.c;
+  g.sleepSpellIi = false;
+  const p1 = borgDanger(ctx, y, x, 4, true, false);
+  g.sleepSpellIi = true;
+  const p2 = borgDanger(ctx, y, x, 4, true, false);
+  g.sleepSpellIi = false;
+  const d = p1 - p2;
+  if (fs.simulate) return d;
+  fs.pending = borgActivateItem(ctx, "act_sleepii");
+  /* Upstream notes "# Failed to properly activate the artifact" and scores 0. */
+  return fs.pending ? d : 0;
 }
 
 /** borg_attack_aux_ring (attack.c:3091). */
@@ -1898,10 +1942,180 @@ export function borgCalculateAttackEffectiveness(ctx: BorgContext, fs: FightStat
     case BF.DRAGON_POWER:
       return auxDragon(ctx, fs, SVAL.dragon.power!, 20, 300, BA.MISSILE);
 
+    /* Artifact and item activations (BF_ACT_*), attack.c:4424-4910.
+     *
+     * All 61 of them, transcribed from the C switch. They were absent: the BF
+     * enum carried every id, so borg_attack iterated them, and every one fell to
+     * the default below and scored 0. The Borg therefore never once considered
+     * attacking with an artifact - and auxActivation, the helper they all call,
+     * sat ported with no reference. Whether a given one can fire is still the
+     * host's answer, through the activation resolver in ItemDeps; what changed is
+     * that the question now gets asked.
+     *
+     * rad defaults to 0 where a case sets only dam: `int rad = 0` is declared at
+     * the top of borg_calculate_attack_effectiveness (attack.c:3784) and the
+     * switch is entered fresh each call. ACT_WONDER and ACT_STAFF_HOLY are the
+     * two that rely on it. */
+    /* Artifact -- Narthanc- fire bolt 9d8*/
+    case BF.ACT_FIRE_BOLT:
+      return auxActivation(ctx, fs, "act_fire_bolt", 0, idiv(9 * (8 + 1), 2), BA.FIRE, true);
+    /* Artifact -- Anduril & Firestar- fire ball 72*/
+    case BF.ACT_FIRE_BALL72:
+      return auxActivation(ctx, fs, "act_fire_ball72", 2, 72, BA.FIRE, true);
+    /* Artifact -- Gothmog- FIRE BALL 144 */
+    case BF.ACT_FIRE_BALL:
+      return auxActivation(ctx, fs, "act_fire_ball", 2, 144, BA.FIRE, true);
+    /* Artifact -- Nimthanc & Paurnimmen- frost bolt 6d8*/
+    case BF.ACT_COLD_BOLT:
+      return auxActivation(ctx, fs, "act_cold_bolt", 0, idiv(6 * (8 + 1), 2), BA.COLD, true);
+    /* Artifact -- Belangil- frost ball 50 */
+    case BF.ACT_COLD_BALL50:
+      return auxActivation(ctx, fs, "act_cold_ball50", 2, 50, BA.COLD, true);
+    /* Artifact -- Aranr(u + acute accent)th- frost bolt 12d8*/
+    case BF.ACT_COLD_BOLT2:
+      return auxActivation(ctx, fs, "act_cold_bolt2", 0, idiv(12 * (8 + 1), 2), BA.COLD, true);
+    /* Artifact -- Ringil- frost ball 100*/
+    case BF.ACT_COLD_BALL100:
+      return auxActivation(ctx, fs, "act_cold_ball100", 2, 100, BA.COLD, true);
+    /* Artifact -- Dethanc- electric bolt 6d6*/
+    case BF.ACT_ELEC_BOLT:
+      return auxActivation(ctx, fs, "act_elec_bolt", -1, idiv(6 * (6 + 1), 2), BA.ELEC, true);
+    /* Artifact -- Rilia- poison gas 12*/
+    case BF.ACT_STINKING_CLOUD:
+      return auxActivation(ctx, fs, "act_stinking_cloud", 2, 12, BA.POIS, true);
+    /* Artifact -- Theoden- drain Life 120*/
+    case BF.ACT_DRAIN_LIFE2:
+      return auxActivation(ctx, fs, "act_drain_life2", 0, 120, BA.OLD_DRAIN, true);
+    /* Artifact -- Totila- confustion */
+    case BF.ACT_CONFUSE2:
+      return auxActivation(ctx, fs, "act_confuse2", 0, 20, BA.OLD_CONF, true);
+    /* Artifact -- Holcolleth -- sleep ii and sanctuary */
+    /* dam = 10 is assigned and unused upstream; the helper computes its own. */
+    case BF.ACT_SLEEPII:
+      return auxArtifactHolcolleth(ctx, fs);
+    /* Artifact -- TURMIL- drain life 90 */
+    case BF.ACT_DRAIN_LIFE1:
+      return auxActivation(ctx, fs, "act_drain_life1", 0, 90, BA.OLD_DRAIN, true);
+    /* Artifact -- Fingolfin- spikes 150 */
+    case BF.ACT_ARROW:
+      return auxActivation(ctx, fs, "act_arrow", 0, 150, BA.MISSILE, true);
+    /* Artifact -- Cammithrim- Magic Missile 3d4 */
+    case BF.ACT_MISSILE:
+      return auxActivation(ctx, fs, "act_missile", 0, idiv(3 * (4 + 1), 2), BA.MISSILE, true);
+    /* Artifact -- Paurnen- ACID bolt 5d8 */
+    case BF.ACT_ACID_BOLT:
+      return auxActivation(ctx, fs, "act_acid_bolt", 0, idiv(5 * (8 + 1), 2), BA.ACID, true);
+    /* Artifact -- INGWE- DISPEL EVIL X5 */
+    case BF.ACT_DISPEL_EVIL:
+      return auxActivation(ctx, fs, "act_dispel_evil", 10, 10 + idiv(trait(ctx, BI.CLEVEL) * 5, 2), BA.DISP_EVIL, true);
+    /* Artifact -- E(o + diaresis)l -- Mana Bolt 12d8 */
+    case BF.ACT_MANA_BOLT:
+      return auxActivation(ctx, fs, "act_mana_bolt", 0, idiv(12 * (8 + 1), 2), BA.MANA, true);
+    /* Artifact -- Razorback and Mediator */
+    case BF.ACT_STAR_BALL:
+      return auxActivation(ctx, fs, "act_star_ball", 3, 150, BA.ELEC, true);
+    /* Artifact -- Gil-galad */
+    case BF.ACT_STARLIGHT2:
+      return auxActivation(ctx, fs, "act_starlight2", 7, idiv(10 * (8 + 1), 2), BA.LIGHT, false);
+    /* Artifact -- randarts */
+    case BF.ACT_STARLIGHT:
+      return auxActivation(ctx, fs, "act_starlight", 7, idiv(6 * (8 + 1), 2), BA.LIGHT, false);
+    case BF.ACT_MON_SLOW:
+      return auxActivation(ctx, fs, "act_mon_slow", 0, 20, BA.OLD_SLOW, true);
+    case BF.ACT_MON_CONFUSE:
+      return auxActivation(ctx, fs, "act_mon_confuse", 0, idiv(2 * (6 + 1), 2), BA.OLD_CONF, true);
+    case BF.ACT_SLEEP_ALL:
+      return auxActivation(ctx, fs, "act_sleep_all", 0, 60, BA.OLD_SLEEP, true);
+    case BF.ACT_FEAR_MONSTER:
+      return auxActivation(ctx, fs, "act_mon_scare", 0, idiv(2 * (6 + 1), 2), BA.TURN_ALL, true);
+    case BF.ACT_LIGHT_BEAM:
+      return auxActivation(ctx, fs, "act_light_line", -1, idiv(6 * (8 + 1), 2), BA.LIGHT_WEAK, true);
+    case BF.ACT_DRAIN_LIFE3:
+      return auxActivation(ctx, fs, "act_drain_life3", 0, 150, BA.OLD_DRAIN, true);
+    case BF.ACT_DRAIN_LIFE4:
+      return auxActivation(ctx, fs, "act_drain_life4", 0, 250, BA.OLD_DRAIN, true);
+    case BF.ACT_ELEC_BALL:
+      return auxActivation(ctx, fs, "act_elec_ball", 2, 64, BA.ELEC, true);
+    case BF.ACT_ELEC_BALL2:
+      return auxActivation(ctx, fs, "act_elec_ball2", 2, 250, BA.ELEC, true);
+    case BF.ACT_ACID_BOLT2:
+      return auxActivation(ctx, fs, "act_acid_bolt2", 0, idiv(10 * (8 + 1), 2), BA.ACID, true);
+    case BF.ACT_ACID_BOLT3:
+      return auxActivation(ctx, fs, "act_acid_bolt2", 0, idiv(12 * (8 + 1), 2), BA.ACID, true);
+    case BF.ACT_ACID_BALL:
+      return auxActivation(ctx, fs, "act_acid_ball", 2, 120, BA.ACID, true);
+    case BF.ACT_COLD_BALL160:
+      return auxActivation(ctx, fs, "act_cold_ball160", 2, 160, BA.COLD, true);
+    case BF.ACT_COLD_BALL2:
+      return auxActivation(ctx, fs, "act_cold_ball2", 2, 200, BA.COLD, true);
+    case BF.ACT_FIRE_BALL2:
+      return auxActivation(ctx, fs, "act_fire_ball2", 2, 120, BA.FIRE, true);
+    case BF.ACT_FIRE_BALL200:
+      return auxActivation(ctx, fs, "act_fire_ball200", 2, 200, BA.FIRE, true);
+    case BF.ACT_FIRE_BOLT2:
+      return auxActivation(ctx, fs, "act_fire_bolt2", 0, idiv(12 * (8 + 1), 2), BA.FIRE, true);
+    case BF.ACT_FIRE_BOLT3:
+      return auxActivation(ctx, fs, "act_fire_bolt3", 0, idiv(16 * (8 + 1), 2), BA.FIRE, true);
+    case BF.ACT_DISPEL_EVIL60:
+      return auxActivation(ctx, fs, "act_dispel_evil60", 10, 60, BA.DISP_EVIL, false);
+    case BF.ACT_DISPEL_UNDEAD:
+      return auxActivation(ctx, fs, "act_dispel_undead", 10, 60, BA.DISP_UNDEAD, false);
+    case BF.ACT_DISPEL_ALL:
+      return auxActivation(ctx, fs, "act_dispel_undead", 10, 60, BA.DISP_ALL, false);
+    case BF.ACT_LOSSLOW:
+      return auxActivation(ctx, fs, "act_losslow", 10, 20, BA.OLD_SLOW, false);
+    case BF.ACT_LOSSLEEP:
+      return auxActivation(ctx, fs, "act_lossleep", 10, 20, BA.OLD_SLEEP, false);
+    case BF.ACT_LOSCONF:
+      return auxActivation(ctx, fs, "act_losconf", 10, 5 + idiv(5 + 1, 2), BA.OLD_CONF, false);
+    case BF.ACT_WONDER:
+      return auxActivation(ctx, fs, "act_wonder", 0, 5 + idiv(5 + 1, 2), BA.MISSILE, true);
+    case BF.ACT_STAFF_HOLY:
+      return auxActivation(ctx, fs, "act_staff_holy", 0,
+        trait(ctx, BI.CURHP) < idiv(trait(ctx, BI.MAXHP), 2) ? 500 : 120, BA.DISP_EVIL, false);
+    case BF.ACT_RING_ACID:
+      return auxActivation(ctx, fs, "act_ring_acid", 2, 70, BA.ACID, true);
+    case BF.ACT_RING_FIRE:
+      return auxActivation(ctx, fs, "act_ring_flames", 2, 80, BA.FIRE, true);
+    case BF.ACT_RING_ICE:
+      return auxActivation(ctx, fs, "act_ring_ice", 2, 75, BA.ICE, true);
+    case BF.ACT_RING_LIGHTNING:
+      return auxActivation(ctx, fs, "act_ring_lightning", 2, 85, BA.ELEC, true);
+    case BF.ACT_DRAGON_BLUE:
+      return auxActivation(ctx, fs, "act_dragon_blue", 2, 150, BA.ELEC, true);
+    case BF.ACT_DRAGON_GREEN:
+      return auxActivation(ctx, fs, "act_dragon_green", 2, 150, BA.POIS, true);
+    case BF.ACT_DRAGON_RED:
+      return auxActivation(ctx, fs, "act_dragon_red", 2, 200, BA.FIRE, true);
+    case BF.ACT_DRAGON_MULTIHUED:
+      return auxActivationMulti(ctx, fs, "act_dragon_multihued", 2, 250, [
+        BA.ELEC, BA.COLD, BA.ACID, BA.POIS, BA.FIRE,
+      ]);
+    case BF.ACT_DRAGON_GOLD:
+      return auxActivation(ctx, fs, "act_dragon_gold", 2, 150, BA.SOUND, true);
+    case BF.ACT_DRAGON_CHAOS:
+      return auxActivationMulti(ctx, fs, "act_dragon_chaos", 2, 220, [
+        BA.CHAOS, BA.DISEN,
+      ]);
+    case BF.ACT_DRAGON_LAW:
+      return auxActivationMulti(ctx, fs, "act_dragon_law", 2, 220, [
+        BA.SOUND, BA.SHARD,
+      ]);
+    case BF.ACT_DRAGON_BALANCE:
+      return auxActivationMulti(ctx, fs, "act_dragon_balance", 2, 250, [
+        BA.CHAOS, BA.DISEN, BA.SOUND, BA.SHARD,
+      ]);
+    case BF.ACT_DRAGON_SHINING:
+      return auxActivationMulti(ctx, fs, "act_dragon_shining", 2, 200, [
+        BA.LIGHT, BA.DARK,
+      ]);
+    case BF.ACT_DRAGON_POWER:
+      return auxActivation(ctx, fs, "act_dragon_power", 2, 300, BA.MISSILE, true);
+
     default:
-      /* Artifact activations (BF_ACT_*): route through the activation seam.
-       * Without an activation resolver these all return 0 (faithful: no artifact
-       * available). P8.6 injects a resolver and these become live. */
+      /* Every BF_* id is now handled above. Kept because BF is a numeric enum
+       * and borg_attack walks BF_REST..BF_MAX by integer, so an id added to the
+       * enum without a case here must score 0 rather than fall off the end. */
       return 0;
   }
 }

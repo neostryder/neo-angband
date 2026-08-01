@@ -205,6 +205,31 @@ describe("controller seam (the acceptance-gate end-to-end)", () => {
     session.uninstall();
     expect(state.nextCommand).toBe(original);
   });
+
+  /* Why the HOST owns a single autoplayer slot (ModPlugin.controller) rather
+   * than letting each mod call installController from register(). Recorded as a
+   * measurement, because "two mods would conflict" is the kind of claim that
+   * gets asserted in a design doc and never checked. */
+  it("stacks silently when installed twice, and unwinds wrong out of order", () => {
+    const state = makeState();
+    const human = state.nextCommand;
+    const first = installController(state, () => ({ code: "hold" }));
+    const second = installController(state, () => ({ code: "rest" }));
+
+    // No error, no warning: the second one simply owns the game now.
+    expect(state.nextCommand?.()).toEqual({ code: "rest" });
+
+    // And tearing the FIRST one down does not restore the human - it restores
+    // what was there when it installed, which was the human, silently evicting
+    // the second controller that is still running as far as its owner knows.
+    first.uninstall();
+    expect(state.nextCommand).toBe(human);
+
+    // The second's teardown then reinstalls the FIRST one over the human.
+    second.uninstall();
+    expect(state.nextCommand?.()).toEqual({ code: "hold" });
+    expect(state.nextCommand).not.toBe(human);
+  });
 });
 
 describe("capability gating and determinism", () => {

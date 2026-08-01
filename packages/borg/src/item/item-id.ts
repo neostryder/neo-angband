@@ -38,14 +38,13 @@ export function borgItemNoteNeedsId(item: ItemView, d?: ItemDeps): boolean {
  * preferring artifacts/egos, using IDENTIFY_RUNE or a scroll of Identify Rune.
  * Returns the ID command, or null.
  */
+/* No playerHas, matching upstream: this function's only spell calls are
+ * borg_spell_legal(IDENTIFY_RUNE) and borg_spell(IDENTIFY_RUNE) (wear.c:89,
+ * wear.c:212), neither of which takes a fail threshold, so there is no fail rate
+ * to compute and nothing for the flag to affect. */
 export function borgTestStuff(
   ctx: BorgContext,
   d?: ItemDeps,
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted and then
-   * dropped: every sibling in this package threads playerHas into its spell checks
-   * and this one does not, so an ID spell is chosen without it. A Borg gap, named
-   * rather than silenced. */
-  playerHas?: (flag: string) => boolean,
 ): AgentCommand | null {
   const freeId = borgSpellLegal(ctx, Spell.IDENTIFY_RUNE);
 

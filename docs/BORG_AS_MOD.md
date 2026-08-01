@@ -1,9 +1,13 @@
 # The Borg as a Mod - Scope and Plan
 
-> STATUS: IMPLEMENTED. What this document scoped is now built: the Borg ships
-> as a BUNDLED MOD (`packages/borg`) built on the mod framework's perceive/act
-> API, not as core code, and the framework itself is feature-complete. For the
-> shipped Borg - how to run it and how it works - see
+> STATUS: PORTED, NOT YET SHIPPED. What this document scoped is built - the Borg
+> is a faithful port riding the mod framework's perceive/act API rather than core
+> code, and the framework is feature-complete - but it lives in `packages/borg`,
+> which the game does not bundle and no front end installs. Section 6 has the
+> measurements and section 8 the remaining steps. This header used to say
+> IMPLEMENTED and "ships as a BUNDLED MOD", which was wrong twice over: no mod
+> ships inside the build, this one included, and a package with no importer does
+> not ship at all. For how the Borg works see
 > [docs/modding/BORG.md](modding/BORG.md); for the framework it rides, see
 > [docs/modding/MOD_INTEGRATION_PLAN.md](modding/MOD_INTEGRATION_PLAN.md). This
 > document is retained as the design rationale of record for task P8 (the Borg):
