@@ -164,6 +164,28 @@ export interface ModPlugin {
    * surfaced, without taking the game or the other mods down.
    */
   register?(host: ModRegistryHost, ctx: ModPluginContext): void;
+  /**
+   * Rewrite this mod's OWN save bag when the mod's `saveSchema` has moved past
+   * the schema the bag was written at.
+   *
+   * A bag is whatever JSON the mod chose to keep in the player's save
+   * (`ctx.state.mods[id]`); core round-trips it verbatim and never reads it, so
+   * core cannot migrate it and neither can the host - only the mod knows what its
+   * own data means. `fromSchema` is what the bag was written at; return the same
+   * data in the shape this version expects, and the host stamps the schema
+   * forward (core's migrateModBag).
+   *
+   * Called at mod-load time, before `register()`, so a plugin can rely on its bag
+   * being current by the time any of its other code runs. Optional: a mod that
+   * never changes its data shape, or would rather branch on `bag.schema` itself,
+   * simply omits it. Omitting it while HAVING bumped saveSchema is reported to
+   * the player - the old data is kept exactly as it was rather than being
+   * relabelled as current.
+   *
+   * Throwing leaves the old bag untouched and reports; a half-applied migration
+   * written back over the only copy is worse than no migration at all.
+   */
+  migrateBag?(data: unknown, fromSchema: number, ctx: ModPluginContext): unknown;
   /** Optional teardown, called if the plugin is uninstalled in-session. */
   uninstall?(): void;
 }
@@ -208,13 +230,19 @@ export function validateModPlugin(
   if (p.register !== undefined && typeof p.register !== "function") {
     return "plugin.js: register is not a function";
   }
+  if (p.migrateBag !== undefined && typeof p.migrateBag !== "function") {
+    return "plugin.js: migrateBag is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
   if (p.hooks === undefined && p.register === undefined) {
     /* A plugin that does neither is almost certainly a mistake - a mod with no
      * code at all simply ships no plugin.js - and saying so beats loading it and
-     * having nothing happen. */
+     * having nothing happen. Deliberately NOT widened to include migrateBag: a
+     * plugin whose only member is a bag migrator changes nothing about the game
+     * and would silently do nothing on a fresh save, which is the same mistake
+     * wearing a newer field name. */
     return "plugin.js declares neither hooks nor register, so it would do nothing";
   }
   return null;
