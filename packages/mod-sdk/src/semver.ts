@@ -87,6 +87,36 @@ function compareVersions(a: FullVersion, b: FullVersion): number {
   return a.prerelease < b.prerelease ? -1 : 1;
 }
 
+/**
+ * Order two version strings: negative if `a` is older, 0 if equal, positive if
+ * `a` is newer. `null` when either side is not a full `major.minor.patch`.
+ *
+ * WHY THIS IS PUBLIC AND WHY IT RETURNS NULL. `satisfies` answers "does this
+ * version fall in that range", which is the question a manifest asks. It is not
+ * the question a CATALOGUE asks - "is the version on offer newer than the one
+ * installed" - and the host had been answering that with `!==`, which cannot tell
+ * an update from a downgrade. Nothing else in the port could order two versions,
+ * so the alternative to exporting this was a second comparator somewhere that
+ * would disagree with this one about prereleases.
+ *
+ * Null rather than a throw because the inputs are author-supplied strings from a
+ * catalogue, not something this build controls: a tag that is not a version is a
+ * real case and the honest answer is "these cannot be ordered", which the caller
+ * has to render differently anyway. A throw would push every caller into a
+ * try/catch that ends up meaning the same thing.
+ */
+export function compareSemver(a: string, b: string): number | null {
+  let left: FullVersion;
+  let right: FullVersion;
+  try {
+    left = parseVersion(a);
+    right = parseVersion(b);
+  } catch {
+    return null;
+  }
+  return compareVersions(left, right);
+}
+
 type Checker = (v: FullVersion) => boolean;
 
 /** Fill an absent minor/patch with 0, e.g. for comparator/caret/tilde bounds. */
