@@ -1423,15 +1423,24 @@ state.onMelee = (mon, result): void => {
   if (result.monsterDied) {
     /* player_kill_monster death confirmation (mon-util.c L1057-1065): an unseen
      * monster is "killed", a non-living one (skeleton/golem/...) "destroyed",
-     * a living one "slain". The port previously hardcoded "slain". */
-    const verb = !monsterIsVisible(mon)
-      ? "killed"
+     * a living one "slain". The port previously hardcoded "slain".
+     *
+     * Three WHOLE sentences rather than one sentence with the verb interpolated,
+     * which is how this was written first. Two reasons, and neither is style.
+     * The text census matches upstream literals against the port's source, and a
+     * verb spliced into a template leaves no "You have destroyed " anywhere to
+     * find - it read as a missing message, and was only ever "present" because
+     * packages/borg happened to carry the string in its message-PARSING table.
+     * When the Borg left for its own repository the census noticed immediately.
+     * The same splitting also defeats translation, which needs the sentence. */
+    const line = !monsterIsVisible(mon)
+      ? `You have killed ${name}.`
       : monsterIsDestroyed(mon)
-        ? "destroyed"
-        : "slain";
+        ? `You have destroyed ${name}.`
+        : `You have slain ${name}.`;
     /* msgt(MSG_KILL, ...) (mon-util.c kill message): carry the type so the
      * message.prf colour applies, not just the sound. */
-    say(`You have ${verb} ${name}.`, "KILL");
+    say(line, "KILL");
     state.sound?.(MSG.KILL);
   }
 };

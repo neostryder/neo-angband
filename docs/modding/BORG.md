@@ -80,6 +80,6 @@ aggressively it optimizes edge decisions.
 
 The Borg is the reference implementation for building your own agent: an
 `AgentController` is just `(view, act) => AgentCommand | null`. See
-`packages/borg` for a large worked example and `packages/web/src/agents/demo.ts`
+the `neo-angband-mod-borg` repository for a large worked example and `packages/web/src/agents/demo.ts`
 for a minimal one. Because the contract is frozen and capability-gated, the same
 shape runs in-process (like the Borg) or sandboxed in a Web Worker.

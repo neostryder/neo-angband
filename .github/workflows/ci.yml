@@ -40,18 +40,11 @@ jobs:
       # under `pnpm test` below - including the failure paths, which the old step over
       # two correct mods could not exercise. So there is no separate build step here any
       # more; each mod repository runs the builder over its own source in its own CI.
-      # `pnpm test` runs everything, packages/borg included. It did not always:
-      # foundation.test.ts and think.test.ts hung indefinitely (no output, no
-      # timeout - a synchronous spin the test timeout cannot interrupt), so both
-      # were excluded and the Borg's decision ladder had never once been executed
-      # by a test. The cause was core's Rng: the Borg reseeded per think through
-      # setState(), which is the savefile path and forces quick mode OFF, leaving
-      # an all-zero WELL table - a fixed point that emits zero to every draw. The
-      # fix is Rng.reseed(); the exclusions came off with it.
+      # The Borg's tests are not here any more: it left for its own mod repository
+      # (neostryder/neo-angband-mod-borg), which runs all 171 of them plus a suite
+      # that drives the BUILT plugin.js. What this repository still owes it is
+      # Rng.reseed and the ModPlugin.controller seam, both covered below.
       - run: pnpm test
-      # Redundant with `pnpm test` and kept deliberately: this is the command a
-      # borg change is run under locally, and it must stay a command that works.
-      - run: pnpm test:borg
       # Parity harness (packages/cli): the parity.test.ts guard runs inside
       # `pnpm test` above; this runs the golden scenarios as a standalone Node
       # program too, so a break in the runnable harness (loader, entry wiring)

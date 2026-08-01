@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.12.0`. High level, what exists today:
+Current state of the project at version `0.13.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -40,8 +40,9 @@ Current state of the project at version `0.12.0`. High level, what exists today:
   variant pools - plus the converter that builds one from any tilesheet, via
   `@rpgm-tools/neo-angband-linoleum`). The game's own tile sets stay core content on
   the classic tilesheet engine.
-- The Borg (`@rpgm-tools/neo-angband-borg`): a faithful port of Angband's automatic
-  player, riding the perceive/act agent API as a mod rather than living in core.
+- The Borg, in its own repository like every other mod: a faithful port of
+  Angband's automatic player, driving the game through the same perceive/act agent
+  API a third-party automation would use.
 
 ### Added
 
@@ -121,9 +122,33 @@ Documentation accuracy:
 - `packages/web/src/mod-problems.ts` contained two literal NUL bytes as a dedup
   separator, which made ripgrep and git grep treat the file as binary and skip
   it. Same character, written as an escape.
+- The monster death message is three whole sentences again, not one sentence with
+  the verb interpolated. `You have killed/destroyed/slain %s.` is chosen correctly
+  either way, but a spliced verb leaves no matchable literal, so the text census
+  saw a missing message - and had been counting it present only because
+  `packages/borg` carried the string in its message-PARSING table. Removing the
+  Borg from the tree is what surfaced it. A whole sentence is also the unit
+  translation needs.
 
 ### Changed
 
+- **The Borg left this repository.** `packages/borg` is gone; the port lives in
+  [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) at
+  `v0.1.0`, where it is a mod a player installs and switches on rather than a
+  package with no importer. Its six runtime engine symbols now arrive as ESM live
+  bindings filled from `ctx.core`, so `plugin.js` carries the whole Borg and not
+  one byte of the engine - which the builder enforces and the mod's own tests
+  measure. Two guards travelled with it and one is new: no file in the bundle may
+  value-import the engine, and nothing may read an engine value at module top
+  level, which exactly one site did.
+- The plugin builder learned about `controller`. `validateModPlugin` in the host
+  and `pluginProblem` in the SDK's builder are two hand-written copies of the same
+  ABI check - deliberately, since the builder cannot import the front end - and
+  they had drifted: the host accepted a controller-only plugin and the builder
+  refused it as "would do nothing", which is precisely the Borg. A mod author only
+  ever sees the builder, so the ABI had effectively not grown at all.
+  `plugin-abi-agreement.test.ts` now reads both files and fails when the member
+  lists or the message disagree.
 - **The first-party mods take their gamedata from npm.** `qol` (v0.11.0) and
   `bug-fixes` (v0.12.0) each carried a hand-written `content.ts` that read the
   compiled pack out of a sibling checkout of this repository, because
