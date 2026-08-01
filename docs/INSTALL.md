@@ -19,9 +19,14 @@ four. Where a surface genuinely differs, it is called out in the
 [parity matrix](#parity-matrix) rather than left as a hidden gap.
 
 **Prerequisites** for everything except the PWA install: [Node](https://nodejs.org/)
-22 or newer, and [pnpm](https://pnpm.io/installation) 10 (run `corepack enable`
-and pnpm comes with Node). Everything below assumes you have cloned the repo and
-run `pnpm install` once at its root.
+22 or newer, and [pnpm](https://pnpm.io/installation) **11** — run
+**`corepack enable pnpm`** and the `packageManager` field in the root
+`package.json` decides the exact version. The 11 is not advisory: pnpm 10 fails on
+*every* command in this repository, `--help` included, because 11 ships a
+different package layout that 10 downloads to a path it cannot then run from.
+`npx pnpm@11 <cmd>` works in a pinch without installing anything, and
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the long version. Everything below
+assumes you have cloned the repo and run `pnpm install` once at its root.
 
 ---
 
