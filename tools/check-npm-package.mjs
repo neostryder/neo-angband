@@ -35,11 +35,13 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
+import { publishablePackages } from "./publishable.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Kept in step with PUBLISHED in packages/core/src/npm-publish.test.ts. */
-const PUBLISHABLE = ["core", "mod-sdk"];
+/* Derived from the manifests, not listed here - see tools/publishable.mjs for
+ * why there is exactly one place that answers this. */
+const PUBLISHABLE = publishablePackages();
 
 const requested = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 const packages = requested.length > 0 ? requested : PUBLISHABLE;
@@ -127,6 +129,32 @@ function extractTgz(tarball, destination) {
   return written;
 }
 
+/**
+ * The one entry `npm pack --json` describes, whichever shape this npm reports.
+ *
+ * npm 11 answers with an ARRAY of one object. npm 12 answers with an OBJECT
+ * keyed by package name. This script destructured the array, so on npm 12 every
+ * package failed with `object is not iterable` - and it failed identically for
+ * `core`, which has been packing fine in CI, so this was never about the package
+ * being checked. Measured on npm 12.0.2; CI's runner is still on 11.x, which is
+ * why the break was waiting rather than visible.
+ *
+ * Both shapes are accepted rather than pinning a version: this script exists to
+ * find out what npm actually ships, so it should not be the thing that dictates
+ * which npm you may run it with.
+ */
+function packResult(stdout, pkg) {
+  const parsed = JSON.parse(stdout);
+  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  if (!entry || typeof entry.filename !== "string") {
+    throw new Error(
+      `${pkg}: npm pack --json reported a shape with no filename in it: ` +
+        JSON.stringify(parsed).slice(0, 200),
+    );
+  }
+  return entry;
+}
+
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -149,7 +177,7 @@ for (const pkg of packages) {
     /* --pack-destination keeps the tarball out of the working tree, so a failed
      * run cannot leave a .tgz behind for someone to commit. */
     const out = runNpm(["pack", "--pack-destination", staging, "--json"], packageRoot);
-    const [packed] = JSON.parse(out);
+    const packed = packResult(out, pkg);
     const tarball = join(staging, packed.filename);
 
     extractTgz(tarball, staging);

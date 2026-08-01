@@ -27,14 +27,24 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// @ts-expect-error -- plain .mjs tooling, no types; see tools/publishable.mjs
+import { publishablePackages } from "../../../tools/publishable.mjs";
 
 const packagesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * The packages published to npm. Anything here must satisfy every claim below;
  * a package NOT here is a bundler target and may import however it likes.
+ *
+ * DERIVED, not listed. This was `["core", "mod-sdk"]` with a comment asking a
+ * human to keep it in step with `PUBLISHABLE` in tools/check-npm-package.mjs and
+ * with two `for pkg in core mod-sdk` loops in publish-npm.yml - four copies of
+ * one fact. `private: true` is not a proxy for the answer, it IS the answer: npm
+ * refuses to publish a package carrying it. So the set is "what npm would
+ * publish", read from the manifests, and making the next package publishable is
+ * one deleted field rather than four edits three of which nothing would catch.
  */
-const PUBLISHED = ["core", "mod-sdk"] as const;
+const PUBLISHED = publishablePackages(join(packagesDir, "..")) as string[];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -65,6 +75,35 @@ function extensionlessImports(file: string): string[] {
   }
   return found;
 }
+
+describe("the publishable set itself", () => {
+  /*
+   * A derived list has a failure mode a literal does not: it can come back
+   * SHORT and every test below still passes, because describe.each over fewer
+   * packages simply asserts less. Marking core private by accident would turn
+   * this whole file green while breaking the release.
+   */
+  it("found the packages, and did not come back empty", () => {
+    expect(PUBLISHED.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("always includes the two packages the mod ABI is made of", () => {
+    /* core and mod-sdk are what a mod author installs. Their leaving this set is
+     * never a decision - it is a mistake in a manifest - so it is pinned by name
+     * even though the set is otherwise derived. `content` is not pinned: it is a
+     * data package and dropping it would be a legitimate choice. */
+    expect(PUBLISHED).toContain("core");
+    expect(PUBLISHED).toContain("mod-sdk");
+  });
+
+  it("excludes the packages that are applications, not libraries", () => {
+    /* The other direction: a `private: true` accidentally deleted would start
+     * publishing the desktop shell and the web app to npm on the next tag. */
+    for (const app of ["web", "desktop", "cli", "mcp", "borg"]) {
+      expect(PUBLISHED, `${app} must not be published`).not.toContain(app);
+    }
+  });
+});
 
 describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
   const root = join(packagesDir, pkg);
@@ -137,6 +176,23 @@ describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
     }
   });
 
+  it("ships the thing it is FOR, not only its dist", () => {
+    /* A `files` list that compiles and imports cleanly can still leave out the
+     * payload. `content` is the case that makes this worth a test: its point is
+     * the 45 compiled JSON files in pack/, and a tarball with a working
+     * `compileGamedata` export and no pack/ would satisfy every other assertion
+     * in this file while being useless to the consumer who installed it. */
+    const files = manifest["files"] as string[];
+    const payload: Record<string, string> = { content: "pack" };
+    const required = payload[pkg];
+    if (required === undefined) return;
+    expect(files, `${pkg} must ship ${required}/`).toContain(required);
+    expect(
+      readdirSync(join(root, required)).length,
+      `${required}/ is listed but empty`,
+    ).toBeGreaterThan(0);
+  });
+
   it("resolves its own entry points to files the build actually emits", () => {
     const exports = manifest["exports"] as Record<string, unknown>;
     for (const [subpath, entry] of Object.entries(exports)) {
@@ -174,6 +230,26 @@ describe("publish-npm.yml publishes without a token", () => {
     for (const credential of ["NPM_TOKEN", "NODE_AUTH_TOKEN", "_authToken"]) {
       expect(workflow, credential).not.toContain(credential);
     }
+  });
+
+  it("derives the package list instead of hardcoding one", () => {
+    /* The workflow is the copy that fails SILENTLY: a package its loop does not
+     * name is not published and nothing says so - the job is green, the release
+     * looks done, and the package is simply missing from the registry. Asserted
+     * in both directions, because "calls the script" and "no longer hardcodes"
+     * are different claims and the first can be true while a stale literal
+     * remains next to it. */
+    expect(workflow).toContain("node tools/publishable.mjs");
+    /* Against the workflow with its COMMENTS STRIPPED. This caught itself
+     * immediately: the comment explaining the change quotes the old
+     * `for pkg in core mod-sdk` it replaced, and the assertion matched the
+     * explanation rather than the code. Prose is not behaviour, in either
+     * direction - the same trap the pre-commit-hook test records. */
+    const code = workflow
+      .split("\n")
+      .filter((l) => !/^\s*#/u.test(l))
+      .join("\n");
+    expect(code, "a hardcoded package loop is back").not.toMatch(/for pkg in [a-z]/u);
   });
 
   it("asserts the npm version instead of assuming the runner's", () => {
