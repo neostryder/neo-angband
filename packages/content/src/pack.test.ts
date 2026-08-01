@@ -5,12 +5,13 @@
  * never silently drift from the source of truth.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { loadPackFile, loadPackManifest, loadPackRecords, packDir, packFileNames } from "./pack.js";
 import type { CompiledFile, JsonObject } from "./records.js";
 import { gamedataSpecs } from "./specs/index.js";
 
@@ -18,12 +19,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const contentRoot = path.resolve(here, "..");
 const repoRoot = path.resolve(contentRoot, "..", "..");
 const gamedataDir = path.join(repoRoot, "reference", "lib", "gamedata");
-const packDir = path.join(contentRoot, "pack");
 
-function readPack(name: string): CompiledFile {
-  const raw = readFileSync(path.join(packDir, `${name}.json`), "utf8");
-  return JSON.parse(raw) as CompiledFile;
-}
+/* Read the pack through the module a CONSUMER gets, not through a private copy
+ * of the same two lines. This file used to resolve packDir and JSON.parse the
+ * files itself, which meant the shipped loader could break without a single
+ * assertion here moving - and the loader is the only way anyone outside this
+ * repository reaches the data. */
+const readPack = (name: string): CompiledFile => loadPackFile<CompiledFile>(name);
 
 /** Count record-start directives in the upstream .txt, comments excluded. */
 function countRecordStarts(name: string, start: string): number {
@@ -61,14 +63,53 @@ describe("compiled pack record counts match the upstream sources", () => {
 
 describe("manifest", () => {
   it("lists every compiled file for the core pack", () => {
-    const manifest = JSON.parse(
-      readFileSync(path.join(packDir, "manifest.json"), "utf8"),
-    ) as { id: string; name: string; version: string; engine: string; files: string[] };
+    const manifest = loadPackManifest();
     expect(manifest.id).toBe("core");
     expect(manifest.name).toBe("Angband");
     expect(manifest.version).toBe("4.2.6");
     expect(manifest.engine).toBe(">=0.1.0");
     expect(manifest.files).toEqual(gamedataSpecs.map((s) => `${s.name}.json`));
+  });
+});
+
+/**
+ * The pack loader is the package's REASON to be published, so it is tested as a
+ * consumer uses it.
+ *
+ * 0.11.0 shipped these 45 files and declared no exports subpath for any of them,
+ * which made every one of them unreachable from outside - `exports` refuses an
+ * undeclared subpath rather than merely not documenting it. Nothing here could
+ * have caught that, because everything here reads the repository. What catches it
+ * is tools/check-npm-package.mjs, which now resolves by bare specifier through a
+ * real node_modules. What these test is the other half: that the module those
+ * subpaths point at does the job the mod repositories need.
+ */
+describe("the pack loader a consumer imports", () => {
+  it("resolves packDir to the directory the files are actually in", () => {
+    expect(existsSync(path.join(packDir, "manifest.json"))).toBe(true);
+  });
+
+  it("returns the records array, not the wrapper", () => {
+    const records = loadPackRecords<JsonObject>("monster");
+    expect(Array.isArray(records)).toBe(true);
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.find((r) => r["name"] === "Morgoth, Lord of Darkness")).toBeDefined();
+  });
+
+  it("names the pack files in LOAD order, which is not alphabetical", () => {
+    const names = packFileNames();
+    expect(names).toEqual(gamedataSpecs.map((s) => s.name));
+    /* object records reference the bases they are built from, so the bases have
+     * to be read first; sorting this list would break the engine's load. */
+    expect(names.indexOf("object_base")).toBeLessThan(names.indexOf("object"));
+    expect(names).not.toEqual([...names].sort());
+  });
+
+  it("names the directory and what IS there when a file is missing", () => {
+    /* The bare ENOENT names one path and reads as a broken install. The usual
+     * cause is a name that changed between releases, and that is invisible in it. */
+    expect(() => loadPackFile("monsters")).toThrow(/no pack file "monsters\.json"/u);
+    expect(() => loadPackFile("monsters")).toThrow(/available: .*\bmonster\b/u);
   });
 });
 

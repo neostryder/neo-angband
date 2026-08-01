@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-content",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "The core content pack: Angband 4.2.6 gamedata compiled to schema-validated pack format",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
@@ -25,11 +25,25 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "//exports": [
+    "0.11.0 shipped pack/ - 45 files, 2.0 of this package's 2.3 MB unpacked - and",
+    "declared no subpath for it, so `exports` refused every path to it and the",
+    "published package could not do the one thing it is published for. Both keys",
+    "below are that fix, and they are for different consumers: `./pack` is the Node",
+    "loader (fs, absolute paths), `./pack/*.json` hands a bundler the file itself so",
+    "it can inline it. Node matches the exact key before the pattern, so they do not",
+    "collide."
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./pack": {
+      "types": "./dist/pack.d.ts",
+      "default": "./dist/pack.js"
+    },
+    "./pack/*.json": "./pack/*.json",
     "./package.json": "./package.json"
   },
   "//files": [

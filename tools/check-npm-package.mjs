@@ -26,6 +26,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -34,7 +35,6 @@ import { gunzipSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { pathToFileURL } from "node:url";
 import { publishablePackages } from "./publishable.mjs";
 import { packResult } from "./npm-pack-result.mjs";
 
@@ -184,39 +184,94 @@ for (const pkg of packages) {
       if (!files.includes(required)) fail(`${pkg}: tarball is missing ${required}`);
     }
 
-    /* An extracted package has no node_modules. For a package with zero runtime
-     * dependencies that is exactly the isolation we want; for one WITH deps a
-     * bare specifier would fail for a legitimate reason, so say what was skipped
+    /* SHIPPED IS NOT THE SAME AS REACHABLE, and the gap is silent. An `exports`
+     * map encapsulates a package: an undeclared subpath is refused, not merely
+     * undocumented. content@0.11.0 shipped pack/ - 45 files, 2.0 of its 2.3 MB -
+     * with no subpath for it, so the one thing the package is published FOR threw
+     * ERR_PACKAGE_PATH_NOT_EXPORTED at every consumer, and 113 files, a green CI
+     * and a successful publish all agreed it was fine.
+     *
+     * `bin` counts as reachable: npm installs a shim for it, and a bin target is
+     * NOT supposed to be in the exports map. src/ is the standing exception - it
+     * ships because the .js.map files point into it, and a debugger reads it by
+     * path rather than by specifier. */
+    const reachable = [
+      ...Object.values(manifest.exports ?? {}).flatMap((entry) =>
+        typeof entry === "string" ? [entry] : Object.values(entry),
+      ),
+      ...Object.values(manifest.bin ?? {}).map((t) => (t.startsWith("./") ? t : `./${t}`)),
+    ];
+    const shippedDirs = [...new Set(files.filter((f) => f.includes("/")).map((f) => f.split("/")[0]))];
+    for (const dir of shippedDirs) {
+      if (dir === "src") continue;
+      if (reachable.some((t) => t.startsWith(`./${dir}/`))) continue;
+      const bytes = files.filter((f) => f.startsWith(`${dir}/`)).length;
+      fail(
+        `${pkg}: ships ${dir}/ (${bytes} files) and no exports subpath reaches it.\n` +
+          `        Nothing can import it - "exports" refuses undeclared subpaths.`,
+      );
+    }
+
+    /* Resolve by BARE SPECIFIER through a real node_modules, not by joining the
+     * target path ourselves. Importing the file directly is what this check used
+     * to do, and it silently proves the wrong thing: a file URL bypasses the
+     * exports map entirely, so it answers "does this file load" when the question
+     * is "can a consumer reach it". */
+    const consumer = join(staging, "consumer");
+    const installed = join(consumer, "node_modules", ...manifest.name.split("/"));
+    mkdirSync(dirname(installed), { recursive: true });
+    renameSync(root, installed);
+    writeFileSync(
+      join(consumer, "package.json"),
+      JSON.stringify({ name: "consumer", private: true, type: "module" }),
+    );
+
+    /* An extracted package has no node_modules of its own. For a package with zero
+     * runtime dependencies that is exactly the isolation we want; for one WITH deps
+     * a bare specifier would fail for a legitimate reason, so say what was skipped
      * rather than pretend the check ran. */
     const deps = Object.keys(manifest.dependencies ?? {});
     if (deps.length > 0) {
       note(`${pkg}: SKIPPED the isolated import check - declares ${deps.join(", ")}`);
     } else {
       for (const [subpath, entry] of Object.entries(manifest.exports ?? {})) {
-        if (typeof entry === "string") continue; // "./package.json"
-        const target = join(root, entry.default);
-        if (!existsSync(target)) {
-          fail(`${pkg}: exports "${subpath}" points at missing ${entry.default}`);
+        const target = typeof entry === "string" ? entry : entry.default;
+        /* A pattern subpath is a promise about a SET of files, so check it with one
+         * of the files actually in the tarball rather than inventing a name. */
+        let specifier = manifest.name + subpath.slice(1);
+        if (subpath.includes("*")) {
+          const [before, after] = target.slice(2).split("*");
+          const match = files.find((f) => f.startsWith(before) && f.endsWith(after));
+          if (match === undefined) {
+            fail(`${pkg}: exports "${subpath}" matches no file in the tarball`);
+            continue;
+          }
+          const star = match.slice(before.length, match.length - after.length);
+          specifier = manifest.name + subpath.slice(1).replace("*", star);
+        } else if (!existsSync(join(installed, target))) {
+          fail(`${pkg}: exports "${subpath}" points at missing ${target}`);
           continue;
         }
+        const attributes = specifier.endsWith(".json") ? `, { with: { type: "json" } }` : "";
         try {
           const script =
-            `const m = await import(${JSON.stringify(pathToFileURL(target).href)});` +
+            `const m = await import(${JSON.stringify(specifier)}${attributes});` +
             `const n = Object.keys(m).length;` +
             `if (n === 0) { console.error("no exports"); process.exit(3); }` +
             `console.log(n);`;
           const count = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
-            cwd: staging,
+            cwd: consumer,
             encoding: "utf8",
             stdio: ["ignore", "pipe", "pipe"],
           }).trim();
-          note(`${pkg}: node imported "${subpath}" -> ${count} exports`);
+          note(`${pkg}: node imported "${specifier}" -> ${count} exports`);
         } catch (error) {
           fail(
-            `${pkg}: plain Node cannot import "${subpath}" (${entry.default}).\n` +
-              `        This is the extensionless-specifier failure class: tsc emits\n` +
-              `        specifiers verbatim, so a bundler-only import is invisible until\n` +
-              `        something loads the artefact without a bundler.\n` +
+            `${pkg}: plain Node cannot import "${specifier}" (${target}).\n` +
+              `        Either the exports map does not reach it, or this is the\n` +
+              `        extensionless-specifier failure class: tsc emits specifiers\n` +
+              `        verbatim, so a bundler-only import is invisible until something\n` +
+              `        loads the artefact without a bundler.\n` +
               `        ${String(error.stderr ?? error.message).trim().split("\n").slice(0, 6).join("\n        ")}`,
           );
         }
