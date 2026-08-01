@@ -1,0 +1,59 @@
+# Does the catalogue still describe the world?
+#
+# Every promise RECOMMENDED_MODS makes - the file is at that tag, it hashes to
+# that digest, it is served with CORS open, its manifest admits this engine
+# version - is checked at INSTALL time against digests baked into the build. So
+# until now the way anyone found out a promise had stopped being true was a
+# player's install failing.
+#
+# Two of them stopped being true on 2026-07-31 and both were caught by accident:
+# a manifest at a pinned tag declared the wrong `engine` range (found by wiring
+# the gate that reads it), and a set of tile archives stopped matching their
+# digests (found by the mod repository's own CI, after the tag was cut). Neither
+# is a change in this repository, which is why nothing in this repository's CI
+# could see either.
+#
+# SCHEDULED, NOT ON PUSH, and that is the point rather than a compromise. This
+# job depends on the network and on GitHub serving raw files; wired into `CI` it
+# would eventually go red for a reason no author could act on, and a check that
+# cries wolf is a check people learn to ignore. This one has to be believed, so
+# it is allowed to be slow and rare instead of fast and doubted.
+name: Mod canary
+
+on:
+  schedule:
+    # 05:20 UTC daily. Off the hour deliberately: scheduled jobs pile up on the
+    # hour and GitHub drops the overflow.
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+  # Catalogue edits DO gate on it, because that is the moment a wrong digest or
+  # an unreachable tag is introduced, and it is the one moment the author can fix
+  # it before anyone downloads it.
+  pull_request:
+    paths:
+      - "packages/web/src/mod-registry.ts"
+      - ".github/workflows/mod-canary.yml"
+
+concurrency:
+  group: mod-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    env:
+      MOD_CANARY: "1"
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The canary imports mod-registry.ts and the engine's own version and gate,
+      # so it needs core and mod-sdk built - it checks what THIS build would do
+      # with those tags, not what some standalone script thinks.
+      - run: pnpm build
+      - run: pnpm --dir packages/web exec vitest run src/mod-canary.test.ts
