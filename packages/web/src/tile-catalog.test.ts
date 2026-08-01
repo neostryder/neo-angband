@@ -320,10 +320,13 @@ describe("composeTileModes", () => {
     expect(out.find((m) => m.grafID === 1)?.engine).toBeUndefined();
   });
 
-  it("keeps the first contributor when two mods claim one grafID", () => {
-    // enabledTileModes already dedupes by grafID; this holds the composition
-    // side to the same rule rather than letting a later mod silently win a row
-    // an earlier one had taken. A mod may override CORE, never another mod.
+  it("gives a contested grafID to the LAST contributor, at the first one's row", () => {
+    // This was first-wins until 2026-08-01, which made the mod manager's own
+    // "Move later (loads last, wins conflicts)" false for tiles alone: moving a
+    // tiles mod later made it lose. Every other layer - content field patches,
+    // coarse patches, rule flags - is decided by the last writer in load order,
+    // so this one is too. The ROW stays where the first claimant put it, so the
+    // Graphics menu does not reshuffle when the player reorders mods.
     const out = composeTileModes({
       core,
       mods: [
@@ -332,7 +335,19 @@ describe("composeTileModes", () => {
       ],
     });
     expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(out[2]?.modName).toBe("First");
+    expect(out[2]?.modName).toBe("Second");
+  });
+
+  it("adds a contested NEW grafID once, not twice", () => {
+    const out = composeTileModes({
+      core,
+      mods: [
+        pack({ grafID: 101, modId: "first", modName: "First", engine: "linoleum", path: "a" }),
+        pack({ grafID: 101, modId: "second", modName: "Second", engine: "linoleum", path: "b" }),
+      ],
+    });
+    expect(out.filter((m) => m.grafID === 101)).toHaveLength(1);
+    expect(out.find((m) => m.grafID === 101)?.modName).toBe("Second");
   });
 });
 

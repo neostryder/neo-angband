@@ -21,9 +21,12 @@ compose records without pulling in a game.
 | Area | Exports |
 | --- | --- |
 | Manifests | `validateManifest`, `PackManifest`, `PackShape`, `packFacets`, `hasFacet`, `packRef`, `slugify` |
-| Load order | `resolveLoadOrder`, `satisfies` (the semver subset the manifests use) |
+| Load order | `resolveLoadOrder` (enforces), `satisfies` (the semver subset the manifests use) |
+| Auto-sort | `sortModOrder` (proposes, and cannot fail), `collectSortEdges`, `SortPin`, `SortTier`, `PACK_GROUPS` |
+| Sections | `resolveSectionState`, `expandSections`, `sectionFlag`, `PackSection`, `SECTION_BANDS` — the named parts of a mod |
+| Compatibility | `PackCompat`, `COMPAT_CLAIMS` — what an author may claim about another mod (never binding) |
 | Composition | `composePacks`, `composeContentPacks`, `mergePatch`, `applyFieldPatch`, `composeFieldPatches` |
-| Conflicts | `computeConflictReport`, `RecordConflict`, `FieldTouch`, `RecordOverride` |
+| Conflicts | `computeConflictReport` (records), `contestedSlots` / `describeContested` (every other layer), `Fold`, `foldDiscards` |
 | Record identity | `recordKey`, `keySpecFor`, `KEYED_RECORD_FILES`, `RECORD_KEY_SPECS` |
 | Capabilities | `CapabilitySet`, `parseCapability` — what a scripted plugin is allowed to reach |
 

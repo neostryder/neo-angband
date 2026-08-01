@@ -51,6 +51,23 @@ export interface FileContribution {
    * conflicts `patches` produces.
    */
   fieldPatches?: Record<string, FieldPatch>;
+  /**
+   * Contributions attributed to a NAMED PART of this pack, keyed by a section id
+   * the manifest declares (see PackSection). Each value is an ordinary
+   * FileContribution, so a section contributes exactly what the pack itself can.
+   *
+   * Nested rather than a `section` key on each entry because `patches`,
+   * `replaces` and `fieldPatches` are all keyed BY REF - there is no room for a
+   * per-entry tag without changing three shapes, and every existing pack would
+   * have had to be rewritten. This way an unsectioned contribution stays exactly
+   * where it is and belongs to the pack's implicit default part.
+   *
+   * composePacks never sees this: expandSections (sections.ts) drops the
+   * disabled sections and flattens the rest into the pack list, in band order,
+   * BEFORE composition. So a switched-off section is absent rather than
+   * overridden - the same rule a disabled mod's hooks follow.
+   */
+  sections?: Record<string, FileContribution>;
 }
 
 export interface PackContent {

@@ -46,6 +46,50 @@ const loosepack = {
   ],
 };
 
+describe("enabledTileModes: a contested grafID goes to the last claimant", () => {
+  /* First-wins until 2026-08-01, which made the manager's "Move later (loads
+   * last, wins conflicts)" false for tiles alone - the player's one lever ran
+   * backwards. See lastClaimWins in tile-mods.ts. */
+  const claimant = (id: string, name: string): unknown => ({
+    id,
+    name,
+    shape: "tiles",
+    tilePacks: [{ grafID: 2, path: "tiles" }],
+  });
+
+  it("keeps one entry and gives it to the mod later in the enabled order", () => {
+    const modes = enabledTileModes({
+      manifests: manifests(["early", claimant("early", "Early")], ["late", claimant("late", "Late")]),
+      enabledIds: ["early", "late"],
+    });
+    const two = modes.filter((m) => m.grafID === 2);
+    expect(two).toHaveLength(1);
+    expect(two[0]?.modId).toBe("late");
+  });
+
+  it("follows the enabled order, not the manifest map order", () => {
+    const both = manifests(["early", claimant("early", "Early")], ["late", claimant("late", "Late")]);
+    expect(
+      enabledTileModes({ manifests: both, enabledIds: ["late", "early"] }).find(
+        (m) => m.grafID === 2,
+      )?.modId,
+    ).toBe("early");
+  });
+
+  it("leaves the row where the first claimant put it", () => {
+    const modes = enabledTileModes({
+      manifests: manifests(
+        ["a", { id: "a", name: "A", shape: "tiles", tilePacks: [{ grafID: 2, path: "t" }] }],
+        ["b", { id: "b", name: "B", shape: "tiles", tilePacks: [{ grafID: 1, path: "t" }] }],
+        ["c", { id: "c", name: "C", shape: "tiles", tilePacks: [{ grafID: 2, path: "t" }] }],
+      ),
+      enabledIds: ["a", "b", "c"],
+    });
+    expect(modes.map((m) => m.grafID)).toEqual([2, 1]);
+    expect(modes[0]?.modId).toBe("c");
+  });
+});
+
 describe("enabledTileModes", () => {
   it("surfaces an enabled tiles mod's packs, named from the core catalog", () => {
     const modes = enabledTileModes({

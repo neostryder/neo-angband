@@ -20,7 +20,7 @@
  * ?trusted= still override for one-off testing, per pack.ts / main.ts.)
  */
 
-import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { PackManifest, SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const ENABLED_KEY = "neo:enabledMods";
 /* Explicit per-mod decisions, distinct from the resulting enabled SET: an entry
@@ -29,6 +29,17 @@ const CHOICE_KEY = "neo:modChoices";
 const CONSENT_KEY = "neo:modConsents";
 const PROFILES_KEY = "neo:modProfiles";
 const RULE_CHOICES_KEY = "neo:modRuleChoices";
+/* The player's own placements, which outrank every author's ordering suggestion
+ * and survive an auto-sort (see ModStore.getPins). */
+const PINS_KEY = "neo:modPins";
+/* Per-mod, per-section on/off - the general form of a rule choice, for the named
+ * parts of a mod (PackSection). */
+const SECTION_CHOICES_KEY = "neo:modSectionChoices";
+
+/** A list of strings from untrusted JSON, dropping anything else. */
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
 
 /**
  * Mods enabled on a fresh install. EMPTY by parity mandate: the default
@@ -414,7 +425,19 @@ export class ModStore {
     writeJson(this.storage, CHOICE_KEY, next);
   }
 
-  /** Move an enabled mod one step earlier (-1) or later (+1) in load order. */
+  /**
+   * Move an enabled mod one step earlier (-1) or later (+1) in load order, and
+   * PIN the swap so a later auto-sort does not silently undo it.
+   *
+   * The pin is what makes the sort button usable. Without one, a player nudges a
+   * mod, presses Auto-sort, and watches it jump back to wherever the authors'
+   * suggestions put it - which teaches them never to press it again. LOOT solved
+   * this the same way: its user rules outrank its masterlist.
+   *
+   * The pin records the pair the player just reordered, not an absolute
+   * position, because an absolute index stops meaning anything the moment
+   * another mod is installed.
+   */
   moveEnabled(id: string, delta: number): void {
     const cur = this.getEnabled();
     const i = cur.indexOf(id);
@@ -425,6 +448,96 @@ export class ModStore {
     const [item] = next.splice(i, 1);
     next.splice(j, 0, item as string);
     this.setEnabled(next);
+    const neighbour = cur[j];
+    if (neighbour !== undefined) this.pinAgainst(id, neighbour, delta > 0 ? "after" : "before");
+  }
+
+  /* --- Load-order pins ------------------------------------------------ */
+
+  /**
+   * The player's explicit placements, as SortPins (mod-sdk sort.ts).
+   *
+   * Stored as a map of id -> {after, before} so repeated nudges accumulate
+   * rather than each one replacing the last: a player who moves a mod past three
+   * others has made three decisions, and a sort should honour all of them.
+   */
+  getPins(): SortPin[] {
+    const obj = readJson<Record<string, unknown>>(this.storage, PINS_KEY, {});
+    const out: SortPin[] = [];
+    for (const [id, raw] of Object.entries(obj)) {
+      const v = raw as { after?: unknown; before?: unknown } | null;
+      const after = strings(v?.after);
+      const before = strings(v?.before);
+      if (after.length === 0 && before.length === 0) continue;
+      out.push({
+        id,
+        ...(after.length ? { after } : {}),
+        ...(before.length ? { before } : {}),
+      });
+    }
+    return out;
+  }
+
+  /** Record that the player put `id` before/after `other`. */
+  pinAgainst(id: string, other: string, side: "before" | "after"): void {
+    if (id === other) return;
+    const obj = readJson<Record<string, { after?: string[]; before?: string[] }>>(
+      this.storage,
+      PINS_KEY,
+      {},
+    );
+    const entry = obj[id] ?? {};
+    const list = new Set(entry[side] ?? []);
+    list.add(other);
+    /* The opposite side for the same pair is now stale - the player has changed
+     * their mind, and keeping both would be a pin that contradicts itself and
+     * gets dropped as a cycle with the player's own name on it. */
+    const opposite = side === "after" ? "before" : "after";
+    entry[opposite] = (entry[opposite] ?? []).filter((x) => x !== other);
+    entry[side] = [...list];
+    /* And the mirror on the OTHER mod's entry, for the same reason. */
+    const otherEntry = obj[other] ?? {};
+    otherEntry[side] = (otherEntry[side] ?? []).filter((x) => x !== id);
+    obj[id] = entry;
+    obj[other] = otherEntry;
+    writeJson(this.storage, PINS_KEY, obj);
+  }
+
+  /** Forget every pin, so the next sort is the authors' answer alone. */
+  clearPins(): void {
+    writeJson(this.storage, PINS_KEY, {});
+  }
+
+  /* --- Section choices ------------------------------------------------ */
+
+  /**
+   * The player's explicit on/off for each mod's named sections, as
+   * modId -> sectionId -> on.
+   *
+   * Keyed by MOD as well as section, unlike rule flags: a section id is only
+   * unique within its own mod (`tiles` is a perfectly good id for two different
+   * mods to use), and the flat rule-flag namespace is exactly the collision the
+   * conflict report now has to warn about.
+   */
+  getSectionChoices(): Record<string, Record<string, boolean>> {
+    const obj = readJson<Record<string, unknown>>(this.storage, SECTION_CHOICES_KEY, {});
+    const out: Record<string, Record<string, boolean>> = {};
+    for (const [modId, raw] of Object.entries(obj)) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const table: Record<string, boolean> = {};
+      for (const [sectionId, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === "boolean") table[sectionId] = v;
+      }
+      if (Object.keys(table).length > 0) out[modId] = table;
+    }
+    return out;
+  }
+
+  /** Record the player's explicit choice for one of a mod's sections. */
+  setSectionChoice(modId: string, sectionId: string, on: boolean): void {
+    const all = this.getSectionChoices();
+    all[modId] = { ...(all[modId] ?? {}), [sectionId]: on };
+    writeJson(this.storage, SECTION_CHOICES_KEY, all);
   }
 
   /* --- Consent ------------------------------------------------------- */

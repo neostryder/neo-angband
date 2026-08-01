@@ -207,10 +207,10 @@ export interface ModPlugin {
    *
    * Turning the autoplayer off is turning the MOD off: a mod toggle re-composes
    * the page (requestReload), and a controller that is not installed on the way
-   * back up is not installed. The host still keeps the AgentSession so it can
-   * release the seam in-process, but nothing calls that yet - said plainly
-   * because ModPlugin.uninstall has no caller either, and a teardown path
-   * described but not wired is how a seam ends up trusted and absent.
+   * back up is not installed. The host also keeps the AgentSession and RELEASES
+   * it on the way out, right after the plugins' `uninstall` and before the save
+   * (mod-teardown.ts) - so the bytes written for this character are taken with
+   * state.nextCommand already back in the human's hands.
    *
    * Called once, AFTER register(), so a mod can register the commands its own
    * controller will then drive.
@@ -224,7 +224,20 @@ export interface ModPlugin {
    * place for it to disagree.
    */
   controller?(ctx: ModPluginContext): AgentController | undefined;
-  /** Optional teardown, called if the plugin is uninstalled in-session. */
+  /**
+   * Teardown, called when the mod set changes and the page is about to re-compose.
+   *
+   * The re-compose is what actually removes the mod - a plugin that is not
+   * installed on the way back up is not installed - so this is NOT the hook that
+   * unregisters your effects or rolls back your hooks; the fresh page has neither.
+   * What it is, is your last moment on a live `state`: the host runs it BEFORE it
+   * saves the character (mod-teardown.ts), so anything you would not want written
+   * into the save, you undo here.
+   *
+   * Called once per page, in load order, ahead of the autoplayer slot being
+   * released. Throwing loses your teardown and nothing else - it is reported on
+   * your mod's row and the reload still happens.
+   */
   uninstall?(): void;
 }
 

@@ -19,9 +19,11 @@ import {
   computeConflictReport,
   hasFacet,
   resolveLoadOrder,
+  resolveSectionState,
+  sectionFlag,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { isShippedMod, readEnabledModIds } from "./mod-store";
+import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import { activeModCode } from "./mod-code";
 import { engineRefusal } from "./mod-engine";
@@ -309,7 +311,7 @@ export function enabledModIds(): string[] {
   });
 }
 
-function modManifest(raw: unknown): PackManifest {
+export function modManifest(raw: unknown): PackManifest {
   const m = raw as Partial<PackManifest> & { id?: string };
   return {
     id: m.id ?? "mod",
@@ -336,12 +338,37 @@ function modManifest(raw: unknown): PackManifest {
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
+    /* THE COMPATIBILITY FIELDS, and this allowlist is exactly where they would
+     * have died. `sections` is what the composer gates parts on, `compat` is what
+     * the conflict report and the sorter read, and `group` is how a mod sorts
+     * against mods nobody has written yet - all three are read from the manifest
+     * a mod SHIPS, and every mod that is discovered rather than hand-built reaches
+     * the rest of the host through this function. Forgetting one here is not a
+     * partial feature, it is a feature that does not exist outside the monorepo:
+     * the author writes the field, the validator accepts it, and nothing ever
+     * reads it. manifestAllowlist.test.ts is the census that keeps the next field
+     * from doing the same. */
+    ...(m.sections ? { sections: m.sections } : {}),
+    ...(m.group ? { group: m.group } : {}),
+    ...(m.compat ? { compat: m.compat } : {}),
     // The mod manager shows this to the player when they highlight the mod, so
     // it has to survive normalisation - dropping it here is what left the detail
     // pane with only the id and shape to say for itself.
     ...(m.description ? { description: m.description } : {}),
     ...(m.author ? { author: m.author } : {}),
     ...(m.license ? { license: m.license } : {}),
+    /* FOUND BY THE CENSUS, not by review. These four were being dropped as well.
+     * `tilePacks` has not shown a symptom because tile discovery reads the RAW
+     * manifest off the glob and never comes through here (tile-mods.ts) - which
+     * is exactly what makes it dangerous: the normalised manifest is the one the
+     * catalogue, the conflict report and the mod detail pane read, so the first
+     * consumer to ask a normalised manifest what modes a pack contributes would
+     * be told "none" and be wrong. The provenance three are what a marketplace
+     * listing and the detail pane are made of. */
+    ...(m.tilePacks ? { tilePacks: m.tilePacks } : {}),
+    ...(m.repository ? { repository: m.repository } : {}),
+    ...(m.changelog ? { changelog: m.changelog } : {}),
+    ...(m.screenshots ? { screenshots: m.screenshots } : {}),
   };
 }
 
@@ -496,9 +523,45 @@ function composition(): Composition {
    * with no mod manager to open and no way to turn the offending mod off short of
    * clearing localStorage. Dropping the offender keeps the rule the rest of the mod
    * system already holds: one broken mod costs that mod, and the player is told. */
-  const { composed, dropped } = composeDroppingBroken(packs);
+  /* Which of each mod's named PARTS are on. Resolved here rather than inside the
+   * composer because the inputs are host state - the player's stored choices and
+   * the enabled set - and a `patches` claim needs to know what else is loaded to
+   * decide whether a compatibility section applies at all. A section that is off
+   * is dropped before composition, so its records are absent rather than present
+   * and overridden. */
+  const sections = sectionChoiceTable(packs.map((p) => p.manifest));
+  const { composed, dropped } = composeDroppingBroken(packs, { sections });
   memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key };
   return memo;
+}
+
+/**
+ * modId -> sectionId -> on, for the packs about to compose.
+ *
+ * Storage failures degrade to "every section on", matching the rest of the store
+ * (roster.ts idiom): a private-mode browser that cannot read choices should get
+ * the mods it enabled whole, not silently stripped of their parts.
+ */
+function sectionChoiceTable(
+  manifests: readonly PackManifest[],
+): Record<string, Record<string, boolean>> {
+  let choices: Record<string, Record<string, boolean>> = {};
+  try {
+    choices = defaultModStore().getSectionChoices();
+  } catch {
+    choices = {};
+  }
+  const resolved = resolveSectionState(
+    manifests,
+    choices,
+    new Set(manifests.map((m) => m.id)),
+  );
+  const out: Record<string, Record<string, boolean>> = {};
+  for (const [modId, table] of resolved) {
+    if (table.size === 0) continue;
+    out[modId] = Object.fromEntries(table);
+  }
+  return out;
 }
 
 /** Forget the composition, so a test can compose again over different inputs. */
@@ -599,6 +662,18 @@ function records(name: string): unknown[] {
 }
 
 /**
+ * Every composed file with its record array, for the `__neo.mods()` probe.
+ *
+ * The composed OUTPUT, not the manifests: a count that came out of composition
+ * is the only thing that can tell a harness whether a section actually
+ * contributed, and "the mod is enabled so it must be working" is the assumption
+ * this probe exists to replace.
+ */
+export function composedRecords(): Record<string, unknown[]> {
+  return composition().composed.records;
+}
+
+/**
  * A whole-file object with its records replaced by the composed set, keeping
  * any file-level header/source. Used for the files the binders consume as a
  * `{ header?, records }` object rather than a bare record array (constants and
@@ -689,6 +764,46 @@ export function loadEnabledModRuleDecls(): ModRuleDecl[] {
     for (const rule of manifest.rules ?? []) {
       out.push({ modId: manifest.id, modName: manifest.name, rule });
     }
+  }
+  return out;
+}
+
+/**
+ * modId -> that mod's SECTION flags (sectionFlag(s) -> on), for enabled mods.
+ *
+ * A section reaches the mod's own code the same way a rule does, so one mod can
+ * use one vocabulary for the parts that carry content and the parts that only
+ * change behaviour. Merged with the rule flags by mod-hooks; the manifest
+ * validator refuses a section whose flag a rule already declares, so the merge
+ * cannot silently give one name two meanings.
+ */
+export function loadEnabledModSectionFlags(): Map<string, Record<string, boolean>> {
+  const mods = discoverMods();
+  const manifests: PackManifest[] = [];
+  for (const id of enabledModIds()) {
+    const mod = mods.get(id);
+    if (mod) manifests.push(modManifest(mod.manifest));
+  }
+  let choices: Record<string, Record<string, boolean>> = {};
+  try {
+    choices = defaultModStore().getSectionChoices();
+  } catch {
+    choices = {};
+  }
+  const resolved = resolveSectionState(
+    manifests,
+    choices,
+    new Set(manifests.map((m) => m.id)),
+  );
+  const out = new Map<string, Record<string, boolean>>();
+  for (const m of manifests) {
+    const table = resolved.get(m.id);
+    if (!table || table.size === 0) continue;
+    const flags: Record<string, boolean> = {};
+    for (const s of m.sections ?? []) {
+      flags[sectionFlag(s)] = table.get(s.id) ?? true;
+    }
+    out.set(m.id, flags);
   }
   return out;
 }

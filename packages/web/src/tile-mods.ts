@@ -143,11 +143,42 @@ function isTilesMod(raw: unknown): boolean {
 }
 
 /**
+ * Dedupe contributed modes by grafID: the LAST contributor's pack wins, at the
+ * FIRST claimant's position in the list.
+ *
+ * THIS USED TO BE FIRST-WINS, AND THAT WAS A DEFECT RATHER THAN A CONVENTION.
+ * The mod manager offers a row reading "Move later (loads last, wins conflicts)"
+ * (mods.ts), and every other composition layer means it: a content field patch,
+ * a coarse patch and a rule flag are all decided by the last writer in load
+ * order. Tiles alone did the opposite, so moving a tiles mod later made it LOSE -
+ * the player's one lever ran backwards, silently, with no report saying so
+ * (grafID collisions were invisible to the conflict report as well).
+ *
+ * The POSITION stays with the first claimant so the Graphics menu does not
+ * reshuffle when the player reorders mods; only which pack draws the mode
+ * changes. That mirrors composeTileModes replacing a core row in place.
+ */
+function lastClaimWins(packs: readonly TileModePack[]): TileModePack[] {
+  const at = new Map<number, number>();
+  const out: TileModePack[] = [];
+  for (const pack of packs) {
+    const seen = at.get(pack.grafID);
+    if (seen === undefined) {
+      at.set(pack.grafID, out.length);
+      out.push(pack);
+    } else {
+      out[seen] = pack;
+    }
+  }
+  return out;
+}
+
+/**
  * The tile modes contributed by the enabled tiles mods, in enabled/load order,
- * deduped by grafID (first contributor wins). Pure: it takes the discovered
- * id->manifest map and the resolved enabled-id list, so it needs no glob or
- * storage. Only `shape:"tiles"` mods contribute, and GRAPHICS_NONE is never
- * takeable - ASCII is not a mod's to replace.
+ * deduped by grafID (the LAST contributor wins - see lastClaimWins). Pure: it
+ * takes the discovered id->manifest map and the resolved enabled-id list, so it
+ * needs no glob or storage. Only `shape:"tiles"` mods contribute, and
+ * GRAPHICS_NONE is never takeable - ASCII is not a mod's to replace.
  *
  * A pack is skipped when it could not be rendered anyway: a tilesheet whose
  * grafID the core catalog does not know or that has no atlas filename (its cell
@@ -159,8 +190,23 @@ export function enabledTileModes(input: {
   manifests: ReadonlyMap<string, unknown>;
   enabledIds: readonly string[];
 }): TileModePack[] {
+  return lastClaimWins(enabledTileModeClaims(input));
+}
+
+/**
+ * The same list BEFORE deduping: every mode every enabled tiles mod claims,
+ * losers included, in enabled/load order.
+ *
+ * The conflict report needs the losers - that is the whole point of it - and
+ * `enabledTileModes` has already thrown them away. Two mods contesting a grafID
+ * used to be invisible: one of them simply did not appear in the Graphics menu
+ * and nothing anywhere said which, or why.
+ */
+export function enabledTileModeClaims(input: {
+  manifests: ReadonlyMap<string, unknown>;
+  enabledIds: readonly string[];
+}): TileModePack[] {
   const out: TileModePack[] = [];
-  const seen = new Set<number>();
   for (const id of input.enabledIds) {
     const raw = input.manifests.get(id);
     if (!raw) continue;
@@ -180,7 +226,6 @@ export function enabledTileModes(input: {
     for (const entry of readTilePacks(raw)) {
       const grafID = typeof entry.grafID === "number" ? entry.grafID : NaN;
       if (!Number.isFinite(grafID) || grafID === GRAPHICS_NONE) continue;
-      if (seen.has(grafID)) continue;
       const path = typeof entry.path === "string" && entry.path ? entry.path : null;
       const declared = typeof entry.menuname === "string" ? entry.menuname.trim() : "";
       const found = getGraphicsMode(grafID);
@@ -193,7 +238,6 @@ export function enabledTileModes(input: {
         if (path === null) continue;
         const menuname = declared || catalogued?.menuname || "";
         if (menuname === "") continue;
-        seen.add(grafID);
         out.push({
           grafID,
           menuname,
@@ -206,7 +250,6 @@ export function enabledTileModes(input: {
       }
 
       if (catalogued === null) continue;
-      seen.add(grafID);
       out.push({
         grafID,
         menuname: declared || catalogued.menuname,
@@ -378,4 +421,13 @@ function discover(): DiscoveredMods & { enabledIds: readonly string[] } {
  */
 export function discoverEnabledTileModes(): TileModePack[] {
   return contributedTileModes(discover());
+}
+
+/**
+ * Every grafID every enabled tiles mod claims, LOSERS INCLUDED, for the conflict
+ * report. No resolver is attached: nothing here is going to be drawn, it is
+ * going to be described.
+ */
+export function discoverEnabledTileModeClaims(): TileModePack[] {
+  return enabledTileModeClaims(discover());
 }

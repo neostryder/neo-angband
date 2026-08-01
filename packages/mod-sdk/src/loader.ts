@@ -67,6 +67,7 @@
 import type { PackManifest } from "./manifest.js";
 import { slugify } from "./manifest.js";
 import { resolveLoadOrder } from "./resolve.js";
+import { expandSections } from "./sections.js";
 import { composePacks, mergePatch } from "./compose.js";
 import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
@@ -159,6 +160,36 @@ function recordsComposable(records: readonly unknown[]): boolean {
     slugs.add(slug);
   }
   return true;
+}
+
+/**
+ * What a caller can tell the composer beyond the packs themselves.
+ *
+ * Only sections so far, and deliberately an OPTIONS BAG rather than a second
+ * positional argument: the two composition entry points are called from the web
+ * host, the desktop host, the CLI and the tests, and every one of those would
+ * have had to learn a new parameter for a value most of them do not have.
+ */
+export interface ComposeOptions {
+  /**
+   * Which of each pack's named sections are on: modId -> sectionId -> on. A
+   * section not mentioned is ON, so a caller that knows nothing about sections
+   * composes every pack whole, exactly as before they existed.
+   *
+   * Resolved by the caller (resolveSectionState) rather than here, because the
+   * inputs are the player's stored choices and the enabled set - host state the
+   * composer has no business reading.
+   */
+  sections?: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
+}
+
+/** The is-this-section-on predicate expandSections wants, from the options bag. */
+function sectionPredicate(
+  options: ComposeOptions,
+): (packId: string, sectionId: string) => boolean {
+  const table = options.sections;
+  if (!table) return () => true;
+  return (packId, sectionId) => table[packId]?.[sectionId] ?? true;
 }
 
 /** Reorder loaded packs into resolved load order (dependencies first). */
@@ -354,8 +385,18 @@ function recordsKeyedByName(records: readonly unknown[]): boolean {
  */
 export function composeContentPacks(
   packs: readonly LoadedPack[],
+  options: ComposeOptions = {},
 ): ComposedContent {
-  const ordered = orderPacks(packs);
+  /* TWO STEPS. resolveLoadOrder first, over the UNIQUE manifests - it refuses a
+   * duplicate pack id, so it has to run before sections turn one pack into
+   * several entries. Then expandSections drops the parts the player switched off
+   * and repositions the banded ones. Everything below sees `ordered`, a list in
+   * which one pack may appear more than once; composePacks already keys by
+   * manifest.id and folds in sequence, so that composes exactly as the combined
+   * contribution would - except at different points in the order. */
+  const ordered = expandSections(orderPacks(packs), sectionPredicate(options)).map(
+    (u) => u.content,
+  );
   const refused = refusals();
 
   const fileNames = new Set<string>();
@@ -486,7 +527,10 @@ export interface DroppedPack {
  * The loop is bounded by the pack count: every pass either returns or removes one
  * pack, so it cannot spin.
  */
-export function composeDroppingBroken(packs: readonly LoadedPack[]): {
+export function composeDroppingBroken(
+  packs: readonly LoadedPack[],
+  options: ComposeOptions = {},
+): {
   readonly composed: ComposedContent;
   readonly dropped: readonly DroppedPack[];
 } {
@@ -496,7 +540,7 @@ export function composeDroppingBroken(packs: readonly LoadedPack[]): {
 
   for (let pass = 0; pass <= packs.length; pass++) {
     try {
-      return { composed: composeContentPacks(live), dropped };
+      return { composed: composeContentPacks(live, options), dropped };
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       const culprit = live
