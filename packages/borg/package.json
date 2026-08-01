@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-borg",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "The Borg: a faithful port of Angband 4.2.6's automatic player, as a bundled mod riding the frozen perceive/act agent API",
   "license": "GPL-2.0-only",

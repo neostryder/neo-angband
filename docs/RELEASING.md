@@ -1,15 +1,22 @@
 # Releasing the npm packages
 
-Two packages go to the public npm registry:
+Three packages go to the public npm registry:
 
 | Package | What it is |
 | --- | --- |
 | [`@rpgm-tools/neo-angband-core`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-core) | the headless engine |
 | [`@rpgm-tools/neo-angband-mod-sdk`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-mod-sdk) | manifest schema, load-order resolver, record composition |
+| [`@rpgm-tools/neo-angband-content`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-content) | Angband 4.2.6 gamedata compiled to the pack format |
 
 Everything else in `packages/` stays private: `web`, `desktop`, `cli`, `mcp` and
-`borg` are applications, and `content` and `linoleum` are build-time tools with no
-consumer outside this repository.
+`borg` are applications, and `linoleum` is a build-time tool with no consumer
+outside this repository.
+
+**The list is derived, not written here.** A package is publishable exactly when
+npm would publish it — when its manifest does not carry `private: true`.
+`tools/publishable.mjs` is the one place that says so, and the release workflow,
+`tools/check-npm-package.mjs` and `packages/core/src/npm-publish.test.ts` all read
+it. Making the next package publishable is one deleted field, not four edits.
 
 The scope is `@rpgm-tools` because Neo Angband is an RPGM Tools project, and the
 package names carry the product as a prefix so that `rpgm-tools-forge` can publish
@@ -26,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.10.0 && git push --tags
+git tag v0.12.0 && git push --tags
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -64,16 +71,15 @@ Once, by hand. Two accounts things and then one settings page per package.
    on a package's settings page, and a package that has never been published has no
    settings page. So version one goes up from your machine.
 
-   **Done:** `@rpgm-tools/neo-angband-core` and `@rpgm-tools/neo-angband-mod-sdk`,
-   both on the registry at `0.10.0`.
-   **Outstanding:** `@rpgm-tools/neo-angband-content`, publishable since #173 and
-   never pushed.
+   **Done, all three.** `core` and `mod-sdk` went up at `0.10.0`;
+   `content` at `0.11.0` on 2026-08-01. Nothing here is outstanding, and it only
+   comes back if a fourth package becomes publishable.
 
-   **Do this BEFORE tagging, not after.** `tools/publishable.mjs` returns the list
-   sorted, so `content` is the first package the publish job reaches — it would hit
-   the never-published guard and exit before publishing core or mod-sdk at all. A
-   tag is not wasted (re-running the job skips whatever already went up), but the
-   release would stop on its first step for no reason.
+   **Do it BEFORE tagging, not after.** `tools/publishable.mjs` returns the list
+   sorted, so a new package early in the alphabet is the first one the publish job
+   reaches — it would hit the never-published guard and exit before publishing
+   anything after it. A tag is not wasted (re-running the job skips whatever
+   already went up), but the release would stop on its first step for no reason.
 
    ```bash
    pnpm build && pnpm check:npm
@@ -124,25 +130,54 @@ publishing account and that is enough.
 
 ## Bumping a version
 
-The version lives in places that must agree, and CI enforces the first three:
+One command, and it is the only supported way:
 
-- every publishable package's `package.json` — `core`, `mod-sdk` and `content`
-  today, and whatever `node tools/publishable.mjs` prints tomorrow
-- the git tag
-- `ENGINE_VERSION` in `packages/core/src/version.ts`
+```bash
+node tools/version.mjs set minor
+```
 
-**Which packages get published is derived, not listed.** A package is publishable
-exactly when npm would publish it — when its manifest does not carry
-`private: true`. `tools/publishable.mjs` is the one place that says so, and the
-release workflow, `tools/check-npm-package.mjs` and
-`packages/core/src/npm-publish.test.ts` all read it. Making the next package
-publishable is one deleted field, not four edits.
+Fourteen files state the project version — every `packages/*/package.json`, the
+workspace root, `ENGINE_VERSION`, `LINOLEUM_TOOLS_VERSION`, an example output in
+core's README, and the CHANGELOG's Unreleased summary. Editing them by hand is how
+CHANGELOG.md came to greet every reader with `0.10.0` while every manifest said
+`0.11.0`. Run `node tools/version.mjs` with no arguments to print all fourteen and
+their values; it exits non-zero on any disagreement, and
+`packages/core/src/version-sync.test.ts` runs the same check in CI.
 
-All of them move together, at the game's version. It is **semver**, and `0.x` is
-the pre-release line: a feature release bumps the MINOR number, so `0.9.0` was
-followed by `0.10.0` and the line can run as far as it needs to. `1.0.0` is
-reserved for the game's public release, so nothing goes to `1.0.0` before the game
-does.
+The package manifests are **discovered** by scanning `packages/`, not listed, so a
+new package is covered the day it is created. A test asserts the discovery still
+finds every manifest on disk — a scan that quietly stopped working would report the
+same clean green as one that worked.
+
+### Which number
+
+**Semver, and the tool refuses anything that is not one of the three successors.**
+From `0.12.0` the only legal next versions are `0.12.1`, `0.13.0` and `1.0.0`;
+a typo, a skipped minor or a number that goes backwards is rejected with the three
+alternatives printed. Choose between them by what changed for a *consumer* of the
+published packages:
+
+| Increment | When | Examples from this project |
+| --- | --- | --- |
+| **PATCH** | nothing a consumer can observe changed shape — a fix behind the same API | a parity fix in an engine function, a corrected message string |
+| **MINOR** | anything a consumer can observe: a new export, a removed one, a changed signature, new gamedata | adding the `./pack` subpath to `content`; a new `ModHooks` seam; renaming a core export |
+| **MAJOR** | reserved | see below |
+
+MINOR carries breaking changes on purpose. That is semver's own rule for a `0.x`
+line — `0.x` makes no compatibility promise — and it is why this project can rename
+an engine export in a minor release. `1.0.0` is reserved for the game's public
+release, so nothing reaches it by routine bumping; the tool refuses `major` unless
+you pass `--release`, which is a decision and not a version bump.
+
+**Every package moves together, at the game's version**, including the ones that
+did not change. A consumer resolving `@rpgm-tools/neo-angband-core@0.12.0` and
+`@rpgm-tools/neo-angband-content@0.12.0` gets an engine and a pack that were built
+and tested against each other; independent per-package versions would make that
+something to look up rather than something to read.
+
+A version already on the registry is skipped by the publish job, so a package that
+happened to be published early — `content` went up at `0.11.0` by hand — simply has
+no `0.12.0` gap to fill. Its next release is the next tag, like everything else.
 
 Each mod carries its own version and moves on its own schedule. A mod whose
 released tag is iterated takes a MINOR bump rather than a patch, because a
@@ -150,22 +185,38 @@ published tag is pinned by digest in `RECOMMENDED_MODS` and must never be moved.
 
 ## Why the tarball is checked and not just the source
 
-`node tools/check-npm-package.mjs` packs each package, extracts it into an empty
-directory with no `node_modules`, and imports every entry point with plain Node.
+`node tools/check-npm-package.mjs` packs each package, extracts it into a directory
+that is a consumer — an empty project with the tarball as its only dependency — and
+imports every declared subpath **by bare specifier**, with plain Node.
 
-That is not ceremony. On 2026-07-31, with all 6655 tests passing, the engine's
-emitted JavaScript held **4612 extensionless relative import specifiers** —
+That is not ceremony. It has now caught two different ways a published package can
+be broken while everything in the repository says it is fine.
+
+**Extensionless specifiers.** On 2026-07-31, with all 6655 tests passing, the
+engine's emitted JavaScript held **4612 extensionless relative import specifiers** —
 `export * from "./rng"` — because tsc emits specifiers verbatim and the source was
 written for `moduleResolution: "bundler"`. Vite resolves those. Node does not. The
 published engine would have been unimportable by anyone not using a bundler, and
 nothing in the repository could have noticed, because vitest runs through Vite too.
+So: every relative import in a published package carries an explicit `.js`
+(`packages/core/src/npm-publish.test.ts` fails if one loses it, and
+`packages/core/scripts/codegen-lists.mjs` emits it).
 
-Two things came out of that and both are permanent:
+**Shipped but unreachable.** `content@0.11.0` shipped `pack/` — 45 files, 2.0 of its
+2.3 MB — and declared no `exports` subpath for it. An exports map *encapsulates* a
+package: an undeclared subpath is refused, not merely undocumented. So the one thing
+that package is published for threw `ERR_PACKAGE_PATH_NOT_EXPORTED` at every
+consumer, and a green CI, a passing tarball check and a successful publish all
+agreed it was fine. The tarball check missed it because it resolved each target path
+itself and imported the file — **a file URL bypasses the exports map**, so it was
+answering "does this file load" when the question is "can a consumer reach it". Two
+things came out of that and both are permanent:
 
-- every relative import in a published package carries an explicit `.js`
-  (`packages/core/src/npm-publish.test.ts` fails if one loses it, and
-  `packages/core/scripts/codegen-lists.mjs` emits it);
-- the artefact is loaded the way a consumer loads it, in CI, on every publish.
+- resolution goes through a real `node_modules` by bare specifier, so the exports
+  map is exercised rather than stepped around;
+- any top-level directory in the tarball that no subpath reaches is a failure
+  (`bin` counts as reached, `src` is exempt — it ships so the `.js.map` files
+  resolve, and a debugger reads it by path).
 
 ## If a publish fails
 
@@ -178,22 +229,26 @@ Two things came out of that and both are permanent:
   what was typed into that form; re-read it against the table in step 5.
 - **"has never been published"** — the workflow's own error, not npm's. Step 4 has
   not been done for that package.
-- **`E402 payment required`** — the scope is being treated as private. Both
-  manifests set `publishConfig.access: "public"`; if it still happens, the
+- **`E402 payment required`** — the scope is being treated as private. Every
+  manifest sets `publishConfig.access: "public"`; if it still happens, the
   organisation was created as a paid private org.
+- **A published package 404s to everyone else** — it went up as *restricted*, which
+  reads exactly like "not published" from an anonymous `npm view` or a `curl` to
+  `registry.npmjs.org`. Check with `npm access get status <package>` and fix with
+  `npm access set status=public <package>`.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
-  version, delete the tag (`git tag -d v0.10.0 && git push --delete origin v0.10.0`),
-  re-tag.
+  version with `node tools/version.mjs set <v>`, delete the tag
+  (`git tag -d v0.12.0 && git push --delete origin v0.12.0`), re-tag.
 
 ## The mod repositories are released separately
 
-The game's tag publishes the two npm packages. It does **not** touch the mods, and
+The game's tag publishes the npm packages. It does **not** touch the mods, and
 they are not on npm at all — a mod is distributed as a FOLDER the game fetches, so npm
 is not in that path. Releasing one is:
 
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
-2. Commit, then tag (`v0.10.0`) and push the tag.
+2. Commit, then tag (`v0.12.0`) and push the tag.
 3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
    put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
    from the local build: the digest has to describe the bytes GitHub actually serves, and
@@ -203,29 +258,35 @@ is not in that path. Releasing one is:
 4. A published tag is **never moved**. Iterating one takes a MINOR bump and a new row,
    because the old tag's digest is pinned inside every build already shipped.
 
+## How a mod repository gets the gamedata
+
+A mod test that means anything runs the plugin's hooks against a **real level
+generated from real Angband 4.2.6 gamedata** — a staircase-reachability fix proven
+against a hand-built cave is a fix proven against a fixture. That data is the
+content pack.
+
+Before `content` was published, each mod repository carried a ~40-line `content.ts`
+that located `packages/content/pack/` in a sibling checkout of this repository
+(`NEO_ANGBAND_REPO`, or `../neo-angband`), and a third-party mod author had to clone
+a repository with the whole C tree in it to test against real gamedata. From
+`0.12.0` the package hands the pack over directly:
+
+```ts
+import { loadPackRecords, packFileNames } from "@rpgm-tools/neo-angband-content/pack";
+```
+
+`0.11.0` could not: it shipped the pack and declared no subpath for it, so every
+path to it was refused. Use `0.12.0` or later.
+
+There is a second subpath for bundlers, which want the file itself so they can
+inline it:
+
+```ts
+import monsters from "@rpgm-tools/neo-angband-content/pack/monster.json" with { type: "json" };
+```
+
 ## What is deliberately NOT published
 
-- **`@rpgm-tools/neo-angband-content`** — Angband's gamedata compiled to packs. The
-  engine cannot generate a populated level without it, so a mod test that needs a
-  real dungeon needs content too.
-
-  **It now has real consumers, so the argument for holding it back is weaker than it
-  was.** `neo-angband-mod-qol` and `neo-angband-mod-bug-fixes` both generate real
-  levels in their tests, and both get the pack from a SIBLING CHECKOUT of this
-  repository (`NEO_ANGBAND_REPO`, or `../neo-angband`) because there is no package to
-  install. That works, their CI does it, and it is the pattern already used for the
-  linoleum packs — but it means each of those repos carries a ~40-line `content.ts`
-  whose only job is to find a directory, and a third-party mod author has to clone a
-  repository with the whole C tree in it to test against real gamedata.
-
-  **DECIDED: publish it.** The manifest lost its `private` flag in #173, so the
-  package is publishable and `tools/publishable.mjs` already returns it. What is
-  left is the manual first publish and the trusted-publisher setting — step 4 of
-  *First-time setup* above, which is where this now lives. Once `0.11.0` is on the
-  registry, the `content.ts` in each mod repository collapses to one import and
-  their `@rpgm-tools/neo-angband-core` devDependency moves from `^0.10.0` to
-  `^0.11.0` (a caret on a `0.x` version does not cross the minor, so today they are
-  pinned to the 0.10 line and would not pick 0.11.0 up on their own).
 - **A `create-neo-mod` scaffolder** — `docs/MODS.md` describes `neo-pack` as a
   planned validator/bundler CLI. It does not exist yet, and the name is not
   reserved on npm. Half its job now exists though: `@rpgm-tools/neo-angband-mod-sdk`
@@ -235,3 +296,6 @@ is not in that path. Releasing one is:
   `neo-angband-mod-bug-fixes` and `neo-angband-mod-linoleum` are `private: true` and
   stay that way. Publishing one would create a second way to obtain a mod that
   nothing in the game checks.
+- **`@rpgm-tools/neo-angband-linoleum`** — the tile-pack build tools. Their output
+  ships as a mod; the tools that produce it have no consumer outside this
+  repository.
