@@ -15,6 +15,17 @@ export default defineConfig({
   test: {
     exclude: [
       ...defaultExclude,
+      /*
+       * `**\/dist/**` is written down here rather than inherited, because vitest 4
+       * shrank `defaultExclude` to just node_modules and .git. `tsc -b` emits a
+       * compiled *.test.js next to every *.test.ts, so the moment that default
+       * changed, the run went from 375 files to 750 - each test collected once
+       * from source and once from whatever the last build left behind. That is
+       * worse than a slow suite: dist is STALE by definition between builds, so
+       * half the run would have been grading a previous edit. Measured on
+       * vitest 4.1.10; the duplicate half was exactly 375 files.
+       */
+      "**/dist/**",
       "**/.claude/worktrees/**",
       // Sibling checkouts from the pre-.claude/worktrees era.
       "na-wt-*/**",

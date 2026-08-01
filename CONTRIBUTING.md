@@ -6,9 +6,19 @@ keep it faithful. Read it once before your first change.
 
 ## Prerequisites
 
-- **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`).
-- **pnpm** `10.17.0` (the version in the root `package.json` `packageManager`
-  field). Install with `corepack enable` or `npm i -g pnpm`.
+- **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24
+  here; the two mod repositories run 22, so the `>=22` floor is exercised rather
+  than merely claimed.
+- **pnpm** `11.18.0`, the version in the root `package.json` `packageManager`
+  field. Get it with **`corepack enable pnpm`** and let that field decide - the
+  shim reads it on every run, so you never track this number by hand.
+
+  Do not expect `pnpm self-update` to make the jump from 10: pnpm 11 ships a
+  different package layout, and pnpm 10 downloads it to a path it then cannot
+  find (`Failed to switch pnpm to v11.18.0 ... pnpm CLI is missing`). Once
+  `packageManager` says 11, a standalone pnpm 10 fails that way on *every*
+  command in this repo, `--help` included. `corepack enable pnpm` is the way out;
+  `npx pnpm@11.18.0 <cmd>` works in a pinch without installing anything.
 
 This is a pnpm workspace (`pnpm-workspace.yaml`); all packages live under
 `packages/`.
