@@ -42,6 +42,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Literal -> why it is absent. Keys are the C literal, verbatim. */
 const KNOWN_ABSENT: Record<string, readonly string[]> = {
+  "not-in-this-port (measured 2026-08-01): do_cmd_try_borg's consent gate (cmd-misc.c:125-140). Upstream the borg is compiled into the game and reached by a debug command, so the game itself has to warn you before handing it your character. Here the Borg is a MOD in its own repository, installed through the mod manager and switched on by its own \"Let the Borg play\" toggle, so there is no engine command to gate and no engine-side prompt to port - the consent is the install, and the toggle says what it does. The sibling debug-command gate IS ported, verbatim, in packages/web/src/wizard.ts. These two were counted present until 2026-08-01 only because packages/borg lived in this repository and quoted them":
+    [
+      "You are about to use the dangerous, unsupported, borg commands!",
+      "Are you sure you want to use the borg commands? ",
+    ],
+
   "divergence (derived from the C 2026-07-28): both belong to parts of do_cmd_save_screen the port has no counterpart for. \"Include monster list? \" (ui-command.c:558) is asked only when find_first_subwindow(PW_MONLIST) finds a monster-list SUBWINDOW to dump beside the main terminal, and the port has no subwindows at all - html_screenshot's other_term argument is always NULL here. \"Screen dump failed.\" (ui-command.c:510) reports the failure to write dump.prf, the temporary pref file upstream saves so it can reset_visuals(false) to raw attr/char for the dump and restore the graphics prefs afterwards (L504-528); the port's snapshotColored() already returns attr/char rather than pixels, so there is nothing to switch and nothing to preserve. The dump's OWN write failure is reported, with html_screenshot's own message (\"Cannot write the '%s' file!\", L324)":
     ["Include monster list? ", "Screen dump failed."],
 

@@ -135,7 +135,7 @@ Three things came out with it, none of which a code reading would have offered:
   `viewerStateOf` in core and both use it.
 
 Nothing in the repository could have caught the original. The Borg's tests run
-against a hand-built fake `AgentView` — `packages/borg/src/harness.ts` says so in
+against a hand-built fake `AgentView` — the Borg mod repository's `src/harness.ts` says so in
 its own header — so the live perceive path had never been driven by anything but
 the web shell, which refreshes for its own drawing reasons.
 

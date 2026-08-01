@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.12.0 && git push --tags
+git tag v0.13.0 && git push --tags
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -238,7 +238,7 @@ things came out of that and both are permanent:
   `npm access set status=public <package>`.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
   version with `node tools/version.mjs set <v>`, delete the tag
-  (`git tag -d v0.12.0 && git push --delete origin v0.12.0`), re-tag.
+  (`git tag -d v0.13.0 && git push --delete origin v0.13.0`), re-tag.
 
 ## The mod repositories are released separately
 
@@ -248,7 +248,7 @@ is not in that path. Releasing one is:
 
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
-2. Commit, then tag (`v0.12.0`) and push the tag.
+2. Commit, then tag (`v0.13.0`) and push the tag.
 3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
    put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
    from the local build: the digest has to describe the bytes GitHub actually serves, and
