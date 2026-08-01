@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.13.0`. High level, what exists today:
+Current state of the project at version `0.14.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -45,6 +45,40 @@ Current state of the project at version `0.13.0`. High level, what exists today:
   API a third-party automation would use.
 
 ### Added
+
+- **Mod authors can declare compatibility, and the engine resolves it.** A manifest
+  gains `sections` (named parts of a mod, each independently switchable and each
+  carrying a priority BAND rather than a numeric offset, so a part is placed
+  absolutely instead of relative to whatever the list happens to hold), `group`
+  (LOOT's idea, and the reason a mod can be sorted against mods that do not exist
+  yet), and `compat` (prefer-mine / prefer-theirs, a `conflicts` warning that carries
+  the author's required `because`, and `patches` for a section that exists only while
+  the mod it patches is installed). One rule underneath all of it: an author has
+  total authority over their own mod's contributions and none over the player's order
+  or anyone else's mod - so a declared conflict warns and never refuses, which
+  diverges from NeoForge and Factorio on purpose.
+- **A sort that cannot fail.** `sortModOrder` proposes an order from four tiers -
+  hard, player, author, group - and on a cycle drops the weakest edge and names it.
+  It is deliberately separate from `resolveLoadOrder`, which enforces. `loadAfter` and
+  `loadBefore` used to be hard constraints, so two mods each claiming priority
+  refused to launch the whole set with neither author at fault.
+- **A conflict report that sees more than content records.** Five composition layers
+  can discard a contribution and the report covered one of them, which is worse than
+  no report: an empty pane reads as "nothing conflicts". Claims are derived from what
+  a mod actually contributes - refs in its files, keys its hooks factory returned,
+  grafIDs claimed - rather than from a `touches` manifest field that would go stale.
+- **A pinned surface for `ctx.core`** (`packages/core/mod-api-surface.json`,
+  `tools/api-surface.mjs --update`, and a test that reads the same namespace object
+  the host hands to a plugin). `MOD_API_VERSION` versions the plugin contract's
+  *shape*, not the ~1700 engine exports an author spends all their time calling, so a
+  rename could break every mod with no CI anywhere able to know. It fails in both
+  directions on purpose: a baseline that tolerates additions goes stale, and then the
+  removal check measures nothing. It is a ratchet, not a fence - it does not make the
+  namespace stable, it makes a break visible to the person breaking it rather than to
+  a player.
+- **`docs/modding/MOD_COMPATIBILITY.md`** - the promise, stated: a data-only pack
+  survives engine releases without being republished, and a pack that ships code gets
+  a release's warning before an ABI bump strands it.
 
 - **A plugin builder in the mod SDK** (`neo-angband-mod-build`, shipped as a bin by
   `@rpgm-tools/neo-angband-mod-sdk`). It compiles a mod's TypeScript into the single
@@ -132,6 +166,42 @@ Documentation accuracy:
 
 ### Changed
 
+- **The later mod wins, on every layer and every hook.** The mod manager ships a row
+  reading *"Move later (loads last, wins conflicts)"*, and that sentence was false of
+  two layers. Tiles resolved FIRST-wins, so moving a tile mod later made it lose; and
+  two of the seven `ModHooks` - `walkBlockedByDiggable` and `objectListTiebreak` -
+  stopped at the first contributor with an opinion, so the later mod's rule never ran
+  at all and both its author and its player believed it worked. Both hooks are asked
+  in reverse load order now, `first-answer` is gone from the fold vocabulary, and
+  `contestedSlots` picks the last claim for every discarding fold. Two folds are still
+  not last-wins and forcing them would have been worse: `true` from `historyAdd` means
+  "I have nothing to say about this entry", not "I insist it be written", so last-wins
+  there would let a later mod's silence cancel an earlier mod's rule and break both.
+  The invariant that actually holds is sharper - **no mod's opinion is ever discarded
+  in favour of an earlier one** - and a test now asserts a behaviour slot and a record
+  slot resolve to the same winner.
+- **A missing patch target costs the patch, not the mod.** `composePacks` threw and
+  the caller answers a throw by removing the whole mod, so a pack patching forty
+  monsters lost all forty - plus its code, its rules and its tiles - because one
+  record had been renamed. It takes an `onRefuse` reporter now. This also ended an
+  asymmetry nobody chose: 20 of core's 44 record files take a merge path that reported
+  and carried on, and 24 take one that threw. Same author mistake, two outcomes,
+  decided by the shape of core's own data.
+- **An `engine` range labels data and gates only code.** An out-of-range manifest used
+  to refuse the whole pack, which is the "the engine labels, it does not forbid"
+  ruling applied backwards: the range says what the author *tested*, and nothing in a
+  data pack's manifest can make its JSON unloadable. It now blocks a pack that ships
+  code, with `modApi` as the signal - required of exactly the packs with a `plugin.js`
+  and impossible to set to buy leniency. Tile packs follow the data rule, which
+  reverses the old comment's argument and answers it: a stale mapping loses individual
+  tiles to the ASCII fallback, which the player can see, and that beats a whole
+  tileset going dark on a patch its author never saw.
+- **The plugin ABI has a deprecation window.** `modApi` was matched with `!==`, so the
+  day the ABI bumped, every mod in existence would stop loading at once. `MOD_API_MIN`
+  opens a range, and the two-release rule is: ship the behaviour, keep honouring the
+  old contract, warn - *then* raise the floor. `LoadedModPlugin.api` records what each
+  plugin declared, which is the mechanism without which the window is a promise
+  nothing can keep.
 - **The Borg left this repository, and is now installable.** It is in the
   catalogue at `v0.1.0`, so for the first time a player can actually run it -
   install, enable, and switch on the mod's own *Let the Borg play* toggle, which
