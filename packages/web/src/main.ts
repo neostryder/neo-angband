@@ -8577,7 +8577,9 @@ if (agentId && agentMake) {
   };
   installController(state, latched, {
     capabilities: caps,
-    viewDeps: { resolver, reg: booted.registries.objects },
+    /* glyphs: the live x_char table (agent API 1.1.0) - an agent that draws a
+     * map should draw the player's map, pref-file overrides and all. */
+    viewDeps: { resolver, reg: booted.registries.objects, glyphs: glyphs.agentGlyphs() },
   });
   // Event hook (W1.6): the same agent subscribes to the game event bus through
   // the capability-gated seam - proving mods can REACT to events, not only
@@ -8676,7 +8678,15 @@ function installSandbox(pluginId: string): void {
       caps,
       capabilityStrings: found.manifest.capabilities ?? [],
       pluginUrl: pluginId,
-      viewDeps: { resolver, reg: booted.registries.objects },
+      viewDeps: {
+        resolver,
+        reg: booted.registries.objects,
+        /* The same live table the shell draws from (agent API 1.1.0), so an
+         * agent's map is the player's map - including any pref file or glyph
+         * picker change, which is the whole reason this is a table and not a
+         * lookup. */
+        glyphs: glyphs.agentGlyphs(),
+      },
       onReady: () => {
         pluginReady = true;
       },

@@ -9,53 +9,63 @@
  * is unreadable at scale, and a rendering is a lossy interpretation. Nothing here
  * decides anything for the client.
  *
- * GLYPH CHOICE. Upstream's own map characters where the agent view carries enough
- * to know (`#` wall, `.` floor, `<` `>` stairs, `+` door, `@` player), and NOT
- * upstream's where it does not: `CellView` reports a feature INDEX, not a
- * `d_char`, so anything outside the small set below draws as `?` rather than as a
- * guess. Monsters are numbered with a legend instead of taking upstream's
- * per-race letter, because the letter is ambiguous by design (six `d`s on a level
- * are six different dragons) and an agent needs to name the one it is fighting.
+ * GLYPH CHOICE, and this file used to make it up. It carried a hand-written
+ * `FEAT_GLYPHS` map - 25 feature indices, each with the character it "should"
+ * draw as. Measured against the gamedata it was built from (terrain.txt, 25
+ * features), here is what that was actually worth:
+ *
+ *   - 24 of 25 agreed. It was not obviously broken, which is why it survived.
+ *   - LAVA DID NOT. The map said `~`; the gamedata says `#`. An agent was told
+ *     the one terrain in the game that hurts to stand on looked different from
+ *     every wall around it, when on the player's screen it does not.
+ *   - It read past the x_char table, so a pref file or the knowledge browser's
+ *     glyph picker changed what the PLAYER saw and not what the agent saw.
+ *   - It could not resolve mimics. Today that costs nothing (a secret door and
+ *     the granite it mimics both draw `#`), so this one is correctness by
+ *     construction rather than a bug that was fixed - but it is the difference
+ *     between a renderer that cannot leak a hidden door and one that happens
+ *     not to.
+ *   - And every one of those is a second source of truth for something the
+ *     gamedata already states, with no test in a position to notice a drift.
+ *
+ * The characters now come from `CellView.glyph` / `trapGlyph` / `objectGlyph`
+ * and `MonsterView.glyph` (agent API 1.1.0), which are the host's live
+ * attr/char table read through the frozen facade - the same table the shell
+ * draws from. There is no glyph literal left in this file.
+ *
+ * TRAPS were worse than the glyphs. The old loop drew `^` wherever `cell.trap`
+ * was set, and `cell.trap` is "a trap pile is here", not "the player can see
+ * it". Measured over 15 freshly generated levels: 74 trapped squares, 0 of them
+ * detected, 74 of them drawn. An agent was handed every trap on the level the
+ * moment it arrived. `trapGlyph` is present only for a trap the player can
+ * actually see (TRF_VISIBLE), so the undetected ones are no longer reported.
+ *
+ * MONSTERS are drawn with their real race character, as the player sees them,
+ * and the legend is keyed by `char at x,y` rather than by an invented label.
+ * The old scheme assigned `0-9a-z` labels in map order, which read well until
+ * you notice upstream draws the eight store entrances as `1`-`8`: on any town
+ * map a store and a monster were the same character with different meanings.
+ * The race letter is ambiguous by design (six `d`s are six different dragons)
+ * and coordinates are what resolve it - which an agent needs anyway to move to
+ * or target the thing.
  *
  * KNOWN vs SEEN is preserved, because it is most of what tactical play is about:
- * a remembered square renders dimmer (its own glyph in the map, but flagged in the
- * legend counts), and a square the player has never known renders as a space.
+ * a remembered square renders as its own glyph and is counted in the legend, and
+ * a square the player has never known renders as a space.
  */
 
-import { FEAT } from "@rpgm-tools/neo-angband-core";
 import type { AgentView, CellView, ItemView, MonsterView, PlayerView } from "@rpgm-tools/neo-angband-core";
 
-/** Feature indices this renderer can name. Anything else draws as `?`. */
-const FEAT_GLYPHS = new Map<number, string>([
-  [FEAT.NONE, " "],
-  [FEAT.FLOOR, "."],
-  [FEAT.CLOSED, "+"],
-  [FEAT.OPEN, "'"],
-  [FEAT.BROKEN, "'"],
-  [FEAT.LESS, "<"],
-  [FEAT.MORE, ">"],
-  [FEAT.SECRET, "#"],
-  [FEAT.RUBBLE, ":"],
-  [FEAT.PASS_RUBBLE, ":"],
-  [FEAT.MAGMA, "%"],
-  [FEAT.QUARTZ, "%"],
-  [FEAT.MAGMA_K, "*"],
-  [FEAT.QUARTZ_K, "*"],
-  [FEAT.GRANITE, "#"],
-  [FEAT.PERM, "#"],
-  [FEAT.LAVA, "~"],
-  [FEAT.STORE_GENERAL, "1"],
-  [FEAT.STORE_ARMOR, "2"],
-  [FEAT.STORE_WEAPON, "3"],
-  [FEAT.STORE_BOOK, "4"],
-  [FEAT.STORE_ALCHEMY, "5"],
-  [FEAT.STORE_MAGIC, "6"],
-  [FEAT.STORE_BLACK, "7"],
-  [FEAT.HOME, "8"],
-]);
-
-/** Monster labels, in the order a legend lists them. */
-const MONSTER_LABELS = "0123456789abcdefghijklmnopqrstuvwxyz";
+/**
+ * What a square draws as when the view reports no glyph for it.
+ *
+ * Reached only when the host supplied no `glyphs` dep - this package always
+ * does (session.ts), so in the server it is unreachable. It stays because a
+ * renderer that quietly drew a floor for "I was not told" would be inventing
+ * again, one layer down: a blank is the one mark that cannot be mistaken for
+ * terrain.
+ */
+const NO_GLYPH = " ";
 
 export interface RenderOptions {
   /**
@@ -72,7 +82,11 @@ export interface RenderOptions {
 export interface RenderedMap {
   /** The map itself, one string per row, no trailing spaces stripped. */
   rows: string[];
-  /** `label -> what it is`, for every monster and item the map shows. */
+  /**
+   * `char at x,y = what it is`, for every monster and floor pile the map shows.
+   * Keyed by coordinates because the character does not identify anything on its
+   * own - that is upstream's design, not a shortcoming of this rendering.
+   */
   legend: string[];
   /** The window, in level coordinates. */
   window: { x0: number; y0: number; x1: number; y1: number };
@@ -132,18 +146,10 @@ export function renderMap(view: AgentView, opts: RenderOptions = {}): RenderedMa
   const monsters = new Map<number, MonsterView>();
   for (const m of view.monsters()) monsters.set(m.id, m);
 
-  /* Labels are assigned in map order (top-left to bottom-right) so the legend
-   * reads in the same order as the picture, and so the same board always
-   * produces the same labels - a client comparing two renders is comparing
-   * like with like. */
-  const labelled: Array<{ label: string; text: string }> = [];
-  let nextLabel = 0;
-  const takeLabel = (): string | null => {
-    const label = MONSTER_LABELS[nextLabel];
-    if (label === undefined) return null;
-    nextLabel++;
-    return label;
-  };
+  /* The legend is built in map order (top-left to bottom-right) so it reads in
+   * the same order as the picture, and so the same board always produces the
+   * same legend - a client comparing two renders is comparing like with like. */
+  const legend: string[] = [];
 
   const rows: string[] = [];
   let unknownCells = 0;
@@ -157,45 +163,39 @@ export function renderMap(view: AgentView, opts: RenderOptions = {}): RenderedMa
         row += " ";
         continue;
       }
+      /* Upstream's layer order (grid_data_as_text, ui-map.c:180-331): terrain,
+       * then a visible trap, then the top object, then a monster, then the
+       * player - each drawing over the one before. */
       if (x === player.grid.x && y === player.grid.y) {
         row += "@";
         continue;
       }
       const monster = cell.monster !== 0 ? monsters.get(cell.monster) : undefined;
       if (monster !== undefined && monster.visible) {
-        const label = takeLabel();
-        if (label !== null) {
-          labelled.push({ label, text: describeMonster(monster, player) });
-          row += label;
-          continue;
-        }
-        /* Out of labels: still show that SOMETHING is there rather than drawing
-         * the floor it stands on. A silent omission is the one rendering error an
-         * agent cannot recover from. */
-        row += "&";
-        continue;
-      }
-      if (cell.trap) {
-        row += "^";
+        const char = monster.glyph ?? NO_GLYPH;
+        legend.push(`${char} at ${String(x)},${String(y)} = ${describeMonster(monster, player)}`);
+        row += char;
         continue;
       }
       if (cell.objectCount > 0) {
+        const char = cell.objectGlyph ?? NO_GLYPH;
         const items = view.floorItems(x, y);
-        const label = takeLabel();
-        if (label !== null) {
-          labelled.push({ label, text: describeFloor(items, cell.objectCount, x, y) });
-          row += label;
-          continue;
-        }
-        row += "$";
+        legend.push(
+          `${char} at ${String(x)},${String(y)} = ${describeFloor(items, cell.objectCount)}`,
+        );
+        row += char;
         continue;
       }
-      row += FEAT_GLYPHS.get(cell.feat) ?? (cell.passable ? "." : "?");
+      if (cell.trapGlyph !== undefined) {
+        row += cell.trapGlyph;
+        continue;
+      }
+      row += cell.glyph ?? NO_GLYPH;
     }
     rows.push(row);
   }
 
-  return { rows, legend: labelled.map((l) => `${l.label} = ${l.text}`), window: { x0, y0, x1, y1 }, unknownCells };
+  return { rows, legend, window: { x0, y0, x1, y1 }, unknownCells };
 }
 
 function describeMonster(m: MonsterView, player: PlayerView): string {
@@ -214,11 +214,11 @@ function describeMonster(m: MonsterView, player: PlayerView): string {
   );
 }
 
-function describeFloor(items: ItemView[], count: number, x: number, y: number): string {
+function describeFloor(items: ItemView[], count: number): string {
   const head = items[0];
   const label = head === undefined ? "an object" : head.label;
   const more = count > 1 ? ` (+${String(count - 1)} more)` : "";
-  return `${label}${more} on the floor at ${String(x)},${String(y)}`;
+  return `${label}${more} on the floor`;
 }
 
 /** The one-screen status line set: what a player reads without opening anything. */

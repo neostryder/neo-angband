@@ -150,6 +150,17 @@ Stated rather than left to be discovered:
 - **No attaching to a running game.** The server owns its own headless game. The
   in-process host that would let an agent and a human share one session is the
   obvious next step and it is not built.
+
+  If what you want is to *watch* an agent rather than to share a session with
+  one, that exists and is a different thing:
+
+  ```bash
+  NEO_ANGBAND_AGENT=demo-wanderer pnpm --filter @rpgm-tools/neo-angband-desktop start
+  ```
+
+  The desktop build then runs the agent in the window, drawing every step
+  (`packages/desktop/src/agent-mode.ts`). It is the renderer's own agent path, not
+  this server — watchable, still not attachable.
 - **One game at a time.** `new_game` replaces the current one.
 
 ## Determinism is declared, not hidden
@@ -171,10 +182,10 @@ maps.
 | --- | --- |
 | `session.ts` | One live game. Arms a command, runs the real loop, drains messages |
 | `host.ts` | Owns the session and the content pack; `new_game` replaces the session |
-| `render.ts` | The ASCII map, the status block, item and cell lines |
+| `render.ts` | The ASCII map, the status block, item and cell lines. Every character comes from the engine's live glyph table (agent API 1.1.0), never from a table in this package |
 | `tools.ts` | The tool table: name, JSON Schema, handler. **No MCP imports** |
 | `server.ts` | The only file that knows about MCP |
-| `mcp.test.ts` | 25 tests, every one against a real booted game |
+| `mcp.test.ts` | 28 tests, every one against a real booted game |
 
 The split at `tools.ts` is what lets the tests drive every tool through a real
 game with no transport — the difference between testing that a tool works and

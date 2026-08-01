@@ -36,6 +36,7 @@ import {
 } from "@rpgm-tools/neo-angband-core/host";
 import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
 import { LAUNCH_MODULES } from "./modules.js";
+import { agentQuery } from "./agent-mode.js";
 import {
   HOST_BRIDGE_CHANNEL,
   HOST_INFO_CHANNEL,
@@ -914,7 +915,7 @@ async function createWindow(port: number): Promise<void> {
     return { action: "deny" };
   });
 
-  await win.loadURL(`http://127.0.0.1:${port}/`);
+  await win.loadURL(`http://127.0.0.1:${port}/${agentQuery()}`);
 }
 
 async function start(): Promise<void> {
