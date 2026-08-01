@@ -246,9 +246,24 @@ describe("a broken plugin is one line, not a boot failure", () => {
     expect(problemLines(report.problems)[0]).toContain("no default export");
   });
 
-  it("rejects a default export that declares neither hooks nor register", async () => {
+  it("rejects a default export that declares no hooks, register or controller", async () => {
     const report = await loadDefault({ api: MOD_API_VERSION });
-    expect(problemLines(report.problems)[0]).toContain("neither hooks nor register");
+    expect(problemLines(report.problems)[0]).toContain("no hooks, register or controller");
+  });
+
+  it("accepts a plugin whose ONLY member is a controller", async () => {
+    /* An autoplayer registers nothing and hooks nothing - the Borg's entire
+     * contribution is playing the game. Before the controller seam existed this
+     * plugin was refused as "would do nothing", which is the shape of mod the
+     * seam was added for. */
+    const report = await loadDefault({ api: MOD_API_VERSION, controller: () => undefined });
+    expect(report.problems).toEqual([]);
+    expect(report.plugins).toHaveLength(1);
+  });
+
+  it("rejects a controller that is not a function", async () => {
+    const report = await loadDefault({ api: MOD_API_VERSION, controller: "borg" });
+    expect(problemLines(report.problems)[0]).toContain("controller is not a function");
   });
 
   it("rejects a plugin whose own api field disagrees with its manifest", async () => {

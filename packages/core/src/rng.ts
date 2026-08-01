@@ -384,7 +384,40 @@ export class Rng {
     this.fixval = 0;
   }
 
-  /** Snapshot the full generator state for savefiles. */
+  /**
+   * Reseed IN PLACE, keeping the mode. This is the seed-swap the C performs by
+   * assigning Rand_value directly (z-rand.c's Rand_value / Rand_quick pair, as
+   * the borg does around its simulations at borg.c L481-501), applied to an
+   * instance a caller already holds a reference to.
+   *
+   * It exists because there was no way to do that. The constructor is the only
+   * other seeding path and cannot be used on a live object, so callers reached
+   * for setState() - which is the SAVEFILE path and deliberately forces quick
+   * off (see its comment). A quick generator reseeded that way is handed an
+   * all-zero WELL table, and an all-zero WELL state is a fixed point: it emits
+   * zero forever. The Borg's per-think reseed did exactly this, and the reason
+   * it went unnoticed for so long is that its test asserted two generators
+   * produced the SAME sequence, which a generator stuck at zero satisfies
+   * perfectly.
+   *
+   * Mirrors the constructor exactly: quick mode carries only `value`, the WELL
+   * stream re-runs Rand_state_init. randFix state is left alone - it is a test
+   * seam, not part of the seed.
+   */
+  reseed(seed: number): void {
+    this.value = seed >>> 0;
+    if (!this.quick) this.stateInit(seed);
+  }
+
+  /**
+   * Snapshot the full generator state for savefiles.
+   *
+   * NOT a round trip for a quick generator: `quick` is recorded here and then
+   * ignored by setState, which forces it false to match load.c. That asymmetry
+   * is upstream's (the C save block has no Rand_quick), so it stays - but it
+   * means getState/setState is the wrong pair for "restart this stream from a
+   * seed". Use reseed() for that.
+   */
   getState(): RngState {
     return {
       quick: this.quick,

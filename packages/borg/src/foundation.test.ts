@@ -136,6 +136,36 @@ describe("borg RNG isolation + reproducibility", () => {
     expect(second).toEqual(first);
   });
 
+  /* Equality alone is not enough, and this is the test that should have
+   * existed. reseedBorgRng used to go through core's setState - the SAVEFILE
+   * path, which forces quick mode off and left an all-zero WELL table, a fixed
+   * point that returns 0 to every draw. Both assertions above still pass
+   * against a generator stuck at zero: it is reproducible, and two of them
+   * agree. What it is not is random, and borg_twitchy spins forever on dir 0.
+   *
+   * Asserted on the SPREAD rather than on the mode, so it also covers a future
+   * reseed that keeps quick set and still corrupts the stream. It fails in
+   * milliseconds; the alternative failure mode is a CI job that runs until the
+   * runner kills it. */
+  it("still produces a varied stream after a reseed, not a constant", () => {
+    const r = makeBorgRng();
+    reseedBorgRng(r);
+    const draws = Array.from({ length: 60 }, () => r.randint0(10));
+    expect(new Set(draws).size).toBeGreaterThan(4);
+    expect(draws.filter((d) => d !== 0).length).toBeGreaterThan(30);
+  });
+
+  it("survives the controller's own per-think reseed", () => {
+    // The real path: createBorg reseeds on every think, so the generator has
+    // to still work on the second decision and the two-hundredth.
+    const { rng, controller } = createBorg();
+    const view = makeScenarioView({ player: { grid: { x: 5, y: 5 }, depth: 2 } });
+    controller(view, makeFakeActions());
+    controller(view, makeFakeActions());
+    const draws = Array.from({ length: 60 }, () => rng.randint0(10));
+    expect(new Set(draws).size).toBeGreaterThan(4);
+  });
+
   it("reseeds each think so simulations are a pure function of inputs", () => {
     const { rng } = createBorg({ rngSeed: BORG_LOCAL_SEED });
     // The controller reseeds internally; here we just prove the seed is stable.

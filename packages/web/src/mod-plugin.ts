@@ -71,7 +71,12 @@
  * bundled into every plugin - which is the exact duplication the host-passes-the-
  * engine design exists to avoid. The one function that needs the live namespace
  * lives in mod-context.ts, which no plugin imports. */
-import type { ModHooks, ModRegistryHost, GameState } from "@rpgm-tools/neo-angband-core";
+import type {
+  AgentController,
+  ModHooks,
+  ModRegistryHost,
+  GameState,
+} from "@rpgm-tools/neo-angband-core";
 
 /**
  * The ABI version this host implements. Bump ONLY when an existing plugin would
@@ -186,6 +191,39 @@ export interface ModPlugin {
    * written back over the only copy is worse than no migration at all.
    */
   migrateBag?(data: unknown, fromSchema: number, ctx: ModPluginContext): unknown;
+  /**
+   * An AUTOPLAYER: return a controller and the host binds it as the game's
+   * command provider, so the mod plays the game. Return undefined to decline -
+   * a mod whose own autoplay toggle is off must leave the human at the keyboard.
+   *
+   * A first-class member rather than a `ctx.core.installController(...)` call
+   * from register(), for one reason that is not style: installController
+   * REPLACES state.nextCommand and hands back an uninstall that restores
+   * whatever was there before (core/agent/controller.ts). Two mods doing that
+   * from register() both succeed, the second one silently wins, and unwinding
+   * them out of order restores the wrong provider. Going through the host means
+   * exactly one controller exists, the host knows whose it is, and it can refuse
+   * the second by name instead of losing the first.
+   *
+   * Turning the autoplayer off is turning the MOD off: a mod toggle re-composes
+   * the page (requestReload), and a controller that is not installed on the way
+   * back up is not installed. The host still keeps the AgentSession so it can
+   * release the seam in-process, but nothing calls that yet - said plainly
+   * because ModPlugin.uninstall has no caller either, and a teardown path
+   * described but not wired is how a seam ends up trusted and absent.
+   *
+   * Called once, AFTER register(), so a mod can register the commands its own
+   * controller will then drive.
+   *
+   * Requires the `command:add` capability in the manifest (a controller that
+   * cannot act is not a controller); installController throws
+   * AgentCapabilityError without it, which is reported as this mod's fault and
+   * leaves the game playable by hand. Determinism is NOT declared here - the
+   * manifest's `nondeterministic` flag already advances the save's determinism
+   * ratchet when the mod is enabled, and a second place to say it is a second
+   * place for it to disagree.
+   */
+  controller?(ctx: ModPluginContext): AgentController | undefined;
   /** Optional teardown, called if the plugin is uninstalled in-session. */
   uninstall?(): void;
 }
@@ -233,17 +271,22 @@ export function validateModPlugin(
   if (p.migrateBag !== undefined && typeof p.migrateBag !== "function") {
     return "plugin.js: migrateBag is not a function";
   }
+  if (p.controller !== undefined && typeof p.controller !== "function") {
+    return "plugin.js: controller is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
-  if (p.hooks === undefined && p.register === undefined) {
-    /* A plugin that does neither is almost certainly a mistake - a mod with no
-     * code at all simply ships no plugin.js - and saying so beats loading it and
-     * having nothing happen. Deliberately NOT widened to include migrateBag: a
-     * plugin whose only member is a bag migrator changes nothing about the game
-     * and would silently do nothing on a fresh save, which is the same mistake
-     * wearing a newer field name. */
-    return "plugin.js declares neither hooks nor register, so it would do nothing";
+  if (p.hooks === undefined && p.register === undefined && p.controller === undefined) {
+    /* A plugin that does none of these is almost certainly a mistake - a mod
+     * with no code at all simply ships no plugin.js - and saying so beats
+     * loading it and having nothing happen. `controller` counts because an
+     * autoplayer is a mod whose entire contribution is playing the game: the
+     * Borg registers nothing and hooks nothing. Deliberately still NOT widened
+     * to include migrateBag: a plugin whose only member is a bag migrator
+     * changes nothing about the game and would silently do nothing on a fresh
+     * save, which is the same mistake wearing a newer field name. */
+    return "plugin.js declares no hooks, register or controller, so it would do nothing";
   }
   return null;
 }

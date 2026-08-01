@@ -90,8 +90,51 @@ Documentation accuracy:
   quota and different browser controls.
 - `docs/INSTALL.md` advertised in-app text/tile scaling that does not exist.
 
+### Fixed
+
+- **The Borg's decision ladder had never run.** Two of its test files hung
+  indefinitely and were excluded from CI, so `think()` - the function that
+  decides - was executed by nothing. The cause was in core, not the Borg: the
+  per-think reseed went through `Rng.setState`, which is the SAVEFILE path and
+  deliberately forces quick mode off to match load.c. That handed the generator
+  an all-zero WELL table, which is a fixed point: every draw returned 0, and
+  `borg_twitchy` retries on `dir == 0` without spending its counter (faithfully -
+  the C does the same), so the first decision on a live level never returned.
+  Core gains `Rng.reseed()`, which is the seed swap the C does by assigning
+  `Rand_value`; the exclusions came off and the Borg's suite went from 138 tests
+  to 161. The old RNG test asserted that two generators agree, which a generator
+  stuck at zero satisfies - the new one asserts the spread.
+- **The Borg never considered attacking with an artifact.** All 61 `BF_ACT_*`
+  activation methods were missing from the attack dispatch. The enum carried
+  every id, so `borg_attack` asked about each one, every one fell to
+  `default: return 0`, and 0 is what "no such artifact" looks like. Transcribed
+  from the C, including the five multi-element dragon activations and
+  Holcolleth's sleep-II, which was not ported at all. A source census now fails
+  if any `BF_*` id loses its case - a behavioural test cannot catch this, since
+  without a host activation resolver every one of these branches legitimately
+  returns 0.
+- Two Borg "gaps" recorded in the last release were misreadings of the port, and
+  the C settles both: neither `borg_decurse_any`'s command half nor
+  `borg_test_stuff` computes a spell fail rate, so neither has any use for the
+  `playerHas` seam. The unused parameters are gone and the reason is written
+  where they were.
+- `packages/web/src/mod-problems.ts` contained two literal NUL bytes as a dedup
+  separator, which made ripgrep and git grep treat the file as binary and skip
+  it. Same character, written as an escape.
+
 ### Changed
 
+- **A mod can be an autoplayer.** `ModPlugin` gains `controller?(ctx)`: return an
+  AgentController and the host binds it as the game's command provider. The host
+  owns a single slot rather than letting mods call `ctx.core.installController`
+  themselves, because that call swaps `state.nextCommand` and returns an
+  uninstall that restores whatever preceded it - two mods doing it both succeed,
+  the second silently wins, and unwinding out of order restores the wrong one.
+  That is now a test in core rather than an assertion in a design document. The
+  second autoplayer is refused by name; `command:add` is required and its absence
+  is reported as that mod's fault. Optional member, so the ABI version stays 1 -
+  but a controller-only plugin used to be rejected as "would do nothing", which
+  is exactly the shape the Borg has.
 - **`@rpgm-tools/neo-angband-content` reaches its own pack.** `0.11.0` published
   the compiled gamedata — 45 files, 2.0 of its 2.3 MB — and declared no `exports`
   subpath for it, so the one thing that package exists to do threw
