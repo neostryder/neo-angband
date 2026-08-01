@@ -1,2 +1,2 @@
 /** Version of the Linoleum tile-pack tools; tracks packages/linoleum/package.json. */
-export const LINOLEUM_TOOLS_VERSION = "0.13.0";
+export const LINOLEUM_TOOLS_VERSION = "0.14.0";
