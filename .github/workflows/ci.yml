@@ -42,8 +42,17 @@ jobs:
       # more; each mod repository runs the builder over its own source in its own CI.
       # `pnpm test` excludes packages/borg: think.test.ts and foundation.test.ts
       # hang indefinitely (no output, no timeout), so without the exclusion this
-      # step burns the whole job limit instead of failing. test:borg runs the two
-      # borg files that do terminate so that coverage is not silently dropped.
+      # step burns the whole job limit instead of failing. test:borg then runs the
+      # borg files that DO terminate, so coverage is not silently dropped.
+      #
+      # It used to name two of them by hand - perceive and resolvers - and there
+      # are eleven. Measured 2026-08-01 by running each with a 90s cap: exactly
+      # the two named above hang and the other nine pass, so naming two was
+      # dropping 124 passing tests, including every test the Borg's danger,
+      # fight, flow, item, store and trait modules have. The script now excludes
+      # the two hangs rather than listing the survivors, so a NEW borg test file
+      # is picked up by default instead of being invisible until someone
+      # remembers to add it.
       - run: pnpm test
       - run: pnpm test:borg
       # Parity harness (packages/cli): the parity.test.ts guard runs inside
