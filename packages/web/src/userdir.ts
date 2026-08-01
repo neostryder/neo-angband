@@ -180,6 +180,59 @@ export function textLinesToFile(name: string, text: string): number {
  * to get bytes OUT to the host, and the reason a dump is worth writing at all.
  * Never fatal: a blocked download leaves the file in the user directory.
  */
+/**
+ * Ask the player for one text file from their disk, or null if they cancelled.
+ *
+ * A hidden `<input type="file">` rather than showOpenFilePicker, because the File
+ * System Access API is Chromium-only and this has to work in the browsers that
+ * cannot hand the game a directory - those are exactly the players for whom
+ * importing a character is the only way to move one. Nothing is written and no
+ * handle is kept: the file is read once, in memory.
+ *
+ * A cancel is genuinely indistinguishable from "the dialog is still open" in the
+ * DOM - there is no cancel event that fires everywhere - so the promise settles
+ * on `change` (a file was picked) or on the window regaining focus with nothing
+ * picked, which is the cancel every browser does produce.
+ */
+export function pickTextFile(accept: string): Promise<{ name: string; text: string } | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v: { name: string; text: string } | null): void => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", onFocus);
+      input.remove();
+      resolve(v);
+    };
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (!file) {
+        done(null);
+        return;
+      }
+      file
+        .text()
+        .then((text) => done({ name: file.name, text }))
+        .catch(() => done(null));
+    });
+    /* The cancel path. Deferred a tick past focus because Chrome fires focus
+     * BEFORE change when a file was chosen, and resolving null there would throw
+     * away the file the player just picked. */
+    const onFocus = (): void => {
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) done(null);
+      }, 300);
+    };
+    window.addEventListener("focus", onFocus);
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
 export function downloadUserFile(name: string, text: string, mime = "text/plain"): boolean {
   try {
     const blob = new Blob([text], { type: mime });

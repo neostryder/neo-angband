@@ -70,11 +70,17 @@ const HOOK_CODE = HOOK.split("\n")
   .join("\n");
 
 describe("private-scan over the tracked tree", () => {
+  /* 30s, and not because the scan is slow to think. It spawns a Node process
+   * that reads every tracked file in the repository - 1301 of them - and under
+   * the full suite's parallel load that ran past vitest's 5s default and failed
+   * on how busy the machine was rather than on anything in the tree. A privacy
+   * gate that goes red at random is a gate people learn to re-run instead of
+   * read, which is the opposite of what this one is for. */
   it("is clean", () => {
     const { code, out } = run();
     expect(out).toContain("clean");
     expect(code, out).toBe(0);
-  });
+  }, 30_000);
 });
 
 describe("private-scan actually bites", () => {

@@ -208,7 +208,7 @@ export function titleLines(): readonly TitleLine[] {
  * resumes the most recent character - was worth keeping as a named row rather
  * than as the meaning of every key on the keyboard.
  */
-export type TitleChoice = "new" | "open" | "load" | "quit";
+export type TitleChoice = "new" | "open" | "load" | "quit" | "install";
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
@@ -222,6 +222,15 @@ export interface TitleOptions {
    * tab has nothing to exit to, so the row greys out there instead of lying.
    */
   canQuit: boolean;
+  /**
+   * Offer "install locally". Not upstream's at all - there is nothing in
+   * main-win.c's File menu to port it from - so unlike every other row it is
+   * ABSENT rather than greyed when it does not apply. Greying is how upstream
+   * says "this item exists and cannot be used right now"; a desktop build has no
+   * such item and never will, so a permanent dead row there would be advertising
+   * something that is not coming.
+   */
+  canInstall: boolean;
 }
 
 /** One title row: its key, its label, and whether it is enabled. */
@@ -239,12 +248,19 @@ interface TitleRow {
  * running game).
  */
 export function titleRows(opts: TitleOptions): TitleRow[] {
-  return [
+  const rows: TitleRow[] = [
     { choice: "new", key: "n", label: "(N)ew game", enabled: true },
     { choice: "open", key: "o", label: "(O)pen a save", enabled: opts.canOpen },
     { choice: "load", key: "l", label: "(L)oad last save", enabled: opts.canLoad },
-    { choice: "quit", key: "q", label: "(Q)uit", enabled: opts.canQuit },
   ];
+  /* Before Quit, because Quit is last in the File menu and this is not a File
+   * menu item at all - putting it after Quit would read as though upstream had
+   * one there. */
+  if (opts.canInstall) {
+    rows.push({ choice: "install", key: "i", label: "(I)nstall locally", enabled: true });
+  }
+  rows.push({ choice: "quit", key: "q", label: "(Q)uit", enabled: opts.canQuit });
+  return rows;
 }
 
 /**

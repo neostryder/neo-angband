@@ -61,7 +61,10 @@ describe("news title screen markup (news.txt {colour}...{/})", () => {
  * including a bare Shift, and on a click anywhere.
  */
 describe("title screen keys (main-win.c File menu)", () => {
-  const ALL = { canLoad: true, canOpen: true, canQuit: true };
+  /* The upstream File-menu rows. `canInstall: false` keeps this block about the
+   * four rows that ARE ported; the fifth is not upstream's and is covered on its
+   * own below. */
+  const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false };
 
   it("offers New / Open / Load / Quit in the File menu's order", () => {
     expect(titleRows(ALL).map((r) => r.choice)).toEqual(["new", "open", "load", "quit"]);
@@ -103,7 +106,7 @@ describe("title screen keys (main-win.c File menu)", () => {
   // EnableMenuItem greys rows that do not apply (main-win.c:2957-2990); a greyed
   // item does nothing when picked.
   it("a disabled row is inert, by key and by accelerator", () => {
-    const none = titleRows({ canLoad: false, canOpen: false, canQuit: false });
+    const none = titleRows({ canLoad: false, canOpen: false, canQuit: false, canInstall: false });
     expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["new"]);
     expect(titleKeyChoice("l", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, false)).toBeNull();
@@ -192,6 +195,7 @@ function renderTitle(): { ch: string; fg: string }[][] {
       canLoad: true,
       canOpen: true,
       canQuit: true,
+      canInstall: false,
     });
   } finally {
     delete (globalThis as { window?: unknown }).window;
@@ -375,5 +379,56 @@ describe("title screen credits (whose version, and where)", () => {
       "A port by neostryder / RPGM Tools",
       `Based on Angband ${PARITY_BASELINE} by the Angband developers`,
     ]);
+  });
+});
+
+/*
+ * The one row that is not upstream's.
+ *
+ * Every other title row maps to a File-menu item, and a row that does not apply
+ * is GREYED because that is what EnableMenuItem does. This one has no File-menu
+ * counterpart at all, so it is ABSENT under the desktop shell rather than greyed:
+ * a permanent dead row there would be advertising something that is not coming.
+ */
+describe("the (I)nstall locally row", () => {
+  const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true };
+
+  it("appears with its own key when installing is possible", () => {
+    expect(titleRows(WEB).map((r) => r.choice)).toEqual([
+      "new",
+      "open",
+      "load",
+      "install",
+      "quit",
+    ]);
+    expect(titleKeyChoice("i", titleRows(WEB), false)).toBe("install");
+    expect(titleKeyChoice("I", titleRows(WEB), false)).toBe("install");
+  });
+
+  it("is ABSENT, not greyed, when it does not apply", () => {
+    const rows = titleRows({ ...WEB, canInstall: false });
+    expect(rows.map((r) => r.choice)).not.toContain("install");
+    /* And 'i' then means nothing at all, rather than being a key that is
+     * recognised and ignored. */
+    expect(titleKeyChoice("i", rows, false)).toBeNull();
+  });
+
+  it("sits before Quit, which stays last", () => {
+    /* Quit is last in main-win.c's File menu. Putting a non-File-menu row after
+     * it would read as though upstream had one there. */
+    expect(titleRows(WEB).at(-1)?.choice).toBe("quit");
+  });
+
+  it("has no Ctrl accelerator, because upstream has none to port", () => {
+    expect(titleKeyChoice("i", titleRows(WEB), true)).toBeNull();
+  });
+
+  it("does not disturb the layout of the rows around it", () => {
+    const spans = titleRowSpans(titleRows(WEB), 80);
+    expect(spans.map((s) => s.row.choice)).toEqual(["new", "open", "load", "install", "quit"]);
+    for (let i = 1; i < spans.length; i++) {
+      expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
+    }
+    expect(spans.at(-1)!.end).toBeLessThan(80);
   });
 });

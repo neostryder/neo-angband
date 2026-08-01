@@ -143,15 +143,93 @@ describe("runCharacterSelect", () => {
     }
   });
 
-  it("the footer tells the player where ESC goes", async () => {
+  it("the footer names every key this screen has, including where ESC goes", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runCharacterSelect(term, [meta({ id: "a1", name: "Alpha" })]);
     await tick();
-    expect(term.snapshot().join("\n")).toContain("ESC for the title screen");
+    const footer = term.snapshot().join("\n");
+    expect(footer).toContain("ESC title");
+    expect(footer).toContain("Del delete");
+    /* Export and import are the only way a character crosses between two copies
+     * of the game, and a key nobody is told about is a feature nobody has. */
+    expect(footer).toContain("Shift-X export");
+    expect(footer).toContain("Shift-M import");
     press(win, "Escape");
     await done;
+  });
+
+  /* Carrying a character to another copy of the game (save-transfer.ts). Both
+   * keys close the menu on a row the player did not choose, so both have to be
+   * resolved before the row meanings - a bug there reads as "export resumed the
+   * character instead of exporting it".
+   *
+   * The key registered is the CAPITAL, which is what a shifted press puts in
+   * ev.key. The command layer tries commands[key] then commands[lowercased], so
+   * registering the capital leaves lower-case x and m free to go on being row
+   * selection tags (pinned below). */
+  it("Shift-X exports the character the cursor is on", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [
+      meta({ id: "a1", name: "Alpha" }),
+      meta({ id: "b2", name: "Beta" }),
+    ]);
+    await tick();
+    press(win, "ArrowDown");
+    await tick();
+    press(win, "X");
+    expect(await done).toEqual({ action: "export", id: "b2" });
+  });
+
+  it("Shift-X does nothing on a tombstone, whose bytes are already gone", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [meta({ id: "dead1", alive: false })]);
+    await tick();
+    press(win, "X");
+    await tick();
+    /* Still up, so the key was consumed rather than resolving anything. */
+    press(win, "Escape");
+    expect(await done).toEqual({ action: "back" });
+  });
+
+  it("Shift-M imports, whatever row the cursor happens to be on", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [meta({ id: "a1", name: "Alpha" })]);
+    await tick();
+    press(win, "M");
+    expect(await done).toEqual({ action: "import" });
+  });
+
+  it("Shift-M works with an EMPTY roster, which is when it is most needed", async () => {
+    /* A player who has just installed the game and wants the character from
+     * their other copy has no rows at all to stand on. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, []);
+    await tick();
+    press(win, "M");
+    expect(await done).toEqual({ action: "import" });
+  });
+
+  it("leaves lower-case x and m as row selection tags", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const many = Array.from({ length: 25 }, (_, i) =>
+      meta({ id: `c${String(i)}`, name: `Char${String(i)}` }),
+    );
+    const done = runCharacterSelect(term, many);
+    await tick();
+    press(win, "x"); // the 24th row: a, b, c ... x
+    expect(await done).toEqual({ action: "resume", id: "c23" });
   });
 
   it("a tombstone offers Leave/Delete; Delete resolves, Leave returns to the list", async () => {

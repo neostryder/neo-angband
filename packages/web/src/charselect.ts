@@ -23,6 +23,13 @@ export type SelectResult =
   | { action: "resume"; id: string }
   | { action: "delete"; id: string }
   | { action: "new" }
+  /* Write this character to a file the player can carry to another copy of the
+   * game, and read one back. Here rather than on the title screen because this is
+   * where characters ARE - and a file is the only way one crosses, because the
+   * desktop build keeps its roster in its own storage exactly as a browser tab
+   * does (save-transfer.ts says why, with the measurement). */
+  | { action: "export"; id: string }
+  | { action: "import" }
   | { action: "back" };
 
 /** "Town" at the surface, else the classic "<feet>' (L<n>)". */
@@ -116,20 +123,54 @@ export async function runCharacterSelect(
       deleteRow = cursor;
       return cursor; // close the menu on this row; handled below
     };
+    /* Export and import ride the same deferred-command hook for the same reason:
+     * both open something - a download, a file dialog - that must not run while
+     * this menu's capturing keydown listener is still attached. */
+    let exportRow = -1;
+    const requestExport = (cursor: number): number | null => {
+      const c = roster[cursor];
+      if (!c?.alive) return null; // a tombstone's bytes are gone; nothing to carry
+      exportRow = cursor;
+      return cursor;
+    };
+    let importRequested = false;
+    const requestImport = (cursor: number): number | null => {
+      importRequested = true;
+      /* Close on whatever row the cursor is on; the handler below ignores which,
+       * and an empty roster has the "New character" row to close on. */
+      return Math.max(0, Math.min(cursor, roster.length));
+    };
     const pick = await selectFromMenu(
       term,
       "Select a character",
       [...items, newRow],
-      "[ a-z to choose, tap a row, Del to delete, ESC for the title screen ]",
+      "[ a-z choose, Del delete, Shift-X export, Shift-M import, ESC title ]",
       {
         subtitle: notice
           ? notice
           : "Living characters resume; tombstones are memorials.",
-        commands: { Delete: requestDelete, Backspace: requestDelete },
+        /* CAPITALS for the two new ones. The command layer is checked BEFORE
+         * positional letters, so registering lower-case "x" and "m" would steal
+         * the selection tags of the 24th and 13th rows from anyone with a long
+         * roster. Tags are lower case and case-sensitive, so shifted letters
+         * cannot collide with them. */
+        commands: {
+          Delete: requestDelete,
+          Backspace: requestDelete,
+          X: requestExport,
+          M: requestImport,
+        },
       },
     );
 
     if (pick === null) return { action: "back" };
+    /* Both are checked before the row meanings below, because both closed the
+     * menu ON a row that the player did not choose. */
+    if (importRequested) return { action: "import" };
+    if (pick === exportRow) {
+      const c = roster[pick];
+      if (c) return { action: "export", id: c.id };
+    }
     if (pick === roster.length) return { action: "new" };
 
     const chosen = roster[pick];
