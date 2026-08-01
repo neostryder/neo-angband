@@ -55,11 +55,20 @@ interface FakeReq<T> {
   onblocked?: (() => void) | null;
 }
 
-function fakeIdb(opts: { putFails?: boolean; openFails?: boolean } = {}): {
+function fakeIdb(
+  opts: {
+    putFails?: boolean;
+    openFails?: boolean;
+    /* Share another fake's stores, so one test can drive a healthy install and then
+     * a refused one against the SAME data - which is the only way to see whether an
+     * upgrade destroys what it is replacing. */
+    stores?: Map<string, Map<string, unknown>>;
+  } = {},
+): {
   factory: IDBFactory;
   stores: Map<string, Map<string, unknown>>;
 } {
-  const stores = new Map<string, Map<string, unknown>>();
+  const stores = opts.stores ?? new Map<string, Map<string, unknown>>();
   const storeOf = (n: string): Map<string, unknown> => {
     let s = stores.get(n);
     if (!s) {
@@ -84,45 +93,71 @@ function fakeIdb(opts: { putFails?: boolean; openFails?: boolean } = {}): {
             storeOf(n);
             return {};
           },
-          transaction(name: string, _mode?: string) {
+          /* `names` is a string OR an array, because IndexedDB spans stores in one
+           * transaction and the installer's swap relies on exactly that. A fake that
+           * only took one name would have made the multi-store call untestable and,
+           * worse, would have let it look tested.
+           *
+           * Writes are BUFFERED and applied on commit, so an aborted transaction
+           * leaves the stores as they were - the property the swap depends on. The
+           * fake models the ordering and the rollback; it is not a conformance test
+           * of IndexedDB itself, and the durability claim rests on the spec. */
+          transaction(names: string | string[], _mode?: string) {
+            const only = Array.isArray(names) ? names[0]! : names;
+            const pending: Array<() => void> = [];
+            let failed = false;
+            let settled = false;
+            const settle = (): void => {
+              if (settled) return;
+              settled = true;
+              queueMicrotask(() => {
+                if (failed) {
+                  tx.onerror?.();
+                  tx.onabort?.();
+                  return;
+                }
+                for (const apply of pending) apply();
+                tx.oncomplete?.();
+              });
+            };
             const tx: {
               oncomplete?: (() => void) | null;
               onerror?: (() => void) | null;
               onabort?: (() => void) | null;
-              objectStore(): unknown;
+              objectStore(name?: string): unknown;
             } = {
-              objectStore: () => ({
-                get(key: string) {
-                  const r: FakeReq<unknown> = {};
-                  queueMicrotask(() => {
-                    r.result = storeOf(name).get(key);
-                    r.onsuccess?.();
-                  });
-                  return r;
-                },
-                getAllKeys() {
-                  const r: FakeReq<unknown[]> = {};
-                  queueMicrotask(() => {
-                    r.result = [...storeOf(name).keys()];
-                    r.onsuccess?.();
-                  });
-                  return r;
-                },
-                put(value: unknown, key: string) {
-                  if (opts.putFails) {
-                    queueMicrotask(() => tx.onerror?.());
+              objectStore: (name?: string) => {
+                const store = name ?? only;
+                return {
+                  get(key: string) {
+                    const r: FakeReq<unknown> = {};
+                    queueMicrotask(() => {
+                      r.result = storeOf(store).get(key);
+                      r.onsuccess?.();
+                    });
+                    return r;
+                  },
+                  getAllKeys() {
+                    const r: FakeReq<unknown[]> = {};
+                    queueMicrotask(() => {
+                      r.result = [...storeOf(store).keys()];
+                      r.onsuccess?.();
+                    });
+                    return r;
+                  },
+                  put(value: unknown, key: string) {
+                    if (opts.putFails) failed = true;
+                    else pending.push(() => storeOf(store).set(key, value));
+                    settle();
                     return {};
-                  }
-                  storeOf(name).set(key, value);
-                  queueMicrotask(() => tx.oncomplete?.());
-                  return {};
-                },
-                delete(key: string) {
-                  storeOf(name).delete(key);
-                  queueMicrotask(() => tx.oncomplete?.());
-                  return {};
-                },
-              }),
+                  },
+                  delete(key: string) {
+                    pending.push(() => storeOf(store).delete(key));
+                    settle();
+                    return {};
+                  },
+                };
+              },
             };
             return tx;
           },
@@ -356,6 +391,63 @@ describe("installRecommendedMod", () => {
     /* A mod that is half v1 and half v2 is a mod whose bug reports mean nothing. */
     expect(made.stores.get(STORE_MODS)?.has("demo/old.json")).toBe(false);
     expect(made.stores.get(STORE_MODS)?.has("demo/new.json")).toBe(true);
+  });
+
+  it("overwrites a path both versions ship, rather than keeping the old bytes", async () => {
+    const made = fakeIdb();
+    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":1}') };
+    await installRecommendedMod(
+      await modFor(v1),
+      (await envFor(v1, { idb: made.factory })).env,
+    );
+    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":2}') };
+    await installRecommendedMod(
+      await modFor(v2),
+      (await envFor(v2, { idb: made.factory })).env,
+    );
+    expect(
+      new TextDecoder().decode(
+        made.stores.get(STORE_MODS)?.get("demo/data.json") as Uint8Array,
+      ),
+    ).toBe('{"v":2}');
+  });
+
+  it("an upgrade that cannot be written leaves the working copy in place", async () => {
+    /* THE DEFECT THIS PINS. The installer deleted the old copy and only then wrote
+     * the new one, so the mod did not exist for the length of that gap - and the
+     * likeliest reason the write fails is the storage quota, where the thing that
+     * will not fit is precisely the new copy. A player upgrading a mod that worked
+     * could be left with no mod at all. An upgrade must never be able to subtract.
+     *
+     * Driven through the real installer twice against one store, the second time
+     * with the writes refused, because "does it delete before it writes" is a claim
+     * about ORDER and only a second install can see it. */
+    const shared = fakeIdb();
+    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":1}') };
+    const first = await installRecommendedMod(
+      await modFor(v1),
+      (await envFor(v1, { idb: shared.factory })).env,
+    );
+    expect(first.ok).toBe(true);
+
+    /* Same underlying stores, but every write from here on is refused. */
+    const refusing = fakeIdb({ putFails: true, stores: shared.stores });
+    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":2}') };
+    const second = await installRecommendedMod(
+      await modFor(v2),
+      (await envFor(v2, { idb: refusing.factory })).env,
+    );
+
+    expect(second.ok).toBe(false);
+    expect(second.ok === false && second.problem).toMatch(/untouched/u);
+    /* Every v1 file still there, and the meta still says the mod is installed. */
+    expect(shared.stores.get(STORE_MODS)?.has("demo/manifest.json")).toBe(true);
+    expect(
+      new TextDecoder().decode(
+        shared.stores.get(STORE_MODS)?.get("demo/data.json") as Uint8Array,
+      ),
+    ).toBe('{"v":1}');
+    expect(shared.stores.get(STORE_MOD_META)?.has("demo")).toBe(true);
   });
 });
 

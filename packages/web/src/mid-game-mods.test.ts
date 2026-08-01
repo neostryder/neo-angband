@@ -29,6 +29,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 describe("presentNamespaces feeds loadGame the reconciliation set (mid-game add/remove)", () => {
+  /* 20s, and not because the assertions are slow. This is the first import of
+   * ./pack in the file, so it pays for loading and composing the ENTIRE content
+   * pack - measured at 3.8s on an idle machine, which is 76% of vitest's 5s
+   * default before any contention at all. Under the full suite the parallel load
+   * tipped it over, and a test that fails on how busy the machine is teaches
+   * nobody anything. The budget is raised rather than the work moved because the
+   * work IS the subject: presentNamespaces has to be read off a real composition. */
   it("always includes core and returns namespace strings", async () => {
     const { presentNamespaces } = await import("./pack");
     const ns = presentNamespaces();
@@ -37,7 +44,7 @@ describe("presentNamespaces feeds loadGame the reconciliation set (mid-game add/
       expect(typeof n).toBe("string");
       expect(n.length).toBeGreaterThan(0);
     }
-  });
+  }, 20_000);
 
   it("is core-only on a fresh install: no mod is enabled by default (parity)", async () => {
     // DEFAULT_ENABLED_MODS is empty per the parity mandate, so with nothing

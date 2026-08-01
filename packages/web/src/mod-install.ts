@@ -40,12 +40,11 @@ import {
 import {
   STORE_MODS,
   STORE_MOD_META,
+  idbApply,
   idbDelete,
   idbDeletePrefix,
   idbGet,
   idbKeys,
-  idbPut,
-  idbPutMany,
   openDb,
 } from "./idb";
 import { buildModuleGraph } from "./mod-modules";
@@ -205,26 +204,6 @@ export async function installRecommendedMod(
       };
     }
 
-    /* Any older copy goes first, so a reinstall at a different tag cannot leave files
-     * from the previous one behind - a mod that is half v1 and half v2 is a mod whose
-     * bug reports mean nothing. */
-    await idbDeletePrefix(db, STORE_MODS, `${mod.id}/`);
-
-    const stored = await idbPutMany(
-      db,
-      STORE_MODS,
-      files.map(([path, bytes]) => [`${mod.id}/${path}`, bytes] as const),
-    );
-    if (!stored) {
-      /* Reported, not swallowed. The usual cause is the storage quota, and a mod that
-       * silently did not store is a mod the player enables and never sees work. */
-      await idbDeletePrefix(db, STORE_MODS, `${mod.id}/`);
-      return {
-        ok: false,
-        problem: `${mod.id}: could not be saved - the browser refused the write (out of storage?)`,
-      };
-    }
-
     const meta: InstalledModMeta = {
       id: mod.id,
       repo: mod.repo,
@@ -232,12 +211,50 @@ export async function installRecommendedMod(
       files: files.map(([p]) => p),
       installedAt: env.now(),
     };
-    /* LAST, and only after the bytes are down: the meta record is what makes the mod
-     * count as installed, so writing it first would advertise a mod whose files may
-     * not be there. */
-    if (!(await idbPut(db, STORE_MOD_META, mod.id, meta))) {
-      await idbDeletePrefix(db, STORE_MODS, `${mod.id}/`);
-      return { ok: false, problem: `${mod.id}: could not record the install` };
+
+    /* ONE SWAP, NOT A DELETE AND THEN A WRITE.
+     *
+     * This used to delete the old copy first, and only then write the new one, so
+     * the mod did not exist for the length of that gap. Every reason the write can
+     * fail is a reason it can fail at exactly that moment - the usual one being the
+     * storage quota, and the thing that will not fit is precisely the new copy - so
+     * a player upgrading a working mod could be left with no mod at all, and the
+     * only recovery was to download it again. An upgrade must never be able to
+     * subtract.
+     *
+     * The old-copy removal is still there and still necessary, because a reinstall
+     * at a different tag must not leave v1 files beside v2 ones - it is now a
+     * targeted delete of the keys the new version does NOT bring, computed before
+     * anything is touched, rather than a blanket wipe of the prefix. Shared paths
+     * are simply overwritten in place.
+     *
+     * The meta record goes in the SAME transaction, across the two stores. It is
+     * what makes the mod count as installed, so files and meta disagreeing is its
+     * own kind of half-install - and two transactions cannot avoid that, however
+     * they are ordered. IndexedDB spans stores in one transaction, so either the
+     * whole swap lands or the previous install stands untouched. */
+    const arriving = new Set(files.map(([path]) => `${mod.id}/${path}`));
+    const stale = (await idbKeys(db, STORE_MODS)).filter(
+      (k) => k.startsWith(`${mod.id}/`) && !arriving.has(k),
+    );
+    const swapped = await idbApply(db, [
+      {
+        store: STORE_MODS,
+        del: stale,
+        put: files.map(([path, bytes]) => [`${mod.id}/${path}`, bytes] as const),
+      },
+      { store: STORE_MOD_META, put: [[mod.id, meta] as const] },
+    ]);
+    if (!swapped) {
+      /* Reported, not swallowed. The usual cause is the storage quota, and a mod that
+       * silently did not store is a mod the player enables and never sees work.
+       * Nothing to clean up: the transaction either committed or rolled itself back. */
+      return {
+        ok: false,
+        problem:
+          `${mod.id}: could not be saved - the browser refused the write (out of storage?). ` +
+          `Any copy you already had is untouched.`,
+      };
     }
     return { ok: true, meta };
   } catch (e) {
