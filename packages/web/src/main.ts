@@ -193,7 +193,7 @@ import type {
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents } from "@rpgm-tools/neo-angband-core";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
-import type { AgentController } from "@rpgm-tools/neo-angband-core";
+import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
   getGraphicsMode,
   GlyphTable,
@@ -8063,7 +8063,7 @@ async function maybeBirth(): Promise<BootStep> {
   // state.rng through init; reseed to the world seed so birth draws start at
   // the C birth-UI position, then snapshot after accept for the post-birth
   // reload (Decision 6.2). PREVIEW_SEED throwaways in birth.ts stay separate.
-  state.rng.setState(new Rng(seed).getState());
+  state.rng.reseed(seed);
   const historyFor = (raceName: string): string => {
     const race = players.raceByName(raceName);
     if (!race) return "";
@@ -8660,6 +8660,14 @@ if (agentId && agentMake) {
 // persisted-enable pass (W2.4) does not double-install one.
 const installedPluginIds = new Set<string>();
 
+/**
+ * The one autoplayer slot (ModPlugin.controller). Null while the human has the
+ * keyboard. A single slot rather than a set because installController swaps a
+ * single state.nextCommand: two of them is not "two autoplayers", it is one
+ * autoplayer and one mod that thinks it is running and is not.
+ */
+let installedController: { id: string; session: AgentSession } | null = null;
+
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
@@ -8987,6 +8995,62 @@ for (const loaded of activeModCode().plugins) {
       `register() failed, so its effects, rooms and commands are not installed: ${faultMessage(err)}`,
     );
     console.error(`[mod:${loaded.id}] register() failed:`, err);
+  }
+}
+
+/* The controller() half: an autoplayer mod takes over state.nextCommand.
+ *
+ * After register(), so a mod can register the very commands its controller then
+ * drives. ONE at a time, by construction: installController swaps
+ * state.nextCommand and returns an uninstall that restores the previous
+ * provider, so two mods installing directly would leave the second silently in
+ * charge and an out-of-order teardown restoring the wrong one. The host holds
+ * the slot instead and refuses the second by name, which is a sentence the
+ * player can act on.
+ *
+ * Determinism is not consulted here: the manifest's `nondeterministic` flag
+ * already advanced the save ratchet when the mod was enabled
+ * (advanceSaveRatchets above), and asking the plugin again would be a second
+ * source of truth for one fact. */
+for (const loaded of activeModCode().plugins) {
+  const makeController = loaded.plugin.controller;
+  if (!makeController) continue;
+  if (installedController) {
+    reportModFault(
+      loaded.id,
+      `it plays the game automatically, and "${installedController.id}" is already doing that - ` +
+        `only one autoplayer can hold the keyboard. Disable one of them.`,
+    );
+    continue;
+  }
+  try {
+    const controller = makeController.call(
+      loaded.plugin,
+      modPluginContext(
+        loaded.id,
+        folderRuleFlags.get(loaded.id) ?? {},
+        state,
+        modOwnFiles(loaded.data),
+      ),
+    );
+    /* undefined is a decline, not a failure: a mod whose own autoplay toggle is
+     * off says so by returning nothing, and the human keeps the keyboard. */
+    if (!controller) continue;
+    const session = installController(state, controller, {
+      capabilities: CapabilitySet.fromManifest(loaded.manifest),
+    });
+    installedController = { id: loaded.id, session };
+    console.info(`[mod:${loaded.id}] installed an autoplayer`);
+  } catch (err) {
+    /* Same containment as register(): a controller that will not install must
+     * leave a game the player can still play by hand. The commonest cause is a
+     * manifest that never asked for command:add, and AgentCapabilityError says
+     * exactly that. */
+    reportModFault(
+      loaded.id,
+      `its autoplayer could not be installed, so the game stays under your control: ${faultMessage(err)}`,
+    );
+    console.error(`[mod:${loaded.id}] controller() failed:`, err);
   }
 }
 

@@ -40,13 +40,11 @@ export function makeBorgRng(seed: number = BORG_LOCAL_SEED): Rng {
  * simulation batch is reproducible. Mirrors the upstream per-think seed reset.
  */
 export function reseedBorgRng(rng: Rng, seed: number = BORG_LOCAL_SEED): void {
-  // Quick mode uses only the LCRNG `value`; setState restores it cleanly.
-  rng.setState({
-    quick: true,
-    value: seed >>> 0,
-    state: new Array(32).fill(0),
-    stateI: 0,
-    fixed: false,
-    fixval: 0,
-  });
+  /* reseed(), not setState(). setState is core's SAVEFILE path and forces quick
+   * off (load.c does); this used to call it with an all-zero WELL table, and an
+   * all-zero WELL state is a fixed point - the Borg's generator returned 0 to
+   * every draw from its first think onward. borg_twitchy retries on `dir == 0`
+   * without spending its counter (faithfully - the C does the same), so the very
+   * first decision on a live level never returned. */
+  rng.reseed(seed);
 }
