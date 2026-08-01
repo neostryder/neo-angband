@@ -16,7 +16,7 @@
  */
 
 /* Re-export the engine tval constants so callers use one source. */
-export { TV } from "@rpgm-tools/neo-angband-core";
+export { TV } from "../core-api.js";
 
 /**
  * Role -> canonical sval, keyed exactly by the sv_/kv_ role name in
