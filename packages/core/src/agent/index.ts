@@ -13,6 +13,7 @@ export type {
   AgentCapabilities,
   AgentCommand,
   AgentActions,
+  AgentGlyphSource,
   AgentController,
   AgentSession,
   AgentView,

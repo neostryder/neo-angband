@@ -23,11 +23,14 @@ import {
   OBJECT_FLAG_ENTRIES,
   SQUARE,
   TMD,
+  TRF,
 } from "../generated/index.js";
 import type { FlagSet } from "../bitflag.js";
 import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
+import { tvalIsScroll } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
+import { LIGHTING } from "../visuals/tile-prefs.js";
 import { OBJ_MOD_NAMES } from "../obj/bind.js";
 import { objectValue } from "../obj/value.js";
 import { monsterIsVisible } from "../mon/predicate.js";
@@ -37,6 +40,7 @@ import { priceItem } from "../store/price.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
+  AgentGlyphSource,
   AgentView,
   AgentViewDeps,
   CellView,
@@ -258,6 +262,9 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
       const raceId = deps.resolver.raceIdOrNull(m.race.ridx);
       if (raceId !== null) view.raceId = raceId;
     }
+    if (deps.glyphs) {
+      view.glyph = deps.glyphs.monsterChar(m.race.ridx) ?? m.race.dChar;
+    }
     out.push(view);
   }
   return out;
@@ -290,7 +297,65 @@ function cellView(
     const code = deps.resolver.featIdOrNull(feat);
     if (code !== null) view.featCode = code;
   }
+  if (deps.glyphs) addGlyphs(view, state, grid, idx, deps.glyphs, deps);
   return view;
+}
+
+/**
+ * The three drawn layers of a square (1.1.0), each read through the host's live
+ * x_char table rather than the gamedata - see AgentGlyphSource on why.
+ *
+ * LIGHTING.LOS throughout. reset_visuals writes the same character into all
+ * four lighting rows (glyph-table.ts reset()), so only a pref file that sets
+ * one lighting variant apart can make the choice observable in the CHARACTER;
+ * the thing lighting really varies is the attr, which this layer does not
+ * report. LOS is what the shell's terrainGlyph defaults to.
+ */
+function addGlyphs(
+  view: CellView,
+  state: GameState,
+  grid: { x: number; y: number },
+  idx: number,
+  glyphs: AgentGlyphSource,
+  deps: AgentViewDeps,
+): void {
+  const c = state.chunk;
+
+  /* THE MIMIC MUST BE RESOLVED, and this is the whole reason a hand-written
+   * feature->character map cannot be right: a secret door's own feature is
+   * FEAT_SECRET, and what the player sees is the granite it mimics. Drawing
+   * the real feature would put every secret door on an agent's map.
+   * (grid_data_as_text resolves the mimic before the table read, ui-map.c:180;
+   * the shell's terrainGlyph does the same.) */
+  const f = c.feature(grid);
+  const disp = f.mimic !== null ? c.features.get(f.mimic) : f;
+  view.glyph = glyphs.featChar(LIGHTING.LOS, disp.fidx) ?? disp.dChar;
+
+  /* get_trap_graphics (ui-map.c:98) draws only a trap the player can SEE. An
+   * unknown trap is not on the screen, so it is not in the view either. */
+  const trap = (state.traps.get(idx) ?? []).find(
+    (t) => t.flags.has(TRF["VISIBLE"]) && t.kind.glyph.trim() !== "",
+  );
+  if (trap) {
+    view.trapGlyph = glyphs.trapChar(LIGHTING.LOS, trap.kind.tidx) ?? trap.kind.glyph;
+  }
+
+  /* map_info's object loop (cave-map.c:156-170): the first object in the pile
+   * the player has not ignored draws; an ignored kind vanishes from the map
+   * rather than staying visible on the floor. */
+  const obj = (state.floor.get(idx) ?? []).find((o) => !state.isIgnored?.(o));
+  if (obj) {
+    /* object_kind_char (ui-object.c:87-112): a flavoured kind draws with its
+     * FLAVOUR glyph until identified - and for a scroll, only while unaware,
+     * because a scroll's flavour is its title rather than its appearance. */
+    const flavor = state.flavorGlyph?.(obj.kind);
+    const aware = deps.aware ?? state.isAware ?? ((): boolean => true);
+    const useFlavor =
+      flavor !== undefined && !(tvalIsScroll(obj.kind.tval) && aware(obj.kind));
+    view.objectGlyph =
+      (useFlavor ? glyphs.flavorChar(flavor.fidx) : glyphs.kindChar(obj.kind.kidx)) ??
+      (useFlavor ? flavor.char : obj.kind.dChar);
+  }
 }
 
 function storeViews(state: GameState, deps: AgentViewDeps): StoreView[] {

@@ -39,8 +39,17 @@ import type { ObjectKind } from "../obj/types.js";
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
  * field is a minor bump (1.x), any change to an existing field/semantics is a
  * major bump (2.0).
+ *
+ * 1.1.0 (2026-07-31): the glyph layer - `AgentViewDeps.glyphs`, and the
+ * `glyph` / `trapGlyph` / `objectGlyph` / `MonsterView.glyph` fields it
+ * unlocks. Added because the MCP server had grown a SECOND renderer with a
+ * hand-written feature->character map (24 features named, everything else
+ * drawn as `?`), which is the shape of defect this contract exists to prevent:
+ * an agent could not see the map the player sees, and the invented table would
+ * drift from the gamedata with nothing to notice. Purely additive - every
+ * field is absent without the dep, exactly as `featCode` is without a resolver.
  */
-export const AGENT_API_VERSION = "1.0.0";
+export const AGENT_API_VERSION = "1.1.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
@@ -182,6 +191,18 @@ export interface MonsterView {
   spellFlags: string[];
   /** Namespaced race id, when a ContentIdResolver dep is supplied. */
   raceId?: string;
+  /**
+   * The character this monster draws as - `monster_x_char[ridx]` through the
+   * host's live table. Present only with a `glyphs` dep.
+   *
+   * This is the RACE's character, which is ambiguous on purpose upstream (six
+   * `d`s on a level are six different dragons). It is what the player sees, so
+   * an agent rendering a map should draw it; identifying WHICH one is what `id`
+   * and `grid` are for. The ATTR_CLEAR / CHAR_CLEAR arms of grid_data_as_text
+   * (visuals/map-text.ts monsterGlyph) are not applied here - those need the
+   * glyph already under the monster, which is the caller's layer.
+   */
+  glyph?: string;
 }
 
 /** A read-only view of one map cell (BORG_AS_MOD section 3, Dungeon grid). */
@@ -195,7 +216,16 @@ export interface CellView {
   inView: boolean;
   /** The player remembers this square (known map). */
   known: boolean;
-  /** Occupying monster id, or 0 for none. */
+  /**
+   * `square(c, grid)->mon`, verbatim: a positive monster id, 0 for none, and
+   * NEGATIVE for the player's own square (upstream stores -1 there, cave.h).
+   *
+   * The doc used to say "or 0 for none" and stop, which is how a caller ends up
+   * writing `if (cell.monster !== 0) lookUpMonster(cell.monster)` and asking the
+   * monster list for id -1 on the one square it is certain to examine. Corrected
+   * rather than changed: the VALUE is upstream's and callers may already depend
+   * on it, so making it 0 here would be the breaking half of the two options.
+   */
   monster: number;
   /** Number of floor objects on the square. */
   objectCount: number;
@@ -206,6 +236,32 @@ export interface CellView {
   /** Namespaced terrain-feature id, when a ContentIdResolver dep is supplied
    * and the feature index is bound (never present for an unset sentinel). */
   featCode?: string;
+  /**
+   * The TERRAIN character this square draws as - `feat_x_char[lighting][feat]`
+   * read through the host's live table, so a pref file or the glyph picker is
+   * honoured exactly as it is on screen. Present only with a `glyphs` dep.
+   *
+   * Terrain ONLY. The trap, object and monster layers are the three fields
+   * below and `MonsterView.glyph`, kept apart rather than pre-composited
+   * because an agent that draws a map wants to label the layers separately -
+   * and because compositing them here would be a second copy of the shell's
+   * render loop, which is the defect this field exists to remove.
+   */
+  glyph?: string;
+  /**
+   * The character the VISIBLE trap on this square draws as (get_trap_graphics,
+   * ui-map.c:98), or absent when the square has no trap the player can see.
+   * An invisible trap is deliberately not reported: it is not on the player's
+   * screen, and an agent that could read it would be cheating.
+   */
+  trapGlyph?: string;
+  /**
+   * The character the top floor object draws as - the first object in the pile
+   * that the player has not ignored (map_info's object loop, cave-map.c:156-170),
+   * through the flavour table when the kind is flavoured and unidentified
+   * (object_kind_char, ui-object.c:87-112).
+   */
+  objectGlyph?: string;
 }
 
 /** A read-only view of an object (BORG_AS_MOD section 3, Items). */
@@ -350,9 +406,45 @@ export interface AgentView {
  * absent: the corresponding optional ItemView/CellView/MonsterView fields are
  * simply omitted, never thrown for.
  */
+/**
+ * The host's live attr/char table, as much of it as an agent needs to draw what
+ * the player sees.
+ *
+ * WHY THIS IS A DEP AND NOT A LOOKUP. Upstream never draws an entity with its
+ * gamedata `d_char`: every draw goes through the x_char table, which merely
+ * STARTS at the gamedata default and is then rewritten by pref files, the glyph
+ * picker and the active tile mode's graphics pref (see visuals/glyph-table.ts).
+ * A renderer that read the gamedata directly would draw a map the player is not
+ * looking at. So the glyphs come from the host that owns the table.
+ *
+ * Every method returns undefined for an index the table never bound, exactly as
+ * the sparse arrays upstream do - callers fall back, they do not throw.
+ */
+export interface AgentGlyphSource {
+  /** feat_x_char[lighting][fidx]; the caller picks the lighting. */
+  featChar(lighting: number, fidx: number): string | undefined;
+  /** trap_x_char[lighting][tidx]. */
+  trapChar(lighting: number, tidx: number): string | undefined;
+  /** kind_x_char[kidx]. */
+  kindChar(kidx: number): string | undefined;
+  /** flavor_x_char[fidx], for a flavoured kind the player has not identified. */
+  flavorChar(fidx: number): string | undefined;
+  /** monster_x_char[ridx]. */
+  monsterChar(ridx: number): string | undefined;
+}
+
 export interface AgentViewDeps {
   /** Enables kindId / raceId / featCode namespaced-id fields. */
   resolver?: ContentIdResolver;
+  /**
+   * Enables CellView.glyph / trapGlyph / objectGlyph and MonsterView.glyph.
+   *
+   * Structural rather than `GlyphTable` so core's agent contract does not
+   * depend on the visuals layer, and so a host whose glyphs come from somewhere
+   * else can still supply them. `visuals/glyph-table.ts`'s GlyphTable satisfies
+   * it through `agentGlyphs()`.
+   */
+  glyphs?: AgentGlyphSource;
   /** Enables ItemView.value and StoreItemView.price. */
   reg?: ObjRegistry;
   /** object_flavor_is_aware(kind), for object value/price dispatch. */

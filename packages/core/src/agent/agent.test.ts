@@ -1,21 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loc } from "../loc.js";
-import { FEAT, MFLAG, OF, RF, SQUARE, TV } from "../generated/index.js";
+import { FEAT, MFLAG, OF, RF, SQUARE, TRF, TV } from "../generated/index.js";
 import { bindConstants } from "../constants.js";
 import { runGameLoop } from "../game/loop.js";
 import { createDefaultRegistry } from "../game/player-turn.js";
-import { addMon, makeRace, makeState, plReg } from "../game/harness.js";
+import { FLOOR, addMon, featureReg, makeRace, makeState, plReg } from "../game/harness.js";
 import { ObjRegistry } from "../obj/bind.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
 import type { Trap } from "../game/trap.js";
+import type { GameState } from "../game/context.js";
 import type { Store } from "../store/store.js";
 import { ContentIdResolver, coreId, slug } from "../mod/ids.js";
 import type { Curse } from "../obj/types.js";
 import { Rng } from "../rng.js";
-import type { AgentCapabilities } from "./types.js";
+import type { AgentCapabilities, AgentGlyphSource } from "./types.js";
 import { AGENT_API_VERSION } from "./types.js";
 import { createAgentView } from "./perceive.js";
 import { createAgentActions } from "./act.js";
@@ -334,6 +335,116 @@ describe("CellView rich fields", () => {
     expect(after?.glow).toBe(true);
     expect(after?.trap).toBe(true);
     expect(after?.featCode).toBeUndefined();
+  });
+});
+
+/**
+ * The glyph layer (AGENT_API_VERSION 1.1.0).
+ *
+ * These exist because the MCP server had grown its own hand-written
+ * feature->character table, and one of its 25 entries was wrong (lava, drawn as
+ * `~` where the gamedata says `#`). The fix is that an agent reads the host's
+ * LIVE x_char table through this facade, so the tests below are about where the
+ * characters come from, not about which characters they are.
+ */
+describe("CellView / MonsterView glyphs (1.1.0)", () => {
+  /** A trap the player can see, or cannot. */
+  function trapAt(state: GameState, grid: ReturnType<typeof loc>, visible: boolean): void {
+    const flags = new Set<number>();
+    if (visible) flags.add(TRF["VISIBLE"]);
+    state.traps.set(grid.y * state.chunk.width + grid.x, [
+      {
+        tidx: 3,
+        kind: { tidx: 3, glyph: "^", color: "w" },
+        grid,
+        power: 0,
+        timeout: 0,
+        flags,
+      } as unknown as Trap,
+    ]);
+  }
+
+  /** A source that answers everything with a character naming what was asked. */
+  const spy: AgentGlyphSource = {
+    featChar: (lighting, fidx) => `f${String(fidx)}@${String(lighting)}`,
+    trapChar: (_l, tidx) => `t${String(tidx)}`,
+    kindChar: (kidx) => `k${String(kidx)}`,
+    flavorChar: (fidx) => `v${String(fidx)}`,
+    monsterChar: (ridx) => `m${String(ridx)}`,
+  };
+
+  it("reports no glyph at all without the dep", () => {
+    /* The degrade-to-omission rule the whole deps design rests on. A field that
+     * appeared with a made-up default would put the invented table back, one
+     * layer down. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    trapAt(state, loc(10, 10), true);
+    addMon(state, makeRace({}), loc(12, 10));
+    const view = createAgentView(state);
+    const cell = view.cell(10, 10);
+    expect(cell?.glyph).toBeUndefined();
+    expect(cell?.trapGlyph).toBeUndefined();
+    expect(cell?.objectGlyph).toBeUndefined();
+    expect(view.monsters()[0]?.glyph).toBeUndefined();
+  });
+
+  it("takes the terrain character from the table, not from the gamedata", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const view = createAgentView(state, undefined, { glyphs: spy });
+    /* The floor's real dChar is "." - proving the table WON is the point, since
+     * a fallback that quietly preferred the gamedata would look identical on
+     * any host that has not loaded a pref file. */
+    expect(view.cell(10, 10)?.glyph).toBe(`f${String(FLOOR)}@0`);
+  });
+
+  it("falls back to the gamedata character when the table has no slot", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const empty: AgentGlyphSource = {
+      featChar: () => undefined,
+      trapChar: () => undefined,
+      kindChar: () => undefined,
+      flavorChar: () => undefined,
+      monsterChar: () => undefined,
+    };
+    const view = createAgentView(state, undefined, { glyphs: empty });
+    expect(view.cell(10, 10)?.glyph).toBe(featureReg.get(FLOOR).dChar);
+  });
+
+  it("draws a secret door as what it MIMICS, never as itself", () => {
+    /* The rule a hand-written table cannot express. A secret door's own feature
+     * is FEAT_SECRET; the player sees the granite it mimics. Today both draw
+     * "#", so this is checked through the spy - which reports WHICH fidx was
+     * asked for - rather than through the characters, where the bug would be
+     * invisible. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const secret = featureReg.byCodeName("SECRET");
+    expect(secret.mimic, "the fixture needs a feature that actually mimics").not.toBeNull();
+    state.chunk.setFeat(loc(11, 10), secret.fidx);
+    const view = createAgentView(state, undefined, { glyphs: spy });
+    expect(view.cell(11, 10)?.glyph).toBe(`f${String(secret.mimic ?? -1)}@0`);
+    expect(view.cell(11, 10)?.glyph).not.toBe(`f${String(secret.fidx)}@0`);
+  });
+
+  it("reports a trap the player can see, and hides one they cannot", () => {
+    /* Measured on the MCP renderer before this landed: 15 levels, 74 trapped
+     * squares, 74 undetected, and all 74 drawn. `trap` means a trap is there;
+     * only `trapGlyph` means the player has found it. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    trapAt(state, loc(11, 10), false);
+    trapAt(state, loc(12, 10), true);
+    const view = createAgentView(state, undefined, { glyphs: spy });
+
+    expect(view.cell(11, 10)?.trap, "the boolean still says a trap is there").toBe(true);
+    expect(view.cell(11, 10)?.trapGlyph, "but it is not on the player's screen").toBeUndefined();
+    expect(view.cell(12, 10)?.trapGlyph).toBe("t3");
+  });
+
+  it("takes a monster's character from the table", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({});
+    addMon(state, race, loc(12, 10));
+    const view = createAgentView(state, undefined, { glyphs: spy });
+    expect(view.monsters()[0]?.glyph).toBe(`m${String(race.ridx)}`);
   });
 });
 
