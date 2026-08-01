@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { satisfies, SemverError } from "./semver.js";
+import { compareSemver, satisfies, SemverError } from "./semver.js";
 
 describe("satisfies: wildcard", () => {
   it("* matches anything", () => {
@@ -120,5 +120,44 @@ describe("satisfies: prerelease (documented, naive comparison)", () => {
   it("exact prerelease strings match", () => {
     expect(satisfies("1.0.0-beta.1", "1.0.0-beta.1")).toBe(true);
     expect(satisfies("1.0.0-beta.2", "1.0.0-beta.1")).toBe(false);
+  });
+});
+
+describe("compareSemver", () => {
+  /* Public because the catalogue asks a question `satisfies` cannot answer: not
+   * "is this in range" but "which of these two is newer". The host had been
+   * answering it with `!==`, which cannot tell an update from a rollback. */
+
+  it("orders by component, so 0.9.0 is BELOW 0.10.0", () => {
+    /* The pair that breaks a string compare, and the pair this port shipped. */
+    expect(compareSemver("0.9.0", "0.10.0")).toBeLessThan(0);
+    expect(compareSemver("0.10.0", "0.9.0")).toBeGreaterThan(0);
+  });
+
+  it("compares major, then minor, then patch", () => {
+    expect(compareSemver("2.0.0", "1.99.99")).toBeGreaterThan(0);
+    expect(compareSemver("1.2.0", "1.1.99")).toBeGreaterThan(0);
+    expect(compareSemver("1.1.2", "1.1.10")).toBeLessThan(0);
+  });
+
+  it("reports equality as exactly 0", () => {
+    expect(compareSemver("1.2.3", "1.2.3")).toBe(0);
+  });
+
+  it("puts a release above a prerelease at the same triple", () => {
+    /* The same rule satisfies() follows, from the one comparator - two orderings
+     * that disagreed about this would be worse than none. */
+    expect(compareSemver("1.0.0", "1.0.0-beta")).toBeGreaterThan(0);
+    expect(compareSemver("1.0.0-beta", "1.0.0")).toBeLessThan(0);
+  });
+
+  it("returns null rather than throwing on anything that is not a full version", () => {
+    /* Both sides are author-supplied strings from a catalogue. "These cannot be
+     * ordered" is a real answer the caller has to render; a throw would push every
+     * caller into a try/catch that means the same thing. */
+    expect(compareSemver("1.0", "1.0.0")).toBeNull();
+    expect(compareSemver("1.0.0", "latest")).toBeNull();
+    expect(compareSemver("", "1.0.0")).toBeNull();
+    expect(compareSemver("1.x", "1.0.0")).toBeNull();
   });
 });

@@ -25,6 +25,7 @@ import type { GlyphTerm } from "./term";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 import {
   RECOMMENDED_MODS,
+  compareTags,
   repoUrl,
   usableRecommendedMods,
   type RecommendedMod,
@@ -69,10 +70,16 @@ export function formatBytes(bytes: number): string {
 /**
  * One catalogue row.
  *
- * The three states are distinct on purpose. "Installed" and "installed at a
- * DIFFERENT tag" look the same to anyone who only checks a boolean, and they are
- * not the same thing: the second is a mod whose bug reports would name a version
- * the player is not running.
+ * FIVE STATES, NOT THREE. "Installed" and "installed at a DIFFERENT tag" look the
+ * same to anyone who only checks a boolean, and they are not the same thing: the
+ * second is a mod whose bug reports would name a version the player is not
+ * running. But "different" is not one state either, and the row used to render it
+ * as though it were - `installedTag !== mod.tag` produced an arrow and the word
+ * "update" whichever way round the two versions actually stood. A player who
+ * installed a mod from its own repository at a tag newer than the catalogue this
+ * build shipped with would be shown `v0.12.0 -> v0.11.0  Enter to update`, and
+ * pressing Enter would roll them back to the older one. So the direction is
+ * computed (compareTags), and the three ways a tag can differ are three rows.
  */
 export function catalogueRow(mod: RecommendedMod, installedTag: string | null): MenuItem {
   const size = formatBytes(mod.approxBytes);
@@ -84,10 +91,33 @@ export function catalogueRow(mod: RecommendedMod, installedTag: string | null): 
     };
   }
   if (installedTag !== mod.tag) {
+    const order = compareTags(installedTag, mod.tag);
+    if (order !== null && order > 0) {
+      /* AHEAD of the catalogue. Not a fault and not an update: this is what a mod
+       * author testing their own release sees, and what any player sees whose mod
+       * moved faster than the game build did. Enter still works - reinstalling at
+       * the catalogue's tag is a legitimate thing to want - but the row says
+       * REPLACE and names the direction, because "update" here would be a lie the
+       * player only discovers afterwards. */
+      return {
+        label: `[x] ${mod.name}  ${installedTag}  (newer than this catalogue)`,
+        color: C_GOOD,
+        hint:
+          `Installed at ${installedTag}; this build's catalogue only knows ${mod.tag}. ` +
+          `Enter would REPLACE it with the older ${mod.tag}.`,
+      };
+    }
+    /* Behind the catalogue, or two tags that cannot be ordered at all (a tag need
+     * not be a version). Both offer the catalogue's copy; only the first may call
+     * it an update. */
+    const behind = order !== null;
     return {
       label: `[~] ${mod.name}  ${installedTag} -> ${mod.tag}  (${size})`,
       color: C_WARN,
-      hint: `Installed at ${installedTag}; the catalogue offers ${mod.tag}. Enter to update.`,
+      hint: behind
+        ? `Installed at ${installedTag}; the catalogue offers the newer ${mod.tag}. Enter to update.`
+        : `Installed at ${installedTag}; the catalogue offers ${mod.tag}, which cannot be ` +
+          `ordered against it. Enter to install the catalogue's copy.`,
     };
   }
   return {
@@ -173,6 +203,17 @@ const ABOUT: readonly ScreenLine[] = [
   { text: "Nothing is enabled by installing it. Every mod is off until you", color: C_WARN },
   { text: "turn it on in the mod list, which is the parity rule: the", color: C_FG },
   { text: "default experience is Angband 4.2.6 with no mod at all.", color: C_FG },
+  { text: "", color: C_FG },
+  /* Named rather than left to be discovered. A mod from this screen is the only
+   * kind the game can tell you is out of date, because it is the only kind whose
+   * intended version this build knows - a mod in a folder you picked, or one an
+   * external manager deployed, has no version to compare against. Saying so here
+   * is cheaper than a player assuming the silence means "up to date". */
+  { text: "This screen is also the only place the game can notice that a", color: C_FG },
+  { text: "mod is out of date, and it can only do that for mods listed", color: C_FG },
+  { text: "here. A mod you added from a folder is whatever version you", color: C_FG },
+  { text: "put there; nothing checks it, and nothing will tell you when", color: C_FG },
+  { text: "its author releases a new one.", color: C_FG },
 ];
 
 /**
@@ -252,6 +293,27 @@ export async function showModCatalogue(
         ]);
         continue;
       }
+    }
+
+    /* A ROLLBACK IS CONFIRMED, an update is not. The row already says which way
+     * this goes, but the row is read once and the consequence lands afterwards -
+     * and this is the one press on this screen that can leave the player with LESS
+     * than they started with. */
+    if (at !== null && (compareTags(at, mod.tag) ?? 0) > 0) {
+      const go = await selectFromMenu(
+        term,
+        `Replace ${mod.name} ${at} with ${mod.tag}?`,
+        [
+          { label: "Keep what I have", color: C_FG, hint: `Leave ${at} installed.` },
+          {
+            label: `Replace with ${mod.tag}`,
+            color: C_WARN,
+            hint: `Downloads the older ${mod.tag} over your ${at}.`,
+          },
+        ],
+        "[ ESC to go back ]",
+      );
+      if (go !== 1) continue;
     }
 
     await installOne(term, mod, deps);
