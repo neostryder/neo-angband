@@ -190,6 +190,37 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     },
   },
   {
+    id: "borg",
+    name: "The Borg",
+    repo: "neostryder/neo-angband-mod-borg",
+    tag: "v0.1.0",
+    summary: "Angband's automatic player, ported faithfully - it plays the game for you",
+    /* Not pre-checked, and for this row that is not a judgement call at all: a
+     * pre-checked autoplayer is a game that plays itself out of the box. Note that
+     * even ENABLING it does not hand over the character - the mod ships with its
+     * own `borg.autoplay` toggle off, so taking the keyboard is a second,
+     * deliberate act. */
+    preChecked: false,
+    /* Half a megabyte, which is by far the largest `files` payload here and worth
+     * being honest about on the row: it is the whole port bundled into one
+     * plugin.js. None of it is the engine - the builder refuses that - it is 86
+     * source files of danger model, think ladder and world model. */
+    approxBytes: 514_370,
+    payload: {
+      kind: "files",
+      files: [
+        {
+          path: "manifest.json",
+          sha256: "ed00567fd4b1fdb11f4edc4059b31ce5b90a7dea99f2a1e9b14cf37396c40b24",
+        },
+        {
+          path: "plugin.js",
+          sha256: "6362048531ed833c5ee08b669d267980de8b18d4a2e44a51da711b85e619ce1b",
+        },
+      ],
+    },
+  },
+  {
     id: "neo-linoleum",
     name: "neo-linoleum",
     repo: "neostryder/neo-angband-mod-linoleum",
