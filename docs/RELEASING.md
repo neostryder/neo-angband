@@ -113,12 +113,19 @@ publishing account and that is enough.
 
 The version lives in places that must agree, and CI enforces the first three:
 
-- `packages/core/package.json`
-- `packages/mod-sdk/package.json`
+- every publishable package's `package.json` — `core`, `mod-sdk` and `content`
+  today, and whatever `node tools/publishable.mjs` prints tomorrow
 - the git tag
 - `ENGINE_VERSION` in `packages/core/src/version.ts`
 
-Both packages move together, at the game's version. It is **semver**, and `0.x` is
+**Which packages get published is derived, not listed.** A package is publishable
+exactly when npm would publish it — when its manifest does not carry
+`private: true`. `tools/publishable.mjs` is the one place that says so, and the
+release workflow, `tools/check-npm-package.mjs` and
+`packages/core/src/npm-publish.test.ts` all read it. Making the next package
+publishable is one deleted field, not four edits.
+
+All of them move together, at the game's version. It is **semver**, and `0.x` is
 the pre-release line: a feature release bumps the MINOR number, so `0.9.0` was
 followed by `0.10.0` and the line can run as far as it needs to. `1.0.0` is
 reserved for the game's public release, so nothing goes to `1.0.0` before the game
