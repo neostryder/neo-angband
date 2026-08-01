@@ -13,9 +13,18 @@
  * is enabled and does not exist while the mod is off.
  *
  * It is also deliberately RUDIMENTARY (MOD_LIFECYCLE.md decision 9, 2026-07-27):
- * enable/disable, per-patch opt-out, a one-step order nudge, conflicts, profiles.
- * Real load-order sorting and bulk management belong to an external mod manager
- * (Vortex/MO2) over the shared on-disk pack format, not to this screen.
+ * enable/disable, per-patch and per-SECTION opt-out, a one-step order nudge,
+ * one auto-sort button, conflicts, profiles. Deployment/staging, collections,
+ * per-install profiles, update watching and bulk install/remove belong to an
+ * external mod manager (Vortex/MO2) over the shared on-disk pack format.
+ *
+ * AUTO-SORT IS IN-GAME as of 2026-08-01, amending the part of that ruling that
+ * put load-order SORTING outside too. The reason it moved: once authors can
+ * declare compatibility, the sort's inputs (`group`, `compat`, loadAfter/Before,
+ * the player's pins) are all things the ENGINE reads and an external manager
+ * cannot see, and resolving them is one deterministic function rather than a UI.
+ * It stays one button that PROPOSES - it writes nothing until the player
+ * accepts, and it shows every suggestion it could not honour.
  *
  * It is deliberately decoupled from discovery and reload: main.ts injects a
  * ModManagerDeps (a live catalog builder, a conflict-line provider, and a
@@ -50,6 +59,12 @@ import {
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
+import type { ConflictReportLines } from "./mod-conflicts";
+import {
+  resolveSectionState,
+  sortModOrder,
+  type PackManifest,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import { wrapCssRuns } from "./shop";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 
@@ -146,7 +161,7 @@ export interface ModManagerDeps {
   /** Build the current catalog fresh (re-reads discovery + store each call). */
   listCatalog: () => CatalogMod[];
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
-  conflictLines: () => string[];
+  conflictLines: () => ConflictReportLines;
   /**
    * Apply pending changes by reloading (recompose content + reinstall plugins).
    *
@@ -583,6 +598,7 @@ async function enableMod(
     deps.isModNoscore?.() ?? false,
     () => gameplayNoscorePrompt(term, m),
   ))) return false;
+  if (!(await confirmDeclaredConflicts(term, deps, m))) return false;
   if (m.capabilities.length > 0) {
     const ok = await consentPrompt(term, m);
     if (!ok) return false;
@@ -591,6 +607,75 @@ async function enableMod(
   deps.advanceSaveRatchets?.(m);
   deps.store.setModEnabled(m.id, true);
   return true;
+}
+
+/**
+ * Show any `conflicts` claim between this mod and one already enabled, and let
+ * the player go ahead anyway.
+ *
+ * IT WARNS AND NEVER BLOCKS, which is the deliberate divergence from NeoForge
+ * and Factorio - both refuse to launch an incompatible pair. Two reasons, and
+ * they point the same way: ratified decision 18 says the engine labels rather
+ * than forbids, and a claim is one author's opinion about somebody else's mod,
+ * which must not become a veto over the player's own setup. A declaration also
+ * goes stale - the other mod fixes the clash and the warning outlives it - and a
+ * stale warning the player cannot walk past is a mod they cannot use.
+ *
+ * Both directions are checked: the claim may be written by the mod being enabled
+ * or by one already on, and the player needs to see it either way.
+ */
+async function confirmDeclaredConflicts(
+  term: GlyphTerm,
+  deps: ModManagerDeps,
+  m: CatalogMod,
+): Promise<boolean> {
+  const catalog = deps.listCatalog();
+  const nameOf = (id: string): string => catalog.find((c) => c.id === id)?.name ?? id;
+  const enabled = catalog.filter((c) => c.enabled && c.id !== m.id);
+  const claims: { text: string; because: string }[] = [];
+
+  for (const c of m.manifest.compat ?? []) {
+    if (c.claim !== "conflicts" || !enabled.some((e) => e.id === c.with)) continue;
+    const where = c.scope?.length ? ` over ${c.scope.join(", ")}` : "";
+    claims.push({
+      text: `${m.name} says it conflicts with ${nameOf(c.with)}${where}.`,
+      because: c.because,
+    });
+  }
+  for (const other of enabled) {
+    for (const c of other.manifest.compat ?? []) {
+      if (c.claim !== "conflicts" || c.with !== m.id) continue;
+      const where = c.scope?.length ? ` over ${c.scope.join(", ")}` : "";
+      claims.push({
+        text: `${other.name} says it conflicts with ${m.name}${where}.`,
+        because: c.because,
+      });
+    }
+  }
+  if (claims.length === 0) return true;
+
+  const body: ScreenLine[] = [];
+  for (const c of claims) {
+    body.push({ text: c.text, color: C_WARN });
+    body.push(...wrapped(c.because, term.size().cols - 1));
+    body.push({ text: "", color: C_DIM });
+  }
+  body.push({
+    text: "This is the author's own warning. Nothing stops you running both.",
+    color: C_DIM,
+  });
+  await showTextScreen(term, `Enable ${m.name}?`, body);
+
+  const pick = await selectFromMenu(
+    term,
+    `Enable ${m.name} anyway?`,
+    [
+      { label: "Enable it anyway", color: C_WARN },
+      { label: "Leave it off", color: C_DIM },
+    ],
+    "[ Enter to choose; ESC to leave it off ]",
+  );
+  return pick === 0;
 }
 
 /**
@@ -614,6 +699,9 @@ async function manageMod(
     const items: MenuItem[] = [];
     const acts: string[] = [];
     const ruleCount = m.manifest.rules?.length ?? 0;
+    /* A mod's named parts (PackSection): the general form of a rule, since a
+     * section can carry content and a load-order band as well as behaviour. */
+    const sectionCount = m.manifest.sections?.length ?? 0;
     if (m.enabled) {
       items.push({ label: "Disable", color: C_WARN });
       acts.push("disable");
@@ -624,6 +712,14 @@ async function manageMod(
           hint: `All ${ruleCount} are on; switch any one off here.`,
         });
         acts.push("rules");
+      }
+      if (sectionCount > 0) {
+        items.push({
+          label: `Parts of this mod (${sectionCount})...`,
+          color: C_ENABLED,
+          hint: "Take some of this mod without the rest.",
+        });
+        acts.push("sections");
       }
       items.push({ label: "Move earlier (loads first)", color: C_FG });
       acts.push("up");
@@ -642,6 +738,15 @@ async function manageMod(
           hint: "Enable this mod first - its patches do not exist until then.",
         });
         acts.push("rules");
+      }
+      if (sectionCount > 0) {
+        items.push({
+          label: `Parts of this mod (${sectionCount} once enabled)`,
+          color: C_DISABLED,
+          disabled: true,
+          hint: "Enable this mod first - its parts do not exist until then.",
+        });
+        acts.push("sections");
       }
     }
     items.push({ label: "Back", color: C_DIM });
@@ -667,6 +772,8 @@ async function manageMod(
       changed = true;
     } else if (act === "rules") {
       await managePatches(term, deps, m);
+    } else if (act === "sections") {
+      if (await manageSections(term, deps, m)) changed = true;
     } else if (act === "up") {
       deps.store.moveEnabled(m.id, -1);
       changed = true;
@@ -677,13 +784,244 @@ async function manageMod(
   }
 }
 
-/** The conflicts viewer (P7.6 human lines over the enabled content set). */
+/**
+ * Auto-sort: propose a load order, show what it could not honour, and apply it
+ * only if the player says so.
+ *
+ * A PROPOSAL, NOT AN ACTION. The order is shown before anything is written,
+ * because a sort the player cannot review is one they cannot trust - and this
+ * one is allowed to move mods for reasons no row in the list explains (a group,
+ * a compat claim, an author's hint). Their own placements are pinned and survive
+ * it (ModStore.moveEnabled records a pin), so pressing this does not throw away
+ * the nudging they already did.
+ *
+ * It CANNOT FAIL. Where suggestions contradict each other the weakest is dropped
+ * and named here; only a hard dependency cycle is left unresolved, and that is
+ * an impossible mod set rather than a disagreement.
+ *
+ * This revises the 2026-07-27 ruling that load-order SORTING belongs to
+ * Vortex/MO2 (MOD_LIFECYCLE section 3). The division of labour otherwise stands:
+ * this is one button over the mods already installed, not staging, collections,
+ * profiles-per-install or bulk management.
+ */
+async function autoSortLoadOrder(term: GlyphTerm, deps: ModManagerDeps): Promise<boolean> {
+  const current = deps.store.getEnabled();
+  const byId = new Map(deps.listCatalog().map((m) => [m.id, m]));
+  const manifests = current
+    .map((id) => byId.get(id)?.manifest)
+    .filter((m): m is PackManifest => m !== undefined);
+
+  if (manifests.length < 2) {
+    await showTextScreen(term, "Auto-sort", [
+      { text: "There is nothing to sort - enable at least two mods first.", color: C_DIM },
+    ]);
+    return false;
+  }
+
+  const result = sortModOrder(manifests, { pins: deps.store.getPins(), current });
+  const nameOf = (id: string): string => byId.get(id)?.name ?? id;
+  const unchanged = result.order.every((id, i) => current[i] === id);
+
+  const body: ScreenLine[] = [];
+  body.push({ text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE });
+  result.order.forEach((id, i) => {
+    const moved = current[i] !== id;
+    body.push({
+      text: `  ${String(i + 1).padStart(2)}. ${nameOf(id)}${moved ? "   <- moved" : ""}`,
+      color: moved ? C_WARN : C_FG,
+    });
+  });
+  body.push({ text: "", color: C_DIM });
+  body.push({ text: "Later mods win conflicts.", color: C_DIM });
+
+  if (result.dropped.length > 0) {
+    body.push({ text: "", color: C_DIM });
+    body.push({ text: "Suggestions it could not honour", color: C_WARN });
+    for (const d of result.dropped) {
+      /* The REASON, not just the pair: an author wrote it, and it is the only
+       * thing that tells the player whether the drop matters to them. */
+      body.push({ text: `  ${d.reason}`, color: C_FG });
+      body.push({
+        text: `    dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
+        color: C_DIM,
+      });
+    }
+  }
+
+  if (result.unresolvable.length > 0) {
+    body.push({ text: "", color: C_DIM });
+    body.push({ text: "These mods cannot all load", color: C_DANGER });
+    for (const cycle of result.unresolvable) {
+      body.push({
+        text: `  ${cycle.map(nameOf).join(" and ")} each require the other.`,
+        color: C_FG,
+      });
+    }
+    body.push({ text: "  Turn one of them off; no order can satisfy both.", color: C_DIM });
+  }
+
+  await showTextScreen(term, "Auto-sort", body);
+  if (unchanged) return false;
+
+  const pick = await selectFromMenu(
+    term,
+    "Apply this order?",
+    [
+      { label: "Apply it", color: C_ENABLED },
+      { label: "Leave my order alone", color: C_DIM },
+    ],
+    "[ Enter to choose; ESC to leave it alone ]",
+  );
+  if (pick !== 0) return false;
+  deps.store.setEnabled(result.order);
+  return true;
+}
+
+/**
+ * A mod's named PARTS: switch any one of them off without losing the rest.
+ *
+ * The general form of "Fixes & tweaks". A rule toggles the mod's own behaviour;
+ * a section can also carry content and a load-order band, so this is where a
+ * player takes a mod's tileset without its monsters.
+ *
+ * A section a `patches` claim made conditional is shown but not switchable, with
+ * the reason: it is a compatibility patch for a mod that is not installed, so
+ * turning it on would patch nothing.
+ */
+async function manageSections(
+  term: GlyphTerm,
+  deps: ModManagerDeps,
+  m: CatalogMod,
+): Promise<boolean> {
+  const sections = m.manifest.sections ?? [];
+  if (sections.length === 0) return false;
+  let changed = false;
+  const title = `Parts of ${m.name}`;
+
+  for (;;) {
+    const enabledManifests = deps
+      .listCatalog()
+      .filter((c) => c.enabled)
+      .map((c) => c.manifest);
+    const resolved = resolveSectionState(
+      enabledManifests,
+      deps.store.getSectionChoices(),
+      new Set(enabledManifests.map((c) => c.id)),
+    ).get(m.id);
+    /* Which sections the player cannot decide, and why: a `patches` claim whose
+     * target is absent forces the section off regardless of any stored choice. */
+    const forcedOff = new Map<string, string>();
+    for (const c of m.manifest.compat ?? []) {
+      if (c.claim !== "patches") continue;
+      if (enabledManifests.some((e) => e.id === c.with)) continue;
+      for (const sid of c.scope ?? []) forcedOff.set(sid, c.with);
+    }
+
+    const items: MenuItem[] = sections.map((s) => {
+      const on = resolved?.get(s.id) ?? true;
+      const locked = forcedOff.has(s.id);
+      return {
+        label: `${on ? "[x]" : "[ ]"} ${s.title}${locked ? "   (needs " + forcedOff.get(s.id) + ")" : ""}`,
+        color: locked ? C_DISABLED : on ? C_ENABLED : C_DISABLED,
+        ...(locked ? { disabled: true } : {}),
+      };
+    });
+    items.push({ label: "Back", color: C_DIM });
+
+    const pick = await selectFromMenu(term, title, items, "[ Enter toggles a part; ESC to go back ]", {
+      detail: (i) => {
+        const s = sections[i];
+        if (!s) return [];
+        const cols = term.size().cols;
+        const on = resolved?.get(s.id) ?? true;
+        const lines: ScreenLine[] = [
+          { text: s.title, color: C_TITLE },
+          { text: on ? "ON" : "OFF", color: on ? C_ENABLED : C_DIM },
+          { text: "", color: C_FG },
+          ...wrapped(s.description ?? "", cols - 1),
+        ];
+        if (s.priority && s.priority !== "normal") {
+          lines.push({ text: "", color: C_FG });
+          lines.push(
+            ...wrapped(
+              `This part is set to load ${s.priority}, so it wins or loses conflicts independently of where ${m.name} sits in the list.`,
+              cols - 1,
+              C_DIM,
+            ),
+          );
+        }
+        const needs = forcedOff.get(s.id);
+        if (needs) {
+          lines.push({ text: "", color: C_FG });
+          lines.push(
+            ...wrapped(
+              `A compatibility patch for ${needs}, which is not enabled - so it does nothing and cannot be turned on.`,
+              cols - 1,
+              C_DIM,
+            ),
+          );
+        }
+        return lines;
+      },
+      detailToggleKey: "?",
+      detailInitiallyShown: true,
+    });
+
+    if (pick === null || pick >= sections.length) return changed;
+    const s = sections[pick];
+    if (!s || forcedOff.has(s.id)) continue;
+    deps.store.setSectionChoice(m.id, s.id, !(resolved?.get(s.id) ?? true));
+    changed = true;
+  }
+}
+
+/**
+ * The conflicts viewer, over every composition layer.
+ *
+ * THREE GROUPS, because they need three different amounts of attention and a
+ * flat list taught the player that none of them did:
+ *
+ *  - what an AUTHOR DECLARED. A human wrote a reason; it is the only group that
+ *    might mean "do not run these together", and it still never blocks.
+ *  - what is CONTESTED: somebody's contribution is being discarded. This is the
+ *    group with a decision in it.
+ *  - what COMBINES: several mods touching one thing and all of them taking
+ *    effect. Listed so the picture is complete, kept last so it does not bury
+ *    the group above.
+ */
 async function viewConflicts(term: GlyphTerm, deps: ModManagerDeps): Promise<void> {
-  const lines = deps.conflictLines();
-  const body: ScreenLine[] =
-    lines.length === 0
-      ? [{ text: "No conflicts among the enabled content mods.", color: C_ENABLED }]
-      : lines.map((t) => ({ text: t, color: C_FG }));
+  const { declared, contested, combined } = deps.conflictLines();
+  const body: ScreenLine[] = [];
+
+  if (declared.length > 0) {
+    body.push({ text: "The authors said so themselves", color: C_WARN });
+    for (const t of declared) body.push({ text: t, color: C_FG });
+    body.push({ text: "", color: C_DIM });
+    body.push({
+      text: "Nothing here is blocked - you can play any combination you like.",
+      color: C_DIM,
+    });
+    body.push({ text: "", color: C_DIM });
+  }
+
+  if (contested.length > 0) {
+    body.push({ text: "One of these wins, the rest are ignored", color: C_WARN });
+    for (const t of contested) body.push({ text: t, color: C_FG });
+    body.push({ text: "", color: C_DIM });
+  }
+
+  if (combined.length > 0) {
+    body.push({ text: "These stack, and need nothing from you", color: C_ENABLED });
+    for (const t of combined) body.push({ text: t, color: C_DIM });
+    body.push({ text: "", color: C_DIM });
+  }
+
+  if (body.length === 0) {
+    body.push({
+      text: "Nothing among your enabled mods contests anything else.",
+      color: C_ENABLED,
+    });
+  }
   await showTextScreen(term, "Mod conflicts", body);
 }
 
@@ -1081,6 +1419,7 @@ export async function runModManager(
     );
     type ActionKind =
       | "conflicts"
+      | "autosort"
       | "profiles"
       | "install"
       | "download"
@@ -1106,7 +1445,13 @@ export async function runModManager(
     // No pooled "Fixes & tweaks" row: a mod's patches live under that mod
     // (manageMod -> managePatches), because they arrive with it and cannot exist
     // without it.
-    addAction("View conflicts", "conflicts", C_FG, "Which enabled content mods contest the same records.");
+    addAction("View conflicts", "conflicts", C_FG, "What your enabled mods contest, and who wins.");
+    addAction(
+      "Auto-sort load order...",
+      "autosort",
+      C_FG,
+      "Propose an order from what the mods ask for. Your own moves are kept.",
+    );
     addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
     if (deps.modCatalogue) {
       /* Above the folder row deliberately: this is the path that works on every
@@ -1223,6 +1568,8 @@ export async function runModManager(
       if (await manageMod(term, deps, rk.id)) dirty = true;
     } else if (rk.kind === "conflicts") {
       await viewConflicts(term, deps);
+    } else if (rk.kind === "autosort") {
+      if (await autoSortLoadOrder(term, deps)) dirty = true;
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "download") {

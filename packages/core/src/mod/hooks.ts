@@ -209,6 +209,43 @@ export interface ModHooks {
  * mod loaded that touches nothing" indistinguishable from core's side.
  */
 /**
+ * How composeModHooks folds several mods' contributions to one hook.
+ *
+ * A subset of the vocabulary the pack tooling uses for every composition layer
+ * (mod-sdk's `Fold`), so the host can hand these values straight to the conflict
+ * report and the compiler checks the two agree.
+ */
+export type ModHookFold =
+  | "all-must-agree" // every contributor runs; the first refusal decides
+  | "chained" // each sees the previous one's output
+  | "first-answer" // the first contributor with an opinion decides
+  | "any-yes"; // one contributor asking for it is enough
+
+/**
+ * WHICH FOLD EACH HOOK USES, next to the function that implements it.
+ *
+ * The conflict report needs this to tell the player whether two mods touching
+ * one hook COMBINE or whether one of them is being silently ignored - and those
+ * are genuinely different outcomes here, which is why a single "later wins"
+ * sentence would be a lie for five of the seven.
+ *
+ * It lives in core, beside composeModHooks, because a second copy in the host is
+ * the shape that drifts: the host is where the report is rendered, so a hook
+ * added here and forgotten there would be described by whatever the table
+ * happened to default to. Keyed by `keyof ModHooks`, so adding a member to the
+ * interface without adding it here does not compile.
+ */
+export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  walkBlockedByDiggable: "first-answer",
+  objectListTiebreak: "first-answer",
+  levelGenerated: "all-must-agree",
+  artifactCommit: "all-must-agree",
+  historyAdd: "all-must-agree",
+  saveNoiseScent: "any-yes",
+  messageText: "chained",
+};
+
+/**
  * A mod's hook function threw. Reported to whoever guarded it (guardModHooks).
  *
  * Carries no mod id, because core does not know one - the host wraps ONE mod's

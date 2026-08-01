@@ -14,23 +14,54 @@
  */
 
 export {
+  COMPAT_CLAIMS,
+  DEFAULT_PACK_GROUP,
   hasFacet,
-  ManifestError,
+  PACK_GROUPS,
   PACK_SHAPES,
+  ManifestError,
   packFacets,
   packRef,
+  SECTION_BANDS,
   slugify,
   validateManifest,
 } from "./manifest.js";
 export type {
   Capability,
+  CompatClaim,
+  PackCompat,
   PackManifest,
   PackRef,
   PackRule,
+  PackSection,
   PackShape,
   PackTilePack,
+  SectionBand,
 } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
+export {
+  expandedPackContents,
+  expandSections,
+  resolveSectionState,
+  sectionFlag,
+} from "./sections.js";
+export type { SectionUnit } from "./sections.js";
+export { collectSortEdges, SORT_TIERS, sortModOrder } from "./sort.js";
+export type { DroppedEdge, SortEdge, SortPin, SortResult, SortTier } from "./sort.js";
+export {
+  contestedSlots,
+  describeContested,
+  describeDeclaredConflict,
+  foldDiscards,
+} from "./contested.js";
+export type {
+  Claim,
+  ContestedLayer,
+  ContestedSlot,
+  DeclaredConflict,
+  Fold,
+  NameOf,
+} from "./contested.js";
 export { compareSemver, satisfies, SemverError } from "./semver.js";
 export { engineVerdict } from "./engine.js";
 export type { EngineVerdict } from "./engine.js";

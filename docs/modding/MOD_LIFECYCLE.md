@@ -223,21 +223,131 @@ release, as noted.
 
 ### Load order and dependency resolution
 
-Enabled mods form an ordered list. [PROPOSED] Later in the order wins on
-genuine conflicts (last-write-wins, the convention players already know
-from Bethesda games and similar mod ecosystems). The order is computed by:
+Enabled mods form an ordered list, and **later in the order wins** on genuine
+conflicts (last-write-wins, the convention players know from Bethesda games).
+That rule is now true of every composition layer; until 2026-08-01 graphics
+modes resolved FIRST-wins, so moving a tiles mod later made it lose while the
+manager's own row promised the opposite (see "One winner rule" below).
 
-1. Topological sort by `dependencies` and `loadAfter`/`loadBefore`
-   (hard requirements first; cycles rejected at install).
-2. User preference within the freedom that leaves.
+There are two order-producing functions and the split between them is the
+model in one line:
 
-Most mods never need manual ordering. Where manual ordering IS wanted,
-it is an EXTERNAL-MANAGER job, not an in-app one (the project owner's ruling,
-2026-07-27, see "External managers" below): the game reads and honours
-an explicit order, but the sorting UX belongs to Vortex/MO2. The in-app
-manager stays rudimentary - enable/disable a mod, opt out of one of its
-patches - and reports conflicts rather than offering a full load-order
-editor.
+- `resolveLoadOrder` **enforces**. It takes the list the player chose and
+  refuses an impossible one - a missing dependency, a hard cycle.
+- `sortModOrder` **proposes**. It takes the same inputs plus everything anyone
+  merely prefers, and answers with an order the player may accept or ignore.
+  It cannot fail.
+
+`sortModOrder` weighs four tiers, strongest first, and that ranking is the only
+thing deciding which constraint is dropped when they contradict:
+
+| Tier | Source | Why it ranks there |
+|---|---|---|
+| `hard` | `dependencies`, present `optionalDependencies` | Correctness - a pack cannot patch records that have not composed |
+| `player` | what the player pinned by moving a mod | Their machine, their call |
+| `author` | `loadAfter`/`loadBefore`, `prefer-mine`/`prefer-theirs` | A named guess about a named mod |
+| `group` | membership in the shipped `group` order | Nobody wrote it about this pair |
+
+**`loadAfter`/`loadBefore` used to be HARD edges**, which meant two mods each
+claiming priority over the other produced `dependency cycle among packs` and the
+whole set refused to launch - with neither author having done anything
+unreasonable. They are `author`-tier now. On a cycle the sorter drops the
+weakest edge and says which one and why; only an all-hard cycle is reported
+unresolvable, and that is an impossible mod set rather than a disagreement.
+This is the rule LOOT settled on: soft metadata that contradicts hard metadata
+is ignored, not turned into an error neither author can fix.
+
+**Groups** (`PACK_GROUPS`: framework, overhaul, content, gameplay, tweaks,
+interface, cosmetic, late) let a mod sort correctly against mods that did not
+exist when it was written. Pairwise hints require an author to have heard of the
+other mod, which is why LOOT needs a hand-maintained masterlist and why groups
+are the thing worth borrowing.
+
+**Player pins survive re-sorting.** Moving a mod records the pair the player
+reordered (not an absolute index, which stops meaning anything the moment
+another mod is installed) and replays it as a `player`-tier edge. Without this,
+an auto-sort silently undoes the placement the player just made, which teaches
+them never to press it.
+
+Determinism is a hard requirement, not a nicety: the resolved order goes into
+the savefile's mod-set fingerprint, so the sort is a pure function of
+(manifests, pins, current order) - no clock, no `Math.random`, and no reliance
+on Set/Map iteration for anything that decides an outcome.
+
+### What an author may and may not decide
+
+> **An author has total authority over their own mod's contributions, and none
+> over the player's order or anyone else's mod.**
+
+Everything in `compat` follows from that. A claim about your OWN mod (a
+section's band, what it contributes) is authoritative. A claim about someone
+ELSE's mod is evidence for the sorter and text for the player:
+
+- `prefer-mine` / `prefer-theirs` - a soft ordering preference, dropped without
+  ceremony when it contradicts something stronger.
+- `conflicts` - "these should not both run", shown as a loud warning carrying
+  the author's own `because`, at enable time and in the conflict pane. **Not a
+  refusal.** NeoForge and Factorio both block here and this engine deliberately
+  does not: ratified decision 18 says the engine labels rather than forbids, a
+  third-party author does not get a veto over the player's setup, and a
+  declaration goes stale when the other mod fixes the clash.
+- `patches` - "when that mod is present, my section X is the compatibility patch
+  for it". The section is enabled only while the named mod is, and ignored
+  otherwise. The one claim that produces a FIX rather than a winner, which is
+  why it lets a compatibility patch ship inside the mod instead of as a third
+  download. (RimWorld's `PatchOperationFindMod`, in manifest form.)
+
+`because` is required on every claim. A claim with no reason is one the player
+cannot evaluate, and a warning that is always there and never actionable is how
+a conflict list turns into wallpaper.
+
+### Sections: the parts of a mod
+
+A mod used to be one atom in the load order, which made three ordinary requests
+inexpressible - and they turned out to be the same request. `sections` names the
+parts:
+
+```jsonc
+"sections": [
+  { "id": "kobold-rebalance", "title": "Kobold rebalance",
+    "default": true, "priority": "late" }
+]
+```
+
+- **Scope a claim.** `compat[].scope` names the claimant's own sections, so
+  "we clash, but only over the kobold changes" is sayable.
+- **Place part of a mod.** `priority` is a BAND (`first`, `early`, `normal`,
+  `late`, `last`), not a numeric offset: an offset added to a load index means a
+  different neighbour every time the list changes, while every `last` section
+  composes after every `normal` one whatever else is installed. This is Forge's
+  event-priority scheme over a Bethesda-style load order, and it refuses the
+  arms race an integer invites, because there is nothing above `last`.
+- **Switch part off.** One player toggle per section, under that mod.
+
+A band yields to a patch target. `priority: "first"` on a section patching
+`core:kobold` is a coherent wish and an impossible position, so the section
+composes at the earliest legal point instead and the report says the band did
+not apply. Soft loses to hard, again.
+
+Contributions are attributed by nesting them under the section id:
+
+```jsonc
+{ "fieldPatches": { ... },
+  "sections": { "kobold-rebalance": { "fieldPatches": { ... } } } }
+```
+
+**A disabled section's contributions do not exist.** They are dropped before
+composition rather than composed and overridden - the same rule a disabled mod's
+hooks follow.
+
+Sections also expose a flag to the mod's own `hooks.ts`, so `rules` is exactly
+"a section with a flag and no contributions". `rules` is unchanged and every
+shipped manifest keeps working; the validator refuses a section whose flag a
+rule already declares, so the merged flag map cannot give one name two meanings.
+
+**What moves what:** an ordering claim moves a whole MOD; a band moves one PART
+of a mod. An author who needs part of their mod placed differently from the rest
+says so with a band, which needs nobody's agreement.
 
 ### Additive vs conflicting changes
 
@@ -255,16 +365,56 @@ conflict. Only same-field patches conflict, and then load order decides
 and the app says so. This removes the biggest source of false conflicts
 in coarse whole-record systems.
 
-### The conflict report
+### The conflict report, over every layer
 
-Before a session starts, the app computes the merged content and shows a
-conflict report: every record touched by more than one mod, which fields
-each touched, and who wins. Same-field collisions are highlighted with a
-one-line resolution ("frost and runes both set kobold.speed; frost wins;
-reorder them in your mod manager"). Nothing is silent, nothing is a
-surprise at runtime. A load order that fails validation (unmet dependency,
-engine mismatch, cyclic requirement) cannot be launched, and the reason is
-plain language, not an error code.
+The app shows every point where more than one mod contributes, who wins, and -
+crucially - **whether anyone loses at all**.
+
+This used to cover CONTENT RECORDS and nothing else, which was one layer of
+five. The other four resolved in silence, and three of the four discard
+somebody's work:
+
+| Layer | Fold | What used to happen |
+|---|---|---|
+| Content records | last-wins, per field | reported |
+| Graphics (`grafID`) | last-wins (was first-wins) | silent, and backwards |
+| Behaviour (`ModHooks`) | per hook - see below | silent |
+| Rule flags | last-wins on a flat namespace | silent; two mods share one toggle |
+| Autoplayer (`controller`) | single slot | silent; the second install wins |
+
+**The fold is part of the answer.** Behaviour hooks do not all resolve the same
+way - two are `first-answer` (the loser's rule NEVER RUNS), three are
+`all-must-agree`, one `chained`, one `any-yes` - so a single "later wins"
+sentence would be a lie about five of the seven. `MOD_HOOK_FOLDS` lives in core
+beside `composeModHooks`, and a test in `hooks.test.ts` OBSERVES each fold from
+what the composition actually does rather than restating the table. Pretending
+the layers resolve alike is the RimWorld trap: XML, then xpath, then C#, each
+with its own effective precedence, so "load order" quietly means three things.
+
+Every claim is **derived from what a mod actually contributes** - the refs in
+its files, the keys its hooks factory returned, the grafIDs its manifest claims.
+A `touches` declaration in the manifest would have been less code and would go
+stale the first time an author forgot to update it, which is the failure this
+report exists to catch.
+
+The pane groups its answer three ways, because they need three different amounts
+of attention: what an author DECLARED (a human wrote a reason), what is
+CONTESTED (somebody's contribution is discarded - the group with a decision in
+it), and what COMBINES (listed so the picture is complete, kept last so it does
+not bury the group above).
+
+A load order that fails validation (unmet dependency, engine mismatch, hard
+cycle) still cannot be launched, and the reason is plain language.
+
+### One winner rule
+
+"Later wins" is now true of every layer. It was not: `composeTileModes` and
+`enabledTileModes` both gave a contested `grafID` to the FIRST claimant, so
+moving a tiles mod later made it lose - while `mods.ts` shipped a live menu row
+reading *"Move later (loads last, wins conflicts)"*. The player's one lever ran
+backwards for one layer, silently, and the conflict report could not see it.
+The row's POSITION still stays with the first claimant, so the Graphics menu
+does not reshuffle when mods are reordered; only which pack draws it changes.
 
 ### External managers (Vortex, MO2)
 
@@ -284,6 +434,23 @@ labour between them and the game:
   installs, update watching, and bulk install/remove. Those are solved
   problems in Vortex/MO2 and they are what those tools are for; we do not
   compete with them and we do not grow the in-game UI to match them.
+
+> **AMENDED 2026-08-01 (the project owner): auto-sort comes back in-game.**
+> The clause above putting load-order SORTING outside the game is revised; the
+> rest of the division of labour stands unchanged. What moved and why:
+>
+> The 2026-07-27 ruling was made when sorting meant "a UI for dragging a long
+> list", which is genuinely Vortex/MO2's job. It is not what sorting means once
+> authors can declare compatibility: the inputs (`group`, `compat`,
+> `loadAfter`/`loadBefore`, the player's pins) are all things the ENGINE reads
+> and the external manager cannot see, and resolving them is one deterministic
+> function, not a UI. Leaving it outside would have meant an author could state
+> a preference that nothing in the game could act on.
+>
+> So the game gains ONE BUTTON - "Auto-sort load order..." - which proposes an
+> order, shows every suggestion it could not honour, and writes nothing until
+> the player accepts. It is not staging, collections, per-install profiles,
+> update watching or bulk management, and none of those are coming in-game.
 - **The seam is the shared on-disk format, not an API.** A pack is a plain
   directory / zip with a manifest, so it is filesystem-friendly by
   construction. A desktop build watches a mod directory that a Vortex or
