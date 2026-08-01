@@ -208,6 +208,7 @@ import {
   tileForTrap,
 } from "@rpgm-tools/neo-angband-core";
 import type {
+  JsonValue,
   MonsterGlyphInput,
   PrefExprVars,
   TileAtlas,
@@ -234,6 +235,7 @@ import {
   setModCode,
 } from "./mod-code";
 import { modOwnFiles, modPluginContext } from "./mod-context";
+import { migrateModBags } from "./mod-bags";
 import {
   folderPickingSupported,
   forgetModFolder,
@@ -8703,6 +8705,53 @@ try {
  * else.
  */
 const folderRuleFlags = resolveModRuleFlagsByMod();
+
+/* Each mod's own save bag, brought up to the schema that mod is now at, BEFORE
+ * any of its other code runs (mod-bags.ts).
+ *
+ * This is the first moment a bag exists - the save has been read - and the last
+ * one before a plugin could read its own. Core has shipped `migrateModBag` and
+ * carried `saveSchema` through the manifest since the seam was designed, with no
+ * caller and no way for a mod to supply the migrator, so a mod that changed the
+ * shape of its own data was handed the OLD shape at the new version and could not
+ * tell.
+ *
+ * FOLDER plugins only, which is where every real mod now comes from: the game
+ * bundles none, and the one bundled plugin.ts left is a dev-only demo whose
+ * manifest declares no saveSchema. */
+{
+  const bagOwners = activeModCode().plugins.map((loaded) => {
+    const migrateBag = loaded.plugin.migrateBag;
+    return {
+      id: loaded.id,
+      saveSchema: loaded.manifest.saveSchema,
+      migrate: migrateBag
+        ? (data: JsonValue, from: number): JsonValue =>
+            migrateBag.call(
+              loaded.plugin,
+              data,
+              from,
+              modPluginContext(
+                loaded.id,
+                folderRuleFlags.get(loaded.id) ?? {},
+                state,
+                modOwnFiles(loaded.data),
+              ),
+            ) as JsonValue
+        : undefined,
+    };
+  });
+  const bags = migrateModBags(game.mods, bagOwners);
+  /* Written back onto the StartedGame, which is what saveGame reads - not onto
+   * GameState, which does not carry the bags at all. A migration that rewrote a
+   * copy nobody saves would be the same no-op this task set out to fix. */
+  game.mods = { ...bags.bags };
+  for (const p of bags.problems) if (p.id !== null) reportModFault(p.id, p.why);
+  if (bags.migrated.length > 0) {
+    console.info(`[mods] migrated saved data for: ${bags.migrated.join(", ")}`);
+  }
+}
+
 for (const loaded of activeModCode().plugins) {
   const register = loaded.plugin.register;
   if (!register) continue;

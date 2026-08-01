@@ -89,6 +89,46 @@ export default {
 Both members are optional. A plugin that declares neither is refused, because a
 mod with no code simply ships no `plugin.js`.
 
+## Your own saved data, and changing its shape
+
+You may keep whatever JSON you like in the player's save, under your mod's id
+(`ctx.state.mods[ctx.id]`). The engine round-trips it verbatim and never reads
+it. It is stored with a `schema` number — whatever your manifest's `saveSchema`
+was when it was written.
+
+When you change the SHAPE of that data, bump `saveSchema` and ship a
+`migrateBag`:
+
+```js
+export default {
+  api: 1,
+  hooks(ctx) { /* … */ },
+
+  // Called at mod-load time, BEFORE register(), when the bag in the save is
+  // behind your manifest's saveSchema. Return the same data in the new shape.
+  migrateBag(data, fromSchema, ctx) {
+    if (fromSchema < 2) return { kills: Object.keys(data.killed ?? {}).length };
+    return data;
+  },
+};
+```
+
+Only you can do this — nobody else knows what is in there. What the game does
+around it:
+
+| Situation | What happens |
+|---|---|
+| bag behind `saveSchema`, `migrateBag` present | it runs, and the schema is stamped forward |
+| bag behind `saveSchema`, **no** `migrateBag` | the old data is kept **exactly as it was**, and the player is told your mod has data it may not understand. The schema is *not* stamped forward — you would be handed old data labelled new |
+| `migrateBag` throws, or returns nothing | the old bag stands, and the reason goes on your mod's row |
+| bag **ahead** of `saveSchema` (the player rolled you back) | nothing is changed, and the player is told. A migration backwards is something only you could write |
+| you declare no `saveSchema` | nothing happens, ever |
+
+If you would rather branch on the schema inline than ship a migrator, you can:
+the bag carries its own `schema` and you can read it. Omitting `migrateBag`
+*after* bumping `saveSchema` is the case the game reports, because it cannot tell
+that apart from an oversight.
+
 ## Why the engine is not imported
 
 `ctx.core` **is** the engine — the same live module instance the game is running
