@@ -20,7 +20,7 @@
  * import the flow subsystem.
  */
 
-import { FEAT } from "@rpgm-tools/neo-angband-core";
+import { FEAT } from "../core-api.js";
 import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
 import type { BorgGrid } from "../world/grid.js";
 import type { BorgWorld } from "../world/model.js";

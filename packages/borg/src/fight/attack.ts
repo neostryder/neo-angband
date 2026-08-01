@@ -29,7 +29,7 @@
  */
 
 import type { AgentCommand, ItemView } from "@rpgm-tools/neo-angband-core";
-import { RSF } from "@rpgm-tools/neo-angband-core";
+import { RSF } from "../core-api.js";
 import type { BorgContext } from "../context.js";
 import type { MonsterFacts } from "../danger/index.js";
 import {
