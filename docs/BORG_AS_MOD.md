@@ -1,19 +1,15 @@
 # The Borg as a Mod - Scope and Plan
 
-> STATUS: PORTED, NOT YET SHIPPED. What this document scoped is built - the Borg
-> is a faithful port riding the mod framework's perceive/act API rather than core
-> code, and the framework is feature-complete - but it lives in `packages/borg`,
-> which the game does not bundle and no front end installs. Section 6 has the
-> measurements and section 8 the remaining steps. This header used to say
-> IMPLEMENTED and "ships as a BUNDLED MOD", which was wrong twice over: no mod
-> ships inside the build, this one included, and a package with no importer does
+> STATUS: SHIPPED. The Borg left this repository at v0.13.0 and lives in
+> [neostryder/neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg),
+> released at `v0.1.0` and installable from the mod manager like any other mod.
+> This document is kept as the design rationale of record, and sections 6 and 8
+> as the account of what the move actually cost. The header used to say
+> IMPLEMENTED and "ships as a BUNDLED MOD (`packages/borg`)", which was wrong
+> twice over: no mod ships inside the build, and a package with no importer does
 > not ship at all. For how the Borg works see
 > [docs/modding/BORG.md](modding/BORG.md); for the framework it rides, see
-> [docs/modding/MOD_INTEGRATION_PLAN.md](modding/MOD_INTEGRATION_PLAN.md). This
-> document is retained as the design rationale of record for task P8 (the Borg):
-> the Borg ships as a faithful port of Angband 4.2.6's `borg/`, and the same
-> agent API that hosts it is the contract any third-party agent mod uses to
-> drive the game.
+> [docs/modding/MOD_INTEGRATION_PLAN.md](modding/MOD_INTEGRATION_PLAN.md).
 
 ## 1. The decision
 

@@ -1,6 +1,6 @@
 {
   "name": "neo-angband",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "description": "Modern TypeScript port of Angband: web-first, moddable, replayability-focused",
   "author": "neostryder (RPGM Tools)",
@@ -13,7 +13,6 @@
     "build": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:borg": "vitest run packages/borg",
     "typecheck": "tsc -b",
     "check:private": "node tools/private-scan.mjs",
     "check:npm": "node tools/check-npm-package.mjs",

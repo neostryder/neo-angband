@@ -310,8 +310,15 @@ if (failed) process.exitCode = 1;
  *
  * The same rules as the host's validateModPlugin, restated here rather than imported
  * because that module lives in the web front end and this is a plain script the SDK
- * ships. The duplication is two field checks; importing a compiled copy would tie the
- * build step to whether the front end happens to have been built.
+ * ships. Importing a compiled copy would tie the build step to whether the front end
+ * happens to have been built.
+ *
+ * A HAND-WRITTEN MIRROR DRIFTS, and this one did. When ModPlugin grew `controller`,
+ * the host learned about it and this did not - so the Borg, whose only member is a
+ * controller, built fine in the host's eyes and was refused here as "would do
+ * nothing". The two lists are now cross-checked against each other by
+ * plugin-abi-agreement.test.ts, which reads both files: the duplication is allowed
+ * to exist, but not to disagree.
  */
 function pluginProblem(plugin) {
   if (plugin === null || plugin === undefined) return "plugin.js has no default export";
@@ -319,10 +326,14 @@ function pluginProblem(plugin) {
     return `plugin.js default-exports a ${typeof plugin}, not a plugin object`;
   }
   if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version';
-  if (plugin.hooks === undefined && plugin.register === undefined) {
-    return "plugin.js declares neither hooks nor register, so it would do nothing";
+  if (
+    plugin.hooks === undefined &&
+    plugin.register === undefined &&
+    plugin.controller === undefined
+  ) {
+    return "plugin.js declares no hooks, register or controller, so it would do nothing";
   }
-  for (const name of ["hooks", "register", "uninstall"]) {
+  for (const name of ["hooks", "register", "controller", "uninstall"]) {
     if (plugin[name] !== undefined && typeof plugin[name] !== "function") {
       return `plugin.js: ${name} is not a function`;
     }
