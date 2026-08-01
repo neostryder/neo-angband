@@ -23,7 +23,6 @@ import { EffectRegistry, sourceMonster } from "../effects/interpreter.js";
 import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
 import type { BlowMethod } from "../mon/types.js";
 import { DDGRID, loc, locSum } from "../loc.js";
-import type { Loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
 import { monsterCarry } from "../mon/make.js";
 import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore.js";

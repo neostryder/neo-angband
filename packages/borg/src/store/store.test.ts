@@ -322,7 +322,7 @@ describe("borgThinkShopBuyUseful + borgThinkShopBuy", () => {
         ware(0, { tval: TV.FOOD, sval: SVAL.food.ration, number: 5, value: 1, price: 10 }),
       ]),
     ];
-    const { ctx, act } = makeCtx({
+    const { ctx } = makeCtx({
       stores,
       power: 1000,
       traits: { [BI.GOLD]: 300, [BI.FOOD]: 5, [BI.LIGHT]: 3, [BI.MAXCLEVEL]: 10 },
@@ -369,7 +369,7 @@ describe("borgThinkShopSellUseless + borgThinkShopSell", () => {
       store(0, false, []), /* armoury */
       store(0, false, []), /* weapon (index 2) */
     ];
-    const { ctx, act } = makeCtx({
+    const { ctx } = makeCtx({
       inventory: inv,
       stores,
       power: 1000,

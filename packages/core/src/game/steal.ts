@@ -28,7 +28,7 @@ import { DDGRID, distance, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { SKILL } from "../player/types.js";
 import { adj_dex_th } from "../player/calcs.js";
-import type { GameObject, StackLimits } from "../obj/object.js";
+import type { StackLimits } from "../obj/object.js";
 import { objectWeightOne, tvalIsMoney } from "../obj/object.js";
 import { MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
 import type { Monster } from "../mon/monster.js";

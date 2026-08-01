@@ -67,8 +67,12 @@ export type EquipCmpQuality = "artifact" | "ego" | "good" | "average" | "bad";
 /** equip_cmp's four source-cycle states (ACT_CTX_EQUIPCMP_CYCLE_SOURCES). */
 export type StoreInclusion = "no-store" | "only-store" | "yes-store" | "only-carried";
 
+/* eslint-disable @typescript-eslint/no-unused-vars -- ui-equip-cmp.c's two cycle
+ * orders. The cycles below are written out longhand to mirror the C's switch, so
+ * these read as documentation of the order those cases must follow. */
 const SOURCE_ORDER: readonly EquipCmpSource[] = ["worn", "pack", "floor", "home", "store"];
 const QUALITY_ORDER: readonly EquipCmpQuality[] = ["artifact", "ego", "good", "average", "bad"];
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /** cycle_sources (ui-equip-cmp.c L687-758): NO_STORE -> ONLY_STORE -> YES_STORE -> ONLY_CARRIED -> NO_STORE. */
 export function cycleStoreInclusion(cur: StoreInclusion): StoreInclusion {

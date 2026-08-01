@@ -22,7 +22,7 @@
  * tickMonsterMarks() until the world-clock port absorbs it.
  */
 
-import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated/index.js";
+import { FEAT, MFLAG, OF, RF, TF, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import {

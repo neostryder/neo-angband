@@ -6,7 +6,6 @@ import { loc } from "../loc.js";
 import { Rng } from "../rng.js";
 import {
   EffectRegistry,
-  sourceMonster,
   sourceNone,
   sourcePlayer,
 } from "../effects/interpreter.js";

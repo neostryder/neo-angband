@@ -20,7 +20,6 @@ import type { GameObject, StackLimits } from "../obj/object.js";
 import { Rng } from "../rng.js";
 import {
   calcInventory,
-  gearAdd,
   invenCarry,
   invenCarryNum,
   newGear,

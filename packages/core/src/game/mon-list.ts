@@ -23,7 +23,7 @@
  * out-of-view monsters land in the telepathy section.
  */
 
-import { MFLAG, RF } from "../generated/index.js";
+import { RF } from "../generated/index.js";
 import { MON_TMD } from "../generated/index.js";
 import {
   COLOUR_RED,

@@ -463,7 +463,7 @@ function buildTunnel(g: Gen, from: Loc, to: Loc): void {
   const dun = g.dun;
   const c = g.c;
   let grid1 = from;
-  let grid2 = to;
+  const grid2 = to;
   const start = grid1;
   let mainLoop = 0;
   const st: TunnelState = { door: false, bend: 0, offset: correctDir(g.rng, grid1, grid2) };
@@ -1129,7 +1129,7 @@ export const classicGen: CaveBuilder = (ctx) => {
 
 /** modified_chunk: build the room+tunnel skeleton for a modified level. */
 function modifiedChunk(ctx: CaveBuildContext, height: number, width: number): Gen | null {
-  const { rng, reg, constants, dun, profile, depth } = ctx;
+  const { rng, reg, dun, profile, depth } = ctx;
   const c = new Chunk(reg, height, width);
   c.depth = depth;
   const g = makeGen(ctx, c);

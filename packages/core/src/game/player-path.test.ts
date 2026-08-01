@@ -12,11 +12,9 @@ import { squareMemorize } from "./known.js";
 import { OptionState } from "../player/options.js";
 import {
   disturb,
-  exploreAction,
   findPath,
   installRunning,
   pathNearestUnknown,
-  pathfindAction,
   pathfindDirectionTo,
   runAction,
 } from "./player-path.js";

@@ -4100,6 +4100,7 @@ function runTargetLoop(
 // wires to it any more.
 
 /** Pick a monster to target from the target-able list; true if one was set. */
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept as the fallback described above; nothing keys to it */
 async function chooseTarget(): Promise<boolean> {
   const { items, mons } = targetMenu(state);
   if (items.length === 0) {
@@ -4960,7 +4961,7 @@ function persistSave(): boolean {
  * wait on a modal).
  */
 async function closeGameSave(prompt: boolean): Promise<void> {
-  let prompting = prompt;
+  const prompting = prompt;
   while (!persistSave()) {
     if (!prompting || !(await confirmYesNo("Saving failed.  Try again? "))) {
       if (dead) say("death save failed!");

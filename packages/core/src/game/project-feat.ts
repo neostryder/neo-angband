@@ -42,8 +42,7 @@ import {
   squareSetDoorLock,
   squareIsPlayerTrap,
   squareSetTrapTimeout,
-  squareTrap,
-} from "./trap.js";
+  } from "./trap.js";
 import type { TrapDeps } from "./trap.js";
 import { makeObject, makeGold } from "../obj/make.js";
 import type { ProjectWorldEnv } from "./project-obj.js";

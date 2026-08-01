@@ -73,10 +73,14 @@ const SLOT_WIELD = 0;
 const SLOT_BOW = 1;
 const SLOT_LIGHT = 5;
 const SLOT_BODY = 6;
+/* eslint-disable @typescript-eslint/no-unused-vars -- upstream's equipment slot
+ * numbering, transcribed complete. The four below have no reader in this module yet;
+ * a partial copy of a slot table is worse than an unused one. */
 const SLOT_OUTER = 7;
 const SLOT_ARM = 8;
 const SLOT_HEAD = 9;
 const SLOT_HANDS = 10;
+/* eslint-enable @typescript-eslint/no-unused-vars */
 const SLOT_FEET = 11;
 
 /* Missile tvals (generated/tvals.ts): shots/arrows/bolts. */

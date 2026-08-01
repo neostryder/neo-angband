@@ -17,7 +17,6 @@ import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { ArtifactState, objectPrep, ObjAllocState } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
-import type { GameObject } from "../obj/object.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { adj_dex_safe } from "../player/calcs.js";

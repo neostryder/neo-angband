@@ -1762,7 +1762,7 @@ describe("player_can_read gates the read command (player-util.c L1166)", () => {
 
 describe("object_effect / obj_is_activatable / obj_can_activate (obj-util.c L886/721/730)", () => {
   it("objectEffect prefers the activation's effect over the kind's own effect", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
+    makeState({ playerGrid: loc(5, 5) });
     const ring = makeNamed("Flames", TV.RING);
     expect(ring.effect).not.toBeNull();
     expect(ring.activation).toBeNull();
@@ -1774,7 +1774,7 @@ describe("object_effect / obj_is_activatable / obj_can_activate (obj-util.c L886
   });
 
   it("objectEffect falls back to the kind effect when there is no activation", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
+    makeState({ playerGrid: loc(5, 5) });
     const ring = makeNamed("Flames", TV.RING);
     expect(objectEffect(ring)).toBe(ring.effect);
   });

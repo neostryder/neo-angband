@@ -75,7 +75,6 @@ import {
   cursesAreEqual,
   tvalCanHaveFlavor,
   tvalIsChest,
-  tvalIsJewelry,
   tvalIsLauncher,
   tvalIsMoney,
   tvalIsWearable,
@@ -88,7 +87,7 @@ import {
   playerKnowsCurse,
   playerKnowsSlay,
 } from "./knowledge.js";
-import type { ObjectKind, EgoItem, ElementInfo } from "./types.js";
+import type { ObjectKind, EgoItem } from "./types.js";
 import { ELEM_MAX, OBJ_MOD_MAX } from "./types.js";
 
 /**

@@ -106,7 +106,7 @@ describe("monster_list sorting + colour", () => {
   });
 
   it("colours uniques violet, over-depth red, else white", () => {
-    const state = makeState({ playerGrid: loc(20, 12) });
+    makeState({ playerGrid: loc(20, 12) });
     const unique = makeRace({ flags: [RF.UNIQUE], level: 1 });
     const deep = makeRace({ level: 40 });
     const shallow = makeRace({ level: 1 });

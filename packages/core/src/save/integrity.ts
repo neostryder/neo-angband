@@ -49,10 +49,10 @@ export const fnv1aIntegrity: SaveIntegrity = {
       const a2 = hi & 0xffff;
       const a3 = hi >>> 16;
       // prime limbs: p0=0x01b3, p1=0x0001, p2=0x0100, p3=0x0000
-      let c0 = a0 * 0x01b3;
-      let c1 = a1 * 0x01b3 + a0 * 0x0001 + (c0 >>> 16);
-      let c2 = a2 * 0x01b3 + a1 * 0x0001 + a0 * 0x0100 + (c1 >>> 16);
-      let c3 = a3 * 0x01b3 + a2 * 0x0001 + a1 * 0x0100 + (c2 >>> 16);
+      const c0 = a0 * 0x01b3;
+      const c1 = a1 * 0x01b3 + a0 * 0x0001 + (c0 >>> 16);
+      const c2 = a2 * 0x01b3 + a1 * 0x0001 + a0 * 0x0100 + (c1 >>> 16);
+      const c3 = a3 * 0x01b3 + a2 * 0x0001 + a1 * 0x0100 + (c2 >>> 16);
       lo = ((c1 & 0xffff) << 16) | (c0 & 0xffff);
       hi = ((c3 & 0xffff) << 16) | (c2 & 0xffff);
       lo >>>= 0;

@@ -12,8 +12,8 @@ install, and how to mod the game. Start with the top-level
   numbered project decisions.
 - [PARITY.md](./PARITY.md) - what "feature parity with Angband 4.2.6,
   statistically verified" means and how it is enforced.
-- [PARITY_CLOSURE.md](./PARITY_CLOSURE.md) - the worklist for closing every
-  remaining gap against the 4.2.6 tag.
+- [PARITY_CLOSURE.md](./PARITY_CLOSURE.md) - the closed worklist that took the
+  port to 4.2.6 parity: 16 items, all done, kept for provenance.
 - [REBASE_RUNBOOK.md](./REBASE_RUNBOOK.md) - how to advance the port from its
   pinned baseline onto a future upstream release using the parity ledger.
 - [../parity/README.md](../parity/README.md) - the parity provenance ledger:
@@ -32,7 +32,7 @@ install, and how to mod the game. Start with the top-level
   what a mod can actually change today, with counts and citations, plus the gap
   list. Read this alongside MODS.md, which is the target.
 - [BORG_AS_MOD.md](./BORG_AS_MOD.md) - scope and plan for shipping the Borg as
-  a bundled mod on the perceive/act agent API.
+  a mod on the perceive/act agent API.
 - [LINOLEUM.md](./LINOLEUM.md) - the manifest-backed, loose-pack Linoleum tile
   format.
 
@@ -49,13 +49,13 @@ install, and how to mod the game. Start with the top-level
   resources are overridable, and the ranked gap list.
 - [modding/MOD_INTEGRATION_PLAN.md](./modding/MOD_INTEGRATION_PLAN.md) - wiring
   the mod substrate into the running game.
-- [modding/BORG.md](./modding/BORG.md) - the bundled Borg autoplayer mod and
-  how to run it.
-- [modding/QOL.md](./modding/QOL.md) - the bundled quality-of-life mod
+- [modding/BORG.md](./modding/BORG.md) - the Borg autoplayer mod and how to run
+  it.
+- [modding/QOL.md](./modding/QOL.md) - the first-party quality-of-life mod
   (`qol`): design of record and changelog.
-- [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - the bundled bug-fix mod
+- [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - the first-party bug-fix mod
   (`bug-fixes`): design of record and changelog.
 - [modding/P7_BUILD_PLAN.md](./modding/P7_BUILD_PLAN.md) - build plan for the
   mod substrate and agent API.
 - [modding/P8_BUILD_PLAN.md](./modding/P8_BUILD_PLAN.md) - build plan for the
-  Borg as a bundled mod.
+  Borg as a mod.

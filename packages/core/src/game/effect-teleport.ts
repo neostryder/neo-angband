@@ -290,7 +290,7 @@ function findLandingNear(
 ): Loc {
   let land: Loc;
   let ctr = 0;
-  /* eslint-disable-next-line no-constant-condition */
+   
   for (;;) {
     do {
       land = randLoc(state.rng, aim, dis, dis);

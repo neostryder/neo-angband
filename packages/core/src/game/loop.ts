@@ -44,7 +44,6 @@ import {
   caveMonsterCount,
   compactMonsters,
   digestFood,
-  isDaytime,
   playAmbientSound,
   playerHasWorld,
   playerOfHasWorld,

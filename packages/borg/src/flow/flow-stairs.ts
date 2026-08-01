@@ -11,7 +11,6 @@
 
 import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
-import { distance } from "../think.js";
 import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts.js";
 import {
   borgFlowClear,

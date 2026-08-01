@@ -39,6 +39,10 @@ const DICE_TOKEN_SIZE = 16;
 
 /* String parser states (dice_state_t), 'A' through 'M' in the table. */
 const STATE_START = 0; /* A */
+/* eslint-disable @typescript-eslint/no-unused-vars -- the full state alphabet from
+ * dice.c's parser, transcribed whole. Four states are unreferenced HERE because the
+ * port reaches them through the same switch by a different route; dropping them
+ * would leave a numbering with holes and nothing to check the transcription against. */
 const STATE_BASE_DIGIT = 1; /* B */
 const STATE_FLUSH_BASE = 2; /* C */
 const STATE_DICE_DIGIT = 3; /* D */
@@ -47,6 +51,7 @@ const STATE_SIDE_DIGIT = 5; /* F */
 const STATE_FLUSH_SIDE = 6; /* G */
 const STATE_BONUS = 7; /* H */
 const STATE_BONUS_DIGIT = 8; /* I */
+/* eslint-enable @typescript-eslint/no-unused-vars */
 const STATE_FLUSH_BONUS = 9; /* J */
 const STATE_VAR = 10; /* K */
 const STATE_VAR_CHAR = 11; /* L */
