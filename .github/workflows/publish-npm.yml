@@ -59,21 +59,32 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           # No cache on the release path deliberately. It runs a handful of times a
           # year, and a release build that reuses nothing is one less thing to have
           # to reason about when a tarball looks wrong.
+          #
+          # setup-node has cached AUTOMATICALLY since v5 whenever package.json names
+          # a package manager. v6 narrowed that to npm only, and ours says pnpm, so
+          # today the automatic path does not fire here - but "the default does not
+          # apply to us" is not the same as "we said no", and the line above says no
+          # out loud. Turn it off out loud too.
+          package-manager-cache: false
 
-      # Trusted publishing needs npm >= 11.5.1. Node 24 ships a new enough npm
-      # today and that is exactly the kind of fact that quietly stops being true,
-      # so the version is asserted rather than assumed - an old npm does not error,
-      # it silently looks for a token and fails with ENEEDAUTH, which reads like a
-      # permissions problem and is not one.
+      # Trusted publishing needs npm >= 11.5.1. Node 24 bundles 11.16.0 as of
+      # v24.18.1, which clears that bar, and this step installs npm@latest (12.x)
+      # on top anyway - but a floor that is satisfied by accident is still worth
+      # asserting, because an old npm does not error: it silently looks for a token
+      # and fails with ENEEDAUTH, which reads like a permissions problem and is not
+      # one. `pnpm check:npm` in ci.yml installs the same npm@latest, so the tarball
+      # check runs against the npm that publishes rather than whatever the runner
+      # happened to ship - which is how the npm 12 `pack --json` shape change sat
+      # undetected until someone ran the checker locally.
       - name: npm must be new enough to authenticate by OIDC
         run: |
           npm install -g npm@latest

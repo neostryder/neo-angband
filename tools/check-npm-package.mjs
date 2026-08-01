@@ -36,6 +36,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { publishablePackages } from "./publishable.mjs";
+import { packResult } from "./npm-pack-result.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -72,6 +73,12 @@ function fail(message) {
   console.error(`[npm-package] FAIL ${message}`);
   failures++;
 }
+
+/* Say which npm did the packing, in the log, every run. `npm pack --json`
+ * changed shape between 11 and 12 and this script read the old one; what made
+ * that survive was not the bug, it was that no run recorded the version it had
+ * measured, so "green in CI" and "works on npm 12" looked like the same claim. */
+note(`npm ${runNpm(["--version"], repoRoot).trim()} on node ${process.version}`);
 
 /**
  * Extract a .tgz with zlib and a tar reader rather than shelling out to `tar`.
@@ -127,32 +134,6 @@ function extractTgz(tarball, destination) {
     written.push(full);
   }
   return written;
-}
-
-/**
- * The one entry `npm pack --json` describes, whichever shape this npm reports.
- *
- * npm 11 answers with an ARRAY of one object. npm 12 answers with an OBJECT
- * keyed by package name. This script destructured the array, so on npm 12 every
- * package failed with `object is not iterable` - and it failed identically for
- * `core`, which has been packing fine in CI, so this was never about the package
- * being checked. Measured on npm 12.0.2; CI's runner is still on 11.x, which is
- * why the break was waiting rather than visible.
- *
- * Both shapes are accepted rather than pinning a version: this script exists to
- * find out what npm actually ships, so it should not be the thing that dictates
- * which npm you may run it with.
- */
-function packResult(stdout, pkg) {
-  const parsed = JSON.parse(stdout);
-  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
-  if (!entry || typeof entry.filename !== "string") {
-    throw new Error(
-      `${pkg}: npm pack --json reported a shape with no filename in it: ` +
-        JSON.stringify(parsed).slice(0, 200),
-    );
-  }
-  return entry;
 }
 
 function walk(dir, out = []) {
