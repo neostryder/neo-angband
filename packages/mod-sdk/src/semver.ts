@@ -18,14 +18,20 @@
  *  - comparator sets: `>=`, `>`, `<=`, `<`, `=`, combined with spaces and
  *    ANDed together, e.g. `>=1.0.0 <2.0.0`.
  *
- * Limitation (documented, not fixed): prerelease tags (`1.0.0-beta.2`) are
- * compared naively as a single lexicographic string once the numeric
- * major.minor.patch triple is equal, rather than the full dot-separated,
- * numeric-vs-alphanumeric identifier comparison the semver spec defines.
- * A version with no prerelease is always treated as newer than one with a
- * prerelease at the same major.minor.patch, matching the spec; the ordering
- * among different prerelease strings themselves does not. Pack authors who
- * need exact prerelease ordering should not rely on it here.
+ * Prerelease tags (`1.0.0-beta.2`) are ordered by the spec's rule: split on
+ * dots, compare identifier by identifier, numeric identifiers numerically and
+ * ranking below alphanumeric ones, and a longer identifier list wins a tie
+ * against its own prefix. A version with no prerelease outranks any prerelease
+ * of the same major.minor.patch.
+ *
+ * THIS USED TO BE A DOCUMENTED LIMITATION - one lexicographic string compare -
+ * and the note said pack authors needing exact prerelease ordering should not
+ * rely on it. That was honest while nothing did. Then the updater's `early`
+ * channel started naming builds `0.16.1-edge.7`, and a string compare puts
+ * `edge.9` ABOVE `edge.10`: the tenth build of the day would not be offered to
+ * anyone running the ninth, and the game would sit there reporting itself up to
+ * date. A documented limitation stops being documentation the moment something
+ * depends on it, so it is implemented rather than described.
  */
 
 export class SemverError extends Error {}
@@ -76,7 +82,44 @@ function parseVersion(s: string): FullVersion {
   return { major: p.major, minor: p.minor, patch: p.patch, prerelease: p.prerelease };
 }
 
-/** -1 if a < b, 0 if equal, 1 if a > b. See the prerelease limitation above. */
+const NUMERIC_ID = /^\d+$/u;
+
+/**
+ * Order two prerelease tags by semver's rule (spec item 11.4).
+ *
+ * Identifier by identifier: two numeric identifiers compare as numbers, two
+ * alphanumeric ones compare as ASCII, and a numeric identifier always ranks
+ * BELOW an alphanumeric one. Running out of identifiers first loses, so
+ * `1.0.0-alpha` precedes `1.0.0-alpha.1`.
+ */
+function comparePrerelease(a: string, b: string): number {
+  const left = a.split(".");
+  const right = b.split(".");
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const l = left[i];
+    const r = right[i];
+    /* One side ran out: the shorter list is the lower precedence. */
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    if (l === r) continue;
+    const lNum = NUMERIC_ID.test(l);
+    const rNum = NUMERIC_ID.test(r);
+    /* Numeric identifiers always have lower precedence than alphanumeric ones,
+     * which is why this cannot be a string compare with a numeric special case:
+     * `beta` outranks `2`, and "2" < "beta" in ASCII only by luck of the table. */
+    if (lNum !== rNum) return lNum ? -1 : 1;
+    if (lNum && rNum) {
+      /* Number(), not localeCompare: `edge.9` vs `edge.10` is the case that
+       * made this function exist, and it is the one a string compare gets
+       * backwards. Leading zeroes are not legal semver, so parsing is safe. */
+      return Number(l) < Number(r) ? -1 : 1;
+    }
+    return l < r ? -1 : 1;
+  }
+  return 0;
+}
+
+/** -1 if a < b, 0 if equal, 1 if a > b. */
 function compareVersions(a: FullVersion, b: FullVersion): number {
   if (a.major !== b.major) return a.major - b.major < 0 ? -1 : 1;
   if (a.minor !== b.minor) return a.minor - b.minor < 0 ? -1 : 1;
@@ -84,7 +127,7 @@ function compareVersions(a: FullVersion, b: FullVersion): number {
   if (a.prerelease === b.prerelease) return 0;
   if (a.prerelease === null) return 1; // no prerelease outranks any prerelease
   if (b.prerelease === null) return -1;
-  return a.prerelease < b.prerelease ? -1 : 1;
+  return comparePrerelease(a.prerelease, b.prerelease);
 }
 
 /**

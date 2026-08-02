@@ -10,13 +10,20 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  CHANNEL_KEY,
   checkForUpdate,
   decideUpdate,
+  defaultChannel,
+  EDGE_MARKER,
+  isEdgeRelease,
   newestRelease,
   parseReleases,
   pickAsset,
+  readChannel,
+  releasesIn,
   UPDATE_REPO,
   updaterBridge,
+  writeChannel,
 } from "./update";
 import type { Release, ReleaseAsset } from "./update";
 
@@ -153,29 +160,125 @@ describe("which release is newest", () => {
 
 describe("whether to offer anything at all", () => {
   it("offers a newer version", () => {
-    expect(decideUpdate("0.16.0", [release()], WIN)?.version).toBe("0.17.0");
+    expect(decideUpdate("0.16.0", [release()], WIN, "beta")?.version).toBe("0.17.0");
   });
 
   it("says nothing when this IS the newest", () => {
-    expect(decideUpdate("0.17.0", [release()], WIN)).toBeNull();
+    expect(decideUpdate("0.17.0", [release()], WIN, "beta")).toBeNull();
   });
 
   it("says nothing when the player is somehow ahead", () => {
     /* A development build running against the released feed. Offering 0.17.0 to
      * an 0.18.0-dev machine would be a downgrade dressed as an update. */
-    expect(decideUpdate("0.18.0", [release()], WIN)).toBeNull();
+    expect(decideUpdate("0.18.0", [release()], WIN, "beta")).toBeNull();
   });
 
   it("says nothing when the newest release has no archive for this machine", () => {
     /* Better no row than a row that leads to "there is no download for you". */
     const winOnly = release({ assets: [asset("Neo.Angband-0.17.0-win.zip")] });
-    expect(decideUpdate("0.16.0", [winOnly], MAC_ARM)).toBeNull();
-    expect(decideUpdate("0.16.0", [winOnly], WIN)).not.toBeNull();
+    expect(decideUpdate("0.16.0", [winOnly], MAC_ARM, "beta")).toBeNull();
+    expect(decideUpdate("0.16.0", [winOnly], WIN, "beta")).not.toBeNull();
   });
 
   it("carries the digest through, since the desktop side refuses to swap without one", () => {
-    const got = decideUpdate("0.16.0", [release()], WIN);
+    const got = decideUpdate("0.16.0", [release()], WIN, "beta");
     expect(got?.asset?.sha256).toBe("a".repeat(64));
+  });
+});
+
+describe("channels", () => {
+  const stable = release({ tag: "v1.0.0", version: "1.0.0", prerelease: false });
+  const beta = release({ tag: "v1.1.0", version: "1.1.0", prerelease: true });
+  const edge = release({
+    tag: "v1.1.1-edge.4",
+    version: "1.1.1-edge.4",
+    prerelease: true,
+    assets: [asset("Neo.Angband-1.1.1-edge.4-win.zip")],
+  });
+  const all = [stable, beta, edge];
+
+  it("is inclusive downward: beta sees stable, early sees everything", () => {
+    /* A player on beta must still be offered 1.0.0 when it ships. A channel that
+     * hid its own stable releases would strand people on the last pre-release. */
+    expect(releasesIn("stable", all).map((r) => r.version)).toEqual(["1.0.0"]);
+    expect(releasesIn("beta", all).map((r) => r.version)).toEqual(["1.0.0", "1.1.0"]);
+    expect(releasesIn("early", all).map((r) => r.version)).toEqual(["1.0.0", "1.1.0", "1.1.1-edge.4"]);
+  });
+
+  it("picks the newest within the channel, not the newest overall", () => {
+    expect(decideUpdate("0.9.0", all, WIN, "stable")?.version).toBe("1.0.0");
+    expect(decideUpdate("0.9.0", all, WIN, "beta")?.version).toBe("1.1.0");
+    expect(decideUpdate("0.9.0", all, WIN, "early")?.version).toBe("1.1.1-edge.4");
+  });
+
+  it("orders edge builds by number, so edge.9 does not outrank edge.10", () => {
+    /* The comparator bug this feature surfaced. Ten builds in a day is one
+     * afternoon, and a string compare stops the updater dead at that point. */
+    const nine = release({ tag: "v1.1.1-edge.9", version: "1.1.1-edge.9" });
+    const ten = release({ tag: "v1.1.1-edge.10", version: "1.1.1-edge.10" });
+    expect(decideUpdate("1.1.1-edge.9", [nine, ten], WIN, "early")?.version).toBe("1.1.1-edge.10");
+  });
+
+  it("recognises an edge build by its version, not by a label somebody can edit", () => {
+    expect(isEdgeRelease(edge)).toBe(true);
+    expect(isEdgeRelease(beta)).toBe(false);
+    expect(EDGE_MARKER).toBe("-edge.");
+  });
+
+  it("starts a 0.x install on beta, because stable is empty until 1.0", () => {
+    /* Every 0.x release is flagged pre-release, so defaulting to stable would
+     * mean a fresh alpha never offers an update and never says why. */
+    expect(defaultChannel("0.16.0")).toBe("beta");
+    expect(defaultChannel("1.0.0")).toBe("stable");
+    expect(defaultChannel("2.3.4")).toBe("stable");
+  });
+
+  it("lets someone leave early, even though that means going backwards", () => {
+    /* The one case where a lower version is offered: an edge build cannot be
+     * reached from stable or beta, so refusing would leave the channel the
+     * player just picked reporting "nothing to install" forever. */
+    const got = decideUpdate("1.1.1-edge.4", all, WIN, "beta");
+    expect(got?.version).toBe("1.1.0");
+    expect(got?.older).toBe(true);
+  });
+
+  it("still refuses a plain downgrade, which is the older and separate rule", () => {
+    expect(decideUpdate("2.0.0", all, WIN, "beta")).toBeNull();
+    /* ...and staying ON early does not go backwards either. */
+    expect(decideUpdate("1.1.1-edge.9", all, WIN, "early")).toBeNull();
+  });
+
+  it("marks a genuine upgrade as not-older, since only that may shimmer", () => {
+    expect(decideUpdate("0.9.0", all, WIN, "early")?.older).toBe(false);
+  });
+
+  it("remembers a choice and ignores a corrupted one", () => {
+    const store = new Map<string, string>();
+    const s = {
+      getItem: (k: string): string | null => store.get(k) ?? null,
+      setItem: (k: string, v: string): void => void store.set(k, v),
+    };
+    writeChannel(s, "early");
+    expect(readChannel(s, "0.16.0")).toBe("early");
+    store.set(CHANNEL_KEY, "nightly");
+    expect(readChannel(s, "0.16.0")).toBe("beta");
+    expect(readChannel(null, "0.16.0")).toBe("beta");
+  });
+
+  it("survives storage that throws outright", () => {
+    /* Safari with cookies blocked throws on access rather than returning null. */
+    const hostile = {
+      getItem: (): string => {
+        throw new Error("denied");
+      },
+      setItem: (): void => {
+        throw new Error("denied");
+      },
+    };
+    expect(readChannel(hostile, "0.16.0")).toBe("beta");
+    expect(() => {
+      writeChannel(hostile, "early");
+    }).not.toThrow();
   });
 });
 
@@ -258,7 +361,7 @@ describe("the request itself", () => {
 
   it("asks the LIST endpoint, because /releases/latest cannot see a pre-release", () => {
     const fetch = vi.fn().mockResolvedValue(ok([]));
-    void checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0" });
+    void checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
     const url = String(fetch.mock.calls[0]?.[0]);
     expect(url).toContain(`/repos/${UPDATE_REPO}/releases`);
     expect(url).not.toContain("/releases/latest");
@@ -267,14 +370,14 @@ describe("the request itself", () => {
   it("resolves null on a non-ok response", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
     await expect(
-      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0" }),
+      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" }),
     ).resolves.toBeNull();
   });
 
   it("resolves null when the network throws, rather than surfacing it", async () => {
     const fetch = vi.fn().mockRejectedValue(new Error("offline"));
     await expect(
-      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0" }),
+      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" }),
     ).resolves.toBeNull();
   });
 
@@ -292,6 +395,7 @@ describe("the request itself", () => {
         fetch: fetch as unknown as typeof globalThis.fetch,
         machine: WIN,
         current: "0.16.0",
+        channel: "beta",
         timeoutMs: 10,
       }),
     ).resolves.toBeNull();
@@ -309,6 +413,7 @@ describe("the request itself", () => {
       fetch: fetch as unknown as typeof globalThis.fetch,
       machine: WIN,
       current: "0.16.0",
+      channel: "beta",
     });
     expect(got?.version).toBe("0.17.0");
     expect(got?.asset?.name).toBe("Neo.Angband-0.17.0-win.zip");

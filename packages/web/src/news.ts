@@ -233,12 +233,27 @@ export interface TitleOptions {
    */
   canInstall: boolean;
   /**
-   * A newer version exists and this shell can install it. ABSENT rather than
-   * greyed, for the same reason as canInstall: a permanently dead "(U)pdate"
-   * would say an update is a thing that might arrive at any moment, when the
-   * truth is that there is no newer version today.
+   * This shell can update itself, so the row is worth having. Still ABSENT
+   * rather than greyed where it is meaningless - a browser tab cannot replace
+   * its own install.
+   *
+   * THIS USED TO MEAN "a newer version exists", and the row appeared only then,
+   * reasoned as: a permanently dead "(U)pdate" would say an update might arrive
+   * at any moment when the truth is there is no newer version today. On the
+   * desktop that premise turned out to be false in both halves. An update CAN
+   * arrive at any moment - the game asks GitHub every time it starts - and the
+   * row is no longer only an announcement: it is the one door to the update
+   * CHANNEL, and hiding the door whenever the player was up to date meant the
+   * setting could only be changed in the moments when changing it mattered
+   * least. Shimmering is what announces a waiting build; existing does not.
    */
   canUpdate: boolean;
+  /**
+   * ...and a build really is waiting. Only this may shimmer. Separated from
+   * `canUpdate` so "there is something to install" cannot be inferred from a
+   * row that is now present most of the time.
+   */
+  updateReady: boolean;
 }
 
 /** One title row: its key, its label, and whether it is enabled. */
@@ -522,7 +537,7 @@ export function showTitleScreen(
       if (hit?.row.enabled) finish(hit.row.choice);
     });
     paint();
-    if (opts.canUpdate) {
+    if (opts.updateReady) {
       paintShimmer();
       shimmerTimer = every(paintShimmer, TITLE_SHIMMER_MS);
     }

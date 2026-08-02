@@ -36,7 +36,11 @@ name: publish-npm
 
 on:
   push:
-    tags: ["v*"]
+    # NOT the `early` channel's tags. edge.yml tags every commit on master
+    # (v0.16.1-edge.42) so the updater has a version to compare; publishing each
+    # of those to npm would put a package per commit on the registry under a
+    # version nobody chose, and npm versions cannot be reused after unpublishing.
+    tags: ["v*", "!v*-edge.*"]
   workflow_dispatch:
     inputs:
       dry_run:

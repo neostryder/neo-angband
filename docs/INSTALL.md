@@ -366,6 +366,31 @@ Two shapes cannot replace themselves and say so instead of pretending:
 In those cases `U` opens the releases page. In the browser the same key reloads
 onto the new build, which the service worker has already fetched.
 
+#### How new a build you want
+
+The update screen has three channels, and `C` cycles them. The choice is
+remembered.
+
+| Channel | What you get | How often |
+| --- | --- | --- |
+| `stable` | Finished releases only | Nothing yet - see below |
+| `beta` | Pre-releases too, which is every `0.x` version | Every few weeks |
+| `early` | A build of every commit on master | Minutes after each push |
+
+**While the game is `0.x`, `stable` is empty**, because a version below 1.0 is a
+pre-release by definition and every release is flagged as one. New installs
+therefore start on `beta`; the day 1.0.0 ships, `stable` starts meaning
+something and new installs default to it.
+
+`early` builds are made by CI from whatever just landed on master. They pass the
+same test suite every commit passes and nothing else - **nobody has played
+them**. There are no release notes and no changelog entry, and only the newest
+one exists at any moment. Saves are still saves: a build that changes the save
+format ships the conversion for it like any other.
+
+Moving from `early` to a slower channel means going *backwards* to that
+channel's newest build, and the screen says so rather than calling it an update.
+
 ### What the desktop build adds
 
 - **Offline and native by default** - no browser, no address bar; launches like

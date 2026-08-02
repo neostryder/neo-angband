@@ -416,6 +416,47 @@ describe("the updater's two halves name the same repository", () => {
     }
   });
 
+  it("marks edge builds with the string the game looks for", () => {
+    /*
+     * CI stamps `-edge.<n>` (tools/version.mjs) and the game decides what an
+     * early-channel build IS by looking for `-edge.` in the version
+     * (EDGE_MARKER, update.ts). Two files, no import between them, and if they
+     * drift the whole early channel goes quiet: builds keep being published and
+     * `releasesIn("early", ...)` stops recognising any of them as edge builds,
+     * so they are filtered out of every channel including their own.
+     */
+    const marker = /EDGE_MARKER = "([^"]+)"/u.exec(read("packages/web/src/update.ts"))?.[1];
+    expect(marker, "no EDGE_MARKER in web/src/update.ts").toBeTruthy();
+    const stamped = /-edge\.\$\{nRaw\}/u.test(read("tools/version.mjs"));
+    expect(stamped, "tools/version.mjs no longer stamps -edge.<n>").toBe(true);
+    expect(marker).toBe("-edge.");
+  });
+
+  it("keeps per-commit tags away from the workflows that cut releases", () => {
+    /*
+     * edge.yml tags EVERY commit on master, because the updater orders builds by
+     * semver and a tag is where a release's version comes from. Both other
+     * tag-triggered workflows match `v*`, so without an exclusion each commit
+     * would also draft a GitHub Release and publish a set of npm packages -
+     * and an npm version, once published, cannot be reused.
+     */
+    for (const wf of ["release.yml", "publish-npm.yml"]) {
+      const text = read(`.github/workflows/${wf}`);
+      expect(text, wf).toMatch(/tags:\s*\["v\*",\s*"!v\*-edge\.\*"\]/u);
+    }
+  });
+
+  it("publishes an edge build as a pre-release, never as Latest", () => {
+    /* A non-prerelease becomes "Latest release" on the repository front page.
+     * A build of an arbitrary commit must never be the thing a newcomer lands
+     * on, and `stable` must never see it. */
+    const edge = read(".github/workflows/edge.yml");
+    expect(edge).toContain("--prerelease");
+    /* And it must clean up after itself, or the repository accumulates a
+     * release and a tag per commit forever. */
+    expect(edge).toContain("--cleanup-tag");
+  });
+
   it("promises the player the same directory the swap script actually skips", () => {
     /*
      * The update screen tells the player their characters survive, and names the
