@@ -30,6 +30,8 @@ import {
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
+  UPDATE_CHANNEL,
+  UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
 
@@ -72,6 +74,31 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   quit(): void {
     ipcRenderer.send(HOST_QUIT_CHANNEL);
+  },
+
+  /**
+   * The in-place updater. Asynchronous, unlike everything else on this bridge,
+   * because the middle operation moves 160 MB (see UPDATE_CHANNEL).
+   *
+   * The renderer names an OPERATION, never a path: `apply` swaps whatever the
+   * main process extracted for itself this session. A bridge that took a
+   * directory to swap in would let a compromised renderer replace the install
+   * with anything on disk.
+   */
+  update(op: string, arg?: unknown): Promise<unknown> {
+    return ipcRenderer.invoke(UPDATE_CHANNEL, op, arg) as Promise<unknown>;
+  },
+
+  /** Download progress. Returns the unsubscribe, so a closed page stops listening. */
+  onUpdateProgress(fn: (received: number, total: number) => void): () => void {
+    const listener = (_e: unknown, p: unknown): void => {
+      const { received, total } = (p ?? {}) as { received?: number; total?: number };
+      fn(received ?? 0, total ?? 0);
+    };
+    ipcRenderer.on(UPDATE_PROGRESS_CHANNEL, listener);
+    return () => {
+      ipcRenderer.removeListener(UPDATE_PROGRESS_CHANNEL, listener);
+    };
   },
 });
 

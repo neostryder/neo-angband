@@ -14,6 +14,7 @@
 
 import type { GlyphTerm } from "./term";
 import {
+  BASIC_COLORS,
   colorTextToAttr,
   colorToCss,
   COLOUR_WHITE,
@@ -208,7 +209,7 @@ export function titleLines(): readonly TitleLine[] {
  * resumes the most recent character - was worth keeping as a named row rather
  * than as the meaning of every key on the keyboard.
  */
-export type TitleChoice = "new" | "open" | "load" | "quit" | "install";
+export type TitleChoice = "new" | "open" | "load" | "quit" | "install" | "update";
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
@@ -231,6 +232,13 @@ export interface TitleOptions {
    * something that is not coming.
    */
   canInstall: boolean;
+  /**
+   * A newer version exists and this shell can install it. ABSENT rather than
+   * greyed, for the same reason as canInstall: a permanently dead "(U)pdate"
+   * would say an update is a thing that might arrive at any moment, when the
+   * truth is that there is no newer version today.
+   */
+  canUpdate: boolean;
 }
 
 /** One title row: its key, its label, and whether it is enabled. */
@@ -259,8 +267,31 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
   if (opts.canInstall) {
     rows.push({ choice: "install", key: "i", label: "(I)nstall locally", enabled: true });
   }
+  if (opts.canUpdate) {
+    rows.push({ choice: "update", key: "u", label: "(U)pdate", enabled: true });
+  }
   rows.push({ choice: "quit", key: "q", label: "(Q)uit", enabled: opts.canQuit });
   return rows;
+}
+
+/**
+ * The shimmer, which is an RF_ATTR_MULTI monster's and not a new invention.
+ *
+ * do_animation gives a multi-hued monster `randint1(BASIC_COLORS - 1)` on every
+ * animation frame (ui-display.c L1445-1447, engine.ts animateMonsterAttr), so a
+ * shimmering row is the same call on the same 250ms cadence. Two properties
+ * carry over deliberately:
+ *
+ *  - it never yields attr 0 (COLOUR_DARK), because randint1 is 1-based - a row
+ *    that blinked to black would read as a rendering fault;
+ *  - the RNG is INJECTED and the caller passes the display-only one, never the
+ *    game RNG. Upstream draws on the game RNG here, but the number of frames is
+ *    a front-end property: a browser at 250ms consumes draws a real terminal
+ *    never would, and the determinism ratchet would break on how long the player
+ *    left the title screen open.
+ */
+export function shimmerCss(randint1: (n: number) => number): string {
+  return colorToCss(randint1(BASIC_COLORS - 1));
 }
 
 /**
@@ -324,8 +355,20 @@ export function parseNewsLine(line: string): Run[] {
   return runs;
 }
 
-/** The gap between rows on the single prompt line. */
-const ROW_GAP = "   ";
+/**
+ * The gap between rows on the single prompt line, widest first.
+ *
+ * It has to be able to shrink. The prompt is ONE line (main-win.c:5476) and the
+ * row set is not fixed: a browser that can install offers (I)nstall locally, and
+ * any shell can offer (U)pdate, so the worst case is six rows totalling 70
+ * columns - which needs 85 at three spaces and does not fit an 80-column term.
+ *
+ * The failure mode if it did not shrink is the one worth naming: the line is
+ * printed left to right and clipped at `cols`, so the row that disappears is the
+ * LAST one, which is (Q)uit. Nothing would look broken - the screen would simply
+ * stop offering a way out - and that is exactly the shape of defect that hides.
+ */
+const ROW_GAPS = ["   ", "  ", " "] as const;
 
 /**
  * Lay the rows out along one line and report where each one's text sits, so a
@@ -337,12 +380,14 @@ export function titleRowSpans(
   rows: readonly TitleRow[],
   cols: number,
 ): { row: TitleRow; start: number; end: number }[] {
-  const width = rows.reduce((n, r) => n + r.label.length, 0) + ROW_GAP.length * (rows.length - 1);
-  let x = Math.max(0, Math.floor((cols - width) / 2));
+  const labels = rows.reduce((n, r) => n + r.label.length, 0);
+  const widthAt = (gap: number): number => labels + gap * (rows.length - 1);
+  const gap = ROW_GAPS.find((g) => widthAt(g.length) <= cols)?.length ?? 1;
+  let x = Math.max(0, Math.floor((cols - widthAt(gap)) / 2));
   const out: { row: TitleRow; start: number; end: number }[] = [];
   for (const row of rows) {
     out.push({ row, start: x, end: x + row.label.length - 1 });
-    x += row.label.length + ROW_GAP.length;
+    x += row.label.length + gap;
   }
   return out;
 }
@@ -362,14 +407,35 @@ export function titleRowSpans(
  * A tap ON a row still works: clicking a File menu item IS how upstream starts a
  * game. A tap anywhere else does nothing.
  */
+/**
+ * The animation cadence, matching main.ts's ANIM_INTERVAL_MS. Stated here rather
+ * than imported because main.ts imports THIS module; the test asserts the two
+ * agree, so the duplication cannot drift silently.
+ */
+export const TITLE_SHIMMER_MS = 250;
+
+/** What showTitleScreen needs that is not a fact about the rows. */
+export interface TitleDeps {
+  /** The display-only RNG - never the game's. See shimmerCss. */
+  readonly randint1: (n: number) => number;
+  /** Injected so a test can drive frames without a real clock. */
+  readonly setInterval?: (fn: () => void, ms: number) => unknown;
+  readonly clearInterval?: (handle: unknown) => void;
+}
+
 export function showTitleScreen(
   term: GlyphTerm,
   opts: TitleOptions,
+  deps?: TitleDeps,
 ): Promise<TitleChoice> {
   return new Promise<TitleChoice>((resolve) => {
     const rows = titleRows(opts);
     let spans: { row: TitleRow; start: number; end: number }[] = [];
     let promptRow = 0;
+    /* The shimmer's current colour. Held outside paint() so a full repaint (a
+     * resize) keeps the frame the player is looking at rather than flashing
+     * back to white. */
+    let shimmer = colorToCss(COLOUR_WHITE);
     const paint = (): void => {
       const { cols, rows: height } = term.size();
       term.clear();
@@ -411,13 +477,34 @@ export function showTitleScreen(
           span.start,
           promptRow,
           span.row.label.slice(0, cols - span.start),
-          span.row.enabled ? white : UI_DIM,
+          span.row.enabled ? (span.row.choice === "update" ? shimmer : white) : UI_DIM,
         );
       }
     };
+    /* One row repainted, not the screen. The terminal diffs against what is on
+     * the canvas anyway, but going through paint() four times a second would
+     * re-derive the whole 80x24 grid - including the art - for eight columns. */
+    const paintShimmer = (): void => {
+      const span = spans.find((s) => s.row.choice === "update");
+      const { cols } = term.size();
+      if (!span || span.start >= cols) return;
+      shimmer = shimmerCss(deps?.randint1 ?? (() => COLOUR_WHITE));
+      term.print(span.start, promptRow, span.row.label.slice(0, cols - span.start), shimmer);
+    };
+    const every = deps?.setInterval ?? ((fn: () => void, ms: number) => setInterval(fn, ms));
+    const stop = deps?.clearInterval ?? ((h: unknown) => {
+      clearInterval(h as ReturnType<typeof setInterval>);
+    });
+    let shimmerTimer: unknown = null;
     const finish = (choice: TitleChoice): void => {
       window.removeEventListener("keydown", onKey, true);
       term.onCellTap(null);
+      /* The title screen is a promise that resolves once; a timer left running
+       * would repaint row 23 over whatever screen comes next, forever. */
+      if (shimmerTimer !== null) {
+        stop(shimmerTimer);
+        shimmerTimer = null;
+      }
       resolve(choice);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -435,5 +522,9 @@ export function showTitleScreen(
       if (hit?.row.enabled) finish(hit.row.choice);
     });
     paint();
+    if (opts.canUpdate) {
+      paintShimmer();
+      shimmerTimer = every(paintShimmer, TITLE_SHIMMER_MS);
+    }
   });
 }

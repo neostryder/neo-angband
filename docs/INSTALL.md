@@ -347,6 +347,25 @@ Mac the Intel build is likelier to refuse to launch than to run slowly. If you
 are not sure which one you took, open **Activity Monitor** while the game is
 running and look at the **Kind** column: it should say *Apple*, not *Intel*.
 
+### Updating
+
+**The game updates itself.** When a newer version has been published, the title
+screen grows a shimmering **(U)pdate** row. Pressing `U` downloads the new
+version, checks it against the checksum GitHub published for it, restarts, and
+comes back on the new one. Your `neo-angband-data` folder - characters,
+settings, scores, mods - is not touched, and the old files are kept until the new
+ones are in place, so a failure leaves you on the version you already had.
+
+Two shapes cannot replace themselves and say so instead of pretending:
+
+- the **single-file portable** build and the **AppImage**, because both unpack to
+  a temporary folder each time they run - there is nothing on disk to update;
+- an install in a folder the OS will not let the game write to, such as
+  `Program Files`.
+
+In those cases `U` opens the releases page. In the browser the same key reloads
+onto the new build, which the service worker has already fetched.
+
 ### What the desktop build adds
 
 - **Offline and native by default** - no browser, no address bar; launches like
