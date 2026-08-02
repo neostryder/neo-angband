@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.15.1`. High level, what exists today:
+Current state of the project at version `0.15.2`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -216,9 +216,22 @@ Documentation accuracy:
   from the package `name`, and ours is scoped. Windows and macOS take theirs
   from `productName`, which is exactly why nobody found it: two thirds of the
   matrix went green and the draft release looked plausible until you counted the
-  files in it. `linux.executableName` is set now, and
-  `packages/desktop/src/packaging.test.ts` checks it in a second rather than
-  twenty minutes into a tag.
+  files in it. `linux.executableName` is set now.
+
+  The fix for that shipped broken, and the second failure is the more
+  instructive one. It used `desktopName` and `synchronizeDesktopName`, neither
+  of which exists - the option is `syncDesktopName` - and `LinuxConfiguration`
+  sets `additionalProperties: false`, so electron-builder rejected the whole
+  configuration. It validates the entire object on **every** platform, so a bad
+  key under `linux` failed Windows and macOS too: the first attempt built two
+  platforms of three, the second built none.
+
+  The test written to prevent exactly this asserted `linux.desktopName` was
+  truthy, and passed - the config and the test were written in the same minute
+  by the same hand with the same wrong key, so the test agreed with its author
+  instead of with the tool. `packages/desktop/src/packaging.test.ts` now
+  validates the config against **electron-builder's own `scheme.json`**, which
+  ships inside the package being configured and moves when it moves.
 
 ### Changed
 
