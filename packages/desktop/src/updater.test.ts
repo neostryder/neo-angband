@@ -19,6 +19,7 @@ import {
   extractCommand,
   isAllowedAssetUrl,
   isWritable,
+  run,
   sha256File,
   shapeOf,
   stageArchive,
@@ -127,31 +128,76 @@ describe("hashing and extracting real files", () => {
      * symlinks a .app needs; a naively unzipped bundle looks right and will not
      * launch. */
     expect(extractCommand("/x/a.zip", "/y", "darwin").cmd).toBe("ditto");
-    expect(extractCommand("/x/a.zip", "/y", "win32").cmd).toBe("tar");
     expect(extractCommand("/x/a.tar.gz", "/y", "linux").args).toContain("-xzf");
+    expect(extractCommand("/x/a.tar.gz", "/y", "linux").cmd).toBe("tar");
+  });
+
+  it("names System32's tar on Windows, because `tar` on PATH may be GNU tar", () => {
+    /* GNU tar fails this job twice: it cannot read zip, which is the format the
+     * Windows build ships in, and it treats `C:\...` as a remote host because of
+     * the colon. A POSIX-style shell puts it ahead of System32 on PATH, so the
+     * bare name is a coin flip decided by how the game was launched. */
+    const { cmd } = extractCommand("C:\\w\\a.zip", "C:\\w\\new", "win32", "C:\\WINDOWS");
+    expect(cmd).toBe("C:\\WINDOWS\\System32\\tar.exe");
+    /* A trailing separator on SystemRoot must not produce a doubled one. */
+    expect(extractCommand("a.zip", "b", "win32", "C:\\WINDOWS\\").cmd).toBe(
+      "C:\\WINDOWS\\System32\\tar.exe",
+    );
+    /* And it is an absolute path, which is the whole point - not something PATH
+     * gets a say in. */
+    expect(path.win32.isAbsolute(cmd)).toBe(true);
   });
 
   it("really extracts a real archive into a staging tree", async () => {
-    /* tar.gz on every platform: GNU tar cannot read zip, so asserting the zip
-     * path here would pass on Windows and fail in CI for a reason that has
-     * nothing to do with this code. Windows takes the zip branch in production
-     * and bsdtar handles it. */
+    /* A tar.gz on every platform, but staged for the HOST platform. The format
+     * is fixed because building a zip fixture portably is its own problem, and
+     * Windows takes the zip branch in production where bsdtar handles it. The
+     * platform is the host's because passing a fixed "linux" here would send
+     * Windows down the bare-`tar` branch - which is the branch this file now
+     * exists to prove nothing uses. */
     const src = path.join(scratch, "src");
     fs.mkdirSync(path.join(src, "locales"), { recursive: true });
     fs.writeFileSync(path.join(src, "Neo Angband.exe"), "pretend binary");
     fs.writeFileSync(path.join(src, "locales", "en-US.pak"), "pak");
     const archive = path.join(scratch, "payload.tar.gz");
     const { spawnSync } = await import("node:child_process");
-    const tar = spawnSync("tar", ["-czf", archive, "-C", src, "."], { stdio: "ignore" });
-    expect(tar.status, "tar is required for this test").toBe(0);
+    /* Built with the SAME binary the updater would use, resolved the same way.
+     * Reaching for a bare `tar` here is what hid the GNU-tar problem: under a
+     * POSIX shell this test failed with `Cannot connect to C:` and read as a
+     * flaky test rather than as the extractor being the wrong program. */
+    const { cmd: tarBin } = extractCommand("x.tar.gz", "y", process.platform);
+    const tar = spawnSync(tarBin, ["-czf", archive, "-C", src, "."], { encoding: "utf8" });
+    expect(tar.status, `creating the fixture with ${tarBin} failed: ${tar.stderr ?? ""}`).toBe(0);
 
     const root = path.join(scratch, "install");
     fs.mkdirSync(root, { recursive: true });
-    const staging = await stageArchive(archive, root, "linux");
+    const staging = await stageArchive(archive, root, process.platform);
     expect(fs.existsSync(path.join(staging, "Neo Angband.exe"))).toBe(true);
     expect(fs.existsSync(path.join(staging, "locales", "en-US.pak"))).toBe(true);
     /* And it staged INSIDE the work directory, not over the install. */
-    expect(staging.startsWith(workDir(root, "linux"))).toBe(true);
+    expect(staging.startsWith(workDir(root, process.platform))).toBe(true);
+  });
+
+  it("says which tool is missing, because the player reads this message", async () => {
+    /* update-ui.ts prints the error string onto the screen verbatim. Node's own
+     * message is `spawn <cmd> ENOENT`, which names nothing the player can act
+     * on - and says nothing about the fact that the manual download still
+     * works. */
+    const err = await run("neo-angband-no-such-extractor", ["-x"]).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain("neo-angband-no-such-extractor");
+    expect((err as Error).message).toContain("unpack the update");
+    expect((err as Error).message).not.toContain("ENOENT");
+  });
+
+  it("still reports a non-zero exit, which is a different failure", async () => {
+    /* The ENOENT branch must not swallow the case where the tool RAN and refused
+     * - a corrupt archive is the likely cause and it needs its own sentence. */
+    const err = await run("tar", ["-xf", path.join(scratch, "does-not-exist.tar")]).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/tar exited [1-9]/u);
   });
 
   it("puts the work directory beside a .app, never inside it", () => {
