@@ -107,13 +107,20 @@ Everything in this block came out of one play session on the 0.15.3 build.
   way to reach *Move earlier*, *Move later* or *Back*, and no way to scroll the
   prose either. The pane is capped now, says so when it cuts, and a *Read the full
   description* row opens the whole thing in a viewer that scrolls.
-- **The macOS app was signed with nothing at all.** With no Apple Developer
-  identity, electron-builder skips signing entirely - which on Apple Silicon is
-  not "unsigned" but unrunnable, reported by macOS as *"is damaged and can't be
-  opened"*, which reads as a bad download and sends people to the Intel build and
-  Rosetta. The bundle is ad-hoc signed after packaging now. **Unconfirmed as the
-  cause of the slow-on-an-M4 report** - this project has no Mac to reproduce on -
-  but wrong on its own terms either way.
+- **The macOS bundle was never sealed.** With no Apple Developer identity,
+  electron-builder skips signing and says so in its own log ("skipped macOS
+  application code signing"). Measured against the artifacts rather than
+  inferred: the **0.15.3** arm64 zip contains **zero `_CodeSignature` seals** - no
+  `Contents/_CodeSignature/CodeResources` on the app, and none on any of its four
+  helper executables (GPU, Renderer, Plugin, and the plain helper), each of which
+  is a separate binary macOS wants signed. The 0.16.0 zip has nine. Apple Silicon
+  refuses an arm64 binary that is not validly signed and reports it as *"is
+  damaged and can't be opened"* - which reads as a bad download and sends people
+  to the Intel build and Rosetta 2, so a signing fault presents as a speed
+  complaint. The bundle is ad-hoc signed and verified after packaging now
+  (`codesign --deep --sign -`, confirmed in the release log for both
+  architectures). **Still unconfirmed as the cause of the slow-on-an-M4 report** -
+  this project has no Mac to reproduce on - but wrong on its own terms either way.
 - Toggling anything in the mod manager no longer throws the cursor back to the top
   of the list.
 
