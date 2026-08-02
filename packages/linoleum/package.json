@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-linoleum",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "private": true,
   "description": "Linoleum tile-pack tools: convert bundled legacy tilesheets into loose-pack Linoleum format",
   "author": "neostryder (RPGM Tools)",

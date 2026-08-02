@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.15.2`. High level, what exists today:
+Current state of the project at version `0.15.3`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -232,6 +232,16 @@ Documentation accuracy:
   instead of with the tool. `packages/desktop/src/packaging.test.ts` now
   validates the config against **electron-builder's own `scheme.json`**, which
   ships inside the package being configured and moves when it moves.
+
+  Then a third: with the schema satisfied, the Linux job reached
+  `FpmTarget.checkOptions()` and stopped on *"Please specify project
+  homepage"* - the `.deb` target wants packaging metadata no other target asks
+  for. Three tags to find three problems in one config file, each one hidden
+  behind the last, is what a build configuration costs when the only thing that
+  exercises it is a release. The requirements are now read off
+  `computeFpmMetaInfoOptions()` and checked together, and the whole thing was
+  verified by running electron-builder locally until it got past every gate -
+  which is what should have happened before the first tag.
 
 ### Changed
 
