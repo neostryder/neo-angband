@@ -174,6 +174,8 @@ describe("a mod folder on disk supplies working code", () => {
       core: {} as never,
       assetUrl: () => Promise.resolve(null),
       data: {},
+      prefs: { get: () => null, set: () => undefined },
+      newCharacter: false,
       log: () => undefined,
     });
     expect(hooks?.messageText?.("You feel less thirsty.")).toBe(
@@ -395,6 +397,8 @@ function ctx(id: string): Parameters<NonNullable<ModPlugin["hooks"]>>[0] {
     core: {} as never,
     assetUrl: () => Promise.resolve(null),
     data: {},
+    prefs: { get: () => null, set: () => undefined },
+    newCharacter: false,
     log: () => undefined,
   };
 }

@@ -59,7 +59,8 @@ export type Fold =
   | "single-slot" // only one may hold it; a later claim displaces the earlier silently
   | "all-must-agree" // every claim runs and any refusal decides
   | "chained" // each claim transforms the previous one's result, so the last speaks last
-  | "any-yes"; // one claim asking is enough
+  | "any-yes" // one claim asking is enough
+  | "all-observe"; // a notification: every claim is told, and none of them answers
 
 /** Whether a fold silently drops somebody's contribution. */
 export function foldDiscards(fold: Fold): boolean {
@@ -143,6 +144,8 @@ export function describeContested(slot: ContestedSlot, nameOf: NameOf = (id) => 
       return `${who} all change ${slot.what}, in load order, each one seeing the last one's result.`;
     case "any-yes":
       return `${who} all ask for ${slot.what}; one asking is enough, so they do not conflict.`;
+    case "all-observe":
+      return `${who} are all told about ${slot.what}; none of them answers, so they do not conflict.`;
   }
 }
 

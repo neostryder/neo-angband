@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.17.0`. High level, what exists today:
+Current state of the project at version `0.18.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -46,6 +46,19 @@ Current state of the project at version `0.17.0`. High level, what exists today:
 
 ### Added
 
+- **Three mod seams, so a mod can remember something.** A mod could already keep
+  data with a CHARACTER - its save bag - and had nowhere at all to keep data
+  about the PLAYER, so anything it learned died with the character. `ctx.prefs`
+  is that second place, one JSON value per mod, held outside every save and
+  scoped to the mod's own id. `ModHooks.optionsChanged` tells a mod when the
+  player has finished changing their settings in the `=` menu (a notification,
+  the first hook core does not read an answer from - folded `all-observe`, so
+  every listening mod is told and none of them can overrule another).
+  `ctx.newCharacter` says whether this session's character was just created or
+  loaded from a save, which is the one thing a mod cannot work out for itself:
+  turn 0 is not the answer, because the game autosaves the moment a character is
+  born. Together they are what the QoL mod's *Remember my settings* is built
+  from, and none of them names it.
 - **A log, with a level chosen by the build.** A finished release logs warnings
   and errors; a `0.x` pre-release and a per-commit `edge` build log what the game
   is doing as well. The level comes from `ENGINE_VERSION` rather than from the

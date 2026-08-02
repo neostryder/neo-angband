@@ -573,3 +573,94 @@ describe("RNG invariance (the maintainer's #1 anxiety)", () => {
     expect(draws).toBe(0);
   });
 });
+
+describe("the '=' menu tells the mods (ModHooks.optionsChanged)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  /** A state whose modHooks records every notification it is given. */
+  function watchedState(): { state: GameState; seen: unknown[] } {
+    const seen: unknown[] = [];
+    const state = makeState();
+    (state as { modHooks?: unknown }).modHooks = {
+      optionsChanged: (o: unknown) => void seen.push(o),
+    };
+    return { state, seen };
+  }
+
+  it("fires once, with the new values, after a toggle", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const { state, seen } = watchedState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "y"); // rogue_like_commands -> true
+    expect(seen).toHaveLength(0); // not yet: the menu is still open
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as { values: Record<string, boolean> }).values["rogue_like_commands"]).toBe(
+      true,
+    );
+  });
+
+  it("does NOT fire when the player only looked", async () => {
+    /* The hook is named for a change. Opening the menu and pressing ESC is not
+     * one, and a mod woken for it would rewrite its stored preferences with the
+     * values it already had - harmless here, and exactly the kind of "why is
+     * this being written on every screen open" that is hard to trace later. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const { state, seen } = watchedState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+    expect(seen).toEqual([]);
+  });
+
+  it("notices the scalars, not just the booleans", async () => {
+    /* delay_factor / hitpoint_warn / lazymove_delay are plain fields on
+     * OptionState rather than entries in the option table, so a fingerprint
+     * built from the booleans alone would miss all three. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const { state, seen } = watchedState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "h"); // Set hitpoint warning
+    await tick();
+    press(win, "7");
+    press(win, "Enter");
+    await tick();
+    press(win, "Escape");
+    await done;
+    expect(state.options!.hitpointWarn).toBe(7);
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as { hitpointWarn: number }).hitpointWarn).toBe(7);
+  });
+
+  it("is silent when no mod is listening", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const state = makeState(); // no modHooks at all
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "y");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await expect(done).resolves.toBeUndefined();
+  });
+});
