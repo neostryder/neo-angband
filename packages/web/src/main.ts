@@ -192,6 +192,8 @@ import type {
   LoreDeps,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents } from "@rpgm-tools/neo-angband-core";
+import { describeLoadFailure, describeMigration } from "./save-recovery.js";
+import { installCrashScreen } from "./crash-screen.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -260,7 +262,7 @@ import {
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
-import { onSessionTaint, sessionTaint, taintNotice } from "./mod-taint";
+import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -739,6 +741,22 @@ function isContinuation(): boolean {
   }
 }
 
+/**
+ * A save this build could not load stays exactly as it is on disk.
+ *
+ * Dropping the active id is the whole mechanism. The boot below starts a
+ * throwaway game behind the character select, and a throwaway game with an
+ * active id autosaves INTO that id - so the slot holding the character we just
+ * failed to read would be overwritten by an empty level-1 nobody asked for,
+ * within one turn, with no prompt. Clearing the id sends those autosaves to a
+ * fresh slot instead and leaves the original byte-for-byte intact, which is
+ * what makes "try again on the next build" and "export it and send it to us"
+ * both still possible.
+ */
+function keepSaveUntouched(): void {
+  setActiveId(null);
+}
+
 function bootGame(): ReturnType<typeof startGame> {
   // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
   // request for a specific reproducible run), or the in-game New Character
@@ -773,6 +791,7 @@ function bootGame(): ReturnType<typeof startGame> {
            * that rather than anything that sounds like damage - a player told
            * their character is corrupt may well delete it. */
           loadedNote = `Save written by a newer version (${decoded.unknownCodec}); update to load it.`;
+          keepSaveUntouched();
         } else if (decoded.save) {
           // Faithful: a clean resume shows no "welcome" line (the original just
           // restores the game). Only a failed integrity check - a web-storage
@@ -788,16 +807,32 @@ function bootGame(): ReturnType<typeof startGame> {
           // rehydrated if re-enabled). Hardcoding core-only here would strip a
           // content mod's world entities on the first reload after enabling it.
           const loadHooks = activeModHooks();
-          return loadGame(pack, decoded.save, presentNamespaces(), {
+          const loaded = loadGame(pack, decoded.save, presentNamespaces(), {
             modRules: activeModRules(),
             /* The behaviour every enabled mod contributes, recomputed on load for
              * the same reason the flags are: which mods are on is a client
              * setting, not part of the save. */
             ...(loadHooks ? { modHooks: loadHooks } : {}),
           });
+          /* An older save format was converted forward on the way in
+           * (core session/save-migrate.ts). Say so - silently changing a
+           * character's file is how a player finds out too late - and say
+           * loudest whatever could not be carried across. */
+          if (loaded.saveMigration) {
+            loadedNote = describeMigration(loaded.saveMigration);
+          }
+          return loaded;
         }
-      } catch {
-        loadedNote = "Could not read the save; starting a new game.";
+      } catch (err) {
+        /* THE SAVE IS NOT DELETED AND NOT OVERWRITTEN. Whatever went wrong, the
+         * bytes that are already on disk are the player's character, and this
+         * build failing to read them is not evidence they are worthless: a
+         * later build may read them, and the export in the character select
+         * still works on the raw slot. So drop the active id - that is what
+         * stops the throwaway game booted behind the character select from
+         * autosaving over the slot - and say what happened. */
+        keepSaveUntouched();
+        loadedNote = describeLoadFailure(err);
       }
     }
     // Not resuming: if any characters are saved, the title's character select
@@ -866,6 +901,16 @@ function bootGame(): ReturnType<typeof startGame> {
   });
 }
 
+/* BEFORE THE GAME EXISTS, not after.
+ *
+ * `bootGame()` on the next line runs at module top level, so a throw inside it
+ * takes the whole module with it and the player is left with a canvas that
+ * never paints - no message, nothing in the UI to report, and on the desktop
+ * build no obvious way to open a console and find out why. Installing the
+ * handlers first means that failure arrives as a screen with the stack on it
+ * and a button that copies it. Every later error - a rejected promise in a
+ * menu, a renderer fault - lands there too. See crash-screen.ts. */
+installCrashScreen(ENGINE_VERSION);
 const game = bootGame();
 // Strip the one-shot boot params (?new / ?seed / ?depth) from the visible URL
 // once they have been consumed. They are read into `params` / `seed` / `depth`
@@ -7264,7 +7309,43 @@ function advance(): void {
   // killed a rat.") across every subsequent step. Free-action/prompt commands
   // that set `message` directly do not call advance(), so they are unaffected.
   message = "";
-  const status = runGameLoop(state, registry);
+  /* THE ENGINE IS NOT EXEMPT FROM ITS OWN CONTAINMENT RULE.
+   *
+   * A mod's hook throwing mid-turn is caught, named and taints the session
+   * (mod-taint.ts). A PORT BUG throwing mid-turn did none of that: the
+   * exception escaped this function, the pump stopped, the screen never
+   * repainted, and the player was left looking at the frame before their
+   * keypress with no message and no idea the game had stopped. What saved their
+   * character was the same accident mod-taint.ts was written to stop relying
+   * on - the throw unwinding past the tail autosave - and it is not enough,
+   * because 'S', a level change and pagehide all write too. So a player who hit
+   * a bug and pressed S to be safe saved the half-finished turn over the good
+   * one.
+   *
+   * Rethrowing is not an option and neither is carrying on. Taint the session
+   * (which shuts every writer, not just this one), then let the shared notice
+   * say what happened - the same modal a mod fault raises, worded for a core
+   * fault. This is an alpha; the bug it reports is the point. */
+  let status;
+  try {
+    status = runGameLoop(state, registry);
+  } catch (e) {
+    taintSession({
+      id: null,
+      hook: "taking a turn",
+      why: e instanceof Error ? e.message : String(e),
+    });
+    /* Repaint, so the screen is not frozen on the pre-keypress frame while the
+     * notice comes up. The state may be half-updated; drawing it is still more
+     * honest than drawing the state before the command the player gave. */
+    try {
+      render();
+    } catch {
+      /* The renderer is downstream of whatever broke. The notice is a terminal
+       * overlay and does not need the map to have painted. */
+    }
+    return;
+  }
   if (status === LOOP_STATUS.DEATH_CONFIRM) {
     /* take_hit suspended after the C-order died_from assignment and before
      * either final death or EVENT_CHEAT_DEATH. Keep this an in-terminal prompt
@@ -7979,7 +8060,12 @@ onSessionTaint((t) => {
     void openModal(async () => {
       await showTextScreen(
         term,
-        "A mod stopped the game mid-turn",
+        /* Never blame a mod for the game's own bug: `id === null` is a core
+         * fault, and a title saying "a mod stopped the game" would send the
+         * player to the mod manager to hunt for a culprit that is not there. */
+        t.id === null
+          ? "The game stopped mid-turn"
+          : "A mod stopped the game mid-turn",
         taintNotice(t).map((text) => ({ text })),
         "[ Press ESC for the reload prompt ]",
       );

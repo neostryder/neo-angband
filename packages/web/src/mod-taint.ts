@@ -33,11 +33,24 @@
 
 /** The fault that ended this session's right to save. */
 export interface SessionTaint {
-  /** The mod whose hook threw. */
-  readonly id: string;
-  /** Which extension point it threw from, by its ModHooks member name. */
+  /**
+   * The mod whose hook threw, or **null when the game itself threw**.
+   *
+   * The engine is not exempt from the reasoning above - a port bug that throws
+   * halfway through a turn leaves exactly the same half-updated state a mod's
+   * hook does, and for a while the only thing standing between that state and
+   * the player's save was the same accident: the exception unwinding past the
+   * tail autosave. Except that 'S', a level change and pagehide all save too,
+   * so a player who hit a mid-turn bug and pressed S wrote it over their
+   * character. Core faults come through here now for that reason.
+   */
+  readonly id: string | null;
+  /**
+   * Which extension point it threw from, by its ModHooks member name; for a
+   * core fault, what the game was doing ("taking a turn").
+   */
   readonly hook: string;
-  /** The thrown error's message, as the mod worded it. */
+  /** The thrown error's message, as the mod - or the engine - worded it. */
   readonly why: string;
 }
 
@@ -92,6 +105,24 @@ export function resetSessionTaint(): void {
  * save, and what to do now.
  */
 export function taintNotice(t: SessionTaint): string[] {
+  /* The game's own fault. Same consequence for the save, different thing to do
+   * about it: there is no mod to switch off, and the person who needs to hear
+   * about it is us. */
+  if (t.id === null) {
+    return [
+      "The game hit a bug while it was in the middle of a turn.",
+      "",
+      `While ${t.hook}: ${t.why}`,
+      "",
+      "It has STOPPED SAVING. Your last save is untouched and still good - it",
+      "just will not be updated again, because this turn may have finished",
+      "half-done and writing that over your character would be worse.",
+      "",
+      "Reload to carry on from that save. Please report this one: what you were",
+      "doing, and the line above.",
+      "github.com/neostryder/neo-angband/issues  -  discord.gg/YegtwbHTBQ",
+    ];
+  }
   return [
     `The mod "${t.id}" failed while the game was in the middle of a turn.`,
     "",
