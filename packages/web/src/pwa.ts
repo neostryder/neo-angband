@@ -18,6 +18,9 @@
 // A reload here is safe: play state is autosaved on pagehide/visibilitychange/
 // beforeunload, and boot always returns to the title + character select, so the
 // player simply lands on the current build with their save intact.
+
+import { isStale, WEB_BUILD_ID, WEB_BUILD_ID_FILE } from "./build-id";
+
 /**
  * The browser's own install prompt, held for the (I)nstall locally page.
  *
@@ -96,23 +99,165 @@ export function isStandalone(scope: typeof globalThis = globalThis): boolean {
 }
 
 /**
- * A newer build has taken control and this page is still running the old one.
+ * Is the code running in this page the code the site is serving?
  *
- * The web build's (U)pdate row reads this, not the GitHub API: on the web
- * "installed locally" means the service worker's cache, and the worker already
- * knows. Nothing to download, nothing to verify - the new build is on the
- * machine and the only step left is the reload.
+ * THIS USED TO BE AN INFERENCE AND IS NOW A COMPARISON, which is the change
+ * worth understanding. The only signal was `controllerchange` - a service worker
+ * taking control - and that is a different question wearing the same clothes. A
+ * worker can take control without the build changing (a fresh visit claiming the
+ * page) and, more to the point, the build can change without this page ever
+ * seeing an event: the worker only looks when something asks it to, and a page
+ * left open in an installed PWA asks once, at load.
+ *
+ * So the page now compares two strings: the build id compiled into this bundle,
+ * and the one in `build-id.json` fetched with `cache: "no-store"`. That file is
+ * kept out of the precache manifest on purpose (see vite.config.ts) - a cached
+ * freshness check answers with the stale build's own id and concludes it is up
+ * to date forever, which is the exact failure this replaces.
+ *
+ * The worker events are KEPT as a second trigger rather than replaced. They are
+ * free, they fire on the machine that has already downloaded the new build, and
+ * two independent signals for the same fact is the right number when the cost of
+ * missing it is a player stuck on an old build with no way to say so.
  */
 let swUpdateReady = false;
+
+/** How often a page that stays open re-asks. Half an hour. */
+export const FRESHNESS_POLL_MS = 30 * 60 * 1000;
+
+/** How long the freshness fetch is allowed to take before it is abandoned. */
+export const FRESHNESS_TIMEOUT_MS = 6000;
 
 /** Whether the title screen should offer (and shimmer) an update. */
 export function webUpdateReady(): boolean {
   return swUpdateReady;
 }
 
-/** Take the update the worker has already fetched. */
-export function applyWebUpdate(): void {
+/**
+ * Ask the server what it is serving. Answers false on ANY failure.
+ *
+ * Offline, rate-limited, behind a captive portal, or served by something that
+ * does not have the file: none of those is evidence that this build is old, and
+ * a false positive here puts an (U)pdate row in front of a player that reloads
+ * them onto the same build forever.
+ */
+export async function isBuildStale(
+  fetchFn: typeof globalThis.fetch = globalThis.fetch.bind(globalThis),
+  file: string = WEB_BUILD_ID_FILE,
+): Promise<boolean> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => {
+    ctl.abort();
+  }, FRESHNESS_TIMEOUT_MS);
+  try {
+    const res = await fetchFn(`./${file}?t=${String(Date.now())}`, {
+      cache: "no-store",
+      signal: ctl.signal,
+    });
+    if (!res.ok) return false;
+    return isStale(WEB_BUILD_ID, await res.json());
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Set by applyWebUpdate so the controllerchange handler does not race it. */
+let reloading = false;
+
+/**
+ * Take the newer build.
+ *
+ * THREE STEPS, AND A BARE RELOAD IS NOT ENOUGH. If the worker has not yet
+ * noticed the new build, reloading serves the cached old one out of its own
+ * cache and the row comes straight back - so the worker is asked to check
+ * first. If it has noticed but is only WAITING (which happens when a previous
+ * worker did not skip waiting), it will not activate while this page is open,
+ * so it is asked to, and the reload waits for it to take over.
+ *
+ * The wait is bounded and only entered when there is something waiting, so the
+ * ordinary case is still a plain reload with no added delay.
+ */
+export async function applyWebUpdate(): Promise<void> {
+  reloading = true;
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.update().catch(() => undefined);
+      const waiting = reg.waiting;
+      if (waiting) {
+        const claimed = new Promise<void>((resolve) => {
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            resolve();
+          }, { once: true });
+          setTimeout(resolve, 2000);
+        });
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        await claimed;
+      }
+    }
+  } catch {
+    /* No service worker at all, or a browser that refuses to talk about it.
+     * The reload below is still the right move and is all a plain page needs. */
+  }
   location.reload();
+}
+
+/** The four things the freshness watch needs, injected so it can be tested. */
+export interface FreshnessDeps {
+  /** Answers "is this page out of date". Defaults to asking the server. */
+  check?: () => Promise<boolean>;
+  /** Called the first time the answer is yes. */
+  onStale?: () => void;
+  every?: (fn: () => void, ms: number) => void;
+  onVisible?: (fn: () => void) => void;
+  onOnline?: (fn: () => void) => void;
+}
+
+/**
+ * Ask now, and keep asking.
+ *
+ * SEPARATE FROM THE SERVICE-WORKER HALF, and callable with fakes, because "the
+ * check exists" and "something calls the check" are different claims and this
+ * project has shipped the first without the second before. A watcher wired to
+ * nothing looks identical to a watcher that has nothing to report.
+ *
+ * Three moments beyond the first ask, and each is a case the old code missed: a
+ * page left open for hours in an installed PWA (the interval), a tab the player
+ * comes back to (visibility), and a laptop that was shut when the deploy
+ * happened (online).
+ */
+export function startFreshnessWatch(deps: FreshnessDeps = {}): () => void {
+  const check = deps.check ?? ((): Promise<boolean> => isBuildStale());
+  const onStale =
+    deps.onStale ??
+    ((): void => {
+      swUpdateReady = true;
+    });
+  let told = false;
+  const poll = (): void => {
+    void check().then((stale) => {
+      if (!stale || told) return;
+      told = true;
+      onStale();
+    });
+  };
+  poll();
+  try {
+    (deps.every ?? ((fn, ms) => setInterval(fn, ms)))(poll, FRESHNESS_POLL_MS);
+    (deps.onOnline ?? ((fn) => window.addEventListener("online", fn)))(poll);
+    (deps.onVisible ??
+      ((fn) => {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") fn();
+        });
+      }))(poll);
+  } catch {
+    /* No window or document: the first ask still happened, and that is the one
+     * that matters for a page that is about to be looked at. */
+  }
+  return poll;
 }
 
 /**
@@ -120,6 +265,15 @@ export function applyWebUpdate(): void {
  *   True at the title screen, false mid-dungeon.
  */
 export function installAutoUpdate(canReloadNow?: () => boolean): void {
+  /*
+   * THE BUILD-ID CHECK RUNS EVEN WITHOUT A SERVICE WORKER, which is why it is
+   * before the guard rather than inside it. A browser with workers disabled, a
+   * private window, an http:// origin during development - all of them still
+   * cache, and all of them can be running an old bundle. The old code returned
+   * at the guard below and the feature was simply off for every one of them.
+   */
+  startFreshnessWatch();
+
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;
   }
@@ -129,7 +283,6 @@ export function installAutoUpdate(canReloadNow?: () => boolean): void {
   // the first `controllerchange` is that initial worker claiming a fresh visit
   // (clientsClaim) - NOT an update - so we must not reload for it.
   const hadController = !!sw.controller;
-  let reloading = false;
   sw.addEventListener("controllerchange", () => {
     if (!hadController || reloading) return;
     // A NEW BUILD IS READY. Whether to take it now is a question about where the
@@ -150,6 +303,20 @@ export function installAutoUpdate(canReloadNow?: () => boolean): void {
   const check = (reg: ServiceWorkerRegistration): void => {
     reg.update().catch(() => {
       /* offline or transient: try again on the next focus */
+    });
+    /*
+     * A worker that installs and then WAITS is invisible to controllerchange,
+     * because it never takes control while this page is open. That is the state
+     * a page reaches when the previous worker did not skip waiting, and without
+     * this listener the new build sits on the machine, fully downloaded, with
+     * nothing offering it.
+     */
+    reg.addEventListener("updatefound", () => {
+      const installing = reg.installing;
+      if (!installing) return;
+      installing.addEventListener("statechange", () => {
+        if (installing.state === "installed" && sw.controller) swUpdateReady = true;
+      });
     });
   };
 

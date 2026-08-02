@@ -13,6 +13,7 @@
  */
 
 import { hasFacet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { log } from "../../logging";
 import { isShippedMod } from "../../mod-store";
 
 /* Each sandbox.ts becomes a module-Worker constructor (Vite ?worker).
@@ -77,12 +78,12 @@ export function discoverPlugins(): Map<string, DiscoveredPlugin> {
     const id = m[1];
     const rawManifest = manifests.get(id);
     if (!rawManifest) {
-      console.warn(`[plugins] ${id}/sandbox.ts has no manifest.json; skipping`);
+      log.warn("plugins", `${id}/sandbox.ts has no manifest.json; skipping`);
       continue;
     }
     const manifest = toManifest(rawManifest);
     if (!hasFacet(manifest, "plugin")) {
-      console.warn(`[plugins] ${id} ships sandbox.ts but manifest shape is "${manifest.shape}"; skipping`);
+      log.warn("plugins", `${id} ships sandbox.ts but manifest shape is "${manifest.shape}"; skipping`);
       continue;
     }
     byId.set(id, { manifest, createWorker: () => new ctor() });

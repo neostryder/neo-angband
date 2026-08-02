@@ -35,6 +35,7 @@
  */
 
 import { faultMessage, reportModFault } from "./mod-problems";
+import { log } from "./logging";
 import type { ModPlugin } from "./mod-plugin";
 
 /** A loaded plugin, narrowed to what teardown needs (mod-code.ts's LoadedModPlugin fits). */
@@ -110,7 +111,7 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
         loaded.id,
         `uninstall() failed, so anything it meant to clean up or save was not: ${faultMessage(err)}`,
       );
-      console.error(`[mod:${loaded.id}] uninstall() failed:`, err);
+      log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
     }
   }
 
@@ -128,7 +129,7 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
         held.id,
         `its autoplayer could not be released before the reload: ${faultMessage(err)}`,
       );
-      console.error(`[mod:${held.id}] releasing the autoplayer failed:`, err);
+      log.error(`mod:${held.id}`, `releasing the autoplayer failed:`, err);
     }
   }
 

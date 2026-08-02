@@ -116,10 +116,13 @@ export function setLogLevel(level: LogLevel): void {
  * Verbose, which is hidden by default, which is the correct default for it.
  */
 export function consoleSink(rec: LogRecord, line: string): void {
+  /* eslint-disable no-console -- this IS the console sink; the rule exists to
+   * send every other caller through here. */
   if (rec.level === "error") console.error(line);
   else if (rec.level === "warn") console.warn(line);
   else if (rec.level === "info") console.info(line);
   else console.debug(line);
+  /* eslint-enable no-console */
 }
 
 /** The half of the preload bridge this module needs. */

@@ -29,6 +29,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { WORK_DIRNAME, installRoot, swapPlan, swapScript, updatability } from "./update-plan.js";
 import type { Updatability } from "./update-plan.js";
+import { unpackArchive } from "./unpack.js";
 
 /**
  * Path arithmetic for the TARGET platform, not the host's.
@@ -120,47 +121,56 @@ export async function sha256File(file: string): Promise<string> {
 }
 
 /**
- * Extract an archive, using the tool that is already on the machine.
+ * Windows program paths, named absolutely rather than looked up on PATH.
  *
- * No new dependency, and on macOS that is not merely convenient: `ditto` is the
- * only one of these that preserves the extended attributes and symlinks a signed
- * `.app` needs. Unzipping a bundle with a naive zip library produces something
- * that looks right and will not launch.
+ * THE BUG THIS EXISTS FOR, in full, because it came back once already. The
+ * extractor used to be a bare `tar`, and PATH does not promise which tar that
+ * is: Git Bash, MSYS2 and Cygwin all prepend GNU tar, which cannot read zip -
+ * the format the Windows build ships in - and reads any `C:\...` path as a
+ * REMOTE HOST because of the colon. Both failures are total and neither depends on the
+ * archive. It was found only because a test had been failing the whole time and
+ * read as flaky.
  *
- * WINDOWS TAKES THE ABSOLUTE PATH TO SYSTEM32, NOT THE BARE NAME. The dependency
- * here is specifically bsdtar, which has shipped in Windows since 10 build 17063
- * and reads zip as well as tar - and `tar` on PATH is not reliably that program.
- * A POSIX-style shell (Git Bash, MSYS2, Cygwin) puts GNU tar first, and GNU tar
- * fails this job twice over: it cannot read zip at all, which is the format the
- * Windows build ships in, and it reads `C:\...` as a REMOTE HOST because of the
- * colon, answering `Cannot connect to C: resolve failed`. Neither failure
- * depends on the archive, so both are total.
+ * The extractor is gone now (see unpack.ts), but the swap script is still handed
+ * to a shell, and `powershell.exe` is the same lookup with the same hazard one
+ * function below the one that was fixed. Naming System32 removes the question.
+ */
+export function systemProgram(name: string, systemRoot?: string): string {
+  const root = (systemRoot ?? process.env["SystemRoot"] ?? "C:\\Windows").replace(/[\\/]+$/u, "");
+  return `${root}\\System32\\${name}`;
+}
+
+/**
+ * The extractor for a platform: a program, or null when we do it ourselves.
  *
- * Windows shortcuts and Explorer hand over the system PATH, where System32 wins
- * anyway - so this is unreachable for most players and certain for anyone who
- * launches the game from such a shell. Electron already requires Windows 10
- * 1809, which is later than the build that added bsdtar, so the file is there.
+ * Only macOS still shells out, and only to `/usr/bin/ditto`, which is part of
+ * the operating system rather than something a player installs - so the rule
+ * this change was made for (the game must not expect an installed tool) holds
+ * either way.
+ *
+ * WHAT WAS MEASURED, because the usual reason given for ditto turns out not to
+ * apply here. Reading `Neo.Angband-0.16.0-arm64-mac.zip` with unpack.ts's own
+ * reader: 601 entries, 14 symlinks (the `Electron Framework.framework/Versions/
+ * Current` chain), unix modes on all 601 with 348 executable, no zip64 - and
+ * **zero `__MACOSX` entries**. There is no AppleDouble metadata in the archive
+ * at all, so there are no resource forks or extended attributes for ditto to
+ * reattach. The only things it does that a plain unzip must also do are the
+ * symlinks and the mode bits, and unpack.ts does both.
+ *
+ * So this stays for exactly one reason, and it is not a technical one: nobody
+ * on this project has a Mac, and "the bundle still LAUNCHES" is not a property
+ * any test here can observe. Both round trips that could be checked were -
+ * the Windows zip and the Linux tar.gz each extract byte-for-byte identically
+ * to bsdtar's output over 77 entries - and this is the third, unchecked.
+ * Switching it is one line plus one person who can then open the app.
  */
 export function extractCommand(
   archive: string,
   into: string,
   platform: string,
-  systemRoot?: string,
-): {
-  cmd: string;
-  args: string[];
-} {
-  if (platform === "darwin") {
-    return { cmd: "ditto", args: ["-x", "-k", archive, into] };
-  }
-  const tar =
-    platform === "win32"
-      ? `${(systemRoot ?? process.env["SystemRoot"] ?? "C:\\Windows").replace(/[\\/]+$/u, "")}\\System32\\tar.exe`
-      : "tar";
-  if (archive.endsWith(".tar.gz")) {
-    return { cmd: tar, args: ["-xzf", archive, "-C", into] };
-  }
-  return { cmd: tar, args: ["-xf", archive, "-C", into] };
+): { cmd: string; args: string[] } | null {
+  if (platform === "darwin") return { cmd: "/usr/bin/ditto", args: ["-x", "-k", archive, into] };
+  return null;
 }
 
 /**
@@ -267,8 +277,9 @@ export async function stageArchive(
   const staging = P.join(workDir(root, platform), "new");
   fs.rmSync(staging, { recursive: true, force: true });
   fs.mkdirSync(staging, { recursive: true });
-  const { cmd, args } = extractCommand(archive, staging, platform);
-  await run(cmd, args);
+  const external = extractCommand(archive, staging, platform);
+  if (external) await run(external.cmd, external.args);
+  else await unpackArchive(archive, staging, platform);
   if (platform === "darwin") {
     const bundle = fs.readdirSync(staging).find((n) => n.endsWith(".app"));
     if (!bundle) throw new Error("the macOS archive contained no .app bundle");
@@ -305,9 +316,16 @@ export function launchSwap(args: {
   const script = paths(args.platform).join(work, isWin ? "swap.ps1" : "swap.sh");
   fs.writeFileSync(script, swapScript(plan, args.pid, args.platform), "utf8");
   if (!isWin) fs.chmodSync(script, 0o755);
+  /*
+   * The one thing that still cannot be done in-process: a running program cannot
+   * replace its own files, so the swap has to outlive us. `powershell.exe` and
+   * `/bin/sh` are components of their operating systems rather than tools a
+   * player installs - but the Windows one is named ABSOLUTELY, because "whatever
+   * PATH hands over" is exactly what put GNU tar in the extractor's place.
+   */
   const child = isWin
     ? spawn(
-        "powershell.exe",
+        systemProgram("WindowsPowerShell\\v1.0\\powershell.exe"),
         ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
         { detached: true, stdio: "ignore", windowsHide: true },
       )

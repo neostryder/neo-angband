@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.16.0`. High level, what exists today:
+Current state of the project at version `0.17.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -44,9 +44,59 @@ Current state of the project at version `0.16.0`. High level, what exists today:
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
 
+### Added
+
+- **A log, with a level chosen by the build.** A finished release logs warnings
+  and errors; a `0.x` pre-release and a per-commit `edge` build log what the game
+  is doing as well. The level comes from `ENGINE_VERSION` rather than from the
+  update channel, because a player who installed a beta and then set their
+  channel to `stable` is still running the beta - and it starts answering `warn`
+  by itself at `1.0.0`, the same way the default channel starts answering
+  `stable`. On desktop each launch writes a file to `<game folder>/logs`, pruned
+  to the last ten; in a browser the last 2,000 lines are held in memory. It can
+  be overridden per launch with `?log=debug`, or from the report screen.
+- **"Report a problem", in the Escape menu.** Writes a file naming the version
+  and build, the platform, the size and pixel ratio of the window, the mods you
+  have enabled, your character, and the last 500 log lines - after showing you
+  that list, so the decision to send it is made having read what is in it.
+  **Nothing is uploaded anywhere**: it lands in `<game folder>/logs` on desktop
+  and downloads in a browser, and you choose who sees it. Your home directory is
+  taken out of every path on the way in, including the JSON-escaped form that
+  every logged Windows path actually arrives in.
+
 ### Changed
 
-Everything in this block came out of one play session on the 0.15.3 build.
+- **Updates unpack in-process, with no external program on Windows or Linux.**
+  The updater used to hand the archive to `tar`, and PATH does not promise which
+  tar that is - a POSIX-style shell (Git Bash, MSYS2, Cygwin) puts GNU tar first,
+  which cannot read zip at all and treats any `C:\...` path as a remote host.
+  Pinning System32's copy fixed that instance and left the shape of it: a game
+  depending on a program it does not ship, resolved on a machine nobody here can
+  inspect. It now reads zip and tar.gz itself using `node:zlib`, which is inside
+  the runtime Electron already is - handling symlinks, unix mode bits, the ustar
+  prefix, and refusing a path or a link that leaves the staging folder. Verified
+  against the real 0.16.0 artifacts: the Windows `.zip` and the Linux `.tar.gz`
+  each extract **byte-for-byte identically to bsdtar** across 77 entries,
+  including a 215 MB member streamed through inflate without buffering.
+  **macOS still uses `/usr/bin/ditto`** - part of the OS, not something a player
+  installs - because nobody on this project has a Mac to confirm the resulting
+  bundle still launches. The swap script still needs a shell to outlive the
+  process it is replacing; `powershell.exe` is now named absolutely, since that
+  was the same PATH lookup one function below the one that was fixed.
+- **The web build knows whether it is stale, instead of guessing.** The
+  `(U)pdate` row used to appear only when a service worker took control, which is
+  a different question: a worker can claim a page without the build changing, and
+  a build can change without a page that stays open ever hearing about it. Each
+  build now stamps an id into the bundle and writes the same id to
+  `build-id.json`, which the page fetches with `cache: "no-store"` - so "the code
+  running here is not the code the site is serving" is a string comparison. The
+  file is kept out of the service worker's precache, because a cached freshness
+  check answers with the stale build's own id and reports up-to-date forever. The
+  page re-asks on a timer, when the tab comes back, and when the network returns,
+  and taking the update asks the worker to fetch and activate before reloading -
+  a bare reload was served the old build out of the worker's own cache.
+
+Everything below came out of one play session on the 0.15.3 build.
 
 - **The terminal paints what changed, not the screen.** Every drawing call used
   to hit the canvas immediately, so one move of the player cost **1,469 cell
@@ -109,17 +159,10 @@ Everything in this block came out of one play session on the 0.15.3 build.
   overwrite a pixel of each neighbour. No extra cells are painted, so the
   overdraw budget is untouched. Invisible at a ratio of 1 or 2, which is why
   every earlier test missed it.
-- **The updater could pick the wrong `tar` on Windows.** `extractCommand` asked
-  for the bare name, and its dependency is specifically bsdtar - which reads the
-  zip the Windows build ships in. A POSIX-style shell (Git Bash, MSYS2, Cygwin)
-  puts GNU tar ahead of System32 on PATH, and GNU tar cannot read zip at all and
-  treats `C:\...` as a remote host, answering `Cannot connect to C: resolve
-  failed`. Explorer and shortcuts hand over the system PATH where System32 wins,
-  so this reached anyone who launched the game from such a shell. The absolute
-  path to System32's `tar.exe` is used now.
-- **A missing extractor reported `spawn tar ENOENT`.** The update screen prints
+- **A missing extractor reported `spawn ditto ENOENT`.** The update screen prints
   that string verbatim, so it named nothing the player could act on. It now says
-  which tool is missing and what it was needed for.
+  which tool is missing and what it was needed for. Only macOS can still reach
+  it - see *Updates unpack in-process* above.
 - **A hybrid mod appeared twice in the manager.** `qol` and `bug-fixes` declare
   `facets: ["content", "plugin"]`, so each is listed once by the content discovery
   and once by the plugin discovery - both correct, neither aware of the other, and

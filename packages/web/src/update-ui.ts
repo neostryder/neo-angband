@@ -58,6 +58,12 @@ export interface UpdateView {
    * "0.16.0 is available" to someone running 0.16.1-edge.9 reads as a bug.
    */
   readonly older?: boolean | undefined;
+  /**
+   * The build this page was compiled from, for the web, where there is no
+   * version to quote: every deploy of a release carries the same version
+   * string and a different build id.
+   */
+  readonly buildId?: string | undefined;
   /** The folder that would be replaced, shown so the player knows what moves. */
   readonly installRoot?: string | undefined;
   /** The file this machine would fetch. */
@@ -184,7 +190,16 @@ export function updateLines(v: UpdateView): UpdateLine[] {
   }
 
   /* phase === "offer" */
-  if (v.older) {
+  if (v.how === "web") {
+    /*
+     * The web has no version to name. A deploy happens on every push and they
+     * are all `0.17.0` as far as the version string goes, so what changed is a
+     * BUILD - and printing "Neo Angband a newer version is available" to make
+     * the shared sentence fit was worse than having its own.
+     */
+    say("A newer version of the game is ready.", "head");
+    say(`This page is running build ${v.buildId ?? "unknown"}.`, "dim");
+  } else if (v.older) {
     /* Leaving `early`. Calling this an update would be false, and saying
      * nothing at all would leave the player wondering why the channel they just
      * chose has no build in it. */
@@ -195,17 +210,26 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say(`You are running ${v.current}.`, "dim");
   }
   say("");
-  say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
-  say("");
 
   if (v.how === "web") {
-    say("The new version is already downloaded.", "good");
-    say("");
-    say("Pressing ENTER reloads the page onto it, which takes a moment and", "body");
-    say("nothing else. Your characters live in this browser and stay where", "body");
-    say("they are.", "body");
+    /* No channel line: the web has none. What the page runs is whatever the
+     * site last deployed, and offering a setting that does nothing is worse
+     * than the blank space.
+     *
+     * THIS USED TO SAY "the new version is already downloaded", which was true
+     * of the only way staleness was detected then - a service worker that had
+     * fetched and installed the new build. The build-id check answers the same
+     * question from the server, so a page can now know it is out of date BEFORE
+     * anything is downloaded, and that sentence became a claim the screen could
+     * not stand behind. */
+    say("Pressing ENTER fetches it and reloads the page onto it. That takes a", "body");
+    say("moment and nothing else - your characters live in this browser and", "body");
+    say("stay exactly where they are.", "body");
     return out;
   }
+
+  say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
+  say("");
 
   if (v.how === "swap") {
     say("ENTER downloads it and restarts the game on the new version.", "good");

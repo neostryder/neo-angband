@@ -12,6 +12,7 @@
  */
 
 import { hasFacet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { log } from "../../logging";
 import { isShippedMod } from "../../mod-store";
 import type { TrustedPlugin } from "./runtime";
 
@@ -67,13 +68,12 @@ export function discoverTrustedPlugins(): Map<string, DiscoveredTrustedPlugin> {
     const id = m[1];
     const rawManifest = manifests.get(id);
     if (!rawManifest) {
-      console.warn(`[trusted] ${id}/trusted.ts has no manifest.json; skipping`);
+      log.warn("trusted", `${id}/trusted.ts has no manifest.json; skipping`);
       continue;
     }
     const manifest = toManifest(rawManifest);
     if (!hasFacet(manifest, "plugin")) {
-      console.warn(
-        `[trusted] ${id} ships trusted.ts but manifest shape is "${manifest.shape}"; skipping`,
+      log.warn("trusted", `${id} ships trusted.ts but manifest shape is "${manifest.shape}"; skipping`,
       );
       continue;
     }
