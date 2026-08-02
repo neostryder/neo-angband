@@ -161,8 +161,51 @@ function usage(message) {
   console.error("");
   console.error("  node tools/version.mjs              print every site, fail on drift");
   console.error("  node tools/version.mjs set <version|patch|minor|major>");
+  console.error("  node tools/version.mjs edge <n>     stamp an edge build (CI only)");
   console.error("");
   process.exit(2);
+}
+
+/** Write `target` to all fourteen sites, refusing a pattern that matches nothing. */
+function writeEverywhere(target) {
+  for (const site of versionSites()) {
+    const text = read(site.file);
+    if (site.pattern.exec(text) === null) {
+      throw new Error(
+        `${site.file}: the pattern for ${site.what} matched nothing, so the edit ` +
+          `would have silently done nothing. Fix the pattern in tools/version.mjs.`,
+      );
+    }
+    writeFileSync(
+      join(repoRoot, site.file),
+      text.replace(site.pattern, (_all, before, _old, after) => `${before}${target}${after}`),
+    );
+  }
+}
+
+/**
+ * Stamp a throwaway version for an `early` channel build: `0.16.1-edge.42`.
+ *
+ * A SEPARATE VERB, not a looser `set`. `set` refuses anything that is not one of
+ * the three legal successors, and that guard is the reason a release cannot be
+ * a typo - weakening it so CI could pass a prerelease string would trade a real
+ * protection for the convenience of one caller. Nothing here is ever committed:
+ * the workflow stamps, builds, and throws the working tree away.
+ *
+ * The PATCH is bumped before the suffix is attached, because a prerelease sorts
+ * BELOW its own triple. `0.16.0-edge.1` would be older than the 0.16.0 the
+ * player already has, so the update would never be offered; `0.16.1-edge.1` is
+ * above 0.16.0 and below both 0.16.1 and 0.17.0, which is exactly what an
+ * unreleased build off master is.
+ */
+function edge(nRaw) {
+  if (!/^\d+$/u.test(nRaw)) usage(`edge needs a build number, got: ${nRaw}`);
+  const current = projectVersion();
+  const target = `${successors(current).patch}-edge.${nRaw}`;
+  writeEverywhere(target);
+  console.log(`[version] ${current} -> ${target} across ${versionSites().length} sites`);
+  /* The workflow reads this line to learn the tag it should create. */
+  console.log(`::edge-version::${target}`);
 }
 
 function set(requested, { release }) {
@@ -188,19 +231,7 @@ function set(requested, { release }) {
     );
   }
 
-  for (const site of versionSites()) {
-    const text = read(site.file);
-    if (site.pattern.exec(text) === null) {
-      throw new Error(
-        `${site.file}: the pattern for ${site.what} matched nothing, so the edit ` +
-          `would have silently done nothing. Fix the pattern in tools/version.mjs.`,
-      );
-    }
-    writeFileSync(
-      join(repoRoot, site.file),
-      text.replace(site.pattern, (_all, before, _old, after) => `${before}${target}${after}`),
-    );
-  }
+  writeEverywhere(target);
   console.log(`[version] ${current} -> ${target} (${kind}) across ${versionSites().length} sites`);
   console.log(`[version] next: update CHANGELOG.md, then \`git tag v${target} && git push --tags\``);
 }
@@ -213,6 +244,9 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   if (positional[0] === "set") {
     if (positional[1] === undefined) usage("set needs a version or an increment name");
     set(positional[1], { release: flags.includes("--release") });
+  } else if (positional[0] === "edge") {
+    if (positional[1] === undefined) usage("edge needs a build number");
+    edge(positional[1]);
   } else if (positional.length > 0) {
     usage(`unknown command: ${positional[0]}`);
   } else {

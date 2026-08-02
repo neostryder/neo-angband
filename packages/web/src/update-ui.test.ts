@@ -25,6 +25,7 @@ const base: UpdateView = {
   how: "swap",
   current: "0.16.0",
   version: "0.17.0",
+  channel: "beta",
   installRoot: "C:\\Games\\Neo Angband",
   assetName: "Neo.Angband-0.17.0-win.zip",
   phase: "offer",
@@ -151,6 +152,45 @@ describe("when it fails", () => {
   it("still offers the manual download", () => {
     expect(text(failed)).toContain("https://example.invalid/releases");
     expect(updateFooter(failed)).toContain("try again");
+  });
+});
+
+describe("channels on the screen", () => {
+  it("names the channel and says what it means, not what GitHub calls it", () => {
+    /* "pre-release" is release-engineering vocabulary and tells a player
+     * nothing about what they are about to run. */
+    const t = text({ ...base, channel: "early" });
+    expect(t).toContain("Channel: early");
+    expect(t).toMatch(/every commit/u);
+    expect(text({ ...base, channel: "stable" })).toMatch(/finished releases only/u);
+  });
+
+  it("is reachable with nothing to install, or the setting would be unreachable", () => {
+    /* The row used to appear only when an update existed, which hid the only
+     * door to the channel except in the moments it mattered least. */
+    const idle: UpdateView = { ...base, phase: "uptodate" };
+    expect(text(idle)).toContain("newest build on your channel");
+    expect(updateFooter(idle)).toContain("C to change channel");
+  });
+
+  it("calls a move back to a slower channel what it is", () => {
+    /* 0.16.0 offered to someone running 0.16.1-edge.9 is not an update, and an
+     * unlabelled "is available" would read as a bug. */
+    const back: UpdateView = { ...base, current: "0.16.1-edge.9", version: "0.16.0", older: true };
+    const t = text(back);
+    expect(t).toContain("Moving back to 0.16.0");
+    expect(t).toMatch(/which is newer/u);
+    expect(t).not.toContain("0.16.0 is available");
+    expect(updateFooter(back)).toContain("move back and restart");
+  });
+
+  it("offers no channel in a browser, which has none to offer", () => {
+    /* A page is whatever the site last deployed; there is nothing to choose. */
+    expect(updateFooter({ ...base, how: "web" })).not.toContain("channel");
+  });
+
+  it("does not offer a channel change mid-download", () => {
+    expect(updateFooter({ ...base, phase: "downloading" })).not.toContain("channel");
   });
 });
 
