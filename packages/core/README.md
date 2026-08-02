@@ -32,7 +32,7 @@ import { Rng, ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-co
 const rng = new Rng(1234);
 console.log(rng.damroll(3, 6), rng.damroll(3, 6), rng.damroll(3, 6)); // 9 13 8
 
-console.log(ENGINE_VERSION, PARITY_BASELINE); // 0.14.0 4.2.6
+console.log(ENGINE_VERSION, PARITY_BASELINE); // 0.15.0 4.2.6
 ```
 
 Two entry points:

@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.14.0`. High level, what exists today:
+Current state of the project at version `0.15.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -46,6 +46,49 @@ Current state of the project at version `0.14.0`. High level, what exists today:
 
 ### Added
 
+- **A save is converted forward, never rejected.** Every version of the save
+  format below the current one now has a conversion step
+  (`packages/core/src/session/save-migrate.ts`), and `saveMigrationsAreComplete()`
+  fails the build if `SAVE_VERSION` is raised without one. This closes the
+  highest-cost defect in the game: `loadGame` used to throw on any version
+  mismatch, the web boot caught it with a bare `catch`, and a player whose
+  character was completely intact was told *"Could not read the save; starting a
+  new game"* - then the throwaway game it started autosaved over the slot it had
+  just failed to read. A save from a **newer** build now says so and asks you to
+  update (`SaveFromFutureError`), and a save that cannot be opened for any
+  reason is left byte-for-byte alone. Proved by round trip: a real save is
+  walked backwards into the version-1 and version-2 shapes and migrated forward
+  again, and the result must equal what it started as.
+- **Downloadable builds.** A tag now builds the desktop app for Windows, macOS
+  and Linux and attaches them, plus the static site as a zip, to a draft GitHub
+  Release with notes cut from this file (`.github/workflows/release.yml`,
+  `tools/changelog-section.mjs`). Before this, a tag published three npm
+  packages and nothing a player could run; the only install path was
+  `git clone && pnpm install`, which is a developer preview rather than a public
+  alpha. The builds are not code-signed and every release page says so.
+- **A crash says what happened instead of going black.** `bootGame()` runs at
+  module top level and the whole UI is `await`ed menus, so a throw during boot
+  or a rejected promise in any menu left a canvas that never painted - with the
+  explanation in a console the player does not have open. A DOM overlay
+  (`packages/web/src/crash-screen.ts`) now catches `error` and
+  `unhandledrejection`, leads with the fact that saved characters were not
+  touched, and offers the stack as one copyable block with the version in it.
+  The desktop shell covers the three cases the page cannot: a dead renderer
+  process, a wedged one, and a failed load.
+- **The engine is no longer exempt from its own containment rule.** A mod hook
+  throwing mid-turn was caught, named and stopped the session saving; a *port
+  bug* throwing mid-turn did none of that. What protected the save was the
+  accident of the exception unwinding past the tail autosave - and `S`, a level
+  change and pagehide all write too, so a player who hit a bug and pressed S to
+  be safe wrote the half-finished turn over their character. `runGameLoop` is
+  now wrapped, and a core fault taints the session exactly as a mod fault does,
+  with a notice worded for a bug in the game rather than one in a mod.
+- **Issue templates, and a way to reach a person.** Four forms (a parity
+  difference, a bug, the mod system, an idea) that ask for the version, the
+  surface and the enabled mods, so a report does not cost a round trip to
+  become actionable. `config.yml` points at the RPGM Tools Discord for anything
+  that is a question rather than a report, and at the right repository for a
+  bug in a specific mod. Plus `SECURITY.md` and a PR template.
 - **Mod authors can declare compatibility, and the engine resolves it.** A manifest
   gains `sections` (named parts of a mod, each independently switchable and each
   carrying a priority BAND rather than a numeric offset, so a part is placed
@@ -166,6 +209,55 @@ Documentation accuracy:
 
 ### Changed
 
+- **The mods screen speaks English, and fits.** The row for a mod was built by
+  concatenation and then SLICED at column 80 by the menu, so a mod called "Bug
+  Fixes (unofficial patch set)" with both save ratchets set built an 85-column
+  row and what a player saw was the name, the version, the kind, and none of the
+  three warnings. The name is elided now and every badge survives; `NOT WORKING`
+  is the only badge on a broken row, because a mod that is not running is not
+  affecting this game's determinism either. `mod-viewport.test.ts` measures this
+  by painting the real manager at 80 columns and at 400 and requiring the rows to
+  be identical, so the failure names the string and how much of it was lost -
+  which is not something a `length <= 76` assertion in a test can do without
+  every caller remembering the three columns the row tag takes.
+
+  The wording went with it: "Requests 2 capability(ies)" is nobody's English,
+  and "Non-deterministic: enabling this permanently marks the save
+  non-reproducible" is three pieces of jargon about a decision the next keypress
+  makes. They are now "Asks for 2 permissions" and "Permanent once on: the same
+  seed stops giving the same game."
+- **A mod you turned on and then uninstalled gets a row saying so.** It used to
+  print `enabled mod "x" not found; skipping` to the console on every launch and
+  show an empty mod list - reproducible by reinstalling the game over a profile
+  that had mods enabled, which is what an updating alpha tester does. The row
+  offers the one useful action.
+- **The action rows on the mods screen stopped moving.** They were lettered
+  positionally, so installing a mod shifted every one of them down and the key
+  that meant *Install a mod...* yesterday meant *Auto-sort* today. They carry
+  fixed digit tags now, the way upstream pins the rows that must stay put
+  (`option_actions[]`, `ui-options.c`). *Install a mod...* is also the first
+  action rather than the fourth: the list above it is empty on a fresh install,
+  so the row under an empty list should be the one that ends the emptiness.
+- **The parity claim is back, with its asterisk.** README states it again
+  because it is now measured at full power: 1000 levels per depth from the port
+  against 1000 from the real compiled C, depths 1-20, 82 hypothesis tests
+  Bonferroni-corrected at alpha = 0.01 - and on both level-feeling metrics the
+  port sits closer to the C than two runs of the C sit to each other. The
+  asterisk is load-bearing and states three things: **with no mods enabled**, not
+  bit-exact, and the monster species mix is measured and *not* gated because the
+  G-test rejects the port against itself at p = 2e-97 on pit-clustered counts.
+  `docs/PARITY.md` carries the table.
+- **`pnpm c:parity` stopped reporting a verdict it cannot reach.** It compared
+  means against a fixed band at 30 runs and printed `parity: FAIL` with 119
+  diffs - a number that is an artefact of the instrument, on an instrument whose
+  own replacement documents why it cannot separate a real divergence from an
+  under-sampled one. It is now framed as the diagnostic it is, and names the
+  command that actually decides.
+- **`dist-desktop/` is emptied before it is filled**, so the folder holds the
+  build you just made rather than every build you have ever made. A
+  `Neo Angband-0.1.0-portable.exe` from July had been sitting beside the current
+  one for a month, indistinguishable in a file listing except by a version
+  number nobody reads before double-clicking.
 - **The later mod wins, on every layer and every hook.** The mod manager ships a row
   reading *"Move later (loads last, wins conflicts)"*, and that sentence was false of
   two layers. Tiles resolved FIRST-wins, so moving a tile mod later made it lose; and

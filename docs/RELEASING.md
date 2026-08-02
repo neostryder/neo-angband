@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.14.0 && git push --tags
+git tag v0.15.0 && git push --tags
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -152,7 +152,7 @@ same clean green as one that worked.
 ### Which number
 
 **Semver, and the tool refuses anything that is not one of the three successors.**
-From `0.13.0` the only legal next versions are `0.13.1`, `0.14.0` and `1.0.0`;
+From `0.14.0` the only legal next versions are `0.14.1`, `0.15.0` and `1.0.0`;
 a typo, a skipped minor or a number that goes backwards is rejected with the three
 alternatives printed. Choose between them by what changed for a *consumer* of the
 published packages:
@@ -182,6 +182,42 @@ no `0.12.0` gap to fill. Its next release is the next tag, like everything else.
 Each mod carries its own version and moves on its own schedule. A mod whose
 released tag is iterated takes a MINOR bump rather than a patch, because a
 published tag is pinned by digest in `RECOMMENDED_MODS` and must never be moved.
+
+## If the release changes the save format
+
+`SAVE_VERSION` in `packages/core/src/session/save.ts` is not a version number you
+bump — it is a **promise you take on.** Raising it obliges the same commit to add
+the step that reads the version below it, in
+`packages/core/src/session/save-migrate.ts`:
+
+```ts
+const V3_TO_V4: SaveMigration = {
+  from: 3,
+  to: 4,
+  summary: "one line, present tense, for the changelog and the player's message",
+  step(save, ids, notes) { /* ... */ save.version = 4; return save; },
+};
+export const SAVE_MIGRATIONS = [V1_TO_V2, V2_TO_V3, V3_TO_V4];
+```
+
+Forget it and `save-migrate.test.ts` fails, naming the step it wants. That check
+exists because the alternative shipped for three versions: `loadGame` threw, the
+web boot caught it, and a player whose character was completely intact was told
+*"Could not read the save; starting a new game"* — in a permadeath game, the
+worst sentence the software can produce. It then autosaved over the slot.
+
+Three rules for a step:
+
+- **It may not throw.** An id the running pack cannot resolve costs that one
+  entity and adds a line to `notes`, which the player is shown. Refusing the
+  whole save to protect one item is the wrong trade.
+- **It moves exactly one version.** Version 1 reaches version 5 by running four
+  steps, each written against the format immediately before it, so nobody has to
+  remember version 1 when designing version 5.
+- **Add a round-trip case** to `save-migrate.test.ts`. The tests there work by
+  walking a real save *backwards* into the old shape and migrating it forward
+  again; that is what catches a step that converts objects in the pack but not
+  the ones a monster is carrying.
 
 ## Why the tarball is checked and not just the source
 
@@ -238,7 +274,7 @@ things came out of that and both are permanent:
   `npm access set status=public <package>`.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
   version with `node tools/version.mjs set <v>`, delete the tag
-  (`git tag -d v0.14.0 && git push --delete origin v0.14.0`), re-tag.
+  (`git tag -d v0.15.0 && git push --delete origin v0.15.0`), re-tag.
 
 ## The mod repositories are released separately
 
@@ -248,7 +284,7 @@ is not in that path. Releasing one is:
 
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
-2. Commit, then tag (`v0.14.0`) and push the tag.
+2. Commit, then tag (`v0.15.0`) and push the tag.
 3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
    put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
    from the local build: the digest has to describe the bytes GitHub actually serves, and

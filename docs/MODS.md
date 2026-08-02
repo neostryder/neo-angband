@@ -16,6 +16,44 @@ loaded through the same pipeline as any third-party mod. Moddability is a
 ratified pillar (PORT_PLAN.md decisions 13-21): every aspect of the game is
 open to mods, including capabilities that do not exist in the base resources.
 
+## Getting a mod, in one paragraph
+
+Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one from the
+list, press Enter. The game downloads it from its own repository at a pinned
+release tag and checks every file against a SHA-256 that shipped inside your copy
+of the game, so a download that has been altered or truncated never becomes an
+installed mod. Then turn it on and choose **Apply changes and reload**. Nothing
+else is required, and nothing needs a folder, an account or a tool.
+
+Two other routes exist and neither is the normal one. **A folder**: point the
+game at a directory of mods (Chrome and Edge, or the desktop build's own
+`mods/` folder) - this is how you work on a mod you are writing, and how an
+external manager like Vortex or MO2 deploys into it. **A URL parameter**:
+`?mods=qol,neo-linoleum` overrides the enabled set for one session without
+touching what is saved.
+
+### Where each mod lives
+
+Every first-party mod is a separate repository with its own issues, releases and
+tests - file a bug about what a mod *does* there, and a bug about the mod
+*system* against the game.
+
+| Mod | Repository | What it is |
+| --- | --- | --- |
+| `qol` | [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) | Genuinely new conveniences ([docs](modding/QOL.md)). Not Angband's own `=` options, which ship in core at their upstream defaults. |
+| `bug-fixes` | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps ([docs](modding/BUG_FIXES.md)). |
+| `neo-linoleum` | [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine - loose packs of individually named PNGs - plus all six upstream tile sets converted to it: 9161 files of art that belongs to the mod. Not the source of the game's own tiles, which are core content ([docs](LINOLEUM.md)). |
+| `borg` | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | Angband's automatic player, ported onto the agent API ([docs](BORG_AS_MOD.md)). |
+
+### Writing one
+
+Start at [modding/README.md](modding/README.md). The short version: a mod is a
+folder with a `manifest.json`, and everything else is optional - data files to
+add or patch records, PNGs for a tile pack, or a single `plugin.js` for code.
+[modding/PLUGINS.md](modding/PLUGINS.md) covers the plugin ABI and
+[modding/MOD_COMPATIBILITY.md](modding/MOD_COMPATIBILITY.md) covers what the
+engine promises your mod across releases.
+
 ## What is core, and what is a mod
 
 The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
@@ -29,24 +67,15 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   the extensibility SEAMS (part of the mod architecture); mods ship the
   features that ride them.
 - **NO MOD SHIPS IN THE BOX.** A fresh install is Angband 4.2.6 and nothing
-  else. The three first-party mods each live in their own repository, carry their
+  else. The four first-party mods each live in their own repository, carry their
   own release tags and tests, and arrive through the mod manager's *Install a
   mod...* row - the same route, and the same digest verification, a third-party
-  mod uses:
-  - **`qol`** - genuinely new conveniences (`docs/modding/QOL.md`). Not Angband's
-    own `=` options, which ship in core at their upstream defaults.
-  - **`bug-fixes`** - an unofficial patch set for upstream bugs core deliberately
-    keeps (`docs/modding/BUG_FIXES.md`).
-  - **`neo-linoleum`** - an alternative loose-pack tile engine, NOT the source of
-    the game's tile sets, which are core content from `lib/tiles/list.txt`. It
-    ships all six upstream sets converted to loose packs: 9161 files of art that
-    belongs to the mod. A converted pack is proven to draw pixel-for-pixel what
-    its tilesheet draws (`docs/LINOLEUM.md`, decision 26).
+  mod uses. See [Where each mod lives](#where-each-mod-lives) below.
 
   This is the load-bearing form of "the seams are real". A modding system whose
   author's own mods take a private path into the build is a modding system nobody
   has tested; bundling them would have hidden every defect in the install path
-  behind three mods that never used it. Emptying the bundle is what forced the
+  behind four mods that never used it. Emptying the bundle is what forced the
   download route, the folder code loader and the plugin ABI to actually work.
 - **Cheaty mods are allowed.** A mod may add, patch, replace, or remove
   anything - up to the rules that make the game Angband, or a roguelike at
