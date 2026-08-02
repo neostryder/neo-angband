@@ -292,22 +292,59 @@ export function noFolderPickerLines(): ScreenLine[] {
  * wording is assertable.
  */
 export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuItem {
+  /* A mod that is switched on and is not there. No version, no kind, no flags -
+   * none of them mean anything without a manifest, and printing "v-  (content)"
+   * beside a mod that does not exist reads as a mod that does. */
+  if (m.missing) {
+    return {
+      label: `[x] ${m.name}  - NOT INSTALLED`,
+      color: C_DANGER,
+      hint: "Switched on, but the mod itself is gone. Enter to remove it.",
+    };
+  }
   const box = m.enabled ? "[x]" : "[ ]";
   const needsConsent = m.enabled && !m.consented;
   const broken = problems.length > 0;
+  /* NOT WORKING IS EXCLUSIVE, not merely first.
+   *
+   * It already outranked the others and took the row's colour, and the reason
+   * given was that it is the one flag that answers the question a player opens
+   * this screen with. That reasoning finishes here: a mod that is not running
+   * is not affecting this game's determinism or its score right now, so listing
+   * "! NOT WORKING, non-deterministic, noscore" spends thirty columns saying
+   * one useful thing and two hypothetical ones - and on a wide-enough row it
+   * pushed the useful one toward the edge. The save ratchets are still stated,
+   * in the detail pane, where there is room to say what they mean.
+   *
+   * The short words are deliberate too. These share one line with a name, a
+   * version and a kind; "non-deterministic" is seventeen columns of a word the
+   * pane below spells out in a sentence anyway. */
   const flags: string[] = [];
-  /* First in the list as well as first in precedence: the flags share one line and
-   * this is the one worth reading if the line is cut short. */
-  if (broken) flags.push("NOT WORKING");
-  if (m.nondeterministic) flags.push("non-deterministic");
-  if (m.affectsGameplay) flags.push("noscore");
-  if (needsConsent) flags.push("NEEDS CONSENT");
+  if (broken) {
+    flags.push("NOT WORKING");
+  } else {
+    if (m.nondeterministic) flags.push("unseeded");
+    if (m.affectsGameplay) flags.push("noscore");
+    if (needsConsent) flags.push("NEEDS OK");
+  }
   const suffix = flags.length ? `  ! ${flags.join(", ")}` : "";
   // Kind distinguishes the two PLUGIN load paths (sandbox vs trusted); for a
   // non-plugin it is just "content", which mislabels a tiles pack - so show the
   // shape there instead ("tiles" for a tile pack, not "content").
   const kindTag = m.kind === "content" ? m.shape : m.kind;
-  const label = `${box} ${m.name}  v${m.version}  (${kindTag})${suffix}`;
+  /* THE NAME IS WHAT GIVES WAY, not the badges.
+   *
+   * selectFromMenu slices a row at the terminal's edge, so an over-long row
+   * loses its END - and the end is where "! NOT WORKING, noscore" lives. A mod
+   * called "Bug Fixes (unofficial patch set)" with both save ratchets set built
+   * an 85-column row, and what a player saw was the name, the version, the kind,
+   * and none of the three warnings. Eliding the name instead keeps every badge
+   * on screen and costs a few characters of something the row below spells out
+   * in full. Measured in mod-viewport.test.ts against the real paint. */
+  const fixed = `${box}   v${m.version}  (${kindTag})${suffix}`;
+  const room = Math.max(MIN_NAME_COLS, LABEL_COLS - fixed.length);
+  const name = m.name.length <= room ? m.name : `${m.name.slice(0, room - 3)}...`;
+  const label = `${box} ${name}  v${m.version}  (${kindTag})${suffix}`;
   const color = broken
     ? C_DANGER
     : needsConsent
@@ -315,17 +352,47 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
       : m.enabled
         ? C_ENABLED
         : C_DISABLED;
+  /* "Requests 2 capability(ies)" was the machine talking. Nobody says
+   * "capability(ies)", and the count on its own tells a player nothing they can
+   * act on - the detail pane below already lists what each one is for. */
   const capNote =
-    m.capabilities.length > 0
-      ? `Requests ${m.capabilities.length} capability(ies).`
-      : "No special capabilities.";
+    m.capabilities.length === 0
+      ? "Asks for nothing beyond the game."
+      : m.capabilities.length === 1
+        ? "Asks for one permission."
+        : `Asks for ${m.capabilities.length} permissions.`;
+  /* No "Enter to manage it." on the end. The footer of this very screen already
+   * says so for every row, and repeating it cost four columns off the end of
+   * the longest hint - which is the part that describes the mod. */
   return {
     label,
     color,
     hint: broken
-      ? `${problems.length === 1 ? "A problem" : `${problems.length} problems`} stopped this mod working. Enter for details.`
-      : `${m.shape} mod - ${capNote} Enter to manage.`,
+      ? `${problems.length === 1 ? "Something" : `${problems.length} things`} stopped this working. Enter to see what.`
+      : `${describeShape(m.shape)} ${capNote}`,
   };
+}
+
+/**
+ * The widest a row's label may be: 80 columns, less the one the slice reserves,
+ * less the three `x) ` takes (display_menu_row, ui-menu.c:577-585).
+ */
+const LABEL_COLS = 80 - 1 - 3;
+/** Never elide a name below this - past it the row stops identifying anything. */
+const MIN_NAME_COLS = 14;
+
+/** What a manifest's `shape` is, said the way a player would say it. */
+function describeShape(shape: string): string {
+  switch (shape) {
+    case "content":
+      return "Changes the game's contents.";
+    case "tiles":
+      return "A set of graphics.";
+    case "plugin":
+      return "Runs its own code.";
+    default:
+      return `A ${shape} mod.`;
+  }
 }
 
 /**
@@ -360,6 +427,29 @@ export function rowDetail(
   skipped: readonly string[] = [],
 ): ScreenLine[] {
   const w = width - 1;
+  /* A mod that is on and not installed. Everything below this point describes a
+   * manifest, and there is not one; what the player needs instead is the two
+   * sentences that explain the state and end it. */
+  if (m.missing) {
+    return [
+      ...wrapped(m.name, w, C_TITLE),
+      ...wrapped("Switched on, but not installed.", w, C_DANGER),
+      { text: "", color: C_FG },
+      ...wrapped(
+        "This mod is in your enabled list and the game cannot find it, so " +
+          "every launch tries to load it and gives up. It was probably " +
+          "uninstalled, or this is a fresh copy of the game over an old profile.",
+        w,
+      ),
+      { text: "", color: C_FG },
+      ...wrapped(
+        "Open it to take it off the list. If you want it back instead, " +
+          "Install a mod... will fetch it again.",
+        w,
+        C_WARN,
+      ),
+    ];
+  }
   /* EVERY line here goes through wrapped(), not just the description. The
    * description was wrapped and its siblings were not, so on any terminal
    * narrower than the longest of them - "Non-deterministic: enabling this
@@ -421,8 +511,8 @@ export function rowDetail(
     below.push(
       ...wrapped(
         m.enabled
-          ? `Patches: ${ruleCount}, all on. Open this mod to switch any of them off individually.`
-          : `Patches: ${ruleCount}. None of them exist while this mod is disabled; enabling it turns them all on at once.`,
+          ? `Makes ${ruleCount} separate ${ruleCount === 1 ? "change" : "changes"}, all on. Open the mod to switch any one off.`
+          : `Makes ${ruleCount} separate ${ruleCount === 1 ? "change" : "changes"}. None of them happen while it is off; turning it on turns all of them on.`,
         w,
         m.enabled ? C_ENABLED : C_DIM,
       ),
@@ -431,23 +521,26 @@ export function rowDetail(
   const deps = m.manifest.dependencies
     ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
     : [];
-  if (deps.length) below.push(...wrapped(`Depends on: ${deps.join(", ")}`, w));
+  if (deps.length) below.push(...wrapped(`Needs: ${deps.join(", ")}`, w));
+  /* THE TWO ONE-WAY DOORS, said as one-way doors.
+   *
+   * "Non-deterministic: enabling this permanently marks the save
+   * non-reproducible" is three pieces of jargon in a row about a decision that
+   * cannot be undone, on a screen where the next keypress makes it. What a
+   * player needs to know is that turning it on is permanent for THIS character,
+   * and what they give up. */
+  /* Short on purpose, as well as plain. These are the two lines that must
+   * survive the pane's budget on a narrow terminal (see the truncation rule
+   * below), and a warning that takes three wrapped lines is a warning that can
+   * lose its last one - which is where the consequence lives. */
   if (m.nondeterministic) {
     below.push(
-      ...wrapped(
-        "Non-deterministic: enabling this permanently marks the save non-reproducible.",
-        w,
-        C_WARN,
-      ),
+      ...wrapped("Permanent once on: the same seed stops giving the same game.", w, C_WARN),
     );
   }
   if (m.affectsGameplay) {
     below.push(
-      ...wrapped(
-        "Gameplay-changing: enabling this permanently marks this save non-scoring.",
-        w,
-        C_WARN,
-      ),
+      ...wrapped("Permanent once on: changes play, so this character cannot score.", w, C_WARN),
     );
   }
   if (m.capabilities.length === 0) {
@@ -458,24 +551,26 @@ export function rowDetail(
     below.push(
       ...wrapped(
         m.kind === "content"
-          ? "Capabilities: none (content only)."
-          : "Capabilities: none requested.",
+          ? "Asks for no permissions - it only adds and changes game contents."
+          : "Asks for no permissions.",
         w,
         C_DIM,
       ),
     );
   } else {
-    below.push(...wrapped("Capabilities requested:", w));
+    below.push(...wrapped("It asks to be allowed to:", w));
     for (const d of describeCapabilities(m.capabilities)) {
       /* Hanging indent so a wrapped bullet stays visibly one bullet. */
       below.push(
-        ...wrapped(`  - ${d.text}${d.elevated ? "  [elevated]" : ""}`, w, d.elevated ? C_WARN : C_FG)
+        ...wrapped(`  - ${d.text}${d.elevated ? "  [powerful]" : ""}`, w, d.elevated ? C_WARN : C_FG)
           .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
       );
     }
     below.push(
       ...wrapped(
-        m.consented ? "Consent: granted." : "Consent: NOT granted (enable to review).",
+        m.consented
+          ? "You have allowed this."
+          : "You have not allowed this yet - you will be asked when you turn it on.",
         w,
         m.consented ? C_ENABLED : C_WARN,
       ),
@@ -698,6 +793,34 @@ async function manageMod(
     const mySkipped = problemsFor(trouble?.skipped ?? [], id);
     const items: MenuItem[] = [];
     const acts: string[] = [];
+    /* A mod that is on and not installed has exactly one useful action, and
+     * every other row on this screen would be about a manifest that is not
+     * there. Offer the one thing, and say what it does. */
+    if (m.missing) {
+      const pick = await selectFromMenu(
+        term,
+        m.name,
+        [
+          {
+            label: "Take it off the list",
+            color: C_ENABLED,
+            hint: "The game stops trying to load it. Nothing else changes.",
+          },
+          { label: "Leave it", color: C_DIM, hint: "In case you mean to reinstall it." },
+        ],
+        "[ Enter to choose; ESC to leave it ]",
+        {
+          detail: () => rowDetail(m, term.size().cols, 99),
+          detailToggleKey: "?",
+          detailInitiallyShown: true,
+        },
+      );
+      if (pick === 0) {
+        deps.store.setModEnabled(m.id, false);
+        return true;
+      }
+      return changed;
+    }
     const ruleCount = m.manifest.rules?.length ?? 0;
     /* A mod's named parts (PackSection): the general form of a rule, since a
      * section can carry content and a load-order band as well as behaviour. */
@@ -1432,39 +1555,51 @@ export async function runModManager(
       id: m.id,
     }));
 
-    // Action rows below the list.
+    /* Action rows below the list, each with a FIXED tag.
+     *
+     * Positional lettering put these on whatever letter followed the last mod,
+     * so every install shifted them: `f) Install a mod...` became `g)` the
+     * moment a mod appeared above it, and a player - or a scripted test, which
+     * is how this was caught - pressing the letter they used yesterday landed on
+     * Auto-sort. The mods keep a, b, c...; the actions never move. Upstream does
+     * exactly this for the rows that must stay put (option_actions[]' a/b/d/h in
+     * ui-options.c), and MenuItem.tag is that mechanism. */
+    const ACTION_TAG: Record<ActionKind, string> = {
+      download: "1",
+      folder: "2",
+      conflicts: "3",
+      autosort: "4",
+      profiles: "5",
+      install: "6",
+      reload: "9",
+      done: "0",
+    };
     const addAction = (
       label: string,
       kind: ActionKind,
       color = C_FG,
       hint = "",
     ): void => {
-      items.push({ label, color, ...(hint ? { hint } : {}) });
+      items.push({ label, color, tag: ACTION_TAG[kind], ...(hint ? { hint } : {}) });
       rowKinds.push({ kind });
     };
-    // No pooled "Fixes & tweaks" row: a mod's patches live under that mod
-    // (manageMod -> managePatches), because they arrive with it and cannot exist
-    // without it.
-    addAction("View conflicts", "conflicts", C_FG, "What your enabled mods contest, and who wins.");
-    addAction(
-      "Auto-sort load order...",
-      "autosort",
-      C_FG,
-      "Propose an order from what the mods ask for. Your own moves are kept.",
-    );
-    addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
+    /* GETTING A MOD IS THE FIRST ROW.
+     *
+     * The list above it is the mods you already have; on a fresh install that
+     * list is EMPTY, because the game bundles none. So the row directly under
+     * an empty list has to be the one that ends the emptiness. It used to be
+     * fourth, under conflicts, auto-sort and profiles - three screens that are
+     * only meaningful once you have several mods, offered to a player who has
+     * none. */
+    const diskStatus = trouble;
     if (deps.modCatalogue) {
-      /* Above the folder row deliberately: this is the path that works on every
-       * browser, and the folder picker is the one Firefox and Safari refuse. A
-       * player with no mods should meet the working option first. */
       addAction(
-        "Install a mod...",
+        catalog.length === 0 ? "Install a mod...  (start here)" : "Install a mod...",
         "download",
-        C_FG,
-        "Download a mod from its own repository, digest-checked.",
+        C_ENABLED,
+        "Pick one from the list; the game downloads and checks it for you.",
       );
     }
-    const diskStatus = trouble;
     /* The saved folder's name is read fresh each pass, because picking or
      * forgetting one changes it and the row has to follow. */
     const savedFolder = deps.modFolder ? await deps.modFolder.savedName() : null;
@@ -1475,12 +1610,33 @@ export async function runModManager(
         "folder",
         row.color,
         savedFolder === null
-          ? "Read mods from a folder on your computer."
+          ? "Already have a mod on disk? Point the game at its folder."
           : row.lapsed
             ? "Your browser needs permission again before it will read it."
             : "Choose another, reconnect, or stop using it.",
       );
     }
+    // No pooled "Fixes & tweaks" row: a mod's patches live under that mod
+    // (manageMod -> managePatches), because they arrive with it and cannot exist
+    // without it.
+    addAction(
+      "View conflicts",
+      "conflicts",
+      C_FG,
+      "Where two mods change the same thing, and which one wins.",
+    );
+    addAction(
+      "Auto-sort load order...",
+      "autosort",
+      C_FG,
+      "Work out an order from what the mods ask for. Your own moves are kept.",
+    );
+    addAction(
+      "Profiles...",
+      "profiles",
+      C_FG,
+      "Save this set of mods under a name, and switch between sets.",
+    );
     /* The problems belonging to no ROW - a folder whose manifest would not validate
      * never becomes a catalogue entry, so there is nowhere else in this screen they
      * can appear. Badged onto the row that shows them, because the failure this whole
@@ -1503,9 +1659,14 @@ export async function runModManager(
             : "Why this build has no mods folder.",
     );
     if (dirty) {
-      addAction("Apply changes and reload", "reload", C_WARN, "Reload so enable/disable/order take effect.");
+      addAction(
+        "Apply changes and reload",
+        "reload",
+        C_WARN,
+        "Nothing you changed is in effect until the game restarts.",
+      );
     }
-    addAction("Done", "done", C_DIM, "Close the mod manager.");
+    addAction("Done", "done", C_DIM, "Close this and go back to the game.");
 
     // A live ?mods= override outranks the store for this session, so the boxes
     // below describe what is SAVED, not what is loaded. Say so; the row list is
@@ -1517,12 +1678,41 @@ export async function runModManager(
         : "[ ?mods= override is live; boxes show the SAVED set; ESC ]"
       : dirty
         ? "[ changes pending - Apply to reload; ESC = Done ]"
-        : "[ Enter a mod to manage it; ESC to close ]";
+        : catalog.length === 0
+          ? /* An empty list with "Enter a mod to manage it" underneath is the
+             * screen telling a player to do something there is nothing to do. */
+            "[ No mods installed - Install a mod... to get one; ESC to close ]"
+          : "[ Enter a mod to manage it; ESC to close ]";
     const pick = await selectFromMenu(term, "Mods", items, footer, {
       // Shown by default (not behind the '?' toggle): what a mod IS is the thing
       // a player needs in order to decide whether to turn it on.
       detail: (i) => {
         const rk = rowKinds[i];
+        /* The one action row that gets a pane of its own. On a fresh install the
+         * whole screen is this row, and "Install a mod..." alone does not answer
+         * the question a player has, which is where these come from and whether
+         * running one is safe. */
+        if (rk?.kind === "download" && catalog.length === 0) {
+          const w = term.size().cols - 1;
+          return [
+            { text: "You have no mods installed.", color: C_TITLE },
+            { text: "", color: C_FG },
+            ...wrapped(
+              "That is the normal starting state - Neo Angband ships as " +
+                "Angband 4.2.6 and nothing else, and every mod, including the " +
+                "ones written here, is something you choose to add.",
+              w,
+            ),
+            { text: "", color: C_FG },
+            ...wrapped(
+              "Open this row for the list. Each one downloads from its own " +
+                "repository, and every file is checked against a fingerprint " +
+                "that shipped inside your copy of the game, so a download that " +
+                "has been altered never becomes an installed mod.",
+              w,
+            ),
+          ];
+        }
         if (!rk || !("id" in rk)) return [];
         const m = catalog.find((x) => x.id === rk.id);
         if (!m) return [];

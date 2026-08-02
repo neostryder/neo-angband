@@ -284,13 +284,16 @@ describe("the mods screen says which mod is not working", () => {
 
     const broken = rowLabel(catalogMod({ nondeterministic: true }), ["plugin.js failed"]);
     expect(broken.label).toContain("! NOT WORKING");
-    /* First in the flag list as well as first in precedence: the flags share one
-     * line, and this is the one worth reading if the line is cut short. */
-    expect(broken.label.indexOf("NOT WORKING")).toBeLessThan(
-      broken.label.indexOf("non-deterministic"),
-    );
+    /* It is now the ONLY flag on a broken row, not merely the first one. A mod
+     * that is not running is not affecting this game's determinism right now,
+     * and the row has 76 columns for a name, a version, a kind and the badges -
+     * so the two hypothetical flags give way to the one that is true. The save
+     * ratchets are still stated in the detail pane. */
+    expect(broken.label).not.toContain("unseeded");
     expect(broken.color).not.toBe(clean.color);
-    expect(broken.hint).toContain("Enter for details");
+    expect(broken.hint).toContain("Enter to see what");
+    /* The unbroken row keeps its own flag. */
+    expect(rowLabel(catalogMod({ nondeterministic: true })).label).toContain("unseeded");
   });
 
   it("puts the reason in the detail pane above the description, and never truncates it", () => {
