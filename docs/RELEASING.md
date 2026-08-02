@@ -204,6 +204,33 @@ Each mod carries its own version and moves on its own schedule. A mod whose
 released tag is iterated takes a MINOR bump rather than a patch, because a
 published tag is pinned by digest in `RECOMMENDED_MODS` and must never be moved.
 
+## The GitHub Release is always a draft, and that never changes
+
+Pushing the tag also starts `.github/workflows/release.yml`, which builds the
+desktop apps and the web bundle and attaches them to a **draft** release. The
+draft is not a pre-1.0 precaution and it does not go away at `1.0.0`: publishing
+is deliberately the one step no workflow performs, because the artifacts are
+downloadable from the draft, so the last gate before a release reaches anyone is
+somebody actually running one. Download a build, play it, then press publish.
+
+**Draft and pre-release are different claims and the workflow makes both.**
+
+| | means | who sees it | ends at |
+|---|---|---|---|
+| Draft | nobody has pressed publish | maintainers only | when you publish |
+| Pre-release | this is not the stable build | everybody | `1.0.0` |
+
+`--prerelease` is passed for any tag matching `0.*`. Without it, publishing marks
+the release *Latest*, which is what the repository sidebar, the releases API and
+every "download the latest" link follow — so an alpha would present itself as the
+stable build. The condition is on the version, so the flag stops applying by
+itself at `1.0.0`; there is nothing to remember.
+
+If the build is wrong, delete the draft and its assets, fix, and re-run the
+workflow against the same tag — it updates a draft in place rather than failing
+on "already exists". Once published, that stops being true: a published release
+is a URL other people have.
+
 ## If the release changes the save format
 
 `SAVE_VERSION` in `packages/core/src/session/save.ts` is not a version number you

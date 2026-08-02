@@ -212,13 +212,25 @@ jobs:
             exit 1
           fi
           echo "attaching ${#files[@]} files"
+          # DRAFT and PRE-RELEASE are two different statements and this makes
+          # both. Draft means nobody has pressed publish yet; it is invisible to
+          # the public and says nothing about the software. Pre-release is the
+          # claim, and it survives publication - without it, pressing publish on
+          # an 0.x tag marks it "Latest release", which is how a 0.16.0 alpha
+          # ends up presented as the stable build. Every 0.x is a pre-release by
+          # definition; at 1.0.0 this stops applying and the flag goes away on
+          # its own.
+          prerelease=()
+          case "${TAG#v}" in
+            0.*) prerelease=(--prerelease) ;;
+          esac
           # A re-run must not fail on "already exists": update the draft in place.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --draft --notes-file release-notes.md
+            gh release edit "$TAG" --draft "${prerelease[@]}" --notes-file release-notes.md
             gh release upload "$TAG" "${files[@]}" --clobber
           else
             gh release create "$TAG" "${files[@]}" \
-              --draft \
+              --draft "${prerelease[@]}" \
               --title "Neo Angband ${TAG#v}" \
               --notes-file release-notes.md
           fi
