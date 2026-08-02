@@ -23,6 +23,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 interface BuildConfig {
   productName: string;
@@ -31,7 +32,7 @@ interface BuildConfig {
   linux?: {
     target?: unknown[];
     executableName?: string;
-    desktopName?: string;
+    syncDesktopName?: boolean;
     artifactName?: string;
   };
 }
@@ -66,8 +67,66 @@ describe("the Linux build can name its own executable", () => {
     expect(name).not.toContain("/");
   });
 
-  it("names the desktop entry, so a running window links to it", () => {
-    expect(build.linux?.desktopName).toBeTruthy();
+});
+
+describe("the config is one electron-builder will accept", () => {
+  /*
+   * THE SECOND FAILURE, and the more instructive one. The fix above shipped
+   * with `desktopName` and `synchronizeDesktopName` under `linux`. Neither
+   * exists - the option is `syncDesktopName` - and `LinuxConfiguration` sets
+   * `additionalProperties: false`, so electron-builder refused the whole
+   * object. It validates the ENTIRE config on every platform, so a bad key
+   * under `linux` failed the Windows and macOS jobs too: attempt one built two
+   * platforms of three, attempt two built none.
+   *
+   * The test that was supposed to catch it asserted `linux.desktopName` was
+   * truthy. It passed, because the config and the test were written by the same
+   * hand in the same minute with the same wrong key - a test agreeing with its
+   * author rather than with the tool. So the check is now against
+   * electron-builder's OWN scheme.json, which ships in the package it is
+   * checking and moves when the builder moves.
+   */
+  const scheme = JSON.parse(
+    readFileSync(
+      createRequire(import.meta.url).resolve("app-builder-lib/scheme.json"),
+      "utf8",
+    ),
+  ) as {
+    definitions: Record<
+      string,
+      { properties?: Record<string, unknown>; additionalProperties?: boolean }
+    >;
+  };
+
+  /** Keys the schema does not define, for a section that forbids extras. */
+  function unknownKeys(section: string, value: object | undefined): string[] {
+    const def = scheme.definitions[section];
+    expect(def, `${section} is not in electron-builder's schema`).toBeDefined();
+    if (def?.additionalProperties !== false) return [];
+    const known = new Set(Object.keys(def.properties ?? {}));
+    return Object.keys(value ?? {}).filter((k) => !known.has(k));
+  }
+
+  for (const [section, key] of [
+    ["LinuxConfiguration", "linux"],
+    ["WindowsConfiguration", "win"],
+    ["MacConfiguration", "mac"],
+    ["NsisOptions", "nsis"],
+  ] as const) {
+    it(`uses no invented keys under ${key}`, () => {
+      const value = (build as unknown as Record<string, object | undefined>)[key];
+      expect(
+        unknownKeys(section, value),
+        `electron-builder does not know these ${key} options, and it refuses ` +
+          `the whole config - including on the other two platforms`,
+      ).toEqual([]);
+    });
+  }
+
+  it("still asks for a desktop entry, by the option's real name", () => {
+    /* Kept as its own assertion rather than folded into the schema check: the
+     * schema says the key is spelled right, not that we set it. */
+    expect(build.linux?.syncDesktopName).toBe(true);
   });
 });
 

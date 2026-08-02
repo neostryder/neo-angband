@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.15.1 && git push --tags
+git tag v0.15.2 && git push --tags
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -152,7 +152,7 @@ same clean green as one that worked.
 ### Which number
 
 **Semver, and the tool refuses anything that is not one of the three successors.**
-From `0.15.0` the only legal next versions are `0.15.1`, `0.16.0` and `1.0.0`;
+From `0.15.1` the only legal next versions are `0.15.2`, `0.16.0` and `1.0.0`;
 a typo, a skipped minor or a number that goes backwards is rejected with the three
 alternatives printed. Choose between them by what changed for a *consumer* of the
 published packages:
@@ -274,7 +274,7 @@ things came out of that and both are permanent:
   `npm access set status=public <package>`.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
   version with `node tools/version.mjs set <v>`, delete the tag
-  (`git tag -d v0.15.1 && git push --delete origin v0.15.1`), re-tag.
+  (`git tag -d v0.15.2 && git push --delete origin v0.15.2`), re-tag.
 
 ## The mod repositories are released separately
 
@@ -284,7 +284,7 @@ is not in that path. Releasing one is:
 
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
-2. Commit, then tag (`v0.15.1`) and push the tag.
+2. Commit, then tag (`v0.15.2`) and push the tag.
 3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
    put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
    from the local build: the digest has to describe the bytes GitHub actually serves, and
