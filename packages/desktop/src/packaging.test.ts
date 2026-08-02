@@ -394,6 +394,28 @@ describe("the updater's two halves name the same repository", () => {
     }
   });
 
+  it("derives the asset prefix from the productName that names the files", () => {
+    /*
+     * ASSET_PREFIX is the second, independent answer to "is this our file", and
+     * like any hardcoded name it can fall behind the thing it describes. Its
+     * failure mode is silence - a release cut under a different productName
+     * would simply never be offered - so it is derived from the same
+     * productName electron-builder interpolates into every artifactName, with
+     * spaces replaced by dots the way electron-builder does it.
+     */
+    const prefix = /ASSET_PREFIX = "([^"]+)"/u.exec(read("packages/web/src/update.ts"))?.[1];
+    expect(prefix, "no ASSET_PREFIX in web/src/update.ts").toBeTruthy();
+    const pkg = JSON.parse(read("packages/desktop/package.json")) as {
+      build: { productName: string; mac: { artifactName: string }; linux: { artifactName: string } };
+    };
+    expect(prefix).toBe(`${pkg.build.productName.replace(/ /gu, ".").toLowerCase()}-`);
+    /* And the templates really do lead with it, so the derivation is not a
+     * coincidence between two strings that happen to agree today. */
+    for (const t of [pkg.build.mac.artifactName, pkg.build.linux.artifactName]) {
+      expect(t.startsWith("${productName}-"), t).toBe(true);
+    }
+  });
+
   it("promises the player the same directory the swap script actually skips", () => {
     /*
      * The update screen tells the player their characters survive, and names the
