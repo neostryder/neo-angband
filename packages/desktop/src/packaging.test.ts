@@ -42,7 +42,7 @@ const manifest = JSON.parse(
     join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
     "utf8",
   ),
-) as { name: string; version: string; build: BuildConfig };
+) as { name: string; version: string; homepage?: string; author?: string; desktopName?: string; build: BuildConfig };
 
 const build = manifest.build;
 
@@ -123,10 +123,61 @@ describe("the config is one electron-builder will accept", () => {
     });
   }
 
-  it("still asks for a desktop entry, by the option's real name", () => {
+  it("still asks for a desktop entry, and puts each half where it is read", () => {
     /* Kept as its own assertion rather than folded into the schema check: the
-     * schema says the key is spelled right, not that we set it. */
+     * schema says a key is spelled right, not that we set it - and this
+     * particular setting is SPLIT across two places, which is what made it easy
+     * to get wrong twice. `syncDesktopName` is a build option;
+     * `desktopName` is manifest metadata at the ROOT (LinuxTargetHelper reads
+     * `packager.info.metadata.desktopName`), and putting it under `linux` is
+     * what produced an invalid configuration object. Verified by running
+     * electron-builder locally until the warning stopped. */
     expect(build.linux?.syncDesktopName).toBe(true);
+    expect(manifest.desktopName).toMatch(/\.desktop$/u);
+  });
+});
+
+describe("the Linux package targets have the metadata they demand", () => {
+  /*
+   * THE THIRD FAILURE, and the reason this block enumerates rather than
+   * spot-checks. With the schema finally satisfied, the Linux job got as far as
+   * `FpmTarget.checkOptions()` and stopped on
+   *
+   *   Please specify project homepage
+   *
+   * fpm builds the .deb, and it wants packaging metadata that no other target
+   * asks for. Each of these was found one tag at a time; the list below is read
+   * off `app-builder-lib/out/targets/FpmTarget.js` -
+   * `computeFpmMetaInfoOptions()` - which is where they are enforced, so all of
+   * them are checked at once instead of one per release.
+   *
+   * `computePackageUrl()` accepts `homepage`, or falls back to a GitHub
+   * `repository` field. Both are set; the test requires the explicit one,
+   * because the fallback depends on the repository being parseable as GitHub
+   * and that is a longer chain to be quietly wrong about.
+   */
+  const NEEDS_FPM = new Set(["deb", "rpm", "freebsd", "pacman", "apk", "p5p"]);
+  const targets = (build.linux?.target ?? []).map((t) =>
+    typeof t === "string" ? t : ((t as { target?: string }).target ?? ""),
+  );
+
+  it("declares a homepage, which fpm refuses to build without", () => {
+    if (!targets.some((t) => NEEDS_FPM.has(t))) return;
+    expect(
+      manifest.homepage,
+      `linux.target includes ${targets.filter((t) => NEEDS_FPM.has(t)).join(", ")}, ` +
+        `and fpm fails the whole Linux job without a homepage`,
+    ).toMatch(/^https?:\/\//u);
+  });
+
+  it("names a maintainer, or an author with an email for one to be built from", () => {
+    if (!targets.some((t) => NEEDS_FPM.has(t))) return;
+    const maintainer = (build.linux as { maintainer?: string } | undefined)?.maintainer;
+    const authorEmail = /<[^>]+@[^>]+>/u.test(manifest.author ?? "");
+    expect(
+      Boolean(maintainer) || authorEmail,
+      "fpm needs linux.maintainer, or an author with an email address",
+    ).toBe(true);
   });
 });
 
