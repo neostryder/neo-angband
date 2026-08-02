@@ -127,27 +127,63 @@ export async function sha256File(file: string): Promise<string> {
  * `.app` needs. Unzipping a bundle with a naive zip library produces something
  * that looks right and will not launch.
  *
- * bsdtar (`tar`) has shipped in Windows since 10 build 17063 and reads zip as
- * well as tar, so the same command covers Windows and Linux.
+ * WINDOWS TAKES THE ABSOLUTE PATH TO SYSTEM32, NOT THE BARE NAME. The dependency
+ * here is specifically bsdtar, which has shipped in Windows since 10 build 17063
+ * and reads zip as well as tar - and `tar` on PATH is not reliably that program.
+ * A POSIX-style shell (Git Bash, MSYS2, Cygwin) puts GNU tar first, and GNU tar
+ * fails this job twice over: it cannot read zip at all, which is the format the
+ * Windows build ships in, and it reads `C:\...` as a REMOTE HOST because of the
+ * colon, answering `Cannot connect to C: resolve failed`. Neither failure
+ * depends on the archive, so both are total.
+ *
+ * Windows shortcuts and Explorer hand over the system PATH, where System32 wins
+ * anyway - so this is unreachable for most players and certain for anyone who
+ * launches the game from such a shell. Electron already requires Windows 10
+ * 1809, which is later than the build that added bsdtar, so the file is there.
  */
-export function extractCommand(archive: string, into: string, platform: string): {
+export function extractCommand(
+  archive: string,
+  into: string,
+  platform: string,
+  systemRoot?: string,
+): {
   cmd: string;
   args: string[];
 } {
   if (platform === "darwin") {
     return { cmd: "ditto", args: ["-x", "-k", archive, into] };
   }
+  const tar =
+    platform === "win32"
+      ? `${(systemRoot ?? process.env["SystemRoot"] ?? "C:\\Windows").replace(/[\\/]+$/u, "")}\\System32\\tar.exe`
+      : "tar";
   if (archive.endsWith(".tar.gz")) {
-    return { cmd: "tar", args: ["-xzf", archive, "-C", into] };
+    return { cmd: tar, args: ["-xzf", archive, "-C", into] };
   }
-  return { cmd: "tar", args: ["-xf", archive, "-C", into] };
+  return { cmd: tar, args: ["-xf", archive, "-C", into] };
 }
 
-/** Run a command, resolving only on exit code 0. */
+/**
+ * Run a command, resolving only on exit code 0.
+ *
+ * A missing extractor is reported as a SENTENCE, because this message is not for
+ * a log - update-ui.ts prints whatever comes back straight onto the screen. The
+ * raw failure is `spawn tar ENOENT`, which tells a player nothing about what
+ * went wrong or that the download they just waited for is intact and the manual
+ * route still works. The tools involved ship with every supported OS (see
+ * extractCommand), so this should be unreachable; it is exactly the kind of
+ * unreachable that turns up on someone's stripped-down Windows image.
+ */
 export function run(cmd: string, args: readonly string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, [...args], { stdio: "ignore", windowsHide: true });
-    p.on("error", reject);
+    p.on("error", (err: NodeJS.ErrnoException) => {
+      reject(
+        err.code === "ENOENT"
+          ? new Error(`this system has no '${cmd}', which is needed to unpack the update`)
+          : err,
+      );
+    });
     p.on("exit", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${cmd} exited ${String(code)}`));
