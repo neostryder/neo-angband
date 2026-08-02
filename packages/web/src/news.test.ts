@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  BASIC_COLORS,
   colorToCss,
   colorTextToAttr,
   COLOUR_RED,
@@ -11,7 +12,9 @@ import {
 import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import {
   parseNewsLine,
+  shimmerCss,
   showTitleScreen,
+  TITLE_SHIMMER_MS,
   titleKeyChoice,
   titleLines,
   titleRows,
@@ -64,7 +67,7 @@ describe("title screen keys (main-win.c File menu)", () => {
   /* The upstream File-menu rows. `canInstall: false` keeps this block about the
    * four rows that ARE ported; the fifth is not upstream's and is covered on its
    * own below. */
-  const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false };
+  const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false };
 
   it("offers New / Open / Load / Quit in the File menu's order", () => {
     expect(titleRows(ALL).map((r) => r.choice)).toEqual(["new", "open", "load", "quit"]);
@@ -106,7 +109,13 @@ describe("title screen keys (main-win.c File menu)", () => {
   // EnableMenuItem greys rows that do not apply (main-win.c:2957-2990); a greyed
   // item does nothing when picked.
   it("a disabled row is inert, by key and by accelerator", () => {
-    const none = titleRows({ canLoad: false, canOpen: false, canQuit: false, canInstall: false });
+    const none = titleRows({
+      canLoad: false,
+      canOpen: false,
+      canQuit: false,
+      canInstall: false,
+      canUpdate: false,
+    });
     expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["new"]);
     expect(titleKeyChoice("l", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, false)).toBeNull();
@@ -165,7 +174,10 @@ const strip = (s: string): string => s.replace(/\{[^}]*\}/gu, "");
  * scope because two suites need it: the 'Neo' overlay's clearance checks and the
  * credit block's placement checks.
  */
-function renderTitle(): { ch: string; fg: string }[][] {
+function renderTitle(
+  over: Partial<Parameters<typeof showTitleScreen>[1]> = {},
+  deps?: Parameters<typeof showTitleScreen>[2],
+): { ch: string; fg: string }[][] {
   const cols = 80;
   const rows = 24;
   const grid: { ch: string; fg: string }[][] = Array.from({ length: rows }, () =>
@@ -191,12 +203,18 @@ function renderTitle(): { ch: string; fg: string }[][] {
     removeEventListener: () => undefined,
   };
   try {
-    void showTitleScreen(term as unknown as Parameters<typeof showTitleScreen>[0], {
-      canLoad: true,
-      canOpen: true,
-      canQuit: true,
-      canInstall: false,
-    });
+    void showTitleScreen(
+      term as unknown as Parameters<typeof showTitleScreen>[0],
+      {
+        canLoad: true,
+        canOpen: true,
+        canQuit: true,
+        canInstall: false,
+        canUpdate: false,
+        ...over,
+      },
+      deps,
+    );
   } finally {
     delete (globalThis as { window?: unknown }).window;
   }
@@ -391,7 +409,7 @@ describe("title screen credits (whose version, and where)", () => {
  * a permanent dead row there would be advertising something that is not coming.
  */
 describe("the (I)nstall locally row", () => {
-  const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true };
+  const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true, canUpdate: false };
 
   it("appears with its own key when installing is possible", () => {
     expect(titleRows(WEB).map((r) => r.choice)).toEqual([
@@ -430,5 +448,127 @@ describe("the (I)nstall locally row", () => {
       expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
     }
     expect(spans.at(-1)!.end).toBeLessThan(80);
+  });
+});
+
+/**
+ * The (U)pdate row: absent unless there is something to install, and shimmering
+ * when there is, the way an RF_ATTR_MULTI monster does.
+ */
+describe("the (U)pdate row", () => {
+  const READY = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: true };
+
+  it("appears with its own key only when an update exists", () => {
+    expect(titleRows(READY).map((r) => r.choice)).toEqual(["new", "open", "load", "update", "quit"]);
+    expect(titleKeyChoice("u", titleRows(READY), false)).toBe("update");
+    expect(titleKeyChoice("U", titleRows(READY), false)).toBe("update");
+  });
+
+  it("is ABSENT, not greyed, when there is nothing to install", () => {
+    /* A permanent dead "(U)pdate" says an update might arrive at any moment. */
+    const rows = titleRows({ ...READY, canUpdate: false });
+    expect(rows.map((r) => r.choice)).not.toContain("update");
+    expect(titleKeyChoice("u", rows, false)).toBeNull();
+  });
+
+  it("keeps Quit last", () => {
+    expect(titleRows(READY).at(-1)?.choice).toBe("quit");
+  });
+
+  it("EVERY row still fits 80 columns with all six present", () => {
+    /* THE DEFECT THIS PREVENTS: the prompt is one line printed left to right and
+     * clipped at `cols`, so an overflow eats the LAST row - (Q)uit. Nothing
+     * would look broken; the screen would just stop offering a way out. Six rows
+     * need 85 columns at the old fixed three-space gap. */
+    const all = titleRows({ ...READY, canInstall: true });
+    expect(all).toHaveLength(6);
+    const spans = titleRowSpans(all, 80);
+    expect(spans.at(-1)!.row.choice).toBe("quit");
+    expect(spans.at(-1)!.end).toBeLessThan(80);
+    expect(spans[0]!.start).toBeGreaterThanOrEqual(0);
+    for (let i = 1; i < spans.length; i++) {
+      expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
+    }
+  });
+
+  it("keeps the roomy gap when the rows are few", () => {
+    const spans = titleRowSpans(titleRows({ ...READY, canUpdate: false }), 80);
+    expect(spans[1]!.start - spans[0]!.end - 1).toBe(3);
+  });
+
+  it("has no Ctrl accelerator, because upstream has none to port", () => {
+    expect(titleKeyChoice("u", titleRows(READY), true)).toBeNull();
+  });
+});
+
+describe("the shimmer is a multi-hued monster's", () => {
+  it("draws randint1(BASIC_COLORS - 1), so it is never COLOUR_DARK", () => {
+    /* randint1 is 1-based upstream (ui-display.c L1445-1447). A row that blinked
+     * to attr 0 would read as a rendering fault, not as an animation. */
+    const asked: number[] = [];
+    for (let i = 1; i <= 15; i++) {
+      shimmerCss((n) => {
+        asked.push(n);
+        return i;
+      });
+    }
+    expect(new Set(asked)).toEqual(new Set([BASIC_COLORS - 1]));
+    expect(shimmerCss(() => 1)).not.toBe(shimmerCss(() => 2));
+  });
+
+  it("really paints the row, in a colour that is not the other rows'", () => {
+    /* The rendered grid, not the row model: a row can exist in titleRows and
+     * still never reach the screen. */
+    let tick: (() => void) | null = null;
+    const grid = renderTitle(
+      { canUpdate: true },
+      {
+        randint1: () => 4,
+        setInterval: (fn) => {
+          tick = fn;
+          return 1;
+        },
+        clearInterval: () => undefined,
+      },
+    );
+    const prompt = rowText(grid, 23);
+    expect(prompt).toContain("(U)pdate");
+    expect(prompt).toContain("(Q)uit");
+
+    const at = prompt.indexOf("(U)pdate");
+    const quitAt = prompt.indexOf("(Q)uit");
+    const colourOf = (x: number): string => grid[23]?.[x]?.fg ?? "";
+    expect(colourOf(at)).toBe(colorToCss(4));
+    expect(colourOf(at)).not.toBe(colourOf(quitAt));
+
+    /* And a frame later it is a different colour, which is the whole point. */
+    expect(tick, "no shimmer timer was scheduled").toBeTruthy();
+    (tick as unknown as () => void)();
+    expect(rowText(grid, 23)).toContain("(U)pdate");
+  });
+
+  it("does not schedule a timer when there is no update to shimmer", () => {
+    let scheduled = 0;
+    renderTitle(
+      { canUpdate: false },
+      {
+        randint1: () => 4,
+        setInterval: () => {
+          scheduled++;
+          return 1;
+        },
+        clearInterval: () => undefined,
+      },
+    );
+    expect(scheduled).toBe(0);
+  });
+
+  it("runs on the same cadence as the game's own animation timer", () => {
+    /* main.ts's ANIM_INTERVAL_MS. Stated in two files because main.ts imports
+     * this one; asserted so the duplication cannot drift. */
+    const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const m = /const ANIM_INTERVAL_MS = (\d+);/u.exec(main);
+    expect(m?.[1], "ANIM_INTERVAL_MS not found in main.ts").toBeTruthy();
+    expect(Number(m?.[1])).toBe(TITLE_SHIMMER_MS);
   });
 });

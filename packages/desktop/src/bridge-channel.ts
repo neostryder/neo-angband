@@ -40,6 +40,32 @@ export const HOST_BRIDGE_GLOBAL = "neoHostFs";
  */
 export const HOST_QUIT_CHANNEL = "neo-host-quit";
 
+/**
+ * The in-place updater's channel (invoke/handle, not sendSync).
+ *
+ * Asynchronous on purpose, unlike the filesystem bridge: this one downloads a
+ * hundred and sixty megabytes. Blocking the renderer for that would freeze the
+ * title screen with no way to report progress, and progress is most of what the
+ * player is owed while it happens.
+ */
+export const UPDATE_CHANNEL = "neo-update";
+
+/** Download progress, pushed to the renderer while UPDATE_CHANNEL is working. */
+export const UPDATE_PROGRESS_CHANNEL = "neo-update-progress";
+
+/** What the renderer may ask the updater to do. */
+export type UpdateOp = "shape" | "download" | "apply" | "reveal";
+
+/** What this launch can do about an update, answered by the main process. */
+export interface UpdateShape {
+  /** "swap" | "manual" | "none" - see update-plan.ts. */
+  readonly how: string;
+  /** The directory an update would replace, for the message that says so. */
+  readonly installRoot: string;
+  readonly platform: string;
+  readonly arch: string;
+}
+
 /** What the info channel answers with. */
 export interface HostBridgeInfo {
   /** main.c's argv, minus the program name. */

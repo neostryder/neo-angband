@@ -441,12 +441,18 @@ import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { enqueueKeys, isSynthKey } from "./input-queue";
 import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import {
+  applyWebUpdate,
   canPromptInstall,
   captureInstallPrompt,
   installAutoUpdate,
   isStandalone,
   promptInstall,
+  webUpdateReady,
 } from "./pwa";
+import { UPDATE_REPO, checkForUpdate, updaterBridge } from "./update";
+import type { AvailableUpdate } from "./update";
+import { updateFooter, updateLines } from "./update-ui";
+import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
 import {
   TRANSFER_EXT,
@@ -461,7 +467,13 @@ import {
 // installs first. No on-screen build stamp or network "commits behind" fetch -
 // those were removed for parity (audit 05 FEAT-3): the base game shows nothing
 // that upstream Angband does not.
-installAutoUpdate();
+/** True only while the title screen is the thing on the screen. */
+let titleUp = false;
+/* A NEW BUILD IS TAKEN SILENTLY ONLY WHERE THE PLAYER CANNOT TELL. At the title
+ * screen a reload is invisible; mid-dungeon it is a screen flash, a lost message
+ * log and a resumed turn nobody asked for. Everywhere else the update waits
+ * behind the title screen's (U)pdate row. */
+installAutoUpdate(() => titleUp);
 /* Before anything else can miss it: beforeinstallprompt fires early and once, so
  * the (I)nstall locally page cannot go looking for it when the player asks. */
 captureInstallPrompt();
@@ -8414,16 +8426,207 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
    * with something to exit; desktopQuit reports whether there is one. */
   const living = livingRoster().length > 0;
-  return openModal(() =>
-    showTitleScreen(term, {
-      canLoad: living || resumedActive,
-      canOpen: listRoster().length > 0,
-      canQuit: desktopQuitAvailable(),
-      /* Absent under the desktop shell rather than greyed - see TitleOptions. */
-      canInstall: offerInstall({ isDesktop: desktopBridge !== null }),
-    }),
-  );
+  /* The check was started at boot and is bounded by its own timeout, so this
+   * await is the tail of a request that has had the whole of startup to finish.
+   * Waiting for it HERE rather than painting and then adding a row is the point:
+   * a row that appears under the player's cursor a second after the screen does
+   * is how a menu gets mis-clicked. */
+  const update = await updateOffer();
+  titleUp = true;
+  try {
+    return await openModal(() =>
+      showTitleScreen(
+        term,
+        {
+          canLoad: living || resumedActive,
+          canOpen: listRoster().length > 0,
+          canQuit: desktopQuitAvailable(),
+          /* Absent under the desktop shell rather than greyed - see TitleOptions. */
+          canInstall: offerInstall({ isDesktop: desktopBridge !== null }),
+          canUpdate: update !== null,
+        },
+        { randint1: titleRandint1 },
+      ),
+    );
+  } finally {
+    titleUp = false;
+  }
 }
+
+/**
+ * The title shimmer's RNG, and the reason it is not the game's.
+ *
+ * `displayRandint1` draws on `state.rng`, which is right for a monster on a map:
+ * upstream's do_animation draws on the game RNG and the determinism ledger
+ * accounts for it. The title screen is a different case entirely - it runs
+ * BEFORE any character exists and stays up for however long the player leaves
+ * it, so drawing there would make the game's RNG stream depend on how long
+ * somebody looked at the splash. Nothing downstream can be affected by this one,
+ * which is exactly why it is allowed to be the cheap generator.
+ */
+const titleRandint1 = (n: number): number => Math.floor(Math.random() * n) + 1;
+
+/**
+ * The update check, started once at boot and awaited at the title screen.
+ *
+ * Desktop asks GitHub; the browser asks its own service worker, which has
+ * already fetched the new build (see pwa.ts). Both answer null when there is
+ * nothing to offer, and neither ever throws: a failed check is not something the
+ * player asked about.
+ */
+let updateHow: UpdateHow = "none";
+let updateRoot = "";
+const updateProbe: Promise<AvailableUpdate | null> = (async () => {
+  try {
+    /* `updaterBridge`, NOT `desktopBridge`: the preload exposes two globals and
+     * the updater is on `neoDesktop`, while detectDesktopBridge returns
+     * `neoHostFs`. Reading it off the wrong one is how this feature spent its
+     * first build wired to nothing - see updaterBridge's comment. */
+    const bridge = updaterBridge();
+    if (!bridge) {
+      /* The browser. The worker knows, and there is nothing to download. */
+      return null;
+    }
+    const res = (await bridge.update("shape")) as
+      | { ok?: boolean; shape?: { how?: string; installRoot?: string; platform?: string; arch?: string } }
+      | undefined;
+    const shape = res?.shape;
+    if (!shape || shape.how === "none") return null;
+    updateHow = shape.how === "swap" ? "swap" : "manual";
+    updateRoot = shape.installRoot ?? "";
+    return await checkForUpdate({
+      fetch: globalThis.fetch.bind(globalThis),
+      machine: { platform: shape.platform ?? "", arch: shape.arch ?? "" },
+      current: ENGINE_VERSION,
+    });
+  } catch {
+    return null;
+  }
+})();
+
+/** What, if anything, the title screen should offer. */
+async function updateOffer(): Promise<AvailableUpdate | null> {
+  if (desktopBridge === null) {
+    if (!webUpdateReady()) return null;
+    updateHow = "web";
+    /* The worker does not report a version number - it has a build, not a tag -
+     * so the screen says "a newer version" rather than inventing one. */
+    return { version: "a newer version", tag: "", url: "", asset: null };
+  }
+  return updateProbe;
+}
+
+/**
+ * The (U)pdate screen.
+ *
+ * Painted here rather than through showTextScreen for two reasons that both
+ * matter: that viewer resolves on ESC, ENTER *and* SPACE alike, and this screen
+ * has to tell "yes, replace my install" apart from "get me out of here"; and it
+ * cannot repaint itself, which a progress bar is entirely made of.
+ *
+ * ONE PAINT PER PROGRESS EVENT WOULD BE 160 MB OF PAINTS. The download reports
+ * every chunk, so the bar is redrawn only when the whole-percent figure changes
+ * - about a hundred times over a download instead of tens of thousands.
+ */
+async function showUpdatePage(): Promise<void> {
+  const offer = await updateOffer();
+  if (!offer) return;
+  const bridge = updaterBridge();
+
+  let view: UpdateView = {
+    how: updateHow,
+    current: ENGINE_VERSION,
+    version: offer.version,
+    installRoot: updateRoot,
+    assetName: offer.asset?.name,
+    phase: "offer",
+    releaseUrl: offer.url || `https://github.com/${UPDATE_REPO}/releases`,
+  };
+
+  const paint = (): void => {
+    const { cols, rows } = term.size();
+    term.clear();
+    term.print(0, 1, "Update".slice(0, cols - 1), UI_GOLD);
+    const lines = updateLines(view);
+    for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
+      const line = lines[r];
+      if (!line) continue;
+      term.print(0, 3 + r, line.text.slice(0, cols - 1), UPDATE_TONE[line.tone]);
+    }
+    const footer = updateFooter(view);
+    term.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+  };
+
+  const key = (): Promise<string> =>
+    new Promise<string>((resolve) => {
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key.length !== 1 && ev.key !== "Enter" && ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        window.removeEventListener("keydown", onKey, true);
+        resolve(ev.key);
+      };
+      window.addEventListener("keydown", onKey, true);
+    });
+
+  for (;;) {
+    paint();
+    const pressed = await key();
+    if (pressed === "Escape") return;
+    if (pressed !== "Enter") continue;
+
+    if (view.how === "web") {
+      applyWebUpdate();
+      return;
+    }
+    if (view.how === "manual" || !bridge?.update || !offer.asset) {
+      await bridge?.update?.("reveal", view.releaseUrl);
+      return;
+    }
+
+    /* Downloading. Progress is throttled to whole percents - see above. */
+    view = { ...view, phase: "downloading", received: 0, total: offer.asset.size };
+    paint();
+    let lastPercent = -1;
+    const stop = bridge.onUpdateProgress?.((received, total) => {
+      const pc = total > 0 ? Math.floor((received / total) * 100) : -1;
+      if (pc === lastPercent) return;
+      lastPercent = pc;
+      view = { ...view, received, total };
+      paint();
+    });
+    const res = (await bridge.update("download", {
+      url: offer.asset.url,
+      sha256: offer.asset.sha256,
+      size: offer.asset.size,
+    })) as { ok?: boolean; error?: string } | undefined;
+    stop?.();
+
+    if (!res?.ok) {
+      view = { ...view, phase: "failed", error: res?.error };
+      continue;
+    }
+    view = { ...view, phase: "installing" };
+    paint();
+    const applied = (await bridge.update("apply")) as { ok?: boolean; error?: string } | undefined;
+    if (!applied?.ok) {
+      view = { ...view, phase: "failed", error: applied?.error };
+      continue;
+    }
+    /* The main process is quitting and a swap script is waiting on our pid.
+     * There is nothing left to draw. */
+    return;
+  }
+}
+
+/** Tones to this shell's palette, so update-ui.ts stays free of the terminal. */
+const UPDATE_TONE: Record<UpdateLine["tone"], string> = {
+  head: UI_GOLD,
+  body: UI_TEXT,
+  dim: UI_DIM,
+  good: UI_GOOD,
+  warn: UI_BAD,
+};
 
 /** Tones to this shell's palette, so install-local.ts stays free of the terminal. */
 const INSTALL_TONE: Record<InstallLine["tone"], string> = {
@@ -8703,6 +8906,13 @@ async function bootMenus(): Promise<void> {
      * title, the same as ESC out of any other pre-game screen. */
     if (choice === "install") {
       await openModal(() => showInstallPage());
+      continue;
+    }
+    /* Same shape as (I)nstall locally: read it, act or do not, come back to the
+     * title. The one path that does NOT come back is a successful swap, which
+     * ends with the process exiting. */
+    if (choice === "update") {
+      await openModal(() => showUpdatePage());
       continue;
     }
     if (choice === "new") {
