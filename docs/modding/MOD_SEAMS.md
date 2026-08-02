@@ -75,6 +75,27 @@ exact failure the call-site census exists to catch.
 | `historyAdd(entry)` | veto | `session/game.ts:872` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
 | `saveNoiseScent()` | any | `session/save.ts:1203` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
 | `messageText(raw)` | transform | `packages/web/src/main.ts:1244` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
+| `optionsChanged(snapshot)` | notification | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
+
+`optionsChanged` is the odd one and worth reading twice: it is the only member
+core does not ask a QUESTION. Every other hook's return value changes what the
+engine does next, so the fold has to decide whose answer wins. This one is told
+that the player has finished changing their settings, returns nothing, and folds
+**all-observe** - every listening mod is told, in load order, and none can
+overrule another, because two mods reacting to one fact are not in conflict.
+
+Three details that are contract, not implementation:
+
+- It fires **only when something actually changed**. A player who opened the `=`
+  menu and pressed ESC has not changed anything, and a hook named for a change
+  must not fire for one that did not happen.
+- Each mod gets **its own copy** of the snapshot. A mod that keeps the object it
+  was handed - which is exactly what a mod persisting settings does - must not
+  find it edited later by the mod that ran after it.
+- It is fired by the **host**, from one chokepoint inside `runOptionsMenu`
+  rather than from that function's four callers. `OptionState` is the pure port
+  of `option.c` and has no idea a menu exists; and a hook wired at each call site
+  is a hook the fifth call site forgets, silently.
 
 Two of these are contractually **RNG-FREE** (`levelGenerated`, `artifactCommit`):
 they run inside the generation and object pipelines, where one extra draw does

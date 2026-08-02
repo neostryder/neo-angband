@@ -647,6 +647,9 @@ export async function runOptionsMenu(
   if (prefs) items.push({ label: "Save visuals (advanced)", tag: "v" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
+  /* Every row below can change an option, including the pref-file loader, so the
+   * baseline is taken once around the WHOLE menu rather than per row. */
+  const before = optionsFingerprint(state);
   for (;;) {
     const idx = await selectFromMenu(
       term,
@@ -656,7 +659,7 @@ export async function runOptionsMenu(
       /* option_menu->flags = MN_CASELESS_TAGS (ui-options.c:2074). */
       { caselessTags: true },
     );
-    if (idx === null) return;
+    if (idx === null) break;
     switch (items[idx]?.tag) {
       case "a":
         await runInterfacePage(term, state);
@@ -720,4 +723,34 @@ export async function runOptionsMenu(
         break;
     }
   }
+  notifyOptionsChanged(state, before);
+}
+
+/**
+ * Tell the mods the player changed their settings (ModHooks.optionsChanged).
+ *
+ * FIRED FROM INSIDE runOptionsMenu, not from its four callers, and that is the
+ * point: a hook wired at each call site is a hook the fifth call site forgets,
+ * and the failure is silent - the mod is loaded, the player changes a setting,
+ * and nothing happens. One chokepoint is one thing to keep right.
+ *
+ * ONLY WHEN SOMETHING ACTUALLY MOVED. The hook is named for a change, so firing
+ * it when a player opened the menu and pressed ESC would make the name a lie and
+ * would wake every listening mod for nothing. Compared by serialising the whole
+ * snapshot, so a field added to OptionStateData is covered the day it is added
+ * rather than the day somebody remembers to add it to a list here.
+ *
+ * Exported for the test that asserts the call happens - see options.test.ts.
+ */
+export function notifyOptionsChanged(state: GameState, before: string): void {
+  const hook = state.modHooks?.optionsChanged;
+  if (!hook || !state.options) return;
+  const after = state.options.snapshot();
+  if (JSON.stringify(after) === before) return;
+  hook(after);
+}
+
+/** The comparison baseline: the whole option snapshot as it was on entry. */
+export function optionsFingerprint(state: GameState): string {
+  return state.options ? JSON.stringify(state.options.snapshot()) : "";
 }

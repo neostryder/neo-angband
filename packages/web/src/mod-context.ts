@@ -19,6 +19,7 @@ import {
   type ModPluginContext,
 } from "./mod-plugin";
 import { diskPacks } from "./disk-packs";
+import { modPrefs, type ModPrefs } from "./mod-prefs";
 
 /**
  * `core` is the module namespace this host itself imported, so a plugin and the
@@ -37,6 +38,7 @@ export function modPluginContext(
   flags: Readonly<Record<string, boolean>>,
   state?: GameState,
   own: ModOwnFiles = {},
+  session: ModSessionFacts = {},
 ): ModPluginContext {
   /* The mod's OWN files only. `assetUrl` is called with the mod's id fixed here
    * rather than taken as an argument, so a plugin cannot read another mod's assets
@@ -52,10 +54,25 @@ export function modPluginContext(
     assetUrl: (path: string): Promise<string | null> =>
       assets ? assets(id, path) : Promise.resolve(null),
     data: Object.freeze({ ...(own.data ?? {}) }),
+    /* Scoped by the id fixed above, for the same reason assetUrl is: the id a
+     * mod gets is the id it was loaded under, so no mod can read another's. */
+    prefs: session.prefs ?? modPrefs(id),
+    /* Defaults FALSE, which is the safe way round: a mod that seeds something
+     * for a new life must not seed it over a character who already lived one,
+     * so a caller that forgets to say gets the answer that changes nothing. */
+    newCharacter: session.newCharacter ?? false,
     log: (msg: string) => {
       log.info(`mod:${id}`, `${msg}`);
     },
   });
+}
+
+/** What the host knows about THIS session, as opposed to this mod's folder. */
+export interface ModSessionFacts {
+  /** Whether the character was created this session rather than loaded. */
+  readonly newCharacter?: boolean;
+  /** Override the preference store (tests, and a front end with its own). */
+  readonly prefs?: ModPrefs;
 }
 
 /**

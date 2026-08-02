@@ -40,11 +40,15 @@
 import { webcrypto } from "node:crypto";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
+import { composeModHooks, ENGINE_VERSION, OptionState } from "@rpgm-tools/neo-angband-core";
+import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { satisfies } from "@rpgm-tools/neo-angband-mod-sdk";
 import { RECOMMENDED_MODS, rawUrl, type RecommendedMod } from "./mod-registry";
 import { sha256Hex } from "./mod-install";
-import { MOD_API_VERSION } from "./mod-plugin";
+import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
+import { modPluginContext } from "./mod-context";
+import { modPrefs } from "./mod-prefs";
+import { notifyOptionsChanged, optionsFingerprint } from "./options";
 
 const ON = process.env["MOD_CANARY"] === "1";
 const subtle = webcrypto.subtle;
@@ -172,4 +176,116 @@ describe.skipIf(ON)("the canary is off by default", () => {
     expect(ON).toBe(false);
     expect(RECOMMENDED_MODS.length).toBeGreaterThan(0);
   });
+});
+
+/**
+ * The DOWNLOADED qol plugin, driven through the host's own chain.
+ *
+ * Everything above checks that the catalogue's promises about the bytes are
+ * still true. This checks that the bytes still DO something - and it is the only
+ * test anywhere that runs the plugin a player actually receives rather than a
+ * local build of it or a fixture shaped like one.
+ *
+ * The chain is the host's, function for function, in the host's order:
+ *
+ *   plugin.js downloaded -> evaluated as a module (mod-code.ts does this with a
+ *   blob URL; node has no blob URL, so a data: URL, which is the same dynamic
+ *   import of the same source text)
+ *     -> modPluginContext(...)              the context main.ts builds
+ *     -> plugin.hooks(ctx)                  WITHOUT state, as the host calls it
+ *     -> composeModHooks([...])             core's fold
+ *     -> notifyOptionsChanged(state, before) what the '=' screen calls on close
+ *     -> plugin.register(host, ctx)         with newCharacter, as main.ts calls it
+ *
+ * WHY IT IS WORTH THE NETWORK. Every link in that chain has its own unit test and
+ * all of them passed while the capture half was reading `ctx.state.options` - a
+ * property the host never puts on a hooks() context. The feature was dead and
+ * three green suites said otherwise. Only running the whole chain finds that.
+ */
+describe.skipIf(!ON)("the qol mod, downloaded and actually run", () => {
+  const mod = RECOMMENDED_MODS.find((m) => m.id === "qol");
+
+  it("is still in the catalogue, so this suite cannot pass by finding nothing", () => {
+    expect(mod).toBeDefined();
+  });
+
+  it(
+    "remembers a setting, and applies it to a new character",
+    async () => {
+      if (!mod || mod.payload.kind !== "files") throw new Error("qol is not a files payload");
+      const file = mod.payload.files.find((f) => f.path === "plugin.js");
+      if (!file) throw new Error("qol pins no plugin.js");
+      const { bytes } = await get(rawUrl(mod.repo, mod.tag, file.path));
+      const source = new TextDecoder().decode(bytes);
+
+      const loaded = (await import(
+        /* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+      )) as { default: ModPlugin };
+      const plugin = loaded.default;
+      expect(plugin.api).toBe(MOD_API_VERSION);
+
+      /* The player's toggles, resolved as the host resolves them: the manifest's
+       * defaults, read from the manifest that was downloaded beside the code. */
+      const manifest = await manifestOf(mod);
+      const rules = manifest["rules"] as ReadonlyArray<{ flag: string; default: boolean }>;
+      const flags: Record<string, boolean> = {};
+      for (const rule of rules) flags[rule.flag] = rule.default;
+      expect(flags["qol.rememberSettings"]).toBe(true);
+      expect(flags["qol.rememberCheats"]).toBe(false);
+
+      /* One preference store for both halves, exactly as the host gives one mod
+       * one store across a session. In-memory so the run leaves nothing behind. */
+      const store = new Map<string, string>();
+      const prefs = modPrefs(mod.id, {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => void store.set(k, v),
+        removeItem: (k) => void store.delete(k),
+      });
+
+      /* ---- character one: change a setting through the '=' screen ---- */
+      const first = { options: new OptionState() } as unknown as GameState;
+      /* hooks() gets NO state - the host composes hooks before the game exists. */
+      const composed = composeModHooks([
+        plugin.hooks?.(modPluginContext(mod.id, flags, undefined, {}, { prefs })) ?? {},
+      ]);
+      if (composed) first.modHooks = composed;
+      expect(composed?.optionsChanged, "the mod listens for option changes").toBeTypeOf(
+        "function",
+      );
+
+      const before = optionsFingerprint(first);
+      first.options!.set("use_sound", true);
+      first.options!.hitpointWarn = 8;
+      first.options!.set("cheat_live", true); // must NOT be remembered
+      notifyOptionsChanged(first, before);
+
+      expect(store.size, "the mod wrote its preferences").toBe(1);
+
+      /* ---- character two: a brand-new one, built from table defaults ---- */
+      const second = { options: new OptionState() } as unknown as GameState;
+      expect(second.options!.get("use_sound")).toBe(false);
+      plugin.register?.(
+        {} as never,
+        modPluginContext(mod.id, flags, second, {}, { prefs, newCharacter: true }),
+      );
+
+      expect(second.options!.get("use_sound"), "the setting carried over").toBe(true);
+      expect(second.options!.hitpointWarn).toBe(8);
+      expect(second.options!.get("cheat_live"), "cheats are not inherited by default").toBe(
+        false,
+      );
+      expect(second.options!.get("score_live")).toBe(false);
+
+      /* ---- and a LOADED character is left exactly as its save had it ---- */
+      const loadedChar = { options: new OptionState() } as unknown as GameState;
+      plugin.register?.(
+        {} as never,
+        modPluginContext(mod.id, flags, loadedChar, {}, { prefs, newCharacter: false }),
+      );
+      expect(loadedChar.options!.get("use_sound"), "a save keeps what it was saved with").toBe(
+        false,
+      );
+    },
+    TIMEOUT,
+  );
 });

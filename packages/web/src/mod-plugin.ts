@@ -83,6 +83,9 @@ import type {
   ModRegistryHost,
   GameState,
 } from "@rpgm-tools/neo-angband-core";
+/* Type-only, like every other import here: a mod's source imports this module,
+ * and a value import would put the host's code in every plugin's bundle. */
+import type { ModPrefs } from "./mod-prefs";
 
 /**
  * The ABI version this host implements. Bump ONLY when an existing plugin would
@@ -215,6 +218,25 @@ export interface ModPluginContext {
    * already parsed. Empty for a plugin whose folder holds no record files.
    */
   readonly data: Readonly<Record<string, unknown>>;
+  /**
+   * This mod's own preferences, kept OUTSIDE any character's save - the place
+   * for what the PLAYER likes, where the save bag is the place for what happened
+   * to a character. See mod-prefs.ts for why the two are different.
+   *
+   * Scoped to this mod, by the id it was loaded under.
+   */
+  readonly prefs: ModPrefs;
+  /**
+   * Whether this session's character was just CREATED, as opposed to loaded from
+   * a save.
+   *
+   * A mod that seeds something at the start of a life needs this and cannot
+   * derive it: turn 0 is not the answer (the game autosaves immediately after
+   * birth, so a save loaded at turn 0 exists), and neither is an empty save bag
+   * (a mod enabled mid-game has one too). Only the host knows which of startGame
+   * and loadGame it called.
+   */
+  readonly newCharacter: boolean;
   /** Emit a diagnostic line; the host decides where it goes. */
   readonly log: (msg: string) => void;
 }

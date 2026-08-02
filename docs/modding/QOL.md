@@ -109,6 +109,62 @@ step onto the dug-out grid in the same move, and each walk is a single attempt
   `neo-angband-mod-qol/plugin.test.ts` (the mod's own behaviour and its flag
   gate).
 
+### `qol.rememberSettings` - Remember my settings (on with the mod, from v0.13.0)
+
+Angband keeps a character's options inside that character's save and nowhere
+else, so they die with the character and every new life begins by setting them
+all again. Upstream's answer is the pref file (`s` / `r` in the options menu),
+which is a file the player has to know exists and remember to write. Core keeps
+that, warts and all; the convenience is here.
+
+What the player gets: change anything in `=`, and the next character they CREATE
+starts with it. A character loaded from a save is never touched - a save keeps
+what it was saved with, so changing a setting on one character cannot reach back
+into another.
+
+Two halves, in two different entry points, for a reason:
+
+- **Capture** is `hooks()` returning `optionsChanged`, which the host fires when
+  the `=` menu closes having changed something. It gets **no `state`** - the host
+  composes hooks before the game exists - so the mod builds a throwaway
+  `new ctx.core.OptionState()` purely to classify names, which is a property of
+  the option table and identical in every instance.
+- **Apply** is `register()`, which runs once with the game built, and only when
+  `ctx.newCharacter` is true.
+
+### `qol.rememberCheats` - Remember cheat options too (OFF by default)
+
+Extends the above to the cheat options. Off by default and opt-in on purpose:
+turning a `cheat_` option on forces its `score_` twin, which permanently bars
+that character from the high score list. Inheriting that unasked is the one case
+where remembering a setting does real damage. neostryder plays with the cheat
+options on and asked for the toggle, which is why it exists rather than the
+exclusion being absolute.
+
+The filter runs **on the way in as well as on the way out**, so turning the
+toggle off takes effect against settings that are already stored - otherwise the
+player's only remedy would be to find and clear the storage themselves.
+
+**Birth options are excluded outright**, by neither toggle. They are frozen into
+a character at creation and `OptionState.set` refuses them afterwards, so
+remembering one here could never apply it. They already carry forward by the
+game's own route: the `=` birth-options editor is seeded from the previous
+character's choices (`main.ts`, `StoredBirth.birthOptions`).
+
+### The three seams this needed, and why they are not about this mod
+
+None of them names `qol`, and each is the general form of the thing:
+
+| Seam | The general question it answers |
+|---|---|
+| `ModHooks.optionsChanged` | "tell me when the player changes their settings" |
+| `ctx.prefs` | "where do I keep something that outlives a character?" |
+| `ctx.newCharacter` | "was this character just created, or loaded?" |
+
+`ctx.prefs` is the one that was genuinely missing rather than merely absent: a
+mod's save bag lives INSIDE the character's save, so before this a mod could keep
+data about a character and had nowhere at all to keep data about the player.
+
 ## QoL ideas that are ALREADY faithful core (not this mod)
 
 Several conveniences imagined for a QoL mod are part of base Angband and so ship
@@ -133,6 +189,10 @@ re-implement them:
 - `packages/core/src/session/qol-defaults.test.ts` - faithful core option
   defaults (no QoL override), plus the ratchet that an ALL-NEUTRAL `ModHooks`
   leaves the RNG state and the generated level bit-identical to no hooks at all.
-- `packages/web/src/qol-mod.test.ts` - the manifest declares `qol.autoDig`
+- `packages/web/src/mod-canary.test.ts` (with `MOD_CANARY=1`) - the DOWNLOADED
+  plugin.js at the pinned tag, run through the host's own chain: a setting
+  changed on one character and picked up by the next. The one test that runs the
+  bytes a player receives.
+- (retired) `packages/web/src/qol-mod.test.ts` - the manifest declared `qol.autoDig`
   (`default: true`, i.e. on once the mod is enabled) and no option overrides;
   `pack.ts` discovery + `resolveModRules`.

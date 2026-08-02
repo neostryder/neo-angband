@@ -236,7 +236,7 @@ import {
   mergePluginManifests,
   setModCode,
 } from "./mod-code";
-import { modOwnFiles, modPluginContext } from "./mod-context";
+import { modOwnFiles, modPluginContext, type ModSessionFacts } from "./mod-context";
 import { migrateModBags } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -9686,6 +9686,16 @@ try {
  */
 const folderRuleFlags = resolveModRuleFlagsByMod();
 
+/* What every plugin is told about THIS session, built once so the three places
+ * that make a context cannot disagree about it.
+ *
+ * `newCharacter` is bootedNew AND the birth screen having finished. bootedNew
+ * alone is true of the throwaway default game that runs BEHIND the birth screen
+ * before the player has chosen anything - a mod seeding that character would be
+ * seeding one that is about to be discarded, and the reload after birth would
+ * ask it again anyway. */
+const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending };
+
 /* Each mod's own save bag, brought up to the schema that mod is now at, BEFORE
  * any of its other code runs (mod-bags.ts).
  *
@@ -9716,6 +9726,7 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
                 folderRuleFlags.get(loaded.id) ?? {},
                 state,
                 modOwnFiles(loaded.data),
+                sessionFacts,
               ),
             ) as JsonValue
         : undefined,
@@ -9754,6 +9765,7 @@ for (const loaded of activeModCode().plugins) {
         folderRuleFlags.get(loaded.id) ?? {},
         state,
         modOwnFiles(loaded.data),
+        sessionFacts,
       ),
     );
     installedPluginIds.add(loaded.id);
@@ -9805,6 +9817,7 @@ for (const loaded of activeModCode().plugins) {
         folderRuleFlags.get(loaded.id) ?? {},
         state,
         modOwnFiles(loaded.data),
+        sessionFacts,
       ),
     );
     /* undefined is a decline, not a failure: a mod whose own autoplay toggle is

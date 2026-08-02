@@ -19,6 +19,7 @@ import {
   type ModHooks,
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
+import type { OptionStateData } from "../player/options.js";
 
 const STATE = {} as GameState;
 const GRID = { y: 1, x: 1 };
@@ -426,6 +427,20 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.messageText?.("x"),
     },
+    optionsChanged: {
+      /* Nothing to answer with, so `nth` goes unused - which is itself the
+       * property the observer keys on. */
+      yes: (log, tag) => ({ optionsChanged: () => void log.push(tag) }),
+      no: (log, tag) => ({ optionsChanged: () => void log.push(tag) }),
+      run: (h) =>
+        h.optionsChanged?.({
+          values: {},
+          hitpointWarn: 3,
+          delayFactor: 40,
+          lazymoveDelay: 0,
+          birth: {},
+        }),
+    },
   };
 
   /** The fold `probe` exhibits, read off composeModHooks' actual behaviour. */
@@ -447,6 +462,14 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
        * composeModHooks first, so seeing "b" here means the fold asked in
        * reverse load order and the later mod decided. */
       return forward[0] === "b" ? "last-answer" : "first-answer";
+    }
+
+    /* A NOTIFICATION: there is no answer at all, and both contributors ran. The
+     * discriminator is behavioural rather than a special case in the table -
+     * every answering hook returns something, so "undefined from both orders,
+     * and everyone was called" is only true of a hook core does not read. */
+    if (ab === undefined && ba === undefined && forward.length === 2) {
+      return "all-observe";
     }
 
     const log: string[] = [];
@@ -630,5 +653,82 @@ describe("guarded contributions fold like any other", () => {
       { walkBlockedByDiggable: () => 100 },
     ]);
     expect(composed?.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBe(100);
+  });
+});
+
+describe("optionsChanged: a notification, so everyone is told", () => {
+  /** A snapshot shaped like OptionState.snapshot(), minimal but real. */
+  const SNAP: OptionStateData = {
+    values: { use_old_target: true },
+    hitpointWarn: 3,
+    delayFactor: 40,
+    lazymoveDelay: 0,
+    birth: { birth_force_descend: false },
+  };
+
+  it("calls every contributor, in load order", () => {
+    const seen: string[] = [];
+    const composed = composeModHooks([
+      { optionsChanged: () => void seen.push("a") },
+      { optionsChanged: () => void seen.push("b") },
+    ]);
+    composed?.optionsChanged?.(SNAP);
+    expect(seen).toEqual(["a", "b"]);
+  });
+
+  it("gives each mod its own copy, so one cannot edit what the next reads", () => {
+    /* The failure this prevents: a mod that keeps the object it was handed (to
+     * write to storage later, which is exactly what "remember my settings"
+     * does) and a second mod that mutates it. Both would be holding one object
+     * and the first mod's stored copy would silently change underneath it. */
+    const kept: OptionStateData[] = [];
+    const composed = composeModHooks([
+      { optionsChanged: (o) => void kept.push(o) },
+      {
+        optionsChanged: (o) => {
+          o.values["use_old_target"] = false;
+          o.hitpointWarn = 9;
+        },
+      },
+    ]);
+    composed?.optionsChanged?.(SNAP);
+    expect(kept[0]?.values["use_old_target"]).toBe(true);
+    expect(kept[0]?.hitpointWarn).toBe(3);
+    /* And the caller's own object is untouched, which is the same guarantee
+     * seen from the host's side. */
+    expect(SNAP.values["use_old_target"]).toBe(true);
+  });
+
+  it("a thrower drops out and the other mod is still told", () => {
+    const seen: string[] = [];
+    const composed = composeModHooks([
+      guardModHooks(
+        {
+          optionsChanged: () => {
+            throw new Error("boom");
+          },
+        },
+        () => {},
+      ),
+      { optionsChanged: () => void seen.push("b") },
+    ]);
+    expect(() => composed?.optionsChanged?.(SNAP)).not.toThrow();
+    expect(seen).toEqual(["b"]);
+  });
+
+  it("latches after a throw, like every other guarded hook", () => {
+    const faults: ModHookFault[] = [];
+    const inner = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const guarded = guardModHooks({ optionsChanged: inner }, (f) => faults.push(f));
+    guarded.optionsChanged?.(SNAP);
+    guarded.optionsChanged?.(SNAP);
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(faults.map((f) => f.hook)).toEqual(["optionsChanged"]);
+  });
+
+  it("is folded all-observe, which discards nothing", () => {
+    expect(MOD_HOOK_FOLDS.optionsChanged).toBe("all-observe");
   });
 });

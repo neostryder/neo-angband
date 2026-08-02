@@ -132,31 +132,34 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "qol",
     name: "Quality of Life",
     repo: "neostryder/neo-angband-mod-qol",
-    /* v0.12.0: the description rewritten short, after a player found that a long
-     * one squeezes the manager's mod list down to a single visible row. v0.11.0 is
-     * still a correct mod and is only superseded, not wrong - unlike v0.10.0, which
-     * declared no `engine` range at all while shipping a plugin.js, the one case
-     * where the range matters most.
+    /* v0.13.0 adds "Remember my settings": what you change in the '=' menu is
+     * kept, and the next character you create starts with it. It is the first
+     * tag whose PLUGIN.JS moved - v0.10.0 through v0.12.0 all pinned one
+     * identical build and only manifest.json ever changed, so a reader who
+     * remembers that as a standing fact should stop. Both digests below were
+     * re-fetched from raw.githubusercontent.com at the tag.
      *
-     * plugin.js has never moved: its digest below is the same one v0.10.0 pinned,
-     * across three tags. Only manifest.json has ever changed. */
-    tag: "v0.12.0",
+     * It also raises the mod's floor to `engine >=0.18.0`, because the two new
+     * toggles need seams 0.18.0 added. A 0.17.0 game keeps v0.12.0, which is
+     * still a correct mod - unlike v0.10.0, which declared no `engine` range at
+     * all while shipping a plugin.js, the one case where the range matters most. */
+    tag: "v0.13.0",
     summary: "Conveniences Angband does not have, each one a switch you can turn off",
     /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
      * the game being FAITHFUL, not the game being worse. A pre-checked row would make
      * the default experience something other than 4.2.6. */
     preChecked: false,
-    approxBytes: 1_525,
+    approxBytes: 5_550,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "c42fad101533a351937bb5d676cf4740635b43f9ba2fcca3dcbaa9302e5336c2",
+          sha256: "5b27c2172eb4c70b103ab30b015067fdeb946dc26d6a45ab5cae7888b5a61ba3",
         },
         {
           path: "plugin.js",
-          sha256: "e060d8603473fb3e8377097ab5100090575779b7c85b77bfc149b680e6aee8e5",
+          sha256: "524ee183678b2c6b0244c06fca7adfcf9cb68e04be2195d227c7375fbfaacb72",
         },
       ],
     },
