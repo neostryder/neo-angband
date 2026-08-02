@@ -50,6 +50,7 @@ import {
   loadEnabledModSectionFlags,
 } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
+import { log } from "./logging";
 import { activeModCode } from "./mod-code";
 import { validateModPlugin, type ModPlugin } from "./mod-plugin";
 import { modPluginContext, modOwnFiles } from "./mod-context";
@@ -90,7 +91,7 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
     const wrong = validateModPlugin(entry);
     if (wrong) {
       reportModFault(id, `${wrong} - the mod contributes no behaviour`);
-      console.warn(`[mod-hooks] ${id}/plugin.ts: ${wrong}; skipping`);
+      log.warn("mod-hooks", `${id}/plugin.ts: ${wrong}; skipping`);
       continue;
     }
     byId.set(id, pluginAdapter(id, entry as ModPlugin));
@@ -118,7 +119,7 @@ function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
       return plugin.hooks(modPluginContext(id, flags));
     } catch (e) {
       reportModFault(id, `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`);
-      console.error(`[mod:${id}] hooks() threw; contributing nothing:`, e);
+      log.error(`mod:${id}`, `hooks() threw; contributing nothing:`, e);
       return undefined;
     }
   };
@@ -233,7 +234,7 @@ function hookThrew(id: string, fault: ModHookFault): void {
       `of this session and the game has stopped saving: ${why}`,
   );
   taintSession({ id, hook: String(fault.hook), why });
-  console.error(`[mod:${id}] ${String(fault.hook)}() threw mid-turn:`, fault.error);
+  log.error(`mod:${id}`, `${String(fault.hook)}() threw mid-turn:`, fault.error);
 }
 
 /**
@@ -261,7 +262,7 @@ function folderHookEntries(): Map<string, ModHookEntry> {
           loaded.id,
           `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`,
         );
-        console.error(`[mod:${loaded.id}] hooks() threw; contributing nothing:`, e);
+        log.error(`mod:${loaded.id}`, `hooks() threw; contributing nothing:`, e);
         return undefined;
       }
     });

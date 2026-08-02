@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.16.0 && git push origin master v0.16.0
+git tag v0.17.0 && git push origin master v0.17.0
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the

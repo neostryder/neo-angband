@@ -11,7 +11,7 @@ install, and how to mod the game. Start with the top-level
 | **Play it** | [INSTALL.md](./INSTALL.md), or grab a build from [Releases](https://github.com/neostryder/neo-angband/releases) |
 | **Get a mod** | [MODS.md - getting a mod](./MODS.md#getting-a-mod-in-one-paragraph) |
 | **Write a mod** | [modding/README.md](./modding/README.md) |
-| **Report something** | [Open an issue](https://github.com/neostryder/neo-angband/issues/new/choose), or [the Discord](https://discord.gg/YegtwbHTBQ) |
+| **Report something** | In the game: Escape menu -> *Report a problem* ([LOGGING.md](./LOGGING.md)). Or [open an issue](https://github.com/neostryder/neo-angband/issues/new/choose), or [the Discord](https://discord.gg/YegtwbHTBQ) |
 | **Understand the parity claim** | [PARITY.md](./PARITY.md) |
 | **Work on the port** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | **Cut a release** | [RELEASING.md](./RELEASING.md) |
@@ -39,6 +39,9 @@ install, and how to mod the game. Start with the top-level
 
 - [INSTALL.md](./INSTALL.md) - playing in a browser, installing the offline
   PWA, self-hosting the static site, and the desktop app.
+- [LOGGING.md](./LOGGING.md) - where the game writes its log, how much a build
+  logs and why that is decided by the version rather than by a setting, and what
+  is in a problem report. Nothing is uploaded anywhere.
 - [../SECURITY.md](../SECURITY.md) - what is worth reporting privately, and
   where to send it.
 

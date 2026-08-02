@@ -100,16 +100,32 @@ describe("the offer, when this copy cannot replace itself", () => {
 });
 
 describe("the offer, in a browser", () => {
-  const web: UpdateView = { ...base, how: "web", version: "a newer version" };
+  const web: UpdateView = { ...base, how: "web", version: "a newer version", buildId: "a1b2c3d" };
 
-  it("says the new build is already here, because it is", () => {
-    expect(text(web)).toContain("already downloaded");
+  it("names the build rather than a version, because a deploy has no version", () => {
+    /* Every deploy of 0.17.0 is 0.17.0. What changed is the build, and the id
+     * is the only thing a player could quote back that identifies one. */
+    expect(text(web)).toContain("a1b2c3d");
+    expect(text(web)).not.toContain("Neo Angband a newer version");
     expect(updateFooter(web)).toContain("reload");
   });
 
-  it("does not talk about folders the browser does not have", () => {
+  it("does not claim the new build is already downloaded", () => {
+    /*
+     * IT USED TO, and it was true then: the only signal was a service worker
+     * that had already fetched and installed the build. The build-id check asks
+     * the server instead, so a page can know it is out of date before anything
+     * has been downloaded - and the old sentence became a promise the screen
+     * could not keep. This is the assertion that caught it.
+     */
+    expect(text(web)).not.toContain("already downloaded");
+    expect(text(web)).toContain("fetches it and reloads");
+  });
+
+  it("does not talk about folders or channels the browser does not have", () => {
     expect(text(web)).not.toContain("C:\\Games");
     expect(text(web)).not.toContain("neo-angband-data");
+    expect(text(web)).not.toContain("Channel:");
   });
 });
 
