@@ -71,6 +71,7 @@
  */
 
 import type { GameState } from "../game/context.js";
+import type { OptionStateData } from "../player/options.js";
 
 /**
  * A mod's behaviour contributions. Every member is optional; an absent member
@@ -182,6 +183,32 @@ export interface ModHooks {
    * Serves: the bug-fixes mod's cosmetic string corrections.
    */
   messageText?: (raw: string) => string;
+
+  /**
+   * The player finished changing their options (the '=' menu closed).
+   *
+   * A NOTIFICATION, and the only one here: every other hook is asked a question
+   * and its answer changes what the engine does, whereas this one is told a
+   * thing that already happened and core does not read the return value. The
+   * fold is "all-observe" for that reason - there is no answer to pick between,
+   * so every contributor simply runs.
+   *
+   * The payload is a SNAPSHOT (OptionState.snapshot()), not the live store. A
+   * mod that wants to react to a setting should read what the player chose; a
+   * mod that wants to CHANGE a setting has state.options and does not need this.
+   * Handing over the live object would blur the two, and a hook that mutated the
+   * store while the host was mid-repaint is a bug with no obvious author.
+   *
+   * Fired by the HOST, because the option screens are the host's - core's
+   * OptionState is the pure port of option.c and has no idea a menu exists. The
+   * host's own tests pin the call sites; a screen that edits options and forgets
+   * to fire this is a mod silently missing an event, which is why they are
+   * asserted rather than trusted.
+   *
+   * Serves: the QoL mod's "remember my settings" (persisting the player's
+   * choices past the character they were made on).
+   */
+  optionsChanged?: (options: OptionStateData) => void;
 }
 
 /**
@@ -234,7 +261,8 @@ export type ModHookFold =
   | "all-must-agree" // every contributor runs; the first refusal decides
   | "chained" // each sees the previous one's output, so the last one speaks last
   | "last-answer" // the LAST contributor with an opinion decides; earlier ones are not asked
-  | "any-yes"; // one contributor asking for it is enough
+  | "any-yes" // one contributor asking for it is enough
+  | "all-observe"; // a notification: every contributor is told, and none of them answers
 
 /**
  * WHICH FOLD EACH HOOK USES, next to the function that implements it.
@@ -260,6 +288,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   historyAdd: "all-must-agree",
   saveNoiseScent: "any-yes",
   messageText: "chained",
+  optionsChanged: "all-observe",
 };
 
 /**
@@ -378,6 +407,15 @@ export function guardModHooks(
     out.messageText = (raw): string => guard("messageText", () => text(raw), raw);
   }
 
+  const options = hooks.optionsChanged;
+  if (options) {
+    /* Nothing to neutralise: core does not read an answer, so the neutral value
+     * is undefined and the guard exists only for the latch and the report. */
+    out.optionsChanged = (data): void => {
+      guard("optionsChanged", () => options(data), undefined);
+    };
+  }
+
   return out;
 }
 
@@ -458,6 +496,21 @@ export function composeModHooks(
   const text = list.map((c) => c.messageText).filter(isFn);
   if (text.length > 0) {
     out.messageText = (raw): string => text.reduce((s, fn) => fn(s), raw);
+  }
+
+  const optionsChanged = list.map((c) => c.optionsChanged).filter(isFn);
+  if (optionsChanged.length > 0) {
+    /* LOAD order, and every one of them is told. There is no answer to choose
+     * between, so "later wins" has nothing to win: two mods both remembering the
+     * player's settings are not in conflict, they are two mods doing their own
+     * job with the same fact. Each gets its OWN copy - a mod that keeps the
+     * object it was handed and edits it later must not be editing what the next
+     * mod is about to read. */
+    out.optionsChanged = (data): void => {
+      for (const fn of optionsChanged) {
+        fn({ ...data, values: { ...data.values }, birth: { ...data.birth } });
+      }
+    };
   }
 
   return out;

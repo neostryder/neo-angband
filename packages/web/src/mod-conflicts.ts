@@ -158,6 +158,7 @@ function hookDescription(hook: keyof ModHooks): string {
     historyAdd: "which events reach your character history",
     saveNoiseScent: "whether noise and scent maps go into the save",
     messageText: "the wording of game messages",
+    optionsChanged: "being told when you change your options",
   };
   return words[hook];
 }

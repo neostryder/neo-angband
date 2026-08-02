@@ -153,11 +153,46 @@ What `ctx` carries:
 | `state` | the live `GameState` (present in `register`, absent in `hooks`) |
 | `assetUrl` | `(path) => Promise<string \| null>` — a URL for one of *your* files |
 | `data` | your own record files, parsed, keyed without `.json` |
+| `prefs` | `{ get(), set(value) }` — one JSON value of **yours**, kept outside every save |
+| `newCharacter` | whether this session's character was just created, rather than loaded |
 | `log` | a diagnostic line; the host decides where it goes |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
 another mod's toggles, or its behaviour would silently depend on which other mods
 the player happened to enable.
+
+### `state` is absent in `hooks`, and it always will be
+
+The row above is easy to skim past and it is load-bearing. The host composes
+every enabled mod's hooks **before it starts the game**, because the composed
+`ModHooks` is an argument to `startGame` — so there is no `GameState` to hand you
+yet, and there never can be. `hooks(ctx)` is a factory over your flags; anything
+needing the live game belongs in `register(host, ctx)`, which runs once with the
+game built.
+
+If you need the engine at `hooks` time for something that is not the live game —
+classifying option names, reading a constant — `ctx.core` is there and is the
+same module instance the game runs on.
+
+### `prefs`: the place for data that outlives a character
+
+Your mod has two places to put data and they are not interchangeable.
+
+| | lives in | dies when | for |
+|---|---|---|---|
+| save bag (`state.mods[id]`) | the character's save file | that character does | what happened to this character |
+| `ctx.prefs` | the player's install | never, until you clear it | what this player likes |
+
+`prefs` is one JSON value, replaced whole, scoped to your mod's id by the host —
+you cannot read another mod's, and passing a different id is not a thing you can
+do. Setting `null` forgets it. Every failure is swallowed and logged rather than
+thrown at you: a full disk must not take your mod down from inside a hook.
+
+Where there is no storage at all, `prefs` still exists and simply never
+remembers, so a mod written against it runs on a front end that has none.
+
+Reach for `localStorage` yourself and you have hard-coded a browser into a mod
+that would otherwise run anywhere the game does.
 
 ## Several scripts
 
