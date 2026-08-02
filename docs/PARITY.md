@@ -10,6 +10,55 @@ With no mod loaded, every rule, formula, table, message, screen layout, key, and
 content record behaves as it does in Angband 4.2.6, including upstream quirks and
 bugs. Odds and per-level distributions match.
 
+### What that is worth today, measured
+
+Last run 2026-08-01, engine `0.14.0`, at full power:
+
+```bash
+NEO_PARITY_RUNS=1000 npx vitest run packages/cli/src/parity-c-stat.test.ts
+```
+
+1000 levels per depth from the port against 1000 from the real compiled C
+(`main-stats`), depths 1 to 20. **Passes**, at α = 0.01 Bonferroni-corrected
+across the family:
+
+| Metric | Shape | Result |
+| --- | --- | --- |
+| Monster density | mean test per depth (20) | pass; pooled Stouffer Z = 0.59, p = 0.55 |
+| Object count | mean test per depth (20) | pass; no depth over \|z\| = 1.6 |
+| Ego count | mean test per depth (20) | pass |
+| Artifact count | mean test per depth (20) | pass |
+| Object level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.29** against a null of mean 1.94, max 2.49 |
+| Monster level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.21** against a null of mean 1.82, max 2.21 |
+| Gold per level | mean test per depth | pass |
+| **Monster species mix** | **printed, never gated** | see below |
+
+The two feeling rows are the ones worth reading twice. The null is not a
+chi-square tail - it is fifteen pairs of six independent 1000-run C databases
+run through this same instrument, so it says what the statistic does when the
+answer is known to be "no difference". The port's 1.29 and 1.21 are **below the
+null's mean**: on these metrics the port is closer to the C than two runs of the
+C are to each other.
+
+**Species is measured and deliberately not gated**, and that is the honest part
+of this table. Pits and nests drop 20-60 monsters of one theme into a level, so
+the per-monster counts are 2.5-5x overdispersed and the effective sample size is
+the number of levels, not of monsters. Run against ITSELF at a second base seed
+the port reaches p = 2e-97, and at depth 13 it is further from itself than from
+the C. No threshold on that number means anything. Answering the species
+question properly needs a different instrument (one vector per level, a
+permutation test over levels) and is open work.
+
+Two more caveats, both structural rather than provisional:
+
+- **The pooled feeling gates only decide at matched sample size.** G grows with
+  n for a fixed distributional difference, so the ratio computed at the default
+  400 port runs cannot be compared with a null measured between two 1000-run
+  samples. Below 1000 those two rows print and do not gate - which is why the
+  command above sets `NEO_PARITY_RUNS`.
+- **This measures generation.** Messages, screens and keys are lane 4 below;
+  formulas are lane 1. A green stats run is not a claim about any of those.
+
 The port is **not** bit-exact against a reference C binary and does not try to
 be. It keeps its **own** consistent RNG draw order and named-stream design, so a
 given seed produces a different specific dungeon than a stock GCC/MinGW build of

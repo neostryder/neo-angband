@@ -4,6 +4,18 @@ Neo Angband is a modern TypeScript port of Angband 4.2.6. Thanks for helping.
 This page is the short version of how the project is built and the rules that
 keep it faithful. Read it once before your first change.
 
+> **Not sure yet, or stuck on something?** Come to
+> [the RPGM Tools Discord](https://discord.gg/YegtwbHTBQ) and ask. "Is this
+> worth a PR?" and "why won't this build?" are both good questions there, and
+> the answer usually arrives faster than on an issue. For anything you would
+> rather not write in public - including a security report - email
+> **strider-angband (at) rpgm.tools**; see [SECURITY.md](SECURITY.md).
+>
+> **Playing rather than building?** Everything you need is in the
+> [README](README.md), and
+> [opening an issue](https://github.com/neostryder/neo-angband/issues/new/choose)
+> needs none of what follows.
+
 ## Prerequisites
 
 - **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24

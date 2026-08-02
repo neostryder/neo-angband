@@ -5,20 +5,42 @@ build **you control**, because that is the only kind of build a bug report can b
 pinned to. Deliberately, no hosted demo URL appears here: a hosted copy can
 change under you between sessions, so "it did X" stops being reproducible.
 
-One web app, four ways to run it, all from the *same* build:
+## The short answer
+
+**[Download a build from Releases.](https://github.com/neostryder/neo-angband/releases)**
+Windows, macOS and Linux, plus the static site as a zip. The Windows
+**portable** `.exe` and the Linux **AppImage** need no installer: download, run,
+and the game keeps its saves in a folder beside itself.
+
+Those builds are **not code-signed**. There is no Apple Developer identity or
+Windows certificate behind this project yet, so the first launch gets a warning:
+on Windows, SmartScreen says "unrecognised app" and the way through is *More
+info -> Run anyway*; on macOS, right-click the app and choose *Open*. That is a
+real trust decision and it is yours to make - if you would rather not, build it
+yourself from §1 below, or play in a browser, which asks nothing of you.
+
+**Nothing needs any of the rest of this page.** It is here for the other four
+ways, all of which run the *same* build:
 
 | | Best for | Start at |
 |---|---|---|
 | **From source (dev server)** | testing, and fixing what you find | [§1](#1-run-it-from-source-recommended-for-testing) |
 | **Self-hosted static site** | your own copy, or one for a group | [§2](#2-self-host-as-a-static-site) |
 | **Installed PWA** | playing offline on a phone or tablet | [§3](#3-install-as-a-pwa-offline-any-platform) |
-| **Desktop app (Electron)** | a double-click native install | [§4](#4-desktop-app-electron) |
+| **Desktop app (Electron)** | building the packaged app yourself | [§4](#4-desktop-app-electron) |
 
 The engine, content, saves, and the entire mod framework behave the same on all
-four. Where a surface genuinely differs, it is called out in the
+of them. Where a surface genuinely differs, it is called out in the
 [parity matrix](#parity-matrix) rather than left as a hidden gap.
 
-**Prerequisites** for everything except the PWA install: [Node](https://nodejs.org/)
+**Your saves survive an update.** Every change to the save format ships the
+conversion that reads the version before it, and a build that raises the format
+without writing that conversion fails its own tests. A save from a *newer* build
+than the one you are running says so and asks you to update; it is never
+reported as damage, and a save the game cannot open is never overwritten.
+
+**Prerequisites** for everything except the download and the PWA install:
+[Node](https://nodejs.org/)
 22 or newer, and [pnpm](https://pnpm.io/installation) **11** — run
 **`corepack enable pnpm`** and the `packageManager` field in the root
 `package.json` decides the exact version. The 11 is not advisory: pnpm 10 fails on
@@ -177,13 +199,21 @@ start` launches without rebuilding.
 
 ### Package it
 
+Only needed if you want a build the [Releases](https://github.com/neostryder/neo-angband/releases)
+page does not offer - a platform we do not build, or a change of your own.
+
 ```sh
 pnpm --filter @rpgm-tools/neo-angband-desktop dist
 ```
 
 Everything lands in `packages/desktop/dist-desktop/`, built by electron-builder.
-Run it on the target OS (cross-building, especially for macOS, has its own
-toolchain requirements).
+The script empties that folder first, so what is in it is what you just built and
+not an archive of every version you have ever made. Run it on the target OS
+(cross-building, especially for macOS, has its own toolchain requirements).
+
+The same thing runs in CI on a tag: `.github/workflows/release.yml` builds all
+three platforms and attaches them to a draft release. See
+[RELEASING.md](RELEASING.md).
 
 | Platform | Installer | No-install |
 |---|---|---|

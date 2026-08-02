@@ -4,6 +4,18 @@ Everything documenting the port: the plan and architecture, how to play and
 install, and how to mod the game. Start with the top-level
 [README](../README.md) for the project overview.
 
+## If you are here to do one thing
+
+| I want to... | Go to |
+| --- | --- |
+| **Play it** | [INSTALL.md](./INSTALL.md), or grab a build from [Releases](https://github.com/neostryder/neo-angband/releases) |
+| **Get a mod** | [MODS.md - getting a mod](./MODS.md#getting-a-mod-in-one-paragraph) |
+| **Write a mod** | [modding/README.md](./modding/README.md) |
+| **Report something** | [Open an issue](https://github.com/neostryder/neo-angband/issues/new/choose), or [the Discord](https://discord.gg/YegtwbHTBQ) |
+| **Understand the parity claim** | [PARITY.md](./PARITY.md) |
+| **Work on the port** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| **Cut a release** | [RELEASING.md](./RELEASING.md) |
+
 ## Overview and plan
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - the monorepo layout and how the
@@ -11,11 +23,15 @@ install, and how to mod the game. Start with the top-level
 - [PORT_PLAN.md](./PORT_PLAN.md) - the ratified port plan, roadmap, and the
   numbered project decisions.
 - [PARITY.md](./PARITY.md) - what "feature parity with Angband 4.2.6,
-  statistically verified" means and how it is enforced.
+  statistically verified (with no mods)" means, the numbers it currently holds
+  at, and the one metric that is measured and deliberately not gated.
 - [PARITY_CLOSURE.md](./PARITY_CLOSURE.md) - the closed worklist that took the
   port to 4.2.6 parity: 16 items, all done, kept for provenance.
 - [REBASE_RUNBOOK.md](./REBASE_RUNBOOK.md) - how to advance the port from its
   pinned baseline onto a future upstream release using the parity ledger.
+- [RELEASING.md](./RELEASING.md) - the release runbook: how a tag becomes npm
+  packages and downloadable builds, and the save-migration obligation that comes
+  with any change to the save format.
 - [../parity/README.md](../parity/README.md) - the parity provenance ledger:
   which upstream sources each port module ports.
 
@@ -23,6 +39,13 @@ install, and how to mod the game. Start with the top-level
 
 - [INSTALL.md](./INSTALL.md) - playing in a browser, installing the offline
   PWA, self-hosting the static site, and the desktop app.
+- [../SECURITY.md](../SECURITY.md) - what is worth reporting privately, and
+  where to send it.
+
+## Tools
+
+- [MCP.md](./MCP.md) - the MCP server: an AI client plays the game through the
+  frozen agent API.
 
 ## Modding
 
@@ -42,6 +65,11 @@ install, and how to mod the game. Start with the top-level
   Angband and the moddability pillar.
 - [modding/MOD_LIFECYCLE.md](./modding/MOD_LIFECYCLE.md) - mod lifecycle,
   saves, and how mods compose.
+- [modding/PLUGINS.md](./modding/PLUGINS.md) - the plugin ABI: one `plugin.js`,
+  the engine handed in, and what it may reach.
+- [modding/MOD_COMPATIBILITY.md](./modding/MOD_COMPATIBILITY.md) - what the
+  engine promises a mod across releases, and the four ways a mod can be
+  stranded by one.
 - [modding/MOD_SEAMS.md](./modding/MOD_SEAMS.md) - the `ModHooks` behaviour
   seam, its per-hook fold rules, and why core stays faithful when untouched.
 - [modding/MOD_REACH.md](./modding/MOD_REACH.md) - measured mod reach: hook

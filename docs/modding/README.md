@@ -13,6 +13,14 @@ This directory is the modding SDK documentation set. It grows with the
 engine; each page documents surfaces that exist and are tested. For the
 overall design and the moddable-surface matrix, read `docs/MODS.md`.
 
+**Just want to install one?** That is
+[three keypresses](../MODS.md#getting-a-mod-in-one-paragraph), not this page.
+
+**Writing one, and want to talk to someone?**
+[The RPGM Tools Discord](https://discord.gg/YegtwbHTBQ) is the place - the
+seams are new, and "can a mod do X" is exactly the question worth asking
+before you build around an answer you guessed.
+
 ## Contents
 
 - This page: pack anatomy, manifests, and record composition (live today,
