@@ -260,7 +260,6 @@ import type { ActivationSummarizer } from "../obj/randart-build.js";
 import { generateLevel, getJoinInfo, type QuestSpawn } from "../gen/generate.js";
 import { iToGrid } from "../gen/util.js";
 import {
-  SAVE_VERSION,
   deserializeAutoinscriptions,
   deserializeEverseen,
   deserializeFlavor,
@@ -282,6 +281,7 @@ import {
   serializeGame,
 } from "./save.js";
 import type { SavedGame } from "./save.js";
+import { migrateSave } from "./save-migrate.js";
 import { ContentIdResolver } from "../mod/ids.js";
 import {
   coreOnlyManifest,
@@ -445,6 +445,14 @@ export interface StartedGame {
   orphans: OrphanStore;
   /** decision-8: whether the one-time orphan keep/purge prompt has been shown. */
   orphansAcknowledged: boolean;
+  /**
+   * What loadGame had to convert to read this save (session/save-migrate.ts).
+   * Absent on a new game and on a save already at SAVE_VERSION. `applied` is one
+   * line per format version crossed; `notes` is anything that could not be
+   * carried across, in words a player can act on. A host SHOULD show both - a
+   * character that quietly lost an item is worse than one that says it did.
+   */
+  saveMigration?: { applied: string[]; notes: string[] };
   /** The player option store (option.c), persisted in the save. */
   options: OptionState;
   /**
@@ -3337,16 +3345,27 @@ export interface LoadGameOptions {
 
 export function loadGame(
   pack: GamePack,
-  saveIn: SavedGame,
+  saveDocument: SavedGame,
   present: ReadonlySet<string> = new Set(["core"]),
   opts: LoadGameOptions = {},
 ): StartedGame {
-  if (saveIn.version !== SAVE_VERSION) {
-    throw new Error(`save: unsupported version ${saveIn.version}`);
-  }
   const reg = bindCore(pack);
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
+
+  // The content-id resolver: every namespaced string id in the save resolves
+  // back to a runtime index against this bound pack (mod/ids.ts).
+  const ids = new ContentIdResolver(reg);
+
+  // An OLDER save is converted forward, one version at a time, before anything
+  // reads a field (session/save-migrate.ts). This used to be a throw, and the
+  // web host's bare catch turned it into "Could not read the save; starting a
+  // new game" - a permadeath game telling a player their character is gone when
+  // nothing was wrong with the bytes. The only load this build genuinely cannot
+  // do is one from the FUTURE, and migrateSave throws SaveFromFutureError for
+  // that alone, so a host can say "update the game" instead of "it is damaged".
+  const migration = migrateSave(saveDocument, ids);
+  const saveIn = migration.save;
 
   // The mod-lifecycle blocks (P7.2). The manifest fingerprint is core-only for
   // saves written before the mod substrate. Reconcile the mod set against the
@@ -3369,10 +3388,7 @@ export function loadGame(
   );
   const save = quarantine.save;
 
-  // The content-id resolver: every namespaced string id in the save resolves
-  // back to a runtime index against this bound pack (mod/ids.ts). The feature
-  // remap turns the save's terrain-legend indices into this pack's indices.
-  const ids = new ContentIdResolver(reg);
+  // The feature remap turns the save's terrain-legend indices into this pack's.
   const featRemap = buildFeatRemap(save.featLegend, ids);
 
   // Restore the option store (older saves lack it: table defaults). Do this
@@ -3700,6 +3716,9 @@ export function loadGame(
     mods: save.mods ?? {},
     orphans: quarantine.orphans,
     orphansAcknowledged: save.orphansAcknowledged ?? false,
+    ...(migration.applied.length > 0 || migration.notes.length > 0
+      ? { saveMigration: { applied: migration.applied, notes: migration.notes } }
+      : {}),
     options,
     randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
