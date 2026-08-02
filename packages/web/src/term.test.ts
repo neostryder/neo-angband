@@ -393,9 +393,12 @@ describe("main.ts supplies bgTile wherever something covers the terrain", () => 
 
   it("term.ts routes paintCell through blitCellTiles rather than blitting once", () => {
     const term = stripComments(TERM);
-    expect(term).toContain(
-      "if (blitCellTiles(this.ctx, g, px, py, this.cellW, this.cellH)) return;",
-    );
+    /* The size arguments are `cw`/`ch`, not `this.cellW`/`this.cellH`: tiles are
+     * painted into the same device-pixel-snapped rect as the background under
+     * them (see cellBox), or they reintroduce the seam that rect exists to
+     * close. What this test is about is unchanged - both tile passes still go
+     * through one helper. */
+    expect(term).toContain("if (blitCellTiles(this.ctx, g, px, py, cw, ch)) return;");
     /* The old single-pass shape, which no longer exists anywhere. */
     expect(term).not.toContain("if (g?.tile && g.tile.draw(");
   });
