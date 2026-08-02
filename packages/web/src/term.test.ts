@@ -81,9 +81,16 @@ describe("GlyphTerm.fit", () => {
   });
 
   it("still repaints from the carried grid, and still notifies onResize", () => {
-    // redraw() is what puts the carried cells back on the resized canvas; the
-    // onResize callback is how the shell repaints the map when no overlay is up.
-    expect(TERM).toMatch(/carryGrid\(this\.grid[\s\S]{0,600}?this\.redraw\(\)/);
+    /* The paint that puts the carried cells back on the resized canvas has to
+     * happen NOW and has to be a FULL one: cells have moved and changed size, so
+     * the frame diff's record of what is on the canvas is worthless. `fullRepaint
+     * = true` then a synchronous `flush()`, rather than the queued paint every
+     * other mutator gets - a resize does not come from a frame of gameplay, and
+     * leaving the window blank until some later task is what "the title screen
+     * vanished" looked like. The onResize callback is how the shell repaints the
+     * map when no overlay is up. */
+    expect(TERM).toMatch(/carryGrid\(this\.grid[\s\S]{0,900}?this\.fullRepaint = true/);
+    expect(TERM).toMatch(/this\.fullRepaint = true;[\s\S]{0,900}?this\.flush\(\)/);
     expect(TERM).toMatch(/this\.fit\(\);\s*this\.onResize\?\.\(this\.size\(\)\)/);
   });
 });

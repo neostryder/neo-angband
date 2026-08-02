@@ -1,12 +1,19 @@
 /**
  * The "display current knowledge" sub-browsers (ui-knowledge.c do_cmd_knowledge_*,
- * reached from the '~' master menu). Upstream draws these with an interactive
- * two-pane group/member navigator (display_knowledge, ui-knowledge.c L1050-1240);
- * the web platform substitutes the same flat, grouped, letter-selectable list the
- * rest of this shell uses for browsers (see showMonsterKnowledge / screens.ts
- * monsterKnowledgeMenu). Membership, sort order, grouping, the "N unknown" style
- * counts, and the identification gating are all reproduced exactly - only the
- * navigation widget differs (a UI mechanic the web necessitates).
+ * reached from the '~' master menu). These are drawn with upstream's own two-pane
+ * group/member navigator (display_knowledge, ui-knowledge.c L1050-1240) - see
+ * runGroupedBrowser.
+ *
+ * THEY USED NOT TO BE, and this header said so: the web platform "substitutes the
+ * same flat, grouped, letter-selectable list the rest of this shell uses". That
+ * substitution is what made known objects unusable. Flattening every group into
+ * one menu makes several hundred rows, the letters run out at the fifty-second,
+ * and a group heading becomes a dim row to scroll past rather than a thing to
+ * choose. Upstream's two menus letter NOTHING - both are built from iters whose
+ * `get_tag` is NULL, and menu_init memsets `selections` to NULL - because picking
+ * a group first is what keeps the member list short enough to be a list.
+ * Membership, sort order, grouping, the "N unknown" counts and the identification
+ * gating were already exact, and are untouched.
  *
  * This module is presentation only: it reads already-ported core knowledge state
  * (rune knowledge, feature/trap registries, artifact-created tracking) and never
@@ -67,9 +74,9 @@ import type {
 import type { GlyphTerm } from "./term";
 import {
   promptText,
-  selectFromMenu,
   showTextScreen,
-  type MenuItem,
+  menuNav,
+  type MenuNav,
   type ScreenLine,
 } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
@@ -190,56 +197,289 @@ export interface KnowledgeGroup<T> {
   rows: KnowledgeRow<T>[];
 }
 
-/**
- * Flatten grouped rows into a selectFromMenu list: each non-empty group emits a
- * disabled header row (dim, unselectable - selectFromMenu skips disabled rows
- * for the cursor) followed by its member rows. The parallel `members` array maps
- * a menu index back to its member (null for header rows) so the caller opens the
- * right recall on selection.
- */
-export function groupsToMenu<T>(
-  groups: readonly KnowledgeGroup<T>[],
-): { items: MenuItem[]; members: (T | null)[] } {
-  const items: MenuItem[] = [];
-  const members: (T | null)[] = [];
-  for (const group of groups) {
-    if (group.rows.length === 0) continue;
-    items.push({ label: group.name, color: UI_DIM, disabled: true });
-    members.push(null);
-    for (const row of group.rows) {
-      items.push({
-        label: `  ${row.label}`,
-        color: row.color,
-        ...(row.suffix ? { suffix: row.suffix } : {}),
-        ...(row.hint !== undefined ? { hint: row.hint } : {}),
-      });
-      members.push(row.member);
-    }
-  }
-  return { items, members };
+/* groupsToMenu - which flattened the groups into one lettered list with a dim
+ * header row per group - is GONE, along with the two callers that drove it. It
+ * was the whole reason known objects handed out letters it could not honour
+ * past the fifty-second row. See runGroupedBrowser below for what upstream
+ * actually draws. */
+
+/** Optional hooks a browser can add, mirroring member_funcs' xtra_* callbacks. */
+export interface GroupedBrowserHooks<T> {
+  /**
+   * rune_xtra_act (ui-knowledge.c L2247): a key the member pane handles itself.
+   * Return true if the key was consumed. Async because the port's version of
+   * "type an inscription" is an await, where upstream's is a blocking
+   * get_string.
+   */
+  xtraAct?: (key: string, member: T) => Promise<boolean>;
 }
 
+/** Row 5's rule and the `|` divider are drawn at these fixed offsets. */
+const BROWSER_TITLE_ROW = 2;
+const BROWSER_LABEL_ROW = 4;
+const BROWSER_RULE_ROW = 5;
+const BROWSER_TOP = 6;
+
 /**
- * Drive a grouped knowledge browser: render the flattened list, and when a
- * member is picked open its recall (a full-screen text viewer), then return to
- * the list - exactly like the upstream member pane's 'r'ecall / Enter. ESC on
- * the list closes the browser. `emptyMessage` mirrors upstream returning
- * immediately when the collected set is empty.
+ * display_knowledge (ui-knowledge.c L1050-1240): the real two-pane knowledge
+ * browser - Group on the left, Name on the right, a `|` between them and a rule
+ * of `=` above.
+ *
+ * WHY THIS REPLACED A FLAT LIST. The port flattened the groups into one lettered
+ * menu, with a dim header row per group, and lettered every row a..z then A..Z.
+ * Known objects runs to several hundred rows, so past the fifty-second every row
+ * was drawn with a blank tag and could only be reached by scrolling - and the
+ * lettering itself was an invention. Upstream's two menus are built with
+ * `menu_find_iter(MN_ITER_STRINGS)` and `{NULL, NULL, display_group_member, NULL,
+ * NULL}`; both have a NULL `get_tag`, and `menu_init` memsets `selections` to
+ * NULL, so `display_menu_row` prints no tag at all on either side. There are no
+ * letters in this screen. It is arrows, and choosing a group is what makes the
+ * member list short enough to be a list.
+ *
+ * The panel dance is upstream's, including which key does what:
+ *
+ *   scroll_process_direction: LEFT -> EVT_ESCAPE, RIGHT -> EVT_SELECT.
+ *   EVT_ESCAPE: panel 1 goes back to panel 0; panel 0 leaves.
+ *   EVT_SELECT: panel 0 enters panel 1; panel 1 recalls the row it is on.
+ *   'r' / 'R': recall, from either panel.
+ *
+ * so ESC is "back one level" here without any port-specific rule for it.
  */
 export async function runGroupedBrowser<T>(
   term: GlyphTerm,
   title: string,
   groups: readonly KnowledgeGroup<T>[],
   recall: (member: T) => Promise<void>,
+  hooks: GroupedBrowserHooks<T> = {},
 ): Promise<void> {
-  const { items, members } = groupsToMenu(groups);
-  if (items.length === 0) return;
+  /* Upstream builds g_list from the sorted object list, so a group with no
+   * members cannot appear; ours are built per group, so drop the empties here. */
+  const live = groups.filter((g) => g.rows.length > 0);
+  if (live.length === 0) return;
+
+  /* g_name_len: at least 8, at most 20 (L1136-1142). */
+  let nameLen = 8;
+  for (const g of live) nameLen = Math.max(nameLen, g.name.length);
+  if (nameLen >= 20) nameLen = 20;
+  const memberCol = nameLen + 3;
+
+  let group = 0;
+  let member = 0;
+  /* panel 0 = the group list, panel 1 = the member list (upstream's `panel`). */
+  let panel: 0 | 1 = 0;
+  let groupTop = 0;
+  let memberTop = 0;
+
   for (;;) {
-    const idx = await selectFromMenu(term, title, items);
-    if (idx === null) return;
-    const member = members[idx];
-    if (member == null) continue; // a header row; ignore
-    await recall(member);
+    const wanted = await browsePanels();
+    if (wanted === null) return;
+    await recall(wanted);
+  }
+
+  /** Paint, then read keys until a member is chosen for recall (or ESC leaves). */
+  function browsePanels(): Promise<T | null> {
+    return new Promise<T | null>((resolve) => {
+      const paint = (): void => {
+        const { cols, rows } = term.size();
+        const browserRows = Math.max(1, rows - 8);
+        term.clear();
+        term.print(0, BROWSER_TITLE_ROW, `Knowledge - ${title}`.slice(0, cols - 1), UI_CURSOR);
+        term.print(0, BROWSER_LABEL_ROW, "Group", UI_DIM);
+        term.print(memberCol, BROWSER_LABEL_ROW, "Name", UI_DIM);
+        term.print(0, BROWSER_RULE_ROW, "=".repeat(Math.min(cols - 1, 79)), UI_DIM);
+
+        const rows_ = live[group]?.rows ?? [];
+        /* Both panes scroll independently, each chasing its own cursor. */
+        groupTop = clampTop(groupTop, group, live.length, browserRows);
+        memberTop = clampTop(memberTop, member, rows_.length, browserRows);
+
+        for (let r = 0; r < browserRows; r++) {
+          const y = BROWSER_TOP + r;
+          term.print(nameLen + 1, y, "|", UI_DIM);
+          const g = live[groupTop + r];
+          if (g) {
+            const sel = groupTop + r === group;
+            term.print(
+              0,
+              y,
+              g.name.slice(0, nameLen),
+              /* curs_attrs: only the ACTIVE pane's cursor is lit; the inactive
+               * one keeps a dimmer mark so the player can still see where they
+               * were (upstream draws the inactive menu with cursor=false). */
+              sel ? (panel === 0 ? UI_CURSOR : UI_DIM) : FG,
+            );
+          }
+          const row = rows_[memberTop + r];
+          if (row) {
+            const sel = memberTop + r === member;
+            term.print(
+              memberCol,
+              y,
+              row.label.slice(0, cols - 1 - memberCol),
+              sel ? (panel === 1 ? UI_CURSOR : UI_DIM) : row.color,
+            );
+            const sfx = row.suffix;
+            if (sfx && sfx.text && sfx.col < cols - 1) {
+              term.print(sfx.col, y, sfx.text.slice(0, cols - 1 - sfx.col), sfx.color);
+            }
+          }
+        }
+        term.setCursor?.(
+          panel === 0 ? 0 : memberCol,
+          BROWSER_TOP + (panel === 0 ? group - groupTop : member - memberTop),
+        );
+        /* prt(format("<dir>%s%s%s, ESC", ...), hgt - 1, 0) (L1191), where the
+         * last %s is member_funcs.xtra_prompt for the row under the cursor -
+         * KnowledgeRow.hint here, which already carries upstream's exact strings
+         * (rune_xtra_prompt's ", 'r'ecall, '{', '}'"). The port spells the arrows
+         * out, because "<dir>" is a manual convention rather than a legend, and
+         * names the read key itself when the row offers no prompt of its own. */
+        const xtra = rows_[member]?.hint ?? "";
+        const nav =
+          panel === 0
+            ? "[ arrows to choose a group, right/Enter for its names, ESC to leave ]"
+            : xtra
+              ? `[ arrows${xtra}, left/ESC back to the groups ]`
+              : "[ arrows, Enter or 'r' to read, left/ESC back to the groups ]";
+        term.print(0, rows - 1, nav.slice(0, cols - 1), UI_DIM);
+      };
+
+      const finish = (value: T | null): void => {
+        window.removeEventListener("keydown", onKey, true);
+        term.onCellTap?.(null);
+        resolve(value);
+      };
+
+      const recallHere = (): void => {
+        const row = live[group]?.rows[member];
+        if (row) finish(row.member);
+      };
+
+      const onKey = (ev: KeyboardEvent): void => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        const rows_ = live[group]?.rows ?? [];
+
+        /* xtra_act runs before anything else claims the key, exactly as upstream
+         * dispatches it from the EVT_KBRD branch after 'r'. It is async, so the
+         * listener is torn down for the duration and the loop re-enters. */
+        const cur = rows_[member];
+        if (hooks.xtraAct && cur && panel === 1 && ev.key.length === 1 && ev.key !== "r" && ev.key !== "R") {
+          const act = hooks.xtraAct;
+          const held = cur.member;
+          window.removeEventListener("keydown", onKey, true);
+          void act(ev.key, held).then((used) => {
+            if (used) {
+              /* Consumed: nothing was chosen, so re-arm and repaint over
+               * whatever the prompt drew. */
+              window.addEventListener("keydown", onKey, true);
+              paint();
+            } else {
+              window.addEventListener("keydown", onKey, true);
+              paint();
+            }
+          });
+          return;
+        }
+
+        if (ev.key === "r" || ev.key === "R") {
+          recallHere();
+          return;
+        }
+        if (ev.key === "Escape" || ev.key === "ArrowLeft") {
+          if (panel === 1) {
+            panel = 0;
+            paint();
+          } else {
+            finish(null);
+          }
+          return;
+        }
+        if (ev.key === "Enter" || ev.key === "ArrowRight") {
+          if (panel === 0) {
+            if (rows_.length > 0) panel = 1;
+            paint();
+          } else {
+            recallHere();
+          }
+          return;
+        }
+        const nav = menuNav(ev);
+        if (!nav) return;
+        const { rows } = term.size();
+        const page = Math.max(1, rows - 8);
+        if (panel === 0) {
+          const before = group;
+          group = moveIn(nav, group, live.length, page);
+          if (group !== before) member = 0; // g_cur != grp_old -> o_cur = 0 (L1153-1160)
+        } else {
+          member = moveIn(nav, member, rows_.length, page);
+        }
+        paint();
+      };
+
+      window.addEventListener("keydown", onKey, true);
+      /* Tap: the pane you touch becomes the active one and the row you touch
+       * becomes its cursor - upstream's EVT_MOUSE branch (region_inside on the
+       * inactive menu swaps panels), plus MN_DBL_TAP's second tap to select. */
+      term.onCellTap?.((cell) => {
+        const { rows } = term.size();
+        const browserRows = Math.max(1, rows - 8);
+        const r = cell.row - BROWSER_TOP;
+        if (r < 0 || r >= browserRows) return;
+        if (cell.col <= nameLen) {
+          const g = groupTop + r;
+          if (g >= live.length) return;
+          if (panel === 0 && g === group) {
+            panel = 1;
+          } else {
+            panel = 0;
+            if (g !== group) member = 0;
+            group = g;
+          }
+          paint();
+          return;
+        }
+        const i = memberTop + r;
+        if (i >= (live[group]?.rows.length ?? 0)) return;
+        if (panel === 1 && i === member) {
+          recallHere();
+          return;
+        }
+        panel = 1;
+        member = i;
+        paint();
+      });
+      paint();
+    });
+  }
+}
+
+/** display_scrolling's `top` chase, for one pane. */
+function clampTop(top: number, cursor: number, count: number, page: number): number {
+  let t = top;
+  if (cursor < t) t = cursor;
+  if (cursor >= t + page) t = cursor - page + 1;
+  t = Math.min(t, Math.max(0, count - page));
+  return Math.max(0, t);
+}
+
+/** One navigation step within a pane, wrapping at both ends as upstream does. */
+function moveIn(nav: MenuNav, cursor: number, count: number, page: number): number {
+  if (count === 0) return 0;
+  switch (nav) {
+    case "up":
+      return (cursor - 1 + count) % count;
+    case "down":
+      return (cursor + 1) % count;
+    case "pageup":
+      return Math.max(0, cursor - page);
+    case "pagedown":
+      return Math.min(count - 1, cursor + page);
+    case "home":
+      return 0;
+    case "end":
+      return count - 1;
   }
 }
 
@@ -353,78 +593,58 @@ export async function showRuneKnowledge(
   notes?: RuneNoteHooks,
 ): Promise<void> {
   const allRunes = buildRuneList(runeEnv);
-  if (!notes) {
-    const { title, groups } = runeKnowledgeGroups(allRunes, player);
-    await runGroupedBrowser(term, title, groups, async (rune) => {
-      const full = runeName(rune);
-      const cap = full.charAt(0).toUpperCase() + full.slice(1);
-      await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
-    });
-    return;
-  }
-  /*
-   * The inscribable form of the browser: upstream's rune menu carries an
-   * xtra_prompt / xtra_act pair (rune_xtra_prompt ui-knowledge.c:2238,
-   * rune_xtra_act :2247) that runGroupedBrowser has no seam for, so this drives
-   * selectFromMenu directly. The '{' branch is rune_xtra_act's askfor_aux
-   * sequence verbatim: prompt seeded with the current note, on accept clear the
-   * old note, set the new one, then rune_autoinscribe (:2275).
-   */
-  let cursor = 0;
-  for (;;) {
-    const { title, groups } = runeKnowledgeGroups(allRunes, player, notes.get);
-    const { items, members } = groupsToMenu(groups);
-    if (items.length === 0) return;
-    /* Boxed so the closures below can set it: a plain `let` would be narrowed
-     * to its initializer by control-flow analysis. */
-    const pending: { act: "recall" | "inscribe" | "uninscribe" } = { act: "recall" };
-    const idx = await selectFromMenu(
-      term,
-      title,
-      items,
-      "[ a-z to recall, { inscribe, } uninscribe, ESC to exit ]",
-      {
-        initialCursor: cursor,
-        onHighlight: (i) => {
-          cursor = i;
-        },
-        commands: {
-          "{": (c) => {
-            pending.act = "inscribe";
-            return c;
-          },
-          "}": (c) => {
-            pending.act = "uninscribe";
-            return c;
-          },
-        },
-      },
-    );
-    if (idx === null) return;
-    cursor = idx;
-    const rune = members[idx];
-    if (rune == null) continue; // a header row
-    const i = allRunes.indexOf(rune);
-    if (i < 0) continue;
-    if (pending.act === "uninscribe") {
-      /* rune_set_note(oid, NULL) (ui-knowledge.c:2252). */
-      notes.set(i, null);
-      continue;
-    }
-    if (pending.act === "inscribe") {
-      /* askfor_aux(note_text, sizeof(note_text)) with char[80] -> 79 chars. */
-      const seed = notes.get(i) ?? "";
-      const text = await promptText(term, "Inscribe with: ", seed, 79);
-      if (text !== null) {
-        notes.set(i, null);
-        notes.set(i, text);
-        notes.autoinscribe(i);
-      }
-      continue;
-    }
+  const recall = async (rune: Rune): Promise<void> => {
     const full = runeName(rune);
     const cap = full.charAt(0).toUpperCase() + full.slice(1);
     await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
+  };
+  if (!notes) {
+    const { title, groups } = runeKnowledgeGroups(allRunes, player);
+    await runGroupedBrowser(term, title, groups, recall);
+    return;
+  }
+  /*
+   * The inscribable form. This used to be a second copy of the browser driven
+   * straight off selectFromMenu, with a comment saying runGroupedBrowser had no
+   * seam for upstream's xtra_prompt / xtra_act pair (rune_xtra_prompt
+   * ui-knowledge.c:2238, rune_xtra_act :2247). It has one now - it is the same
+   * pair, under the same names - so the copy is gone rather than being ported to
+   * two panels twice.
+   *
+   * The '{' branch is rune_xtra_act's askfor_aux sequence verbatim: prompt seeded
+   * with the current note, on accept clear the old note, set the new one, then
+   * rune_autoinscribe (:2275).
+   */
+  for (;;) {
+    /* Rebuilt each pass because a note CHANGES a row (the yellow suffix and the
+     * per-row prompt both read it), and the browser holds its groups by value. */
+    const { title, groups } = runeKnowledgeGroups(allRunes, player, notes.get);
+    let again = false;
+    await runGroupedBrowser(term, title, groups, recall, {
+      xtraAct: async (key, rune) => {
+        if (key !== "{" && key !== "}") return false;
+        const i = allRunes.indexOf(rune);
+        if (i < 0) return true;
+        if (key === "}") {
+          /* rune_set_note(oid, NULL) (ui-knowledge.c:2252). */
+          notes.set(i, null);
+          again = true;
+          return true;
+        }
+        /* askfor_aux(note_text, sizeof(note_text)) with char[80] -> 79 chars. */
+        const text = await promptText(term, "Inscribe with: ", notes.get(i) ?? "", 79);
+        if (text !== null) {
+          notes.set(i, null);
+          notes.set(i, text);
+          notes.autoinscribe(i);
+          again = true;
+        }
+        return true;
+      },
+    });
+    /* A note was written, so the rows are stale - rebuild and re-enter. ESC with
+     * nothing changed is the player leaving, and leaves. */
+    if (!again) return;
   }
 }
 
@@ -882,45 +1102,29 @@ export async function showObjectKnowledge(
     await showTextScreen(term, title, lines);
   };
 
-  // Without the `{` inscribe callback the shared grouped browser suffices.
+  /* `{` is object_xtra_act (ui-knowledge.c:2101-2123: "Inscribe with: " sets the
+   * highlighted kind's autoinscription) - a key the MEMBER pane handles itself,
+   * which is exactly the xtra_act hook. Absent when the host does not offer
+   * autoinscription, and then the browser runs with no extra keys at all. */
   const inscribe = deps.setAutoinscription;
   if (!inscribe) {
     await runGroupedBrowser(term, "known objects", groups, recall);
     return;
   }
-
-  // With `{` bound (ui-knowledge.c:2101-2123: "Inscribe with: " sets the
-  // highlighted kind's autoinscription), drive the browser locally so the
-  // async prompt can run between repaints. `{` resolves the menu on the
-  // cursor row, we run the callback, then re-open on the same row - exactly
-  // like the upstream screen_save/screen_load round the prompt.
-  const { items, members } = groupsToMenu(groups);
-  if (items.length === 0) return;
-  let cursor: number | undefined;
-  for (;;) {
-    let inscribeRow: number | null = null;
-    const idx = await selectFromMenu(term, "known objects", items, undefined, {
-      ...(cursor !== undefined ? { initialCursor: cursor } : {}),
-      onHighlight: (i) => {
-        cursor = i;
-      },
-      footer: "[ a-z to choose, { to inscribe, ESC to cancel ]",
-      commands: {
-        "{": (cur) => {
-          inscribeRow = cur;
-          return cur;
-        },
-      },
-    });
-    if (idx === null) return;
-    const member = members[idx];
-    if (member == null) continue; // a header row; ignore
-    if (inscribeRow !== null) {
-      await inscribe(member); // owns the "Inscribe with: " prompt + registry write
-      continue; // re-open (repaint) on the same cursor row
-    }
-    await recall(member);
-  }
+  /* o_xtra_prompt (ui-knowledge.c:2057-2071) offers 's' to toggle ignore and '}'
+   * to uninscribe as well; neither is wired in this port yet, so the prompt names
+   * what this build can actually do rather than what the C's string says. */
+  const withPrompt = groups.map((g) => ({
+    ...g,
+    rows: g.rows.map((r) => ({ ...r, hint: ", 'r'ecall, '{' to inscribe" })),
+  }));
+  await runGroupedBrowser(term, "known objects", withPrompt, recall, {
+    xtraAct: async (key, kind) => {
+      if (key !== "{") return false;
+      await inscribe(kind); // owns the "Inscribe with: " prompt + registry write
+      return true;
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

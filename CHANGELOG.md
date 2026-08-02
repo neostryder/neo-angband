@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.15.3`. High level, what exists today:
+Current state of the project at version `0.16.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -43,6 +43,88 @@ Current state of the project at version `0.15.3`. High level, what exists today:
 - The Borg, in its own repository like every other mod: a faithful port of
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
+
+### Changed
+
+Everything in this block came out of one play session on the 0.15.3 build.
+
+- **The terminal paints what changed, not the screen.** Every drawing call used
+  to hit the canvas immediately, so one move of the player cost **1,469 cell
+  paints** - a `fillRect` and a `drawImage` each - plus a full-canvas fill, for
+  an 80x24 grid that had changed in about a dozen places. Angband is turn-based,
+  so that landed on every keypress. The grid is now diffed against what is
+  actually on the canvas and flushed once at the end of the task: the same twenty
+  moves cost **140 cell paints** and no full-canvas fill, a **3.4 ms median with
+  a 12.4 ms tail down to 1.7 ms and 2.2 ms** (measured in a browser through
+  `__neo.paints()`; `term-overdraw.test.ts` gates it). The canvas also asks for
+  `alpha: false` now, which lets the compositor skip blending it.
+- **The knowledge browser is upstream's two-pane screen** - Group on the left,
+  Name on the right, a `|` between them and a `=` rule above (`display_knowledge`,
+  ui-knowledge.c L1050-1240). The port had been flattening every group into one
+  lettered list, which for known objects is several hundred rows: the alphabet ran
+  out at the fifty-second and the rest could not be picked at all. Upstream letters
+  **nothing** on this screen - both its menus are built from iters whose `get_tag`
+  is NULL - because choosing a group first is what keeps the member list short.
+- **The book and spell pickers draw over the map** instead of blanking it, in the
+  right-aligned box `item_menu` uses (ui-object.c L1198-1215) and the spell menu's
+  own region (ui-spell.c:229). Casting a spell used to clear the terminal, so the
+  monster you were casting at disappeared while you chose.
+- **ESC goes back one level.** The game menu is a loop now: closing Mods, Options,
+  Knowledge or any other screen it opened returns to the menu you opened it from
+  rather than dropping you into the dungeon. Its cursor also stays where you left
+  it, for the session.
+- **Lists wrap at both ends.** Down on the last row lands on the first and up on
+  the first lands on the last, which is what `menu_handle_keypress`'s
+  `is_valid_row` loop does upstream and what the port had been missing - on a list
+  taller than the screen the only way back to the top was to hold a key.
+- **Space turns a mod on or off** from the list, on the row under the cursor, and
+  the cursor follows the mod it just moved (the catalogue sorts enabled-first, so
+  toggling one reorders the list under you). Space is the same shortcut in a mod's
+  *Fixes & tweaks* and *Parts of this mod* screens.
+- **Installing a mod offers to enable it** in the same action, with the consent
+  prompt and the non-scoring warning still in the way. The mod also appears in the
+  list immediately: the sources are re-read after a download, where before a
+  freshly installed mod was invisible until a reload nobody had asked for yet.
+- The four first-party mods' descriptions are rewritten as short paragraphs.
+  neo-linoleum's was 1,625 characters in one block.
+- The macOS instructions are the ones that work. *Right-click -> Open* was the
+  standard answer for a decade and Apple removed the bypass in **macOS 15
+  Sequoia**; the route is System Settings -> Privacy & Security -> **Open Anyway**,
+  and it only appears after a blocked launch. Asserted in `packaging.test.ts`
+  against all three places that carry it.
+
+### Fixed
+
+- **A hybrid mod appeared twice in the manager.** `qol` and `bug-fixes` declare
+  `facets: ["content", "plugin"]`, so each is listed once by the content discovery
+  and once by the plugin discovery - both correct, neither aware of the other, and
+  nothing joined them back up. Install all four mods and the list showed six rows.
+  `buildCatalog` now merges by id, keeping the most privileged kind so a mod that
+  runs code is not labelled "(content)".
+- **A long mod description could take the whole screen.** The detail pane was
+  sized from its own content with the list floored at ONE row, so neo-linoleum's
+  own screen rendered as a title, *Disable*, and thirty lines of prose - with no
+  way to reach *Move earlier*, *Move later* or *Back*, and no way to scroll the
+  prose either. The pane is capped now, says so when it cuts, and a *Read the full
+  description* row opens the whole thing in a viewer that scrolls.
+- **The macOS app was signed with nothing at all.** With no Apple Developer
+  identity, electron-builder skips signing entirely - which on Apple Silicon is
+  not "unsigned" but unrunnable, reported by macOS as *"is damaged and can't be
+  opened"*, which reads as a bad download and sends people to the Intel build and
+  Rosetta. The bundle is ad-hoc signed after packaging now. **Unconfirmed as the
+  cause of the slow-on-an-M4 report** - this project has no Mac to reproduce on -
+  but wrong on its own terms either way.
+- Toggling anything in the mod manager no longer throws the cursor back to the top
+  of the list.
+
+### Removed
+
+- **1,442 tags.** This repository's history descends from Angband's, so every
+  upstream tag - `2.0alpha`, `4.2.6`, and 1,400-odd `4.2.1-190-g5c16b9e7`
+  development tags - was a real ancestor of `master` and had been pushed along
+  with it, burying the release tags among fifteen hundred. The tag list is the
+  release list now. They remain in upstream Angband and in a backup taken first;
+  `docs/RELEASING.md` says why `git push --tags` must never be run here.
 
 ### Added
 

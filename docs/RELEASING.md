@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.15.3 && git push --tags
+git tag v0.16.0 && git push origin master v0.16.0
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -127,6 +127,27 @@ Once, by hand. Two accounts things and then one settings page per package.
 No author details are needed beyond what is already in the manifests: `author` is
 `neostryder (RPGM Tools)`, with **no email address**, deliberately — npm shows the
 publishing account and that is enough.
+
+## Never `git push --tags`, and never `--follow-tags`
+
+Push the one tag you just made, by name:
+
+```bash
+git push origin master v0.16.0
+```
+
+This repository's history **descends from Angband's own**, so every upstream tag
+- `2.0alpha`, `4.2.6`, and 1,400-odd `4.2.1-190-g5c16b9e7`-style development tags
+- names a commit that really is an ancestor of `master`. They were pushed to the
+fork along with the history and buried the seven release tags among fifteen
+hundred; they were deleted from the remote on 2026-08-02, and from this clone, so
+that the tag list is the release list.
+
+Both `--tags` and `--follow-tags` would put them all straight back, the second
+one silently, because "annotated tags reachable from the ref being pushed" is
+exactly what they are. A tag-to-object-id list was taken before the deletion and
+is kept outside this repository, and upstream Angband has every one of them
+regardless - so this is undoable, not irreversible.
 
 ## Bumping a version
 
@@ -274,7 +295,7 @@ things came out of that and both are permanent:
   `npm access set status=public <package>`.
 - **tag/version mismatch** — the job fails before publishing anything. Fix the
   version with `node tools/version.mjs set <v>`, delete the tag
-  (`git tag -d v0.15.3 && git push --delete origin v0.15.3`), re-tag.
+  (`git tag -d v0.16.0 && git push --delete origin v0.16.0`), re-tag.
 
 ## The mod repositories are released separately
 
@@ -284,7 +305,7 @@ is not in that path. Releasing one is:
 
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
-2. Commit, then tag (`v0.15.3`) and push the tag.
+2. Commit, then tag (the mod's own version, e.g. `v0.13.0`) and push the tag.
 3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
    put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
    from the local build: the digest has to describe the bytes GitHub actually serves, and

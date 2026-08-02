@@ -33,6 +33,20 @@ export interface TileDraw {
     w: number,
     h: number,
   ): boolean;
+  /**
+   * A stable identity: two TileDraws with the same key paint the same pixels
+   * into the same size of cell.
+   *
+   * Needed because the terminal repaints only the cells that CHANGED, and a
+   * TileDraw is a closure allocated afresh for every cell of every frame - so
+   * `a === b` is false between two frames showing the identical dungeon, and
+   * without a key every tile on screen is redrawn on every keypress.
+   *
+   * Absent means "assume it changed", which is the safe answer and is what a
+   * tileset that is not ready yet should give: the cell falls back to ASCII, and
+   * the frame after the atlas loads has to repaint it.
+   */
+  readonly key?: string;
 }
 
 export interface Glyph {
@@ -182,6 +196,28 @@ export class GlyphTerm {
   private offsetY = 0;
   private grid: (Glyph | null)[][] = [];
   /**
+   * What is CURRENTLY ON THE CANVAS, against which `grid` is diffed.
+   *
+   * THE MEASUREMENT THIS EXISTS FOR. Before it, every mutator painted straight
+   * to the canvas, so one move of the player cost 1469 cell paints (each a
+   * fillRect plus a drawImage) plus a full-canvas fill - roughly 2,900 canvas
+   * calls on the main thread, synchronously, for a 1,920-cell grid that had
+   * changed in about a dozen places. Measured at a 3.4 ms median per move on a
+   * Windows box at devicePixelRatio 1.1; a Retina Mac has 3.3x the pixels to
+   * push per call, which is where "each move has a many milliseconds lag" came
+   * from. Angband is turn-based, so that cost lands on every single keypress.
+   *
+   * The grid is the model and this is the view. Mutators only touch the model
+   * and queue a flush; the flush walks both and paints the difference.
+   */
+  private shown: (Glyph | null)[][] = [];
+  /** Where the cursor frame is drawn on the canvas right now (not where it is). */
+  private shownCursor: { x: number; y: number } | null = null;
+  /** Set by anything that makes `shown` untrustworthy: a resize, a font change. */
+  private fullRepaint = true;
+  /** A flush is already queued for the end of this task. */
+  private flushQueued = false;
+  /**
    * The active bitmap font (FONT-1). Non-null (the default FONT_16X24) means the
    * terminal blits the original Angband glyphs; null falls back to FONT_STACK
    * fillText everywhere (a mod / test escape hatch).
@@ -202,6 +238,16 @@ export class GlyphTerm {
    * - never double-fire underneath an open menu.
    */
   private tapCb: ((cell: { col: number; row: number }) => void) | null = null;
+
+  /**
+   * How many cell paints this term has issued, ever.
+   *
+   * A COUNTER RATHER THAN A GUESS, because "the Mac is slow" is not something
+   * code review can answer. Every canvas call this term makes goes through
+   * paintCell, so the ratio of this to the number of frames drawn IS the
+   * overdraw - see paintStats and term-overdraw.test.ts.
+   */
+  private painted = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -229,7 +275,12 @@ export class GlyphTerm {
       reflow: false,
     },
   ) {
-    const ctx = canvas.getContext("2d");
+    /* alpha: false. The terminal paints its own opaque background over every
+     * pixel it owns, so there is nothing for the compositor to blend the canvas
+     * against - and saying so lets it skip that blend for the whole surface
+     * every frame. It is free on a small window and worth real milliseconds on a
+     * Retina display, where the backing store is four times the pixels. */
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("canvas 2d context unavailable");
     this.ctx = ctx;
     if (options.bitmapFont !== undefined) this.font = options.bitmapFont;
@@ -311,11 +362,97 @@ export class GlyphTerm {
     // Carry the screen across the resize rather than starting blank - see
     // carryGrid: an empty grid here is what made the boot title screen vanish.
     this.grid = carryGrid(this.grid, this.rows, this.cols);
+    /* Cells have moved and changed size, so nothing on the canvas can be
+     * trusted to still be where `shown` says it is. */
+    this.shown = carryGrid([], this.rows, this.cols);
+    this.fullRepaint = true;
     this.ctx.textBaseline = "top";
     // Sync the fallback vector font to the current cell (used only for glyphs
     // the bitmap font lacks). Harmless when a bitmap glyph is blitted instead.
     this.ctx.font = `${Math.max(8, Math.floor(this.cellH * 0.82))}px ${FONT_STACK}`;
-    this.redraw();
+    /* Synchronously, not queued: a resize must show the new geometry now, and
+     * this runs from a resize/ResizeObserver callback rather than from a frame
+     * of gameplay. */
+    this.flush();
+  }
+
+  /**
+   * Repaint everything on the next flush, because something outside the grid
+   * changed what a cell would look like.
+   *
+   * The diff compares glyph DATA, so a change nothing in the grid records - a
+   * tile atlas finishing its load, a new graphics mode, a font swap - is
+   * invisible to it and would leave the old pixels on screen forever. Anything
+   * that changes how a glyph draws has to say so here.
+   */
+  invalidate(): void {
+    this.fullRepaint = true;
+    this.schedule();
+  }
+
+  /**
+   * Queue the paint for the end of the current task.
+   *
+   * A MICROTASK, not requestAnimationFrame. Everything the game draws happens
+   * inside one synchronous keydown handler (or one `await` step of a modal
+   * flow), so the end of the task IS the frame boundary - and coalescing there
+   * costs no latency, keeps working in a hidden tab where rAF does not fire, and
+   * needs no scheduler for the turn-based loop to fight with. It is what turns
+   * "clear the screen, then print 1,469 cells over it" into one paint of the
+   * cells that actually differ from the last frame.
+   */
+  private schedule(): void {
+    if (this.flushQueued) return;
+    this.flushQueued = true;
+    queueMicrotask(() => {
+      this.flushQueued = false;
+      this.flush();
+    });
+  }
+
+  /**
+   * Paint every cell whose model differs from what is on the canvas, now.
+   *
+   * Public because a caller that reads PIXELS rather than the grid - a
+   * screenshot, a canvas-scraping verification - has to be able to force the
+   * queued frame out first. Everything else can leave it to schedule().
+   */
+  flush(): void {
+    if (this.fullRepaint) {
+      this.fullRepaint = false;
+      this.ctx.fillStyle = UI_BG;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      /* Nothing is on the canvas now, so every non-null cell below differs and
+       * every null one already matches the fill. */
+      for (const row of this.shown) row.fill(null);
+      this.shownCursor = null;
+      this.redraws++;
+    }
+    for (let y = 0; y < this.rows; y++) {
+      const model = this.grid[y];
+      const view = this.shown[y];
+      if (!model || !view) continue;
+      for (let x = 0; x < this.cols; x++) {
+        const g = model[x] ?? null;
+        if (sameGlyph(g, view[x] ?? null)) continue;
+        view[x] = g;
+        this.paintCell(x, y);
+      }
+    }
+    /* The cursor is a stroked frame ON TOP of a cell, so moving it means
+     * repainting the cell it was over - which the diff above cannot know about,
+     * the glyph there not having changed. */
+    const want = this.cursorOn ? { x: this.cursorX, y: this.cursorY } : null;
+    const had = this.shownCursor;
+    const moved = (had?.x ?? -1) !== (want?.x ?? -1) || (had?.y ?? -1) !== (want?.y ?? -1);
+    if (moved) {
+      if (had) this.paintCell(had.x, had.y);
+      this.shownCursor = want;
+      if (want) this.drawCursor();
+    } else if (want) {
+      /* Same cell, but the diff may have just repainted the glyph under it. */
+      this.drawCursor();
+    }
   }
 
   /**
@@ -416,7 +553,14 @@ export class GlyphTerm {
     // Term_clear takes the cursor with it; a stale frame on a blank screen
     // would point at nothing.
     this.cursorOn = false;
-    this.redraw();
+    /* NOT a redraw. Almost every clear() in this codebase is immediately
+     * followed by drawing a whole screen over the top of it, and painting the
+     * blank in between was half the per-frame cost: a full-canvas fill plus a
+     * repaint of every cell the clear emptied, thrown away microseconds later.
+     * The flush at the end of the task paints the difference between the last
+     * frame and this one, and a cleared-then-redrawn cell that ends up
+     * identical is not a difference. */
+    this.schedule();
   }
 
   /**
@@ -520,18 +664,20 @@ export class GlyphTerm {
    */
   setCursor(x: number, y: number): void {
     if (y < 0 || y >= this.rows || x < 0 || x >= this.cols) return;
-    if (this.cursorOn) this.paintCell(this.cursorX, this.cursorY);
     this.cursorX = x;
     this.cursorY = y;
     this.cursorOn = true;
-    this.drawCursor();
+    /* The old cell's repaint happens in flush(), which is the only place that
+     * knows where the frame is currently DRAWN - `cursorX/Y` is where it is
+     * wanted, and those two diverge as soon as painting is queued. */
+    this.schedule();
   }
 
   /** Term_set_cursor(0): hide it again (and repaint the cell it framed). */
   hideCursor(): void {
     if (!this.cursorOn) return;
     this.cursorOn = false;
-    this.paintCell(this.cursorX, this.cursorY);
+    this.schedule();
   }
 
   private drawCursor(): void {
@@ -549,7 +695,7 @@ export class GlyphTerm {
     const row = this.grid[y];
     if (!row) return;
     row[x] = glyph;
-    this.paintCell(x, y);
+    this.schedule();
   }
 
   print(x: number, y: number, text: string, fg: string, bg?: string): void {
@@ -567,10 +713,8 @@ export class GlyphTerm {
     if (y < 0 || y >= this.rows || y >= this.grid.length) return;
     const row = this.grid[y];
     if (!row) return;
-    for (let cx = Math.max(0, x); cx < this.cols; cx++) {
-      row[cx] = null;
-      this.paintCell(cx, y);
-    }
+    for (let cx = Math.max(0, x); cx < this.cols; cx++) row[cx] = null;
+    this.schedule();
   }
 
   /**
@@ -659,6 +803,7 @@ export class GlyphTerm {
   }
 
   private paintCell(x: number, y: number): void {
+    this.painted++;
     const g = this.grid[y]?.[x] ?? null;
     const px = this.offsetX + x * this.cellW;
     const py = this.offsetY + y * this.cellH;
@@ -680,14 +825,43 @@ export class GlyphTerm {
     }
   }
 
-  redraw(): void {
-    this.ctx.fillStyle = UI_BG;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    for (let y = 0; y < this.rows; y++) {
-      for (let x = 0; x < this.cols; x++) {
-        if (this.grid[y]?.[x]) this.paintCell(x, y);
-      }
-    }
-    this.drawCursor();
+  /**
+   * Cell paints issued so far, and how many of them were whole-screen redraws.
+   *
+   * Read by the overdraw ratchet and by anyone diagnosing a slow front end. It
+   * costs one increment per paint and answers the question "is the renderer
+   * doing more work than the screen has cells", which nothing else could.
+   */
+  paintStats(): { cells: number; redraws: number } {
+    return { cells: this.painted, redraws: this.redraws };
   }
+
+  private redraws = 0;
+
+  /** Repaint the whole canvas from the grid, now. */
+  redraw(): void {
+    this.invalidate();
+    this.flush();
+  }
+}
+
+/**
+ * Whether two cells would paint identically, i.e. whether the diff may skip one.
+ *
+ * Conservative by construction: anything it cannot compare counts as changed. A
+ * TileDraw is a closure allocated per cell per frame, so identity is useless -
+ * `key` is what two frames of the same dungeon have in common, and a TileDraw
+ * without one (a tileset that is not ready) is always redrawn.
+ */
+function sameGlyph(a: Glyph | null, b: Glyph | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.ch !== b.ch || a.fg !== b.fg || a.bg !== b.bg) return false;
+  return sameTile(a.tile, b.tile) && sameTile(a.bgTile, b.bgTile);
+}
+
+function sameTile(a: TileDraw | undefined, b: TileDraw | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.key !== undefined && a.key === b.key;
 }

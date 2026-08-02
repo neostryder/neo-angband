@@ -328,6 +328,50 @@ describe("buildCatalog", () => {
     expect(cat.find((m) => m.id === "sbx")!.consented).toBe(false);
   });
 
+  /**
+   * The duplicate rows a player saw after installing all four mods.
+   *
+   * qol and bug-fixes declare `facets: ["content", "plugin"]`, so each is listed
+   * once for its content facet and once for its plugin facet, by two discovery
+   * functions neither of which is wrong. The catalogue is per MOD, so it has to
+   * join them; the assertion is on the id COUNT, because "the row is present" was
+   * already true of the broken build - twice.
+   */
+  it("lists a hybrid content+plugin mod once, under its plugin kind", () => {
+    const hybrid = manifest("qol", { shape: "content", capabilities: ["registry:effect"] });
+    const cat = buildCatalog({
+      content: [hybrid, manifest("tiles-only", { shape: "tiles" })],
+      sandbox: [],
+      trusted: [hybrid],
+      enabled: ["qol"],
+      consents: {},
+    });
+    expect(cat.map((m) => m.id)).toEqual(["qol", "tiles-only"]);
+    /* The more privileged kind wins: enabling this runs code in-process, and a
+     * row reading "(content)" would understate what the player is agreeing to. */
+    expect(cat.find((m) => m.id === "qol")!.kind).toBe("trusted");
+    /* And the merge cannot loosen the consent gate - it is computed from the
+     * manifest, so the surviving row still says the capability is ungranted. */
+    expect(cat.find((m) => m.id === "qol")!.consented).toBe(false);
+  });
+
+  it("does not turn a duplicate into a phantom 'not installed' row", () => {
+    /* The missing-mod synthesis keys off `found`, which is built from the merged
+     * list. Deduping the wrong way round (dropping the id from `found`) would put
+     * an enabled hybrid back as a NOT INSTALLED row - a scarier bug than the one
+     * being fixed, so it gets its own assertion. */
+    const hybrid = manifest("bug-fixes");
+    const cat = buildCatalog({
+      content: [hybrid],
+      sandbox: [],
+      trusted: [hybrid],
+      enabled: ["bug-fixes"],
+      consents: {},
+    });
+    expect(cat).toHaveLength(1);
+    expect(cat[0]!.missing).toBeUndefined();
+  });
+
   it("surfaces the gameplay flag and fires its warning exactly once", async () => {
     const gameplay = buildCatalog({
       content: [manifest("gameplay", { affectsGameplay: true })],
