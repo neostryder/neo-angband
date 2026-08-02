@@ -50,6 +50,26 @@ export interface ModCatalogueDeps {
   ) => Promise<InstallResult>;
   /** True when the mod was removed. */
   readonly uninstall: (id: string) => Promise<boolean>;
+  /**
+   * Offer to turn a freshly-installed mod on, and do it. Returns true when it
+   * ended up enabled.
+   *
+   * INSTALLING AND ENABLING ARE ONE ACTION HERE, because separating them was
+   * making the common case take two screens: download the mod, read a summary
+   * ending "it is OFF until you turn it on in the mod list", press ESC, find it
+   * in that list, open it, choose Enable. Every one of those steps is defensible
+   * and together they are a chore.
+   *
+   * It stays a QUESTION rather than becoming automatic. Nothing is enabled by
+   * installing it - that is the parity rule, and a mod that switched itself on
+   * because it finished downloading would break it - and the answer is also where
+   * the capability-consent prompt and the permanent-non-scoring warning belong,
+   * which is why this is a callback into the manager rather than code here.
+   *
+   * Optional, so a host that only wants the downloader (or a test) gets exactly
+   * the old behaviour: the summary says where to turn it on, and stops.
+   */
+  readonly offerEnable?: (id: string) => Promise<boolean>;
 }
 
 /**
@@ -135,7 +155,12 @@ export function catalogueRow(mod: RecommendedMod, installedTag: string | null): 
  * escapes the mod folder - and paraphrasing them into "install failed" would throw
  * away the only information anyone could act on.
  */
-export function installSummary(mod: RecommendedMod, result: InstallResult): ScreenLine[] {
+export function installSummary(
+  mod: RecommendedMod,
+  result: InstallResult,
+  /** True when the caller is about to offer to turn it on, so the closing line changes. */
+  willOfferEnable = false,
+): ScreenLine[] {
   if (result.ok) {
     return [
       { text: `${mod.name} ${mod.tag} installed.`, color: C_GOOD },
@@ -147,8 +172,15 @@ export function installSummary(mod: RecommendedMod, result: InstallResult): Scre
       { text: "that ship inside this build - not against anything the", color: C_FG },
       { text: "download claimed about itself.", color: C_FG },
       { text: "", color: C_FG },
-      { text: "It is OFF until you turn it on in the mod list, and a", color: C_FG },
-      { text: "reload is what makes it take effect.", color: C_FG },
+      ...(willOfferEnable
+        ? [
+            { text: "It is OFF, as every mod is until you say otherwise.", color: C_FG },
+            { text: "You are asked next whether to turn it on.", color: C_FG },
+          ]
+        : [
+            { text: "It is OFF until you turn it on in the mod list, and a", color: C_FG },
+            { text: "reload is what makes it take effect.", color: C_FG },
+          ]),
     ];
   }
   return [
@@ -321,7 +353,7 @@ export async function showModCatalogue(
   }
 }
 
-/** Download one mod, drawing progress, then report. */
+/** Download one mod, drawing progress, then report - and offer to turn it on. */
 async function installOne(
   term: GlyphTerm,
   mod: RecommendedMod,
@@ -340,9 +372,15 @@ async function installOne(
   const result = await deps.install(mod, (p) => {
     paint(progressLine(mod, p));
   });
+  const offer = result.ok && deps.offerEnable !== undefined;
   await showTextScreen(term, mod.name, [
-    ...installSummary(mod, result),
+    ...installSummary(mod, result, offer),
     { text: "", color: C_FG },
     { text: repoUrl(mod), color: C_DIM },
   ]);
+  /* The second half of "install and enable in one action". The manager owns the
+   * question because it owns the gates behind the answer - consent, the
+   * non-scoring ratchet, an author's conflict claim - and none of those belong to
+   * a downloader. A failed install offers nothing: there is no mod to turn on. */
+  if (offer) await deps.offerEnable?.(mod.id);
 }

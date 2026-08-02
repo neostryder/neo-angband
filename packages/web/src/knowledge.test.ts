@@ -21,14 +21,12 @@ import {
   objGroupName,
   featOrder,
   trapOrder,
-  groupsToMenu,
   featureKnowledgeGroups,
   trapKnowledgeGroups,
   objectKnowledgeGroups,
   egoKnowledgeGroups,
   runeKnowledgeGroups,
   type ObjectBrowserDeps,
-  type KnowledgeGroup,
 } from "./knowledge";
 
 /** A bases array (indexed by tval) where only the listed tvals have svals. */
@@ -231,21 +229,6 @@ describe("egoKnowledgeGroups (do_cmd_knowledge_ego_items, ui-knowledge.c L1827)"
   });
 });
 
-describe("groupsToMenu", () => {
-  it("emits a disabled header per non-empty group then its members", () => {
-    const groups: KnowledgeGroup<string>[] = [
-      { name: "Combat", rows: [{ label: "armour", color: "w", member: "a" }] },
-      { name: "Empty", rows: [] },
-      { name: "Slays", rows: [{ label: "slay evil", color: "w", member: "b" }] },
-    ];
-    const { items, members } = groupsToMenu(groups);
-    expect(items.map((i) => i.label)).toEqual(["Combat", "  armour", "Slays", "  slay evil"]);
-    expect(items[0]!.disabled).toBe(true);
-    expect(items[2]!.disabled).toBe(true);
-    expect(members).toEqual([null, "a", null, "b"]);
-  });
-});
-
 describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", () => {
   /** Two runes the player knows: the +AC combat rune and one brand. */
   const runes: Rune[] = [
@@ -294,12 +277,13 @@ describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", (
     expect(rows.find((r) => r.label === "fire brand")!.hint).toBe(", 'r'ecall, '{'");
   });
 
-  it("groupsToMenu carries the suffix and hint onto the menu row", () => {
+  it("gives every inscribed row a suffix and a per-row prompt", () => {
+    /* Both are read straight off the row by runGroupedBrowser - the suffix at
+     * display_rune's column 47, the hint as the xtra_prompt on the bottom line. */
     const { groups } = runeKnowledgeGroups(runes, player, () => "{x}");
-    const { items } = groupsToMenu(groups);
-    const withSuffix = items.filter((it) => it.suffix !== undefined);
-    expect(withSuffix.length).toBe(2);
-    expect(withSuffix[0]!.suffix!.col).toBe(47);
-    expect(items.every((it) => it.disabled || it.hint !== undefined)).toBe(true);
+    const rows = groups.flatMap((g) => g.rows);
+    expect(rows.filter((r) => r.suffix !== undefined)).toHaveLength(2);
+    expect(rows[0]!.suffix!.col).toBe(47);
+    expect(rows.every((r) => r.hint !== undefined)).toBe(true);
   });
 });

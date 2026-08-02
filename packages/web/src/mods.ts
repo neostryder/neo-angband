@@ -45,6 +45,7 @@ import {
   selectFromMenu,
   showTextScreen,
   promptText,
+  MENU_REFRESH,
   type MenuItem,
   type ScreenLine,
 } from "./overlay";
@@ -160,6 +161,17 @@ export interface ModManagerDeps {
   modFolder?: ModFolderPicker;
   /** Build the current catalog fresh (re-reads discovery + store each call). */
   listCatalog: () => CatalogMod[];
+  /**
+   * Re-read the mod SOURCES - the shell's folder, a picked folder, and the mods
+   * installed into browser storage - so a mod downloaded a moment ago shows up in
+   * `listCatalog()` without a reload.
+   *
+   * `listCatalog` is already "fresh", but only over a report that was latched once
+   * at boot, which is why installing a mod and coming straight back to the list
+   * showed nothing new. Optional: a host with no installable sources (a test) has
+   * nothing to re-read.
+   */
+  rediscover?: () => Promise<void>;
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
   conflictLines: () => ConflictReportLines;
   /**
@@ -608,6 +620,36 @@ export function rowDetail(
   return [...all.slice(0, Math.max(1, maxLines - 1)), MORE];
 }
 
+/**
+ * A mod's description in full, for the scrolling viewer - the place the capped
+ * detail pane sends a player who wants the rest of it.
+ *
+ * Paragraphs are kept: a blank line in a manifest's description is the author
+ * separating two ideas, and `wrapped()` on the whole string runs them together
+ * into the wall of text this row exists to stop being the only option.
+ */
+export function fullDescription(m: CatalogMod, width = 80): ScreenLine[] {
+  const w = width - 1;
+  const out: ScreenLine[] = [
+    ...wrapped(`${m.name}  (id: ${m.id})`, w, C_TITLE),
+    ...wrapped(`version ${m.version}  -  ${m.shape} pack`, w, C_DIM),
+  ];
+  const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");
+  if (by) out.push(...wrapped(by, w, C_DIM));
+  out.push({ text: "", color: C_FG });
+  for (const para of (m.manifest.description ?? "").split(/\n\s*\n/u)) {
+    const text = para.trim();
+    if (!text) continue;
+    out.push(...wrapped(text, w), { text: "", color: C_FG });
+  }
+  const deps = m.manifest.dependencies
+    ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
+    : [];
+  if (deps.length) out.push(...wrapped(`Needs: ${deps.join(", ")}`, w, C_DIM));
+  if (m.manifest.engine) out.push(...wrapped(`Written for game ${m.manifest.engine}`, w, C_DIM));
+  return out;
+}
+
 /** True exactly while enabling `m` needs the one-time score warning. */
 export function needsGameplayNoscoreWarning(m: CatalogMod, modNoscore: boolean): boolean {
   return m.affectsGameplay && !modNoscore;
@@ -680,6 +722,51 @@ async function consentPrompt(term: GlyphTerm, m: CatalogMod): Promise<boolean> {
     "[ a/b or tap; ESC cancels ]",
   );
   return pick === 0;
+}
+
+/**
+ * The question asked straight after a download: turn it on now?
+ *
+ * It re-reads the mod sources first, and that call is what makes the rest of this
+ * possible. `listCatalog()` is built from a report latched at boot, so a mod
+ * installed thirty seconds ago is not in it - the answer to "which mod is this"
+ * would have been "no such mod", and enabling it by bare id would skip the
+ * consent prompt and the non-scoring warning, which are exactly the things that
+ * must not be skipped by a convenience. With the sources re-read the mod is a
+ * real catalogue row and goes through the same enableMod every other path uses.
+ */
+async function enableAfterInstall(
+  term: GlyphTerm,
+  deps: ModManagerDeps,
+  id: string,
+): Promise<boolean> {
+  await deps.rediscover?.();
+  const m = deps.listCatalog().find((x) => x.id === id);
+  /* No row even after re-reading: the manifest did not validate, or this host has
+   * no rediscover. Neither is a thing to ask a yes/no question about - the mod
+   * list will show why - so say nothing and leave it off. */
+  if (!m || m.missing) return false;
+  if (m.enabled) return true;
+  const pick = await selectFromMenu(
+    term,
+    `Turn ${m.name} on now?`,
+    [
+      {
+        label: "Yes, turn it on",
+        color: C_ENABLED,
+        hint: "Takes effect when the game reloads, which you are offered on the way out.",
+      },
+      {
+        label: "No, leave it off",
+        color: C_DIM,
+        hint: "It stays installed. You can switch it on in the list at any time.",
+      },
+    ],
+    "[ Enter to choose; ESC leaves it off ]",
+    { minListRows: 2, detail: () => rowDetail(m, term.size().cols, 99) },
+  );
+  if (pick !== 0) return false;
+  return enableMod(term, deps, m);
 }
 
 /** Enable a mod, gating plugins on capability consent. Returns true if enabled. */
@@ -810,6 +897,7 @@ async function manageMod(
         ],
         "[ Enter to choose; ESC to leave it ]",
         {
+          minListRows: 2,
           detail: () => rowDetail(m, term.size().cols, 99),
           detailToggleKey: "?",
           detailInitiallyShown: true,
@@ -872,6 +960,21 @@ async function manageMod(
         acts.push("sections");
       }
     }
+    /* THE WAY TO READ A LONG BLURB.
+     *
+     * The pane below is capped so it can never squeeze this list (it did: a mod
+     * with a thirty-line description left one action row on screen and no way to
+     * scroll past it), and a cap means some descriptions are cut. This row is
+     * where the rest of it lives, in the viewer that already scrolls. Offered
+     * only when there IS a description, so it is never a row that opens nothing. */
+    if (m.manifest.description) {
+      items.push({
+        label: "Read the full description",
+        color: C_DIM,
+        hint: "The whole thing, scrollable, with what it depends on.",
+      });
+      acts.push("read");
+    }
     items.push({ label: "Back", color: C_DIM });
     acts.push("back");
 
@@ -881,6 +984,10 @@ async function manageMod(
       items,
       "[ choose an action; ESC to go back ]",
       {
+        /* Every action row stays visible. This screen's list is short and fixed,
+         * so there is no reason for the description to win any of it - and it is
+         * the description that has somewhere else to be read in full. */
+        minListRows: items.length,
         detail: () => rowDetail(m, term.size().cols, 99, myProblems, mySkipped),
         detailToggleKey: "?",
         detailInitiallyShown: true,
@@ -888,6 +995,10 @@ async function manageMod(
     );
     const act = pick === null ? "back" : acts[pick];
     if (act === "back") return changed;
+    if (act === "read") {
+      await showTextScreen(term, `${m.name}  v${m.version}`, fullDescription(m, term.size().cols));
+      continue;
+    }
     if (act === "enable") {
       if (await enableMod(term, deps, m)) changed = true;
     } else if (act === "disable") {
@@ -1020,6 +1131,10 @@ async function manageSections(
   if (sections.length === 0) return false;
   let changed = false;
   const title = `Parts of ${m.name}`;
+  /* Kept across passes for the same reason the mod list keeps its own: toggling
+   * rebuilds the screen, and a rebuild that re-opens at row 0 makes switching two
+   * parts off in a row harder than it needs to be. */
+  let cursor = 0;
 
   for (;;) {
     const enabledManifests = deps
@@ -1051,7 +1166,15 @@ async function manageSections(
     });
     items.push({ label: "Back", color: C_DIM });
 
-    const pick = await selectFromMenu(term, title, items, "[ Enter toggles a part; ESC to go back ]", {
+    const pick = await selectFromMenu(term, title, items, "[ Space or Enter toggles a part; ESC to go back ]", {
+      initialCursor: cursor,
+      onHighlight: (i) => {
+        cursor = i;
+      },
+      /* Space is an alias for Enter here - both toggle - so it resolves the menu
+       * on the cursor row rather than needing the MENU_REFRESH round trip the mod
+       * list uses. Null on the Back row: space should not close the screen. */
+      commands: { " ": (cur) => (cur < sections.length ? cur : null) },
       detail: (i) => {
         const s = sections[i];
         if (!s) return [];
@@ -1212,6 +1335,8 @@ async function managePatches(
 ): Promise<void> {
   const getDecls = deps.ruleDecls ?? ((): ModRuleDecl[] => []);
   const title = `Fixes & tweaks - ${m.name}`;
+  /* Survives the rebuild a toggle causes - see manageSections. */
+  let cursor = 0;
   for (;;) {
     const decls = getDecls().filter((d) => d.modId === m.id);
     if (decls.length === 0) {
@@ -1238,8 +1363,14 @@ async function managePatches(
       term,
       title,
       items,
-      "[ On with the mod; Enter opts one out; ESC to go back ]",
+      "[ On with the mod; Space or Enter opts one out; ESC to go back ]",
       {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+        /* Every row here is a rule, so space simply means Enter. */
+        commands: { " ": (cur) => cur },
         detail: (i) => {
           const d = decls[i];
           if (!d) return [];
@@ -1529,6 +1660,29 @@ export async function runModManager(
    * exactly when the reboot should land on the Graphics screen - see
    * newTileModEnabled below. */
   const tileModsAtEntry = enabledTileModIds(deps);
+  /* THE CURSOR SURVIVES A PASS.
+   *
+   * This loop rebuilds the whole screen every time round, which is what lets a
+   * toggle change a row's label, its colour and whether the Apply row exists at
+   * all. It also re-opened the menu with the cursor back at the top, so turning
+   * three mods on in a row meant scrolling back down twice. selectFromMenu takes
+   * an initialCursor; the only thing missing was somewhere to keep it. */
+  let cursor = 0;
+  /**
+   * WHICH MOD the cursor is on, not just which row.
+   *
+   * The catalogue is sorted enabled-first, so turning one on MOVES it - press
+   * space on the fourth row and it becomes the first, while a plain index would
+   * leave the cursor pointing at whatever slid into fourth place. Going down a
+   * list ticking boxes then means the cursor drifts up the list behind you. The
+   * id is restored each pass and the index is the fallback for the action rows,
+   * which have no id and do not move.
+   */
+  let cursorId: string | null = null;
+  /* Set by the space-to-toggle command key, consumed after the menu closes:
+   * enabling a mod can put up a consent prompt and a non-scoring warning, and a
+   * command handler runs synchronously inside the menu's own key listener. */
+  let toggleId: string | null = null;
   for (;;) {
     const catalog = deps.listCatalog();
     /* Read ONCE per pass, not once per row: diskPackStatus recomposes and re-reads
@@ -1677,13 +1831,44 @@ export async function runModManager(
         ? "[ ?mods= live; changes pending - Apply to reload; ESC ]"
         : "[ ?mods= override is live; boxes show the SAVED set; ESC ]"
       : dirty
-        ? "[ changes pending - Apply to reload; ESC = Done ]"
+        ? "[ Space on/off, Enter opens; Apply to reload; ESC = back ]"
         : catalog.length === 0
           ? /* An empty list with "Enter a mod to manage it" underneath is the
              * screen telling a player to do something there is nothing to do. */
-            "[ No mods installed - Install a mod... to get one; ESC to close ]"
-          : "[ Enter a mod to manage it; ESC to close ]";
+            "[ No mods installed - Install a mod... to get one; ESC to go back ]"
+          : "[ Space turns one on or off, Enter opens it; ESC to go back ]";
     const pick = await selectFromMenu(term, "Mods", items, footer, {
+      initialCursor: cursorId === null ? cursor : (() => {
+        const at = rowKinds.findIndex((r) => r.kind === "mod" && "id" in r && r.id === cursorId);
+        return at >= 0 ? at : Math.min(cursor, items.length - 1);
+      })(),
+      onHighlight: (i) => {
+        cursor = i;
+        const row = rowKinds[i];
+        cursorId = row && row.kind === "mod" && "id" in row ? row.id : null;
+      },
+      /* SPACE IS THE TOGGLE, on the row you are looking at.
+       *
+       * The list is a column of checkboxes and the only way to tick one was to
+       * open the mod, choose Enable, and come back out - three keys and two
+       * screens for the single thing this screen is for. Enter keeps its meaning
+       * (open the mod), because everything else about a mod lives in there.
+       *
+       * This is port-only UI and does not collide with parity: upstream's menus
+       * give space to "page down" (menu_handle_keypress, ui-menu.c), and there is
+       * no mod manager upstream to disagree with.
+       *
+       * The handler cannot do the work itself - enabling can raise a consent
+       * prompt and a permanent-non-scoring warning, both of which are awaited -
+       * so it records the id and asks for a rebuild. */
+      commands: {
+        " ": (cur) => {
+          const row = rowKinds[cur];
+          if (!row || row.kind !== "mod" || !("id" in row)) return null;
+          toggleId = row.id;
+          return MENU_REFRESH;
+        },
+      },
       // Shown by default (not behind the '?' toggle): what a mod IS is the thing
       // a player needs in order to decide whether to turn it on.
       detail: (i) => {
@@ -1751,6 +1936,24 @@ export async function runModManager(
       detailInitiallyShown: true,
     });
 
+    /* The space toggle asked for a rebuild rather than choosing a row. Do the
+     * work the command handler could not await, then fall through to the top of
+     * the loop - which redraws with `cursor` still where the player left it. */
+    if (pick === MENU_REFRESH) {
+      const id = toggleId;
+      toggleId = null;
+      const m = id === null ? undefined : catalog.find((x) => x.id === id);
+      if (m) {
+        if (m.enabled) {
+          deps.store.setModEnabled(m.id, false);
+          dirty = true;
+        } else if (await enableMod(term, deps, m)) {
+          dirty = true;
+        }
+      }
+      continue;
+    }
+
     const rk: RowKind | undefined =
       pick === null ? { kind: "done" } : rowKinds[pick];
     if (!rk || rk.kind === "done") break;
@@ -1763,7 +1966,19 @@ export async function runModManager(
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "download") {
-      if (deps.modCatalogue && (await showModCatalogue(term, deps.modCatalogue))) dirty = true;
+      if (deps.modCatalogue) {
+        const touched = await showModCatalogue(term, {
+          ...deps.modCatalogue,
+          offerEnable: async (id) => {
+            if (await enableAfterInstall(term, deps, id)) {
+              dirty = true;
+              return true;
+            }
+            return false;
+          },
+        });
+        if (touched) dirty = true;
+      }
     } else if (rk.kind === "install") {
       await showModSources(term, deps.diskPackStatus?.(), deps.modFolder !== undefined);
     } else if (rk.kind === "folder") {

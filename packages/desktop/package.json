@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-desktop",
-  "version": "0.15.3",
+  "version": "0.16.0",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
@@ -115,6 +115,7 @@
       "executableName": "neo-angband",
       "syncDesktopName": true,
       "artifactName": "${productName}-${version}-${arch}.${ext}"
-    }
+    },
+    "afterPack": "scripts/adhoc-sign.cjs"
   }
 }

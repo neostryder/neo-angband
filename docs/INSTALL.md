@@ -13,11 +13,12 @@ Windows, macOS and Linux, plus the static site as a zip. The Windows
 and the game keeps its saves in a folder beside itself.
 
 Those builds are **not code-signed**. There is no Apple Developer identity or
-Windows certificate behind this project yet, so the first launch gets a warning:
-on Windows, SmartScreen says "unrecognised app" and the way through is *More
-info -> Run anyway*; on macOS, right-click the app and choose *Open*. That is a
-real trust decision and it is yours to make - if you would rather not, build it
-yourself from §1 below, or play in a browser, which asks nothing of you.
+Windows certificate behind this project yet, so the first launch is blocked.
+**Windows** is one click: SmartScreen says "unrecognised app", choose *More info
+-> Run anyway*. **macOS is not one click** and the way through is not on the
+dialog it shows you - see [the macOS steps](#macos-blocks-it-first-time) below.
+That is a real trust decision and it is yours to make; if you would rather not,
+build it yourself from §1, or play in a browser, which asks nothing of you.
 
 **Nothing needs any of the rest of this page.** It is here for the other four
 ways, all of which run the *same* build:
@@ -294,10 +295,54 @@ it could never save (upstream's `create_needed_dirs` does the same).
 To back a character up, copy the `save/` folder. To move an install, copy the whole
 folder - program included.
 
-**Signing.** The produced macOS `.dmg` and Windows `.exe` are unsigned, so a
-first run may hit Gatekeeper (macOS) or SmartScreen (Windows). Signing and
-notarization require developer certificates and are left to whoever cuts a
-distribution.
+### macOS blocks it first time
+
+macOS will not open a downloaded app that Apple has not notarised, and **the
+dialog it shows you does not contain the way through.** It offers *Done* and
+*Move to Trash* and nothing else, which reads as "this app is broken". It is not
+broken; the permission lives in System Settings, several screens away. Here is
+the whole route.
+
+1. Open the `.dmg` and drag **Neo Angband** to Applications (or anywhere else -
+   it does not have to be Applications).
+2. Double-click it. macOS says *"Neo Angband" Not Opened - Apple could not verify
+   "Neo Angband" is free of malware.* Click **Done**. **You have to do this
+   first**: the permission in step 4 only appears once macOS has actually blocked
+   a launch, and it stops being offered about an hour later.
+3. Open  **System Settings -> Privacy & Security** and scroll down to the
+   **Security** section, near the bottom of a long page.
+4. There is a line reading *"Neo Angband" was blocked to protect your Mac.* Click
+   **Open Anyway** beside it, and authenticate with Touch ID or your password.
+5. Launch the app again. One more *Open Anyway* confirmation, and it starts. Every
+   launch after this one is normal.
+
+Or do it in one command, which is the same decision made explicitly:
+
+```sh
+xattr -d com.apple.quarantine "/Applications/Neo Angband.app"
+```
+
+**Do not follow the old right-click -> Open advice.** It was the standard answer
+for years, this page used to give it, and Apple removed the bypass in **macOS 15
+Sequoia** - on 15 and later it produces the same refusal as a double-click. The
+steps above work on Ventura, Sonoma, Sequoia and Tahoe alike.
+
+**Windows** is the same trade with one click: SmartScreen says *Windows protected
+your PC*, and *More info -> Run anyway* is the way through.
+
+**Why there is no signature.** Notarising a Mac app needs a paid Apple Developer
+identity and a Windows one needs a code-signing certificate; this project has
+neither, and until it does, the honest position is to say exactly what you are
+being asked to trust rather than to hide it. The macOS bundle IS **ad-hoc
+signed** (`codesign --sign -`), which is a different thing: it carries no
+identity and satisfies no Gatekeeper policy, and it is what lets the app run at
+all on Apple Silicon, where an entirely unsigned binary is refused by the kernel
+and reported as *"damaged"*.
+
+**Apple Silicon: take the arm64 build.** The release page carries both, and the
+Intel one runs on an M-series Mac through Rosetta 2 - it works and it is slower.
+If you are not sure which you have, open **Activity Monitor** while the game is
+running and look at the **Kind** column: it should say *Apple*, not *Intel*.
 
 ### What the desktop build adds
 
