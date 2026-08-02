@@ -78,6 +78,26 @@ export interface Machine {
 }
 
 /**
+ * The start of every desktop artifact's name, from electron-builder's
+ * `${productName}` with its spaces replaced by dots: `Neo.Angband-0.16.0-win.zip`.
+ *
+ * THIS IS A SECOND, INDEPENDENT ANSWER TO "IS THIS OUR FILE". The first is
+ * UPDATE_REPO, and for a while it was the only one - which came to light from a
+ * screenshot of a verification run, and the question of whether the upstream
+ * version visible on it was going to reach players. It was not, because the
+ * pointer had already been reverted. But upstream Angband names its Windows
+ * archive `Angband-4.2.6-166-gf0f6bd223-win.zip`, and the platform test below
+ * used to be a bare `endsWith("-win.zip")` - so the ONLY thing that made a
+ * foreign release unusable was the repository constant being right. One
+ * mis-set string away from unpacking another project over this one.
+ *
+ * A release cut under a different product name stops offering updates rather
+ * than installing something unrecognised, and packaging.test.ts ties this
+ * constant to the productName that actually produces the files.
+ */
+export const ASSET_PREFIX = "neo.angband-";
+
+/**
  * Which asset is the in-place-updatable archive for this machine.
  *
  * ZIP AND TAR.GZ, NEVER THE INSTALLERS. The updater swaps a folder, so it wants
@@ -92,11 +112,13 @@ export interface Machine {
  * exactly the reading that shipped the wrong file to an M4.
  */
 export function pickAsset(
-  assets: readonly ReleaseAsset[],
+  all: readonly ReleaseAsset[],
   machine: Machine,
 ): ReleaseAsset | null {
   const arch = machine.arch === "arm64" ? "arm64" : "x64";
   const named = (n: string): string => n.toLowerCase();
+  /* Anything not named for this product is not a candidate on any platform. */
+  const assets = all.filter((a) => named(a.name).startsWith(ASSET_PREFIX));
   if (machine.platform === "win32") {
     return assets.find((a) => named(a.name).endsWith("-win.zip")) ?? null;
   }

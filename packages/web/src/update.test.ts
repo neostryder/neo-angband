@@ -81,6 +81,37 @@ describe("which file this machine needs", () => {
   it("answers null for a platform we do not ship", () => {
     expect(pickAsset(ASSETS, { platform: "freebsd", arch: "x64" })).toBeNull();
   });
+
+  it("refuses a release that is not this product, however well its names fit", () => {
+    /*
+     * These are upstream Angband's real asset names, copied from its releases
+     * API. Its Windows archive ends in `-win.zip` and its source tarball in
+     * `.tar.gz`, exactly like ours - so while the platform test was a bare
+     * suffix match, the ONLY thing stopping a foreign release from being
+     * unpacked over this game was UPDATE_REPO holding the right string.
+     *
+     * That is not hypothetical: this feature cannot be exercised end-to-end
+     * until a release is published, so verifying it meant pointing the check at
+     * upstream, which HAS published releases. The pointer was reverted, but a
+     * single constant should not be the whole defence.
+     */
+    const upstream = [
+      "Angband-4.2.6-166-gf0f6bd223-3ds.zip",
+      "Angband-4.2.6-166-gf0f6bd223-nds.zip",
+      "Angband-4.2.6-166-gf0f6bd223-osx.dmg",
+      "Angband-4.2.6-166-gf0f6bd223-win.zip",
+      "Angband-4.2.6-166-gf0f6bd223.tar.gz",
+    ].map((n) => asset(n));
+    for (const machine of [WIN, MAC_ARM, MAC_X64, LINUX]) {
+      expect(pickAsset(upstream, machine), machine.platform).toBeNull();
+    }
+  });
+
+  it("still finds our file when a foreign one sits beside it", () => {
+    /* The filter must exclude the impostor, not give up on the whole list. */
+    const mixed = [asset("Angband-4.2.6-166-gf0f6bd223-win.zip"), ...ASSETS];
+    expect(pickAsset(mixed, WIN)?.name).toBe("Neo.Angband-0.17.0-win.zip");
+  });
 });
 
 describe("which release is newest", () => {
