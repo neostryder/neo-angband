@@ -303,6 +303,18 @@ export interface CatalogMod {
    * mod that requests nothing (content/tiles), so only plugins gate on consent.
    */
   consented: boolean;
+  /**
+   * This mod is switched ON and is not installed - there is no manifest behind
+   * this row, only the id in the enabled set.
+   *
+   * It gets a row rather than being skipped because the alternative was tested
+   * and is awful: reinstalling the game over a profile that had mods enabled
+   * printed three `enabled mod "x" not found` lines to a console the player does
+   * not have, showed an EMPTY mod list, and offered no hint that the game was
+   * still trying to load anything. A player who turned a mod on is owed the
+   * sentence "it is gone" in the place they turned it on.
+   */
+  missing?: boolean;
 }
 
 /** A named, restorable mod configuration. */
@@ -728,6 +740,29 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
     ...input.sandbox.map((m) => toCatalogMod(m, "sandbox", enabledSet, input.consents)),
     ...input.trusted.map((m) => toCatalogMod(m, "trusted", enabledSet, input.consents)),
   ];
+  /* An id that is enabled and has no manifest anywhere: the mod was uninstalled,
+   * or the game was reinstalled over a profile that still lists it. The game
+   * goes on trying to load it on every boot, so the manager has to be able to
+   * show it - a row the player can select and switch off beats a console line
+   * they will never see. */
+  const found = new Set(all.map((m) => m.id));
+  for (const id of input.enabled) {
+    if (found.has(id)) continue;
+    all.push({
+      id,
+      name: id,
+      version: "-",
+      shape: "content",
+      kind: "content",
+      manifest: { id, name: id, version: "-", shape: "content" } as PackManifest,
+      enabled: true,
+      capabilities: [],
+      nondeterministic: false,
+      affectsGameplay: false,
+      consented: true,
+      missing: true,
+    });
+  }
   const orderOf = (id: string): number => {
     const i = input.enabled.indexOf(id);
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;

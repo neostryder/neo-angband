@@ -84,9 +84,9 @@ describe("every line in the detail pane is wrapped, not just the description", (
      * one raw ScreenLine before. */
     const m = mod({ nondeterministic: true, affectsGameplay: true });
     const lines = rowDetail(m, 40);
-    const text = lines.map((l) => l.text).join("\n");
-    expect(text).toContain("Non-deterministic:");
-    expect(text).toContain("Gameplay-changing:");
+    const text = lines.map((l) => l.text).join("\n").replace(/\n/gu, " ");
+    expect(text).toContain("same seed stops giving the same game");
+    expect(text).toContain("this character cannot score");
     /* Present, and none of it over the width. */
     expect(widest(lines)).toBeLessThanOrEqual(39);
   });
@@ -134,13 +134,16 @@ describe("the description budget is measured, not predicted", () => {
 
   it("truncates the description, never the warnings below it", () => {
     /* Which end gets dropped matters: a shortened blurb is a minor loss, a
-     * missing "this marks your save non-scoring" is not. */
+     * missing "this character cannot score" is not. Asserted on the CONSEQUENCE
+     * at the end of each warning rather than on a label at the start, because
+     * the way these get lost is the pane cutting the last wrapped line - which a
+     * prefix match cannot see. */
     const m = mod({ nondeterministic: true, affectsGameplay: true });
     const lines = rowDetail(m, 44, 12);
-    const text = lines.map((l) => l.text).join("\n");
+    const text = lines.map((l) => l.text).join("\n").replace(/\n/gu, " ");
     expect(text).toContain("(open the mod to read the rest)");
-    expect(text).toContain("Gameplay-changing:");
-    expect(text).toContain("Non-deterministic:");
+    expect(text).toContain("stops giving the same game");
+    expect(text).toContain("this character cannot score");
   });
 
   it("shows the whole description when there is room", () => {
