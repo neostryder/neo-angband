@@ -1,0 +1,184 @@
+# The `early` update channel: a build of every commit on master.
+#
+# WHAT THIS IS FOR. The in-game updater offers three channels (docs/RELEASING.md):
+# `stable` is finished releases, `beta` adds pre-releases - which is every 0.x
+# version this project has - and `early` is this file. A player on `early` is
+# running master, usually within twenty minutes of a push, and has said out loud
+# that they would rather have the breakage than the wait.
+#
+# WHY IT TAGS. GitHub's releases API is the only feed the game reads, and a
+# release needs a tag. The tag carries the VERSION, because "edge" is not a
+# version and the updater orders builds by semver: an untagged rolling release
+# would give the game nothing to compare and it would either offer the same
+# build forever or never offer it at all. So each build gets a real tag,
+# `v0.16.1-edge.42`, which is above the last release and below the next one.
+#
+# Both other tag-triggered workflows exclude `v*-edge.*` explicitly - a per-commit
+# tag would otherwise draft a release and publish npm packages every time.
+#
+# ONLY ONE EDGE RELEASE EXISTS. The previous one is deleted, tag and all, at the
+# end of every run. Keeping them would mean a release and a tag per commit
+# forever, and there is nothing to go back to: an edge build is not a version
+# anybody promised to support.
+name: edge
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "reference/**"
+  workflow_dispatch:
+
+# Superseded builds are pointless: only the newest commit can be the newest
+# commit. `cancel-in-progress` so a burst of pushes produces one build, not six
+# queued ones each obsolete before it finishes.
+concurrency:
+  group: edge
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Number this build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # `version.mjs edge` bumps the PATCH and appends `-edge.<n>`, so this build
+      # sorts above the last release and below the next one. Computed once here
+      # and passed to the build jobs, which each stamp the same number - deriving
+      # it independently in three jobs is how three platforms end up disagreeing.
+      - id: v
+        run: |
+          out=$(node tools/version.mjs edge "${{ github.run_number }}")
+          echo "$out"
+          version=$(printf '%s\n' "$out" | sed -n 's/^::edge-version:://p')
+          if [ -z "$version" ]; then
+            echo "::error::version.mjs printed no ::edge-version:: line"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: ${{ matrix.label }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest
+            label: macOS
+          - os: ubuntu-latest
+            label: Linux
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Stamped, never committed: the working tree is thrown away with the runner.
+      # It has to happen before the build because ENGINE_VERSION is compiled in,
+      # and it is what the running game reports about itself.
+      - run: node tools/version.mjs edge "${{ github.run_number }}"
+      - run: pnpm build
+      - run: pnpm --filter @rpgm-tools/neo-angband-desktop dist:ci
+
+      # ONLY the archives the updater can swap in. The installers, the dmg and
+      # the deb are all first-install shapes that ask the player questions, and
+      # an edge build has no business raising a UAC prompt every twenty minutes.
+      - uses: actions/upload-artifact@v5
+        with:
+          name: edge-${{ matrix.label }}
+          if-no-files-found: error
+          path: |
+            packages/desktop/dist-desktop/*.zip
+            packages/desktop/dist-desktop/*.tar.gz
+
+  publish:
+    name: Roll the edge release
+    needs: [version, desktop]
+    # A platform that failed to build must not sink the ones that worked, for the
+    # same reason release.yml says so: partial artifacts beat none.
+    if: always() && needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish it, then delete the one before
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(artifacts/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no artifacts were produced; leaving the previous edge build in place"
+            exit 1
+          fi
+          echo "attaching ${#files[@]} files"
+
+          subject=$(git log -1 --pretty=%s "$SHA")
+          {
+            printf '**This is an automatic build of every commit on master.** It is the\n'
+            printf '`early` channel of the in-game updater, and it is not a release.\n\n'
+            printf 'Built from [`%s`](https://github.com/${{ github.repository }}/commit/%s): %s\n\n' \
+              "${SHA:0:7}" "$SHA" "$subject"
+            printf 'No release notes, no changelog entry, and no promise that it works.\n'
+            printf 'It has passed the same test suite every commit passes and nothing else -\n'
+            printf 'in particular nobody has played it. Saves made here are still saves: a\n'
+            printf 'format change ships its conversion like any other build. If you want\n'
+            printf 'something that has been looked at by a human, switch the channel to\n'
+            printf '`beta` on the update screen.\n\n'
+            printf 'This release is REPLACED, tag and all, by the next commit.\n'
+          } > notes.md
+
+          # PRE-RELEASE always: an edge build must never become "Latest release"
+          # on the repository front page, which is what a non-prerelease does.
+          gh release create "$TAG" "${files[@]}" \
+            --target "$SHA" \
+            --prerelease \
+            --title "Neo Angband $VERSION (edge)" \
+            --notes-file notes.md
+
+          # Delete every OTHER edge release, tag included. Done after the new one
+          # exists, so a failure here leaves two edge builds rather than none -
+          # and the updater picks the highest version, which is the new one.
+          #
+          # `|| true` because a grep that matches nothing exits 1, and under
+          # `pipefail` that fails the job: the FIRST edge run has no predecessor
+          # to delete, so the success case and the nothing-to-do case would be
+          # indistinguishable from a broken one.
+          mapfile -t superseded < <(
+            gh release list --limit 100 --json tagName --jq '.[].tagName' \
+              | { grep -E -- '-edge\.[0-9]+$' || true; } \
+              | { grep -v -x -- "$TAG" || true; }
+          )
+          for old in "${superseded[@]}"; do
+            [ -n "$old" ] || continue
+            echo "removing superseded edge release $old"
+            gh release delete "$old" --yes --cleanup-tag
+          done
+
+          echo "::notice::edge $VERSION published; players on the early channel get it next launch"

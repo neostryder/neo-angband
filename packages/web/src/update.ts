@@ -69,6 +69,102 @@ export interface AvailableUpdate {
   readonly url: string;
   /** The archive for THIS machine, or null if this release has none. */
   readonly asset: ReleaseAsset | null;
+  /**
+   * True when this channel's newest build is BEHIND what is installed, which
+   * happens after moving from a faster channel to a slower one. It is still
+   * offered, because the alternative is a player who picked `stable` sitting on
+   * an `early` build forever while the game says there is nothing to do - but
+   * it must never shimmer, and the screen has to call it what it is.
+   */
+  readonly older: boolean;
+}
+
+/**
+ * How fresh a build the player is willing to run.
+ *
+ * INCLUSIVE DOWNWARD: `beta` sees stable releases too, and `early` sees
+ * everything. A player on beta must still be offered 1.0.0 when it ships, and a
+ * channel that hid its own stable releases would strand people on the last
+ * pre-release.
+ *
+ * WHY THERE IS NO `draft` CHANNEL, though it was the obvious third name: GitHub
+ * hides draft releases from unauthenticated callers. It is not a visibility
+ * preference, it is the API - a player's game cannot see a draft at all, and the
+ * only way to change that is to ship a credential inside the game. A draft is
+ * the maintainer's staging area, and the published-but-not-final state GitHub
+ * actually offers for this is the PRE-RELEASE flag, which every 0.x release here
+ * already carries. So `beta` is pre-releases, and drafts remain invisible to
+ * everyone including the person who made them.
+ */
+export type UpdateChannel = "stable" | "beta" | "early";
+
+/** In order, slowest first. The cycle order on the update screen. */
+export const UPDATE_CHANNELS: readonly UpdateChannel[] = ["stable", "beta", "early"];
+
+/**
+ * What an `early` build's version looks like: `0.16.1-edge.42`.
+ *
+ * The marker is in the VERSION rather than the release title or a label,
+ * because the version is the only part of a release that both CI writes and
+ * the comparator reads. A title is prose and can be edited on the website.
+ */
+export const EDGE_MARKER = "-edge.";
+
+/** Is this a per-commit build off master rather than a tagged release? */
+export function isEdgeRelease(r: Release): boolean {
+  return r.version.includes(EDGE_MARKER);
+}
+
+/** The releases a channel is willing to look at. */
+export function releasesIn(channel: UpdateChannel, releases: readonly Release[]): Release[] {
+  return releases.filter((r) => {
+    if (isEdgeRelease(r)) return channel === "early";
+    if (r.prerelease) return channel !== "stable";
+    return true;
+  });
+}
+
+/**
+ * The channel a player starts on, which depends on whether anything has ever
+ * shipped on the stable one.
+ *
+ * While the engine is 0.x EVERY release is flagged pre-release by definition
+ * (docs/RELEASING.md), so `stable` is empty - and a default of "stable" would
+ * mean a freshly installed alpha never offers an update and never says why.
+ * That is the silent-off failure this project keeps finding. So 0.x defaults to
+ * `beta`, and the day 1.0.0 ships the same expression starts answering
+ * `stable` without anyone remembering to change it.
+ */
+export function defaultChannel(current: string): UpdateChannel {
+  const major = /^(\d+)\./u.exec(current)?.[1];
+  return major === "0" ? "beta" : "stable";
+}
+
+/** Where the player's choice is kept. */
+export const CHANNEL_KEY = "neo-angband:update-channel";
+
+function isChannel(v: unknown): v is UpdateChannel {
+  return typeof v === "string" && (UPDATE_CHANNELS as readonly string[]).includes(v);
+}
+
+/** The stored channel, or the default for this version. Never throws. */
+export function readChannel(store: Pick<Storage, "getItem"> | null, current: string): UpdateChannel {
+  try {
+    const raw = store?.getItem(CHANNEL_KEY);
+    if (isChannel(raw)) return raw;
+  } catch {
+    /* Storage can throw outright in a locked-down browser. */
+  }
+  return defaultChannel(current);
+}
+
+/** Remember the player's choice. A failure here costs the preference, nothing else. */
+export function writeChannel(store: Pick<Storage, "setItem"> | null, channel: UpdateChannel): void {
+  try {
+    store?.setItem(CHANNEL_KEY, channel);
+  } catch {
+    /* ignored */
+  }
 }
 
 /** Which build a machine needs. Mirrors process.platform / process.arch. */
@@ -180,14 +276,39 @@ export function decideUpdate(
   current: string,
   releases: readonly Release[],
   machine: Machine,
+  channel: UpdateChannel,
 ): AvailableUpdate | null {
-  const newest = newestRelease(releases);
+  const newest = newestRelease(releasesIn(channel, releases));
   if (!newest) return null;
   const cmp = compareSemver(newest.version, current);
-  if (cmp === null || cmp <= 0) return null;
+  if (cmp === null || cmp === 0) return null;
+  if (cmp < 0) {
+    /*
+     * Going BACKWARDS, which is refused by default and always has been: a
+     * development build running against the released feed must not be offered
+     * the last release as though it were an upgrade.
+     *
+     * Channels add exactly one case that rule did not contemplate. Someone on
+     * `early` is deliberately ahead of every published release, so moving them
+     * to `stable` or `beta` can only ever be a step back - and refusing it would
+     * mean the channel they just chose reports "nothing to install" forever
+     * while the game stays on a build that channel does not contain. Narrowed
+     * to that: the installed build must be an edge build, and the chosen channel
+     * must be one that excludes edge builds. A plain 0.18.0 dev version is still
+     * never offered 0.17.0.
+     */
+    const leavingEarly = current.includes(EDGE_MARKER) && channel !== "early";
+    if (!leavingEarly) return null;
+  }
   const asset = pickAsset(newest.assets, machine);
   if (!asset) return null;
-  return { version: newest.version, tag: newest.tag, url: newest.url, asset };
+  return {
+    version: newest.version,
+    tag: newest.tag,
+    url: newest.url,
+    asset,
+    older: cmp < 0,
+  };
 }
 
 /** The shape of one release in GitHub's JSON, as far as we read it. */
@@ -274,6 +395,7 @@ export interface UpdateCheckDeps {
   readonly fetch: typeof globalThis.fetch;
   readonly machine: Machine;
   readonly current: string;
+  readonly channel: UpdateChannel;
   readonly timeoutMs?: number;
   readonly repo?: string;
 }
@@ -299,7 +421,7 @@ export async function checkForUpdate(deps: UpdateCheckDeps): Promise<AvailableUp
       headers: { Accept: "application/vnd.github+json" },
     });
     if (!res.ok) return null;
-    return decideUpdate(deps.current, parseReleases(await res.json()), deps.machine);
+    return decideUpdate(deps.current, parseReleases(await res.json()), deps.machine, deps.channel);
   } catch {
     /* A failed update check is not an error the player asked about. */
     return null;

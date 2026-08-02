@@ -9,8 +9,23 @@
  * so the text is the part worth asserting.
  */
 
+import type { UpdateChannel } from "./update";
+
 /** Tones, resolved to this shell's palette by the caller. */
 export type UpdateTone = "head" | "body" | "dim" | "good" | "warn";
+
+/**
+ * What each channel means, in the player's words rather than GitHub's.
+ *
+ * "Pre-release" and "draft" are release-engineering vocabulary and neither one
+ * tells a player what they will actually get, so the screen says how often the
+ * build changes and how tested it is.
+ */
+export const CHANNEL_BLURB: Record<UpdateChannel, string> = {
+  stable: "finished releases only",
+  beta: "pre-releases too - where every 0.x version lives",
+  early: "every commit, minutes after it lands - expect breakage",
+};
 
 export interface UpdateLine {
   readonly text: string;
@@ -20,12 +35,29 @@ export interface UpdateLine {
 /** How this launch can take an update. Mirrors update-plan.ts, plus the web. */
 export type UpdateHow = "swap" | "manual" | "web" | "none";
 
-export type UpdatePhase = "offer" | "downloading" | "installing" | "failed";
+/**
+ * `uptodate` exists so the channel is reachable.
+ *
+ * The (U)pdate row was originally painted only when there was something to
+ * install, which is correct for a row whose whole job is to announce one - but
+ * it also made the channel setting unreachable, because the only door to it is
+ * this screen and the door only appeared when you did not need it. On desktop
+ * the row is now always there and shimmers only when a build is waiting.
+ */
+export type UpdatePhase = "offer" | "uptodate" | "downloading" | "installing" | "failed";
 
 export interface UpdateView {
   readonly how: UpdateHow;
   readonly current: string;
   readonly version: string;
+  /** Which channel produced `version`, and the one the player can change. */
+  readonly channel: UpdateChannel;
+  /**
+   * The offered build is BEHIND the installed one - only reachable by moving
+   * from `early` to a slower channel. The screen must say so: an unlabelled
+   * "0.16.0 is available" to someone running 0.16.1-edge.9 reads as a bug.
+   */
+  readonly older?: boolean | undefined;
   /** The folder that would be replaced, shown so the player knows what moves. */
   readonly installRoot?: string | undefined;
   /** The file this machine would fetch. */
@@ -112,6 +144,19 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     return out;
   }
 
+  if (v.phase === "uptodate") {
+    say(`Neo Angband ${v.current}`, "head");
+    say("");
+    say("This is the newest build on your channel.", "good");
+    say("");
+    say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
+    say("");
+    say("A faster channel gets you newer builds sooner and tests them less.", "body");
+    say("The game checks once when it starts, and the title screen row", "body");
+    say("shimmers when something is waiting.", "body");
+    return out;
+  }
+
   if (v.phase === "downloading" || v.phase === "installing") {
     const received = v.received ?? 0;
     const total = v.total ?? 0;
@@ -139,8 +184,18 @@ export function updateLines(v: UpdateView): UpdateLine[] {
   }
 
   /* phase === "offer" */
-  say(`Neo Angband ${v.version} is available.`, "head");
-  say(`You are running ${v.current}.`, "dim");
+  if (v.older) {
+    /* Leaving `early`. Calling this an update would be false, and saying
+     * nothing at all would leave the player wondering why the channel they just
+     * chose has no build in it. */
+    say(`Moving back to ${v.version}.`, "head");
+    say(`You are running ${v.current}, which is newer.`, "dim");
+  } else {
+    say(`Neo Angband ${v.version} is available.`, "head");
+    say(`You are running ${v.current}.`, "dim");
+  }
+  say("");
+  say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
   say("");
 
   if (v.how === "web") {
@@ -187,13 +242,24 @@ export function updateLines(v: UpdateView): UpdateLine[] {
   return out;
 }
 
-/** The footer, which is the only place that says what ENTER will do. */
+/**
+ * The footer, which is the only place that says what ENTER will do.
+ *
+ * C is offered wherever changing it is meaningful and safe - not mid-download,
+ * and not in the browser, where there are no channels to choose between: the
+ * page is whatever the site last deployed.
+ */
 export function updateFooter(v: UpdateView): string {
   if (v.phase === "downloading") return "[ ESC to cancel ]";
   if (v.phase === "installing") return "[ restarting... ]";
-  if (v.phase === "failed") return "[ ENTER to try again - ESC to go back ]";
-  if (v.how === "swap") return "[ ENTER to update and restart - ESC to go back ]";
+  const channel = v.how === "web" ? "" : " - C to change channel";
+  if (v.phase === "failed") return `[ ENTER to try again${channel} - ESC to go back ]`;
+  if (v.phase === "uptodate") return `[ C to change channel - ESC to go back ]`;
+  if (v.how === "swap") {
+    const verb = v.older ? "move back and restart" : "update and restart";
+    return `[ ENTER to ${verb}${channel} - ESC to go back ]`;
+  }
   if (v.how === "web") return "[ ENTER to reload onto the new version - ESC to go back ]";
-  if (v.how === "manual") return "[ ENTER to open the releases page - ESC to go back ]";
-  return "[ ESC to go back ]";
+  if (v.how === "manual") return `[ ENTER to open the releases page${channel} - ESC to go back ]`;
+  return `[${channel === "" ? "" : " C to change channel -"} ESC to go back ]`;
 }

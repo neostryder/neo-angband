@@ -252,6 +252,53 @@ the normal path, so this is a list of things not to "tidy up":
 hiding them would mean the feature never worked before 1.0; the version
 comparison is what decides, not the label.
 
+### The three channels, and why `draft` is not one of them
+
+The update screen offers `stable`, `beta` and `early`, and they are **inclusive
+downward** — `beta` sees stable releases too, `early` sees everything. A player
+on beta must still be offered `1.0.0` when it ships.
+
+| channel | what it selects | produced by |
+|---|---|---|
+| `stable` | published, not flagged pre-release | you, pressing publish on a `1.x` tag |
+| `beta` | the above, plus pre-releases — every `0.x` | you, pressing publish |
+| `early` | the above, plus per-commit builds | `edge.yml`, automatically |
+
+**A draft cannot be a channel.** GitHub hides drafts from unauthenticated
+callers, so a player's game cannot see one at all; the only way to change that
+would be to ship a credential inside the game. `beta` is the visible
+"published but not final" state GitHub actually provides, and drafts stay what
+they are — a staging area nobody else can reach.
+
+While the engine is `0.x` **`stable` selects nothing**, because every release is
+flagged pre-release. `defaultChannel()` therefore starts new installs on `beta`
+and switches to `stable` on its own at `1.0.0`. A default of `stable` today
+would mean a fresh install never offers an update and never explains why.
+
+### `early`: a release per commit, and only ever one
+
+`edge.yml` builds master on every push and publishes it as a pre-release tagged
+`v<next-patch>-edge.<run>`, e.g. `v0.16.1-edge.42`. Three consequences worth
+knowing before touching any of it:
+
+- **It creates real tags.** The updater orders builds by semver and takes the
+  version from the tag, so a fixed rolling tag would give it nothing to compare.
+  `release.yml` and `publish-npm.yml` both exclude `!v*-edge.*` for that reason
+  — without the exclusion every commit would draft a release *and* publish npm
+  packages, and an npm version cannot be reused once published.
+- **The patch is bumped before the suffix.** A prerelease sorts *below* its own
+  triple, so `0.16.0-edge.1` would be older than the `0.16.0` already installed
+  and would never be offered. `0.16.1-edge.1` sits above `0.16.0` and below both
+  `0.16.1` and `0.17.0`, which is what an unreleased build off master is.
+- **The previous edge release is deleted, tag and all**, after the new one
+  exists. Keeping them would mean a release and a tag per commit forever, and
+  there is nothing to roll back to — an edge build is not a version anyone
+  promised to support.
+
+Nothing about `early` touches the release path above. It stamps the version into
+the working tree on the runner and throws it away; no commit, no changelog, no
+npm.
+
 ## If the release changes the save format
 
 `SAVE_VERSION` in `packages/core/src/session/save.ts` is not a version number you

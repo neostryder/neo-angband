@@ -25,7 +25,12 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    # `!v*-edge.*` keeps this off the `early` channel's tags. edge.yml creates a
+    # real tag (v0.16.1-edge.42) for every commit on master, because the updater
+    # reads a version from the tag and "edge" is not a version. Without the
+    # exclusion each of those would ALSO draft a full release here - one per
+    # commit, each claiming to be a version of the game.
+    tags: ["v*", "!v*-edge.*"]
   workflow_dispatch:
     inputs:
       tag:

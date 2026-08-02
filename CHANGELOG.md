@@ -140,6 +140,18 @@ Everything in this block came out of one play session on the 0.15.3 build.
   *Latest release*, which is what the repository sidebar, the API and every
   "download the latest" link follow - so an alpha would present as the stable
   build. The flag is conditional on a `0.` prefix and stops applying at 1.0.0.
+- **`compareSemver` ordered numeric prerelease identifiers as text, so
+  `1.0.0-edge.9` outranked `1.0.0-edge.10`.** It was a *documented* limitation -
+  the header said pack authors needing exact prerelease ordering should not rely
+  on it - and that was honest while nothing did. The `early` channel names builds
+  `-edge.<n>`, so the tenth build of a day would never have been offered to
+  anyone running the ninth: the game would have reported itself up to date
+  indefinitely, and the symptom would have looked like a broken update check
+  rather than a comparator. Implemented to the spec now (semver item 11.4):
+  dot-separated identifiers, numeric compared numerically and ranking below
+  alphanumeric, a longer list beating its own prefix. The spec's own example
+  chain is asserted, and *sorted* as well as compared pairwise - a
+  non-transitive comparator passes every adjacent pair.
 - Toggling anything in the mod manager no longer throws the cursor back to the top
   of the list.
 
@@ -154,6 +166,36 @@ Everything in this block came out of one play session on the 0.15.3 build.
 
 ### Added
 
+- **Three update channels, chosen with `C` on the update screen.** `stable` is
+  finished releases, `beta` adds pre-releases - which is every `0.x` version
+  this project has - and `early` is a build of every commit on master, published
+  by CI within minutes of a push. They are inclusive downward, so a player on
+  beta is still offered `1.0.0` when it ships.
+  - **There is no `draft` channel, and there cannot be one.** GitHub hides draft
+    releases from unauthenticated callers, so a player's game cannot see one at
+    all; the only way to change that would be to ship a credential inside the
+    game. A draft is a staging area, and `beta` is the published-but-not-final
+    state GitHub actually provides.
+  - While the engine is `0.x`, `stable` selects nothing - every release is
+    flagged pre-release - so new installs start on `beta` and switch to
+    `stable` on their own at `1.0.0`. A default of `stable` today would mean a
+    fresh install never offers an update and never says why.
+  - `early` builds are tagged `v<next-patch>-edge.<run>`, which sorts above the
+    last release and below the next one. **The patch has to be bumped before the
+    suffix**: a prerelease sorts *below* its own triple, so `0.16.0-edge.1`
+    would be older than the `0.16.0` already installed and would never be
+    offered. Only one edge release exists at a time; the previous one is deleted,
+    tag and all, once its replacement is up.
+  - Leaving `early` means going backwards to the slower channel's newest build.
+    The screen calls that a move rather than an update, because "0.16.0 is
+    available" shown to someone running `0.16.1-edge.9` reads as a bug.
+  - The **(U)pdate row is now always present on the desktop**, and shimmers only
+    when a build is actually waiting. It previously appeared only when there was
+    something to install, reasoned as "a dead row would say an update might
+    arrive at any moment". On the desktop both halves of that turned out false:
+    an update can arrive at any moment, since the game asks at every launch, and
+    the row is the only door to the channel setting - so hiding it left the
+    setting reachable only in the moments changing it mattered least.
 - **The game updates itself, from a shimmering row on the title screen.** When a
   newer version has been published, the title screen grows a **(U)pdate** row
   that cycles colour the way an `RF_ATTR_MULTI` monster does - the same

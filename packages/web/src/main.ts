@@ -449,8 +449,15 @@ import {
   promptInstall,
   webUpdateReady,
 } from "./pwa";
-import { UPDATE_REPO, checkForUpdate, updaterBridge } from "./update";
-import type { AvailableUpdate } from "./update";
+import {
+  UPDATE_CHANNELS,
+  UPDATE_REPO,
+  checkForUpdate,
+  readChannel,
+  updaterBridge,
+  writeChannel,
+} from "./update";
+import type { AvailableUpdate, UpdateChannel } from "./update";
 import { updateFooter, updateLines } from "./update-ui";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
@@ -8443,7 +8450,11 @@ async function maybeTitle(): Promise<TitleChoice | null> {
           canQuit: desktopQuitAvailable(),
           /* Absent under the desktop shell rather than greyed - see TitleOptions. */
           canInstall: offerInstall({ isDesktop: desktopBridge !== null }),
-          canUpdate: update !== null,
+          /* Present wherever updating is a thing this shell does, so the channel
+           * is reachable; in a browser only when the worker really has a build,
+           * because there is no channel to choose there. */
+          canUpdate: desktopBridge === null ? update !== null : updateHow !== "none",
+          updateReady: update !== null && !update.older,
         },
         { randint1: titleRandint1 },
       ),
@@ -8476,7 +8487,23 @@ const titleRandint1 = (n: number): number => Math.floor(Math.random() * n) + 1;
  */
 let updateHow: UpdateHow = "none";
 let updateRoot = "";
-const updateProbe: Promise<AvailableUpdate | null> = (async () => {
+
+/** localStorage, or null where a browser refuses it outright. */
+function channelStore(): Pick<Storage, "getItem" | "setItem"> | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+let updateChannel: UpdateChannel = readChannel(channelStore(), ENGINE_VERSION);
+
+/**
+ * What this install is, asked once. Cheap, local, and the same on every channel,
+ * so it is not repeated when the player switches.
+ */
+const shapeProbe: Promise<{ platform: string; arch: string } | null> = (async () => {
   try {
     /* `updaterBridge`, NOT `desktopBridge`: the preload exposes two globals and
      * the updater is on `neoDesktop`, while detectDesktopBridge returns
@@ -8494,15 +8521,30 @@ const updateProbe: Promise<AvailableUpdate | null> = (async () => {
     if (!shape || shape.how === "none") return null;
     updateHow = shape.how === "swap" ? "swap" : "manual";
     updateRoot = shape.installRoot ?? "";
-    return await checkForUpdate({
-      fetch: globalThis.fetch.bind(globalThis),
-      machine: { platform: shape.platform ?? "", arch: shape.arch ?? "" },
-      current: ENGINE_VERSION,
-    });
+    return { platform: shape.platform ?? "", arch: shape.arch ?? "" };
   } catch {
     return null;
   }
 })();
+
+/** Ask GitHub what this channel currently holds. Never throws. */
+async function runUpdateCheck(channel: UpdateChannel): Promise<AvailableUpdate | null> {
+  try {
+    const machine = await shapeProbe;
+    if (!machine) return null;
+    return await checkForUpdate({
+      fetch: globalThis.fetch.bind(globalThis),
+      machine,
+      current: ENGINE_VERSION,
+      channel,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/* Started at boot so the title screen does not wait on a network round trip. */
+let updateProbe: Promise<AvailableUpdate | null> = runUpdateCheck(updateChannel);
 
 /** What, if anything, the title screen should offer. */
 async function updateOffer(): Promise<AvailableUpdate | null> {
@@ -8511,7 +8553,7 @@ async function updateOffer(): Promise<AvailableUpdate | null> {
     updateHow = "web";
     /* The worker does not report a version number - it has a build, not a tag -
      * so the screen says "a newer version" rather than inventing one. */
-    return { version: "a newer version", tag: "", url: "", asset: null };
+    return { version: "a newer version", tag: "", url: "", asset: null, older: false };
   }
   return updateProbe;
 }
@@ -8529,19 +8571,24 @@ async function updateOffer(): Promise<AvailableUpdate | null> {
  * - about a hundred times over a download instead of tens of thousands.
  */
 async function showUpdatePage(): Promise<void> {
-  const offer = await updateOffer();
-  if (!offer) return;
   const bridge = updaterBridge();
+  let offer = await updateOffer();
 
-  let view: UpdateView = {
+  /* The page is reachable with nothing to install, because it is also where the
+   * channel is chosen - see UpdatePhase's comment. */
+  const viewFor = (o: AvailableUpdate | null): UpdateView => ({
     how: updateHow,
     current: ENGINE_VERSION,
-    version: offer.version,
+    version: o?.version ?? ENGINE_VERSION,
+    channel: updateChannel,
+    older: o?.older ?? false,
     installRoot: updateRoot,
-    assetName: offer.asset?.name,
-    phase: "offer",
-    releaseUrl: offer.url || `https://github.com/${UPDATE_REPO}/releases`,
-  };
+    assetName: o?.asset?.name,
+    phase: o ? "offer" : "uptodate",
+    releaseUrl: o?.url ?? `https://github.com/${UPDATE_REPO}/releases`,
+  });
+
+  let view: UpdateView = viewFor(offer);
 
   const paint = (): void => {
     const { cols, rows } = term.size();
@@ -8573,7 +8620,26 @@ async function showUpdatePage(): Promise<void> {
     paint();
     const pressed = await key();
     if (pressed === "Escape") return;
+
+    /* Change channel, then ask again. The browser has no channels: what it runs
+     * is whatever the site last deployed. */
+    if ((pressed === "c" || pressed === "C") && view.how !== "web" && view.phase !== "downloading") {
+      const next = UPDATE_CHANNELS[(UPDATE_CHANNELS.indexOf(updateChannel) + 1) % UPDATE_CHANNELS.length];
+      if (next) {
+        updateChannel = next;
+        writeChannel(channelStore(), next);
+        /* Re-run rather than filter the old answer: a slower channel's newest
+         * release may not even have been in the twenty this machine fetched. */
+        view = { ...view, channel: next, phase: "uptodate" };
+        paint();
+        updateProbe = runUpdateCheck(next);
+        offer = await updateProbe;
+        view = viewFor(offer);
+      }
+      continue;
+    }
     if (pressed !== "Enter") continue;
+    if (!offer) continue;
 
     if (view.how === "web") {
       applyWebUpdate();

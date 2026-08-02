@@ -67,7 +67,7 @@ describe("title screen keys (main-win.c File menu)", () => {
   /* The upstream File-menu rows. `canInstall: false` keeps this block about the
    * four rows that ARE ported; the fifth is not upstream's and is covered on its
    * own below. */
-  const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false };
+  const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false, updateReady: false };
 
   it("offers New / Open / Load / Quit in the File menu's order", () => {
     expect(titleRows(ALL).map((r) => r.choice)).toEqual(["new", "open", "load", "quit"]);
@@ -114,7 +114,7 @@ describe("title screen keys (main-win.c File menu)", () => {
       canOpen: false,
       canQuit: false,
       canInstall: false,
-      canUpdate: false,
+      canUpdate: false, updateReady: false,
     });
     expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["new"]);
     expect(titleKeyChoice("l", none, false)).toBeNull();
@@ -210,7 +210,7 @@ function renderTitle(
         canOpen: true,
         canQuit: true,
         canInstall: false,
-        canUpdate: false,
+        canUpdate: false, updateReady: false,
         ...over,
       },
       deps,
@@ -409,7 +409,7 @@ describe("title screen credits (whose version, and where)", () => {
  * a permanent dead row there would be advertising something that is not coming.
  */
 describe("the (I)nstall locally row", () => {
-  const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true, canUpdate: false };
+  const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true, canUpdate: false, updateReady: false };
 
   it("appears with its own key when installing is possible", () => {
     expect(titleRows(WEB).map((r) => r.choice)).toEqual([
@@ -456,7 +456,7 @@ describe("the (I)nstall locally row", () => {
  * when there is, the way an RF_ATTR_MULTI monster does.
  */
 describe("the (U)pdate row", () => {
-  const READY = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: true };
+  const READY = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: true, updateReady: true };
 
   it("appears with its own key only when an update exists", () => {
     expect(titleRows(READY).map((r) => r.choice)).toEqual(["new", "open", "load", "update", "quit"]);
@@ -466,7 +466,7 @@ describe("the (U)pdate row", () => {
 
   it("is ABSENT, not greyed, when there is nothing to install", () => {
     /* A permanent dead "(U)pdate" says an update might arrive at any moment. */
-    const rows = titleRows({ ...READY, canUpdate: false });
+    const rows = titleRows({ ...READY, canUpdate: false, updateReady: false });
     expect(rows.map((r) => r.choice)).not.toContain("update");
     expect(titleKeyChoice("u", rows, false)).toBeNull();
   });
@@ -492,7 +492,7 @@ describe("the (U)pdate row", () => {
   });
 
   it("keeps the roomy gap when the rows are few", () => {
-    const spans = titleRowSpans(titleRows({ ...READY, canUpdate: false }), 80);
+    const spans = titleRowSpans(titleRows({ ...READY, canUpdate: false, updateReady: false }), 80);
     expect(spans[1]!.start - spans[0]!.end - 1).toBe(3);
   });
 
@@ -521,7 +521,7 @@ describe("the shimmer is a multi-hued monster's", () => {
      * still never reach the screen. */
     let tick: (() => void) | null = null;
     const grid = renderTitle(
-      { canUpdate: true },
+      { canUpdate: true, updateReady: true },
       {
         randint1: () => 4,
         setInterval: (fn) => {
@@ -550,7 +550,7 @@ describe("the shimmer is a multi-hued monster's", () => {
   it("does not schedule a timer when there is no update to shimmer", () => {
     let scheduled = 0;
     renderTitle(
-      { canUpdate: false },
+      { canUpdate: false, updateReady: false },
       {
         randint1: () => 4,
         setInterval: () => {

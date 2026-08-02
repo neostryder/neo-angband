@@ -111,7 +111,7 @@ describe("satisfies: malformed input", () => {
   });
 });
 
-describe("satisfies: prerelease (documented, naive comparison)", () => {
+describe("satisfies: prerelease", () => {
   it("a release outranks a prerelease at the same major.minor.patch", () => {
     expect(satisfies("1.0.0", ">1.0.0-beta")).toBe(true);
     expect(satisfies("1.0.0-beta", ">=1.0.0")).toBe(false);
@@ -149,6 +149,55 @@ describe("compareSemver", () => {
      * that disagreed about this would be worse than none. */
     expect(compareSemver("1.0.0", "1.0.0-beta")).toBeGreaterThan(0);
     expect(compareSemver("1.0.0-beta", "1.0.0")).toBeLessThan(0);
+  });
+
+  it("counts numeric prerelease identifiers, so edge.9 is BELOW edge.10", () => {
+    /*
+     * The 0.9.0-vs-0.10.0 bug again, one level down, and it was a DOCUMENTED
+     * limitation until the updater's early channel began naming builds
+     * `0.16.1-edge.N`. Lexicographically "9" > "10", so the tenth build of the
+     * day would never be offered to anyone running the ninth: the game would
+     * report itself up to date, forever, and the failure would look like the
+     * update check being broken rather than the comparator being wrong.
+     */
+    expect(compareSemver("0.16.1-edge.9", "0.16.1-edge.10")).toBeLessThan(0);
+    expect(compareSemver("0.16.1-edge.10", "0.16.1-edge.9")).toBeGreaterThan(0);
+    expect(compareSemver("1.0.0-beta.2", "1.0.0-beta.11")).toBeLessThan(0);
+  });
+
+  it("ranks a numeric identifier below an alphanumeric one", () => {
+    /* Spec 11.4.3, and not something a string compare gets right except by
+     * accident of the ASCII table. */
+    expect(compareSemver("1.0.0-2", "1.0.0-beta")).toBeLessThan(0);
+    expect(compareSemver("1.0.0-alpha.2", "1.0.0-alpha.beta")).toBeLessThan(0);
+  });
+
+  it("treats a longer identifier list as newer than its own prefix", () => {
+    expect(compareSemver("1.0.0-alpha", "1.0.0-alpha.1")).toBeLessThan(0);
+    expect(compareSemver("1.0.0-alpha.1", "1.0.0-alpha")).toBeGreaterThan(0);
+  });
+
+  it("orders the spec's own example chain", () => {
+    /* Straight from semver.org item 11.4, which is the cheapest way to find out
+     * that one of the rules above was implemented backwards. */
+    const chain = [
+      "1.0.0-alpha",
+      "1.0.0-alpha.1",
+      "1.0.0-alpha.beta",
+      "1.0.0-beta",
+      "1.0.0-beta.2",
+      "1.0.0-beta.11",
+      "1.0.0-rc.1",
+      "1.0.0",
+    ];
+    for (let i = 0; i + 1 < chain.length; i++) {
+      expect(compareSemver(chain[i]!, chain[i + 1]!), `${chain[i]!} < ${chain[i + 1]!}`).toBeLessThan(0);
+    }
+    /* And sorting the shuffled chain reproduces it, which the pairwise loop
+     * above cannot see: a non-transitive comparator passes every adjacent pair. */
+    const shuffled = [...chain].reverse();
+    shuffled.sort((a, b) => compareSemver(a, b) ?? 0);
+    expect(shuffled).toEqual(chain);
   });
 
   it("returns null rather than throwing on anything that is not a full version", () => {
