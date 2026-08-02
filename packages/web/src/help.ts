@@ -37,11 +37,13 @@
 import type { GlyphTerm } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
-import { UI_TEXT, UI_DIM } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
+import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 
 const FG = UI_TEXT;
 const DIM = UI_DIM;
 const LABEL = UI_TEXT;
+const GOLD = UI_GOLD;
 
 /** One row: `key` padded to a fixed column, then its description. */
 function keyLine(key: string, desc: string): ScreenLine {
@@ -284,6 +286,48 @@ export function helpGuideLines(): ScreenLine[] {
   ];
 }
 
+/**
+ * Where to get help from a person, and where to say something is wrong.
+ *
+ * A PORT ADDITION, like the playing guide above it, and for a plainer reason
+ * than that one: this is an alpha whose whole point is that people report what
+ * they find, and every route to doing so lived in a README that a player who
+ * downloaded a build has never opened. `?` is where someone goes when they are
+ * stuck, so `?` is where the answer belongs.
+ *
+ * The address is written the long way round on purpose - a person reads it, a
+ * scraper walking the page does not.
+ */
+export function helpCommunityLines(): ScreenLine[] {
+  return [
+    { text: `You are playing Neo Angband ${ENGINE_VERSION}, a port of Angband 4.2.6.`, color: FG },
+    { text: "", color: FG },
+    { text: "It is ALPHA. It plays start to finish and it is not finished, and", color: FG },
+    { text: "the things still wrong with it are mostly things only playing finds:", color: FG },
+    { text: "a message the original prints that this one does not, a screen laid", color: FG },
+    { text: "out a column off, a prompt that never appears.", color: FG },
+    { text: "", color: FG },
+    { text: "Ask anyone, about anything:", color: GOLD },
+    { text: "    discord.gg/YegtwbHTBQ        the RPGM Tools Discord", color: FG },
+    { text: "", color: FG },
+    { text: "Tell us something is wrong:", color: GOLD },
+    { text: "    github.com/neostryder/neo-angband/issues", color: FG },
+    { text: "", color: FG },
+    { text: "The most useful report says what the original does and what this", color: FG },
+    { text: "does. You do not need a copy of Angband to hand - describing what", color: FG },
+    { text: "you expected is plenty. Say which version (above), and whether any", color: FG },
+    { text: "mods were on; '=' shows them, and turning the game into something", color: FG },
+    { text: "else is what a mod is for, so that line saves a wasted round trip.", color: FG },
+    { text: "", color: FG },
+    { text: "Anything that should not be public, security included:", color: GOLD },
+    { text: "    strider-angband (at) rpgm.tools", color: FG },
+    { text: "", color: FG },
+    { text: "Your characters are safe across updates. Every change to the save", color: FG },
+    { text: "format ships the conversion that reads the one before it, and a save", color: FG },
+    { text: "the game cannot open is left alone rather than replaced.", color: FG },
+  ];
+}
+
 /** One page shown by the help index. */
 interface HelpPage {
   title: string;
@@ -295,10 +339,19 @@ interface HelpPage {
  * instead of parsed from RST directives). Order matches index.txt:9-11 plus
  * the added playing guide.
  */
+/** The index's row labels, so a test can assert a page is reachable at all. */
+export function helpIndexLabels(): string[] {
+  return HELP_INDEX.map((e) => e.label);
+}
+
 const HELP_INDEX: readonly { label: string; page: HelpPage }[] = [
   { label: "Available commands", page: { title: "Angband Help - Commands", lines: helpCommandLines } },
   { label: "Symbols on your map", page: { title: "Angband Help - Symbols", lines: helpSymbolLines } },
   { label: "Playing guide", page: { title: "Angband Help - Playing Guide", lines: helpGuideLines } },
+  {
+    label: "Help, and telling us something is wrong",
+    page: { title: "Neo Angband - Help and reporting", lines: helpCommunityLines },
+  },
 ];
 
 /**

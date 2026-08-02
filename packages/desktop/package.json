@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-desktop",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
@@ -27,6 +27,15 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1"
   },
+  "_buildNote": [
+    "linux.executableName is REQUIRED and is not cosmetic. Left unset,",
+    "electron-builder derives it from `name` - which is scoped - and produces",
+    "`@rpgm-toolsneo-angband-desktop`, then refuses it: 'executableName contains",
+    "characters that cannot be safely used in file paths'. Both the AppImage and",
+    "the tar.gz fail. Windows and macOS are unaffected because they name their",
+    "output from productName, which is why the first release built two platforms",
+    "out of three and the Linux job was the only one red."
+  ],
   "build": {
     "appId": "org.neoangband.desktop",
     "productName": "Neo Angband",
@@ -89,7 +98,11 @@
       ],
       "category": "Game",
       "maintainer": "neostryder <neostryder@users.noreply.github.com>",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "executableName": "neo-angband",
+      "desktopName": "neo-angband.desktop",
+      "synchronizeDesktopName": true,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   }
 }
