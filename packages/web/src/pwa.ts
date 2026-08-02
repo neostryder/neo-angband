@@ -95,7 +95,31 @@ export function isStandalone(scope: typeof globalThis = globalThis): boolean {
   }
 }
 
-export function installAutoUpdate(): void {
+/**
+ * A newer build has taken control and this page is still running the old one.
+ *
+ * The web build's (U)pdate row reads this, not the GitHub API: on the web
+ * "installed locally" means the service worker's cache, and the worker already
+ * knows. Nothing to download, nothing to verify - the new build is on the
+ * machine and the only step left is the reload.
+ */
+let swUpdateReady = false;
+
+/** Whether the title screen should offer (and shimmer) an update. */
+export function webUpdateReady(): boolean {
+  return swUpdateReady;
+}
+
+/** Take the update the worker has already fetched. */
+export function applyWebUpdate(): void {
+  location.reload();
+}
+
+/**
+ * @param canReloadNow Whether reloading this instant is invisible to the player.
+ *   True at the title screen, false mid-dungeon.
+ */
+export function installAutoUpdate(canReloadNow?: () => boolean): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;
   }
@@ -108,6 +132,17 @@ export function installAutoUpdate(): void {
   let reloading = false;
   sw.addEventListener("controllerchange", () => {
     if (!hadController || reloading) return;
+    // A NEW BUILD IS READY. Whether to take it now is a question about where the
+    // player is, not about the worker.
+    //
+    // This used to reload unconditionally, and defended it on the grounds that
+    // play state is autosaved. That is true and it is not the point: a reload
+    // in the middle of a fight is a screen flash, a lost message log and a
+    // resumed turn the player did not ask for, and there was no way to decline
+    // it. At the title screen the reload is invisible, so it still happens
+    // there; anywhere else the update waits behind the (U)pdate row.
+    swUpdateReady = true;
+    if (canReloadNow && !canReloadNow()) return;
     reloading = true;
     location.reload();
   });

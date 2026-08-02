@@ -154,6 +154,38 @@ Everything in this block came out of one play session on the 0.15.3 build.
 
 ### Added
 
+- **The game updates itself, from a shimmering row on the title screen.** When a
+  newer version has been published, the title screen grows a **(U)pdate** row
+  that cycles colour the way an `RF_ATTR_MULTI` monster does - the same
+  `randint1(BASIC_COLORS - 1)` on the same 250 ms tick, from a display-only RNG
+  so a splash left open cannot perturb the game's. Pressing `U` downloads the
+  archive for this machine, checks its SHA-256 against the digest GitHub
+  published for that asset, and swaps it in on restart.
+  - **electron-builder's own updater could not have done this.** It has no
+    support for the `portable` target and hands macOS to Squirrel.Mac, which
+    validates the code signature - so the supported library would have covered
+    NSIS and AppImage users and nobody else: not the folder install these docs
+    recommend, and no Mac, since this project ad-hoc signs. Swapping a directory
+    needs neither, and it is one path on all three platforms.
+  - **The order is the safety property.** Outgoing files are moved aside, the new
+    ones are moved in, and only then is the old copy deleted - by a script that
+    outlives the app, because a program cannot replace its own running
+    executable. `neo-angband-data` is never moved on any path. A real swap of
+    real files, including the rollback, is asserted in
+    `update-swap.integration.test.ts` rather than inferred from the script text.
+  - **A single-file portable launch says so instead of lying.** `portable.exe`
+    and an AppImage unpack to a temp folder, so swapping it would show a progress
+    bar, restart, and change nothing. Those - and a read-only install - are
+    offered the download instead.
+  - Nothing is trusted: the download host must be this repository's own release
+    assets, an archive with no digest is refused rather than installed, and the
+    renderer names an operation, never a path to swap in.
+- **The browser stops reloading itself out from under you.** A newly deployed
+  build used to take over the moment it arrived, defended on the grounds that
+  play is autosaved. That is true and beside the point: mid-fight it is a screen
+  flash, a lost message log and a resumed turn nobody asked for. The reload still
+  happens silently at the title screen, where it is invisible; anywhere else it
+  waits behind the same (U)pdate row.
 - **A save is converted forward, never rejected.** Every version of the save
   format below the current one now has a conversion step
   (`packages/core/src/session/save-migrate.ts`), and `saveMigrationsAreComplete()`

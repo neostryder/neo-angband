@@ -42,8 +42,17 @@ import {
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
+  UPDATE_CHANNEL,
+  UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
+import {
+  UPDATE_REPO,
+  downloadArchive,
+  launchSwap,
+  shapeOf,
+  stageArchive,
+} from "./updater.js";
 import { checkWritable, resolveDataBase } from "./data-dir.js";
 import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port.js";
 import { planOriginMerge } from "./origin-merge.js";
@@ -444,6 +453,80 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
    */
   ipcMain.on(HOST_QUIT_CHANNEL, () => {
     app.quit();
+  });
+
+  installUpdater();
+}
+
+/**
+ * The in-place updater (packages/desktop/src/updater.ts).
+ *
+ * `handle`, not `on`: this one downloads 160 MB, and the synchronous bridge next
+ * to it would freeze the renderer for the duration with no way to report
+ * progress - which is most of what the player is owed while it happens.
+ *
+ * Every operation answers `{ ok, ... }` rather than throwing. A rejected invoke
+ * arrives in the renderer as an Error whose message has been mangled through
+ * IPC, and the renderer's job here is to put a sentence on the screen; giving it
+ * a string it can print is better than giving it a stack it cannot.
+ */
+function installUpdater(): void {
+  /* Held between `download` and `apply` so the renderer cannot ask us to swap in
+   * a directory it names. The only path we will ever swap is one we extracted
+   * ourselves, this session, from an archive we verified. */
+  let staged: string | null = null;
+
+  ipcMain.handle(UPDATE_CHANNEL, async (event, op: unknown, arg: unknown) => {
+    const shape = shapeOf({
+      platform: process.platform,
+      arch: process.arch,
+      packaged: app.isPackaged,
+      execPath: app.getPath("exe"),
+      env: process.env,
+    });
+    try {
+      if (op === "shape") return { ok: true, shape };
+      if (op === "download") {
+        if (shape.how !== "swap") return { ok: false, error: "this install cannot update itself" };
+        const a = (arg ?? {}) as { url?: unknown; sha256?: unknown; size?: unknown };
+        const archive = await downloadArchive({
+          url: typeof a.url === "string" ? a.url : "",
+          sha256: typeof a.sha256 === "string" ? a.sha256 : "",
+          size: typeof a.size === "number" ? a.size : 0,
+          repo: UPDATE_REPO,
+          root: shape.installRoot,
+          platform: process.platform,
+          onProgress: (received, total) => {
+            if (!event.sender.isDestroyed()) {
+              event.sender.send(UPDATE_PROGRESS_CHANNEL, { received, total });
+            }
+          },
+        });
+        staged = await stageArchive(archive, shape.installRoot, process.platform);
+        return { ok: true };
+      }
+      if (op === "apply") {
+        if (staged === null) return { ok: false, error: "nothing has been downloaded" };
+        launchSwap({
+          root: shape.installRoot,
+          staging: staged,
+          platform: process.platform,
+          execPath: app.getPath("exe"),
+          pid: process.pid,
+        });
+        /* The script's first act is to wait for THIS pid, so quitting is not a
+         * side effect of applying - it is the second half of it. */
+        app.quit();
+        return { ok: true };
+      }
+      if (op === "reveal") {
+        await shell.openExternal(typeof arg === "string" ? arg : `https://github.com/${UPDATE_REPO}/releases`);
+        return { ok: true };
+      }
+      return { ok: false, error: `unknown update op` };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 }
 

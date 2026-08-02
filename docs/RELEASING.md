@@ -231,6 +231,27 @@ workflow against the same tag — it updates a draft in place rather than failin
 on "already exists". Once published, that stops being true: a published release
 is a URL other people have.
 
+### Publishing is what turns the in-game updater on
+
+**The game's (U)pdate row cannot see a draft**, and that is the intended
+behaviour rather than a limitation: a draft is a release nobody has approved, and
+`packages/web/src/update.ts` filters `draft: true` even when an authenticated
+token would have shown it. So a build sits inert until you press publish, and
+then every existing install learns about it on its next launch.
+
+Three properties of a release the updater depends on. All three are produced by
+the normal path, so this is a list of things not to "tidy up":
+
+| what | why |
+|---|---|
+| the `.zip` / `.tar.gz` artifacts | the updater swaps a folder, so it wants the archive that *is* the folder — never the dmg, the NSIS exe or the deb |
+| the architecture in every macOS name | `pickAsset` matches `-arm64-mac.zip` / `-x64-mac.zip`; an unlabelled file is read as pre-0.17.0 Intel |
+| GitHub's own `digest` field | the download is refused unless its SHA-256 matches. Nothing extra is published — the API reports this per asset — but an asset re-uploaded by hand gets a new digest, so re-run the workflow rather than dragging a file in |
+
+`--prerelease` does **not** hide a release from the updater. Every 0.x is one, so
+hiding them would mean the feature never worked before 1.0; the version
+comparison is what decides, not the label.
+
 ## If the release changes the save format
 
 `SAVE_VERSION` in `packages/core/src/session/save.ts` is not a version number you

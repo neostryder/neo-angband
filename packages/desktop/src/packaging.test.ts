@@ -351,6 +351,57 @@ describe("publishing an 0.x release does not present it as stable", () => {
   });
 });
 
+describe("the updater's two halves name the same repository", () => {
+  /*
+   * The string is deliberately NOT shared, because the two copies answer
+   * different questions: the renderer's decides which API to ASK, and the main
+   * process's decides what it is willing to FETCH. Only the second is a security
+   * boundary - a renderer talked into a different catalogue must not be able to
+   * bring its own download host with it.
+   *
+   * Two copies of a rule is how one of them quietly stops matching, though (see
+   * the duplicated-check family of bugs in this codebase), so the agreement is
+   * asserted rather than assumed.
+   */
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
+  const repoIn = (src: string): string | undefined =>
+    /UPDATE_REPO = "([^"]+)"/u.exec(src)?.[1];
+
+  it("agrees on the repository", () => {
+    const renderer = repoIn(read("packages/web/src/update.ts"));
+    const main = repoIn(read("packages/desktop/src/updater.ts"));
+    expect(renderer, "no UPDATE_REPO in web/src/update.ts").toBeTruthy();
+    expect(main).toBe(renderer);
+  });
+
+  it("promises the player the same directory the swap script actually skips", () => {
+    /*
+     * The update screen tells the player their characters survive, and names the
+     * folder. The swap script skips exactly the entries in PRESERVE. Those live
+     * in different packages and the web one cannot import the desktop one - the
+     * dependency runs the other way - so the string is written twice, and this is
+     * the assertion that stops the copies drifting. A reassurance that names the
+     * wrong folder is worse than none, because it is believed.
+     */
+    const preserved = /PRESERVE: readonly string\[\] = \[([^\]]*)\]/u
+      .exec(read("packages/desktop/src/update-plan.ts"))?.[1];
+    expect(preserved, "no PRESERVE list in update-plan.ts").toBeTruthy();
+    const names = [...(preserved ?? "").matchAll(/"([^"]+)"/gu)].map((m) => m[1] ?? "");
+    expect(names.length).toBeGreaterThan(0);
+    const screen = read("packages/web/src/update-ui.ts");
+    for (const name of names) {
+      expect(screen, `the update screen never mentions ${name}`).toContain(name);
+    }
+  });
+
+  it("keeps the download host check in the main process, not the renderer", () => {
+    /* If this moved to the renderer it would be advice, not a gate. */
+    expect(read("packages/desktop/src/updater.ts")).toContain("isAllowedAssetUrl");
+    expect(read("packages/web/src/update.ts")).not.toContain("isAllowedAssetUrl");
+  });
+});
+
 describe("every platform still produces something", () => {
   it("builds for all three", () => {
     expect(build.win?.target, "no Windows targets").toBeTruthy();
