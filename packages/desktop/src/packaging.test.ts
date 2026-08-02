@@ -375,6 +375,25 @@ describe("the updater's two halves name the same repository", () => {
     expect(main).toBe(renderer);
   });
 
+  it("names THIS project, not whatever repo was convenient to test against", () => {
+    /*
+     * Agreement is symmetric, so it cannot see the one edit most likely to
+     * happen: this feature is untestable end-to-end until a release is
+     * published, so verifying it meant temporarily pointing the check at a repo
+     * that already had some - upstream angband/angband. That edit was reverted
+     * and the agreement test above caught it only because one half was patched.
+     * Patch both, which is the natural thing to do when the first attempt does
+     * not work, and every check in this suite goes green while the game offers
+     * players somebody else's version numbers as a Neo Angband upgrade.
+     *
+     * So the value is asserted, not just its consistency. A real repository
+     * change is one line here; a debugging pointer is a failure.
+     */
+    for (const rel of ["packages/web/src/update.ts", "packages/desktop/src/updater.ts"]) {
+      expect(repoIn(read(rel)), rel).toBe("neostryder/neo-angband");
+    }
+  });
+
   it("promises the player the same directory the swap script actually skips", () => {
     /*
      * The update screen tells the player their characters survive, and names the
