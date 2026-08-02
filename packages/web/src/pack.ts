@@ -14,6 +14,7 @@
  */
 
 import type { GamePack, UiEntryPackRecords } from "@rpgm-tools/neo-angband-core";
+import { log } from "./logging";
 import {
   composeDroppingBroken,
   computeConflictReport,
@@ -392,7 +393,7 @@ export function activePackSetFrom(
   for (const id of enabledIds) {
     const mod = mods.get(id);
     if (!mod) {
-      console.warn(`[mods] enabled mod "${id}" not found; skipping`);
+      log.warn("mods", `enabled mod "${id}" not found; skipping`);
       continue;
     }
     const manifest = modManifest(mod.manifest);

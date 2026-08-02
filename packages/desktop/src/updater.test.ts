@@ -4,9 +4,12 @@
  * The pure decisions live in update-plan.test.ts. What is asserted here is the
  * part that could install something it should not: where a download is allowed
  * to come from, that an unverifiable archive is deleted rather than extracted,
- * and that extraction really produces a tree - run against a real archive and a
- * real `tar`, because "the command looks right" is the assertion that misses a
- * platform whose tar cannot read the format.
+ * and that extraction really produces a tree - run against a real archive, built
+ * by this repository's own writer, because "the command looks right" is the
+ * assertion that missed a platform whose tar could not read the format.
+ *
+ * Nothing here spawns a program any more, which is the change itself: see
+ * unpack.ts.
  */
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -19,12 +22,13 @@ import {
   extractCommand,
   isAllowedAssetUrl,
   isWritable,
-  run,
   sha256File,
   shapeOf,
   stageArchive,
+  systemProgram,
   workDir,
 } from "./updater";
+import { makeZip } from "./zip-fixture.js";
 
 const REPO = "neostryder/neo-angband";
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "neo-updater-"));
@@ -123,81 +127,63 @@ describe("hashing and extracting real files", () => {
     await expect(sha256File(f)).resolves.toBe(want);
   });
 
-  it("uses ditto on macOS, because a zip library breaks a signed bundle", () => {
-    /* ditto is the only one of these that preserves the extended attributes and
-     * symlinks a .app needs; a naively unzipped bundle looks right and will not
-     * launch. */
-    expect(extractCommand("/x/a.zip", "/y", "darwin").cmd).toBe("ditto");
-    expect(extractCommand("/x/a.tar.gz", "/y", "linux").args).toContain("-xzf");
-    expect(extractCommand("/x/a.tar.gz", "/y", "linux").cmd).toBe("tar");
+  it("shells out on macOS ONLY, and to an absolute path when it does", () => {
+    /*
+     * Windows and Linux unpack in-process now (unpack.ts), so the answer there is
+     * null - not "a different program". That is the assertion that matters: a
+     * non-null answer for either would mean the game is back to depending on
+     * something PATH decides.
+     *
+     * macOS still uses ditto because it preserves the symlinks, permissions and
+     * AppleDouble metadata a .app needs and nobody here has a Mac to prove a
+     * hand-rolled unzip yields a bundle that launches. /usr/bin/ditto is part of
+     * the OS, so the "no installed tools" rule still holds.
+     */
+    expect(extractCommand("/x/a.zip", "/y", "win32")).toBeNull();
+    expect(extractCommand("/x/a.tar.gz", "/y", "linux")).toBeNull();
+    expect(extractCommand("/x/a.zip", "/y", "darwin")?.cmd).toBe("/usr/bin/ditto");
+    expect(path.posix.isAbsolute(extractCommand("/x/a.zip", "/y", "darwin")?.cmd ?? "")).toBe(true);
   });
 
-  it("names System32's tar on Windows, because `tar` on PATH may be GNU tar", () => {
-    /* GNU tar fails this job twice: it cannot read zip, which is the format the
-     * Windows build ships in, and it treats `C:\...` as a remote host because of
-     * the colon. A POSIX-style shell puts it ahead of System32 on PATH, so the
-     * bare name is a coin flip decided by how the game was launched. */
-    const { cmd } = extractCommand("C:\\w\\a.zip", "C:\\w\\new", "win32", "C:\\WINDOWS");
-    expect(cmd).toBe("C:\\WINDOWS\\System32\\tar.exe");
+  it("names a Windows system program absolutely, never by PATH", () => {
+    /* The swap script is still handed to powershell, which is the same lookup
+     * that put GNU tar in the extractor's place - GNU tar cannot read zip and
+     * treats `C:\...` as a remote host, and a POSIX-style shell puts it first. */
+    const ps = systemProgram("WindowsPowerShell\\v1.0\\powershell.exe", "C:\\WINDOWS");
+    expect(ps).toBe("C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(path.win32.isAbsolute(ps)).toBe(true);
     /* A trailing separator on SystemRoot must not produce a doubled one. */
-    expect(extractCommand("a.zip", "b", "win32", "C:\\WINDOWS\\").cmd).toBe(
-      "C:\\WINDOWS\\System32\\tar.exe",
-    );
-    /* And it is an absolute path, which is the whole point - not something PATH
-     * gets a say in. */
-    expect(path.win32.isAbsolute(cmd)).toBe(true);
+    expect(systemProgram("cmd.exe", "C:\\WINDOWS\\")).toBe("C:\\WINDOWS\\System32\\cmd.exe");
   });
 
-  it("really extracts a real archive into a staging tree", async () => {
-    /* A tar.gz on every platform, but staged for the HOST platform. The format
-     * is fixed because building a zip fixture portably is its own problem, and
-     * Windows takes the zip branch in production where bsdtar handles it. The
-     * platform is the host's because passing a fixed "linux" here would send
-     * Windows down the bare-`tar` branch - which is the branch this file now
-     * exists to prove nothing uses. */
-    const src = path.join(scratch, "src");
-    fs.mkdirSync(path.join(src, "locales"), { recursive: true });
-    fs.writeFileSync(path.join(src, "Neo Angband.exe"), "pretend binary");
-    fs.writeFileSync(path.join(src, "locales", "en-US.pak"), "pak");
-    const archive = path.join(scratch, "payload.tar.gz");
-    const { spawnSync } = await import("node:child_process");
-    /* Built with the SAME binary the updater would use, resolved the same way.
-     * Reaching for a bare `tar` here is what hid the GNU-tar problem: under a
-     * POSIX shell this test failed with `Cannot connect to C:` and read as a
-     * flaky test rather than as the extractor being the wrong program. */
-    const { cmd: tarBin } = extractCommand("x.tar.gz", "y", process.platform);
-    const tar = spawnSync(tarBin, ["-czf", archive, "-C", src, "."], { encoding: "utf8" });
-    expect(tar.status, `creating the fixture with ${tarBin} failed: ${tar.stderr ?? ""}`).toBe(0);
-
+  it("really stages a real archive, with no external tool involved", async () => {
+    /*
+     * A zip built by this test's own writer, unpacked by the updater's own
+     * reader, on whatever platform this is running. Nothing spawns.
+     *
+     * The previous version of this test built its fixture with `tar` - and that
+     * is how the GNU-tar problem stayed hidden: under a POSIX shell it failed
+     * with `Cannot connect to C:` and read as a flaky test about the fixture
+     * rather than as the extractor being the wrong program.
+     */
+    const archive = path.join(scratch, "payload.zip");
+    fs.writeFileSync(
+      archive,
+      makeZip([
+        { name: "Neo Angband.exe", data: "pretend binary" },
+        { name: "locales/en-US.pak", data: "pak" },
+      ]),
+    );
     const root = path.join(scratch, "install");
     fs.mkdirSync(root, { recursive: true });
+    /* `linux`, not the host: staging is pure path arithmetic over the target
+     * platform, and asserting a POSIX layout from Windows is the point of taking
+     * the platform as an argument at all. */
     const staging = await stageArchive(archive, root, process.platform);
-    expect(fs.existsSync(path.join(staging, "Neo Angband.exe"))).toBe(true);
-    expect(fs.existsSync(path.join(staging, "locales", "en-US.pak"))).toBe(true);
+    expect(fs.readFileSync(path.join(staging, "Neo Angband.exe"), "utf8")).toBe("pretend binary");
+    expect(fs.readFileSync(path.join(staging, "locales", "en-US.pak"), "utf8")).toBe("pak");
     /* And it staged INSIDE the work directory, not over the install. */
     expect(staging.startsWith(workDir(root, process.platform))).toBe(true);
-  });
-
-  it("says which tool is missing, because the player reads this message", async () => {
-    /* update-ui.ts prints the error string onto the screen verbatim. Node's own
-     * message is `spawn <cmd> ENOENT`, which names nothing the player can act
-     * on - and says nothing about the fact that the manual download still
-     * works. */
-    const err = await run("neo-angband-no-such-extractor", ["-x"]).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toContain("neo-angband-no-such-extractor");
-    expect((err as Error).message).toContain("unpack the update");
-    expect((err as Error).message).not.toContain("ENOENT");
-  });
-
-  it("still reports a non-zero exit, which is a different failure", async () => {
-    /* The ENOENT branch must not swallow the case where the tool RAN and refused
-     * - a corrupt archive is the likely cause and it needs its own sentence. */
-    const err = await run("tar", ["-xf", path.join(scratch, "does-not-exist.tar")]).catch(
-      (e: unknown) => e,
-    );
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toMatch(/tar exited [1-9]/u);
   });
 
   it("puts the work directory beside a .app, never inside it", () => {

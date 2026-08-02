@@ -8608,6 +8608,7 @@ async function showUpdatePage(): Promise<void> {
     current: ENGINE_VERSION,
     version: o?.version ?? ENGINE_VERSION,
     channel: updateChannel,
+    buildId: WEB_BUILD_ID,
     older: o?.older ?? false,
     installRoot: updateRoot,
     assetName: o?.asset?.name,
@@ -8669,7 +8670,12 @@ async function showUpdatePage(): Promise<void> {
     if (!offer) continue;
 
     if (view.how === "web") {
-      applyWebUpdate();
+      /* Awaited: it asks the worker to check and, if one is waiting, to take
+       * over - a bare reload would serve the cached old build back out of the
+       * worker's own cache and bring this row straight back. */
+      view = { ...view, phase: "installing" };
+      paint();
+      await applyWebUpdate();
       return;
     }
     if (view.how === "manual" || !bridge?.update || !offer.asset) {
@@ -9439,7 +9445,7 @@ let installedController: { id: string; session: AgentSession } | null = null;
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
-    console.warn(`[plugins] "${pluginId}" not found; skipping`);
+    log.warn("plugins", `"${pluginId}" not found; skipping`);
   } else {
     installedPluginIds.add(pluginId);
     const resolver = new ContentIdResolver({
@@ -9529,7 +9535,7 @@ function installSandbox(pluginId: string): void {
 function installTrusted(trustedId: string): void {
   const found = discoverTrustedPlugins().get(trustedId);
   if (!found) {
-    console.warn(`[trusted] "${trustedId}" not found; skipping`);
+    log.warn("trusted", `"${trustedId}" not found; skipping`);
   } else {
     installedPluginIds.add(trustedId);
     const caps = CapabilitySet.fromManifest(found.manifest);
@@ -9555,12 +9561,12 @@ function installTrusted(trustedId: string): void {
         id: trustedId,
         log: (msg) => {
           logs.push(msg);
-          console.info(`[trusted:${trustedId}] ${msg}`);
+          log.info(`trusted:${trustedId}`, `${msg}`);
         },
       });
     } catch (err) {
       trustedError = err instanceof Error ? err.message : String(err);
-      console.error(`[trusted:${trustedId}] install failed:`, err);
+      log.error(`trusted:${trustedId}`, `install failed:`, err);
     }
     if (import.meta.env.DEV) {
       (window as unknown as { __neoTrusted?: unknown }).__neoTrusted = {
@@ -9645,7 +9651,7 @@ try {
         if (consentSatisfied(sb.manifest.capabilities ?? [], consents[id] ?? [])) {
           installSandbox(id);
         } else {
-          console.warn(`[mods] "${id}" enabled but capabilities not consented; skipping`);
+          log.warn("mods", `"${id}" enabled but capabilities not consented; skipping`);
         }
         continue;
       }
@@ -9654,13 +9660,13 @@ try {
         if (consentSatisfied(tr.manifest.capabilities ?? [], consents[id] ?? [])) {
           installTrusted(id);
         } else {
-          console.warn(`[mods] "${id}" enabled but capabilities not consented; skipping`);
+          log.warn("mods", `"${id}" enabled but capabilities not consented; skipping`);
         }
       }
     }
   }
 } catch (err) {
-  console.warn("[mods] persisted-enable auto-install failed:", err);
+  log.warn("mods", "persisted-enable auto-install failed", err);
 }
 
 /* The FOLDER plugins' register() half.
@@ -9722,7 +9728,7 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
   game.mods = { ...bags.bags };
   for (const p of bags.problems) if (p.id !== null) reportModFault(p.id, p.why);
   if (bags.migrated.length > 0) {
-    console.info(`[mods] migrated saved data for: ${bags.migrated.join(", ")}`);
+    log.info("mods", `migrated saved data for: ${bags.migrated.join(", ")}`);
   }
 }
 
@@ -9762,7 +9768,7 @@ for (const loaded of activeModCode().plugins) {
       loaded.id,
       `register() failed, so its effects, rooms and commands are not installed: ${faultMessage(err)}`,
     );
-    console.error(`[mod:${loaded.id}] register() failed:`, err);
+    log.error(`mod:${loaded.id}`, `register() failed:`, err);
   }
 }
 
@@ -9808,7 +9814,7 @@ for (const loaded of activeModCode().plugins) {
       capabilities: CapabilitySet.fromManifest(loaded.manifest),
     });
     installedController = { id: loaded.id, session };
-    console.info(`[mod:${loaded.id}] installed an autoplayer`);
+    log.info(`mod:${loaded.id}`, `installed an autoplayer`);
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
      * leave a game the player can still play by hand. The commonest cause is a
@@ -9818,7 +9824,7 @@ for (const loaded of activeModCode().plugins) {
       loaded.id,
       `its autoplayer could not be installed, so the game stays under your control: ${faultMessage(err)}`,
     );
-    console.error(`[mod:${loaded.id}] controller() failed:`, err);
+    log.error(`mod:${loaded.id}`, `controller() failed:`, err);
   }
 }
 

@@ -49,6 +49,8 @@ import {
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
 import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
+import { describeValue, formatLogLine } from "@rpgm-tools/neo-angband-core/log";
+import type { LogLevel } from "@rpgm-tools/neo-angband-core/log";
 import {
   UPDATE_REPO,
   downloadArchive,
@@ -127,6 +129,37 @@ const MODS_DIR = path.join(USER_BASE, "mods");
  */
 const LOGS_DIR = path.join(USER_BASE, LOG_DIRNAME);
 const LOG_FILE = openLogFile(LOGS_DIR, new Date(), process.pid);
+
+/**
+ * The main process's own log line: to the file AND to stdout.
+ *
+ * BOTH, not one. The file is what a player can send; stdout is what somebody
+ * running the game from a terminal to diagnose a launch failure is looking at,
+ * and the launch-failure case is exactly when the file may not exist yet
+ * (openLogFile is inert if the folder cannot be made). Dropping the console half
+ * would have taken the diagnostics away from the only situation that has no
+ * other channel.
+ *
+ * Deliberately NOT the renderer's `log` from core: this process has no ring to
+ * keep, no level to filter by and no player looking at a screen. It formats one
+ * line the same way, and formatLogLine is the shared part so the two halves of
+ * the file cannot drift into two formats.
+ */
+function mainLog(level: LogLevel, area: string, msg: string, data?: unknown): void {
+  const line = formatLogLine({
+    at: Date.now(),
+    level,
+    area,
+    msg,
+    ...(data === undefined ? {} : { data: describeValue(data) }),
+  });
+  LOG_FILE.append([line]);
+  /* eslint-disable-next-line no-console -- this IS the console half of the
+   * dual write; every other caller in this process goes through mainLog. */
+  if (level === "error") console.error(line);
+  // eslint-disable-next-line no-console -- as above.
+  else console.log(line);
+}
 
 /**
  * Move Chromium's own state into the folder too.
@@ -640,6 +673,17 @@ function handleEarlyExit(): boolean {
       ALL_HOST_DIRS.map((d) => [d, path.join(USER_BASE, d)]),
     ),
   });
+  /*
+   * THE ONE PLACE THE CONSOLE IS THE INTERFACE, not a log.
+   *
+   * These three branches are main.c's own: `usage` is its puts() loop, `quit` is
+   * quit_fmt() going to stderr through plog, and `list-saves` is list_saves()
+   * (main.c:301-333). Somebody typed `--help` or `-l` at a terminal and is
+   * waiting for the answer THERE - routing it through mainLog would stamp a
+   * timestamp and a level onto upstream's usage text and file a copy in a log
+   * nobody asked for.
+   */
+  /* eslint-disable no-console -- see above: this is main.c's stdout, not logging. */
   switch (outcome.kind) {
     case "run":
       /* change_path's directory overrides, which the host layer needs before the
@@ -674,6 +718,7 @@ function handleEarlyExit(): boolean {
       return true;
     }
   }
+  /* eslint-enable no-console */
 }
 
 /** Set by handleEarlyExit before anything opens a file. */
@@ -783,7 +828,7 @@ async function recoverStrandedOrigins(
       });
       sources.push({ port, entries: await readOriginStorage(port) });
     } catch (err) {
-      console.error(`[neo-angband] could not read storage on port ${port}: ${String(err)}`);
+      mainLog("error", "recovery", `could not read storage on port ${String(port)}`, err);
     } finally {
       server.close();
     }
@@ -813,9 +858,12 @@ async function recoverStrandedOrigins(
   const after = await readOriginStorage(stablePort);
   const missing = Object.keys(plan.writes).filter((k) => !(k in after));
   if (missing.length > 0) {
-    console.error(
-      `[neo-angband] recovery did not stick for ${missing.length} key(s): ` +
-        `${missing.join(", ")} - the old storage is untouched and it will be retried.`,
+    mainLog(
+      "error",
+      "recovery",
+      `did not stick for ${String(missing.length)} key(s) - the old storage is untouched ` +
+        "and it will be retried",
+      { missing },
     );
   }
 
@@ -827,13 +875,14 @@ async function recoverStrandedOrigins(
   }
 
   const names = plan.recovered.map((r) => `${r.name}${r.hasSave ? "" : " (memorial)"}`);
-  console.log(
-    `[neo-angband] recovered ${plan.recovered.length} character(s) from ` +
-      `${sources.map((s) => s.port).join(", ")}: ${names.join(", ")}` +
-      (plan.skippedUnplayed.length > 0
-        ? `; left ${plan.skippedUnplayed.length} unplayed birth(s) behind: ` +
-          plan.skippedUnplayed.map((r) => r.name).join(", ")
-        : ""),
+  mainLog(
+    "info",
+    "recovery",
+    `recovered ${String(plan.recovered.length)} character(s) from ` +
+      `${sources.map((s) => String(s.port)).join(", ")}: ${names.join(", ")}`,
+    plan.skippedUnplayed.length > 0
+      ? { leftBehind: plan.skippedUnplayed.map((r) => r.name) }
+      : undefined,
   );
   if (plan.recovered.length > 0) {
     await dialog.showMessageBox({
@@ -1192,7 +1241,7 @@ async function start(): Promise<void> {
   /* Stated on stdout as well as through the info channel: with a portable copy
    * the answer changes per install, and a player who cannot start the game has
    * only this to go on. */
-  console.log(`[neo-angband] data (${DATA.kind}): ${USER_BASE}`);
+  mainLog("info", "data", `(${DATA.kind}) ${USER_BASE}`);
 
   installHostBridge(DIR_OVERRIDES);
 
@@ -1204,10 +1253,12 @@ async function start(): Promise<void> {
     userDir: path.join(USER_BASE, "user"),
     sessionDir: app.getPath("sessionData"),
   });
-  console.log(
-    `[neo-angband] loopback port (${choice.source}): ${choice.port}` +
-      (choice.known.length > 1 ? ` [storage also under: ${choice.known.join(", ")}]` : ""),
-  );
+  mainLog("info", "port", `loopback port (${choice.source}): ${String(choice.port)}`, {
+    /* The other origins matter: a save lives under ONE of them and an ephemeral
+     * port once meant a new origin per launch, so which ports have ever been
+     * used is the first thing to ask when a character has gone. */
+    known: choice.known,
+  });
 
   let port: number;
   try {
@@ -1242,7 +1293,7 @@ async function start(): Promise<void> {
   try {
     await recoverStrandedOrigins(path.join(USER_BASE, "user"), port, choice.known);
   } catch (err) {
-    console.error(`[neo-angband] character recovery failed: ${String(err)}`);
+    mainLog("error", "recovery", "character recovery failed", err);
   }
 
   await createWindow(port);

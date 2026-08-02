@@ -82,4 +82,32 @@ export default tseslint.config(
       "no-constant-condition": ["warn", { checkLoops: false }],
     },
   },
+  {
+    /*
+     * NO BARE `console` IN THE GAME, and only in the game.
+     *
+     * The renderer and the Electron main process now write through a log with a
+     * level and a file behind it (core/src/log.ts), and the whole value of that
+     * is that a player can send you the file. A `console.warn` added later goes
+     * to a devtools panel nobody has open, which is the channel this project has
+     * repeatedly found its diagnostics stranded in - four separate comments in
+     * mod-problems.ts and mod-teardown.ts say so in those words.
+     *
+     * Scoped to these two packages ON PURPOSE. In `cli`, `linoleum` and
+     * `content`, console output is the PROGRAM'S OUTPUT - a converter printing
+     * its license notes, a census printing its counts, upstream's own
+     * `list_saves` - and routing those through a logger would timestamp a
+     * report and hide it behind a level. Their calls are not logging and were
+     * deliberately left alone.
+     *
+     * The three files that legitimately reach for it carry a per-site disable
+     * naming why: the console sink itself, the main process's dual-write, and
+     * main.c's usage/quit/list-saves branches.
+     */
+    files: ["packages/web/src/**/*.ts", "packages/desktop/src/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "no-console": "error",
+    },
+  },
 );

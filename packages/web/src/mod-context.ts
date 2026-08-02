@@ -11,6 +11,7 @@
  */
 
 import * as neoCore from "@rpgm-tools/neo-angband-core";
+import { log } from "./logging";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_API_VERSION,
@@ -52,7 +53,7 @@ export function modPluginContext(
       assets ? assets(id, path) : Promise.resolve(null),
     data: Object.freeze({ ...(own.data ?? {}) }),
     log: (msg: string) => {
-      console.info(`[mod:${id}] ${msg}`);
+      log.info(`mod:${id}`, `${msg}`);
     },
   });
 }
