@@ -186,10 +186,11 @@ describe("the macOS bundle gets a signature of some kind", () => {
    * THE FOURTH THING THIS FILE IS ABOUT, and the one with the worst symptom.
    *
    * With no Apple Developer identity, MacPackager.sign finds nothing and returns
-   * false: the bundle is signed NOT AT ALL. On Apple Silicon that is not
-   * "unsigned", it is unrunnable - the kernel requires at least an ad-hoc
-   * signature on an arm64 Mach-O, and macOS reports the refusal as "is damaged
-   * and can't be opened", which sends the user to the Intel build and Rosetta.
+   * false, so nothing seals the bundle: measured on the 0.15.3 zip, ZERO
+   * `_CodeSignature` directories, on the app and on all four helper apps. On
+   * Apple Silicon that is not "unsigned", it is unrunnable - the kernel requires
+   * at least an ad-hoc signature on an arm64 Mach-O, and macOS reports the
+   * refusal as "is damaged and can't be opened".
    *
    * A NAME IS NOT A HOOK, which is the lesson of the desktopName/syncDesktopName
    * pair three blocks up: the config can point at a script that is not there, and
@@ -257,12 +258,32 @@ describe("what we tell a macOS user to do is what macOS does", () => {
   }
 
   it("says which build Apple Silicon wants, since both are on the page", () => {
-    /* The Intel build runs on an M-series Mac through Rosetta 2, so "it works"
-     * and is slower - the failure mode that produces a bug report about speed
-     * rather than about architecture. */
-    for (const rel of ["README.md", "docs/INSTALL.md", ".github/workflows/release.yml"]) {
+    for (const rel of SOURCES) {
       const text = readFileSync(join(ROOT, rel), "utf8");
       expect(text, rel).toMatch(/arm64|Apple Silicon/u);
+    }
+  });
+
+  it("does not offer the Intel build as a thing that runs through Rosetta", () => {
+    /*
+     * THE SAME ROT, TWICE IN ONE RELEASE. The right-click assertion above exists
+     * because advice that used to be right is the kind that rots silently. These
+     * three files then said, in the same paragraph, "the Intel one runs on an
+     * M-series Mac through Rosetta 2 - it works and it is slower", which was
+     * true when written and is being withdrawn under it: macOS 27 deletes
+     * Rosetta 2 during installation, and macOS 28 keeps it only for a named set
+     * of old games. On a Mac without it the Intel build does not run slowly, it
+     * does not run.
+     *
+     * That also retires a CAUSAL claim this file used to make - that an unsigned
+     * arm64 bundle reads as a bad download and pushes people onto the Intel
+     * build and Rosetta, so a signing fault surfaces as a speed complaint. The
+     * signing defect is real and measured either way; the speed story needed
+     * Rosetta to exist, so it is gone rather than restated.
+     */
+    for (const rel of SOURCES) {
+      const text = readFileSync(join(ROOT, rel), "utf8");
+      expect(text, rel).not.toMatch(/(runs?|running)[^.\n]{0,60}(through|via|under)\s+Rosetta/iu);
     }
   });
 });

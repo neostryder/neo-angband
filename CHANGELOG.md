@@ -115,12 +115,16 @@ Everything in this block came out of one play session on the 0.15.3 build.
   helper executables (GPU, Renderer, Plugin, and the plain helper), each of which
   is a separate binary macOS wants signed. The 0.16.0 zip has nine. Apple Silicon
   refuses an arm64 binary that is not validly signed and reports it as *"is
-  damaged and can't be opened"* - which reads as a bad download and sends people
-  to the Intel build and Rosetta 2, so a signing fault presents as a speed
-  complaint. The bundle is ad-hoc signed and verified after packaging now
-  (`codesign --deep --sign -`, confirmed in the release log for both
-  architectures). **Still unconfirmed as the cause of the slow-on-an-M4 report** -
-  this project has no Mac to reproduce on - but wrong on its own terms either way.
+  damaged and can't be opened"*. The bundle is ad-hoc signed and verified after
+  packaging now (`codesign --deep --sign -`, confirmed in the release log for
+  both architectures). **This is a launch defect, not the cause of the
+  slow-on-an-M4 report.** It was first written up as one - an app that reads as a
+  bad download pushes people onto the Intel build and Rosetta 2, so a signing
+  fault surfaces as a speed complaint - and that chain needs Rosetta 2 to exist.
+  It is being withdrawn: macOS 27 deletes it during installation and macOS 28
+  keeps it only for a named set of old games. A Mac without Rosetta cannot run
+  the Intel build slowly, so the slowness was the arm64 build running natively,
+  and the overdraw fix above is what addresses it.
 - Toggling anything in the mod manager no longer throws the cursor back to the top
   of the list.
 
