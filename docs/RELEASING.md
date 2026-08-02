@@ -175,14 +175,26 @@ same clean green as one that worked.
 **Semver, and the tool refuses anything that is not one of the three successors.**
 From `0.15.2` the only legal next versions are `0.15.3`, `0.16.0` and `1.0.0`;
 a typo, a skipped minor or a number that goes backwards is rejected with the three
-alternatives printed. Choose between them by what changed for a *consumer* of the
-published packages:
+alternatives printed. There are **two consumers** and either one can force the
+increment: somebody depending on the published packages, and somebody playing the
+game on `beta`.
 
 | Increment | When | Examples from this project |
 | --- | --- | --- |
-| **PATCH** | nothing a consumer can observe changed shape — a fix behind the same API | a parity fix in an engine function, a corrected message string |
-| **MINOR** | anything a consumer can observe: a new export, a removed one, a changed signature, new gamedata | adding the `./pack` subpath to `content`; a new `ModHooks` seam; renaming a core export |
+| **PATCH** | nothing either consumer can observe — a fix behind the same API that no tester would be told about | a build-config correction, a test-only fix, a typo in a comment |
+| **MINOR** | anything a package consumer can observe: a new export, a removed one, a changed signature, new gamedata | adding the `./pack` subpath to `content`; a new `ModHooks` seam; renaming a core export |
+| **MINOR** | **anything a beta tester should receive** — a fix or change worth telling somebody about | the ghost-residue renderer fix; the extractor naming the wrong `tar` |
 | **MAJOR** | reserved | see below |
+
+**The second MINOR row is a policy, not a workaround.** Patches do reach `beta`
+— the channel filters on the pre-release *flag*, so a published `0.16.1` is
+offered to a tester on `0.16.0` exactly like a `0.17.0` would be, and
+`update.test.ts` asserts it. The rule exists because a version number is the only
+thing a tester can quote back at you. "It happens on 0.17.0" identifies a build;
+"it happens on 0.16.something" does not, and a run of patches turns a bug report
+into an archaeology exercise. So the question to ask before bumping is *would I
+tell a tester about this*, and if the answer is yes the number gets a new minor
+whatever the diff looks like.
 
 MINOR carries breaking changes on purpose. That is semver's own rule for a `0.x`
 line — `0.x` makes no compatibility promise — and it is why this project can rename

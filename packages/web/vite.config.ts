@@ -1,13 +1,57 @@
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
+import type { PluginContext } from "rollup";
 import { VitePWA } from "vite-plugin-pwa";
+
+/**
+ * Which build this is, stamped into the bundle AND written beside index.html.
+ *
+ * The pair is the whole mechanism behind the web (U)pdate row: the page compares
+ * the constant it was compiled with against `build-id.json` fetched no-store, so
+ * "the code running here is not the code the site is serving" is a string
+ * comparison rather than an inference from service-worker events.
+ *
+ * GITHUB_SHA on CI, and a timestamp otherwise. A local `vite build` is not a
+ * deploy anyone updates against, but it must still produce a value that differs
+ * between two builds - a constant would make every local build look identical to
+ * the last, which is the one thing this must never do.
+ */
+const BUILD_ID =
+  process.env["GITHUB_SHA"]?.slice(0, 12) ?? `local-${Date.now().toString(36)}`;
+
+/**
+ * `build-id.json`, written into the output and deliberately NOT precached.
+ *
+ * Precaching it would be self-defeating in the exact way this feature exists to
+ * fix: the service worker would answer the freshness check from the cache, with
+ * the stale build's own id, and the page would conclude it was up to date
+ * forever. `globIgnores` keeps it out of the manifest and the fetch uses
+ * `cache: "no-store"` on top of that.
+ */
+function buildIdFile(): Plugin {
+  return {
+    name: "neo-build-id",
+    generateBundle(this: PluginContext): void {
+      this.emitFile({
+        type: "asset",
+        fileName: "build-id.json",
+        source: `${JSON.stringify({ buildId: BUILD_ID }, null, 2)}\n`,
+      });
+    },
+  };
+}
 
 export default defineConfig({
   base: "./",
+  define: {
+    __NEO_BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   build: {
     outDir: "dist-web",
     emptyOutDir: true,
   },
   plugins: [
+    buildIdFile(),
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
@@ -90,6 +134,12 @@ export default defineConfig({
          * roughly 5 MiB to roughly 25 MiB, paid once at install. That is the price
          * of an offline install that can do everything the desktop build can. */
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,prf,mp3,txt,md}"],
+        /* The freshness file must never be served from the cache - see
+         * buildIdFile above. It is not matched by globPatterns today (no `json`
+         * in the list), and it is named here anyway, because the day somebody
+         * adds json to that list is the day the update check silently stops
+         * working with nothing to point at. */
+        globIgnores: ["**/build-id.json"],
         /* 20 MiB, sized to admit the largest single asset the game ships -
          * Shockbolt's 64x64.png at 17,564,551 bytes - and not much more. A round
          * "make it big" number would silently admit whatever asset comes next;
