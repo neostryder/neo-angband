@@ -125,6 +125,21 @@ Everything in this block came out of one play session on the 0.15.3 build.
   keeps it only for a named set of old games. A Mac without Rosetta cannot run
   the Intel build slowly, so the slowness was the arm64 build running natively,
   and the overdraw fix above is what addresses it.
+- **A macOS download says which Mac it is for.** The release page carried
+  `Neo.Angband-0.16.0-arm64.dmg` and `Neo.Angband-0.16.0.dmg`, and the second one
+  is the **Intel** build: electron-builder's default artifact name interpolates
+  the architecture only when it is not x64, so the Intel file is the unlabelled
+  one. Next to an explicitly-labelled arm64 file that reads as "the normal one",
+  or as universal - there is no universal build - and with Rosetta 2 being
+  withdrawn it is the file that will not launch. All four macOS artifacts now
+  carry their architecture (`-arm64-mac` / `-x64-mac`), and `mac.artifactName`
+  is asserted to contain `${arch}`.
+- **An 0.x release is published as a pre-release.** The workflow has always
+  created a draft, and that is a statement about who has pressed publish, not
+  about the software. Publishing an 0.x tag without `--prerelease` marks it
+  *Latest release*, which is what the repository sidebar, the API and every
+  "download the latest" link follow - so an alpha would present as the stable
+  build. The flag is conditional on a `0.` prefix and stops applying at 1.0.0.
 - Toggling anything in the mod manager no longer throws the cursor back to the top
   of the list.
 
