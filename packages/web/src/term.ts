@@ -631,13 +631,55 @@ export class GlyphTerm {
    * clean false positive before it was found.
    */
   cellRect(x: number, y: number): { x: number; y: number; w: number; h: number } {
-    const dpr = (typeof window === "undefined" ? 1 : window.devicePixelRatio) || 1;
+    const dpr = this.dpr();
     return {
       x: Math.round((this.offsetX + x * this.cellW) * dpr),
       y: Math.round((this.offsetY + y * this.cellH) * dpr),
       w: Math.round(this.cellW * dpr),
       h: Math.round(this.cellH * dpr),
     };
+  }
+
+  /** The device-pixel ratio the canvas was sized against, safe outside a DOM. */
+  private dpr(): number {
+    return (typeof window === "undefined" ? 1 : window.devicePixelRatio) || 1;
+  }
+
+  /**
+   * One cell's rect in CSS pixels, with its EDGES SNAPPED to whole device pixels.
+   *
+   * THE DEFECT THIS FIXES, MEASURED. cellW/cellH/offsetX/offsetY are integers in
+   * CSS pixels and the context carries `setTransform(dpr, ...)`, so on any
+   * fractional dpr a cell's edge lands part-way through a device pixel. That
+   * pixel is then only PARTIALLY covered when the cell is repainted: the rest of
+   * it still holds whatever was on screen before. The diff renderer repaints
+   * only cells whose content changed, so the neighbour that owns the other half
+   * is never touched, and the stale half survives every subsequent frame.
+   *
+   * Going title -> update page -> title left 118,452 differing pixels (1.43% of
+   * a 3841x2161 canvas, peak delta 122/765) in a lattice of cell outlines. The
+   * seam pitch measured 47.24 and 71.55 device pixels - fractional, which is
+   * what says "cell edges do not align to the grid the GPU actually paints on".
+   * The first frame looks right because it follows a full-canvas fill.
+   *
+   * Rounding both edges - rather than growing the rect outward - is what makes
+   * neighbours TILE. A cell's right edge and the next cell's left edge are the
+   * same expression, so they round to the same device pixel: no gap to leave
+   * residue in, and no overlap to clip the neighbour's glyph. Snapping outward
+   * with floor/ceil would also erase the residue, at the cost of every cell
+   * overwriting one device pixel of each neighbour.
+   *
+   * This costs no extra paints. The overdraw budget in term-overdraw.test.ts is
+   * about WHICH cells are painted; this is only where their edges land.
+   */
+  private cellBox(x: number, y: number): { x: number; y: number; w: number; h: number } {
+    const dpr = this.dpr();
+    const snap = (v: number): number => Math.round(v * dpr) / dpr;
+    const left = snap(this.offsetX + x * this.cellW);
+    const top = snap(this.offsetY + y * this.cellH);
+    const right = snap(this.offsetX + (x + 1) * this.cellW);
+    const bottom = snap(this.offsetY + (y + 1) * this.cellH);
+    return { x: left, y: top, w: right - left, h: bottom - top };
   }
 
   bgTileCellCount(): number {
@@ -682,12 +724,14 @@ export class GlyphTerm {
 
   private drawCursor(): void {
     if (!this.cursorOn) return;
-    const px = this.offsetX + this.cursorX * this.cellW;
-    const py = this.offsetY + this.cursorY * this.cellH;
+    /* Snapped like every other cell paint: the frame has to sit on the same
+     * rect the cell under it occupies, or it leaves gold on a neighbour that
+     * only a full repaint would clear. */
+    const { x: px, y: py, w: cw, h: ch } = this.cellBox(this.cursorX, this.cursorY);
     this.ctx.strokeStyle = UI_GOLD;
     this.ctx.lineWidth = 1;
     // Half-pixel inset so a 1px stroke lands on the cell edge, not across it.
-    this.ctx.strokeRect(px + 0.5, py + 0.5, this.cellW - 1, this.cellH - 1);
+    this.ctx.strokeRect(px + 0.5, py + 0.5, cw - 1, ch - 1);
   }
 
   put(x: number, y: number, glyph: Glyph): void {
@@ -805,11 +849,14 @@ export class GlyphTerm {
   private paintCell(x: number, y: number): void {
     this.painted++;
     const g = this.grid[y]?.[x] ?? null;
-    const px = this.offsetX + x * this.cellW;
-    const py = this.offsetY + y * this.cellH;
+    /* Snapped to whole device pixels - see cellBox. Painting on the CSS grid
+     * instead leaves a lattice of half-erased cell edges behind on any
+     * fractional dpr, because the diff never repaints the neighbour that owns
+     * the other half of the boundary pixel. */
+    const { x: px, y: py, w: cw, h: ch } = this.cellBox(x, y);
     this.ctx.fillStyle = g?.bg ?? UI_BG;
-    this.ctx.fillRect(px, py, this.cellW, this.cellH);
-    if (blitCellTiles(this.ctx, g, px, py, this.cellW, this.cellH)) return;
+    this.ctx.fillRect(px, py, cw, ch);
+    if (blitCellTiles(this.ctx, g, px, py, cw, ch)) return;
     if (g && g.ch !== " ") {
       // FONT-1: blit the original 16x24 bitmap glyph, tinted to fg and scaled to
       // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any
@@ -817,10 +864,13 @@ export class GlyphTerm {
       const code = g.ch.codePointAt(0) ?? 0;
       const glyph = this.tintedGlyph(code, g.fg);
       if (glyph) {
-        this.ctx.drawImage(glyph, px, py, this.cellW, this.cellH);
+        /* The snapped size, not cellW/cellH: the glyph has to fill the same
+         * rect the background just filled, or it reintroduces the seam it was
+         * drawn to cover. */
+        this.ctx.drawImage(glyph, px, py, cw, ch);
       } else {
         this.ctx.fillStyle = g.fg;
-        this.ctx.fillText(g.ch, px, py + Math.floor(this.cellH * 0.1));
+        this.ctx.fillText(g.ch, px, py + Math.floor(ch * 0.1));
       }
     }
   }

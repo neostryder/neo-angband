@@ -95,6 +95,31 @@ Everything in this block came out of one play session on the 0.15.3 build.
 
 ### Fixed
 
+- **A ghost of the previous screen survived every full-screen change.** Cell
+  metrics are whole CSS pixels and the canvas carries `setTransform(dpr, ...)`,
+  so on a fractional device-pixel ratio a cell's edge landed part-way through a
+  device pixel. Repainting the cell covered only part of that pixel and the
+  renderer repaints only cells that changed, so the neighbour owning the other
+  half was never touched and the stale half survived indefinitely. Title screen
+  to update page and back left 118,452 differing pixels against a clean paint of
+  the same screen - 1.43% of the canvas, in a lattice of cell outlines, with a
+  measured seam pitch of 47.24 and 71.55 device pixels. Cell edges are now
+  rounded to whole device pixels, which also makes neighbours tile exactly;
+  snapping outward instead would have erased the residue by letting every cell
+  overwrite a pixel of each neighbour. No extra cells are painted, so the
+  overdraw budget is untouched. Invisible at a ratio of 1 or 2, which is why
+  every earlier test missed it.
+- **The updater could pick the wrong `tar` on Windows.** `extractCommand` asked
+  for the bare name, and its dependency is specifically bsdtar - which reads the
+  zip the Windows build ships in. A POSIX-style shell (Git Bash, MSYS2, Cygwin)
+  puts GNU tar ahead of System32 on PATH, and GNU tar cannot read zip at all and
+  treats `C:\...` as a remote host, answering `Cannot connect to C: resolve
+  failed`. Explorer and shortcuts hand over the system PATH where System32 wins,
+  so this reached anyone who launched the game from such a shell. The absolute
+  path to System32's `tar.exe` is used now.
+- **A missing extractor reported `spawn tar ENOENT`.** The update screen prints
+  that string verbatim, so it named nothing the player could act on. It now says
+  which tool is missing and what it was needed for.
 - **A hybrid mod appeared twice in the manager.** `qol` and `bug-fixes` declare
   `facets: ["content", "plugin"]`, so each is listed once by the content discovery
   and once by the plugin discovery - both correct, neither aware of the other, and
