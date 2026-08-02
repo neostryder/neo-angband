@@ -28,7 +28,7 @@ import { createRequire } from "node:module";
 interface BuildConfig {
   productName: string;
   win?: { target?: unknown[] };
-  mac?: { target?: unknown[] };
+  mac?: { target?: unknown[]; artifactName?: string };
   linux?: {
     target?: unknown[];
     executableName?: string;
@@ -285,6 +285,69 @@ describe("what we tell a macOS user to do is what macOS does", () => {
       const text = readFileSync(join(ROOT, rel), "utf8");
       expect(text, rel).not.toMatch(/(runs?|running)[^.\n]{0,60}(through|via|under)\s+Rosetta/iu);
     }
+  });
+});
+
+describe("a macOS download says which Mac it is for", () => {
+  /*
+   * THE DEFECT: the release page carried `Neo.Angband-0.16.0-arm64.dmg` and
+   * `Neo.Angband-0.16.0.dmg`, and the second one is the INTEL build. Nothing
+   * says so. electron-builder's default artifactName interpolates `${arch}`
+   * only when the arch is not x64, so the Intel artifact is the one with no
+   * label - and beside an explicitly-labelled arm64 file, an unlabelled one
+   * reads as "the normal one", or as universal - it was read as universal on
+   * the release page within a day of being uploaded.
+   *
+   * The cost is not cosmetic and it is getting worse: Apple is withdrawing
+   * Rosetta 2 (macOS 27 removes it at install, macOS 28 keeps it for a named
+   * set of old games), so on a current Apple Silicon Mac the mislabelled file
+   * does not run slowly, it does not run.
+   *
+   * `arch` is therefore mandatory in the template. Asserted on the STRING
+   * rather than on a produced filename because these artifacts only exist
+   * after a twenty-minute release build - the whole premise of this file.
+   */
+  it("puts the architecture in every macOS artifact name", () => {
+    const template = build.mac?.artifactName;
+    expect(
+      template,
+      "mac.artifactName is unset, so electron-builder omits the arch on x64 and " +
+        "the Intel build ships with no label",
+    ).toBeTruthy();
+    expect(template).toContain("${arch}");
+  });
+
+  it("declares both architectures, since neither is universal", () => {
+    /* If a universal target ever replaces these, this test should be the thing
+     * that fails and gets rewritten - not the download page. */
+    const json = JSON.stringify(build.mac?.target ?? []);
+    expect(json).toContain("arm64");
+    expect(json).toContain("x64");
+  });
+});
+
+describe("publishing an 0.x release does not present it as stable", () => {
+  /*
+   * Draft and pre-release are different claims. The workflow has always drafted
+   * - publishing is a human decision - but a draft says nothing about the
+   * software, and pressing publish on an 0.x tag without --prerelease marks it
+   * "Latest release". An alpha would then be the thing GitHub's API, the
+   * repository sidebar and every "download latest" link point at.
+   */
+  const workflow = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".github", "workflows", "release.yml"),
+    "utf8",
+  );
+
+  it("passes --prerelease for a 0.x tag", () => {
+    expect(workflow).toContain("--prerelease");
+    /* And it must be CONDITIONAL: hard-coding it would keep flagging releases
+     * as pre-release after 1.0, which is the same defect facing the other way. */
+    expect(workflow).toMatch(/0\.\*\)/u);
+  });
+
+  it("still drafts, so a human is the last gate", () => {
+    expect(workflow).toContain("--draft");
   });
 });
 

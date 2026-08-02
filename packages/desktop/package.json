@@ -101,7 +101,8 @@
         }
       ],
       "category": "public.app-category.games",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}"
     },
     "linux": {
       "target": [
