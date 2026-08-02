@@ -915,6 +915,69 @@ async function createWindow(port: number): Promise<void> {
     return { action: "deny" };
   });
 
+  /* THE THREE WAYS THIS WINDOW GOES BLANK WITHOUT SAYING ANYTHING.
+   *
+   * The renderer has its own crash screen (web/src/crash-screen.ts) and it
+   * handles everything the page can catch. These three it cannot: the renderer
+   * process dying takes the crash screen with it, a wedged renderer never runs
+   * it, and a failed load means there is no page to run it in. All three
+   * present identically to a player - a black window - and all three used to
+   * present that way with no message at all.
+   *
+   * A dialog rather than a log line, for the same reason the missing-bundle and
+   * read-only-folder checks above use one: this is a packaged desktop app, and
+   * a player has no terminal to read. */
+  win.webContents.on("render-process-gone", (_event, details) => {
+    void dialog.showMessageBox(win, {
+      type: "error",
+      title: "Neo Angband",
+      message: "The game stopped unexpectedly.",
+      detail:
+        `The window's process ended (${details.reason}` +
+        (details.exitCode ? `, exit ${String(details.exitCode)}` : "") +
+        ").\n\nYour saved characters are on disk and were not touched. Restart " +
+        "the game and it will pick up from your last save.\n\n" +
+        "Please report this: github.com/neostryder/neo-angband/issues",
+    });
+  });
+
+  win.on("unresponsive", () => {
+    /* Not fatal, and not necessarily a bug - level generation on a slow machine
+     * can hold the thread. Ask rather than announce. */
+    void dialog
+      .showMessageBox(win, {
+        type: "warning",
+        buttons: ["Keep waiting", "Reload from the last save"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Neo Angband",
+        message: "The game has stopped responding.",
+        detail:
+          "It may just be busy. If it does not come back, reloading starts " +
+          "again from your last save - which is untouched either way.",
+      })
+      .then((r) => {
+        if (r.response === 1) win.webContents.reload();
+      });
+  });
+
+  win.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+    /* -3 is ERR_ABORTED, which is what a navigation replaced by another one
+     * reports. Not a failure, and firing a dialog for it would make the app
+     * shout during its own startup. */
+    if (!isMainFrame || code === -3) return;
+    void dialog.showMessageBox(win, {
+      type: "error",
+      title: "Neo Angband",
+      message: "The game could not load.",
+      detail:
+        `${description} (${String(code)})\n${url}\n\n` +
+        "This is the local server the app runs for itself, so a firewall or " +
+        "security tool blocking 127.0.0.1 is the usual cause. Your saves are " +
+        "not involved and were not touched.",
+    });
+  });
+
   await win.loadURL(`http://127.0.0.1:${port}/${agentQuery()}`);
 }
 

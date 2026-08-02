@@ -100,6 +100,10 @@ export * from "./store/store-cmd.js";
 export * from "./session/boot.js";
 export * from "./session/game.js";
 export * from "./session/save.js";
+/* Save migration. A host needs SaveFromFutureError to tell "your game is too
+ * old to read this" apart from "this file is damaged" - two sentences a
+ * permadeath player reacts to very differently. See session/save-migrate.ts. */
+export * from "./session/save-migrate.js";
 /* The behaviour seam itself: ModHooks (the closed set of extension points) and
  * composeModHooks (the host's fold over several mods' contributions). A mod
  * cannot write a hook without the type, and a host cannot install one without

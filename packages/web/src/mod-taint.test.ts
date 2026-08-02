@@ -300,8 +300,48 @@ describe("the save refusal is wired into the one function every save goes throug
     const src = stripComments(MAIN);
     const at = src.indexOf("onSessionTaint(");
     expect(at).toBeGreaterThan(-1);
-    expect(src.slice(at, at + 400)).toMatch(/setTimeout/u);
-    expect(src.slice(at, at + 400)).toMatch(/taintNotice/u);
-    expect(src.slice(at, at + 400)).toMatch(/location\.reload\(\)/u);
+    /* A character window rather than a brace match, and generous: the handler
+     * grew a branch for core faults and a 400-column window silently stopped
+     * covering `location.reload()`, which is the last line of it. Too small a
+     * window fails loudly, which is the right way round. */
+    const handler = src.slice(at, at + 900);
+    expect(handler).toMatch(/setTimeout/u);
+    expect(handler).toMatch(/taintNotice/u);
+    expect(handler).toMatch(/location\.reload\(\)/u);
+  });
+
+  it("contains a throw from the ENGINE, not just from a mod's hook", () => {
+    /* The gap this closes. guardModHooks catches a mod; nothing caught a port
+     * bug, so an uncaught throw inside runGameLoop escaped advance() and left
+     * the game frozen on the frame before the keypress - no repaint, no
+     * message, and the save protected only by the accident of the exception
+     * unwinding past the tail autosave. 'S' and a level change do not unwind. */
+    const advance = stripComments(functionBody(MAIN, "advance"));
+    expect(advance).toMatch(/try\s*\{[\s\S]*runGameLoop\(/u);
+    expect(advance).toMatch(/catch/u);
+    expect(advance).toMatch(/taintSession\(/u);
+    /* And it must taint as CORE, or the notice blames a mod for our bug. */
+    expect(advance).toMatch(/id:\s*null/u);
+  });
+
+  it("words a core fault as a core fault", () => {
+    const lines = taintNotice({
+      id: null,
+      hook: "taking a turn",
+      why: "cannot read properties of undefined",
+    }).join(" ");
+    expect(lines).toContain("The game hit a bug");
+    expect(lines).not.toContain("mod");
+    /* The two things a player needs after a crash: their save is fine, and
+     * where to send it. */
+    expect(lines).toContain("untouched and still good");
+    expect(lines).toContain("issues");
+    expect(lines).toContain("discord.gg");
+  });
+
+  it("still words a mod fault as a mod fault", () => {
+    const lines = taintNotice({ id: "qol", hook: "onMove", why: "boom" }).join(" ");
+    expect(lines).toContain('The mod "qol"');
+    expect(lines).toContain("onMove");
   });
 });

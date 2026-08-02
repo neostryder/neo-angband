@@ -119,9 +119,15 @@ import type {
  * load-bearing rule of the mod substrate (MOD_LIFECYCLE decision 1). Version 3
  * finished that job: `flavor`, `everseen` and `ignore` were the last blocks
  * still keyed by raw kidx/eidx, and the rune-autoinscription block of wr_ignore
- * (save.c:586-605) arrived with them. Older saves are not migrated: the game is
- * pre-1.0 and the save format is still settling, so loadGame rejects them and
- * the host starts a fresh game.
+ * (save.c:586-605) arrived with them.
+ *
+ * OLDER SAVES ARE MIGRATED, NOT REJECTED. Every version below this one has a
+ * conversion step in session/save-migrate.ts, and `saveMigrationsAreComplete()`
+ * (enforced by save-migrate.test.ts) fails the build if this constant is bumped
+ * without one. That test is the reason this comment can promise anything: for
+ * three versions the promise was the opposite - a bump turned every existing
+ * character into "Could not read the save; starting a new game", which in a
+ * permadeath game reads as "your character is gone".
  */
 export const SAVE_VERSION = 3;
 
