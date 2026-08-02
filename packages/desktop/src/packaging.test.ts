@@ -181,6 +181,92 @@ describe("the Linux package targets have the metadata they demand", () => {
   });
 });
 
+describe("the macOS bundle gets a signature of some kind", () => {
+  /*
+   * THE FOURTH THING THIS FILE IS ABOUT, and the one with the worst symptom.
+   *
+   * With no Apple Developer identity, MacPackager.sign finds nothing and returns
+   * false: the bundle is signed NOT AT ALL. On Apple Silicon that is not
+   * "unsigned", it is unrunnable - the kernel requires at least an ad-hoc
+   * signature on an arm64 Mach-O, and macOS reports the refusal as "is damaged
+   * and can't be opened", which sends the user to the Intel build and Rosetta.
+   *
+   * A NAME IS NOT A HOOK, which is the lesson of the desktopName/syncDesktopName
+   * pair three blocks up: the config can point at a script that is not there, and
+   * electron-builder would only find out during a release. So the file is read,
+   * and it has to export the hook and reach for codesign.
+   */
+  const afterPack = (manifest.build as unknown as { afterPack?: string }).afterPack;
+
+  it("declares an afterPack hook", () => {
+    expect(afterPack, "no afterPack: the macOS app ships with no signature").toBeTruthy();
+  });
+
+  it("the hook file exists and ad-hoc signs", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", afterPack ?? ""),
+      "utf8",
+    );
+    expect(src).toContain("exports.default");
+    /* `-` IS the ad-hoc identity; signing with anything else here would need a
+     * certificate this project does not have. */
+    expect(src).toMatch(/"--sign",\s*"-"/u);
+    expect(src).toContain("darwin");
+    /* And it must not be able to fail a release: Windows and Linux artifacts of
+     * the same run do not deserve to die for a macOS signing problem. */
+    expect(src).toContain("catch");
+  });
+});
+
+describe("what we tell a macOS user to do is what macOS does", () => {
+  /*
+   * THE DEFECT: three places told the reader to "right-click the app and choose
+   * Open". That was the standard answer for a decade, and Apple deleted the
+   * bypass in macOS 15 Sequoia - on 15 and later it produces exactly the same
+   * refusal as a double-click. So the instructions did not merely omit the real
+   * route (System Settings -> Privacy & Security -> Open Anyway), they sent
+   * people down one that cannot work, on the newest OS, for an app whose own
+   * dialog offers nothing but Done and Move to Trash.
+   *
+   * Instructions rot silently, and this is the shape that rots worst: advice
+   * that USED to be right. So it is asserted rather than reviewed, in every file
+   * that carries it - and the assertion is on the ABSENCE of the dead advice as
+   * well as the presence of the live route, because adding the new steps without
+   * deleting the old ones leaves two answers and no way to tell which is current.
+   */
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const SOURCES = ["README.md", "docs/INSTALL.md", ".github/workflows/release.yml"];
+
+  for (const rel of SOURCES) {
+    const text = readFileSync(join(ROOT, rel), "utf8");
+
+    it(`${rel} does not give the right-click -> Open advice Apple removed`, () => {
+      /* Ctrl-click too: it is the same gesture under another name, and it is the
+       * spelling Apple's own old documentation used. Verified against the exact
+       * sentence that was in all three files - "right-click the app and choose
+       * *Open*" - and against "Ctrl-click the app and choose Open". */
+      expect(text).not.toMatch(
+        /(right-?click|ctrl-?click)[^.\n]{0,40}(and )?(choose|select)\s+\*?Open\*?/iu,
+      );
+    });
+
+    it(`${rel} names the route that works: Privacy & Security -> Open Anyway`, () => {
+      expect(text).toMatch(/Privacy & Security/u);
+      expect(text).toMatch(/Open Anyway/u);
+    });
+  }
+
+  it("says which build Apple Silicon wants, since both are on the page", () => {
+    /* The Intel build runs on an M-series Mac through Rosetta 2, so "it works"
+     * and is slower - the failure mode that produces a bug report about speed
+     * rather than about architecture. */
+    for (const rel of ["README.md", "docs/INSTALL.md", ".github/workflows/release.yml"]) {
+      const text = readFileSync(join(ROOT, rel), "utf8");
+      expect(text, rel).toMatch(/arm64|Apple Silicon/u);
+    }
+  });
+});
+
 describe("every platform still produces something", () => {
   it("builds for all three", () => {
     expect(build.win?.target, "no Windows targets").toBeTruthy();

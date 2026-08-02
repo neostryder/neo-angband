@@ -77,7 +77,10 @@ describe("the game menu's Save and exit row", () => {
   });
 
   it("is dispatched to exitToTitle, behind a confirmation", () => {
-    const body = functionBody(MAIN, "openGameMenu");
+    /* gameMenuOnce, not openGameMenu: the menu is a LOOP now (ESC in a submenu
+     * comes back to it rather than to the dungeon), and the switch that dispatches
+     * the rows lives in the one-pass function the loop calls. */
+    const body = functionBody(MAIN, "gameMenuOnce");
     expect(body).toMatch(/case "exit":[\s\S]{0,400}?confirmYesNo\([\s\S]{0,200}?exitToTitle\(\)/);
   });
 });
@@ -205,7 +208,7 @@ describe("exitToTitle goes to the title on BOTH front ends", () => {
   it("the game menu's Quit row runs the same body, so the two cannot drift", () => {
     /* Two independent copies of "save and quit" is how the last defect here stayed
      * alive: one call site was fixed and the other was not. */
-    const row = functionBody(MAIN, "openGameMenu");
+    const row = functionBody(MAIN, "gameMenuOnce");
     expect(row).toContain("saveQuitNow()");
     expect(row, "the row must not re-implement the quit").not.toContain("desktopQuit()");
   });

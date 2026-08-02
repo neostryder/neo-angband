@@ -132,23 +132,27 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "qol",
     name: "Quality of Life",
     repo: "neostryder/neo-angband-mod-qol",
-    /* v0.11.0: at v0.10.0 this mod's manifest declared no `engine` range at all,
-     * while shipping a plugin.js - the one case where the range matters most, since
-     * a plugin written against one ABI is what a mismatched engine actually breaks.
-     * plugin.js is unchanged, byte for byte; only manifest.json moved. */
-    tag: "v0.11.0",
+    /* v0.12.0: the description rewritten short, after a player found that a long
+     * one squeezes the manager's mod list down to a single visible row. v0.11.0 is
+     * still a correct mod and is only superseded, not wrong - unlike v0.10.0, which
+     * declared no `engine` range at all while shipping a plugin.js, the one case
+     * where the range matters most.
+     *
+     * plugin.js has never moved: its digest below is the same one v0.10.0 pinned,
+     * across three tags. Only manifest.json has ever changed. */
+    tag: "v0.12.0",
     summary: "Conveniences Angband does not have, each one a switch you can turn off",
     /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
      * the game being FAITHFUL, not the game being worse. A pre-checked row would make
      * the default experience something other than 4.2.6. */
     preChecked: false,
-    approxBytes: 1_713,
+    approxBytes: 1_525,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "baeebe16d615c832bce7fa9af07a4841599646a3f89ebe17c20a545abb31981e",
+          sha256: "c42fad101533a351937bb5d676cf4740635b43f9ba2fcca3dcbaa9302e5336c2",
         },
         {
           path: "plugin.js",
@@ -161,26 +165,27 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "bug-fixes",
     name: "Bug Fixes",
     repo: "neostryder/neo-angband-mod-bug-fixes",
-    /* v0.12.0. Two tags before it are wrong to pin: v0.10.0 declares
+    /* v0.13.0, the description rewritten short (see qol above). Two older tags are
+     * wrong to pin rather than merely superseded: v0.10.0 declares
      * `"engine": "4.2.x"` - the Angband baseline in a field that ranges over the
      * PORT's version - which the engine gate (mod-engine.ts) now evaluates, so it
      * installs and is then refused; and v0.11.0 predates the mod taking its gamedata
      * from npm rather than from a checkout of this repository. plugin.js has carried
-     * the same digest through all three: only manifest.json has ever moved. */
-    tag: "v0.12.0",
+     * the same digest through all four: only manifest.json has ever moved. */
+    tag: "v0.13.0",
     summary: "Fixes for upstream Angband bugs the port keeps on purpose",
     /* Also clear, and this is the row where that is worth defending. Core keeps
      * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
      * turning these on by default would quietly make the game unfaithful for everyone
      * who never opened the mod list. It also flags the save, permanently. */
     preChecked: false,
-    approxBytes: 8_001,
+    approxBytes: 7_817,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "bc34f7c3b1773752224a3fa8651c3c8e2bd17a42a5b42095b791ff4f21b34890",
+          sha256: "f6063e7cabc7bc8632a41189effe02e02e3f904b7c79a5e05965b2068185a0c6",
         },
         {
           path: "plugin.js",
@@ -193,7 +198,9 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "borg",
     name: "The Borg",
     repo: "neostryder/neo-angband-mod-borg",
-    tag: "v0.1.0",
+    /* v0.2.0, the description rewritten short (see qol above). v0.1.0 is correct
+     * and merely superseded; plugin.js is byte-identical between the two. */
+    tag: "v0.2.0",
     summary: "Angband's automatic player, ported faithfully - it plays the game for you",
     /* Not pre-checked, and for this row that is not a judgement call at all: a
      * pre-checked autoplayer is a game that plays itself out of the box. Note that
@@ -205,13 +212,13 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
      * being honest about on the row: it is the whole port bundled into one
      * plugin.js. None of it is the engine - the builder refuses that - it is 86
      * source files of danger model, think ladder and world model. */
-    approxBytes: 514_370,
+    approxBytes: 514_268,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "ed00567fd4b1fdb11f4edc4059b31ce5b90a7dea99f2a1e9b14cf37396c40b24",
+          sha256: "74c8910c2c701b7b96fa7371963872bb1f462e6d879d46e09ea1744b5bf052b1",
         },
         {
           path: "plugin.js",
@@ -232,16 +239,19 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
      *   v0.10.0  fixes that, but its six tile archives were built by the converter as
      *            it was before the @rpgm-tools rename, so they are not what a fresh
      *            conversion produces. Its own CI says so.
-     * Three ways for a pinned tag to be quietly wrong, none of which moving a tag
-     * would fix - which is the argument for pinning one in the first place. */
-    tag: "v0.11.0",
+     *   v0.11.0  is correct, and superseded: its description is the 1,625-character
+     *            block that squeezed the manager's mod list to one row.
+     * Three ways for a pinned tag to be quietly WRONG plus one that is merely old,
+     * none of which moving a tag would fix - which is the argument for pinning one
+     * in the first place. */
+    tag: "v0.12.0",
     summary:
       "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
     /* Its absence is the game being faithful, not the game being worse: every tile set
      * it converts is already selectable, drawn by the tilesheet engine. And it is a
      * 25 MiB download. So the row starts clear. */
     preChecked: false,
-    approxBytes: 25_781_010,
+    approxBytes: 25_780_682,
     payload: {
       kind: "archive",
       archives: [
@@ -251,7 +261,7 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
            * which is the packer's determinism claim (tools/pack.mjs) holding on a
            * different day - so their pins below are unchanged. */
           path: "dist/neo-linoleum-mod.zip",
-          sha256: "9ace556b96596968761b1180a5067bdc7979467ecdfdc38f2bd3a36467eb4c66",
+          sha256: "b5ad279b6eeae9a617a35a58f364eed0c090ee9a5f4137d30ffe25f2668eff27",
         },
         {
           path: "dist/neo-linoleum-original-tiles.zip",

@@ -82,10 +82,15 @@ installer at all: download, run, and the game keeps its saves in a folder beside
 itself.
 
 Those builds are **not code-signed** - there is no Apple Developer identity or
-Windows certificate behind this project yet - so your OS will warn you the first
-time. Every release page says so and says what to click. If you would rather not
-make that trade, build it yourself below, or play in a browser, which needs no
-trust decision at all.
+Windows certificate behind this project yet - so your OS blocks the first launch.
+On **Windows** that is one click (*More info -> Run anyway*). On **macOS** it is
+not, and the dialog you get does not contain the way through: you have to open
+**System Settings -> Privacy & Security**, scroll to **Security**, and press
+**Open Anyway** on the line naming the app.
+**[The full steps are here](docs/INSTALL.md#macos-blocks-it-first-time)** - and if
+you are on Apple Silicon, take the **arm64** build, not the Intel one. If you
+would rather not make that trade at all, build it yourself below, or play in a
+browser, which needs no trust decision.
 
 Full instructions for every method, including the PWA install, are in
 **[docs/INSTALL.md](docs/INSTALL.md)**.

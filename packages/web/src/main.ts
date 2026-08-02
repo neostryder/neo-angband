@@ -512,10 +512,29 @@ initLaunchArgsFromHost();
 // there deliberately outranks a downloaded copy of the same id (and the loser is
 // reported, not dropped in silence). combineDiskReports routes each mod's file
 // resolvers to the source that actually holds its bytes.
-{
+/**
+ * Read every mod source and publish the combined report.
+ *
+ * A FUNCTION RATHER THAN A BOOT BLOCK because it has a second caller: the mod
+ * manager, right after it downloads one. Until it did, an installed mod was
+ * stored, verified and then invisible - the manager's list is built from
+ * diskPacks(), which was latched once at boot, so a player installed neo-linoleum,
+ * pressed ESC back to the list, and found the mod they had just downloaded was
+ * not in it. The only way to see it was to reload, which the screen had not asked
+ * them to do yet.
+ *
+ * Re-running this makes the mod APPEAR and be switchable. It does not make it
+ * take effect: content composes and plugin code imports at boot, so a reload is
+ * still what applies it, and the manager still says so.
+ */
+async function rediscoverModSources(): Promise<void> {
   const shellPacks = await loadDiskPacks();
   const folder = shellPacks.available ? shellPacks : await loadPickedModFolder();
   setDiskPacks(combineDiskReports([folder, await loadInstalledMods()]));
+}
+
+{
+  await rediscoverModSources();
 
   /* And their CODE. Until this existed, a folder could contribute records and
    * never a line of behaviour - the whole SDK (patches, conflicts, the five
@@ -1232,6 +1251,21 @@ function tileResolverFor(entry: TileModeEntry | undefined): PackFileResolver {
  * draws. A tilesheet gets them from the atlas image plus the pack's graf/flvr
  * prefs; a loose pack gets both from its own manifest and target maps.
  */
+/**
+ * Redraw the map AND tell the terminal to distrust every pixel it has.
+ *
+ * For the one class of change the terminal's frame diff cannot see: a tileset
+ * finishing its load, or the player choosing a different one. The grid is the
+ * same grid - same codes, same positions - but the PICTURE those codes draw is
+ * different, so a diff over glyph data concludes nothing changed and leaves the
+ * old tiles (or the ASCII fallback) on screen. Everything else can rely on the
+ * diff, which is the point of having one.
+ */
+function repaintEverything(): void {
+  term.invalidate();
+  renderBackground();
+}
+
 async function applyTileMode(grafID: number, persist = false): Promise<void> {
   currentGrafID = grafID;
   if (persist) {
@@ -1249,7 +1283,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   if (entry?.engine === "linoleum") {
     tileset = null;
     tileMap = null;
-    renderBackground();
+    repaintEverything();
     const pack = await loadLinoleumPack({
       resolve: tileResolverFor(entry),
       menuname: entry.menuname,
@@ -1258,11 +1292,11 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     // Ignore a stale load if the mode changed while we were fetching.
     if (currentGrafID !== grafID) return;
     if (pack) {
-      pack.onReady = () => renderBackground();
+      pack.onReady = () => repaintEverything();
       tileset = pack;
       tileMap = pack.index.map;
     }
-    renderBackground();
+    repaintEverything();
     return;
   }
 
@@ -1271,15 +1305,15 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   if (!mode || mode.grafID === GRAPHICS_NONE) {
     tileset = null;
     tileMap = null;
-    renderBackground();
+    repaintEverything();
     return;
   }
   const resolve = tileResolverFor(entry);
   const ts = createTileRenderer({ resolve, grafID });
-  if (ts) ts.onReady = () => renderBackground();
+  if (ts) ts.onReady = () => repaintEverything();
   tileset = ts;
   tileMap = null;
-  renderBackground();
+  repaintEverything();
   const map = await loadTilePrefs(resolve, mode, {
     ...tileDeps,
     vars: playerPrefVars(),
@@ -1287,7 +1321,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
-    renderBackground();
+    repaintEverything();
   }
 }
 
@@ -1309,6 +1343,11 @@ function tileDrawFor(atlas: TileAtlas | null, x: number, y: number): TileDraw | 
   const code = tileCode(atlas.attr, atlas.char);
   return {
     draw: (ctx, px, py, w, h) => ts.drawTile(ctx, px, py, w, h, code, { x, y }),
+    /* The identity the terminal's frame diff needs - see TileDraw.key. It has to
+     * carry the map grid as well as the code, because a loose pack resolves a
+     * variant POOL against the position, so the same code at two grids is two
+     * different pictures. Which is also why this cannot be `${code}` alone. */
+    key: `${String(code)}@${String(x)},${String(y)}`,
   };
 }
 
@@ -3112,7 +3151,17 @@ async function chooseBook(
   // book's letter (or ESC) exactly as in the original.
   const idx = await selectFromMenu(term, `${verb} which book?`, items, undefined, {
     inscripCmdKey: cmdCode ? itemCmdKey(cmdCode) : undefined,
+    /* item_menu draws a box over the level, it does not blank it (ui-object.c
+     * L1198-1215). Casting a spell was clearing the terminal and printing a list
+     * on an empty screen, so the one thing a player wants while choosing what to
+     * cast - the monster they are casting it at - was gone. */
+    overlay: true,
   });
+  /* screen_load (textui_get_item wraps the picker in screen_save/screen_load):
+   * put the map back before anything else draws. It matters between two pickers -
+   * book then spell - which are different widths, so the second does not cover
+   * the first and the leftovers would sit on the map until the modal closed. */
+  render();
   if (idx === null) return null;
   return handles[idx] ?? null;
 }
@@ -3151,14 +3200,18 @@ async function castSpell(): Promise<void> {
     // "%s which %s? ('?' to toggle description)" (ui-spell.c:285).
     `${verb[0]?.toUpperCase()}${verb.slice(1)} which ${noun}? ('?' to toggle description)`,
     items,
-    "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
+    "[ ESC to cancel ]",
     {
       subtitle: SPELL_HEADER,
       detail: (i) =>
         spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
       detailToggleKey: "?",
+      /* spell_menu_new's region is `{ 0 - width, 1, width, -99 }` (ui-spell.c:229)
+       * - right-aligned, one row down, over the map. */
+      overlay: true,
     },
   );
+  render(); // screen_load, as in chooseBook
   if (pick === null) return;
   const spell = sidx[pick];
   if (spell === undefined) return;
@@ -3231,14 +3284,16 @@ async function studySpell(): Promise<void> {
       // "Study which %s? ('?' to toggle description)" (study path, ui-spell.c).
       `Study which ${noun}? ('?' to toggle description)`,
       items,
-      "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
+      "[ ESC to cancel ]",
       {
         subtitle: SPELL_HEADER,
         detail: (i) =>
           spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
         detailToggleKey: "?",
+        overlay: true, // ui-spell.c:229, as in castSpell
       },
     );
+    render(); // screen_load
     if (pick === null) return;
     const spell = sidx[pick];
     if (spell === undefined) return;
@@ -3313,7 +3368,7 @@ async function browseBookObject(handle: number): Promise<void> {
       ...it,
       disabled: !spellOkayToBrowse(player, sidx[i] ?? -1),
     })),
-    "[ a-z or arrows to view, ? to toggle description, ESC to exit ]",
+    "[ ESC to exit ]",
     {
       subtitle: SPELL_HEADER,
       browseOnly: true,
@@ -3321,8 +3376,10 @@ async function browseBookObject(handle: number): Promise<void> {
         spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
       detailToggleKey: "?",
       detailInitiallyShown: true,
+      overlay: true, // ui-spell.c:229 - the same region the cast menu uses
     },
   );
+  render(); // screen_load (ui-spell.c:305, screen_save round the browse menu)
 }
 
 // --- Ranged attacks (do_cmd_fire / do_cmd_throw) ----------------------------
@@ -3898,9 +3955,16 @@ function runMonsterKnowledgeBrowser(
       const nav = menuNav(ev);
       const right = ev.key === "ArrowRight" || ev.code === "Numpad6";
       const left = ev.key === "ArrowLeft" || ev.code === "Numpad4";
+      /* Both panes wrap, as menu_handle_keypress does: its is_valid_row loop
+       * turns a cursor past the end into 0 and one below 0 into count-1, so down
+       * at the bottom of an Angband list lands on the first row. These two panes
+       * clamped instead, which on a category holding sixty monsters means holding
+       * the key to get back to the top. */
+      const wrap = (cur: number, delta: number, count: number): number =>
+        count === 0 ? 0 : (cur + delta + count) % count;
       if (active === "group") {
-        if (nav === "up") gCur = Math.max(0, gCur - 1);
-        else if (nav === "down") gCur = Math.min(groups.length - 1, gCur + 1);
+        if (nav === "up") gCur = wrap(gCur, -1, groups.length);
+        else if (nav === "down") gCur = wrap(gCur, +1, groups.length);
         else if (right || ev.key === "Enter") {
           if ((groups[gCur]?.rows.length ?? 0) > 0) active = "member";
         } else return;
@@ -3911,8 +3975,8 @@ function runMonsterKnowledgeBrowser(
       }
       /* member pane */
       const members = groups[gCur]?.rows ?? [];
-      if (nav === "up") oCur = Math.max(0, oCur - 1);
-      else if (nav === "down") oCur = Math.min(members.length - 1, oCur + 1);
+      if (nav === "up") oCur = wrap(oCur, -1, members.length);
+      else if (nav === "down") oCur = wrap(oCur, +1, members.length);
       else if (left) active = "group";
       else if (ev.key === "Enter") {
         void openRecall();
@@ -5203,6 +5267,9 @@ async function openModManager(): Promise<void> {
         enabled: enabledModIds(),
         consents: store.getConsents(),
       }),
+    /* So a mod downloaded in this session is in the list on the way back out,
+     * instead of after a reload the player has not been told to do yet. */
+    rediscover: rediscoverModSources,
     conflictLines: () => liveConflictLines(),
     // The mods DIRECTORY, so the manager can name a real path instead of
     // describing a capability the shell might or might not have.
@@ -5312,15 +5379,52 @@ async function openModManager(): Promise<void> {
   });
 }
 
+/**
+ * Where the cursor was the last time the game menu closed.
+ *
+ * Module-scope rather than a local, so it survives the whole session: a player
+ * who lives in Mods or Options should find the row they use under the cursor,
+ * not row one. Upstream's menus keep `menu->cursor` in the long-lived struct for
+ * the same reason; ours are one call per open, so this is where it lives.
+ */
+let gameMenuCursor = 0;
+
+/**
+ * ESC GOES BACK ONE LEVEL, NOT ALL THE WAY OUT.
+ *
+ * This used to show the menu once and return, so closing any screen it opened
+ * dropped the player into the dungeon. Pressing ESC in Mods to get back to the
+ * menu you opened Mods from put you in the game instead, and the only route back
+ * was ESC again plus finding the row again. Every screen in the switch below is a
+ * SUBMENU of this one, so the loop re-shows the parent - which is what "back"
+ * means everywhere else in the game.
+ *
+ * The rows that LEAVE - resume, save-and-exit, quit, new, switch - return instead
+ * of looping, because there is nothing to come back to. Some of them navigate the
+ * page, so anything after them would run against a game that is going away.
+ */
 async function openGameMenu(): Promise<void> {
+  for (;;) {
+    if (!(await gameMenuOnce())) return;
+  }
+}
+
+/** One pass of the game menu. False means "stop showing it". */
+async function gameMenuOnce(): Promise<boolean> {
   const entries = gameMenuEntries({ canQuit: desktopQuitAvailable() });
   const pick = await selectFromMenu(
     term,
     "Game menu",
     entries.map((e) => e.item),
     GAME_MENU_FOOTER,
+    {
+      initialCursor: gameMenuCursor,
+      onHighlight: (i) => {
+        gameMenuCursor = i;
+      },
+    },
   );
-  if (pick === null) return; // ESC resumes
+  if (pick === null) return false; // ESC resumes
   switch (entries[pick]?.action) {
     case "character":
       await showCharacterSheet(term, state, playerName, charSheetOpts());
@@ -5341,7 +5445,9 @@ async function openGameMenu(): Promise<void> {
       autosave(true);
       message = "Saving game... done.";
       render();
-      break;
+      /* The one row whose result is a MESSAGE on the map. Re-showing the menu
+       * over it would hide the confirmation it just produced. */
+      return false;
     case "options":
       await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx());
       autosave(true); // flush any option change to the per-slot save
@@ -5372,17 +5478,23 @@ async function openGameMenu(): Promise<void> {
        * the pack and worn gear in it. */
       await doCmdItemListing("inven");
       break;
+    /* THE FOUR THAT LEAVE. Each either navigates the page or ends the session, so
+     * they return rather than looping - a re-shown menu over a game that is going
+     * away is a menu whose next keypress lands nowhere. A DECLINED confirmation
+     * does come back to the menu, because declining is not leaving. */
     case "switch":
       // get_check-style confirmation (parallels ui-death.c's "Start a new
       // game?") so a stray tap never yanks the player out of a live run.
       if (await confirmYesNo("Switch character? (this hero is saved to its slot)")) {
         switchCharacter();
+        return false;
       }
       break;
     case "new":
       if (await confirmYesNo("Start a new character? (this hero is saved to its slot)")) {
         persistSave(); // keep the current character in its slot, then birth anew
         newGame();
+        return false;
       }
       break;
     case "exit":
@@ -5390,6 +5502,7 @@ async function openGameMenu(): Promise<void> {
       // nothing, but a stray tap should not throw the player out of a live run.
       if (await confirmYesNo("Save and exit to the title screen?")) {
         await exitToTitle();
+        return false;
       }
       break;
     case "quit":
@@ -5401,11 +5514,15 @@ async function openGameMenu(): Promise<void> {
        * would be an invention. This row is port UI with no counterpart in the C - a
        * browse surface where Quit sits one arrow key from its neighbours - so a
        * guard rail here diverges from nothing. */
-      if (await confirmYesNo("Save and quit?")) await saveQuitNow();
+      if (await confirmYesNo("Save and quit?")) {
+        await saveQuitNow();
+        return false;
+      }
       break;
     default:
-      break; // Resume play
+      return false; // Resume play
   }
+  return true;
 }
 
 /**
@@ -9181,6 +9298,8 @@ if (import.meta.env.DEV) {
       return modalDepth > 0;
     },
     size: () => term.size(),
+    /** Cell paints and whole-screen redraws so far - the overdraw measurement. */
+    paints: () => term.paintStats(),
     /**
      * What the mod system actually did, for the harness and for diagnosing the
      * failure this whole area keeps producing: a mod that loaded, reported no

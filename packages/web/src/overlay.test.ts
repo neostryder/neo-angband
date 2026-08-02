@@ -1568,3 +1568,166 @@ describe("getKeyInline (prt + inkey, retire '@' verify)", () => {
     expect(await done).toBe("@");
   });
 });
+
+describe("selectFromMenu: the cursor wraps at both ends (menu_handle_keypress)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  const rows: MenuItem[] = [
+    { label: "one" },
+    { label: "two" },
+    { label: "three" },
+  ];
+
+  it("down at the bottom lands on the first row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(30, 10);
+    const done = selectFromMenu(term, "Pick", rows);
+    press(win, "ArrowDown");
+    press(win, "ArrowDown");
+    press(win, "ArrowDown"); // off the end -> row 0
+    press(win, "Enter");
+    expect(await done).toBe(0);
+  });
+
+  it("up at the top lands on the last row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(30, 10);
+    const done = selectFromMenu(term, "Pick", rows);
+    press(win, "ArrowUp");
+    press(win, "Enter");
+    expect(await done).toBe(rows.length - 1);
+  });
+
+  it("skips disabled rows on the way round, both directions", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(30, 10);
+    const withGaps: MenuItem[] = [
+      { label: "head", disabled: true },
+      { label: "real" },
+      { label: "tail", disabled: true },
+    ];
+    const done = selectFromMenu(term, "Pick", withGaps);
+    /* Wrapping past two unselectable rows must come back to the only real one
+     * rather than sticking on a header or spinning. */
+    press(win, "ArrowDown");
+    press(win, "ArrowUp");
+    press(win, "Enter");
+    expect(await done).toBe(1);
+  });
+
+  it("a list of nothing but disabled rows does not hang", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(30, 10);
+    const done = selectFromMenu(term, "Pick", [
+      { label: "a", disabled: true },
+      { label: "b", disabled: true },
+    ]);
+    press(win, "ArrowDown");
+    press(win, "ArrowDown");
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+});
+
+describe("selectFromMenu: overlay mode draws a box over the map", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  /** A "map" to draw over: every row filled edge to edge. */
+  function paintMap(term: FakeTerm): void {
+    const { cols, rows } = term.size();
+    for (let y = 0; y < rows; y++) term.print(0, y, "#".repeat(cols), "#888888");
+  }
+
+  it("keeps the map to the LEFT of the box, and every row below it", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 14);
+    paintMap(term);
+    const done = selectFromMenu(
+      term,
+      "Cast which book?",
+      [{ label: "a Book of Magic Spells" }],
+      "[ ESC ]",
+      { overlay: true },
+    );
+    const shot = term.snapshot();
+    /* The prompt row is the header - upstream prints prompt AND legend there. */
+    expect(shot[0]).toContain("Cast which book?");
+    expect(shot[0]).toContain("[ ESC ]");
+    /* The one list row carries the book, and the map survives to its left. */
+    const listRow = shot[1] ?? "";
+    expect(listRow).toContain("a) a Book of Magic Spells");
+    expect(listRow.startsWith("#")).toBe(true);
+    /* And every row the box did not need is untouched dungeon - this is the
+     * whole point: the old picker cleared the terminal. */
+    for (let y = 2; y < 14; y++) expect(shot[y]).toBe("#".repeat(60));
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("without overlay it still clears, as every full-screen menu does", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 14);
+    paintMap(term);
+    const done = selectFromMenu(term, "Cast which book?", [{ label: "a Book" }]);
+    expect(term.snapshot()[5]).toBe("");
+    press(win, "Escape");
+    await done;
+  });
+
+  it("gives a header row its own line, so the list does not sit on it", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 14);
+    paintMap(term);
+    const done = selectFromMenu(term, "Cast which spell?", [{ label: "Magic Missile" }], "[ ESC ]", {
+      overlay: true,
+      subtitle: "Name                Lv Mana Fail",
+    });
+    const shot = term.snapshot();
+    expect(shot[1]).toContain("Lv Mana Fail");
+    expect(shot[2]).toContain("a) Magic Missile");
+    press(win, "Escape");
+    await done;
+  });
+});
+
+describe("selectFromMenu: a detail pane cannot squeeze the list away", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("keeps minListRows of the list and cuts the pane instead", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const items: MenuItem[] = [
+      { label: "Disable" },
+      { label: "Move earlier" },
+      { label: "Move later" },
+      { label: "Back" },
+    ];
+    /* A description longer than the terminal, which is what a real mod blurb is. */
+    const pane: ScreenLine[] = Array.from({ length: 40 }, (_, i) => ({ text: `line ${String(i)}` }));
+    const done = selectFromMenu(term, "neo-linoleum", items, "[ ESC ]", {
+      minListRows: items.length,
+      detail: () => pane,
+    });
+    const shot = term.snapshot().join("\n");
+    for (const it of items) expect(shot).toContain(it.label);
+    /* And the loss is stated rather than silent: the pane's last lines were the
+     * part that used to vanish off the bottom. */
+    expect(shot).toContain("more than fits here");
+    press(win, "Escape");
+    await done;
+  });
+});

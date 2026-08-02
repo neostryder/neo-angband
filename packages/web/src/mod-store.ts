@@ -735,11 +735,40 @@ function toCatalogMod(
  */
 export function buildCatalog(input: CatalogInput): CatalogMod[] {
   const enabledSet = new Set(input.enabled);
-  const all: CatalogMod[] = [
-    ...input.content.map((m) => toCatalogMod(m, "content", enabledSet, input.consents)),
-    ...input.sandbox.map((m) => toCatalogMod(m, "sandbox", enabledSet, input.consents)),
-    ...input.trusted.map((m) => toCatalogMod(m, "trusted", enabledSet, input.consents)),
-  ];
+  /**
+   * ONE ROW PER MOD, not one per way it loads.
+   *
+   * THE DEFECT. A mod may declare more than one facet, and qol and bug-fixes both
+   * declare `["content", "plugin"]`. discoverContentModManifests lists a hybrid
+   * "for its content facet" and folderPluginManifests lists it again for its
+   * plugin facet - each correctly, and each unaware of the other - so the three
+   * lists this merges contained the same manifest twice. Install all four mods and
+   * the manager showed six rows, two of them duplicates. The comment in pack.ts
+   * says "so the catalog does not double-count", which was true of the only case
+   * it could see: it keeps a PLUGIN-ONLY pack out of the content list. A hybrid
+   * belongs in both lists and is one mod, and nothing joined them back up.
+   *
+   * The row keeps the most privileged kind it was found under (trusted > sandbox >
+   * content), because that is the one that describes what enabling it does: a
+   * hybrid runs code in-process, and labelling it "(content)" understates it.
+   * `consented` does not depend on this - it is computed from the manifest's own
+   * capabilities either way - so the merge cannot loosen a consent gate.
+   */
+  const RANK: Record<ModKind, number> = { content: 0, sandbox: 1, trusted: 2 };
+  const byId = new Map<string, CatalogMod>();
+  for (const [kind, list] of [
+    ["content", input.content],
+    ["sandbox", input.sandbox],
+    ["trusted", input.trusted],
+  ] as const) {
+    for (const manifest of list) {
+      const row = toCatalogMod(manifest, kind, enabledSet, input.consents);
+      const prev = byId.get(row.id);
+      if (!prev) byId.set(row.id, row);
+      else if (RANK[row.kind] > RANK[prev.kind]) byId.set(row.id, row);
+    }
+  }
+  const all: CatalogMod[] = [...byId.values()];
   /* An id that is enabled and has no manifest anywhere: the mod was uninstalled,
    * or the game was reinstalled over a profile that still lists it. The game
    * goes on trying to load it on every boot, so the manager has to be able to

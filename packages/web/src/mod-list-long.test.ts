@@ -196,16 +196,39 @@ describe("a 30-row menu under a detail pane (display_scrolling, ui-menu.c:190-20
     /* Port-only territory: upstream's page_rows is never 1, and at that height its
      * two context-distance lines push `top` one PAST the cursor - painting the row
      * AFTER the selected one and nothing else. A geometry the C cannot reach still
-     * has to paint something true. */
+     * has to paint something true.
+     *
+     * `minListRows: 1` is now what ASKS for that geometry. The default reserves
+     * three rows of list (see the test below), which is the fix for a mod whose
+     * description left one action row on screen - but the one-row arithmetic is
+     * still reachable on a short terminal, so the invariant is still worth a test. */
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(60, 24);
-    void selectFromMenu(term, "Mods", ITEMS, "[ footer ]", { detail: () => paneOf(40) });
+    void selectFromMenu(term, "Mods", ITEMS, "[ footer ]", {
+      minListRows: 1,
+      detail: () => paneOf(40),
+    });
     expect(itemsOnScreen(term)).toEqual(["item-0"]);
     press(win, "ArrowDown");
     expect(itemsOnScreen(term)).toEqual(["item-1"]);
     press(win, "End");
     expect(itemsOnScreen(term)).toEqual(["item-29"]);
+  });
+
+  it("by default a pane cannot take the list below three rows", () => {
+    /* THE DEFECT, from play: neo-linoleum's description is a paragraph, and its
+     * own manager screen rendered as a title, one action row, and thirty lines of
+     * prose - with no way to reach Move earlier, Move later or Back, and no way to
+     * scroll the prose either. The pane is what has somewhere else to be read. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 24);
+    void selectFromMenu(term, "Mods", ITEMS, "[ footer ]", { detail: () => paneOf(40) });
+    expect(itemsOnScreen(term)).toEqual(["item-0", "item-1", "item-2"]);
+    /* And the cut is stated, not silent - the pane's last lines are where a mod's
+     * two permanent-once-on warnings live. */
+    expect(term.snapshot().some((l) => l.includes("more than fits here"))).toBe(true);
   });
 
   it("the pane is still on screen at every scroll position", () => {

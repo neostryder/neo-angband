@@ -1099,6 +1099,35 @@ export interface SelectMenuOptions {
   initialCursor?: number;
   /** Called with the cursor row on open and after every cursor move. */
   onHighlight?: (index: number) => void;
+  /**
+   * Draw OVER what is already on screen instead of clearing it, in a
+   * right-aligned box - upstream's item/spell picker (item_menu, ui-object.c
+   * L1198-1215).
+   *
+   * Upstream never blanks the map to ask which book you meant. `area.col` is
+   * `MIN(wid - 1 - max_len, prompt_size - 2)`, each row of the box is erased with
+   * `prt("", row, area.col - 1)` - which clears from that column rightwards and
+   * leaves the dungeon to its LEFT untouched - and `screen_save`/`screen_load`
+   * put back whatever the box covered. The port cleared the whole terminal for
+   * every picker, so casting a spell blanked the level.
+   *
+   * The legend moves onto the title row here, because upstream's box has no
+   * footer: `header` on row 0 is the prompt AND the key legend, and the rows
+   * below it are the list.
+   */
+  overlay?: boolean;
+  /**
+   * Rows of the LIST that must stay visible when a detail pane is competing for
+   * the same screen (default 3).
+   *
+   * The pane is sized from its own content, and `bodyRows` was whatever was left
+   * over with a floor of ONE. A mod whose description ran to thirty wrapped lines
+   * therefore produced a menu showing its first action row and nothing else -
+   * which is what neo-linoleum's manager screen looked like. The pane is the part
+   * that can afford to be cut here: it says so, and the caller offers the full
+   * text somewhere that scrolls.
+   */
+  minListRows?: number;
 }
 
 /**
@@ -1136,6 +1165,21 @@ export const MENU_OPTIONS = -2;
  */
 export const MENU_CLOSE = -3;
 
+/**
+ * A `commands` handler returns this to close the menu asking the caller to
+ * REBUILD and re-open it, rather than to act on a row.
+ *
+ * It exists for the mod manager's space-to-toggle: flipping a mod on changes its
+ * row's label, its colour, its detail pane and whether an "Apply changes" row
+ * belongs in the list at all, and none of those are things a menu holding a fixed
+ * `items` array can repaint. The caller's loop already rebuilds every pass, so
+ * the honest move is to let it. Paired with `initialCursor` and `onHighlight` the
+ * round trip is invisible: the same row is under the cursor when it comes back,
+ * which is the whole point (a toggle that threw the player back to the top of a
+ * thirty-mod list is what this replaced).
+ */
+export const MENU_REFRESH = -4;
+
 export function selectFromMenu(
   term: GlyphTerm,
   title: string,
@@ -1158,19 +1202,68 @@ export function selectFromMenu(
     const detail = extra?.detail;
     const toggleKey = extra?.detailToggleKey;
     const hasHints = items.some((it) => it.hint !== undefined);
+    const boxed = extra?.overlay === true;
     let detailShown = toggleKey ? (extra?.detailInitiallyShown ?? false) : true;
+    /* Where the overlay box starts, kept for the tap handler exactly as
+     * paintedBodyRows/listTop are: a tap has to land on the row it looks like it
+     * landed on, and in overlay mode the rows do not start at BODY_TOP. */
+    let boxCol = 0;
     const paint = (): void => {
       const { cols, rows } = term.size();
-      term.clear();
-      term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
-      if (extra?.subtitle) {
-        term.print(0, HEADER_ROW + 1, extra.subtitle.slice(0, cols - 1), DIM);
+      /* Upstream's header is the prompt AND the legend on one row (get_item builds
+       * `header` from both), because the box it opens has no footer line. */
+      const heading = boxed ? `${title} ${extra?.footer ?? footer}` : title;
+      /* menu_layout gives a menu with a `header` its own row, and the list starts
+       * below it (the spell menu's "Name Lv Mana Fail Info", ui-spell.c:250). Off
+       * screen that is BODY_TOP's spare row; in a box it has to be counted. */
+      const subtitleRow = extra?.subtitle ? 1 : 0;
+      if (boxed) {
+        /* max_len over the rows we are about to draw - the header included, since
+         * it sits inside the box - then the same clamp upstream applies: right-
+         * align to fit, but never push the box past the prompt's own end, and give
+         * up on the offset entirely once it is down to a few columns. */
+        const widest = items.reduce(
+          (w, it) => Math.max(w, 3 + it.label.length),
+          extra?.subtitle?.length ?? 0,
+        );
+        boxCol = Math.min(cols - 1 - widest, heading.length - 2);
+        if (boxCol <= 3) boxCol = 0;
+        term.eraseToEol(0, HEADER_ROW);
+      } else {
+        boxCol = 0;
+        term.clear();
       }
-      const detailLines = detail && detailShown ? detail(cursor) : [];
+      term.print(0, HEADER_ROW, heading.slice(0, cols - 1), TITLE);
+      if (extra?.subtitle) {
+        const at = boxed ? boxCol : 0;
+        if (boxed) term.eraseToEol(Math.max(0, boxCol - 1), HEADER_ROW + 1);
+        term.print(at, HEADER_ROW + 1, extra.subtitle.slice(0, cols - 1 - at), DIM);
+      }
       const hintRows = hasHints ? 1 : 0;
-      const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length - hintRows);
+      /* THE PANE IS WHAT GIVES WAY, not the list.
+       *
+       * bodyRows was "whatever the pane leaves, floor of one", so a long enough
+       * detail pane left a menu one row tall. Reserve the list's rows first and
+       * hand the pane the remainder; a pane that does not fit is cut with a line
+       * saying so, because silently dropping its last lines loses the end - and
+       * the end of a mod's pane is where the two permanent-once-on warnings are. */
+      const listFloor = Math.min(items.length, Math.max(1, extra?.minListRows ?? 3));
+      const paneRoom = Math.max(0, rows - BODY_TOP - 1 - hintRows - listFloor);
+      const wanted = detail && detailShown ? detail(cursor) : [];
+      const detailLines =
+        wanted.length <= paneRoom
+          ? wanted
+          : paneRoom >= 1
+            ? [...wanted.slice(0, paneRoom - 1), { text: "...  (more than fits here)", color: DIM }]
+            : [];
+      listTop = boxed ? HEADER_ROW + 1 + subtitleRow : BODY_TOP;
+      /* In a box the list is `area.page_rows = m->count` (ui-object.c:1199) - as
+       * tall as it needs to be and no taller, so the map keeps every row the
+       * picker does not want. Off screen it fills what is left. */
+      const bodyRows = boxed
+        ? Math.max(1, Math.min(items.length, rows - listTop - detailLines.length - hintRows))
+        : Math.max(1, rows - BODY_TOP - 1 - detailLines.length - hintRows);
       paintedBodyRows = bodyRows;
-      listTop = BODY_TOP;
       /* display_scrolling (ui-menu.c:190-200). The port had only the two
        * cursor-chasing tests, and was missing both context rows AND the clamp:
        *
@@ -1212,13 +1305,16 @@ export function selectFromMenu(
           : i === cursor
             ? (extra?.cursorColor ?? CURSOR)
             : it.color ?? FG;
-        term.print(0, BODY_TOP + r, `${prefix}${it.label}`.slice(0, cols - 1), color);
+        /* `prt("", row, area.col - 1)` (ui-object.c:1213): clear the box's own
+         * columns and everything right of them, and nothing to the left. */
+        if (boxed) term.eraseToEol(Math.max(0, boxCol - 1), listTop + r);
+        term.print(boxCol, listTop + r, `${prefix}${it.label}`.slice(0, cols - 1 - boxCol), color);
         /* display_rune's second field: its own colour at its own column. */
         const sfx = it.suffix;
         if (sfx && sfx.text.length > 0 && sfx.col < cols - 1) {
           term.print(
             sfx.col,
-            BODY_TOP + r,
+            listTop + r,
             sfx.text.slice(0, cols - 1 - sfx.col),
             it.disabled ? DIM : sfx.color,
           );
@@ -1227,13 +1323,14 @@ export function selectFromMenu(
       // Term_gotoxy on the selected row (display_scrolling, ui-menu.c:212-213):
       // the yellow frame the Windows front end draws for the cursor.
       if (cursor >= top && cursor < top + bodyRows) {
-        term.setCursor?.(0, BODY_TOP + (cursor - top));
+        term.setCursor?.(boxCol, listTop + (cursor - top));
       }
-      let dy = BODY_TOP + bodyRows;
+      let dy = listTop + bodyRows;
       for (const line of detailLines) {
-        if (dy >= rows - 1 - hintRows) break;
+        if (dy >= rows - (boxed ? 0 : 1) - hintRows) break;
+        if (boxed) term.eraseToEol(Math.max(0, boxCol - 1), dy);
         if (line.runs) {
-          let x = 0;
+          let x = boxCol;
           for (const run of line.runs) {
             if (x >= cols - 1) break;
             const chunk = run.text.slice(0, cols - 1 - x);
@@ -1241,15 +1338,18 @@ export function selectFromMenu(
             x += chunk.length;
           }
         } else {
-          term.print(0, dy, line.text.slice(0, cols - 1), line.color ?? FG);
+          term.print(boxCol, dy, line.text.slice(0, cols - 1 - boxCol), line.color ?? FG);
         }
         dy++;
       }
       if (hasHints) {
         const hint = items[cursor]?.hint ?? "";
+        if (boxed) term.eraseToEol(0, rows - 2);
         if (hint) term.print(0, rows - 2, hint.slice(0, cols - 1), DIM);
       }
-      term.print(0, rows - 1, (extra?.footer ?? footer).slice(0, cols - 1), DIM);
+      /* No footer row in overlay mode: the legend is already on the title row,
+       * and a bar across the bottom of the map is the thing this avoids. */
+      if (!boxed) term.print(0, rows - 1, (extra?.footer ?? footer).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
@@ -1272,11 +1372,55 @@ export function selectFromMenu(
       finish(i);
     };
     const commands = extra?.commands;
-    const moveUp = (): void => {
-      for (let i = cursor - 1; i >= 0; i--) if (!items[i]?.disabled) { setCursor(i); return; }
+    /**
+     * One row along, skipping unselectable rows - and WRAPPING at both ends when
+     * asked, which is what upstream does.
+     *
+     * menu_handle_keypress (ui-menu.c) lets scroll_process_direction step the
+     * cursor off the end and then fixes it up:
+     *
+     *   while (!is_valid_row(menu, menu->cursor)) {
+     *     if (menu->cursor > count - 1)  menu->cursor = 0;
+     *     else if (menu->cursor < 0)     menu->cursor = count - 1;
+     *     else                           menu->cursor += ddy[dir];
+     *   }
+     *
+     * `is_valid_row` returns false for an out-of-range cursor, so the same loop
+     * that steps over a disabled row is what makes down-at-the-bottom land on the
+     * first row and up-at-the-top land on the last. The port stopped dead at both
+     * ends, which on a list taller than the screen means the only way back to the
+     * top is to hold a key down.
+     *
+     * Page movement does NOT wrap: it is a port addition (the scroll skin has no
+     * page direction) and a page that wraps turns "show me the rest" into an
+     * endless cycle.
+     */
+    const step = (from: number, dir: 1 | -1, wrap: boolean): number => {
+      const n = items.length;
+      let i = from;
+      for (let tried = 0; tried < n; tried++) {
+        i += dir;
+        if (i >= n) {
+          if (!wrap) return from;
+          i = 0;
+        } else if (i < 0) {
+          if (!wrap) return from;
+          i = n - 1;
+        }
+        if (!items[i]?.disabled) return i;
+      }
+      return from;
     };
-    const moveDown = (): void => {
-      for (let i = cursor + 1; i < items.length; i++) if (!items[i]?.disabled) { setCursor(i); return; }
+    const moveUp = (): void => setCursor(step(cursor, -1, true));
+    const moveDown = (): void => setCursor(step(cursor, 1, true));
+    const pageBy = (dir: 1 | -1): void => {
+      let i = cursor;
+      for (let r = 0; r < paintedBodyRows; r++) {
+        const next = step(i, dir, false);
+        if (next === i) break;
+        i = next;
+      }
+      setCursor(i);
     };
     const toHome = (): void => {
       for (let i = 0; i < items.length; i++) if (!items[i]?.disabled) { setCursor(i); return; }
@@ -1334,7 +1478,12 @@ export function selectFromMenu(
             : commands[ev.key];
         if (cmd) {
           const res = cmd(cursor);
-          if (typeof res === "number") pick(res);
+          /* Checked BEFORE the `typeof res === "number"` branch, because the
+           * sentinel is a number and pick() would silently treat it as a row
+           * index that does not exist - a no-op the caller could not tell from a
+           * key that never arrived. */
+          if (res === MENU_REFRESH) finish(MENU_REFRESH);
+          else if (typeof res === "number") pick(res);
           return;
         }
       }
@@ -1378,8 +1527,8 @@ export function selectFromMenu(
       if (nav) {
         if (nav === "up") moveUp();
         else if (nav === "down") moveDown();
-        else if (nav === "pageup") for (let i = 0; i < paintedBodyRows; i++) moveUp();
-        else if (nav === "pagedown") for (let i = 0; i < paintedBodyRows; i++) moveDown();
+        else if (nav === "pageup") pageBy(-1);
+        else if (nav === "pagedown") pageBy(1);
         else if (nav === "home") toHome();
         else if (nav === "end") toEnd();
         paint();
@@ -1397,7 +1546,10 @@ export function selectFromMenu(
     // so it never leaks into the game underneath or a sibling modal.
     term.onCellTap?.((cell) => {
       const { rows } = term.size();
-      if (cell.row === rows - 1) {
+      /* Only where there IS a footer. In overlay mode the bottom row is the map,
+       * and cancelling the picker because a finger landed on the dungeon floor
+       * is a tap doing the opposite of what it looks like. */
+      if (!boxed && cell.row === rows - 1) {
         finish(null);
         return;
       }
@@ -1417,6 +1569,7 @@ export function selectFromMenu(
     paint();
   });
 }
+
 
 /** One source (command_wrk) of the get_item picker: its upstream label
  * ("Inven" | "Equip" | "Quiver" | "Floor") and the lettered rows it offers
