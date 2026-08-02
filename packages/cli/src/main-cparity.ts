@@ -1,11 +1,28 @@
 /**
- * `c-parity` dev tool: run the TS port's stats over the same depth range as the
- * committed C baseline (baseline/c-stats-baseline.json) and print the
- * distribution diff (rates, statistical tolerance, C-covered metrics only).
+ * `c-parity` dev tool: where the port's generation distributions sit relative to
+ * the committed C baseline (baseline/c-stats-baseline.json), per depth, per
+ * metric.
  *
- * This is the human-facing view of the same comparison the parity-c vitest
- * asserts. Usage:
- *   node dist/main-cparity.js [runs] [depthMax]
+ * **THIS IS A DIAGNOSTIC AND NOT THE PARITY GATE.** It compares means against a
+ * fixed +/-tolerance band, which is an instrument that cannot tell a real
+ * divergence from an under-sampled one - the exact reason
+ * `parity-c-stat.test.ts` replaced it. Per-level monster count has a standard
+ * deviation near 17 on a mean near 46, so at this tool's default 30 runs the
+ * band is well inside one standard error and it duly reports a hundred-odd
+ * "failures" that are sampling noise. It printed `parity: FAIL` while doing so,
+ * which is a verdict it has no power to reach; it now reports a count and says
+ * what the count means.
+ *
+ * The gate is:
+ *
+ *   NEO_PARITY_RUNS=1000 npx vitest run packages/cli/src/parity-c-stat.test.ts
+ *
+ * - hypothesis tests, Bonferroni-corrected across the family, alpha = 0.01.
+ *
+ * What this tool is still good for: once the gate says something is wrong,
+ * seeing WHERE - which depth, which metric, in which direction.
+ *
+ * Usage: node dist/main-cparity.js [runs] [depthMax]
  */
 
 import { pathToFileURL } from "node:url";
@@ -57,11 +74,27 @@ function main(): void {
     recordKeys: C_RECORD_METRICS,
   });
   process.stdout.write(
-    `C-vs-TS parity (runs=${runs}, depths ${cbase.meta.depthMin}..${depthMax}, ` +
-      `rate tol abs=${STATISTICAL_TOLERANCE.abs} rel=${STATISTICAL_TOLERANCE.rel})\n`,
+    `C-vs-TS distribution diff - A DIAGNOSTIC, NOT THE PARITY GATE.\n` +
+      `port runs=${runs}, C baseline runs=${cbase.meta.runs ?? "?"}, ` +
+      `depths ${cbase.meta.depthMin}..${depthMax}, ` +
+      `band abs=${STATISTICAL_TOLERANCE.abs} rel=${STATISTICAL_TOLERANCE.rel}\n\n`,
   );
-  process.stdout.write(formatCompareResult(result) + "\n");
-  process.stdout.write(`total out-of-tolerance: ${result.diffs.length}\n`);
+  /* Strip the verdict line the shared formatter opens with. It is correct for
+   * the port-vs-port baseline that formatter also serves - that comparison is
+   * zero-tolerance against the port's own last-accepted output, so a diff there
+   * IS a regression - and it is wrong here, where a diff is as likely to be the
+   * sample size as the generator. */
+  const body = formatCompareResult(result).replace(/^parity: (FAIL|OK[^\n]*)\n?/u, "");
+  if (body.trim()) process.stdout.write(body + "\n\n");
+  process.stdout.write(
+    `${result.diffs.length} metric(s) outside the band at ${runs} runs.\n` +
+      `This number is NOT a defect count. A fixed band cannot separate a real\n` +
+      `divergence from sampling noise: per-level monster count has an sd near 17\n` +
+      `on a mean near 46, so +/-2 is about one standard error at 100 levels.\n\n` +
+      `The gate, which states its own resolving power and corrects for the\n` +
+      `family size, is:\n` +
+      `  NEO_PARITY_RUNS=1000 npx vitest run packages/cli/src/parity-c-stat.test.ts\n`,
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
