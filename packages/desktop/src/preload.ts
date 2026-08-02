@@ -30,6 +30,8 @@ import {
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
+  LOG_CHANNEL,
+  REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
@@ -45,7 +47,7 @@ function platformInfo(): HostBridgeInfo {
   }
   /* The channel is not there, so this is not the shell we think it is. Report
    * no argv rather than an empty-but-supported one. */
-  return { argv: [], ...HOST_SHELL_LIMITS, dataDir: "", portable: false };
+  return { argv: [], ...HOST_SHELL_LIMITS, dataDir: "", portable: false, logsDir: "" };
 }
 
 const info = platformInfo();
@@ -65,6 +67,29 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   dataDir: info.dataDir,
   portable: info.portable,
+  /** Where this launch's log went, so the report screen can name the folder. */
+  logsDir: info.logsDir,
+
+  /**
+   * Post a batch of already-rendered log lines to the file.
+   *
+   * `send`, not `invoke`: nothing is waiting on the answer, and a round trip per
+   * line would put the renderer's frame time at the mercy of a disk. The
+   * renderer batches on a timer (LOG_FLUSH_MS) and this is the one call.
+   */
+  log(lines: readonly string[]): void {
+    ipcRenderer.send(LOG_CHANNEL, lines);
+  },
+
+  /**
+   * Write a problem report and answer where it went.
+   *
+   * This one DOES have a waiting caller: the screen has to print the path, and a
+   * report the player cannot find is a report nobody receives.
+   */
+  writeReport(text: string): Promise<unknown> {
+    return ipcRenderer.invoke(REPORT_CHANNEL, text) as Promise<unknown>;
+  },
   /**
    * textui_quit (ui-game.c:199): leave the program.
    *

@@ -34,6 +34,10 @@
       "types": "./dist/host/index.d.ts",
       "default": "./dist/host/index.js"
     },
+    "./log": {
+      "types": "./dist/log.d.ts",
+      "default": "./dist/log.js"
+    },
     "./package.json": "./package.json"
   },
   "//files": [

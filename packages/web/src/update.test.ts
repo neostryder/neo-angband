@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { defaultLogLevel } from "@rpgm-tools/neo-angband-core/log";
 import {
   CHANNEL_KEY,
   checkForUpdate,
@@ -219,10 +220,52 @@ describe("channels", () => {
     expect(decideUpdate("1.1.1-edge.9", [nine, ten], WIN, "early")?.version).toBe("1.1.1-edge.10");
   });
 
+  it("offers a PATCH on beta, so the minor-bump rule is policy and not a workaround", () => {
+    /*
+     * docs/RELEASING.md asks for a MINOR whenever a tester should hear about the
+     * change, and the reason has to stay a reason: a version number is the only
+     * thing a tester can quote back. It is NOT that a patch cannot reach them.
+     *
+     * The channel filters on the pre-release FLAG, so `0.16.1` published with
+     * --prerelease is offered to `0.16.0` exactly like `0.17.0` would be. If this
+     * test ever fails, the rule has quietly become a mechanism and the paragraph
+     * explaining it is wrong.
+     */
+    const patch = release({
+      tag: "v0.16.1",
+      version: "0.16.1",
+      prerelease: true,
+      assets: [asset("Neo.Angband-0.16.1-win.zip")],
+    });
+    expect(releasesIn("beta", [patch]).map((r) => r.version)).toEqual(["0.16.1"]);
+    expect(decideUpdate("0.16.0", [patch], WIN, "beta")?.version).toBe("0.16.1");
+    /* ...and from an edge build too, which is where a tester on `early` sits. */
+    expect(decideUpdate("0.16.1-edge.7", [patch], WIN, "beta")?.version).toBe("0.16.1");
+  });
+
   it("recognises an edge build by its version, not by a label somebody can edit", () => {
     expect(isEdgeRelease(edge)).toBe(true);
     expect(isEdgeRelease(beta)).toBe(false);
     expect(EDGE_MARKER).toBe("-edge.");
+  });
+
+  it("agrees with the log about which builds are not finished", () => {
+    /*
+     * Two functions, one fact. `defaultChannel` decides where a fresh install
+     * looks for updates and `defaultLogLevel` decides how much that build says
+     * about itself, and both are reading "is this a finished release" out of the
+     * same version string. They are in different packages and neither imports
+     * the other, so nothing but this test stops one being changed at 1.0.0 and
+     * the other being noticed a release later.
+     *
+     * The relationship, stated so it can fail: a build logs quietly ONLY when a
+     * fresh install of it would default to `stable` AND it is not a per-commit
+     * build. An edge build off a 1.x line is the case that separates them.
+     */
+    for (const v of ["0.1.0", "0.16.0", "0.16.1-edge.2", "1.0.0", "1.0.1-edge.3", "2.3.4"]) {
+      const finished = defaultChannel(v) === "stable" && !v.includes(EDGE_MARKER);
+      expect(defaultLogLevel(v), v).toBe(finished ? "warn" : "info");
+    }
   });
 
   it("starts a 0.x install on beta, because stable is empty until 1.0", () => {
