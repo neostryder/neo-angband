@@ -1,10 +1,16 @@
 {
   "name": "@rpgm-tools/neo-angband-desktop",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
+  "homepage": "https://github.com/neostryder/neo-angband",
+  "desktopName": "neo-angband.desktop",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neostryder/neo-angband.git"
+  },
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
