@@ -1,6 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
-import { helpCommandLines, helpSymbolLines, helpGuideLines, runHelp } from "./help";
+import {
+  helpCommandLines,
+  helpCommunityLines,
+  helpGuideLines,
+  helpIndexLabels,
+  helpSymbolLines,
+  runHelp,
+} from "./help";
+import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 // main.ts's own keydown handler is the ground truth for which keys this port
@@ -80,15 +88,64 @@ describe("helpGuideLines (curated orientation page)", () => {
 });
 
 describe("RNG invariance", () => {
-  it("help.ts never imports the core RNG (pure display, no game-random draw)", () => {
-    expect(HELP_TS_SOURCE).not.toContain("@rpgm-tools/neo-angband-core");
-    expect(HELP_TS_SOURCE).not.toMatch(/\bRng\b/);
+  /*
+   * This used to be "help.ts contains no mention of the core package at all",
+   * which is a proxy for the real guarantee - pure display, no draw, no game
+   * state - and the proxy broke the day the reporting page needed to print the
+   * build version. Widening it to "any core import is fine" would give up the
+   * guarantee; so the check names the ONE symbol allowed through and is derived
+   * from the import line itself, which cannot silently grow a second entry.
+   */
+  it("reaches into the engine for the version string and nothing else", () => {
+    const imports = [
+      ...HELP_TS_SOURCE.matchAll(
+        /import\s*\{([^}]*)\}\s*from\s*"@rpgm-tools\/neo-angband-core"/gu,
+      ),
+    ].flatMap((m) => (m[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+    expect(imports).toEqual(["ENGINE_VERSION"]);
+  });
+
+  it("never touches the RNG or live game state", () => {
+    expect(HELP_TS_SOURCE).not.toMatch(/\bRng\b/u);
+    expect(HELP_TS_SOURCE).not.toMatch(/\bMath\.random\b/u);
+    expect(HELP_TS_SOURCE).not.toMatch(/\bGameState\b/u);
   });
 
   it("content builders are deterministic across repeated calls", () => {
     expect(helpCommandLines()).toEqual(helpCommandLines());
     expect(helpSymbolLines()).toEqual(helpSymbolLines());
     expect(helpGuideLines()).toEqual(helpGuideLines());
+    expect(helpCommunityLines()).toEqual(helpCommunityLines());
+  });
+});
+
+describe("the help page that tells a player where to go", () => {
+  const text = (): string => helpCommunityLines().map((l) => l.text).join("\n");
+
+  it("carries all three routes and the version they will be asked for", () => {
+    const t = text();
+    expect(t).toContain("discord.gg/YegtwbHTBQ");
+    expect(t).toContain("github.com/neostryder/neo-angband/issues");
+    expect(t).toContain("strider-angband (at) rpgm.tools");
+    expect(t).toContain(ENGINE_VERSION);
+  });
+
+  it("keeps the address unscrapeable", () => {
+    /* The whole point of writing it the long way: a person reads it, a scraper
+     * walking the built page for `mailto:` or `user@host` does not. */
+    expect(text()).not.toMatch(/@/u);
+  });
+
+  it("fits the 80-column terminal", () => {
+    /* showTextScreen slices at cols - 1 and these lines are hand-laid, not
+     * wrapped - a URL that runs over loses its end and stops being a URL. */
+    for (const line of helpCommunityLines()) {
+      expect(line.text.length, `too long: ${line.text}`).toBeLessThanOrEqual(79);
+    }
+  });
+
+  it("is reachable from the help index", () => {
+    expect(helpIndexLabels().some((l) => /wrong/iu.test(l))).toBe(true);
   });
 });
 

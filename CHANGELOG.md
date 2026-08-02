@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.15.0`. High level, what exists today:
+Current state of the project at version `0.15.1`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
@@ -207,8 +207,27 @@ Documentation accuracy:
   Borg from the tree is what surfaced it. A whole sentence is also the unit
   translation needs.
 
+### Fixed
+
+- **The Linux build could not name its own executable.** The first run of the
+  release workflow built Windows and macOS and failed on Linux with
+  *"executableName contains characters that cannot be safely used in file
+  paths: @rpgm-toolsneo-angband-desktop"* - electron-builder derives that name
+  from the package `name`, and ours is scoped. Windows and macOS take theirs
+  from `productName`, which is exactly why nobody found it: two thirds of the
+  matrix went green and the draft release looked plausible until you counted the
+  files in it. `linux.executableName` is set now, and
+  `packages/desktop/src/packaging.test.ts` checks it in a second rather than
+  twenty minutes into a tag.
+
 ### Changed
 
+- **The game itself says where to get help.** A fourth page under `?`:
+  the version you are running, the Discord, the issue tracker, the contact
+  address, what makes a report useful, and the promise that saves survive an
+  update. Every one of those lived only in a README that a player who
+  downloaded a build has never opened, and `?` is where someone goes when they
+  are stuck.
 - **The mods screen speaks English, and fits.** The row for a mod was built by
   concatenation and then SLICED at column 80 by the menu, so a mod called "Bug
   Fixes (unofficial patch set)" with both save ratchets set built an 85-column
