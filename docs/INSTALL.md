@@ -340,8 +340,11 @@ all on Apple Silicon, where an entirely unsigned binary is refused by the kernel
 and reported as *"damaged"*.
 
 **Apple Silicon: take the arm64 build.** The release page carries both, and the
-Intel one runs on an M-series Mac through Rosetta 2 - it works and it is slower.
-If you are not sure which you have, open **Activity Monitor** while the game is
+x64 one is for Intel Macs. It is not a fallback: Apple is withdrawing Rosetta 2,
+**macOS 27 removes it during installation** (it can be reinstalled on demand) and
+macOS 28 drops it for everything but a named set of old games - so on a current
+Mac the Intel build is likelier to refuse to launch than to run slowly. If you
+are not sure which one you took, open **Activity Monitor** while the game is
 running and look at the **Kind** column: it should say *Apple*, not *Intel*.
 
 ### What the desktop build adds

@@ -8,15 +8,21 @@
  * which Gatekeeper will let a user past. On Apple Silicon it is fatal: arm64
  * Mach-O binaries must carry AT LEAST an ad-hoc signature or the kernel refuses
  * to run them, and macOS reports that as `"Neo Angband" is damaged and can't be
- * opened. You should move it to the Trash.` - which reads as a corrupt download,
- * so the next thing anyone does is fetch the Intel build instead and run the
- * whole game through Rosetta.
+ * opened. You should move it to the Trash.` - which reads as a corrupt download.
  *
- * That is a suspected cause of the "each move has a many milliseconds lag on an
- * M4" report, and it is UNCONFIRMED: this project has no Mac to reproduce on.
- * What is not in doubt is that shipping an arm64 app with no signature of any
- * kind is wrong on its own terms, so it is fixed whether or not it was the
- * cause. Electron's own prebuilt binary arrives ad-hoc signed and electron-builder
+ * THIS FIXES A LAUNCH DEFECT AND NOT A SPEED ONE, which is a correction to what
+ * this comment said first. The original argument was that the "damaged" dialog
+ * sends people to the Intel build, so they end up running the whole game under
+ * Rosetta and file a report about lag on an M4 - a signing fault wearing a
+ * performance costume. That chain needs Rosetta 2 to exist, and Apple is taking
+ * it away: macOS 27 removes it during installation and macOS 28 keeps it only
+ * for a named set of old games. On such a Mac the Intel build does not run
+ * slowly, it does not run, so the lag was the arm64 build going at its own
+ * speed - see the renderer's paint-count ratchet for the thing that was actually
+ * costing the frames. Shipping an arm64 app with no signature of any kind is
+ * wrong on its own terms, which is reason enough for this hook.
+ *
+ * Electron's own prebuilt binary arrives ad-hoc signed and electron-builder
  * invalidates that signature the moment it rewrites Info.plist and adds
  * resources, so re-signing after packaging is the only place this can go.
  *
