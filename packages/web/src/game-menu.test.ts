@@ -102,7 +102,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     const actions = entries.map((e) => e.action);
     for (const required of [
       "resume", "character", "inventory", "equipment", "messages",
-      "knowledge", "save", "options", "help", "switch", "new", "exit",
+      "knowledge", "save", "options", "help", "report", "switch", "new", "exit",
     ]) {
       expect(actions).toContain(required);
     }
@@ -113,6 +113,16 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       expect(e.item.hint!).toMatch(ASCII);
     }
     expect(GAME_MENU_FOOTER).toMatch(ASCII);
+  });
+
+  it("promises on the report row itself that nothing is sent", () => {
+    /* The menu row is where a player decides whether to press it, so the promise
+     * has to be there and not only on the screen behind it. If the feature ever
+     * grows an uploader, this hint is one of the two places that stops being
+     * true - and it should have to be deleted deliberately. */
+    const row = gameMenuEntries().find((e) => e.action === "report");
+    expect(row?.item.label).toBe("Report a problem");
+    expect(row?.item.hint).toContain("Nothing is sent anywhere");
   });
 
   it("every row is reachable by its letter", async () => {

@@ -53,6 +53,35 @@ export const UPDATE_CHANNEL = "neo-update";
 /** Download progress, pushed to the renderer while UPDATE_CHANNEL is working. */
 export const UPDATE_PROGRESS_CHANNEL = "neo-update-progress";
 
+/**
+ * Renderer log lines, on their way to the file (`send`, never `invoke`).
+ *
+ * FIRE AND FORGET, AND BATCHED, for the same reason the filesystem bridge is
+ * the opposite. z-file.c blocks because its callers are written for a call that
+ * has finished; a log line has no caller waiting on it, and making one round
+ * trip per line would put the renderer's frame time at the mercy of a disk. The
+ * renderer sends an ARRAY on a timer - see LOG_FLUSH_MS.
+ */
+export const LOG_CHANNEL = "neo-log";
+
+/**
+ * How long the renderer holds lines before sending them.
+ *
+ * Long enough that a burst is one message, short enough that the lines
+ * describing a crash are already on disk when it happens. A quarter of a second
+ * is roughly one player action; anything the game says about a keypress reaches
+ * the file before the next one.
+ */
+export const LOG_FLUSH_MS = 250;
+
+/**
+ * Write a problem report and answer where it went (`invoke`).
+ *
+ * Separate from LOG_CHANNEL because this one has an answer the player needs -
+ * the path. A report they cannot find is a report nobody receives.
+ */
+export const REPORT_CHANNEL = "neo-report";
+
 /** What the renderer may ask the updater to do. */
 export type UpdateOp = "shape" | "download" | "apply" | "reveal";
 
@@ -80,6 +109,16 @@ export interface HostBridgeInfo {
   readonly dataDir: string;
   /** True when the tree travels with the install rather than with the user. */
   readonly portable: boolean;
+  /**
+   * The folder this launch's log went into, and where a report will go.
+   *
+   * Sent rather than derived from `dataDir` in the renderer, because joining a
+   * path there means picking a separator in a process that does not have
+   * `node:path` and cannot be sure which one this machine uses. The main process
+   * already knows; one more string on a message that is sent once is cheaper
+   * than a renderer guessing at `\` versus `/`.
+   */
+  readonly logsDir: string;
 }
 
 /**

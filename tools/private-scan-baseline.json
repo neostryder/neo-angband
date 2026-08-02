@@ -62,9 +62,27 @@
     },
     {
       "rule": "user-home-path",
+      "path": "packages/core/src/log.test.ts",
+      "count": 6,
+      "why": "Invented fixture homes for elideHome (C:Userssomebody, /home/somebody) in the three spellings it has to match."
+    },
+    {
+      "rule": "user-home-path",
+      "path": "packages/core/src/log.ts",
+      "count": 1,
+      "why": "An invented example path in elideHome's comment - the whole point of that function is to take a home directory OUT of a report."
+    },
+    {
+      "rule": "user-home-path",
       "path": "packages/desktop/src/data-dir.test.ts",
       "count": 1,
       "why": "An invented AppImage location ('/home/somebody/Games/...') checking that data lands beside the file rather than in its /tmp mount point. No real account is named."
+    },
+    {
+      "rule": "user-home-path",
+      "path": "packages/web/src/report.test.ts",
+      "count": 1,
+      "why": "An invented fixture home, asserting a report does NOT carry the player's own name out of a Windows path."
     }
   ]
 }

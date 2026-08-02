@@ -316,6 +316,7 @@ import {
   getChar,
   getFile,
   getQuantity,
+  getString,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
@@ -457,10 +458,21 @@ import {
   updaterBridge,
   writeChannel,
 } from "./update";
-import type { AvailableUpdate, UpdateChannel } from "./update";
+import type { AvailableUpdate, UpdateChannel, UpdaterBridge } from "./update";
 import { updateFooter, updateLines } from "./update-ui";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
+import { installLogSinks, log, setLogLevel } from "./logging";
+import { formatLogLine, LOG_LEVELS, LOG_RING_DEFAULT } from "@rpgm-tools/neo-angband-core/log";
+import { WEB_BUILD_ID } from "./build-id";
+import {
+  REPORT_DESCRIPTION_LINES,
+  REPORT_LOG_LINES,
+  reportFooter,
+  reportLines,
+  reportText,
+} from "./report";
+import type { ReportCharacter, ReportInput, ReportLine, ReportShell, ReportView } from "./report";
 import {
   TRANSFER_EXT,
   decodeTransfer,
@@ -474,6 +486,18 @@ import {
 // installs first. No on-screen build stamp or network "commits behind" fetch -
 // those were removed for parity (audit 05 FEAT-3): the base game shows nothing
 // that upstream Angband does not.
+/*
+ * The log, before the first thing that could want to write to it.
+ *
+ * FIRST, ahead of the host layer and the update check, because the records that
+ * explain a boot failure are written during boot: a log attached afterwards
+ * would be attached after everything interesting had already happened. The level
+ * is chosen from ENGINE_VERSION inside logging.ts and is already right here;
+ * nothing corrects it later.
+ */
+const flushLog = installLogSinks();
+log.info("boot", `Neo Angband ${ENGINE_VERSION}`, { level: log.level });
+
 /** True only while the title screen is the thing on the screen. */
 let titleUp = false;
 /* A NEW BUILD IS TAKEN SILENTLY ONLY WHERE THE PLAYER CANNOT TELL. At the title
@@ -5482,6 +5506,9 @@ async function gameMenuOnce(): Promise<boolean> {
     case "help":
       await runHelp(term);
       break;
+    case "report":
+      await showReportPage();
+      break;
     case "abilities":
       await showAbilities(term, playerAbilities(state, {
         properties: players.properties,
@@ -8693,6 +8720,245 @@ const UPDATE_TONE: Record<UpdateLine["tone"], string> = {
   good: UI_GOOD,
   warn: UI_BAD,
 };
+
+/** Tones to this shell's palette, so report.ts stays free of the terminal. */
+const REPORT_TONE: Record<ReportLine["tone"], string> = {
+  head: UI_GOLD,
+  body: UI_TEXT,
+  dim: UI_DIM,
+  good: UI_GOOD,
+  warn: UI_BAD,
+};
+
+/** Which front end this is, in the words the report screen uses. */
+function reportShell(): ReportShell {
+  if (desktopBridge !== null) return "desktop";
+  return isStandalone() ? "installed" : "browser";
+}
+
+/**
+ * A string off the `neoDesktop` global, or null in a browser.
+ *
+ * `neoDesktop`, NOT the host bridge - the same two-globals trap the updater fell
+ * into, where an optional property on the wrong object reads as `undefined`
+ * rather than as an error and the feature is simply never on.
+ */
+function desktopString(key: string): string | null {
+  const desktop = (globalThis as Record<string, unknown>)["neoDesktop"];
+  if (desktop === null || typeof desktop !== "object") return null;
+  const v = (desktop as Record<string, unknown>)[key];
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+/** Where this launch writes its log and its reports. Null in a browser. */
+function desktopLogsDir(): string | null {
+  return desktopString("logsDir");
+}
+
+/** The install's data folder, used only to take it back out of a report. */
+function desktopDataDir(): string | null {
+  return desktopString("dataDir");
+}
+
+/**
+ * The mods that are ON, with their versions.
+ *
+ * Wrapped in a try because a report must survive a broken mod set - which is
+ * very often the reason somebody is filing one.
+ */
+function enabledModSummary(): { id: string; version: string }[] {
+  try {
+    const enabled = defaultModStore().getEnabled();
+    if (enabled.length === 0) return [];
+    /* Re-read the registries rather than close over the boot-time ones: those
+     * are block-scoped inside the auto-install try, and reaching them from here
+     * would mean widening their scope for a report. Discovery is a walk over
+     * static maps, so asking again costs nothing. */
+    const sandbox = discoverPlugins();
+    const trusted = discoverTrustedPlugins();
+    return enabled.map((id) => ({
+      id,
+      /* An enabled mod whose plugin has gone is exactly the state worth
+       * reporting, so it appears in the list saying so rather than vanishing
+       * from it. */
+      version: sandbox.get(id)?.manifest.version ?? trusted.get(id)?.manifest.version ?? "(not installed)",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Everything about this launch that a report should carry, gathered at the
+ * moment the player presses ENTER rather than when the screen opened.
+ *
+ * Gathered here and not in report.ts because every one of these is a live
+ * reading off a global - the terminal's size, the window's dpr, the character
+ * currently in play. report.ts stays a pure function over them so the text can
+ * be asserted, which is the only part anybody outside this project ever sees.
+ */
+function reportInput(description: readonly string[]): ReportInput {
+  const { cols, rows } = term.size();
+  let character: ReportCharacter | null = null;
+  try {
+    const p = state.actor.player;
+    character = {
+      name: playerName || "(unnamed)",
+      race: p.race.name,
+      cls: p.cls.name,
+      level: p.lev,
+      /* Fifty feet to the level, as upstream's depth display has it. */
+      depthFt: state.chunk.depth * 50,
+    };
+  } catch {
+    /* No game in play. The escape menu cannot be open without one, but the
+     * report must not be the thing that throws while somebody files a bug. */
+  }
+  return {
+    at: Date.now(),
+    version: ENGINE_VERSION,
+    parityBaseline: PARITY_BASELINE,
+    buildId: WEB_BUILD_ID,
+    channel: updateChannel,
+    shell: reportShell(),
+    platform: desktopBridge !== null ? (navigator.platform || "desktop") : "web",
+    arch: navigator.userAgent.includes("ARM") ? "arm64" : "x64",
+    userAgent: navigator.userAgent,
+    cols,
+    rows,
+    cssWidth: window.innerWidth,
+    cssHeight: window.innerHeight,
+    dpr: window.devicePixelRatio || 1,
+    level: log.level,
+    ringSize: LOG_RING_DEFAULT,
+    dropped: log.dropped(),
+    description,
+    character,
+    mods: enabledModSummary(),
+    lines: log.recent(REPORT_LOG_LINES).map((r) => formatLogLine(r)),
+    home: desktopDataDir() ?? undefined,
+  };
+}
+
+/**
+ * The "Report a problem" screen.
+ *
+ * Painted here rather than through showTextScreen for the same reason the update
+ * screen is: that viewer resolves on ESC, ENTER and SPACE alike, and this screen
+ * has to tell "write the file" apart from "get me out of here".
+ *
+ * THE FILE IS NEVER WRITTEN WITHOUT THE PLAYER PRESSING ENTER, and the screen
+ * lists what will be in it first. A menu row that silently dropped a file
+ * somewhere would be asking them to trust a sentence; this asks them to read a
+ * list.
+ */
+async function showReportPage(): Promise<void> {
+  const description: string[] = [];
+  let view: ReportView = {
+    phase: "compose",
+    shell: reportShell(),
+    description,
+    level: log.level,
+    lineCount: log.recent().length,
+    modCount: enabledModSummary().length,
+    logsDir: desktopLogsDir() ?? undefined,
+  };
+
+  const paint = (): void => {
+    const { cols, rows } = term.size();
+    term.clear();
+    term.print(0, 1, "Report a problem".slice(0, cols - 1), UI_GOLD);
+    const lines = reportLines(view);
+    for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
+      const line = lines[r];
+      if (!line) continue;
+      term.print(0, 3 + r, line.text.slice(0, cols - 1), REPORT_TONE[line.tone]);
+    }
+    const footer = reportFooter(view);
+    term.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+  };
+
+  const key = (): Promise<string> =>
+    new Promise<string>((resolve) => {
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key.length !== 1 && ev.key !== "Enter" && ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        window.removeEventListener("keydown", onKey, true);
+        resolve(ev.key);
+      };
+      window.addEventListener("keydown", onKey, true);
+    });
+
+  for (;;) {
+    paint();
+    const pressed = await key();
+    if (pressed === "Escape") return;
+
+    if (pressed === "d" || pressed === "D") {
+      /*
+       * Three single-line prompts rather than one text area. get_string is
+       * upstream's askfor_aux and it is what every other typed answer in this
+       * game goes through; a multi-line editor would be a new input mode to
+       * build, test and teach, for a field whose job is to point at the log.
+       * An empty line stops early, so somebody with one sentence presses ENTER
+       * twice and is done.
+       */
+      description.length = 0;
+      for (let i = 0; i < REPORT_DESCRIPTION_LINES; i++) {
+        const typed = await getString(
+          term,
+          `Line ${String(i + 1)} of ${String(REPORT_DESCRIPTION_LINES)} (ENTER to stop): `,
+          "",
+          78 - 40,
+        );
+        if (typed === null || typed.trim() === "") break;
+        description.push(typed);
+      }
+      view = { ...view, description: [...description] };
+      continue;
+    }
+
+    if (pressed === "l" || pressed === "L") {
+      /* Cycled rather than chosen from a list: there are four, they have an
+       * order, and the only journey anybody makes is "turn it up". */
+      const next = LOG_LEVELS[(LOG_LEVELS.indexOf(log.level) + 1) % LOG_LEVELS.length];
+      if (next) {
+        setLogLevel(next);
+        log.warn("report", `logging level set to ${next} by the player`);
+        view = { ...view, level: next };
+      }
+      continue;
+    }
+
+    if (pressed !== "Enter") continue;
+    if (view.phase === "saved") return;
+
+    const text = reportText(reportInput(description));
+    const bridge = updaterBridge() as (UpdaterBridge & {
+      writeReport?: (t: string) => Promise<unknown>;
+    }) | null;
+    if (bridge?.writeReport) {
+      const res = (await bridge.writeReport(text)) as
+        | { ok?: boolean; path?: string; error?: string }
+        | undefined;
+      view = res?.ok
+        ? { ...view, phase: "saved", savedAs: res.path }
+        : { ...view, phase: "failed", error: res?.error };
+    } else {
+      /* The browser, which has no folder to write into. A download is the
+       * closest thing it has to the same act, and the player already chose
+       * where their downloads go. */
+      const name = `neo-angband-report-${new Date().toISOString().replace(/[:.]/gu, "-")}.txt`;
+      view = downloadUserFile(name, text)
+        ? { ...view, phase: "saved", savedAs: name }
+        : { ...view, phase: "failed", error: "this browser refused the download" };
+    }
+    /* Straight to disk, before anything else can go wrong - the log line about
+     * having written it is the last thing a truncated log should be missing. */
+    flushLog();
+  }
+}
 
 /** Tones to this shell's palette, so install-local.ts stays free of the terminal. */
 const INSTALL_TONE: Record<InstallLine["tone"], string> = {

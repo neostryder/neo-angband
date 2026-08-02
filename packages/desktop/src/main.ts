@@ -42,10 +42,13 @@ import {
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
+  LOG_CHANNEL,
+  REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
+import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
 import {
   UPDATE_REPO,
   downloadArchive,
@@ -109,6 +112,21 @@ const DATA = resolveDataBase({
 });
 const USER_BASE = DATA.base;
 const MODS_DIR = path.join(USER_BASE, "mods");
+
+/**
+ * This launch's log, opened before anything else can want to write to it.
+ *
+ * Beside the saves rather than in Electron's `app.getPath("logs")`: that one is
+ * Chromium's, and it stays under the user profile even for a portable copy - so
+ * "send me the logs folder from your game folder" would have found an empty
+ * directory. See log-file.ts.
+ *
+ * Opened at module scope because a failure to open it is not a failure to
+ * launch. `openLogFile` answers a working object that writes nowhere if the
+ * folder cannot be made, so a read-only install still starts.
+ */
+const LOGS_DIR = path.join(USER_BASE, LOG_DIRNAME);
+const LOG_FILE = openLogFile(LOGS_DIR, new Date(), process.pid);
 
 /**
  * Move Chromium's own state into the folder too.
@@ -434,6 +452,7 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
     ...HOST_SHELL_LIMITS,
     dataDir: USER_BASE,
     portable: DATA.portable,
+    logsDir: LOGS_DIR,
   };
   ipcMain.on(HOST_INFO_CHANNEL, (event) => {
     event.returnValue = info;
@@ -455,7 +474,43 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
     app.quit();
   });
 
+  installLogging();
   installUpdater();
+}
+
+/**
+ * The renderer's log lines, and the reports a player writes.
+ *
+ * NOTHING IS VALIDATED INTO A STRUCTURE here, on purpose: the renderer has
+ * already rendered each record to its final line (core/log.ts formatLogLine), so
+ * the main process's whole job is to put text in a file. Re-parsing it here
+ * would be a second implementation of the format, which is the shape this
+ * project keeps finding bugs in - two copies of a check, and only one learns.
+ *
+ * What IS checked is that the payload is strings, because the renderer is the
+ * untrusted side of this boundary and `undefined.join` in an IPC handler takes
+ * the main process down.
+ */
+function installLogging(): void {
+  ipcMain.on(LOG_CHANNEL, (_event, payload: unknown) => {
+    if (!Array.isArray(payload)) return;
+    LOG_FILE.append((payload as unknown[]).filter((l): l is string => typeof l === "string"));
+  });
+
+  ipcMain.handle(REPORT_CHANNEL, (_event, text: unknown) => {
+    if (typeof text !== "string" || text === "") {
+      return { ok: false, error: "there was nothing in the report to write" };
+    }
+    try {
+      const file = writeReportFile(LOGS_DIR, text, new Date());
+      LOG_FILE.append([`${new Date().toISOString()} INFO  [report] wrote ${file}`]);
+      return { ok: true, path: file };
+    } catch (err) {
+      /* Reported rather than swallowed: unlike a log line, this one was asked
+       * for, and "saved" with nothing saved is worse than an error message. */
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
 
 /**

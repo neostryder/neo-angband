@@ -31,6 +31,7 @@ export type GameMenuAction =
   | "graphics"
   | "mods"
   | "help"
+  | "report"
   | "abilities"
   | "equip-cmp"
   | "item-actions"
@@ -98,6 +99,19 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
     {
       action: "help",
       item: { label: "Help & keys", hint: "Commands, symbols, and a short guide ('?')." },
+    },
+    /* Next to Help because it is the same kind of row: the player is stuck and
+     * looking for the way out. It has no keyboard shortcut of its own - every
+     * single-letter key in play is upstream's, and taking one for a port feature
+     * is the sort of divergence the parity mandate exists to refuse. The menu is
+     * the whole of its discoverability, which is why it is here rather than
+     * buried on the title screen. */
+    {
+      action: "report",
+      item: {
+        label: "Report a problem",
+        hint: "Write a file describing what went wrong. Nothing is sent anywhere.",
+      },
     },
     {
       action: "abilities",
