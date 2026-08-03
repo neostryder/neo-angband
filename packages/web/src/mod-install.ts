@@ -47,6 +47,7 @@ import {
   idbKeys,
   openDb,
 } from "./idb";
+import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
 import { type RecommendedMod, type RegistryFile, badPath, rawUrl } from "./mod-registry";
@@ -330,7 +331,28 @@ export async function installModFromRepo(
   installed: InstalledModMeta | null,
   env: InstallEnv,
   onProgress?: (p: InstallProgress) => void,
+  /**
+   * How the mod was found and whether third-party mods are allowed.
+   *
+   * HERE, not only in the screen that drew the row. A gate enforced in the UI is a
+   * gate with a way round it: every other caller - a batch install from a registry,
+   * a retry, whatever gets written next - would have to remember to repeat the
+   * check, and the one that forgets ships code the player never agreed to. Consent
+   * is about acquiring code, so it belongs at the point where bytes are stored.
+   *
+   * Optional, and an absent value means CURATED-equivalent - the pre-existing
+   * behaviour of this function and of installRecommendedMod, neither of which could
+   * install anything but a vouched mod when they were written.
+   */
+  consent?: { readonly origin: ModOrigin; readonly allowed: boolean },
 ): Promise<InstallResult> {
+  if (consent) {
+    const blocked = installBlocked(consent.origin, consent.allowed);
+    /* Before the origin check and before any fetch: a refused install must not have
+     * touched the network, so a player who has not consented has not silently made
+     * requests to a repository either. */
+    if (blocked !== null) return { ok: false, problem: blocked };
+  }
   const conflict = originConflict(installed, mod.repo);
   if (conflict !== null) return { ok: false, problem: conflict };
   try {
