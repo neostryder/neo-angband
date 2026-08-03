@@ -30,6 +30,7 @@ import {
   usableRecommendedMods,
   type RecommendedMod,
 } from "./mod-registry";
+import { classifyModTag, pendingModUpdates } from "./mod-updates";
 import type { InstallProgress, InstallResult } from "./mod-install";
 
 const C_FG = UI_TEXT;
@@ -103,16 +104,17 @@ export function formatBytes(bytes: number): string {
  */
 export function catalogueRow(mod: RecommendedMod, installedTag: string | null): MenuItem {
   const size = formatBytes(mod.approxBytes);
-  if (installedTag === null) {
-    return {
-      label: `[ ] ${mod.name}  ${mod.tag}  (${size})`,
-      color: C_FG,
-      hint: `Not installed. Enter to download ${size} from ${mod.repo}.`,
-    };
-  }
-  if (installedTag !== mod.tag) {
-    const order = compareTags(installedTag, mod.tag);
-    if (order !== null && order > 0) {
+  /* The judgement itself is in mod-updates.ts, because "Update installed mods"
+   * has to reach the same verdict as this row and two copies of a rule are one
+   * copy that learns. This function decides only how to SAY each verdict. */
+  switch (classifyModTag(installedTag, mod.tag)) {
+    case "absent":
+      return {
+        label: `[ ] ${mod.name}  ${mod.tag}  (${size})`,
+        color: C_FG,
+        hint: `Not installed. Enter to download ${size} from ${mod.repo}.`,
+      };
+    case "ahead":
       /* AHEAD of the catalogue. Not a fault and not an update: this is what a mod
        * author testing their own release sees, and what any player sees whose mod
        * moved faster than the game build did. Enter still works - reinstalling at
@@ -120,31 +122,35 @@ export function catalogueRow(mod: RecommendedMod, installedTag: string | null): 
        * REPLACE and names the direction, because "update" here would be a lie the
        * player only discovers afterwards. */
       return {
-        label: `[x] ${mod.name}  ${installedTag}  (newer than this catalogue)`,
+        label: `[x] ${mod.name}  ${installedTag ?? ""}  (newer than this catalogue)`,
         color: C_GOOD,
         hint:
-          `Installed at ${installedTag}; this build's catalogue only knows ${mod.tag}. ` +
+          `Installed at ${installedTag ?? ""}; this build's catalogue only knows ${mod.tag}. ` +
           `Enter would REPLACE it with the older ${mod.tag}.`,
       };
-    }
-    /* Behind the catalogue, or two tags that cannot be ordered at all (a tag need
-     * not be a version). Both offer the catalogue's copy; only the first may call
-     * it an update. */
-    const behind = order !== null;
-    return {
-      label: `[~] ${mod.name}  ${installedTag} -> ${mod.tag}  (${size})`,
-      color: C_WARN,
-      hint: behind
-        ? `Installed at ${installedTag}; the catalogue offers the newer ${mod.tag}. Enter to update.`
-        : `Installed at ${installedTag}; the catalogue offers ${mod.tag}, which cannot be ` +
+    case "behind":
+      return {
+        label: `[~] ${mod.name}  ${installedTag ?? ""} -> ${mod.tag}  (${size})`,
+        color: C_WARN,
+        hint: `Installed at ${installedTag ?? ""}; the catalogue offers the newer ${mod.tag}. Enter to update.`,
+      };
+    case "unorderable":
+      /* Two tags that cannot be ordered at all - a tag need not be a version.
+       * The catalogue's copy is still offered; it just may not be called newer. */
+      return {
+        label: `[~] ${mod.name}  ${installedTag ?? ""} -> ${mod.tag}  (${size})`,
+        color: C_WARN,
+        hint:
+          `Installed at ${installedTag ?? ""}; the catalogue offers ${mod.tag}, which cannot be ` +
           `ordered against it. Enter to install the catalogue's copy.`,
-    };
+      };
+    case "same":
+      return {
+        label: `[x] ${mod.name}  ${mod.tag}`,
+        color: C_GOOD,
+        hint: "Installed. Enter to reinstall or remove. Turn it on in the mod list.",
+      };
   }
-  return {
-    label: `[x] ${mod.name}  ${mod.tag}`,
-    color: C_GOOD,
-    hint: "Installed. Enter to reinstall or remove. Turn it on in the mod list.",
-  };
 }
 
 /**
@@ -160,6 +166,17 @@ export function installSummary(
   result: InstallResult,
   /** True when the caller is about to offer to turn it on, so the closing line changes. */
   willOfferEnable = false,
+  /**
+   * True when this REPLACED a copy the player already had.
+   *
+   * Neither "it is OFF" line is true of an update, and both were shown by the
+   * first version of the update screen: a mod the player had enabled, updated
+   * in place, reported itself as switched off and offered to switch it on. The
+   * enabled set is keyed by mod id and a reinstall never touched it - so the
+   * screen was describing a state the game was not in, about the one thing the
+   * player would check.
+   */
+  wasInstalled = false,
 ): ScreenLine[] {
   if (result.ok) {
     return [
@@ -172,15 +189,21 @@ export function installSummary(
       { text: "that ship inside this build - not against anything the", color: C_FG },
       { text: "download claimed about itself.", color: C_FG },
       { text: "", color: C_FG },
-      ...(willOfferEnable
+      ...(wasInstalled
         ? [
-            { text: "It is OFF, as every mod is until you say otherwise.", color: C_FG },
-            { text: "You are asked next whether to turn it on.", color: C_FG },
+            { text: "It is still on or off exactly as you had it, and your", color: C_FG },
+            { text: "settings for it are untouched. A reload is what makes the", color: C_FG },
+            { text: "new version take effect.", color: C_FG },
           ]
-        : [
-            { text: "It is OFF until you turn it on in the mod list, and a", color: C_FG },
-            { text: "reload is what makes it take effect.", color: C_FG },
-          ]),
+        : willOfferEnable
+          ? [
+              { text: "It is OFF, as every mod is until you say otherwise.", color: C_FG },
+              { text: "You are asked next whether to turn it on.", color: C_FG },
+            ]
+          : [
+              { text: "It is OFF until you turn it on in the mod list, and a", color: C_FG },
+              { text: "reload is what makes it take effect.", color: C_FG },
+            ]),
     ];
   }
   return [
@@ -353,11 +376,109 @@ export async function showModCatalogue(
   }
 }
 
+/**
+ * The mods this build has a newer copy of, and one press to take them all.
+ *
+ * A SEPARATE SCREEN FROM THE CATALOGUE, deliberately. Everything here was
+ * already reachable: the catalogue row has said `[~] qol v0.12.0 -> v0.13.0
+ * Enter to update` for as long as there have been two tags to compare. What it
+ * could not do is TELL anyone. A player who updates the game gets a newer
+ * catalogue, and the only way to discover that their mods moved with it was to
+ * open a screen called "Install a mod" - which is not where you look for
+ * something you already installed - and read every row. So this screen answers
+ * the question directly, and the mod manager's row answers it without even
+ * being opened, by carrying the count.
+ *
+ * Both routes install through the same `installOne` the catalogue uses, so the
+ * digest check, the progress line, the summary and the offer to enable are not
+ * reimplemented here.
+ */
+export async function showModUpdates(
+  term: GlyphTerm,
+  deps: ModCatalogueDeps,
+): Promise<boolean> {
+  const { mods } = usableRecommendedMods(deps.catalogue ?? RECOMMENDED_MODS);
+  let changed = false;
+
+  for (;;) {
+    const installed = await deps.installed();
+    const pending = pendingModUpdates(mods, installed);
+
+    if (pending.length === 0) {
+      await showTextScreen(term, "Update installed mods", [
+        {
+          text:
+            installed.size === 0
+              ? "No mods are installed yet."
+              : "Every installed mod is at the version this build knows about.",
+          color: C_FG,
+        },
+        { text: "", color: C_FG },
+        ...ABOUT_MOD_UPDATES,
+      ]);
+      return changed;
+    }
+
+    const items: MenuItem[] = [
+      {
+        label:
+          pending.length === 1
+            ? "Update it"
+            : `Update all ${String(pending.length)}`,
+        color: C_WARN,
+        hint: "Download and verify each one in turn.",
+      },
+      ...pending.map((u) => ({
+        label: `${u.mod.name}  ${u.from} -> ${u.to}  (${formatBytes(u.mod.approxBytes)})`,
+        color: C_FG,
+        hint: `Update only this one, from ${u.mod.repo}.`,
+      })),
+    ];
+
+    const pick = await selectFromMenu(
+      term,
+      "Update installed mods",
+      items,
+      "[ ESC to go back ]",
+    );
+    if (pick === null) return changed;
+
+    /* Snapshotted before the first install, because `installed()` is re-read at
+     * the top of the loop and a list that shrinks under an in-progress "update
+     * all" would skip whatever moved up into the index just used. */
+    const todo = pick === 0 ? pending : [pending[pick - 1]];
+    for (const u of todo) {
+      if (!u) continue;
+      await installOne(term, u.mod, deps, true);
+      changed = true;
+    }
+  }
+}
+
+/** Where a mod update comes from, said once and shown wherever it is relevant. */
+const ABOUT_MOD_UPDATES: readonly ScreenLine[] = [
+  {
+    text: "Mod versions travel with the game. This build ships the list of",
+    color: C_DIM,
+  },
+  {
+    text: "mods it knows, along with a checksum for every file, and those",
+    color: C_DIM,
+  },
+  {
+    text: "checksums are what make downloading one safe. So a newer mod",
+    color: C_DIM,
+  },
+  { text: "becomes available when you update the game.", color: C_DIM },
+];
+
 /** Download one mod, drawing progress, then report - and offer to turn it on. */
 async function installOne(
   term: GlyphTerm,
   mod: RecommendedMod,
   deps: ModCatalogueDeps,
+  /** True when a copy was already installed, so this replaces rather than adds. */
+  wasInstalled = false,
 ): Promise<void> {
   const paint = (line: string): void => {
     const { cols, rows } = term.size();
@@ -372,9 +493,13 @@ async function installOne(
   const result = await deps.install(mod, (p) => {
     paint(progressLine(mod, p));
   });
-  const offer = result.ok && deps.offerEnable !== undefined;
+  /* Never offered for an update: the mod kept whatever state it had, so
+   * "turn it on?" is a question about something that is very likely already
+   * on, and answering it is the player being asked to confirm a change that
+   * did not happen. */
+  const offer = result.ok && !wasInstalled && deps.offerEnable !== undefined;
   await showTextScreen(term, mod.name, [
-    ...installSummary(mod, result, offer),
+    ...installSummary(mod, result, offer, wasInstalled),
     { text: "", color: C_FG },
     { text: repoUrl(mod), color: C_DIM },
   ]);

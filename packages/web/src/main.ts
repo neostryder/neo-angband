@@ -264,6 +264,8 @@ import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
+import { showModUpdates, type ModCatalogueDeps } from "./mod-catalogue";
+import { RECOMMENDED_MODS, usableRecommendedMods } from "./mod-registry";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
@@ -461,6 +463,7 @@ import {
 } from "./update";
 import type { AvailableUpdate, UpdateChannel, UpdaterBridge } from "./update";
 import { updateFooter, updateLines } from "./update-ui";
+import { pendingModUpdates, type ModUpdate } from "./mod-updates";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
 import { installLogSinks, log, setLogLevel } from "./logging";
@@ -5377,51 +5380,14 @@ async function openModManager(): Promise<void> {
      * has fetch and IndexedDB, and installRecommendedMod already answers "this
      * browser will not let the game store downloaded mods" as a result rather than a
      * throw - so the honest failure is a message on the row, not a hidden row. */
-    modCatalogue: {
-      installed: async () => {
-        const metas = await installedMods(globalThis);
-        return new Map(metas.map((m) => [m.id, m.tag] as const));
-      },
-      install: (mod, onProgress) =>
-        installRecommendedMod(
-          mod,
-          {
-            fetch: (url) => fetch(url),
-            subtle: crypto.subtle,
-            scope: globalThis,
-            now: () => new Date().toISOString(),
-          },
-          onProgress,
-        ),
-      uninstall: (id) => uninstallMod(id, globalThis),
-    },
+    modCatalogue: modCatalogueDeps(),
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
       game.manifest.modNoscore = advanceModNoscore(game.manifest.modNoscore, mod.affectsGameplay);
     },
     requestReload: (opts) => {
-      /* Teardown BEFORE the save, which is the whole reason it is here and not
-       * skipped as ceremony in front of a reload (mod-teardown.ts). The page
-       * re-compose is what actually removes a mod; what this ordering buys is that
-       * the last bytes written for this character are taken AFTER each plugin's
-       * uninstall() has had its say and AFTER the autoplayer has handed
-       * state.nextCommand back to the human. */
-      teardownModPlugins({
-        plugins: activeModCode().plugins,
-        controller: installedController,
-      });
-      installedController = null;
-      try {
-        autosave(true); // keep the live hero before the page re-composes
-        // Applying mods mid-game is a continuation, not a genuine launch: skip
-        // the title and resume the same character once the page re-composes.
-        sessionStorage.setItem(SKIP_TITLE_KEY, "1");
-        if (opts?.showGraphics) sessionStorage.setItem(SHOW_GRAPHICS_KEY, "1");
-      } catch {
-        /* best-effort */
-      }
-      location.reload();
+      reloadAfterModChange(opts);
     },
   });
 }
@@ -8470,6 +8436,9 @@ async function maybeTitle(): Promise<TitleChoice | null> {
    * a row that appears under the player's cursor a second after the screen does
    * is how a menu gets mis-clicked. */
   const update = await updateOffer();
+  /* A waiting mod counts as "something is waiting". The row is the only door to
+   * both, and a player whose mods are stale has exactly the same question. */
+  const modsWaiting = (await waitingModUpdates()).length > 0;
   titleUp = true;
   try {
     return await openModal(() =>
@@ -8484,8 +8453,9 @@ async function maybeTitle(): Promise<TitleChoice | null> {
           /* Present wherever updating is a thing this shell does, so the channel
            * is reachable; in a browser only when the worker really has a build,
            * because there is no channel to choose there. */
-          canUpdate: desktopBridge === null ? update !== null : updateHow !== "none",
-          updateReady: update !== null && !update.older,
+          canUpdate:
+            (desktopBridge === null ? update !== null : updateHow !== "none") || modsWaiting,
+          updateReady: (update !== null && !update.older) || modsWaiting,
         },
         { randint1: titleRandint1 },
       ),
@@ -8590,6 +8560,91 @@ async function updateOffer(): Promise<AvailableUpdate | null> {
 }
 
 /**
+ * How a mod is downloaded, verified and stored - built once and shared.
+ *
+ * Used by the mod manager AND by the update screen, which is the point: the
+ * update screen offers mod updates now, and if it had built its own copy of
+ * these three functions the two screens could disagree about where mods live.
+ */
+/**
+ * THE ONE DOOR A MOD CHANGE LEAVES BY.
+ *
+ * A page re-compose is what actually adds or removes a mod, and everything that
+ * has to happen first happens here. It is a named module-level function rather
+ * than an inline callback because there are now two callers - the mod manager,
+ * and the update screen's mod updates - and mod-teardown.test.ts exists
+ * precisely to stop there being two DOORS: teardown wired into one of them
+ * would be silently skipped by the other.
+ *
+ * `resume` is the difference between the two callers and is not cosmetic.
+ * Applying mods mid-game is a continuation: skip the title and pick the same
+ * character back up. Updating mods from the title screen is not - there is no
+ * live character to resume, and asking for one would send the player somewhere
+ * they did not choose to go.
+ */
+function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean }): void {
+  /* Teardown BEFORE the save, which is the whole reason it is here and not
+   * skipped as ceremony in front of a reload (mod-teardown.ts). The page
+   * re-compose is what actually removes a mod; what this ordering buys is that
+   * the last bytes written for this character are taken AFTER each plugin's
+   * uninstall() has had its say and AFTER the autoplayer has handed
+   * state.nextCommand back to the human. */
+  teardownModPlugins({
+    plugins: activeModCode().plugins,
+    controller: installedController,
+  });
+  installedController = null;
+  try {
+    autosave(true); // keep the live hero before the page re-composes
+    if (opts?.resume !== false) sessionStorage.setItem(SKIP_TITLE_KEY, "1");
+    if (opts?.showGraphics) sessionStorage.setItem(SHOW_GRAPHICS_KEY, "1");
+  } catch {
+    /* best-effort */
+  }
+  location.reload();
+}
+
+/**
+ * Installed mods this build has a newer copy of. Never throws, never null.
+ *
+ * ONE PLACE COMPUTES THIS, because three screens ask: the title row decides
+ * whether to shimmer, the update page lists them, and the mod manager counts
+ * them. A browser that will not open the mod store answers "none" rather than
+ * taking the title screen down with it.
+ */
+async function waitingModUpdates(): Promise<ModUpdate[]> {
+  try {
+    return pendingModUpdates(
+      usableRecommendedMods(RECOMMENDED_MODS).mods,
+      await modCatalogueDeps().installed(),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function modCatalogueDeps(): ModCatalogueDeps {
+  return {
+    installed: async () => {
+      const metas = await installedMods(globalThis);
+      return new Map(metas.map((m) => [m.id, m.tag] as const));
+    },
+    install: (mod, onProgress) =>
+      installRecommendedMod(
+        mod,
+        {
+          fetch: (url) => fetch(url),
+          subtle: crypto.subtle,
+          scope: globalThis,
+          now: () => new Date().toISOString(),
+        },
+        onProgress,
+      ),
+    uninstall: (id) => uninstallMod(id, globalThis),
+  };
+}
+
+/**
  * The (U)pdate screen.
  *
  * Painted here rather than through showTextScreen for two reasons that both
@@ -8605,6 +8660,15 @@ async function showUpdatePage(): Promise<void> {
   const bridge = updaterBridge();
   let offer = await updateOffer();
 
+  /* Mod updates share this screen. The check is local - the catalogue and its
+   * digests ship inside the build - so it costs nothing and works offline. */
+  const catalogue = modCatalogueDeps();
+  let modPending: ModUpdate[] = [];
+  const refreshModPending = async (): Promise<void> => {
+    modPending = await waitingModUpdates();
+  };
+  await refreshModPending();
+
   /* The page is reachable with nothing to install, because it is also where the
    * channel is chosen - see UpdatePhase's comment. */
   const viewFor = (o: AvailableUpdate | null): UpdateView => ({
@@ -8618,6 +8682,7 @@ async function showUpdatePage(): Promise<void> {
     assetName: o?.asset?.name,
     phase: o ? "offer" : "uptodate",
     releaseUrl: o?.url ?? `https://github.com/${UPDATE_REPO}/releases`,
+    modUpdates: modPending,
   });
 
   let view: UpdateView = viewFor(offer);
@@ -8632,7 +8697,7 @@ async function showUpdatePage(): Promise<void> {
       if (!line) continue;
       term.print(0, 3 + r, line.text.slice(0, cols - 1), UPDATE_TONE[line.tone]);
     }
-    const footer = updateFooter(view);
+    const footer = updateFooter(view, cols);
     term.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
   };
 
@@ -8667,6 +8732,22 @@ async function showUpdatePage(): Promise<void> {
         updateProbe = runUpdateCheck(next);
         offer = await updateProbe;
         view = viewFor(offer);
+      }
+      continue;
+    }
+    /* M, and never ENTER. ENTER on this screen ends the session and replaces
+     * the whole install; pulling a few KiB of mod is not that, and a player who
+     * wanted only the mod should not lose their game to get it. */
+    if ((pressed === "m" || pressed === "M") && modPending.length > 0 && view.phase !== "downloading") {
+      const touched = await showModUpdates(term, catalogue);
+      await refreshModPending();
+      view = viewFor(offer);
+      /* Mod code is read at boot, so a mod that changed on disk is not the mod
+       * that is loaded until the page starts again. Reloading from the title
+       * screen is invisible - the same reasoning pwa.ts relies on. */
+      if (touched) {
+        reloadAfterModChange({ resume: false });
+        return;
       }
       continue;
     }

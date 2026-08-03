@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { elidePath, humanBytes, percent, progressBar, updateFooter, updateLines } from "./update-ui";
-import type { UpdateView } from "./update-ui";
+import type { UpdateHow, UpdatePhase, UpdateView } from "./update-ui";
 
 /**
  * The directory the swap script skips. Written out rather than imported from
@@ -228,5 +228,77 @@ describe("the arithmetic", () => {
 
   it("draws an empty bar at zero rather than a missing one", () => {
     expect(progressBar(0, 100, 10)).toBe(`[${" ".repeat(8)}]`);
+  });
+});
+
+/**
+ * THE FOOTER MUST FIT, and no existing test asked.
+ *
+ * main.ts paints it with `.slice(0, cols - 1)`. Adding one more key took the
+ * swap-offer footer to 90 characters, and an 80-column terminal showed
+ * `... - M for mod updates - ESC t`: the new key survived and the way out was
+ * cut off. Every footer test above passed, because every one of them asks
+ * whether a substring is PRESENT - and truncation only ever removes the end.
+ *
+ * Found by photographing the real screen. This is the cheaper version.
+ */
+describe("the footer fits the terminal it is painted on", () => {
+  const HOWS: UpdateHow[] = ["swap", "manual", "web", "none"];
+  const PHASES: UpdatePhase[] = ["offer", "uptodate", "downloading", "installing", "failed"];
+  const MODS = [
+    [],
+    [{ mod: { name: "Quality of Life" } as never, from: "v0.11.0", to: "v0.13.0" }],
+  ];
+
+  for (const cols of [80, 100]) {
+    it(`never exceeds ${String(cols)} columns, in any state`, () => {
+      const tooLong: string[] = [];
+      for (const how of HOWS) {
+        for (const phase of PHASES) {
+          for (const older of [false, true]) {
+            for (const modUpdates of MODS) {
+              const v: UpdateView = {
+                ...base,
+                how,
+                phase,
+                older,
+                modUpdates: modUpdates as never,
+              };
+              const f = updateFooter(v, cols);
+              if (f.length > cols - 1) tooLong.push(`${how}/${phase}/older=${String(older)}/mods=${String(modUpdates.length)}: ${String(f.length)} "${f}"`);
+            }
+          }
+        }
+      }
+      expect(tooLong).toEqual([]);
+    });
+  }
+
+  it("keeps every key it names, even when it has to shorten", () => {
+    /* Eliding must not silently drop a key - that is the same failure as
+     * truncation, only tidier. */
+    const v: UpdateView = {
+      ...base,
+      how: "swap",
+      phase: "offer",
+      modUpdates: [{ mod: { name: "Quality of Life" } as never, from: "v0.11.0", to: "v0.13.0" }] as never,
+    };
+    const f = updateFooter(v, 80);
+    expect(f.length).toBeLessThanOrEqual(79);
+    expect(f).toContain("ENTER");
+    expect(f).toContain("C");
+    expect(f.includes("M: mods") || f.includes("M for mod updates")).toBe(true);
+    expect(f).toContain("ESC to go back");
+  });
+
+  it("uses the full wording when there is room for it", () => {
+    const v: UpdateView = {
+      ...base,
+      how: "swap",
+      phase: "offer",
+      modUpdates: [{ mod: { name: "Quality of Life" } as never, from: "v0.11.0", to: "v0.13.0" }] as never,
+    };
+    expect(updateFooter(v, 120)).toContain("M for mod updates");
+    expect(updateFooter(v, 120)).toContain("C to change channel");
   });
 });
