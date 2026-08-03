@@ -228,7 +228,14 @@ export function standingNote(author: RegisteredAuthor | null, repo: string): str
      * register a gate on who may write mods, which it must never become. */
     return `By ${ownerOf(repo) || "an unknown author"}, who is not in the author register.`;
   }
-  const who = author.name === author.owner ? author.owner : `${author.name} (${author.owner})`;
+  /* The owner is appended only when the display name does not already contain it.
+   * Otherwise the first entry in the shipped register renders as
+   * "neostryder (RPGM Tools) (neostryder)" - the owner twice, once in a parenthesis
+   * the author wrote and once in one this function added. */
+  const lower = author.name.toLowerCase();
+  const who = lower.includes(author.owner.toLowerCase())
+    ? author.name
+    : `${author.name} (${author.owner})`;
   return author.check === "maintainer"
     ? `By ${who}, who maintains Neo Angband. Still third-party code: nothing here reviews it.`
     : `By ${who}, listed in the author register. That records the account, not a review of its code.`;
