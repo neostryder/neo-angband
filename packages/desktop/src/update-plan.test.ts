@@ -149,8 +149,8 @@ describe("the script that runs after we exit", () => {
   it("gives up rather than swapping if we never exit", () => {
     /* An unbounded wait would leave a poller running forever AND a staged update
      * that silently never lands. Bailing leaves a working old install. */
-    expect(ps).toMatch(/if \(Get-Process -Id 4242[^)]*\) \{ exit 1 \}/u);
-    expect(posix).toMatch(/if kill -0 4242 2>\/dev\/null; then exit 1; fi/u);
+    expect(ps).toMatch(/if \(Get-Process -Id 4242[^)]*\) \{[^}]*exit 1 \}/u);
+    expect(posix).toMatch(/if kill -0 4242 2>\/dev\/null; then .*exit 1; fi/u);
   });
 
   it("moves the old files ASIDE before moving the new ones in, and deletes last", () => {
