@@ -59,10 +59,9 @@ import {
   type ModProblem,
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
-import { showModCatalogue, showModUpdates, type ModCatalogueDeps } from "./mod-catalogue";
-import { showModBrowse, type ModBrowseDeps } from "./mod-browse";
-import { modUpdateRowLabel, pendingModUpdates } from "./mod-updates";
-import { RECOMMENDED_MODS, usableRecommendedMods } from "./mod-registry";
+import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
+import { showModBrowse, showModUpgrades, type ModUpgradeDeps } from "./mod-browse";
+import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
 import {
   resolveSectionState,
@@ -226,7 +225,7 @@ export interface ModManagerDeps {
    * a version newer than this build shipped with, because it asks the mod rather
    * than reading a catalogue compiled into the game.
    */
-  modBrowse?: ModBrowseDeps;
+  modBrowse?: ModUpgradeDeps;
 }
 
 /**
@@ -1770,22 +1769,27 @@ export async function runModManager(
       );
       /* KEEPING A MOD IS A SEPARATE JOB FROM GETTING ONE, and it had no row.
        *
-       * The catalogue screen has always been able to update a mod - its row
-       * says so - but it is called "Install a mod", which is not where anyone
-       * looks for something they already installed. So the count lives out
-       * here, on a screen the player is already on, and answers the question
-       * without being opened. */
-      const pending = pendingModUpdates(
-        usableRecommendedMods(deps.modCatalogue.catalogue ?? RECOMMENDED_MODS).mods,
-        await deps.modCatalogue.installed(),
-      );
+       * The browse screen can update a mod - its row says so - but it is called
+       * "Install a mod", which is not where anyone looks for something they
+       * already installed. So the job has its own row here.
+       *
+       * THE COUNT IS NOT ON THIS ROW ANY MORE, and that is the honest shape. It
+       * used to be, because the answer was a local comparison against the
+       * catalogue compiled into the build - instant, offline, and wrong in the
+       * one way that matters: its silence meant "nothing newer shipped HERE" and
+       * it said "all up to date". The answer now comes from each mod's own
+       * repository, which means a request per mod, and there is no truthful way
+       * to put a number here without making them. Nothing is cached either: a
+       * cached freshness check is a stale answer wearing a fresh answer's
+       * wording, which is the same defect one layer down.
+       *
+       * So the row says what pressing it does. The screen behind it says what it
+       * found, including what it could not reach. */
       addAction(
-        modUpdateRowLabel(pending, catalog.length > 0),
+        modUpgradeRowLabel(null, catalog.length),
         "modupdates",
-        pending.length > 0 ? C_WARN : C_FG,
-        pending.length > 0
-          ? "Newer versions of mods you already have came with this build."
-          : "Check the mods you have against the versions this build knows.",
+        C_FG,
+        "Asks each installed mod's own repository whether there is a newer version.",
       );
     }
     /* The saved folder's name is read fresh each pass, because picking or
@@ -2040,9 +2044,9 @@ export async function runModManager(
         if (touched) dirty = true;
       }
     } else if (rk.kind === "modupdates") {
-      if (deps.modCatalogue) {
-        const touched = await showModUpdates(term, {
-          ...deps.modCatalogue,
+      if (deps.modBrowse) {
+        const touched = await showModUpgrades(term, {
+          ...deps.modBrowse,
           offerEnable: async (id) => {
             if (await enableAfterInstall(term, deps, id)) {
               dirty = true;
