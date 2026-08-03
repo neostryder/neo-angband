@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ROSTER_KEY, planOriginMerge } from "./origin-merge.js";
+import { ROSTER_KEY, handledPorts, planOriginMerge } from "./origin-merge.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 
 /** `turn` defaults to 1: a character that has been played at least a moment. */
@@ -158,5 +158,52 @@ describe("stranded-origin merge", () => {
     const plan = planOriginMerge({}, [src]);
     expect(plan.recovered).toEqual([]);
     expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Frodo"]);
+  });
+});
+
+describe("handledPorts (the marker that is a permanent claim)", () => {
+  const snap = (port: number): OriginSnapshot => ({ port, entries: {} });
+  const clean = { failedKeys: [], missingKeys: [] };
+
+  it("marks the origins that were read, on top of the ones already done", () => {
+    expect([...(handledPorts([61038], [snap(61806), snap(54979)], clean) ?? [])].sort()).toEqual(
+      [54979, 61038, 61806],
+    );
+  });
+
+  it("does NOT mark a port that could not be read", () => {
+    /* The defect this function exists to make impossible. main.ts marked every port
+     * it MEANT to visit, so an origin that would not bind was recorded as empty and
+     * never looked at again - and with the port ladder the reason a port will not
+     * bind is usually that another copy of the game is on it, holding a roster.
+     *
+     * Expressed as "two ports were due, one was read, only that one is marked",
+     * because the wrong version passes any test that only ever supplies readable
+     * ports. */
+    const due = [45871, 45872];
+    const readOnly = [snap(45872)];
+    const marked = handledPorts([], readOnly, clean) ?? [];
+    expect(marked).toEqual([45872]);
+    expect(marked).not.toContain(45871);
+    expect(due.filter((p) => !marked.includes(p))).toEqual([45871]);
+  });
+
+  it("marks nothing at all when a write was refused", () => {
+    /* The bytes are still only in the source origin, and they are a character. */
+    expect(handledPorts([], [snap(61806)], { failedKeys: ["neo-angband-save:a"], missingKeys: [] })).toBeNull();
+  });
+
+  it("marks nothing at all when a write did not survive the read-back", () => {
+    expect(handledPorts([], [snap(61806)], { failedKeys: [], missingKeys: [ROSTER_KEY] })).toBeNull();
+  });
+
+  it("keeps the already-done set even when nothing new was read", () => {
+    /* An empty source list is the ordinary steady state, and it must not erase the
+     * record of the work already finished. */
+    expect([...(handledPorts([61038, 61806], [], clean) ?? [])].sort()).toEqual([61038, 61806]);
+  });
+
+  it("never repeats a port", () => {
+    expect(handledPorts([61806], [snap(61806)], clean)).toEqual([61806]);
   });
 });
