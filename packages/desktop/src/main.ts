@@ -765,6 +765,51 @@ function rememberMergedPorts(userDir: string, ports: Iterable<number>): void {
   }
 }
 
+/**
+ * The death ledger: character ids this install has ever seen a tombstone for.
+ *
+ * OUTSIDE EVERY ORIGIN, because that is the whole point. A tombstone can only bury
+ * a living copy of itself while the origin holding it is still being read, and
+ * MERGED_FILE means an origin is read exactly once. So without this file the single
+ * record proving a character is dead can end up sealed inside a handled origin,
+ * with a living copy of that character in another one and the check that would
+ * catch it permanently switched off. See MergePlan.deaths.
+ *
+ * Ids only. No names, no turns, nothing a player would mind being written down,
+ * and nothing that could be used to reconstruct a character.
+ */
+const DEATHS_FILE = "deaths.txt";
+
+function knownDeaths(userDir: string): Set<string> {
+  try {
+    const raw = fs.readFileSync(path.join(userDir, DEATHS_FILE), "utf8");
+    return new Set(raw.split(/\s+/).filter((s) => s !== ""));
+  } catch {
+    return new Set();
+  }
+}
+
+/** Union the ledger with `ids`. Never removes: a death is not revisable. */
+function rememberDeaths(userDir: string, ids: Iterable<string>): void {
+  const all = knownDeaths(userDir);
+  let added = false;
+  for (const id of ids) {
+    if (!all.has(id)) {
+      all.add(id);
+      added = true;
+    }
+  }
+  if (!added) return;
+  try {
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, DEATHS_FILE), `${[...all].join("\n")}\n`, "utf8");
+  } catch {
+    /* Best effort, and the failure is visible in the log below rather than here:
+     * losing this file costs the burial rule its memory, not a character. */
+    mainLog("error", "recovery", "could not write the death ledger");
+  }
+}
+
 /** Read every localStorage entry of the origin served on `port`. */
 async function readOriginStorage(port: number): Promise<Record<string, string>> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
@@ -787,6 +832,7 @@ async function readOriginStorage(port: number): Promise<Record<string, string>> 
 async function writeOriginStorage(
   port: number,
   writes: Readonly<Record<string, string>>,
+  removes: readonly string[] = [],
 ): Promise<string[]> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   const failed: string[] = [];
@@ -801,6 +847,37 @@ async function writeOriginStorage(
         )}); return true; } catch { return false; } })()`,
       )) as boolean;
       if (!ok) failed.push(key);
+    }
+    /*
+     * REMOVALS LAST, and this order is the whole of the crash story.
+     *
+     * These are the only deletions this shell performs: a save slot whose character
+     * a tombstone elsewhere reports dead (origin-merge.ts buriedIds). Killed between
+     * the two halves, the two orders leave very different wreckage:
+     *
+     *   writes then removes  -> the roster says dead, the bytes are still there. The
+     *                           picker will not offer a dead row, so nothing is
+     *                           resumable, and the next launch plans the same
+     *                           removal again. Self-healing.
+     *   removes then writes  -> the roster still says ALIVE and the bytes are gone.
+     *                           A row the player will click that cannot load, and
+     *                           the reason it cannot is a file this process deleted.
+     *
+     * The first sentence of the first version of this comment argued for the second
+     * order, on the grounds that a dead row must not sit in front of live bytes.
+     * That window is harmless; the other one is a broken character.
+     */
+    for (const key of removes) {
+      const gone = (await win.webContents.executeJavaScript(
+        `(() => { try { localStorage.removeItem(${JSON.stringify(key)});
+                        return localStorage.getItem(${JSON.stringify(key)}) === null; }
+                  catch { return false; } })()`,
+      )) as boolean;
+      /* A removal that did not happen is reported the same way a refused write is,
+       * so it reaches handledPorts and the origin that justified it stays
+       * outstanding. Silently swallowing it would let the marker claim the job was
+       * finished while the resumable bytes are still sitting there. */
+      if (!gone) failed.push(key);
     }
   } finally {
     win.destroy();
@@ -821,8 +898,17 @@ async function recoverStrandedOrigins(
   knownPorts: readonly number[],
 ): Promise<void> {
   const done = mergedPorts(userDir);
+  const dead = knownDeaths(userDir);
   const todo = knownPorts.filter((p) => p !== stablePort && !done.has(p));
-  if (todo.length === 0) return;
+  /*
+   * NOT `if (todo.length === 0) return`, which is what this used to be. The ledger
+   * makes this pass useful with no sources at all: the target may hold a living row
+   * for a character this install has already recorded as dead, in an origin that was
+   * marked handled long ago and will never be read again. That is exactly the case
+   * the ledger exists for, so it has to be checked even when there is nothing to
+   * harvest.
+   */
+  if (todo.length === 0 && dead.size === 0) return;
 
   const sources: OriginSnapshot[] = [];
   for (const port of todo) {
@@ -849,9 +935,16 @@ async function recoverStrandedOrigins(
     }
   }
 
-  const plan = planOriginMerge(await readOriginStorage(stablePort), sources);
+  const plan = planOriginMerge(await readOriginStorage(stablePort), sources, dead);
+  /* BEFORE any origin can be marked handled. Marking is what makes a tombstone
+   * unreadable forever, so the ledger has to have the ids first or the marker can
+   * seal away the only record of a death. */
+  rememberDeaths(userDir, plan.deaths);
   const keys = Object.keys(plan.writes);
-  if (keys.length === 0) {
+  /* `plan.removes` counts as work: a plan that only deletes bytes must not take the
+   * "nothing to do" exit, which would mark the sources handled without performing
+   * the deletion the tombstone in one of them justified. */
+  if (keys.length === 0 && plan.removes.length === 0) {
     /* `sources`, not `todo`: only origins that were actually read. See handledPorts
      * for why the difference is a character. */
     const mark = handledPorts(done, sources, { failedKeys: [], missingKeys: [] });
@@ -859,7 +952,18 @@ async function recoverStrandedOrigins(
     return;
   }
 
-  const failed = await writeOriginStorage(stablePort, plan.writes);
+  const failed = await writeOriginStorage(stablePort, plan.writes, plan.removes);
+  if (plan.removes.length > 0) {
+    /* Worth a line of its own: it is the one thing here that destroys bytes, and
+     * a player who finds a character gone deserves to be able to read why. */
+    mainLog(
+      "info",
+      "recovery",
+      `dropped ${String(plan.removes.length)} resumable save(s) for characters another ` +
+        "origin records as dead (decision 16: death is permanent)",
+      { removed: plan.removes },
+    );
+  }
 
   /* Read it BACK before believing it. setItem returning true means Chromium
    * accepted the value, not that the value is in the database; the marker written

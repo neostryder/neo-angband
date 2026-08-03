@@ -334,7 +334,7 @@ import { userPath, writeUserFile, downloadUserFile, pickTextFile } from "./userd
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
-import { showTitleScreen } from "./news";
+import { paintTitleArt, showTitleScreen } from "./news";
 import type { TitleChoice } from "./news";
 import type { BirthDeps } from "./birth";
 import {
@@ -8552,6 +8552,13 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   } catch {
     /* sessionStorage unavailable: fall through and show the title */
   }
+  /* The art goes up BEFORE the two checks below, because they are the reason a
+   * player saw their own town for a moment on every launch: boot paints the
+   * loaded character's map, and this function then awaited a network round trip
+   * before it could paint anything. The art needs no answer from either check,
+   * so it costs nothing to draw first. See paintTitleArt for why the menu row
+   * still waits. */
+  paintTitleArt(term);
   /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
    * with something to exit; desktopQuit reports whether there is one. */
   const living = livingRoster().length > 0;
