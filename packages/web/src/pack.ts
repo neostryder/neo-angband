@@ -370,6 +370,13 @@ export function modManifest(raw: unknown): PackManifest {
      * listing and the detail pane are made of. */
     ...(m.tilePacks ? { tilePacks: m.tilePacks } : {}),
     ...(m.repository ? { repository: m.repository } : {}),
+    /* Which of the repository's files ARE the mod. Carried through because the
+     * updater re-reads an installed mod's manifest to work out what to fetch for
+     * the next version, and it reads the NORMALISED one - a mod that declared its
+     * payload and then had it dropped here would silently fall back to the
+     * whole-tree guess on every update. Caught by the allowlist census, not by
+     * review, which is the third time that census has earned its keep. */
+    ...(m.payload ? { payload: m.payload } : {}),
     ...(m.changelog ? { changelog: m.changelog } : {}),
     ...(m.screenshots ? { screenshots: m.screenshots } : {}),
   };
