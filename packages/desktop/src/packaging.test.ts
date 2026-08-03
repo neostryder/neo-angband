@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -495,5 +495,32 @@ describe("every platform still produces something", () => {
     /* Windows and macOS artifact names come from this one, so the same class
      * of failure lands there if it ever grows a colon or a slash. */
     expect(SAFE_IN_A_PATH.test(build.productName)).toBe(true);
+  });
+
+  /**
+   * NO COMPILED OUTPUT MAY SIT NEXT TO ITS SOURCE, and this is not tidiness.
+   *
+   * `update-plan.js`, `.js.map`, `.d.ts` and `.d.ts.map` were committed into
+   * `src/` beside `update-plan.ts`. Everything imports the module as
+   * `./update-plan.js` - which is what TypeScript's ESM output requires - so
+   * esbuild resolved that specifier to the REAL FILE OF THAT NAME and bundled
+   * the compiled copy into the app, while vitest resolved `./update-plan` to
+   * the `.ts` and tested the other one. Two files, one tested, and the tested
+   * one was not the one that shipped.
+   *
+   * It cost nothing for months because the two were committed together and
+   * never drifted. It was found the first time somebody edited the `.ts`: the
+   * change was correct, the tests went green, and the built app did not contain
+   * it. A stale artifact is invisible until the moment it matters.
+   */
+  it("has no compiled artifact shadowing a TypeScript source", () => {
+    const src = dirname(fileURLToPath(import.meta.url));
+    const shadows = readdirSync(src)
+      .filter((name) => /\.(js|jsx|d\.ts)(\.map)?$/u.test(name))
+      .filter((name) => {
+        const stem = name.replace(/\.(js|jsx|d\.ts)(\.map)?$/u, "");
+        return existsSync(join(src, `${stem}.ts`));
+      });
+    expect(shadows, `these shadow a .ts and will be bundled instead of it`).toEqual([]);
   });
 });

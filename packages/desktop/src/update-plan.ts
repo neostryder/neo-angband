@@ -180,11 +180,20 @@ export function swapScript(plan: SwapPlan, pid: number, platform: string): strin
       `$staging = ${q(plan.staging)}`,
       `$attic = ${q(plan.attic)}`,
       `$keep = @(${keep})`,
+      /* The swapper runs with no console, no window and no parent left to report
+       * to, so a line in a file is the ONLY account anyone will ever get of what
+       * it did. It lives in the work directory, which the move loop skips, so it
+       * survives the swap it is describing. Swallowed on failure: a log that
+       * cannot be written must not be the reason an update stops. */
+      `$logf = Join-Path $target '${WORK_DIRNAME}\\swap.log'`,
+      `function Say($m) { try { Add-Content -LiteralPath $logf -Value ((Get-Date).ToString('s') + ' ' + $m) } catch { } }`,
+      `Say "swap starting; waiting for pid ${String(pid)}"`,
       `for ($i = 0; $i -lt 120; $i++) {`,
       `  if (-not (Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue)) { break }`,
       `  Start-Sleep -Milliseconds 500`,
       `}`,
-      `if (Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue) { exit 1 }`,
+      `if (Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue) { Say 'gave up: the app was still running after 60s'; exit 1 }`,
+      `Say 'the app has exited; swapping'`,
       `New-Item -ItemType Directory -Force -Path $attic | Out-Null`,
       `$moved = @()`,
       `try {`,
@@ -198,14 +207,19 @@ export function swapScript(plan: SwapPlan, pid: number, platform: string): strin
       `    Move-Item -LiteralPath $e.FullName -Destination (Join-Path $target $e.Name) -Force`,
       `  }`,
       `} catch {`,
+      `  Say ('the swap failed, rolling back: ' + $_.Exception.Message)`,
       `  foreach ($n in $moved) {`,
       `    $back = Join-Path $attic $n`,
       `    if (Test-Path -LiteralPath $back) { Move-Item -LiteralPath $back -Destination (Join-Path $target $n) -Force }`,
       `  }`,
+      `  Say 'rollback complete; the old version is intact'`,
       `  exit 1`,
       `}`,
       `Remove-Item -LiteralPath $attic -Recurse -Force -ErrorAction SilentlyContinue`,
-      `Start-Process -FilePath ${q(plan.relaunch)}`,
+      `Say 'swap complete; relaunching'`,
+      /* -WorkingDirectory, because this process was created by the WMI provider
+       * host and inherited ITS current directory (System32), not the game's. */
+      `Start-Process -FilePath ${q(plan.relaunch)} -WorkingDirectory $target`,
     ].join("\n");
   }
   const q = shQuote;
@@ -217,9 +231,16 @@ export function swapScript(plan: SwapPlan, pid: number, platform: string): strin
     `target=${q(plan.target)}`,
     `staging=${q(plan.staging)}`,
     `attic=${q(plan.attic)}`,
+    /* The same account the Windows branch keeps, for the same reason: nobody is
+     * left to report to. In bundle mode the target is replaced wholesale, so the
+     * log goes beside the work directory rather than inside the thing that moves. */
+    `logf=${q(`${plan.mode === "bundle" ? plan.staging.replace(/[\\/]new$/u, "") : `${plan.target}/${WORK_DIRNAME}`}/swap.log`)}`,
+    `say() { printf '%s %s\\n' "$(date +%FT%T)" "$1" >> "$logf" 2>/dev/null || true; }`,
+    `say "swap starting; waiting for pid ${String(pid)}"`,
     `i=0`,
     `while [ $i -lt 120 ] && kill -0 ${String(pid)} 2>/dev/null; do sleep 0.5; i=$((i+1)); done`,
-    `if kill -0 ${String(pid)} 2>/dev/null; then exit 1; fi`,
+    `if kill -0 ${String(pid)} 2>/dev/null; then say 'gave up: the app was still running after 60s'; exit 1; fi`,
+    `say 'the app has exited; swapping'`,
     bundle
       ? [
           `rm -rf "$attic"`,
@@ -254,6 +275,7 @@ export function swapScript(plan: SwapPlan, pid: number, platform: string): strin
           `done`,
           `rm -rf "$attic"`,
         ].join("\n"),
+    `say 'swap complete; relaunching'`,
     bundle ? `open ${q(plan.relaunch)}` : `${q(plan.relaunch)} &`,
   ].join("\n");
 }

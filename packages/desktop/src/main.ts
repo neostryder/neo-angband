@@ -595,7 +595,12 @@ function installUpdater(): void {
       }
       if (op === "apply") {
         if (staged === null) return { ok: false, error: "nothing has been downloaded" };
-        launchSwap({
+        /* AWAITED, and the quit is downstream of it. launchSwap rejects unless
+         * the installer is confirmed running, and quitting anyway would put the
+         * player back on the title screen of the old version with no error and
+         * no way to tell that anything went wrong - which is precisely how this
+         * failed silently on Windows for four releases. */
+        await launchSwap({
           root: shape.installRoot,
           staging: staged,
           platform: process.platform,
