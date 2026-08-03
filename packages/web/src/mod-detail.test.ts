@@ -153,3 +153,45 @@ describe("the description budget is measured, not predicted", () => {
     expect(text).toContain("each fix a named toggle");
   });
 });
+
+/**
+ * A third defect from the same pane, and the reason it is asserted here as well
+ * as on the wrapper: a description is written by a MOD AUTHOR, so a real "\n\n"
+ * paragraph break is input this pane has to accept. The wrapper broke only on
+ * spaces, so the newline rode into the output line and the terminal - which has
+ * no glyph for U+000A - painted it as a solid block. qol's shipped manifest has
+ * one, so every player saw "...are not touched here.<block><block>Enable it...".
+ */
+describe("a paragraph break in a mod's description becomes a blank line", () => {
+  const TWO_PARAS =
+    "Fixes upstream bugs. Balance and the way the game plays are not touched here." +
+    "\n\n" +
+    "Enable it and you get the whole patch set, with each fix a named toggle.";
+
+  const paraMod = () =>
+    mod({ manifest: { ...mod().manifest, description: TWO_PARAS } as CatalogMod["manifest"] });
+
+  it("emits no line containing a newline", () => {
+    for (const width of [40, 52, 64, 80, 120]) {
+      for (const line of rowDetail(paraMod(), width)) {
+        expect(line.text, `width ${width} carried a newline into a line`).not.toContain("\n");
+      }
+    }
+  });
+
+  it("emits a blank line where the break was, with both paragraphs intact", () => {
+    const lines = rowDetail(paraMod(), 80, 99);
+    const texts = lines.map((l) => l.text);
+    const end = texts.findIndex((t) => t.includes("are not touched here."));
+    expect(end, "the first paragraph is missing").toBeGreaterThan(-1);
+    expect(texts[end + 1], "no blank line at the paragraph break").toBe("");
+    expect(texts[end + 2]).toContain("Enable it and you get");
+  });
+
+  it("still respects the pane's line budget with the extra blank lines", () => {
+    for (const budget of [10, 14, 20, 40]) {
+      const lines = rowDetail(paraMod(), 44, budget);
+      expect(lines.length, `budget ${budget} overflowed`).toBeLessThanOrEqual(budget);
+    }
+  });
+});
