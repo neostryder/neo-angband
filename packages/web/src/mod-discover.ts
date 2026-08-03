@@ -20,16 +20,31 @@ import {
   newestTag,
   payloadFromTree,
   tagsApiUrl,
+  tagsInChannel,
   treeApiUrl,
   type RepoRef,
   type TreeEntry,
 } from "./mod-source";
+import type { UpdateChannel } from "./update";
 
 /** The bits of the platform this module touches, injected so tests need no network. */
 export interface DiscoverEnv {
   readonly fetch: (url: string) => Promise<DiscoverResponse>;
   /** The running engine version, for the compatibility verdict. */
   readonly engineVersion: string;
+  /**
+   * The player's update channel, which is also their MOD channel.
+   *
+   * One setting, not two: a player on early gets early mod builds, a player on
+   * stable gets only mods' releases. Asking somebody to keep two channel settings
+   * in step is asking them to get it wrong, and the failure would be silent - a
+   * stable game quietly running experimental mod code.
+   *
+   * Optional so a caller that genuinely has no player (a canary, a test) does not
+   * have to invent one; absent means every orderable tag is a candidate, which is
+   * what discovery did before channels applied to mods at all.
+   */
+  readonly channel?: UpdateChannel;
 }
 
 export interface DiscoverResponse {
@@ -65,6 +80,13 @@ export interface DiscoveredMod {
    */
   readonly compatible: boolean;
   readonly engineNote: string | null;
+  /**
+   * The newest version this repository has that the player's CHANNEL declined, or
+   * null. A row that shows 0.13.0 while the repository's front page shows
+   * 0.14.0-beta.1 looks out of date, and the honest answer is "your channel" - so
+   * the row is given what it needs to say so.
+   */
+  readonly channelHeld: string | null;
   readonly payload: readonly PayloadEntry[];
   /**
    * Bytes, when the tree could be read. Null when the payload came from the
@@ -182,19 +204,41 @@ export async function discoverMod(
     /* A pinned tag is taken as given - the player named a version and is owed
      * that version, not the newest. Its tag list is still fetched, so the row can
      * say what else exists. */
-    let tags: readonly string[] = [];
+    let allTags: readonly string[] = [];
     try {
-      tags = await listTags(ref.repo, env);
+      allTags = await listTags(ref.repo, env);
     } catch (e) {
       if (ref.tag === undefined) throw e;
     }
+
+    /* The channel filter. A player on stable is not offered a mod's beta, for the
+     * same reason the game does not offer itself a beta on stable - and it is the
+     * game's own rule doing the deciding (channelAccepts), not a second copy of it.
+     *
+     * A PINNED tag is exempt: the player named a version, which is a more specific
+     * instruction than a channel preference, and refusing it would leave them typing
+     * a URL that the game silently declines to honour. */
+    const picked =
+      env.channel === undefined
+        ? { tags: allTags, held: null }
+        : tagsInChannel(env.channel, allTags);
+    const tags = picked.tags;
+
     const tag = ref.tag ?? tags[0];
     if (tag === undefined) {
+      /* Distinguished, because they need opposite advice: a repository with no
+       * versions at all is the author's problem, while one whose only versions this
+       * channel declines is answered by changing channel. */
+      const held = picked.held;
       return {
         ok: false,
         problem:
-          `${ref.repo} has no released version this can install. ` +
-          `A mod needs a tag like v1.0.0; a branch is not a version.`,
+          held === null
+            ? `${ref.repo} has no released version this can install. ` +
+              `A mod needs a tag like v1.0.0; a branch is not a version.`
+            : `${ref.repo}'s newest version (${held}) is a pre-release, and this ` +
+              `game is on the ${String(env.channel)} channel. Change channel on the ` +
+              `update screen to install it.`,
       };
     }
 
@@ -296,6 +340,7 @@ export async function discoverMod(
          * that learns, so this calls the loader's rather than re-deriving it. */
         compatible: engineAllows(gateable, env.engineVersion),
         engineNote: engineProblem(gateable, env.engineVersion)?.why ?? null,
+        channelHeld: picked.held,
         payload,
         bytes,
         guessedPayload,
