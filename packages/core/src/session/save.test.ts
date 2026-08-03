@@ -13,6 +13,8 @@ import { runGameLoop, LOOP_STATUS } from "../game/loop.js";
 import { monsterGroupsVerify } from "../game/mon-group.js";
 import type { PlayerCommand } from "../game/context.js";
 import { objectNew } from "../obj/object.js";
+import { buildObjectEffectChain } from "../game/obj-cmd.js";
+import type { EffectRecordJson } from "../obj/types.js";
 import { EverseenKnowledge } from "../obj/knowledge.js";
 import { ContentIdResolver } from "../mod/ids.js";
 import { serializeGame, serializeMessages, deserializeMessages } from "./save.js";
@@ -1436,5 +1438,53 @@ describe("remembered floor objects (game/known.ts KnownObjectMemory)", () => {
       seen: false,
       money: false,
     });
+  });
+});
+
+describe("effect subtypes a caller forgot to inject (GameState.effectInject)", () => {
+  /**
+   * Reading an unidentified Scroll of Summon Monster threw
+   * `invalid subtype "ANY" for effect "SUMMON" (PARSE_ERROR_INVALID_VALUE)`
+   * mid-turn, on 0.18.1-edge.12.
+   *
+   * The subtype resolvers live outside the effect module (summon names come from
+   * the monster registry), so EffectBuilder takes them as injections. An object's
+   * chain is rebuilt from raw records on every use AND every inspect, across a
+   * dozen call sites - and the ones that called the two-argument
+   * buildObjectEffectChain had no resolvers at all. `SUMMON:ANY` is the first
+   * entry in summon.txt and it is on a level-1 scroll, so this was reachable in
+   * the first five minutes of any game.
+   */
+  it("resolves SUMMON:ANY with no inject argument at all", () => {
+    const game = startGame(pack, { seed: 4242, depth: 1 });
+    const kind = game.booted.registries.objects.kinds.find(
+      (k) => k.name === "Summon Monster",
+    ) as ObjectKind;
+    expect(kind).toBeDefined();
+    const records = kind.effect as EffectRecordJson[] | undefined;
+    expect(records?.[0]?.type).toBe("ANY");
+
+    /* The two-argument form: exactly what the read and inspect paths used. */
+    const chain = buildObjectEffectChain(records!, game.state);
+
+    expect(chain).not.toBeNull();
+    /* ANY is summon.txt's first entry, so its index is 0 - and 0 is precisely
+     * the value a `< 0` check accepts, which is why asserting "did not throw"
+     * alone would be a weaker test than asserting the resolved subtype. */
+    expect(chain?.subtype).toBe(0);
+  });
+
+  it("an explicitly passed resolver still wins over the wired one", () => {
+    const game = startGame(pack, { seed: 4243, depth: 1 });
+    const kind = game.booted.registries.objects.kinds.find(
+      (k) => k.name === "Summon Undead",
+    ) as ObjectKind;
+    const records = kind.effect as EffectRecordJson[];
+
+    const chain = buildObjectEffectChain(records, game.state, {
+      summonNameToIdx: () => 7,
+    });
+
+    expect(chain?.subtype).toBe(7);
   });
 });

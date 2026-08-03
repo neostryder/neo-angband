@@ -29,7 +29,7 @@ import type { Monster } from "../mon/monster.js";
 import type { MeleeAttack, PlayerCombatState } from "../combat/melee.js";
 import type { DefenderState } from "../combat/mon-melee.js";
 import type { GameObject } from "../obj/object.js";
-import type { Effect } from "../effects/effect.js";
+import type { Effect, EffectBuilderInjections } from "../effects/effect.js";
 import type { Brand, Slay } from "../obj/types.js";
 import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge.js";
 import type { Gear } from "./gear.js";
@@ -524,6 +524,22 @@ export interface GameState {
   resting?: { count: number; turnsRested: number };
 
   /* --- injected hooks --- */
+  /**
+   * The EffectBuilder injections this session was wired with: the resolvers for
+   * subtypes whose registries live outside the effect module (summon names,
+   * player shapes, mod effect codes).
+   *
+   * WHY THIS IS ON THE STATE AND NOT ONLY A PARAMETER. An object's effect chain
+   * is rebuilt from its raw records on EVERY use (buildObjectEffectChain), and
+   * an unresolvable subtype is a thrown parse error, not a soft failure. Twelve
+   * call sites build chains; the ones that threaded the injections through their
+   * deps worked, and the ones that called the two-argument form could not
+   * resolve `SUMMON:ANY` at all - so reading an unidentified Scroll of Summon
+   * Monster crashed the turn, and so did merely INSPECTING one. Defaulting from
+   * here means a caller cannot get it wrong by omission; passing the parameter
+   * still wins, for a harness that wants different resolvers.
+   */
+  effectInject?: EffectBuilderInjections;
   /**
    * cmdq: the internal command queue (cmd-core.c). Self-continuing commands
    * (running re-queues CMD_RUN) push here; processPlayer drains it before
