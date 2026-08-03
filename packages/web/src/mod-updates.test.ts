@@ -155,8 +155,22 @@ describe("what the player is told", () => {
     /* Two very different sentences that a count alone renders identically, and
      * the difference is the whole question a player is asking. */
     expect(modUpdateRowLabel([], false)).toContain("none installed");
-    expect(modUpdateRowLabel([], true)).toContain("all up to date");
+    expect(modUpdateRowLabel([], true)).toContain("none from this build");
     expect(modUpdateRowLabel(one, true)).toContain("1 available");
+  });
+
+  it("does NOT claim a mod is up to date, because this check cannot know", () => {
+    /* Measured on a real install: it read "all up to date" while, on the same
+     * screen, "Install a mod" correctly offered neo-linoleum 0.12.1 over the
+     * installed 0.12.0 - because the mod had released and the build had not. This
+     * comparison is against the catalogue compiled into the game, so its silence
+     * only ever meant "nothing newer shipped HERE". A row that overclaims is worse
+     * than one that admits its scope: a player who reads "up to date" stops
+     * looking. */
+    const quiet = modUpdateRowLabel([], true);
+    expect(quiet).not.toMatch(/up to date/u);
+    /* And it points at the screen that does know. */
+    expect(quiet).toContain("Install a mod");
   });
 });
 

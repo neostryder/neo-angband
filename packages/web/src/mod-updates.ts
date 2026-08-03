@@ -90,10 +90,27 @@ export function pendingModUpdates(
   return out;
 }
 
-/** The row's label on the mod manager, which doubles as the whole report. */
+/**
+ * The row's label on the mod manager, which doubles as the whole report.
+ *
+ * IT NO LONGER SAYS "all up to date", because it cannot know that. This check is a
+ * comparison against the catalogue compiled into the build, so its silence means
+ * "nothing NEWER SHIPPED WITH THIS GAME" - a much weaker claim than the one the old
+ * wording made. Caught in the act: an install carrying neo-linoleum v0.12.0 read
+ * "all up to date" on the same screen where "Install a mod" correctly offered
+ * v0.12.1, because the mod had released and the build had not.
+ *
+ * The durable fix is to ask each installed mod's own repository for its tags, the
+ * way the browse screen does; until that lands, the honest thing is to say what was
+ * actually checked and point at the screen that knows better. A row that overclaims
+ * is worse than one that admits its scope: a player who reads "up to date" stops
+ * looking.
+ */
 export function modUpdateRowLabel(pending: readonly ModUpdate[], anyInstalled: boolean): string {
   if (!anyInstalled) return "Update installed mods...  (none installed)";
-  if (pending.length === 0) return "Update installed mods...  (all up to date)";
+  if (pending.length === 0) {
+    return "Update installed mods...  (none from this build - check Install a mod)";
+  }
   return `Update installed mods...  (${String(pending.length)} available)`;
 }
 
