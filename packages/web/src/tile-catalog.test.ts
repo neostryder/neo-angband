@@ -475,7 +475,17 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/kinds\.kindByIdx\(mem\.kidx\)/);
     expect(main).toMatch(/kinds\.unknownGoldKind/);
     expect(main).toMatch(/kinds\.unknownItemKind/);
-    expect(main).toMatch(/return objectKindCell\(kind, gx, gy\)/);
+    /* `true` = remembered. An object has no lighting variant in any pref file,
+     * so nothing but the renderer can make a remembered one look remembered. */
+    expect(main).toMatch(/return objectKindCell\(kind, gx, gy, true\)/);
+    /* And the dimming reaches BOTH halves of the cell from one constant, so the
+     * glyph and the tile cannot disagree about how dark "remembered" is. */
+    expect(main).toMatch(/const DIM_SCALE = 0\.38;/);
+    expect(main).toMatch(/parseInt\(h, 16\) \* DIM_SCALE/);
+    expect(main).toMatch(/ctx\.globalAlpha = prev \* DIM_SCALE/);
+    /* The frame diff has to be able to tell the two apart, or it leaves the lit
+     * tile on screen - which is exactly how this was reported. */
+    expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
     /* And the tile actually reaches the draw. `bgTile: memTile` alone - the
      * remembered TERRAIN tile - is what used to be there by itself. */
     expect(main).toMatch(
