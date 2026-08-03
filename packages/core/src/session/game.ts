@@ -1188,6 +1188,11 @@ function wireGame(
        * PARSE_ERROR_INVALID_EFFECT, exactly as before. */
       lookupEffect: (name) => (effects.isRegistered(name) ? name : null),
     };
+    /* Published on the state so buildObjectEffectChain has these by default.
+     * The chain is rebuilt from raw records on every USE and every INSPECT, and
+     * a caller that omitted them could not resolve `SUMMON:ANY` - it threw
+     * mid-turn. See GameState.effectInject. */
+    state.effectInject = inject;
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };

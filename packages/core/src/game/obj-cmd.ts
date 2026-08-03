@@ -975,14 +975,23 @@ function rollRechargeTime(state: GameState, obj: GameObject): number {
   return state.rng.randcalc(obj.time, 0, "randomise");
 }
 
-/** Build an object's effect chain from its raw records (per use). */
+/**
+ * Build an object's effect chain from its raw records (per use).
+ *
+ * The subtype resolvers default to the ones the session was wired with
+ * (state.effectInject) so that a caller cannot break a chain by omitting them -
+ * see the field's own comment for the crash that taught this. An explicitly
+ * passed `inject` still wins, key by key.
+ */
 export function buildObjectEffectChain(
   records: readonly EffectRecordJson[],
   state: GameState,
   inject: EffectBuilderInjections = {},
 ): Effect | null {
+  const wired = state.effectInject ?? {};
+  const resolvers: EffectBuilderInjections = { ...wired, ...inject };
   const builder = new EffectBuilder({
-    ...inject,
+    ...resolvers,
     baseValues: {
       PLAYER_LEVEL: () => state.actor.player.lev,
       MAX_SIGHT: () => state.z.maxSight,
@@ -996,7 +1005,7 @@ export function buildObjectEffectChain(
           ? state.rng.damroll(weapon.dd, weapon.ds) + weapon.toD
           : 0;
       },
-      ...inject.baseValues,
+      ...resolvers.baseValues,
     },
   });
   for (const e of records) {
