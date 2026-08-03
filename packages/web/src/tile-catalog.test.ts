@@ -430,9 +430,12 @@ describe("the game does not know or expect any particular mod", () => {
     // Every call site feeds the grid it is drawing, not a placeholder.
     expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y\)/);
     expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
+    /* Every object arm - live pile, remembered pile, sensed marker - goes
+     * through the one objectKindCell, which is handed the grid it is drawing. */
     expect(main).toMatch(
-      /tileForShownObject\(tileMap, o\.kind,[\s\S]*?\),\s*o\.grid\.x,\s*o\.grid\.y,/,
+      /tileForShownObject\(tileMap, kind,[\s\S]*?\),\s*gx,\s*gy,/,
     );
+    expect(main).toMatch(/objectKindCell\(o\.kind, o\.grid\.x, o\.grid\.y\)/);
   });
 
   /**
@@ -447,8 +450,51 @@ describe("the game does not know or expect any particular mod", () => {
     const main = read("main.ts");
     /* The same useFlavor that decides the glyph decides the tile - not a
      * second, separately-derived condition that can drift from it. */
-    expect(main).toMatch(/tileForShownObject\(tileMap, o\.kind, useFlavor && flavor \? flavor\.fidx : null\)/);
-    expect(main).not.toMatch(/tileForObject\(tileMap, o\.kind\)/);
+    expect(main).toMatch(
+      /tileForShownObject\(tileMap, kind, useFlavor && flavor \? flavor\.fidx : null\)/,
+    );
+    expect(main).not.toMatch(/tileForObject\(tileMap, [a-zA-Z.]*kind\)/);
+  });
+
+  /**
+   * A REMEMBERED object draws its tile too.
+   *
+   * The memory used to be a resolved glyph (`{ ch, attr }`), so the remembered
+   * draw had no kind to look a tile up with and emitted ASCII with only the
+   * terrain memory tile behind it. Every item on the floor turned into a glyph
+   * the moment it left view, in every tile set. The fix is a KnownObjectMemory
+   * that carries the kind - so the assertion that matters is that the remembered
+   * draw goes through the SAME objectKindCell the live pile does, and passes the
+   * object tile it gets back to the terminal.
+   */
+  it("draws a remembered object through the same kind->cell path as a visible one", () => {
+    const main = read("main.ts");
+    expect(main).toMatch(/function rememberedObjectCell\(/);
+    /* An exact memory resolves its kind; a sensed marker resolves to the real
+     * <unknown item> / <unknown treasure> kinds, so those get tiles as well. */
+    expect(main).toMatch(/kinds\.kindByIdx\(mem\.kidx\)/);
+    expect(main).toMatch(/kinds\.unknownGoldKind/);
+    expect(main).toMatch(/kinds\.unknownItemKind/);
+    expect(main).toMatch(/return objectKindCell\(kind, gx, gy\)/);
+    /* And the tile actually reaches the draw. `bgTile: memTile` alone - the
+     * remembered TERRAIN tile - is what used to be there by itself. */
+    expect(main).toMatch(
+      /under = rememberedObjectCell\(mem, gx, gy\);[\s\S]{0,400}?\.\.\.\(under\.tile \? \{ tile: under\.tile \} : \{\}\)/,
+    );
+  });
+
+  /**
+   * A camouflaged monster is not drawn as a monster.
+   *
+   * grid_data_as_text's monster arm is gated on `!monster_is_camouflaged(...)`
+   * (ui-map.c:56); the port had no camouflage test at all, so an undiscovered
+   * creeping copper coin drew its true monster tile over the fake item it had
+   * placed. Every other consumer of camouflage in the engine already honoured
+   * it - the renderer was the only one that did not.
+   */
+  it("leaves a camouflaged monster showing the item it is mimicking", () => {
+    const main = read("main.ts");
+    expect(main).toMatch(/if \(monsterIsCamouflaged\(mon\)\) continue;/);
   });
 });
 

@@ -59,6 +59,7 @@ import {
   viewerStateOf,
   knownFeat,
   knownObject,
+  type KnownObjectMemory,
   loc,
   MFLAG,
   TRF,
@@ -202,6 +203,7 @@ import {
   GRAPHICS_NONE,
   LIGHTING,
   monsterGlyph,
+  monsterIsCamouflaged,
   monsterIsShapeUnique,
   playerGlyph,
   tileForFeature,
@@ -6328,6 +6330,81 @@ function trapIndex(): Map<number, CellGlyph> {
   return map;
 }
 
+/**
+ * object_kind_attr / object_kind_char (ui-object.c:87-112) plus the matching
+ * x_attr tile: THE one place the port decides how an object kind draws.
+ *
+ * A flavoured kind draws with its flavour glyph+colour (use_flavor_glyph) until
+ * identified - for a scroll, only while unaware. Without this an unidentified
+ * potion renders in the kind's black placeholder colour (a black square on the
+ * floor). The flavour attr is a colour NAME (colorTextToAttr); the kind attr is
+ * a colour CHAR (colorCharToAttr).
+ *
+ * grid_data_as_text (ui-map.c:35-50) routes EVERY object arm through this pair -
+ * the live pile, the remembered pile, the multi-object pile marker and the
+ * sensed unknown-item/treasure markers alike - so this function is shared by
+ * every caller that draws an object, and the flavour and the tile can no longer
+ * disagree about which kind is being looked at.
+ */
+function objectKindCell(kind: ObjectKind, gx: number, gy: number): CellGlyph {
+  const flavor = state.flavorGlyph?.(kind);
+  const useFlavor =
+    !!flavor && !(tvalIsScroll(kind.tval) && (game.flavor?.isAware(kind) ?? false));
+  /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
+   * unconditionally, two lines above the code that carefully worked out that
+   * the kind is not what should be drawn - so every flavoured item fell back
+   * to a glyph in a tile set (an Ochre Potion painted as `!` beside fully
+   * drawn armour), and would have leaked the identified art if the set had
+   * happened to carry one. */
+  const tile = tileMap
+    ? tileDrawFor(
+        tileForShownObject(tileMap, kind, useFlavor && flavor ? flavor.fidx : null),
+        gx,
+        gy,
+      )
+    : undefined;
+  /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
+   * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
+  const g = useFlavor ? glyphs.flavorGlyph(flavor.fidx) : glyphs.kindGlyph(kind.kidx);
+  const attr =
+    g?.attr ?? (useFlavor ? colorTextToAttr(flavor.attr) : colorCharToAttr(kind.dAttr));
+  return {
+    ch: g?.char ?? (useFlavor ? flavor.char : kind.dChar),
+    attr,
+    css: colorToCss(attr),
+    ...(tile ? { tile } : {}),
+  };
+}
+
+/**
+ * How a REMEMBERED floor object draws: grid_data_as_text's object arms applied
+ * to the player's memory rather than the live pile (ui-map.c:37-49).
+ *
+ * An exact memory resolves its kind and goes through objectKindCell, exactly as
+ * a visible object does. A sensed marker resolves to the real unknown_gold_kind
+ * / unknown_item_kind object kinds (`<unknown treasure>` / `<unknown item>` in
+ * object.txt), so a tile set draws those too; absent from the pack, it falls
+ * back to the dim `*` the port drew for both.
+ *
+ * This is the fix for "items turn into their glyphs when they go out of sight".
+ * The memory used to be a glyph resolved at memorize time, so the draw had no
+ * kind to look a tile up with - in EVERY tile set, for EVERY item.
+ */
+function rememberedObjectCell(
+  mem: KnownObjectMemory,
+  gx: number,
+  gy: number,
+): CellGlyph {
+  const kinds = booted.registries.objects;
+  const kind = mem.seen
+    ? kinds.kindByIdx(mem.kidx)
+    : mem.money
+      ? kinds.unknownGoldKind
+      : kinds.unknownItemKind;
+  if (kind) return objectKindCell(kind, gx, gy);
+  return { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM };
+}
+
 // Live floor items from the engine's piles (pile head = newest, drawn on
 // top exactly as upstream lists the first object).
 function objectIndex(): Map<number, CellGlyph> {
@@ -6339,42 +6416,7 @@ function objectIndex(): Map<number, CellGlyph> {
     // dropped from the pack and left visible on the ground.
     const o = pile.find((obj) => obj.grid && !state.isIgnored?.(obj));
     if (!o || !o.grid) continue;
-    // object_kind_attr / object_kind_char (ui-object.c:87-112): a flavoured kind
-    // draws with its flavour glyph+colour (use_flavor_glyph) until identified -
-    // for a scroll, only while unaware. Without this an unidentified potion
-    // renders in the kind's black placeholder colour (a black square on the
-    // floor). The flavour attr is a colour NAME (colorTextToAttr); the kind attr
-    // is a colour CHAR (colorCharToAttr).
-    const flavor = state.flavorGlyph?.(o.kind);
-    const useFlavor =
-      !!flavor && !(tvalIsScroll(o.kind.tval) && (game.flavor?.isAware(o.kind) ?? false));
-    /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
-     * unconditionally, two lines above the code that carefully worked out that
-     * the kind is not what should be drawn - so every flavoured item fell back
-     * to a glyph in a tile set (an Ochre Potion painted as `!` beside fully
-     * drawn armour), and would have leaked the identified art if the set had
-     * happened to carry one. */
-    const tile = tileMap
-      ? tileDrawFor(
-          tileForShownObject(tileMap, o.kind, useFlavor && flavor ? flavor.fidx : null),
-          o.grid.x,
-          o.grid.y,
-        )
-      : undefined;
-    /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
-     * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
-    const g = useFlavor
-      ? glyphs.flavorGlyph(flavor.fidx)
-      : glyphs.kindGlyph(o.kind.kidx);
-    const attr =
-      g?.attr ??
-      (useFlavor ? colorTextToAttr(flavor.attr) : colorCharToAttr(o.kind.dAttr));
-    map.set(gridIndex(o.grid.x, o.grid.y), {
-      ch: g?.char ?? (useFlavor ? flavor.char : o.kind.dChar),
-      attr,
-      css: colorToCss(attr),
-      ...(tile ? { tile } : {}),
-    });
+    map.set(gridIndex(o.grid.x, o.grid.y), objectKindCell(o.kind, o.grid.x, o.grid.y));
   }
   return map;
 }
@@ -6552,6 +6594,15 @@ function monsterIndex(): Map<number, MonsterCell> {
     const mon = state.monsters[i];
     if (!mon) continue;
     if (!mon.mflag.has(MFLAG.VISIBLE) && !mon.mflag.has(MFLAG.MARK)) continue;
+    /* grid_data_as_text's monster arm (ui-map.c:56): `else if
+     * (!monster_is_camouflaged(cave_monster(cave, g->m_idx)))`. A camouflaged
+     * monster is NOT drawn as a monster - it is left showing whatever the object
+     * layer put there, which for a mimic is the fake item it created at
+     * placement. The port had no camouflage test at all, so an undiscovered
+     * creeping copper coin drew its true monster tile: the reveal, spoiled, and
+     * the ONLY way it could be spoiled since every other consumer of camouflage
+     * (melee, monster turn, messages) already honoured it. */
+    if (monsterIsCamouflaged(mon)) continue;
     const tile = tileMap
       ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx), mon.grid.x, mon.grid.y)
       : undefined;
@@ -6624,9 +6675,10 @@ function buildOverviewForShell(): Overview {
     objectGlyphAt: (x, y) => {
       const mem = knownObjectShown(x, y);
       if (!mem) return null;
-      return mem.ch === null
-        ? { ch: "*", css: UI_DIM }
-        : { ch: mem.ch, css: colorToCss(colorCharToAttr(mem.attr)) };
+      /* display_map goes through grid_data_as_text too (ui-map.c:446), so the
+       * miniature resolves a remembered object the same way the map does. */
+      const cell = rememberedObjectCell(mem, x, y);
+      return { ch: cell.ch, css: cell.css };
     },
     trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
     monsterGlyphAt: (x, y) => {
@@ -6966,21 +7018,17 @@ function render(targeting?: TargetingOverlay): void {
           ...cursorBg,
           ...(memTile ? { tile: memTile } : {}),
         });
-        /* Remembered / sensed objects persist on the map in full color. */
+        /* Remembered / sensed objects persist on the map in full color - and
+         * with their TILE, which the glyph-only memory could not supply. The
+         * remembered terrain tile stays behind it as the background. */
         const mem = knownObjectShown(gx, gy);
         if (mem) {
-          under =
-            mem.ch === null
-              ? { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM }
-              : {
-                  ch: mem.ch,
-                  attr: colorCharToAttr(mem.attr),
-                  css: colorToCss(colorCharToAttr(mem.attr)),
-                };
+          under = rememberedObjectCell(mem, gx, gy);
           term.put(screenX, screenY, {
             ch: under.ch,
             fg: under.css,
             ...cursorBg,
+            ...(under.tile ? { tile: under.tile } : {}),
             ...(memTile ? { bgTile: memTile } : {}),
           });
         }

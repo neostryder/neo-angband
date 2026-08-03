@@ -272,7 +272,7 @@ describe("object detection (L1682-L1761)", () => {
       y: 5,
       x: 5,
     });
-    expect(knownObject(state, loc(12, 10))).toEqual({ ch: null, attr: "" });
+    expect(knownObject(state, loc(12, 10))).toEqual({ seen: false, money: false });
     expect(msgs).toContain("You sense the presence of objects!");
 
     registry().effectSimple(EF.DETECT_OBJECTS, env(state, msgs), {
@@ -281,8 +281,8 @@ describe("object detection (L1682-L1761)", () => {
       x: 5,
     });
     expect(knownObject(state, loc(12, 10))).toEqual({
-      ch: potion.kind.dChar,
-      attr: potion.kind.dAttr,
+      seen: true,
+      kidx: potion.kind.kidx,
     });
     expect(msgs).toContain("You detect the presence of objects!");
   });

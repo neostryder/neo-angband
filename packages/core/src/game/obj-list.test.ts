@@ -67,10 +67,7 @@ function putRealFloor(
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, {
-    ch: kind.dChar ?? ",",
-    attr: kind.dAttr ?? "w",
-  });
+  state.known.objects.set(idx, { seen: true, kidx: kind.kidx });
   return obj;
 }
 
@@ -107,14 +104,14 @@ function putFloor(state: GameState, at: Loc, opts: FakeOpts = {}): GameObject {
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, { ch: kind.dChar, attr: kind.dAttr });
+  state.known.objects.set(idx, { seen: true, kidx: 1 });
   return obj;
 }
 
 /** Mark a grid as sensed-but-unidentified (detection marker, no glyph). */
 function senseUnknown(state: GameState, at: Loc): void {
   const idx = at.y * state.chunk.width + at.x;
-  state.known.objects.set(idx, { ch: null, attr: "" });
+  state.known.objects.set(idx, { seen: false, money: false });
 }
 
 describe("object_list_collect (obj-list.c L156)", () => {

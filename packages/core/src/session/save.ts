@@ -95,7 +95,7 @@ import type { Gear } from "../game/gear.js";
 import type { Store } from "../store/store.js";
 import type { BoundStore } from "../store/types.js";
 import { newKnownMap } from "../game/known.js";
-import type { KnownMap } from "../game/known.js";
+import type { KnownMap, KnownObjectMemory } from "../game/known.js";
 import {
   fnv1aIntegrity,
   stampSavefile,
@@ -1096,7 +1096,54 @@ export function deserializeMessages(
 /** Serialized map knowledge (remembered terrain and floor objects). */
 export interface SavedKnown {
   feat: number[];
-  objects: Array<[number, { ch: string | null; attr: string }]>;
+  objects: Array<[number, SavedKnownObject]>;
+}
+
+/**
+ * A remembered floor object (game/known.ts KnownObjectMemory).
+ *
+ * `kindId` present = an exact memory of that kind (grid_data.first_kind).
+ * Absent = a sensed marker, `money` choosing unknown_gold_kind over
+ * unknown_item_kind.
+ *
+ * `ch` / `attr` are the PRE-0.18 shape, when the memory was a glyph resolved at
+ * memorize time rather than a kind. Kept readable so an existing character
+ * loads without a SAVE_VERSION bump: a glyph cannot be turned back into a kind,
+ * so such an entry degrades to the sensed marker - "something is here" - and
+ * heals to an exact memory the next time the player sees the grid. Written
+ * alongside `kindId` so that an OLDER build reading a NEWER save degrades the
+ * same benign way instead of drawing `undefined`.
+ */
+export interface SavedKnownObject {
+  kindId?: string;
+  money?: boolean;
+  ch?: string | null;
+  attr?: string;
+}
+
+/** KnownObjectMemory -> its saved form. */
+function serializeKnownObject(
+  m: KnownObjectMemory,
+  ids: ContentIdResolver,
+): SavedKnownObject {
+  const legacy = { ch: null, attr: "" };
+  if (!m.seen) return { ...legacy, ...(m.money ? { money: true } : {}) };
+  const kindId = ids.kindIdOrNull(m.kidx);
+  /* Kind unbound in this pack (e.g. a mod that supplied it is gone): the grid
+   * still held SOMETHING, which is exactly what the sensed marker says. */
+  return kindId === null ? legacy : { ...legacy, kindId };
+}
+
+/** The saved form -> KnownObjectMemory, tolerating both shapes. */
+function deserializeKnownObject(
+  m: SavedKnownObject,
+  ids: ContentIdResolver,
+): KnownObjectMemory {
+  if (m.kindId !== undefined) {
+    const kidx = ids.kindIndex(m.kindId);
+    if (kidx !== undefined) return { seen: true, kidx };
+  }
+  return { seen: false, money: m.money === true };
 }
 
 /** One serialized race-lore record. */
@@ -1357,7 +1404,7 @@ export function serializeGame(
             feat: knownFeat,
             objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
               i,
-              { ch: m.ch, attr: m.attr },
+              serializeKnownObject(m, ids),
             ]),
           },
         }
@@ -1656,6 +1703,7 @@ export function deserializeKnown(
   width: number,
   height: number,
   featRemap: Map<number, number>,
+  ids: ContentIdResolver,
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
@@ -1665,7 +1713,7 @@ export function deserializeKnown(
   );
   known.feat.set(feat);
   for (const [i, m] of data.objects) {
-    known.objects.set(i, { ch: m.ch, attr: m.attr });
+    known.objects.set(i, deserializeKnownObject(m, ids));
   }
   return known;
 }
@@ -1926,7 +1974,7 @@ function serializeStoredLevel(
       feat: knownFeat,
       objects: Array.from(level.known.objects.entries()).map(([i, m]) => [
         i,
-        { ch: m.ch, attr: m.attr },
+        serializeKnownObject(m, ids),
       ]),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
@@ -1983,7 +2031,7 @@ export function deserializeLevelCache(
       traps: traps
         ? deserializeTraps(entry.traps, traps, chunk.width, ids)
         : new Map(),
-      known: deserializeKnown(entry.known, chunk.width, chunk.height, featRemap),
+      known: deserializeKnown(entry.known, chunk.width, chunk.height, featRemap, ids),
       decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
       turn: entry.turn,
       /* chunk->join stair connectors; tolerate absence for pre-field saves. */

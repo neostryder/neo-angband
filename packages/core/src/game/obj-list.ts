@@ -105,7 +105,7 @@ export function objectListCollect(state: GameState): ObjectList {
       (grid.x === pgrid.x && grid.y === pgrid.y);
     const field = los ? OBJECT_LIST_SECTION_LOS : OBJECT_LIST_SECTION_NO_LOS;
 
-    if (marker.ch === null) {
+    if (!marker.seen) {
       /* Sensed but unidentified: a single unknown entry, never ignored. */
       const entry: ObjectListEntry = {
         object: null,

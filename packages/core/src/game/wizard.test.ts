@@ -581,7 +581,7 @@ describe("do_cmd_wiz_wizard_light (L2907)", () => {
     potion.number = 1;
     expect(floorCarry(state, grid, potion)).toBe(true);
     wizWizardLight(state, wizDeps(state, true));
-    expect(knownObject(state, grid)?.ch).not.toBeNull();
+    expect(knownObject(state, grid)?.seen).toBe(true);
   });
 });
 
