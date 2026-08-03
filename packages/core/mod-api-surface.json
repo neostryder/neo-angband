@@ -1577,6 +1577,7 @@
     "tileForMonster",
     "tileForObject",
     "tileForProjection",
+    "tileForShownObject",
     "tileForTrap",
     "tileMapSink",
     "timedIncEffectApplyToPlayer",

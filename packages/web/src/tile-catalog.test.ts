@@ -430,7 +430,25 @@ describe("the game does not know or expect any particular mod", () => {
     // Every call site feeds the grid it is drawing, not a placeholder.
     expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y\)/);
     expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
-    expect(main).toMatch(/tileForObject\(tileMap, o\.kind\), o\.grid\.x, o\.grid\.y\)/);
+    expect(main).toMatch(
+      /tileForShownObject\(tileMap, o\.kind,[\s\S]*?\),\s*o\.grid\.x,\s*o\.grid\.y,/,
+    );
+  });
+
+  /**
+   * A flavoured object draws its FLAVOUR's tile, not its kind's.
+   *
+   * Pinned at the source because main.ts cannot be imported, and because the
+   * two halves of this decision sat four lines apart and disagreed: the glyph
+   * used the flavour and the tile asked for the kind. Every potion, scroll,
+   * ring and wand therefore fell back to an ASCII glyph on a tile map.
+   */
+  it("asks for the flavour's tile while the player is unaware", () => {
+    const main = read("main.ts");
+    /* The same useFlavor that decides the glyph decides the tile - not a
+     * second, separately-derived condition that can drift from it. */
+    expect(main).toMatch(/tileForShownObject\(tileMap, o\.kind, useFlavor && flavor \? flavor\.fidx : null\)/);
+    expect(main).not.toMatch(/tileForObject\(tileMap, o\.kind\)/);
   });
 });
 

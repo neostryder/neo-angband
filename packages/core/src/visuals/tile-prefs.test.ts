@@ -10,6 +10,7 @@ import {
   TileMap,
   tileForFeature,
   tileForFlavor,
+  tileForShownObject,
   tileForMonster,
   tileForObject,
   tileForProjection,
@@ -168,6 +169,43 @@ describe("parseTilePrefs: flavor lines (old/flvr-xxx.prf)", () => {
       attr: 0xb5,
       char: 0x8a,
     });
+  });
+});
+
+/**
+ * WHICH tile a flavoured object draws with, which is the whole bug.
+ *
+ * The renderer worked out correctly that an unidentified potion draws with its
+ * FLAVOUR's glyph, and then asked for the KIND's tile two lines earlier. Tile
+ * sets key flavoured items by flavour, so `map.object[kidx]` was empty and
+ * every potion, scroll, ring and wand fell back to an ASCII glyph in the
+ * middle of a fully drawn tile map.
+ */
+describe("the tile a flavoured object shows", () => {
+  const kind = reg.objects.lookupKind(tvalFindIdx("light"), reg.objects.lookupSval(tvalFindIdx("light"), "Wooden Torch"))!;
+
+  it("draws the flavour's tile while the player is unaware", () => {
+    expect(tileForShownObject(oldMap, kind, 1)).toEqual({ attr: 0xb5, char: 0x8a });
+  });
+
+  it("draws the kind's tile once there is no flavour to hide behind", () => {
+    expect(tileForShownObject(oldMap, kind, null)).toEqual({ attr: 0x8b, char: 0x86 });
+  });
+
+  /**
+   * The leak this must never spring. A tile set that has no art for a flavour
+   * must produce NOTHING - so the caller falls back to the flavour glyph. If
+   * it reached past to the kind's tile, an unidentified potion would be drawn
+   * with the art of whatever it turns out to be: the identity the flavour
+   * system exists to conceal, rendered at 32x32.
+   */
+  it("never falls back to the kind's art for a flavour the set does not draw", () => {
+    const missing = 9999;
+    expect(tileForFlavor(oldMap, missing)).toBeNull();
+    expect(tileForShownObject(oldMap, kind, missing)).toBeNull();
+    /* ...and the kind's tile really is there to be leaked, so this is a
+     * statement about the rule and not about an empty map. */
+    expect(tileForObject(oldMap, kind)).not.toBeNull();
   });
 });
 
