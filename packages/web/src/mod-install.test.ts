@@ -190,11 +190,23 @@ function res(bytes: Uint8Array, status = 200): FetchLike {
   };
 }
 
+/**
+ * A manifest that MEETS THE REQUIREMENTS, because installing now checks them.
+ *
+ * It gained `facets` and `modApi` when the standards inspection was added, and that
+ * was not a test being appeased: three tests here installed a mod that ships
+ * plugin.js while declaring `shape: "content"` and no modApi, which is a mod the
+ * LOADER refuses at boot. They had been asserting a successful install of something
+ * that could never have run - exactly the gap the inspection exists to close, found
+ * in this repository's own fixtures the moment it was wired up.
+ */
 const MANIFEST = JSON.stringify({
   id: "demo",
   name: "Demo",
   version: "1.0.0",
   shape: "content",
+  facets: ["content", "plugin"],
+  modApi: 1,
 });
 const PLUGIN = "export default { api: 1, hooks: () => ({}) };";
 
@@ -1291,5 +1303,80 @@ describe("installModFromRepo: consent is enforced HERE, not in the screen", () =
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problem).toMatch(/Third-party mods are not enabled/u);
+  });
+});
+
+describe("installModFromRepo: the standards inspection", () => {
+  /** A manifest shipping code without the ABI declaration that gates it. */
+  const NO_MODAPI = JSON.stringify({
+    id: "demo",
+    name: "Demo",
+    version: "1.0.0",
+    shape: "content",
+  });
+
+  it("refuses a mod that would install and then not run", async () => {
+    /* The gap this closes: a plugin.js with no modApi, or a manifest whose shape does
+     * not admit the code it ships, is refused at LOAD time - so before this, the
+     * install SUCCEEDED and the player found out later from a problems list why the
+     * thing they chose was inert. Better to refuse with the reason. */
+    const { env, stores } = await envFor({
+      "manifest.json": enc(NO_MODAPI),
+      "plugin.js": enc(PLUGIN),
+    });
+    const r = await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+    );
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.problem).toMatch(/does not meet the requirements/u);
+      expect(r.problem).toMatch(/modApi/u);
+      /* And it tells the player who can fix it, with the command. */
+      expect(r.problem).toMatch(/neo-angband-mod-check/u);
+    }
+    /* NOTHING stored. A refusal that has already written the files is not a refusal. */
+    expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
+    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
+  });
+
+  it("does not refuse over ADVICE, only over requirements", async () => {
+    /* No description, no licence, no engine range: three pieces of advice and zero
+     * reasons to deny a player the mod they asked for. */
+    const bare = JSON.stringify({
+      id: "demo",
+      name: "Demo",
+      version: "1.0.0",
+      shape: "content",
+    });
+    const { env } = await envFor({ "manifest.json": enc(bare) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("inspects the UNPACKED contents of an archive", async () => {
+    /* The plugin.js inside a zip is invisible until it is opened, so an inspection
+     * that ran at discovery time would have passed this mod. */
+    const zip = zipSync({
+      "manifest.json": enc(NO_MODAPI),
+      "plugin.js": enc(PLUGIN),
+    });
+    const { env } = await envFor({ "dist/pack.zip": zip });
+    const r = await installModFromRepo(
+      discovered([{ kind: "archive", path: "dist/pack.zip" }]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/modApi/u);
   });
 });

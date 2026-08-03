@@ -34,7 +34,8 @@
     "it runs and names the remedy when it is missing."
   ],
   "bin": {
-    "neo-angband-mod-build": "bin/neo-angband-mod-build.mjs"
+    "neo-angband-mod-build": "bin/neo-angband-mod-build.mjs",
+    "neo-angband-mod-check": "bin/neo-angband-mod-check.mjs"
   },
   "exports": {
     ".": {

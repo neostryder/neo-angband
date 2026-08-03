@@ -106,3 +106,17 @@ export type {
 } from "./conflicts.js";
 export { CapabilityError, CapabilitySet, parseCapability } from "./capabilities.js";
 export type { ParsedCapability } from "./capabilities.js";
+export {
+  MANIFEST_FILE,
+  MOD_REQUIREMENTS,
+  PLUGIN_FILE,
+  checkMod,
+  requirementsMarkdown,
+} from "./standards.js";
+export type {
+  CheckReport,
+  Finding,
+  ModUnderTest,
+  Requirement,
+  RequirementLevel,
+} from "./standards.js";
