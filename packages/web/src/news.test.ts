@@ -11,6 +11,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import {
+  paintTitleArt,
   parseNewsLine,
   shimmerCss,
   showTitleScreen,
@@ -227,6 +228,68 @@ const rowText = (grid: { ch: string }[][], y: number): string =>
     .map((c) => c.ch)
     .join("")
     .replace(/\s+$/u, "");
+
+/** A blank 80x24 grid and a term stub that draws into it. */
+function gridTerm(): {
+  grid: { ch: string; fg: string }[][];
+  term: Parameters<typeof paintTitleArt>[0];
+} {
+  const cols = 80;
+  const rows = 24;
+  const grid: { ch: string; fg: string }[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ ch: " ", fg: "" })),
+  );
+  const term = {
+    size: () => ({ cols, rows }),
+    clear: () => {
+      for (const row of grid) for (let x = 0; x < cols; x++) row[x] = { ch: " ", fg: "" };
+    },
+    print: (x: number, y: number, text: string, fg: string) => {
+      for (let i = 0; i < text.length && x + i < cols; i++) {
+        grid[y]![x + i] = { ch: text[i] ?? " ", fg };
+      }
+    },
+  };
+  return { grid, term: term as unknown as Parameters<typeof paintTitleArt>[0] };
+}
+
+/**
+ * The art has to be paintable WITHOUT the two answers the menu row needs.
+ *
+ * Reported from play: "why do I always see a town map draw before the title
+ * screen every time Neo Angband first loads". The boot sequence paints the
+ * loaded character's map and then entered maybeTitle, which awaited the update
+ * check and the mod check before it could paint anything at all - and the
+ * terminal coalesces its paint to the end of the task, so the map model was
+ * flushed at that first await and the title arrived a network round trip later.
+ * The flash lasted exactly as long as the checks did.
+ */
+describe("the title art paints before anything is known (the town-map flash)", () => {
+  it("draws the same art rows the full title screen draws", () => {
+    const { grid, term } = gridTerm();
+    paintTitleArt(term);
+    const full = renderTitle();
+
+    /* Pinned to STATED text as well as to each other: "these two agree" is
+     * satisfied by breaking both, so name something the art must contain. */
+    const art = Array.from({ length: 23 }, (_, y) => rowText(grid, y)).join("\n");
+    expect(art).toContain(ENGINE_VERSION);
+    expect(art).toContain("^"); // the mountains in news.txt
+    for (let y = 0; y < 23; y++) {
+      expect(rowText(grid, y), `art row ${String(y)}`).toBe(rowText(full, y));
+    }
+  });
+
+  it("leaves the menu row empty, so no row can move under the cursor", () => {
+    /* The rows still arrive together once both checks answer. A row that appears
+     * under the player's cursor a moment after the screen does is how a menu
+     * gets mis-clicked, so the art is the only thing drawn early. */
+    const { grid, term } = gridTerm();
+    paintTitleArt(term);
+    expect(rowText(grid, 23)).toBe("");
+    expect(rowText(renderTitle(), 23)).toContain("(O)pen");
+  });
+});
 
 describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", () => {
   const RED = colorToCss(COLOUR_RED);

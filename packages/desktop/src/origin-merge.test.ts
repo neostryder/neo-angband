@@ -38,6 +38,8 @@ describe("stranded-origin merge", () => {
   it("does nothing when there is nothing to bring back", () => {
     expect(planOriginMerge({}, [origin(54979, [])])).toEqual({
       writes: {},
+      removes: [],
+      deaths: [],
       recovered: [],
       skippedUnplayed: [],
     });
@@ -67,7 +69,7 @@ describe("stranded-origin merge", () => {
     /* Metadata alone would put a row on the character-select screen that cannot
      * be resumed - worse than not offering it. */
     const plan = planOriginMerge({}, [origin(61806, [meta("a", "Frodo", 300)])]);
-    expect(plan).toEqual({ writes: {}, recovered: [], skippedUnplayed: [] });
+    expect(plan).toEqual({ writes: {}, removes: [], deaths: [], recovered: [], skippedUnplayed: [] });
   });
 
   it("does bring back a tombstone, which legitimately has no bytes", () => {
@@ -158,6 +160,186 @@ describe("stranded-origin merge", () => {
     const plan = planOriginMerge({}, [src]);
     expect(plan.recovered).toEqual([]);
     expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Frodo"]);
+  });
+});
+
+/**
+ * THE SAVE-SCUM VECTOR THE PORT LADDER OPENED, AND ITS CLOSURE.
+ *
+ * The merge is a copy, so it leaves a pre-death snapshot in every origin it reads.
+ * Before the port ladder that was harmless: the sources were dead ephemeral
+ * origins nothing would ever bind again. Now a copy that steps to a free port
+ * leaves a LIVING copy of every character behind on a port that is perfectly
+ * bindable, and death on the new port does not touch it.
+ *
+ * So a tombstone anywhere buries that id everywhere, in both directions, whatever
+ * the timestamps say. See buriedIds.
+ */
+describe("death is absorbing across origins (decision 16)", () => {
+  it("does not import a living copy of a character the target has buried", () => {
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 900, false)]),
+    };
+    /* The source's copy is ALIVE, has bytes, and is not older - it is what the
+     * player would resume. */
+    const plan = planOriginMerge(target, [origin(45871, [meta("a", "Frodo", 950)], { a: "ALIVE" })]);
+
+    expect(plan.writes["neo-angband-save:a"]).toBeUndefined();
+    /* Nothing at all to do: the target's row is already the memorial and holds no
+     * bytes, so the plan is empty rather than a rewrite of what is already right. */
+    expect(plan.writes).toEqual({});
+    expect(plan.removes).toEqual([]);
+    expect(plan.recovered).toEqual([]);
+  });
+
+  it("buries the target's OWN living copy when a source holds the tombstone", () => {
+    /* The other direction, and the one that needs a deletion: the player has gone
+     * back to the origin the character was copied FROM, where it is still alive at
+     * the turn it was copied at. */
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "THE-SNAPSHOT",
+      "neo-angband-active": "a",
+    };
+    const plan = planOriginMerge(target, [origin(45872, [meta("a", "Frodo", 9000, false)])]);
+
+    expect(plan.removes).toContain("neo-angband-save:a");
+    /* And the pointer that would have resumed it, so the next boot does not try. */
+    expect(plan.removes).toContain("neo-angband-active");
+    expect(JSON.parse(plan.writes[ROSTER_KEY] ?? "[]")).toEqual([
+      expect.objectContaining({ id: "a", alive: false }),
+    ]);
+  });
+
+  it("keeps the memorial, and the name the player is looking for", () => {
+    /* A tombstone is earned. Burying must not delete the roster row, or the
+     * character silently vanishes from the memorial and the player is told
+     * nothing at all. */
+    const target = { [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]) };
+    const plan = planOriginMerge(target, [origin(45872, [meta("a", "Frodo", 9000, false)])]);
+    const roster = JSON.parse(plan.writes[ROSTER_KEY] ?? "[]") as { name: string }[];
+    expect(roster).toHaveLength(1);
+    expect(roster[0]?.name).toBe("Frodo");
+  });
+
+  it("leaves a living character with no tombstone anywhere completely alone", () => {
+    /* The guard on the three above: the rule must not be "delete on sight". */
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "STILL-MINE",
+      "neo-angband-active": "a",
+    };
+    const plan = planOriginMerge(target, [origin(45872, [meta("b", "Sam", 200)], { b: "BBB" })]);
+
+    expect(plan.removes).toEqual([]);
+    expect(plan.writes["neo-angband-save:a"]).toBeUndefined(); // untouched, not rewritten
+    expect(plan.recovered.map((r) => r.name)).toEqual(["Sam"]);
+  });
+
+  it("ignores timestamps, because a snapshot played after the death is newer", () => {
+    /* The case a newest-wins rule gets wrong: the player resumed the snapshot and
+     * played it, so its updatedAt is now the largest number in the profile. */
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 99999)]),
+      "neo-angband-save:a": "PLAYED-ON-AFTER-DYING",
+    };
+    const plan = planOriginMerge(target, [origin(45872, [meta("a", "Frodo", 1, false)])]);
+    expect(plan.removes).toContain("neo-angband-save:a");
+  });
+
+  it("treats only a real boolean false as death", () => {
+    /* alive is written by the game as a boolean. A row where it is missing, or is
+     * some other value entirely, is NOT a tombstone - guessing there would delete
+     * a living character on the strength of a corrupted byte. */
+    const alive = { id: "a", name: "Frodo", turn: 5, updatedAt: 100 };
+    for (const odd of [undefined, "false", 0, null]) {
+      const src = { ...alive, ...(odd === undefined ? {} : { alive: odd }) };
+      const plan = planOriginMerge(
+        { [ROSTER_KEY]: JSON.stringify([alive]), "neo-angband-save:a": "MINE" },
+        [{ port: 45872, entries: { [ROSTER_KEY]: JSON.stringify([src]) } }],
+      );
+      expect(plan.removes, `alive: ${JSON.stringify(odd)}`).toEqual([]);
+    }
+  });
+});
+
+/**
+ * THE LEDGER, and the hole it fills.
+ *
+ * An adversarial review of the burial rule found that it could not survive its own
+ * bookkeeping: `origins-merged.txt` makes an origin unreadable forever, so the one
+ * roster holding a character's tombstone can be sealed inside a handled origin while
+ * a living copy of that character sits in another. The check that would notice has
+ * been switched off, permanently, by design.
+ *
+ * The fix is a list of dead ids in the data folder, outside every origin. It is
+ * passed in, so these rules stay pure and the file handling stays in main.ts.
+ */
+describe("the death ledger outlives the handled-origin marker", () => {
+  it("buries a living target row from the ledger alone, with no sources at all", () => {
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "THE-SNAPSHOT",
+    };
+    const plan = planOriginMerge(target, [], ["a"]);
+    expect(plan.removes).toContain("neo-angband-save:a");
+    expect(JSON.parse(plan.writes[ROSTER_KEY] ?? "[]")).toEqual([
+      expect.objectContaining({ id: "a", alive: false }),
+    ]);
+  });
+
+  it("reports every dead id it saw, so the ledger can grow", () => {
+    const plan = planOriginMerge({}, [origin(61806, [meta("a", "Frodo", 300, false)])], ["z"]);
+    expect([...plan.deaths].sort()).toEqual(["a", "z"]);
+  });
+
+  it("reports the ids even when there is nothing else to do", () => {
+    /* The empty-plan exit used to drop them, and dropping them is how the record
+     * of a death gets lost the launch before the marker seals its origin. */
+    const plan = planOriginMerge({}, [], ["a"]);
+    expect(plan.deaths).toEqual(["a"]);
+  });
+});
+
+/**
+ * THE GUARD ON THE DELETION.
+ *
+ * parseRoster accepts any object with a string id, deliberately, so an id is not
+ * proof of identity. The same review pointed out that burying on an id alone lets a
+ * corrupted or hand-edited row - or a genuine id collision - delete a character the
+ * player still has. Doubt goes to the player.
+ */
+describe("burying the wrong character", () => {
+  it("refuses to bury when the two rows carry different names", () => {
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "STILL-MINE",
+    };
+    const plan = planOriginMerge(target, [origin(45872, [meta("a", "Boromir", 9000, false)])]);
+    expect(plan.removes).toEqual([]);
+    /* And the living row is left living. */
+    const roster = JSON.parse(plan.writes[ROSTER_KEY] ?? "[]") as { alive?: boolean }[];
+    if (roster.length > 0) expect(roster[0]?.alive).not.toBe(false);
+  });
+
+  it("still buries when the names agree apart from case", () => {
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "THE-SNAPSHOT",
+    };
+    const plan = planOriginMerge(target, [origin(45872, [meta("a", "FRODO", 9000, false)])]);
+    expect(plan.removes).toContain("neo-angband-save:a");
+  });
+
+  it("buries on a bare ledger id, which carries no name to compare", () => {
+    /* The ledger records ids only. There is nothing to disagree with, so the id
+     * has to be enough - and it is written by this game about this install's own
+     * deaths, which is a much stronger provenance than a parsed roster row. */
+    const target = {
+      [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]),
+      "neo-angband-save:a": "THE-SNAPSHOT",
+    };
+    expect(planOriginMerge(target, [], ["a"]).removes).toContain("neo-angband-save:a");
   });
 });
 

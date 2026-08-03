@@ -16,9 +16,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MSG, PF } from "../generated/index.js";
+import { MON_TMD, MSG, PF, RF, SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
 import { startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
+import type { GameState } from "./context.js";
+import { movePlayer, squareIsEmpty, updateMonsterDistances } from "./context.js";
+import { monsterTurn } from "./monster-turn.js";
 import { worldTakeHit } from "./world.js";
 
 function loadJson<T>(name: string): T {
@@ -135,6 +140,125 @@ describe("take_hit consequences are wired into the live game (audit 01 P1)", () 
 
     expect(state.isDead).toBe(true);
     expect(state.actor.player.diedFrom).toBe(mon!.race.name);
+  });
+});
+
+/**
+ * THE ESCAPE THAT WORKED EVERYWHERE EXCEPT WHERE IT MATTERS.
+ *
+ * Reported from play: all four cheat options on, including "Cheat: Allow player
+ * to avoid death", and a death that went straight to the tombstone with no
+ * "Die?" prompt and no trip back to town.
+ *
+ * The cheat_live escape leaves the player ALIVE WITH NEGATIVE HP while
+ * state.pendingDeath waits for the shell's get_check("Die? ") - that is how the
+ * escape is spelled. monsterTurn then read `chp < 0` as death in its own right
+ * and set state.isDead, and loopStop tests isDead BEFORE pendingDeath, so the
+ * loop answered DEAD. Death by breath, trap or poison tick could be cheated;
+ * death by a melee blow, which is how most characters in Angband die, could
+ * not.
+ *
+ * This drives the REAL wired game - startGame, the real monBlowEnv, the real
+ * monsterTurn - because the take_hit primitive and makeTakeHitHooks were both
+ * already correct, and the existing melee test above calls env.takeHit()
+ * directly, which is precisely the one step that skips the broken line.
+ */
+describe("cheat_live survives the commonest death in Angband: a melee blow", () => {
+  /**
+   * Stand the player next to `mon`, awake and looking.
+   *
+   * The player is MOVED to the monster rather than the monster to the player:
+   * startGame's player placement can be a one-square pocket with eight walls
+   * around it, so there is no guaranteed free grid beside the player, while a
+   * monster the generator walked into place always has open ground around it.
+   */
+  function standBeside(state: GameState, mon: Monster): boolean {
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+    ] as const) {
+      const grid = loc(mon.grid.x + dx, mon.grid.y + dy);
+      if (!squareIsEmpty(state, grid)) continue;
+      movePlayer(state, grid);
+      mon.mTimed[MON_TMD.SLEEP] = 0;
+      mon.mTimed[MON_TMD.FEAR] = 0;
+      state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+      updateMonsterDistances(state);
+      return true;
+    }
+    return false;
+  }
+
+  /** A real monster from a real level that has at least one blow to land. */
+  function armedMonster(state: GameState): Monster | undefined {
+    return state.monsters.find(
+      (m, i): m is Monster =>
+        i > 0 && !!m && m.race.blows.length > 0 && !m.race.flags.has(RF.NEVER_BLOW),
+    );
+  }
+
+  it("waits for 'Die?' instead of killing, and cheating returns to town", () => {
+    const { game, messages } = startCaptured(4244, 5);
+    const state = game.state;
+    state.options!.set("cheat_live", true);
+    const p = state.actor.player;
+
+    const mon = armedMonster(state);
+    expect(mon, "the depth-5 level should contain a monster with blows").toBeTruthy();
+    expect(standBeside(state, mon!), "no free square beside the monster").toBe(true);
+
+    /* One hit point, so the first blow that connects is fatal. Several turns,
+     * because a blow may miss - the assertion below proves one landed. */
+    let armed = false;
+    for (let turn = 0; turn < 40 && !armed; turn++) {
+      p.chp = 1;
+      state.isDead = false;
+      monsterTurn(mon!, state);
+      armed = state.pendingDeath !== undefined || state.isDead;
+    }
+    expect(armed, "40 turns beside a monster landed no fatal blow").toBe(true);
+
+    /* THE ASSERTION. The blow was fatal, so the escape must be on offer. */
+    expect(state.isDead).toBe(false);
+    expect(state.pendingDeath?.killer).toBe(mon!.race.name);
+    expect(p.chp).toBeLessThan(0);
+
+    /* And answering "no" is wiz_cheat_death: full HP, back to the town. */
+    state.pendingDeath!.resolve(false);
+    expect(state.isDead).toBe(false);
+    expect(p.chp).toBe(p.mhp);
+    expect(state.targetDepth).toBe(0);
+    expect(state.generateLevel).toBe(true);
+    expect(messages.some((m) => m.includes("cheat death"))).toBe(true);
+    /* wiz-debug.c L78: the killer's name is replaced on the way out, so the
+     * character does not carry the name of a monster it did not die to. */
+    expect(p.diedFrom).toBe("Cheating death");
+  });
+
+  it("without the option, the same blow is final", () => {
+    /* The guard that makes the test above mean something: the setup is
+     * identical apart from cheat_live, and here the character really dies. */
+    const { game } = startCaptured(4244, 5);
+    const state = game.state;
+    expect(state.options!.get("cheat_live")).toBe(false);
+    const p = state.actor.player;
+
+    const mon = armedMonster(state);
+    expect(standBeside(state, mon!)).toBe(true);
+
+    for (let turn = 0; turn < 40 && !state.isDead; turn++) {
+      if (!state.isDead) p.chp = 1;
+      monsterTurn(mon!, state);
+    }
+    expect(state.isDead).toBe(true);
+    expect(state.pendingDeath).toBeUndefined();
+    expect(p.diedFrom).toBe(mon!.race.name);
   });
 });
 

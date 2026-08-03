@@ -1264,6 +1264,13 @@ export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
     p.deepDescent = 0;
   }
 
+  /* my_strcpy(p->died_from, "Cheating death", ...) (wiz-debug.c L78). The
+   * take-hit hook wrote the real killer here before the prompt, which is C's
+   * order too (player-util.c L244 runs before get_check); upstream then
+   * overwrites it on the way out. Without this the character carries the name
+   * of the monster it did not die to. */
+  p.diedFrom = "Cheating death";
+
   /* Back to the town. */
   state.targetDepth = 0;
   state.generateLevel = true;
