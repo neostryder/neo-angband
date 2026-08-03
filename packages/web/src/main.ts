@@ -232,7 +232,8 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import type { ModBrowseDeps } from "./mod-browse";
+import type { ModUpgradeDeps } from "./mod-browse";
+import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
 import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
 import { readConsent, writeConsent } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
@@ -272,8 +273,8 @@ import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
-import { showModUpdates, type ModCatalogueDeps } from "./mod-catalogue";
-import { RECOMMENDED_MODS, usableRecommendedMods } from "./mod-registry";
+import type { ModCatalogueDeps } from "./mod-catalogue";
+import { showModUpgrades } from "./mod-browse";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
@@ -471,7 +472,6 @@ import {
 } from "./update";
 import type { AvailableUpdate, UpdateChannel, UpdaterBridge } from "./update";
 import { updateFooter, updateLines } from "./update-ui";
-import { pendingModUpdates, type ModUpdate } from "./mod-updates";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
 import { installLogSinks, log, setLogLevel } from "./logging";
@@ -8568,9 +8568,13 @@ async function maybeTitle(): Promise<TitleChoice | null> {
    * a row that appears under the player's cursor a second after the screen does
    * is how a menu gets mis-clicked. */
   const update = await updateOffer();
-  /* A waiting mod counts as "something is waiting". The row is the only door to
-   * both, and a player whose mods are stale has exactly the same question. */
-  const modsWaiting = (await waitingModUpdates()).length > 0;
+  /* MODS ARE DELIBERATELY NOT ASKED ABOUT HERE. This used to add
+   * `|| modsWaiting` to both flags below, on the grounds that a player whose mods
+   * are stale has the same question - which is true, and was free while the answer
+   * was a local comparison against a catalogue inside the build. It is now a
+   * request per installed mod against a sixty-an-hour rate limit, on the launch
+   * path whose latency the player saw as a town map. The Mods screen owns that
+   * question now; see waitingModUpdates. */
   titleUp = true;
   try {
     return await openModal(() =>
@@ -8586,8 +8590,8 @@ async function maybeTitle(): Promise<TitleChoice | null> {
            * is reachable; in a browser only when the worker really has a build,
            * because there is no channel to choose there. */
           canUpdate:
-            (desktopBridge === null ? update !== null : updateHow !== "none") || modsWaiting,
-          updateReady: (update !== null && !update.older) || modsWaiting,
+            desktopBridge === null ? update !== null : updateHow !== "none",
+          updateReady: update !== null && !update.older,
         },
         { randint1: titleRandint1 },
       ),
@@ -8737,19 +8741,29 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
 }
 
 /**
- * Installed mods this build has a newer copy of. Never throws, never null.
+ * Installed mods with a newer version in their own repository. Never throws.
  *
- * ONE PLACE COMPUTES THIS, because three screens ask: the title row decides
- * whether to shimmer, the update page lists them, and the mod manager counts
- * them. A browser that will not open the mod store answers "none" rather than
- * taking the title screen down with it.
+ * A NETWORK CALL PER INSTALLED MOD, so where it is called from is now part of the
+ * design rather than a detail. It used to be a local comparison against the
+ * catalogue compiled into the build - free, offline, and answering a weaker
+ * question than the one it printed - and it was called from three places including
+ * the boot path. Two of those are gone:
+ *
+ *   - THE TITLE SCREEN NO LONGER ASKS. Its shimmer means a game build is waiting.
+ *     Asking here would put one request per mod on the launch path whose latency
+ *     was the town-map flash, against an unauthenticated rate limit of sixty an
+ *     hour, every launch. The Mods screen's own row is where a player is told, and
+ *     it says plainly that pressing it is what does the asking.
+ *   - THE MOD MANAGER'S ROW NO LONGER CARRIES A COUNT, for the same reason, and
+ *     because the only way to have one for free would be to cache it - a stale
+ *     answer wearing a fresh answer's wording, which is the defect this whole
+ *     change is about, one layer down.
+ *
+ * What is left is the (U)pdate screen, which the player opened in order to ask.
  */
-async function waitingModUpdates(): Promise<ModUpdate[]> {
+async function waitingModUpdates(): Promise<readonly ModUpgrade[]> {
   try {
-    return pendingModUpdates(
-      usableRecommendedMods(RECOMMENDED_MODS).mods,
-      await modCatalogueDeps().installed(),
-    );
+    return pendingUpgrades(await modBrowseDeps().refresh());
   } catch {
     return [];
   }
@@ -8788,7 +8802,7 @@ function modCatalogueDeps(): ModCatalogueDeps {
  * updater reads it with - so a player's one channel choice governs both, and there is
  * no second setting to fall out of step with the first.
  */
-function modBrowseDeps(): ModBrowseDeps {
+function modBrowseDeps(): ModUpgradeDeps {
   const net = { fetch: (url: string) => fetch(url) };
   const discoverEnv: DiscoverEnv = {
     engineVersion: ENGINE_VERSION,
@@ -8839,6 +8853,12 @@ function modBrowseDeps(): ModBrowseDeps {
       read: () => readConsent(channelStore()),
       write: (allow) => writeConsent(channelStore(), allow),
     },
+    /* One tags call per installed mod, made only when the player opens the update
+     * screen. NOT at boot: it is a network round trip per mod against an
+     * unauthenticated rate limit of sixty an hour, on the code path whose latency
+     * was the town-map flash, and the alternative - caching the answer - is a
+     * stale claim wearing a fresh one's wording. */
+    refresh: async () => refreshInstalledMods(await installedMods(globalThis), discoverEnv),
   };
 }
 
@@ -8858,10 +8878,13 @@ async function showUpdatePage(): Promise<void> {
   const bridge = updaterBridge();
   let offer = await updateOffer();
 
-  /* Mod updates share this screen. The check is local - the catalogue and its
-   * digests ship inside the build - so it costs nothing and works offline. */
-  const catalogue = modCatalogueDeps();
-  let modPending: ModUpdate[] = [];
+  /* Mod updates share this screen, and asking is now a request per installed mod
+   * against each mod's own repository. That is affordable HERE and nowhere else on
+   * the launch path: the player pressed (U) in order to ask. It also means the page
+   * works differently offline - the game half says so, and the mod half simply has
+   * nothing to report, which is correct rather than reassuring. */
+  const browse = modBrowseDeps();
+  let modPending: readonly ModUpgrade[] = [];
   const refreshModPending = async (): Promise<void> => {
     modPending = await waitingModUpdates();
   };
@@ -8937,7 +8960,7 @@ async function showUpdatePage(): Promise<void> {
      * the whole install; pulling a few KiB of mod is not that, and a player who
      * wanted only the mod should not lose their game to get it. */
     if ((pressed === "m" || pressed === "M") && modPending.length > 0 && view.phase !== "downloading") {
-      const touched = await showModUpdates(term, catalogue);
+      const touched = await showModUpgrades(term, browse);
       await refreshModPending();
       view = viewFor(offer);
       /* Mod code is read at boot, so a mod that changed on disk is not the mod

@@ -12,7 +12,7 @@
 import type { UpdateChannel } from "./update";
 
 /** Tones, resolved to this shell's palette by the caller. */
-import { modUpdateNotice, type ModUpdate } from "./mod-updates";
+import { upgradeNotice, type ModUpgrade } from "./mod-refresh";
 
 export type UpdateTone = "head" | "body" | "dim" | "good" | "warn";
 
@@ -80,16 +80,21 @@ export interface UpdateView {
    *
    * ON THE SAME SCREEN AS THE GAME UPDATE, because they are the same question
    * to the player - "is anything waiting for me" - and they were two answers in
-   * two places, one of which nobody could find. A mod version travels with the
-   * game build (mod-updates.ts), so the moment a game update lands is exactly
-   * the moment mod updates appear, and this is the screen the player is looking
-   * at when it happens.
+   * two places, one of which nobody could find.
+   *
+   * THE RELATIONSHIP BETWEEN THE TWO HAS CHANGED, though, and this comment used
+   * to state the old one as a fact: "a mod version travels with the game build,
+   * so the moment a game update lands is exactly the moment mod updates appear".
+   * That was true while the catalogue shipped inside the build. Mods now release
+   * from their own repositories on their own schedule (mod-refresh.ts), so the
+   * two answers are simply independent, and this screen shows both because it is
+   * where a player comes to ask.
    *
    * A SEPARATE KEY, though, never folded into ENTER. ENTER here quits the game
    * and swaps the whole install; pulling a 5 KiB mod is not that, and a player
    * who wanted only the mod should not have their session ended for it.
    */
-  readonly modUpdates?: readonly ModUpdate[] | undefined;
+  readonly modUpdates?: readonly ModUpgrade[] | undefined;
 }
 
 /** Bytes as a human reads them. Two significant figures is enough for a download. */
@@ -155,14 +160,14 @@ export function elidePath(p: string, width = 62): string {
  */
 export function modUpdateLines(v: UpdateView): UpdateLine[] {
   const pending = v.modUpdates ?? [];
-  const notice = modUpdateNotice(pending);
+  const notice = upgradeNotice(pending);
   if (notice === null) return [];
   const out: UpdateLine[] = [{ text: "", tone: "body" }, { text: notice, tone: "warn" }];
   /* Listed one per line only when the single-line notice did not already name
    * them, so the one-mod case does not say the same thing twice. */
   if (pending.length > 1) {
     for (const u of pending) {
-      out.push({ text: `  ${u.mod.name}  ${u.from} -> ${u.to}`, tone: "dim" });
+      out.push({ text: `  ${u.id}  ${u.from} -> ${u.to}`, tone: "dim" });
     }
   }
   out.push({ text: "", tone: "body" });
