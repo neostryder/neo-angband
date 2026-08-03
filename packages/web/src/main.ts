@@ -446,6 +446,7 @@ import {
   canPromptInstall,
   captureInstallPrompt,
   installAutoUpdate,
+  refreshStaleDesktopShell,
   isStandalone,
   promptInstall,
   webUpdateReady,
@@ -505,6 +506,9 @@ let titleUp = false;
  * log and a resumed turn nobody asked for. Everywhere else the update waits
  * behind the title screen's (U)pdate row. */
 installAutoUpdate(() => titleUp);
+/* And on the desktop, where the new build is already on the disk and only our
+ * own worker is still serving the old one, take it without asking. */
+void refreshStaleDesktopShell();
 /* Before anything else can miss it: beforeinstallprompt fires early and once, so
  * the (I)nstall locally page cannot go looking for it when the player asks. */
 captureInstallPrompt();
