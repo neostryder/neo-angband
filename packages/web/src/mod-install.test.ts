@@ -1228,3 +1228,68 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
     expect(seen).toEqual(["1/2 manifest.json", "2/2 plugin.js"]);
   });
 });
+
+describe("installModFromRepo: consent is enforced HERE, not in the screen", () => {
+  it("refuses a third-party install without consent, before any request", async () => {
+    /* The gate has to be at the install, not at the row: a check that lives only in
+     * the mod screen is a check every future caller has to remember to repeat, and
+     * the one that forgets stores code the player never agreed to.
+     *
+     * The empty `asked` is the second half - a refused install must not have talked
+     * to the repository either. */
+    const asked: string[] = [];
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      spying(env, asked),
+      undefined,
+      { origin: "third-party", allowed: false },
+    );
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/Third-party mods are not enabled/u);
+    expect(asked).toEqual([]);
+  });
+
+  it("allows it once consent is given", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+      undefined,
+      { origin: "third-party", allowed: true },
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("never prompts for the curated list", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+      undefined,
+      { origin: "curated", allowed: false },
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses BEFORE the origin check, so an unconsented install says the useful thing", async () => {
+    /* Both would refuse. Consent has to win, because "turn this on" is actionable
+     * and "that mod came from somewhere else" is confusing to somebody who has not
+     * been offered the switch yet. */
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      installedAs("someoneelse/neo-angband-mod-demo"),
+      env,
+      undefined,
+      { origin: "third-party", allowed: false },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/Third-party mods are not enabled/u);
+  });
+});
