@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { zipSync } from "fflate";
+import type { DiscoveredMod, PayloadEntry } from "./mod-discover";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { STORE_MODS, STORE_MOD_META } from "./idb";
@@ -24,6 +25,8 @@ import {
   type FetchLike,
   type InstallEnv,
   fetchVerified,
+  type InstalledModMeta,
+  installModFromRepo,
   installRecommendedMod,
   installedModSource,
   installedMods,
@@ -985,5 +988,242 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     const report = await installAndLoad("export const notADefault = 1;");
     expect(report.plugins).toEqual([]);
     expect(report.problems.length + report.skipped.length).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Installing from a repository the build knows nothing about.
+ * ------------------------------------------------------------------ */
+
+/**
+ * What the repository said, as discovery reports it. Built directly rather than
+ * through discoverMod, because these tests are about the WRITE half.
+ */
+function discovered(
+  payload: readonly PayloadEntry[],
+  over: Partial<DiscoveredMod> = {},
+): DiscoveredMod {
+  return {
+    repo: "neostryder/neo-angband-mod-demo",
+    tag: "v1.0.0",
+    tags: ["v1.0.0"],
+    id: "demo",
+    name: "Demo",
+    version: "1.0.0",
+    description: null,
+    engine: null,
+    compatible: true,
+    engineNote: null,
+    payload,
+    bytes: 0,
+    guessedPayload: false,
+    ...over,
+  };
+}
+
+const installedAs = (repo: string): InstalledModMeta => ({
+  id: "demo",
+  repo,
+  tag: "v0.9.0",
+  files: ["manifest.json"],
+  installedAt: "2026-01-01T00:00:00.000Z",
+});
+
+/** An InstallEnv that records every URL asked for. */
+function spying(env: InstallEnv, asked: string[]): InstallEnv {
+  return {
+    ...env,
+    fetch: (url: string) => {
+      asked.push(url);
+      return env.fetch(url);
+    },
+  };
+}
+
+describe("installModFromRepo: trust on first use", () => {
+  it("refuses a changed origin BEFORE fetching a single byte", async () => {
+    /* Order matters twice over: a refusal that has already downloaded has spent
+     * bandwidth on bytes it will not use, and has already read a repository it
+     * decided not to trust. */
+    const asked: string[] = [];
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      installedAs("someoneelse/neo-angband-mod-demo"),
+      spying(env, asked),
+    );
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.problem).toContain("someoneelse/neo-angband-mod-demo");
+      expect(r.problem).toContain("neostryder/neo-angband-mod-demo");
+    }
+    expect(asked).toEqual([]);
+  });
+
+  it("allows a reinstall or upgrade from the same repository", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      installedAs("neostryder/neo-angband-mod-demo"),
+      env,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("allows a first install, which is what SETS the origin", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.meta.repo).toBe("neostryder/neo-angband-mod-demo");
+  });
+});
+
+describe("installModFromRepo: what lands, with no digest to check it against", () => {
+  it("records a digest per stored file, which is not the same as verifying one", async () => {
+    /* Nothing exists to compare a FIRST download against. What the digest answers
+     * is "has this copy changed since I installed it". */
+    const { env } = await envFor({
+      "manifest.json": enc(MANIFEST),
+      "plugin.js": enc(PLUGIN),
+    });
+
+    const r = await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+    );
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.meta.files).toEqual(["manifest.json", "plugin.js"]);
+    expect(Object.keys(r.meta.digests ?? {})).toEqual(["manifest.json", "plugin.js"]);
+    expect(r.meta.digests?.["plugin.js"]).toBe(await sha256Hex(enc(PLUGIN), subtle));
+  });
+
+  it("unpacks a declared archive, and still refuses a zip-slip path out of it", async () => {
+    const good = zipSync({ "manifest.json": enc(MANIFEST), "tiles/a.png": enc("A") });
+    const evil = zipSync({ "manifest.json": enc(MANIFEST), "../../saves/x": enc("no") });
+
+    const okEnv = await envFor({ "packs/art.zip": good });
+    const good1 = await installModFromRepo(
+      discovered([{ kind: "archive", path: "packs/art.zip" }]),
+      null,
+      okEnv.env,
+    );
+    expect(good1.ok).toBe(true);
+    if (good1.ok) {
+      expect([...good1.meta.files].sort()).toEqual(["manifest.json", "tiles/a.png"]);
+    }
+
+    const badEnv = await envFor({ "packs/evil.zip": evil });
+    const bad = await installModFromRepo(
+      discovered([{ kind: "archive", path: "packs/evil.zip" }]),
+      null,
+      badEnv.env,
+    );
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.problem).toMatch(/escapes the mod folder/u);
+  });
+
+  it("refuses an empty archive per ARCHIVE, not per install", async () => {
+    const { env } = await envFor({
+      "manifest.json": enc(MANIFEST),
+      "packs/empty.zip": zipSync({}),
+    });
+    const r = await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "archive", path: "packs/empty.zip" },
+      ]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/the archive is empty/u);
+  });
+
+  it("names both archives when two of them write one path", async () => {
+    const { env } = await envFor({
+      "packs/a.zip": zipSync({ "manifest.json": enc(MANIFEST), "shared.txt": enc("A") }),
+      "packs/b.zip": zipSync({ "shared.txt": enc("B") }),
+    });
+    const r = await installModFromRepo(
+      discovered([
+        { kind: "archive", path: "packs/a.zip" },
+        { kind: "archive", path: "packs/b.zip" },
+      ]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.problem).toContain("packs/a.zip");
+      expect(r.problem).toContain("packs/b.zip");
+    }
+  });
+
+  it("refuses a payload whose download has no manifest.json", async () => {
+    const { env } = await envFor({ "plugin.js": enc(PLUGIN) });
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "plugin.js" }]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/no manifest\.json/u);
+  });
+
+  it("reports a missing file as missing AT THAT TAG, and never throws", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const r = await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "gone.js" },
+      ]),
+      null,
+      env,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/gone\.js: not found at this tag/u);
+  });
+
+  it("fetches refs/tags/<tag>, so a same-named BRANCH cannot be served instead", async () => {
+    const asked: string[] = [];
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      spying(env, asked),
+    );
+    expect(asked[0]).toBe(
+      "https://raw.githubusercontent.com/neostryder/neo-angband-mod-demo/refs/tags/v1.0.0/manifest.json",
+    );
+  });
+
+  it("reports progress per payload entry", async () => {
+    const { env } = await envFor({
+      "manifest.json": enc(MANIFEST),
+      "plugin.js": enc(PLUGIN),
+    });
+    const seen: string[] = [];
+    await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+      (p) => seen.push(`${String(p.done)}/${String(p.total)} ${p.path}`),
+    );
+    expect(seen).toEqual(["1/2 manifest.json", "2/2 plugin.js"]);
   });
 });
