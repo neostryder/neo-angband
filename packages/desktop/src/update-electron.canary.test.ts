@@ -30,6 +30,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { buildSync } from "esbuild";
+import { makeZip } from "./zip-fixture";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -127,5 +128,96 @@ app.whenReady().then(async () => {
     expect(fs.readFileSync(path.join(saves, "Bilbo.sav"), "utf8")).toBe("a character");
     expect(fs.existsSync(relaunched), `the relaunch never happened.\n${trace}`).toBe(true);
     expect(trace).toContain("swap complete");
+  }, 120_000);
+
+  /**
+   * AN ARCHIVE THAT CONTAINS `resources/app.asar` CANNOT BE UNPACKED INSIDE
+   * ELECTRON without saying so first, and every archive we ship is one.
+   *
+   * Electron patches `fs` so that any path containing `.asar` is an archive
+   * rather than a file. Writing `resources/app.asar` therefore does not write a
+   * file - the patched fs tries to open the directory being created as an asar
+   * and throws `Invalid package`, stopping the extraction halfway. unpack.ts is
+   * covered thoroughly by unpack.test.ts against real archives, and every one
+   * of those tests passes, because vitest is plain Node and nothing there is
+   * patched. Same shape as the swap bug: correct code, real coverage, and a
+   * host that changes the rules.
+   *
+   * Found by running the real updater against a real release and reading the
+   * error off the screen.
+   */
+  it("unpacks an archive containing resources/app.asar", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neo-asar-"));
+    try {
+      const zip = path.join(dir, "release.zip");
+      fs.writeFileSync(
+        zip,
+        makeZip([
+          { name: "app.exe", data: "an executable" },
+          { name: "resources/", kind: "dir" },
+          { name: "resources/app-update.yml", data: "provider: github" },
+          /* The one that matters. Its CONTENT is irrelevant - it is the NAME
+           * that Electron reacts to. */
+          { name: "resources/app.asar", data: "not really an asar, and it does not need to be" },
+        ]),
+      );
+
+      const bundle = path.join(dir, "updater.cjs");
+      buildSync({
+        entryPoints: [path.join(here, "updater.ts")],
+        bundle: true,
+        platform: "node",
+        format: "cjs",
+        packages: "external",
+        outfile: bundle,
+      });
+
+      const root = path.join(dir, "install");
+      fs.mkdirSync(root);
+      const result = path.join(dir, "result.json");
+      const appDir = path.join(dir, "app");
+      fs.mkdirSync(appDir);
+      fs.writeFileSync(
+        path.join(appDir, "package.json"),
+        JSON.stringify({ name: "neo-asar-canary", main: "main.cjs" }),
+      );
+      fs.writeFileSync(
+        path.join(appDir, "main.cjs"),
+        `const { app } = require("electron");
+const fs = require("node:fs");
+const { stageArchive } = require(${JSON.stringify(bundle)});
+app.whenReady().then(async () => {
+  let out = { ok: false, error: null };
+  try {
+    const staged = await stageArchive(${JSON.stringify(zip)}, ${JSON.stringify(root)}, "win32");
+    out = { ok: true, entries: fs.readdirSync(require("node:path").join(staged, "resources")) };
+  } catch (err) {
+    out = { ok: false, error: String(err && err.message) };
+  }
+  fs.writeFileSync(${JSON.stringify(result)}, JSON.stringify(out));
+  app.quit();
+});
+`,
+      );
+
+      const electronPath = (await import("electron")).default as unknown as string;
+      const run = spawnSync(electronPath, [appDir], { encoding: "utf8", timeout: 60_000 });
+      expect(
+        fs.existsSync(result),
+        `electron wrote no result.
+stdout: ${run.stdout ?? ""}
+stderr: ${run.stderr ?? ""}`,
+      ).toBe(true);
+      const out = JSON.parse(fs.readFileSync(result, "utf8")) as {
+        ok: boolean;
+        error: string | null;
+        entries?: string[];
+      };
+      expect(out.error ?? null).toBeNull();
+      expect(out.ok).toBe(true);
+      expect(out.entries).toContain("app.asar");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }, 120_000);
 });

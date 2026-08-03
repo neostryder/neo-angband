@@ -278,8 +278,34 @@ export async function stageArchive(
   fs.rmSync(staging, { recursive: true, force: true });
   fs.mkdirSync(staging, { recursive: true });
   const external = extractCommand(archive, staging, platform);
-  if (external) await run(external.cmd, external.args);
-  else await unpackArchive(archive, staging, platform);
+  if (external) {
+    await run(external.cmd, external.args);
+  } else {
+    /*
+     * ELECTRON'S `fs` TREATS ANY PATH CONTAINING `.asar` AS AN ARCHIVE, and
+     * every archive we unpack contains `resources/app.asar`.
+     *
+     * Writing that file therefore does not write a file: the patched fs tries
+     * to open the *directory it is in the middle of creating* as an asar and
+     * throws `Invalid package <path>`, halfway through the extraction. The
+     * failure is total, it is specific to running inside Electron, and it
+     * arrived with the in-process unpacker - the shell-out it replaced ran in
+     * a separate process where nothing was patched, which is why this worked
+     * before 0.17 and has not since.
+     *
+     * `process.noAsar` is Electron's own escape hatch. Restored rather than
+     * left on, because the rest of the app is genuinely running out of an asar
+     * and would stop finding itself.
+     */
+    const proc = process as { noAsar?: boolean | undefined };
+    const had = proc.noAsar;
+    proc.noAsar = true;
+    try {
+      await unpackArchive(archive, staging, platform);
+    } finally {
+      proc.noAsar = had;
+    }
+  }
   if (platform === "darwin") {
     const bundle = fs.readdirSync(staging).find((n) => n.endsWith(".app"));
     if (!bundle) throw new Error("the macOS archive contained no .app bundle");
