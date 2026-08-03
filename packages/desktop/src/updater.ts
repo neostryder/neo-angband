@@ -292,18 +292,103 @@ export async function stageArchive(
 }
 
 /**
+ * Run a command and collect what it said.
+ *
+ * Separate from `run` above because this one's OUTPUT is the answer, not merely
+ * its exit code: the launcher below reports the pid it created on stdout.
+ */
+export function runCapture(
+  cmd: string,
+  args: readonly string[],
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, [...args], { windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    p.stdout.on("data", (c: Buffer) => (stdout += c.toString("utf8")));
+    p.stderr.on("data", (c: Buffer) => (stderr += c.toString("utf8")));
+    p.on("error", (err: NodeJS.ErrnoException) => {
+      reject(
+        err.code === "ENOENT"
+          ? new Error(`this system has no '${cmd}', which is needed to install the update`)
+          : err,
+      );
+    });
+    p.on("close", (code) => {
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+/** A Windows command line: every argument quoted, because the paths have spaces. */
+export function winCommandLine(parts: readonly string[]): string {
+  return parts.map((p) => (/[\s"]/u.test(p) ? `"${p.replace(/"/gu, '\\"')}"` : p)).join(" ");
+}
+
+/**
+ * ASK WINDOWS TO CREATE THE PROCESS, BECAUSE ANYTHING WE CREATE OURSELVES DIES
+ * WITH US - and this is the bug that made the updater a no-op on Windows for
+ * every release it shipped in.
+ *
+ * Chromium puts its browser process in a JOB OBJECT with kill-on-close, so that
+ * a crash cannot leave orphaned renderers behind. On Windows a new process
+ * joins its creator's job automatically unless it is created with
+ * CREATE_BREAKAWAY_FROM_JOB, which Node's `child_process` does not expose:
+ * `detached: true` sets CREATE_NEW_PROCESS_GROUP, which is a different thing
+ * entirely and does not help. So the swap script - spawned by us, from inside
+ * Electron's job - was killed the instant the app exited.
+ *
+ * WHAT THAT LOOKED LIKE, because it looked like nothing: the download verified,
+ * the archive extracted, the script was written, PowerShell genuinely started
+ * (its console-startup event is in the Windows event log), the app quit, and
+ * the child was destroyed roughly 150 ms later - before it had created so much
+ * as a directory. No error, no relaunch, and the player is still on the old
+ * version with a complete, correct, unused copy of the new one on disk.
+ *
+ * `Win32_Process.Create` is the way out: the process is created by the WMI
+ * provider host, so its parent - and therefore its job - is not ours. It is
+ * created in the CALLER'S SESSION on a local connection, which is what makes
+ * the relaunch at the end of the script visible to the player rather than
+ * invisible in session 0; that was measured, not assumed.
+ *
+ * The launcher we spawn to make the call is itself inside the job, and that is
+ * fine: it only has to live for one WMI call, and the caller waits for it.
+ */
+export function wmiCreateScript(commandLine: string): string {
+  const literal = `'${commandLine.replace(/'/gu, "''")}'`;
+  return [
+    `$ErrorActionPreference = 'Stop'`,
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${literal} }`,
+    `if ($null -eq $r -or $r.ReturnValue -ne 0) { [Console]::Error.Write('Win32_Process.Create returned ' + $r.ReturnValue); exit 1 }`,
+    `[Console]::Out.Write([string]$r.ProcessId)`,
+  ].join("; ");
+}
+
+/** Whether a pid is running, asked without signalling it. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
  * Write the swap script and hand it to a process that will outlive us.
  *
- * Returns after SPAWNING it, not after the swap: the script's first act is to
- * wait for this process to exit, so the caller's next move must be to quit.
+ * Resolves after the swapper is CONFIRMED RUNNING, not after the swap: the
+ * script's first act is to wait for this process to exit, so the caller's next
+ * move must be to quit. It REJECTS rather than returning quietly if the swapper
+ * could not be started - the caller must not quit on a promise nothing kept.
  */
-export function launchSwap(args: {
+export async function launchSwap(args: {
   root: string;
   staging: string;
   platform: string;
   execPath: string;
   pid: number;
-}): void {
+}): Promise<void> {
   const plan = swapPlan({
     platform: args.platform,
     installRoot: args.root,
@@ -322,17 +407,48 @@ export function launchSwap(args: {
    * `/bin/sh` are components of their operating systems rather than tools a
    * player installs - but the Windows one is named ABSOLUTELY, because "whatever
    * PATH hands over" is exactly what put GNU tar in the extractor's place.
+   *
+   * Unix has no job objects, so there a detached child genuinely does outlive
+   * its parent and a plain spawn is right. Windows needs the WMI detour above.
    */
-  const child = isWin
-    ? spawn(
-        systemProgram("WindowsPowerShell\\v1.0\\powershell.exe"),
-        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
-        { detached: true, stdio: "ignore", windowsHide: true },
-      )
-    : spawn("/bin/sh", [script], { detached: true, stdio: "ignore" });
-  /* Unref, or Electron's own exit waits on the very process that is waiting for
-   * Electron to exit. */
-  child.unref();
+  if (!isWin) {
+    const child = spawn("/bin/sh", [script], { detached: true, stdio: "ignore" });
+    /* Unref, or Electron's own exit waits on the very process that is waiting
+     * for Electron to exit. */
+    child.unref();
+    return;
+  }
+
+  const powershell = systemProgram("WindowsPowerShell\\v1.0\\powershell.exe");
+  const commandLine = winCommandLine([
+    powershell,
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    script,
+  ]);
+  const r = await runCapture(powershell, [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    wmiCreateScript(commandLine),
+  ]);
+  if (r.code !== 0) {
+    throw new Error(
+      `the update could not be started: ${r.stderr.trim() || `the launcher exited ${String(r.code)}`}`,
+    );
+  }
+  const swapper = Number.parseInt(r.stdout.trim(), 10);
+  /* A pid that is not running is the failure this whole function exists to
+   * report. Confirming it is the difference between "the update is happening"
+   * and "the app is about to quit for no reason". */
+  if (!Number.isInteger(swapper) || swapper <= 0 || !pidAlive(swapper)) {
+    throw new Error("the update could not be started: the installer process did not come up");
+  }
 }
 
 /** Everything the renderer is told about this launch's update options. */
