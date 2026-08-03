@@ -1378,6 +1378,16 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
 }
 
 /**
+ * How much darker "remembered" is than "seen".
+ *
+ * ONE constant for both halves of the same decision: dim() scales an ASCII
+ * colour by it, and tileDrawFor multiplies globalAlpha by it. They used to be
+ * one hardcoded 0.38 and no tile treatment at all, so a remembered object was
+ * dim in ASCII and fully lit in a tile set - the same grid, two verdicts.
+ */
+const DIM_SCALE = 0.38;
+
+/**
  * Decode a pref TileMap atlas cell into a blit callback for the terminal, or
  * undefined when there is no usable tile (no atlas entry, no/uninitialised
  * tileset, or the attr/char is an ASCII pair rather than a tile). The terminal
@@ -1388,18 +1398,54 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
  * it, so one selector can draw several tiles and still be identical on every
  * replay of a seed.
  */
-function tileDrawFor(atlas: TileAtlas | null, x: number, y: number): TileDraw | undefined {
+function tileDrawFor(
+  atlas: TileAtlas | null,
+  x: number,
+  y: number,
+  /**
+   * Draw it as REMEMBERED rather than seen, at the same 0.38 the ASCII path's
+   * dim() scales a colour by.
+   *
+   * Terrain does not need this - a pref file carries feat_x_attr per lighting
+   * variant, so a pack supplies its own darker art for LIGHTING_LIT. An OBJECT
+   * has no lighting variant anywhere (kind_x_attr is one entry, and
+   * grid_data_as_text overwrites the feature's lit attr with
+   * object_kind_attr's), so upstream draws a remembered item at exactly the
+   * brightness of one you are standing next to. In ASCII that is invisible;
+   * with tiles it is a lit square in the middle of a dim corridor, which reads
+   * as "you can see this" when the whole point is that you cannot. The port
+   * already dims remembered terrain rather than relying on a palette swap
+   * (see dim()), so this is that same deviation applied consistently, not a
+   * new one.
+   */
+  dimmed = false,
+): TileDraw | undefined {
   const ts = tileset;
   if (!atlas || !ts || !ts.ready) return undefined;
   if (!isTile(atlas.attr, atlas.char)) return undefined;
   const code = tileCode(atlas.attr, atlas.char);
   return {
-    draw: (ctx, px, py, w, h) => ts.drawTile(ctx, px, py, w, h, code, { x, y }),
+    draw: (ctx, px, py, w, h) => {
+      if (!dimmed) return ts.drawTile(ctx, px, py, w, h, code, { x, y });
+      /* globalAlpha over the blit, restored whatever the blit does. The cell has
+       * already been filled with its background, so a partly transparent tile
+       * lands on that rather than on the previous frame. */
+      const prev = ctx.globalAlpha;
+      ctx.globalAlpha = prev * DIM_SCALE;
+      try {
+        return ts.drawTile(ctx, px, py, w, h, code, { x, y });
+      } finally {
+        ctx.globalAlpha = prev;
+      }
+    },
     /* The identity the terminal's frame diff needs - see TileDraw.key. It has to
      * carry the map grid as well as the code, because a loose pack resolves a
      * variant POOL against the position, so the same code at two grids is two
-     * different pictures. Which is also why this cannot be `${code}` alone. */
-    key: `${String(code)}@${String(x)},${String(y)}`,
+     * different pictures. Which is also why this cannot be `${code}` alone. And
+     * it has to carry `dimmed`: the same code at the same grid is two different
+     * pictures either side of a grid leaving view, and a diff that could not see
+     * that would leave the lit one on screen. */
+    key: `${String(code)}@${String(x)},${String(y)}${dimmed ? "~" : ""}`,
   };
 }
 
@@ -6346,7 +6392,13 @@ function trapIndex(): Map<number, CellGlyph> {
  * every caller that draws an object, and the flavour and the tile can no longer
  * disagree about which kind is being looked at.
  */
-function objectKindCell(kind: ObjectKind, gx: number, gy: number): CellGlyph {
+function objectKindCell(
+  kind: ObjectKind,
+  gx: number,
+  gy: number,
+  /** The grid is REMEMBERED, not seen: draw it at DIM_SCALE (see tileDrawFor). */
+  dimmed = false,
+): CellGlyph {
   const flavor = state.flavorGlyph?.(kind);
   const useFlavor =
     !!flavor && !(tvalIsScroll(kind.tval) && (game.flavor?.isAware(kind) ?? false));
@@ -6361,6 +6413,7 @@ function objectKindCell(kind: ObjectKind, gx: number, gy: number): CellGlyph {
         tileForShownObject(tileMap, kind, useFlavor && flavor ? flavor.fidx : null),
         gx,
         gy,
+        dimmed,
       )
     : undefined;
   /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
@@ -6368,10 +6421,11 @@ function objectKindCell(kind: ObjectKind, gx: number, gy: number): CellGlyph {
   const g = useFlavor ? glyphs.flavorGlyph(flavor.fidx) : glyphs.kindGlyph(kind.kidx);
   const attr =
     g?.attr ?? (useFlavor ? colorTextToAttr(flavor.attr) : colorCharToAttr(kind.dAttr));
+  const css = colorToCss(attr);
   return {
     ch: g?.char ?? (useFlavor ? flavor.char : kind.dChar),
     attr,
-    css: colorToCss(attr),
+    css: dimmed ? dim(css) : css,
     ...(tile ? { tile } : {}),
   };
 }
@@ -6401,7 +6455,10 @@ function rememberedObjectCell(
     : mem.money
       ? kinds.unknownGoldKind
       : kinds.unknownItemKind;
-  if (kind) return objectKindCell(kind, gx, gy);
+  /* dimmed: this grid is remembered, not seen. Without it the item was the one
+   * thing on a dim corridor drawn at full brightness - "the cell stays lit
+   * instead of going dim when I walk away". */
+  if (kind) return objectKindCell(kind, gx, gy, true);
   return { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM };
 }
 
@@ -6431,7 +6488,7 @@ function objectIndex(): Map<number, CellGlyph> {
 function dim(css: string): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(css);
   if (!m) return "#3a3a44"; // palette-exempt: unreachable defensive fallback
-  const scale = (h: string): number => Math.round(parseInt(h, 16) * 0.38);
+  const scale = (h: string): number => Math.round(parseInt(h, 16) * DIM_SCALE);
   return `rgb(${scale(m[1]!)},${scale(m[2]!)},${scale(m[3]!)})`;
 }
 
