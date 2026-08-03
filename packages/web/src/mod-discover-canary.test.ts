@@ -113,7 +113,12 @@ describe.skipIf(!ON)("the curated registry, live", () => {
           );
         }
       }
-      // eslint-disable-next-line no-console -- the point of a canary is its report
+      /* No eslint-disable here, deliberately. `no-console` is scoped to exclude
+       * test files (eslint.config.mjs `ignores`), so a disable is REDUNDANT - and
+       * reportUnusedDisableDirectives makes a redundant one an error. This file
+       * shipped with one and kept CI red for four commits while every local check I
+       * ran was green, because I had linted the files I touched rather than the tree.
+       * mod-canary.test.ts, which prints the same kind of report, never had one. */
       console.log(`discovery against live repositories:\n  ${rows.join("\n  ")}`);
 
       /* A repository in MY curated list that cannot be discovered is my problem,

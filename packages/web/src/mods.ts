@@ -60,6 +60,7 @@ import {
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 import { showModCatalogue, showModUpdates, type ModCatalogueDeps } from "./mod-catalogue";
+import { showModBrowse, type ModBrowseDeps } from "./mod-browse";
 import { modUpdateRowLabel, pendingModUpdates } from "./mod-updates";
 import { RECOMMENDED_MODS, usableRecommendedMods } from "./mod-registry";
 import type { ConflictReportLines } from "./mod-conflicts";
@@ -216,6 +217,16 @@ export interface ModManagerDeps {
    * does not appear, rather than appearing and failing.
    */
   modCatalogue?: ModCatalogueDeps;
+  /**
+   * The three doors (mod-browse.ts): the curated list, a registry address, a
+   * repository address.
+   *
+   * Takes over the "Get mods" row from modCatalogue when present. Both are here
+   * during the changeover, and the browse screen wins - it is the one that can offer
+   * a version newer than this build shipped with, because it asks the mod rather
+   * than reading a catalogue compiled into the game.
+   */
+  modBrowse?: ModBrowseDeps;
 }
 
 /**
@@ -1912,11 +1923,25 @@ export async function runModManager(
               w,
             ),
             { text: "", color: C_FG },
+            /* REWRITTEN because it described a model that no longer exists. It
+             * said every file is checked against "a fingerprint that shipped
+             * inside your copy of the game" - which was true of the compiled-in
+             * catalogue and is now false: a shipped digest cannot survive a mod
+             * releasing a new version, which is why the game asks the repository
+             * instead and pins the ORIGIN on first install. Prose describing a
+             * deleted mechanism is worse than no prose, because a player trusts
+             * it. */
             ...wrapped(
-              "Open this row for the list. Each one downloads from its own " +
-                "repository, and every file is checked against a fingerprint " +
-                "that shipped inside your copy of the game, so a download that " +
-                "has been altered never becomes an installed mod.",
+              "Open this row for the list. The game holds no list of what a mod " +
+                "contains - it asks each mod's own repository, so a mod can " +
+                "release an update without waiting for a new version of the game.",
+              w,
+            ),
+            { text: "", color: C_FG },
+            ...wrapped(
+              "On first install a mod is pinned to the repository it came from " +
+                "and can only be updated from that same place. Nothing here " +
+                "reviews a mod's code, including the recommended ones.",
               w,
             ),
           ];
@@ -1989,7 +2014,19 @@ export async function runModManager(
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "download") {
-      if (deps.modCatalogue) {
+      if (deps.modBrowse) {
+        const touched = await showModBrowse(term, {
+          ...deps.modBrowse,
+          offerEnable: async (id) => {
+            if (await enableAfterInstall(term, deps, id)) {
+              dirty = true;
+              return true;
+            }
+            return false;
+          },
+        });
+        if (touched) dirty = true;
+      } else if (deps.modCatalogue) {
         const touched = await showModCatalogue(term, {
           ...deps.modCatalogue,
           offerEnable: async (id) => {
