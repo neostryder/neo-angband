@@ -237,6 +237,52 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     if (!r.ok) expect(r.problem).toMatch(/does not include manifest\.json/u);
   });
 
+  it("accepts an ARCHIVE-only payload, whose manifest is inside the zip", async () => {
+    /* The manifest.json check can only run on a payload of plain files: an
+     * archive's manifest is inside a zip nothing has opened yet. Requiring it
+     * anyway refused a perfectly good tiles mod, which is what the live canary
+     * against neo-linoleum found - its entire payload is seven archives. The
+     * installer makes this check on the UNPACKED result, where it can be answered.
+     */
+    const { env } = fakeNet({
+      [TAGS]: tagList("v1.2.0"),
+      [RAW("v1.2.0", "manifest.json")]: JSON.stringify({
+        ...MANIFEST,
+        payload: { archives: ["dist/mod.zip", "dist/tiles.zip"] },
+      }),
+      [TREE("v1.2.0")]: tree([
+        ["dist/mod.zip", 9000],
+        ["dist/tiles.zip", 10_000_000],
+      ]),
+    });
+
+    const r = await discoverMod({ repo: "a/b" }, env);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.mod.payload).toEqual([
+      { kind: "archive", path: "dist/mod.zip" },
+      { kind: "archive", path: "dist/tiles.zip" },
+    ]);
+    expect(r.mod.bytes).toBe(10_009_000);
+  });
+
+  it("still requires manifest.json when every entry IS a plain file", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagList("v1.2.0"),
+      [RAW("v1.2.0", "manifest.json")]: JSON.stringify({
+        ...MANIFEST,
+        payload: { files: ["plugin.js"] },
+      }),
+      [TREE("v1.2.0")]: tree([["plugin.js", 10]]),
+    });
+
+    const r = await discoverMod({ repo: "a/b" }, env);
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/does not include manifest\.json/u);
+  });
+
   it("gets its compatibility verdict from the loader, not a second copy", async () => {
     /* A row that promised what load time refuses is the failure this reuse
      * prevents. `engine` is the MOD's claim; the verdict is the loader's. */

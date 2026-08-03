@@ -259,10 +259,19 @@ export async function discoverMod(
       guessedPayload = true;
     }
 
-    if (!payload.some((p) => p.kind === "file" && p.path === "manifest.json")) {
-      /* readModDir will refuse a folder with no manifest, so a payload that omits
-       * it describes an install that cannot become a mod. Caught here, where the
-       * message can name the manifest field that is wrong. */
+    /* readModDir refuses a folder with no manifest, so a payload that omits one
+     * describes an install that cannot become a mod - worth catching here, where
+     * the message can name the manifest field that is wrong rather than surfacing
+     * as a failed download.
+     *
+     * ONLY WHEN EVERY ENTRY IS A FILE. An archive's manifest.json is INSIDE the
+     * zip, which nothing has opened yet, so this check cannot see it and said so
+     * by refusing a perfectly good tiles mod - caught by the live canary against
+     * neo-linoleum, whose whole payload is seven archives. The installer performs
+     * exactly this check on the unpacked result (storeMod), which is the only
+     * place it can be answered for an archive. */
+    const allFiles = payload.every((p) => p.kind === "file");
+    if (allFiles && !payload.some((p) => p.path === "manifest.json")) {
       return {
         ok: false,
         problem:
