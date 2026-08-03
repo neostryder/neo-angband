@@ -35,7 +35,9 @@
  */
 
 import { compareTags } from "./mod-registry";
+import { channelAccepts } from "./update";
 import type { InstalledModMeta } from "./mod-install";
+import type { UpdateChannel } from "./update";
 
 /** A repository, and optionally the one tag the player asked for. */
 export interface RepoRef {
@@ -136,6 +138,63 @@ export function newestTag(tags: readonly string[]): string | null {
     if (order !== null && order > 0) best = tag;
   }
   return best;
+}
+
+/**
+ * Whether a tag names a prerelease, from the tag alone.
+ *
+ * A tag is all there is to go on: mod versions are read from the tags API, not the
+ * releases API, because that is what is CORS-open and cheap (see the header). So a
+ * mod declares its channel the only way a tag can - in its semver prerelease
+ * suffix. `v0.13.0` is a release, `v0.14.0-beta.1` is a beta, `v0.14.0-edge.7` is an
+ * early build.
+ *
+ * CONFIRMED with the comparator rather than believed from the hyphen. Semver's rule
+ * is that a prerelease ranks below the release of the same version (spec item 11.3),
+ * so the suffix is only treated as one when the two actually order that way. A tag
+ * the comparator cannot read is not called a prerelease either - it sorts nowhere,
+ * newestTag already declines to choose it, and guessing would put it on a channel.
+ */
+export function tagIsPrerelease(tag: string): boolean {
+  const body = /^v\d/u.test(tag) ? tag.slice(1) : tag;
+  const cut = body.indexOf("-");
+  if (cut < 0) return false;
+  const order = compareTags(body.slice(0, cut), body);
+  return order !== null && order > 0;
+}
+
+/**
+ * The tags a channel is willing to install, and the newest one it turned down.
+ *
+ * This is how "an early game gets early mods" is actually enforced. The rule itself
+ * is the GAME's - channelAccepts in update.ts, the same function the game's own
+ * updater filters releases with - so a mod cannot be offered on a channel the game
+ * would not offer itself on. It is inclusive downward for the same reason: a beta
+ * player must still get a mod's plain releases, or choosing beta would mean losing
+ * access to every mod that has never published a prerelease.
+ *
+ * `held` exists so a row can explain itself. A player on stable looking at a
+ * repository whose front page shows v0.14.0-beta.1 and a game offering 0.13.0 is
+ * owed the reason, and "your channel" is the reason. Without it the game looks
+ * simply out of date.
+ */
+export function tagsInChannel(
+  channel: UpdateChannel,
+  tags: readonly string[],
+): { readonly tags: readonly string[]; readonly held: string | null } {
+  const ok = tags.filter((t) => channelAccepts(channel, t, tagIsPrerelease(t)));
+  const newest = newestTag(tags);
+  /* Only a tag that is BOTH newer than anything allowed and itself disallowed counts
+   * as held. An old prerelease that a newer release has already superseded is not
+   * something the channel is keeping from the player. */
+  const best = newestTag(ok);
+  const held =
+    newest !== null &&
+    !ok.includes(newest) &&
+    (best === null || (compareTags(newest, best) ?? 0) > 0)
+      ? newest
+      : null;
+  return { tags: ok, ...(held === null ? { held: null } : { held }) };
 }
 
 /**

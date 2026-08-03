@@ -7,10 +7,13 @@ import {
   parseRepoRef,
   payloadFromTree,
   repoPageUrl,
+  tagIsPrerelease,
   tagsApiUrl,
+  tagsInChannel,
   treeApiUrl,
   type TreeEntry,
 } from "./mod-source";
+import { releasesIn } from "./update";
 import type { InstalledModMeta } from "./mod-install";
 
 const ok = (input: string): { repo: string; tag?: string } => {
@@ -191,5 +194,121 @@ describe("originConflict (trust on first use)", () => {
     /* A false alarm here is worse than none: it teaches the player to click
      * through the one warning that means something. */
     expect(originConflict(meta("NeoStryder/QoL"), "neostryder/qol")).toBeNull();
+  });
+});
+
+describe("the mod channel is the GAME's channel", () => {
+  const TAGS = ["v0.12.0", "v0.13.0", "v0.14.0-beta.1", "v0.14.0-edge.7"];
+
+  it("gives stable only the plain releases", () => {
+    expect(tagsInChannel("stable", TAGS).tags).toEqual(["v0.12.0", "v0.13.0"]);
+  });
+
+  it("gives beta the pre-releases as well, but not the per-commit builds", () => {
+    expect(tagsInChannel("beta", TAGS).tags).toEqual([
+      "v0.12.0",
+      "v0.13.0",
+      "v0.14.0-beta.1",
+    ]);
+  });
+
+  it("gives early everything", () => {
+    expect(tagsInChannel("early", TAGS).tags).toEqual(TAGS);
+  });
+
+  it("is INCLUSIVE DOWNWARD, so choosing beta never costs access to a mod", () => {
+    /* The failure this prevents: a mod that has only ever cut plain releases would
+     * be invisible to every beta and early player if a channel saw only its own
+     * kind of version. Which is nearly every mod - three of the four in the curated
+     * registry have never published a prerelease. */
+    const releasesOnly = ["v1.0.0", "v1.1.0"];
+    for (const channel of ["stable", "beta", "early"] as const) {
+      expect(tagsInChannel(channel, releasesOnly).tags, channel).toEqual(releasesOnly);
+    }
+  });
+
+  it("reports the newest version it held back, so a row can say why", () => {
+    /* Otherwise a player on stable sees the game offer 0.13.0 while GitHub shows
+     * 0.14.0-beta.1 and concludes the game is broken. */
+    expect(tagsInChannel("stable", TAGS).held).toBe("v0.14.0-edge.7");
+    expect(tagsInChannel("beta", TAGS).held).toBe("v0.14.0-edge.7");
+    expect(tagsInChannel("early", TAGS).held).toBeNull();
+  });
+
+  it("does not report a held version that a newer allowed one supersedes", () => {
+    /* An old prerelease is not being kept from anybody: v0.13.0 is newer. Reporting
+     * it would put a permanent "your channel is holding something back" note on a
+     * row that is showing the newest thing there is. */
+    expect(tagsInChannel("stable", ["v0.12.0-beta.1", "v0.13.0"]).held).toBeNull();
+  });
+
+  it("agrees with the game's own updater about what a channel means", () => {
+    /* THE POINT. Not "these two look similar" - the same rule, exercised through
+     * both doors, asserted to give the same answer. If channelAccepts is ever
+     * copied instead of called, one of these stops matching.
+     *
+     * Note releasesIn is fed prerelease=true for the plain versions, because that
+     * is what GitHub reports for every 0.x release here; the mod side derives it
+     * from the tag. The asymmetry is deliberate and is why the flag is a parameter. */
+    for (const channel of ["stable", "beta", "early"] as const) {
+      const viaTags = tagsInChannel(channel, TAGS).tags;
+      const viaReleases = releasesIn(
+        channel,
+        TAGS.map((t) => ({
+          tag: t,
+          version: t,
+          prerelease: tagIsPrerelease(t),
+          draft: false,
+          url: "",
+          assets: [],
+          notes: null,
+        })),
+      ).map((r) => r.version);
+      expect(viaTags, channel).toEqual(viaReleases);
+    }
+  });
+});
+
+describe("tagIsPrerelease", () => {
+  it("reads the suffix, with or without the v", () => {
+    expect(tagIsPrerelease("v1.2.3")).toBe(false);
+    expect(tagIsPrerelease("1.2.3")).toBe(false);
+    expect(tagIsPrerelease("v1.2.3-beta.1")).toBe(true);
+    expect(tagIsPrerelease("1.2.3-rc.1")).toBe(true);
+    expect(tagIsPrerelease("v0.18.1-edge.15")).toBe(true);
+  });
+
+  it("does not call an unreadable tag a prerelease", () => {
+    /* It sorts nowhere, newestTag already declines to pick it, and guessing would
+     * put it on a channel it was never meant for. */
+    for (const tag of ["latest", "nightly", "my-mod-v1", "", "release-2"]) {
+      expect(tagIsPrerelease(tag), tag).toBe(false);
+    }
+  });
+
+  it("does not mistake build metadata for a prerelease", () => {
+    /* `+build.5` is not a prerelease and has no hyphen, so it never reaches the
+     * comparator at all. Measured, not assumed: compareSemver answers null for it -
+     * the SDK's parser does not accept build metadata - so a version carrying it is
+     * unorderable and newestTag declines to pick it either way. */
+    expect(tagIsPrerelease("v1.2.3+build.5")).toBe(false);
+  });
+
+  it("does not call a hyphen it cannot parse a prerelease", () => {
+    /* The comparator path, exercised: these DO have a hyphen, so the only thing
+     * standing between them and the beta channel is compareSemver declining to rank
+     * them below a release. Measured: it answers null for both. */
+    for (const tag of ["v1.2.3-", "v1.2-x"]) {
+      expect(tagIsPrerelease(tag), tag).toBe(false);
+    }
+  });
+
+  it("DOES accept an odd suffix the comparator can still rank", () => {
+    /* `beta..1` is not something anybody should tag, but compareSemver reads it and
+     * ranks it below 1.2.3, so it is a prerelease and belongs on the beta channel.
+     * The rule is "what the comparator says", not "what looks tidy" - and this is
+     * the case where those two answers differ, so it is written down rather than
+     * left to be rediscovered. */
+    expect(tagIsPrerelease("v1.2.3-beta..1")).toBe(true);
   });
 });
