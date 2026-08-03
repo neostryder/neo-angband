@@ -1346,3 +1346,95 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
     expect(restored.state.floor.has(3 * w + 3)).toBe(false);
   });
 });
+
+describe("remembered floor objects (game/known.ts KnownObjectMemory)", () => {
+  /** The grid index a memory is written at, plus the potion kind used. */
+  function rememberPotion(game: StartedGame): { idx: number; kind: ObjectKind } {
+    const kind = game.booted.registries.objects.kinds.find(
+      (k) => k.tval === TV.POTION,
+    ) as ObjectKind;
+    const idx = 5 * game.state.chunk.width + 7;
+    game.state.known.objects.set(idx, { seen: true, kidx: kind.kidx });
+    return { idx, kind };
+  }
+
+  it("round-trips the remembered KIND, so the draw can still resolve a tile", () => {
+    /* The memory used to be a resolved glyph, which the save stored as
+     * `{ ch, attr }`. A glyph has no kind, so the remembered draw could look up
+     * neither the flavour nor the x_attr tile - which is why an item on the
+     * floor turned into ASCII the moment it left view. */
+    const game = startGame(pack, { seed: 909, depth: 2 });
+    const { idx, kind } = rememberPotion(game);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const restored = loadGame(pack, saved);
+
+    expect(restored.state.known.objects.get(idx)).toEqual({
+      seen: true,
+      kidx: kind.kidx,
+    });
+  });
+
+  it("stores the kind by content ID, not by index", () => {
+    const game = startGame(pack, { seed: 910, depth: 2 });
+    const { idx, kind } = rememberPotion(game);
+    const ids = new ContentIdResolver(game.booted.registries);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const entry = saved.known!.objects.find(([i]) => i === idx)!;
+
+    expect(entry[1].kindId).toBe(ids.kindId(kind.kidx));
+  });
+
+  it("a sensed marker keeps its money-ness across a save", () => {
+    const game = startGame(pack, { seed: 911, depth: 2 });
+    const w = game.state.chunk.width;
+    game.state.known.objects.set(3 * w + 3, { seen: false, money: true });
+    game.state.known.objects.set(3 * w + 4, { seen: false, money: false });
+
+    const restored = loadGame(pack, JSON.parse(JSON.stringify(saveGame(game))));
+
+    expect(restored.state.known.objects.get(3 * w + 3)).toEqual({
+      seen: false,
+      money: true,
+    });
+    expect(restored.state.known.objects.get(3 * w + 4)).toEqual({
+      seen: false,
+      money: false,
+    });
+  });
+
+  it("a PRE-0.18 glyph memory loads as 'something is here' instead of corrupting", () => {
+    /* No SAVE_VERSION bump: an existing character must load. A glyph cannot be
+     * turned back into a kind, so the honest degradation is the sensed marker,
+     * which heals to an exact memory the next time the player sees the grid. */
+    const game = startGame(pack, { seed: 912, depth: 2 });
+    const { idx } = rememberPotion(game);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const entry = saved.known!.objects.find(([i]) => i === idx)!;
+    delete entry[1].kindId; // what a pre-0.18 save looks like
+    entry[1].ch = "!";
+    entry[1].attr = "d";
+
+    const restored = loadGame(pack, saved);
+
+    expect(restored.state.known.objects.get(idx)).toEqual({
+      seen: false,
+      money: false,
+    });
+  });
+
+  it("a kind the pack no longer binds degrades to a sensed marker", () => {
+    const game = startGame(pack, { seed: 913, depth: 2 });
+    const { idx } = rememberPotion(game);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    saved.known!.objects.find(([i]) => i === idx)![1].kindId = "mod:gone/potion";
+
+    const restored = loadGame(pack, saved);
+
+    expect(restored.state.known.objects.get(idx)).toEqual({
+      seen: false,
+      money: false,
+    });
+  });
+});

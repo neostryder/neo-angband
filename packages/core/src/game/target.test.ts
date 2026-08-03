@@ -160,7 +160,7 @@ describe("target_accept (L325)", () => {
     expect(targetAccept(state, loc(12, 12))).toBe(false);
 
     /* A remembered floor object. */
-    state.known.objects.set(13 * state.chunk.width + 13, { ch: "?", attr: "w" });
+    state.known.objects.set(13 * state.chunk.width + 13, { seen: true, kidx: 1 });
     expect(targetAccept(state, loc(13, 13))).toBe(true);
 
     /* Remembered interesting terrain (a staircase). */

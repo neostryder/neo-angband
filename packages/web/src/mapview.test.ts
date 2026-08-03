@@ -364,7 +364,7 @@ describe("buildOverview wired to a real GameState (knownFeat/knownObject)", () =
       objectGlyphAt: (x, y) => {
         const mem = knownObject(state, loc(x, y));
         if (!mem) return null;
-        return mem.ch === null ? { ch: "*", css: "#8a8a94" } : { ch: mem.ch, css: mem.attr };
+        return mem.seen ? { ch: ",", css: "w" } : { ch: "*", css: "#8a8a94" };
       },
       playerGrid: { x: state.actor.grid.x, y: state.actor.grid.y },
     });

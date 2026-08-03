@@ -403,11 +403,11 @@ describe("EF_LIGHT_LEVEL / EF_DARKEN_LEVEL (effect-handler-general.c L3003)", ()
       for (const st of [full, sensed]) floorCarry(st, grid, makeObj());
       wizLightLevel(full, true, true);
       wizLightLevel(sensed, true, false);
-      /* square_know_pile records the real glyph; square_sense_pile records the
-       * null-glyph "something is here" marker. */
-      expect(knownObject(full, grid)?.ch).not.toBeNull();
+      /* square_know_pile records the KIND; square_sense_pile records the
+       * "something is here" marker. */
+      expect(knownObject(full, grid)?.seen).toBe(true);
       expect(knownObject(sensed, grid)).not.toBeNull();
-      expect(knownObject(sensed, grid)?.ch).toBeNull();
+      expect(knownObject(sensed, grid)?.seen).toBe(false);
     });
 
     it("wiz_dark senses/knows piles too - it is not a forget-everything", () => {
@@ -415,7 +415,7 @@ describe("EF_LIGHT_LEVEL / EF_DARKEN_LEVEL (effect-handler-general.c L3003)", ()
       const grid = loc(20, 12);
       floorCarry(state, grid, makeObj());
       wizLightLevel(state, false, true);
-      expect(knownObject(state, grid)?.ch).not.toBeNull();
+      expect(knownObject(state, grid)?.seen).toBe(true);
     });
 
     it("isCurrentCave=false is glow-only (the `c != cave` guard, generate.c:1109)", () => {
