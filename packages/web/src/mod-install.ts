@@ -48,7 +48,9 @@ import {
   openDb,
 } from "./idb";
 import { buildModuleGraph } from "./mod-modules";
+import type { DiscoveredMod } from "./mod-discover";
 import { type RecommendedMod, type RegistryFile, badPath, rawUrl } from "./mod-registry";
+import { originConflict } from "./mod-source";
 import { assetMime, sortPackFiles } from "./pack-files";
 
 /** What is recorded about an installed mod, so the manager can say where it came from. */
@@ -65,6 +67,20 @@ export interface InstalledModMeta {
    * on it and so this module has no ambient dependency on time.
    */
   readonly installedAt: string;
+  /**
+   * Lower-case hex SHA-256 per stored path, as measured on the bytes that arrived.
+   *
+   * WHAT THIS IS NOT. It is not a check the download passed - there is nothing to
+   * compare a first download against, which is the whole reason trust-on-first-use
+   * exists (see mod-source.ts). It is the answer to "has this copy changed since I
+   * installed it", which the manager's verify can ask and which a shipped digest
+   * could never answer for a version the build predates.
+   *
+   * Absent on a record written before this field, so a verify has to say "not
+   * recorded" rather than "changed" - a false alarm about tampering is worse than
+   * an honest gap.
+   */
+  readonly digests?: Readonly<Record<string, string>>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -183,6 +199,28 @@ export async function installRecommendedMod(
 ): Promise<InstallResult> {
   try {
     const files = await downloadPayload(mod, env, onProgress);
+    return await storeMod({ id: mod.id, repo: mod.repo, tag: mod.tag }, files, env);
+  } catch (e) {
+    return { ok: false, problem: message(e) };
+  }
+}
+
+/**
+ * The write half, shared by every way a mod can arrive.
+ *
+ * Extracted rather than copied because ONE SWAP is the whole point of it (see the
+ * comment inside), and a second install path with its own version of that
+ * reasoning would be a second chance to get it wrong - a mod that vanished
+ * because an upgrade deleted before it wrote is the failure this shape exists to
+ * make impossible, and it would not be prevented twice.
+ */
+async function storeMod(
+  who: { readonly id: string; readonly repo: string; readonly tag: string },
+  files: ReadonlyArray<readonly [string, Uint8Array]>,
+  env: InstallEnv,
+): Promise<InstallResult> {
+  const mod = who;
+  try {
 
     /* Re-checked here even though the catalogue was validated, because the archive
      * path produces paths that came from the ZIP rather than from the catalogue -
@@ -204,12 +242,20 @@ export async function installRecommendedMod(
       };
     }
 
+    /* Measured on the bytes about to be stored, so a later verify compares against
+     * what actually landed rather than against what a list said should. */
+    const digests: Record<string, string> = {};
+    for (const [path, bytes] of files) {
+      digests[path] = await sha256Hex(bytes, env.subtle);
+    }
+
     const meta: InstalledModMeta = {
       id: mod.id,
       repo: mod.repo,
       tag: mod.tag,
       files: files.map(([p]) => p),
       installedAt: env.now(),
+      digests,
     };
 
     /* ONE SWAP, NOT A DELETE AND THEN A WRITE.
@@ -260,6 +306,121 @@ export async function installRecommendedMod(
   } catch (e) {
     return { ok: false, problem: message(e) };
   }
+}
+
+/**
+ * Install a mod the build knows nothing about, from the repository it lives in.
+ *
+ * The counterpart of installRecommendedMod for the model that replaces it: the
+ * caller has already asked the repository what mod it holds (mod-discover.ts) and
+ * hands the answer here. What this adds is the fetching, the unpacking, and the
+ * one gate the shipped-digest model used to provide.
+ *
+ * TRUST ON FIRST USE, and it is checked BEFORE a single byte is fetched. There is
+ * nothing to compare a first download against, so what is pinned is the ORIGIN: an
+ * installed mod may only ever be replaced by a copy from the same repository. That
+ * survives a version bump, which a digest cannot. `installed` is passed in rather
+ * than read here so the check is assertable without a database.
+ *
+ * Never throws, for the same reason as its sibling: one bad repository in a batch
+ * must not take the good ones with it.
+ */
+export async function installModFromRepo(
+  mod: DiscoveredMod,
+  installed: InstalledModMeta | null,
+  env: InstallEnv,
+  onProgress?: (p: InstallProgress) => void,
+): Promise<InstallResult> {
+  const conflict = originConflict(installed, mod.repo);
+  if (conflict !== null) return { ok: false, problem: conflict };
+  try {
+    const files: Array<readonly [string, Uint8Array]> = [];
+    /* Which archive contributed each path, so a collision can name both - two
+     * archives writing one path is an authoring mistake that would otherwise
+     * resolve by unzip order. Declared files collide the same way. */
+    const from = new Map<string, string>();
+    const total = mod.payload.length;
+
+    for (let i = 0; i < total; i++) {
+      const entry = mod.payload[i] as (typeof mod.payload)[number];
+      onProgress?.({ done: i + 1, total, path: entry.path });
+      const bytes = await fetchBytes(
+        rawUrl(mod.repo, mod.tag, entry.path),
+        entry.path,
+        env,
+      );
+      if (entry.kind === "file") {
+        const owner = from.get(entry.path);
+        if (owner !== undefined) {
+          return { ok: false, problem: `${entry.path}: listed twice (${owner})` };
+        }
+        from.set(entry.path, entry.path);
+        files.push([entry.path, bytes]);
+        continue;
+      }
+      /* An archive's paths come from the ZIP, so they are attacker-controlled in
+       * exactly the way a declared list is not. storeMod re-checks every one of
+       * them (badPath) after this, which is the right order for zip-slip. */
+      let unpacked: Record<string, Uint8Array>;
+      try {
+        unpacked = unzipSync(bytes);
+      } catch (e) {
+        return {
+          ok: false,
+          problem: `${entry.path}: is not a readable zip (${message(e)})`,
+        };
+      }
+      let kept = 0;
+      for (const [name, body] of Object.entries(unpacked)) {
+        if (name.endsWith("/")) continue; // directory entry, not a file
+        const owner = from.get(name);
+        if (owner !== undefined) {
+          return { ok: false, problem: `${name}: in both ${owner} and ${entry.path}` };
+        }
+        from.set(name, entry.path);
+        files.push([name, body]);
+        kept++;
+      }
+      /* Per archive, not overall: five good packs and one empty one is a broken
+       * install that a total count would call fine. */
+      if (kept === 0) return { ok: false, problem: `${entry.path}: the archive is empty` };
+    }
+
+    return await storeMod({ id: mod.id, repo: mod.repo, tag: mod.tag }, files, env);
+  } catch (e) {
+    return { ok: false, problem: message(e) };
+  }
+}
+
+/**
+ * Fetch bytes with no digest to check them against.
+ *
+ * The honest shape of trust-on-first-use: this is fetchVerified minus the one
+ * comparison, and it is a DIFFERENT function rather than a flag on that one,
+ * because "verified" is a promise and a boolean parameter that quietly withdraws
+ * it is how a caller ends up believing a check ran. The digest of what arrives is
+ * recorded by storeMod, so "has this changed since I installed it" stays
+ * answerable even though "is this what the author published" cannot be.
+ */
+async function fetchBytes(
+  url: string,
+  path: string,
+  env: InstallEnv,
+): Promise<Uint8Array> {
+  let res: FetchLike;
+  try {
+    res = await env.fetch(url);
+  } catch (e) {
+    throw new Error(`${path}: could not be downloaded (${message(e)})`, { cause: e });
+  }
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404
+        ? `${path}: not found at this tag (HTTP 404)`
+        : `${path}: the server refused it (HTTP ${String(res.status)})`,
+    );
+  }
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 /** Fetch the payload, verified, as path/bytes pairs. */
