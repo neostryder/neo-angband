@@ -77,6 +77,44 @@ export interface MergePlan {
   readonly skippedUnplayed: readonly RecoveredChar[];
 }
 
+/** What became of an attempt to write the plan into the target origin. */
+export interface MergeOutcome {
+  /** Keys localStorage refused outright (a quota, typically). */
+  readonly failedKeys: readonly string[];
+  /** Keys that were accepted but were not there on the read-back. */
+  readonly missingKeys: readonly string[];
+}
+
+/**
+ * Which abandoned origins may now be recorded as handled - or null for none.
+ *
+ * "Handled" means "there is nothing left in it", and NOTHING LOOKS AT A HANDLED
+ * PORT AGAIN. So the marker is a permanent claim, and every way of getting it wrong
+ * hides a character forever:
+ *
+ *   - a port that could not be READ has not been handled. It is not empty; it is
+ *     unopened. With the port ladder this is the likeliest failure of all, because
+ *     the reason a port will not bind is usually that another copy of the game is
+ *     serving itself on it - and that copy's origin is exactly where a roster is.
+ *   - a write that was refused, or that did not survive the read-back, leaves the
+ *     bytes only in the source. Marking it would strand them.
+ *
+ * `sources` is what was actually read, which is why this takes the snapshots rather
+ * than the list of ports that were meant to be visited. The two were the same thing
+ * while every port in the list was a dead ephemeral one that always bound, and
+ * main.ts passed the wrong one of them for exactly that reason.
+ */
+export function handledPorts(
+  done: Iterable<number>,
+  sources: readonly OriginSnapshot[],
+  outcome: MergeOutcome,
+): readonly number[] | null {
+  if (outcome.failedKeys.length > 0 || outcome.missingKeys.length > 0) return null;
+  const all = new Set<number>(done);
+  for (const s of sources) all.add(s.port);
+  return [...all];
+}
+
 function parseRoster(raw: string | undefined): Meta[] {
   if (raw === undefined) return [];
   try {
