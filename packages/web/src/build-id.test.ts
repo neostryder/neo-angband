@@ -10,7 +10,13 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { isStale, isStampedBuild, WEB_BUILD_ID, WEB_BUILD_ID_FILE } from "./build-id";
-import { FRESHNESS_POLL_MS, FRESHNESS_TIMEOUT_MS, isBuildStale, startFreshnessWatch } from "./pwa";
+import {
+  FRESHNESS_POLL_MS,
+  FRESHNESS_TIMEOUT_MS,
+  isBuildStale,
+  refreshStaleDesktopShell,
+  startFreshnessWatch,
+} from "./pwa";
 
 describe("the build id itself", () => {
   it("falls back to a real value, not an empty string", () => {
@@ -163,5 +169,78 @@ describe("something actually calls the check", () => {
     hooks["every"]?.();
     await new Promise((r) => setTimeout(r, 10));
     expect(onStale).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The desktop does not get asked, it gets refreshed.
+ *
+ * The bug: after an in-place update the files on disk are new and the service
+ * worker still serves the old shell for one whole launch, so the player quits,
+ * updates, reopens, and reads the previous version number off the title screen.
+ * On the web that state is an offer; on the desktop the bytes are already local
+ * and there is nothing to offer.
+ */
+describe("a stale desktop shell", () => {
+  function harness(over: Record<string, unknown> = {}) {
+    const store = new Map<string, string>();
+    const reload = vi.fn();
+    const evict = vi.fn(async () => undefined);
+    return {
+      apply: reload,
+      evict,
+      store,
+      deps: {
+        isDesktop: () => true,
+        check: async () => true,
+        evict,
+        reload,
+        once: {
+          getItem: (k: string) => store.get(k) ?? null,
+          setItem: (k: string, v: string) => void store.set(k, v),
+        },
+        ...over,
+      },
+    };
+  }
+
+  it("takes the new build without asking", async () => {
+    const h = harness();
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(true);
+    expect(h.apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the web alone - there the player is mid-game and mid-network", async () => {
+    const h = harness({ isDesktop: () => false });
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(false);
+    expect(h.apply).not.toHaveBeenCalled();
+    expect(h.evict).not.toHaveBeenCalled();
+  });
+
+  it("evicts the worker even when this shell is already current, so the next launch cannot be stale", async () => {
+    const h = harness({ check: async () => false });
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(false);
+    expect(h.evict).toHaveBeenCalledTimes(1);
+    expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the shell is already current", async () => {
+    const h = harness({ check: async () => false });
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(false);
+    expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it("reloads at most once, so a shell that stays stale cannot loop", async () => {
+    const h = harness();
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(true);
+    /* The reload preserves sessionStorage, so the second boot sees the mark. */
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(false);
+    expect(h.apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to reload at all when it has nowhere to record having done so", async () => {
+    const h = harness({ once: null });
+    expect(await refreshStaleDesktopShell(h.deps)).toBe(false);
+    expect(h.apply).not.toHaveBeenCalled();
   });
 });

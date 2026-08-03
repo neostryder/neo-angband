@@ -204,6 +204,116 @@ export async function applyWebUpdate(): Promise<void> {
   location.reload();
 }
 
+/** Set once per window, so a shell that stays stale cannot reload forever. */
+const DESKTOP_REFRESHED_KEY = "neo:desktop-shell-refreshed";
+
+/** What the desktop refresh needs, injected so it can be tested. */
+export interface DesktopRefreshDeps {
+  isDesktop?: () => boolean;
+  check?: () => Promise<boolean>;
+  /** Tear the worker and its caches down. Defaults to really doing it. */
+  evict?: () => Promise<void>;
+  reload?: () => void;
+  once?: Pick<Storage, "getItem" | "setItem"> | null;
+}
+
+/**
+ * Unregister every worker on this origin and delete every cache it kept.
+ *
+ * Swallows everything: this runs at boot, on a path the player did not ask
+ * for, and a browser that refuses to discuss its service workers is not a
+ * reason to fail to start a game.
+ */
+async function evictWorkers(): Promise<void> {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch {
+    /* no worker API, or a browser that will not talk about it */
+  }
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch {
+    /* no cache API */
+  }
+}
+
+/**
+ * ON THE DESKTOP A STALE SHELL IS NOT AN OFFER, IT IS A MISTAKE - and this is
+ * the second half of "I updated and it was still on the old version".
+ *
+ * The web is asked whether it wants a newer build, because the files are on
+ * somebody else's server and the player is mid-game. The desktop has already
+ * downloaded, verified and installed those files; they are on the disk, three
+ * inches away, and the only thing still serving the old ones is our own
+ * service worker. The worker precaches the NEW shell during the launch that
+ * follows an update and takes over on the launch after that, so the first
+ * launch after every desktop update shows the previous version. Measured: the
+ * window loaded `assets/index-s-LgS4MJ.js` while both the `index.html` on disk
+ * and the worker's own precache named `assets/index-BizJOYdJ.js`, and it kept
+ * doing so until the app was closed and opened again.
+ *
+ * There is nothing to ask about, so this does not ask. Every desktop boot
+ * evicts the worker and its caches outright, which also means the NEXT
+ * navigation has no controller and is served straight off the disk - the
+ * staleness cannot recur. If this page is already the stale one, it reloads,
+ * and at the title screen that is invisible.
+ *
+ * EVICTING IS THE POINT, AND ASKING THE WORKER NICELY IS NOT ENOUGH: the first
+ * attempt here called applyWebUpdate, which does `registration.update()` and
+ * then reloads. That resolves when the new worker has been FETCHED, not when
+ * it has finished precaching and taken over, so the reload raced it and the
+ * old worker served the old shell a second time. Measured: the guard was set,
+ * the reload happened, and the very same `index-BR42Pn0V.js` came back.
+ * Unregister-and-delete has no such race - with no controller and no cache,
+ * the reload can only come from the loopback server.
+ *
+ * Once per window: if the reload does not fix it, a loop is far worse than a
+ * stale title.
+ */
+export async function refreshStaleDesktopShell(
+  deps: DesktopRefreshDeps = {},
+): Promise<boolean> {
+  const isDesktop =
+    deps.isDesktop ?? ((): boolean => "neoDesktop" in (globalThis as object));
+  if (!isDesktop()) return false;
+  let store: Pick<Storage, "getItem" | "setItem"> | null;
+  if (deps.once !== undefined) {
+    store = deps.once;
+  } else {
+    try {
+      store = globalThis.sessionStorage;
+    } catch {
+      store = null;
+    }
+  }
+  /* Unconditionally, and before anything that can bail out: an evicted worker
+   * is how the NEXT launch is guaranteed fresh, whatever happens to this one. */
+  await (deps.evict ?? evictWorkers)();
+
+  /* NO STORE, NO RELOAD. `store?.setItem(...)` would quietly do nothing and
+   * every boot would reload again - and a reload loop is a worse bug than the
+   * stale title it is trying to correct. The guard has to be real to act on. */
+  if (!store) return false;
+  try {
+    if (store.getItem(DESKTOP_REFRESHED_KEY)) return false;
+  } catch {
+    return false;
+  }
+  const check = deps.check ?? ((): Promise<boolean> => isBuildStale());
+  if (!(await check())) return false;
+  try {
+    store.setItem(DESKTOP_REFRESHED_KEY, "1");
+  } catch {
+    return false;
+  }
+  (deps.reload ?? ((): void => {
+    location.reload();
+  }))();
+  return true;
+}
+
 /** The four things the freshness watch needs, injected so it can be tested. */
 export interface FreshnessDeps {
   /** Answers "is this page out of date". Defaults to asking the server. */
