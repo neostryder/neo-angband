@@ -1557,7 +1557,31 @@ export function monsterTurn(mon: Monster, state: GameState): void {
        * sweep carried/floor objects for any awareness the new rune completes. */
       equipLearnOnDefend(state.actor.player, state.runeEnv);
       updatePlayerObjectKnowledge(state);
-      if (result.playerDied || state.actor.player.chp < 0) {
+      /*
+       * Upstream only ever READS p->is_dead around make_attack_normal
+       * (mon-attack.c L481, L585, L654, L752; mon-move.c L1904) - take_hit is
+       * its single writer. In the port, playerActor.isDead IS state.isDead (a
+       * getter/setter pair, project-cast.ts basicPlayerActor), so a fatal blow
+       * has already recorded itself by the time this line runs and
+       * result.playerDied reads the same flag.
+       *
+       * THE `chp < 0` DISJUNCT WAS A BUG, and the only death it could change is
+       * the one it broke. A cheat_live or wizard character is deliberately left
+       * ALIVE WITH NEGATIVE HP while state.pendingDeath waits for the shell's
+       * get_check("Die? ") - that is how the escape is spelled. So chp < 0 was
+       * true while is_dead was false, and this forced the very death the prompt
+       * exists to let the player refuse. loopStop tests isDead BEFORE
+       * pendingDeath, so the loop answered DEAD, the shell ran the tombstone,
+       * and no prompt was ever drawn: cheat death worked against a breath, a
+       * trap or a poison tick and failed silently against the commonest death
+       * in Angband, a melee blow.
+       *
+       * result.playerDied is kept as the condition rather than state.isDead
+       * because the worldless harness (no state.monBlowEnv) never routes
+       * through take_hit at all, and this assignment is the only thing that
+       * bridges its death to the loop.
+       */
+      if (result.playerDied) {
         state.isDead = true;
         state.playing = false;
       }

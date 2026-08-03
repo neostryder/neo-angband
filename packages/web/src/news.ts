@@ -438,6 +438,53 @@ export interface TitleDeps {
   readonly clearInterval?: (handle: unknown) => void;
 }
 
+/**
+ * The title screen MINUS its menu row: news.txt and the "Neo" overlay.
+ *
+ * Split out because of what the player saw on every launch. The boot sequence
+ * paints the loaded character's map (main.ts's top-level render()) and only then
+ * enters maybeTitle, which must await the update check and the mod check before
+ * it can know whether the (U)pdate row is live - so the town sat on screen for
+ * the length of a network round trip and the title arrived after it. Painting
+ * the art FIRST costs nothing (it depends on no answer) and the awaits then
+ * happen over the title rather than over the game.
+ *
+ * The menu row is deliberately NOT drawn here. A row that appears under the
+ * player's cursor a moment after the screen does is how a menu gets mis-clicked,
+ * so the rows still arrive together, in their final positions, once both checks
+ * have answered. showTitleScreen repaints this art itself; the terminal diffs
+ * against what is already on the canvas, so the second call draws nothing.
+ */
+export function paintTitleArt(term: GlyphTerm): void {
+  const { cols, rows: height } = term.size();
+  term.clear();
+  const lines = titleLines();
+  for (let y = 0; y < lines.length && y < height; y++) {
+    const line = lines[y];
+    if (!line) continue;
+    const runs = parseNewsLine(line.markup);
+    /* Centring measures the RUNS, not the markup: a {colour} tag occupies no
+     * columns, so centring on the raw string's length would shift the line
+     * left by the width of its tags. */
+    let x = line.centred
+      ? Math.max(0, Math.floor((cols - runs.reduce((n, r) => n + r.text.length, 0)) / 2))
+      : 0;
+    for (const run of runs) {
+      if (x >= cols) break;
+      const chunk = run.text.slice(0, cols - x);
+      term.print(x, y, chunk, run.css);
+      x += chunk.length;
+    }
+  }
+  /* "Neo", over the art (see NEO_ART). */
+  const neoCss = colorToCss(colorTextToAttr(NEO_COLOUR));
+  for (let i = 0; i < NEO_ART.length; i++) {
+    const y = NEO_ROW + i;
+    if (y >= height) break;
+    term.print(NEO_COL, y, (NEO_ART[i] ?? "").slice(0, Math.max(0, cols - NEO_COL)), neoCss);
+  }
+}
+
 export function showTitleScreen(
   term: GlyphTerm,
   opts: TitleOptions,
@@ -453,32 +500,7 @@ export function showTitleScreen(
     let shimmer = colorToCss(COLOUR_WHITE);
     const paint = (): void => {
       const { cols, rows: height } = term.size();
-      term.clear();
-      const lines = titleLines();
-      for (let y = 0; y < lines.length && y < height; y++) {
-        const line = lines[y];
-        if (!line) continue;
-        const runs = parseNewsLine(line.markup);
-        /* Centring measures the RUNS, not the markup: a {colour} tag occupies no
-         * columns, so centring on the raw string's length would shift the line
-         * left by the width of its tags. */
-        let x = line.centred
-          ? Math.max(0, Math.floor((cols - runs.reduce((n, r) => n + r.text.length, 0)) / 2))
-          : 0;
-        for (const run of runs) {
-          if (x >= cols) break;
-          const chunk = run.text.slice(0, cols - x);
-          term.print(x, y, chunk, run.css);
-          x += chunk.length;
-        }
-      }
-      /* "Neo", over the art (see NEO_ART). */
-      const neoCss = colorToCss(colorTextToAttr(NEO_COLOUR));
-      for (let i = 0; i < NEO_ART.length; i++) {
-        const y = NEO_ROW + i;
-        if (y >= height) break;
-        term.print(NEO_COL, y, (NEO_ART[i] ?? "").slice(0, Math.max(0, cols - NEO_COL)), neoCss);
-      }
+      paintTitleArt(term);
       /* The prompt line, on upstream's own row. Both credits are part of the
        * painted screen above (titleLines) rather than being dropped in here, so
        * there is one place where the layout is decided and one place to check it
