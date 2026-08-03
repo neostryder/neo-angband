@@ -59,7 +59,9 @@ import {
   type ModProblem,
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
-import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
+import { showModCatalogue, showModUpdates, type ModCatalogueDeps } from "./mod-catalogue";
+import { modUpdateRowLabel, pendingModUpdates } from "./mod-updates";
+import { RECOMMENDED_MODS, usableRecommendedMods } from "./mod-registry";
 import type { ConflictReportLines } from "./mod-conflicts";
 import {
   resolveSectionState,
@@ -1700,6 +1702,7 @@ export async function runModManager(
       | "profiles"
       | "install"
       | "download"
+      | "modupdates"
       | "folder"
       | "reload"
       | "done";
@@ -1720,6 +1723,7 @@ export async function runModManager(
      * ui-options.c), and MenuItem.tag is that mechanism. */
     const ACTION_TAG: Record<ActionKind, string> = {
       download: "1",
+      modupdates: "7",
       folder: "2",
       conflicts: "3",
       autosort: "4",
@@ -1752,6 +1756,25 @@ export async function runModManager(
         "download",
         C_ENABLED,
         "Pick one from the list; the game downloads and checks it for you.",
+      );
+      /* KEEPING A MOD IS A SEPARATE JOB FROM GETTING ONE, and it had no row.
+       *
+       * The catalogue screen has always been able to update a mod - its row
+       * says so - but it is called "Install a mod", which is not where anyone
+       * looks for something they already installed. So the count lives out
+       * here, on a screen the player is already on, and answers the question
+       * without being opened. */
+      const pending = pendingModUpdates(
+        usableRecommendedMods(deps.modCatalogue.catalogue ?? RECOMMENDED_MODS).mods,
+        await deps.modCatalogue.installed(),
+      );
+      addAction(
+        modUpdateRowLabel(pending, catalog.length > 0),
+        "modupdates",
+        pending.length > 0 ? C_WARN : C_FG,
+        pending.length > 0
+          ? "Newer versions of mods you already have came with this build."
+          : "Check the mods you have against the versions this build knows.",
       );
     }
     /* The saved folder's name is read fresh each pass, because picking or
@@ -1968,6 +1991,20 @@ export async function runModManager(
     } else if (rk.kind === "download") {
       if (deps.modCatalogue) {
         const touched = await showModCatalogue(term, {
+          ...deps.modCatalogue,
+          offerEnable: async (id) => {
+            if (await enableAfterInstall(term, deps, id)) {
+              dirty = true;
+              return true;
+            }
+            return false;
+          },
+        });
+        if (touched) dirty = true;
+      }
+    } else if (rk.kind === "modupdates") {
+      if (deps.modCatalogue) {
+        const touched = await showModUpdates(term, {
           ...deps.modCatalogue,
           offerEnable: async (id) => {
             if (await enableAfterInstall(term, deps, id)) {

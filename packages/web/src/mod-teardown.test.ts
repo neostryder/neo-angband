@@ -172,12 +172,19 @@ describe("teardownModPlugins", () => {
 const MAIN = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 const NO_COMMENTS = MAIN.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/\/\/[^\n]*/gu, "");
 
-/** requestReload's body: from the property to the `location.reload()` that ends it. */
+/**
+ * The funnel's body: from its declaration to the `location.reload()` that ends it.
+ *
+ * It used to be an inline `requestReload:` callback and is now a named function,
+ * because the update screen's mod updates need the same door. The manager must
+ * still be wired to it - checked separately below - but the BODY these
+ * assertions are about lives in one place for both callers.
+ */
 function requestReloadBody(): string {
-  const at = NO_COMMENTS.indexOf("requestReload:");
-  expect(at, "main.ts still supplies requestReload to the mod manager").toBeGreaterThan(-1);
+  const at = NO_COMMENTS.indexOf("function reloadAfterModChange");
+  expect(at, "main.ts still has the reloadAfterModChange funnel").toBeGreaterThan(-1);
   const end = NO_COMMENTS.indexOf("location.reload()", at);
-  expect(end, "requestReload still ends by reloading the page").toBeGreaterThan(at);
+  expect(end, "the funnel still ends by reloading the page").toBeGreaterThan(at);
   return NO_COMMENTS.slice(at, end);
 }
 
@@ -209,10 +216,17 @@ describe("the mod-apply funnel actually runs the teardown", () => {
     expect(requestReloadBody()).toMatch(/installedController\s*=\s*null/u);
   });
 
+  it("is still what the mod manager is handed", () => {
+    /* The funnel being correct is worth nothing if the manager stopped calling
+     * it. Both callers go through it: the manager, and the update screen. */
+    expect(NO_COMMENTS).toMatch(/requestReload:\s*\(opts\)\s*=>\s*\{\s*reloadAfterModChange\(opts\);/u);
+    expect(NO_COMMENTS).toMatch(/reloadAfterModChange\(\{ resume: false \}\)/u);
+  });
+
   it("is the only mod-driven reload, so this funnel is not one of several", () => {
     /* If a second path started reloading on a mod change, teardown would be wired
      * into one of two doors and the other would silently skip it. */
     const reloads = NO_COMMENTS.match(/location\.reload\(\)/gu) ?? [];
-    expect(reloads.length).toBe(2); // requestReload, and the load-failure retry prompt
+    expect(reloads.length).toBe(2); // reloadAfterModChange, and the load-failure retry prompt
   });
 });

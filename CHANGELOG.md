@@ -46,6 +46,32 @@ Current state of the project at version `0.18.0`. High level, what exists today:
 
 ### Added
 
+- **Installed mods are offered their updates, in both places you would look.**
+  The catalogue row has said `[~] qol v0.11.0 -> v0.13.0  Enter to update` for as
+  long as there have been two tags to compare - but the screen it lives on is
+  called *Install a mod...*, which is not where anyone looks for something they
+  already installed, and nothing else mentioned it. So a player updated the game,
+  got a catalogue naming newer mods, and stayed on the old ones with no sign that
+  anything had changed. The mod manager now carries the count on a row of its own
+  (*Update installed mods... (3 available)*), the (U)pdate screen lists them
+  beside the game update with `M` to take them, and the title-screen row shimmers
+  for a waiting mod exactly as it does for a waiting build. `Update all` and the
+  single-mod rows go through the same installer, digest check and summary as a
+  first install.
+
+  Which mods qualify is decided in one place (`classifyModTag`) that the
+  catalogue row and the bulk action both read, because they must never disagree:
+  a mod that is AHEAD of this build's catalogue - what a mod author testing their
+  own release sees - is never offered as an update, since installing it would be
+  a downgrade, and two tags that cannot be ordered are never guessed at.
+
+  **Mod versions travel with the game build, and that is a deliberate limit.**
+  The catalogue ships inside the build with a SHA-256 for every file, and that
+  digest not having travelled over the same connection as the file is the whole
+  reason downloading a mod is safe. So the check is local, instant and works
+  offline - and it can never offer anything newer than the build knows. Updating
+  the game is what brings newer mods within reach.
+
 - **Three mod seams, so a mod can remember something.** A mod could already keep
   data with a CHARACTER - its save bag - and had nowhere at all to keep data
   about the PLAYER, so anything it learned died with the character. `ctx.prefs`
