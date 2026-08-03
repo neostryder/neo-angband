@@ -24,6 +24,24 @@
  * discovered here and handed to origin-merge.ts, which moves the characters found
  * in them into the stable origin.
  *
+ * WHY A SECOND COPY MAY NOW MOVE. Refusing to start when the port is taken was the
+ * right call when it was written, because nothing could bring a character across an
+ * origin and binding elsewhere would have presented an empty store as a clean
+ * slate. origin-merge.ts is that missing half, and it has been running on every
+ * launch since. So a copy whose port is already held now walks the ladder below,
+ * remembers the number it got, and the merge follows the characters over - measured
+ * rather than assumed, see the ladder tests.
+ *
+ * Two copies never share a storage area, which is what makes this safe: an
+ * installed copy keeps its profile under the user's application data, a portable
+ * one keeps it inside the game folder (main.ts), and one profile admits one process
+ * because the single-instance lock is taken before any of this runs. So a laddered
+ * port re-partitions THIS copy's own storage, and never reaches into another's.
+ *
+ * An EXPLICIT port is still honoured or refused, never moved: a player who names a
+ * number is answering this exact question, and quietly using a different one would
+ * be the silent-fallback trap again with an extra step.
+ *
  * Deliberately NOT "adopt the newest origin and carry on". That was the first plan
  * and measuring killed it: in the install that reported the bug the newest origin
  * held only a stale active pointer, while the three surviving characters were in
@@ -59,6 +77,44 @@ export const PORT_FILE = "loopback-port.txt";
  */
 export const DEFAULT_PORT = 45871;
 
+/**
+ * How many ports past the chosen one a launch will try before giving up.
+ *
+ * Sixteen: enough for more simultaneous copies than anybody has a reason to run,
+ * few enough that an exhausted ladder means something is genuinely wrong with the
+ * machine's ports rather than that the game did not look hard enough.
+ */
+export const PORT_LADDER_SPAN = 16;
+
+/**
+ * The first port Windows may hand out for an ephemeral socket.
+ *
+ * The ladder stops below it for the same reason DEFAULT_PORT sits below it: a port
+ * in that range can be handed to an unrelated program between two launches of the
+ * game, and this copy's characters are stored against the number.
+ */
+const EPHEMERAL_FLOOR = 49152;
+
+/**
+ * The ports to try, in order, starting from the one that was chosen.
+ *
+ * Ascending and contiguous, so it is predictable: the second copy running on a
+ * machine gets DEFAULT_PORT + 1, every time, on every machine. A hash of the
+ * install path was the alternative and is worse - it spreads the numbers across the
+ * range for no gain, and makes "which port is my copy on" unanswerable without
+ * running the hash.
+ */
+export function portLadder(first: number, span: number = PORT_LADDER_SPAN): readonly number[] {
+  const out: number[] = [];
+  for (let p = first; p < first + span && p <= 65535; p++) {
+    /* Only the RUNGS are held below the ephemeral floor. A first port at or above
+     * it was asked for explicitly and is honoured as given. */
+    if (p !== first && p >= EPHEMERAL_FLOOR && first < EPHEMERAL_FLOOR) break;
+    out.push(p);
+  }
+  return out;
+}
+
 export type PortSource =
   /** NEO_ANGBAND_PORT named it. */
   | "env"
@@ -76,6 +132,14 @@ export interface PortChoice {
    * rather than having to guess.
    */
   readonly known: readonly number[];
+  /**
+   * Whether a busy port may be stepped past.
+   *
+   * False for an explicit NEO_ANGBAND_PORT and true otherwise. Carried on the
+   * choice rather than re-derived at the call site, so the one place that knows why
+   * an env override is different is the place that read it.
+   */
+  readonly mayMove: boolean;
 }
 
 export interface PortInputs {
@@ -171,12 +235,12 @@ export function resolveLoopbackPort(inputs: PortInputs): PortChoice {
   const known = discoverStorageOrigins(inputs);
 
   const fromEnv = parsePort(inputs.env[PORT_ENV] ?? null);
-  if (fromEnv !== null) return { port: fromEnv, source: "env", known };
+  if (fromEnv !== null) return { port: fromEnv, source: "env", known, mayMove: false };
 
   const fromFile = parsePort(readFile(path.join(inputs.userDir, PORT_FILE)));
-  if (fromFile !== null) return { port: fromFile, source: "file", known };
+  if (fromFile !== null) return { port: fromFile, source: "file", known, mayMove: true };
 
-  return { port: DEFAULT_PORT, source: "default", known };
+  return { port: DEFAULT_PORT, source: "default", known, mayMove: true };
 }
 
 /**

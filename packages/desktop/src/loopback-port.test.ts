@@ -17,7 +17,9 @@ import {
   DEFAULT_PORT,
   PORT_ENV,
   PORT_FILE,
+  PORT_LADDER_SPAN,
   discoverStorageOrigins,
+  portLadder,
   rememberLoopbackPort,
   resolveLoopbackPort,
 } from "./loopback-port.js";
@@ -132,6 +134,19 @@ describe("loopback port stability (the roster's origin)", () => {
     expect(discoverStorageOrigins(inputsFor(base))).toEqual([54979]);
   });
 
+  it("lets a remembered or default port move, and an explicit one never", () => {
+    /* The whole safety argument for the ladder in one assertion. A player who set
+     * NEO_ANGBAND_PORT is answering "which port", and quietly using a different one
+     * would be the silent fallback this module exists to prevent. */
+    const base = profileWith([]);
+    expect(resolveLoopbackPort(inputsFor(base)).mayMove).toBe(true);
+    rememberLoopbackPort(inputsFor(base).userDir, 46000);
+    expect(resolveLoopbackPort(inputsFor(base)).mayMove).toBe(true);
+    expect(
+      resolveLoopbackPort(inputsFor(base, { [PORT_ENV]: "50000" })).mayMove,
+    ).toBe(false);
+  });
+
   it("ignores files that are not LevelDB data", () => {
     const base = profileWith([[54979]]);
     const db = path.join(base, "session", "Local Storage", "leveldb");
@@ -140,5 +155,47 @@ describe("loopback port stability (the roster's origin)", () => {
     fs.writeFileSync(path.join(db, "LOG"), "http://127.0.0.1:9999");
     fs.writeFileSync(path.join(db, "notes.txt"), "http://127.0.0.1:8888");
     expect(discoverStorageOrigins(inputsFor(base))).toEqual([54979]);
+  });
+});
+
+describe("the port ladder (a second copy of the game)", () => {
+  it("starts at the port asked for, so one copy is unaffected by the ladder existing", () => {
+    /* The first rung IS the chosen port. If it were not, adding this feature would
+     * have moved every existing install off its origin at the next launch. */
+    expect(portLadder(DEFAULT_PORT)[0]).toBe(DEFAULT_PORT);
+  });
+
+  it("is the next port up, predictably, so the second copy is always +1", () => {
+    expect(portLadder(DEFAULT_PORT).slice(0, 4)).toEqual([45871, 45872, 45873, 45874]);
+  });
+
+  it("is ascending, contiguous and free of duplicates", () => {
+    const l = portLadder(DEFAULT_PORT);
+    expect(l).toHaveLength(PORT_LADDER_SPAN);
+    expect(new Set(l).size).toBe(l.length);
+    for (let i = 1; i < l.length; i++) expect(l[i]).toBe((l[i - 1] as number) + 1);
+  });
+
+  it("stops below the range Windows hands out for ephemeral sockets", () => {
+    /* Same reason DEFAULT_PORT sits below it: a port in that range can be given to
+     * an unrelated program between two launches, and the characters are stored
+     * against the number. So the ladder must not walk into it. */
+    const l = portLadder(49140);
+    expect(l).toEqual([49140, 49141, 49142, 49143, 49144, 49145, 49146, 49147, 49148, 49149, 49150, 49151]);
+    expect(Math.max(...l)).toBeLessThan(49152);
+  });
+
+  it("honours a first port inside that range, having been given it deliberately", () => {
+    /* NEO_ANGBAND_PORT=60000 does not ladder at all (mayMove is false), but the
+     * function must not answer with an empty list if it is ever called that way -
+     * an empty ladder would be a launch with no port to try. */
+    expect(portLadder(60000)[0]).toBe(60000);
+    expect(portLadder(60000).length).toBeGreaterThan(0);
+  });
+
+  it("never proposes a port that cannot exist", () => {
+    const l = portLadder(65530);
+    expect(Math.max(...l)).toBe(65535);
+    expect(l.every((p) => p >= 1 && p <= 65535)).toBe(true);
   });
 });

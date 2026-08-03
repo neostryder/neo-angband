@@ -59,8 +59,13 @@ import {
   stageArchive,
 } from "./updater.js";
 import { checkWritable, resolveDataBase } from "./data-dir.js";
-import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port.js";
-import { planOriginMerge } from "./origin-merge.js";
+import {
+  PORT_ENV,
+  portLadder,
+  rememberLoopbackPort,
+  resolveLoopbackPort,
+} from "./loopback-port.js";
+import { handledPorts, planOriginMerge } from "./origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
@@ -833,6 +838,11 @@ async function recoverStrandedOrigins(
       });
       sources.push({ port, entries: await readOriginStorage(port) });
     } catch (err) {
+      /* NOT marked handled - see the `read` set below. Reaching this means the port
+       * could not be bound, and the commonest reason now is that ANOTHER COPY of the
+       * game is serving itself on it, which is exactly the case the port ladder
+       * creates. The characters are still there and still readable once that copy is
+       * closed, so the only correct thing to do is leave the job outstanding. */
       mainLog("error", "recovery", `could not read storage on port ${String(port)}`, err);
     } finally {
       server.close();
@@ -842,7 +852,10 @@ async function recoverStrandedOrigins(
   const plan = planOriginMerge(await readOriginStorage(stablePort), sources);
   const keys = Object.keys(plan.writes);
   if (keys.length === 0) {
-    rememberMergedPorts(userDir, [...done, ...todo]);
+    /* `sources`, not `todo`: only origins that were actually read. See handledPorts
+     * for why the difference is a character. */
+    const mark = handledPorts(done, sources, { failedKeys: [], missingKeys: [] });
+    if (mark) rememberMergedPorts(userDir, mark);
     return;
   }
 
@@ -872,12 +885,11 @@ async function recoverStrandedOrigins(
     );
   }
 
-  /* Only mark the sources handled if everything landed AND is still there. A quota
-   * failure must stay retryable - the bytes are still in the old origin, and they
-   * are a character. */
-  if (failed.length === 0 && missing.length === 0) {
-    rememberMergedPorts(userDir, [...done, ...todo]);
-  }
+  /* Only mark the sources handled if everything landed AND is still there, and only
+   * the ones that were read. Both rules live in handledPorts, which is testable;
+   * this used to be two inline conditions and one of them was wrong. */
+  const mark = handledPorts(done, sources, { failedKeys: failed, missingKeys: missing });
+  if (mark) rememberMergedPorts(userDir, mark);
 
   const names = plan.recovered.map((r) => `${r.name}${r.hasSave ? "" : " (memorial)"}`);
   mainLog(
@@ -898,8 +910,13 @@ async function recoverStrandedOrigins(
           ? `Recovered ${plan.recovered.length} character(s).`
           : `Recovered ${plan.recovered.length} character(s), with problems.`,
       detail:
-        "An earlier version of the game stored characters against a port number " +
-        "that changed every launch, which is why they stopped appearing. They " +
+        /* Two things now put characters in another origin: the ephemeral-port era,
+         * and this copy stepping to a free port because its usual one was in use.
+         * Worded to be true of both rather than naming the first and being wrong
+         * half the time - the port numbers are the part a player can act on. */
+        "Your characters were stored against a different port number " +
+        `(${sources.map((s) => String(s.port)).join(", ")}) than this copy is now ` +
+        `using (${String(stablePort)}), which is why they stopped appearing. They ` +
         "have been moved into this copy's own storage and are on the character " +
         `screen now:\n\n${names.join("\n")}` +
         (plan.skippedUnplayed.length > 0
@@ -1265,23 +1282,59 @@ async function start(): Promise<void> {
     known: choice.known,
   });
 
-  let port: number;
-  try {
-    port = await startServer(choice.port);
-  } catch (err) {
-    /* Deliberately fatal, and deliberately NOT a retry on another port. Binding
-     * elsewhere would start the game against an empty storage area and present it
-     * as a clean slate - which is the bug this whole mechanism exists to end. Far
-     * better to refuse to start and say which port and how to change it. */
+  /* The ladder, and why moving is safe now when it was not before.
+   *
+   * A busy port used to be fatal, because binding elsewhere would have opened a
+   * different origin and shown the player an empty character screen. That reasoning
+   * held until recoverStrandedOrigins existed; it has run on every launch for
+   * several releases, and it is what carries the roster from the origin this copy
+   * used to be on to the one it lands on - the call is a few lines below.
+   *
+   * The case that reported this: two DIFFERENT copies of the game, each with its own
+   * profile and its own roster, both wanting DEFAULT_PORT. Nothing is shared between,
+   * so the second one stepping to the next rung costs nothing at all. One copy
+   * launched twice does not reach here - the single-instance lock above sends the
+   * second process away before the port is even resolved.
+   *
+   * An explicit NEO_ANGBAND_PORT never moves (choice.mayMove), and whatever is bound
+   * is remembered, so a copy that stepped to 45872 stays there rather than drifting
+   * back the next time 45871 happens to be free. Drifting would be a merge every
+   * launch and two origins forever taking turns. */
+  const ladder = choice.mayMove ? portLadder(choice.port) : [choice.port];
+  let port: number | null = null;
+  let lastErr: unknown = null;
+  for (const candidate of ladder) {
+    try {
+      port = await startServer(candidate);
+      break;
+    } catch (err) {
+      lastErr = err;
+      /* Only "somebody has it" is a reason to try the next one. Anything else is a
+       * problem with this machine's networking that the next port will hit too, and
+       * hiding it behind sixteen identical failures would make it unreadable.
+       * EACCES is included because Windows reports an excluded port range - a
+       * Hyper-V or WSL reservation - that way rather than as EADDRINUSE. */
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      if (code !== "EADDRINUSE" && code !== "EACCES") break;
+      mainLog("info", "port", `port ${String(candidate)} is taken (${code}), trying the next`);
+    }
+  }
+
+  if (port === null) {
+    /* Every rung refused. Still fatal, and still says which number and how to
+     * choose one, because at this point the machine is the problem. */
     await dialog.showMessageBox({
       type: "error",
       title: "Neo Angband",
       message: `Port ${choice.port} is not available.`,
       detail:
         "The game serves itself to its own window over this port, and your " +
-        "characters are stored against it, so it cannot simply use another one " +
-        "without hiding them.\n\n" +
-        `${err instanceof Error ? err.message : String(err)}\n\n` +
+        "characters are stored against it.\n\n" +
+        `${lastErr instanceof Error ? lastErr.message : String(lastErr)}\n\n` +
+        (ladder.length > 1
+          ? `Ports ${String(ladder[0])} to ${String(ladder[ladder.length - 1])} were all ` +
+            "refused, so this is unlikely to be another copy of the game.\n\n"
+          : "") +
         "Either close whatever is using the port, or choose a different one by " +
         `setting ${PORT_ENV} (it will be remembered).` +
         (choice.known.length > 1
@@ -1290,6 +1343,15 @@ async function start(): Promise<void> {
     });
     app.quit();
     return;
+  }
+
+  if (port !== choice.port) {
+    mainLog(
+      "info",
+      "port",
+      `port ${String(choice.port)} was taken, so this copy is on ${String(port)}; ` +
+        "the character roster follows below",
+    );
   }
   rememberLoopbackPort(path.join(USER_BASE, "user"), port);
 
