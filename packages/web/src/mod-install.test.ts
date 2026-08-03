@@ -1013,6 +1013,7 @@ function discovered(
     description: null,
     engine: null,
     compatible: true,
+    channelHeld: null,
     engineNote: null,
     payload,
     bytes: 0,

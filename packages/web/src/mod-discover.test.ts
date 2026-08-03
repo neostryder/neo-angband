@@ -353,3 +353,74 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     if (!r.ok) expect(r.problem).toMatch(/declares no id/u);
   });
 });
+
+describe("discoverMod: the player's channel decides which version", () => {
+  /* One repository with a release and a newer beta, asked three times. */
+  const routes = {
+    [TAGS]: tagList("v1.2.0", "v1.3.0-beta.1"),
+    [RAW("v1.2.0", "manifest.json")]: JSON.stringify(MANIFEST),
+    [RAW("v1.3.0-beta.1", "manifest.json")]: JSON.stringify({ ...MANIFEST, version: "1.3.0-beta.1" }),
+    [TREE("v1.2.0")]: tree([["manifest.json", 100]]),
+    [TREE("v1.3.0-beta.1")]: tree([["manifest.json", 110]]),
+  };
+
+  it("offers a stable game the release, not the beta", async () => {
+    const { env } = fakeNet(routes);
+    const r = await discoverMod({ repo: "a/b" }, { ...env, channel: "stable" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.mod.tag).toBe("v1.2.0");
+    expect(r.mod.version).toBe("1.2.0");
+    /* And says what it is holding back, so the row is not simply mysterious. */
+    expect(r.mod.channelHeld).toBe("v1.3.0-beta.1");
+    /* The version list offered is the channel's, not the repository's. */
+    expect(r.mod.tags).toEqual(["v1.2.0"]);
+  });
+
+  it("offers a beta game the beta", async () => {
+    const { env } = fakeNet(routes);
+    const r = await discoverMod({ repo: "a/b" }, { ...env, channel: "beta" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.mod.tag).toBe("v1.3.0-beta.1");
+    expect(r.mod.channelHeld).toBeNull();
+  });
+
+  it("honours a tag the PLAYER pinned, whatever the channel says", async () => {
+    /* Naming a version is a more specific instruction than a channel preference,
+     * and silently declining a URL somebody typed is the worst of both. */
+    const { env } = fakeNet(routes);
+    const r = await discoverMod(
+      { repo: "a/b", tag: "v1.3.0-beta.1" },
+      { ...env, channel: "stable" },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.mod.tag).toBe("v1.3.0-beta.1");
+  });
+
+  it("blames the CHANNEL, not the mod, when every version is filtered out", async () => {
+    /* These need opposite advice - one is answered on the update screen, the other
+     * by the mod's author - so they must not share a message. */
+    const { env } = fakeNet({
+      [TAGS]: tagList("v1.3.0-beta.1"),
+      [RAW("v1.3.0-beta.1", "manifest.json")]: JSON.stringify(MANIFEST),
+    });
+    const r = await discoverMod({ repo: "a/b" }, { ...env, channel: "stable" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.problem).toContain("v1.3.0-beta.1");
+    expect(r.problem).toMatch(/stable channel/u);
+    expect(r.problem).toMatch(/update screen/u);
+    /* Must NOT accuse the author of shipping no version. */
+    expect(r.problem).not.toMatch(/no released version/u);
+  });
+
+  it("still says 'no version at all' when that is the truth", async () => {
+    const { env } = fakeNet({ [TAGS]: tagList("latest", "nightly") });
+    const r = await discoverMod({ repo: "a/b" }, { ...env, channel: "stable" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.problem).toMatch(/no released version/u);
+    expect(r.problem).not.toMatch(/channel/u);
+  });
+});

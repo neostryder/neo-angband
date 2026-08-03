@@ -115,13 +115,35 @@ export function isEdgeRelease(r: Release): boolean {
   return r.version.includes(EDGE_MARKER);
 }
 
+/**
+ * Whether a channel accepts a build - the whole channel rule, in one place.
+ *
+ * Split out from releasesIn because MODS need the same question answered, and a
+ * mod is not a GitHub release: it is a tag in its own repository, chosen so the
+ * lookup is CORS-open and cheap (mod-source.ts). Two copies of a rule is one copy
+ * that learns, and this project has paid for that lesson more than once - so the
+ * mod side calls this rather than re-deriving "what does early mean".
+ *
+ * `prerelease` is passed in rather than sniffed out of the version because the two
+ * callers know it differently: a release carries GitHub's own flag, while a tag has
+ * only its semver prerelease suffix. That difference is real and must not be
+ * flattened - every 0.x RELEASE here is flagged pre-release while being versioned
+ * `0.18.0` (docs/RELEASING.md), so deriving the flag from the version would quietly
+ * promote the entire alpha to stable.
+ */
+export function channelAccepts(
+  channel: UpdateChannel,
+  version: string,
+  prerelease: boolean,
+): boolean {
+  if (version.includes(EDGE_MARKER)) return channel === "early";
+  if (prerelease) return channel !== "stable";
+  return true;
+}
+
 /** The releases a channel is willing to look at. */
 export function releasesIn(channel: UpdateChannel, releases: readonly Release[]): Release[] {
-  return releases.filter((r) => {
-    if (isEdgeRelease(r)) return channel === "early";
-    if (r.prerelease) return channel !== "stable";
-    return true;
-  });
+  return releases.filter((r) => channelAccepts(channel, r.version, r.prerelease));
 }
 
 /**
