@@ -47,6 +47,7 @@ import {
   idbKeys,
   openDb,
 } from "./idb";
+import { checkMod } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -215,6 +216,23 @@ export async function installRecommendedMod(
  * because an upgrade deleted before it wrote is the failure this shape exists to
  * make impossible, and it would not be prevented twice.
  */
+/**
+ * The manifest's text out of the files about to be stored, or null.
+ *
+ * Case-insensitive on the name for the same reason the check above it is: a mod
+ * shipping `Manifest.json` is an authoring mistake this must not silently read as
+ * "no manifest", because the message for that is about a broken download.
+ */
+function manifestTextOf(files: ReadonlyArray<readonly [string, Uint8Array]>): string | null {
+  const hit = files.find(([p]) => p.toLowerCase() === "manifest.json");
+  if (!hit) return null;
+  try {
+    return new TextDecoder().decode(hit[1]);
+  } catch {
+    return null;
+  }
+}
+
 async function storeMod(
   who: { readonly id: string; readonly repo: string; readonly tag: string },
   files: ReadonlyArray<readonly [string, Uint8Array]>,
@@ -233,6 +251,37 @@ async function storeMod(
     }
     if (!files.some(([p]) => p.toLowerCase() === "manifest.json")) {
       return { ok: false, problem: `${mod.id}: the download has no manifest.json` };
+    }
+
+    /* THE STANDARDS INSPECTION, on the bytes that actually arrived.
+     *
+     * The same rules the author's `neo-angband-mod-check` runs and the same rules
+     * docs/modding/REQUIREMENTS.md is generated from - imported, not restated. What
+     * this catches that nothing else can is a mod that will be stored, listed and
+     * enabled and then quietly do nothing: a plugin.js with no modApi to gate it, a
+     * manifest whose shape does not admit the code it ships. Those refuse at LOAD
+     * time today, which means the player installs successfully and finds out later,
+     * from a problems list, why the thing they chose is inert.
+     *
+     * Run here rather than at discovery because only here are the unpacked contents
+     * known - an archive's plugin.js is inside a zip that discovery never opened.
+     *
+     * ADVICE IS NOT CONSULTED. A missing description or licence is a real thing to
+     * tell an author and not a reason to refuse a player the mod they asked for. */
+    const inspection = checkMod({
+      files: files.map(([p]) => p),
+      manifestText: manifestTextOf(files),
+    });
+    if (!inspection.ok) {
+      return {
+        ok: false,
+        problem:
+          `${mod.id}: this mod does not meet the requirements, so installing it ` +
+          `would not give you a working mod.\n` +
+          inspection.errors.map((f) => `  - ${f.title}: ${f.problem}`).join("\n") +
+          `\nThe mod's author can check this themselves with ` +
+          `\`npx neo-angband-mod-check\`.`,
+      };
     }
 
     const db = await openDb(env.scope ?? globalThis);
