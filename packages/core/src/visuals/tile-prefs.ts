@@ -173,6 +173,38 @@ export function tileForFlavor(
   return map.flavor[fidx] ?? null;
 }
 
+/**
+ * The tile an object should DRAW with, which is not always its kind's.
+ *
+ * THE GLYPH PATH HAS ALWAYS KNOWN THIS AND THE TILE PATH DID NOT.
+ * object_kind_attr / object_kind_char (ui-object.c:87-112) draw a flavoured
+ * kind with its FLAVOUR's attr and char until the player is aware of it - that
+ * is why an unidentified potion reads as "an Ochre Potion" and not as what it
+ * turns out to be. The renderer implemented exactly that for glyphs and then
+ * asked `tileForObject(map, o.kind)` for the tile, so a graphics player saw:
+ *
+ *   - nothing, and a fallback glyph, for every flavoured item, because tile
+ *     sets key those by FLAVOUR and `map.object[kidx]` has no entry; or
+ *   - worse, had the set carried a kind entry, the identified item's art on an
+ *     object the player has not identified. A spoiler drawn in 32x32.
+ *
+ * `tileForFlavor` existed, was exported, was tested, and had no caller outside
+ * its own test file. This is the caller.
+ *
+ * NO FALLING BACK from the flavour tile to the kind tile. A missing flavour
+ * tile means the tile set does not draw this flavour, and the honest answer is
+ * the flavour GLYPH - reaching past it to the kind's art would leak the very
+ * thing the flavour exists to hide.
+ */
+export function tileForShownObject(
+  map: TileMap,
+  kind: Pick<ObjectKind, "kidx">,
+  /** The flavour to draw as, or null to draw as the kind. */
+  flavor: Pick<Flavor, "fidx"> | number | null,
+): TileAtlas | null {
+  return flavor === null ? tileForObject(map, kind) : tileForFlavor(map, flavor);
+}
+
 /** Projection tile for a PROJ index and BOLT motion, or null. */
 export function tileForProjection(
   map: TileMap,

@@ -206,7 +206,7 @@ import {
   playerGlyph,
   tileForFeature,
   tileForMonster,
-  tileForObject,
+  tileForShownObject,
   tileForTrap,
 } from "@rpgm-tools/neo-angband-core";
 import type {
@@ -6339,9 +6339,6 @@ function objectIndex(): Map<number, CellGlyph> {
     // dropped from the pack and left visible on the ground.
     const o = pile.find((obj) => obj.grid && !state.isIgnored?.(obj));
     if (!o || !o.grid) continue;
-    const tile = tileMap
-      ? tileDrawFor(tileForObject(tileMap, o.kind), o.grid.x, o.grid.y)
-      : undefined;
     // object_kind_attr / object_kind_char (ui-object.c:87-112): a flavoured kind
     // draws with its flavour glyph+colour (use_flavor_glyph) until identified -
     // for a scroll, only while unaware. Without this an unidentified potion
@@ -6351,6 +6348,19 @@ function objectIndex(): Map<number, CellGlyph> {
     const flavor = state.flavorGlyph?.(o.kind);
     const useFlavor =
       !!flavor && !(tvalIsScroll(o.kind.tval) && (game.flavor?.isAware(o.kind) ?? false));
+    /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
+     * unconditionally, two lines above the code that carefully worked out that
+     * the kind is not what should be drawn - so every flavoured item fell back
+     * to a glyph in a tile set (an Ochre Potion painted as `!` beside fully
+     * drawn armour), and would have leaked the identified art if the set had
+     * happened to carry one. */
+    const tile = tileMap
+      ? tileDrawFor(
+          tileForShownObject(tileMap, o.kind, useFlavor && flavor ? flavor.fidx : null),
+          o.grid.x,
+          o.grid.y,
+        )
+      : undefined;
     /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
      * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
     const g = useFlavor
