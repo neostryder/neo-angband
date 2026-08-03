@@ -354,3 +354,60 @@ describe("composePacks with an onRefuse reporter: one bad op costs that op", () 
     expect(() => composePacks([core, bad], {})).toThrow(/does not exist/);
   });
 });
+
+describe("payload: which of a repository's files ARE the mod", () => {
+  const withPayload = (payload: unknown): unknown => ({
+    ...manifest("qol"),
+    payload,
+  });
+
+  it("takes files, archives, or both", () => {
+    expect(
+      (validateManifest(withPayload({ files: ["manifest.json", "plugin.js"] })) as PackManifest)
+        .payload?.files,
+    ).toEqual(["manifest.json", "plugin.js"]);
+    expect(
+      (validateManifest(withPayload({ archives: ["packs/a.zip"] })) as PackManifest)
+        .payload?.archives,
+    ).toEqual(["packs/a.zip"]);
+    expect(() =>
+      validateManifest(withPayload({ files: ["manifest.json"], archives: ["p.zip"] })),
+    ).not.toThrow();
+  });
+
+  it("is optional - a repository that says nothing still installs", () => {
+    /* The installer falls back to the whole tree minus build scaffolding, which
+     * is right for a third-party mod that has never heard of this field. */
+    expect(validateManifest(manifest("qol")).payload).toBeUndefined();
+  });
+
+  it("rejects a payload that names nothing, rather than reading it as 'guess'", () => {
+    /* Absent and empty mean opposite things, and only one of them is what an
+     * author who typed the field wanted. */
+    expect(() => validateManifest(withPayload({}))).toThrow(/payload names no files/);
+    expect(() => validateManifest(withPayload({ files: [] }))).toThrow(
+      /payload names no files/,
+    );
+    expect(() =>
+      validateManifest(withPayload({ files: [], archives: [] })),
+    ).toThrow(/payload names no files/);
+  });
+
+  it("rejects the shapes that would fail later, with the mod's id", () => {
+    expect(() => validateManifest(withPayload([]))).toThrow(
+      /manifest qol: payload must be an object/,
+    );
+    expect(() => validateManifest(withPayload("plugin.js"))).toThrow(
+      /payload must be an object/,
+    );
+    expect(() => validateManifest(withPayload({ files: "plugin.js" }))).toThrow(
+      /payload\.files must be an array/,
+    );
+    expect(() => validateManifest(withPayload({ files: [1] }))).toThrow(
+      /payload\.files entries must be non-empty strings/,
+    );
+    expect(() => validateManifest(withPayload({ archives: [""] }))).toThrow(
+      /payload\.archives entries must be non-empty strings/,
+    );
+  });
+});

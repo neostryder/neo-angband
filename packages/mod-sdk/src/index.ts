@@ -31,6 +31,7 @@ export type {
   CompatClaim,
   PackCompat,
   PackManifest,
+  PackPayload,
   PackRef,
   PackRule,
   PackSection,
