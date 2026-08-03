@@ -55,7 +55,12 @@
  * published. There is nothing to import - the engine is handed in as `ctx.core`.
  */
 
-import { hasFacet, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  PLUGIN_FILE,
+  hasFacet,
+  validateManifest,
+  type PackManifest,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { engineBlocksCode } from "./mod-engine";
 import type { ModProblem } from "./mod-problems";
@@ -67,8 +72,14 @@ import {
   type ModPlugin,
 } from "./mod-plugin";
 
-/** The one code entry point a mod folder may ship. */
-export const PLUGIN_FILE = "plugin.js";
+/**
+ * The one code entry point a mod folder may ship.
+ *
+ * Re-exported from the SDK rather than spelled again here. The author's checker and
+ * the game's loader have to agree about which filename means "this mod contains
+ * code", and two string literals is exactly how they would come to disagree.
+ */
+export { PLUGIN_FILE };
 
 /** A plugin that passed every gate and imported cleanly. */
 export interface LoadedModPlugin {

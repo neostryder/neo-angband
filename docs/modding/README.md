@@ -25,6 +25,11 @@ before you build around an answer you guessed.
 
 - This page: pack anatomy, manifests, and record composition (live today,
   backed by `@rpgm-tools/neo-angband-mod-sdk`).
+- `REQUIREMENTS.md`: **exactly what a mod must provide**, and the one page here
+  that cannot go stale - it is GENERATED from the rules the game enforces
+  (`packages/mod-sdk/src/standards.ts`), and a test fails if the two ever
+  disagree. Run those same rules against your own folder before publishing:
+  `npx neo-angband-mod-check path/to/your-mod`. Start here.
 - `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX
