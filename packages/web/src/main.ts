@@ -226,11 +226,17 @@ import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
 import {
+  installModFromRepo,
   installRecommendedMod,
   installedMods,
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
+import type { ModBrowseDeps } from "./mod-browse";
+import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
+import { readConsent, writeConsent } from "./mod-consent";
+import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
+import { discoverMod, type DiscoverEnv } from "./mod-discover";
 import {
   activeModCode,
   folderPluginManifests,
@@ -5429,6 +5435,10 @@ async function openModManager(): Promise<void> {
      * browser will not let the game store downloaded mods" as a result rather than a
      * throw - so the honest failure is a message on the row, not a hidden row. */
     modCatalogue: modCatalogueDeps(),
+    /* The three doors. Same reasoning as above for wiring it unconditionally: every
+     * failure it can hit - offline, rate-limited, storage refused - is a message on a
+     * row rather than a reason to hide the screen. */
+    modBrowse: modBrowseDeps(),
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
@@ -8756,6 +8766,72 @@ function modCatalogueDeps(): ModCatalogueDeps {
         onProgress,
       ),
     uninstall: (id) => uninstallMod(id, globalThis),
+  };
+}
+
+/**
+ * The browse screen's dependencies - the wiring that makes six modules reachable.
+ *
+ * Every piece of this was built and had no caller: mod-curated reads the list,
+ * mod-discover asks a repository, mod-authors reads the register, mod-consent holds
+ * the switch, installModFromRepo does the write. This function is where they meet a
+ * player.
+ *
+ * THE CHANNEL IS READ HERE, from the same store and the same function the game's own
+ * updater reads it with - so a player's one channel choice governs both, and there is
+ * no second setting to fall out of step with the first.
+ */
+function modBrowseDeps(): ModBrowseDeps {
+  const net = { fetch: (url: string) => fetch(url) };
+  const discoverEnv: DiscoverEnv = {
+    engineVersion: ENGINE_VERSION,
+    channel: readChannel(channelStore(), ENGINE_VERSION),
+    fetch: async (url) => {
+      const res = await fetch(url);
+      return { ok: res.ok, status: res.status, text: () => res.text() };
+    },
+  };
+  const installEnv = {
+    fetch: (url: string) => fetch(url),
+    subtle: crypto.subtle,
+    scope: globalThis,
+    now: () => new Date().toISOString(),
+  };
+
+  return {
+    installed: async () => {
+      const metas = await installedMods(globalThis);
+      return new Map(metas.map((m) => [m.id, m.tag] as const));
+    },
+    discover: async (ref) => {
+      const r = await discoverMod(ref, discoverEnv);
+      return r.ok ? { ok: true, ref, mod: r.mod } : { ok: false, ref, problem: r.problem };
+    },
+    install: (mod, origin, onProgress) =>
+      installModFromRepo(mod, null, installEnv, onProgress, {
+        origin,
+        allowed: readConsent(channelStore()),
+      }),
+    uninstall: (id) => uninstallMod(id, globalThis),
+    curated: async () => {
+      const r = await fetchRegistry(DEFAULT_REGISTRY_URL, net);
+      return r.ok ? { registry: r.registry, problem: null } : { registry: null, problem: r.problem };
+    },
+    registryAt: async (url) => {
+      const r = await fetchRegistry(url, net);
+      return r.ok ? { registry: r.registry, problem: null } : { registry: null, problem: r.problem };
+    },
+    authors: async () => {
+      /* A failure here decides nothing: every author simply shows as unvouched,
+       * which is the honest default. So it is swallowed rather than surfaced - a
+       * register outage must never look like a mod problem. */
+      const r = await fetchAuthors(DEFAULT_AUTHORS_URL, net);
+      return r.ok ? r.register : null;
+    },
+    consent: {
+      read: () => readConsent(channelStore()),
+      write: (allow) => writeConsent(channelStore(), allow),
+    },
   };
 }
 
