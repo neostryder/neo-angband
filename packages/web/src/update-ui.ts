@@ -12,6 +12,8 @@
 import type { UpdateChannel } from "./update";
 
 /** Tones, resolved to this shell's palette by the caller. */
+import { modUpdateNotice, type ModUpdate } from "./mod-updates";
+
 export type UpdateTone = "head" | "body" | "dim" | "good" | "warn";
 
 /**
@@ -73,6 +75,21 @@ export interface UpdateView {
   readonly total?: number | undefined;
   readonly error?: string | undefined;
   readonly releaseUrl?: string | undefined;
+  /**
+   * Installed mods this build has a newer copy of.
+   *
+   * ON THE SAME SCREEN AS THE GAME UPDATE, because they are the same question
+   * to the player - "is anything waiting for me" - and they were two answers in
+   * two places, one of which nobody could find. A mod version travels with the
+   * game build (mod-updates.ts), so the moment a game update lands is exactly
+   * the moment mod updates appear, and this is the screen the player is looking
+   * at when it happens.
+   *
+   * A SEPARATE KEY, though, never folded into ENTER. ENTER here quits the game
+   * and swaps the whole install; pulling a 5 KiB mod is not that, and a player
+   * who wanted only the mod should not have their session ended for it.
+   */
+  readonly modUpdates?: readonly ModUpdate[] | undefined;
 }
 
 /** Bytes as a human reads them. Two significant figures is enough for a download. */
@@ -129,6 +146,30 @@ export function elidePath(p: string, width = 62): string {
   return `${p.slice(0, keepStart)}...${p.slice(p.length - keepEnd)}`;
 }
 
+/**
+ * The mod-update paragraph, or nothing at all.
+ *
+ * Nothing at all is the common case and it has to stay silent: a screen that
+ * says "0 mods need updating" every time is a screen people stop reading, and
+ * this one carries a sentence that matters.
+ */
+export function modUpdateLines(v: UpdateView): UpdateLine[] {
+  const pending = v.modUpdates ?? [];
+  const notice = modUpdateNotice(pending);
+  if (notice === null) return [];
+  const out: UpdateLine[] = [{ text: "", tone: "body" }, { text: notice, tone: "warn" }];
+  /* Listed one per line only when the single-line notice did not already name
+   * them, so the one-mod case does not say the same thing twice. */
+  if (pending.length > 1) {
+    for (const u of pending) {
+      out.push({ text: `  ${u.mod.name}  ${u.from} -> ${u.to}`, tone: "dim" });
+    }
+  }
+  out.push({ text: "", tone: "body" });
+  out.push({ text: "M updates your mods. It does not touch the game.", tone: "good" });
+  return out;
+}
+
 export function updateLines(v: UpdateView): UpdateLine[] {
   const out: UpdateLine[] = [];
   const say = (text: string, tone: UpdateTone = "body"): void => {
@@ -160,7 +201,7 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say("A faster channel gets you newer builds sooner and tests them less.", "body");
     say("The game checks once when it starts, and the title screen row", "body");
     say("shimmers when something is waiting.", "body");
-    return out;
+    return [...out, ...modUpdateLines(v)];
   }
 
   if (v.phase === "downloading" || v.phase === "installing") {
@@ -225,7 +266,7 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say("Pressing ENTER fetches it and reloads the page onto it. That takes a", "body");
     say("moment and nothing else - your characters live in this browser and", "body");
     say("stay exactly where they are.", "body");
-    return out;
+    return [...out, ...modUpdateLines(v)];
   }
 
   say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
@@ -241,7 +282,7 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say("");
     say("The old files are kept until the new ones are in place, so a failure", "body");
     say("here leaves you on the version you have now.", "body");
-    return out;
+    return [...out, ...modUpdateLines(v)];
   }
 
   if (v.how === "manual") {
@@ -263,7 +304,7 @@ export function updateLines(v: UpdateView): UpdateLine[] {
   }
 
   say("There is nothing to install here.", "dim");
-  return out;
+  return [...out, ...modUpdateLines(v)];
 }
 
 /**
@@ -273,17 +314,42 @@ export function updateLines(v: UpdateView): UpdateLine[] {
  * and not in the browser, where there are no channels to choose between: the
  * page is whatever the site last deployed.
  */
-export function updateFooter(v: UpdateView): string {
+export function updateFooter(v: UpdateView, cols = 80): string {
   if (v.phase === "downloading") return "[ ESC to cancel ]";
   if (v.phase === "installing") return "[ restarting... ]";
-  const channel = v.how === "web" ? "" : " - C to change channel";
-  if (v.phase === "failed") return `[ ENTER to try again${channel} - ESC to go back ]`;
-  if (v.phase === "uptodate") return `[ C to change channel - ESC to go back ]`;
-  if (v.how === "swap") {
-    const verb = v.older ? "move back and restart" : "update and restart";
-    return `[ ENTER to ${verb}${channel} - ESC to go back ]`;
-  }
-  if (v.how === "web") return "[ ENTER to reload onto the new version - ESC to go back ]";
-  if (v.how === "manual") return `[ ENTER to open the releases page${channel} - ESC to go back ]`;
-  return `[${channel === "" ? "" : " C to change channel -"} ESC to go back ]`;
+
+  /*
+   * BUILT TO A WIDTH, because the caller SLICES this and a sliced footer is a
+   * key nobody knows about. Adding "M for mod updates" pushed the swap-offer
+   * footer to 90 characters, and an 80-column terminal rendered it as
+   * `... - M for mod updates - ESC t` - the mods key survived and the way out
+   * did not. It looked fine in every test, all of which asked whether a
+   * substring was present.
+   *
+   * So the parts are named twice, long and short, and the short set is used
+   * whenever the long one will not fit. Elision beats truncation: a shorter
+   * label is still a label, and the test below holds every combination to the
+   * width rather than to a substring.
+   */
+  const esc = v.phase === "failed" || v.phase === "uptodate" ? "ESC to go back" : "ESC to go back";
+  const parts = (short: boolean): string[] => {
+    const out: string[] = [];
+    if (v.phase === "failed") out.push("ENTER to try again");
+    else if (v.phase === "uptodate") {
+      /* Nothing to install, so there is no ENTER to describe. */
+    } else if (v.how === "swap") {
+      out.push(`ENTER to ${v.older ? "move back and restart" : "update and restart"}`);
+    } else if (v.how === "web") out.push("ENTER to reload onto the new version");
+    else if (v.how === "manual") out.push("ENTER to open the releases page");
+
+    if (v.how !== "web") out.push(short ? "C: channel" : "C to change channel");
+    /* Offered only when it would do something. A key named in the footer that
+     * does nothing when pressed is how a player learns to distrust the footer. */
+    if ((v.modUpdates?.length ?? 0) > 0) out.push(short ? "M: mods" : "M for mod updates");
+    out.push(esc);
+    return out;
+  };
+  const render = (short: boolean): string => `[ ${parts(short).join(" - ")} ]`;
+  const long = render(false);
+  return long.length <= cols - 1 ? long : render(true);
 }
