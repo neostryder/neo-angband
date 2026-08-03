@@ -43,6 +43,13 @@ import { DEFAULT_REGISTRY_URL, type ModRegistry } from "./mod-curated";
 import type { DiscoveredMod } from "./mod-discover";
 import { parseRepoRef, repoPageUrl, type RepoRef } from "./mod-source";
 import type { InstallProgress, InstallResult } from "./mod-install";
+import {
+  pendingUpgrades,
+  refreshRow,
+  repoPage,
+  unavailableMods,
+  type ModRefresh,
+} from "./mod-refresh";
 
 const C_FG = UI_TEXT;
 const C_DIM = UI_DIM;
@@ -83,6 +90,12 @@ export interface ModBrowseDeps {
   };
   /** Offer to turn a freshly-installed mod on. See ModCatalogueDeps.offerEnable. */
   readonly offerEnable?: (id: string) => Promise<boolean>;
+}
+
+/** ModBrowseDeps plus the one thing the update screen needs of its own. */
+export interface ModUpgradeDeps extends ModBrowseDeps {
+  /** Ask every installed mod's own repository where it stands (mod-refresh.ts). */
+  readonly refresh: () => Promise<readonly ModRefresh[]>;
 }
 
 /** How a source is named on screen, and in a message about it. */
@@ -657,4 +670,179 @@ export async function showModBrowse(term: GlyphTerm, deps: ModBrowseDeps): Promi
       changed = true;
     }
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Updating what is already installed.
+ * ------------------------------------------------------------------ */
+
+/**
+ * "Update installed mods": ask each installed mod's OWN repository, then offer.
+ *
+ * WHAT THIS SCREEN USED TO SAY. It compared the installed tags against the catalogue
+ * compiled into the build and, finding nothing newer THERE, told the player
+ * "Every installed mod is at the version this build knows about" over a paragraph
+ * explaining that mod versions travel with the game and a newer mod arrives when you
+ * update. All of that was true of the old design and none of it is true now: a mod
+ * releases when its author releases it, and this screen asks.
+ *
+ * THREE ANSWERS, NOT TWO. A mod is behind, or it is at its repository's newest, or
+ * THE REPOSITORY COULD NOT BE ASKED - and the third is not a quiet version of the
+ * second. A 404 is deleted, renamed, made private, a typo, or an office proxy; a 403
+ * is a rate limit that clears by itself. Every one of them leaves the installed bytes
+ * exactly where they are and says what happened, on the row it happened to.
+ *
+ * The install path is `installOne`'s, the same one the browse screen uses, so the
+ * consent gate, the requirements inspection, the origin check and the progress line
+ * are not reimplemented here.
+ */
+export async function showModUpgrades(term: GlyphTerm, deps: ModUpgradeDeps): Promise<boolean> {
+  let changed = false;
+
+  for (;;) {
+    /* Re-asked each time round, because an install just changed the answer. It is
+     * one request per mod, and the alternative is a list that disagrees with what
+     * the player just did. */
+    const refreshed = await paintWhile(term, "Update installed mods", "Asking each mod's repository...", () =>
+      deps.refresh(),
+    );
+    const pending = pendingUpgrades(refreshed);
+    const blind = unavailableMods(refreshed);
+
+    if (pending.length === 0) {
+      await showTextScreen(term, "Update installed mods", [
+        ...(refreshed.length === 0
+          ? [{ text: "No mods are installed yet.", color: C_FG }]
+          : blind.length === refreshed.length
+            ? [{ text: "None of the installed mods could be checked.", color: C_WARN }]
+            : [
+                {
+                  text:
+                    blind.length === 0
+                      ? "Every installed mod is at its repository's newest version."
+                      : `${String(refreshed.length - blind.length)} of ${String(refreshed.length)} are at their repository's newest version.`,
+                  color: C_FG,
+                },
+              ]),
+        { text: "", color: C_FG },
+        ...refreshed.map((r) => ({
+          text: `  ${refreshRow(r)}`,
+          color: r.standing === "unavailable" ? C_WARN : C_DIM,
+        })),
+        ...(blind.length > 0
+          ? [
+              { text: "", color: C_FG },
+              {
+                text: "A mod that could not be checked has NOT been removed and has not",
+                color: C_DIM,
+              },
+              {
+                text: "changed. Its repository may be renamed, private, or simply not",
+                color: C_DIM,
+              },
+              { text: "reachable from here right now.", color: C_DIM },
+            ]
+          : []),
+        { text: "", color: C_FG },
+        ...ABOUT_MOD_UPGRADES,
+      ]);
+      return changed;
+    }
+
+    const items: MenuItem[] = [
+      {
+        label: pending.length === 1 ? "Update it" : `Update all ${String(pending.length)}`,
+        color: C_WARN,
+        hint: "Download and store each one in turn. Nothing is enabled or disabled.",
+      },
+      ...pending.map((u) => ({
+        label: `${u.id}  ${u.from} -> ${u.to}`,
+        color: C_FG,
+        hint: `Update only this one, from ${u.repo}.`,
+      })),
+      ...blind.map((r) => ({
+        label: `${r.id}  could not be checked`,
+        color: C_WARN,
+        enabled: false,
+        /* The address as well as the reason: a player told "HTTP 404" can do
+         * nothing, and a player given the page can look at it themselves. */
+        hint: `${r.problem ?? "no reason given"} - ${repoPage(r)}`,
+      })),
+    ];
+
+    const pick = await selectFromMenu(term, "Update installed mods", items, "[ ESC to go back ]");
+    if (pick === null) return changed;
+
+    /* Snapshotted before the first install: `refresh()` is re-read at the top of the
+     * loop, and a list that shrinks under an in-progress "update all" would skip
+     * whatever moved up into the index just used. */
+    const todo = pick === 0 ? pending : [pending[pick - 1]];
+    const curated = await curatedRepos(deps);
+    for (const u of todo) {
+      if (!u) continue;
+      /* Pinned to the tag the check found, not to "newest": between the check and
+       * this line the repository may have released again, and installing something
+       * the player was never shown is exactly the surprise a notify-don't-auto-update
+       * design exists to avoid. */
+      const entry = await deps.discover({ repo: u.repo, tag: u.to });
+      if (!entry.ok) {
+        await showTextScreen(term, u.id, installFailureLines(u.id, entry.problem));
+        continue;
+      }
+      const origin: ModOrigin = curated.has(u.repo.toLowerCase()) ? "curated" : "third-party";
+      if (await installOne(term, entry, origin, deps)) changed = true;
+    }
+  }
+}
+
+/**
+ * Which repositories the curated list vouches for, lower-cased.
+ *
+ * WHY AN UPDATE STILL HAS AN ORIGIN. The origin decides one thing: whether the
+ * consent gate applies (mod-install.ts checks it before any fetch). A recommended
+ * mod is exempt from the prompt, so its update must be too, or a player who never
+ * turned third-party mods on would find the recommended mods they already have
+ * frozen at the version they installed. Everything else is third-party - which is
+ * what it was when it went in - and the switch that let it in is the switch that
+ * lets it be replaced. A player who has since turned the switch off has said they
+ * do not want that code, and an update is more of that code.
+ *
+ * A list that cannot be read yields an empty set, so nothing is silently promoted to
+ * exempt on the strength of a failed fetch.
+ */
+async function curatedRepos(deps: ModUpgradeDeps): Promise<ReadonlySet<string>> {
+  const { registry } = await deps.curated();
+  return new Set((registry?.mods ?? []).map((r) => r.repo.toLowerCase()));
+}
+
+/** Where a mod update comes from, said once. */
+const ABOUT_MOD_UPGRADES: readonly ScreenLine[] = [
+  {
+    text: "Each mod lives in its own repository and releases on its own schedule,",
+    color: C_DIM,
+  },
+  {
+    text: "so this asks every installed mod where it came from and compares the",
+    color: C_DIM,
+  },
+  {
+    text: "version you have with the newest one your update channel allows.",
+    color: C_DIM,
+  },
+  { text: "Updating the game is not what brings a newer mod.", color: C_DIM },
+];
+
+/** Draw one line, let it paint, then run `job`. For a wait a player can read. */
+async function paintWhile<T>(
+  term: GlyphTerm,
+  title: string,
+  line: string,
+  job: () => Promise<T>,
+): Promise<T> {
+  const { cols } = term.size();
+  term.clear();
+  term.print(0, 1, title.slice(0, cols - 1), C_FG);
+  term.print(0, 3, line.slice(0, cols - 1), C_DIM);
+  term.flush?.();
+  return await job();
 }
