@@ -230,10 +230,11 @@ describe("object memory (square_know_pile / square_sense_pile)", () => {
     floorCarry(state, grid, obj);
 
     squareKnowPile(state, grid);
-    expect(knownObject(state, grid)).toEqual({
-      ch: obj.kind.dChar,
-      attr: obj.kind.dAttr,
-    });
+    /* grid_data.first_kind: the KIND, so the draw can resolve the flavour and
+     * the tile the way it does for a visible object. A memory of the glyph
+     * `obj.kind.dChar`/`dAttr` could do neither - for a flavoured kind those
+     * ARE the placeholder, which is why a remembered potion drew invisibly. */
+    expect(knownObject(state, grid)).toEqual({ seen: true, kidx: obj.kind.kidx });
 
     /* The object is picked up: knowing the (empty) pile clears memory. */
     floorExcise(state, grid, obj);
@@ -248,13 +249,32 @@ describe("object memory (square_know_pile / square_sense_pile)", () => {
     floorCarry(state, grid, makeObj(TV.SWORD));
 
     squareSensePile(state, grid);
-    expect(knownObject(state, grid)).toEqual({ ch: null, attr: "" });
+    expect(knownObject(state, grid)).toEqual({ seen: false, money: false });
 
     /* An exact memory is not downgraded by a later sense. */
     squareKnowPile(state, grid);
     const exact = knownObject(state, grid);
     squareSensePile(state, grid);
     expect(knownObject(state, grid)).toEqual(exact);
+  });
+
+  it("a sensed pile of MONEY takes unknown_gold_kind, not unknown_item_kind", () => {
+    /* object_sense's fake-kind assignment (obj-knowledge.c:886-892) chooses
+     * between two REAL object kinds - `<unknown treasure>` and `<unknown item>`,
+     * which differ in colour and, in a tile set, in art. The port collapsed both
+     * to one colourless marker, so detected gold and a detected sword drew
+     * identically. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const gold = loc(12, 10);
+    const steel = loc(13, 10);
+    floorCarry(state, gold, makeObj(TV.GOLD));
+    floorCarry(state, steel, makeObj(TV.SWORD));
+
+    squareSensePile(state, gold);
+    squareSensePile(state, steel);
+
+    expect(knownObject(state, gold)).toEqual({ seen: false, money: true });
+    expect(knownObject(state, steel)).toEqual({ seen: false, money: false });
   });
 
   it("a predicate restricts what is remembered", () => {
@@ -599,6 +619,54 @@ describe("squareIsInteresting (cave-square.c square_isinteresting, read against 
   });
 });
 
+describe("update_mon and a mimic's fake item (mon-util.c L394-399, L429-433)", () => {
+  /** A camouflaged monster mimicking `obj`, in the player's line of sight. */
+  function mimicWith(obj: GameObject): { state: GameState; mon: Monster } {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace({ flags: [RF.UNAWARE] }), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+    return { state, mon };
+  }
+
+  it("a mimic of a NON-ignored item is visible - the player is seeing the item", () => {
+    const obj = makeObj(TV.SWORD);
+    const { state, mon } = mimicWith(obj);
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+  });
+
+  it("a mimic of an IGNORED item is not seen at all", () => {
+    /* mon-util.c L394-399: `if (monster_is_mimicking(mon)) { if
+     * (ignore_item_ok(player, obj)) easy = flag = false; }`. The port carried
+     * this as a comment explaining that mon.mimickedObj is always 0 so the
+     * guard cannot fire - true when written, and false ever since generation
+     * started building mimic objects. */
+    const obj = makeObj(TV.SWORD);
+    const { state, mon } = mimicWith(obj);
+    state.isIgnored = (o) => o === obj;
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+  });
+
+  it("an already-visible mimic LOSES visibility when its item becomes ignored", () => {
+    /* The other arm, mon-util.c L429-433: `if (!mon->mimicked_obj ||
+     * ignore_item_ok(...))` - the port tested only the first half, so ignoring
+     * a mimicked kind left the monster permanently visible. */
+    const obj = makeObj(TV.SWORD);
+    const { state, mon } = mimicWith(obj);
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+
+    state.isIgnored = (o) => o === obj;
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+  });
+});
+
 describe("becomeAware (mon-util.c become_aware, L711)", () => {
   it("is a no-op for a monster that is not camouflaged", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
@@ -639,7 +707,7 @@ describe("becomeAware (mon-util.c become_aware, L711)", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addMon(state, makeRace(), loc(12, 10));
     mon.mflag.on(MFLAG.CAMOUFLAGE);
-    mon.mimickedObj = 1; // any nonzero handle (mimic placement is not ported)
+    mon.mimickedObj = 1; // the port's presence marker; the link is mimickingMIdx
     const obj = makeObj(TV.SWORD);
     floorCarry(state, mon.grid, obj);
     obj.mimickingMIdx = mon.midx;

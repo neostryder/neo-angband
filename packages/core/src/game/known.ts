@@ -46,6 +46,7 @@ import {
   monsterIsEspDetectable,
   monsterIsInView,
   monsterIsInvisible,
+  monsterIsMimicking,
   monsterIsVisible,
 } from "../mon/predicate.js";
 import { disturb } from "./player-path.js";
@@ -57,7 +58,7 @@ import { ODESC } from "../obj/desc.js";
 import { monsterCarry } from "../mon/make.js";
 import type { Monster } from "../mon/monster.js";
 import type { GameObject } from "../obj/object.js";
-import { objectCopy, tvalIsJewelry } from "../obj/object.js";
+import { objectCopy, tvalIsJewelry, tvalIsMoney } from "../obj/object.js";
 import { objectTouch, playerKnowsEgo } from "../obj/known-object.js";
 import {
   NOOP_FLAVOR_AWARE_DEPS,
@@ -69,16 +70,31 @@ import {
 import type { GameState } from "./context.js";
 
 /**
- * A remembered floor object: the pile head's display glyph, or a null
- * glyph for a sensed-but-unidentified something (upstream's
- * unknown_item_kind / unknown_gold_kind markers).
+ * A remembered floor object: the port of grid_data's object fields
+ * (map_info's object loop, cave-map.c:151-169).
+ *
+ * THE KIND, NOT A GLYPH. This used to be `{ ch, attr }` - the glyph resolved
+ * once, at memorize time - and that threw away everything the DRAW needs.
+ * Upstream keeps a kind pointer (`grid_data.first_kind`) and resolves it at
+ * draw time through object_kind_attr / object_kind_char (ui-map.c:47,
+ * grid_data_as_text), which is the SAME call a visible object goes through, so
+ * a remembered object picks up two things a pre-resolved glyph cannot:
+ *
+ *   - the FLAVOUR of a kind the player is not yet aware of. `head.kind.dAttr`
+ *     is a flavoured kind's placeholder colour, which for a potion is BLACK -
+ *     so a remembered unidentified potion was drawn as an invisible `!`.
+ *   - the x_attr TILE. A glyph has no tile, which is why every item on the
+ *     floor turned into ASCII the moment it left view, in every tile set.
+ *
+ * The sensed marker keeps upstream's money/item split too: unknown_gold_kind
+ * and unknown_item_kind are real object kinds (`<unknown treasure>` and
+ * `<unknown item>` in object.txt), so a tile set draws them like anything else.
  */
-export interface KnownObjectMemory {
-  /** Display char of the remembered pile head; null = sensed-unknown. */
-  ch: string | null;
-  /** Display color char of the remembered pile head. */
-  attr: string;
-}
+export type KnownObjectMemory =
+  /** An exact memory: grid_data.first_kind. */
+  | { seen: true; kidx: number }
+  /** grid_data.unseen_money / unseen_object: sensed, kind unknown. */
+  | { seen: false; money: boolean };
 
 /** The player's knowledge of the current level. */
 export interface KnownMap {
@@ -452,10 +468,9 @@ export function squareKnowPile(
 
   const head = pileHead(state, grid, pred);
   if (head) {
-    state.known.objects.set(gi(state, grid), {
-      ch: head.kind.dChar,
-      attr: head.kind.dAttr,
-    });
+    /* grid_data.first_kind (cave-map.c:165): the KIND, resolved to a glyph and
+     * a tile at draw time by object_kind_attr / object_kind_char. */
+    state.known.objects.set(gi(state, grid), { seen: true, kidx: head.kind.kidx });
   } else if (!pileHead(state, grid)) {
     /* Nothing at all here: any memory is stale. */
     state.known.objects.delete(gi(state, grid));
@@ -587,7 +602,7 @@ export function updatePlayerObjectKnowledge(state: GameState): void {
 
 /**
  * square_sense_pile (reduced): become aware that something matching is
- * here without learning what (the null-glyph marker), keeping an exact
+ * here without learning what (the sensed marker), keeping an exact
  * memory if one exists; forget stale memories like squareKnowPile.
  */
 export function squareSensePile(
@@ -599,8 +614,13 @@ export function squareSensePile(
   const head = pileHead(state, grid, pred);
   if (head) {
     const existing = state.known.objects.get(idx);
-    if (!existing || existing.ch === null) {
-      state.known.objects.set(idx, { ch: null, attr: "" });
+    if (!existing || !existing.seen) {
+      /* object_sense's fake-kind assignment (obj-knowledge.c:886-892): the
+       * marker is unknown_gold_kind for money and unknown_item_kind otherwise,
+       * and the two draw differently (a white `*` and a red one, plus whatever
+       * the tile set maps them to). The port used to collapse both to one
+       * colourless marker. */
+      state.known.objects.set(idx, { seen: false, money: tvalIsMoney(head.tval) });
     }
   } else if (!pileHead(state, grid)) {
     state.known.objects.delete(idx);
@@ -616,6 +636,22 @@ export function squareSensePile(
 /** OPT(player, disturb_near): shipped default true (options.c). */
 function disturbNear(state: GameState): boolean {
   return state.options?.get("disturb_near") ?? true;
+}
+
+/**
+ * `monster_is_mimicking(mon) && ignore_item_ok(player, mon->mimicked_obj)`:
+ * true when the monster is pretending to be an object the player has chosen to
+ * ignore, which is the one case where mimicry makes it LESS visible rather than
+ * more (mon-util.c L394-399 and L429-433).
+ *
+ * The port has no object oidx registry, so the live link is the floor object's
+ * mimickingMIdx back-reference (game/mon-place.ts monCreateMimickedObject) -
+ * the same resolution becomeAware does.
+ */
+function mimickedObjectIgnored(state: GameState, mon: Monster): boolean {
+  if (!monsterIsMimicking(mon)) return false;
+  const obj = floorPile(state, mon.grid).find((o) => o.mimickingMIdx === mon.midx);
+  return obj ? (state.isIgnored?.(obj) ?? false) : false;
 }
 
 /**
@@ -715,12 +751,11 @@ export function updateMon(
     }
   }
 
-  /* If a mimic looks like an ignored item, it's not seen (mon-util.c L394):
-   *   if (monster_is_mimicking(mon) && ignore_item_ok(player, obj))
-   *     easy = flag = false;
-   * mon.mimickedObj is always 0 until mimic placement is generated, so the
-   * guard never fires; resolving the handle to a GameObject is DEFERRED with
-   * that work. */
+  /* If a mimic looks like an ignored item, it's not seen (mon-util.c L394-399).
+   * This used to be a comment saying mon.mimickedObj is always 0 so the guard
+   * cannot fire - true when it was written, and NOT true since generation
+   * started building mimic objects (gen/util.ts placeNewMonsterOne). */
+  if (mimickedObjectIgnored(state, mon)) easy = flag = false;
 
   /* Is the monster now visible? */
   if (flag) {
@@ -740,9 +775,10 @@ export function updateMon(
       loreCountU16(lore, "sights");
     }
   } else if (monsterIsVisible(mon)) {
-    /* Not visible but was previously seen. With mimickedObj always 0 the
-     * mimic caveat (!mon->mimicked_obj || ignore_item_ok) always clears. */
-    if (mon.mimickedObj === 0) {
+    /* Not visible but was previously seen - treat mimics differently
+     * (mon-util.c L429-433): a monster still mimicking a NON-ignored item keeps
+     * MFLAG_VISIBLE, because what the player is looking at is the item. */
+    if (mon.mimickedObj === 0 || mimickedObjectIgnored(state, mon)) {
       mon.mflag.off(MFLAG.VISIBLE);
     }
   }
@@ -772,12 +808,11 @@ export function updateMon(
  * own visibility now that mimicry no longer masks it (update_mon). A no-op
  * monster that is not camouflaged. Draws no RNG.
  *
- * Object-mimic placement is wired for live-placed (summoned / bred) mimics
- * via game/mon-place.ts monCreateMimickedObject, which links mon.mimickedObj
- * and the object's mimickingMIdx back-reference at the monster's grid; the
- * object branch below fires for those and for any hand-built Monster/
- * GameObject pair in tests. (SEAM: generation-spawned mimics still need the
- * handoff to call monCreateMimickedObject - see that function's docstring.)
+ * Object-mimic placement links mon.mimickedObj and the object's mimickingMIdx
+ * back-reference at the monster's grid, so the object branch below fires for
+ * every real mimic: generation-spawned ones through gen/util.ts
+ * placeNewMonsterOne, and live-placed (summoned / bred) ones through
+ * game/mon-place.ts monCreateMimickedObject.
  *
  * RF_MIMIC_INV's "give the monster a copy of the object before deleting it"
  * (mon-util.c L740-758) is now ported via obj/object.ts objectCopy (memcpy, no

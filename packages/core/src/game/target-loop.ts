@@ -117,7 +117,7 @@ function describeFloorAtGrid(state: GameState, grid: Loc): string | null {
   }
   const mem = knownObject(state, grid);
   if (!mem) return null;
-  return mem.ch === null ? "something" : "an object";
+  return mem.seen ? "an object" : "something";
 }
 
 /** The monster this description named, if any (for healthWho / lore tracking). */

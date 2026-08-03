@@ -3509,7 +3509,7 @@ export function loadGame(
     traps: loadedTraps,
     known: save.isDead
       ? newKnownMap(chunk.width, chunk.height)
-      : deserializeKnown(save.known, chunk.width, chunk.height, featRemap),
+      : deserializeKnown(save.known, chunk.width, chunk.height, featRemap, ids),
     /* birth_levels_persist (#30) frozen-level cache; empty in saves written
      * before the field or with the option off (back-compat). */
     levelCache: deserializeLevelCache(
