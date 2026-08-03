@@ -303,6 +303,29 @@ export type Capability = string;
  * appeared. Declaring it here means the manifest is refused at the edge, with the
  * mod's id and the offending field named.
  */
+/**
+ * What a mod's repository contributes to its installed folder.
+ *
+ * Paths are relative to the repository root AND to the mod folder - the two are
+ * the same shape, which is what lets a mod be a checkout, a zip, or an install
+ * without changing anything about it.
+ *
+ * TWO KINDS BECAUSE THE SIZES DIFFER BY THREE ORDERS OF MAGNITUDE. A code mod is
+ * a manifest and a script; listing them is clearer. A converted tile pack is
+ * thousands of files, where listing them would mean thousands of requests, so it
+ * travels as committed archives that are unpacked on arrival.
+ *
+ * Nothing here is trusted as a path. The installer re-checks every entry - and
+ * every path that comes OUT of an archive, which is attacker-controlled in a way
+ * a declared list is not - before anything is written.
+ */
+export interface PackPayload {
+  /** Committed files, stored as they are. */
+  files?: string[];
+  /** Committed zips, UNPACKED into the mod folder. */
+  archives?: string[];
+}
+
 export interface PackTilePack {
   /**
    * The list.txt serial number this mode renders as. A `tilesheet` pack must claim
@@ -454,6 +477,21 @@ export interface PackManifest {
   license?: string;
   /** Source repository URL (installer provenance). */
   repository?: string;
+  /**
+   * Which of the repository's files ARE the mod (see PackPayload).
+   *
+   * The game learns a mod from its own repository - it ships no catalogue of what
+   * mods exist or what they contain - so something has to say which committed
+   * files belong in the installed mod folder and which are the scaffolding that
+   * built them. A repository that says nothing still installs: the installer
+   * falls back to the whole tree minus build scaffolding, which is right for a
+   * mod that is a manifest and a script and knows nothing about this field.
+   *
+   * Declare it when that guess would be wrong or wasteful - and ALWAYS when the
+   * payload includes archives, because nothing can infer that a committed .zip
+   * wants unpacking rather than storing.
+   */
+  payload?: PackPayload;
   /** Path to the changelog within the pack. */
   changelog?: string;
   /** Paths to screenshot assets within the pack (marketplace preview). */
@@ -536,6 +574,7 @@ export function validateManifest(value: unknown): PackManifest {
   validateGroup(m["group"], id);
   validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);
+  validatePayload(m["payload"], id);
   for (const key of [
     "engine",
     "repository",
@@ -764,6 +803,49 @@ const TILE_ENGINES: readonly string[] = ["tilesheet", "linoleum"];
  * scheme, or a `..` escape is refused for the same reason a pack's code files are
  * read by pack-relative path: the host decides where a mod's bytes live.
  */
+/**
+ * `payload`: two optional string arrays, at least one of them non-empty.
+ *
+ * An empty or all-empty payload is rejected rather than treated as "fall back to
+ * the tree", because those two mean opposite things and only one of them is what
+ * an author who typed the field wanted. Absent means fall back; present means
+ * "this, exactly", and a mod that declares exactly nothing has declared a mod
+ * with no files in it.
+ *
+ * Path SAFETY is not checked here. The installer checks every path it is about to
+ * write, and it has to anyway for archive contents, so a second half-check in the
+ * schema would be the kind of duplicated rule where only one copy learns.
+ */
+function validatePayload(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: payload must be an object`);
+  }
+  const p = value as Record<string, unknown>;
+  let count = 0;
+  for (const key of ["files", "archives"] as const) {
+    const list = p[key];
+    if (list === undefined) continue;
+    if (!Array.isArray(list)) {
+      throw new ManifestError(`manifest ${id}: payload.${key} must be an array`);
+    }
+    for (const entry of list) {
+      if (typeof entry !== "string" || entry === "") {
+        throw new ManifestError(
+          `manifest ${id}: payload.${key} entries must be non-empty strings`,
+        );
+      }
+    }
+    count += list.length;
+  }
+  if (count === 0) {
+    throw new ManifestError(
+      `manifest ${id}: payload names no files - omit it to install the whole ` +
+        `repository minus build scaffolding`,
+    );
+  }
+}
+
 function validateTilePacks(value: unknown, id: string): void {
   if (value === undefined) return;
   if (!Array.isArray(value)) {
