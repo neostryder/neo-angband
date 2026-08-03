@@ -188,6 +188,20 @@ Everything below came out of one play session on the 0.15.3 build.
   way to reach *Move earlier*, *Move later* or *Back*, and no way to scroll the
   prose either. The pane is capped now, says so when it cuts, and a *Read the full
   description* row opens the whole thing in a viewer that scrolls.
+- **A paragraph break in a mod's description painted as two solid blocks.** The
+  word-wrap behind the detail pane broke on the space character and treated
+  everything else as ordinary text, so a newline was carried into the output line
+  and the terminal - which has no glyph for U+000A - drew it as a filled cell.
+  `qol`'s manifest has a real blank line between its two paragraphs, so its row
+  read "are not touched here." followed by two blocks and then "Enable it and you
+  get...", and it has looked that way since **0.16.0**, when that description
+  landed. A description is written by the MOD AUTHOR, so "do not put newlines in
+  it" was never an answer available to the game. `wrapCssRuns` splits the run
+  stream on newlines first now and wraps each paragraph on its own, emitting an
+  empty line where the break was; `\r\n` and a lone `\r` are the same break, so a
+  manifest written on Windows cannot leave a stray carriage return behind either.
+  The store help legend is the only other caller and has no newlines in it at all,
+  so nothing there changes.
 - **The macOS bundle was never sealed.** With no Apple Developer identity,
   electron-builder skips signing and says so in its own log ("skipped macOS
   application code signing"). Measured against the artifacts rather than

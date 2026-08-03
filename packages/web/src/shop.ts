@@ -342,6 +342,14 @@ function storeConfirm(
  * each run's colour across wrap boundaries (the store help legend, text_out with
  * COLOUR_L_GREEN command keys). Breaks on spaces; a word longer than the width
  * is hard-split. Returns one array of runs per output line.
+ *
+ * A newline ENDS a line rather than travelling into one. The terminal has no
+ * glyph for U+000A, so a "\n" carried through as an ordinary character painted
+ * as a solid block - visible in the mod manager, whose descriptions are written
+ * by third-party mod authors and do contain paragraph breaks. "\n\n" therefore
+ * yields an empty line, which is what a paragraph break should look like here.
+ * `\r\n` and a lone `\r` are the same break; the store legend has no newlines at
+ * all, so for that caller this is a no-op.
  */
 export function wrapCssRuns(
   runs: readonly { text: string; color: string }[],
@@ -350,7 +358,11 @@ export function wrapCssRuns(
   const w = Math.max(1, width);
   type C = { ch: string; color: string };
   const chars: C[] = [];
-  for (const run of runs) for (const ch of run.text) chars.push({ ch, color: run.color });
+  for (const run of runs) {
+    // Normalise line endings first so a CRLF is one break, not a break plus a
+    // stray \r that would paint as its own block.
+    for (const ch of run.text.replace(/\r\n?/g, "\n")) chars.push({ ch, color: run.color });
+  }
 
   const group = (slice: C[]): C[] => {
     const line: C[] = [];
@@ -362,20 +374,37 @@ export function wrapCssRuns(
     return line;
   };
 
+  /* Wrap one newline-free paragraph, appending its lines to `out`. An empty
+   * paragraph contributes one empty line - that is the blank row between two
+   * paragraphs, and it is why this is not simply skipped. */
   const out: { text: string; color: string }[][] = [];
-  let start = 0;
-  while (start < chars.length) {
-    let end = Math.min(start + w, chars.length);
-    if (end < chars.length) {
-      let brk = -1;
-      for (let i = end - 1; i > start; i--) {
-        if (chars[i]!.ch === " ") { brk = i; break; }
-      }
-      if (brk > start) end = brk;
+  const wrapParagraph = (chars: readonly C[]): void => {
+    if (chars.length === 0) {
+      out.push([]);
+      return;
     }
-    out.push(group(chars.slice(start, end)).map((c) => ({ text: c.ch, color: c.color })));
-    start = end;
-    if (start < chars.length && chars[start]!.ch === " ") start++;
+    let start = 0;
+    while (start < chars.length) {
+      let end = Math.min(start + w, chars.length);
+      if (end < chars.length) {
+        let brk = -1;
+        for (let i = end - 1; i > start; i--) {
+          if (chars[i]!.ch === " ") { brk = i; break; }
+        }
+        if (brk > start) end = brk;
+      }
+      out.push(group(chars.slice(start, end)).map((c) => ({ text: c.ch, color: c.color })));
+      start = end;
+      if (start < chars.length && chars[start]!.ch === " ") start++;
+    }
+  };
+
+  let from = 0;
+  for (let i = 0; i <= chars.length; i++) {
+    if (i === chars.length || chars[i]!.ch === "\n") {
+      wrapParagraph(chars.slice(from, i));
+      from = i + 1;
+    }
   }
   return out.length ? out : [[]];
 }

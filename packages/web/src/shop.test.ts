@@ -152,3 +152,60 @@ describe("wrapCssRuns (store help legend wrapping)", () => {
     expect(flat.some((r) => r.color === "#fff")).toBe(true);
   });
 });
+
+/**
+ * A newline used to be wrapped as an ordinary character, and the terminal has no
+ * glyph for U+000A, so it painted as a solid block. Third-party mod descriptions
+ * contain real paragraph breaks, so this is player-visible input the wrapper does
+ * not get to reject.
+ */
+describe("wrapCssRuns (newlines end lines instead of painting as blocks)", () => {
+  it("turns a paragraph break into a blank line and emits no \\n anywhere", () => {
+    const lines = wrapCssRuns(
+      [{ text: "are not touched here.\n\nEnable it and you get", color: "#fff" }],
+      40,
+    );
+    const texts = lines.map((ln) => ln.map((r) => r.text).join(""));
+    for (const t of texts) expect(t).not.toContain("\n");
+    expect(texts).toContain("");
+    // The blank line sits between the two paragraphs, not at either end.
+    const blank = texts.indexOf("");
+    expect(blank).toBeGreaterThan(0);
+    expect(blank).toBeLessThan(texts.length - 1);
+    expect(texts[blank - 1]).toBe("are not touched here.");
+    expect(texts[blank + 1]).toBe("Enable it and you get");
+  });
+
+  it("treats a single newline as a hard break with no blank line", () => {
+    const lines = wrapCssRuns([{ text: "first\nsecond", color: "#fff" }], 40);
+    expect(lines.map((ln) => ln.map((r) => r.text).join(""))).toEqual(["first", "second"]);
+  });
+
+  it("treats CRLF and a lone CR as the same break, leaving no stray \\r", () => {
+    for (const eol of ["\r\n", "\r"]) {
+      const lines = wrapCssRuns([{ text: `first${eol}second`, color: "#fff" }], 40);
+      expect(lines.map((ln) => ln.map((r) => r.text).join(""))).toEqual(["first", "second"]);
+    }
+  });
+
+  it("does not spend width on the newline, and still wraps each paragraph", () => {
+    const lines = wrapCssRuns([{ text: "aaa bbb\nccc ddd", color: "#fff" }], 4);
+    expect(lines.map((ln) => ln.map((r) => r.text).join(""))).toEqual([
+      "aaa",
+      "bbb",
+      "ccc",
+      "ddd",
+    ]);
+  });
+
+  it("keeps each paragraph's colour when the break falls between runs", () => {
+    const lines = wrapCssRuns(
+      [
+        { text: "green\n", color: "#0f0" },
+        { text: "white", color: "#fff" },
+      ],
+      40,
+    );
+    expect(lines).toEqual([[{ text: "green", color: "#0f0" }], [{ text: "white", color: "#fff" }]]);
+  });
+});
