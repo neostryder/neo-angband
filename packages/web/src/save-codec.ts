@@ -9,13 +9,21 @@
  * storage transport reshape the game's control flow). fflate is a synchronous
  * DEFLATE in plain JS, which is why it is a dependency at all.
  *
- * WHY IT MATTERS HERE MORE THAN ANYWHERE. A `localStorage` origin gets ~5 MB
- * total, and base64 costs another third on top. Measured, a fresh character
+ * WHY IT MATTERS HERE MORE THAN ANYWHERE. A `localStorage` origin is documented
+ * at ~5 MB, and base64 costs another third on top. Measured, a fresh character
  * serializes to 180 KiB base64'd in town and 521 KiB at DL50, so the roster hit
  * the quota at around nine characters - fewer with `birth_levels_persist`, whose
  * level cache can exhaust it on its own. Under decision 16 (no save-scumming,
  * death is permanent) a failed write is a lost character, not a lost preference.
  * gzip measures at ratio 0.04 on this data, which turns 521 KiB into 22 KiB.
+ *
+ * The 5 MB is the number to DESIGN to, but it is not what every engine enforces:
+ * probed on 2026-08-03, the desktop shell's Chromium origin accepted 50 MB into
+ * localStorage without refusing (read back at each step, so not a silent
+ * truncation), and the probe stopped at its own loop limit rather than a wall. So
+ * the ceiling that matters is the web build's, where ~5 MB is real - and 5 MB of
+ * 22 KiB saves is around two hundred characters, which is why this is recorded as
+ * headroom rather than acted on. Do not re-derive it from the desktop build.
  *
  * The desktop build renders this same bundle, so it gets the same codec; when
  * Phase 5 moves desktop saves to real files through the host bridge, the encoding

@@ -144,12 +144,26 @@ installers (`.exe`, `.dmg`, `.AppImage`/`.deb`), see
 
 ### Your character and your save
 
-Saves live in your browser's **localStorage**, scoped to the origin you play on,
-so they are **per-surface**: a character made on `localhost:5178` is not the same
-character as one made in the packaged desktop app, and clearing site data deletes
-them. Use the built-in **export / import** to move a character between surfaces
-and to keep a backup - death is permanent and a save is overwritten in place,
-faithful to the original.
+Saves live in your browser's **localStorage** and installed mods in its
+**IndexedDB**, both scoped to the origin you play on - so they are
+**per-surface**: a character made on `localhost:5178` is not the same character as
+one made in the packaged desktop app. The desktop build is no exception; it serves
+the same bundle to its own local origin.
+
+> **Anything that clears that storage takes every character AND every installed
+> mod, at once, with no undo.** That includes "clear browsing data" or "clear site
+> data", a cleanup tool (Disk Cleanup, CCleaner, a browser extension, a "free up
+> space" setting) or an automation that runs one, resetting the browser profile,
+> and - on the desktop build - deleting the game's `neo-angband-data` folder.
+> Death is permanent here, so there is nothing to recover from but a file you
+> exported yourself.
+
+So use the built-in **export / import**: `Shift-X` on the character list writes one
+character to a file, `Shift-M` reads one back on any copy of the game. That is both
+the backup and the way to move a character between surfaces. It is not a restore
+point - a file will not import over a character who has died, or over one who has
+played further than the file. The game explains all of this on **Where your
+characters live** (the Escape menu, or `Shift-W` on the character list).
 
 Starting, resuming and deleting a character is walked step by step in
 [docs/INSTALL.md](docs/INSTALL.md#starting-resuming-and-deleting-a-character).

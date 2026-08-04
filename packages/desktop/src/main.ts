@@ -60,6 +60,7 @@ import {
   stageArchive,
 } from "./updater.js";
 import { checkWritable, resolveDataBase } from "./data-dir.js";
+import { IMPORTED_DIRNAME, archiveModZip, isModZipName } from "./mod-archive.js";
 import {
   PORT_ENV,
   portLadder,
@@ -107,9 +108,11 @@ app.setName("Neo Angband");
 /**
  * init.c's writable tree, chosen per launch: beside the install by default, under
  * the user's application data only for a copy the installer put there. See
- * data-dir.ts for the order and why. NodeRawFs creates the five ANGBAND_DIR_*
- * subdirectories under whichever base wins, and the mods folder sits alongside
- * them - so an unzipped folder holds the program, its data and its mods together.
+ * data-dir.ts for the order and why. The five ANGBAND_DIR_* subdirectories are
+ * made under whichever base wins - each on its first write, not at startup, so a
+ * folder a player sees is one the game actually uses (NodeRawFs.ensureRoot) - and
+ * the mods folder sits alongside them, so an unzipped folder holds the program,
+ * its data and its mods together.
  */
 const DATA = resolveDataBase({
   env: process.env,
@@ -347,26 +350,6 @@ interface ModsIndex {
   readonly zips: readonly { readonly name: string; readonly bytes: number }[];
 }
 
-/**
- * Is this a name this process will touch inside the mods folder?
- *
- * The renderer supplies it, so it is checked as if it were hostile: one path segment,
- * no separators, no traversal, and the extension the import screen actually offers.
- * `path.basename` is not a substitute - it would turn `../../x.zip` into `x.zip` and
- * accept it, which is a check that repairs an attack into a success.
- */
-function isModZipName(name: unknown): name is string {
-  return (
-    typeof name === "string" &&
-    name.length > 0 &&
-    name.length <= 255 &&
-    !name.includes("/") &&
-    !name.includes("\\") &&
-    !name.startsWith(".") &&
-    !name.includes("\0") &&
-    name.toLowerCase().endsWith(".zip")
-  );
-}
 
 /** load-order.json: the file an external mod manager owns. */
 const LOAD_ORDER_FILE = "load-order.json";
@@ -419,12 +402,15 @@ function modsIndex(): ModsIndex {
     const entries = fs.readdirSync(MODS_DIR, { withFileTypes: true });
     names = entries
       .filter((d) => d.isDirectory())
+      /* NOT a mod: it is where imported archives are moved to. Every other
+       * directory in here is a mod folder, which is why this one has to be named. */
+      .filter((d) => d.name !== IMPORTED_DIRNAME)
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b));
     for (const e of entries) {
       /* Files only, and not through a symlink: a link called `x.zip` pointing at
        * something outside this folder would otherwise be served by the loopback
-       * route and then deleted by the discard op, which is two holes for the price
+       * route and then moved by the archive op, which is two holes for the price
        * of one convenience nobody asked for. */
       if (!e.isFile() || !isModZipName(e.name)) continue;
       try {
@@ -457,38 +443,27 @@ function modsIndex(): ModsIndex {
 }
 
 /**
- * Delete one imported archive from the mods folder.
+ * Move one imported archive out of the way, into `mods/imported/`.
  *
- * AFTER THE INSTALL, NEVER BEFORE. The renderer calls this only once IndexedDB has
- * committed, because the two cannot be made atomic and only one order is survivable:
- * delete-then-store loses the archive when storage refuses it, and store-then-delete
- * leaves a duplicate the player can remove themselves. Prefer the wreckage that costs
- * a tidy-up over the wreckage that costs the file.
+ * IT USED TO DELETE IT. That was the wrong call and the reason is not tidiness: the
+ * zip is the player's own copy of somebody else's work, and the game had already
+ * taken what it needed from it. Deleting it made the game's copy the only one, so a
+ * mod that turned out to be broken, or an install undone later, left the player with
+ * nothing to go back to and a download to find again.
  *
- * `lstat`, not `stat`, and the same leaf-name rule the listing used. A symlink named
- * `x.zip` is refused rather than followed, so this cannot be talked into unlinking
- * something outside the folder it owns.
+ * The file work is mod-archive.ts, which is where its rules are tested. This is only
+ * the channel: one operation, one leaf name, and a log line.
  */
 function installModZipChannel(): void {
   ipcMain.handle(MOD_ZIP_CHANNEL, (_event, op: unknown, arg: unknown) => {
-    if (op !== "discard") return { ok: false, error: `unknown operation ${String(op)}` };
-    if (!isModZipName(arg)) return { ok: false, error: "that is not a mod archive's name" };
-    const file = path.join(MODS_DIR, arg);
-    try {
-      if (!fs.lstatSync(file).isFile()) {
-        return { ok: false, error: "that is not a file in the mods folder" };
-      }
-      fs.unlinkSync(file);
-      LOG_FILE.append([
-        `${new Date().toISOString()} INFO  [mods] discarded ${arg} after importing it`,
-      ]);
-      return { ok: true };
-    } catch (err) {
-      /* Answered, not thrown. The mod is already installed by the time this runs, so
-       * the screen has to say "installed, but the zip is still there" - which it can
-       * only do if it is told why. */
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
+    if (op !== "archive") return { ok: false, error: `unknown operation ${String(op)}` };
+    const result = archiveModZip(MODS_DIR, arg);
+    LOG_FILE.append([
+      result.ok
+        ? `${new Date().toISOString()} INFO  [mods] moved ${String(arg)} to ${result.to} after importing it`
+        : `${new Date().toISOString()} WARN  [mods] could not move ${String(arg)} aside: ${result.error}`,
+    ]);
+    return result;
   });
 }
 
@@ -781,7 +756,8 @@ function handleEarlyExit(): boolean {
   switch (outcome.kind) {
     case "run":
       /* change_path's directory overrides, which the host layer needs before the
-       * first file is touched. `dir_create` is NodeRawFs' constructor. */
+       * first file is touched - an override has to be in place before anything
+       * creates a directory, and NodeRawFs creates one on its first write. */
       DIR_OVERRIDES = hostDirOverrides(outcome.args);
       return false;
     case "usage":

@@ -30,6 +30,10 @@ export type SelectResult =
    * does (save-transfer.ts says why, with the measurement). */
   | { action: "export"; id: string }
   | { action: "import" }
+  /* "Where your characters live" (storage-page.ts). Reachable from here because
+   * this is the screen that lists the things at risk, and the notice below is
+   * where a player is told the key. */
+  | { action: "storage" }
   | { action: "back" };
 
 /** "Town" at the surface, else the classic "<feet>' (L<n>)". */
@@ -140,6 +144,11 @@ export async function runCharacterSelect(
        * and an empty roster has the "New character" row to close on. */
       return Math.max(0, Math.min(cursor, roster.length));
     };
+    let storageRequested = false;
+    const requestStorage = (cursor: number): number | null => {
+      storageRequested = true;
+      return Math.max(0, Math.min(cursor, roster.length));
+    };
     const pick = await selectFromMenu(
       term,
       "Select a character",
@@ -149,16 +158,22 @@ export async function runCharacterSelect(
         subtitle: notice
           ? notice
           : "Living characters resume; tombstones are memorials.",
-        /* CAPITALS for the two new ones. The command layer is checked BEFORE
-         * positional letters, so registering lower-case "x" and "m" would steal
-         * the selection tags of the 24th and 13th rows from anyone with a long
-         * roster. Tags are lower case and case-sensitive, so shifted letters
-         * cannot collide with them. */
+        /* CAPITALS for the port's own keys. The command layer is checked BEFORE
+         * positional letters, so registering lower-case "x", "m" and "w" would
+         * steal the selection tags of the 24th, 13th and 23rd rows from anyone
+         * with a long roster. Tags are lower case and case-sensitive, so shifted
+         * letters cannot collide with them.
+         *
+         * Shift-W is not in the footer legend, deliberately: that line is already
+         * 69 columns of 79 and adding to it would push the ESC hint off the end
+         * of the row. It is named in the subtitle instead - which is the line
+         * that gives a player a reason to press it. */
         commands: {
           Delete: requestDelete,
           Backspace: requestDelete,
           X: requestExport,
           M: requestImport,
+          W: requestStorage,
         },
       },
     );
@@ -167,6 +182,7 @@ export async function runCharacterSelect(
     /* Both are checked before the row meanings below, because both closed the
      * menu ON a row that the player did not choose. */
     if (importRequested) return { action: "import" };
+    if (storageRequested) return { action: "storage" };
     if (pick === exportRow) {
       const c = roster[pick];
       if (c) return { action: "export", id: c.id };

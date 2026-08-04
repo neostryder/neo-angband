@@ -49,11 +49,11 @@ describe("a browser tab has no mods folder, and says so by having no folder", ()
     expect(await web.read("anything.zip")).toBeNull();
   });
 
-  it("reports discard as NULL, not as a discard that fails", async () => {
+  it("reports archive as NULL, not as a move that fails", async () => {
     /* The distinction is the whole point: null means "this platform never could",
      * which the screen prints as "your copy is still where you left it". A function
-     * returning false would print "it could not be removed", which reads as a fault. */
-    expect(web.discard).toBeNull();
+     * returning false would print "it could not be moved", which reads as a fault. */
+    expect(web.archive).toBeNull();
   });
 
   it("names no folder", () => {
@@ -113,32 +113,41 @@ describe("the desktop mods folder, read off the index the shell already serves",
   });
 });
 
-describe("discarding the archive is reported, never assumed", () => {
-  it("passes the leaf name through and reports success", async () => {
-    const discardModZip = vi.fn(() => Promise.resolve({ ok: true }));
-    const deps = zipImportDeps(env, () => true, desktopScope({ discardModZip }));
-    expect(await deps.discard?.("a.zip")).toEqual({ ok: true });
-    expect(discardModZip).toHaveBeenCalledWith("a.zip");
+describe("moving the archive aside is reported, never assumed", () => {
+  it("passes the leaf name through and reports where it went", async () => {
+    /* `to` is carried because the screen names the file's new home: "moved to
+     * imported/x.zip" is actionable and "moved" is a thing to go and look for. */
+    const archiveModZip = vi.fn(() => Promise.resolve({ ok: true, to: "imported/a.zip" }));
+    const deps = zipImportDeps(env, () => true, desktopScope({ archiveModZip }));
+    expect(await deps.archive?.("a.zip")).toEqual({ ok: true, to: "imported/a.zip" });
+    expect(archiveModZip).toHaveBeenCalledWith("a.zip");
   });
 
   it("carries the shell's reason back, because the screen has to print it", async () => {
     const deps = zipImportDeps(env, () => true, desktopScope({
-      discardModZip: () => Promise.resolve({ ok: false, error: "EBUSY" }),
+      archiveModZip: () => Promise.resolve({ ok: false, error: "EBUSY" }),
     }));
-    expect(await deps.discard?.("a.zip")).toEqual({ ok: false, error: "EBUSY" });
+    expect(await deps.archive?.("a.zip")).toEqual({ ok: false, error: "EBUSY" });
   });
 
-  it("treats a thrown bridge as a failed discard, not as a failed install", async () => {
+  it("treats a thrown bridge as a failed move, not as a failed install", async () => {
     const deps = zipImportDeps(env, () => true, desktopScope({
-      discardModZip: () => Promise.reject(new Error("the channel is gone")),
+      archiveModZip: () => Promise.reject(new Error("the channel is gone")),
     }));
-    expect(await deps.discard?.("a.zip")).toEqual({ ok: false, error: "the channel is gone" });
+    expect(await deps.archive?.("a.zip")).toEqual({ ok: false, error: "the channel is gone" });
   });
 
   it("treats an answer that is not an answer as a failure", async () => {
     const deps = zipImportDeps(env, () => true, desktopScope({
-      discardModZip: () => Promise.resolve(undefined),
+      archiveModZip: () => Promise.resolve(undefined),
     }));
-    expect((await deps.discard?.("a.zip"))?.ok).toBe(false);
+    expect((await deps.archive?.("a.zip"))?.ok).toBe(false);
+  });
+
+  it("drops a `to` that is not a usable string, rather than printing it", async () => {
+    const deps = zipImportDeps(env, () => true, desktopScope({
+      archiveModZip: () => Promise.resolve({ ok: true, to: 7 }),
+    }));
+    expect(await deps.archive?.("a.zip")).toEqual({ ok: true });
   });
 });

@@ -26,15 +26,22 @@
  * came from, and honouring one from a file would let an import silently overwrite
  * a character already in that slot. The importer allocates a new id, always.
  *
+ * WHAT IS IN IT INSTEAD, and the distinction is the whole of the anti-scum story:
+ * the LINEAGE - who the character is, rather than which slot they were in. It
+ * survives the trip, so the receiving roster can tell "this is my Bilbo, from
+ * another surface" from "this is a stranger called Bilbo". transfer-gate.ts is
+ * what does the telling; this module only carries the field.
+ *
  * NO SAVE-SCUMMING GUARANTEE IS BROKEN BY THIS, and it is worth being exact
- * rather than reassuring. A file can be exported, played past, and re-imported -
- * that IS a snapshot restore, and this module cannot prevent it any more than
- * copying a .sav can be prevented in upstream Angband, which has always been able
- * to do exactly that. What decision 16 forbids is the GAME offering it: no
- * in-game restore point, no reload-on-death, and death still turns a slot into a
- * tombstone. An imported dead character stays dead - `alive: false` travels with
+ * rather than reassuring. What decision 16 forbids is the GAME offering a restore:
+ * no in-game restore point, no reload-on-death, and death still turns a slot into
+ * a tombstone. An imported dead character stays dead - `alive: false` travels with
  * the metadata and the bytes of a dead slot are gone before an export can see
- * them.
+ * them - and with the lineage in hand, transfer-gate.ts also refuses a file from
+ * before a death this roster remembers, and one that is no further along than the
+ * copy already here. What is still possible: a second install that never saw the
+ * death, and a hand-edited lineage. transfer-gate.ts's head comment says why
+ * neither is worth engineering against.
  */
 
 /** The current file format. Bumped only when an older file would be MISREAD. */
@@ -68,6 +75,15 @@ export interface TransferFile {
   readonly meta: TransferMeta;
   /** The slot's save bytes, base64, byte-for-byte as the slot holds them. */
   readonly save: string;
+  /**
+   * Who this character is (roster.ts's `lineage`), so a receiving roster can
+   * recognise its own character coming back.
+   *
+   * Optional on the READ side only, and it stays optional: files written before
+   * this field existed are still importable, and a build that meets one treats it
+   * as a character it has never seen - which is what it was doing already.
+   */
+  readonly lineage?: string;
 }
 
 /** Serialise one character. Pretty-printed: this is a file a human may open. */
@@ -76,12 +92,14 @@ export function encodeTransfer(input: {
   readonly save: string;
   readonly engine: string;
   readonly exportedAt: string;
+  readonly lineage: string;
 }): string {
   const file: TransferFile = {
     magic: TRANSFER_MAGIC,
     version: TRANSFER_VERSION,
     engine: input.engine,
     exportedAt: input.exportedAt,
+    lineage: input.lineage,
     meta: input.meta,
     save: input.save,
   };
@@ -154,6 +172,12 @@ export function decodeTransfer(text: string): TransferResult {
       version,
       engine: typeof o["engine"] === "string" ? o["engine"] : "unknown",
       exportedAt: typeof o["exportedAt"] === "string" ? o["exportedAt"] : "",
+      /* Absent or the wrong type reads as absent, NOT as a refusal: the gate that
+       * uses this treats a file with no lineage as a character it has not met,
+       * which is the pre-lineage behaviour and is safe. */
+      ...(typeof o["lineage"] === "string" && o["lineage"] !== ""
+        ? { lineage: o["lineage"] }
+        : {}),
       meta,
       save,
     },

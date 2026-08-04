@@ -116,15 +116,15 @@ contextBridge.exposeInMainWorld("neoDesktop", {
   },
 
   /**
-   * Discard a mod archive from the mods folder, after it has been imported.
+   * Move a mod archive into `mods/imported/`, after it has been imported.
    *
    * A LEAF NAME, never a path, for the same reason `update` takes an operation and
    * never a directory: the renderer says which archive in the folder the game already
-   * owns, and the main process decides whether that is a thing it will delete. Handing
-   * this a path would make it an unlink primitive over the whole disk.
+   * owns, and the main process decides whether that is a thing it will move. Handing
+   * this a path would make it a rename primitive over the whole disk.
    */
-  discardModZip(name: string): Promise<unknown> {
-    return ipcRenderer.invoke(MOD_ZIP_CHANNEL, "discard", name) as Promise<unknown>;
+  archiveModZip(name: string): Promise<unknown> {
+    return ipcRenderer.invoke(MOD_ZIP_CHANNEL, "archive", name) as Promise<unknown>;
   },
 
   /** Download progress. Returns the unsubscribe, so a closed page stops listening. */

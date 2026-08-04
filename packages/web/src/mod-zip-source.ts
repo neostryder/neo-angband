@@ -5,18 +5,21 @@
  *
  *   THE MODS FOLDER. The desktop build owns a `mods/` directory and already serves it
  *   over its loopback port, so an archive dropped in there can be listed, read, and -
- *   the part that matters - DELETED once it has been installed. This is the only place
- *   "remove the zip after installing" can be true, because it is the only file the game
- *   put a name to before the player picked it.
+ *   the part that matters - MOVED ASIDE once it has been installed, into
+ *   `mods/imported/`. This is the only place "tidy the zip away after installing" can be
+ *   true, because it is the only file the game put a name to before the player picked it.
+ *   It is a move and not a delete: the zip is the player's copy of somebody else's work,
+ *   and the game has no business being the only place it survives.
  *
  *   A FILE THE PLAYER CHOOSES. Works everywhere, including a browser tab. A page is
  *   handed the bytes of a chosen file and no authority whatsoever over the file itself:
- *   there is no API that deletes it and there should not be. So this half installs and
- *   then says, in those words, that the archive is still where the player left it.
+ *   there is no API that moves or deletes it and there should not be. So this half
+ *   installs and then says, in those words, that the archive is still where the player
+ *   left it.
  *
  * The difference is REPORTED rather than smoothed over. A screen that said "imported and
- * removed" on both would be lying on one of them, and the player would go looking for a
- * file that is still there or, worse, stop looking for one that is.
+ * tidied away" on both would be lying on one of them, and the player would go looking for
+ * a file that never moved or, worse, stop looking for one that did.
  *
  * NOTHING HERE DISCOVERS ANYTHING AT LOAD. The listing is asked for by the import screen
  * when the player opens it. A shell that unpacked whatever it found in a folder at
@@ -43,13 +46,18 @@ export interface ZipImportDeps {
   /** Validate and store. Enforces consent itself - see installModFromZip. */
   readonly install: (bytes: Uint8Array) => Promise<InstallResult>;
   /**
-   * Delete an archive from the mods folder, or null on a front end that cannot.
+   * Move an archive into `mods/imported/`, or null on a front end that cannot.
    *
    * Null is the honest answer for a browser tab and is what the screen reads to decide
    * which sentence to print. A stub that returned false would say "it could not be
-   * deleted", which sounds like a fault rather than like a platform.
+   * moved", which sounds like a fault rather than like a platform.
+   *
+   * `to` is where it ended up, relative to the mods folder, so the screen can name the
+   * file rather than asking the player to go and look for it.
    */
-  readonly discard: ((name: string) => Promise<{ ok: boolean; error?: string }>) | null;
+  readonly archive:
+    | ((name: string) => Promise<{ ok: boolean; error?: string; to?: string }>)
+    | null;
   /** The mods folder's real path, for the line that tells a player where to drop a zip. */
   readonly folder: () => string | null;
 }
@@ -59,7 +67,7 @@ interface DesktopZipBridge {
   readonly modsIndexUrl?: unknown;
   readonly modsBaseUrl?: unknown;
   readonly dataDir?: unknown;
-  readonly discardModZip?: unknown;
+  readonly archiveModZip?: unknown;
 }
 
 function bridgeOf(scope: unknown): DesktopZipBridge | null {
@@ -135,7 +143,7 @@ export function pickZipFile(): Promise<{ name: string; bytes: Uint8Array } | nul
  * The production wiring.
  *
  * Everything the desktop half needs is feature-detected off `neoDesktop`, so the same
- * bundle serves a browser tab: there, `waiting` answers with nothing, `discard` is null,
+ * bundle serves a browser tab: there, `waiting` answers with nothing, `archive` is null,
  * and only the picked-file door is offered.
  */
 export function zipImportDeps(
@@ -146,7 +154,7 @@ export function zipImportDeps(
   const bridge = bridgeOf(scope);
   const indexUrl = typeof bridge?.modsIndexUrl === "string" ? bridge.modsIndexUrl : null;
   const baseUrl = typeof bridge?.modsBaseUrl === "string" ? bridge.modsBaseUrl : null;
-  const discardFn = typeof bridge?.discardModZip === "function" ? bridge.discardModZip : null;
+  const archiveFn = typeof bridge?.archiveModZip === "function" ? bridge.archiveModZip : null;
   const doFetch = (scope as { fetch?: typeof fetch }).fetch?.bind(scope) ?? null;
 
   return {
@@ -178,17 +186,23 @@ export function zipImportDeps(
     },
     pick: pickZipFile,
     install: async (bytes) => await installModFromZip(bytes, env, allowed()),
-    discard:
-      discardFn === null
+    archive:
+      archiveFn === null
         ? null
         : async (name) => {
             try {
-              const answer = await (discardFn as (n: string) => Promise<unknown>)(name);
+              const answer = await (archiveFn as (n: string) => Promise<unknown>)(name);
               if (answer !== null && typeof answer === "object" && "ok" in answer) {
-                const { ok, error } = answer as { ok?: unknown; error?: unknown };
-                return typeof error === "string"
-                  ? { ok: ok === true, error }
-                  : { ok: ok === true };
+                const { ok, error, to } = answer as {
+                  ok?: unknown;
+                  error?: unknown;
+                  to?: unknown;
+                };
+                return {
+                  ok: ok === true,
+                  ...(typeof error === "string" ? { error } : {}),
+                  ...(typeof to === "string" && to !== "" ? { to } : {}),
+                };
               }
               return { ok: false, error: "the shell gave no answer" };
             } catch (e) {
