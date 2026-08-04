@@ -1,5 +1,5 @@
 /**
- * The three doors: how a player actually reaches a mod.
+ * The four doors: how a player actually reaches a mod.
  *
  * WHAT THIS REPLACES, AND WHY. The old screen was a front end for RECOMMENDED_MODS -
  * a catalogue COMPILED INTO THE BUILD, holding each mod's name, version, description
@@ -16,10 +16,16 @@
  *                       repository POINTERS, re-curatable without a release.
  *   2. A registry      - anybody else's list of the same shape, by address.
  *   3. A repository    - one mod, by owner/repo or a GitHub URL.
+ *   4. A .zip file      - the one door that does NOT end in a repository. Either an
+ *                       archive waiting in the game's own mods folder, or one the
+ *                       player chooses. See mod-zip.ts for what an archive has to be,
+ *                       and mod-zip-source.ts for why those two halves differ.
  *
- * Doors 2 and 3 need "Allow third-party mods" first (mod-consent.ts). Door 1 does
+ * Doors 2, 3 and 4 need "Allow third-party mods" first (mod-consent.ts). Door 1 does
  * not, because a maintainer putting a repository on that list is the act of
- * vouching - and the disclaimer says plainly that vouching is not auditing.
+ * vouching - and the disclaimer says plainly that vouching is not auditing. There is
+ * no such thing as a curated zip: an archive did not come from the curated list, so
+ * door 4 is third-party by construction.
  *
  * WHAT A ROW SAYS AND WHERE EACH PART CAME FROM is the whole design. The name,
  * version, description, size and engine range are the MOD's, read from its
@@ -43,11 +49,13 @@ import { DEFAULT_REGISTRY_URL, type ModRegistry } from "./mod-curated";
 import type { DiscoveredMod } from "./mod-discover";
 import { parseRepoRef, repoPageUrl, type RepoRef } from "./mod-source";
 import type { InstallProgress, InstallResult } from "./mod-install";
+import type { WaitingZip, ZipImportDeps } from "./mod-zip-source";
 import {
   pendingUpgrades,
   refreshRow,
   repoPage,
   unavailableMods,
+  upToDateHeadline,
   type ModRefresh,
 } from "./mod-refresh";
 
@@ -90,6 +98,13 @@ export interface ModBrowseDeps {
   };
   /** Offer to turn a freshly-installed mod on. See ModCatalogueDeps.offerEnable. */
   readonly offerEnable?: (id: string) => Promise<boolean>;
+  /**
+   * Importing a mod from an archive. Absent where no file can be read at all.
+   *
+   * The fourth door, and the only one that does not end in a repository - see
+   * mod-zip-source.ts for why its two halves are not the same door.
+   */
+  readonly importZip?: ZipImportDeps;
 }
 
 /** ModBrowseDeps plus the one thing the update screen needs of its own. */
@@ -263,12 +278,39 @@ export function browseDetail(
   return out;
 }
 
+/**
+ * The width a refusal is wrapped to before it is shown.
+ *
+ * Fixed rather than measured, because these are pure functions with no terminal to ask,
+ * and 74 fits the narrowest layout the game draws. The number earns its place: a
+ * refusal is the one screen whose LAST words carry the instruction - "...one at a time,
+ * each in its own zip" - and an unwrapped line loses its end, not its middle.
+ */
+const MESSAGE_WIDTH = 74;
+
+/**
+ * Wrap one line of a message, and only if it needs it.
+ *
+ * wrapTo splits on whitespace, so passing it every line would strip the indent off the
+ * bulleted requirements the standards inspection returns - turning a readable list into
+ * a flush-left block. A line that already fits is therefore handed back untouched, and
+ * a line that does not keeps its indent on every continuation.
+ */
+function wrapMessage(line: string, width: number): string[] {
+  if (line.length <= width) return [line];
+  const indent = /^[ \t]*/u.exec(line)?.[0] ?? "";
+  return wrapTo(line, Math.max(20, width - indent.length)).map((l) => indent + l);
+}
+
 /** What to show when an install was refused. Never a bare "it failed". */
 export function installFailureLines(name: string, problem: string): ScreenLine[] {
   return [
     { text: `${name} was not installed.`, color: C_BAD },
     { text: "", color: C_FG },
-    ...problem.split("\n").map((line) => ({ text: line, color: C_WARN })),
+    ...problem
+      .split("\n")
+      .flatMap((line) => wrapMessage(line, MESSAGE_WIDTH))
+      .map((line) => ({ text: line, color: C_WARN })),
     { text: "", color: C_FG },
     { text: "Nothing was stored, so your other mods are untouched.", color: C_DIM },
   ];
@@ -568,6 +610,217 @@ async function openRegistry(
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * The fourth door: a mod that arrived as a file.
+ * ------------------------------------------------------------------ */
+
+/** How one waiting archive reads on its row. */
+export function waitingZipRow(z: WaitingZip): string {
+  return `${z.name}  (${formatBytes(z.bytes)})`;
+}
+
+/**
+ * What the screen says after an import, including the part about the file itself.
+ *
+ * A SEPARATE FUNCTION BECAUSE THE SENTENCE IS THE FEATURE. Three outcomes have to be
+ * distinguishable: the archive was deleted, the archive is still there because this
+ * platform cannot delete it, and the archive is still there because deleting it FAILED.
+ * Collapsing the last two into "installed" would leave a player with a duplicate they
+ * do not know about; collapsing them into "could not delete" would report a fault on a
+ * browser that never had the ability in the first place.
+ */
+export function importedLines(
+  id: string,
+  fileCount: number,
+  source: string,
+  discarded: { readonly ok: boolean; readonly error?: string } | null,
+  enabled: boolean,
+): readonly ScreenLine[] {
+  const tail: ScreenLine[] =
+    discarded === null
+      ? [
+          { text: `${source} is still where you left it.`, color: C_DIM },
+          { text: "The game has its own copy now; you can delete yours.", color: C_DIM },
+        ]
+      : discarded.ok
+        ? [{ text: `${source} has been removed from the mods folder.`, color: C_DIM }]
+        : [
+            { text: `${source} is still in the mods folder.`, color: C_WARN },
+            {
+              text: `It could not be removed: ${discarded.error ?? "no reason given"}`,
+              color: C_WARN,
+            },
+            { text: "The mod is installed. Deleting the file is safe.", color: C_DIM },
+          ];
+  return [
+    { text: `${id} installed.`, color: C_GOOD },
+    { text: "", color: C_FG },
+    { text: `${String(fileCount)} file(s) stored, from ${source}.`, color: C_DIM },
+    ...tail,
+    { text: "", color: C_FG },
+    ...(enabled
+      ? [{ text: "It is enabled. Reload to start using it.", color: C_FG }]
+      : [
+          { text: "It is OFF until you turn it on in the mod list.", color: C_FG },
+          { text: "Nothing is enabled by installing it.", color: C_DIM },
+        ]),
+  ];
+}
+
+/** Read, validate, store - then, only then, discard the source. */
+async function importOne(
+  term: GlyphTerm,
+  bytes: Uint8Array,
+  source: string,
+  /** The leaf name to delete afterwards, or null for a file the game does not own. */
+  discardable: string | null,
+  deps: ModBrowseDeps,
+  zip: ZipImportDeps,
+): Promise<boolean> {
+  const result = await paintWhile(term, "Importing", `Checking ${source}...`, () =>
+    zip.install(bytes),
+  );
+  if (!result.ok) {
+    await showTextScreen(term, "That zip was not imported", [
+      ...result.problem
+        .split("\n")
+        .flatMap((line) => wrapMessage(line, MESSAGE_WIDTH))
+        .map((line) => ({ text: line, color: C_BAD })),
+      { text: "", color: C_FG },
+      { text: "Nothing has been installed or changed.", color: C_DIM },
+    ]);
+    return false;
+  }
+
+  /* STORE FIRST, DELETE SECOND, and never the other way round. The two cannot be made
+   * one operation - IndexedDB and a filesystem have no shared transaction - so the
+   * question is only which wreckage is survivable. Deleting first and failing to store
+   * loses the archive; storing first and failing to delete leaves a duplicate the
+   * player can remove. Prefer the one that costs a tidy-up. */
+  const discarded =
+    discardable !== null && zip.discard !== null ? await zip.discard(discardable) : null;
+
+  const enabled = deps.offerEnable ? await deps.offerEnable(result.meta.id) : false;
+  await showTextScreen(
+    term,
+    result.meta.id,
+    importedLines(result.meta.id, result.meta.files.length, source, discarded, enabled),
+  );
+  return true;
+}
+
+/**
+ * "Import a mod from a file".
+ *
+ * Lists whatever is waiting in the game's own mods folder, and offers the file picker
+ * underneath it. Both halves end in the same importOne, so an archive that came out of
+ * the folder and one the player chose are validated, stored and reported identically -
+ * the ONLY difference between them is whether the source file can be deleted, and that
+ * difference is stated on the screen rather than hidden.
+ */
+export async function showZipImport(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean> {
+  const zip = deps.importZip;
+  if (!zip) return false;
+  let changed = false;
+
+  for (;;) {
+    const waiting = await paintWhile(term, "Import a mod", "Looking in the mods folder...", () =>
+      zip.waiting(),
+    );
+    const folder = zip.folder();
+
+    const items: MenuItem[] = [
+      ...waiting.map((z) => ({
+        label: waitingZipRow(z),
+        color: C_FG,
+        hint:
+          zip.discard === null
+            ? "Import this archive."
+            : "Import it, then remove the zip from the mods folder.",
+      })),
+      {
+        label: "Choose a .zip file...",
+        color: C_FG,
+        hint: "Any zip on your machine. Your copy of it is left alone.",
+      },
+      { label: "What is this?", color: C_DIM, hint: "What a mod zip has to look like." },
+    ];
+
+    const title = folder === null ? "Import a mod" : `Import a mod  -  ${folder}`;
+    const pick = await selectFromMenu(term, title, items, "[ ESC to go back ]");
+    if (pick === null) return changed;
+
+    if (pick === items.length - 1) {
+      await showTextScreen(term, "Import a mod", aboutImport(folder, zip.discard !== null));
+      continue;
+    }
+
+    /* The consent check is repeated at the INSTALL (mod-install.ts); this one exists so
+     * the player is offered the disclaimer instead of being refused after choosing a
+     * file. An imported mod is third-party by definition - there is no curated zip. */
+    if (!deps.consent.read()) {
+      if (!(await askConsent(term, deps))) continue;
+    }
+
+    if (pick === items.length - 2) {
+      const chosen = await zip.pick();
+      if (chosen === null) continue;
+      if (await importOne(term, chosen.bytes, chosen.name, null, deps, zip)) changed = true;
+      continue;
+    }
+
+    const which = waiting[pick];
+    if (!which) continue;
+    const bytes = await paintWhile(term, "Import a mod", `Reading ${which.name}...`, () =>
+      zip.read(which.name),
+    );
+    if (bytes === null) {
+      await showTextScreen(term, which.name, [
+        { text: `${which.name} could not be read.`, color: C_BAD },
+        { text: "", color: C_FG },
+        { text: "It may have been moved or deleted since this list was made.", color: C_DIM },
+      ]);
+      continue;
+    }
+    if (await importOne(term, bytes, which.name, which.name, deps, zip)) changed = true;
+  }
+}
+
+/** What the "What is this?" row says, which depends on what this platform can do. */
+function aboutImport(folder: string | null, canDiscard: boolean): readonly ScreenLine[] {
+  const dim = (text: string): ScreenLine => ({ text, color: C_DIM });
+  const fg = (text: string): ScreenLine => ({ text, color: C_FG });
+  return [
+    fg("A mod can be installed from a .zip file instead of from a repository."),
+    dim("This is the same install: the same requirements are checked, and the"),
+    dim("mod is stored the same way. Only where the bytes came from differs."),
+    { text: "", color: C_FG },
+    fg("The zip has to hold ONE mod, and its manifest.json has to be either:"),
+    dim("  at the top of the zip, or"),
+    dim("  inside a single folder at the top of the zip."),
+    dim("That second shape is what GitHub's \"Download ZIP\" gives you."),
+    { text: "", color: C_FG },
+    fg("Nothing deeper is looked at. A zip holding two mods is refused, and"),
+    fg("says which two, rather than guessing which one you meant."),
+    { text: "", color: C_FG },
+    ...(folder === null
+      ? [dim("This front end has no mods folder, so only the file picker is offered.")]
+      : [
+          fg("You can also drop a zip into the mods folder and import it here:"),
+          dim(`  ${folder}`),
+          ...(canDiscard
+            ? [dim("A zip imported from there is deleted once the mod is installed.")]
+            : []),
+        ]),
+    { text: "", color: C_FG },
+    fg("A zip is never checked at startup and never unpacked on its own."),
+    dim("Importing is something you do, once, from this screen."),
+    { text: "", color: C_FG },
+    fg("An imported mod has no repository, so the update check has nothing to"),
+    fg("ask. To update one, import a newer zip."),
+  ];
+}
+
 /**
  * The door chooser.
  *
@@ -598,6 +851,15 @@ export async function showModBrowse(term: GlyphTerm, deps: ModBrowseDeps): Promi
         hint: allowed ? "One mod, by owner/repo." : 'Needs "Allow third-party mods" below.',
       },
       {
+        label: "Import a mod from a file",
+        color: !deps.importZip ? C_DIM : allowed ? C_FG : C_DIM,
+        hint: !deps.importZip
+          ? "This front end cannot read a file."
+          : allowed
+            ? "A .zip you have, or one waiting in the mods folder."
+            : 'Needs "Allow third-party mods" below.',
+      },
+      {
         label: `Allow third-party mods: ${allowed ? "yes" : "no"}`,
         color: allowed ? C_WARN : C_FG,
         hint: allowed
@@ -615,10 +877,16 @@ export async function showModBrowse(term: GlyphTerm, deps: ModBrowseDeps): Promi
       continue;
     }
     if (pick === 3) {
-      await askConsent(term, deps);
+      /* Its own consent handling lives inside the screen, because the disclaimer has
+       * to be offered when a file is chosen rather than when the row is. */
+      if (deps.importZip && (await showZipImport(term, deps))) changed = true;
       continue;
     }
     if (pick === 4) {
+      await askConsent(term, deps);
+      continue;
+    }
+    if (pick === 5) {
       await showTextScreen(term, "Get mods", ABOUT);
       continue;
     }
@@ -711,19 +979,13 @@ export async function showModUpgrades(term: GlyphTerm, deps: ModUpgradeDeps): Pr
 
     if (pending.length === 0) {
       await showTextScreen(term, "Update installed mods", [
-        ...(refreshed.length === 0
-          ? [{ text: "No mods are installed yet.", color: C_FG }]
-          : blind.length === refreshed.length
-            ? [{ text: "None of the installed mods could be checked.", color: C_WARN }]
-            : [
-                {
-                  text:
-                    blind.length === 0
-                      ? "Every installed mod is at its repository's newest version."
-                      : `${String(refreshed.length - blind.length)} of ${String(refreshed.length)} are at their repository's newest version.`,
-                  color: C_FG,
-                },
-              ]),
+        /* One sentence, from one place, that has to fit what was actually asked -
+         * see upToDateHeadline. Composing it here is how it came to say "every"
+         * about a set that included mods nothing had asked about. */
+        ...wrapMessage(upToDateHeadline(refreshed), MESSAGE_WIDTH).map((text) => ({
+          text,
+          color: blind.length > 0 && blind.length === refreshed.length ? C_WARN : C_FG,
+        })),
         { text: "", color: C_FG },
         ...refreshed.map((r) => ({
           text: `  ${refreshRow(r)}`,

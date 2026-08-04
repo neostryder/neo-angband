@@ -23,7 +23,7 @@
  */
 
 import { listTags, type DiscoverEnv } from "./mod-discover";
-import type { InstalledModMeta } from "./mod-install";
+import { isImported, type InstalledModMeta } from "./mod-install";
 import { tagsInChannel } from "./mod-source";
 import { classifyModTag, type ModTagStanding } from "./mod-updates";
 
@@ -36,7 +36,7 @@ import { classifyModTag, type ModTagStanding } from "./mod-updates";
  * about what an update is. `unavailable` is the one this module adds, and it is the
  * whole point - see the header.
  */
-export type ModStanding = ModTagStanding | "unavailable";
+export type ModStanding = ModTagStanding | "unavailable" | "no-repository";
 
 export interface ModRefresh {
   readonly id: string;
@@ -89,6 +89,25 @@ export async function refreshInstalledMods(
 }
 
 async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<ModRefresh> {
+  /*
+   * A MOD WITH NO REPOSITORY IS NOT A MOD THAT COULD NOT BE CHECKED. An imported zip
+   * has no address to ask, so asking one is not merely pointless - it would send a
+   * request for "file:import" to GitHub, get a 404, and report the mod as unavailable,
+   * which reads as "something is wrong with your mod" about the one kind of mod that
+   * is working exactly as designed. A distinct standing, because the two facts are
+   * distinct and the row has to say different words.
+   */
+  if (isImported(meta)) {
+    return {
+      id: meta.id,
+      repo: meta.repo,
+      installed: meta.tag,
+      newest: null,
+      standing: "no-repository",
+      problem: null,
+      channelHeld: null,
+    };
+  }
   let all: readonly string[];
   try {
     all = await listTags(meta.repo, env);
@@ -165,9 +184,19 @@ export function pendingUpgrades(refreshed: readonly ModRefresh[]): readonly ModU
   return out;
 }
 
-/** The mods whose repositories could not be asked at all. */
+/**
+ * The mods whose repositories could not be asked at all.
+ *
+ * An imported mod is NOT one of these. It has no repository to fail to reach, so
+ * counting it here would turn a working import into a warning the player cannot act on.
+ */
 export function unavailableMods(refreshed: readonly ModRefresh[]): readonly ModRefresh[] {
   return refreshed.filter((r) => r.standing === "unavailable");
+}
+
+/** The mods that came from a file rather than an address, so nothing can be asked. */
+export function importedMods(refreshed: readonly ModRefresh[]): readonly ModRefresh[] {
+  return refreshed.filter((r) => r.standing === "no-repository");
 }
 
 /**
@@ -199,7 +228,53 @@ export function modUpgradeRowLabel(
       ? "Update installed mods...  (could not reach GitHub)"
       : `Update installed mods...  (${String(blind)} could not be checked)`;
   }
+  const imported = importedMods(refreshed).length;
+  /* The claim has to shrink to fit what was checked. "Each mod is at its newest" is
+   * false the moment one of them was never asked, however good the reason. */
+  if (imported === refreshed.length) {
+    return "Update installed mods...  (every mod was imported from a file)";
+  }
+  if (imported > 0) {
+    return `Update installed mods...  (the rest are at their newest; ${String(imported)} imported from a file)`;
+  }
   return "Update installed mods...  (each mod is at its repository's newest version)";
+}
+
+/**
+ * The headline on "Update installed mods" when nothing is waiting.
+ *
+ * ITS OWN FUNCTION FOR THE SAME REASON modUpgradeRowLabel IS. This sentence is the
+ * whole answer the player takes away, and the wrong version of it is the exact defect
+ * this screen shipped: a claim about every mod, made after checking some of them. Two
+ * different reasons a mod goes unchecked now exist - it could not be reached, or it
+ * never had a repository - and both have to come off the total before the word "every"
+ * is allowed. Pulled out of the screen so a table test can drive every combination;
+ * the version that lived inline was verified by looking at one of them.
+ */
+export function upToDateHeadline(refreshed: readonly ModRefresh[]): string {
+  const total = refreshed.length;
+  if (total === 0) return "No mods are installed yet.";
+  const blind = unavailableMods(refreshed).length;
+  const imported = importedMods(refreshed).length;
+  const asked = total - blind - imported;
+  if (asked === 0) {
+    if (blind === 0) {
+      return imported === 1
+        ? "The one installed mod came from a file, so there is nothing to check."
+        : "Every installed mod came from a file, so there is nothing to check.";
+    }
+    if (imported === 0) return "None of the installed mods could be checked.";
+    return (
+      `No installed mod could be checked: ${String(imported)} came from a file and ` +
+      `${String(blind)} could not be reached.`
+    );
+  }
+  if (blind === 0 && imported === 0) {
+    return "Every installed mod is at its repository's newest version.";
+  }
+  return (
+    `${String(asked)} of ${String(total)} are at their repository's newest version.`
+  );
 }
 
 /** The line the (U)pdate screen shows about mods, or null when there is nothing. */
@@ -235,6 +310,11 @@ export function refreshRow(r: ModRefresh): string {
       return `${head} (newer than ${r.repo}'s ${r.newest ?? "newest"})`;
     case "unavailable":
       return `${head} (could not check: ${r.problem ?? "no reason given"})`;
+    case "no-repository":
+      /* Not a failure. This mod came out of a file the player chose, so there is no
+       * address to ask and never was - saying "could not check" about it would be an
+       * alarm about the one mod that is behaving exactly as designed. */
+      return `${head} (imported from a file - import a newer zip to update it)`;
     case "unorderable":
       return r.channelHeld === null
         ? `${head} (${r.repo} offers no version this can be compared with)`

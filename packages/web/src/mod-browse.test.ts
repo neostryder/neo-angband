@@ -8,12 +8,20 @@
  * actually cause. A misaligned column is not.
  */
 
+import { describe, expect, it } from "vitest";
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
-
-import { browseDetail, browseRow, installFailureLines, sourceLabel, type BrowseEntry } from "./mod-browse";
+import {
+  browseDetail,
+  browseRow,
+  importedLines,
+  installFailureLines,
+  sourceLabel,
+  waitingZipRow,
+  type BrowseEntry,
+} from "./mod-browse";
 import { parseAuthors, type AuthorRegister } from "./mod-authors";
 import type { DiscoveredMod } from "./mod-discover";
 
@@ -285,5 +293,69 @@ describe("the detail pane wraps", () => {
     const word = "x".repeat(120);
     const lines = browseDetail(found({ description: word }), null, register, 40);
     expect(lines.map((l) => l.text)).toContain(word);
+  });
+});
+
+describe("what the screen says after importing a zip", () => {
+  const text = (lines: readonly { text: string }[]): string => lines.map((l) => l.text).join("\n");
+
+  it("says the archive was removed when it was", () => {
+    const out = text(importedLines("qol", 2, "qol.zip", { ok: true }, false));
+    expect(out).toContain("qol.zip has been removed from the mods folder.");
+    expect(out).not.toMatch(/still/u);
+  });
+
+  it("says the file is untouched when this platform never could delete it", () => {
+    /* null, not {ok:false}. A browser tab has no authority over a file the player
+     * chose, and reporting that as a failed deletion invents a fault. */
+    const out = text(importedLines("qol", 2, "qol.zip", null, false));
+    expect(out).toContain("qol.zip is still where you left it.");
+    expect(out).not.toMatch(/could not be removed/u);
+  });
+
+  it("says the deletion FAILED, with the reason, and that the mod is fine", () => {
+    const out = text(importedLines("qol", 2, "qol.zip", { ok: false, error: "EBUSY" }, false));
+    expect(out).toContain("still in the mods folder");
+    expect(out).toContain("EBUSY");
+    /* The install succeeded. A player who reads only the warning must still be told
+     * the mod is installed and that removing the file by hand is safe. */
+    expect(out).toContain("qol installed.");
+    expect(out).toContain("Deleting the file is safe.");
+  });
+
+  it("never claims a mod is on just because it is installed", () => {
+    for (const d of [null, { ok: true }, { ok: false, error: "x" }]) {
+      const off = text(importedLines("qol", 1, "qol.zip", d, false));
+      expect(off, JSON.stringify(d)).toContain("It is OFF until you turn it on");
+      const on = text(importedLines("qol", 1, "qol.zip", d, true));
+      expect(on, JSON.stringify(d)).toContain("It is enabled.");
+    }
+  });
+
+  it("names the archive on its row with a size a player can read", () => {
+    expect(waitingZipRow({ name: "qol.zip", bytes: 5550 })).toBe("qol.zip  (5.4 KiB)");
+  });
+});
+
+describe("a refusal must not lose its last words", () => {
+  it("wraps a long problem instead of letting the screen cut it", () => {
+    /* MEASURED AGAINST A REAL MESSAGE. The import refusal for a two-mod archive ends
+     * with the instruction - "each in its own zip" - and truncation eats the END of a
+     * line, so an unwrapped refusal shows the complaint and drops the fix. */
+    const problem =
+      "this archive holds more than one mod (alpha, beta). " +
+      "Import them one at a time, each in its own zip.";
+    const lines = installFailureLines("two-mods.zip", problem);
+    expect(lines.every((l) => l.text.length <= 74)).toBe(true);
+    expect(lines.map((l) => l.text).join(" ")).toContain("each in its own zip.");
+    /* More than one line, or the wrap did nothing and the assertion above is vacuous. */
+    expect(lines.filter((l) => l.text !== "").length).toBeGreaterThan(3);
+  });
+
+  it("keeps the author's own line breaks", () => {
+    const lines = installFailureLines("x", "first\nsecond");
+    const texts = lines.map((l) => l.text);
+    expect(texts).toContain("first");
+    expect(texts).toContain("second");
   });
 });
