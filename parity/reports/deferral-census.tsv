@@ -15,9 +15,9 @@ packages/core/src/effects/effect.ts	8	code			no-symbol		* subtype categories who
 packages/core/src/effects/effect.ts	315	code			no-symbol		/* Summon name (registry not yet ported: injection point) */
 packages/core/src/effects/effect.ts	327	code			no-symbol		/* Player shape name (registry not yet ported: injection point) */
 packages/core/src/effects/handlers.ts	78	code			likely-stale		/* monster_desc(MDESC_DIED_FROM) is deferred (8.9); the game override
-packages/core/src/game/cave-cmd.ts	23	code			likely-real	player_best_digger	* NOW PORTED (was deferred): the swap-digger machinery (player_best_digger,
-packages/core/src/game/cave-cmd.ts	33	code			likely-real	easy_open	* the old easy_open option no longer exists -- so deferring it as "UI" changed
-packages/core/src/game/cave-cmd.ts	36	code			likely-real	do_cmd_steal	* DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22) and
+packages/core/src/game/cave-cmd.ts	23	code	note-is-fix	The sentence records that player_best_digger IS now ported; "was deferred" is history, not a deferral.	likely-real	player_best_digger	* NOW PORTED (was deferred): the swap-digger machinery (player_best_digger,
+packages/core/src/game/cave-cmd.ts	33	code	note-is-fix	Records that count_feats is NOW PORTED and that deferring it had been wrong; easy_open does not exist in 4.2.6.	likely-real	easy_open	* the old easy_open option no longer exists -- so deferring it as "UI" changed
+packages/core/src/game/cave-cmd.ts	36	code	ported	STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.	likely-real	do_cmd_steal	* DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22) and
 packages/core/src/game/cave-cmd.ts	951	code			no-symbol		* disarm, #21 - or the deferred stub if traps are not installed). A
 packages/core/src/game/cave-cmd.ts	1045	code			likely-real	do_cmd_alter	* do_cmd_alter: attack, tunnel, or open, by what is there. DEFERRED: the
 packages/core/src/game/cave-cmd.ts	1047	code	stale-doc	alterCmd at web/main.ts:4493, bound to + at main.ts:8068	likely-real	do_cmd_alter_aux	* (do_cmd_alter_aux L969-992) - "alter" is not wired to a shell key yet,
@@ -55,7 +55,7 @@ packages/core/src/game/gear.ts	1293	code			likely-real	flavor_aware base_known	*
 packages/core/src/game/gear.ts	1338	code			likely-stale		/* object_flavor_aware(p, obj) (player-birth.c:650). Deferred to the caller
 packages/core/src/game/harness.ts	138	code			likely-stale		/** A player combat state that hits reliably (calc_bonuses is deferred). */
 packages/core/src/game/known.ts	153	code			no-symbol		* DEFERRED: PU_UPDATE_VIEW | PU_MONSTERS and the PR_MAP / PR_MONLIST /
-packages/core/src/game/known.ts	750	code			likely-real	path_analyse	/* path_analyse (learn intervening-square terrain): DEFERRED. */
+packages/core/src/game/known.ts	750	code	real	path_analyse absent: no pathAnalyse anywhere in the port, so intervening-square terrain is never learned along a path.	likely-real	path_analyse	/* path_analyse (learn intervening-square terrain): DEFERRED. */
 packages/core/src/game/known.ts	819	code			no-symbol		* RNG); only the known twin is DEFERRED with the knowledge subsystem. The
 packages/core/src/game/known.ts	847	code			no-symbol		* known twin (given->known) is DEFERRED with the knowledge subsystem
 packages/core/src/game/loop.ts	85	code			likely-stale		/** player->upkeep->generate_level (a stair/recall change; regen deferred). */
@@ -63,28 +63,25 @@ packages/core/src/game/loop.ts	337	code			no-symbol		* seen trap re-arms is a pr
 packages/core/src/game/mon-cast.ts	64	code			no-symbol		/** A spell whose effect chain could not be built (deferred subtype). */
 packages/core/src/game/mon-cast.ts	377	code			no-symbol		/* An uninjected summon / shape subtype: the cast fizzles (deferred). */
 packages/core/src/game/mon-death.ts	342	code			likely-stale		/* DEFERRED: the PR_MONLIST redraw (L1002, UI). quest_check (L1005) is wired at
-packages/core/src/game/mon-group.ts	24	code			no-symbol		* range and light, is not ported). Placement assignment and delete removal are
+packages/core/src/game/mon-group.ts	28	code			no-symbol		* claimed that function "also weighs range and light" and was therefore not ported -
 packages/core/src/game/mon-message.ts	15	code			no-symbol		* KNOWN GAP (W1-FIX-monbase, P2 deferred): upstream QUEUES these messages
-packages/core/src/game/mon-place.ts	267	code			likely-real	list_object	* format persists. C's list_object (oidx bookkeeping) is DEFERRED with the
-packages/core/src/game/mon-place.ts	328	code			likely-real	list_object	/* list_object: oidx bookkeeping DEFERRED (game/floor.ts). */
+packages/core/src/game/mon-place.ts	267	code	real	list_object oidx bookkeeping absent (no listObject in the port).	likely-real	list_object	* format persists. C's list_object (oidx bookkeeping) is DEFERRED with the
+packages/core/src/game/mon-place.ts	328	code	real	Same absence, second site.	likely-real	list_object	/* list_object: oidx bookkeeping DEFERRED (game/floor.ts). */
 packages/core/src/game/mon-ranged.ts	267	code			no-symbol		* target is deferred (the target is always the player here).
 packages/core/src/game/mon-side.ts	20	code			likely-stale		* (game/mon-death.ts). react_to_slay blocking a theft stays DEFERRED (no RNG
 packages/core/src/game/monster-turn.ts	24	code			likely-stale		* NOW WIRED (was deferred): make_ranged_attack via the state.monsterCast
 packages/core/src/game/monster-turn.ts	77	code			no-symbol		* DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
-packages/core/src/game/monster-turn.ts	80	code	stale-fixed	monsterTakeTerrainDamage at mon-death.ts:444, called scheduler.ts:131; monTakeNonplayerHit at effect-mon-origin.ts:149	mixed	delete_monster_idx	* (monster_death / delete_monster_idx), which is not ported; only the
-packages/core/src/game/monster-turn.ts	395	code			mixed	process_monster	* process_monster after monster_turn) is DEFERRED - it needs mon_take_nonplayer_hit
-packages/core/src/game/monster-turn.ts	396	code	stale-fixed	monsterTakeTerrainDamage at mon-death.ts:444, called scheduler.ts:131; monTakeNonplayerHit at effect-mon-origin.ts:149	mixed	delete_monster_idx	* (monster_death / delete_monster_idx), which is not ported yet; this predicate
-packages/core/src/game/monster-turn.ts	739	code			no-symbol		/* Ignore damaging terrain (DEFERRED: monsterHatesGrid is false). */
-packages/core/src/game/monster-turn.ts	1046	code			no-symbol		* floors is DEFERRED and draws no RNG.)
-packages/core/src/game/monster-turn.ts	1056	code			no-symbol		/* Ignore floors (adjacent-decoy destruction DEFERRED). */
-packages/core/src/game/monster-turn.ts	1121	code			no-symbol		/* Dangerous terrain in the way (monsterHatesGrid is DEFERRED: false). */
-packages/core/src/game/monster-turn.ts	1321	code			no-symbol		* is DEFERRED - it draws no RNG; messages ride presentation).
-packages/core/src/game/monster-turn.ts	1379	code			no-symbol		* player-cave placeholder copy rides the knowledge subsystem (DEFERRED);
-packages/core/src/game/monster-turn.ts	1404	code			no-symbol		* "rune of protection is broken!" message is UI (DEFERRED, no RNG).
-packages/core/src/game/monster-turn.ts	1427	code			no-symbol		* Item pickup, group behaviour and lore are partially DEFERRED (see the module
-packages/core/src/game/monster-turn.ts	1539	code			no-symbol		* is UI (DEFERRED, no RNG). */
-packages/core/src/game/monster-turn.ts	1671	code			no-symbol		* OF_AGGRAVATE) is lore (DEFERRED). No RNG. */
-packages/core/src/game/monster-turn.ts	1704	code			no-symbol		* miss). Message plumbing and lore are DEFERRED.
+packages/core/src/game/monster-turn.ts	735	code			no-symbol		/* Ignore damaging terrain (DEFERRED: monsterHatesGrid is false). */
+packages/core/src/game/monster-turn.ts	1042	code			no-symbol		* floors is DEFERRED and draws no RNG.)
+packages/core/src/game/monster-turn.ts	1052	code			no-symbol		/* Ignore floors (adjacent-decoy destruction DEFERRED). */
+packages/core/src/game/monster-turn.ts	1117	code			no-symbol		/* Dangerous terrain in the way (monsterHatesGrid is DEFERRED: false). */
+packages/core/src/game/monster-turn.ts	1317	code			no-symbol		* is DEFERRED - it draws no RNG; messages ride presentation).
+packages/core/src/game/monster-turn.ts	1375	code			no-symbol		* player-cave placeholder copy rides the knowledge subsystem (DEFERRED);
+packages/core/src/game/monster-turn.ts	1400	code			no-symbol		* "rune of protection is broken!" message is UI (DEFERRED, no RNG).
+packages/core/src/game/monster-turn.ts	1423	code			no-symbol		* Item pickup, group behaviour and lore are partially DEFERRED (see the module
+packages/core/src/game/monster-turn.ts	1535	code			no-symbol		* is UI (DEFERRED, no RNG). */
+packages/core/src/game/monster-turn.ts	1667	code			no-symbol		* OF_AGGRAVATE) is lore (DEFERRED). No RNG. */
+packages/core/src/game/monster-turn.ts	1700	code			no-symbol		* miss). Message plumbing and lore are DEFERRED.
 packages/core/src/game/obj-cmd.ts	21	code			no-symbol		* rune knowledge system and stays deferred (#24).
 packages/core/src/game/obj-cmd.ts	23	code			no-symbol		* DEFERRED with their subsystems (ledgered in game-obj-cmd.yaml):
 packages/core/src/game/obj-cmd.ts	1736	code			likely-stale		* equipment. The port deferred this to the caller's combine_pack below, which
@@ -125,7 +122,7 @@ packages/core/src/game/wizard.ts	68	code			no-symbol		* DEFERRED (see parity/led
 packages/core/src/gen/cave.ts	30	code			no-symbol		* DEFERRED: the town builder's full store generation and persistent-level
 packages/core/src/gen/cave.ts	31	code			no-symbol		* connectors remain deferred. The single-combat arena level is generated in
 packages/core/src/gen/cave.ts	2833	code			no-symbol		* a dungeon profile; it lives with the deferred quest system.)
-packages/core/src/gen/gen-monster.ts	350	code			likely-real	room_of_chambers	* Not wired to a builder yet (room_of_chambers/cavern callers are deferred),
+packages/core/src/gen/gen-monster.ts	350	code	real	room_of_chambers / cavern callers absent, so this generator entry point has no caller.	likely-real	room_of_chambers	* Not wired to a builder yet (room_of_chambers/cavern callers are deferred),
 packages/core/src/gen/generate.ts	11	code			no-symbol		* DEFERRED (ledgered in parity/ledger/gen-framework.yaml): arena and quest
 packages/core/src/gen/generate.ts	70	code			no-symbol		* directly. Omitted/null keeps the deferred bare-grid behaviour.
 packages/core/src/gen/generate.ts	247	code			no-symbol		* a deferred detail (the port's Connector carries grid + feat). Feeds the next
@@ -136,7 +133,7 @@ packages/core/src/mon/lore-describe.ts	138	code			no-symbol		* DEFERRED: default
 packages/core/src/mon/lore-describe.ts	154	code			no-symbol		* Only consulted for breath-type spells' default damage. DEFERRED: damage
 packages/core/src/mon/lore-describe.ts	846	code			likely-stale		* DEFERRED: hit_chance(chance_of_melee_hit_base(player, weapon), ac)
 packages/core/src/mon/lore-describe.ts	1299	code			likely-stale		* DEFERRED: hit_chance(chance_of_monster_hit_base(race, effect),
-packages/core/src/mon/lore-describe.ts	1348	code			likely-real	monster_x_char monster_x_attr	* DEFERRED: the optional secondary glyph (monster_x_char / monster_x_attr,
+packages/core/src/mon/lore-describe.ts	1348	code	real	monster_x_char / monster_x_attr secondary glyph absent (0 sites).	likely-real	monster_x_char monster_x_attr	* DEFERRED: the optional secondary glyph (monster_x_char / monster_x_attr,
 packages/core/src/mon/make.ts	10	code			no-symbol		* deferred to the world integration; see parity/ledger/mon-make.yaml.
 packages/core/src/mon/make.ts	268	code			no-symbol		* streams stay comparable. Placement into a chunk is deferred.
 packages/core/src/mon/monster.ts	9	code			no-symbol		* which is deferred to the world integration.
@@ -177,7 +174,7 @@ packages/core/src/obj/object.ts	7	code			no-symbol		* DEFERRED (ledgered in pari
 packages/core/src/obj/object.ts	290	code			no-symbol		* deferred; see module docs.
 packages/core/src/obj/object.ts	388	code			no-symbol		* DEFERRED: the obj->known twin (obj-knowledge.c) is not modelled in this port
 packages/core/src/obj/object.ts	909	code			no-symbol		* ignoring inscriptions? Player-knowledge inputs are deferred (module
-packages/core/src/obj/object.ts	918	code			likely-real	object_is_equipped	/* DEFERRED: object_is_equipped checks (no player gear yet). */
+packages/core/src/obj/object.ts	918	code	ported	STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.	likely-real	object_is_equipped	/* DEFERRED: object_is_equipped checks (no player gear yet). */
 packages/core/src/obj/object.ts	923	code			no-symbol		/* DEFERRED: OSTACK_LIST unknown-item checks (knowledge system). */
 packages/core/src/obj/object.ts	1000	code			no-symbol		/* DEFERRED: OSTACK_LIST fully-known mismatch check. */
 packages/core/src/obj/object.ts	1158	code			no-symbol		* system deferred).
@@ -223,8 +220,8 @@ packages/core/src/store/bind.ts	10	code			no-symbol		* (pricing, stock maintenan
 packages/core/src/store/bind.ts	95	code			no-symbol		* no sval are the bookseller's town-book lines (expansion deferred). */
 packages/core/src/store/store.ts	128	code			no-symbol		* The bookseller's no-sval `always:` lines defer to this expansion, which needs
 packages/core/src/store/store.ts	156	code			no-symbol		* deferred town-book `always:` lines (bound.alwaysBookTvals) are expanded into
-packages/core/src/store/store.ts	232	code			likely-real	object_flag_is_known	* object_flag_is_known check is DEFERRED (needs the knowledge system); 4.2.6
-packages/core/src/store/store.ts	262	code			likely-real	object_flag_is_known	/* DEFERRED: && object_flag_is_known(player, obj, buy.flag). */
+packages/core/src/store/store.ts	232	code	real	object_flag_is_known absent (0 sites), so a store's buy check cannot gate on known flags.	likely-real	object_flag_is_known	* object_flag_is_known check is DEFERRED (needs the knowledge system); 4.2.6
+packages/core/src/store/store.ts	262	code	real	Same absence, second site.	likely-real	object_flag_is_known	/* DEFERRED: && object_flag_is_known(player, obj, buy.flag). */
 packages/core/src/store/store.ts	368	code			no-symbol		* branch and the obj->known pile are deferred to the transactions increment;
 packages/core/src/store/transact.ts	13	code			no-symbol		* LIVE vs DEFERRED (ledgered in parity/ledger/store-transact.yaml):
 packages/core/src/store/transact.ts	24	code			no-symbol		* existed a purchase left an item's runes unknown; the header said DEFERRED for
@@ -235,18 +232,16 @@ packages/core/src/store/types.ts	11	code	stale-doc	obj/power.ts objectPower exis
 packages/core/src/world/chunk.ts	10	code			likely-real	square_light_spot	* square_light_spot) are deferred and ledgered.
 packages/web/src/birth.ts	1051	code			no-symbol		// Help is not wired into birth in this port: a recognized no-op.
 packages/web/src/charselect.ts	130	code			no-symbol		/* Export and import ride the same deferred-command hook for the same reason:
-packages/web/src/charsheet.ts	547	code			likely-real	ang_file file_putf	* The ang_file layer of z-file.c is not ported, so file_putf has no counterpart:
-packages/web/src/equip-cmp.ts	291	code			likely-real	ang_file	* reason dumpCharacterFile gives: z-file.c's ang_file layer is not ported, so
 packages/web/src/knowledge.ts	1095	code			no-symbol		// computed flag/combat lines are deferred, so the recall shows the name and
 packages/web/src/knowledge.ts	1185	code			no-symbol		// those computed lines are deferred, so the recall shows the ego name and
-packages/web/src/main.ts	1138	code			likely-stale		* KNOWN-rune modifiers (full equipment stat_add is a deferred core slice), so
-packages/web/src/main.ts	3597	code			no-symbol		// are kept as a fallback utility, not wired into any key below.
-packages/web/src/main.ts	3689	code			no-symbol		* knowledge state is not yet ported are shown greyed rather than omitted, so
-packages/web/src/main.ts	3693	code			no-symbol		* - Shapechange effects needs the shape-lore textblock chain (not ported);
-packages/web/src/main.ts	5884	code			no-symbol		* defers to the floor list screen. Ignored objects are skipped, matching
-packages/web/src/main.ts	5905	code			likely-real	show_floor	// Multiple objects: upstream shows the show_floor screen; defer it.
-packages/web/src/main.ts	8327	code			no-symbol		* DEFERRED with setTimeout because the fault surfaces inside core, halfway
-packages/web/src/main.ts	8388	code			no-symbol		* when updateFov was not yet wired (ui-display.c:2556-2557). */
+packages/web/src/main.ts	1146	code			likely-stale		* KNOWN-rune modifiers (full equipment stat_add is a deferred core slice), so
+packages/web/src/main.ts	3605	code			no-symbol		// are kept as a fallback utility, not wired into any key below.
+packages/web/src/main.ts	3697	code			no-symbol		* knowledge state is not yet ported are shown greyed rather than omitted, so
+packages/web/src/main.ts	3701	code			no-symbol		* - Shapechange effects needs the shape-lore textblock chain (not ported);
+packages/web/src/main.ts	5904	code			no-symbol		* defers to the floor list screen. Ignored objects are skipped, matching
+packages/web/src/main.ts	5925	code	real	show_floor screen for multiple objects absent (0 showFloor sites).	likely-real	show_floor	// Multiple objects: upstream shows the show_floor screen; defer it.
+packages/web/src/main.ts	8349	code			no-symbol		* DEFERRED with setTimeout because the fault surfaces inside core, halfway
+packages/web/src/main.ts	8410	code			no-symbol		* when updateFov was not yet wired (ui-display.c:2556-2557). */
 packages/web/src/mapview.ts	71	code			no-symbol		* rounding branches are dead code and are not ported).
 packages/web/src/mod-browse.ts	1057	code			no-symbol		const todo = pick === 0 ? pending : [pending[pick - 1]];
 packages/web/src/mod-browse.ts	1059	code			no-symbol		for (const u of todo) {
@@ -259,7 +254,7 @@ packages/web/src/pwa.ts	29	code			no-symbol		* has to be cancelled to keep the e
 packages/web/src/pwa.ts	51	code			no-symbol		/* Once installed the event will never fire again, and a stale deferred one
 packages/web/src/screens.ts	872	code			no-symbol		* only and are deferred (a larger follow-up alongside object/artifact
 packages/web/src/userdir.ts	222	code			no-symbol		/* The cancel path. Deferred a tick past focus because Chrome fires focus
-packages/web/src/wizard.ts	497	code			no-symbol		* port has not yet ported for any command list; that absence is tracked
+packages/web/src/wizard.ts	498	code			no-symbol		* port has not yet ported for any command list; that absence is tracked
 packages/cli/src/call-census.ts	16	code			likely-stale		* - pack_overflow(NULL) at game-world.c:947 unwired
 packages/cli/src/host-node.ts	50	code			no-symbol		* init.c carries its own answer as a comment: "ToDo: Only create the
 packages/desktop/src/main.ts	1133	code			no-symbol		const todo = knownPorts.filter((p) => p !== stablePort && !done.has(p));
@@ -268,7 +263,7 @@ packages/desktop/src/main.ts	1142	code			no-symbol		if (todo.length === 0 && dea
 packages/desktop/src/main.ts	1146	code			no-symbol		for (const port of todo) {
 packages/desktop/src/main.ts	1191	code			no-symbol		/* `sources`, not `todo`: only origins that were actually read. See handledPorts
 packages/mod-sdk/src/sort.ts	216	code			no-symbol		reason: `${m.id}${where} defers to ${c.with}: ${c.because}`,
-parity/ledger/bitflag.yaml	54	ledger			likely-real	flag_has_dbg flag_on_dbg	class wraps the functional API; not ported: flag_has_dbg/flag_on_dbg
+parity/ledger/bitflag.yaml	54	ledger	n-a	flag_has_dbg / flag_on_dbg are the C's debug-build assert wrappers around flag_has / flag_on. TypeScript's FlagSet asserts unconditionally (assertValidFlag), so the debug twin has nothing to add. Ratified N/A, not deferred.	likely-real	flag_has_dbg flag_on_dbg	class wraps the functional API; not ported: flag_has_dbg/flag_on_dbg
 parity/ledger/cmd-core.yaml	25	ledger			likely-real	cmd_disable_repeat_floor_item	loop later. Not yet ported: cmd_disable_repeat_floor_item and the
 parity/ledger/combat-melee.yaml	57	ledger			likely-stale		items: [object_to_hit, object_to_dam, object_weight_one (curse terms DEFERRED)]
 parity/ledger/combat-melee.yaml	65	ledger			likely-stale		items: [mon_take_hit (HP subtraction and hp < 0 death; fear/arena DEFERRED)]
@@ -276,7 +271,7 @@ parity/ledger/combat-melee.yaml	74	ledger			likely-real	hp_damage_physical_only	
 parity/ledger/combat-melee.yaml	82	ledger			no-symbol		deferred:
 parity/ledger/combat-melee.yaml	89	ledger			likely-stale		and notification rolls, and adjust_dam elemental rolls, are not ported, so
 parity/ledger/combat-ranged.yaml	25	ledger			no-symbol		deferred:
-parity/ledger/dice.yaml	38	ledger			likely-real	dice_free	mBonus). Not ported: dice_free (garbage collected).
+parity/ledger/dice.yaml	38	ledger	n-a	dice_free is manual deallocation. Nothing to port to a garbage-collected runtime. Ratified N/A, not deferred.	likely-real	dice_free	mBonus). Not ported: dice_free (garbage collected).
 parity/ledger/effects-interpreter.yaml	70	ledger			no-symbol		monster/trap/object/chest origins deferred to the world/monster
 parity/ledger/effects-interpreter.yaml	74	ledger			no-symbol		deferred to the world/monster waves.
 parity/ledger/effects-interpreter.yaml	82	ledger			likely-stale		- effect_subtype EF_SUMMON: summon_name_to_idx deferred to the monster
@@ -363,7 +358,7 @@ parity/ledger/mon-model.yaml	49	ledger			no-symbol		which matches every shipped 
 parity/ledger/mon-predicate.yaml	35	ledger			no-symbol		deferred:
 parity/ledger/mon-spell.yaml	37	ledger			no-symbol		deferred:
 parity/ledger/mon-take-hit.yaml	30	ledger			no-symbol		deferred:
-parity/ledger/mon-timed.yaml	29	ledger			likely-real	add_monster_message	monster-message queue (mon-msg.c add_monster_message) is not ported, so
+parity/ledger/mon-timed.yaml	29	ledger	partial	The GRAMMAR is ported verbatim (game/mon-message.ts: get_subject, get_message_text, message_pain, the [singular|plural] state machine). What is absent is the QUEUE - add_monster_message -> mon_msg[] flushed by show_monster_messages from notice_stuff's PN_MON_MESSAGE - so repeats are not combined into a counted line and deaths are not shown last. Root cause is the missing notice_stuff/PN_* machinery, not this file.	likely-real	add_monster_message	monster-message queue (mon-msg.c add_monster_message) is not ported, so
 parity/ledger/mon-timed.yaml	35	ledger			no-symbol		deferred:
 parity/ledger/mon-timed.yaml	39	ledger			likely-stale		- lore_learn_flag_if_visible on a flag-resist (mon-lore.c): DEFERRED with the
 parity/ledger/obj-desc.yaml	44	ledger			no-symbol		obj->known twin per object; the port DEFERRED that twin, so objectKnownShadow
@@ -386,7 +381,7 @@ parity/ledger/player-birth.yaml	32	ledger			likely-real	birth_stat_costs	8 point
 parity/ledger/player-calcs-bonuses.yaml	46	ledger			no-symbol		the deferred weapon/launcher weight analysis
 parity/ledger/player-calcs-bonuses.yaml	78	ledger			mixed	known_only	weight_limit (calcs.ts weight block). DEFERRED only: the known_only
 parity/ledger/player-exp.yaml	49	ledger			no-symbol		deferred:
-parity/ledger/player-history.yaml	46	ledger			likely-real	dump_history	- dump_history (L127-146): not ported (no character-dump-to-file
+parity/ledger/player-history.yaml	46	ledger	ported	STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.	likely-real	dump_history	- dump_history (L127-146): not ported (no character-dump-to-file
 parity/ledger/player-history.yaml	75	ledger			no-symbol		pile contents (pre-existing #24 gap), so find-on-sight is deferred.
 parity/ledger/player-history.yaml	79	ledger			likely-stale		history_find_artifact) - NOT WIRED. Deferred: stores in the port do
 parity/ledger/player-history.yaml	91	ledger			no-symbol		historyAdd with it. Deferred until a notes command is built.
@@ -408,9 +403,9 @@ parity/ledger/store-bind.yaml	16	ledger			no-symbol		gate). Captured as BoundSto
 parity/ledger/store-bind.yaml	38	ledger			no-symbol		deferred:
 parity/ledger/store-bind.yaml	40	ledger			no-symbol		ledgered in store-price.yaml). Still deferred: stock maintenance
 parity/ledger/store-bind.yaml	54	ledger			no-symbol		pinned; the bookseller defers four book tvals with an empty alwaysTable;
-parity/ledger/store-maint.yaml	34	ledger			likely-real	object_flag_is_known	object_flag_is_known check is deferred (knowledge system); 4.2.6 data
+parity/ledger/store-maint.yaml	34	ledger	real	Same absence, third site - the maintenance half.	likely-real	object_flag_is_known	object_flag_is_known check is deferred (knowledge system); 4.2.6 data
 parity/ledger/store-maint.yaml	45	ledger			no-symbol		deferred:
-parity/ledger/store-price.yaml	21	ledger			likely-real	store_init	runtime current-owner selection at store_init is still deferred, see
+parity/ledger/store-price.yaml	21	ledger	real	store_init runtime owner selection absent (0 storeInit sites).	likely-real	store_init	runtime current-owner selection at store_init is still deferred, see
 parity/ledger/store-price.yaml	25	ledger			no-symbol		deferred:
 parity/ledger/store-price.yaml	27	ledger			likely-stale		store UI remain in store-bind.yaml's deferred list; price_item is only the
 parity/ledger/store-transact.yaml	46	ledger			no-symbol		deferred:
@@ -438,8 +433,8 @@ parity/ledger/wizard-debug.yaml	144	ledger			no-symbol		histograms - heavy, low 
 parity/ledger/wizard-debug.yaml	147	ledger			no-symbol		sampler); deferred.
 parity/ledger/wizard-debug.yaml	154	ledger			likely-real	change_item_quantity	wizCurseItem) except change_item_quantity (deferred below).
 parity/ledger/wizard-debug.yaml	163	ledger			no-symbol		already reachable; not ported as a distinct action.
-parity/ledger/wizard-debug.yaml	164	ledger			likely-real	do_cmd_wiz_change_item_quantity	- do_cmd_wiz_change_item_quantity (L484): NOT ported this slice. The action is a
-parity/ledger/wizard-debug.yaml	166	ledger			likely-real	play_item	only reached from the play_item menu (also deferred) and its limit math leans
-parity/ledger/wizard-debug.yaml	167	ledger			likely-real	play_item	on quiver/charge helpers. Deferred with the play_item shell; low standalone
+parity/ledger/wizard-debug.yaml	164	ledger	real	do_cmd_wiz_change_item_quantity absent (0 changeItemQuantity sites). Owed: the mandate is 100% parity INCLUDING wizard mode.	likely-real	do_cmd_wiz_change_item_quantity	- do_cmd_wiz_change_item_quantity (L484): NOT ported this slice. The action is a
+parity/ledger/wizard-debug.yaml	166	ledger	real	The play_item menu shell is absent (0 playItem sites) - the reason the quantity action has nowhere to live.	likely-real	play_item	only reached from the play_item menu (also deferred) and its limit math leans
+parity/ledger/wizard-debug.yaml	167	ledger	real	Same: play_item shell absent.	likely-real	play_item	on quiver/charge helpers. Deferred with the play_item shell; low standalone
 parity/ledger/wizard-debug.yaml	170	ledger			no-symbol		not game state. Not ported (the shell owns process lifetime).
 parity/ledger/world-kernel.yaml	27	ledger			no-symbol		list instead of scanning the monster array. Deferred (ledgered here):
