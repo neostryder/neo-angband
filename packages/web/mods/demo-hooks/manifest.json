@@ -6,8 +6,10 @@
   "facets": ["content", "plugin"],
   "modApi": 1,
   "dependencies": { "core": "*" },
-  "author": "neostryder (RPGM Tools)",
+  "engine": ">=0.1.0",
+  "author": "neostryder",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
   "description": "A framework proof, not a mod anyone plays: it keeps the ModHooks entry-point path exercised now that the game bundles no real mods. Two rules, two kinds of hook, and the engine taken from ctx.core the way a downloaded mod must take it. Dev builds only.",
   "rules": [
     {

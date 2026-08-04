@@ -28,7 +28,9 @@
       "because": "Both demos are about visible change; this one should be the one you see."
     }
   ],
-  "author": "neostryder (RPGM Tools)",
+  "engine": ">=0.1.0",
+  "author": "neostryder",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
   "description": "A bundled demo content pack that proves mods reach the running game: it patches a core monster and adds a new one. Both are named SECTIONS, so it also proves a player can take half a mod, and that a section can add records as well as patch them. Disabled by default; enable with ?mods=demo-modtest."
 }

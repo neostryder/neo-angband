@@ -47,7 +47,7 @@ import {
   idbKeys,
   openDb,
 } from "./idb";
-import { checkMod } from "@rpgm-tools/neo-angband-mod-sdk";
+import { checkMod, githubRepo } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -465,13 +465,20 @@ export async function installModFromRepo(
 }
 
 /**
- * The `repo` an imported mod records, which is not a repository.
+ * The `repo` recorded for an imported mod whose manifest names nowhere the game can ask.
  *
  * A colon cannot appear in an `owner/name`, so this can never collide with a real one -
  * which matters, because originConflict compares this field to decide whether a mod may
- * be replaced. Every imported mod shares the value on purpose: a second zip of the same
- * mod is the player updating it and should just work, while a zip landing on a mod that
- * came from a repository is a different mod wearing the same id and is refused.
+ * be replaced. Every such mod shares the value on purpose: a second zip of the same mod
+ * is the player updating it and should just work, and there is no repository that could
+ * distinguish them.
+ *
+ * NARROWED once manifests had to declare a repository. This used to be what EVERY
+ * imported mod recorded, which meant a zip and a checkout of the same mod were two
+ * different mods to the origin check, and an imported mod could never be told an update
+ * existed. Now the manifest's own `repository` is the origin wherever the game can
+ * resolve it to an owner/name, and this is the honest fallback for the rest: a mod
+ * published on a host with no tags query, or an archive predating the requirement.
  */
 export const FILE_ORIGIN = "file:import";
 
@@ -493,6 +500,17 @@ export function isImported(meta: { readonly repo: string }): boolean {
  * repositories, and an archive by definition did not come from one. So consent is asked
  * for unconditionally here, and enforced where every other install enforces it rather
  * than in the screen that drew the row.
+ *
+ * THE ORIGIN COMES FROM THE MANIFEST, and that is the one thing about this door that is
+ * a claim rather than a fact. Every other door learns where a mod came from by going
+ * there; a zip can only be believed. Believing it is still right: `declare-a-repository`
+ * has already run on these bytes, so the field is present, and pinning the mod to what
+ * it declared makes the FIRST import the moment of trust and every later replacement
+ * subject to matching it - which is the same trust-on-first-use the repository door
+ * uses, applied at the only point where this door has anything to pin. The alternative,
+ * pinning every zip to one shared sentinel, is strictly weaker: it lets any archive
+ * claiming an id replace any other, and it leaves the mod with no repository to ask for
+ * updates at all.
  */
 export async function installModFromZip(
   bytes: Uint8Array,
@@ -505,19 +523,34 @@ export async function installModFromZip(
   if (blocked !== null) return { ok: false, problem: blocked };
   const read = readModZip(bytes);
   if (!read.ok) return { ok: false, problem: read.problem };
+  const repo = importedOrigin(read.repository);
   const metas = await installedMods(env.scope ?? globalThis);
   const installed = metas.find((m) => m.id === read.id) ?? null;
-  const conflict = originConflict(installed, FILE_ORIGIN);
+  const conflict = originConflict(installed, repo);
   if (conflict !== null) return { ok: false, problem: conflict };
   try {
     return await storeMod(
-      { id: read.id, repo: FILE_ORIGIN, tag: read.version ?? "imported" },
+      { id: read.id, repo, tag: read.version ?? "imported" },
       read.files,
       env,
     );
   } catch (e) {
     return { ok: false, problem: message(e) };
   }
+}
+
+/**
+ * The origin to pin an imported mod to: what its manifest declared, or the sentinel.
+ *
+ * Resolved through the SDK's `githubRepo` rather than a parser here, because three
+ * things have to agree about what a repository reference means - the requirement that
+ * refuses a manifest without one, this, and the update check that later asks that
+ * repository for tags. Two of those disagreeing produces a mod that installs and then
+ * reports itself permanently unavailable, which is worse than either failure alone.
+ */
+export function importedOrigin(repository: string | null): string {
+  if (repository === null) return FILE_ORIGIN;
+  return githubRepo(repository) ?? FILE_ORIGIN;
 }
 
 /**

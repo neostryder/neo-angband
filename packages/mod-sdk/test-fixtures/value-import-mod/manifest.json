@@ -5,7 +5,9 @@
   "shape": "content",
   "facets": ["plugin"],
   "modApi": 1,
-  "author": "neostryder (RPGM Tools)",
+  "engine": ">=0.1.0",
+  "author": "neostryder",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
   "description": "A build fixture that must FAIL. It imports a VALUE from the engine instead of taking it from ctx.core, which cannot resolve in a mod folder and would give the mod its own copy of engine state if it were bundled in."
 }
