@@ -75,10 +75,6 @@
  *   RF_PASS_WEB / RF_CLEAR_WEB / pass-walls (draws no RNG).
  *
  * DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
- * - monster_take_terrain_damage (the actual lava damage after the turn, called
- *   from process_monster, not monster_turn): needs mon_take_nonplayer_hit
- *   (monster_death / delete_monster_idx), which is not ported; only the
- *   movement-driving predicate is ported here.
  * - react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
  *   decoy-destroy UI messages and disturb, and the remaining monster-lore
  *   updates. None of these draw RNG until taken, so the RNG order for the ported
@@ -390,11 +386,11 @@ function monsterHatesGrid(state: GameState, mon: Monster, grid: Loc): boolean {
 
 /**
  * monster_taking_terrain_damage (mon-util.c L1347): the monster is standing on
- * damaging terrain it does not resist. Draws no RNG. NOTE: the actual damage
- * application (monster_take_terrain_damage, mon-util.c L1327, called from
- * process_monster after monster_turn) is DEFERRED - it needs mon_take_nonplayer_hit
- * (monster_death / delete_monster_idx), which is not ported yet; this predicate
- * only drives movement (flight / avoidance / activation).
+ * damaging terrain it does not resist. Draws no RNG. This predicate drives movement
+ * (flight / avoidance / activation); the damage itself is applied by
+ * monsterTakeTerrainDamage (mon-death.ts, monster_take_terrain_damage at
+ * mon-util.c L1327), which the scheduler calls after monster_turn exactly as
+ * process_monster does.
  */
 function monsterTakingTerrainDamage(state: GameState, mon: Monster): boolean {
   return damagingTerrainHurts(state, mon, mon.grid);
