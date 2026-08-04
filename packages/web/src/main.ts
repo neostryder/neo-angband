@@ -228,12 +228,14 @@ import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./di
 import {
   installModFromRepo,
   installRecommendedMod,
+  installedMeta,
   installedMods,
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
+import { zipImportDeps } from "./mod-zip-source";
 import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
 import { readConsent, writeConsent } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
@@ -8828,12 +8830,21 @@ function modBrowseDeps(): ModUpgradeDeps {
       const r = await discoverMod(ref, discoverEnv);
       return r.ok ? { ok: true, ref, mod: r.mod } : { ok: false, ref, problem: r.problem };
     },
-    install: (mod, origin, onProgress) =>
-      installModFromRepo(mod, null, installEnv, onProgress, {
-        origin,
-        allowed: readConsent(channelStore()),
-      }),
+    /* The installed record is LOOKED UP, not passed as null. It used to be null, which
+     * silently disabled the only check that stops a mod being replaced from a different
+     * repository than the one it came from - see installedMeta in mod-install.ts. */
+    install: async (mod, origin, onProgress) =>
+      await installModFromRepo(
+        mod,
+        await installedMeta(mod.id, globalThis),
+        installEnv,
+        onProgress,
+        { origin, allowed: readConsent(channelStore()) },
+      ),
     uninstall: (id) => uninstallMod(id, globalThis),
+    /* The fourth door. Feature-detected off the desktop bridge, so a browser tab gets
+     * the file picker and no mods-folder listing rather than a broken row. */
+    importZip: zipImportDeps(installEnv, () => readConsent(channelStore()), globalThis),
     curated: async () => {
       const r = await fetchRegistry(DEFAULT_REGISTRY_URL, net);
       return r.ok ? { registry: r.registry, problem: null } : { registry: null, problem: r.problem };
