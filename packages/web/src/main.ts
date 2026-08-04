@@ -335,6 +335,8 @@ import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
+import { loadLoreFile, saveLoreFile } from "./lore-file";
+import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
@@ -1016,6 +1018,11 @@ try {
   /* history/URL unavailable: harmless, the params just linger */
 }
 const { state, registry, booted, players } = game;
+/* lore.txt over the store the save (or the birth) just produced, which is
+ * upstream's order: lore_parser runs at startup and the savefile then supplies
+ * only pkills and thefts. This is what makes monster memory outlive a character,
+ * so a new hero inherits what their ancestors learned. See lore-file.ts. */
+loadLoreFile(booted.registries.monsters.races, state.lore);
 /* effects.c L437-458 and ui-effect.c L34-180: the core chooser remains a
  * synchronous value seam, so the web host presents the menu before advancing
  * the command and supplies the selected row when the engine reaches EF_SELECT. */
@@ -5163,7 +5170,7 @@ let suppressSave = false;
  * The port used to swallow every failure silently, so a quota-exceeded
  * localStorage write left the player playing on believing they were saved.
  */
-function persistSave(): boolean {
+function persistSave(deliberate = false): boolean {
   /* A mod's hook threw mid-turn (mod-taint.ts), so this state may be half-updated
    * and must not go over the last good save. THE ONLY GATE THAT MATTERS: the tail
    * autosave is not the sole writer - a level change, the 'S' command, the options
@@ -5182,6 +5189,18 @@ function persistSave(): boolean {
      * this is the moment to ask for persistent storage - once per session, in the
      * background, never blocking the save that prompted it. */
     if (ok) ensureDurableStorage();
+    /* lore_save, from the saves that ARE ports of save_game_checked - the 'S'
+     * command, a level change, the options screen, close_game. The throttled
+     * three-second tail autosave has no upstream counterpart and does not
+     * rewrite the file. Its failure is reported and does not fail the save:
+     * upstream's own caller only prints a message too (ui-game.c:1090-1093). */
+    if (ok && deliberate && !saveLoreFile(booted.registries.monsters.races, game.state.lore)) {
+      /* BOTH messages, as upstream prints them: lore_save's own report of the
+       * staged file it could not create (mon-lore.c:1908) and then the caller's
+       * (ui-game.c:1091). */
+      say(`Failed to create file ${userPath(LORE_FILE)}.new`);
+      say("lore save failed!");
+    }
     return ok;
   } catch {
     /* Encoding threw (a corrupt state), or storage is unreachable. */
@@ -5201,7 +5220,7 @@ function persistSave(): boolean {
  */
 async function closeGameSave(prompt: boolean): Promise<void> {
   const prompting = prompt;
-  while (!persistSave()) {
+  while (!persistSave(true)) {
     if (!prompting || !(await confirmYesNo("Saving failed.  Try again? "))) {
       if (dead) say("death save failed!");
       return;
@@ -5227,7 +5246,7 @@ function autosave(force = false): void {
     typeof performance !== "undefined" ? performance.now() : Date.now();
   if (!force && now - lastSaveMs < 3000) return;
   lastSaveMs = now;
-  if (persistSave()) {
+  if (persistSave(force)) {
     autosaveFailed = false;
     return;
   }

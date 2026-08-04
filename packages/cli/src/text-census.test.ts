@@ -98,8 +98,14 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "divergence (re-derived from the C 2026-07-27, upheld): start_game (ui-game.c:709-720) offers the panic file only when file_newer(panicfile, loadpath) - it can be newer because upstream's ordinary save happens on demand, so a crash leaves the signal handler's separate savefile_get_panic_name file ahead of it. The port autosaves the one slot continuously, so there is no second artifact and no staleness window for one to be newer than":
     ["A panic save exists.  Use it? "],
 
-  "GAP (block E): lore_save writes a human-readable lore.txt to the user directory (mon-lore.c:1904, called from ui-game.c:1089). The port has no lore dump at all - the monster memory lives in the save - so this belongs with the other dump equivalents rather than with the save-failure handling, which is now ported":
-    ["lore save failed!"],
+  /* "lore save failed!" was a block-E GAP entry here until 2026-08-03. It is
+   * gone rather than annotated, because that is what this file's second test
+   * demands of a string the port now emits - and lore_save is ported
+   * (core/src/mon/lore-file.ts, wired in web/src/lore-file.ts). It was
+   * mis-classified as a dump: the user directory outlives a character, so
+   * upstream's monster memory survives death, which is what makes tkills
+   * "killed in all lives" real. The port had kept the whole record in the
+   * savefile, so nothing carried. */
 
   "GAP (block I): the glyph picker's code-point prompt, and behind it the whole visuals editor. glyph_command + display_glyphs (ui-knowledge.c:597-752) let the knowledge menus re-map any monster / object / feature / trap glyph: 'v' opens a picker, the arrows cycle colour, 'i' takes a hex code point, 'c'/'p' copy and paste, and every row shows its own attr/char. The port has no runtime x_attr/x_char override layer at all - visuals/tile-prefs.ts TileMap covers the GRAPHICS mapping only - so this needs that layer, the renderer reading it, and the picker UI":
     ["(up to 5 hex digits):"],
