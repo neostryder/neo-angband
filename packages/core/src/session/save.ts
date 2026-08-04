@@ -32,8 +32,15 @@
  *   wr_randomizer    (save.c:286)  -> SavedGame.rng
  *   wr_options       (save.c:314)  -> SavedGame.options (SIDEBAR_MODE is UI)
  *   wr_messages      (save.c:339)  -> SavedGame.messages
- *   wr_monster_memory(save.c:356)  -> SavedGame.lore (whole record, not just
- *                                    pkills/thefts: the port has no lore.txt)
+ *   wr_monster_memory(save.c:356)  -> SavedGame.lore (whole record, where
+ *                                    upstream writes only pkills/thefts and
+ *                                    leaves the rest to lore.txt. The file IS
+ *                                    ported - mon/lore-file.ts - and is laid
+ *                                    over this on load, exactly as upstream's
+ *                                    startup order does. The save keeps carrying
+ *                                    the whole record because narrowing it is a
+ *                                    SAVE_VERSION change, and a bump reads as
+ *                                    corruption to an existing character.)
  *   wr_object_memory (save.c:377)  -> flavor.aware / .tried, everseen.kinds,
  *                                    ignore.kindAware / .kindUnaware
  *   wr_quests        (save.c:405)  -> player.quests

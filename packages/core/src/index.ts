@@ -151,6 +151,7 @@ export * from "./game/ui-entry.js";
 export * from "./game/equip-cmp.js";
 export * from "./game/mon-shape.js";
 export * from "./mon/lore.js";
+export * from "./mon/lore-file.js";
 export * from "./mon/lore-describe.js";
 /* The live-cave placement family shares upstream names with its
  * generation-time twin in gen/util; the live variants export Live-suffixed. */

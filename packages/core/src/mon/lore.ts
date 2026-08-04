@@ -13,9 +13,15 @@
  * gated on dropKnown / the known flags, so they are not modelled.
  *
  * The store lives on GameState.lore (a Map keyed by race.ridx), created
- * lazily by getLore; the save serializes it whole. Upstream splits
- * persistence between the savefile (pkills / thefts) and the user lore
- * file (everything else); the JSON save carries the full record.
+ * lazily by getLore.
+ *
+ * PERSISTENCE IS SPLIT, as upstream's is. The savefile owns pkills and thefts
+ * ("in this life"); lore.txt in the user directory owns everything else and
+ * outlives the character, which is what makes tkills "monsters killed in all
+ * lives" and lore-describe's "your ancestors have exterminated at least %d"
+ * able to be about an ancestor. lore-file.ts is both halves of that file; the
+ * JSON save still carries the whole record (narrowing it would be a
+ * SAVE_VERSION change) and the file is laid over it on load.
  */
 
 import { FlagSet } from "../bitflag.js";
