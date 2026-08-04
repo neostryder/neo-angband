@@ -24,7 +24,7 @@ notes: >-
   black market is detected by store.feat === FEAT.STORE_BLACK.
 deferred:
   - The buy/sell COMMANDS (do_cmd_buy / do_cmd_sell), stock maintenance and the
-    store UI remain in store-bind.yaml's deferred list; price_item is only the
+    store UI is the shell's (web/src/shop.ts); price_item is only the
     price computation.
 verified-by:
   - store/price.test.ts: a clean 1d4 weapon (real value 66) sells to the player

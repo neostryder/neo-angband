@@ -9,7 +9,8 @@ upstream:
         default / SRC_NONE case (target the player, set PROJECT_PLAY). Ported as
         resolveAimedTarget. The SRC_MONSTER confused-direction, target-monster
         (monster_target_monster) and decoy (cave_find_decoy) branches are
-        deferred to #19 (monster-spell targeting) and the decoy effect; #19
+        handled by monster-spell targeting (game/mon-cast.ts) and the decoy effect
+    (effect-general.ts:199); #19
         resolves those and passes the grid in.
       - project_aimed (L94): the PROJECT_THRU add + get_target flag merge, folded
         into castBolt / castBeam.
@@ -23,7 +24,7 @@ upstream:
         The powerful-monster (+1 rad) and player-level (rad += lev / other)
         radius bonuses are applied by the caller (they need monsterIsPowerful /
         player.lev, both available there); the confused-target and decoy
-        branches are deferred as in get_target.
+        branches follow get_target, which the shell resolves (target-loop.ts).
       - effect_handler_LINE (L173): castLine (PROJECT_BEAM | GRID | KILL | THRU).
       - effect_handler_ALTER (L186): castAlter (PROJECT_BEAM | GRID | ITEM |
         THRU, no damage, no KILL).
@@ -75,7 +76,8 @@ notes: >-
   The player-projection actor (PlayerProjActor: resist levels, damage
   reduction, minus_ac) is supplied by the caller, exactly as PlayerActor's
   combat / defense views are, because calc_bonuses (which derives el_info,
-  dam_red, perc_dam_red, minus_ac) is deferred. basicPlayerActor builds the
+  dam_red, perc_dam_red, minus_ac) is all computed (player/calcs.ts,
+    game/gear.ts minusAc) and carried by the live actor. basicPlayerActor builds the
   no-resist, no-reduction view over the live Player for callers and tests until
   it lands; chp and is_dead are live getters/setters so take_hit's mutations
   write back to the player and the game state.

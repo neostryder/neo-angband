@@ -241,7 +241,10 @@ export interface MonsterRace {
   shapes: MonsterShape[];
 }
 
-/** summon.txt record, loaded with minimal binding (details deferred). */
+/**
+ * summon.txt record. Bound and live: summons.nameToIdx resolves EF_SUMMON
+ * subtypes at session/game.ts:1168.
+ */
 export interface SummonType {
   name: string;
   msgt: string;
@@ -252,7 +255,10 @@ export interface SummonType {
   desc: string;
 }
 
-/** pit.txt record, loaded with minimal binding (details deferred). */
+/**
+ * pit.txt record. Bound and live: setPitType / monPitHook select pit membership
+ * at gen/gen-monster.ts:205 and gen/room.ts:1341.
+ */
 export interface PitProfile {
   name: string;
   room: number;

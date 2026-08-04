@@ -13,7 +13,7 @@
  *     after the first pickup)
  *   - ExpDeps.msg never supplied, so every level-up was silent
  *   - OBJ_NOTICE_ASSESSED never set at birth
- *   - pack_overflow(NULL) at game-world.c:947 unwired
+ *   - pack_overflow(NULL) at game-world.c:947 IS wired (session/game.ts:806)
  *   - dungeon_get_next_level's seam wired at ZERO of its 12 call sites, so
  *     stairs skipped Sauron's quest level entirely
  *

@@ -7,13 +7,15 @@
  *
  * This is the attack-resolution shell: to-hit, damage, and critical. The
  * projectile path, ammo/quiver management, drop_near/breakage application,
- * piercing (TMD_POWERSHOT), and the do_cmd_fire/throw command front-ends live
- * in the world/command layer and are DEFERRED (see parity/ledger).
+ * piercing (TMD_POWERSHOT) and the do_cmd_fire/throw front ends live in the
+ * world/command layer, which is ported: game/ranged-cmd.ts and the quiver
+ * subsystem in game/gear.ts.
  *
- * DEFERRED (ledgered in parity/ledger/combat-ranged.yaml): knowledge/learning
- * (missile_learn_*, learn_brand_slay_from_launch/throw), OF_EXPLODE triple
- * damage happens in make_ranged_throw here but the projectile path/target
- * selection does not; temporary brands/slays.
+ * The knowledge/learning half is ported too: missileLearnOnRangedAttack
+ * (obj/knowledge.ts:637, called at ranged-cmd.ts:164-167) and
+ * learnBrandSlayFromLaunch / FromThrow (combat/brand-slay.ts). Temporary
+ * brands/slays are ported as an injected predicate (TempBrandSlay); the
+ * launcher/throw paths pass allow_temp = false, as upstream does.
  *
  * O-combat ranged (birth_percent_damage) IS ported: oRangedDamage /
  * o_critical_shot, gated in makeRangedShot / makeRangedThrow at the same points

@@ -125,7 +125,7 @@ export function storeShuffle(rng: Rng, store: Store): void {
  * object_kind_to_book branch of parse_always (store.c:208-231): every TOWN
  * (non-dungeon) book kind of `tval`, deduped. A book is a town book when some
  * class lists it as a non-dungeon book (object_kind_to_book, player-spell.c).
- * The bookseller's no-sval `always:` lines defer to this expansion, which needs
+ * The bookseller's no-sval `always:` lines are expanded here, which needs
  * the class-book metadata unavailable at parse time.
  */
 function townBooksOfTval(

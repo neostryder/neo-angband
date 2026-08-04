@@ -41,13 +41,14 @@ deferred:
     wiring the actual chains waits until the effect layer is threaded in.
   - The temp_resist / oflag_syn "don't mention an effect that duplicates known
     player state" notify suppression needs obj_k element/flag knowledge; it only
-    silences a message and never changes the duration, so it is deferred.
+    silences a message and never changes the duration; the queries ARE supplied
+    on the live path (makeIncCheckQueries, game/player-side.ts).
   - print_custom_message's weapon-name substitution (messages are emitted
     verbatim; none of the ported effects substitute) and the disturb + PR_/PU_
     redraw + handle_stuff bookkeeping (collapsed into the onNotify hook).
   - player_inc_check's learning side effects (equip_learn_flag /
     equip_learn_element / update_smart_learn and the "You resist!" message) are
-    deferred with the lore / knowledge system.
+    part of the lore / knowledge system, which is ported.
 verified-by:
   - player/timed.test.ts (15 tests): the binder now captures NONSTACKING /
     on-increase / on-decrease and STUN's graded severity; playerTimedGrade walks

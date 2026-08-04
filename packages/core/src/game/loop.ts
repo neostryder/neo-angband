@@ -82,7 +82,8 @@ export const LOOP_STATUS = {
   DEAD: "dead",
   /** The shell must answer the pending in-terminal wizard death prompt. */
   DEATH_CONFIRM: "death-confirm",
-  /** player->upkeep->generate_level (a stair/recall change; regen deferred). */
+  /** player->upkeep->generate_level: a stair or recall change. The session
+   * generates the new level (changeLevel) when the shell acts on this. */
   LEVEL_CHANGE: "level-change",
   /** player->upkeep->playing cleared. */
   STOPPED: "stopped",

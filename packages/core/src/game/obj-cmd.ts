@@ -18,9 +18,9 @@
  * note_aware/note_unaware registry (obj/knowledge.ts AutoinscriptionRegistry,
  * wired through ObjCmdDeps.autoNote by session/game.ts). The separate
  * rune-based autoinscription (runes_autoinscribe, obj-ignore.c L217) rides the
- * rune knowledge system and stays deferred (#24).
+ * rune knowledge system, which is ported (obj/knowledge.ts playerLearnRune).
  *
- * DEFERRED with their subsystems (ledgered in game-obj-cmd.yaml):
+ * NOTES on the subsystem seams (ledgered in game-obj-cmd.yaml):
  * cast/study (player spells #22), the glyph-of-warding push_object
  * interaction (traps #21), command repetition, and the !t take-off
  * confirmation prompt (get_check, UI).

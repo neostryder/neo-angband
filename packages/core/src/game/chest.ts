@@ -83,7 +83,8 @@ function noLight(state: GameState): boolean {
 
 /**
  * chest_check (obj-chest.c L423): the first floor-pile chest at grid
- * matching the query. ignore_item_ok is deferred (#24): nothing is ignored.
+ * matching the query. ignoreItemOk is ported (obj/ignore.ts:380) and applied by
+ * the command layer (game/obj-cmd.ts:946).
  */
 export function chestCheck(
   state: GameState,

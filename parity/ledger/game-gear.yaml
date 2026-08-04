@@ -11,13 +11,14 @@ upstream:
         then melee-weapon/ring/light/body-armor/head-armor, -1 otherwise)
       - inven_carry (merge into a mergeable pack stack via object_mergeable /
         object_absorb, else add a new pack handle)
-      - pack_slots_used (pack.length: equipped gear is not in pack and the
-        quiver is DEFERRED, so no discount is needed)
+      - pack_slots_used (pack.length less the quiver discount; equipped gear is
+        not in pack)
       - inven_carry_num (a free pack slot takes the whole stack, else the
         remainder is squeezed into partially-full stackable slots; the quiver
-        path is DEFERRED so num_to_quiver is always 0)
+        path runs via quiverAbsorbNum, gear.ts:497/:592)
       - gear_object_for_use (split amt off a pack/equipment stack, or excise
-        the whole stack and report none_left; total_weight upkeep DEFERRED)
+        the whole stack and report none_left; total_weight is maintained at
+        gear.ts:1283 and shown as Burden)
   - path: src/player-birth.c
     items:
       - wield_all (scan a snapshot of the pack, wield each object whose liked
@@ -55,7 +56,8 @@ notes: >-
   player).
 deferred:
   - Starting-gold deduction p->au -= object_value_real(obj, number):
-    obj-value.c (obj-power) is not ported, so no gold is deducted and
+    obj-value.c (obj-power) IS ported (obj/power.ts); at this site no gold is
+      deducted and
     starting gold is HIGHER than upstream until it lands. No fake valuation
     is used.
   - eopts birth-option exclusion: birth options are not modelled, so eopts

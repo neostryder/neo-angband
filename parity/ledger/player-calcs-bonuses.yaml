@@ -43,7 +43,7 @@ upstream:
       - weight_limit (1741-1750) as weightLimit
       - PlayerState mirrors struct player_state (player.h:401-438)
         field-for-field, plus `hold` (an upstream local at 2251) kept for
-        the deferred weapon/launcher weight analysis
+        the weapon/launcher weight analysis (calcs.ts:1240-1252)
   - path: src/player.c
     items:
       - player_flags (290-300) as playerFlags -- race flags | class flags,

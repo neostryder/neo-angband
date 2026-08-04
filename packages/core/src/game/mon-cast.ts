@@ -61,7 +61,9 @@ export interface MonSpellHooks {
   saveMessage?: (text: string) => void;
   /** spell_check_for_fail_rune: learn a rune a save implies (lore, #24). */
   failRune?: (spell: MonsterSpell, mon: Monster) => void;
-  /** A spell whose effect chain could not be built (deferred subtype). */
+  /** A spell whose effect chain could not be built - an unknown subtype name.
+ * The summon and shape registries ARE injected (session/game.ts:1168, :1178),
+ * so in the live composition this is a data error, not a missing port. */
   unresolved?: (spell: MonsterSpell, err: unknown) => void;
 }
 
@@ -374,7 +376,8 @@ export function doMonSpell(
   try {
     chain = buildSpellEffectChain(spell, inject);
   } catch (err) {
-    /* An uninjected summon / shape subtype: the cast fizzles (deferred). */
+    /* An unresolvable summon / shape subtype name: the cast fizzles. Both
+     * registries are injected in the live composition. */
     deps.hooks?.unresolved?.(spell, err);
     return true;
   }

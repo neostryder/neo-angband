@@ -17,13 +17,20 @@
  * melee's py_attack_real / learn_brand_slay_from_melee consult it upstream
  * (allow_temp = true); the launcher/throw paths pass allow_temp = false.
  *
- * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
- * - Curse contributions to object_to_hit/to_dam (obj->curses); no object
- *   carries curses through combat yet. object_weight_one's curse adjustment is
- *   likewise skipped there, since combat does not thread the curse table.
+ * object_to_hit / object_to_dam sum the ACTIVE CURSES' template bonuses onto the
+ * object's own (obj-util.c:296-321), and both take the bound curse table for
+ * that, exactly as objectWeightOne does (obj/object.ts:791). A caller that omits
+ * it gets the object's own bonus alone, which is right only for an object with no
+ * curses - so the live melee path threads it (MeleeOptions.curses).
+ *
+ * Note the upstream double-count this reproduces: calc_bonuses already folds a
+ * worn item's curse to_h/to_d into state->to_h/to_d (player-calcs.c:2009-2023),
+ * and then py_attack_real adds object_to_hit(weapon) on top, so a cursed WEAPON's
+ * curse bonus counts twice. Core keeps the C's warts; the bug-fixes mod is where
+ * that would be corrected.
  */
 
-import type { Brand, Slay } from "../obj/types.js";
+import type { Brand, Curse, Slay } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { tvalIsLauncher, tvalIsWeapon } from "../obj/object.js";
 import type { MonsterRace } from "../mon/types.js";
@@ -54,14 +61,38 @@ export interface TempBrandSlay {
   hasSlay(idx: number): boolean;
 }
 
-/** object_to_hit(obj): the object's to-hit bonus (curses DEFERRED). */
-export function objectToHit(obj: GameObject): number {
-  return obj.toH;
+/**
+ * object_to_hit (obj-util.c:296-310): the object's to-hit bonus, plus the to_h of
+ * every active curse's template object. `curses` is upstream's global curses[]
+ * (1-based, index 0 null); omitting it yields obj.toH alone.
+ */
+export function objectToHit(
+  obj: GameObject,
+  curses?: readonly (Curse | null)[] | null,
+): number {
+  let result = obj.toH;
+  if (obj.curses && curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power) result += curses[i]?.obj?.toH ?? 0;
+    }
+  }
+  return result;
 }
 
-/** object_to_dam(obj): the object's to-dam bonus (curses DEFERRED). */
-export function objectToDam(obj: GameObject): number {
-  return obj.toD;
+/**
+ * object_to_dam (obj-util.c:312-326): as objectToHit, for to_dam.
+ */
+export function objectToDam(
+  obj: GameObject,
+  curses?: readonly (Curse | null)[] | null,
+): number {
+  let result = obj.toD;
+  if (obj.curses && curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power) result += curses[i]?.obj?.toD ?? 0;
+    }
+  }
+  return result;
 }
 
 /**

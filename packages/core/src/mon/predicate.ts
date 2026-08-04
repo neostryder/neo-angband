@@ -13,7 +13,8 @@
  *   argument (default 1 = "no group"), because monster groups are not tracked
  *   in the cave yet; primaryGroupSize=1 gives count=0, so the group fear-save
  *   loop never runs, matching a lone monster exactly.
- * - monster_is_decoyed is DEFERRED: it needs cave_find_decoy + los + a live
+ * - monster_is_decoyed lives in the layer that HAS the live cave
+ *   (game/monster-turn.ts:406): it needs cave_find_decoy + los + a live
  *   cave, and a decoy only exists once the create-decoy effect is ported.
  */
 

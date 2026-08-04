@@ -1143,7 +1143,7 @@ function renamePlayer(n: string): void {
  * launcher (get_panel_combat reads both; the "BOW" slot type matches
  * calc_bonuses' own launcher pick in player/calcs.ts), plus the rename hook.
  * NOTE: the EB column still reads the calc's stat_add, which only carries
- * KNOWN-rune modifiers (full equipment stat_add is a deferred core slice), so
+ * KNOWN-rune modifiers, which is what calcBonuses computes into statAdd, so
  * unlearned gear shows +0 there - real data, not a display bug.
  */
 function charSheetOpts(): {

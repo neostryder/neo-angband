@@ -17,7 +17,8 @@
  *
  * Stolen gold / items are attached to the monster's held-object pile
  * (monster_carry, mon/make.ts) so they drop on death via monster_death
- * (game/mon-death.ts). react_to_slay blocking a theft stays DEFERRED (no RNG
+ * (game/mon-death.ts). react_to_slay DOES block a theft here (L421); the
+ * remaining gap is the monster-vs-monster path (mon/steal.ts:234) (no RNG
  * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 

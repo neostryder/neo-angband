@@ -29,10 +29,10 @@ notes: >-
   (get_bonuses sits between stats and ahw but consumes no RNG). Point-buy is
   ported as primitives (resetStats/buyStat/sellStat/pointBuyCost/birthGold)
   so a UI or the auto-roller can drive it. Buying a stat from 10 to 17 costs
-  8 points (1+1+1+1+1+1+2), matching birth_stat_costs. Deferred (ledgered
-  here): the point-based auto-spend generate_stats routine, whose step 1/2
-  DEX-blow optimisation reads state->num_blows and therefore needs the
-  equipment-aware calc_bonuses (the cost primitives it builds on ARE ported);
+  8 points (1+1+1+1+1+1+2), matching birth_stat_costs. generate_stats IS ported
+  (player/birth.ts:167) and drives the birth screen's auto-roller
+  (web/src/birth.ts:1481, :1709); calc_bonuses is equipment-aware
+  (player/calcs.ts:844), so its DEX-blow step has what it needs. Ledgered here:
   starting inventory objects (returned as tval/sval kind-name refs in
   startingKit, min/max not yet rolled and birth-option exclusion not yet
   applied); roll_hp for levels 2..50 (birth fills only player_hp[0] = hitdie,

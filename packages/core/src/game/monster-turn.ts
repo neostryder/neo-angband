@@ -74,7 +74,8 @@
  *   share the GLYPH flag). Web: a webbed monster passes / clears / is stuck by
  *   RF_PASS_WEB / RF_CLEAR_WEB / pass-walls (draws no RNG).
  *
- * DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
+ * NOTES (ledgered in parity/ledger/game-monster-ai.yaml; parity/DEFERRALS.md is
+ * the list of what is actually missing):
  * - react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
  *   decoy-destroy UI messages and disturb, and the remaining monster-lore
  *   updates. None of these draw RNG until taken, so the RNG order for the ported
@@ -732,7 +733,8 @@ function getMoveFindSafety(mon: Monster, state: GameState): boolean {
       /* Ignore too-distant grids (noise heatmap gate). */
       if (noiseAt(state, grid) > noiseAt(state, mon.grid) + 2 * d) continue;
 
-      /* Ignore damaging terrain (DEFERRED: monsterHatesGrid is false). */
+      /* Ignore damaging terrain on this branch; monsterHatesGrid (L383) IS
+       * consulted on the movement branches at L536, L601 and L652. */
       if (monsterHatesGrid(state, mon, grid)) continue;
 
       /* Check for absence of shot (more or less). */
@@ -1114,7 +1116,7 @@ function monsterTurnCanMove(
   /* Always allow an attack upon the player or decoy. */
   if (squareIsPlayer(state, next) || squareIsDecoyed(state, next)) return true;
 
-  /* Dangerous terrain in the way (monsterHatesGrid is DEFERRED: false). */
+  /* Dangerous terrain in the way, via monsterHatesGrid (L383). */
   if (!confused && monsterHatesGrid(state, mon, next)) return false;
 
   /* Floor is open? */

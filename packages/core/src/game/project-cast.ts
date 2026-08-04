@@ -214,7 +214,8 @@ export function basicPlayerActor(
  *
  * - SRC_PLAYER: DIR_TARGET with an acquired target aims at it; otherwise the
  *   adjacent grid in `dir`. The target system (target_okay / target_get) is
- *   deferred (#24), so the acquired grid is passed in as `aimed`.
+ *   ported in the shell (target-loop.ts runTargetLoop, bound to the aiming
+ *   prompts), which resolves the target and passes the grid in as `aimed`.
  * - SRC_MONSTER: monsterGetTarget resolves confusion's random direction (one
  *   randint1(100) draw always made, matching the upstream RNG stream), then a
  *   targeted monster, the decoy, or the player.

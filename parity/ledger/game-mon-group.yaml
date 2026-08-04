@@ -45,7 +45,8 @@ integration:
   - AI consumers: monster_group_rouse at the top of monster_turn and
     group_monster_tracking in get_move's fallback (game/monster-turn.ts).
 deferred:
-  - monster_can_see (mon-util.c) is not ported, so rouse uses plain line of sight
+  - monster_can_see (mon-util.c) IS plain line of sight in the C, so rouse using
+      plain line of sight is exact, not a substitution
     (it also weighs range and light).
   - monster_group_index_new grows state.groups on demand rather than capping at
     z_info->level_monster_max, so it never returns 0 (fail); behaviour is

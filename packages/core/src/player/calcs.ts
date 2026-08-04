@@ -18,10 +18,12 @@
  * timedEffects-gated blocks in calcBonuses). The per-object curse-object
  * traversal inside the equipment loop (2009-2023) is now ported: a worn item's
  * active curses fold their template objects into the state (pass the bound
- * Curse registry via CalcBonusesOptions.curses). Still DEFERRED (see the
- * calcBonuses notes and parity/ledger/player-calcs-bonuses.yaml):
- *   - the learn-by-use rune system that populates obj_k (equipment modifiers
- *     are rune-gated and inert at birth)
+ * Curse registry via CalcBonusesOptions.curses). The learn-by-use rune system
+ * that populates obj_k is ALSO ported (obj/knowledge.ts playerLearnRune L1049 /
+ * objectLearnUnknownRune L1112, called from effect-item.ts, store/transact.ts,
+ * loop.ts, mon-cast.ts, mon-side.ts and ranged-cmd.ts), so equipment modifiers
+ * are rune-gated and inert only until the rune is actually learned - which is
+ * upstream's behaviour, not a gap.
  * calc_mana (player-calcs.c:2322) is ported (player/spell.ts calcMana) and
  * invoked by the session layer (session/game.ts) right after this pass, split
  * across the calc/session seam; msp is populated there.
@@ -263,7 +265,9 @@ export function statUseToIndex(use: number): number {
 /**
  * Compute the stat_ind array (indices into adj_* tables) for a race/class at a
  * given set of base stat values (state->stat_ind in calc_bonuses, without the
- * hypothetical-blow hack). stat_add (equipment) is DEFERRED and treated as 0.
+ * hypothetical-blow hack). Equipment stat_add is EXCLUDED BY DESIGN here (this
+ * helper answers "what are the indices at these base stats"); calcBonuses does
+ * compute it, at L844 below, rune-gated per worn item.
  */
 export function calcStatIndices(
   race: PlayerRace,
@@ -359,7 +363,7 @@ export function calcSkills(
  * struct player_state (player.h:401-438): all the variable state that
  * changes when equipment goes on or off. Field-for-field port; `hold` is
  * additionally kept (upstream computes it as a local at player-calcs.c:2251)
- * because the deferred launcher/weapon weight analysis will need it.
+ * because the launcher / weapon weight analysis reads it (L1240-1252).
  */
 export interface PlayerState {
   /** stat_add[STAT_MAX]: equipment stat bonuses (rune-gated, decision 25). */
@@ -376,15 +380,15 @@ export interface PlayerState {
   speed: number;
   /** Number of blows times 100. */
   numBlows: number;
-  /** Number of shots times 10 (launcher DEFERRED: 0). */
+  /** Number of shots times 10 (computed by the launcher analysis, L1240-1252). */
   numShots: number;
   /** Number of extra movement actions. */
   numMoves: number;
-  /** Ammo multiplier (launcher DEFERRED: 0). */
+  /** Ammo multiplier (computed by the launcher analysis, L1244-1247). */
   ammoMult: number;
-  /** Ammo variety, as an upstream tval number (launcher DEFERRED: 0). */
+  /** Ammo variety, as an upstream tval number (set by the launcher analysis). */
   ammoTval: number;
-  /** Base ac (armour DEFERRED: 0). */
+  /** Base ac (accumulated from worn armour, L886). */
   ac: number;
   /** Damage reduction. */
   damRed: number;
@@ -442,8 +446,9 @@ export function playerFlags(player: Player): FlagSet {
  * player_hp_attr (player.c:323): the colour the current hitpoints are drawn
  * in - COLOUR_L_GREEN at full health, COLOUR_YELLOW while above the
  * hitpoint-warning fraction (mhp * hitpoint_warn / 10), else COLOUR_RED.
- * `hitpointWarn` is op_ptr->hitpoint_warn (0..9); the options store is
- * deferred, so the caller supplies it.
+ * `hitpointWarn` is op_ptr->hitpoint_warn (0..9). The options store is ported
+ * (player/options.ts, reachable as GameState.options); the caller reads the
+ * value from there and passes it in, so this stays a pure function.
  */
 export function playerHpAttr(
   p: Pick<Player, "chp" | "mhp">,
@@ -645,13 +650,12 @@ function calcLight(
   state.curLight = 0;
 
   /* Ascertain lightness if in the town (1606-1613). is_daytime() comes from
-     the world clock (deferred), so isDaytime defaults false and this branch
-     is dormant in the dungeon-only build.
-     TODO(world-clock): when isDaytime becomes real, also reinstate the
-     upstream visual refresh here -- calc_light sets p->upkeep->update |=
-     (PU_UPDATE_VIEW | PU_MONSTERS) when the town light changes (1608-1611)
-     before returning. The port must trigger the equivalent view/monster
-     refresh on the town daytime path once the town/world clock lands. */
+     the world clock (game/world.ts isDaytime); with no value supplied it defaults
+     false, so the branch is dormant only for a caller that omits it.
+     NOTHING IS OWED for the refresh half --
+     calc_light sets p->upkeep->update |= (PU_UPDATE_VIEW | PU_MONSTERS) when
+     the town light changes (1608-1611), and the port has no dirty-flag pipeline
+     to set: the front end recomputes and repaints after every action. */
   const depth = options.depth;
   const update = options.update ?? true;
   if (depth === 0 && (options.isDaytime ?? false) && update) {
@@ -700,13 +704,13 @@ function calcLight(
  * model is inert (see CalcBonusesOptions.timedEffects).
  *
  * Ported statement-for-statement in upstream order; each block cites its
- * lines. DEFERRED blocks (see parity/ledger/player-calcs-bonuses.yaml), all
- * of which are no-ops for the innate state:
- * - the learn-by-use rune system that populates obj_k: equipment modifiers
- *   are rune-gated (obj->modifiers * obj_k->modifiers) and UNKNOWN at birth
- *   (decision 25), so they contribute nothing until a rune is learned. The
- *   per-object curse-object traversal in the equipment loop (2009-2023) is
- *   now ported (see options.curses)
+ * lines. Notes on individual blocks (parity/ledger/player-calcs-bonuses.yaml):
+ * - equipment modifiers are rune-gated (obj->modifiers * obj_k->modifiers) and
+ *   UNKNOWN at birth (decision 25), so they contribute nothing until the rune is
+ *   learned. That IS upstream. The learn-by-use system that populates obj_k is
+ *   ported (obj/knowledge.ts playerLearnRune / objectLearnUnknownRune), as is
+ *   the per-object curse traversal in the equipment loop (2009-2023, see
+ *   options.curses)
  * - calc_light (2040-2041), the food-grade block (2094-2132) and the timed
  *   block (2134-2213) are now ported (calcLight + the timedEffects-gated
  *   blocks below); the launcher analysis (2254-2288) and weapon analysis
@@ -808,8 +812,8 @@ export function calcBonuses(
      (options.curses == upstream's global curses[]); a curse object carries no
      ac and no tval, matching the zeroed fields of the upstream curse struct
      (curse ac is a guaranteed no-op, tval 0 makes tval_is_digger false).
-     Still DEFERRED (parity ledger): the learn-by-use rune system that
-     populates obj_k (obj-knowledge.c), pending its own increment. */
+     obj_k itself is populated by the ported learn-by-use system
+     (obj/knowledge.ts playerLearnRune L1049). */
   const equipment = options.equipment ?? [];
   const curseTable = options.curses ?? [];
   const knownMods = player.objKnown.modifiers;
@@ -1291,9 +1295,10 @@ export function calcBonuses(
     );
   }
 
-  /* Mana (2321-2325): calc_mana DEFERRED. The PF_NO_MANA check reads
-     p->msp, which is 0 until calc_mana is ported (correct for warriors;
-     see the ledger for the caster caveat). */
+  /* Mana (2321-2325). calc_mana is ported in player/spell.ts and runs in the
+     session layer right after this pass, so p->msp is 0 only on the very first
+     derive of a new character and real on every later one - which is what makes
+     the PF_NO_MANA test below correct for a warrior and inert for a caster. */
   if (!player.msp) {
     state.pflags.on(PF.NO_MANA);
   }

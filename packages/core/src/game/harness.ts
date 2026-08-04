@@ -135,7 +135,8 @@ export function makePlayer(): Player {
   return p;
 }
 
-/** A player combat state that hits reliably (calc_bonuses is deferred). */
+/** A fixed player combat state that hits reliably; the live path derives one
+ * with calcBonuses (player/calcs.ts:720). */
 export function defaultCombat(): PlayerCombatState {
   const skills = new Array<number>(SKILL.DIGGING + 1).fill(20);
   return {
@@ -210,6 +211,9 @@ export function makeState(opts: StateOptions = {}): GameState {
     chunk,
     actor,
     gear,
+    /* No content pack here, so no curse templates - the harness answers the
+     * uncursed case, which is what its fixtures build. */
+    curses: [],
     monsters: [null],
     groups: [null],
     floor: new Map(),

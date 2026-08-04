@@ -2877,6 +2877,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
+    curses: reg.objects.curses,
     /* Placeholder; wireGame installs the full registry-backed env. */
     runeEnv: makeRuneEnv(
       () => null,
@@ -3607,6 +3608,7 @@ export function loadGame(
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
+    curses: reg.objects.curses,
     /* Placeholder; wireGame installs the full registry-backed env. */
     runeEnv: makeRuneEnv(
       () => null,

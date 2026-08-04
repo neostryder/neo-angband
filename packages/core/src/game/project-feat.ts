@@ -13,7 +13,7 @@
  * terrain to the sun, guarded on cave->depth == 0. That guard never fires yet
  * (the port has no surface/town), so the branch is dormant but faithful.
  *
- * DEFERRED (ledgered in parity/ledger/game-project-feat.yaml):
+ * NOTES (ledgered in parity/ledger/game-project-feat.yaml):
  * - square_forget / square_unmark and the PU_UPDATE_VIEW | PU_MONSTERS
  *   redraw requests: the core keeps no player square-memory yet (the web
  *   renderer holds its own explored set); FOV refresh rides the state

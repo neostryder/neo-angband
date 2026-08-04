@@ -11,7 +11,8 @@
  * choice down, exactly as upstream's cmd_get_spell resolves before the
  * command runs.
  *
- * DEFERRED (ledgered in game-spell-cmd.yaml): the low-mana confirmation
+ * NOTES (ledgered in game-spell-cmd.yaml): the low-mana confirmation is asked
+ * by the shell (web/src/main.ts:3341, the same text as cmd-obj.c:1151); the
  * prompt (get_check, UI) and TMD_FASTCAST's 3/4-turn cast. no_light in
  * player_can_cast is now wired (obj-cmd.ts noLight, cave-view.c L913).
  * convert_mana_to_hp (PF_COMBAT_REGEN) and player_over_exert's faint/CON

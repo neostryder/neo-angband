@@ -29,7 +29,8 @@
  *   forms ("hands", no "s", "are"), matching a bare-handed player.
  * - The temp_resist / oflag_syn "already matches known state" notify
  *   suppression (player-timed.c:828-843) runs when hooks supplies the obj_k
- *   knowledge queries; absent them (obj_k twin deferred, gap 4.8) no message is
+ *   knowledge queries, supplied on the live path by makeIncCheckQueries
+ *   (game/player-side.ts); absent them no message is
  *   suppressed. It only silences a message, never changes the value.
  * - player_inc_check's equip_learn / update_smart_learn / "You resist the
  *   effect!" side effects (player-timed.c:945-953) run through the optional
@@ -126,7 +127,8 @@ export interface PlayerIncCheckQueries {
 /**
  * obj_k knowledge queries for player_set_timed's notify suppression
  * (player-timed.c:828-843). When present, a message that only duplicates
- * already-known player state is silenced. The obj_k twin is deferred (gap 4.8),
+ * already-known player state is silenced. obj_k is real (Player.objKnown) and
+ * the queries are supplied on the live path (makeIncCheckQueries),
  * so callers usually omit this and no message is suppressed.
  */
 export interface TimedNotifyQueries {
@@ -151,7 +153,7 @@ export interface PlayerTimedHooks {
   weapon?: TimedWeaponDesc;
   /**
    * obj_k queries for the temp_resist / oflag_syn notify suppression. Omit to
-   * suppress nothing (the obj_k twin is deferred).
+   * suppress nothing; the live path supplies the queries (makeIncCheckQueries).
    */
   notifyQueries?: TimedNotifyQueries;
   /**
@@ -311,7 +313,8 @@ export function playerSetTimed(
    * (player-timed.c:828-843): a temporary resist the player is known to be
    * immune to, or a flag synonym the player is known to have from worn gear.
    * Only silences a message; never changes the value. Requires the obj_k twin
-   * queries (deferred, gap 4.8), so with none supplied nothing is suppressed.
+   * queries, which the live path supplies (makeIncCheckQueries,
+ * game/player-side.ts); with none supplied nothing is suppressed.
    */
   const q = hooks.notifyQueries;
   if (q) {
