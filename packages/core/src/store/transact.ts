@@ -90,7 +90,8 @@ function objCanTakeoff(obj: GameObject): boolean {
   return !obj.flags.has(OF.STICKY);
 }
 
-/** Knowledge learned by transacting an item; runes are DEFERRED (task #13). */
+/** Knowledge learned by transacting an item. The rune learn loop runs on BOTH
+ * sides of the counter (see the header); flavour awareness too. */
 export interface TxnKnowledge {
   /** When supplied, buying/selling makes the kind's flavor known. */
   flavor?: FlavorKnowledge;
@@ -379,7 +380,7 @@ export function purchaseAnalyze(price: number, value: number, guess: number): Sa
  * do_cmd_sell (L1869): sell `amt` of the gear object at `handle` to the store.
  * Refuses stuck equipped items and items the store will not buy, checks the
  * store has room, pays the player, detaches the items, and hands them to the
- * store. Flavor becomes known; rune learning is DEFERRED (task #13).
+ * store. Flavor becomes known, and object_learn_unknown_rune runs (L294).
  */
 export function storeSell(
   ctx: StoreMaintContext,

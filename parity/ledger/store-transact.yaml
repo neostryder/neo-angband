@@ -47,7 +47,8 @@ deferred:
   - The rune learn-on-transaction loop (object_learn_unknown_rune /
     player_know_object until object_fully_known) that do_cmd_buy and do_cmd_sell
     run: it needs the knowledge/display system and the obj->known twin (task
-    #13). Flavor awareness IS applied; only the rune half is deferred.
+    #13). Flavor awareness AND the rune learn loop are both applied, on both
+    sides of the counter (store/transact.ts:20-25).
   - The obj->known twin throughout (known_obj copies, bought->known / picked_
     item->known assignments), consistent with the rest of the object port.
   - p->upkeep->total_weight, the PU_/PN_/PR_ update-notice-redraw masks, the

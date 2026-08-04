@@ -17,7 +17,8 @@
  * plus the acceptance-flow engine helpers options_init_cheat, flavor_set_all_aware
  * and the message-recall separator banner.
  *
- * DEFERRED (see parity/ledger/player-birth.yaml):
+ * NOTES (see parity/ledger/player-birth.yaml, and parity/DEFERRALS.md for what
+ * is actually missing):
  *   - starting inventory objects (returned as tval/sval kind-name refs only)
  * calc_mana runs in the session layer after birth (session/game.ts calls
  * calcMana), so msp/csp are left at 0 here and populated there.

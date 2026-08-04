@@ -59,7 +59,8 @@ deferred:
   - Birth integration (the birth_randarts option that swaps the standard
     set for do_randart's output at game start, and persisting the randart
     seed in the save) rides the build-option flags (#30); doRandart is the
-    generator, not yet wired into startGame.
+    generator, wired into startGame through the birth_randarts option
+    (session/game.ts:599) with the seed persisted in the save (:459).
   - mean / variance use floored double arithmetic rather than the upstream
     exact-rational multiprecision (z-util.c); artifact powers are small
     ints so the floored result is exact. remove_contradictory_activation is

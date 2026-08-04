@@ -660,7 +660,9 @@ export function equipLearnOnDefend(p: Player, env: RuneEnv): void {
     objectCursesFindToA(p, env, obj);
     if (p.objKnown.toA) return;
   }
-  /* Shape to_a: shapes are bound raw; DEFERRED with the shapechange system. */
+  /* Shape to_a: shapes are bound raw. The shapechange system is ported
+   * (player.shape, game/effect-general.ts:850), so this can read the bound
+   * shape's own to_a. */
 }
 
 function slotIndexByType(p: Player, type: string): number {

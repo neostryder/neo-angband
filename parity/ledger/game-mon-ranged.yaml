@@ -16,7 +16,8 @@ upstream:
         monster's best_range, then the randint0(100) roll, the max_range check and
         a clear PROJECT_SHORT path to the target.
       - monster_get_target_dist_grid (L65): the target is the player (mon->cdis /
-        player->grid); the decoy target is deferred.
+        player->grid); the decoy IS modelled and the AI targets it
+      (game/monster-turn.ts:399-410).
       - remove_bad_spells (L153): removeBadSpells - drop RSF_HEAL at full health,
         RSF_HEAL_KIN with no injured kin, RSF_HASTE while well-hasted, RSF_TELE_TO
         / RSF_TELE_SELF_TO when adjacent, RSF_WHIP / RSF_SPIT out of range.

@@ -27,7 +27,8 @@ import type { Rng } from "../rng.js";
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core
  * needs. The full upkeep (trackees, redraw/update/notice masks, inventory and
- * quiver arrays) is DEFERRED to the world/UI integration.
+ * quiver arrays) lives in game/gear.ts, which computes both (Gear.inven and
+ * Gear.quiver, sized by calcInventory).
  */
 export interface PlayerUpkeep {
   playing: boolean;

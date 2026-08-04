@@ -10,8 +10,11 @@
  * (0 = a free, non-turn-consuming command). Mods add or replace codes without
  * touching the core. The built-in actions cover walk (move / melee an
  * adjacent monster), hold/rest (spend a turn in place) and the stair commands
- * (signal a level change). Every other command code is registered as a stub
- * that spends no energy and is ledgered as deferred.
+ * (signal a level change). Every other command code gets a base-registry stub
+ * that spends no energy, and the installers replace all of them before play
+ * (obj-cmd, cave-cmd, ranged-cmd, spell-cmd, pickup, player-path). Only "look"
+ * and "search" stay stubs, correctly: upstream's look is a UI function with
+ * CMD_NULL (ui-knowledge.c:4169) and 4.2.6 has no search command at all.
  *
  * process_player() reads queued commands through the injected provider
  * (state.nextCommand) so the loop never blocks on real input, and drains free
@@ -296,6 +299,9 @@ export function attackMonster(state: GameState, target: Monster): number {
        * with energy >= move_energy, so the full-turn default is upstream's
        * value at every real call site. */
       moveEnergy: state.z.moveEnergy,
+      /* object_to_hit / object_to_dam / object_weight_one read the curse
+       * templates of the weapon active curses (obj-util.c:296-330). */
+      curses: state.curses,
       hooks: buildMeleeHooks(state, target),
     },
   );
@@ -682,8 +688,8 @@ export function sleepAction(state: GameState, _cmd: PlayerCommand): number {
 
 /**
  * descend / ascend: signal a level change (player->upkeep->generate_level).
- * The actual level generation and depth change are DEFERRED to the world
- * integration; the loop observes the signal and clears it.
+ * The generation and depth change belong to the world integration, which does
+ * them (session/game.ts changeLevel); the loop observes the signal and clears it.
  */
 export function descendAction(state: GameState, _cmd: PlayerCommand): number {
   state.generateLevel = true;
@@ -695,7 +701,8 @@ export function ascendAction(state: GameState, _cmd: PlayerCommand): number {
   return state.z.moveEnergy;
 }
 
-/** A deferred command: consumes no turn (ledgered as not yet ported). */
+/** The base-registry placeholder: consumes no turn. Every code that uses it is
+ * re-registered by an installer before play; see STUBBED_COMMANDS. */
 export function stubAction(_state: GameState, _cmd: PlayerCommand): number {
   return 0;
 }
@@ -726,7 +733,8 @@ export const STUBBED_COMMANDS: readonly string[] = [
   "close",
 ];
 
-/** Build the default registry: the ported actions plus the deferred stubs. */
+/** Build the default registry: the actions defined here plus the placeholders
+ * the installers replace. */
 export function createDefaultRegistry(): ActionRegistry {
   const reg = new ActionRegistry();
   reg.register("walk", walkAction);

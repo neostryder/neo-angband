@@ -40,7 +40,10 @@ upstream:
       - cmdq_pop reduced to the injected command provider (state.nextCommand),
         so the loop never blocks on real input; the string-keyed ActionRegistry
         (decision 13) is the moddable command table (walk / hold / rest /
-        descend / ascend ported; ~20 other codes registered as deferred stubs).
+        descend / ascend ported; 20 other codes get base-registry stubs that the
+        installers replace before play - only look and search stay stubs, and
+        correctly: upstream's look is a UI function with CMD_NULL and 4.2.6 has
+        no search command).
 notes: >-
   struct player's world/turn members that player/player.ts omits (grid,
   energy, state.speed, total_energy) live in a PlayerActor wrapper

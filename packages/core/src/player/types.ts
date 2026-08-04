@@ -8,7 +8,7 @@
  * These are the typed, bound shapes produced by bind.ts. World coupling stays
  * out of this module: starting inventory and spell effects keep object/effect
  * references as tval/sval names and raw records, to be resolved by the obj and
- * effects domains later (see the "deferred" notes and parity/ledger).
+ * effects domains, which bind them at session boot (see parity/ledger).
  */
 
 import type { FlagSet } from "../bitflag.js";
@@ -321,7 +321,8 @@ export interface TimedEffect {
   oflagDup: number;
   /**
    * oflag_syn: whether the flag synonym is an exact duplicate (used only by
-   * the deferred notify-suppression). Bound from `flag-synonym[0].exact`.
+   * the notify-suppression, whose queries the live path supplies). Bound from
+ * `flag-synonym[0].exact`.
    */
   oflagSyn: boolean;
   grades: TimedGrade[];

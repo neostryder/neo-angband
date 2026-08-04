@@ -264,7 +264,8 @@ export function chooseAttackSpell(
  * monster_can_cast: whether a monster has a chance to cast (innate or not) this
  * turn - a frequency roll gated by the NICE flag, taunt, preferred range, the
  * maximum range and a clear short-range path. The witness path for a non-player
- * target is deferred (the target is always the player here).
+ * target is always the player on this path. The decoy IS modelled and the
+ * monster AI targets it (game/monster-turn.ts:399-410).
  */
 export function monsterCanCast(
   state: GameState,

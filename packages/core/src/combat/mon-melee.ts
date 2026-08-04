@@ -26,12 +26,16 @@
  * the PARALYZE damage=1 pre-clamp, and the "player moved" early-out (a blow that
  * relocates the player via earthquake / knockback skips the remaining blows).
  *
- * DEFERRED (ledgered in parity/ledger/combat-melee.yaml): monster lore /
- * smart-learn, monster-vs-monster melee (monster_attack_monster), react_to_slay
- * blocking a theft (the item is stolen regardless; no RNG impact), and attaching
- * stolen gold/items to the monster's held-object pile (monster_carry, coordinated
- * with the loot-drops gap; the item/gold is still removed from the player and no
- * RNG is drawn by the attach).
+ * All four items this header used to list as DEFERRED are ported: monster lore
+ * and smart-learn (mon/lore.ts loreLearnFlagIfVisible, project-player.ts:171),
+ * monster-vs-monster melee (game/mon-cmd.ts:317 monsterAttackMonster),
+ * react_to_slay blocking a theft on the player's pack (game/mon-side.ts:421) and
+ * attaching stolen gold/items to the thief's pile (mon/make.ts monsterCarry, used
+ * at game/known.ts:854).
+ *
+ * ONE REMAINS: the monster-vs-monster theft path does not apply react_to_slay
+ * (mon/steal.ts:234 vs mon-util.c:1548), so a slay-bearing item cannot resist
+ * being stolen by a monster from another monster. No RNG impact.
  */
 
 import type { Rng, RandomValue } from "../rng.js";
@@ -160,7 +164,11 @@ export interface MonBlowEnv {
 
 /** Options for a monster melee attack. */
 export interface MonMeleeOptions {
-  /** monster_is_visible(mon); affects only messaging (DEFERRED). */
+  /**
+   * monster_is_visible(mon); affects only messaging. The live path supplies it
+   * through MonBlowEnv.monVisible (game/mon-side.ts makeMonBlowEnv); this default
+   * is for the worldless harness.
+   */
   monVisible?: boolean;
   /**
    * The world-touching blow environment (game/mon-side.ts), bound to the
@@ -446,7 +454,10 @@ function resolveBlowEffect(
    * message methods, first RNG event for the INSULT / MOAN effects). */
   drawBlowMessage(ctx);
 
-  /* Elemental blows: physical component to HP; elemental component deferred. */
+  /* Elemental blows on the WORLDLESS RECORDING PATH: the physical component
+   * becomes HP damage and the elemental component is recorded as an intent for
+   * the caller to inspect. The LIVE path does not come through here - it applies
+   * adjust_dam, inven_damage and the resist check in full at L710 below. */
   if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
     const physical = phys ? adjustDamArmor(baseDamage, ac + 50) : 0;
     side.push({

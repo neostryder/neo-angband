@@ -46,10 +46,10 @@ notes: >-
   and mimic/drop object kinds stay as names until their domains bind
   them; the JSON pack loses intra-record directive order, so binding
   applies the canonical order (base, glyph, flags, flags-off, spells),
-  which matches every shipped record. Deferred (ledgered here): monster
-  lore (monster_lore, spell_msgs consumption, l_list), drop kind
-  resolution and mon_create_drop, color-cycle visuals, shape-change
-  behavior, heatmaps, known_pstate (player-state snapshot on struct
+  which matches every shipped record. Ported since this was written: monster lore
+  (mon/lore.ts and the lore.txt file), drop kind resolution and mon_create_drop,
+  colour-cycle visuals, shape-change behaviour, and the heatmaps. Ledgered here:
+  known_pstate (player-state snapshot on struct
   monster), pit and summon deep binding (records load and count only).
 verified-by:
   - bind.test.ts against the real pack (624/56/91/19/30/12 counts,

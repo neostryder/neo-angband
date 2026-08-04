@@ -30,7 +30,7 @@ import type { MeleeAttack, PlayerCombatState } from "../combat/melee.js";
 import type { DefenderState } from "../combat/mon-melee.js";
 import type { GameObject } from "../obj/object.js";
 import type { Effect, EffectBuilderInjections } from "../effects/effect.js";
-import type { Brand, Slay } from "../obj/types.js";
+import type { Brand, Curse, Slay } from "../obj/types.js";
 import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge.js";
 import type { Gear } from "./gear.js";
 import type { Store } from "../store/store.js";
@@ -127,7 +127,8 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
  * Player omits), plus the combat/defence views combat needs. `combat` backs
  * py_attack (player-attack.c p->state) and `defense` backs make_attack_normal
  * (p->state.ac + p->state.to_a); calc_bonuses that would derive them is
- * deferred (player/calcs.ts), so they are supplied explicitly.
+ * derived by calcBonuses (player/calcs.ts:720), so they are supplied
+   * explicitly rather than recomputed here.
  */
 export interface PlayerActor {
   player: Player;
@@ -447,6 +448,13 @@ export interface GameState {
   /** Object domain tables for player melee brands/slays (index 0 = none). */
   brands: readonly (Brand | null)[];
   slays: readonly (Slay | null)[];
+  /**
+   * The bound curse registry (upstream global curses[], 1-based, index 0 null).
+   * object_to_hit / object_to_dam / object_weight_one all read it to add an
+   * active curse template bonus onto the item own value (obj-util.c:296-330),
+   * so combat needs it for the same reason it needs brands and slays.
+   */
+  curses: readonly (Curse | null)[];
   /**
    * Rune-learning environment (obj-knowledge.c learn-by-use): registry
    * tables plus equipment access. Built by the session (wireGame); the

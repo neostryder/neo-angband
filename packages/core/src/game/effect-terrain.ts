@@ -421,7 +421,8 @@ const handleLIGHT_AREA: EffectHandler = (ctx) => {
  * caster targeting another monster darkens its room; a decoyed caster darkens
  * the decoy's room (and the effect is unseen if the decoy is out of sight or
  * the player is blind). The player-cast form blinds an unresisting caster.
- * (monster_desc MDESC_TARG is deferred (8.9); the race name stands in.)
+ * (monster_desc with MDESC_TARG is ported - mon/desc.ts, used at
+ * game/mon-cmd.ts:102 - and can replace the race name that stands in here.)
  */
 const handleDARKEN_AREA: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);

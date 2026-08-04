@@ -75,7 +75,8 @@ upstream:
     items:
       - player_hp_attr (L323) as playerHpAttr, player_sp_attr (L337) as
         playerSpAttr - L_GREEN at full, YELLOW above mhp*hitpoint_warn/10,
-        else RED. hitpoint_warn is supplied (options store deferred).
+        else RED. hitpoint_warn is supplied from the ported options store
+    (player/options.ts, GameState.options).
 notes: >-
   Front-end-agnostic DATA port of the sidebar / status line: each field and
   indicator is the ordered list of coloured runs (DisplayRun{text,color}), with
@@ -90,7 +91,7 @@ deferred:
   - DisplayDeps seams (defaults chosen for a freshly born headless character;
     the session wires the real values):
     - hitpointWarn (default 3 = DEFAULT_HITPOINT_WARN): op_ptr->hitpoint_warn;
-      the options store is not ported.
+      the options store IS ported (player/options.ts, GameState.options).
     - effectiveSpeed (default false): OPT(player, effective_speed).
     - birthFeelings (default true): OPT(player, birth_feelings).
     - feelingNeed (default 10): z_info->feeling_need (constants.txt).

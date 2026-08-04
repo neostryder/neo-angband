@@ -7,7 +7,8 @@
  * calculation (mon_hp), and the monster-instance construction half of
  * place_new_monster_one. Actual placement into a chunk (square checks,
  * level rating, drops, mimicked objects, groups/friends spawning) is
- * deferred to the world integration; see parity/ledger/mon-make.yaml.
+ * supplied by the world integration (gen/gen-monster.ts, game/mon-place.ts);
+ * see parity/ledger/mon-make.yaml.
  *
  * Upstream notes preserved:
  * - Town monsters (level 0) are only picked when generated_level is 0,
@@ -265,7 +266,8 @@ export interface CreateMonsterOptions {
  * The monster-construction half of place_new_monster_one: builds a fully
  * initialized Monster instance for a race. RNG call order matches
  * upstream (sleep, hp, speed variation, energy, random attr) so seeded
- * streams stay comparable. Placement into a chunk is deferred.
+ * streams stay comparable. Placement into a chunk is the world layer's
+ * (gen/gen-monster.ts, game/mon-place.ts).
  */
 export function createMonster(
   rng: Rng,

@@ -38,7 +38,8 @@ divergences:
     square_sense_pile) yields one "unknown" entry (upstream's unknown_item /
     unknown_gold_kind markers). The port cannot tell sensed gold from sensed
     items, so a sensed-unknown is always listed (never money-skipped).
-  - object_desc is not ported, so objectListEntryName uses the base-kind name
+  - object_desc IS ported (obj/desc.ts describeObject); objectListEntryName
+      still uses the base-kind name
     (objBaseName) plus count. Rich naming (flavours, ego / artifact names,
     pluralisation) and the terminal right-aligned "%3.3s" prefix of
     object_list_format_name are deferred; the entry carries the real object so

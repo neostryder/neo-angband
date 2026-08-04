@@ -110,6 +110,9 @@ function playerBlow(state: GameState, mon: Monster): boolean {
        * including effect-handler-attack.c's py_attack_real paths. */
       monVisible: monsterIsVisible(mon),
       percentDamage: state.options?.get("birth_percent_damage") ?? false,
+      /* object_to_hit / object_to_dam / object_weight_one read the curse
+       * templates of the weapon active curses (obj-util.c:296-330). */
+      curses: state.curses,
     },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);

@@ -8,7 +8,7 @@
  * (price_item -> object_value/object_value_real), stock maintenance
  * (store_maint / mass_produce / store_create_random), buying and selling, and
  * town-level placement - lands in later increments; several of those depend on
- * object valuation (object_power, obj-power.c), which is not ported yet.
+ * object valuation (object_power, obj-power.c), which IS ported (obj/power.ts).
  */
 
 import type { ObjectKind } from "../obj/types.js";

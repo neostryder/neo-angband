@@ -9,19 +9,20 @@
  * reference/src/obj-gear.c (slot_by_type, wield_slot, inven_carry) and
  * reference/src/player-birth.c (wield_all, player_outfit) (Angband 4.2.6).
  *
- * LIVE vs DEFERRED (ledgered in parity/ledger/game-gear.yaml):
+ * WHAT IS HERE, AND WHAT IS NOT (ledgered in parity/ledger/game-gear.yaml):
  * - LIVE: slot_by_type (empty-preferring), wield_slot (full tval switch),
  *   inven_carry's merge-or-add with quiver stack-mode routing, wield_all's
  *   split-and-wear, player_outfit's start-item roll + prep + carry + wield
- *   (birth_start_kit + eopts exclusion honoured), the real quiver subsystem
+ *   (birth_start_kit + eopts exclusion honoured), the quiver subsystem
  *   (object_is_in_quiver, preferred_quiver_slot, quiver_absorb_num,
  *   calc_inventory's quiver assignment, pack_slots_used quiver accounting),
  *   combine_pack + inven_can_stack_partial, and minus_ac armour damage,
  *   pack_is_full / pack_is_overfull (the pack_size overflow enforcement itself,
  *   pack_overflow, needs drop_near and so lives in game/obj-cmd.ts next to the
  *   other obj-gear.c verbs that touch the floor).
- * - DEFERRED: the display knowledge twin (obj->known) and equip_cnt UI
- *   counter.  The pack-side inven[] listing is a derived view rather than the
+ * - NOT HERE: obj->known, which this port synthesises on demand instead of
+ *   storing (obj/known-object.ts objectKnownShadow), and upstream's equip_cnt UI
+ *   counter, which the character sheet derives from player.equipment.  The pack-side inven[] listing is a derived view rather than the
  *   source of truth: gear.pack keeps master-gear insertion order while
  *   gear.inven reproduces calc_inventory's earlier_object ordering. Wielding DOES learn modifier runes
  *   (obj-knowledge.c object_learn_on_wield); see obj/knowledge.ts.
@@ -1289,8 +1290,11 @@ export function outfitPlayer(
    * runes from the same upstream block are set in blankObjKnowledge.) */
   learnBirthObviousFlags(player.objKnown.flags, reg.properties);
 
-  /* Modifier runes are learned per item at wield_all (below); the display
-   * half of the knowledge block (flavor_aware / base_known) is DEFERRED. */
+  /* Modifier runes are learned per item at wield_all (below). The other half of
+   * upstream's knowledge block is applied too: object_flavor_aware through
+   * opts.onStartKind (collected at session/game.ts:2775, applied at :2911 once
+   * flavor_init has run), and object_set_base_known inside the on-demand shadow
+   * synthesis (obj/known-object.ts objectSetBaseKnown). */
 
   /* Give the player starting equipment. */
   for (const si of player.cls.startItems) {
@@ -1335,8 +1339,9 @@ export function outfitPlayer(
      * though those flags are known from birth (learnBirthObviousFlags above). */
     obj.notice |= OBJ_NOTICE.ASSESSED;
 
-    /* object_flavor_aware(p, obj) (player-birth.c:650). Deferred to the caller
-     * because the awareness store does not exist yet - see onStartKind. */
+    /* object_flavor_aware(p, obj) (player-birth.c:650), handed to the caller
+     * because flavor_init has not run at this point in birth. The session DOES
+     * apply it: session/game.ts:2775 collects each kind, :2911 marks it aware. */
     opts.onStartKind?.(kind);
 
     /* Carry the item. */

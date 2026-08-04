@@ -7,7 +7,7 @@
  * This is the data-binding slice of the store subsystem. It resolves each
  * store's entrance feature, owners, always/normal stocking tables (tval + sval
  * names -> object kinds), and buy list. The behavioural half of store.c
- * (pricing, stock maintenance, buying/selling, town placement) is deferred to
+ * (pricing, stock maintenance, buying/selling, town placement) belongs to
  * later increments; see store/types.ts.
  */
 
@@ -92,7 +92,7 @@ export function bindStore(rec: StoreRecordJson, reg: ObjRegistry): BoundStore {
   }));
 
   /* `always:` entries with an sval resolve to a specific kind; entries with
-   * no sval are the bookseller's town-book lines (expansion deferred). */
+   * no sval are the bookseller's town-book lines, expanded at store.ts:173. */
   const alwaysTable: ObjectKind[] = [];
   const alwaysBookTvals: number[] = [];
   for (const it of rec.always ?? []) {

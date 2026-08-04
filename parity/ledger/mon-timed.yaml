@@ -36,7 +36,8 @@ deferred:
   - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,
     mon-util.c): the CHANGED timer is set but the form is not swapped. CHANGED
     is only set by an unported effect, so this path is currently unreachable.
-  - lore_learn_flag_if_visible on a flag-resist (mon-lore.c): DEFERRED with the
+  - lore_learn_flag_if_visible on a flag-resist (mon-lore.c): PORTED at
+      mon/lore.ts:150 and called from monster-turn.ts:1294; ledgered with the
     monster-memory system (see the late/optional task).
   - the health-bar / monster-list redraw (player->upkeep redraw masks): UI upkeep.
 verified-by:

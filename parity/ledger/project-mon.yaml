@@ -40,7 +40,8 @@ deferred:
     project_m_monster_attack (L1034), project_m_player_attack (L1102, routes
     through mon_take_hit), project_m_apply_side_effects (L1177) - land in the
     next increment, wiring damage application, polymorph (poly_race +
-    place_new_monster), teleport (effect_simple EF_TELEPORT), and the deferred
+    place_new_monster), teleport (effect_simple EF_TELEPORT, ported in
+    game/effect-teleport.ts), and the
     thrust.
   - poly_race (L45) and thrust_away (L87): poly_race needs get_mon_num (monster
     generation) and thrust_away needs monster_swap / feature projectability on a

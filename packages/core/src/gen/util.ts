@@ -12,8 +12,9 @@
  *   grids on the Gen context and mirror monster occupancy into the Chunk's
  *   mon array so square_isempty / square_canputitem behave exactly as
  *   upstream for placement decisions.
- * - place_trap only records the grid (no trap object is created; the trap
- *   domain is not ported).
+ * - place_trap records the grid and, when trapKinds is supplied (it is, from
+ *   session/boot.ts:239), picks the kind and rolls the power in the generation
+ *   stream; the populate path instantiates it. The trap domain is game/trap.ts.
  * - Monster group/escort spawning (mon-make.c place_new_monster /
  *   place_friends / place_new_monster_group) is ported; group indices are
  *   allocated from a per-generation counter and recorded on each monster's

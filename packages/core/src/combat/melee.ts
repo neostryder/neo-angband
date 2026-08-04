@@ -5,9 +5,10 @@
  *
  * The upstream `struct player` carries a computed `struct player_state`
  * (calc_bonuses) with to_h/to_d/ac/num_blows/skills/stat_ind; the port's
- * Player does not yet compute that (player/calcs.ts defers it). Combat
- * therefore takes an explicit PlayerCombatState alongside the Player, exactly
- * as upstream separates `p` from `p->state`. num_blows is likewise injected.
+ * port computes it in player/calcs.ts (calcBonuses). Combat takes an explicit
+ * PlayerCombatState alongside the Player rather than reading it off the Player,
+ * exactly as upstream separates `p` from `p->state`; num_blows arrives the same
+ * way. That is a layer boundary, not a missing derive.
  *
  * Knowledge / learning side effects (equip_learn_on_melee_attack,
  * learn_brand_slay_from_melee) are wired at the GAME layer around pyAttack
@@ -23,8 +24,9 @@
  * caller supplying no hooks (e.g. the effect handlers) still rolls fear but
  * skips the state-mutating side effects, exactly as those simplified paths do.
  *
- * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
- * - Message text/formatting (the combat code returns the HitType key only).
+ * BY LAYER (ledgered in parity/ledger/combat-melee.yaml): message text and
+ * formatting live in the game layer - combat returns the HitType key and
+ * game/mon-message.ts and game/effect-melee.ts render it.
  *
  * O-combat (birth_percent_damage) IS ported: oMeleeDamage / o_critical_melee,
  * gated in pyAttackReal at the same point upstream branches (player-attack.c
@@ -32,7 +34,7 @@
  */
 
 import type { Rng } from "../rng.js";
-import type { Brand, Slay } from "../obj/types.js";
+import type { Brand, Curse, Slay } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { objectWeightOne } from "../obj/object.js";
 import { MON_TMD } from "../generated/index.js";
@@ -62,7 +64,7 @@ import type { AttackModifier, TempBrandSlay } from "./brand-slay.js";
 
 /**
  * The subset of upstream `struct player_state` that combat reads. Supplied by
- * the caller (calc_bonuses is deferred in player/calcs.ts).
+ * the caller, which derives it with calcBonuses (player/calcs.ts:720).
  */
 export interface PlayerCombatState {
   /** state->to_h. */
@@ -166,6 +168,15 @@ export interface MeleeOptions {
    * path (the gate adds/reorders nothing).
    */
   percentDamage?: boolean;
+  /**
+   * The bound curse registry (upstream global curses[], 1-based). object_to_hit
+   * and object_to_dam add each active curse template bonus onto the weapon own
+   * bonus (obj-util.c:296-321), and object_weight_one adjusts weight the same
+   * way. A caller that omits it gets the uncursed answer, which is correct only
+   * for a weapon carrying no curses - so the live paths (game/effect-melee.ts,
+   * game/player-turn.ts) pass the bound registry.
+   */
+  curses?: readonly (Curse | null)[] | null;
   /** The blow side effects (gap 2.5); omitted by pure-math / effect callers. */
   hooks?: MeleeEffectHooks;
 }
@@ -231,9 +242,12 @@ function critActor(p: Player, state: PlayerCombatState): CritActor {
 export function chanceOfMeleeHitBase(
   state: PlayerCombatState,
   weapon: GameObject | null,
+  curses?: readonly (Curse | null)[] | null,
 ): number {
   const bonus =
-    state.toH + (weapon ? objectToHit(weapon) : 0) + (state.blessWield ? 2 : 0);
+    state.toH +
+    (weapon ? objectToHit(weapon, curses) : 0) +
+    (state.blessWield ? 2 : 0);
   return skill(state, SKILL.TO_HIT_MELEE) + bonus * BTH_PLUS_ADJ;
 }
 
@@ -244,8 +258,9 @@ export function chanceOfMeleeHit(
   state: PlayerCombatState,
   weapon: GameObject | null,
   monVisible: boolean,
+  curses?: readonly (Curse | null)[] | null,
 ): number {
-  const chance = chanceOfMeleeHitBase(state, weapon);
+  const chance = chanceOfMeleeHitBase(state, weapon, curses);
   return monVisible ? chance : Math.trunc(chance / 2);
 }
 
@@ -261,6 +276,7 @@ export function meleeDamage(
   slay: number,
   brands: readonly (Brand | null)[],
   slays: readonly (Slay | null)[],
+  curses?: readonly (Curse | null)[] | null,
 ): number {
   let dmg = weapon ? rng.damroll(weapon.dd, weapon.ds) : 1;
 
@@ -270,7 +286,7 @@ export function meleeDamage(
     dmg *= getMonsterBrandMultiplier(mon, brands[brand] as Brand, false);
   }
 
-  if (weapon) dmg += objectToDam(weapon);
+  if (weapon) dmg += objectToDam(weapon, curses);
 
   return dmg;
 }
@@ -303,6 +319,7 @@ export function oMeleeDamage(
   slay: number,
   brands: readonly (Brand | null)[],
   slays: readonly (Slay | null)[],
+  curses?: readonly (Curse | null)[] | null,
 ): DamageOutcome {
   let dice = weapon ? weapon.dd : 1;
   let add = 0;
@@ -325,7 +342,7 @@ export function oMeleeDamage(
   }
 
   /* Apply deadliness (x100) from to_d + weapon to-dam. */
-  const deadliness = state.toD + (weapon ? objectToDam(weapon) : 0);
+  const deadliness = state.toD + (weapon ? objectToDam(weapon, curses) : 0);
   dieAverage = applyDeadliness(dieAverage, Math.min(deadliness, 150));
 
   /* Sides per die, with a fractional-sides roll. */
@@ -337,7 +354,7 @@ export function oMeleeDamage(
   /* Criticals add dice (excluded for unarmed; upstream leaves msg at MSG_HIT). */
   let msg: HitType = "HIT";
   if (weapon) {
-    const crit = oCriticalMelee(rng, chanceOfMeleeHitBase(state, weapon), mon);
+    const crit = oCriticalMelee(rng, chanceOfMeleeHitBase(state, weapon, curses), mon);
     dice += crit.addDice;
     msg = crit.msg;
   }
@@ -386,7 +403,7 @@ export function pyAttackReal(
   /* See if the player hit. */
   const success = testHit(
     rng,
-    chanceOfMeleeHit(state, weapon, monVisible),
+    chanceOfMeleeHit(state, weapon, monVisible, opts.curses),
     mon.race.ac,
   );
   if (!success) {
@@ -398,7 +415,7 @@ export function pyAttackReal(
     };
   }
 
-  const weight = weapon ? objectWeightOne(weapon) : 0;
+  const weight = weapon ? objectWeightOne(weapon, opts.curses) : 0;
   const oCombat = opts.percentDamage ?? false;
 
   /* Best attack from all slays or brands on all non-launcher equipment.
@@ -421,7 +438,7 @@ export function pyAttackReal(
   let dmg: number;
   let msg: HitType;
   if (!oCombat) {
-    dmg = meleeDamage(rng, mon, weapon, mod.brand, mod.slay, brands, slays);
+    dmg = meleeDamage(rng, mon, weapon, mod.brand, mod.slay, brands, slays, opts.curses);
     msg = "HIT";
     if (weapon) {
       const crit = criticalMelee(
@@ -429,7 +446,7 @@ export function pyAttackReal(
         critActor(p, state),
         mon,
         weight,
-        objectToHit(weapon),
+        objectToHit(weapon, opts.curses),
         dmg,
       );
       dmg = crit.damage;
@@ -438,7 +455,7 @@ export function pyAttackReal(
     /* Apply the player damage bonus (player_damage_bonus = state->to_d). */
     dmg += state.toD;
   } else {
-    const o = oMeleeDamage(rng, state, mon, weapon, mod.brand, mod.slay, brands, slays);
+    const o = oMeleeDamage(rng, state, mon, weapon, mod.brand, mod.slay, brands, slays, opts.curses);
     dmg = o.damage;
     msg = o.msg;
   }

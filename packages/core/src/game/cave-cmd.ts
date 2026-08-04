@@ -1044,8 +1044,9 @@ export function installCaveCommands(
   /*
    * do_cmd_alter: attack, tunnel, or open, by what is there. DEFERRED: the
    * chest and floor-trap-disarm branches upstream falls through to
-   * (do_cmd_alter_aux L969-992) - "alter" is not wired to a shell key yet,
-   * so this stays door/dig/attack-only until it is.
+   * (do_cmd_alter_aux L969-992). REAL GAP, and reachable: the shell binds "+" to
+   * alter (web/src/main.ts:8090), so pressing it on a trapped chest or a floor
+   * trap does nothing upstream would do. See parity/DEFERRALS.md.
    */
   registry.register("alter", (state, cmd) => {
     const at = commandGrid(state, cmd);

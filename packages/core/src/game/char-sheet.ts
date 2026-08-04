@@ -101,8 +101,9 @@ export interface CharSheetDeps {
   restingTurn?: number;
   /**
    * weight_remaining(player) (get_panel_midleft L709): carry capacity left, in
-   * tenths of a pound; negative means overweight. Default 0 - calc_bonuses /
-   * the encumbrance formula is deferred (player/calcs.ts).
+   * tenths of a pound; negative means overweight. Default 0 for a caller that
+   * has no derived state; the real value comes from weightLimit
+   * (player/calcs.ts:493) against player.upkeep.totalWeight.
    */
   weightRemaining?: number;
   /** player->state.num_shots (get_panel_combat L773). Default 0. */
@@ -121,8 +122,9 @@ export interface CharSheetDeps {
   statAdd?: readonly number[];
   /**
    * player->state.stat_top[STAT_MAX] (L500): the modified maximum ("Best").
-   * Default modify_stat_value(stat_max, race+class adj) - the equipment / timed
-   * contributions are deferred.
+   * Default modify_stat_value(stat_max, race+class adj) for a caller with no
+   * derived state; calcBonuses computes the equipment contribution (statAdd,
+   * calcs.ts:844) and the timed one (calcs.ts:1094-1104).
    */
   statTop?: readonly number[];
   /**

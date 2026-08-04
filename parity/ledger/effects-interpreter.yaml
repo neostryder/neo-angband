@@ -65,13 +65,15 @@ handler-coverage:
     - CLEAR_VALUE
   partial-codes:
     - DAMAGE: player path complete (reduction, show_damage message,
-      take_hit, killer for player/none sources); monster-target and
-      decoy branches plus registry-derived killer descriptions for
-      monster/trap/object/chest origins deferred to the world/monster
-      waves (placeholders used).
+      take_hit, killer for player/none sources). The monster-target and decoy
+      branches are ported in the game layer (game/effect-monster.ts,
+      game/project-monster.ts, and the decoy at effect-general.ts:199). The
+      registry-derived killer description is the one real remainder - see
+      parity/DEFERRALS.md, MDESC_DIED_FROM.
     - TIMED_INC: player path complete including the `other` re-up rule;
-      decoy destruction and the TMD->MON_TMD mapping for monster targets
-      deferred to the world/monster waves.
+      decoy destruction and the TMD->MON_TMD mapping for monster targets are
+      both ported in the game layer (effect-general.ts:768 maps TMD.AFRAID to
+      MON_TMD.FEAR).
   stubbed: every other list-effects.h code is registered as a
     NOT_IMPLEMENTED stub that records (code, name, value, subtype,
     radius, other, y, x, dir, beam, boost) into EffectContext.stubLog
@@ -79,9 +81,11 @@ handler-coverage:
     replaced one by one later. EFFECT_HANDLER_MANIFEST in handlers.ts is
     the authoritative machine-readable split.
 injection-points:
-  - effect_subtype EF_SUMMON: summon_name_to_idx deferred to the monster
+  - effect_subtype EF_SUMMON: summon_name_to_idx is injected by the session
+    (game.ts:1168) from the bound monster
     domain; SubtypeInjections.summonNameToIdx (absent -> -1).
-  - effect_subtype EF_SHAPECHANGE: shape_name_to_idx deferred to the
+  - effect_subtype EF_SHAPECHANGE: shape_name_to_idx is injected by the session
+    (game.ts:1178) from the
     player-shapes domain; SubtypeInjections.shapeNameToIdx (absent -> -1).
   - effect_subtype for mod string codes: SubtypeInjections.custom.
   - effect_value_base_by_name: the seven upstream base value functions
