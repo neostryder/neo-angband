@@ -28,7 +28,8 @@ deferred:
     with their subsystems and the player-timed adapter; supplied via
     onSideEffects.
   - The decoy-hit branch (square_isdecoyed / square_destroy_decoy) is omitted -
-    decoys are not modelled (create-decoy effect not ported).
+    decoys ARE modelled: EF_GLYPH with the DECOY subtype sets GameState.decoy
+    (game/effect-general.ts:199), exactly as upstream creates one.
   - update_smart_learn (the monster learning the player's resistances) and the
     killer-name resolution are the caller's responsibility.
 verified-by:

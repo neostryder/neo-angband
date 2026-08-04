@@ -6,7 +6,7 @@
  * apply_magic (with its weapon/armour enchant helpers and apply_curse),
  * make_object, money_kind, and make_gold.
  *
- * LIVE vs DEFERRED (ledgered in parity/ledger/obj-make.yaml):
+ * WHAT IS HERE, AND WHAT IS NOT (ledgered in parity/ledger/obj-make.yaml):
  * - LIVE: object_prep; the cumulative allocation tables and both
  *   get_obj_num paths (any-tval binary search, per-tval linear scan)
  *   including the great_obj level boost; ego allocation (table sorted by
@@ -16,7 +16,7 @@
  *   ego_apply_minima, make_ego_item (great_ego boost); apply_magic's
  *   good/great power rolls, weapon and armour enchantment (including the
  *   melee dice supercharge and ammo dice boosts), the Ring of Speed
- *   supercharge, apply_curse (see object.ts for the one deferred check
+ *   supercharge, apply_curse (ported at L1188; see object.ts for the one check
  *   inside append_object_curse); make_object's kind selection, prep,
  *   magic, and stack-size generation; make_gold/money_kind.
  * - LIVE: artifact creation. make_artifact (apply_magic promotion) and

@@ -16,9 +16,9 @@
  * (state.playerState); absent (worldless harness with no derived state), it
  * reads as "no steal ability", the same spin-around a non-rogue gets.
  *
- * DEFERRED (no RNG impact): the PR_GOLD redraw and the object-knowledge
- * bookkeeping (object_grab / object_see / delist) are UI / knowledge concerns
- * (#24/#25). Monster-thief EAT_ITEM (mon-blows.c L876) is wired from
+ * The PR_GOLD redraw has no port equivalent (the front end repaints
+ * unconditionally after every action), and the object-knowledge bookkeeping is
+ * ported - objectGrab / objectSee live in obj/known-object.ts. Monster-thief EAT_ITEM (mon-blows.c L876) is wired from
  * game/mon-cmd.ts via mon/steal.ts stealMonsterItem(midx >= 0).
  */
 

@@ -24,7 +24,7 @@ upstream:
         STAR_BALL / SWARM (SWARM fires value.m_bonus shots).
       - effect_handler_TOUCH / TOUCH_AWARE (L411-453): handleTOUCH / TOUCH_AWARE
         (the base player-centred touch; the monster decoy / target-monster
-        branch is deferred with resolveAimedTarget).
+        branch rides resolveAimedTarget, which is ported and used at 15 sites).
       - effect_handler_PROJECT_LOS / PROJECT_LOS_AWARE (L1088): makeProjectLos -
         a jump projection to every monster in LOS, attributed to the player,
         excluding cave->mon_current.

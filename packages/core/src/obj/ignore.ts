@@ -27,7 +27,8 @@
  * now lives in obj/knowledge.ts (AutoinscriptionRegistry) and is applied by
  * game/obj-cmd.ts's applyAutoinscription. The separate rune-based
  * autoinscription (runes_autoinscribe, obj-ignore.c L217) rides the rune
- * knowledge system and remains DEFERRED (ledgered in obj-ignore.yaml), as
+ * knowledge system, which is ported (obj/knowledge.ts); ledgered in
+ * obj-ignore.yaml, as
  * does the per-item context ignore menu.
  */
 

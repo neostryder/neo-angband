@@ -13,7 +13,8 @@
  * project_m_apply_side_effects) and land in the next increment, on top of this.
  *
  * Faithful seams for subsystems not yet modelled:
- * - Monster lore is deferred (see the port plan's late subsystems), so the
+ * - Monster lore is ported (mon/lore.ts, lore-file.ts), and this module still
+ *   takes it as a seam rather than reaching for it, so the
  *   rf_on(lore) / rsf_on(lore) learning is injected as learnRaceFlag /
  *   learnSpellFlag hooks. They fire on exactly the same "seen" condition as
  *   upstream, so wiring lore in later needs no change here.

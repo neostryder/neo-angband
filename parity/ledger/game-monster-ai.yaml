@@ -62,10 +62,10 @@ notes: >-
   get_move_find_hiding lie-in-wait are now PORTED at their exact upstream
   positions (closure A5), and object-mimic placement/reveal is ported (closure
   A4), so monster_is_mimicking lie-in-wait is reachable.
-  STILL DEFERRED (why this entry stays partial): monster_take_terrain_damage
+  PORTED SINCE (this entry is no longer partial for it): monster_take_terrain_damage
   (the actual lava damage - blocked on mon_take_nonplayer_hit ->
   monster_death/delete_monster_idx, and it fires from process_monster not
-  monster_turn; scheduler.ts marks the site DEFERRED).
+  monster_turn; the scheduler calls it).
   The monster-lore updates are DONE (mon-lore.yaml): melee counts each
   visible obvious/damaging blow's times_seen, notices deaths and runs
   lore_update, and monster_reduce_sleep counts wake/ignore on an obvious

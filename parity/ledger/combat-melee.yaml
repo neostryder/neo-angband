@@ -62,7 +62,9 @@ upstream:
         1300:3:20 HI_GREAT, -1:4:20 HI_SUPERB) and ranged-critical-level
         (500:2:5 GOOD, 1000:2:10 GREAT, -1:3:15 SUPERB)
   - path: src/mon-util.c
-    items: [mon_take_hit (HP subtraction and hp < 0 death; fear/arena DEFERRED)]
+    items: [mon_take_hit (HP subtraction, hp < 0 death, and the full fear
+      block of mon-util.c:1139-1173 ported at mon/take-hit.ts:68-76; the arena
+      branch goes with arena mode)]
   - path: src/mon-timed.h
     items: [STUN_HIT_REDUCTION, STUN_DAM_REDUCTION (25%)]
   - path: src/player.h
@@ -71,7 +73,9 @@ blow_effect_coverage:
   total_pack_effects: 30
   dispatched: 30
   hp_damage_faithful: 25   # every non-elemental effect (HP = base or armor-adjusted)
-  hp_damage_physical_only: 5  # ACID/ELEC/FIRE/COLD/POISON (elemental part deferred)
+  hp_damage_physical_only: 5  # ACID/ELEC/FIRE/COLD/POISON on the WORLDLESS
+    # recording path only; the live path applies adjust_dam + inven_damage +
+    # the resist check in full at combat/mon-melee.ts:710
   side_effect_intents:
     - timed (POISONED, BLIND, CONFUSED, AFRAID, PARALYZED, IMAGE, BLACKBREATH,
       CUT, STUN) with the exact upstream duration formulas
@@ -79,31 +83,39 @@ blow_effect_coverage:
     - loseExp (EXP_10/20/40/80; damroll(N,6) rolled, hold-life chance recorded)
     - drainCharges, eatGold, eatItem, eatFood, eatLight, disenchant
     - elemental (element + raw damage), earthquake (radius), knockback (dist)
+# Adjudicated 2026-08-04 (parity/reports/ledger-deferred-items.tsv). This list
+# had eleven entries and TEN of them had stopped being true; the eleventh was a
+# real defect nobody had looked at because it sat in a list nobody re-read. What
+# is left is one line.
 deferred:
-  - O-combat (birth_percent_damage): o_melee_damage, o_critical_melee, and the
-    o-melee-critical constants/levels. Off by default; ledgered for later.
-  - Elemental damage vs the player (adjust_dam with player el_info / resists);
-    only the physical component reaches HP, the elemental part is recorded.
-  - player_apply_damage_reduction (treated as identity) and take_hit warnings.
-  - Full RNG-stream parity for monster attacks: player_inc_timed saving-throw
-    and notification rolls, and adjust_dam elemental rolls, are not ported, so
-    the stream diverges after each ported roll. Every ported quantity (damage,
-    monster_critical, cut/stun amounts, status durations, exp drain) uses the
-    exact upstream formula.
-  - Knowledge / learning: equip_learn_on_melee_attack, learn_brand_slay_from_*,
-    monster lore, smart-learn, become_aware.
-  - Player-side melee extras: bloodlust exertion, vampiric drain (TMD_ATT_VAMP),
-    confusion-brand side effect (blow_side_effects / TMD_ATT_CONF), impact
-    earthquakes (OF_IMPACT / blow_after_effects), splash damage, shape-change
-    blow substitution, shield bash (attempt_shield_bash), PF_COMBAT_REGEN.
-  - Temporary brands/slays (improve_attack_modifier obj == NULL path;
-    player_has_temporary_brand/slay from the player-timed registry).
-  - Curse contributions to object_to_hit/to_dam/weight.
-  - Monster fear generation (monster_scared_by_damage), delayed fear messages,
-    protection-from-evil repel, the "player moved" early-out, arena handling.
-  - monster_attack_monster (monster-vs-monster melee).
-  - Message text/formatting (combat returns HitType keys and structured
-    results; the UI layer renders messages).
+  - Arena handling in mon_take_hit, with the rest of arena mode (not begun; see
+    parity/DEFERRALS.md).
+ported-since-this-list-was-written:
+  - O-combat (birth_percent_damage): oMeleeDamage / oCriticalMelee, gated in
+    pyAttackReal where upstream branches. o-combat.test.ts.
+  - Elemental damage vs the player: adjust_dam with the player el_info, plus
+    inven_damage and the resist check, at combat/mon-melee.ts:710. Only the
+    WORLDLESS recording path returns the physical component alone.
+  - player_apply_damage_reduction (MonBlowEnv.applyReduction) and take_hit.
+  - Knowledge / learning: equipLearnOnMeleeAttack, learnBrandSlayFromMelee,
+    monster lore (mon/lore.ts + lore.txt), smart-learn, become_aware.
+  - Player-side melee extras, all interleaved at the faithful RNG points through
+    MeleeEffectHooks: bloodlust exertion, vampiric drain, the confusion-brand
+    side effect, OF_IMPACT earthquakes, splash, shape-change blow substitution,
+    attempt_shield_bash and PF_COMBAT_REGEN.
+  - Temporary brands/slays, as the injected TempBrandSlay predicate.
+  - Curse contributions to object_to_hit / object_to_dam - FIXED 2026-08-04 and
+    threaded from the live melee paths (MeleeOptions.curses). object_weight_one
+    already had them.
+  - Monster fear generation, delayed fear messages, the protection-from-evil
+    repel and the "player moved" early-out.
+  - monster_attack_monster (game/mon-cmd.ts:317).
+by-layer:
+  - Message text and formatting: combat returns HitType keys and structured
+    results; game/mon-message.ts renders them.
+  - Full RNG-stream parity on the WORLDLESS recording path only: the live path
+    draws every roll (saving throws, notifications, adjust_dam). Every ported
+    quantity uses the exact upstream formula.
 verified-by:
   - hit.test.ts: hit_chance 95% cap / 12% floor / to-hit 9 floor / mid-range
     exact arithmetic; test_hit determinism (rand_fix top/bottom bands);

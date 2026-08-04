@@ -22,8 +22,8 @@
  * (gear_to_label) and the ODESC_BASE description ride the display layer
  * (#25) - the kind's base name is used; obj->known->to_h/to_d/to_a display
  * sync likewise (knowledge is rune-based here). The decoy grid lives on
- * GameState.decoy; the monster-AI decoy targeting is deferred with lore
- * (#24).
+ * GameState.decoy, and the monster AI targets it (game/monster-turn.ts:399-410
+ * squareIsDecoyed / monsterIsDecoyed).
  */
 
 import { EF, MON_TMD, OF, PROJ, TMD } from "../generated/index.js";
@@ -91,7 +91,9 @@ import { dungeonGetNextLevel } from "./quest.js";
 /**
  * The general-handler seams, grouped on the game effect environment
  * (effect-game-env.ts GameEffectEnv.general). trapDeps backs glyph and web
- * creation; absent, those handlers no-op (the trap system is not wired).
+ * creation. It IS supplied in the live composition (session/game.ts:1698); a
+ * caller that omits it gets no-op glyph/web handlers, which is the worldless
+ * default and not a missing trap system (that is game/trap.ts).
  * properties backs desc_stat (the stat adjectives from object_property.txt);
  * expDeps lets experience gains ripple level changes.
  */

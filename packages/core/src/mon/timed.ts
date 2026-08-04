@@ -13,13 +13,14 @@
  *   instead. The decision of WHICH message fires (and its NOTIFY/NOMESSAGE/
  *   visibility gate) is preserved exactly; callers that have a sink pass one.
  * - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,
- *   mon-util.c) is DEFERRED: the timer is still set, but the form is not
- *   swapped. CHANGED is only set by an effect that is not ported yet, so this
- *   path is currently unreachable.
+ *   mon-util.c) belongs to the GAME layer, not here: game/mon-shape.ts swaps the
+ *   form off the MON_TMD_CHANGED timer this module maintains, and the SHAPECHANGE
+ *   monster spell that raises it is wired (game/mon-cast.ts:87,
+ *   monster-turn.ts:1726). This module sets the timer; the swap is a layer above.
  *
  * The lore learn on a flag-resist (lore_learn_flag_if_visible) and the
  * health-bar / monster-list redraw (upkeep masks) are UI/lore concerns and are
- * DEFERRED.
+ * split is a layer boundary.
  */
 
 import type { Rng } from "../rng.js";

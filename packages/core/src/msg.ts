@@ -9,7 +9,8 @@
  * (the generated list-message module supplies names); colors are numeric
  * COLOUR_* indices as upstream.
  *
- * Not ported here: message_lookup_by_name / by_sound_name (they need the
+ * Not in THIS module: message_lookup_by_name / by_sound_name are ported in
+ * sound/engine.ts (L77) because they need the
  * generated list-message table; they land with the pref-file loader).
  * C's printf-style formatting is dropped; callers use template strings.
  */

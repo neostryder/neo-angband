@@ -50,7 +50,8 @@ deferred:
   - nest / pit: the room shell (outer room, inner room, single door) is
     faithful, but monster theming is simplified - the inner room is filled
     with any depth-appropriate monster rather than a themed pit_profile
-    (set_pit_type / mon_pit_hook / pit.txt selection is not ported). Object
+    (set_pit_type / mon_pit_hook / pit.txt selection ARE ported:
+    gen/gen-monster.ts:205 and gen/room.ts:1341). Object
     rarity fill and the concentric pit monster layout are not reproduced.
   - vault racial glyphs (get_vault_monsters): each alphabetic racial glyph
     places any depth-appropriate monster (Lesser/Medium/Greater depth boost

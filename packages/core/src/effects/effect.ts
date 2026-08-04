@@ -5,9 +5,10 @@
  *
  * Divergences by design: effect indices are `number | string` so that mods
  * can register new effect codes at runtime (upstream is a compiled enum);
- * subtype categories whose registries are not yet ported (summons, player
- * shapes) resolve through an explicit injection point instead of global
- * lookups; the gamedata parser directives (effect / effect-yx / dice /
+ * subtype categories whose registries live outside this module (summons, player
+ * shapes) resolve through an explicit injection point instead of global lookups
+ * - both are supplied in the live composition (session/game.ts:1168 and :1178);
+ * the gamedata parser directives (effect / effect-yx / dice /
  * expr / effect-msg) are exposed as an EffectBuilder rather than being
  * scattered over per-file parsers.
  */
@@ -312,7 +313,8 @@ export function effectSubtype(
     case EF.MON_TIMED_INC:
       return monTimedNameToIdx(type);
 
-    /* Summon name (registry not yet ported: injection point) */
+    /* Summon name: resolved through the injection point, supplied by the
+     * session from the bound summon registry (session/game.ts:1168). */
     case EF.SUMMON:
       return inject.summonNameToIdx ? inject.summonNameToIdx(type) : -1;
 
@@ -324,7 +326,8 @@ export function effectSubtype(
       if (type === "TOAC") return ENCH_TOAC;
       break;
 
-    /* Player shape name (registry not yet ported: injection point) */
+    /* Player shape name: injection point, supplied by the session from the
+     * bound shape registry (session/game.ts:1178). */
     case EF.SHAPECHANGE:
       return inject.shapeNameToIdx ? inject.shapeNameToIdx(type) : -1;
 

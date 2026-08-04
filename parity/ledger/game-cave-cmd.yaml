@@ -18,7 +18,7 @@ upstream:
         onto the live floor piles via the object generator.
       - do_cmd_alter (L1005): monster -> attack, diggable -> tunnel,
         closed door -> open dispatch (the chest/floor-trap-disarm
-        fallback branches are deferred - "alter" is not wired to a shell
+        fallback branches are a REAL GAP, and reachable: "+" IS bound to alter in the shell
         key).
       - do_cmd_go_down (L101) / go_up (L56): the staircase-underfoot
         checks and the surface check before signalling a level change.
@@ -49,12 +49,13 @@ notes: >-
 deferred:
   - Locked / jammed doors, do_cmd_lock_door: door locks are the "door lock"
     trap upstream - all land with trap.c (#21) through the isLockedDoor /
-    pickLock seams; the disarm door-lock branch is not ported.
+    pickLock seams (supplied at session/game.ts:1716); the disarm door-lock branch
+      is a real remainder.
   - The swap-digger machinery (player_best_digger + the temporary
     calc_bonuses with a swapped weapon): digging reads the wielded state's
     DIGGING skill.
   - do_cmd_alter_aux's chest and floor-trap-disarm fallback branches
-    (alter is not wired to a shell key).
+    (alter IS bound, to "+", at web/src/main.ts:8090).
   - do_cmd_steal (shapechanged players, #22); run / explore / pathfind /
     navigate (player-path.c, #24); command repetition and the count_feats
     single-target direction inference (UI); messages are hooks.

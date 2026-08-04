@@ -26,7 +26,7 @@
  *   5. decent fail (reaction/2 < skill): monster_wake(mon, true, 50).
  *   6. bungle (else): monster_wake(mon, true, 100), then EF_WAKE aggro.
  *
- * DEFERRED (noted, no RNG impact): the object knowledge bookkeeping upstream
+ * PORTED ELSEWHERE (no RNG impact): the object knowledge bookkeeping upstream
  * threads here - object_grab / object_see / delist_object / object_delete - is
  * the knowledge subsystem (#24), carried by the env's carry/gainGold seams; and
  * react_to_slay blocking the monster-thief path (midx >= 0) is deferred exactly

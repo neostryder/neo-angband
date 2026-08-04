@@ -13,7 +13,8 @@ upstream:
         always_table stocking lists, resolved from tval + sval names to kinds.
       - parse_always book branch (L208-231): an always line with NO sval means
         "stock every TOWN book of this tval" (object_kind_to_book(kind)->dungeon
-        gate). Captured as BoundStore.alwaysBookTvals; expansion is DEFERRED.
+        gate). Captured as BoundStore.alwaysBookTvals and expanded against the class
+    book list at store/store.ts:173.
       - parse_buy (L254) / parse_buy_flag (L268): the buy list; each entry is a
         tval, optionally flag-qualified. 4.2.6 data uses only bare tvals.
       - store_at (L77): resolved here as StoreRegistry.byFeat (entrance feature
@@ -37,7 +38,7 @@ notes: >-
   (object_buy.flag) for mods; 4.2.6 uses only bare tvals.
 deferred:
   - The behavioural half of store.c: price_item is now PORTED (store/price.ts,
-    ledgered in store-price.yaml). Still deferred: stock maintenance
+    ledgered in store-price.yaml). Ported since: stock maintenance
     (store_maint, mass_produce, store_create_random, store_create_item);
     store_carry / home_carry / store_check_num / store_will_buy; store_shuffle /
     store_reset / store_update; and the buy/sell/stash/retrieve commands

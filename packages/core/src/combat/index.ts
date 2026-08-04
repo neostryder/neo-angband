@@ -4,7 +4,7 @@
  * the player (mon-melee.ts), and player ranged attacks (ranged.ts). Ported
  * from Angband 4.2.6 (player-attack.c, mon-attack.c, mon-blows.c, obj-slays.c).
  *
- * Not wired into the package barrel (packages/core/src/index.ts) yet; import
+ * Re-exported from the package barrel (packages/core/src/index.ts:93); import
  * directly from "./combat".
  */
 

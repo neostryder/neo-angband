@@ -6,7 +6,7 @@
  * World coupling is kept to numeric handles: held and mimicked objects are
  * object handles (0 = none) and the grid is a plain Loc. The chunk-side
  * bookkeeping (midx assignment, square occupancy) happens at placement,
- * which is deferred to the world integration.
+ * which the world integration owns (gen/gen-monster.ts, game/mon-place.ts).
  */
 
 import { FlagSet } from "../bitflag.js";

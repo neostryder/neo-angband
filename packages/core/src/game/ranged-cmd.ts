@@ -17,7 +17,7 @@
  * mon_take_hit routing so ranged hits generate fear, "flees in terror", and
  * message_pain (player-attack.c:1191-1195, gap 2.4).
  *
- * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
+ * NOTES (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
  * anyway?" prompt (UI) and the crit-flavour line (the hit verb still varies).
  * The show_damage " (N)" suffix is now wired (player-attack.c:1168-1170), and
  * the invisible-monster "finds a mark" branch is now ported

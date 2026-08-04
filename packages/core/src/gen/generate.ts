@@ -67,7 +67,9 @@ export interface GenDeps {
    * The trap kind table (trap_info). When present, place_trap picks the kind
    * and rolls the power at generation time (gap 9.2), and the returned Gen's
    * `traps` list carries the choices for the populate path to instantiate
-   * directly. Omitted/null keeps the deferred bare-grid behaviour.
+   * directly. The live composition supplies it (session/boot.ts:239 passes
+   * reg.traps); omitted/null keeps the bare-grid behaviour for a worldless
+   * caller.
    */
   trapKinds?: readonly TrapKind[] | null;
   /**

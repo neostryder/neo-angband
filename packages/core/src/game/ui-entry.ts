@@ -1197,7 +1197,7 @@ function modifierToSkill(modind: number): { skill: number; num: number; den: num
 /**
  * The per-object combined (val, auxval). obj may be null (NOT_PRESENT). p is
  * used to gate knowledge via p.objKnown. The upstream separate curse-object
- * iteration is deferred (see the ledger); this reads the object's own
+ * iteration is a ratified divergence (see the ledger); this reads the object's own
  * flags/modifiers/el_info, which already fold in merged curse data in the port.
  *
  * `fullyKnown` is object_fully_known(obj) (obj-knowledge.c L754), which is the

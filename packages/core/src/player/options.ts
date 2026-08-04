@@ -7,7 +7,8 @@
  * delay_factor = 40 and hitpoint_warn = 3 defaults) and the cheat/score
  * coupling in option_set (turning a cheat_* option on forces its score_*
  * twin, which suppresses scoring). This module is the pure data half of
- * that; the option MENU (ui-options.c, the keypress screens) is DEFERRED as
+ * that; the option MENU (ui-options.c, the keypress screens) is the shell's -
+ * web/src/options.ts runOptionsMenu, bound to "=" - and is treated here as
  * a platform-native menu concern (see parity/ledger/options.yaml).
  *
  * Faithful notes:

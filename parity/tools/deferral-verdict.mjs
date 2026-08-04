@@ -33,7 +33,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
-const OUT = path.join(ROOT, "parity", "reports", "deferral-census.tsv");
+/* The census by default; --target points it at another adjudicable TSV with the
+ * same file/line/verdict/evidence columns (ledger-deferred-items.tsv). */
+const tIdx = process.argv.indexOf("--target");
+const OUT =
+  tIdx >= 0
+    ? path.resolve(ROOT, process.argv[tIdx + 1])
+    : path.join(ROOT, "parity", "reports", "deferral-census.tsv");
 
 const VERDICTS = new Set([
   "ported",
@@ -49,7 +55,9 @@ const VERDICTS = new Set([
 
 /** [file:line, verdict, evidence] triples from argv or a batch file. */
 function requests() {
-  const argv = process.argv.slice(2);
+  let argv = process.argv.slice(2);
+  const t = argv.indexOf("--target");
+  if (t >= 0) argv = [...argv.slice(0, t), ...argv.slice(t + 2)];
   if (argv[0] === "--batch") {
     const body = fs.readFileSync(argv[1], "utf8");
     return body

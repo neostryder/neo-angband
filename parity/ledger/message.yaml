@@ -13,7 +13,8 @@ upstream:
       - sound (use_sound gate injected) / bell
 notes: >-
   Instantiable MessageLog + Messages facade instead of a global singleton.
-  Deferred to the pref-file loader: message_lookup_by_name and
+  Ported in sound/engine.ts (L77) and consumed by the pref-file loader:
+  message_lookup_by_name and
   message_lookup_by_sound_name (need the generated list-message table).
 verified-by:
   - unit tests (squash counts, saturation at 0xFFFF, capacity trim, color

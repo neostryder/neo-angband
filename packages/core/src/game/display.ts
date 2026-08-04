@@ -109,7 +109,7 @@ export interface DisplayDeps {
   /**
    * player->state.stat_use[STAT_MAX]: the current modified stats prt_stat
    * shows. Default derived from Player.statCur with the race + class modifiers
-   * only (equipment / timed contributions are DEFERRED - no stored
+   * only (equipment and timed contributions come from calcBonuses - no stored
    * player_state on GameState).
    */
   statUse?: readonly number[];
