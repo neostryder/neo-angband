@@ -31,6 +31,7 @@ import {
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
   LOG_CHANNEL,
+  MOD_ZIP_CHANNEL,
   REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
@@ -112,6 +113,18 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   update(op: string, arg?: unknown): Promise<unknown> {
     return ipcRenderer.invoke(UPDATE_CHANNEL, op, arg) as Promise<unknown>;
+  },
+
+  /**
+   * Discard a mod archive from the mods folder, after it has been imported.
+   *
+   * A LEAF NAME, never a path, for the same reason `update` takes an operation and
+   * never a directory: the renderer says which archive in the folder the game already
+   * owns, and the main process decides whether that is a thing it will delete. Handing
+   * this a path would make it an unlink primitive over the whole disk.
+   */
+  discardModZip(name: string): Promise<unknown> {
+    return ipcRenderer.invoke(MOD_ZIP_CHANNEL, "discard", name) as Promise<unknown>;
   },
 
   /** Download progress. Returns the unsubscribe, so a closed page stops listening. */

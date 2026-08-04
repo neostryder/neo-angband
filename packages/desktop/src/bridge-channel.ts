@@ -139,3 +139,14 @@ export const HOST_SHELL_LIMITS = {
   termCount: 1,
   signals: false,
 } as const;
+
+/**
+ * Discarding a mod archive after it has been imported (`invoke`).
+ *
+ * The renderer names a LEAF, never a path: the only files this will ever delete are
+ * `*.zip` sitting directly in the game's own mods folder, which is the one place the
+ * game put an import there itself. A channel that took a path would hand a compromised
+ * renderer an unlink primitive over the whole disk, and there is nothing the import
+ * screen needs that a leaf name does not give it.
+ */
+export const MOD_ZIP_CHANNEL = "neo-mod-zip";

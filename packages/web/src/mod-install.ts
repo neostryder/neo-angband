@@ -53,6 +53,7 @@ import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
 import { type RecommendedMod, type RegistryFile, badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
+import { readModZip } from "./mod-zip";
 import { assetMime, sortPackFiles } from "./pack-files";
 
 /** What is recorded about an installed mod, so the manager can say where it came from. */
@@ -464,6 +465,62 @@ export async function installModFromRepo(
 }
 
 /**
+ * The `repo` an imported mod records, which is not a repository.
+ *
+ * A colon cannot appear in an `owner/name`, so this can never collide with a real one -
+ * which matters, because originConflict compares this field to decide whether a mod may
+ * be replaced. Every imported mod shares the value on purpose: a second zip of the same
+ * mod is the player updating it and should just work, while a zip landing on a mod that
+ * came from a repository is a different mod wearing the same id and is refused.
+ */
+export const FILE_ORIGIN = "file:import";
+
+/** True when this record came from a file the player imported rather than a repository. */
+export function isImported(meta: { readonly repo: string }): boolean {
+  return meta.repo === FILE_ORIGIN;
+}
+
+/**
+ * Install a mod from an archive the player handed the game.
+ *
+ * The archive is read by mod-zip.ts and the bytes are then stored by exactly the same
+ * function every other install ends in, so an imported mod is validated by the same
+ * checkMod, keyed the same way, swapped in the same single transaction, and listed the
+ * same way as a downloaded one. A second notion of "installed" is how a mod system comes
+ * to have two answers to every question.
+ *
+ * ALWAYS THIRD-PARTY. There is no such thing as a curated zip: the curated list names
+ * repositories, and an archive by definition did not come from one. So consent is asked
+ * for unconditionally here, and enforced where every other install enforces it rather
+ * than in the screen that drew the row.
+ */
+export async function installModFromZip(
+  bytes: Uint8Array,
+  env: InstallEnv,
+  allowed: boolean,
+): Promise<InstallResult> {
+  const blocked = installBlocked("third-party", allowed);
+  /* Before the archive is even opened. A refused import must not have parsed an
+   * untrusted file, which is the only cost that matters once the answer is no. */
+  if (blocked !== null) return { ok: false, problem: blocked };
+  const read = readModZip(bytes);
+  if (!read.ok) return { ok: false, problem: read.problem };
+  const metas = await installedMods(env.scope ?? globalThis);
+  const installed = metas.find((m) => m.id === read.id) ?? null;
+  const conflict = originConflict(installed, FILE_ORIGIN);
+  if (conflict !== null) return { ok: false, problem: conflict };
+  try {
+    return await storeMod(
+      { id: read.id, repo: FILE_ORIGIN, tag: read.version ?? "imported" },
+      read.files,
+      env,
+    );
+  } catch (e) {
+    return { ok: false, problem: message(e) };
+  }
+}
+
+/**
  * Fetch bytes with no digest to check them against.
  *
  * The honest shape of trust-on-first-use: this is fetchVerified minus the one
@@ -570,6 +627,23 @@ export async function installedMods(
   /* Sorted by id so the manager's list, and any test of it, is stable: IndexedDB key
    * order is not something to rely on for display. */
   return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * The record for one installed mod, or null when it is not installed.
+ *
+ * Exists because the thing that needs it is an ARGUMENT to installModFromRepo, and a
+ * caller that has to remember to look something up is a caller that will one day pass
+ * null. Production did exactly that: `install:` in main.ts passed a literal null, so
+ * the origin check every test in mod-source.ts covers had, in the shipped game, nothing
+ * to compare against. The rule was written, tested, and never once evaluated.
+ */
+export async function installedMeta(
+  id: string,
+  scope: unknown = globalThis,
+): Promise<InstalledModMeta | null> {
+  const metas = await installedMods(scope);
+  return metas.find((m) => m.id === id) ?? null;
 }
 
 /** Remove a mod's files and its record. Reports whether everything went. */

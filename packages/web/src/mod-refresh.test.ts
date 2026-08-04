@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+
 import type { DiscoverEnv, DiscoverResponse } from "./mod-discover";
 import type { InstalledModMeta } from "./mod-install";
 import {
@@ -19,6 +20,7 @@ import {
   refreshInstalledMods,
   refreshRow,
   unavailableMods,
+  upToDateHeadline,
   type ModRefresh,
 } from "./mod-refresh";
 
@@ -282,5 +284,56 @@ describe("the network is only touched when the player asks", () => {
     const out = await refreshInstalledMods([], env(fetch as unknown as DiscoverEnv["fetch"]));
     expect(out).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("the headline shrinks to fit what was actually asked", () => {
+  const r = (id: string, standing: ModRefresh["standing"]): ModRefresh => ({
+    id,
+    repo: standing === "no-repository" ? "file:import" : `who/${id}`,
+    installed: "1.0.0",
+    newest: standing === "same" ? "1.0.0" : null,
+    standing,
+    problem: standing === "unavailable" ? "not there (HTTP 404)" : null,
+    channelHeld: null,
+  });
+
+  it("says every ONLY when every mod was really asked", () => {
+    expect(upToDateHeadline([r("a", "same"), r("b", "same")])).toBe(
+      "Every installed mod is at its repository's newest version.",
+    );
+  });
+
+  const cases: ReadonlyArray<readonly [string, ModRefresh[]]> = [
+    ["one imported mod", [r("a", "no-repository")]],
+    ["two imported mods", [r("a", "no-repository"), r("b", "no-repository")]],
+    ["one imported beside one checked", [r("a", "no-repository"), r("b", "same")]],
+    ["one unreachable beside one checked", [r("a", "unavailable"), r("b", "same")]],
+    ["all unreachable", [r("a", "unavailable")]],
+    ["imported and unreachable, nothing asked", [r("a", "no-repository"), r("b", "unavailable")]],
+  ];
+  for (const [what, refreshed] of cases) {
+    it(`never says "every ... newest" with ${what}`, () => {
+      /* THE CLAIM THIS SCREEN SHIPPED WRONG. A sentence about every installed mod,
+       * written after checking only some of them, is the defect - not the layout. */
+      expect(upToDateHeadline(refreshed)).not.toMatch(/Every installed mod is at/u);
+    });
+  }
+
+  it("counts only the mods it asked, not the mods it has", () => {
+    const out = upToDateHeadline([r("a", "no-repository"), r("b", "unavailable"), r("c", "same")]);
+    expect(out).toBe("1 of 3 are at their repository's newest version.");
+  });
+
+  it("distinguishes 'nothing to check' from 'could not check'", () => {
+    expect(upToDateHeadline([r("a", "no-repository")])).toMatch(/nothing to check/u);
+    expect(upToDateHeadline([r("a", "unavailable")])).toMatch(/None of the installed mods could be checked/u);
+    const both = upToDateHeadline([r("a", "no-repository"), r("b", "unavailable")]);
+    expect(both).toContain("1 came from a file");
+    expect(both).toContain("1 could not be reached");
+  });
+
+  it("says so plainly when there are no mods at all", () => {
+    expect(upToDateHeadline([])).toBe("No mods are installed yet.");
   });
 });

@@ -22,16 +22,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { STORE_MODS, STORE_MOD_META } from "./idb";
 import {
   DigestMismatchError,
-  type FetchLike,
-  type InstallEnv,
+  FILE_ORIGIN,
   fetchVerified,
-  type InstalledModMeta,
   installModFromRepo,
+  installModFromZip,
   installRecommendedMod,
   installedModSource,
   installedMods,
+  isImported,
   loadInstalledMods,
   sha256Hex,
+  type FetchLike,
+  type InstallEnv,
+  type InstalledModMeta,
   uninstallMod,
 } from "./mod-install";
 import { type RecommendedMod, badPath, rawUrl, validateRecommendedMod } from "./mod-registry";
@@ -1378,5 +1381,105 @@ describe("installModFromRepo: the standards inspection", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problem).toMatch(/modApi/u);
+  });
+});
+
+describe("installModFromZip: the fourth door ends where the other three do", () => {
+  const zipOf = (entries: Record<string, Uint8Array>): Uint8Array =>
+    zipSync(entries, { level: 0 });
+
+  it("stores a mod out of an archive, keyed and digested like a downloaded one", async () => {
+    const { env } = await envFor({});
+    const r = await installModFromZip(
+      zipOf({ "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) }),
+      env,
+      true,
+    );
+    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
+    if (!r.ok) return;
+    expect(r.meta.id).toBe("demo");
+    expect([...r.meta.files].sort()).toEqual(["manifest.json", "plugin.js"]);
+    /* The digests are the same measurement storeMod makes for a download - which is
+     * the evidence that this went through storeMod rather than round it. */
+    expect(Object.keys(r.meta.digests ?? {}).sort()).toEqual(["manifest.json", "plugin.js"]);
+    expect(r.meta.tag).toBe("1.0.0");
+  });
+
+  it("records an origin that is not a repository, and says so", async () => {
+    const { env } = await envFor({});
+    const r = await installModFromZip(zipOf({ "manifest.json": enc(MANIFEST) }), env, true);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.meta.repo).toBe(FILE_ORIGIN);
+    expect(isImported(r.meta)).toBe(true);
+    /* A colon cannot appear in an owner/name, so this can never be mistaken for one. */
+    expect(FILE_ORIGIN).toContain(":");
+  });
+
+  it("refuses without consent, and does not open the archive to find that out", async () => {
+    const { env } = await envFor({});
+    /* Bytes that are NOT a zip. If consent were checked after parsing, the message
+     * would be about the archive; it has to be about the switch. */
+    const r = await installModFromZip(enc("not a zip at all"), env, false);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toContain("Third-party mods are not enabled");
+  });
+
+  it("runs the SDK's requirements on the bytes that arrived", async () => {
+    const { env } = await envFor({});
+    /* A plugin.js with a manifest that does not admit code: refused by checkMod at
+     * install, which is the whole reason the zip path goes through storeMod. */
+    const noFacet = JSON.stringify({ id: "demo", name: "Demo", version: "1.0.0", shape: "content" });
+    const r = await installModFromZip(
+      zipOf({ "manifest.json": enc(noFacet), "plugin.js": enc(PLUGIN) }),
+      env,
+      true,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toContain("does not meet the requirements");
+  });
+
+  it("will not let a zip overwrite a mod that came from a repository", async () => {
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const first = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+    );
+    expect(first.ok).toBe(true);
+
+    const r = await installModFromZip(zipOf({ "manifest.json": enc(MANIFEST) }), env, true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toContain("neostryder/neo-angband-mod-demo");
+  });
+
+  it("lets a second zip replace a mod the player imported themselves", async () => {
+    /* The other side of the same rule. Re-importing IS how an imported mod is
+     * updated, since it has no repository to ask - refusing it would leave the
+     * player no way forward but uninstall-then-import. */
+    const { env } = await envFor({});
+    expect((await installModFromZip(zipOf({ "manifest.json": enc(MANIFEST) }), env, true)).ok).toBe(
+      true,
+    );
+    const newer = JSON.stringify({
+      id: "demo",
+      name: "Demo",
+      version: "1.1.0",
+      shape: "content",
+      facets: ["content"],
+    });
+    const r = await installModFromZip(zipOf({ "manifest.json": enc(newer) }), env, true);
+    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
+    if (r.ok) expect(r.meta.tag).toBe("1.1.0");
+  });
+
+  it("passes the archive's refusal straight through, unstored", async () => {
+    const { env } = await envFor({});
+    const r = await installModFromZip(zipOf({ "readme.txt": enc("hi") }), env, true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problem).toMatch(/no manifest\.json in this archive/u);
+    expect(await installedMods({ indexedDB: (env.scope as { indexedDB: IDBFactory }).indexedDB })).toEqual(
+      [],
+    );
   });
 });

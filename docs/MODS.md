@@ -19,11 +19,35 @@ open to mods, including capabilities that do not exist in the base resources.
 ## Getting a mod, in one paragraph
 
 Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one from the
-list, press Enter. The game downloads it from its own repository at a pinned
-release tag and checks every file against a SHA-256 that shipped inside your copy
-of the game, so a download that has been altered or truncated never becomes an
-installed mod. Then turn it on and choose **Apply changes and reload**. Nothing
-else is required, and nothing needs a folder, an account or a tool.
+**Recommended mods** list, press Enter. The game reads the mod from its own
+repository at a release tag, checks it against the requirements every mod has to
+meet, and records the digest of every byte that arrived so it can tell you later
+whether the copy on your machine has changed. Then turn it on and choose **Apply
+changes and reload**. Nothing else is required, and nothing needs a folder, an
+account or a tool.
+
+The recommended list is a list of **repositories and nothing else**. Names,
+versions, descriptions and compatibility all come from the mod itself when the
+screen opens, so a mod releases an update without waiting for a new version of the
+game - and the game never claims to know what a mod contains.
+
+Three more doors are on that same screen, all of them behind **Allow third-party
+mods**:
+
+- **Add from a registry address** - somebody else's list, of the same shape.
+- **Add from a repository address** - one mod, by `owner/repo` or a GitHub URL.
+- **Import a mod from a file** - a `.zip`. Either one you choose, or one you have
+  dropped into the game's own `mods/` folder, which the screen lists for you. The
+  archive has to hold one mod, with its `manifest.json` either at the top of the
+  zip or inside a single folder at the top of it - the shape GitHub's *Download
+  ZIP* produces. Nothing deeper is looked at, and a zip holding two mods is
+  refused rather than guessed at. A zip imported out of the `mods/` folder is
+  deleted once the mod is installed; one you picked from elsewhere is your file
+  and is left exactly where it was. **Zips are never opened at startup** - an
+  import is something you do, once, from this screen.
+
+An imported mod has no repository, so **Update installed mods** has nothing to ask
+about it and says so. To update one, import a newer zip.
 
 Two other routes exist and neither is the normal one. **A folder**: point the
 game at a directory of mods (Chrome and Edge, or the desktop build's own

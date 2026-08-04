@@ -43,6 +43,7 @@ import {
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
   LOG_CHANNEL,
+  MOD_ZIP_CHANNEL,
   REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
@@ -334,6 +335,37 @@ interface ModsIndex {
   readonly order: readonly string[];
   /** Where these live, so the game can tell a player where to put a mod. */
   readonly dir: string;
+  /**
+   * Archives sitting in the mods folder, waiting to be imported.
+   *
+   * REPORTED, NOT UNPACKED. Nothing here opens them: they are listed so the import
+   * screen can offer them, and they are only read - over the ordinary /mods/<name>
+   * route, like any other file in this folder - when the player picks one. A shell
+   * that unpacked whatever it found at startup would parse an arbitrary archive on
+   * the one path that must never do anything surprising.
+   */
+  readonly zips: readonly { readonly name: string; readonly bytes: number }[];
+}
+
+/**
+ * Is this a name this process will touch inside the mods folder?
+ *
+ * The renderer supplies it, so it is checked as if it were hostile: one path segment,
+ * no separators, no traversal, and the extension the import screen actually offers.
+ * `path.basename` is not a substitute - it would turn `../../x.zip` into `x.zip` and
+ * accept it, which is a check that repairs an attack into a success.
+ */
+function isModZipName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    name.length > 0 &&
+    name.length <= 255 &&
+    !name.includes("/") &&
+    !name.includes("\\") &&
+    !name.startsWith(".") &&
+    !name.includes("\0") &&
+    name.toLowerCase().endsWith(".zip")
+  );
 }
 
 /** load-order.json: the file an external mod manager owns. */
@@ -382,12 +414,27 @@ function walkPack(dir: string, prefix = "", depth = 0, out: string[] = []): stri
 function modsIndex(): ModsIndex {
   const packs: { id: string; files: string[]; code: string[]; assets: string[] }[] = [];
   let names: string[] = [];
+  const zips: { name: string; bytes: number }[] = [];
   try {
-    names = fs
-      .readdirSync(MODS_DIR, { withFileTypes: true })
+    const entries = fs.readdirSync(MODS_DIR, { withFileTypes: true });
+    names = entries
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b));
+    for (const e of entries) {
+      /* Files only, and not through a symlink: a link called `x.zip` pointing at
+       * something outside this folder would otherwise be served by the loopback
+       * route and then deleted by the discard op, which is two holes for the price
+       * of one convenience nobody asked for. */
+      if (!e.isFile() || !isModZipName(e.name)) continue;
+      try {
+        zips.push({ name: e.name, bytes: fs.statSync(path.join(MODS_DIR, e.name)).size });
+      } catch {
+        /* Vanished between the listing and the stat. Not an error worth reporting -
+         * it simply is not there to import. */
+      }
+    }
+    zips.sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     /* no mods dir yet */
   }
@@ -406,7 +453,43 @@ function modsIndex(): ModsIndex {
     }
     packs.push({ id, files, code, assets });
   }
-  return { packs, order: readLoadOrder(), dir: MODS_DIR };
+  return { packs, order: readLoadOrder(), dir: MODS_DIR, zips };
+}
+
+/**
+ * Delete one imported archive from the mods folder.
+ *
+ * AFTER THE INSTALL, NEVER BEFORE. The renderer calls this only once IndexedDB has
+ * committed, because the two cannot be made atomic and only one order is survivable:
+ * delete-then-store loses the archive when storage refuses it, and store-then-delete
+ * leaves a duplicate the player can remove themselves. Prefer the wreckage that costs
+ * a tidy-up over the wreckage that costs the file.
+ *
+ * `lstat`, not `stat`, and the same leaf-name rule the listing used. A symlink named
+ * `x.zip` is refused rather than followed, so this cannot be talked into unlinking
+ * something outside the folder it owns.
+ */
+function installModZipChannel(): void {
+  ipcMain.handle(MOD_ZIP_CHANNEL, (_event, op: unknown, arg: unknown) => {
+    if (op !== "discard") return { ok: false, error: `unknown operation ${String(op)}` };
+    if (!isModZipName(arg)) return { ok: false, error: "that is not a mod archive's name" };
+    const file = path.join(MODS_DIR, arg);
+    try {
+      if (!fs.lstatSync(file).isFile()) {
+        return { ok: false, error: "that is not a file in the mods folder" };
+      }
+      fs.unlinkSync(file);
+      LOG_FILE.append([
+        `${new Date().toISOString()} INFO  [mods] discarded ${arg} after importing it`,
+      ]);
+      return { ok: true };
+    } catch (err) {
+      /* Answered, not thrown. The mod is already installed by the time this runs, so
+       * the screen has to say "installed, but the zip is still there" - which it can
+       * only do if it is told why. */
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
 
 /**
@@ -514,6 +597,7 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
 
   installLogging();
   installUpdater();
+  installModZipChannel();
 }
 
 /**
