@@ -333,7 +333,8 @@ import {
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
-import { userPath, writeUserFile, downloadUserFile, pickTextFile } from "./userdir";
+import { downloadUserFile, pickTextFile } from "./userdir";
+import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
@@ -6263,12 +6264,14 @@ function screenDumpCmd(): void {
     if (file === null) return;
 
     const text = htmlScreenshot(term.snapshotColored(), mode, userPath(file), BUILD_ID);
-    if (!writeUserFile(file, text)) {
+    /* FTYPE_HTML for the HTML form, exactly as upstream tags it (ui-command.c:501
+     * passes it to file_open); a host that acts on the type then sees the truth. */
+    if (!userWrite(file, text, mode === DUMP_HTML ? FileType.HTML : FileType.TEXT)) {
       /* html_screenshot's only failure: it could not open the file (L322-325). */
       say(`Cannot write the '${userPath(file)}' file!`);
       return;
     }
-    downloadUserFile(file, text, mode === DUMP_HTML ? "text/html" : "text/plain");
+    exportUserFile(file, text, mode === DUMP_HTML ? "text/html" : "text/plain");
     say(`${mode ? "Forum text" : "HTML"} screen dump saved.`);
   });
 }
