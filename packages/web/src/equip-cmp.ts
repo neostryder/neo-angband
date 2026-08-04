@@ -57,7 +57,7 @@ import type { GlyphTerm } from "./term";
 import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { dumpFileName } from "./charsheet";
-import { textLinesToFile, downloadUserFile } from "./userdir";
+import { userTextLinesToFile, exportUserFile } from "./user-io";
 import { wrapRuns } from "./screens";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_CURSOR } from "./ui-colors";
 
@@ -287,9 +287,10 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
      * continuous list, so "every page" is "every row" here, and the current view
      * and filter select the columns and rows exactly as they do on screen.
      *
-     * Built as one string rather than appended through an open handle, for the
-     * reason dumpCharacterFile gives: z-file.c's ang_file layer is not ported, so
-     * there is no file_putf to append with.
+     * Built as one string and written once rather than appended row by row
+     * through an open handle - the same shape dumpCharacterFile uses, and the
+     * same bytes. The user directory it lands in is the installed host's, so this
+     * is a real file on the desktop shell.
      */
     const dumpText = (): string => {
       const colIdx = viewColumns();
@@ -323,10 +324,13 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
     const dumpToFile = async (): Promise<void> => {
       const file = await nested(() => getFile(term, dumpFileName(deps.playerName, "_equip.txt")));
       if (file === null) return;
-      dlgMsg = textLinesToFile(file, dumpText())
+      /* One render, not three: dumpText() walks the whole model, and calling it
+       * again for the export could hand out bytes that differ from the file. */
+      const text = dumpText();
+      dlgMsg = userTextLinesToFile(file, text)
         ? "Failed to save to file!"
         : "Successfully saved to file";
-      if (!dlgMsg.startsWith("Failed")) downloadUserFile(file, dumpText());
+      if (!dlgMsg.startsWith("Failed")) exportUserFile(file, text);
     };
 
     const compare = async (i0: number, i1: number | null): Promise<void> => {

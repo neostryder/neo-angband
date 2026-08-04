@@ -30,7 +30,7 @@ import {
   USER_DIR,
 } from "./userdir";
 import type { UserStorage } from "./userdir";
-import { FileMode, HostDir } from "@rpgm-tools/neo-angband-core";
+import { FileMode, HostDir, NULL_HOST, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { htmlScreenshot, cssToHex, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import type { GlyphTerm, ColoredCell } from "./term";
@@ -139,10 +139,16 @@ let fs: FakeStore;
 beforeEach(() => {
   fs = fakeStorage();
   setUserStorage(fs);
+  /* get_file consults the INSTALLED host for "Replace existing file?", not
+   * userdir.ts directly (see user-io.ts). Without a host it would consult
+   * NULL_HOST, where nothing exists and the prompt could never fire - so the
+   * fixture installs the composition the browser build actually runs. */
+  setHost(new BrowserHost(fs));
 });
 
 afterEach(() => {
   setUserStorage(null);
+  setHost(NULL_HOST);
   delete (globalThis as { window?: unknown }).window;
 });
 

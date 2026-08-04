@@ -127,11 +127,12 @@ import {
   showTextScreen,
 } from "./overlay";
 import {
-  writeUserFile,
-  writeUserFileChecked,
-  downloadUserFile,
+  userWrite,
+  userWriteChecked,
+  exportUserFile,
   userPath,
-} from "./userdir";
+  FileType,
+} from "./user-io";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { packMenu } from "./screens";
 import { UI_TEXT } from "./ui-colors";
@@ -392,7 +393,7 @@ export async function runSpoilers(
           ? spoilMonDesc(pack)
           : spoilMonInfo(pack);
 
-  const outcome = writeUserFileChecked(action.file, text);
+  const outcome = userWriteChecked(action.file, text);
   if (outcome === "create-failed") {
     say("Cannot create spoiler file."); /* wiz-spoil.c:220 */
     return;
@@ -401,7 +402,7 @@ export async function runSpoilers(
     say("Cannot close spoiler file."); /* wiz-spoil.c:330 */
     return;
   }
-  downloadUserFile(action.file, text);
+  exportUserFile(action.file, text);
   say("Successfully created a spoiler file."); /* wiz-spoil.c:335 */
 }
 
@@ -1545,8 +1546,9 @@ async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
  * the HTML page and file_close's success reports "Level dumped to %s.".
  *
  * Both prompts are upstream's and both can cancel (L1119-1122). The page is the
- * real dump_level output (core game/dump-level.ts), written into the user
- * directory and handed to the browser as a download.
+ * real dump_level output (core game/dump-level.ts), written into the installed
+ * host's user directory - a real file under the desktop shell - and handed to the
+ * browser as a download only where that is the only way to reach it.
  */
 async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
   const { term, state } = ctx;
@@ -1561,8 +1563,8 @@ async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
   if (title === null) return;
   const html = dumpLevel(state, title);
   /* file_open failing is silent upstream; only the close reports (L1124-1128). */
-  if (!writeUserFile(file, html)) return;
-  downloadUserFile(file, html, "text/html");
+  if (!userWrite(file, html, FileType.HTML)) return;
+  exportUserFile(file, html, "text/html");
   ctx.say(`Level dumped to ${userPath(file)}.`);
 }
 
