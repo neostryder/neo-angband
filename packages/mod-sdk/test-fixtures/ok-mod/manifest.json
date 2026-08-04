@@ -5,7 +5,9 @@
   "shape": "content",
   "facets": ["plugin"],
   "modApi": 1,
-  "author": "neostryder (RPGM Tools)",
+  "engine": ">=0.1.0",
+  "author": "neostryder",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
   "description": "A build fixture, not a mod anyone plays. It takes the engine from ctx.core, imports core for TYPES only, and splits itself over two files so the builder's bundling is proven rather than assumed."
 }
