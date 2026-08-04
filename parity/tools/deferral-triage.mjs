@@ -32,33 +32,68 @@ if (!fs.existsSync(CENSUS)) {
   process.exit(1);
 }
 
-/** Every identifier in the port, harvested once. Cheaper than a grep per symbol. */
+/**
+ * Every identifier in the port, harvested once, WITH the file that declares it
+ * and how many other files mention it.
+ *
+ * "The name exists" was the first version of this, and it is the weaker half of
+ * the question. A ported-looking symbol that nothing outside its own module ever
+ * names is the shape of the trap this project has hit before: the function is
+ * written, tested and unreachable, so a census reads it as present and play
+ * never runs it. So presence is recorded as {decl, refs} and a symbol declared
+ * with refs === 0 is triaged as `dead-candidate`, not as evidence of a port.
+ *
+ * refs counts FILES, not call sites, and it counts mentions rather than calls -
+ * a comment naming the symbol in another module still counts. It is a filter for
+ * reading order, never a verdict; see the note above about self-referential
+ * harnesses.
+ */
 function portSymbols() {
-  const out = new Set();
+  const decl = new Map();
+  const mentions = new Map();
+  const files = [];
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (/\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name)) {
-        const body = fs.readFileSync(p, "utf8");
-        /* Declarations only, not mentions: a symbol that appears solely inside a
-         * comment is exactly the thing being audited and must not count as present. */
-        for (const m of body.matchAll(
-          /(?:function|const|let|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g,
-        )) {
-          out.add(m[1]);
-        }
-        for (const m of body.matchAll(/^\s*(?:readonly\s+)?([a-z][\w$]*)\s*[?:(]/gm)) {
-          out.add(m[1]);
-        }
-      }
+      else if (/\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name)) files.push(p);
     }
   };
   for (const sub of ["core", "web", "cli", "desktop", "mod-sdk", "linoleum"]) {
     const dir = path.join(ROOT, "packages", sub, "src");
     if (fs.existsSync(dir)) walk(dir);
   }
-  return out;
+  const bodies = new Map();
+  for (const p of files) {
+    const body = fs.readFileSync(p, "utf8");
+    bodies.set(p, body);
+    /* Declarations only, not mentions: a symbol that appears solely inside a
+     * comment is exactly the thing being audited and must not count as present. */
+    for (const m of body.matchAll(
+      /(?:function|const|let|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g,
+    )) {
+      if (!decl.has(m[1])) decl.set(m[1], p);
+    }
+    for (const m of body.matchAll(/^\s*(?:readonly\s+)?([a-z][\w$]*)\s*[?:(]/gm)) {
+      if (!decl.has(m[1])) decl.set(m[1], p);
+    }
+  }
+  for (const [name, home] of decl) {
+    let n = 0;
+    const re = new RegExp(`\\b${name.replace(/[$]/g, "\\$")}\\b`, "gu");
+    for (const [p, body] of bodies) {
+      const hits = (body.match(re) ?? []).length;
+      /* In its OWN file the declaration itself is one of the hits, so a
+       * module-private helper used twice inside its module reads as 1 and not 0.
+       * The first cut of this counted other files only, and called
+       * combat/hit.ts's hitChance and obj/make.ts's applyCurse dead - both are
+       * called from within their own module. A statistic that cannot see the
+       * shape of what it counts reports a gap that is not there. */
+      n += p === home ? Math.max(0, hits - 1) : hits > 0 ? 1 : 0;
+    }
+    mentions.set(name, n);
+  }
+  return { has: (n) => decl.has(n), refs: (n) => mentions.get(n) ?? 0 };
 }
 
 const camel = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
@@ -73,8 +108,24 @@ function symbolsIn(text) {
 }
 
 const lines = fs.readFileSync(CENSUS, "utf8").split(/\r?\n/);
-const header = lines[0].split("\t");
-const rows = lines.slice(1).filter((l) => l.trim() !== "").map((l) => l.split("\t"));
+const rawHeader = lines[0].split("\t");
+const rawRows = lines.slice(1).filter((l) => l.trim() !== "").map((l) => l.split("\t"));
+
+/**
+ * Drop any hint/absent columns a PREVIOUS triage run left behind.
+ *
+ * Writing them unconditionally is not idempotent: three runs produced
+ * `hint absent hint absent hint absent text`, every reader that looks up `text`
+ * by name still worked, and every reader that took the 8th column silently got
+ * a hint instead. A tool that corrupts its own input on the second run is worse
+ * than one that refuses to run twice.
+ */
+const drop = new Set();
+rawHeader.forEach((h, i) => {
+  if (h === "hint" || h === "absent") drop.add(i);
+});
+const header = rawHeader.filter((_, i) => !drop.has(i));
+const rows = rawRows.map((r) => r.filter((_, i) => !drop.has(i)));
 const iText = header.indexOf("text");
 const iVerdict = header.indexOf("verdict");
 
@@ -83,15 +134,28 @@ const counts = {};
 for (const r of rows) {
   const text = r[iText] ?? "";
   const syms = symbolsIn(text);
+  const nameOf = (s) => (SYMS.has(camel(s)) ? camel(s) : s);
   const present = syms.filter((s) => SYMS.has(camel(s)) || SYMS.has(s));
   const absent = syms.filter((s) => !SYMS.has(camel(s)) && !SYMS.has(s));
+  /* Declared, but no other module in the port ever names it. */
+  const orphan = present.filter((s) => SYMS.refs(nameOf(s)) === 0);
   let hint;
   if (syms.length === 0) hint = "no-symbol";
+  else if (absent.length === 0 && orphan.length > 0) hint = "dead-candidate";
   else if (absent.length === 0) hint = "likely-stale";
   else if (present.length > 0) hint = "mixed";
   else hint = "likely-real";
   counts[hint] = (counts[hint] ?? 0) + 1;
-  out.push({ row: r, hint, present, absent });
+  out.push({ row: r, hint, present, absent, orphan });
+}
+
+/* `--refs <camelName>`: what the reference count actually says about one symbol.
+ * Present so the dead-candidate branch can be checked against a name whose
+ * answer is known, rather than trusted because it printed nothing. */
+if (process.argv.includes("--refs")) {
+  const name = process.argv[process.argv.indexOf("--refs") + 1];
+  console.log(`${name}: declared=${SYMS.has(name)} refs=${SYMS.refs(name)}`);
+  process.exit(0);
 }
 
 const want = process.argv.includes("--hint")
@@ -102,7 +166,11 @@ if (want) {
   for (const o of out) {
     if (o.hint !== want) continue;
     if ((o.row[iVerdict] ?? "") !== "") continue;
-    console.log(`${o.row[0]}:${o.row[1]}\t[${o.absent.join(" ")}]\t${(o.row[iText] ?? "").slice(0, 130)}`);
+    /* For a dead-candidate the interesting names are the ORPHANS, not the
+     * absentees - there are none of the latter, which is why it is not
+     * likely-real. */
+    const names = o.hint === "dead-candidate" ? o.orphan : o.absent;
+    console.log(`${o.row[0]}:${o.row[1]}\t[${names.join(" ")}]\t${(o.row[iText] ?? "").slice(0, 130)}`);
   }
 } else {
   const withHint = [header.join("\t").replace("\ttext", "\thint\tabsent\ttext")];

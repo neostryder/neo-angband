@@ -4,6 +4,12 @@ Machine-readable provenance: which upstream sources each port module ports,
 pinned to the parity baseline (tag `4.2.6`). Methodology in
 [docs/PARITY.md](../docs/PARITY.md).
 
+**Looking for what is missing? Read [DEFERRALS.md](DEFERRALS.md), not the `notes:`
+and `deferred:` fields here.** Every "deferred" note in this repository - in these
+files and in the source comments - has been adjudicated with evidence, and 137 of
+the 367 turned out to describe a state of the code that no longer held. A
+`deferred:` entry below is a lead, not a finding.
+
 ## Format
 
 One YAML file per port module under `ledger/`. Schema:

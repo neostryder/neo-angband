@@ -21,6 +21,12 @@
  *   partial       part is ported; the note must say which part is not
  *   n-a           not applicable to this port, with the mechanism named
  *   divergence    deliberately different, ratified, with the reason
+ *   stale-doc     the note describes a state of the code that no longer holds
+ *   not-a-deferral the census matched ordinary English, not a parity claim
+ *                 (a `todo` variable, a setTimeout "deferred a tick", a mod
+ *                 that "defers to" another mod). Kept as a VERDICT rather than
+ *                 filtered out of the census, so the row stays visible and the
+ *                 reason it does not count is written next to it.
  */
 
 import fs from "node:fs";
@@ -38,6 +44,7 @@ const VERDICTS = new Set([
   "n-a",
   "divergence",
   "stale-doc",
+  "not-a-deferral",
 ]);
 
 /** [file:line, verdict, evidence] triples from argv or a batch file. */
