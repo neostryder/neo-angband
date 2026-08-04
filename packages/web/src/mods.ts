@@ -61,6 +61,7 @@ import {
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
 import { showModBrowse, showModUpgrades, type ModUpgradeDeps } from "./mod-browse";
+import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
 import {
@@ -367,7 +368,7 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
    * in full. Measured in mod-viewport.test.ts against the real paint. */
   const fixed = `${box}   v${m.version}  (${kindTag})${suffix}`;
   const room = Math.max(MIN_NAME_COLS, LABEL_COLS - fixed.length);
-  const name = m.name.length <= room ? m.name : `${m.name.slice(0, room - 3)}...`;
+  const name = displayName(m.name, m.manifest.author, room);
   const label = `${box} ${name}  v${m.version}  (${kindTag})${suffix}`;
   const color = broken
     ? C_DANGER
@@ -404,6 +405,7 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
 const LABEL_COLS = 80 - 1 - 3;
 /** Never elide a name below this - past it the row stops identifying anything. */
 const MIN_NAME_COLS = 14;
+
 
 /** What a manifest's `shape` is, said the way a player would say it. */
 function describeShape(shape: string): string {
@@ -481,7 +483,7 @@ export function rowDetail(
    * blurb can be longer - the pane sliced them mid-word at cols-1 while the
    * paragraph above wrapped cleanly. */
   const head: ScreenLine[] = [
-    ...wrapped(`${m.name}  (id: ${m.id})`, w, C_TITLE),
+    ...wrapped(`${displayName(m.name, m.manifest.author)}  (id: ${m.id})`, w, C_TITLE),
     ...wrapped(
       m.kind === "content"
         ? `version ${m.version}  -  ${m.shape} pack`
@@ -489,6 +491,10 @@ export function rowDetail(
       w,
     ),
   ];
+  /* The author's name IN FULL, plus the licence. The line above carries the short
+   * form beside the mod's name (displayName drops an organisation in parentheses to
+   * keep a row inside 80 columns); this is the place that has room for whatever they
+   * actually wrote, so this is where it is said. */
   const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");
   if (by) head.push(...wrapped(by, w, C_DIM));
 
@@ -643,7 +649,7 @@ export function rowDetail(
 export function fullDescription(m: CatalogMod, width = 80): ScreenLine[] {
   const w = width - 1;
   const out: ScreenLine[] = [
-    ...wrapped(`${m.name}  (id: ${m.id})`, w, C_TITLE),
+    ...wrapped(`${displayName(m.name, m.manifest.author)}  (id: ${m.id})`, w, C_TITLE),
     ...wrapped(`version ${m.version}  -  ${m.shape} pack`, w, C_DIM),
   ];
   const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");

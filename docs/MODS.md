@@ -42,12 +42,14 @@ mods**:
   zip or inside a single folder at the top of it - the shape GitHub's *Download
   ZIP* produces. Nothing deeper is looked at, and a zip holding two mods is
   refused rather than guessed at. A zip imported out of the `mods/` folder is
-  deleted once the mod is installed; one you picked from elsewhere is your file
-  and is left exactly where it was. **Zips are never opened at startup** - an
-  import is something you do, once, from this screen.
+  **moved into `mods/imported/`** once the mod is installed - kept, not deleted,
+  because it is your copy of somebody else's download and the game has no business
+  being the only place it survives. One you picked from elsewhere is your file and
+  is left exactly where it was. **Zips are never opened at startup** - an import is
+  something you do, once, from this screen.
 
-An imported mod has no repository, so **Update installed mods** has nothing to ask
-about it and says so. To update one, import a newer zip.
+An imported mod keeps the `repository` its own manifest declares, so **Update
+installed mods** has somewhere to ask about it. Importing a newer zip works too.
 
 Two other routes exist and neither is the normal one. **A folder**: point the
 game at a directory of mods (Chrome and Edge, or the desktop build's own

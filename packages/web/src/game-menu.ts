@@ -32,6 +32,7 @@ export type GameMenuAction =
   | "mods"
   | "help"
   | "report"
+  | "storage"
   | "abilities"
   | "equip-cmp"
   | "item-actions"
@@ -111,6 +112,17 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
       item: {
         label: "Report a problem",
         hint: "Write a file describing what went wrong. Nothing is sent anywhere.",
+      },
+    },
+    /* Next to it for the same reason, and here rather than only on the character
+     * list because a player in the dungeon is the one with something to lose. The
+     * character list says the least it can in one line and points here; this row
+     * is the other door. */
+    {
+      action: "storage",
+      item: {
+        label: "Where your characters live",
+        hint: "What stores your saves and mods - and what would destroy them.",
       },
     },
     {

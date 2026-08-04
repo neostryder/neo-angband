@@ -31,6 +31,7 @@ const mod = (over: Partial<DiscoveredMod> = {}): DiscoveredMod => ({
   tags: ["v0.13.0"],
   id: "qol",
   name: "Quality of Life",
+  author: "neostryder",
   version: "0.13.0",
   description: "Conveniences Angband does not have.\nA second line.",
   engine: ">=0.18.0",
@@ -299,28 +300,40 @@ describe("the detail pane wraps", () => {
 describe("what the screen says after importing a zip", () => {
   const text = (lines: readonly { text: string }[]): string => lines.map((l) => l.text).join("\n");
 
-  it("says the archive was removed when it was", () => {
-    const out = text(importedLines("qol", 2, "qol.zip", { ok: true }, false));
-    expect(out).toContain("qol.zip has been removed from the mods folder.");
-    expect(out).not.toMatch(/still/u);
+  it("says where the archive was moved to, and never that it was deleted", () => {
+    const out = text(
+      importedLines("qol", 2, "qol.zip", { ok: true, to: "imported/qol.zip" }, false),
+    );
+    expect(out).toContain("qol.zip has been moved to imported/qol.zip in the mods folder.");
+    /* The whole point of the change: the player's download survives the import, and
+     * the screen has to be the thing that says so. */
+    expect(out).toContain("Kept, not deleted");
+    expect(out).not.toMatch(/deleted from|has been removed/u);
   });
 
-  it("says the file is untouched when this platform never could delete it", () => {
+  it("still names a home when the shell did not say which file it became", () => {
+    /* An older shell answers {ok:true} with no `to`. "moved to imported/" is less
+     * useful than the exact name and still tells a player where to look. */
+    const out = text(importedLines("qol", 2, "qol.zip", { ok: true }, false));
+    expect(out).toContain("moved to imported/ in the mods folder");
+  });
+
+  it("says the file is untouched when this platform never could move it", () => {
     /* null, not {ok:false}. A browser tab has no authority over a file the player
-     * chose, and reporting that as a failed deletion invents a fault. */
+     * chose, and reporting that as a failed move invents a fault. */
     const out = text(importedLines("qol", 2, "qol.zip", null, false));
     expect(out).toContain("qol.zip is still where you left it.");
-    expect(out).not.toMatch(/could not be removed/u);
+    expect(out).not.toMatch(/could not be moved/u);
   });
 
-  it("says the deletion FAILED, with the reason, and that the mod is fine", () => {
+  it("says the MOVE failed, with the reason, and that the mod is fine", () => {
     const out = text(importedLines("qol", 2, "qol.zip", { ok: false, error: "EBUSY" }, false));
-    expect(out).toContain("still in the mods folder");
+    expect(out).toContain("still loose in the mods folder");
     expect(out).toContain("EBUSY");
     /* The install succeeded. A player who reads only the warning must still be told
-     * the mod is installed and that removing the file by hand is safe. */
+     * the mod is installed and that tidying the file up by hand is safe. */
     expect(out).toContain("qol installed.");
-    expect(out).toContain("Deleting the file is safe.");
+    expect(out).toContain("Moving the file yourself is safe.");
   });
 
   it("never claims a mod is on just because it is installed", () => {

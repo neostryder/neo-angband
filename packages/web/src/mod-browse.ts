@@ -43,7 +43,7 @@ import { promptText, selectFromMenu, showTextScreen, type MenuItem, type ScreenL
 import type { GlyphTerm } from "./term";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 import { formatBytes } from "./mod-catalogue";
-import { authorFor, standingNote, type AuthorRegister } from "./mod-authors";
+import { authorFor, displayName, standingNote, type AuthorRegister } from "./mod-authors";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, type ModRegistry } from "./mod-curated";
 import type { DiscoveredMod } from "./mod-discover";
@@ -137,15 +137,18 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
   const m = entry.mod;
   const size = m.bytes === null ? "" : `  ${formatBytes(m.bytes)}`;
 
-  /* NO AUTHOR BADGE ON THE ROW, deliberately, though the register is right here.
-   * A one-word marker beside a name is exactly the thing a player reads as "checked",
-   * and no listing means that (see standingNote). The standing goes in the detail
-   * pane, in a full sentence that can say what it does and does not mean - and that
-   * pane is shown by default, so it is not hidden, just not compressed into a word
-   * that would mislead. */
+  /* THE MANIFEST'S AUTHOR IS ON THE ROW; THE REGISTER'S STANDING IS NOT, and the two
+   * are not interchangeable. `Neo Linoleum (neostryder)` is attribution - the author's
+   * own claim, which is the most useful single fact about a stranger's mod and belongs
+   * where the player is already looking. A REGISTER marker beside a name would be read
+   * as "checked", which no listing means (see standingNote); that stays in the detail
+   * pane where a full sentence can say what it does and does not mean, and that pane is
+   * shown by default, so it is not hidden - just not compressed into a word that would
+   * mislead. */
+  const who = displayName(m.name, m.author);
   if (!m.compatible) {
     return {
-      label: `${m.name} ${m.version} - will not run on this version`,
+      label: `${who} ${m.version} - will not run on this version`,
       color: C_BAD,
       hint: m.engineNote ?? `needs engine ${m.engine ?? "(unstated)"}`,
     };
@@ -161,7 +164,7 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
         : `  installed ${installedTag}`;
 
   return {
-    label: `[${mark}] ${m.name} ${m.version}${state}${size}`,
+    label: `[${mark}] ${who} ${m.version}${state}${size}`,
     color: installedTag === null ? C_FG : C_GOOD,
     hint:
       (m.description?.split("\n")[0] ?? "No description.") +
@@ -226,7 +229,7 @@ export function browseDetail(
   }
   const m = entry.mod;
   const out: ScreenLine[] = [
-    ...wrap(m.name, C_FG),
+    ...wrap(displayName(m.name, m.author), C_FG),
     { text: "", color: C_FG },
     ...wrap(m.description ?? "No description.", C_FG),
   ];
@@ -623,34 +626,44 @@ export function waitingZipRow(z: WaitingZip): string {
  * What the screen says after an import, including the part about the file itself.
  *
  * A SEPARATE FUNCTION BECAUSE THE SENTENCE IS THE FEATURE. Three outcomes have to be
- * distinguishable: the archive was deleted, the archive is still there because this
- * platform cannot delete it, and the archive is still there because deleting it FAILED.
+ * distinguishable: the archive was moved aside, the archive is still there because this
+ * platform cannot move it, and the archive is still there because moving it FAILED.
  * Collapsing the last two into "installed" would leave a player with a duplicate they
- * do not know about; collapsing them into "could not delete" would report a fault on a
+ * do not know about; collapsing them into "could not be moved" would report a fault on a
  * browser that never had the ability in the first place.
+ *
+ * Nothing here says "deleted" any more, and nothing deletes: the successful case NAMES
+ * the file's new home, because a player who wants their download back has to be able to
+ * find it without being told to go hunting.
  */
 export function importedLines(
   id: string,
   fileCount: number,
   source: string,
-  discarded: { readonly ok: boolean; readonly error?: string } | null,
+  archived: { readonly ok: boolean; readonly error?: string; readonly to?: string } | null,
   enabled: boolean,
 ): readonly ScreenLine[] {
   const tail: ScreenLine[] =
-    discarded === null
+    archived === null
       ? [
           { text: `${source} is still where you left it.`, color: C_DIM },
-          { text: "The game has its own copy now; you can delete yours.", color: C_DIM },
+          { text: "The game has its own copy now; yours is untouched.", color: C_DIM },
         ]
-      : discarded.ok
-        ? [{ text: `${source} has been removed from the mods folder.`, color: C_DIM }]
-        : [
-            { text: `${source} is still in the mods folder.`, color: C_WARN },
+      : archived.ok
+        ? [
             {
-              text: `It could not be removed: ${discarded.error ?? "no reason given"}`,
+              text: `${source} has been moved to ${archived.to ?? "imported/"} in the mods folder.`,
+              color: C_DIM,
+            },
+            { text: "Kept, not deleted - it is your copy of the download.", color: C_DIM },
+          ]
+        : [
+            { text: `${source} is still loose in the mods folder.`, color: C_WARN },
+            {
+              text: `It could not be moved aside: ${archived.error ?? "no reason given"}`,
               color: C_WARN,
             },
-            { text: "The mod is installed. Deleting the file is safe.", color: C_DIM },
+            { text: "The mod is installed. Moving the file yourself is safe.", color: C_DIM },
           ];
   return [
     { text: `${id} installed.`, color: C_GOOD },
@@ -667,13 +680,13 @@ export function importedLines(
   ];
 }
 
-/** Read, validate, store - then, only then, discard the source. */
+/** Read, validate, store - then, only then, move the source aside. */
 async function importOne(
   term: GlyphTerm,
   bytes: Uint8Array,
   source: string,
-  /** The leaf name to delete afterwards, or null for a file the game does not own. */
-  discardable: string | null,
+  /** The leaf name to move afterwards, or null for a file the game does not own. */
+  archivable: string | null,
   deps: ModBrowseDeps,
   zip: ZipImportDeps,
 ): Promise<boolean> {
@@ -692,19 +705,19 @@ async function importOne(
     return false;
   }
 
-  /* STORE FIRST, DELETE SECOND, and never the other way round. The two cannot be made
+  /* STORE FIRST, MOVE SECOND, and never the other way round. The two cannot be made
    * one operation - IndexedDB and a filesystem have no shared transaction - so the
-   * question is only which wreckage is survivable. Deleting first and failing to store
-   * loses the archive; storing first and failing to delete leaves a duplicate the
-   * player can remove. Prefer the one that costs a tidy-up. */
-  const discarded =
-    discardable !== null && zip.discard !== null ? await zip.discard(discardable) : null;
+   * question is only which wreckage is survivable. Moving first and failing to store
+   * hides the archive; storing first and failing to move leaves a file the player can
+   * tidy up. Prefer the one that costs a tidy-up. */
+  const archived =
+    archivable !== null && zip.archive !== null ? await zip.archive(archivable) : null;
 
   const enabled = deps.offerEnable ? await deps.offerEnable(result.meta.id) : false;
   await showTextScreen(
     term,
     result.meta.id,
-    importedLines(result.meta.id, result.meta.files.length, source, discarded, enabled),
+    importedLines(result.meta.id, result.meta.files.length, source, archived, enabled),
   );
   return true;
 }
@@ -734,9 +747,9 @@ export async function showZipImport(term: GlyphTerm, deps: ModBrowseDeps): Promi
         label: waitingZipRow(z),
         color: C_FG,
         hint:
-          zip.discard === null
+          zip.archive === null
             ? "Import this archive."
-            : "Import it, then remove the zip from the mods folder.",
+            : "Import it, then move the zip into mods/imported.",
       })),
       {
         label: "Choose a .zip file...",
@@ -751,7 +764,7 @@ export async function showZipImport(term: GlyphTerm, deps: ModBrowseDeps): Promi
     if (pick === null) return changed;
 
     if (pick === items.length - 1) {
-      await showTextScreen(term, "Import a mod", aboutImport(folder, zip.discard !== null));
+      await showTextScreen(term, "Import a mod", aboutImport(folder, zip.archive !== null));
       continue;
     }
 
@@ -787,7 +800,7 @@ export async function showZipImport(term: GlyphTerm, deps: ModBrowseDeps): Promi
 }
 
 /** What the "What is this?" row says, which depends on what this platform can do. */
-function aboutImport(folder: string | null, canDiscard: boolean): readonly ScreenLine[] {
+function aboutImport(folder: string | null, canArchive: boolean): readonly ScreenLine[] {
   const dim = (text: string): ScreenLine => ({ text, color: C_DIM });
   const fg = (text: string): ScreenLine => ({ text, color: C_FG });
   return [
@@ -808,16 +821,19 @@ function aboutImport(folder: string | null, canDiscard: boolean): readonly Scree
       : [
           fg("You can also drop a zip into the mods folder and import it here:"),
           dim(`  ${folder}`),
-          ...(canDiscard
-            ? [dim("A zip imported from there is deleted once the mod is installed.")]
+          ...(canArchive
+            ? [
+                dim("A zip imported from there is moved into imported/ once the mod is"),
+                dim("installed - kept, not deleted, so your download is still yours."),
+              ]
             : []),
         ]),
     { text: "", color: C_FG },
     fg("A zip is never checked at startup and never unpacked on its own."),
     dim("Importing is something you do, once, from this screen."),
     { text: "", color: C_FG },
-    fg("An imported mod has no repository, so the update check has nothing to"),
-    fg("ask. To update one, import a newer zip."),
+    fg("An imported mod keeps the repository its own manifest declares, so the"),
+    fg("update check has somewhere to ask. You can also import a newer zip."),
   ];
 }
 

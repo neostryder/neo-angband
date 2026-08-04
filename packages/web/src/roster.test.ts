@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CharMeta } from "./roster";
-import { listRoster, markDead, upsertMeta, writeSlot } from "./roster";
+import {
+  deleteSlot,
+  lineageOf,
+  listDeaths,
+  listRoster,
+  markDead,
+  upsertMeta,
+  writeSlot,
+} from "./roster";
 
 /**
  * A localStorage stand-in whose writes can be made to fail, the way a browser's
@@ -107,5 +115,70 @@ describe("the roster reports a failed write (ui-game.c:1152-1166)", () => {
   it("markDead of an unknown id is not a failure", () => {
     /* No metadata means there was nothing to tombstone. */
     expect(markDead("nobody")).toBe(true);
+  });
+});
+
+describe("a death outlives its tombstone (the import gate's ledger)", () => {
+  it("records the lineage, name and turn of a death", () => {
+    writeSlot("a", "AAAA", meta("a", { name: "Grond", turn: 50_000, lineage: "lin-1" }));
+    expect(markDead("a")).toBe(true);
+    expect(listDeaths()).toEqual([
+      { lineage: "lin-1", name: "Grond", turn: 50_000, at: expect.any(Number) },
+    ]);
+  });
+
+  it("survives deleting the tombstone from the picker", () => {
+    /* The whole reason the ledger is a separate key. Del on a memorial is a
+     * legitimate thing for a player to do; forgetting the death is not. */
+    writeSlot("a", "AAAA", meta("a", { lineage: "lin-1" }));
+    markDead("a");
+    deleteSlot("a");
+    expect(listRoster()).toEqual([]);
+    expect(listDeaths().map((d) => d.lineage)).toEqual(["lin-1"]);
+  });
+
+  it("records the SLOT ID for a character born before lineages existed", () => {
+    /* lineageOf's fallback, at the one place that matters: a pre-lineage
+     * character's export carries their slot id, so the death has to be filed
+     * under the same string or the file would import over the grave. */
+    writeSlot("born-here", "AAAA", meta("born-here"));
+    markDead("born-here");
+    expect(listDeaths().map((d) => d.lineage)).toEqual(["born-here"]);
+    expect(lineageOf({ id: "born-here" })).toBe("born-here");
+    expect(lineageOf({ id: "slot", lineage: "" })).toBe("slot");
+  });
+
+  it("keeps one record per lineage, not one per death", () => {
+    /* A character can only die once, but an imported-then-died-again lineage
+     * would otherwise accumulate rows and the newest is the one that is true. */
+    writeSlot("a", "AAAA", meta("a", { lineage: "lin-1", turn: 10 }));
+    markDead("a");
+    writeSlot("b", "AAAA", meta("b", { lineage: "lin-1", turn: 20 }));
+    markDead("b");
+    expect(listDeaths()).toHaveLength(1);
+    expect(listDeaths()[0]?.turn).toBe(20);
+  });
+
+  it("a ledger write that fails does not fail the death save", () => {
+    /* Priorities: the tombstone IS the dead-player save (ui-game.c:1152). A
+     * ledger that cannot be written costs an anti-scum check, not a memorial -
+     * so this asserts the ORDER of those two failures, not just that one throws
+     * nothing. */
+    writeSlot("a", "AAAA", meta("a", { lineage: "lin-1" }));
+    const raw = storage.setItem.bind(storage);
+    storage.setItem = (k: string, v: string): void => {
+      if (k === "neo-angband-deaths") throw new Error("quota");
+      raw(k, v);
+    };
+    expect(markDead("a")).toBe(true);
+    expect(listRoster()[0]?.alive).toBe(false);
+    expect(listDeaths()).toEqual([]);
+  });
+
+  it("reads a corrupt or half-written ledger as empty", () => {
+    storage.setItem("neo-angband-deaths", "{not json");
+    expect(listDeaths()).toEqual([]);
+    storage.setItem("neo-angband-deaths", JSON.stringify([{ name: "no lineage" }, 7, null]));
+    expect(listDeaths()).toEqual([]);
   });
 });

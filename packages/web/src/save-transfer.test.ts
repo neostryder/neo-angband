@@ -41,6 +41,7 @@ const FILE = encodeTransfer({
   save: "AAECAwQ=",
   engine: "0.10.0",
   exportedAt: "2026-07-31T12:00:00.000Z",
+  lineage: "lin-grond",
 });
 
 describe("a character survives the round trip", () => {

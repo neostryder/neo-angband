@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AUTHORS_URL,
   authorFor,
+  displayName,
   ownerOf,
+  shortAuthor,
   parseAuthors,
   standingNote,
   type AuthorRegister,
@@ -26,6 +28,55 @@ const parsed = (body: string): AuthorRegister => {
   if (!r.ok) throw new Error(r.problem);
   return r.register;
 };
+
+describe("displayName: the author beside the name", () => {
+  it("reads the way a player would write it", () => {
+    expect(displayName("Neo Linoleum", "neostryder")).toBe("Neo Linoleum (neostryder)");
+  });
+
+  it("drops an organisation in parentheses instead of nesting brackets", () => {
+    /* Measured against the real first-party manifests, which declare
+     * "neostryder (RPGM Tools)" - so the naive version produced
+     * "neo-linoleum (neostryder (RPGM Tools))" on a row with warnings to fit after
+     * it, and dropped the author entirely from the longest-named mod. The full
+     * string is still printed in the detail pane. */
+    expect(displayName("neo-linoleum", "neostryder (RPGM Tools)")).toBe(
+      "neo-linoleum (neostryder)",
+    );
+    expect(shortAuthor("neostryder (RPGM Tools)")).toBe("neostryder");
+    /* Only a SPACED bracket, and only after something: a handle that IS a bracketed
+     * string keeps it rather than becoming empty. */
+    expect(shortAuthor("(anonymous)")).toBe("(anonymous)");
+    expect(shortAuthor("some-org(inc)")).toBe("some-org(inc)");
+  });
+
+  it("says just the name when the manifest has no author", () => {
+    /* Every manifest is required to declare one, but a mod installed before that
+     * rule still has to be listed - as itself, not as "Neo Linoleum ()". */
+    for (const missing of [null, undefined, ""]) {
+      expect(displayName("Neo Linoleum", missing)).toBe("Neo Linoleum");
+    }
+  });
+
+  it("drops the author WHOLE rather than truncating it", () => {
+    /* The rule that matters: "Bug Fixes (neost..." attributes a mod to an account
+     * that does not exist. Not saying is better than misattributing. */
+    expect(displayName("Bug Fixes", "neostryder", 20)).toBe("Bug Fixes");
+    /* Exactly enough room keeps it, so the cutoff is not off by one. */
+    expect(displayName("Bug Fixes", "neo", 15)).toBe("Bug Fixes (neo)");
+    expect(displayName("Bug Fixes", "neo", 14)).toBe("Bug Fixes");
+  });
+
+  it("elides the NAME only after the author is already gone", () => {
+    expect(displayName("An Extremely Long Mod Name", "neostryder", 12)).toBe("An Extrem...");
+    expect(displayName("An Extremely Long Mod Name", null, 12)).toBe("An Extrem...");
+  });
+
+  it("says the whole thing when nobody asked for a width", () => {
+    const long = "x".repeat(200);
+    expect(displayName(long, long)).toBe(`${long} (${long})`);
+  });
+});
 
 describe("parseAuthors", () => {
   it("reads an owner, a display name and how the claim was checked", () => {

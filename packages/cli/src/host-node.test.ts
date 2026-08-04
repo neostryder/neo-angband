@@ -26,13 +26,38 @@ afterEach(() => {
 });
 
 describe("NodeHost", () => {
-  it("creates the five ANGBAND_DIR_* subdirectories at construction", () => {
-    /* init.c's create_needed_dirs. A dump that had to mkdir first would fail
-     * on a fresh install. */
+  it("creates NO subdirectory until something writes one", () => {
+    /* init.c:411's create_needed_dirs makes all five at startup and says so in
+     * its own ToDo: "Only create the directories when actually writing files."
+     * This is that. The player-visible difference is `save/`, `panic/` and
+     * `scores/` no longer sitting empty in a game folder forever. */
     new NodeHost({ base });
-    for (const d of ["user", "save", "panic", "scores", "archive"]) {
-      expect(fs.statSync(path.join(base, d)).isDirectory()).toBe(true);
-    }
+    expect(fs.readdirSync(base)).toEqual([]);
+  });
+
+  it("creates a directory on the first write to it, and only that one", () => {
+    /* The half that matters: a dump must not fail on a fresh install because
+     * its directory was never made. */
+    const h = new NodeHost({ base });
+    expect(h.write(HostDir.USER, "Adventurer.prf", "body")).toBe("ok");
+    expect(fs.readdirSync(base)).toEqual(["user"]);
+    expect(fs.readFileSync(path.join(base, "user", "Adventurer.prf"), "utf8")).toBe("body");
+    /* And an APPEND to a file that is not there yet - prefs_save's mode - has to
+     * create the directory too, not just MODE_WRITE. */
+    expect(h.write(HostDir.SAVE, "Adventurer", "x", FileMode.APPEND)).toBe("ok");
+    expect(fs.readdirSync(base).sort()).toEqual(["save", "user"]);
+  });
+
+  it("reads and lists a directory that does not exist, rather than failing", () => {
+    /* What makes the line above safe: no reader can tell an absent directory
+     * from an empty one, so nothing downstream of this had to change. */
+    const h = new NodeHost({ base });
+    expect(h.list(HostDir.SCORES)).toEqual([]);
+    expect(h.read(HostDir.SCORES, "scores.raw")).toBeNull();
+    expect(h.exists(HostDir.SCORES, "scores.raw")).toBe(false);
+    expect(h.newer(HostDir.SCORES, "a", "b")).toBe(false);
+    expect(h.remove(HostDir.SCORES, "scores.raw")).toBe(false);
+    expect(fs.existsSync(path.join(base, "scores"))).toBe(false);
   });
 
   it("declares full capability, and argv passes through", () => {
@@ -71,7 +96,7 @@ describe("NodeHost", () => {
   it("exists is false for a directory, matching file_exists", () => {
     /* z-file.h L135: "exists (and is a file)". */
     const h = new NodeHost({ base });
-    fs.mkdirSync(path.join(base, "user", "subdir"));
+    fs.mkdirSync(path.join(base, "user", "subdir"), { recursive: true });
     expect(h.exists(HostDir.USER, "subdir")).toBe(false);
   });
 
@@ -89,7 +114,7 @@ describe("NodeHost", () => {
   it("reports create-failed rather than throwing on an unwritable path", () => {
     const h = new NodeHost({ base });
     /* A name that cannot be a file because a directory already holds it. */
-    fs.mkdirSync(path.join(base, "user", "taken"));
+    fs.mkdirSync(path.join(base, "user", "taken"), { recursive: true });
     expect(h.write(HostDir.USER, "taken", "x")).toBe("create-failed");
   });
 
@@ -125,7 +150,7 @@ describe("NodeHost", () => {
     const h = new NodeHost({ base });
     h.write(HostDir.USER, "b.txt", "x");
     h.write(HostDir.USER, "a.txt", "x");
-    fs.mkdirSync(path.join(base, "user", "zdir"));
+    fs.mkdirSync(path.join(base, "user", "zdir"), { recursive: true });
     expect(h.list(HostDir.USER)).toEqual(["a.txt", "b.txt"]);
   });
 
@@ -212,13 +237,9 @@ describe("the desktop stack against a real filesystem", () => {
     expect(h.write(HostDir.USER, "../escaped.txt", "x")).toBe("create-failed");
     expect(h.read(HostDir.USER, "../../secret")).toBeNull();
     expect(fs.existsSync(path.join(base, "escaped.txt"))).toBe(false);
-    expect(fs.readdirSync(base).sort()).toEqual([
-      "archive",
-      "panic",
-      "save",
-      "scores",
-      "user",
-    ]);
+    /* A refused write creates nothing at all - not even the directory it was
+     * aimed at, because the traversal guard runs before ensureRoot. */
+    expect(fs.readdirSync(base).sort()).toEqual([]);
   });
 
   it("reports the real host path for messages, and passes argv through", () => {

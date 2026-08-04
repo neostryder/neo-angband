@@ -28,11 +28,45 @@ export interface CharMeta {
   alive: boolean;
   /** epoch ms of the last save, for most-recent-first ordering. */
   updatedAt: number;
+  /**
+   * WHO this character is, as opposed to which slot they are in.
+   *
+   * The two are the same thing until a character is exported and imported
+   * somewhere: the file lands in a NEW slot with a new id (save-transfer.ts says
+   * why an id must never travel), and without this the copy and the original
+   * would be unrelated strangers - which is exactly what let an export be used as
+   * a restore point. It travels with the file; the slot id does not.
+   *
+   * Optional because rosters written before it exists do not have it, and
+   * `lineageOf` reads those as their own slot id - which is what they were.
+   */
+  lineage?: string;
+}
+
+/** A death this roster has seen, kept after the tombstone itself is cleared. */
+export interface DeathRecord {
+  /** The lineage that died. The reason this record exists at all. */
+  lineage: string;
+  name: string;
+  /** The turn they died on, so a refusal can say when. */
+  turn: number;
+  /** epoch ms, for trimming the oldest. */
+  at: number;
 }
 
 const ROSTER_KEY = "neo-angband-roster";
 const ACTIVE_KEY = "neo-angband-active";
 const SLOT_PREFIX = "neo-angband-save:";
+const DEATHS_KEY = "neo-angband-deaths";
+
+/**
+ * How many deaths are remembered. Generous, and bounded on purpose: the ledger
+ * shares a ~5 MB localStorage budget with the savefiles, and a store this game
+ * cannot write to is a lost character (roster.setItem's comment). At ~90 bytes a
+ * record that is under 100 KB. Past the cap the oldest death stops being
+ * enforceable, which is a strictly better failure than a roster that cannot save.
+ */
+const DEATHS_CAP = 1000;
 
 function getItem(key: string): string | null {
   try {
@@ -133,7 +167,53 @@ export function markDead(id: string): boolean {
   const meta = getMeta(id);
   /* No meta at all means there is nothing to tombstone, which is not a
    * failure. A meta write that does not land IS one: the memorial is lost. */
-  return meta ? upsertMeta({ ...meta, alive: false }) : true;
+  if (!meta) return true;
+  recordDeath(meta);
+  return upsertMeta({ ...meta, alive: false });
+}
+
+/** The character behind a slot: their lineage, or the slot they were born in. */
+export function lineageOf(meta: Pick<CharMeta, "id" | "lineage">): string {
+  return meta.lineage !== undefined && meta.lineage !== "" ? meta.lineage : meta.id;
+}
+
+/** Every death this roster remembers, oldest first. Never throws. */
+export function listDeaths(): DeathRecord[] {
+  const raw = getItem(DEATHS_KEY);
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as DeathRecord[];
+    if (!Array.isArray(list)) return [];
+    return list.filter((d) => typeof d?.lineage === "string" && d.lineage !== "");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remember that this character died here, in a record that OUTLIVES the tombstone.
+ *
+ * The tombstone alone was not enough, and the hole was reachable in two
+ * keypresses: the picker offers Del on a tombstone (it is a memorial, and a
+ * player is entitled to clear it), and once the row was gone nothing connected the
+ * dead character to an export file made before the death. Del then import was a
+ * resurrection. This ledger is what the import gate actually consults, so
+ * clearing a memorial no longer clears the death.
+ *
+ * Best-effort by design: a failure here must not fail the death save, which is
+ * the write that matters (markDead's return value is savefile_save's).
+ */
+function recordDeath(meta: CharMeta): void {
+  const rec: DeathRecord = {
+    lineage: lineageOf(meta),
+    name: meta.name,
+    turn: meta.turn,
+    at: Date.now(),
+  };
+  const kept = listDeaths().filter((d) => d.lineage !== rec.lineage);
+  kept.push(rec);
+  /* Oldest first, so dropping from the front drops the oldest. */
+  setItem(DEATHS_KEY, JSON.stringify(kept.slice(Math.max(0, kept.length - DEATHS_CAP))));
 }
 
 /** Remove a slot entirely (bytes + metadata) - used to clear a tombstone. */

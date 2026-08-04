@@ -46,6 +46,33 @@ Current state of the project at version `0.18.0`. High level, what exists today:
 
 ### Added
 
+- **"Where your characters live": the screen that says what would destroy a
+  roster.** Everything this game saves is in browser storage - the roster in
+  `localStorage`, the installed mods in IndexedDB - and on the desktop build that
+  is just as true, because the shell serves the same bundle to a local origin. So a
+  routine "clear browsing data", a disk cleaner, or a profile reset takes every
+  character AND every mod at once, with no undo and, under a permanent-death rule,
+  nothing to recover from. The new screen (Escape menu, or `Shift-W` on the
+  character list) names the actual folder or origin, what is stored there now, the
+  exact actions that would clear it, and how to export a backup.
+
+  The character-select notice used to go SILENT once the origin was persistent,
+  which is the normal desktop state - so the player with a full roster and the most
+  to lose was told nothing. Persistence answers the browser's own eviction and
+  nothing else; there is now always a line, and every version of it points here.
+
+- **An exported character is not a restore point, and the game now enforces it.**
+  Export/import exists so a character can move between surfaces, and the honest
+  note in the format module said it could also be used to undo a death - which was
+  true of a file and did not have to be true of the game. A character now carries a
+  LINEAGE that survives the trip, so an import is refused when that character died
+  in this roster (from a ledger that outlives the tombstone, since clearing a
+  memorial is a legitimate thing to do), and refused when the copy already here has
+  played at least as far. A file that IS further along takes its own slot back
+  rather than becoming a second copy of itself. What this cannot police is a second
+  install that never saw the death, or a hand-edited file - the same hole
+  `cp save/Bilbo /tmp` has always opened in upstream Angband.
+
 - **Installed mods are offered their updates, in both places you would look.**
   The catalogue row has said `[~] qol v0.11.0 -> v0.13.0  Enter to update` for as
   long as there have been two tags to compare - but the screen it lives on is
@@ -104,6 +131,32 @@ Current state of the project at version `0.18.0`. High level, what exists today:
   every logged Windows path actually arrives in.
 
 ### Changed
+
+- **An imported mod zip is moved aside, not deleted.** It used to be unlinked once
+  the mod was in storage, which is tidy and wrong: the zip is the player's copy of
+  somebody else's work, and making the game's copy the only one leaves a player
+  with nothing to go back to when a mod turns out to be broken. It now moves into
+  `mods/imported/`, numbered rather than overwriting so importing v2 cannot destroy
+  the archived v1, and the screen names where it went. The folder is skipped when
+  the shell lists mod folders, so it never appears in the mod list as an empty pack.
+
+- **Every mod is listed with its author: `Neo Linoleum (neostryder)`.** Who wrote a
+  mod is the most useful single fact about a third-party one, and it used to be a
+  line in a detail pane you had to open per row. It comes from the MANIFEST, never
+  from the author register - the register is a standing this project has looked at,
+  and the two must not be able to be read as each other. Where a row cannot fit
+  both, the author is dropped whole rather than truncated: `Bug Fixes (neost...`
+  attributes a mod to an account that does not exist.
+
+- **A host directory is created on its first write, not at startup.** `save/`,
+  `panic/` and `scores/` sat empty in every game folder for the life of an install,
+  because the port creates all five `ANGBAND_DIR_*` at launch exactly as
+  `init.c:411` does. Upstream carries the answer as its own comment - *"ToDo: Only
+  create the directories when actually writing files"* - and that is now what
+  happens. It is not a behaviour divergence: no caller can tell an absent directory
+  from an empty one, since every reader already answers for a directory that is not
+  there. The desktop shell's startup writability check is unaffected, so upstream's
+  quit-rather-than-run-on behaviour is still in place.
 
 - **Updates unpack in-process, with no external program on Windows or Linux.**
   The updater used to hand the archive to `tar`, and PATH does not promise which
