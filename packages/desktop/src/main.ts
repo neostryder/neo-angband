@@ -68,6 +68,16 @@ import {
   resolveLoopbackPort,
 } from "./loopback-port.js";
 import { handledPorts, planOriginMerge } from "./origin-merge.js";
+import {
+  MOD_DB_NAME,
+  MOD_DB_STORES,
+  MOD_DB_VERSION,
+  STORE_MODS,
+  STORE_MOD_META,
+  modMergeLines,
+  planModMerge,
+} from "./mod-origin-merge.js";
+import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
@@ -946,6 +956,167 @@ async function writeOriginStorage(
 }
 
 /**
+ * The shared preamble of both IndexedDB scripts: open the mod database in whatever
+ * origin this hidden window is pointed at, creating the stores if it is a fresh one.
+ *
+ * Opened WITH the version, and creating every store, because the target origin may
+ * never have run the game: opening versionless would create the database at version 1
+ * with no stores, and the game's own later open at version 2 would then be the only
+ * thing that could add them - after this write had already failed. The constants come
+ * from mod-origin-merge.ts, which a test pins to web/idb.ts.
+ */
+const MOD_DB_PREAMBLE = `
+  const wrap = (r) => new Promise((res) => {
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => res(null);
+  });
+  const db = await new Promise((res) => {
+    let r;
+    try { r = indexedDB.open(${JSON.stringify(MOD_DB_NAME)}, ${String(MOD_DB_VERSION)}); }
+    catch { res(null); return; }
+    r.onupgradeneeded = () => {
+      for (const n of ${JSON.stringify(MOD_DB_STORES)}) {
+        if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n);
+      }
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => res(null);
+    r.onblocked = () => res(null);
+  });
+  /* One transaction PER REQUEST. A transaction auto-commits as soon as it has no
+   * pending request, so reusing one across two awaited calls throws
+   * TransactionInactiveError on the second - intermittently, depending on timing. */
+  const store = (name, mode) => db.transaction(name, mode).objectStore(name);
+`;
+
+/**
+ * Read the installed mods out of the origin served on `port`.
+ *
+ * Bytes come back base64: a Uint8Array does not survive `executeJavaScript` as itself,
+ * and silently arriving as `{}` is exactly the kind of empty success that would let the
+ * merge report mods it never carried.
+ */
+async function readOriginMods(port: number): Promise<ModRecord[]> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  try {
+    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    return (await win.webContents.executeJavaScript(
+      `(async () => {
+        ${MOD_DB_PREAMBLE}
+        if (!db) return [];
+        const b64 = (v) => {
+          const u = v instanceof Uint8Array ? v : new Uint8Array(v);
+          let s = "";
+          /* Chunked: String.fromCharCode.apply on a multi-megabyte mod overflows the
+           * argument stack, and a mod that big is exactly the one worth carrying. */
+          const C = 0x8000;
+          for (let i = 0; i < u.length; i += C) {
+            s += String.fromCharCode.apply(null, u.subarray(i, i + C));
+          }
+          return btoa(s);
+        };
+        const metaKeys = (await wrap(store(${JSON.stringify(STORE_MOD_META)}, "readonly").getAllKeys())) ?? [];
+        const metaVals = (await wrap(store(${JSON.stringify(STORE_MOD_META)}, "readonly").getAll())) ?? [];
+        const fileKeys = (await wrap(store(${JSON.stringify(STORE_MODS)}, "readonly").getAllKeys())) ?? [];
+        const fileVals = (await wrap(store(${JSON.stringify(STORE_MODS)}, "readonly").getAll())) ?? [];
+        /* Driven by the META keys: that store is what "installed" MEANS. Loose bytes
+         * with no metadata row are not an installed mod and carrying them would put
+         * files in the new origin that nothing there will ever read or clean up. */
+        return metaKeys.map((id, i) => {
+          const files = {};
+          for (let j = 0; j < fileKeys.length; j++) {
+            const k = String(fileKeys[j]);
+            if (k.startsWith(id + "/")) files[k.slice(String(id).length + 1)] = b64(fileVals[j]);
+          }
+          return { id: String(id), meta: metaVals[i] ?? null, files };
+        });
+      })()`,
+    )) as ModRecord[];
+  } catch (err) {
+    /* An origin whose mods could not be read has NOT been handled. Returning [] here
+     * would be indistinguishable from "it had none", and the caller would mark the
+     * port done and strand them - so this rethrows and the caller leaves the job
+     * outstanding, exactly as a failed localStorage read does. */
+    throw err instanceof Error ? err : new Error(String(err));
+  } finally {
+    win.destroy();
+  }
+}
+
+/**
+ * Write whole mods into the origin served on `port`. Returns the ids that did not land.
+ *
+ * FILES FIRST, METADATA LAST, and the order is the crash story again (see
+ * writeOriginStorage). Killed between the two halves:
+ *
+ *   files then meta -> loose bytes and no metadata row. The mod is not listed, nothing
+ *                      loads it, and the next launch plans the same copy again.
+ *   meta then files -> the Mods screen lists a mod whose files are absent, which fails
+ *                      at load time for a reason the player cannot act on.
+ */
+async function writeOriginMods(port: number, records: readonly ModRecord[]): Promise<string[]> {
+  if (records.length === 0) return [];
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  const failed: string[] = [];
+  try {
+    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    for (const rec of records) {
+      /* One mod per evaluation, so a quota refusal names the mod that hit it instead
+       * of losing the whole batch - a mod can be megabytes. */
+      const ok = (await win.webContents.executeJavaScript(
+        `(async () => {
+          ${MOD_DB_PREAMBLE}
+          if (!db) return false;
+          const rec = ${JSON.stringify(rec)};
+          const bytes = (s) => {
+            const bin = atob(s);
+            const u = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+            return u;
+          };
+          try {
+            for (const [path, b] of Object.entries(rec.files)) {
+              const put = store(${JSON.stringify(STORE_MODS)}, "readwrite")
+                .put(bytes(b), rec.id + "/" + path);
+              if ((await wrap(put)) === null) return false;
+            }
+            const m = store(${JSON.stringify(STORE_MOD_META)}, "readwrite").put(rec.meta, rec.id);
+            return (await wrap(m)) !== null;
+          } catch { return false; }
+        })()`,
+      )) as boolean;
+      if (!ok) failed.push(rec.id);
+    }
+  } catch (err) {
+    /* The whole batch is unproven, so every id is reported failed rather than the
+     * loop's progress being trusted. */
+    mainLog("error", "recovery", `could not write mods into port ${String(port)}`, err);
+    for (const rec of records) if (!failed.includes(rec.id)) failed.push(rec.id);
+  } finally {
+    win.destroy();
+  }
+  return failed;
+}
+
+/** The ids the target origin already has installed, so the merge never displaces one. */
+async function readOriginModIds(port: number): Promise<string[]> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  try {
+    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    return (await win.webContents.executeJavaScript(
+      `(async () => {
+        ${MOD_DB_PREAMBLE}
+        if (!db) return [];
+        const ks = (await wrap(store(${JSON.stringify(STORE_MOD_META)}, "readonly").getAllKeys())) ?? [];
+        return ks.map(String);
+      })()`,
+    )) as string[];
+  } finally {
+    win.destroy();
+  }
+}
+
+/**
  * Bring characters written under the old ephemeral origins into the stable one.
  *
  * Runs once per abandoned origin and reports what it found. Never fatal: a failure
@@ -971,6 +1142,7 @@ async function recoverStrandedOrigins(
   if (todo.length === 0 && dead.size === 0) return;
 
   const sources: OriginSnapshot[] = [];
+  const modSources: ModSnapshot[] = [];
   for (const port of todo) {
     /* A throwaway server serving ONLY the blank page: the game must not boot in
      * one of these windows, and on this port it never can. */
@@ -982,7 +1154,12 @@ async function recoverStrandedOrigins(
         server.on("error", reject);
         server.listen(port, "127.0.0.1", () => resolve());
       });
+      /* Both stores, while the throwaway server for this port is still up: the roster
+       * from localStorage and the installed mods from IndexedDB. Reading them in one
+       * visit is not an optimisation - the server is closed in the `finally` below, so
+       * a second pass would have nothing to connect to. */
       sources.push({ port, entries: await readOriginStorage(port) });
+      modSources.push({ port, mods: await readOriginMods(port) });
     } catch (err) {
       /* NOT marked handled - see the `read` set below. Reaching this means the port
        * could not be bound, and the commonest reason now is that ANOTHER COPY of the
@@ -996,6 +1173,7 @@ async function recoverStrandedOrigins(
   }
 
   const plan = planOriginMerge(await readOriginStorage(stablePort), sources, dead);
+  const modPlan = planModMerge(await readOriginModIds(stablePort), modSources);
   /* BEFORE any origin can be marked handled. Marking is what makes a tombstone
    * unreadable forever, so the ledger has to have the ids first or the marker can
    * seal away the only record of a death. */
@@ -1003,8 +1181,13 @@ async function recoverStrandedOrigins(
   const keys = Object.keys(plan.writes);
   /* `plan.removes` counts as work: a plan that only deletes bytes must not take the
    * "nothing to do" exit, which would mark the sources handled without performing
-   * the deletion the tombstone in one of them justified. */
-  if (keys.length === 0 && plan.removes.length === 0) {
+   * the deletion the tombstone in one of them justified.
+   *
+   * AND SO DO MODS. An origin can easily hold installed mods and no characters at all
+   * - the player who tried a tileset and never finished a birth - and before the mod
+   * half existed this exit was reached for exactly that origin, marking it handled and
+   * making its mods unreachable forever. */
+  if (keys.length === 0 && plan.removes.length === 0 && modPlan.install.length === 0) {
     /* `sources`, not `todo`: only origins that were actually read. See handledPorts
      * for why the difference is a character. */
     const mark = handledPorts(done, sources, { failedKeys: [], missingKeys: [] });
@@ -1013,6 +1196,15 @@ async function recoverStrandedOrigins(
   }
 
   const failed = await writeOriginStorage(stablePort, plan.writes, plan.removes);
+  /* Mods carried in the same pass, and their failures are keys as far as handledPorts
+   * is concerned: a mod that did not land leaves the only copy in the source origin,
+   * so marking that origin handled would strand it exactly as a refused save key
+   * would. `mod:` prefixed so a log line says which kind of thing failed. */
+  const failedMods = await writeOriginMods(stablePort, modPlan.install);
+  for (const id of failedMods) failed.push(`mod:${id}`);
+  /* NOT logged here. The read-back below can still move a mod from brought-over to
+   * failed, and a log line written before it would contradict the dialog the player is
+   * about to read - see the log next to `modLines`. */
   if (plan.removes.length > 0) {
     /* Worth a line of its own: it is the one thing here that destroys bytes, and
      * a player who finds a character gone deserves to be able to read why. */
@@ -1039,6 +1231,19 @@ async function recoverStrandedOrigins(
   }
   const after = await readOriginStorage(stablePort);
   const missing = Object.keys(plan.writes).filter((k) => !(k in after));
+  /* The same read-back for mods, by metadata key rather than by comparing bytes: a mod
+   * is megabytes and re-reading every one to diff it would cost more than it proves.
+   * The key is what makes a mod installed, and its absence is what the durable failure
+   * looks like - a whole database that did not persist. */
+  if (modPlan.install.length > 0) {
+    const idsAfter = new Set(await readOriginModIds(stablePort));
+    for (const rec of modPlan.install) {
+      if (!idsAfter.has(rec.id) && !failed.includes(`mod:${rec.id}`)) {
+        missing.push(`mod:${rec.id}`);
+        if (!failedMods.includes(rec.id)) failedMods.push(rec.id);
+      }
+    }
+  }
   if (missing.length > 0) {
     mainLog(
       "error",
@@ -1065,24 +1270,47 @@ async function recoverStrandedOrigins(
       ? { leftBehind: plan.skippedUnplayed.map((r) => r.name) }
       : undefined,
   );
-  if (plan.recovered.length > 0) {
+  /* Mods alone are enough to speak. An origin can hold installed mods and no
+   * characters, and that recovery was silent before the mod half existed - the player
+   * saw their tileset come back with nothing to explain why it had gone. */
+  const modLines = modMergeLines(modPlan, failedMods);
+  if (modLines.length > 0) {
+    mainLog("info", "recovery", modLines.join(" | "), {
+      brought: modPlan.install.filter((m) => !failedMods.includes(m.id)).map((m) => m.id),
+      failed: failedMods,
+    });
+  }
+  if (plan.recovered.length > 0 || modPlan.install.length > 0) {
+    const chars =
+      plan.recovered.length > 0
+        ? `${String(plan.recovered.length)} character(s)`
+        : "";
+    const mods =
+      modPlan.install.length > 0
+        ? `${String(modPlan.install.length - failedMods.length)} mod(s)`
+        : "";
+    const both = [chars, mods].filter((s) => s !== "").join(" and ");
     await dialog.showMessageBox({
       type: failed.length === 0 ? "info" : "warning",
       title: "Neo Angband",
       message:
-        failed.length === 0
-          ? `Recovered ${plan.recovered.length} character(s).`
-          : `Recovered ${plan.recovered.length} character(s), with problems.`,
+        failed.length === 0 ? `Recovered ${both}.` : `Recovered ${both}, with problems.`,
       detail:
         /* Two things now put characters in another origin: the ephemeral-port era,
          * and this copy stepping to a free port because its usual one was in use.
          * Worded to be true of both rather than naming the first and being wrong
-         * half the time - the port numbers are the part a player can act on. */
-        "Your characters were stored against a different port number " +
-        `(${sources.map((s) => String(s.port)).join(", ")}) than this copy is now ` +
-        `using (${String(stablePort)}), which is why they stopped appearing. They ` +
-        "have been moved into this copy's own storage and are on the character " +
-        `screen now:\n\n${names.join("\n")}` +
+         * half the time - the port numbers are the part a player can act on.
+         *
+         * "characters and mods" TOGETHER in the opening sentence, because the two live
+         * in one origin bucket and go missing as one event. A player who was told only
+         * about characters would reasonably conclude their mods were uninstalled by
+         * something else. */
+        "Your characters and installed mods were stored against a different port " +
+        `number (${sources.map((s) => String(s.port)).join(", ")}) than this copy is ` +
+        `now using (${String(stablePort)}), which is why they stopped appearing. They ` +
+        "have been moved into this copy's own storage." +
+        (names.length > 0 ? `\n\nOn the character screen now:\n${names.join("\n")}` : "") +
+        (modLines.length > 0 ? `\n\n${modLines.join("\n")}` : "") +
         (plan.skippedUnplayed.length > 0
           ? `\n\nNot brought over, having never been played past turn 0: ` +
             `${plan.skippedUnplayed.map((r) => r.name).join(", ")}.`
