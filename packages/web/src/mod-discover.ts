@@ -67,6 +67,15 @@ export interface DiscoveredMod {
   /** From the manifest. The id is also the folder name. */
   readonly id: string;
   readonly name: string;
+  /**
+   * Who the manifest says wrote it, shown beside the name everywhere a mod is
+   * listed. SELF-DECLARED, and never the author register: the register is a
+   * standing this project has looked at, and putting either one where the other
+   * belongs would turn attribution into an endorsement or hide it entirely.
+   * Required of every manifest (docs/modding/REQUIREMENTS.md), so null here means
+   * a manifest that predates that rule.
+   */
+  readonly author: string | null;
   readonly version: string;
   readonly description: string | null;
   /** The engine range the MOD claims. */
@@ -262,6 +271,10 @@ export async function discoverMod(
       return { ok: false, problem: `manifest.json at ${tag} declares no id` };
     }
     const name = typeof manifest["name"] === "string" ? manifest["name"] : id;
+    const author =
+      typeof manifest["author"] === "string" && manifest["author"] !== ""
+        ? manifest["author"]
+        : null;
     const version = typeof manifest["version"] === "string" ? manifest["version"] : "";
     const description =
       typeof manifest["description"] === "string" ? manifest["description"] : null;
@@ -332,6 +345,7 @@ export async function discoverMod(
         tags,
         id,
         name,
+        author,
         version,
         description,
         engine,

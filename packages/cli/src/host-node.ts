@@ -21,7 +21,7 @@ import * as path from "node:path";
  * and needs z-file.c, not the game engine. Going through core's index dragged
  * the whole of core into that bundle. */
 import type { FileType, HostDir, RawFs, WriteOutcome } from "@rpgm-tools/neo-angband-core/host";
-import { ALL_HOST_DIRS, RawFsHost } from "@rpgm-tools/neo-angband-core/host";
+import { RawFsHost } from "@rpgm-tools/neo-angband-core/host";
 
 /**
  * node:fs as a RawFs. Every method reports failure by return value, the way
@@ -43,15 +43,34 @@ export class NodeRawFs implements RawFs {
   constructor(base: string, overrides: Readonly<Partial<Record<HostDir, string>>> = {}) {
     this.base = base;
     this.overrides = overrides;
-    /* init.c's create_needed_dirs, at startup. Best-effort: every accessor
-     * below already reports failure, so a base that cannot be created surfaces
-     * per call instead of throwing here. */
-    for (const d of ALL_HOST_DIRS) {
-      try {
-        fs.mkdirSync(this.root(d), { recursive: true });
-      } catch {
-        /* reported per-call instead */
-      }
+    /* NO create_needed_dirs here. This used to mkdir all five ANGBAND_DIR_* at
+     * construction, which is what init.c:411 does - and which left `save/`,
+     * `panic/` and `scores/` sitting empty in a player's game folder for the
+     * whole life of an install, because nothing in this port writes to them yet.
+     * init.c carries its own answer as a comment: "ToDo: Only create the
+     * directories when actually writing files." That is what `ensureRoot` below
+     * does, and it is not a behaviour divergence - no caller can tell an absent
+     * directory from an empty one, because every reader here already answers for
+     * a directory that is not there (isFile false, readText null, listFiles []).
+     *
+     * The startup failure upstream gets from this - quit rather than run on into
+     * a game that cannot save - is not lost either: the desktop shell probes the
+     * base with checkWritable() before it opens a window (main.ts), which is a
+     * better test anyway because it writes a file rather than making a folder. */
+  }
+
+  /**
+   * path_build's directory, created if it is not there yet.
+   *
+   * Called only from the WRITE paths. Silent on failure: the caller's own
+   * open/rename is the thing that reports, and a base that cannot be created
+   * fails that call for the same reason it failed this one.
+   */
+  private ensureRoot(dir: HostDir): void {
+    try {
+      fs.mkdirSync(this.root(dir), { recursive: true });
+    } catch {
+      /* reported by the write that needed it */
     }
   }
 
@@ -110,6 +129,11 @@ export class NodeRawFs implements RawFs {
     void _ftype;
     const p = this.full(dir, name);
     if (p === null) return "create-failed";
+    /* file_open's directory, made now rather than at startup - see the
+     * constructor. `rename` needs no such thing: it moves a file that is already
+     * in this directory, so the directory exists or the rename was going to fail
+     * on the source anyway. */
+    this.ensureRoot(dir);
     let fd: number | undefined;
     try {
       fd = fs.openSync(p, append ? "a" : "w");

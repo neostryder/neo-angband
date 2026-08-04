@@ -190,14 +190,34 @@ describe("durabilityNotice", () => {
     expect(durabilityNotice(risky, 0)).toBeNull();
   });
 
-  it("says nothing once the origin is protected", () => {
-    expect(durabilityNotice({ ...risky, persisted: true }, 3)).toBeNull();
+  it("STILL says something once the origin is protected", () => {
+    /* This used to assert null, and that was the bug: persistence answers the
+     * browser's own eviction and nothing else, so the player with a full roster on
+     * a successfully-persisted origin - the normal desktop state - was the one
+     * told nothing about the wipe that would actually reach them. */
+    const n = durabilityNotice({ ...risky, persisted: true }, 3);
+    expect(n).not.toBeNull();
+    expect(n).toContain("Shift-W");
   });
 
   it("warns when characters exist and storage is not protected", () => {
     const n = durabilityNotice(risky, 1);
     expect(n).not.toBeNull();
-    expect(n).toContain("Install");
+    expect(n).toContain("not protected");
+  });
+
+  it("every notice points at the screen that explains, and fits the terminal", () => {
+    /* A pointer that is cut off is not a pointer: the line is painted at column 0
+     * of an 80-column terminal and truncation eats the END. */
+    for (const d of [
+      risky,
+      { ...risky, persisted: true },
+      { ...risky, supported: false },
+    ]) {
+      const n = durabilityNotice(d, 1);
+      expect(n).toContain("Shift-W");
+      expect((n ?? "").length).toBeLessThanOrEqual(79);
+    }
   });
 
   it("words it differently for an engine that cannot be asked", () => {

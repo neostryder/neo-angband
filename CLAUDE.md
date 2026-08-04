@@ -74,8 +74,11 @@ wrong:
   hides a draft from the in-game updater. Read a draft's assets from
   `gh api .../releases` and filter on `tag_name`.
 - Smoke the **release artifact**, not a local build, and unpack it to a **short
-  path** (`C:\na-smoke`, not a deep temp directory) — Chromium fails to create
-  its disk cache past MAX_PATH and the error looks like a broken build.
+  path** — Chromium fails to create its disk cache past MAX_PATH and the error
+  looks like a broken build. Deep temp directories are out for that reason, so
+  scratch installs go in **`C:\Temp\na\`** (`dev\` for a working copy, `smoke\`
+  for an unpacked artifact) and nowhere else. Never at the drive root: four
+  `C:\na-*` folders accumulated there before this was written down.
 
 ## Mods
 

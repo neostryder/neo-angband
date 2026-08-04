@@ -240,42 +240,79 @@ describe("every row label and hint fits, measured directly", () => {
    * column the slice reserves, minus the three the "x) " tag takes. */
   const ROOM = 80 - 1 - 3;
 
-  it("holds for every combination of the row's badges", () => {
-    for (const enabled of [true, false]) {
-      for (const consented of [true, false]) {
-        for (const nondeterministic of [true, false]) {
-          for (const affectsGameplay of [true, false]) {
-            for (const problems of [[], ["something went wrong"]]) {
-              const m: CatalogMod = {
-                id: "a-mod-with-a-fairly-long-identifier",
-                /* 24 characters: longer than any first-party mod's name, short
-                 * enough that a mod author has room. If this has to grow, the
-                 * badges are what should shrink. */
-                name: "Quality of Life Extras!!",
-                version: "10.20.30",
-                shape: "plugin",
-                kind: "trusted",
-                enabled,
-                capabilities: ["registry:*"],
-                nondeterministic,
-                affectsGameplay,
-                consented,
-                manifest: {} as CatalogMod["manifest"],
-              };
-              const item = rowLabel(m, problems);
-              expect(
-                item.label.length,
-                `label too long with ${JSON.stringify({ enabled, consented, nondeterministic, affectsGameplay, problems })}: ${item.label}`,
-              ).toBeLessThanOrEqual(ROOM);
-              expect(
-                (item.hint ?? "").length,
-                `hint too long: ${item.hint ?? ""}`,
-              ).toBeLessThanOrEqual(79);
+  /* Every row now carries "(author)" as part of the name, so the property has to
+   * hold with one - and with a long one, which is the case that used to be
+   * impossible and is now the widest thing on the row. */
+  const AUTHORS = ["", "neostryder", "somebody-with-a-very-long-account-name-indeed"];
+
+  it("holds for every combination of the row's badges, author and all", () => {
+    for (const author of AUTHORS) {
+      for (const enabled of [true, false]) {
+        for (const consented of [true, false]) {
+          for (const nondeterministic of [true, false]) {
+            for (const affectsGameplay of [true, false]) {
+              for (const problems of [[], ["something went wrong"]]) {
+                const m: CatalogMod = {
+                  id: "a-mod-with-a-fairly-long-identifier",
+                  /* 24 characters: longer than any first-party mod's name, short
+                   * enough that a mod author has room. If this has to grow, the
+                   * badges are what should shrink. */
+                  name: "Quality of Life Extras!!",
+                  version: "10.20.30",
+                  shape: "plugin",
+                  kind: "trusted",
+                  enabled,
+                  capabilities: ["registry:*"],
+                  nondeterministic,
+                  affectsGameplay,
+                  consented,
+                  manifest: { author } as CatalogMod["manifest"],
+                };
+                const item = rowLabel(m, problems);
+                expect(
+                  item.label.length,
+                  `label too long with ${JSON.stringify({ author, enabled, consented, nondeterministic, affectsGameplay, problems })}: ${item.label}`,
+                ).toBeLessThanOrEqual(ROOM);
+                expect(
+                  (item.hint ?? "").length,
+                  `hint too long: ${item.hint ?? ""}`,
+                ).toBeLessThanOrEqual(79);
+              }
             }
           }
         }
       }
     }
+  });
+
+  it("shows the author when there is room, and drops it WHOLE when there is not", () => {
+    const m = (name: string, author: string, problems: string[] = []): string =>
+      rowLabel(
+        {
+          id: "x",
+          name,
+          version: "1.0.0",
+          shape: "content",
+          kind: "content",
+          enabled: false,
+          capabilities: [],
+          nondeterministic: false,
+          affectsGameplay: false,
+          consented: false,
+          manifest: { author } as CatalogMod["manifest"],
+        },
+        problems,
+      ).label;
+
+    expect(m("Neo Linoleum", "neostryder")).toBe("[ ] Neo Linoleum (neostryder)  v1.0.0  (content)");
+
+    /* No room for both, with every badge lit: the author goes entirely rather than
+     * becoming "(neost...", which would name somebody who does not exist. */
+    const tight = m("Bug Fixes (unofficial patch set)", "neostryder", ["broken"]);
+    expect(tight).toContain("Bug Fixes (unofficial patch set)");
+    expect(tight).not.toContain("neost");
+    expect(tight).toContain("! NOT WORKING");
+    expect(tight.length).toBeLessThanOrEqual(ROOM);
   });
 });
 

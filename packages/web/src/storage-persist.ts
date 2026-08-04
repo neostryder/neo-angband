@@ -173,20 +173,35 @@ export function resetDurabilityLatch(): void {
 }
 
 /**
- * The one-line warning for the character-select screen, or null when there is
- * nothing to warn about.
+ * The one line the character-select screen shows about storage, or null when there
+ * is nothing at stake yet.
  *
- * Only shown when there is something to lose. A player with no characters does not
- * need to be told about eviction, and a warning shown to everyone all the time is
- * one nobody reads.
+ * THIS USED TO GO SILENT ONCE THE ORIGIN WAS PERSISTENT, which meant the player
+ * with the most to lose - a full roster, on a build that had successfully asked for
+ * durable storage, which is the normal desktop state - was told nothing at all. It
+ * was the right line for the wrong risk: persistence answers the browser's own
+ * housekeeping and says nothing about a "clear browsing data", a disk cleaner, or a
+ * deleted profile, any of which still takes every character AND every installed
+ * mod. So there is always a line now, and every version of it points at the screen
+ * that explains (storage-page.ts).
+ *
+ * Still null with an empty roster: a player who has nothing saved does not need to
+ * be warned about losing it, and a warning shown to everybody all the time is one
+ * nobody reads.
  */
 export function durabilityNotice(
   d: StorageDurability,
   characters: number,
 ): string | null {
-  if (characters === 0 || d.persisted) return null;
+  if (characters === 0) return null;
   if (!d.supported) {
-    return "This browser may delete saved characters to reclaim space. Install the app to keep them.";
+    return "This browser may delete saved characters to reclaim space - Shift-W explains.";
   }
-  return "Saves are not protected from browser cleanup yet. Installing the app makes them persistent.";
+  if (!d.persisted) {
+    return "Saves are not protected from browser cleanup yet - Shift-W explains.";
+  }
+  /* Persisted, and still at risk from the player's own tools. 80 columns is the
+   * whole terminal and truncation eats the END of a line, so this is kept short
+   * enough that the key it names cannot be the part that gets cut. */
+  return "Characters and mods live in browser storage - Shift-W: what deletes them.";
 }

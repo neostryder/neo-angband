@@ -408,6 +408,8 @@ import {
   markDead,
   deleteSlot,
   newCharId,
+  lineageOf,
+  listDeaths,
 } from "./roster";
 import type { CharMeta } from "./roster";
 import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
@@ -494,6 +496,8 @@ import {
   transferFilename,
   type TransferMeta,
 } from "./save-transfer";
+import { decideImport } from "./transfer-gate";
+import { storageLines, type StorageTone } from "./storage-page";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -5121,8 +5125,15 @@ function wizardCtx(): WizardUiCtx {
 /** The roster metadata for the current character, drawn from the live game. */
 function metaFromState(id: string): CharMeta {
   const p = state.actor.player;
+  /* The one field NOT derived from the game: who this character is (roster.ts's
+   * lineage) lives in the roster, and every save rebuilds this object from
+   * scratch. Dropping it here would have quietly severed an imported character
+   * from their own history at the very first autosave, which is the failure that
+   * makes transfer-gate.ts's refusals stop firing. */
+  const known = getMeta(id);
   return {
     id,
+    ...(known?.lineage !== undefined ? { lineage: known.lineage } : {}),
     name: playerName || "",
     race: p.race.name,
     cls: p.cls.name,
@@ -5538,6 +5549,9 @@ async function gameMenuOnce(): Promise<boolean> {
       break;
     case "report":
       await showReportPage();
+      break;
+    case "storage":
+      await showStoragePage();
       break;
     case "abilities":
       await showAbilities(term, playerAbilities(state, {
@@ -9053,6 +9067,50 @@ const REPORT_TONE: Record<ReportLine["tone"], string> = {
   warn: UI_BAD,
 };
 
+/** The same, for storage-page.ts. */
+const STORAGE_TONE: Record<StorageTone, string> = {
+  head: UI_GOLD,
+  text: UI_TEXT,
+  dim: UI_DIM,
+  good: UI_GOOD,
+  warn: UI_BAD,
+};
+
+/**
+ * "Where your characters live" (storage-page.ts): the one screen that says what
+ * would destroy a roster, reached from the Escape menu and with Shift-W on the
+ * character list.
+ *
+ * Every input is read here and nothing is assumed: a mod store that will not open
+ * costs the COUNT, not the warning, which is the whole reason the page exists.
+ */
+async function showStoragePage(): Promise<void> {
+  const durability = await storageDurability();
+  let mods = 0;
+  try {
+    mods = (await installedMods(globalThis)).length;
+  } catch (err) {
+    /* A broken or blocked IndexedDB is exactly the situation somebody reading
+     * this screen may be in. Report what is known rather than nothing. */
+    log.warn("storage", "could not count installed mods for the storage page", err);
+  }
+  const lines = storageLines({
+    desktop: desktopBridge !== null,
+    home: desktopDataDir() ?? undefined,
+    origin: location.origin,
+    characters: listRoster().length,
+    mods,
+    persisted: durability.persisted,
+    usage: durability.usage,
+    quota: durability.quota,
+  });
+  await showTextScreen(
+    term,
+    "Where your characters live",
+    lines.map((l) => ({ text: l.text, color: STORAGE_TONE[l.tone] })),
+  );
+}
+
 /** Which front end this is, in the words the report screen uses. */
 function reportShell(): ReportShell {
   if (desktopBridge !== null) return "desktop";
@@ -9379,6 +9437,10 @@ async function openRoster(): Promise<BootStep> {
         await importCharacter();
         continue;
       }
+      if (res.action === "storage") {
+        await showStoragePage();
+        continue;
+      }
       if (res.action === "resume") {
         resumeSelected(res.id);
         return "done";
@@ -9430,6 +9492,10 @@ async function exportCharacter(id: string): Promise<void> {
       save,
       engine: ENGINE_VERSION,
       exportedAt: new Date().toISOString(),
+      /* WHO, not which slot. This is what lets the receiving roster - including
+       * this one, later - tell this character apart from a stranger, and it is
+       * the whole mechanism behind transfer-gate.ts. */
+      lineage: lineageOf(meta),
     }),
     "application/json",
   );
@@ -9444,21 +9510,29 @@ async function exportCharacter(id: string): Promise<void> {
           { text: "and press Shift-M to bring the character in.", color: UI_TEXT },
           { text: "", color: UI_TEXT },
           {
-            text: "This character is still here too. The file is a copy, and playing",
+            text: "This character is still here too, and this file is not a restore",
             color: UI_DIM,
           },
-          { text: "both is how one of them ends up being the one you regret.", color: UI_DIM },
+          {
+            text: "point: it will only import back over them once it is FURTHER on,",
+            color: UI_DIM,
+          },
+          { text: "and never at all once they have died here.", color: UI_DIM },
         ]
       : []),
   ]);
 }
 
 /**
- * Read a character file and give it a slot of its own.
+ * Read a character file and give it a slot.
  *
- * ALWAYS a fresh slot. The file carries no id (save-transfer.ts says why), so an
- * import cannot land on top of a character already here - which matters most in
- * the case a player will actually hit, importing the same file twice.
+ * Never on top of a DIFFERENT character: the file carries no slot id
+ * (save-transfer.ts says why), so a stranger always gets a fresh slot - which
+ * matters most in the case a player will actually hit, importing the same file
+ * twice. What it may land on top of is ITSELF: a character who left this roster
+ * and comes back further along takes their own slot again rather than becoming a
+ * second copy. transfer-gate.ts draws that line, and is also what refuses a file
+ * that would be a restore point.
  */
 async function importCharacter(): Promise<void> {
   const picked = await pickTextFile(`${TRANSFER_EXT},application/json`);
@@ -9473,9 +9547,25 @@ async function importCharacter(): Promise<void> {
     return;
   }
   const { meta, save } = read.file;
-  const id = newCharId();
+  const decision = decideImport(read.file, listRoster(), listDeaths());
+  if (decision.kind === "refused") {
+    await showTextScreen(term, "Import character", [
+      { text: `${picked.name} was not imported.`, color: UI_BAD },
+      { text: "", color: UI_TEXT },
+      ...decision.why.map((text) => ({ text, color: text === "" ? UI_TEXT : UI_DIM })),
+    ]);
+    return;
+  }
+  /* "replace" is the same character taking their own slot back, so the id is
+   * theirs; anything else is a stranger and gets a new one. */
+  const id = decision.kind === "replace" ? decision.id : newCharId();
   const ok = writeSlot(id, save, {
     id,
+    /* Carried, not re-minted: this is what makes the character the same person
+     * next time they travel. A file with no lineage (an export from before the
+     * field existed) is born into this roster as its own slot id, which is what
+     * lineageOf answers for every pre-existing character too. */
+    ...(read.file.lineage !== undefined ? { lineage: read.file.lineage } : {}),
     name: meta.name,
     race: meta.race,
     cls: meta.cls,
@@ -9495,10 +9585,15 @@ async function importCharacter(): Promise<void> {
       : { text: "This browser would not store the character.", color: UI_BAD },
     { text: "", color: UI_TEXT },
     ...(ok
-      ? [
-          { text: "In a new slot of their own - nothing you already had was", color: UI_TEXT },
-          { text: "touched. Select them to play.", color: UI_TEXT },
-        ]
+      ? decision.kind === "replace"
+        ? [
+            { text: "Back in their own slot, further on than the copy that was", color: UI_TEXT },
+            { text: "here. Nobody else was touched. Select them to play.", color: UI_TEXT },
+          ]
+        : [
+            { text: "In a new slot of their own - nothing you already had was", color: UI_TEXT },
+            { text: "touched. Select them to play.", color: UI_TEXT },
+          ]
       : [{ text: "Storage is full, or disabled for this site.", color: UI_TEXT }]),
   ]);
 }

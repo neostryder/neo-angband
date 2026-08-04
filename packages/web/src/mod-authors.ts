@@ -32,6 +32,58 @@
 
 import type { RegistryEnv } from "./mod-curated";
 
+/**
+ * The part of an author's declared name that goes BESIDE a mod's name.
+ *
+ * Measured against the real manifests: the first-party mods declare
+ * `neostryder (RPGM Tools)`, which beside a name produces
+ * `neo-linoleum (neostryder (RPGM Tools))` - nested brackets, and twenty-two columns
+ * of a row that has warnings to fit at the end of it. So the organisation in
+ * parentheses is dropped here and the handle is kept.
+ *
+ * This is not truncation and it does not invent anything: `neostryder` is the
+ * author's own word for themselves, and the FULL string is still printed in the
+ * detail pane, where there is room for all of it. What is never done is cutting a
+ * name mid-word, which would attribute a mod to an account that does not exist.
+ */
+export function shortAuthor(author: string): string {
+  const paren = author.indexOf(" (");
+  const head = paren > 0 ? author.slice(0, paren) : author;
+  return head.trim();
+}
+
+/**
+ * A mod as it is NAMED on screen: `Neo Linoleum (neostryder)`.
+ *
+ * WHOSE MOD IT IS BELONGS NEXT TO WHAT IT IS CALLED. A list of a dozen mods from
+ * half a dozen strangers, with the author only in a detail pane, makes "who wrote
+ * this" something a player has to go and ask about one row at a time - and it is the
+ * single most useful fact about a third-party mod.
+ *
+ * FROM THE MANIFEST, NEVER FROM THE REGISTER BELOW, even though it lives in the same
+ * file. The register is a standing a person here looked at; this is the author's own
+ * claim about themselves. They are different things and neither may be able to be
+ * read as the other - which is also why the register's standing is a sentence in the
+ * detail pane and not a word on the row (see `standingNote`, and browseRow's note).
+ *
+ * WHEN IT STILL DOES NOT FIT, THE AUTHOR IS DROPPED WHOLE - never truncated. `Bug
+ * Fixes (neost...` attributes a mod to somebody who does not exist, which is worse
+ * than not saying. Only after that does the name itself elide, because on a row the
+ * badges past it are the warnings (rowLabel says why the name is what gives way).
+ */
+export function displayName(
+  name: string,
+  author: string | null | undefined,
+  room = Number.POSITIVE_INFINITY,
+): string {
+  const who =
+    author !== null && author !== undefined && author !== "" ? shortAuthor(author) : "";
+  const full = who === "" ? name : `${name} (${who})`;
+  if (full.length <= room) return full;
+  if (name.length <= room) return name;
+  return `${name.slice(0, Math.max(1, room - 3))}...`;
+}
+
 /** Where the register lives: the game's own repository, at the default branch. */
 export const DEFAULT_AUTHORS_URL =
   "https://raw.githubusercontent.com/neostryder/neo-angband/master/mods/authors.json";

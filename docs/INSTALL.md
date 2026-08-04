@@ -498,9 +498,10 @@ Notes:
    lands, the game asks for **persistent** storage, which is exempt from that.
    Chromium grants it by engagement (installing the app is the strongest signal,
    which is why the installed rows read "usually"); Firefox asks you. It is asked
-   for once, never re-nagged, and the character-select screen says plainly when the
-   answer was no. What it does not protect against: *you* clearing browsing data.
-   Real files on disk are the complete answer and are still coming.
+   for once, never re-nagged, and the character-select screen says where you stand
+   either way. What it does not protect against: *you* clearing browsing data, or a
+   cleanup tool doing it for you - see [What destroys a roster](#what-destroys-a-roster),
+   which is the larger risk of the two and the one an export answers.
 
 ---
 
@@ -536,19 +537,50 @@ stays on upstream's own defaults.
 
 ### Saves are per-surface
 
-Your character save lives in **localStorage, scoped to the specific app/origin
-you play on**. That means a character created in a browser tab is not automatically
-visible in the installed PWA on a different origin, in the Electron desktop app,
-or on a different host - each is its own storage sandbox. This is normal browser
-behavior, not data loss.
+Your character save lives in **localStorage** and your installed mods in
+**IndexedDB**, both scoped to the specific app/origin you play on. That means a
+character created in a browser tab is not automatically visible in the installed
+PWA on a different origin, in the Electron desktop app, or on a different host -
+each is its own storage sandbox. This is normal browser behavior, not data loss.
 
 To move a character between surfaces, use the built-in **save export / import**:
-export to a file from one surface, import it on the other. Keep an exported copy
-as a backup - a character save is overwritten in place, and death is permanent
-with no restore points, faithful to the original.
+`Shift-X` on the character list writes the highlighted character to a `.neochar`
+file, `Shift-M` reads one back. Keep an exported copy as a backup - a character
+save is overwritten in place, and death is permanent with no restore points,
+faithful to the original.
 
-Clearing your browser's site data for the origin you play on **deletes your
-characters**. Export first.
+An export is **not** a restore point, and the game enforces that: a file will not
+import over a character who has died in that roster (even after the tombstone has
+been cleared), and it will not import over a living copy of themselves unless the
+file is further along - in which case it takes their own slot back rather than
+becoming a second copy. What it cannot police is a second install that never saw
+the death, or a hand-edited file; the same hole `cp save/Bilbo /tmp` has always
+opened in upstream Angband.
+
+### What destroys a roster
+
+**Anything that clears this origin's storage takes every character AND every
+installed mod, at once, with no undo.** They share one storage bucket, so a
+cleanup that reaches the saves reaches the mods too. Specifically:
+
+- "Clear browsing data" or "Clear site data" covering the origin you play on
+- A cleanup tool - Disk Cleanup, CCleaner, a browser extension, a "free up space"
+  setting - or a scheduled task or script that runs one for you
+- Resetting the browser, or deleting its profile
+- On the desktop build: deleting or moving the game's `neo-angband-data` folder,
+  or uninstalling
+
+Because death is permanent, a character lost this way is not recoverable from
+anything except a file you exported yourself. Export first.
+
+The game says all of this in one place: **Where your characters live**, from the
+Escape menu or `Shift-W` on the character list. It names the actual folder or
+origin, what is stored there now, and whether the browser has marked it
+persistent.
+
+On the **desktop build** there is a second backup that has no browser equivalent:
+close the game and copy the whole `neo-angband-data` folder. It carries the saves,
+the settings and the installed mods together.
 
 ---
 
