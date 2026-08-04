@@ -14,7 +14,7 @@
  * them into faithful full-screen views a keyboard or touch can drive.
  */
 
-import { userFileExists, userPath } from "./userdir";
+import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
 import type { GlyphTerm } from "./term";
@@ -846,7 +846,7 @@ export async function getFile(
     if (typed === "" || typed.startsWith(" ")) return null;
     name = typed;
   }
-  if (userFileExists(name) && !(await getCheck(term, "Replace existing file? "))) {
+  if (userExists(name) && !(await getCheck(term, "Replace existing file? "))) {
     return null;
   }
   /* "Tell the user where it's saved to." (L1377-1380). */

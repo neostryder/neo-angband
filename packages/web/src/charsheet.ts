@@ -64,7 +64,7 @@ import {
 } from "./screens";
 import { promptText, menuNav, getFile } from "./overlay";
 import { argForceName } from "./launch";
-import { textLinesToFile, downloadUserFile, userPath } from "./userdir";
+import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 
@@ -540,13 +540,15 @@ export function buildCharacterDump(
  * user directory through text_lines_to_file, and report its ONE failure - the
  * staged file it could not create - with upstream's own message.
  *
- * The download is the export on top of the file, not the file: a dump exists to
- * be read outside the game, but "the browser downloads it" is not a substitute
- * for writing it where the game can see it again.
+ * The user directory is whatever the installed host provides: a real directory on
+ * the desktop shell and in the CLI, localStorage in a browser tab. exportUserFile
+ * then offers a download only where the file is not one the player can otherwise
+ * reach; see user-io.ts.
  *
- * The ang_file layer of z-file.c is not ported, so file_putf has no counterpart:
- * the whole dump is built as one string and handed to textLinesToFile instead of
- * being appended line by line to an open handle.
+ * Upstream appends line by line to an open ang_file via file_putf; the port builds
+ * the same bytes as one string and hands them to text_lines_to_file, which is what
+ * upstream's own dump_save does with its dump_player_lines callback. A difference
+ * in how the text reaches the file, not in the file.
  */
 export function dumpCharacterFile(
   state: GameState,
@@ -556,11 +558,11 @@ export function dumpCharacterFile(
   msg?: (text: string) => void,
 ): boolean {
   const text = `${buildCharacterDump(state, name, extras)}\n`;
-  if (textLinesToFile(file, text)) {
+  if (userTextLinesToFile(file, text)) {
     msg?.(`Failed to create file ${userPath(file)}.new`);
     return false;
   }
-  downloadUserFile(file, text);
+  exportUserFile(file, text);
   return true;
 }
 
