@@ -19,11 +19,15 @@
  * port does by dropping the whole state.groups array.
  *
  * Divergences: state.groups grows on demand rather than being capped at
- * z_info->level_monster_max (monster_group_index_new never "fails" here); the
- * rouse visibility test uses line of sight (monster_can_see, which also weighs
- * range and light, is not ported). Placement assignment and delete removal are
- * wired by their callers (monster generation / deleteMonster); the AI consumers
- * (rouse in the monster turn, group tracking in get_move) are wired separately.
+ * z_info->level_monster_max (monster_group_index_new never "fails" here).
+ * Placement assignment and delete removal are wired by their callers (monster
+ * generation / deleteMonster); the AI consumers (rouse in the monster turn, group
+ * tracking in get_move) are wired separately.
+ *
+ * The rouse visibility test IS monster_can_see, faithfully. An earlier note here
+ * claimed that function "also weighs range and light" and was therefore not ported -
+ * both halves were wrong. mon-util.c:698 is `return los(c, mon->grid, grid);` and
+ * nothing else, so plain line of sight is not an approximation of it, it IS it.
  */
 
 import { MFLAG, MON_TMD } from "../generated/index.js";
