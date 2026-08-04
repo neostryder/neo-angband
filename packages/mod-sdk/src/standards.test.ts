@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   MOD_REQUIREMENTS,
   checkMod,
+  githubRepo,
   requirementsMarkdown,
   type ModUnderTest,
 } from "./standards.js";
@@ -27,6 +28,8 @@ const GOOD_MANIFEST = {
   shape: "content",
   engine: ">=0.18.0",
   license: "MIT",
+  author: "neostryder",
+  repository: "https://github.com/neostryder/neo-angband-mod-demo",
   description: "A mod that exists to be checked, with a description long enough to count.",
 };
 
@@ -184,26 +187,167 @@ describe("required rules, each shown failing", () => {
      * Guessing would fail every already-installed mod. */
     expect(failed(goodMod())).toEqual([]);
   });
-});
 
-describe("recommended rules never block an install", () => {
-  it("a mod failing only advice is still ok", () => {
-    const r = checkMod(
-      goodMod({}, { id: "demo", name: "Demo", version: "1.0.0", shape: "content" }),
-    );
-    expect(r.ok).toBe(true);
-    expect(r.errors).toEqual([]);
-    expect(r.advice.map((f) => f.id).sort()).toEqual([
-      "describe-itself",
-      "engine-range",
-      "state-a-licence",
-    ]);
+  it("declare-a-repository: a mod that names nowhere cannot be pinned to anywhere", () => {
+    const r = checkMod(goodMod({}, { ...GOOD_MANIFEST, repository: undefined }));
+    expect(r.errors.map((f) => f.id)).toContain("declare-a-repository");
+  });
+
+  it("declare-a-repository: accepts every spelling an author would actually write", () => {
+    for (const url of [
+      "https://github.com/neostryder/neo-angband-mod-qol",
+      "http://github.com/neostryder/neo-angband-mod-qol/",
+      "git+https://github.com/neostryder/neo-angband-mod-qol.git",
+      "git@github.com:neostryder/neo-angband-mod-qol.git",
+      "github:neostryder/neo-angband-mod-qol",
+      "neostryder/neo-angband-mod-qol",
+      /* Not GitHub, so no update check - but hosting is the author's business, and
+       * a REQUIRED rule that refused this would be this project's convenience
+       * imposed as somebody else's rule. `updates-can-be-offered` says so as advice. */
+      "https://gitlab.com/someone/their-mod",
+    ]) {
+      expect(
+        failed(goodMod({}, { ...GOOD_MANIFEST, repository: url })),
+        url,
+      ).not.toContain("declare-a-repository");
+    }
+  });
+
+  it("declare-a-repository: refuses text that names no repository at all", () => {
+    for (const bad of ["", "   ", "see the readme", 42, null]) {
+      expect(
+        failed(goodMod({}, { ...GOOD_MANIFEST, repository: bad })),
+        JSON.stringify(bad),
+      ).toContain("declare-a-repository");
+    }
+  });
+
+  it("credit-an-author: the name shown beside the mod cannot be absent", () => {
+    for (const bad of [undefined, "", "   ", 42, null]) {
+      expect(
+        failed(goodMod({}, { ...GOOD_MANIFEST, author: bad })),
+        JSON.stringify(bad),
+      ).toContain("credit-an-author");
+    }
+  });
+
+  it("engine-range: absent is now a REFUSAL, not advice", () => {
+    /* Promoted deliberately. A mod with no range is offered to every future version
+     * of the game forever, and the version that breaks it is the one nobody warned
+     * anybody about. Asserted at the level, not just by id, because the whole point
+     * of the change is which list it lands in. */
+    const r = checkMod(goodMod({}, { ...GOOD_MANIFEST, engine: undefined }));
+    expect(r.errors.map((f) => f.id)).toContain("engine-range");
+    expect(r.advice.map((f) => f.id)).not.toContain("engine-range");
+    expect(r.ok).toBe(false);
   });
 
   it("engine-range: an unreadable range is caught, through the loader's own satisfies", () => {
     expect(failed(goodMod({}, { ...GOOD_MANIFEST, engine: ">=not.a.version" }))).toContain(
       "engine-range",
     );
+  });
+});
+
+describe("githubRepo: one answer, shared by the rule, the installer and the update check", () => {
+  it("reduces every accepted spelling to the same owner/name", () => {
+    for (const url of [
+      "https://github.com/neostryder/neo-angband-mod-qol",
+      "https://www.github.com/neostryder/neo-angband-mod-qol",
+      "http://github.com/neostryder/neo-angband-mod-qol/",
+      "git+https://github.com/neostryder/neo-angband-mod-qol.git",
+      "git@github.com:neostryder/neo-angband-mod-qol.git",
+      "github:neostryder/neo-angband-mod-qol",
+      "neostryder/neo-angband-mod-qol",
+      "  neostryder/neo-angband-mod-qol  ",
+    ]) {
+      expect(githubRepo(url), url).toBe("neostryder/neo-angband-mod-qol");
+    }
+  });
+
+  it("refuses a URL that points INSIDE a repository rather than at one", () => {
+    /* Truncating to the first two segments would accept a link to one file as if it
+     * named the project, and the update check would then query a repository the
+     * author never meant. */
+    for (const url of [
+      "https://github.com/neostryder/neo-angband-mod-qol/tree/v1.0.0",
+      "https://github.com/neostryder/neo-angband-mod-qol/blob/master/manifest.json",
+      "https://github.com/neostryder",
+      "https://github.com/",
+    ]) {
+      expect(githubRepo(url), url).toBeNull();
+    }
+  });
+
+  it("refuses another host, rather than pretending it is GitHub", () => {
+    for (const url of [
+      "https://gitlab.com/someone/their-mod",
+      "https://codeberg.org/someone/their-mod",
+      "git@gitlab.com:someone/their-mod.git",
+      "https://example.com/a/b",
+      "",
+      "   ",
+      "not a url",
+    ]) {
+      expect(githubRepo(url), url).toBeNull();
+    }
+  });
+
+  it("refuses an owner or name a filesystem or a URL would mangle", () => {
+    for (const url of [
+      "neostryder/../escape",
+      "neostryder/.",
+      "../neostryder/mod",
+      "neostryder//mod",
+      "neo stryder/mod",
+      "-leading/mod",
+    ]) {
+      expect(githubRepo(url), url).toBeNull();
+    }
+  });
+});
+
+describe("recommended rules never block an install", () => {
+  it("a mod failing only advice is still ok", () => {
+    /* The bare minimum that CAN be installed: everything required and nothing else.
+     * It is deliberately a GitLab URL, so `updates-can-be-offered` fires here too and
+     * this test proves the same thing it always did - that three failed pieces of
+     * advice still add up to an installable mod. */
+    const r = checkMod(
+      goodMod({}, {
+        id: "demo",
+        name: "Demo",
+        version: "1.0.0",
+        shape: "content",
+        engine: ">=0.18.0",
+        author: "someone",
+        repository: "https://gitlab.com/someone/demo",
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+    expect(r.advice.map((f) => f.id).sort()).toEqual([
+      "describe-itself",
+      "state-a-licence",
+      "updates-can-be-offered",
+    ]);
+  });
+
+  it("updates-can-be-offered: a host the game cannot ask is advice, never a refusal", () => {
+    const r = checkMod(goodMod({}, {
+      ...GOOD_MANIFEST,
+      repository: "https://gitlab.com/someone/their-mod",
+    }));
+    expect(r.errors).toEqual([]);
+    expect(r.advice.map((f) => f.id)).toEqual(["updates-can-be-offered"]);
+    expect(r.ok).toBe(true);
+  });
+
+  it("updates-can-be-offered: silent when there is no repository to judge", () => {
+    /* Otherwise a mod with no repository fails twice for one mistake, and the
+     * required rule is the one that says what to do about it. */
+    const r = checkMod(goodMod({}, { ...GOOD_MANIFEST, repository: undefined }));
+    expect(r.advice.map((f) => f.id)).not.toContain("updates-can-be-offered");
   });
 
   it("version-orderable: a version no update check can compare", () => {
@@ -274,7 +418,13 @@ describe("the checker itself", () => {
       modApi: 1,
     }),
     "archives-declared": goodMod({ repoFiles: ["manifest.json", "pack.zip"] }),
+    "declare-a-repository": goodMod({}, { ...GOOD_MANIFEST, repository: undefined }),
+    "credit-an-author": goodMod({}, { ...GOOD_MANIFEST, author: undefined }),
     "engine-range": goodMod({}, { ...GOOD_MANIFEST, engine: ">=nonsense" }),
+    "updates-can-be-offered": goodMod({}, {
+      ...GOOD_MANIFEST,
+      repository: "https://gitlab.com/someone/their-mod",
+    }),
     "version-orderable": goodMod({}, { ...GOOD_MANIFEST, version: "2026.07" }),
     "describe-itself": goodMod({}, { ...GOOD_MANIFEST, description: "Short." }),
     "state-a-licence": goodMod({}, { ...GOOD_MANIFEST, license: undefined }),

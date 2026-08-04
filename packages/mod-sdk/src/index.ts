@@ -111,6 +111,7 @@ export {
   MOD_REQUIREMENTS,
   PLUGIN_FILE,
   checkMod,
+  githubRepo,
   requirementsMarkdown,
 } from "./standards.js";
 export type {

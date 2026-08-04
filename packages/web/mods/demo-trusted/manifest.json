@@ -14,5 +14,8 @@
   "dependencies": {
     "core": "*"
   },
-  "description": "A framework proof, not a mod anyone plays: a TRUSTED in-process plugin that overrides game SYSTEMS rather than data. It freezes every monster by replacing the ported AI decision outright, registers a new effect, a new room builder and a new player command, and declares brand-new vocabulary the base game has no concept of - each through a capability-gated registry facade. Dev builds only; enable with ?trusted=demo-trusted."
+  "description": "A framework proof, not a mod anyone plays: a TRUSTED in-process plugin that overrides game SYSTEMS rather than data. It freezes every monster by replacing the ported AI decision outright, registers a new effect, a new room builder and a new player command, and declares brand-new vocabulary the base game has no concept of - each through a capability-gated registry facade. Dev builds only; enable with ?trusted=demo-trusted.",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "author": "neostryder",
+  "license": "GPL-2.0-only"
 }

@@ -25,6 +25,7 @@ import {
   FILE_ORIGIN,
   fetchVerified,
   installModFromRepo,
+  importedOrigin,
   installModFromZip,
   installRecommendedMod,
   installedModSource,
@@ -38,6 +39,7 @@ import {
   uninstallMod,
 } from "./mod-install";
 import { type RecommendedMod, badPath, rawUrl, validateRecommendedMod } from "./mod-registry";
+import { originConflict } from "./mod-source";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
 import { modPluginContext } from "./mod-context";
@@ -202,7 +204,14 @@ function res(bytes: Uint8Array, status = 200): FetchLike {
  * LOADER refuses at boot. They had been asserting a successful install of something
  * that could never have run - exactly the gap the inspection exists to close, found
  * in this repository's own fixtures the moment it was wired up.
+ *
+ * It gained `engine`, `author` and `repository` the same way, when those three became
+ * required so that every door demands the same metadata. The repository here is the
+ * one MOD_REPO names, which matters for the zip door: an imported mod takes its origin
+ * from the manifest, so a fixture whose declared repository disagreed with the repo the
+ * test installs from would be testing the origin CLASH rather than the happy path.
  */
+const MOD_REPO = "neostryder/demo";
 const MANIFEST = JSON.stringify({
   id: "demo",
   name: "Demo",
@@ -210,6 +219,9 @@ const MANIFEST = JSON.stringify({
   shape: "content",
   facets: ["content", "plugin"],
   modApi: 1,
+  engine: ">=0.1.0",
+  author: "neostryder",
+  repository: `https://github.com/${MOD_REPO}`,
 });
 const PLUGIN = "export default { api: 1, hooks: () => ({}) };";
 
@@ -565,7 +577,15 @@ describe("installed mods, read back", () => {
     for (const id of ["zed", "alpha"]) {
       const files = {
         "manifest.json": enc(
-          JSON.stringify({ id, name: id, version: "1.0.0", shape: "content" }),
+          JSON.stringify({
+            id,
+            name: id,
+            version: "1.0.0",
+            shape: "content",
+            engine: ">=0.1.0",
+            author: "neostryder",
+            repository: `https://github.com/neostryder/${id}`,
+          }),
         ),
       };
       const { env } = await envFor(files, { idb: made.factory });
@@ -723,6 +743,9 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
     name: "Demo Tiles",
     version: "1.0.0",
     shape: "tiles",
+    engine: ">=0.1.0",
+    author: "neostryder",
+    repository: `https://github.com/${MOD_REPO}`,
     tilePacks: [
       {
         grafID: 101,
@@ -955,6 +978,9 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     shape: "content",
     facets: ["content", "plugin"],
     modApi: 1,
+    engine: ">=0.1.0",
+    author: "neostryder",
+    repository: `https://github.com/${MOD_REPO}`,
   });
 
   /** Install a mod carrying `code`, then load its plugin the way boot does. */
@@ -1024,6 +1050,7 @@ function discovered(
     tags: ["v1.0.0"],
     id: "demo",
     name: "Demo",
+    author: "neostryder",
     version: "1.0.0",
     description: null,
     engine: null,
@@ -1349,13 +1376,21 @@ describe("installModFromRepo: the standards inspection", () => {
   });
 
   it("does not refuse over ADVICE, only over requirements", async () => {
-    /* No description, no licence, no engine range: three pieces of advice and zero
-     * reasons to deny a player the mod they asked for. */
+    /* No description, no licence, and a host the update check cannot query: three
+     * pieces of advice and zero reasons to deny a player the mod they asked for.
+     *
+     * `engine` used to be the third of these and is now a REFUSAL, so it is declared
+     * here. That is the change working rather than the test being appeased - a mod
+     * with no engine range is offered to every future version of the game forever,
+     * which is a mod that cannot work, not a mod that is untidy. */
     const bare = JSON.stringify({
       id: "demo",
       name: "Demo",
       version: "1.0.0",
       shape: "content",
+      engine: ">=0.1.0",
+      author: "neostryder",
+      repository: "https://gitlab.com/neostryder/demo",
     });
     const { env } = await envFor({ "manifest.json": enc(bare) });
     const r = await installModFromRepo(
@@ -1405,15 +1440,61 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
     expect(r.meta.tag).toBe("1.0.0");
   });
 
-  it("records an origin that is not a repository, and says so", async () => {
+  it("pins the mod to the repository its manifest declares", async () => {
+    /* The point of requiring `repository`: an imported mod is not a second-class mod
+     * with no provenance, it is the same mod that would have arrived from that
+     * repository, and it is recorded as such - so the update check can ask, and so a
+     * later zip has something to be matched against. */
     const { env } = await envFor({});
     const r = await installModFromZip(zipOf({ "manifest.json": enc(MANIFEST) }), env, true);
-    expect(r.ok).toBe(true);
+    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
+    if (!r.ok) return;
+    expect(r.meta.repo).toBe(MOD_REPO);
+    expect(isImported(r.meta)).toBe(false);
+  });
+
+  it("falls back to the sentinel when the host cannot be asked for tags", async () => {
+    /* A GitLab URL passes `declare-a-repository` - hosting is the author's business -
+     * but there is no tags query for it, so pinning the mod to it would produce a row
+     * that reports itself unavailable forever. The sentinel is the honest record. */
+    const { env } = await envFor({});
+    const elsewhere = MANIFEST.replace(
+      `https://github.com/${MOD_REPO}`,
+      "https://gitlab.com/neostryder/demo",
+    );
+    expect(elsewhere).not.toBe(MANIFEST);
+    const r = await installModFromZip(zipOf({ "manifest.json": enc(elsewhere) }), env, true);
+    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
     if (!r.ok) return;
     expect(r.meta.repo).toBe(FILE_ORIGIN);
     expect(isImported(r.meta)).toBe(true);
     /* A colon cannot appear in an owner/name, so this can never be mistaken for one. */
     expect(FILE_ORIGIN).toContain(":");
+  });
+
+  it("resolves the origin through the SDK, so no second parser can disagree", () => {
+    /* Asserted on the function directly as well as through an install, because the
+     * failure this guards is silent: an installer that resolved the URL its own way
+     * would store an origin the update check then cannot find. */
+    expect(importedOrigin("https://github.com/neostryder/demo")).toBe("neostryder/demo");
+    expect(importedOrigin("git@github.com:neostryder/demo.git")).toBe("neostryder/demo");
+    expect(importedOrigin("neostryder/demo")).toBe("neostryder/demo");
+    expect(importedOrigin("https://gitlab.com/neostryder/demo")).toBe(FILE_ORIGIN);
+    expect(importedOrigin(null)).toBe(FILE_ORIGIN);
+  });
+
+  it("will not let a zip claiming a DIFFERENT repository replace an installed mod", () => {
+    /* The rule the pinning buys. Two archives can carry the same id; only one of them
+     * can carry the repository the mod was first installed from. */
+    const installed = {
+      id: "demo",
+      repo: MOD_REPO,
+      tag: "1.0.0",
+      files: [],
+      installedAt: "now",
+    } satisfies InstalledModMeta;
+    expect(originConflict(installed, "someone-else/demo")).not.toBeNull();
+    expect(originConflict(installed, MOD_REPO)).toBeNull();
   });
 
   it("refuses without consent, and does not open the archive to find that out", async () => {
@@ -1467,6 +1548,12 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
       version: "1.1.0",
       shape: "content",
       facets: ["content"],
+      engine: ">=0.1.0",
+      author: "neostryder",
+      /* The SAME repository. A newer zip of the same mod is the same mod; one
+       * declaring a different repository is a different mod wearing the id, and the
+       * test above this proves that case is refused. */
+      repository: `https://github.com/${MOD_REPO}`,
     });
     const r = await installModFromZip(zipOf({ "manifest.json": enc(newer) }), env, true);
     expect(r.ok, r.ok ? "" : r.problem).toBe(true);

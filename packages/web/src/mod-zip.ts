@@ -107,6 +107,17 @@ export type ZipRead =
        */
       readonly version: string | null;
       /**
+       * The repository the manifest names, verbatim and unresolved.
+       *
+       * Carried out of the archive so the installer can pin the mod's origin to it. A
+       * zip is the one door where the mod cannot be asked where it came from, so what
+       * it SAYS about itself is the only provenance there is - which is exactly why
+       * `declare-a-repository` is enforced on these bytes before this is acted on.
+       * Left as written: turning it into an owner/name is the installer's decision,
+       * and a reader that resolved it would be a second place that could disagree.
+       */
+      readonly repository: string | null;
+      /**
        * The directory the mod was found in, `""` when the archive IS the mod folder.
        * Reported so the screen can tell the player which shape it recognised.
        */
@@ -178,19 +189,35 @@ function badArchivePath(path: string): string | null {
 }
 
 /** The `id` and `version` the manifest declares, as far as they can be read. */
-function manifestNames(bytes: Uint8Array): { id: string | null; version: string | null } {
+function manifestNames(bytes: Uint8Array): ManifestNames {
+  const none: ManifestNames = { id: null, version: null, repository: null };
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    return { id: null, version: null };
+    return none;
   }
-  if (parsed === null || typeof parsed !== "object") return { id: null, version: null };
+  if (parsed === null || typeof parsed !== "object") return none;
   const str = (k: string): string | null => {
     const v = (parsed as Record<string, unknown>)[k];
     return typeof v === "string" && v !== "" ? v : null;
   };
-  return { id: str("id"), version: str("version") };
+  return { id: str("id"), version: str("version"), repository: str("repository") };
+}
+
+/**
+ * The three things read out of the archive's manifest, and nothing else.
+ *
+ * Read HERE rather than left to the installer because these decide what the mod is
+ * INSTALLED AS - its id, its version, and the repository its origin is pinned to. The
+ * rest of the manifest is validated downstream by the same checkMod every other door
+ * runs, so this deliberately does not become a second, weaker parser of the same file.
+ */
+interface ManifestNames {
+  readonly id: string | null;
+  readonly version: string | null;
+  /** Verbatim, as written. Resolving it to an owner/name is the installer's job. */
+  readonly repository: string | null;
 }
 
 /**
@@ -389,7 +416,7 @@ export function readModZip(bytes: Uint8Array, limits: ZipLimits = ZIP_LIMITS): Z
   /* findRoot only promised a manifest AT the root it chose; this is the same fact read
    * from the kept files, and it costs one lookup to not depend on that agreement. */
   if (!manifest) return { ok: false, problem: `no ${MANIFEST} in the mod folder` };
-  const { id, version } = manifestNames(manifest[1]);
+  const { id, version, repository } = manifestNames(manifest[1]);
   if (id === null) {
     return {
       ok: false,
@@ -398,7 +425,7 @@ export function readModZip(bytes: Uint8Array, limits: ZipLimits = ZIP_LIMITS): Z
   }
 
   const ignored = [...seen].filter((n) => !n.endsWith("/") && isNoise(n)).sort();
-  return { ok: true, id, version, root, files, ignored };
+  return { ok: true, id, version, repository, root, files, ignored };
 }
 
 /** Sizes as a player reads them, so a refusal names a number they can act on. */

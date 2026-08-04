@@ -38,6 +38,54 @@ import { ManifestError, hasFacet, validateManifest, type PackManifest } from "./
 /** The file a mod's code lives in, when it has any. */
 export const PLUGIN_FILE = "plugin.js";
 
+/**
+ * The `owner/name` a repository URL points at, when the game can query it, else null.
+ *
+ * WHY A FUNCTION AND NOT A REGEX AT EACH CALL SITE. Three things need this answer and
+ * need the SAME answer: the requirement below, which refuses a manifest that names
+ * nowhere; the installer, which records a mod's origin so it can only ever be replaced
+ * from where it came from; and the update check, which asks a repository what tags it
+ * has. Two of those disagreeing is a mod that installs and then reports itself
+ * unavailable forever, which is worse than either failure alone.
+ *
+ * ONLY GITHUB, and that is a statement about the game rather than about mods. The tags
+ * query, the raw-file URL and the author register are all GitHub-shaped today. A mod
+ * hosted anywhere else is a perfectly good mod - it simply has no update check yet, so
+ * this returns null and the caller falls back to saying so out loud. Refusing such a
+ * mod would make this function a gate on where people may host, which it must not be.
+ *
+ * Accepts every spelling an author is likely to reach for, because the alternative is
+ * a rule that fails on a manifest that is obviously correct to a human:
+ *
+ *     https://github.com/owner/name        git+https://github.com/owner/name.git
+ *     http://github.com/owner/name/        git@github.com:owner/name.git
+ *     github:owner/name                    owner/name
+ */
+export function githubRepo(repository: string): string | null {
+  const text = repository.trim();
+  if (text === "") return null;
+  /* Everything is reduced to the `owner/name` tail before one check, rather than one
+   * regex per spelling: a second pattern is a second thing to keep in step. */
+  const tail =
+    /^(?:git\+)?https?:\/\/(?:www\.)?github\.com\/(.+)$/iu.exec(text)?.[1] ??
+    /^git@github\.com:(.+)$/iu.exec(text)?.[1] ??
+    /^github:(.+)$/iu.exec(text)?.[1] ??
+    (text.includes("://") || text.includes("@") ? null : text);
+  if (tail === null) return null;
+  const parts = tail
+    .replace(/\.git$/iu, "")
+    .replace(/\/+$/u, "")
+    .split("/");
+  /* Exactly two segments. A `tree/v1.0.0` or `blob/master/x` suffix is a URL to a PAGE
+   * inside the repository, and silently truncating it to the first two segments would
+   * accept a link to one file as if it named the project. */
+  if (parts.length !== 2) return null;
+  const [owner, name] = parts as [string, string];
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u.test(owner)) return null;
+  if (!/^[A-Za-z0-9._-]{1,100}$/u.test(name) || name === "." || name === "..") return null;
+  return `${owner}/${name}`;
+}
+
 /** The manifest, at the root of the mod folder. Not negotiable; readModDir needs it. */
 export const MANIFEST_FILE = "manifest.json";
 
@@ -172,6 +220,86 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
+    id: "declare-a-repository",
+    level: "required",
+    title: "Say where the mod lives, in `repository`",
+    why:
+      "It is the mod's identity across every way of getting it. The game pins an " +
+      "installed mod to the repository it came from and will not let a different one " +
+      "replace it, so a mod that names nowhere can be quietly overwritten by anything " +
+      "that claims its id. It is also the only route by which an update can ever be " +
+      "offered, and the only thing a player has to go and read about the mod. " +
+      "Required of an archive exactly as it is of a checkout: a mod handed over as a " +
+      "zip is the same mod, and it must not be able to arrive knowing less about " +
+      "itself than the same files fetched from a repository would.",
+    check: (mod) => {
+      const m = manifestObject(mod);
+      if (m === null) return null; // an earlier rule owns this
+      const repo = m["repository"];
+      if (repo === undefined) return "no repository declared";
+      if (typeof repo !== "string" || repo.trim() === "") {
+        return "repository must be the URL the mod is published at";
+      }
+      /* A non-GitHub URL PASSES. The game cannot query it for updates yet, and
+       * `updates-can-be-offered` says so as advice - but where a mod is hosted is the
+       * author's business, and a required rule that refused GitLab would make this
+       * project's convenience into somebody else's rule. What is refused is text that
+       * names no repository at all. */
+      if (githubRepo(repo) !== null) return null;
+      return /^(?:[a-z][a-z0-9+.-]*:\/\/|git@)/iu.test(repo.trim())
+        ? null
+        : `"${repo}" is not a repository URL`;
+    },
+  },
+  {
+    id: "credit-an-author",
+    level: "required",
+    title: "Name the author",
+    why:
+      "The game shows it beside the mod's name, so a player can tell two mods of the " +
+      "same name apart and knows whose work they are about to run. A row with no " +
+      "author is a row that asks somebody to trust nobody in particular. Use the name " +
+      "you want shown - it shares a line with the mod's name and version, so keep it " +
+      "short; anything longer belongs in `description`.",
+    check: (mod) => {
+      const m = manifestObject(mod);
+      if (m === null) return null;
+      const author = m["author"];
+      if (author === undefined) return "no author declared";
+      if (typeof author !== "string" || author.trim() === "") {
+        return "author must be the name to show beside the mod";
+      }
+      return null;
+    },
+  },
+  {
+    id: "engine-range",
+    level: "required",
+    title: "Declare the engine range the mod was written against",
+    why:
+      "Without it the mod is offered to every version of the game forever, including " +
+      "the one that changes the thing it depends on. With it, a player is told the " +
+      "mod is too old instead of watching it misbehave. This was advice until it was " +
+      "measured: every mod that had shipped declared one, and the mods that did not " +
+      "were the ones nothing had checked.",
+    check: (mod) => {
+      const m = manifestObject(mod);
+      if (m === null) return null;
+      const engine = m["engine"];
+      if (engine === undefined) return "no engine range declared";
+      if (typeof engine !== "string" || engine === "") return "engine must be a version range";
+      try {
+        /* Asked through `satisfies`, the same function the loader gates on, rather
+         * than a range parser of this module's own. The version is arbitrary - the
+         * answer is discarded and only a throw is interesting. */
+        satisfies("1.0.0", engine);
+        return null;
+      } catch (e) {
+        return `engine range cannot be read: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
     id: "plugin-declares-modapi",
     level: "required",
     title: `Declare modApi if the mod ships ${PLUGIN_FILE}`,
@@ -235,28 +363,23 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    id: "engine-range",
+    id: "updates-can-be-offered",
     level: "recommended",
-    title: "Declare the engine range the mod was written against",
+    title: "Publish somewhere the game can check for updates",
     why:
-      "Without it the mod is offered to every version of the game forever, including " +
-      "the one that changes the thing it depends on. With it, a player is told the " +
-      "mod is too old instead of watching it misbehave.",
+      "`repository` may name any host, and the game will install the mod from a zip " +
+      "either way - but the only host it can ASK for newer versions is GitHub. A mod " +
+      "published elsewhere is listed with a note saying it cannot be checked, and its " +
+      "players update it by hand or not at all. This is a limitation of the game, not " +
+      "a judgement about the host.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null;
-      const engine = m["engine"];
-      if (engine === undefined) return "no engine range declared";
-      if (typeof engine !== "string" || engine === "") return "engine must be a version range";
-      try {
-        /* Asked through `satisfies`, the same function the loader gates on, rather
-         * than a range parser of this module's own. The version is arbitrary - the
-         * answer is discarded and only a throw is interesting. */
-        satisfies("1.0.0", engine);
-        return null;
-      } catch (e) {
-        return `engine range cannot be read: ${e instanceof Error ? e.message : String(e)}`;
-      }
+      const repo = m["repository"];
+      if (typeof repo !== "string" || repo.trim() === "") return null; // required rule owns this
+      return githubRepo(repo) === null
+        ? `"${repo}" is not a GitHub repository, so no update can be offered from it`
+        : null;
     },
   },
   {
