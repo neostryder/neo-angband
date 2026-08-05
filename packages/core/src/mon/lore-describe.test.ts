@@ -9,7 +9,8 @@ import type { MonsterRace } from "./types.js";
 import { cheatMonsterLore, newMonsterLore } from "./lore.js";
 import type { MonsterLore } from "./lore.js";
 import { LoreTextBuilder, loreDescription } from "./lore-describe.js";
-import type { LoreDeps } from "./lore-describe.js";
+import type { LoreDeps, LoreTextRun } from "./lore-describe.js";
+import { COLOUR_VIOLET } from "../color.js";
 
 function deps(): LoreDeps {
   return {
@@ -17,6 +18,7 @@ function deps(): LoreDeps {
     playerMaxDepth: 5,
     playerSpeed: 110,
     effectiveSpeed: false,
+    purpleUniques: false,
     spells: monReg.spells,
   };
 }
@@ -182,5 +184,60 @@ describe("monSpellLoreDamage (mon-spell.c L698)", () => {
     loreDescription(caster, casterLore, depsWithBreath());
 
     expect(rng.getState()).toEqual(before);
+  });
+});
+
+describe("lore_title and purple_uniques (ui-mon-lore.c L38-60, PORT_TODO 3.22)", () => {
+  /** The title's glyph run: the single-char run right after " ('". */
+  function titleGlyph(race: MonsterRace, purpleUniques: boolean): LoreTextRun {
+    const lore = newMonsterLore(race);
+    cheatMonsterLore(race, lore);
+    const text = loreDescription(race, lore, { ...deps(), purpleUniques });
+    const open = text.findIndex((r) => r.text === " ('");
+    expect(open, "the title emits the \" ('\" opener").toBeGreaterThanOrEqual(0);
+    const glyph = text[open + 1];
+    expect(glyph, "a glyph run follows the opener").toBeDefined();
+    return glyph as LoreTextRun;
+  }
+
+  /* Derive the fixture from the pack rather than declaring it: the test can only
+   * see the recolour if the unique's own d_attr is NOT already violet, and it can
+   * only see the non-unique exemption on a race whose d_attr differs too. Both
+   * are asserted, so a pack change that erases the contrast fails here instead of
+   * silently making the test vacuous. */
+  const uniqueRace = monReg.races.find(
+    (r) => r.flags.has(RF.UNIQUE) && r.dAttr !== COLOUR_VIOLET,
+  );
+  const plainRace = monReg.races.find(
+    (r) => !r.flags.has(RF.UNIQUE) && r.dAttr !== COLOUR_VIOLET,
+  );
+
+  it("recolours a unique's title glyph violet when the option is on", () => {
+    expect(uniqueRace, "fixture: a non-violet unique exists in the pack").toBeDefined();
+    const race = uniqueRace as MonsterRace;
+
+    expect(titleGlyph(race, false).color, "option off: the race's own colour")
+      .toBe(race.dAttr);
+    expect(titleGlyph(race, true).color, "option on: violet").toBe(COLOUR_VIOLET);
+    /* The character never changes - only the attr (L57). */
+    expect(titleGlyph(race, true).text).toBe(race.dChar);
+  });
+
+  it("leaves a non-unique alone with the option on", () => {
+    expect(plainRace, "fixture: a non-violet ordinary monster exists").toBeDefined();
+    const race = plainRace as MonsterRace;
+
+    expect(titleGlyph(race, true).color, "the L56 branch is an `else if` on !UNIQUE")
+      .toBe(race.dAttr);
+    expect(titleGlyph(race, false).color).toBe(race.dAttr);
+  });
+
+  it('only a non-unique gets the "The " prefix', () => {
+    const ur = uniqueRace as MonsterRace;
+    const pr = plainRace as MonsterRace;
+    const u = loreDescription(ur, newMonsterLore(ur), deps());
+    const p = loreDescription(pr, newMonsterLore(pr), deps());
+    expect(u[0]?.text).not.toBe("The ");
+    expect(p[0]?.text).toBe("The ");
   });
 });

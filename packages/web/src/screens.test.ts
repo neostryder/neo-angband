@@ -879,6 +879,7 @@ function baseRecallDeps(): LoreDeps {
     playerMaxDepth: 5,
     playerSpeed: 110,
     effectiveSpeed: false,
+    purpleUniques: false,
     spells: monReg.spells,
   };
 }

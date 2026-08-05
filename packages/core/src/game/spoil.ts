@@ -524,6 +524,10 @@ export function spoilMonInfo(pack: GamePack): string {
     playerMaxDepth: player.maxDepth,
     playerSpeed: 110,
     effectiveSpeed: false,
+    /* Inert here: the spoiler writes its own name/colour/symbol line (L692-711)
+     * rather than going through loreTitle, and the output is a plain-text file
+     * with no colour runs at all. */
+    purpleUniques: false,
     spells: ctx.reg.monsters.spells,
     breathProjection: (subtype) => projections[subtype],
   };

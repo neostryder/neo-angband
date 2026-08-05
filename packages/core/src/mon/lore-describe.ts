@@ -114,6 +114,14 @@ export interface LoreDeps {
   playerSpeed: number;
   /** OPT(player, effective_speed): multiplier form vs. adjective form. */
   effectiveSpeed: boolean;
+  /**
+   * OPT(player, purple_uniques): recolour a unique's title glyph violet
+   * (ui-mon-lore.c L56-60). Required rather than optional, and named exactly as
+   * `visuals/map-text.ts` names it, because the map layer already honours this
+   * option — a lore title that quietly ignored it would disagree with the glyph
+   * the player is looking at on the same screen.
+   */
+  purpleUniques: boolean;
   /** monster_spell_by_index: the bound spell list, keyed by RSF_ index. */
   spells: ReadonlyMap<number, MonsterSpell>;
   /**
@@ -1342,18 +1350,26 @@ function isFullyKnown(race: MonsterRace, lore: MonsterLore): boolean {
 }
 
 /**
- * lore_title (ui-mon-lore.c L38), reduced to what the headless model can
- * express: "The " for non-uniques, the name, and the primary glyph.
+ * lore_title (ui-mon-lore.c L38): "The " for non-uniques, the name, and the
+ * primary glyph — with OPT(purple_uniques) recolouring a unique's glyph violet
+ * (L56-60). Upstream also recolours the OPTIONAL attr there, but only when it is
+ * not a tile index (`!(optional_attr & 0x80)`).
  *
- * DEFERRED: the optional secondary glyph (monster_x_char / monster_x_attr,
- * ui-mon-lore.c L47/L51), OPT(purple_uniques) recoloring (L56), and tile
- * width/height gating (L69) are all presentation state not modelled here.
+ * Still shell-owned by construction, and not a gap in this model: the secondary
+ * glyph itself (`monster_x_char` / `monster_x_attr`, L47/L51) is the pref-file
+ * override table, and its display is gated on `tile_width == 1 && tile_height
+ * == 1` (L69). A headless lore model carries no tile state and no pref table, so
+ * there is nothing here for either to read. The `purple_uniques` half was
+ * lumped in with them and was NOT shell-owned — the option is live and the map
+ * text layer already honours it.
  */
-function loreTitle(b: LoreTextBuilder, race: MonsterRace): void {
-  if (!race.flags.has(RF.UNIQUE)) b.append("The ");
+function loreTitle(b: LoreTextBuilder, race: MonsterRace, deps: LoreDeps): void {
+  const unique = race.flags.has(RF.UNIQUE);
+  if (!unique) b.append("The ");
+  const attr = unique && deps.purpleUniques ? COLOUR_VIOLET : race.dAttr;
   b.append(race.name);
   b.append(" ('");
-  b.append(race.dChar, race.dAttr);
+  b.append(race.dChar, attr);
   b.append("')");
 }
 
@@ -1374,7 +1390,7 @@ export function loreDescription(
   const knownFlags = monsterFlagsKnown(race, lore);
 
   /* Title (only in the non-spoiler player view). */
-  loreTitle(b, race);
+  loreTitle(b, race, deps);
   b.append("\n");
 
   /* Kills of monster vs. player(s). */
