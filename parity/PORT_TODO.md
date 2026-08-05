@@ -2,7 +2,7 @@
 
 **Dated 2026-08-04.** The work list derived from [DEFERRALS.md](DEFERRALS.md),
 which is the accounting of what was found and how each verdict was reached.
-This one is the checklist: **60 items covering all 68 confirmed-absent
+This one is the checklist: **65 items covering all 114 confirmed-absent
 citations**, ordered so the things a player would notice come before the things
 only a developer sees, and so the two items that unlock a dozen others come
 first of all.
@@ -53,9 +53,11 @@ first of all.
 > `p->upkeep->total_weight` is never summed — see **1.2**. It was sitting under a
 > note that called it a display counter and handed ownership downstream.
 
-A citation here is a `file:line` from `parity/reports/deferral-census.tsv` whose
-verdict is `real` or `partial`. A `divergence`, `n-a` or `note-is-fix` row is not
-work, and its reason is in DEFERRALS.md's appendix.
+A citation here is a `file:line` from `parity/reports/deferral-census.tsv` or
+`parity/reports/ledger-deferred-items.tsv` whose verdict is `real` or `partial`.
+A `divergence`, `n-a` or `note-is-fix` row is not work, and its reason is in
+DEFERRALS.md's appendix. Both tranches are counted, because an item whose only
+citation was a ledger row used to sit outside every guard.
 
 ## What "tiered" means here
 
@@ -80,15 +82,17 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 94 of 331 done.**
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 135 of 331 done.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
   from the key and mostly does not repeat the word. Adjudicated so far:
-  `ui-display.yaml`, `ui-player.yaml`, `ui-entry.yaml`, `wizard-debug.yaml`,
-  `game-gear.yaml`, `obj-knowledge.yaml` and all four `store-*.yaml`, plus
-  `player-history.yaml`. That is **30 `ported`, 22 `real`, 18 `stale-doc`, 8
-  `divergence`, 7 `partial`** — so **two rows in three were not owed work**, and
-  the `real` ones include the carried-weight defect at **1.2**. **237 remain.**
+`ui-display`, `ui-player`, `ui-entry`, `wizard-debug`, `game-gear`,
+  `obj-knowledge`, all four `store-*`, `player-history`, `obj-desc`, `mon-lore`,
+  `mon-lore-describe`, `game-effect-terrain`, `game-effect-teleport`,
+  `game-player-path` and `game-mon-cmd`. That is **47 `ported`, 19 `stale-doc`,
+  13 `divergence`, 5 `not-a-deferral`, 3 `n-a`, 2 `note-is-fix` against 28 `real`
+  and 18 `partial`** — so **two rows in three were not owed work**, and the owed
+  ones include the two live defects at **1.2** and **2.17**. **196 remain.**
   Adjudicate with
   `node parity/tools/deferral-verdict.mjs --target parity/reports/ledger-deferred-items.tsv`,
   reading order from
@@ -268,6 +272,31 @@ is reachable in play and a test constructs the case that used to be wrong.**
   reason to leave the call out — a mod can stock them, and the hook is there.
   Sites: `packages/core/src/store/transact.ts:26`,
   `parity/ledger/player-history.yaml:160`
+
+- [ ] **2.17 `disturb()` is exported and nothing calls it.**
+  `packages/core/src/game/player-path.ts:97` is the port of upstream's `disturb()`
+  — stop running, cancel the rest, free the path steps — and it has **zero callers
+  in `packages/core` or `packages/web`**. It is also the only thing that clears
+  `state.resting` (`:106`). The shell reimplements one slice of it locally
+  (`anyVisibleMonster` in `packages/web/src/main.ts`, "Any visible monster
+  interrupts rest"), so the two checks can drift. Absent entirely: the disturb on
+  **taking damage**, on a status message, and on a monster waking or closing from
+  behind — so a run or a rest continues through events upstream stops for.
+  Sites: `parity/ledger/game-player-path.yaml:94`
+
+- [ ] **2.18 A commanded monster cannot drop what it is carrying.**
+  `packages/core/src/game/mon-cmd.ts:720` no-ops `CMD_DROP` with the comment
+  "Monster-held objects are not modelled". They **are**: `mon.heldObj` is a real
+  pile, `monsterCarry` fills it, and `getRandomMonsterObject` is ported at
+  `packages/core/src/mon/steal.ts:54` and used at `:148`.
+  Sites: `parity/ledger/game-mon-cmd.yaml:62`
+
+- [ ] **2.19 A commanded monster's blow does nothing but damage to a monster.**
+  The monster-target branches of the mon-blow-effect handlers reduce to damage plus
+  the critical stun, so blind / confuse / poison and the blinked teleport are lost
+  when the victim is a monster. `square_smash_wall`'s neighbour scouring and
+  upstream's broken-vs-open door split belong with it.
+  Sites: `parity/ledger/game-mon-cmd.yaml:64`, `:68`
 
 ## Tier 3 — It changes what the player is told
 
@@ -459,6 +488,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the other half.
   Sites: `parity/ledger/obj-knowledge.yaml:98`
 
+- [ ] **3.26 Teleporting is silent.**
+  `MSG_TELEPORT`, `MSG_TPOTHER` and `MSG_TPLEVEL` all exist in the generated table
+  with their sound names (`packages/core/src/generated/message.ts:18`, `:23`,
+  `:33`) and are used **nowhere** — `packages/core/src/game/effect-teleport.ts`
+  emits no sound at all, while seventeen other sites do call `state.sound`. Three
+  one-line calls.
+  Sites: `parity/ledger/game-effect-teleport.yaml:81`
+
+- [ ] **3.27 The `{tried}` and `{ignore}` name markers never appear.**
+  Two seams that exist on `KnownDesc` and are never supplied.
+  `packages/core/src/game/describe.ts:21` hardcodes `isTried: () => false`, so the
+  in-store "{tried}" marker is dead (`obj/desc.ts:553` is ready for it). And
+  `ignore_item_ok` **is** ported (`packages/core/src/obj/ignore.ts:380`) and used at
+  `packages/core/src/game/obj-cmd.ts:946`, but `knownDescOf` never passes it as
+  `KnownDesc.ignoreItemOk`, so `obj/desc.ts:537` never emits "{ignore}" either.
+  Sites: `parity/ledger/obj-desc.yaml:65`, `:67`
+
 - [ ] **3.25 Per-category priority overrides are not reconstructable.**
   The pack compiler erases the intra-record order of category vs priority lines,
   so a priority override attached to a category cannot be reproduced. A compiler
@@ -607,7 +653,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**60 items, 68 citations, 55 `real` + 13
+2. the counts stated at the top (**65 items, 114 citations, 83 `real` + 31
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
