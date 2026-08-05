@@ -31,6 +31,7 @@ import {
   liveUiEntryDeps,
   resolveUiDeps,
   computeObjectValues,
+  computePlayerValues,
   isUiEntryForKnownRune,
   UI_ENTRY_RESIST0_RES_VUL,
   UI_ENTRY_UNKNOWN_VALUE,
@@ -39,10 +40,40 @@ import {
 import type { UiEntryConfig } from "./ui-entry.js";
 import type { TimedEffect } from "../player/types.js";
 import { TMD } from "../generated/player-timed.js";
+import { TV } from "../generated/index.js";
+import { KF } from "../generated/kind-flags.js";
+import { OF_SIZE } from "../obj/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import { bindConstants } from "../constants.js";
+import { Rng } from "../rng.js";
+
+/* A real object registry, for the equipped-launcher fixtures at the bottom of
+   this file (PORT_TODO 3.9). Built the same way curse-tick.test.ts builds one. */
+const objReg = new ObjRegistry({
+  objectBase: loadRaw("object_base"),
+  object: loadRaw("object"),
+  egoItem: loadRaw("ego_item"),
+  artifact: loadRaw("artifact"),
+  curse: loadRaw("curse"),
+  brand: loadRaw("brand"),
+  slay: loadRaw("slay"),
+  activation: loadRaw("activation"),
+  objectProperty: loadRaw("object_property"),
+  flavor: loadRaw("flavor"),
+} as ObjPackJson);
+const objConstants = bindConstants(loadRaw("constants"));
 
 /* ------------------------------------------------------------------ */
 /* Fixtures                                                            */
 /* ------------------------------------------------------------------ */
+
+function loadRaw<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(new URL(`../../../content/pack/${name}.json`, import.meta.url), "utf8"),
+  ) as T;
+}
 
 function load(name: string): unknown[] {
   const url = new URL(`../../../content/pack/${name}.json`, import.meta.url);
@@ -520,7 +551,7 @@ describe("liveTimedUiDeps feeds the character grid's timed columns", () => {
  * equip-compare screen and left the character sheet - the screen those items
  * describe - untouched.
  */
-describe("liveUiEntryDeps supplies all three seams, not a subset", () => {
+describe("liveUiEntryDeps supplies all FOUR seams, not a subset", () => {
   it("answers playerHas from the COMPUTED pflags, not the absent Player field", () => {
     const st = makeState();
     /* No playerState yet: the honest answer is false, and this pins that the
@@ -539,13 +570,102 @@ describe("liveUiEntryDeps supplies all three seams, not a subset", () => {
     );
   });
 
-  it("carries the timed pair too, so no caller can wire a subset", () => {
+  it("carries every seam, so no caller can wire a subset", () => {
     /* The reason this builder exists. If it returned only playerHas, every screen
-     * would be back to an empty timed column - which is the bug, one level up. */
+     * would be back to an empty timed column - which is the bug, one level up.
+     * This list is a RATCHET: a new UiEntryDeps seam must be added here, or the
+     * next "the reach exists, it just has no route" item repeats. `launcher`
+     * (PORT_TODO 3.9) is the fourth. */
     const st = makeState();
     const deps = liveUiEntryDeps(st);
     expect(deps.timedObjectFlags, "timedObjectFlags present").toBeDefined();
     expect(deps.timedElementEffect, "timedElementEffect present").toBeDefined();
     expect(deps.playerHas, "playerHas present").toBeDefined();
+    expect("launcher" in deps, "launcher present (3.9)").toBe(true);
+    /* Every optional key of UiEntryDeps must appear above. */
+    expect(Object.keys(deps).sort()).toEqual([
+      "launcher",
+      "playerHas",
+      "timedElementEffect",
+      "timedObjectFlags",
+    ]);
+  });
+});
+
+/**
+ * PORT_TODO 3.9: the PF_FAST_SHOT contribution was a hardcoded 0.
+ *
+ * The item's own wording was the tell - "the reach it calls deferred EXISTS".
+ * `player/calcs.ts` had been reading the equipped launcher's kind flags for the
+ * ammo tval all along; the ui-entry push just had no route to the object. The
+ * route is three lines of body-slot walk, now shared as
+ * `obj/knowledge.ts equippedLauncher`.
+ */
+describe("PF_FAST_SHOT reads the equipped launcher (ui-entry.c L974-984)", () => {
+  const objPack = JSON.parse(
+    readFileSync(new URL("../../../content/pack/object.json", import.meta.url), "utf8"),
+  ) as { records: { name: string; tval: string }[] };
+
+  /** Equip `kindName` in the BOW slot and return the FAST_SHOT entry's value. */
+  function fastShotValue(kindName: string | null, lev: number): number {
+    const st = makeState();
+    const p = st.actor.player;
+    p.lev = lev;
+
+    /* PF_FAST_SHOT has to be present, or the `playerHas` guard skips the branch
+     * entirely and every arm of this test reads the same 0. */
+    const flags = new FlagSet(PF_SIZE);
+    flags.on(PF.FAST_SHOT);
+    (st as unknown as { playerState?: { pflags: FlagSet } }).playerState = {
+      pflags: flags,
+    };
+
+    const bowSlot = p.body.slots.findIndex((s) => s?.type === "BOW");
+    expect(bowSlot, "fixture: the body has a shooting slot").toBeGreaterThanOrEqual(0);
+
+    if (kindName !== null) {
+      const kind = objReg.kinds.find((k) => k.name === kindName);
+      expect(kind, `fixture: kind ${kindName} exists`).toBeDefined();
+      const obj = objectPrep(new Rng(7), objReg, objConstants, kind!, 0, "average");
+      const handle = st.gear.next++;
+      st.gear.store.set(handle, obj);
+      p.equipment[bowSlot] = handle;
+    }
+
+    const entry = config.entries.find((e) => e.name === "shots_ui_compact_0");
+    expect(entry, "fixture: the shots entry is in the pack").toBeDefined();
+    const deps = resolveUiDeps(p, liveUiEntryDeps(st));
+    return computePlayerValues(entry!, p, deps, { untimed: new FlagSet(OF_SIZE) }).val;
+  }
+
+  /* Ground truth from the pack, not from memory: the point of the KF check is
+   * that some launchers fire arrows and some do not, and the test is worthless if
+   * both fixtures happen to be the same kind of bow. */
+  it("the pack really does have both an arrow-firer and a non-arrow-firer", () => {
+    const arrow = objReg.kinds.filter((k) => k.kindFlags.has(KF.SHOOTS_ARROWS));
+    const other = objReg.kinds.filter(
+      (k) => k.tval === TV.BOW && !k.kindFlags.has(KF.SHOOTS_ARROWS),
+    );
+    expect(arrow.length, "at least one KF_SHOOTS_ARROWS launcher").toBeGreaterThan(0);
+    expect(other.length, "at least one bow that fires something else").toBeGreaterThan(0);
+    void objPack;
+  });
+
+  it("an arrow-firing launcher contributes p->lev / 3", () => {
+    const bow = objReg.kinds.find((k) => k.kindFlags.has(KF.SHOOTS_ARROWS));
+    expect(fastShotValue(bow!.name, 30), "30 / 3").toBe(10);
+    /* Integer division, not rounding: 29 / 3 is 9, not 10 (L979 is C `/`). */
+    expect(fastShotValue(bow!.name, 29), "truncated, not rounded").toBe(9);
+  });
+
+  it("a launcher that does not fire arrows contributes 0", () => {
+    const sling = objReg.kinds.find(
+      (k) => k.tval === TV.BOW && !k.kindFlags.has(KF.SHOOTS_ARROWS),
+    );
+    expect(fastShotValue(sling!.name, 30)).toBe(0);
+  });
+
+  it("an empty shooting slot contributes 0", () => {
+    expect(fastShotValue(null, 30)).toBe(0);
   });
 });

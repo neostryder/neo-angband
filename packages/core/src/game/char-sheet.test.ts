@@ -231,3 +231,50 @@ describe("display_player_stat_info (ui-player.c L449)", () => {
     return "    17";
   }
 });
+
+/**
+ * PORT_TODO 3.9's second half. `resolveDeps` had `launcher: deps.launcher ?? null`
+ * and NOTHING in the tree supplied it - `screens.ts charSheetDeps` is the only
+ * builder and it does not mention the field - so the sheet's "Shoot to-dam" and
+ * ranged "To-hit" rows read as if every character were unarmed with a bow in
+ * hand. `meleeWeapon`, one line above it, had always defaulted to the live actor;
+ * this seam was the odd one out.
+ */
+describe("the sheet's ranged rows read the equipped launcher (PORT_TODO 3.9)", () => {
+  function combatRows(state: ReturnType<typeof makeState>): Map<string, string> {
+    const rows = new Map<string, string>();
+    for (const l of panel(characterPanels(state), "combat").lines) {
+      if (l.label) rows.set(l.label, l.value);
+    }
+    return rows;
+  }
+
+  it("a bow with a to-dam bonus moves Shoot to-dam off zero", () => {
+    const state = makeState();
+    const bowSlot = state.actor.player.body.slots.findIndex((s) => s?.type === "BOW");
+    expect(bowSlot, "fixture: the body has a shooting slot").toBeGreaterThanOrEqual(0);
+
+    const before = combatRows(state);
+    expect(before.get("Shoot to-dam"), "unarmed baseline").toBe("+0");
+
+    /* A minimal launcher: the sheet reads only object_to_dam / object_to_hit off
+     * it, both of which are the object's own known to_d / to_h. Constructing the
+     * object here rather than prepping a real kind keeps the assertion about the
+     * WIRING - a real kind rolls +0 to-dam at "average" and would read the same
+     * as no launcher at all, which is exactly the vacuous test to avoid. */
+    const handle = state.gear.next++;
+    state.gear.store.set(handle, {
+      ...(state.gear.store.get(state.actor.player.equipment[0] ?? 0) ?? {}),
+      toD: 7,
+      toH: 5,
+      dd: 0,
+      ds: 0,
+      number: 1,
+      known: { toD: 7, toH: 5 },
+    } as never);
+    state.actor.player.equipment[bowSlot] = handle;
+
+    const after = combatRows(state);
+    expect(after.get("Shoot to-dam"), "the bow's to-dam is counted").not.toBe("+0");
+  });
+});

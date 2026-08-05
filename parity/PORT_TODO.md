@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 23 closed, 44 open.
+**67 items covering all 111 confirmed-absent citations** — 24 closed, 43 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Five of the twenty-one closures are retractions rather than
@@ -980,18 +980,36 @@ is reachable in play and a test constructs the case that used to be wrong.**
   asserted is the grid cell a player reads, not the builder's return value.
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
-- [ ] **3.9 The character sheet's launcher contribution is 0.**
-  `packages/core/src/game/ui-entry.ts:1480` pushes 0 for `PF_FAST_SHOT` with the
-  comment "deferred", and the reach it calls deferred **exists**:
-  `packages/core/src/player/calcs.ts:1246` already reads the equipped launcher's
-  `kind.kindFlags` for `KF.SHOOTS_ARROWS`. `launcher` also defaults to `null` at
-  `game/char-sheet.ts:201` with no supplier. Depends on 3.6 — with `playerHas`
-  false the branch is unreachable anyway.
+- [x] **3.9 The character sheet's launcher contribution is 0.** DONE, both halves.
+  The row's own wording was the tell — "the reach it calls deferred **exists**".
+  It did: `player/calcs.ts` had been reading the equipped launcher's
+  `kind.kindFlags` for the ammo tval all along. The reach is three lines of
+  body-slot walk, now shared once as `obj/knowledge.ts equippedLauncher`
+  (documented against `equipped_item_by_slot_name(p, "shooting")`, and equating
+  "shooting" with slot type `BOW` exactly where calcs.ts already equates them).
+  - **ui-entry**: `UiEntryDeps.launcher`, and the PF_FAST_SHOT push is now
+    ui-entry.c L974-984's `p->lev / 3` when the slot holds an arrow-firer. The
+    `liveUiEntryDeps` seam list is a **ratchet** test now — `Object.keys(deps)`
+    is pinned, so the next seam added to `UiEntryDeps` and not wired here fails
+    rather than silently taking a default.
+  - **char-sheet**: `launcher: deps.launcher ?? null` had **no supplier anywhere**
+    (`screens.ts charSheetDeps` never mentions the field), so "Shoot to-dam" and
+    the ranged "To-hit" read as if every character were unarmed with a bow in
+    hand. `meleeWeapon` one line above had always defaulted to the live actor;
+    this seam was the odd one out. Now **derived** in `resolveDeps`, which already
+    holds the state — so no caller has to remember it.
+  The item named the char-sheet seam, so both halves were in scope; the fix is not
+  the ui-entry line alone. The 3.6 dependency is discharged — `playerHas` reads
+  the computed pflags.
+  Mutation-verified: reverting the char-sheet default kills 1, the hardcoded 0
+  kills 1, dropping the `KF_SHOOTS_ARROWS` check kills 1, and un-supplying the
+  seam in `liveUiEntryDeps` kills 2. The `lev / 3` truncation is asserted at 29
+  as well as 30, so a rounding change is visible.
   *`show_combined` / `EQUIPCMP_SCREEN` used to be folded in here and is now
   closed: `equipCmpCategories` (`game/ui-entry.ts:1965`) IS iterated by
   `equipCmpSummary` (`game/equip-cmp.ts:391`), and the combined row is asserted
   the same length as the columns (`game/equip-cmp.test.ts:116`).*
-  Sites: `packages/core/src/game/ui-entry.ts:1480`,
+  Sites: `packages/core/src/game/ui-entry.ts:1489`,
   `parity/ledger/ui-entry.yaml:133`, `parity/ledger/ui-player.yaml:108`,
   `parity/ledger/ui-entry.yaml:132`
 
