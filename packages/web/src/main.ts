@@ -3663,6 +3663,7 @@ function recallDeps(): LoreDeps {
     playerMaxDepth: player.maxDepth,
     playerSpeed: state.actor.speed,
     effectiveSpeed: state.options?.get("effective_speed") ?? false,
+    purpleUniques: state.options?.get("purple_uniques") ?? false,
     spells,
     spellColor: (race, spellIndex) => spellColorFor(race, spellIndex, spells, colorState),
     blowColor: (effect) => blowColorFor(effect, colorState),
