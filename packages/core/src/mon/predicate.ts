@@ -8,14 +8,15 @@
  * monSpellsOfTypes (mon/types.ts); mflag / race-flag reads use the generated
  * MFLAG / RF enums.
  *
- * One divergence, one deferral (both faithful in reachable states):
+ * Two divergences, both structural - this layer is pure, so anything needing
+ * the live cave is passed in or lives one layer up:
  * - monster_can_be_scared's group-size branch takes primaryGroupSize as an
- *   argument (default 1 = "no group"), because monster groups are not tracked
- *   in the cave yet; primaryGroupSize=1 gives count=0, so the group fear-save
- *   loop never runs, matching a lone monster exactly.
+ *   argument. game/context.ts's gameTakeHitHooks supplies the real
+ *   monster_primary_group_size for every game-layer hit; the default of 1 is
+ *   for pure-layer callers only.
  * - monster_is_decoyed lives in the layer that HAS the live cave
- *   (game/monster-turn.ts:406): it needs cave_find_decoy + los + a live
- *   cave, and a decoy only exists once the create-decoy effect is ported.
+ *   (game/monster-turn.ts): it needs cave_find_decoy + los. Both it and the
+ *   decoy itself (EF_GLYPH, game/effect-general.ts:157) are ported.
  */
 
 import { FlagSet } from "../bitflag.js";
@@ -195,9 +196,12 @@ export function monsterIsMimicking(mon: Monster): boolean {
  * fearless; servants dodge fear one time in three; others get a per-member
  * one-in-twenty save across the group.
  *
- * `primaryGroupSize` is monster_primary_group_size(cave, mon); it defaults to
- * 1 (lone monster) until monster-group tracking is ported, which gives count=0
- * and no group save - exactly a solitary monster.
+ * `primaryGroupSize` is monster_primary_group_size(cave, mon). The live value
+ * comes from game/mon-group.ts via game/context.ts's gameTakeHitHooks; the
+ * default of 1 stands only for the pure-layer callers that have no cave, and
+ * gives count=0 - exactly a solitary monster. The port's group size is 0 for a
+ * monster with no group entry where upstream's is 1, and `count-- > 0` makes
+ * the two agree (upstream's bare `count--` would run away on -1).
  */
 export function monsterCanBeScared(
   rng: Rng,

@@ -37,7 +37,8 @@ import type { Store } from "../store/store.js";
 import { NORMAL_ENERGY } from "./energy.js";
 /* Value import is safe: mon-group's imports from this module are type-only,
  * so there is no runtime cycle. */
-import { monsterRemoveFromGroups } from "./mon-group.js";
+import { monsterPrimaryGroupSize, monsterRemoveFromGroups } from "./mon-group.js";
+import type { MonTakeHitHooks } from "../mon/take-hit.js";
 import {
   becomeAware,
   moveMimickedObject,
@@ -1300,6 +1301,31 @@ export function arenaInterceptDeath(state: GameState, mon: Monster): boolean {
   state.generateLevel = true;
   state.healthWho = mon;
   return true;
+}
+
+/**
+ * The mon_take_hit hooks every game-layer caller owes it, derived from the live
+ * state rather than left to each call site to remember. Both were optional
+ * fields with no production supplier, which is why neither fired in a real game:
+ *
+ * - coverTracksBroken: `p->timed[TMD_COVERTRACKS] = 0` (mon-util.c:1285) on
+ *   every damaging hit. A raw zero, not player_clear_timed - upstream prints no
+ *   end message and schedules no recalc here, and core keeps the wart.
+ * - primaryGroupSize: monster_primary_group_size(cave, mon), which
+ *   monster_can_be_scared (mon-predicate.c:296) turns into one_in_(20) saves,
+ *   one per other member of the primary group. At the default of 1 the loop
+ *   never runs, so the save can never fire and its draws never reach the RNG.
+ *
+ * Spread this into the hooks literal; the caller adds the parts only it knows
+ * (onKill, becomeAware, onArenaDeath).
+ */
+export function gameTakeHitHooks(state: GameState, mon: Monster): MonTakeHitHooks {
+  return {
+    coverTracksBroken: (): void => {
+      state.actor.player.timed[TMD.COVERTRACKS] = 0;
+    },
+    primaryGroupSize: (): number => monsterPrimaryGroupSize(state, mon),
+  };
 }
 
 /** Refresh mon->cdis for every live monster (update_mon does this upstream). */

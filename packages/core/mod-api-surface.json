@@ -802,6 +802,7 @@
     "formatPainMessageShowDamage",
     "gainEnergy",
     "gameEnv",
+    "gameTakeHitHooks",
     "gauntletGen",
     "gearAdd",
     "gearGet",

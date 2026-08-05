@@ -41,7 +41,7 @@ import type { MonTimedMessageSink } from "../mon/timed.js";
 import { PROJECT } from "../world/project.js";
 import type { MonsterHitResult } from "../world/project.js";
 import type { ProjectionInfo } from "../world/projection.js";
-import { arenaInterceptDeath, deleteMonster } from "./context.js";
+import { arenaInterceptDeath, deleteMonster, gameTakeHitHooks } from "./context.js";
 import type { GameState } from "./context.js";
 
 /** The player-facing / downstream consequences the driver defers to the caller. */
@@ -96,8 +96,6 @@ export interface ProjectMonsterHooks {
   thrustAway?: (centre: Loc, target: Loc, gridsAway: number) => void;
   /** update_mon + square_light_spot + PR_MONSTER: refresh a surviving monster. */
   onUpdate?: (mon: Monster) => void;
-  /** clear the player's TMD_COVERTRACKS once player damage lands. */
-  coverTracksBroken?: () => void;
 }
 
 /** The projection source, resolved for the driver. */
@@ -262,14 +260,12 @@ function playerAttack(
   let fear = false;
   if (dam) {
     const res = monTakeHit(state.rng, mon, dam, "", {
+      ...gameTakeHitHooks(state, mon),
       onKill: (m) => {
         hooks.onKill?.(m);
         deleteMonster(state, mIdx);
       },
       ...(hooks.becomeAware ? { becomeAware: hooks.becomeAware } : {}),
-      ...(hooks.coverTracksBroken
-        ? { coverTracksBroken: hooks.coverTracksBroken }
-        : {}),
       /* Single combat: the kill waits for the arena exit. */
       ...(state.arenaLevel
         ? { onArenaDeath: (m: Monster) => void arenaInterceptDeath(state, m) }
