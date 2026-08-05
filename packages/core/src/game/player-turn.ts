@@ -57,6 +57,7 @@ import type { GameState, PlayerCommand } from "./context.js";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
 import { gearGet } from "./gear.js";
 import { noticeStuff } from "./notice.js";
+import { repeatBeginCommand } from "./repeat.js";
 import { floorPile } from "./floor.js";
 import { isTrappedChest } from "../obj/chest.js";
 import {
@@ -989,6 +990,15 @@ export function processPlayer(
      * background_command > 1 is exempt (cmd-core.c:360): ignore_drop
      * queues its auto-drops that way, and drawing the roll for them would move
      * every later draw in the turn. */
+
+    /* process_command's repeat reset (cmd-core.c:353): every command starts
+     * repeatable and the handler clears it if it must not be repeated. BEFORE the
+     * coercion block, because the C sets it at L353 and the coercion test is at
+     * L360 inside the same function - so a coerced attack replaces the command
+     * but not this. Also records whether this command addressed a floor object,
+     * which is what cmd_disable_repeat_floor_item reads. */
+    repeatBeginCommand(state.actor.player, cmd);
+
     if (
       !commanding &&
       !NON_COERCION_COMMANDS.has(cmd.code) &&

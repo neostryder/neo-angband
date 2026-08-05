@@ -28,6 +28,7 @@ import type { GameObject, StackLimits } from "../obj/object.js";
 import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object.js";
 import { los } from "../world/view.js";
 import type { GameState } from "./context.js";
+import { cmdDisableRepeat } from "./repeat.js";
 import { objectIsInQuiver, objectSplit } from "./gear.js";
 
 /** Unported-subsystem hooks for the floor routines; every slot is optional. */
@@ -520,5 +521,10 @@ export function floorObjectForUse(
   }
   if (obj.grid) floorExcise(state, obj.grid, obj);
   obj.grid = null;
+  /* "The pile is gone, so disable repeat command" (obj-pile.c:856). This is the
+   * one that matters most in this port: a floor item is addressed by INDEX
+   * (args.floor), so after the pile shifts, index 0 is a different object rather
+   * than a dangling pointer. */
+  cmdDisableRepeat(state.actor.player);
   return { usable: obj, noneLeft: true };
 }

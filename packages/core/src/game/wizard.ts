@@ -113,6 +113,7 @@ import type { EffectContext } from "../effects/interpreter.js";
 import { scatterExt } from "../world/scatter.js";
 import { deleteMonster, monsterMax } from "./context.js";
 import type { GameState } from "./context.js";
+import { cmdDisableRepeat } from "./repeat.js";
 import { dropNear, floorPile } from "./floor.js";
 import { objectIsCarried, objectIsInQuiver } from "./gear.js";
 import { objectTouch } from "../obj/known-object.js";
@@ -625,6 +626,8 @@ export function wizCreateTrap(
     return false;
   }
   placeTrap(state, grid, tidx, 0, deps.trapDeps);
+  /* "Can not repeat since there's now a trap here" (cmd-wizard.c:932). */
+  cmdDisableRepeat(state.actor.player);
   return true;
 }
 

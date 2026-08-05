@@ -187,6 +187,7 @@ export * from "./game/spell-cmd.js";
 export * from "./game/ranged-cmd.js";
 export * from "./game/loop.js";
 export * from "./game/ignore-cmd.js";
+export * from "./game/repeat.js";
 /* --- Wizard / debug commands (task #29: cmd-wizard.c / wiz-debug.c) ---
  * The debug/cheat command surface, gated behind the WizardDeps.wizard flag
  * (upstream ALLOW_DEBUG + NOSCORE_WIZARD); unreachable in faithful play. */

@@ -222,7 +222,7 @@ import {
   gearGet,
   gearTotalWeight,
   calcInventory,
-  combinePack,
+  combinePackForPlayer,
   minusAc as applyMinusAc,
   objectCopyAmt,
 } from "../game/gear.js";
@@ -232,6 +232,7 @@ import type { GameObject, CurseTimedFoil } from "../obj/object.js";
 import { buildCurseTimedFoil } from "../obj/object.js";
 import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn.js";
 import { noticeNewLevel } from "../game/notice.js";
+import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
 import type {
@@ -831,7 +832,7 @@ function wireGame(
   /* notice_stuff's PN_COMBINE branch (player-calcs.c L2546-2549). combine_pack
    * ends in its own calc_inventory, so this needs the same options bag. */
   state.combinePack = (): void => {
-    combinePack(state.gear, reg.constants, liveCalcInv());
+    combinePackForPlayer(state.gear, state.actor.player, reg.constants, liveCalcInv());
   };
   /* Stash the class list so refreshTownStores can expand the bookseller's
    * town-book always lines (object_kind_to_book, store.c:208-231). */
@@ -2167,6 +2168,14 @@ function makeChangeLevel(
         /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
          * one line BEFORE update_stuff, so the combine lands first. */
         noticeNewLevel(state);
+        /* cmd_disable_repeat_floor_item (game-world.c:1068). Upstream's call is
+         * in on_leave_level, which this port has no single equivalent of -
+         * `generateLevel = true` is set at fourteen sites. It rides the ENTRY
+         * path instead, which is observationally identical: the change is
+         * synchronous, so the repeat key cannot be pressed between leaving and
+         * arriving. The old level's pile is gone either way, so a remembered
+         * args.floor index must not be re-dispatched. */
+        cmdDisableRepeatFloorItem(state.actor.player);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
@@ -2210,6 +2219,14 @@ function makeChangeLevel(
         /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
          * one line BEFORE update_stuff, so the combine lands first. */
         noticeNewLevel(state);
+        /* cmd_disable_repeat_floor_item (game-world.c:1068). Upstream's call is
+         * in on_leave_level, which this port has no single equivalent of -
+         * `generateLevel = true` is set at fourteen sites. It rides the ENTRY
+         * path instead, which is observationally identical: the change is
+         * synchronous, so the repeat key cannot be pressed between leaving and
+         * arriving. The old level's pile is gone either way, so a remembered
+         * args.floor index must not be re-dispatched. */
+        cmdDisableRepeatFloorItem(state.actor.player);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
@@ -2328,6 +2345,14 @@ function makeChangeLevel(
         /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
          * one line BEFORE update_stuff, so the combine lands first. */
         noticeNewLevel(state);
+        /* cmd_disable_repeat_floor_item (game-world.c:1068). Upstream's call is
+         * in on_leave_level, which this port has no single equivalent of -
+         * `generateLevel = true` is set at fourteen sites. It rides the ENTRY
+         * path instead, which is observationally identical: the change is
+         * synchronous, so the repeat key cannot be pressed between leaving and
+         * arriving. The old level's pile is gone either way, so a remembered
+         * args.floor index must not be re-dispatched. */
+        cmdDisableRepeatFloorItem(state.actor.player);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
         state.chunk.onlyPartial = true;
@@ -2503,6 +2528,9 @@ function makeChangeLevel(
     /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff, one
      * line BEFORE update_stuff, so the combine lands first. */
     noticeNewLevel(state);
+    /* cmd_disable_repeat_floor_item (game-world.c:1068); see the note at the
+     * other level-entry sites for why it rides entry rather than leave. */
+    cmdDisableRepeatFloorItem(state.actor.player);
     /* on_new_level (game-world.c:1034-1037): PU_BONUS -> update_bonuses ->
      * calc_light recomputes cur_light for the NEW depth, then the view is
      * flooded. Without this the daytime-town cur_light (0) leaks into the
