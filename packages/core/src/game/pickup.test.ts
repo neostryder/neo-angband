@@ -169,7 +169,7 @@ describe("autoPickupOkay (cmd-pickup.c auto_pickup_okay)", () => {
   it("pickup_inven picks an object matching a pack stack", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const inPack = makeObj(TV.POTION);
-    invenCarry(state.gear, inPack, {
+    invenCarry(state.gear, state.actor.player, inPack, {
       quiverSlotSize: constants.quiverSlotSize,
       thrownQuiverMult: constants.thrownQuiverMult,
     });
@@ -182,7 +182,7 @@ describe("autoPickupOkay (cmd-pickup.c auto_pickup_okay)", () => {
     const inPack = makeObj(TV.POTION);
     inPack.number = 3;
     inPack.note = "=g4";
-    invenCarry(state.gear, inPack, {
+    invenCarry(state.gear, state.actor.player, inPack, {
       quiverSlotSize: constants.quiverSlotSize,
       thrownQuiverMult: constants.thrownQuiverMult,
     });
@@ -492,7 +492,7 @@ describe("inven_carry autoinscribes on pickup (obj-gear.c:864-868)", () => {
   it("does NOT autoinscribe an object absorbed into an existing stack", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const first = makeObj(TV.POTION);
-    const held = invenCarry(state.gear, first, {
+    const held = invenCarry(state.gear, state.actor.player, first, {
       quiverSlotSize: constants.quiverSlotSize,
       thrownQuiverMult: constants.thrownQuiverMult,
     });

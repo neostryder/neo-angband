@@ -110,7 +110,7 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
     carry: (obj) => {
       /* object_grab is knowledge (#24); mirror pickup's artifact history log. */
       if (obj.artifact) state.onArtifactFound?.(obj.artifact);
-      invenCarry(state.gear, obj, limits);
+      invenCarry(state.gear, state.actor.player, obj, limits);
     },
     dropStolen: (obj) => {
       /* object_desc captured before the drop (upstream order); drop_near draws. */

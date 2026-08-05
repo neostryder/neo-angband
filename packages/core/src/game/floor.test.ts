@@ -287,9 +287,9 @@ describe("scanItems (obj-pile.c scan_items)", () => {
   it("orders inventory, equipment, quiver, then floor - order is behaviour", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const packItem = makeObj(TV.POTION, 0);
-    invenCarry(state.gear, packItem, limits);
+    invenCarry(state.gear, state.actor.player, packItem, limits);
     const wielded = makeObj(TV.SWORD);
-    const wieldHandle = invenCarry(state.gear, wielded, limits);
+    const wieldHandle = invenCarry(state.gear, state.actor.player, wielded, limits);
     /* Simulate invenWield's pack -> equipment move (obj-gear.c inven_wield). */
     state.gear.pack = state.gear.pack.filter((h) => h !== wieldHandle);
     state.actor.player.equipment[0] = wieldHandle;
@@ -308,7 +308,7 @@ describe("scanItems (obj-pile.c scan_items)", () => {
   it("excludes gold from a null-tester scan", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const gold = makeObj(TV.GOLD);
-    invenCarry(state.gear, gold, limits);
+    invenCarry(state.gear, state.actor.player, gold, limits);
     const found = scanItems(state, 10, USE_MODE.INVEN, null);
     expect(found).toEqual([]);
   });
@@ -316,9 +316,9 @@ describe("scanItems (obj-pile.c scan_items)", () => {
   it("the inventory pass excludes quivered handles (calc_inventory's disjoint split)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const packItem = makeObj(TV.POTION, 0);
-    const packHandle = invenCarry(state.gear, packItem, limits);
+    const packHandle = invenCarry(state.gear, state.actor.player, packItem, limits);
     const quivered = makeObj(TV.POTION, 1);
-    const quiverHandle = invenCarry(state.gear, quivered, limits);
+    const quiverHandle = invenCarry(state.gear, state.actor.player, quivered, limits);
     state.gear.quiver = [quiverHandle];
 
     const found = scanItems(state, 10, USE_MODE.INVEN, null);
@@ -332,8 +332,8 @@ describe("scanItems (obj-pile.c scan_items)", () => {
 
   it("stops at itemMax across all passes combined", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
-    invenCarry(state.gear, makeObj(TV.POTION, 0), limits);
-    invenCarry(state.gear, makeObj(TV.POTION, 1), limits);
+    invenCarry(state.gear, state.actor.player, makeObj(TV.POTION, 0), limits);
+    invenCarry(state.gear, state.actor.player, makeObj(TV.POTION, 1), limits);
     floorCarry(state, state.actor.grid, makeObj(TV.POTION, 2));
     const found = scanItems(
       state,

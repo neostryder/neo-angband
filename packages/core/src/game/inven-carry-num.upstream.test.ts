@@ -18,6 +18,9 @@ import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
 import { Rng } from "../rng.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
 import {
   calcInventory,
   invenCarry,
@@ -63,6 +66,31 @@ const limits: StackLimits = {
   quiverSlotSize: z.quiverSlotSize,
   thrownQuiverMult: z.thrownQuiverMult,
 };
+
+/**
+ * inven_carry updates the burden of the player doing the carrying (obj-gear.c
+ * L845, L875), so it takes one. This file ports upstream's inven-carry-num
+ * tests, which are about how MANY items fit, not what they weigh, so it binds
+ * the smallest player the signature accepts; the carried-weight total has its
+ * own derived-ground-truth test in gear-weight.test.ts.
+ */
+const loadRecords = <T,>(name: string): T[] =>
+  loadJson<{ records: T[] }>(name).records;
+const players = bindPlayer({
+  races: loadRecords("p_race"),
+  classes: loadRecords("class"),
+  properties: loadRecords("player_property"),
+  timed: loadRecords("player_timed"),
+  shapes: loadRecords("shape"),
+  bodies: loadRecords("body"),
+  history: loadRecords("history"),
+  realms: loadRecords("realm"),
+});
+const carrier = ((): Player => {
+  const race = players.raceByName("Human")!;
+  const cls = players.classByName("Warrior")!;
+  return blankPlayer(race, cls, players.bodies[race.body]!);
+})();
 
 function prep(tval: number, sval = 1, seed = 1): GameObject {
   const k = reg.lookupKind(tval, sval)!;
@@ -134,7 +162,7 @@ function fillPackQuiver(
   /* pack_is_full() then inven_carry(); the object must end up carried. */
   const carry = (obj: GameObject): void => {
     expect(packSlotsUsed(gear, z)).toBeLessThan(z.packSize);
-    const handle = invenCarry(gear, obj, limits);
+    const handle = invenCarry(gear, carrier, obj, limits);
     expect(gear.pack).toContain(handle);
     calcInventory(gear, z);
   };

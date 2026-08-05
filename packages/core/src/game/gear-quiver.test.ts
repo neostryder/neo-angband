@@ -91,6 +91,17 @@ const humanWarrior = () => {
   return { race, cls, body };
 };
 
+/**
+ * inven_carry updates the burden of the player doing the carrying (obj-gear.c
+ * L845, L875), so it takes one. These blocks are about pack and quiver
+ * PLACEMENT, not the carried-weight total, so they share a throwaway carrier;
+ * the total has its own derived-ground-truth test in gear-weight.test.ts.
+ */
+const carrier = ((): ReturnType<typeof blankPlayer> => {
+  const { race, cls, body } = humanWarrior();
+  return blankPlayer(race, cls, body);
+})();
+
 /** First ordinary (non-artifact-dummy) kind of a tval. */
 function firstOrdinaryKind(tval: number) {
   const k = reg.kinds.find(
@@ -205,7 +216,7 @@ describe("calcInventory (player-calcs.c calc_inventory)", () => {
 
   it("routes carried ammo into quiver slot 0", () => {
     const gear = newGear();
-    const h = invenCarry(gear, makeObj(TV.ARROW, 30), limits);
+    const h = invenCarry(gear, carrier, makeObj(TV.ARROW, 30), limits);
     calcInventory(gear, constants);
     expect(gear.quiver![0]).toBe(h);
     expect(objectIsInQuiver(gear, h)).toBe(true);
@@ -217,7 +228,7 @@ describe("calcInventory (player-calcs.c calc_inventory)", () => {
     const gear = newGear();
     const arrows = makeObj(TV.ARROW, 10);
     arrows.note = "@f2";
-    const h = invenCarry(gear, arrows, limits);
+    const h = invenCarry(gear, carrier, arrows, limits);
     calcInventory(gear, constants);
     expect(gear.quiver![2]).toBe(h);
     expect(gear.quiver![0]).toBe(0);
@@ -386,8 +397,8 @@ describe("calcInventory (player-calcs.c calc_inventory)", () => {
 describe("packSlotsUsed (obj-gear.c pack_slots_used)", () => {
   it("counts a quivered ammo stack as quiver slots, not pack slots", () => {
     const gear = newGear();
-    invenCarry(gear, makeObj(TV.ARROW, 30), limits);
-    invenCarry(gear, makeObj(TV.POTION, 2), limits);
+    invenCarry(gear, carrier, makeObj(TV.ARROW, 30), limits);
+    invenCarry(gear, carrier, makeObj(TV.POTION, 2), limits);
     /* Before calc_inventory, the arrows count as a regular pack slot. */
     expect(packSlotsUsed(gear, constants)).toBe(2);
     calcInventory(gear, constants);
@@ -512,7 +523,7 @@ describe("invenCarry quiver stack-mode routing", () => {
 
     const incoming = makeFlask(2);
     incoming.note = "@v0";
-    const h2 = invenCarry(gear, incoming, limits);
+    const h2 = invenCarry(gear, carrier, incoming, limits);
     /* 7 + 2 = 9 > 8: no merge; a separate pack stack instead. Under plain
      * OSTACK_PACK (max_stack 40) they WOULD have merged. */
     expect(h2).not.toBe(h);
@@ -524,11 +535,11 @@ describe("invenCarry quiver stack-mode routing", () => {
     const gear = newGear();
     const first = makeFlask(7);
     first.note = "@v0";
-    const h = invenCarry(gear, first, limits);
+    const h = invenCarry(gear, carrier, first, limits);
     const incoming = makeFlask(2);
     incoming.note = "@v0";
     /* No calcInventory ran: not in the quiver, so OSTACK_PACK merges. */
-    expect(invenCarry(gear, incoming, limits)).toBe(h);
+    expect(invenCarry(gear, carrier, incoming, limits)).toBe(h);
     expect(gearGet(gear, h)!.number).toBe(9);
   });
 });
@@ -600,7 +611,7 @@ describe("minusAc (obj-gear.c minus_ac)", () => {
     const player = blankPlayer(race, cls, body);
     const gear = newGear();
     /* Something carried (the L382 no-gear guard must not trip)... */
-    invenCarry(gear, makeObj(TV.POTION), limits);
+    invenCarry(gear, carrier, makeObj(TV.POTION), limits);
     /* ...but nothing worn: whichever armour slot is picked is empty. */
     expect(minusAc(player, gear, new Rng(3))).toBe(false);
   });

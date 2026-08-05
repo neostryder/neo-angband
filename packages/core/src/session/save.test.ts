@@ -1180,7 +1180,7 @@ describe("apply_autoinscription's other call sites (store.c:1977 / obj-knowledge
       obj.sval = flask.sval;
       obj.number = 3;
       obj.note = null;
-      return invenCarry(state.gear, obj, {
+      return invenCarry(state.gear, state.actor.player, obj, {
         quiverSlotSize: reg.constants.quiverSlotSize,
         thrownQuiverMult: reg.constants.thrownQuiverMult,
       });

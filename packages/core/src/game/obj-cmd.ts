@@ -812,7 +812,7 @@ export function refillLamp(
       used.timeout = 0;
       const carried = opts.handle !== undefined && !opts.fromFloor;
       if (carried && invenCarryNum(state.gear, used, deps.constants) > 0) {
-        invenCarry(state.gear, used, stackLimits(deps.constants));
+        invenCarry(state.gear, state.actor.player, used, stackLimits(deps.constants));
       } else {
         /* Overflow / floor donor: drop_near's own breakage roll (randint0)
          * fires here exactly as upstream, even at chance=0 (a real, faithful
@@ -1691,7 +1691,12 @@ export function installObjCommands(
     let handle = found.handle;
     if (found.fromFloor) {
       const { usable } = floorObjectForUse(state, found.obj, 1);
-      handle = invenCarry(state.gear, usable, stackLimits(deps.constants));
+      handle = invenCarry(
+        state.gear,
+        state.actor.player,
+        usable,
+        stackLimits(deps.constants),
+      );
     }
     if (handle === undefined) return 0;
 
