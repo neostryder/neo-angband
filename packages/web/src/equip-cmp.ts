@@ -116,7 +116,21 @@ const SRC_CHAR: Record<string, string> = {
 /** Deps the equip-cmp screen needs beyond GameState (registry pack data). */
 export interface EquipCmpDeps {
   packs: UiEntryPackRecords;
-  entryDeps?: EquipCmpOptions["entryDeps"];
+  /**
+   * The timed UiEntryDeps (player_flags_timed / get_timed_element_effect). Build
+   * them with core's `liveTimedUiDeps`.
+   *
+   * REQUIRED, and it used to be optional: `equipCmpDeps()` in main.ts simply did
+   * not return it, so both seams took their harness defaults and the character
+   * screen's timed-flag column and temporary-resist row read empty in every game
+   * (PORT_TODO 3.7, 3.8). An optional property let that omission compile.
+   *
+   * Being required stops the omission, which was the actual failure. It does NOT
+   * stop someone passing `{}` on purpose - measured: that still typechecks and no
+   * test catches it. Guarding that would need a nominal type for one field, and
+   * the honest note is cheaper than the machinery.
+   */
+  entryDeps: EquipCmpOptions["entryDeps"];
   inspectExtras: ObjectInfoExtras;
   /**
    * The character's name, for the 'd' dump's suggested filename:

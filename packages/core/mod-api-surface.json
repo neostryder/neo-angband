@@ -940,6 +940,7 @@
     "lightRoom",
     "likert",
     "liveObjectIsKnownArtifact",
+    "liveTimedUiDeps",
     "loadDunProfile",
     "loadGame",
     "loadRoomTemplates",

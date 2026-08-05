@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 18 closed, 49 open.
+**67 items covering all 111 confirmed-absent citations** — 20 closed, 47 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Five of the eighteen closures are retractions rather than
+declared *closed*. **Five of the twenty closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -916,30 +916,54 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/player/calcs.ts:767`.
   Sites: `parity/ledger/ui-entry.yaml:128`
 
-- [ ] **3.7 Temporary resists never appear in the resist grid.**
-  Same two call sites: `timedElementEffect` defaults to `() => 0`
-  (`game/ui-entry.ts:1347`), and the untimed value comes from `p.race.elInfo` plus
-  the equipment cache rather than `state.elInfo`, so a temporary resist is not
-  shown **at all** — a stronger gap than "mark it as temporary".
-  **The note's reason was wrong and it made this look big:** it said the ported
-  timed registry carries no `temp_resist`. It does — `packages/core/src/player/types.ts:315`
-  and `obj/effects-info.ts:80` — and `player/calcs.ts:1172` already reads it into
-  `state.elInfo`. Feeding the seam is the whole job.
-  Sites: `parity/ledger/ui-entry.yaml:120`, `:124`
+- [x] **3.7 Temporary resists never appear in the resist grid.** DONE, together
+  with **3.8** — one wiring fix, and **both items blamed the wrong thing**.
 
-- [ ] **3.8 The timed-flag column reads empty.**
-  `timedObjectFlags` defaults to an empty `FlagSet` (`game/ui-entry.ts:1342`, plus
-  `OF_TRAP_IMMUNE` added directly), so `ui-entry.ts:1400` scores 0 for every timed
-  OF dup and the sheet cannot mark a flag temporary rather than permanent. Same
-  correction as 3.7: `oflagDup` **is** on the registry (`obj/effects-info.ts:76`,
-  parsed at `player/bind.ts:760`) and `player_flags_timed` **is** ported, at
-  `packages/core/src/player/calcs.ts:1100`, folding each active effect into
-  `state.flags`. Both call sites pass no deps —
-  `packages/web/src/charsheet.ts:270` and `packages/core/src/game/equip-cmp.ts:388`.
+  The `UiEntryDeps.timedElementEffect` seam existed and defaulted to `() => 0`
+  under a comment saying *"temp_resist is not on the ported timed registry"*. It
+  is: `TimedEffect.tempResist` (`packages/core/src/player/types.ts:341`). What was
+  missing was a supplier — `equipCmpDeps()` in `packages/web/src/main.ts` returned
+  `{ packs, inspectExtras, playerName }` and **no `entryDeps` at all**, so both
+  timed seams took their harness defaults in every game.
+
+  See **3.8** for the fix, the tests and the guard; they are the same change.
+  Sites: `parity/ledger/ui-entry.yaml:120`
+
+- [x] **3.8 The timed-flag column reads empty.** DONE — with **3.7**, as one
+  wiring fix.
+
+  `UiEntryDeps.timedObjectFlags` defaulted to an empty `FlagSet` under a comment
+  saying *"no timed OF-flag dups are ported"*. **`player_flags_timed` is ported**,
+  at `packages/core/src/player/calcs.ts:1097`, over the same `oflagDup` field this
+  seam needs. The PORT_TODO header had already recorded that fact for a different
+  item; this row and its comment both still asserted the opposite.
+
+  **The real gap was one function that returned three fields instead of four.**
+  `liveTimedUiDeps` (`game/ui-entry.ts`) now derives both seams from the live
+  bound timed table, and the shell passes it. One builder, not two literals at the
+  call site, so a second consumer — a dump, the sheet, a mod — cannot wire one and
+  forget the other.
+
+  Upstream's TRAPSAFE split is preserved and tested in both halves:
+  `player_flags_timed` skips `TMD_TRAPSAFE` (player.c:310-320) so the
+  `OF_TRAP_IMMUNE` learning hack can tell timed from innate, and `resolveUiDeps`
+  adds it back from `p.timed` directly. Either half alone looks right, so both are
+  asserted.
+
+  **The wiring is guarded by the TYPE, not by a test, and the limit is measured.**
+  `EquipCmpDeps.entryDeps` was optional, which is what let the omission compile;
+  it is required now, and dropping it is a compile error (verified). Passing `{}`
+  deliberately still typechecks and no test catches it — checked, and written at
+  the field rather than implied away, because guarding it would need a nominal
+  type for one field.
+
+  Five tests in `ui-entry.test.ts`, four mutations on the builder, all four bite.
+  One drives `characterGrid` twice — deps supplied versus omitted — so what is
+  asserted is the grid cell a player reads, not the builder's return value.
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
 - [ ] **3.9 The character sheet's launcher contribution is 0.**
-  `packages/core/src/game/ui-entry.ts:1392` pushes 0 for `PF_FAST_SHOT` with the
+  `packages/core/src/game/ui-entry.ts:1444` pushes 0 for `PF_FAST_SHOT` with the
   comment "deferred", and the reach it calls deferred **exists**:
   `packages/core/src/player/calcs.ts:1246` already reads the equipped launcher's
   `kind.kindFlags` for `KF.SHOOTS_ARROWS`. `launcher` also defaults to `null` at
@@ -949,7 +973,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   closed: `equipCmpCategories` (`game/ui-entry.ts:1965`) IS iterated by
   `equipCmpSummary` (`game/equip-cmp.ts:391`), and the combined row is asserted
   the same length as the columns (`game/equip-cmp.test.ts:116`).*
-  Sites: `packages/core/src/game/ui-entry.ts:1392`,
+  Sites: `packages/core/src/game/ui-entry.ts:1444`,
   `parity/ledger/ui-entry.yaml:133`, `parity/ledger/ui-player.yaml:108`,
   `parity/ledger/ui-entry.yaml:132`
 
@@ -1020,7 +1044,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Shapechange effects have no lore chain, and the port greys the entry rather
   than omitting it — a divergence forced by the real gap, so fixing the chain
   lets the divergence go too.
-  Sites: `packages/web/src/main.ts:3708`, `:3701`
+  Sites: `packages/web/src/main.ts:3720`, `:3701`
 
 - [ ] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
   Lead read, and only one of the row's three claims survived. The secondary glyph
