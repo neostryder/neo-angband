@@ -1390,6 +1390,42 @@ export function liveTimedUiDeps(
   return { timedObjectFlags: flags, timedElementEffect };
 }
 
+/**
+ * ALL THREE UiEntryDeps, from the live GameState. PORT_TODO 3.6, 3.7, 3.8.
+ *
+ * Use this, not `liveTimedUiDeps`, at any screen call site. The two builders exist
+ * because `liveTimedUiDeps` needs only a Player and a timed table (so a headless
+ * caller can use it), while `playerHas` needs the computed PlayerState - but a
+ * screen wants all three, and wiring a subset is exactly the bug these three items
+ * were:
+ *
+ *  - `characterGrid` is called at THREE places in `web/src/charsheet.ts` (:270,
+ *    :379, :651) and was passed no deps at any of them;
+ *  - `equipCmpDeps()` passed none either.
+ *
+ * So every seam took its harness default in every game: the timed-flag column and
+ * the temporary-resist row read empty (3.7, 3.8), and `playerHas` fell back to
+ * reading `p.pflags` - a field `Player` does not have - so **no PF_* intrinsic
+ * ability ever appeared** (3.6). `PlayerState.pflags` is computed and live
+ * (`player/calcs.ts:418`); it just had no route here.
+ *
+ * A single builder is the point. Wiring the timed pair and forgetting `playerHas`
+ * is a mistake I made in the first pass at 3.7/3.8 - I fixed the equip-compare
+ * screen and left the character sheet, which is the screen those two items are
+ * actually about.
+ */
+export function liveUiEntryDeps(state: GameState): UiEntryDeps {
+  const p = state.actor.player;
+  const ps = state.playerState;
+  return {
+    ...liveTimedUiDeps(p, state.world?.timedTable ?? []),
+    /* player_has(p, PF_*) (compute L945) over the COMPUTED pflags, which is where
+     * race + class + shape intrinsics are merged (calcs.ts). The old default read
+     * `p.pflags`, which does not exist, so it answered false for everything. */
+    playerHas: (flag: number): boolean => ps?.pflags.has(flag) ?? false,
+  };
+}
+
 export function resolveUiDeps(p: Player, deps: UiEntryDeps): ResolvedUiDeps {
   const timed = deps.timedObjectFlags ?? new FlagSet(OF_SIZE);
   if (p.timed[TMD.TRAPSAFE]) timed.on(OF.TRAP_IMMUNE);

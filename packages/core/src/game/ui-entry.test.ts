@@ -12,10 +12,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { OF } from "../generated/object-flags.js";
+import { PF } from "../generated/player-flags.js";
 import { ELEM } from "../generated/elements.js";
 import { STAT } from "../generated/stats.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types.js";
+import { PF_SIZE } from "../player/types.js";
+import { FlagSet } from "../bitflag.js";
 import type { ElementInfo } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { makeState } from "./harness.js";
@@ -25,6 +28,7 @@ import {
   characterGrid,
   combineValues,
   liveTimedUiDeps,
+  liveUiEntryDeps,
   resolveUiDeps,
   computeObjectValues,
   isUiEntryForKnownRune,
@@ -501,5 +505,47 @@ describe("liveTimedUiDeps feeds the character grid's timed columns", () => {
       JSON.stringify(withDeps.cells),
       "supplying the timed deps changes the row a player sees",
     ).not.toBe(JSON.stringify(without.cells));
+  });
+});
+
+/**
+ * liveUiEntryDeps: all three seams, and PORT_TODO 3.6's half specifically.
+ *
+ * `playerHas` defaulted to reading `p.pflags` - a field `Player` DOES NOT HAVE -
+ * so it answered false for every PF_* and no intrinsic ability ever appeared on
+ * the sheet. The data was live all along in `PlayerState.pflags`.
+ *
+ * This exists as a separate builder from `liveTimedUiDeps` because wiring a subset
+ * is the actual bug: the first pass at 3.7/3.8 supplied the timed pair to the
+ * equip-compare screen and left the character sheet - the screen those items
+ * describe - untouched.
+ */
+describe("liveUiEntryDeps supplies all three seams, not a subset", () => {
+  it("answers playerHas from the COMPUTED pflags, not the absent Player field", () => {
+    const st = makeState();
+    /* No playerState yet: the honest answer is false, and this pins that the
+     * fallback is a real answer rather than a crash. */
+    expect(liveUiEntryDeps(st).playerHas!(PF.UNLIGHT)).toBe(false);
+
+    const flags = new FlagSet(PF_SIZE);
+    flags.on(PF.UNLIGHT);
+    (st as unknown as { playerState?: { pflags: FlagSet } }).playerState = {
+      pflags: flags,
+    };
+
+    expect(liveUiEntryDeps(st).playerHas!(PF.UNLIGHT)).toBe(true);
+    expect(liveUiEntryDeps(st).playerHas!(PF.FAST_SHOT), "not a blanket yes").toBe(
+      false,
+    );
+  });
+
+  it("carries the timed pair too, so no caller can wire a subset", () => {
+    /* The reason this builder exists. If it returned only playerHas, every screen
+     * would be back to an empty timed column - which is the bug, one level up. */
+    const st = makeState();
+    const deps = liveUiEntryDeps(st);
+    expect(deps.timedObjectFlags, "timedObjectFlags present").toBeDefined();
+    expect(deps.timedElementEffect, "timedElementEffect present").toBeDefined();
+    expect(deps.playerHas, "playerHas present").toBeDefined();
   });
 });
