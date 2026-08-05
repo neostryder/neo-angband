@@ -53,6 +53,7 @@ import { objectPrep } from "../obj/make.js";
 import { ODESC } from "../obj/desc.js";
 import type { MonBlowEnv } from "../combat/mon-melee.js";
 import type { GameState } from "./context.js";
+import { playerOfHas } from "./context.js";
 import type { PlayerProjActor } from "./project-player.js";
 import { invenDamage } from "./project-obj.js";
 import { disenchantEquipment } from "./effect-general.js";
@@ -101,15 +102,6 @@ const STAT_ADJECTIVE: readonly string[] = [
   "hale",
 ];
 
-/** player_of_has: the racial flags plus every equipped item's. */
-function playerOfHas(state: GameState, flag: number): boolean {
-  const p = state.actor.player;
-  if (p.race.flags.has(flag)) return true;
-  for (let i = 0; i < p.body.count; i++) {
-    if (state.runeEnv.slotObject(i)?.flags.has(flag)) return true;
-  }
-  return false;
-}
 
 /** sustain_flag(stat) over the OF_SUST_ block. */
 function sustained(state: GameState, stat: number): boolean {

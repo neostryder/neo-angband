@@ -28,15 +28,25 @@
  *
  * PORTED ELSEWHERE (no RNG impact): the object knowledge bookkeeping upstream
  * threads here - object_grab / object_see / delist_object / object_delete - is
- * the knowledge subsystem (#24), carried by the env's carry/gainGold seams; and
- * react_to_slay blocking the monster-thief path (midx >= 0) is deferred exactly
- * as the EAT_ITEM blow already defers it (game/mon-side.ts / mon-cmd.ts). The
+ * the knowledge subsystem (#24), carried by the env's carry/gainGold seams. The
  * mon-vs-mon EAT_ITEM path wires stealMonsterItem from game/mon-cmd.ts.
+ *
+ * react_to_slay on the monster-thief path (L1548) IS ported, as of the fix for
+ * PORT_TODO 2.2. It used to be a commented-out disjunct with the word DEFERRED
+ * beside it, and the reason given - "as the EAT_ITEM blow already defers it" -
+ * was not true when it was written: the player's own pack has been protected
+ * since game/mon-side.ts:430, and a monster's floor pickup since
+ * game/monster-turn.ts:1363. Two of upstream's three react_to_slay sites were
+ * ported and this one cited the other two as precedent for skipping it, which
+ * is how a lone asymmetry survives a review: the excuse pointed at code that
+ * did the opposite of what the excuse claimed.
  */
 
 import { KF } from "../generated/index.js";
 import type { Rng } from "../rng.js";
 import type { GameObject } from "../obj/object.js";
+import type { Slay } from "../obj/types.js";
+import { reactToSlay } from "../combat/brand-slay.js";
 import type { Monster } from "./monster.js";
 import { getLore } from "./lore.js";
 import type { LoreStore } from "./lore.js";
@@ -123,6 +133,24 @@ export interface StealEnv {
   thiefName?(midx: number): string;
   /** monster_carry(cave, thief, obj) (midx >= 0 path). */
   thiefCarry?(midx: number, obj: GameObject): void;
+  /**
+   * cave_monster(cave, midx) (mon-util.c L1543): the thief itself, needed for
+   * react_to_slay at L1548. REQUIRED, unlike the two seams above, and the
+   * difference is deliberate: those two are a message and a hand-off, and an
+   * env that omits them loses a line of text or an item. This one decides
+   * whether the theft happens at all, so an env that could omit it would
+   * silently strip a monster's protection from its own slay-bearing gear -
+   * which is exactly how this branch sat unported behind a `?.` for as long as
+   * it did. Return null only when there is genuinely no such monster; upstream
+   * asserts one exists.
+   */
+  thief(midx: number): Monster | null;
+  /**
+   * The bound slay table, indexed the way `obj.slays` is (state.slays). Passed
+   * rather than looked up so react_to_slay is called from HERE, at the line
+   * that mirrors L1548, instead of being re-implemented by each env builder.
+   */
+  readonly slays: readonly (Slay | null)[];
 }
 
 /** pile_excise(&mon->held_obj, obj): drop the object from the held pile. */
@@ -227,11 +255,15 @@ export function stealMonsterItem(
       env.hitAndRun?.();
     }
   } else {
-    /* Monster thief (midx >= 0): mon-vs-mon EAT_ITEM (mon-cmd.ts). react_to_slay
-     * blocking the theft is DEFERRED (no RNG), as the player EAT_ITEM path. */
+    /* Monster thief (midx >= 0): mon-vs-mon EAT_ITEM (mon-cmd.ts). */
     const tName = env.thiefName?.(midx) ?? "It";
+    /* thief = cave_monster(cave, midx); assert(thief); (L1543-1544). */
+    const thief = env.thief(midx);
 
-    if (!obj /* || react_to_slay(obj, thief) -- DEFERRED */) {
+    /* react_to_slay(obj, thief) (L1548): an item carrying a slay the thief is
+     * vulnerable to cannot be lifted. Draws no RNG, so this changes the outcome
+     * without moving the stream - the reason it was invisible to seed parity. */
+    if (!obj || (thief && reactToSlay(obj, thief, env.slays))) {
       /* Fail to steal. */
       env.msg(`${tName} tries to steal something from ${mName}, but fails.`);
     } else {

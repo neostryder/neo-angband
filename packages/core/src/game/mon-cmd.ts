@@ -288,6 +288,9 @@ function monVsMonEatItem(state: GameState, mon: Monster, tMon: Monster): void {
       const thief = state.monsters[midx];
       if (thief) monsterCarry(thief.heldObj, obj, midx);
     },
+    /* cave_monster(cave, midx) + the slay table, for react_to_slay at L1548. */
+    thief: (midx) => state.monsters[midx] ?? null,
+    slays: state.slays,
   });
 }
 

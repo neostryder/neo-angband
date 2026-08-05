@@ -118,6 +118,11 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
       dropNear(state, obj, 0, state.actor.grid, true, true, floorEnv);
       msg(`You drop ${name}.`);
     },
+    /* The monster-thief branch (midx >= 0) is unreachable from here - the player
+     * steal command always passes -1 - but these are answered truthfully rather
+     * than stubbed, because a stub is a lie that survives a refactor. */
+    thief: (midx) => state.monsters[midx] ?? null,
+    slays: state.slays,
     wakeAll: (mon) => wakeNear(state, mon),
     hitAndRun: () => {
       msg("You vanish into the shadows!");

@@ -1283,6 +1283,7 @@
     "playerLearnRune",
     "playerLearnSlay",
     "playerObjectToBook",
+    "playerOfHas",
     "playerPickupGold",
     "playerPickupItem",
     "playerRandomName",

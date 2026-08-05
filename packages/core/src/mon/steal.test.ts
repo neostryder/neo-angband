@@ -4,6 +4,7 @@ import { KF, MON_TMD, RF } from "../generated/index.js";
 import { Rng } from "../rng.js";
 import { loc } from "../loc.js";
 import { KF_SIZE } from "../obj/types.js";
+import type { Slay } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { blankMonster } from "./monster.js";
 import type { Monster } from "./monster.js";
@@ -65,6 +66,8 @@ function mockEnv(
     money?: boolean;
     statusPenalty?: boolean;
     attRun?: boolean;
+    thief?: Monster | null;
+    slays?: readonly (Slay | null)[];
   } = {},
 ): { env: StealEnv; calls: EnvCalls } {
   const calls: EnvCalls = {
@@ -97,6 +100,12 @@ function mockEnv(
     hitAndRun: () => {
       calls.hitRun++;
     },
+    /* A REAL thief by default, not null, so react_to_slay is actually called on
+     * the monster path in every test that takes it - a null default would make
+     * the L1548 guard unable to fire and every one of those tests would pass
+     * whether or not the check existed. */
+    thief: () => (opts.thief === undefined ? blankMonster(makeRace()) : opts.thief),
+    slays: opts.slays ?? [],
   };
   return { env, calls };
 }
@@ -325,5 +334,77 @@ describe("steal_monster_item - monster thief path (midx >= 0)", () => {
     stealMonsterItem(rng, lore, mon, 3, thiefEnv);
 
     expect(calls.msgs.some((m) => m.includes("but fails"))).toBe(true);
+  });
+
+  /**
+   * react_to_slay (mon-util.c L1548). This branch was a commented-out disjunct
+   * marked DEFERRED, so a monster thief could lift the one item its victim was
+   * holding that it had no business touching. Two of upstream's three
+   * react_to_slay sites were already ported (game/mon-side.ts:430 for the
+   * player's pack, game/monster-turn.ts:1363 for a floor pickup), which is what
+   * made this a lone asymmetry rather than a missing feature.
+   *
+   * The pair below is the point: SAME seed, SAME held object, and the only
+   * difference is whether the thief's race carries the flag the item slays. If
+   * the guard is deleted, the first test fails on both assertions - the item
+   * leaves the victim's pile and reaches the thief.
+   */
+  /* `name` is load-bearing: react_to_specific_slay returns false for a nameless
+   * slay (brand-slay.ts:138, upstream's own guard), so a fixture without one
+   * would make this pair pass for the wrong reason. */
+  const evilSlay: Slay = { name: "evil creatures", raceFlag: RF.EVIL } as Slay;
+
+  it("refuses the theft when the item carries a slay the thief answers to", () => {
+    const lore: LoreStore = new Map();
+    const mon = makeThiefTarget();
+    const obj = heldObject();
+    /* obj->slays is indexed parallel to the bound slay table. */
+    (obj as { slays?: boolean[] }).slays = [true];
+    mon.heldObj = [obj];
+    let carriedTo: unknown = null;
+    const { env, calls } = mockEnv({
+      thief: blankMonster(makeRace({ flags: [RF.EVIL] })),
+      slays: [evilSlay],
+    });
+    const thiefEnv: StealEnv = {
+      ...env,
+      thiefName: () => "the thief",
+      thiefCarry: (midx, o) => {
+        carriedTo = { midx, obj: o };
+      },
+    };
+
+    stealMonsterItem(new Rng(1), lore, mon, 3, thiefEnv);
+
+    expect(calls.msgs.some((m) => m.includes("but fails"))).toBe(true);
+    /* And the victim keeps it: pile_excise is on the other side of the branch. */
+    expect(mon.heldObj).toEqual([obj]);
+    expect(carriedTo).toBeNull();
+  });
+
+  it("allows the theft when the thief does not answer to the item's slay", () => {
+    const lore: LoreStore = new Map();
+    const mon = makeThiefTarget();
+    const obj = heldObject();
+    (obj as { slays?: boolean[] }).slays = [true];
+    mon.heldObj = [obj];
+    let carriedTo: unknown = null;
+    const { env } = mockEnv({
+      /* Same slay-bearing item; a thief WITHOUT the flag. */
+      thief: blankMonster(makeRace({ flags: [] })),
+      slays: [evilSlay],
+    });
+    const thiefEnv: StealEnv = {
+      ...env,
+      thiefName: () => "the thief",
+      thiefCarry: (midx, o) => {
+        carriedTo = { midx, obj: o };
+      },
+    };
+
+    stealMonsterItem(new Rng(1), lore, mon, 3, thiefEnv);
+
+    expect(carriedTo).toEqual({ midx: 3, obj });
+    expect(mon.heldObj).toHaveLength(0);
   });
 });
