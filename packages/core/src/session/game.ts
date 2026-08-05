@@ -235,6 +235,8 @@ import { noticeNewLevel } from "../game/notice.js";
 import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
+import { describeObject } from "../game/describe.js";
+import { ODESC, objDescNameFormat } from "../obj/desc.js";
 import type {
   TimedTempBrandSlayRecord,
   PlayerIncCheckQueries,
@@ -656,7 +658,10 @@ function wireGame(
 
   // Rune learning (obj-knowledge.c learn-by-use): the registry tables plus
   // live equipment access. Reads through the state object so level changes
-  // and gear swaps need no rewiring.
+  // and gear swaps need no rewiring. `describeBase` is the real ODESC_BASE for
+  // the six rune / flag / curse messages (PORT_TODO 3.23); it is supplied HERE
+  // and only here, because the two other makeRuneEnv calls in this file are the
+  // documented placeholders wireGame replaces.
   state.runeEnv = makeRuneEnv(
     (slot) =>
       state.gear.store.get(state.actor.player.equipment[slot] ?? 0) ?? null,
@@ -666,6 +671,7 @@ function wireGame(
       slays: reg.objects.slays,
       curses: reg.objects.curses,
       properties: reg.objects.properties,
+      describeBase: (obj): string => describeObject(state, obj, ODESC.BASE),
       ...(reg.projections
         ? {
             elementNames: reg.projections
@@ -1838,8 +1844,13 @@ function wireGame(
        * the {name}/{kind}/{s}/{is} tags in weapon-related timed messages (the
        * temporary-brand on-begin/on-end lines) resolve against the CURRENTLY
        * wielded weapon, so a getter keeps it live across wield/takeoff. name /
-       * kind use the ODESC_BASE approximation (kind name) already adopted across
-       * the port (obj-knowledge.ts). No weapon => the obj == NULL tag forms. */
+       * PORT_TODO 3.23: {name} and {kind} are DIFFERENT upstream functions, and
+       * neither is the raw kind name this used to pass. {name} is
+       * object_desc(ODESC_PREFIX | ODESC_BASE) - so it carries the article - and
+       * {kind} is object_kind_name(kind, easy_know=true), which with easy_know
+       * set is exactly obj_desc_name_format(kind->name, NULL, false). Passing
+       * `w.kind.name` printed the raw `&` and `~` markers to the player.
+       * No weapon => the obj == NULL tag forms. */
       get weapon(): TimedWeaponDesc {
         const w = state.actor.weapon;
         /* No weapon => the obj == NULL tag forms. A sentinel with name/kind
@@ -1848,7 +1859,11 @@ function wireGame(
          * "are"), so exactOptionalPropertyTypes is satisfied without a getter
          * that returns undefined. */
         if (!w) return { name: "hands", kind: "hands", number: 2 };
-        return { name: w.kind.name, kind: w.kind.name, number: w.number };
+        return {
+          name: describeObject(state, w, ODESC.PREFIX | ODESC.BASE),
+          kind: objDescNameFormat(w.kind.name, null, false),
+          number: w.number,
+        };
       },
     },
     /* The same shared consequences drive the world clock's DoT ticks, terrain

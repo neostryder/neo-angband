@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag.js";
-import { ELEM, OF, TV } from "../generated/index.js";
+import { ELEM, OF, STAT, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
 import { RF_SIZE } from "../mon/types.js";
 import type { MonsterRace } from "../mon/types.js";
@@ -25,6 +25,7 @@ import {
   missileLearnOnRangedAttack,
   OBJ_NOTICE,
   objectHasRune,
+  objBaseName,
   objectLearnOnWield,
   objectLearnUnknownRune,
   objectRunesKnown,
@@ -711,5 +712,121 @@ describe("flag_message (obj-properties.c:86)", () => {
         sent(wearing(true, OFID.WIELD, (p, env, obj) => objectLearnOnWield(p, obj, env))),
       ).toBe(true);
     });
+  });
+});
+
+/**
+ * PORT_TODO 3.23: every one of the six messages in this module must go through
+ * `RuneEnv.describeBase` (object_desc ODESC_BASE), not the plain-name fallback.
+ *
+ * This test exists because the first pass at 3.23 wired the seam and proved it
+ * was SUPPLIED, and a mutation that made `baseName` ignore it entirely killed
+ * nothing. "The seam is present" and "the six call sites read it" are two
+ * different claims, and only the second one is the item.
+ */
+describe("the six ODESC_BASE messages read env.describeBase (PORT_TODO 3.23)", () => {
+  const SENTINEL = "<<described>>";
+
+  function sentinelFixture(): ReturnType<typeof fixture> {
+    const f = fixture();
+    /* A sentinel rather than a real describe: the assertion is about the ROUTE.
+     * A real name could coincide with the fallback and prove nothing. */
+    (f.env as { describeBase?: (o: GameObject) => string }).describeBase = () =>
+      SENTINEL;
+    /* obj-knowledge.c:1857 gates every one of these messages on
+     * p->upkeep->playing. With it false the fixture emits only the rune-learn
+     * line and NONE of the named messages - which made the negative assertion
+     * below pass without ever producing a name. */
+    f.p.upkeep.playing = true;
+    return f;
+  }
+
+  /* flagMessage returns early when the property has no `msg` (obj-knowledge.c
+   * L97-107's silent arm), and expandPropertyTags only prints a name where the
+   * template carries a {name} tag - so the flag has to be chosen for BOTH or the
+   * message never carries a name and the assertion is vacuous. Measured: NO
+   * WIELD-id flag in 4.2.6's object_property.txt has a msg at all. The flags
+   * whose messages say "Your {name} glows." are the SUSTAINS, and
+   * object_learn_on_wield reaches them the way upstream does - by adding
+   * sustain_flag(i) to the obvious mask for each nonzero modifier (L1826-1828).
+   * So the fixture needs a modifier, not just a flag. */
+  it("object_learn_on_wield names the object through the seam", () => {
+    const { p, env, messages } = sentinelFixture();
+    const obj = objectNew(kindOfTval(TV.RING));
+    obj.modifiers[STAT.STR] = 1;
+    obj.flags.on(OF.SUST_STR);
+    objectLearnOnWield(p, obj, env);
+    expect(messages.length, "the wield produced a message").toBeGreaterThan(0);
+    expect(messages.join(" | ")).toContain(SENTINEL);
+  });
+
+  it("equip_learn_flag names the object through the seam", () => {
+    const { p, eq, env, messages } = sentinelFixture();
+    const flag = flagWithId(OFID.TIMED);
+    const obj = objectNew(kindOfTval(TV.RING));
+    obj.flags.on(flag);
+    eq[0] = obj;
+    equipLearnFlag(p, env, flag);
+    expect(messages.length, "the flag produced a message").toBeGreaterThan(0);
+    expect(messages.join(" | ")).toContain(SENTINEL);
+  });
+
+  it("no message falls back to the plain kind name while the seam is wired", () => {
+    /* The negative half: with the seam wired, objBaseName's output must not
+     * appear. This is what a `return objBaseName(obj)` mutation trips. */
+    const { p, eq, env, messages } = sentinelFixture();
+    const flag = flagWithId(OFID.TIMED);
+    const obj = objectNew(kindOfTval(TV.RING));
+    obj.flags.on(flag);
+    eq[0] = obj;
+    equipLearnFlag(p, env, flag);
+    const plain = objBaseName(obj);
+    expect(plain.length, "fixture: the fallback produces a real name").toBeGreaterThan(0);
+    expect(messages.join(" | "), "the fallback leaked").not.toContain(plain);
+  });
+});
+
+/**
+ * A source-level ratchet for the other five ODESC_BASE sites.
+ *
+ * Measured, honestly: mutating the shared `baseName` dispatcher kills three
+ * behavioural tests, but reverting an INDIVIDUAL message site back to
+ * `objBaseName(obj)` kills nothing for three of the six - those messages need a
+ * curse record, a timed equip pass and an element property to fire, and driving
+ * each one is a lot of fixture for a one-token regression. So the invariant is
+ * checked where it is cheap and total instead: `objBaseName` must be referenced
+ * exactly ONCE in the module, inside the dispatcher. Any message site that goes
+ * back to the plain name adds a second reference and fails here.
+ *
+ * This is a structural guard, not a behavioural one, and it is written down as
+ * such - it cannot tell whether the seam produces the right STRING, only that
+ * nothing bypasses it.
+ */
+describe("no ODESC_BASE site bypasses the seam (PORT_TODO 3.23)", () => {
+  const src = readFileSync(new URL("./knowledge.ts", import.meta.url), "utf8");
+
+  it("objBaseName is used exactly once, in the baseName dispatcher", () => {
+    /* Exclude doc comments and objBaseName's own declaration - neither is a use. */
+    const uses = src
+      .split(/\r?\n/)
+      .filter(
+        (l) =>
+          /\bobjBaseName\s*\(/.test(l) &&
+          !/^\s*\*/.test(l) &&
+          !/^export function objBaseName/.test(l),
+      );
+    expect(uses, "one call site, the fallback in baseName()").toEqual([
+      "  return env.describeBase?.(obj) ?? objBaseName(obj);",
+    ]);
+  });
+
+  it("every message site names the object through baseName(env, obj)", () => {
+    const sites = src
+      .split(/\r?\n/)
+      .filter((l) => /baseName\(env, obj\)|\boName\b/.test(l) && !/^\s*\*/.test(l));
+    /* Six upstream ODESC_BASE calls in obj-knowledge.c; the port's `oName`
+     * locals plus flagMessage's parameter and its one use. A change to the
+     * count means a site was added or removed - read it, do not just bump it. */
+    expect(sites.length, "the ODESC_BASE surface changed size").toBe(12);
   });
 });
