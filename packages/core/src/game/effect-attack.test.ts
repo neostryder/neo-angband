@@ -15,11 +15,14 @@ import { Dice } from "../dice.js";
 import type { MonsterRace } from "../mon/types.js";
 import { addMon, makeRace, makeState, monReg } from "./harness.js";
 import type { GameState } from "./context.js";
-import { basicPlayerActor } from "./project-cast.js";
+import { basicPlayerActor, monsterCastSource } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import { registerAttackHandlers } from "./effect-attack.js";
+import { buildScore } from "../score/score.js";
+import { makeTakeHitHooks } from "./take-hit-hooks.js";
+import { takeHit } from "../player/take-hit.js";
 
 const projections = bindProjections(
   JSON.parse(
@@ -401,5 +404,95 @@ describe("EF_TOUCH's monster-source branches (A4)", () => {
 
     expect(adjacent.hp, "the ring around the player still lands").toBeLessThan(50);
     expect(nearDecoy.hp, "and the decoy is irrelevant to a player source").toBe(50);
+  });
+});
+
+/**
+ * monster_desc(MDESC_DIED_FROM) as the death cause. PORT_TODO 3.2.
+ *
+ * MDESC_DIED_FROM is MDESC_SHOW | MDESC_IND_VIS: the full name, with the
+ * indefinite article an ordinary monster gets and a unique does not. Both death
+ * sites wrote the bare race name, so a tombstone and a high-score row read
+ * "Killed by kobold".
+ *
+ * THE ITEM WAS WRONG ABOUT ITS THIRD SITE, in the helpful direction. It said the
+ * high-score entry "cannot name the killer at all because it is not wired through
+ * GameState". It is wired: `take-hit-hooks.ts:68` writes `p.diedFrom = killer` and
+ * `score.ts:98` reads it as `how`. So fixing the two death sites fixes the score
+ * row with them, and the last test here walks that whole chain.
+ *
+ * WHAT THESE TESTS DRIVE, and why not the handler. `handleDAMAGE` reaches its
+ * killer through `damageEffectApplyToPlayer`, which needs `ctx.env.player` -
+ * something this file's minimal `env()` does not build (the working damage tests
+ * above land through the PROJECTION path instead). Rather than grow a player
+ * adapter for one string, these tests exercise `monsterCastSource`, which is the
+ * function the projection death cause actually comes from, and then push its
+ * string through the real `takeHit` and `buildScore`. Stated rather than left as
+ * an apparent oversight.
+ */
+describe("the death cause names the killer as upstream does", () => {
+  /** A race with a chosen name, for the article rules. */
+  function namedRace(name: string, flags: number[] = []): MonsterRace {
+    return { ...makeRace({ flags }), name } as MonsterRace;
+  }
+
+  function killerFor(name: string, flags: number[] = []): string {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, namedRace(name, flags), loc(5, 6), { hp: 50 });
+    /* source_monster(midx) (project-cast.ts): the source a monster projection
+     * carries, and origin.killer is what projectPlayer hands to takeHit. */
+    return monsterCastSource(state, mon.midx).killer ?? "";
+  }
+
+  it('an ordinary monster gets its indefinite article ("a kobold")', () => {
+    expect(killerFor("kobold")).toBe("a kobold");
+  });
+
+  it('a vowel-initial name gets "an", not "a"', () => {
+    expect(killerFor("orc archer")).toBe("an orc archer");
+  });
+
+  it("a UNIQUE gets no article at all", () => {
+    /* monsterDesc's unique branch returns the bare name (desc.ts:186). That is
+     * also why the "Killed <unique>" history line at session/game.ts:951 is
+     * correct to use race.name directly - checked against monsterDesc, not
+     * assumed from the comment that says so. */
+    expect(killerFor("Grip, Farmer Maggot's dog", [RF.UNIQUE])).toBe(
+      "Grip, Farmer Maggot's dog",
+    );
+  });
+
+  it("still answers for a midx with no monster", () => {
+    /* The `?? "a monster"` fallback: a dead or invalid source must not produce
+     * "undefined" as a cause of death. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    expect(monsterCastSource(state, 999).killer).toBe("a monster");
+  });
+
+  it("carries the article through takeHit into the high-score row", () => {
+    /* The chain the item said was broken: killer -> takeHit -> p.diedFrom ->
+     * score.how. Driven with the REAL hooks, because makeState's defaults hurt
+     * the player without recording the death - a first draft of these tests read
+     * an empty diedFrom and would have passed against any killer name at all. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, namedRace("kobold"), loc(5, 6), { hp: 50 });
+    const killer = monsterCastSource(state, mon.midx).killer!;
+    const p = state.actor.player;
+    p.chp = 1;
+
+    takeHit(
+      { ...p, get chp() { return p.chp; }, set chp(v) { p.chp = v; } } as never,
+      30,
+      killer,
+      makeTakeHitHooks(state),
+    );
+
+    expect(p.diedFrom, "recordDeath ran").toBe("a kobold");
+    const entry = buildScore(p, {
+      diedFrom: p.diedFrom,
+      turn: state.turn,
+      depth: state.chunk.depth,
+    });
+    expect(entry.how).toBe("a kobold");
   });
 });
