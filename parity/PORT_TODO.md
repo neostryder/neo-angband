@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 118 confirmed-absent citations** — 33 closed, 34 open.
+**68 items covering all 122 confirmed-absent citations** — 34 closed, 34 open.
 The citation count **went up, not down**, and that is the adjudication working:
 seven rows this session moved from unadjudicated to `partial`, and a `partial` is
 a confirmed-absent citation. Reading the ledger finds work as often as it kills
@@ -108,7 +108,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 153 of 331 done, 23 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 172 of 331 done, 34 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -117,16 +117,27 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `obj-knowledge`, all four `store-*`, `player-history`, `obj-desc`, `mon-lore`,
   `mon-lore-describe`, `game-effect-terrain`, `game-effect-teleport`,
   `game-player-path`, `game-mon-cmd`, `game-cave-cmd`, `game-effect-melee`,
-  `game-floor`, `game-known` and `game-mon-group`.
+  `game-floor`, `game-known`, `game-mon-group`, `combat-melee`, `game-thrust`,
+  `obj-power`, `effects-interpreter`, `game-effect-detect`, `game-effect-env`,
+  `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon` and
+  `game-mon-list`.
 
   The tally, **read from the TSV rather than carried forward** — the numbers this
   paragraph used to quote had drifted, because they were incremented by hand while
-  rows were being re-verdicted elsewhere: **55 `ported`, 24 `partial`, 21
-  `stale-doc`, 15 `divergence`, 5 `not-a-deferral`, 4 `note-is-fix`, 3 `n-a`
-  against 26 `real`**. So **five rows in six are not owed as written**, and the
+  rows were being re-verdicted elsewhere: **64 `ported`, 25 `partial`, 21
+  `stale-doc`, 16 `divergence`, 7 `not-a-deferral`, 6 `n-a`, 4 `note-is-fix`
+  against 29 `real`**. So **five rows in six are not owed as written**, and the
   owed ones included the two live defects at **1.2** and **2.17**, both since
   FIXED — 2.17's first verdict was wrong in a way worth reading, because the
-  instrument was a grep. **178 remain.**
+  instrument was a grep. **159 remain.**
+
+  **Adjudicating a row is how the live defects get found.** `combat-melee.yaml:91`
+  claimed arena mode was "not begun". Arena mode is finished — but reading
+  `mon_take_hit` to prove it turned up **two of its branches that no production
+  caller could reach**, both fixed at **2.18**. The row was wrong, and being
+  wrong in that particular way is what surfaced them: a note that sends you to
+  read a function you would not otherwise open pays for itself even when its
+  claim is false.
 
   **Finish a file before starting another.** The first batch of this session took
   one row from each of five files and completed none of them, which reads as
@@ -914,6 +925,53 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/mon/steal.ts:54` and used at `:148`.
   Sites: `parity/ledger/game-mon-cmd.yaml:62`
 
+- [x] **2.21 Two `mon_take_hit` branches no production caller could reach.** DONE
+  — found while proving **0.1**'s `combat-melee.yaml:91` wrong, and both are the
+  shape this list keeps re-learning: **an optional hook nothing passes is a
+  branch that cannot run.**
+
+  `MonTakeHitHooks` carried five optional fields. Two of them had **no
+  production supplier at all**, and both were ported, tested, and dead:
+
+  - **`coverTracksBroken`** — `p->timed[TMD_COVERTRACKS] = 0` (`mon-util.c:1285`)
+    on every damaging hit. Zero suppliers; the only references outside the
+    declaration were two lines in `mon/take-hit.test.ts` and a forwarding
+    conditional in `project-monster.ts` fed by nobody. So a Ranger who cast
+    Cover Tracks (`class.txt:1562`, level 20, in the port's content pack) kept
+    the timer through combat and stayed unseen by distant monsters
+    (`mon-ranged.ts:296` quarters their range, `monster-turn.ts:277` hides the
+    player). Upstream takes it away on the first blow.
+  - **`primaryGroupSize`** — `monster_primary_group_size` feeding
+    `monster_can_be_scared`'s per-member fear save (`mon-predicate.c:296`). One
+    supplier existed, `mon-death.ts:431`, and it is the **monster-on-monster**
+    path (`mon-util.c:1242`). The player path defaulted to 1, so `count = 0`,
+    so the save never fired for anything the player hit, and its `one_in_(20)`
+    draws never reached the RNG stream.
+
+  Fixed by deriving both from the live state in one place —
+  `gameTakeHitHooks(state, mon)` in `game/context.ts` — rather than adding two
+  more fields four call sites must remember. Wired at all four:
+  `player-turn.ts` (via `buildMeleeHooks`, which feeds the pure combat layer's
+  two calls), `effect-melee.ts`, `project-monster.ts`, `ranged-cmd.ts`. The dead
+  `ProjectMonsterHooks.coverTracksBroken` forwarding field is deleted.
+
+  > **The first census I wrote could not fail.** It asked whether each caller's
+  > file *contained* the string `gameTakeHitHooks` — and the **import line** made
+  > that true. Deleting the spread from all three game-layer call sites left it
+  > green. It now counts `...gameTakeHitHooks(` occurrences against `monTakeHit(`
+  > occurrences, and unwiring any one site fails it. Same lesson as
+  > `a-guard-that-cannot-fire`, re-earned in the guard written for it.
+
+  All six tests in `packages/core/src/game/mon-take-hit-hooks.test.ts` are
+  mutation-verified: constant-1 group size, no-op cover-tracks, and unwiring
+  each of the four suppliers each kill at least one. **Three source comments
+  claiming arena mode was "not modelled" were corrected in the same pass**
+  (`effect-melee.ts:23`, `mon/take-hit.ts:17`, `mon/predicate.ts:11`) — arena is
+  finished, which is what `combat-melee.yaml:91` was wrong about.
+  Sites: `packages/core/src/game/context.ts:1322`,
+  `packages/core/src/mon/take-hit.ts:180`,
+  `packages/core/src/game/player-turn.ts:185`
+
 - [ ] **2.19 A commanded monster's blow does nothing but damage to a monster.**
   The monster-target branches of the mon-blow-effect handlers reduce to damage plus
   the critical stun, so blind / confuse / poison and the blinked teleport are lost
@@ -1452,7 +1510,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**67 items, 118 citations, 81 `real` + 37
+2. the counts stated at the top (**68 items, 122 citations, 84 `real` + 38
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

@@ -54,7 +54,13 @@ import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
 import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge.js";
 import { playerClearTimed, playerTimedGradeEq } from "../player/timed.js";
 import type { GameState, PlayerCommand } from "./context.js";
-import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
+import {
+  arenaInterceptDeath,
+  deleteMonster,
+  gameTakeHitHooks,
+  movePlayer,
+  squareMonster,
+} from "./context.js";
 import { gearGet } from "./gear.js";
 import { noticeStuff } from "./notice.js";
 import { repeatBeginCommand } from "./repeat.js";
@@ -176,6 +182,7 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
 
   const hooks: MeleeEffectHooks = {
     takeHit: {
+      ...gameTakeHitHooks(state, mon),
       ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
     },
     /* Confusion attack (blow_side_effects, player-attack.c:672-677). */

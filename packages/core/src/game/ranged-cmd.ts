@@ -51,7 +51,12 @@ import { playerClearTimed } from "../player/timed.js";
 import { gearGet, gearObjectForUse } from "./gear.js";
 import { dropNear, floorPile, floorObjectForUse, itemIsAvailable } from "./floor.js";
 import { invenTakeoff, playerConfuseDir } from "./obj-cmd.js";
-import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context.js";
+import {
+  squareMonster,
+  deleteMonster,
+  arenaInterceptDeath,
+  gameTakeHitHooks,
+} from "./context.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target.js";
 import { describeObject } from "./describe.js";
@@ -207,6 +212,7 @@ function rangedHelper(
        * is handled uniformly (player-attack.c:1191). Death messaging stays
        * explicit here (empty note), matching the port's ranged death lines. */
       const res = monTakeHit(state.rng, mon, dmg, "", {
+        ...gameTakeHitHooks(state, mon),
         ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
         ...(state.arenaLevel
           ? { onArenaDeath: (m) => void arenaInterceptDeath(state, m) }
