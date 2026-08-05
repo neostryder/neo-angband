@@ -1227,6 +1227,7 @@
     "parseTilePrefs",
     "parseTilePrefsInto",
     "parserErrorText",
+    "pathAnalyse",
     "pickAndPlaceDistantMonster",
     "pickAndPlaceMonster",
     "pickAndPlaceMonsterLive",
