@@ -22,7 +22,7 @@
  * tickMonsterMarks() until the world-clock port absorbs it.
  */
 
-import { FEAT, MFLAG, OF, RF, TF, TMD } from "../generated/index.js";
+import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import {
@@ -30,9 +30,11 @@ import {
   featIsGranite,
   featIsMagma,
   featIsPassable,
+  featIsLos,
   featIsProjectable,
   featIsQuartz,
 } from "../world/chunk.js";
+import { PROJECT, projectPath } from "../world/project.js";
 import { caveIlluminate } from "../gen/cave.js";
 import {
   squareIsNoEsp,
@@ -140,6 +142,56 @@ export function squareMemorize(state: GameState, grid: Loc): void {
  */
 export function squareForget(state: GameState, grid: Loc): void {
   state.known.feat[gi(state, grid)] = -1;
+}
+
+/**
+ * path_analyse (mon-util.c:209): "analyse the path from player to
+ * infravision-seen monster and forget any grids which would have blocked line of
+ * sight". PORT_TODO 2.8.
+ *
+ * The correction that makes infravision honest. You sense a warm-blooded monster
+ * through grids you have never lit, and your remembered map may claim a wall
+ * stands between you - which cannot be true, or you would not be sensing it. So
+ * every intervening grid the MEMORY says blocks LOS is un-remembered, and its
+ * SEEN bit on the live map is cleared.
+ *
+ * Three details that are easy to get wrong, all measured against the C:
+ *
+ *  - the test reads the REMEMBERED feature (`square_allowslos(player->cave, ...)`,
+ *    L224), not the live one. A grid whose memory is a wall gets forgotten even
+ *    when the live terrain is floor - that is the whole point;
+ *  - an UNKNOWN grid counts as blocking. Upstream's player->cave holds FEAT_NONE
+ *    there, and "unknown grid" carries no flags at all in terrain.txt - so no
+ *    LOS - which means path_analyse clears SQUARE_SEEN on unknown intervening
+ *    grids too. Treating unknown as transparent would be the "helpful" reading and
+ *    it is wrong;
+ *  - the loop stops at `path_n - 1` (L222), excluding the monster's own grid.
+ *
+ * Upstream's `if (c != cave) return;` guard has no analogue: this port has one
+ * live chunk and one known map. square_light_spot is presentation (the ratified
+ * redraw divergence).
+ */
+export function pathAnalyse(state: GameState, grid: Loc): void {
+  const path = projectPath(
+    state.chunk,
+    state.z.maxRange,
+    state.actor.grid,
+    grid,
+    PROJECT.NONE,
+  );
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const g = path[i] as Loc;
+    /* square_allowslos(player->cave, path_g[i]) over the REMEMBERED feat; -1
+     * (unknown) is FEAT_NONE, which has no LOS flag. */
+    const remembered = knownFeat(state, g);
+    const allowsLos =
+      remembered >= 0 && featIsLos(state.chunk.features, remembered);
+    if (!allowsLos) {
+      state.chunk.sqinfoOff(g, SQUARE.SEEN);
+      squareForget(state, g);
+    }
+  }
 }
 
 /**
@@ -747,7 +799,8 @@ export function updateMon(
         }
       }
 
-      /* path_analyse (learn intervening-square terrain): DEFERRED. */
+      /* "Learn about intervening squares" (mon-util.c:390). */
+      pathAnalyse(state, mon.grid);
     }
   }
 

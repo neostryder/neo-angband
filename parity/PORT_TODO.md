@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 14 closed, 53 open.
+**67 items covering all 111 confirmed-absent citations** — 15 closed, 52 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Three of the fourteen closures are retractions rather than
+declared *closed*. Three of the fifteen closures are retractions rather than
 work — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** was already built and named by a
 stale `DEFERRED` comment (whose neighbourhood then yielded a real gap). Both are written up in place, because a
@@ -493,9 +493,34 @@ is reachable in play and a test constructs the case that used to be wrong.**
   instrument saying so: `packages/core/src/game/pile.upstream.test.ts:28`.
   Sites: `packages/core/src/game/gear.ts:1173`
 
-- [ ] **2.8 `path_analyse` is absent.**
-  No `pathAnalyse` anywhere, so intervening-square terrain is never learned along
-  a path.
+- [x] **2.8 `path_analyse` is absent.** DONE — and this one's description was
+  accurate, which after 2.3, 2.12 and 2.15 is worth saying.
+
+  It is the correction that makes infravision honest: you sense a warm-blooded
+  monster through grids you have never lit, so a remembered WALL between you and
+  it cannot be real, and it gets un-remembered. Without it the player's map keeps
+  contradicting what the player can see.
+
+  Everything it needed already existed — `projectPath`, `featIsLos`,
+  `squareForget`, `sqinfoOff` — so this was a missing CALL more than a missing
+  function, and the call site said `path_analyse ... DEFERRED` a line above the
+  place it belonged.
+
+  Three details measured against the C rather than reasoned about:
+  - the test reads the **remembered** feature (`square_allowslos(player->cave,
+    ...)`, mon-util.c:224), not the live one. A grid whose memory is a wall is
+    forgotten even when the live terrain is floor — that is the entire point, and
+    substituting the live feat kills two tests;
+  - an **unknown** grid counts as blocking. Upstream's `player->cave` holds
+    `FEAT_NONE` there, and `name:unknown grid` in `terrain.txt` carries **no flags
+    at all** — so no LOS — which means `path_analyse` clears `SQUARE_SEEN` on
+    unknown intervening grids too. Treating unknown as transparent is the
+    "helpful" reading and it is wrong; there is a test that pins it;
+  - the loop stops at `path_n - 1`, excluding the monster's own grid.
+
+  Five tests in `known.test.ts`, driven through `updateMon` rather than by calling
+  `pathAnalyse` directly, because the gap was the wiring. Six mutations, six dead
+  tests.
   Sites: `packages/core/src/game/known.ts:750`
 
 - [ ] **2.9 The known-object shadow cave.**
