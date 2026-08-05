@@ -673,6 +673,22 @@ function slotIndexByType(p: Player, type: string): number {
 }
 
 /**
+ * equipped_item_by_slot_name(p, "shooting"): the wielded launcher, or null.
+ *
+ * Upstream looks the slot up by NAME; the port's body slots carry a `type`, and
+ * `player/calcs.c`'s own launcher analysis already equates "shooting" with type
+ * `BOW` (calcs.ts's equipment loop, `isBowSlot`). This is the shared accessor so
+ * that equation lives in exactly one place: two consumers had DEFERRED notes
+ * saying they could not reach the launcher (`game/ui-entry.ts`'s PF_FAST_SHOT
+ * push and `game/char-sheet.ts`'s launcher seam) while the reach was three lines
+ * of body-slot walk. PORT_TODO 3.9.
+ */
+export function equippedLauncher(p: Player, env: RuneEnv): GameObject | null {
+  const slot = slotIndexByType(p, "BOW");
+  return slot < 0 ? null : env.slotObject(slot);
+}
+
+/**
  * equip_learn_on_ranged_attack: firing teaches the to-hit rune from any
  * off-standard equipment except the weapon and launcher.
  */

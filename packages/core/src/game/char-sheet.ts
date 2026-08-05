@@ -42,6 +42,7 @@ import { TMD } from "../generated/index.js";
 import { EXTRACT_ENERGY } from "../mon/monster.js";
 import { BTH_PLUS_ADJ } from "../combat/hit.js";
 import { objectToDam, objectToHit } from "../combat/brand-slay.js";
+import { equippedLauncher } from "../obj/knowledge.js";
 import { PY_MAX_LEVEL, SKILL, STAT_MAX } from "../player/types.js";
 import { modifyStatValue, player_exp } from "../player/calcs.js";
 import { cnvStat } from "./display.js";
@@ -147,7 +148,8 @@ export interface CharSheetDeps {
   meleeWeapon?: GameObject | null;
   /**
    * equipped_item_by_slot_name(player, "shooting") (L760): the wielded
-   * launcher, or null. Default null - actor carries no launcher accessor.
+   * launcher, or null. Defaults to the LIVE equipped launcher (obj/knowledge.ts
+   * equippedLauncher); override only to model a hypothetical.
    */
   launcher?: GameObject | null;
 }
@@ -199,7 +201,13 @@ function resolveDeps(state: GameState, deps: CharSheetDeps): ResolvedDeps {
     wizard: deps.wizard ?? false,
     totalWinner: deps.totalWinner ?? false,
     meleeWeapon: deps.meleeWeapon ?? state.actor.weapon,
-    launcher: deps.launcher ?? null,
+    /* Derived, not defaulted: `meleeWeapon` above already falls back to the live
+     * actor, and this seam's `?? null` was the only one in resolveDeps with no
+     * supplier anywhere in the tree - so the sheet's ranged to-hit/to-dam rows
+     * (L437-442) read 0 for every character who had a bow equipped. Deriving it
+     * here rather than adding a supplier means no caller has to remember.
+     * PORT_TODO 3.9. */
+    launcher: deps.launcher ?? equippedLauncher(player, state.runeEnv),
   };
 }
 
