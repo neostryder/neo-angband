@@ -130,6 +130,7 @@ import {
   TMD,
   cmdDisableRepeat,
   ignoreDrop,
+  liveTimedUiDeps,
   ignoreDropQueue,
   repeatPrevAllowed,
   projectPath,
@@ -2035,10 +2036,21 @@ const uiEntryPacks = loadUiEntryPacks();
  * the 'd' dump's suggested "<name>_equip.txt". */
 function equipCmpDeps(): {
   packs: typeof uiEntryPacks;
+  entryDeps: ReturnType<typeof liveTimedUiDeps>;
   inspectExtras: ObjectInfoExtras;
   playerName: string;
 } {
-  return { packs: uiEntryPacks, inspectExtras, playerName };
+  return {
+    packs: uiEntryPacks,
+    /* player_flags_timed / get_timed_element_effect (ui-entry.c L928, L1064).
+     * This returned no entryDeps at all, so both seams took their harness
+     * defaults and the timed-flag column and temporary-resist row read empty for
+     * every character in every game - PORT_TODO 3.7 and 3.8. Rebuilt per call, so
+     * it reflects the buffs active right now rather than at boot. */
+    entryDeps: liveTimedUiDeps(state.actor.player, state.world?.timedTable ?? []),
+    inspectExtras,
+    playerName,
+  };
 }
 
 /**

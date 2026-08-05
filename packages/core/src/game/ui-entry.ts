@@ -33,6 +33,7 @@ import { FlagSet } from "../bitflag.js";
 import { OF } from "../generated/object-flags.js";
 import { PF } from "../generated/player-flags.js";
 import { TMD } from "../generated/player-timed.js";
+import type { TimedEffect } from "../player/types.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { STAT } from "../generated/stats.js";
 import { ELEM, ELEMENT_ENTRIES } from "../generated/elements.js";
@@ -1336,6 +1337,57 @@ interface ResolvedUiDeps {
   timedObjectFlags: FlagSet;
   timedElementEffect: (elem: number) => number;
   playerHas: (flag: number) => boolean;
+}
+
+/**
+ * The two timed UiEntryDeps, built from the LIVE bound timed table. PORT_TODO 3.7
+ * and 3.8.
+ *
+ * Both seams existed, both defaulted to "no timed effect", and **nothing ever
+ * supplied them** - `equipCmpDeps()` in the web shell returns
+ * `{ packs, inspectExtras, playerName }` and no `entryDeps`, so the character
+ * sheet's timed-flag column read empty and the resist grid never showed a
+ * temporary resist, in every game.
+ *
+ * THE STATED CAUSE OF BOTH ITEMS WAS WRONG. 3.8 blamed `player_flags_timed()`
+ * "not ported": it is ported, at `player/calcs.ts:1097`, and this function is the
+ * same loop over the same field. 3.7 blamed `temp_resist` being absent from the
+ * ported timed registry: `TimedEffect.tempResist` is right there
+ * (`player/types.ts:341`), beside `oflagDup` (`:347`). The DEFERRED comment on the
+ * seams said so too and had outlived both.
+ *
+ * A builder rather than two literals at the call site, so a second consumer -
+ * the character sheet, a dump, a mod - cannot wire one and forget the other.
+ */
+export function liveTimedUiDeps(
+  p: Player,
+  timedTable: readonly TimedEffect[],
+): Pick<UiEntryDeps, "timedObjectFlags" | "timedElementEffect"> {
+  /* player_flags_timed (player.c:310-320), the same rule calcs.ts:1097 applies:
+   * OR each active effect's oflag_dup, EXCEPT TMD_TRAPSAFE - which resolveUiDeps
+   * adds back from p.timed directly, so the OF_TRAP_IMMUNE learning hack can tell
+   * timed from innate. Excluding it here and re-adding it there is upstream's
+   * split, not a redundancy. */
+  const flags = new FlagSet(OF_SIZE);
+  for (let i = 0; i < timedTable.length; i++) {
+    const eff = timedTable[i];
+    if (!eff || !p.timed[i]) continue;
+    if (i === TMD.TRAPSAFE) continue;
+    if (eff.oflagDup !== 0) flags.on(eff.oflagDup);
+  }
+
+  /* get_timed_element_effect (ui-entry.c L1064): 1 when any active effect grants
+   * a temporary resist to `elem`. */
+  const timedElementEffect = (elem: number): number => {
+    for (let i = 0; i < timedTable.length; i++) {
+      const eff = timedTable[i];
+      if (!eff || !p.timed[i]) continue;
+      if (eff.tempResist === elem) return 1;
+    }
+    return 0;
+  };
+
+  return { timedObjectFlags: flags, timedElementEffect };
 }
 
 export function resolveUiDeps(p: Player, deps: UiEntryDeps): ResolvedUiDeps {

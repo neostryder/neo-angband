@@ -24,6 +24,8 @@ import {
   buildUiEntryConfig,
   characterGrid,
   combineValues,
+  liveTimedUiDeps,
+  resolveUiDeps,
   computeObjectValues,
   isUiEntryForKnownRune,
   UI_ENTRY_RESIST0_RES_VUL,
@@ -31,6 +33,8 @@ import {
   UI_ENTRY_VALUE_NOT_PRESENT,
 } from "./ui-entry.js";
 import type { UiEntryConfig } from "./ui-entry.js";
+import type { TimedEffect } from "../player/types.js";
+import { TMD } from "../generated/player-timed.js";
 
 /* ------------------------------------------------------------------ */
 /* Fixtures                                                            */
@@ -390,5 +394,112 @@ describe("characterGrid (ui-player.c assembly)", () => {
     const st = makeState();
     const grid = characterGrid(st, config);
     expect(grid.statModPanel.rows.every((r) => r.label === "")).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* liveTimedUiDeps: PORT_TODO 3.7 and 3.8                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The timed contributions to the character screen. Both `UiEntryDeps` seams
+ * existed and defaulted to "no timed effect", and NOTHING supplied them - the
+ * web shell's `equipCmpDeps()` returned no `entryDeps` at all - so the
+ * timed-flag column read empty and the resist grid never showed a temporary
+ * resist, for every character in every game.
+ *
+ * BOTH ITEMS BLAMED THE WRONG THING. 3.8 said `player_flags_timed()` is "not
+ * ported": it is, at `player/calcs.ts:1097`, over the same `oflagDup` field.
+ * 3.7 said `temp_resist` is not on the ported timed registry: it is,
+ * `TimedEffect.tempResist`. The seams' own comments said the same and had
+ * outlived both. Only the wiring was missing.
+ *
+ * Driven through `characterGrid`, so what is asserted is the GRID CELL a player
+ * would read, not the builder's return value.
+ */
+describe("liveTimedUiDeps feeds the character grid's timed columns", () => {
+  /** A timed table where effect index 1 dups an OF flag and 2 grants a resist. */
+  function table(): TimedEffect[] {
+    const blank = (): TimedEffect =>
+      ({ oflagDup: 0, oflagSyn: false, tempResist: -1 }) as TimedEffect;
+    const t: TimedEffect[] = [];
+    for (let i = 0; i <= 3; i++) t.push(blank());
+    t[1] = { ...blank(), oflagDup: OF.PROT_FEAR } as TimedEffect;
+    t[2] = { ...blank(), tempResist: ELEM.FIRE } as TimedEffect;
+    return t;
+  }
+
+  it("shows a timed OF flag that no equipment provides", () => {
+    const st = makeState();
+    const p = st.actor.player;
+    /* Fixture must start EMPTY, or "the flag is set" proves nothing. */
+    expect(
+      liveTimedUiDeps(p, table()).timedObjectFlags!.has(OF.PROT_FEAR),
+      "fixture: no effect active yet",
+    ).toBe(false);
+
+    p.timed[1] = 20;
+    expect(liveTimedUiDeps(p, table()).timedObjectFlags!.has(OF.PROT_FEAR)).toBe(true);
+  });
+
+  it("reports a temporary resist for the element that grants it, and no other", () => {
+    const st = makeState();
+    const p = st.actor.player;
+    p.timed[2] = 20;
+    const deps = liveTimedUiDeps(p, table());
+
+    expect(deps.timedElementEffect!(ELEM.FIRE)).toBe(1);
+    expect(deps.timedElementEffect!(ELEM.COLD), "not a blanket yes").toBe(0);
+  });
+
+  it("EXCLUDES TMD_TRAPSAFE, which resolveUiDeps adds back itself", () => {
+    /* player.c:310-320 skips TRAPSAFE so the OF_TRAP_IMMUNE learning hack can
+     * tell a timed immunity from an innate one; resolveUiDeps then re-adds it from
+     * p.timed directly (ui-entry.ts). Both halves asserted, because either one
+     * alone looks correct: the builder omitting it, and the resolver supplying it. */
+    const st = makeState();
+    const p = st.actor.player;
+    const t = table();
+    while (t.length <= TMD.TRAPSAFE) {
+      t.push({ oflagDup: 0, oflagSyn: false, tempResist: -1 } as TimedEffect);
+    }
+    t[TMD.TRAPSAFE] = {
+      oflagDup: OF.TRAP_IMMUNE,
+      oflagSyn: false,
+      tempResist: -1,
+    } as TimedEffect;
+    p.timed[TMD.TRAPSAFE] = 20;
+
+    const built = liveTimedUiDeps(p, t);
+    expect(
+      built.timedObjectFlags!.has(OF.TRAP_IMMUNE),
+      "the builder skips TRAPSAFE",
+    ).toBe(false);
+
+    /* resolveUiDeps mutates the FlagSet it is handed, so the flag arrives there. */
+    const resolved = resolveUiDeps(p, built);
+    expect(
+      resolved.timedObjectFlags.has(OF.TRAP_IMMUNE),
+      "and the resolver puts it back",
+    ).toBe(true);
+  });
+
+  it("reaches the grid cell a player reads, not just the deps object", () => {
+    /* The wiring half. Same state, same config, deps supplied vs omitted: the
+     * pFear ability row must differ. Omitting them is exactly what the shell did. */
+    const st = makeState();
+    st.actor.player.timed[1] = 20;
+
+    const without = characterGrid(st, config).resistPanels
+      .find((pan) => pan.key === "abilities")!
+      .rows.find((r) => r.name === "pfear_ui_compact_0")!;
+    const withDeps = characterGrid(st, config, liveTimedUiDeps(st.actor.player, table()))
+      .resistPanels.find((pan) => pan.key === "abilities")!
+      .rows.find((r) => r.name === "pfear_ui_compact_0")!;
+
+    expect(
+      JSON.stringify(withDeps.cells),
+      "supplying the timed deps changes the row a player sees",
+    ).not.toBe(JSON.stringify(without.cells));
   });
 });
