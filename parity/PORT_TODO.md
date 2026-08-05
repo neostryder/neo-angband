@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 20 closed, 47 open.
+**67 items covering all 111 confirmed-absent citations** — 21 closed, 46 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Five of the twenty closures are retractions rather than
+declared *closed*. **Five of the twenty-one closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -908,12 +908,25 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `+STR` ring changes the sheet and not the sidebar.
   Sites: `parity/ledger/ui-display.yaml:100`
 
-- [ ] **3.6 No `PF_*` intrinsic ability ever appears on the character sheet.**
-  `characterGrid` is called with no `UiEntryDeps` at any of its three call sites
-  (`packages/web/src/charsheet.ts:270`, `:379`, `:651`), so `playerHas` falls back
-  to reading `p.pflags` — and `Player` has no `pflags` field at all. The data
-  exists: `PlayerState.pflags` is computed at
-  `packages/core/src/player/calcs.ts:767`.
+- [x] **3.6 No `PF_*` intrinsic ability ever appears on the character sheet.**
+  DONE — and this item was **accurate in every particular**, including the three
+  call sites, which by this session's own filter is what a sound row looks like:
+  it named where, not why.
+
+  `playerHas` fell back to reading `p.pflags`, a field `Player` genuinely does not
+  have, so it answered false for every `PF_*`. `PlayerState.pflags` was computed
+  and live the whole time (`player/calcs.ts:418`); it had no route to the grid.
+
+  Closed by `liveUiEntryDeps` (`game/ui-entry.ts`), which supplies **all three**
+  `UiEntryDeps` seams from the live state and is now used at all four screen call
+  sites — `charsheet.ts:270`, `:379`, `:651` and `equipCmpDeps()`.
+
+  > **This corrected an incomplete close of mine.** The first pass at **3.7/3.8**
+  > wired the timed pair into `equipCmpDeps()` only, leaving the character sheet's
+  > three `characterGrid` calls untouched — and the character sheet is the screen
+  > those two items are about. Reading 3.6 one item later is what surfaced it. A
+  > single builder for all three seams is the fix for the class of mistake, not
+  > just this instance: wiring a subset is exactly what went wrong twice.
   Sites: `parity/ledger/ui-entry.yaml:128`
 
 - [x] **3.7 Temporary resists never appear in the resist grid.** DONE, together
@@ -938,11 +951,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   seam needs. The PORT_TODO header had already recorded that fact for a different
   item; this row and its comment both still asserted the opposite.
 
-  **The real gap was one function that returned three fields instead of four.**
-  `liveTimedUiDeps` (`game/ui-entry.ts`) now derives both seams from the live
-  bound timed table, and the shell passes it. One builder, not two literals at the
-  call site, so a second consumer — a dump, the sheet, a mod — cannot wire one and
-  forget the other.
+  **The real gap was call sites that passed no deps at all.**
+  `liveTimedUiDeps` derives both seams from the live bound timed table, and
+  `liveUiEntryDeps` wraps it with the third seam so a screen gets all three at
+  once. Both are now passed at all four call sites.
+
+  **The first pass at this was incomplete and 3.6 caught it.** It wired
+  `equipCmpDeps()` and left `charsheet.ts`'s three `characterGrid` calls — the
+  character sheet being the screen this item and 3.7 actually describe. "One
+  builder, not two literals" was the right instinct applied at one of four places;
+  the correction is in 3.6.
 
   Upstream's TRAPSAFE split is preserved and tested in both halves:
   `player_flags_timed` skips `TMD_TRAPSAFE` (player.c:310-320) so the
@@ -963,7 +981,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
 - [ ] **3.9 The character sheet's launcher contribution is 0.**
-  `packages/core/src/game/ui-entry.ts:1444` pushes 0 for `PF_FAST_SHOT` with the
+  `packages/core/src/game/ui-entry.ts:1480` pushes 0 for `PF_FAST_SHOT` with the
   comment "deferred", and the reach it calls deferred **exists**:
   `packages/core/src/player/calcs.ts:1246` already reads the equipped launcher's
   `kind.kindFlags` for `KF.SHOOTS_ARROWS`. `launcher` also defaults to `null` at
@@ -973,7 +991,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   closed: `equipCmpCategories` (`game/ui-entry.ts:1965`) IS iterated by
   `equipCmpSummary` (`game/equip-cmp.ts:391`), and the combined row is asserted
   the same length as the columns (`game/equip-cmp.test.ts:116`).*
-  Sites: `packages/core/src/game/ui-entry.ts:1444`,
+  Sites: `packages/core/src/game/ui-entry.ts:1480`,
   `parity/ledger/ui-entry.yaml:133`, `parity/ledger/ui-player.yaml:108`,
   `parity/ledger/ui-entry.yaml:132`
 
