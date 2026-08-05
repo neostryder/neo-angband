@@ -13,10 +13,15 @@
  *   command layer.
  * - becomeAware (become_aware): revealing a camouflaged mimic - knowledge/UI.
  * - coverTracksBroken: clearing the player's TMD_COVERTRACKS - player state.
+ * - onArenaDeath: the single-combat kill gate - game state.
+ * - primaryGroupSize: monster_primary_group_size - needs the live cave.
  *
- * Deferred: the arena-level branch (arena mode is not modelled) and the
- * PR_HEALTH redraw (a UI concern) are omitted; both are unreached by the ported
- * callers.
+ * Every game-layer caller gets the last three from game/context.ts's
+ * gameTakeHitHooks, which derives them from the live GameState. They were
+ * caller-supplied and unsupplied for long enough to be worth naming here:
+ * an optional hook nothing passes is a branch that cannot run.
+ *
+ * Deferred: the PR_HEALTH redraw (a UI concern) is omitted.
  */
 
 import { MON_TMD } from "../generated/index.js";

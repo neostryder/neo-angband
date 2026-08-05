@@ -19,8 +19,12 @@
  *
  * Simplifications, ledgered in parity/ledger/game-effect-melee.yaml:
  * MDESC names and message_pain grammar ride the display layer (#25) - the
- * race name stands in, pain messages are the flee message only;
- * EF_SINGLE_COMBAT rides arena levels (not modelled, #24).
+ * race name stands in, pain messages are the flee message only.
+ *
+ * EF_SINGLE_COMBAT is modelled: the arena level is built in the session layer
+ * (session/game.ts, arena_gen at gen-cave.c:3984), the kill gate is
+ * arenaInterceptDeath (mon-util.c:1290) and the exit kills the original
+ * (kill_arena_monster). game/arena.test.ts walks the round trip.
  */
 
 import { EF, MON_MSG, TMD } from "../generated/index.js";
@@ -46,7 +50,13 @@ import { pyAttackReal } from "../combat/melee.js";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay.js";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge.js";
 import type { GameState } from "./context.js";
-import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
+import {
+  arenaInterceptDeath,
+  deleteMonster,
+  gameTakeHitHooks,
+  movePlayer,
+  squareMonster,
+} from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import {
@@ -137,6 +147,7 @@ function effectHit(
   showDamage = false,
 ): boolean {
   const result = monTakeHit(state.rng, mon, dam, note, {
+    ...gameTakeHitHooks(state, mon),
     /* become_aware: a direct-damage effect (EF_TAP_UNLIFE, EF_CURSE, ...)
      * can reveal a camouflaged target, same as any other hit. */
     ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
