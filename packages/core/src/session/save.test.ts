@@ -1347,6 +1347,56 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
     const w = restored.state.chunk.width;
     expect(restored.state.floor.has(3 * w + 3)).toBe(false);
   });
+
+  /**
+   * load.c:1419 restores a floor pile with pile_insert_end, appending each read
+   * object - so a saved pile comes back in EXACTLY its saved order. The port
+   * stores a pile as an array and deserializeFloor maps it 1:1, and its comment
+   * says "pile order preserved", but nothing asserted it. PORT_TODO 2.7's fourth
+   * pile_insert_end site.
+   */
+  it("a floor pile comes back in its saved order (load.c:1419)", () => {
+    const game = startGame(pack, { seed: 909, depth: 2 });
+    playTurns(game, 2);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    /* Derive the fixture from the save itself: find a real pile with more than
+     * one object, so the order assertion has something to be wrong about. A
+     * single-object pile would pass whatever the code did. */
+    const multi = (saved.floor ?? []).find((e) => (e.objs?.length ?? 0) > 1);
+    if (!multi) {
+      /* Rather than a silent skip: build one, from kinds already in the save. */
+      const donor = (saved.floor ?? []).filter((e) => (e.objs?.length ?? 0) === 1);
+      expect(donor.length, "fixture: at least two single-object piles").toBeGreaterThan(1);
+      const first = donor[0]!;
+      first.objs = [first.objs[0]!, donor[1]!.objs[0]!];
+      donor[1]!.objs = [];
+    }
+    const target = (saved.floor ?? []).find((e) => (e.objs?.length ?? 0) > 1)!;
+    const expected = target.objs.map((o) => (o as { kindId?: string }).kindId);
+    expect(expected.length, "fixture: a pile deeper than one").toBeGreaterThan(1);
+
+    const restored = loadGame(pack, saved);
+    const w = restored.state.chunk.width;
+    const pile = restored.state.floor.get(target.y * w + target.x);
+    expect(pile, "the pile survived the round trip").toBeDefined();
+
+    /* Re-save and read the SAME projection back, so the comparison is against
+     * the saved order rather than against the restored pile itself. (The first
+     * draft of this asserted `pile.map(...)` toEqual `pile.map(...)` - a
+     * tautology that cannot fail whatever the loader does.) A reversed restore -
+     * a prepend-per-read loop, the natural way to get load.c:1419 wrong - fails
+     * here. */
+    const resaved = JSON.parse(JSON.stringify(saveGame(restored))) as SavedGame;
+    const back = (resaved.floor ?? []).find(
+      (e) => e.x === target.x && e.y === target.y,
+    );
+    expect(back, "the pile is still at its grid after a re-save").toBeDefined();
+    expect(back!.objs.map((o) => (o as { kindId?: string }).kindId)).toEqual(
+      expected,
+    );
+    expect(pile!.length).toBe(expected.length);
+  });
 });
 
 describe("remembered floor objects (game/known.ts KnownObjectMemory)", () => {

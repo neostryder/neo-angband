@@ -12,6 +12,8 @@ import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
 import type { KnownDesc } from "../obj/known-object.js";
 import { Rng } from "../rng.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { makeState } from "./harness.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import {
@@ -605,5 +607,73 @@ describe("player_outfit gives each class its own kit (class.txt equip: lines)", 
     ].map((h) => gearGet(gear, h)!);
     expect(everything.some((o) => o.tval === TV.SWORD)).toBe(false);
     expect(everything.some((o) => plain(o.kind.name) === "Mace")).toBe(true);
+  });
+});
+
+/**
+ * PORT_TODO 2.7's real subject: pile_insert_end.
+ *
+ * The item said "no pile links at all, so ordering inside a FLOOR pile can
+ * differ from upstream's append-at-end". That has the mechanism inverted.
+ * Measured against 4.2.6:
+ *
+ *   floor_carry (obj-pile.c:960)      -> pile_insert      PREPEND
+ *   inven_carry (obj-gear.c:867)      -> gear_insert_end   APPEND
+ *   calc_inventory splits (:1101/1164)-> gear_insert_end   APPEND
+ *   load.c:1419 floor restore         -> pile_insert_end   APPEND (saved order)
+ *   obj-knowledge.c:896/927/952       -> pile_insert_end   the KNOWN cave
+ *
+ * So upstream's floor does not append either, and the port's array-with-newest-
+ * first floor already matches it. What had NO test was the append side - the
+ * pack. These pin it, including a negative control on the floor so that nobody
+ * acting on the item as written "fixes" floor_carry into an append.
+ */
+describe("pile_insert / pile_insert_end ordering (PORT_TODO 2.7)", () => {
+  /** Three distinct kinds, so objectSimilar never merges them into one slot. */
+  function threeDistinct(reg: ObjRegistry): GameObject[] {
+    const rng = new Rng(11);
+    const tvals = [TV.RING, TV.AMULET, TV.WAND];
+    return tvals.map((tval) => {
+      const kind = reg.kinds.find((k) => k.tval === tval);
+      if (!kind) throw new Error(`no kind of tval ${tval}`);
+      const obj = objectPrep(rng, reg, constants, kind, 1, "minimise");
+      obj.number = 1;
+      return obj;
+    });
+  }
+
+  it("inven_carry APPENDS to the pack (gear_insert_end, obj-gear.c:867)", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const gear = newGear();
+    const [a, b, c] = threeDistinct(reg) as [GameObject, GameObject, GameObject];
+
+    const ha = invenCarry(gear, carrier, a, limits);
+    const hb = invenCarry(gear, carrier, b, limits);
+    const hc = invenCarry(gear, carrier, c, limits);
+
+    /* The order of the HANDLES, which is what upstream's prev/next carry. A
+     * prepend would give [hc, hb, ha] - the assertion distinguishes them, which
+     * a length or membership check would not. */
+    expect(gear.pack).toEqual([ha, hb, hc]);
+    expect(gear.pack.at(-1), "the newest is LAST").toBe(hc);
+  });
+
+  it("floor_carry PREPENDS (pile_insert, obj-pile.c:960) - not a bug", () => {
+    /* The negative control. Upstream's floor pile is head-first, so if this ever
+     * flips to an append the port has diverged, however much PORT_TODO 2.7's
+     * wording invited it. */
+    const reg = new ObjRegistry(pack.obj);
+    const state = makeState();
+    const [a, b, c] = threeDistinct(reg) as [GameObject, GameObject, GameObject];
+    const grid = state.actor.grid;
+
+    floorCarry(state, grid, a);
+    floorCarry(state, grid, b);
+    floorCarry(state, grid, c);
+
+    const pile = floorPile(state, grid);
+    expect(pile.length, "three distinct kinds, three entries").toBe(3);
+    expect(pile[0], "the newest drop is the HEAD").toBe(c);
+    expect(pile.at(-1), "the oldest drop is last").toBe(a);
   });
 });
