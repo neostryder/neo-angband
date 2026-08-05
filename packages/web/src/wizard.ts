@@ -1894,7 +1894,7 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
       case "A":
       case "a": {
         const equipped = state.actor.player.equipment.includes(handle);
-        wizPlayItemAccept(state, obj, { changed, equipped }, deps);
+        wizPlayItemAccept(state, obj, snapshot, { changed, equipped }, deps);
         ctx.refresh();
         return;
       }

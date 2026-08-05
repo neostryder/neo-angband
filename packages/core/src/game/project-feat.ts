@@ -28,7 +28,8 @@ import { featIsBright, featIsTreasure } from "../world/chunk.js";
 import { lookupTrap } from "../world/trap.js";
 import { isDaytime } from "./world.js";
 import type { GameState } from "./context.js";
-import { squareIsEmpty, squareIsPlayer, squareMonster } from "./context.js";
+import { squareIsEmptyLive } from "./mon-place.js";
+import { squareIsPlayer, squareMonster } from "./context.js";
 import { dropNear, floorExcise, floorPile, floorCarry } from "./floor.js";
 import type { MakeDeps } from "../obj/make.js";
 import { squareIsSecretDoor } from "./cave-cmd.js";
@@ -295,7 +296,7 @@ export function projectFeature(
 
     case PROJ.MAKE_TRAP: {
       /* Require an empty floor grid with no existing traps. */
-      if (!squareIsEmpty(state, grid)) break;
+      if (!squareIsEmptyLive(state, grid)) break;
       if (squareIsTrap(state, grid)) break;
       if (state.rng.oneIn(4) && env.trapDeps) {
         /* square_add_trap (cave-square.c:1304) = place_trap(c, grid, -1, depth). */

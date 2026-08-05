@@ -111,11 +111,12 @@ import { cheatMonsterLore, getLore, wipeMonsterLore } from "../mon/lore.js";
 import { sourceNone, sourcePlayer } from "../effects/interpreter.js";
 import type { EffectContext } from "../effects/interpreter.js";
 import { scatterExt } from "../world/scatter.js";
-import { deleteMonster, monsterMax, squareIsEmpty } from "./context.js";
+import { deleteMonster, monsterMax } from "./context.js";
 import type { GameState } from "./context.js";
 import { dropNear, floorPile } from "./floor.js";
-import { objectIsInQuiver } from "./gear.js";
-import { placeNewMonster } from "./mon-place.js";
+import { objectIsCarried, objectIsInQuiver } from "./gear.js";
+import { objectTouch } from "../obj/known-object.js";
+import { placeNewMonster, squareIsEmptyLive } from "./mon-place.js";
 import type { MonPlaceDeps } from "./mon-place.js";
 import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap.js";
 import type { TrapDeps } from "./trap.js";
@@ -1119,7 +1120,7 @@ export function wizSummonNamed(
   const info = { index: 0, role: MON_GROUP.LEADER };
   for (let i = 0; i < 10; i++) {
     const spots = scatterExt(state.chunk, state.rng, 1, state.actor.grid, 1, true, (_c, g) =>
-      squareIsEmpty(state, g),
+      squareIsEmptyLive(state, g),
     );
     if (spots.length === 0) {
       deps.msg?.("Could not place monster.");
@@ -1549,19 +1550,59 @@ export function wizPlayItemReject(
 
 /**
  * wizPlayItemAccept (do_cmd_wiz_play_item, cmd-wizard.c L1679-1718): commit the
- * changes. When the item actually changed and is equipped, upstream clears the
- * known WORN notice and re-runs object_learn_on_wield so the panel reflects the
- * edited properties. The total_weight / redraw upkeep is UI (the shell's). The
- * caller supplies whether the item is worn (the slot it was picked from).
+ * changes.
+ *
+ * Upstream does FOUR things under `if (object_changed)`, in this order:
+ *   1. L1685-1706 — if the object is carried AND either its number or its
+ *      object_weight_one has changed, subtract the old stack's weight from
+ *      upkeep->total_weight and add the new one's.
+ *   2. L1707 — object_touch(player, obj), which marks the object assessed and
+ *      logs an artifact find.
+ *   3. L1708-1714 — if it is EQUIPPED, clear the known WORN notice and re-run
+ *      object_learn_on_wield.
+ *   4. wiz_play_item_standard_upkeep (redraws; the shell's job here).
+ *
+ * Only (3) was ported. (1) was excused as "the total_weight / redraw upkeep is
+ * UI (the shell's)", and that reading was true when it was written and is not
+ * now: `upkeep.totalWeight` became a real running total in the fix for
+ * PORT_TODO 1.2, so an editor that changes an item's quantity or weight and does
+ * not adjust it desynchronises the burden the speed penalty reads. The sibling
+ * command already knew this - runChangeQuantity has done the same arithmetic at
+ * :1470 all along - so the two halves of one wizard screen disagreed.
+ *
+ * `original` is the wizPlayItemBegin snapshot, needed because the diff is
+ * against the pre-edit stack, not against zero.
  */
 export function wizPlayItemAccept(
   state: GameState,
   obj: GameObject,
+  original: GameObject,
   params: { changed: boolean; equipped: boolean },
   deps: WizardDeps,
 ): boolean {
   if (!debugEnabled(deps)) return false;
-  if (params.changed && params.equipped) {
+  if (!params.changed) return true;
+
+  const p = state.actor.player;
+  /* (1) L1685-1706. The `carried` gate is upstream's: an object being edited
+   * off the floor has no weight in the player's total to correct. */
+  if (objectIsCarried(state.gear, obj)) {
+    const wasOne = objectWeightOne(original, state.gear.curses);
+    const nowOne = objectWeightOne(obj, state.gear.curses);
+    if (obj.number !== original.number || nowOne !== wasOne) {
+      p.upkeep.totalWeight -= original.number * wasOne;
+      p.upkeep.totalWeight += obj.number * nowOne;
+    }
+  }
+
+  /* (2) L1707. Unconditional within `changed` - not gated on equipped, which is
+   * why it cannot be folded into the branch below. */
+  objectTouch(obj, {
+    ...(obj.artifact ? { onArtifactFound: (): void => state.onArtifactFound?.(obj.artifact!) } : {}),
+  });
+
+  /* (3) L1708-1714. */
+  if (params.equipped) {
     obj.notice &= ~OBJ_NOTICE_WORN;
     objectLearnOnWield(state.actor.player, obj, state.runeEnv);
     updatePlayerObjectKnowledge(state); /* player_learn_rune sweep (L1373). */
