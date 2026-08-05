@@ -17,18 +17,26 @@
  * human has read the C and the port. Treating the hint as an answer would rebuild the
  * self-referential harness this project already got burned by once.
  *
- * Usage: node parity/tools/deferral-triage.mjs [--hint likely-real]
+ * Usage: node parity/tools/deferral-triage.mjs [--target <tsv>] [--hint likely-real]
+ *
+ * --target points it at any adjudicable TSV with the same file/line/verdict/text
+ * columns, which is how the 331 ledger `deferred:` items get the same reading
+ * order as the census did. The symbol harvester below does not care which list
+ * asked the question.
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
-const CENSUS = path.join(ROOT, "parity", "reports", "deferral-census.tsv");
+const tIdx = process.argv.indexOf("--target");
+const CENSUS =
+  tIdx >= 0
+    ? path.resolve(ROOT, process.argv[tIdx + 1])
+    : path.join(ROOT, "parity", "reports", "deferral-census.tsv");
 
 if (!fs.existsSync(CENSUS)) {
-  console.error("no census yet - run parity/tools/deferral-census.mjs first");
+  console.error(`no such list: ${CENSUS} - run parity/tools/deferral-census.mjs first`);
   process.exit(1);
 }
 
