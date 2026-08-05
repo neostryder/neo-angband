@@ -495,7 +495,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   No pile links at all (`packages/core/src/game/gear.ts:134`), so ordering inside
   a floor pile can differ from upstream's append-at-end. There is a dedicated
   instrument saying so: `packages/core/src/game/pile.upstream.test.ts:28`.
-  Sites: `packages/core/src/game/gear.ts:1173`
+  Sites: `packages/core/src/game/gear.ts:1315`
 
 - [x] **2.8 `path_analyse` is absent.** DONE — and this one's description was
   accurate, which after 2.3, 2.12 and 2.15 is worth saying.
@@ -643,7 +643,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 - [ ] **2.14 Mimic bookkeeping.**
   Targeting is wired; mimicked-object bookkeeping is not.
-  Sites: `packages/core/src/game/context.ts:1161`,
+  Sites: `packages/core/src/game/context.ts:1218`,
   `parity/ledger/game-project-monster.yaml:50`
 
 - [x] **2.15 The book out-of-depth value boost.** CLOSED as a RETRACTION — and
@@ -960,7 +960,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Shapechange effects have no lore chain, and the port greys the entry rather
   than omitting it — a divergence forced by the real gap, so fixing the chain
   lets the divergence go too.
-  Sites: `packages/web/src/main.ts:3697`, `:3701`
+  Sites: `packages/web/src/main.ts:3708`, `:3701`
 
 - [ ] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
   Lead read, and only one of the row's three claims survived. The secondary glyph
@@ -1167,7 +1167,21 @@ handling.
    (two 2.18s, from adding one while one existed), because renumbering is the only
    way to keep an item referable;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
-   cannot rot into fiction after a rename.
+   cannot rot into fiction after a rename;
+4. **any cited LINE has drifted off the note it points at** — the neighbourhood
+   of an open item's `packages/...:N` citation must still mention a word from the
+   item's title, or `deferred` / `TODO`. Added 2026-08-05 after measuring the
+   damage: 2 of 28 port-cited lines on open items had drifted, and **both were
+   shifted by that same day's commits** (`gear.ts` gained the `PN_COMBINE` lines,
+   `main.ts` an ignore-drop block). One of them was **2.7**, whose citation was
+   then used to decide what to read next. Guard 3 could not see it: the path kept
+   existing while every line in the file moved.
+
+   2 of 28, not the systemic breakage it looked like from the first two examples —
+   so this is a ratchet on a narrow problem. Its own limit is written into the
+   test: the `deferred` fallback is permissive enough that a citation pointing at
+   a module docblock still passes, and dropping the fallback was tried and
+   produces four FALSE failures on correct citations.
 
 The first guard is mutation-checked in the same file, because a coverage test
 that cannot fail is the exact instrument this repository has been burned by most
