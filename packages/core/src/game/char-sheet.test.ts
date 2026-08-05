@@ -278,3 +278,51 @@ describe("the sheet's ranged rows read the equipped launcher (PORT_TODO 3.9)", (
     expect(after.get("Shoot to-dam"), "the bow's to-dam is counted").not.toBe("+0");
   });
 });
+
+/**
+ * PORT_TODO 3.12 and 3.13 on the sheet side. Both were unsupplied seams on
+ * `resolveDeps`, which already holds the state - the same shape as 3.9's
+ * launcher, and the third time this pattern has cost a visible row.
+ *
+ * 3.13 was TWO bugs, not one: the line had no supplier AND nothing incremented
+ * the counter. `player_resting_step_turn` (player-util.c:1487-1488) bumps two
+ * counters - `player_turns_rested`, the x2-regen gate that resets per rest, and
+ * `player->resting_turn`, the lifetime total this line shows, reset only at
+ * birth. The port's rest loop bumped the first and not the second.
+ */
+describe("the sheet's misc panel reads the live state (PORT_TODO 3.12, 3.13)", () => {
+  function miscRows(state: ReturnType<typeof makeState>): Map<string, string> {
+    const rows = new Map<string, string>();
+    for (const l of panel(characterPanels(state), "misc").lines) {
+      if (l.label) rows.set(l.label, l.value);
+    }
+    return rows;
+  }
+
+  it("Resting shows GameState.restingTurn, not a hardcoded 0 (3.13)", () => {
+    const state = makeState();
+    expect(miscRows(state).get("Resting"), "a fresh character has rested 0").toBe("0");
+
+    /* What the rest loop now does once per rested player turn. */
+    state.restingTurn = 137;
+    expect(miscRows(state).get("Resting")).toBe("137");
+  });
+
+  it("the title line shows the winner and wizard markers (3.12)", () => {
+    const state = makeState();
+    const titleOf = (): string =>
+      panel(characterPanels(state), "topleft").lines.find((l) => l.label === "Title")
+        ?.value ?? "";
+    const plain = titleOf();
+
+    state.actor.player.totalWinner = true;
+    expect(titleOf(), "***WINNER*** (show_title L630)").toBe("***WINNER***");
+
+    state.wizard = true;
+    expect(titleOf(), "wizard outranks winner").toBe("[=-WIZARD-=]");
+
+    state.wizard = false;
+    state.actor.player.totalWinner = false;
+    expect(titleOf()).toBe(plain);
+  });
+});

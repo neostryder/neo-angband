@@ -189,7 +189,13 @@ function resolveDeps(state: GameState, deps: CharSheetDeps): ResolvedDeps {
   const player = state.actor.player;
   return {
     fullName: deps.fullName ?? "",
-    restingTurn: deps.restingTurn ?? 0,
+    /* PORT_TODO 3.13: derived, not defaulted. Distinct from resting.turnsRested
+     * (the x2-regen gate): this is player->resting_turn, the lifetime count, and
+     * the sheet showed 0 forever because nothing supplied it AND nothing
+     * incremented it. Both halves are fixed - see the rest loop in web/main.ts,
+     * which is player_resting_step_turn and bumped only one of upstream's two
+     * counters (player-util.c:1487-1488). */
+    restingTurn: deps.restingTurn ?? state.restingTurn ?? 0,
     weightRemaining: deps.weightRemaining ?? 0,
     numShots: deps.numShots ?? 0,
     seeInfra: deps.seeInfra ?? player.race.infravision,
@@ -198,8 +204,11 @@ function resolveDeps(state: GameState, deps: CharSheetDeps): ResolvedDeps {
     statUse: deps.statUse ?? defaultStatMod(player, player.statCur),
     effectiveSpeed:
       deps.effectiveSpeed ?? state.options?.get("effective_speed") ?? false,
-    wizard: deps.wizard ?? false,
-    totalWinner: deps.totalWinner ?? false,
+    /* PORT_TODO 3.12: same two flags as the sidebar, same absent supplier, so
+     * show_title's "***WINNER***" and the wizard marker never appeared on either
+     * screen. Both live on the state the resolver already holds. */
+    wizard: deps.wizard ?? state.wizard ?? false,
+    totalWinner: deps.totalWinner ?? player.totalWinner ?? false,
     meleeWeapon: deps.meleeWeapon ?? state.actor.weapon,
     /* Derived, not defaulted: `meleeWeapon` above already falls back to the live
      * actor, and this seam's `?? null` was the only one in resolveDeps with no
