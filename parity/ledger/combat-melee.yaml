@@ -54,7 +54,12 @@ upstream:
         brand loop sets brand_used without clearing slay_used)
       - react_to_specific_slay
   - path: src/obj-util.c
-    items: [object_to_hit, object_to_dam, object_weight_one (curse terms DEFERRED)]
+    # The curse terms of all three were the live defect found on 2026-08-04 and
+    # fixed the same day: objectToHit / objectToDam now sum each active curse's
+    # template to_h / to_d (combat/brand-slay.ts:69, :83), object_weight_one's
+    # curse adjustment was already there (obj/object.ts:791). Upstream's own
+    # double-count of a cursed weapon's penalty is kept, as a wart.
+    items: [object_to_hit, object_to_dam, object_weight_one (incl. curse terms)]
   - path: lib/gamedata/constants.txt
     items:
       - melee-critical / ranged-critical chance & power scale constants

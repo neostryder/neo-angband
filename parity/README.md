@@ -6,9 +6,12 @@ pinned to the parity baseline (tag `4.2.6`). Methodology in
 
 **Looking for what is missing? Read [DEFERRALS.md](DEFERRALS.md), not the `notes:`
 and `deferred:` fields here.** Every "deferred" note in this repository - in these
-files and in the source comments - has been adjudicated with evidence, and 137 of
+files and in the source comments - has been adjudicated with evidence, and 141 of
 the 367 turned out to describe a state of the code that no longer held. A
 `deferred:` entry below is a lead, not a finding.
+
+**Working the list? [PORT_TODO.md](PORT_TODO.md)** is the tiered checklist of the
+95 citations that are genuinely owed.
 
 ## Format
 
