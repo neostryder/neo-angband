@@ -461,6 +461,7 @@ function updateOne(
   p: ViewerState,
   z: ViewConstants,
   events?: GameEvents,
+  onFeeling?: () => void,
 ): void {
   if (p.blind) {
     c.sqinfoOff(grid, SQUARE["SEEN"]);
@@ -476,6 +477,14 @@ function updateOne(
       /* cave-view.c:849-851: skip display_feeling when only_partial. */
       if (c.feelingSquares === z.feelingNeed && !c.onlyPartial) {
         events?.signal("feeling");
+        /* cave-view.c:852-853 is a DIRECT display_feeling(true) + PR_FEELING,
+         * and the event above is not a substitute for it: it is a host-facing
+         * signal that, until this callback existed, nothing in either host
+         * subscribed to, so the moment a player uncovered enough of a level to
+         * earn its object feeling passed in silence. The view layer cannot call
+         * displayFeeling itself (game/cave-cmd.ts imports game/known.ts, which
+         * would make it a cycle), so the game layer hands the behaviour down. */
+        onFeeling?.();
       }
     }
   }
@@ -490,6 +499,7 @@ export function updateView(
   z: ViewConstants,
   sources: readonly LightSource[] = [],
   events?: GameEvents,
+  onFeeling?: () => void,
 ): void {
   markWasseen(c);
   calcLighting(c, p, sources, z);
@@ -507,7 +517,7 @@ export function updateView(
   }
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
-      updateOne(c, loc(x, y), p, z, events);
+      updateOne(c, loc(x, y), p, z, events, onFeeling);
     }
   }
 }

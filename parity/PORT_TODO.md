@@ -2,7 +2,7 @@
 
 **Dated 2026-08-04.** The work list derived from [DEFERRALS.md](DEFERRALS.md),
 which is the accounting of what was found and how each verdict was reached.
-This one is the checklist: **65 items covering all 114 confirmed-absent
+This one is the checklist: **65 items covering all 111 confirmed-absent
 citations**, ordered so the things a player would notice come before the things
 only a developer sees, and so the two items that unlock a dozen others come
 first of all.
@@ -92,7 +92,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-player-path` and `game-mon-cmd`. That is **47 `ported`, 19 `stale-doc`,
   13 `divergence`, 5 `not-a-deferral`, 3 `n-a`, 2 `note-is-fix` against 28 `real`
   and 18 `partial`** — so **two rows in three were not owed work**, and the owed
-  ones include the two live defects at **1.2** and **2.17**. **196 remain.**
+  ones include the two live defects at **1.2** and **2.17**, both since FIXED —
+  and 2.17's first verdict was wrong in a way worth reading, because the
+  instrument was a grep. **196 remain.**
   Adjudicate with
   `node parity/tools/deferral-verdict.mjs --target parity/reports/ledger-deferred-items.tsv`,
   reading order from
@@ -124,7 +126,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   not a dirty bit, and nothing else does that work.
   Sites: `packages/core/src/game/context.ts:297`
 
-- [ ] **1.2 Nothing sums the player's carried weight.**
+- [x] **1.2 Nothing summed the player's carried weight.** DONE (`505c38bae`).
   `player.upkeep.totalWeight` is set to `0` once, in `playerOutfit`
   (`packages/core/src/game/gear.ts:1284`), and thereafter written **only** by the
   wizard quantity editor (`packages/core/src/game/wizard.ts:1470`, `:1471`).
@@ -143,11 +145,26 @@ is reachable in play and a test constructs the case that used to be wrong.**
      (`packages/core/src/game/char-sheet.ts:411`) and `weightRemaining` reports
      the whole capacity as free (`packages/web/src/screens.ts:491`).
 
-  It is first in Tier 1 with 1.1 because it is the only *mechanical* defect the
-  whole sweep turned up, and because of how it hid: the note that owned it called
-  it "the running carried-weight total … recomputing it belongs to the calc/
-  inventory owner", and the calc/inventory owner never took it. A deferral that
-  names its successor instead of itself is invisible to both of them.
+  How it hid: the note that owned it called it "the running carried-weight total …
+  recomputing it belongs to the calc/inventory owner", and the calc/inventory owner
+  never took it. **A deferral that names its successor instead of itself is
+  invisible to both of them.**
+
+  **Fixed by porting upstream's own scheme, not by inventing one.** The C does not
+  recompute the total; it maintains a running one at four choke points in
+  `obj-gear.c` (`inven_carry` L845/L875, `gear_excise_object` L486,
+  `gear_object_for_use` L541) and re-sums the whole gear in `load.c:1179-1185`. All
+  five are now ported. The load re-sum is also the migration: a character saved by
+  any earlier build has a stored total of `0`, and trusting it would leave them
+  weightless for the rest of the game. `invenCarry` gained the player argument
+  upstream's `inven_carry` already takes, and `Gear` carries the bound curse table
+  so `object_weight_one` is exact rather than approximated.
+
+  Proved by `packages/core/src/game/gear-weight.test.ts`, which tests the three
+  consequences above rather than the accounting statements and derives its ground
+  truth by summing the gear — because the failure mode of an incremental total is a
+  mutation that goes around a choke point, and only an independent sum sees that.
+  Breaking any one of the four sites kills at least one of its assertions.
   Sites: `parity/ledger/game-gear.yaml:77`,
   `parity/ledger/store-transact.yaml:54`
 
@@ -273,15 +290,48 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/store/transact.ts:26`,
   `parity/ledger/player-history.yaml:160`
 
-- [ ] **2.17 `disturb()` is exported and nothing calls it.**
-  `packages/core/src/game/player-path.ts:97` is the port of upstream's `disturb()`
-  — stop running, cancel the rest, free the path steps — and it has **zero callers
-  in `packages/core` or `packages/web`**. It is also the only thing that clears
-  `state.resting` (`:106`). The shell reimplements one slice of it locally
-  (`anyVisibleMonster` in `packages/web/src/main.ts`, "Any visible monster
-  interrupts rest"), so the two checks can drift. Absent entirely: the disturb on
-  **taking damage**, on a status message, and on a monster waking or closing from
-  behind — so a run or a rest continues through events upstream stops for.
+- [x] **2.17 Twelve of upstream's 53 `disturb()` sites had no port.** DONE
+  (`505c38bae`+). **This item previously said "`disturb()` is exported and nothing
+  calls it", and that was wrong.** It has eleven importers and 24 call sites, and
+  all three things this item called absent — the disturb on taking damage, on a
+  status message, and on a monster appearing behind you — were already wired
+  (`game/take-hit-hooks.ts`, `session/game.ts` `timedHooks.onNotify`,
+  `game/known.ts`). The claim came from greping the port for the C's own spelling,
+  `disturb(player)`, which the port never writes: the failed-transliteration trap
+  running in the opposite direction.
+
+  The same narrow grep undercounted the **upstream** census, too — the C writes
+  both `disturb(player)` and `disturb(p)`, so one spelling found 38 sites where
+  there are **53**. The fifteen it could not see included the player's own melee,
+  a monster's blow landing or visibly missing, and both run safety-stops that are
+  the whole point of the DTrap indicator.
+
+  Redone as a measurement rather than a search, twelve sites were genuinely
+  absent, and all are now wired: `py_attack` (`player-attack.c:996`);
+  `make_attack_normal`'s connecting blow and visible miss (`mon-attack.c:594`,
+  `:721` — neither of which `take_hit` covers, so a 0-damage effect blow was
+  silent); the known-trap and DTRAP-edge run stops (`cmd-cave.c:1086`, `:1150` —
+  a run walked the player onto their own detected traps and out of the detected
+  zone); the two store-door disturbs (`cmd-cave.c:1599`, `player-util.c:1609`);
+  autopickup (`cmd-pickup.c:430`, an `env.disturb?.()` seam nothing ever
+  supplied); the feeling reveal (`cave-view.c:852`, see the note below); word
+  recall and deep descent activating (`game-world.c:794`, `:820`); and arriving on
+  a new level (`:1017`).
+
+  > **The feeling reveal deserves its own line, because the near side of the seam
+  > was tested.** `cave-view.c:849-853` announces the object feeling the moment the
+  > player uncovers enough of a level. The port made that
+  > `events.signal("feeling")`, and three tests in `packages/core/src/world/fov.test.ts`
+  > proved it fires at exactly the right crossing. **Nothing subscribed to it, in
+  > either host** — the event had test subscribers and no production ones, so the
+  > message never reached a player and the run never stopped, with a green suite
+  > over it. Wired through core's `updateFov`, and the web's byte-identical private
+  > copy of that closure — which is what had opted it out — is deleted.
+
+  The instrument is `packages/core/src/game/disturb-census.test.ts`: it parses the
+  C, counts both spellings, and reconciles the census against a written reading in
+  both directions, so neither a new upstream site nor a deleted port call can pass.
+  A grep gave three wrong answers in a row before it existed.
   Sites: `parity/ledger/game-player-path.yaml:94`
 
 - [ ] **2.18 A commanded monster cannot drop what it is carrying.**
@@ -653,7 +703,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**65 items, 114 citations, 83 `real` + 31
+2. the counts stated at the top (**65 items, 111 citations, 81 `real` + 30
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item;
 3. any path named in a `Sites:` line does not exist on disk — so a citation

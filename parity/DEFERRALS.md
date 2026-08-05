@@ -46,33 +46,73 @@ A further 27 notes were not parity claims at all — a variable named `todo`, a
 are architectural (`notice_stuff` / `PN_*`, and the carried-weight total nothing
 sums); the largest by volume is a debug log.
 
-### Three live defects this found
+### Live defects this found
 
-Two of them by re-reading a note that had handed its work to somebody else, and
-one by reading a cross-check lead. Both of the first kind share a shape: **a
-function or a field that exists, is correct, and is wired to nothing.**
+Both by re-reading a note that had handed its work to somebody else, and they
+share a shape: **a function or a field that exists, is correct, and is wired to
+nothing.**
 
-**`disturb()` has no callers.** `game/player-path.ts:97` is a faithful port of
-upstream's `disturb()` — stop running, cancel the rest, free the path steps — and
-nothing in `packages/core` or `packages/web` calls it. It is also the only thing
-that clears `state.resting` (`:106`). The shell reimplements one slice locally
-(`anyVisibleMonster`, `web/src/main.ts`), so the two checks can drift, and the
-disturb on **taking damage**, on a status message, and on a monster waking behind
-you is absent outright: a run or a rest continues through events upstream stops
-for. It is **PORT_TODO 2.17**.
+**A retraction first, because it is the more useful finding.** This section
+previously said *"`disturb()` has no callers"*, and that was wrong. It has eleven
+importers and 24 call sites. The claim came from greping the port for the C's own
+spelling, `disturb(player)`, which the port never writes — the same
+failed-transliteration mistake that had already cost four wrong verdicts earlier in
+this sweep, running in the opposite direction.
 
-Note the instrument that found it and the one that did not. Greping for callers
-found it in seconds; three coverage guards, a full test suite and a lint pass did
-not, because **nothing here can distinguish a function nobody calls yet from a
-function nobody needs to call.**
+Worse, the same mistake was in the census that produced the claim: the C writes
+both `disturb(player)` and `disturb(p)`, and greping one spelling found **38 sites
+where there are 53**. The fifteen it could not see included the player's own
+melee, a monster's blow landing or visibly missing, and the two run safety-stops
+that are the entire point of the DTrap indicator.
 
-**Nothing sums the player's carried weight.** `player.upkeep.totalWeight` is set
-to 0 in `playerOutfit` (`game/gear.ts:1284`) and thereafter written only by the
-wizard's quantity editor (`game/wizard.ts:1470-1471`). `calc_inventory`'s weight
-accumulation has no port at all. So `calc_bonuses`' carrying-weight speed penalty
-(`player/calcs.ts:1216`) can never fire, the shield bash is short by
-`trunc(totalWeight / 80)` (`combat/melee.ts:617`), and the character sheet's
-Burden line always reads `0.0 lb`. It is **PORT_TODO 1.2**.
+Doing the census properly — [game/disturb-census.test.ts](../packages/core/src/game/disturb-census.test.ts),
+which now derives it from the C rather than declaring it — found **twelve genuinely
+absent sites**, all since wired:
+
+| Upstream | What was missing |
+|---|---|
+| `player-attack.c:996` | the player's own melee did not disturb |
+| `mon-attack.c:594` | a monster's blow CONNECTING (before damage, so a 0-damage effect blow was silent) |
+| `mon-attack.c:721` | a visible monster MISSING you |
+| `cmd-cave.c:1086` | a run walked the player onto their own detected traps |
+| `cmd-cave.c:1150` | a run carried the player out of the detected-traps zone |
+| `cmd-cave.c:1599`, `player-util.c:1609` | stepping onto a shop door |
+| `cmd-pickup.c:430` | autopickup — an `env.disturb?.()` seam nothing ever supplied |
+| `cave-view.c:852` | the mid-level object feeling, message and all (see below) |
+| `game-world.c:794`, `:820` | word recall and deep descent activating |
+| `game-world.c:1017` | arriving on a new level |
+
+Note which instrument found what. A grep produced three wrong answers in a row.
+The census — parse the C, count, reconcile both directions — produced the list
+above, and it fails if either side changes. That is the difference between a search
+and a measurement.
+
+**The feeling reveal is worth its own line, because the near side of the seam was
+tested.** `cave-view.c:849-853` announces the object feeling the moment the player
+uncovers enough of a level. The port turned that into `events.signal("feeling")`,
+and three tests in `world/fov.test.ts` proved it fires at exactly the right
+crossing. **Nothing subscribed to it, in either host.** The event had test
+subscribers and no production ones, so the message never reached a player and the
+run never stopped — with a green suite over it. "The event fires" is not "the game
+reacts", and a test that owns only one side of a seam cannot tell them apart.
+
+**Nothing summed the player's carried weight** — fixed. `player.upkeep.totalWeight`
+was set to 0 in `playerOutfit` and thereafter written only by the wizard's quantity
+editor (`game/wizard.ts:1470-1471`); `calc_inventory`'s weight accumulation had no
+port at all. So `calc_bonuses`' carrying-weight speed penalty
+(`player/calcs.ts:1216`) could not fire at any load, the shield bash was short by
+`trunc(totalWeight / 80)` (`combat/melee.ts:617`), and the character sheet's Burden
+line read `0.0 lb` for every character.
+
+Upstream does not recompute the total; it maintains a running one at four choke
+points in `obj-gear.c` and re-sums the whole gear on load, and that is what the port
+now does (`game/gear.ts`, plus the `load.c:1179-1185` re-sum in `session/game.ts` —
+which is also the migration, since a character saved by any earlier build has a
+stored total of zero). Proved by
+[game/gear-weight.test.ts](../packages/core/src/game/gear-weight.test.ts), which
+tests the three observable consequences rather than the accounting statements and
+derives its ground truth by summing the gear: breaking any one of the four sites
+kills at least one assertion.
 
 How it hid is the interesting part. Its note read *"the running carried-weight
 total (beyond the reset to 0); recomputing it belongs to the calc/inventory

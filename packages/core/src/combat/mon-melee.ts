@@ -126,6 +126,13 @@ export interface MonBlowEnv {
   /** monster_is_visible(mon): gates the "%s misses you." message (a visible
    * monster's missed blow is announced; an unseen one is silent). */
   readonly monVisible: boolean;
+  /**
+   * disturb(p): the two disturbs make_attack_normal performs itself, which are
+   * NOT take_hit's - a connecting blow disturbs before the damage roll
+   * (mon-attack.c L594) and a visible miss disturbs before its message (L721),
+   * and neither of those touches HP.
+   */
+  disturb?(): void;
   /** adjust_dam(p, proj, dam, RANDOMISE): elemental damage after resists. */
   elementalDam(proj: number, dam: number): number;
   /** inven_damage(p, elem, cperc): pack casualties from an elemental hit. */
@@ -1021,6 +1028,10 @@ export function monMeleeAttack(
       /* Visible monster missed the player: announce it (mon-attack.c L718). No
        * RNG is drawn; unseen monsters and no-miss methods stay silent. */
       if (env && env.monVisible && blow.method.miss) {
+        /* disturb(p) before the line (mon-attack.c L719-721): a MISS the player
+         * can see is still news, and stops a run or a rest. Nothing here reduces
+         * HP, so take_hit's own disturb cannot stand in for it. */
+        env.disturb?.();
         env.msg(`${env.monName} misses you.`);
       }
       blows.push({
@@ -1033,6 +1044,14 @@ export function monMeleeAttack(
       });
       continue;
     }
+
+    /* "Always disturbing" (mon-attack.c L593-594): the blow CONNECTED, so the
+     * player is disturbed before anything else happens - before protection from
+     * evil, before the damage roll, and regardless of whether the blow ends up
+     * doing any damage at all. take_hit's disturb (player-util.c:207) covers only
+     * the damaging blows; a 0-damage effect blow like BLIND or a repelled evil
+     * monster is disturbing here and nowhere else. */
+    env?.disturb?.();
 
     /* Apply "protection from evil" (mon-attack.c L597): an evil monster is
      * repelled on a high roll. The randint0(100) draw happens only when the

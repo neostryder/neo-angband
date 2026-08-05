@@ -52,11 +52,8 @@ import {
   ATTR_LIGHT,
   ATTR_DARK,
   featIsTorch,
-  updateView,
   squareIsSeen,
   squareIsBelievedWall,
-  noteSpots,
-  viewerStateOf,
   knownFeat,
   knownObject,
   type KnownObjectMemory,
@@ -177,8 +174,6 @@ import type {
   MessageType,
   ObjectKind,
   PlayerCommand,
-  ViewConstants,
-  ViewerState,
   VisualsRecord,
   VisualsAnimator,
   Effect,
@@ -5971,26 +5966,16 @@ async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
   render();
 }
 
-const Z: ViewConstants = {
-  maxSight: constants.maxSight,
-  feelingNeed: constants.feelingNeed,
-};
-
-/* viewerStateOf, not a local copy. The copy that used to live here passed
- * `state.chunk.depth` as `level`, where cave-view.c:778 reads `p->lev` for the
- * UNLIGHT view radius - and core's own default had the same slip, because it was
- * written from this one. One definition in core now, so the two cannot disagree. */
-function viewerState(): ViewerState {
-  return viewerStateOf(state);
-}
-
-// FOV refresh after the player moves (the loop calls this via updateFov).
-// noteSpots is the engine's note_spot pass: it memorizes seen terrain and
-// floor piles into state.known and refreshes monster visibility flags.
-state.updateFov = (): void => {
-  updateView(state.chunk, viewerState(), Z, [], soundEvents);
-  noteSpots(state);
-};
+// FOV refresh after the player moves: core's own `state.updateFov` (wireGame in
+// session/game.ts) is exactly this call, and is deliberately left in place.
+//
+// The copy that used to live here was the same call spelled out again - Z is
+// {maxSight, feelingNeed}, and viewerState() already delegates to viewerStateOf -
+// so it bought nothing and cost a behaviour: core's version hands updateView the
+// display_feeling(true) + disturb callback of cave-view.c:852, and a private
+// duplicate silently opted the web out of it. Core reads `s.events` per call, so
+// the sound bus assigned below still reaches the view code. See the viewerState
+// note above; this is the second behaviour this one duplicate has cost.
 
 // Feed player commands to the loop from a small buffer; runGameLoop pulls
 // through state.nextCommand and returns INPUT when the buffer empties.
@@ -8407,7 +8392,12 @@ state.sound = (type: number): void => {
 };
 
 /* First FOV after birth/load: clear only_partial left sticky by startGame
- * when updateFov was not yet wired (ui-display.c:2556-2557). */
+ * when updateFov was not yet wired (ui-display.c:2556-2557).
+ *
+ * Thrown, not `?.`-skipped: wireGame always installs updateFov, and if that ever
+ * stopped being true the map would come up blank on birth - a silent skip here
+ * would hide it behind a black screen with no error. */
+if (!state.updateFov) throw new Error("wireGame did not install updateFov");
 state.updateFov(state);
 state.chunk.onlyPartial = false;
 // A resize/reflow is a background repaint (the ResizeObserver in term.ts also
