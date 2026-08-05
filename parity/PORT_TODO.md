@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 22 closed, 45 open.
+**67 items covering all 111 confirmed-absent citations** — 23 closed, 44 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Five of the twenty-one closures are retractions rather than
@@ -1077,13 +1077,28 @@ is reachable in play and a test constructs the case that used to be wrong.**
   lets the divergence go too.
   Sites: `packages/web/src/main.ts:3720`, `:3701`
 
-- [ ] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
-  Lead read, and only one of the row's three claims survived. The secondary glyph
-  and the tile width/height gating are the shell's by construction — the headless
-  lore model carries no tile state. But `purple_uniques` **is** a live option
-  (`packages/core/src/generated/options.ts:25`) honoured by the map text layer,
-  and `loreTitle` ignores it.
-  Sites: `packages/core/src/mon/lore-describe.ts:1348`
+- [x] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
+  DONE. The row's own triage was right: of its three claims only `purple_uniques`
+  was a real gap, and the reason it went unported is that it had been lumped into
+  one `DEFERRED:` note with two things that genuinely are the shell's — the
+  secondary glyph (`monster_x_attr`, the pref-file override table) and its
+  `tile_width == 1 && tile_height == 1` gate. A headless model has nothing for
+  either to read; it has everything for the option.
+  Fix: `LoreDeps.purpleUniques`, **required** and named exactly as
+  `visuals/map-text.ts` already names it, so the lore title and the map glyph
+  cannot disagree on the same screen. `loreTitle` now takes `deps` and applies
+  `COLOUR_VIOLET` to a unique's title glyph (ui-mon-lore.c L56-60), char
+  unchanged. Making the field required is what found the suppliers: the four
+  compile errors were the complete set, so there was no wiring to guess at.
+  The upstream `optional_attr` half of L58-59 stays out with the secondary glyph
+  it belongs to, and the note now says which half is which rather than lumping
+  them.
+  Test fixtures are derived from the pack, not declared: the test picks a unique
+  whose own `d_attr` is not already violet and asserts that it found one, so a
+  content change that erases the contrast fails loudly instead of making the
+  assertion vacuous. Mutation-verified: ignoring the option kills 1, dropping the
+  `!UNIQUE` guard kills 1, inverting the `"The "` prefix kills 3.
+  Sites: `packages/core/src/mon/lore-describe.ts:1359`
 
 - [ ] **3.23 Rune-learning messages still use the `ODESC_BASE` stand-in.**
   Re-scoped: the real `object_desc` **did** land — `describeObject`
