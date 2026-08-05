@@ -576,7 +576,6 @@ function wireGame(
   players: PlayerRegistry,
   pstate: PlayerState,
   seedFlavor: number,
-  pack: GamePack,
 ): WiredGame {
   // Rolling message log (message.c file-statics; gap 12.8). Shared producer for
   // both new-game and load paths: startGame arrives with no log so this creates
@@ -1585,12 +1584,10 @@ function wireGame(
           radius: 10,
         });
       },
-      temp: buildTempBrandSlay(
-        state.actor.player,
-        pack.player.timed as unknown as readonly TimedTempBrandSlayRecord[],
-        reg.objects.brands,
-        reg.objects.slays,
-      ),
+      /* The ONE bound instance (state.tempBrandSlay), not a private second copy.
+       * This used to build its own, which is why nothing outside the melee path
+       * could ask the question - PORT_TODO 3.20. */
+      temp: state.tempBrandSlay,
     });
 
     // Player spellcasting (cast / study) for casting classes.
@@ -2958,6 +2955,20 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     brands: reg.objects.brands,
     slays: reg.objects.slays,
     curses: reg.objects.curses,
+    /* player_has_temporary_brand / _slay (player-util.c), bound ONCE here from the
+     * pack's timed records. The melee hooks used to build a private copy and
+     * nothing else could reach one, so obj-info's brand/slay gathering carried a
+     * "DEFERRED" note beside a predicate that already existed - PORT_TODO 3.20. */
+    tempBrandSlay: buildTempBrandSlay(
+      birth.player,
+      /* The RAW pack records, not players.timed - bindPlayer's TimedEffect has no
+       * brand/slay code arrays, so passing the bound table silently mapped every
+       * index to -1 and hasBrand answered false for everything. Measured: the
+       * first draft of this did exactly that and the test caught it. */
+      pack.player.timed as unknown as readonly TimedTempBrandSlayRecord[],
+      reg.objects.brands,
+      reg.objects.slays,
+    ),
     /* Placeholder; wireGame installs the full registry-backed env. */
     runeEnv: makeRuneEnv(
       () => null,
@@ -2973,7 +2984,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
 
   // seed_flavor already drawn above; flavor_init runs inside wireGame.
   if (opts.updateFov) state.updateFov = opts.updateFov;
-  const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+  const wired = wireGame(state, reg, players, pstate, seedFlavor);
   /* PU_INVEN from the starting kit's inven_carry (player-birth.c). */
   buildGearViews(state, reg, pstate.ammoTval);
 
@@ -3709,6 +3720,20 @@ export function loadGame(
     brands: reg.objects.brands,
     slays: reg.objects.slays,
     curses: reg.objects.curses,
+    /* player_has_temporary_brand / _slay (player-util.c), bound ONCE here from the
+     * pack's timed records. The melee hooks used to build a private copy and
+     * nothing else could reach one, so obj-info's brand/slay gathering carried a
+     * "DEFERRED" note beside a predicate that already existed - PORT_TODO 3.20. */
+    tempBrandSlay: buildTempBrandSlay(
+      player,
+      /* The RAW pack records, not players.timed - bindPlayer's TimedEffect has no
+       * brand/slay code arrays, so passing the bound table silently mapped every
+       * index to -1 and hasBrand answered false for everything. Measured: the
+       * first draft of this did exactly that and the test caught it. */
+      pack.player.timed as unknown as readonly TimedTempBrandSlayRecord[],
+      reg.objects.brands,
+      reg.objects.slays,
+    ),
     /* Placeholder; wireGame installs the full registry-backed env. */
     runeEnv: makeRuneEnv(
       () => null,
@@ -3762,7 +3787,7 @@ export function loadGame(
   /* seed_flavor from the save (load.c L960). Older saves predate it; fall
    * back to 0 so flavor_init still produces a stable per-load assignment. */
   const seedFlavor = save.seedFlavor ?? 0;
-  const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+  const wired = wireGame(state, reg, players, pstate, seedFlavor);
   /* rd_gear's tail (load.c:1187). */
   buildGearViews(state, reg, pstate.ammoTval);
   /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's

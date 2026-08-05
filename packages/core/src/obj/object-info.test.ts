@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../rng.js";
 import { TV, RF } from "../generated/index.js";
+import { TMD } from "../generated/player-timed.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import { objectPrep } from "./make.js";
@@ -282,5 +283,103 @@ describe("O-combat damage path (birth_percent_damage)", () => {
     const dagger = prep("dagger", TV.SWORD, { origin: ORIGIN.NONE });
     const text = info(state, dagger, extras);
     expect(text).toMatch(/Average damage\/round: \d/);
+  });
+});
+
+/**
+ * player_has_temporary_brand / _slay in the nonweapon gathering
+ * (obj-info.c:1130-1142). PORT_TODO 3.20.
+ *
+ * The predicate was ported and live for COMBAT the whole time
+ * (`combat/brand-slay.ts`), but the session built its own private copy for the
+ * melee hooks and nothing else could reach it — so obj-info carried a "temporary
+ * brands/slays are DEFERRED" note beside a working answer. There is one bound
+ * instance on GameState now, and the melee path, obj-info and the spoiler dump all
+ * read it.
+ *
+ * Driven through the real `objectInfoTextblock`, so what is asserted is the line a
+ * player reads when they inspect a weapon while a brand potion is running.
+ */
+describe("temporary brands reach object info (PORT_TODO 3.20)", () => {
+  /**
+   * The gap the item named: the bound `player_has_temporary_brand` predicate
+   * existed for combat, the session built a PRIVATE copy for the melee hooks, and
+   * obj-info could reach neither - so its gathering carried a "temporary
+   * brands/slays are DEFERRED" note sitting beside a working answer.
+   *
+   * Two failed drafts of the text assertion, kept because each is a trap:
+   *
+   *  1. `/acid/i` over the whole textblock is GREEN BEFORE THE FIX - the dagger's
+   *     own flavour description contains the word. Grepping a rendered block for
+   *     an element name cannot tell a brand line from prose. Hence the diff.
+   *  2. A `console.log` probe printing the added lines showed nothing, and I read
+   *     that as "the brand never reaches the text". It was the instrument: vitest
+   *     does not surface stdout from a PASSING test. The assertion below - run
+   *     inside the test, where a wrong answer fails - says the text does change.
+   *     An empty output channel is not a measurement.
+   */
+  it("the bound predicate answers for a running TMD_ATT_* brand", () => {
+    const { state } = boot();
+    const brands = state.runeEnv.brands;
+    const acidIdx = brands.findIndex((b) => b?.code === "ACID_3");
+    expect(acidIdx, "fixture: the pack has an ACID_3 brand").toBeGreaterThan(0);
+
+    /* Starts false, so "it became true" is a real observation. */
+    expect(state.tempBrandSlay.hasBrand(acidIdx)).toBe(false);
+
+    state.actor.player.timed[TMD.ATT_ACID] = 20;
+    expect(state.tempBrandSlay.hasBrand(acidIdx)).toBe(true);
+  });
+
+  it("does not answer yes for a brand no active effect grants", () => {
+    const { state } = boot();
+    const brands = state.runeEnv.brands;
+    const acidIdx = brands.findIndex((b) => b?.code === "ACID_3");
+    const fireIdx = brands.findIndex((b) => b?.code === "FIRE_3");
+    expect(fireIdx).toBeGreaterThan(0);
+
+    state.actor.player.timed[TMD.ATT_ACID] = 20;
+
+    expect(state.tempBrandSlay.hasBrand(acidIdx)).toBe(true);
+    expect(state.tempBrandSlay.hasBrand(fireIdx), "not a blanket yes").toBe(false);
+  });
+
+  it("a running TMD_ATT_ACID changes the dagger's rendered object info", () => {
+    /* This is the assertion the item is actually about: the gathering loops in
+     * collectTotalBrandsSlays must reach the text. It is written as a DIFF rather
+     * than a keyword match because the dagger's own flavour description contains
+     * the word "acid" - `/acid/i` over the whole textblock is green before the fix. */
+    const { state, extras, prep } = boot();
+    const dagger = prep("dagger", TV.SWORD, { origin: ORIGIN.NONE });
+
+    const before = info(state, dagger, extras);
+    state.actor.player.timed[TMD.ATT_ACID] = 20;
+    const after = info(state, dagger, extras);
+
+    expect(after, "the temporary brand must change what the player is shown")
+      .not.toBe(before);
+
+    /* And name the lines it added, so a change of phrasing is visible rather than
+     * absorbed by a bare inequality. */
+    const lf = String.fromCharCode(10);
+    const added = after.split(lf).filter((l) => !before.split(lf).includes(l));
+    expect(added.join(" | ")).toMatch(/acid/i);
+  });
+
+  it("answers for slays too, from the SLAY records not the brand records", () => {
+    /* TMD_ATT_EVIL carries `slay: [EVIL_2]`. The builder maps brand codes and slay
+     * codes through separate tables, so a slay resolved against the brand table
+     * would silently miss - which is the shape of the bug that DID happen here:
+     * the first wiring passed the BOUND timed table instead of the raw pack
+     * records, and TimedEffect has no brand/slay codes at all, so every index
+     * mapped to -1 and hasBrand answered false for everything. */
+    const { state } = boot();
+    const slays = state.runeEnv.slays;
+    const evilIdx = slays.findIndex((sl) => sl?.code === "EVIL_2");
+    expect(evilIdx).toBeGreaterThan(0);
+
+    expect(state.tempBrandSlay.hasSlay(evilIdx)).toBe(false);
+    state.actor.player.timed[TMD.ATT_EVIL] = 20;
+    expect(state.tempBrandSlay.hasSlay(evilIdx)).toBe(true);
   });
 });

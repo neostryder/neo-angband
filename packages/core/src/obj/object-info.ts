@@ -71,6 +71,8 @@ import {
 } from "./known-object.js";
 import type { GameObject } from "./object.js";
 import {
+  appendBrand,
+  appendSlay,
   copyBrands,
   copySlays,
   objectWeightOne,
@@ -258,6 +260,16 @@ export interface ObjectInfoDeps {
   speedMultiplier: number;
   /** The player's current equipped objects, indexed by body slot (null = empty). */
   equipObjects: readonly (GameObject | null)[];
+  /**
+   * player_has_temporary_brand / _slay (obj-info.c:1130-1142, :1375-1387): the
+   * timed brands and slays the nonweapon gathering folds into the totals.
+   *
+   * REQUIRED. It reads GameState.tempBrandSlay, which is the one bound instance;
+   * an optional field here would have reproduced the bug it fixes, since the
+   * gathering carried a "temporary brands/slays are DEFERRED" note for as long as
+   * nobody could reach a predicate that already existed (PORT_TODO 3.20).
+   */
+  temp: import("../combat/brand-slay.js").TempBrandSlay;
   /** equipped_item_by_slot_name(player, "shooting"): the launcher, or null. */
   bow: GameObject | null;
   /** slot_by_name(player, "weapon"): the body-slot index of the weapon. */
@@ -959,7 +971,29 @@ function collectTotalBrandsSlays(
       brands = copyBrands(brands, ss.brands, env.brands) ?? brands;
       slays = copySlays(slays, ss.slays, env.slays) ?? slays;
     }
-    /* Temporary (timed) brands/slays are DEFERRED with the timed-brand system. */
+    /* obj-info.c:1130-1142: the temporary (timed) brands and slays, each setting
+     * nonweap_slay when it adds something the object did not already have.
+     * `append_brand` / `append_slay` return false for a brand already present,
+     * which is why the flag is set INSIDE the guard and not for every active
+     * temporary. PORT_TODO 3.20. */
+    for (let i = 1; i < env.brands.length; i++) {
+      if (deps.temp.hasBrand(i)) {
+        const next = appendBrand(brands, i, env.brands);
+        if (next) {
+          brands = next;
+          nonweapSlay = true;
+        }
+      }
+    }
+    for (let i = 1; i < env.slays.length; i++) {
+      if (deps.temp.hasSlay(i)) {
+        const next = appendSlay(slays, i, env.slays);
+        if (next) {
+          slays = next;
+          nonweapSlay = true;
+        }
+      }
+    }
   }
   return { brands, slays, nonweapSlay };
 }

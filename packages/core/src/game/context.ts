@@ -447,6 +447,19 @@ export interface GameState {
   brands: readonly (Brand | null)[];
   slays: readonly (Slay | null)[];
   /**
+   * player_has_temporary_brand / _slay (player-util.c), bound once from the
+   * pack's timed records - the ONE instance, shared by everything that asks.
+   *
+   * REQUIRED, and a peer of `brands` / `slays` above rather than an optional
+   * seam, because the alternative already went wrong twice. The session used to
+   * build its own copy for the melee hooks and nothing else could reach it, so
+   * obj-info's brand/slay gathering carried a "temporary brands/slays are
+   * DEFERRED" note (PORT_TODO 3.20) beside a predicate that existed. A harness
+   * with no timed records supplies the always-false pair explicitly, which is the
+   * truthful answer for a character who cannot have a temporary brand.
+   */
+  tempBrandSlay: import("../combat/brand-slay.js").TempBrandSlay;
+  /**
    * The bound curse registry (upstream global curses[], 1-based, index 0 null).
    * object_to_hit / object_to_dam / object_weight_one all read it to add an
    * active curse template bonus onto the item own value (obj-util.c:296-330),
