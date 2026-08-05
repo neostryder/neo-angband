@@ -153,15 +153,19 @@ export interface KnownDesc {
 }
 
 /**
- * Whether an object's kind carries a flavour (upstream obj->kind->flavor, a
- * struct flavor pointer). The port does NOT bind the flavour<->kind link onto
- * ObjectKind, so this is approximated by tval_can_have_flavor_k (obj-tval.c
- * L322), which is exactly the set of tvals every kind of which is assigned a
- * flavour by flavor_init. DEFERRED: the flavour TEXT (adjective / scroll title)
- * remains unavailable; see desc.ts for how the missing '#' modstr is handled.
+ * obj->kind->flavor != NULL. Reads the LIVE per-game flavour assignment
+ * (flavor_init, installed by wireGame and reachable as `deps.hasFlavor`) and
+ * falls back to tval_can_have_flavor_k (obj-tval.c L322) for a caller with no
+ * flavour environment.
+ *
+ * The fallback is a genuine approximation, not a synonym: the tval test asks
+ * "could a kind of this tval be flavoured", the real field asks "was THIS kind
+ * assigned one". They agree for 4.2.6's own object.txt, which is why this went
+ * unnoticed - but a mod that adds a kind of a flavoured tval without a flavour
+ * makes them disagree, and then the tval answer is wrong. PORT_TODO 3.23.
  */
-export function kindHasFlavor(obj: GameObject): boolean {
-  return tvalCanHaveFlavor(obj.tval);
+export function kindHasFlavor(obj: GameObject, deps?: KnownDesc): boolean {
+  return deps?.hasFlavor?.(obj.kind) ?? tvalCanHaveFlavor(obj.tval);
 }
 
 /**
@@ -223,7 +227,7 @@ export function objectSetBaseKnown(
   }
 
   /* Aware flavours and unflavored non-wearables get info now (L846-851). */
-  const flavored = kindHasFlavor(obj);
+  const flavored = kindHasFlavor(obj, deps);
   if (
     (deps.isAware(obj.kind) && flavored) ||
     (!tvalIsWearable(obj.tval) && !flavored)
@@ -539,7 +543,7 @@ export function objectKnownShadow(
    * unaffected by it. */
 
   /* Ensure effect is known as if object_set_base_known had run (L1178-1182). */
-  const flavored = kindHasFlavor(obj);
+  const flavored = kindHasFlavor(obj, deps);
   if (
     (deps.isAware(obj.kind) && flavored) ||
     (!tvalIsWearable(obj.tval) && !flavored) ||

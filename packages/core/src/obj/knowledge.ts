@@ -81,6 +81,23 @@ export interface RuneEnv {
   flavor?: FlavorKnowledge;
   /** msg() sink for rune / flag / modifier messages. */
   msg?(text: string): void;
+  /**
+   * object_desc(o_name, ..., obj, ODESC_BASE, p) - the name the six rune /
+   * flag / curse messages in this file print (obj-knowledge.c L1644, L1732,
+   * L1827, L2108, L2147, L2192; exactly six ODESC_BASE calls upstream, exactly
+   * six `baseName` sites here).
+   *
+   * A seam rather than a direct call because the real `objectDesc` needs a
+   * `KnownDesc`, which is assembled from GameState fields (isAware, options,
+   * hasFlavor, flavorText, everseen) that this module cannot see. NOT a layering
+   * problem, contrary to the note this replaces: `objectDesc` lives in
+   * `obj/desc.ts`, next door - `game/describe.ts` is only a GameState wrapper
+   * around it. The obstacle was the knowledge bundle, not the directory.
+   *
+   * Absent (worldless callers) falls back to `objBaseName`, the plain kind name.
+   * PORT_TODO 3.23.
+   */
+  describeBase?(obj: GameObject): string;
 }
 
 /** Optional registry tables for makeRuneEnv (inert defaults when absent). */
@@ -92,6 +109,7 @@ export interface RuneEnvTables {
   elementNames?: readonly string[];
   flavor?: FlavorKnowledge;
   msg?(text: string): void;
+  describeBase?(obj: GameObject): string;
 }
 
 /**
@@ -110,6 +128,7 @@ export function makeRuneEnv(
     curses: tables.curses ?? [null],
     properties: tables.properties ?? [null],
     elementNames: tables.elementNames ?? [],
+    ...(tables.describeBase ? { describeBase: tables.describeBase } : {}),
     slotObject,
     randcalcVaries,
     ...(tables.flavor ? { flavor: tables.flavor } : {}),
@@ -216,11 +235,22 @@ function objectFlagName(flag: number): string {
   return OBJECT_FLAG_ENTRIES[flag - 1]?.name ?? "NONE";
 }
 
-/** ODESC_BASE approximation until object_desc lands: the kind's plain name. */
+/**
+ * The plain kind name, `~` and `&` stripped. This is the FALLBACK for a caller
+ * with no knowledge bundle (a worldless test), not the upstream behaviour:
+ * `object_desc` with ODESC_BASE still routes an unaware flavoured kind through
+ * its flavour ("a Murky Potion", not "Potion of Cure Light Wounds"), money
+ * through the "N gold pieces worth of" form, and an unknown item through
+ * "unknown item". PORT_TODO 3.23.
+ */
 export function objBaseName(obj: GameObject): string {
   return obj.kind.name.replace(/[~&]/g, "").trim();
 }
-const baseName = objBaseName;
+
+/** ODESC_BASE via the wired seam, or the plain-name fallback. */
+function baseName(env: RuneEnv, obj: GameObject): string {
+  return env.describeBase?.(obj) ?? objBaseName(obj);
+}
 
 /* ------------------------------------------------------------------ *
  * player_knows_* accessors.
@@ -467,7 +497,7 @@ export function objectCursesFindFlags(
 ): boolean {
   if (!obj.curses) return false;
   let found = false;
-  const oName = baseName(obj);
+  const oName = baseName(env, obj);
   for (let i = 1; i < env.curses.length; i++) {
     const c = env.curses[i];
     if (!obj.curses[i]?.power || !c) continue;
@@ -517,7 +547,7 @@ export function objectCursesFindElement(
 ): boolean {
   if (!obj.curses) return false;
   let found = false;
-  const oName = baseName(obj);
+  const oName = baseName(env, obj);
   for (let i = 1; i < env.curses.length; i++) {
     const c = env.curses[i];
     if (!obj.curses[i]?.power || !c) continue;
@@ -599,7 +629,7 @@ export function objectLearnOnWield(
   }
 
   /* Learn about obvious, previously unknown flags. */
-  const oName = baseName(obj);
+  const oName = baseName(env, obj);
   for (let flag = 1; flag < OF.MAX; flag++) {
     if (!obj.flags.has(flag) || !obviousMask.has(flag)) continue;
     if (!player.objKnown.flags.has(flag)) {
@@ -738,7 +768,7 @@ export function equipLearnFlag(p: Player, env: RuneEnv, flag: number): void {
     if (!obj) continue;
     if (obj.flags.has(flag)) {
       if (!p.objKnown.flags.has(flag)) {
-        flagMessage(env, flag, baseName(obj));
+        flagMessage(env, flag, baseName(env, obj));
         playerLearnFlagRune(p, env, flag);
       }
     }
@@ -758,7 +788,7 @@ export function equipLearnElement(p: Player, env: RuneEnv, element: number): voi
     const obj = env.slotObject(i);
     if (!obj) continue;
     if ((obj.elInfo[element]?.resLevel ?? 0) !== 0) {
-      if (p.upkeep.playing) env.msg?.(`Your ${baseName(obj)} glows.`);
+      if (p.upkeep.playing) env.msg?.(`Your ${baseName(env, obj)} glows.`);
       playerLearnResist(p, env, element);
     }
     /* obj->known element marking: DEFERRED (display). */
@@ -814,7 +844,7 @@ export function equipLearnAfterTime(p: Player, env: RuneEnv): void {
   for (let i = 0; i < p.body.count; i++) {
     const obj = env.slotObject(i);
     if (!obj) continue;
-    const oName = baseName(obj);
+    const oName = baseName(env, obj);
     for (let flag = 1; flag < OF.MAX; flag++) {
       if (!obj.flags.has(flag) || !timedMask.has(flag)) continue;
       if (!p.objKnown.flags.has(flag)) flagMessage(env, flag, oName);
