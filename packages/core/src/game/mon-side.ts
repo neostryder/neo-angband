@@ -31,6 +31,7 @@ import { MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import { monsterIsVisible } from "../mon/predicate.js";
 import { reactToSlay } from "../combat/brand-slay.js";
 import { gearToLabel } from "./project-obj.js";
+import { disturb } from "./player-path.js";
 import { squareIsSeen } from "../world/view.js";
 import type { Player } from "../player/player.js";
 import type { TimedEffect } from "../player/types.js";
@@ -170,6 +171,13 @@ export function makeMonBlowEnv(
 
       applyReduction(dam: number): number {
         return playerApplyDamageReduction(deps.actor, deps.actor.reduction, dam);
+      },
+
+      /* make_attack_normal's own two disturbs (mon-attack.c L594, L721), which
+       * take_hit's cannot stand in for: they fire on a connecting blow before any
+       * damage is rolled, and on a visible miss. */
+      disturb(): void {
+        disturb(state);
       },
 
       takeHit(reducedDam: number): void {

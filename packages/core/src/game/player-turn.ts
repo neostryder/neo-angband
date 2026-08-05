@@ -22,7 +22,19 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { FEAT, MON_MSG, MON_TMD, MSG, OF, PF, STAT, TF, TMD, TRF } from "../generated/index.js";
+import {
+  FEAT,
+  MON_MSG,
+  MON_TMD,
+  MSG,
+  OF,
+  PF,
+  SQUARE,
+  STAT,
+  TF,
+  TMD,
+  TRF,
+} from "../generated/index.js";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { pyAttack } from "../combat/melee.js";
@@ -60,7 +72,13 @@ import { playerConfuseDir } from "./obj-cmd.js";
 import { disturb } from "./player-path.js";
 import { playerAdjustManaPrecise } from "./loop.js";
 import { formatMonsterMessage } from "./mon-message.js";
-import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap.js";
+import {
+  playerIsTrapsafe,
+  squareIsDisarmableTrap,
+  squareIsWebbed,
+  squareRemoveAllTraps,
+  squareTrap,
+} from "./trap.js";
 import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world.js";
 
 /**
@@ -257,6 +275,13 @@ export function attackMonster(state: GameState, target: Monster): number {
   /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
    * attack; obj-slays.c learn_brand_slay_from_melee). */
   const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
+
+  /* py_attack's first statement (player-attack.c:995-996). Attacking is a
+   * deliberate act, so the run/rest it cancels is a queued one - and it also
+   * flushes the command queue, which is what stops an auto-repeated command from
+   * carrying on after a monster steps into reach. */
+  disturb(state);
+
   const monVisible = monsterIsVisible(target);
   /* health_track (player-attack.c:745-749): hitting something visible makes it
    * the tracked monster, which is what puts it on the sidebar's health bar. This
@@ -491,6 +516,26 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     return attackMonster(state, target);
   }
 
+  /*
+   * move_player (cmd-cave.c:1084-1088): a RUN stops in front of a known
+   * disarmable trap instead of walking into it, and the step is refunded.
+   *
+   * Ordered after the monster branch and before the impassable one, exactly as
+   * upstream, and it does not need to exclude the auto-disarm branch above it:
+   * run_step passes `dir && disarm` (player-path.c:2042), which is false on every
+   * continuing step, so a run never takes the alter/disarm path for a trap.
+   *
+   * Absent, a run walked the player onto their own detected traps.
+   */
+  if (
+    (state.run?.running ?? 0) > 0 &&
+    squareIsDisarmableTrap(state, next) &&
+    !playerIsTrapsafe(state)
+  ) {
+    disturb(state);
+    return 0;
+  }
+
   /* Bump into a wall: no step, no energy.
    * A mod may take the walk over through the walkBlockedByDiggable hook
    * (mod/hooks.ts) - the QoL mod digs here. autoDigStep returns null having drawn
@@ -588,9 +633,37 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     return confused ? state.z.moveEnergy : 0;
   }
 
+  /*
+   * move_player (cmd-cave.c:1141-1152): a run stops at the edge of the detected
+   * -traps zone rather than carrying the player out of it, and refunds the step.
+   * running_firststep is excluded so a run STARTED on the edge can leave.
+   *
+   * This is the DTrap indicator's whole point on the move side, and it was
+   * missing: a run out of a detected area kept going into undetected ground.
+   */
+  const leavingDtrap =
+    (state.run?.running ?? 0) > 0 &&
+    !state.run?.firstStep &&
+    state.chunk.sqinfoHas(state.actor.grid, SQUARE.DTRAP) &&
+    !state.chunk.sqinfoHas(next, SQUARE.DTRAP);
+  if (leavingDtrap) {
+    disturb(state);
+    return 0;
+  }
+
   movePlayer(state, next);
   if (state.updateFov) state.updateFov(state);
   search(state); /* player_handle_post_move (player-util.c:1633-1634). */
+
+  /*
+   * player_handle_post_move's store-door branch (player-util.c:1601-1609): the
+   * disturb half. Stepping onto a shop cancels a run or a rest whether or not the
+   * host has a store screen to open, so it belongs here rather than beside the
+   * host's enterStoreModal - and the shapechanged refusal above it returns before
+   * the disturb, so a shapechanged player is not disturbed by a door that will
+   * not open for them.
+   */
+  if (state.chunk.isShop(next) && !state.actor.player.shape) disturb(state);
 
   /* Autopickup on the new grid (upstream queues CMD_AUTOPICKUP; its energy
    * cost is folded into this step, see game/pickup.ts). */
@@ -671,9 +744,39 @@ export function search(state: GameState): void {
   }
 }
 
-/** hold / rest: stay put and spend a full turn. */
+/**
+ * hold / rest: stay put and spend a full turn.
+ *
+ * do_cmd_hold (cmd-cave.c:1580) is energy, search, do_autopickup, then "enter a
+ * store if we are on one". do_cmd_rest (cmd-cave.c:1615) is a DIFFERENT upstream
+ * function that does NEITHER; the two share this implementation only because both
+ * spend a turn standing still.
+ *
+ * The discriminator is `state.resting`, NOT `cmd.code`. The obvious gate -
+ * `cmd.code === "hold"` - is wrong here, because the host's rest loop drives every
+ * one of its turns by pushing `{ code: "hold" }` (web/src/main.ts): a rest would
+ * have picked items up off the floor and cancelled itself on a shop tile. A code
+ * the caller chooses is not evidence about which upstream function this is
+ * standing in for; a rest in progress is.
+ */
 export function holdAction(state: GameState, _cmd: PlayerCommand): number {
   search(state);
+
+  if (!state.resting) {
+    /* do_autopickup(player), cmd-cave.c:1590. Upstream's comment says "not using
+     * extra energy", so the energy the pickup reports is deliberately discarded -
+     * standing still costs one move, whatever is underfoot. Without this call the
+     * pickup_always option did nothing at all for a player who stood still on a
+     * pile: only walkAction (:597) ran the hook. */
+    state.autoPickup?.(state);
+
+    /* disturb(player) on entering a store (cmd-cave.c:1599). Opening the shop
+     * screen is the host's (enterStoreModal, web/src/main.ts), but cancelling a
+     * run or a rest is the engine's, and it has to happen whether or not a host
+     * has a store UI at all. */
+    if (state.chunk.isShop(state.actor.grid)) disturb(state);
+  }
+
   return state.z.moveEnergy;
 }
 

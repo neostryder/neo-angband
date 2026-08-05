@@ -784,6 +784,14 @@ function wireGame(
       { maxSight: reg.constants.maxSight, feelingNeed: reg.constants.feelingNeed },
       [],
       s.events,
+      /* cave-view.c:852: the object feeling, the moment the player has seen
+       * enough of the level to earn it. objOnly is display_feeling(true) - the
+       * one-line object half, not the joined ^F line - and the disturb is
+       * upstream's, so a run or a rest stops on the news. */
+      () => {
+        displayFeeling(s, { objOnly: true });
+        disturb(s);
+      },
     );
     noteSpots(s);
   };
@@ -2299,6 +2307,10 @@ function makeChangeLevel(
         /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
         state.chunk.onlyPartial = true;
         state.updateFov?.(state);
+        /* on_new_level's own disturb (game-world.c:1016-1017), immediately before
+         * the feeling and the search: arriving on a level cancels whatever was
+         * still queued from the level you left. */
+        disturb(state);
         announceFeeling(state, reg);
         search(state); /* on_new_level (game-world.c:1052). */
         state.chunk.onlyPartial = false;
@@ -2465,6 +2477,10 @@ function makeChangeLevel(
     /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
     state.chunk.onlyPartial = true;
     state.updateFov?.(state);
+    /* on_new_level's own disturb (game-world.c:1016-1017), immediately before
+     * the feeling and the search: arriving on a level cancels whatever was
+     * still queued from the level you left. */
+    disturb(state);
     announceFeeling(state, reg);
     search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;
@@ -2984,6 +3000,10 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   state.chunk.onlyPartial = true;
   if (state.updateFov) {
     state.updateFov(state);
+    /* on_new_level's own disturb (game-world.c:1016-1017), immediately before
+     * the feeling and the search: arriving on a level cancels whatever was
+     * still queued from the level you left. */
+    disturb(state);
     announceFeeling(state, reg);
     search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;

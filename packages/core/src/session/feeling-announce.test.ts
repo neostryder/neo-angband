@@ -91,3 +91,142 @@ describe("the arena paths deliberately do NOT announce", () => {
     ).toBe(4); // 3 call sites + the declaration
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * The OTHER caller: the mid-exploration discovery (cave-view.c:852).
+ * ------------------------------------------------------------------ */
+
+/**
+ * The same absence, one layer up, and the reason the source pin above could not
+ * see it.
+ *
+ * cave-view.c:849-853 calls display_feeling(true) + disturb(player) the moment
+ * the player has uncovered feeling_need feeling squares - the mid-level "You
+ * feel that ..." line. The port turned that into `events.signal("feeling")` in
+ * world/view.ts, which is a faithful signal and was covered by three tests in
+ * world/fov.test.ts proving it fires at exactly the right crossing.
+ *
+ * Nothing subscribed to it. In either host. The event had test subscribers and
+ * no production ones, so the fov tests were green over a message the player
+ * never saw and a disturb that never happened - a run kept going straight
+ * through the discovery. "The event fires" is not "the game reacts", and a test
+ * that owns only the near side of a seam cannot tell the two apart.
+ *
+ * So this one is BEHAVIOURAL and starts from a real born character: it asserts
+ * the message and the cancelled rest, which is what the player experiences.
+ */
+
+import { bindConstants } from "../constants.js";
+import { SQUARE } from "../generated/index.js";
+import { startGame } from "./game.js";
+import type { GamePack } from "./game.js";
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(new URL(`../../../content/pack/${name}.json`, import.meta.url), "utf8"),
+  ) as T;
+}
+function loadRecords<T>(name: string): T[] {
+  return loadJson<{ records: T[] }>(name).records;
+}
+
+const pack: GamePack = {
+  constants: loadJson("constants"),
+  terrain: loadRecords("terrain"),
+  roomTemplates: loadRecords("room_template"),
+  vaults: loadRecords("vault"),
+  dungeonProfiles: loadRecords("dungeon_profile"),
+  obj: {
+    objectBase: loadJson("object_base"),
+    object: loadJson("object"),
+    egoItem: loadJson("ego_item"),
+    artifact: loadJson("artifact"),
+    curse: loadJson("curse"),
+    brand: loadJson("brand"),
+    slay: loadJson("slay"),
+    activation: loadJson("activation"),
+    objectProperty: loadJson("object_property"),
+    flavor: loadJson("flavor"),
+  } as GamePack["obj"],
+  mon: {
+    pain: loadRecords("pain"),
+    blowMethods: loadRecords("blow_methods"),
+    blowEffects: loadRecords("blow_effects"),
+    monsterSpells: loadRecords("monster_spell"),
+    monsterBases: loadRecords("monster_base"),
+    monsters: loadRecords("monster"),
+    summons: loadRecords("summon"),
+    pits: loadRecords("pit"),
+  },
+  player: {
+    races: loadRecords("p_race"),
+    classes: loadRecords("class"),
+    properties: loadRecords("player_property"),
+    timed: loadRecords("player_timed"),
+    shapes: loadRecords("shape"),
+    bodies: loadRecords("body"),
+    history: loadRecords("history"),
+    realms: loadRecords("realm"),
+  },
+};
+
+describe("discovering the object feeling mid-level (cave-view.c:849-853)", () => {
+  /**
+   * Put a born character one feeling square short of the threshold, then make
+   * the grid under their feet a newly-seen feeling square. The next FOV pass is
+   * the crossing.
+   *
+   * markWasseen (world/view.ts) runs first inside updateView and sets WASSEEN on
+   * every grid that is currently SEEN. So making a grid read as newly seen means
+   * clearing BOTH: SEEN, so markWasseen does not re-set WASSEEN from it, and
+   * WASSEEN itself, which birth's own FOV pass already set. Clearing only
+   * WASSEEN leaves markWasseen to put it straight back, and the crossing never
+   * happens - which is how this helper was wrong on its first draft.
+   */
+  function atTheCrossing(): ReturnType<typeof startGame> {
+    const game = startGame(pack, { seed: 8181, depth: 4 });
+    const { state } = game;
+    const need = bindConstants(pack.constants).feelingNeed;
+    state.chunk.onlyPartial = false;
+    state.chunk.feeling = 55; /* objFeeling 5, monFeeling 5 */
+    state.chunk.feelingSquares = need - 1;
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["WASSEEN"]);
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE["FEEL"]);
+    return game;
+  }
+
+  it("announces the object feeling", () => {
+    const { state } = atTheCrossing();
+    const msgs: string[] = [];
+    state.msg = (m: string): void => void msgs.push(m);
+
+    state.updateFov?.(state);
+
+    expect(
+      msgs.filter((m) => m.startsWith("You feel that ")),
+      "the mid-level object feeling never reached the player",
+    ).toHaveLength(1);
+  });
+
+  it("disturbs, so a rest does not continue through the news", () => {
+    const { state } = atTheCrossing();
+    state.resting = { count: 50, turnsRested: 3 };
+
+    state.updateFov?.(state);
+
+    expect(state.resting, "disturb() did not cancel the rest").toBeUndefined();
+  });
+
+  it("announces once, not on every later step", () => {
+    const { state } = atTheCrossing();
+    const msgs: string[] = [];
+    state.msg = (m: string): void => void msgs.push(m);
+
+    state.updateFov?.(state);
+    state.updateFov?.(state);
+    state.updateFov?.(state);
+
+    expect(msgs.filter((m) => m.startsWith("You feel that "))).toHaveLength(1);
+  });
+});
