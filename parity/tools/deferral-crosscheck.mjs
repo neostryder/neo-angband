@@ -59,6 +59,7 @@ const head = (lines[0] ?? "").split("\t");
 const iFile = head.indexOf("file");
 const iLine = head.indexOf("line");
 const iVerdict = head.indexOf("verdict");
+const iEvidence = head.indexOf("evidence");
 const iText = head.length - 1;
 
 /**
@@ -76,12 +77,31 @@ function csyms(text) {
   return [...out];
 }
 
+/**
+ * The marker a reader writes into a row's EVIDENCE once they have opened the
+ * lead and decided what it means. Without it this tool re-prints every lead
+ * forever, which is the same as printing none: a list that never shrinks is not
+ * a worklist, and the row that stays `real` after being read is
+ * indistinguishable from the row nobody looked at.
+ *
+ * It is deliberately a marker on the evidence rather than a side file, so the
+ * reading and the reason for the verdict live in the same cell.
+ */
+const READ = "LEAD READ";
+const SHOW_READ = process.argv.includes("--all");
+
 let checked = 0;
 let withHits = 0;
+let read = 0;
 for (const l of lines.slice(1)) {
   if (l.trim() === "") continue;
   const c = l.split("\t");
   if ((c[iVerdict] ?? "") !== WANT) continue;
+  const wasRead = (c[iEvidence] ?? "").includes(READ);
+  if (wasRead && !SHOW_READ) {
+    read++;
+    continue;
+  }
   const own = `${c[iFile]}`.replace(/\\/gu, "/");
   const syms = csyms(c[iText] ?? "");
   if (syms.length === 0) continue;
@@ -105,4 +125,8 @@ for (const l of lines.slice(1)) {
   console.log(`${own}:${c[iLine]}`);
   for (const h of hits) console.log(`    ${h}`);
 }
-console.error(`\n${withHits} of ${checked} \`${WANT}\` rows name a C symbol the port mentions elsewhere - each is a LEAD to read, not a verdict.`);
+console.error(
+  `\n${withHits} UNREAD of ${checked} \`${WANT}\` rows name a C symbol the port mentions ` +
+    `elsewhere - each is a LEAD to read, not a verdict. ${read} already read ` +
+    `(evidence says "${READ}"; --all re-prints them).`,
+);

@@ -2,7 +2,7 @@
 
 **Dated 2026-08-04.** The work list derived from [DEFERRALS.md](DEFERRALS.md),
 which is the accounting of what was found and how each verdict was reached.
-This one is the checklist: **60 items covering all 79 confirmed-absent
+This one is the checklist: **60 items covering all 68 confirmed-absent
 citations**, ordered so the things a player would notice come before the things
 only a developer sees, and so the two items that unlock a dozen others come
 first of all.
@@ -26,8 +26,32 @@ first of all.
 > `parity/tools/deferral-crosscheck.mjs` is the instrument that catches it: for
 > every `real` row it greps the port for the **C name**, which this codebase
 > reliably cites in a comment beside its port. `real` fell from 85 to 68 and
-> `ported` rose from 3 to 19. **Tier 0.2 below is the unfinished half of that
-> sweep** — 21 rows still have an unread lead, so this list is not yet clean.
+> `ported` rose from 3 to 19.
+
+> ### Second correction: reading all 21 leads killed nine more items
+>
+> Tier 0.2 is now done, and the estimate it carried — "assume roughly a quarter
+> of the items below are already built" — was close. Of 21 leads, **eight
+> overturned**, and the ledger tranche overturned more. Closed on evidence:
+> the monster-recall hit percentages (wired at `packages/web/src/main.ts:3650`
+> and `:3652`, with `screens.test.ts:929` asserting the real number reaches the
+> screen), `spreadMonsters`' missing caller (`gen/cave.ts:1721`, `:1865`),
+> `list_object`'s oidx bookkeeping (a ratified substitution, not a gap),
+> `equipCmpCategories`' iteration (`game/equip-cmp.ts:391`), find-on-sight
+> history (`game/known.ts:461`), `dump_history` (`web/src/charsheet.ts:504`),
+> the `'~'` knowledge menu, the town-book expansion, `store_stock_list`'s sort,
+> `purchase_analyze` / `comment_accept`, and `apply_autoinscription`.
+>
+> **The same failure recurred and the same instrument caught it.** Four ledger
+> notes asserted a seam was empty because "the ported timed registry carries no
+> `oflag_dup` / `temp_resist` field" — it carries both (`obj/effects-info.ts:76`,
+> `:80`), and `player_flags_timed` is ported at `player/calcs.ts:1100`. The gaps
+> were real; every stated *reason* was wrong, and each one made the work look
+> like a subsystem when it is one call.
+>
+> **And reading found a live gameplay defect nobody had recorded as one.**
+> `p->upkeep->total_weight` is never summed — see **1.2**. It was sitting under a
+> note that called it a display counter and handed ownership downstream.
 
 A citation here is a `file:line` from `parity/reports/deferral-census.tsv` whose
 verdict is `real` or `partial`. A `divergence`, `n-a` or `note-is-fix` row is not
@@ -56,27 +80,32 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 34 of 331 done.**
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 94 of 331 done.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
-  from the key and mostly does not repeat the word. The 34 adjudicated so far
-  (`ui-display.yaml`, `ui-player.yaml`) produced **9 real rows, 7 of them new**,
-  and are folded into Tier 3 below. **297 remain.** Adjudicate with
+  from the key and mostly does not repeat the word. Adjudicated so far:
+  `ui-display.yaml`, `ui-player.yaml`, `ui-entry.yaml`, `wizard-debug.yaml`,
+  `game-gear.yaml`, `obj-knowledge.yaml` and all four `store-*.yaml`, plus
+  `player-history.yaml`. That is **30 `ported`, 22 `real`, 18 `stale-doc`, 8
+  `divergence`, 7 `partial`** — so **two rows in three were not owed work**, and
+  the `real` ones include the carried-weight defect at **1.2**. **237 remain.**
+  Adjudicate with
   `node parity/tools/deferral-verdict.mjs --target parity/reports/ledger-deferred-items.tsv`,
   reading order from
-  `node parity/tools/deferral-triage.mjs --target parity/reports/ledger-deferred-items.tsv --hint likely-real`
-  (46 likely-real, 76 mixed, 64 no-symbol, 145 likely-stale). Then bring the
+  `node parity/tools/deferral-triage.mjs --target parity/reports/ledger-deferred-items.tsv --hint likely-real`.
+  The fastest reading aid is
+  `node parity/tools/deferral-crosscheck.mjs --target parity/reports/ledger-deferred-items.tsv --verdict ""`,
+  which names the port file mentioning each row's C symbol. Then bring the
   scanner under the ratchet the way the census already is.
   Sites: `parity/reports/ledger-deferred-items.tsv`
 
-- [ ] **0.2 Read the 21 remaining cross-check leads.**
-  `node parity/tools/deferral-crosscheck.mjs --verdict real` lists every `real`
-  row whose C symbol the port mentions somewhere else. Twelve have been read and
-  seven of those overturned. The unread ones include `monster_x_attr` appearing
-  in `packages/core/src/visuals/engine.ts:400`, `room_of_chambers` building
-  successfully under test (`gen.test.ts:2175`), and `do_cmd_alter` in
-  `packages/web/src/context-menu.ts`. **Until this is done, assume roughly a
-  quarter of the items below are already built.**
+- [x] **0.2 Read the 21 cross-check leads. Done — 0 unread.**
+  `node parity/tools/deferral-crosscheck.mjs` now reports
+  `0 UNREAD … 13 already read`, because a read lead is recorded by writing
+  `LEAD READ` into the row's evidence. That marker is the point: without it the
+  tool re-prints every lead forever, and a list that never shrinks is the same as
+  no list — a row that stayed `real` after being read is indistinguishable from
+  one nobody opened. Eight of the 21 overturned; see the second correction above.
   Sites: `parity/tools/deferral-crosscheck.mjs`
 
 ## Tier 1 — Foundations that unlock other rows
@@ -91,13 +120,39 @@ is reachable in play and a test constructs the case that used to be wrong.**
   not a dirty bit, and nothing else does that work.
   Sites: `packages/core/src/game/context.ts:297`
 
-- [ ] **1.2 Feed the combat layer into lore.**
-  `hitChance` is ported (`packages/core/src/combat/hit.ts:60`) with
-  `chanceOfMeleeHitBase` / `chanceOfMonsterHitBase` beside it; lore never
-  receives them, so every computed percentage in monster recall is missing along
-  with the spoilers' hit-chance lines. One seam fixes **3.3**, **3.4** and half
-  of **5.6**. Monster spells also need binding to the casting race.
-  Sites: `packages/core/src/mon/lore-describe.ts:22`
+- [ ] **1.2 Nothing sums the player's carried weight.**
+  `player.upkeep.totalWeight` is set to `0` once, in `playerOutfit`
+  (`packages/core/src/game/gear.ts:1284`), and thereafter written **only** by the
+  wizard quantity editor (`packages/core/src/game/wizard.ts:1470`, `:1471`).
+  `calc_inventory`'s weight accumulation has no port at all: there is no other
+  writer anywhere in `packages/core` or `packages/web`, and nothing calls
+  `objectWeightOne` over the pack. Three live consequences, in descending order
+  of how much they matter:
+  1. **The carrying-weight speed penalty never fires.**
+     `packages/core/src/player/calcs.ts:1216` reads it as `j`, so
+     `j > limit / 2` is never true and the player moves at full speed under any
+     load. Weight management, a core mechanic, effectively does not exist.
+  2. **Shield-bash quality is short by `trunc(totalWeight / 80)`** on every bash
+     (`packages/core/src/combat/melee.ts:617`, fed from
+     `packages/core/src/game/player-turn.ts:235`).
+  3. **The character sheet's Burden line always prints `0.0 lb`**
+     (`packages/core/src/game/char-sheet.ts:411`) and `weightRemaining` reports
+     the whole capacity as free (`packages/web/src/screens.ts:491`).
+
+  It is first in Tier 1 with 1.1 because it is the only *mechanical* defect the
+  whole sweep turned up, and because of how it hid: the note that owned it called
+  it "the running carried-weight total … recomputing it belongs to the calc/
+  inventory owner", and the calc/inventory owner never took it. A deferral that
+  names its successor instead of itself is invisible to both of them.
+  Sites: `parity/ledger/game-gear.yaml:77`,
+  `parity/ledger/store-transact.yaml:54`
+
+  > **Closed here:** *feed the combat layer into lore*, which used to be 1.2.
+  > `meleeHitPercent` and `monsterHitPercent` are wired at
+  > `packages/web/src/main.ts:3650` and `:3652`, and `breathProjection` at
+  > `:3659`; `packages/web/src/screens.test.ts:929` asserts the real melee
+  > percentage reaches the recall screen. Four interface comments still said
+  > `DEFERRED`, which is what kept the item alive.
 
 ## Tier 2 — It changes what happens in play
 
@@ -160,12 +215,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   a path.
   Sites: `packages/core/src/game/known.ts:750`
 
-- [ ] **2.9 `list_object` / `delist_object` oidx bookkeeping.**
-  No object oidx registry (`game/known.ts:647`, `game/mon-place.ts:264`).
-  `pushObject` itself is ported and called; what remains is the known-object
-  shadow cave, the oidx bookkeeping and mimicked-object handling.
-  Sites: `packages/core/src/game/mon-place.ts:267`, `:328`,
-  `packages/core/src/game/floor.ts:18`
+- [ ] **2.9 The known-object shadow cave.**
+  Re-scoped by reading. `pushObject` **is** ported and called
+  (`packages/core/src/game/effect-general.ts:190`,
+  `packages/core/src/game/effect-terrain.ts:347`), and `list_object` /
+  `delist_object`'s oidx bookkeeping is now recorded as a **divergence** — the port
+  replaced upstream's `cave->objects[]` registry with a grid-keyed pile map plus
+  `obj.mimickingMIdx`, which `become_aware` reads and the save persists, so nothing
+  observable depends on an oidx. What is left of the row is `player->cave`, the
+  remembered floor-pile contents, and the mimicked-object half that rides it.
+  Sites: `packages/core/src/game/floor.ts:18`
 
 - [ ] **2.10 `object_flag_is_known` at the store sites.**
   The answer is available — `equip-cmp.ts:413` synthesises the `obj->known`
@@ -198,12 +257,17 @@ is reachable in play and a test constructs the case that used to be wrong.**
   The out-parameter carrying an out-of-depth magic book's value boost.
   Sites: `packages/core/src/obj/make.ts:1238`
 
-- [ ] **2.16 Autoinscription on store purchase, and the artifact history entry.**
-  The autoinscription registry exists (`packages/core/src/game/context.ts:254`)
-  and the purchase path does not apply it. `history_find_artifact` is wired
-  everywhere else (`context.ts:687`, installed by `wireGame`) — the store
-  purchase site (`store.c:1928`) is the one that is not.
-  Sites: `packages/core/src/store/transact.ts:26`
+- [ ] **2.16 `history_find_artifact` on a store purchase.**
+  Narrowed by reading: `apply_autoinscription` **is** ported as a seam
+  (`packages/core/src/game/context.ts:259`, covered by
+  `packages/core/src/game/obj-cmd.test.ts:737`), and `history_lose_artifact`
+  fires on the destroy, abandon and store-discard paths
+  (`packages/core/src/game/context.ts:695`). One site is left: the purchase path
+  in `store/transact.ts` never calls `onArtifactFound`, which **is** installed and
+  used by pickup (`context.ts:687`). "Stores do not stock artifacts" is not a
+  reason to leave the call out — a mod can stock them, and the hook is there.
+  Sites: `packages/core/src/store/transact.ts:26`,
+  `parity/ledger/player-history.yaml:160`
 
 ## Tier 3 — It changes what the player is told
 
@@ -226,13 +290,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/game/effect-attack.ts:687`,
   `parity/ledger/high-scores.yaml:96`
 
-- [ ] **3.3 Monster recall has no computed percentages.** *(needs 1.2)*
-  No hit-chance line for either blow field, no breath default damage, and the
-  same holes in web recall and ego-item recall.
-  Sites: `packages/core/src/mon/lore-describe.ts:22`, `:132`, `:138`, `:154`,
-  `:846`, `:1299`, `packages/web/src/knowledge.ts:1095`, `:1185`
+- [ ] **3.3 Object and ego recall show no computed lines.**
+  Re-scoped down to what survived reading: monster recall's percentages **are**
+  wired (see the closed note under 1.2). What is still bare is the object side —
+  `desc_obj_fake` (`ui-knowledge.c:1938`) and `desc_ego_fake` (`:1789`) print
+  only a name and the record's lore text, where upstream prints
+  `object_info(OINFO_FAKE)` / `object_info_ego`'s flag and combat lines. The
+  producer exists: `packages/core/src/obj/object-info.ts` already calls
+  `chanceOfMeleeHitBase` at `:1090`.
+  Sites: `packages/web/src/knowledge.ts:1095`, `:1185`
 
-- [ ] **3.4 Monster spells are not bound to the casting race.** *(needs 1.2)*
+- [ ] **3.4 Monster spell and breath damage are not bound to the casting race.**
+  `deps.spellLoreDamage` (`packages/core/src/mon/lore-describe.ts:149`) is a full
+  override with **no supplier anywhere**, so `monSpellLoreDamage` returns 0 and
+  upstream's `(N)` is omitted at every spell. Distinct from 3.3: this one is a
+  `mon/spell.ts` binding, not a display call.
   Sites: `parity/ledger/mon-lore-describe.yaml:55`
 
 - [ ] **3.5 The sidebar's stat rows ignore equipment.**
@@ -252,27 +324,40 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `parity/ledger/ui-entry.yaml:128`
 
 - [ ] **3.7 Temporary resists never appear in the resist grid.**
-  Same call sites: `timedElementEffect` defaults to `() => 0`
-  (`game/ui-entry.ts:1347`), so a temporary resist is not shown at all — a
-  stronger gap than the "mark it as temporary" one below. `timedObjectFlags`
-  defaults to empty except `OF_TRAP_IMMUNE`.
+  Same two call sites: `timedElementEffect` defaults to `() => 0`
+  (`game/ui-entry.ts:1347`), and the untimed value comes from `p.race.elInfo` plus
+  the equipment cache rather than `state.elInfo`, so a temporary resist is not
+  shown **at all** — a stronger gap than "mark it as temporary".
+  **The note's reason was wrong and it made this look big:** it said the ported
+  timed registry carries no `temp_resist`. It does — `packages/core/src/player/types.ts:315`
+  and `obj/effects-info.ts:80` — and `player/calcs.ts:1172` already reads it into
+  `state.elInfo`. Feeding the seam is the whole job.
   Sites: `parity/ledger/ui-entry.yaml:120`, `:124`
 
-- [ ] **3.8 `player_flags_timed`'s separate UI cache.**
-  The gameplay half is ported — `packages/core/src/player/calcs.ts:1094-1104`
-  folds each active timed effect's `oflagDup` into `state.flags`. Missing is
-  `ui-entry.c:928`'s separate timed cache, which is what lets the sheet mark a
-  flag as temporary rather than permanent.
+- [ ] **3.8 The timed-flag column reads empty.**
+  `timedObjectFlags` defaults to an empty `FlagSet` (`game/ui-entry.ts:1342`, plus
+  `OF_TRAP_IMMUNE` added directly), so `ui-entry.ts:1400` scores 0 for every timed
+  OF dup and the sheet cannot mark a flag temporary rather than permanent. Same
+  correction as 3.7: `oflagDup` **is** on the registry (`obj/effects-info.ts:76`,
+  parsed at `player/bind.ts:760`) and `player_flags_timed` **is** ported, at
+  `packages/core/src/player/calcs.ts:1100`, folding each active effect into
+  `state.flags`. Both call sites pass no deps —
+  `packages/web/src/charsheet.ts:270` and `packages/core/src/game/equip-cmp.ts:388`.
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
 - [ ] **3.9 The character sheet's launcher contribution is 0.**
-  The launcher-slot reach plus `KF_SHOOTS_ARROWS` is absent, so the entry
-  contributes nothing where upstream contributes the launcher's value; `launcher`
-  also defaults to `null` at `game/char-sheet.ts:201` with no supplier. The
-  `show_combined` path and `EQUIPCMP_SCREEN` iteration are the same family:
-  compiled and bound, never iterated. `PF_FAST_SHOT` needs the same reach.
+  `packages/core/src/game/ui-entry.ts:1392` pushes 0 for `PF_FAST_SHOT` with the
+  comment "deferred", and the reach it calls deferred **exists**:
+  `packages/core/src/player/calcs.ts:1246` already reads the equipped launcher's
+  `kind.kindFlags` for `KF.SHOOTS_ARROWS`. `launcher` also defaults to `null` at
+  `game/char-sheet.ts:201` with no supplier. Depends on 3.6 — with `playerHas`
+  false the branch is unreachable anyway.
+  *`show_combined` / `EQUIPCMP_SCREEN` used to be folded in here and is now
+  closed: `equipCmpCategories` (`game/ui-entry.ts:1965`) IS iterated by
+  `equipCmpSummary` (`game/equip-cmp.ts:391`), and the combined row is asserted
+  the same length as the columns (`game/equip-cmp.test.ts:116`).*
   Sites: `packages/core/src/game/ui-entry.ts:1392`,
-  `parity/ledger/ui-entry.yaml:133`, `:136`, `parity/ledger/ui-player.yaml:108`,
+  `parity/ledger/ui-entry.yaml:133`, `parity/ledger/ui-player.yaml:108`,
   `parity/ledger/ui-entry.yaml:132`
 
 - [ ] **3.10 `prt_moves` shows nothing.**
@@ -344,19 +429,37 @@ is reachable in play and a test constructs the case that used to be wrong.**
   lets the divergence go too.
   Sites: `packages/web/src/main.ts:3697`, `:3701`
 
-- [ ] **3.22 `monster_x_char` / `monster_x_attr`'s secondary glyph.**
-  *Cross-check lead unread: the primary glyph IS modelled
-  (`packages/core/src/visuals/engine.ts:400`,
-  `packages/core/src/agent/types.ts:432`), so scope this to the secondary before
-  starting.*
+- [ ] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
+  Lead read, and only one of the row's three claims survived. The secondary glyph
+  and the tile width/height gating are the shell's by construction — the headless
+  lore model carries no tile state. But `purple_uniques` **is** a live option
+  (`packages/core/src/generated/options.ts:25`) honoured by the map text layer,
+  and `loreTitle` ignores it.
   Sites: `packages/core/src/mon/lore-describe.ts:1348`
 
-- [ ] **3.23 The flavour text shadow field.**
-  The adjective / scroll-title shadow field; flavour naming itself is ported
-  (`packages/core/src/obj/flavor.ts`), so this is narrow.
+- [ ] **3.23 Rune-learning messages still use the `ODESC_BASE` stand-in.**
+  Re-scoped: the real `object_desc` **did** land — `describeObject`
+  (`packages/core/src/game/describe.ts:48`) with the full `ODESC` mode set — but
+  this path did not move to it. `objBaseName`
+  (`packages/core/src/obj/knowledge.ts:220`) is still "the kind's plain name" with
+  `~` and `&` stripped, used by every rune message (`:470`, `:520`, `:602`, `:725`,
+  `:745`, `:801`). The layering reason is real (`knowledge.ts` is in `obj/`,
+  `describeObject` is in `game/`), so the fix is a seam, not an import. Fold in
+  the same file's other approximation while there: `kindHasFlavor`
+  (`packages/core/src/obj/known-object.ts:163`) tests the tval instead of
+  consulting `deps.hasFlavor`, which the interface notes agrees in practice for
+  every shipped kind (`known-object.ts:121-124`) — a mod-facing hole, not a
+  parity one.
   Sites: `packages/core/src/obj/known-object.ts:160`
 
-- [ ] **3.24 Per-category priority overrides are not reconstructable.**
+- [ ] **3.24 `equip_learn_flag` has no shape branch.**
+  `packages/core/src/obj/knowledge.ts:716-732` walks every body slot with no
+  shapechange test at all, so gear merged into a shape is still learned from while
+  shapechanged. `shapeLearnOnAssume` (`obj/knowledge.ts:758`) is already there for
+  the other half.
+  Sites: `parity/ledger/obj-knowledge.yaml:98`
+
+- [ ] **3.25 Per-category priority overrides are not reconstructable.**
   The pack compiler erases the intra-record order of category vs priority lines,
   so a priority override attached to a category cannot be reproduced. A compiler
   fix, not a renderer one.
@@ -384,22 +487,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   it as part of this item.
   Sites: `packages/core/src/gen/cave.ts:30`
 
-- [ ] **4.4 Give `room_of_chambers` a caller.**
-  Re-scoped: the builder **works** — `gen.test.ts:2175` builds it, asserts
-  `true`, and checks the chambers are connected and themed. What is unproven is
-  whether any dungeon profile's room list reaches it in play. Check the profiles
-  before writing anything.
-  Sites: `packages/core/src/gen/gen-monster.ts:350`
-
 ## Tier 5 — History, notes, files and logs
 
-- [ ] **5.1 Find-on-sight history entries.**
-  Blocked on remembered floor-pile contents — the same known-cave question as
-  2.9.
-  Sites: `parity/ledger/player-history.yaml:75`
-
 - [ ] **5.2 The player notes command.**
-  Sites: `parity/ledger/player-history.yaml:91`
+  Confirmed absent by reading, and small: there is no `HIST_USER_INPUT` anywhere
+  and no take-notes key bound, while the history entry types and the screen that
+  shows them are both built.
+  Sites: `parity/ledger/player-history.yaml:91`,
+  `parity/ledger/player-history.yaml:158`
+
+- [ ] **5.9 A store's stock does not age.**
+  There is no `daycount` in `packages/core` or `packages/web`, so the
+  return-to-town multi-day maintenance — one `store_update` per elapsed day, and
+  the shopkeeper-shuffle probability that rides it — never runs. Stock is frozen
+  for as long as the player is in the dungeon.
+  Sites: `parity/ledger/store-maint.yaml:54`
 
 - [ ] **5.3 `options_save_custom` / `restore_custom` / `restore_maintainer`.**
   The per-user customised-defaults files in `ANGBAND_DIR_USER`. Buildable now:
@@ -420,32 +522,58 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the host seam rather than killing the process.
   Sites: `packages/core/src/obj/randart.ts:38`
 
-- [ ] **5.6 The spoiler files' missing lines.** *(`:518`, `:519` need 1.2)*
+- [ ] **5.6 The spoiler files' missing lines.**
   The generators and their menu are **done** (`runSpoilers`, `game/spoil.ts`).
   What is missing is content: `timedDesc` / `summonDesc` are unwired so some
-  activation descriptions read worse than upstream's; the hit-chance lines are
-  the lore gap; and `loreDescription` has no upstream-style spoiler flag.
+  activation descriptions read worse than upstream's; and `loreDescription` has no
+  upstream-style spoiler flag. `:518` and `:519` are the hit-chance lines, and
+  they no longer wait on anything — the callbacks are wired for the *game* path
+  (`packages/web/src/main.ts:3650`); a core-level dump has no player, so this
+  needs a state-carrying spoiler variant rather than a seam.
   Sites: `packages/core/src/game/spoil.ts:93`, `:518`, `:519`, `:550`
 
 - [ ] **5.7 The randart generator's `property` branch.**
   Needs the timed-effects failure tables.
   Sites: `packages/core/src/obj/randart-build.ts:38`
 
-- [ ] **5.8 `history_lose_artifact`'s store-sale site.**
-  Folded into 2.16 for the purchase half; the sale half rides
-  `store_delete_random` / `store_maint`.
+- [ ] **5.8 `object_flag_is_known` on the store's buy list.**
+  Kept here rather than closed with the rest of `store-maint.yaml:34`: the store's
+  buy check reads `obj.flags` directly with the gate commented out
+  (`packages/core/src/store/store.ts:262`), so a store will buy on a flag the
+  player has never learned. Same defect as **2.10**, reached through maintenance.
   Sites: `parity/ledger/store-maint.yaml:34`
 
 ## Tier 6 — Closed
 
-Every wizard-mode row is now `ported`. See the correction at the top of this
-file: `runPlayItem` with upstream's full submenu, `runChangeQuantity`,
-`runWriteMap` over `game/dump-level.ts`, `runCollectObjMonStats` /
-`runCollectPitStats` / `runCollectDisconnectStats`, `runStatItem` over
-`wizStatItem`, `runTweakItem` / `runRerollItem` / `runCurseItem`, `runSpoilers`
-over the four `spoil*` generators, and `ArtifactState` (`obj/make.ts:736`) as
-`aup_info[]` serialized in the save. The one thing that looked like a wizard gap
-and is not is the ENTER command browser, now **3.18**.
+**Wizard mode, all of it.** Every row in `wizard-debug.yaml` — the prose census
+and all fourteen `deferred:` bullets — is now `ported`. `runPlayItem` with
+upstream's full submenu, `runChangeQuantity`, `runWriteMap` over
+`game/dump-level.ts`, all three Monte-Carlo collectors, `runStatItem`,
+`runTweakItem` / `runRerollItem` / `runCurseItem`, `runSpoilers` over the four
+`spoil*` generators, `wiz_display_item` with `prt_binary`
+(`web/src/wizard.ts:1752`, `:1829`), the free-form effect prompt (`:1338`), the
+edit-player queue chain (`:1397`), `quit_no_save` (`:200`), `dump_level_map`
+(`:1544`), `query_feature` (`:1601`), `peek_noise_scent` (`:1633`),
+`NOSCORE.JUMPING` with `choose_profile`'s one-shot clear
+(`game/context.ts:494`), and `ArtifactState` (`obj/make.ts:736`) as `aup_info[]`
+serialized in the save **and marked at the create site**
+(`game/wizard.ts:397`). The one thing that looked like a wizard gap and is not is
+the ENTER command browser, now **3.18**.
+
+**Closed by Tier 0.2 and the ledger tranche**, each on named evidence in
+`parity/reports/*.tsv`: monster-recall percentages and breath damage; object
+`store_init` owner selection; `show_floor`; `object_list_format_name`; the
+artifact history hooks; `hard_centre_gen`; `room_of_chambers`, whose builder
+passes `gen.test.ts:2175` **and** whose `spreadMonsters` caller exists
+(`gen/cave.ts:1721`, `:1865`); `list_object`'s oidx bookkeeping, a ratified
+substitution — the pile map *is* the object list; `EQUIPCMP_SCREEN` iteration;
+find-on-sight history (`game/known.ts:461`); `dump_history`
+(`web/src/charsheet.ts:504`); the `'~'` knowledge menu; the bookseller's
+town-book expansion; `store_stock_list`'s display sort; `purchase_analyze` and
+`comment_accept`; `apply_autoinscription`; the OF_STICKY curse propagation;
+temporary brands and slays reaching `improveAttackModifier`; `object_learn_on_use`'s
+XP; and the birth-kit gold deduction, `eopts` exclusion and pack-overflow
+handling.
 
 ## Tier 7 — Decisions to take, not code to write
 
@@ -479,7 +607,7 @@ and is not is the ENTER command browser, now **3.18**.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**60 items, 79 citations, 68 `real` + 11
+2. the counts stated at the top (**60 items, 68 citations, 55 `real` + 13
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
