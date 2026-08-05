@@ -235,7 +235,8 @@ import { noticeNewLevel } from "../game/notice.js";
 import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
-import { describeObject } from "../game/describe.js";
+import { describeObject, knownDescOf } from "../game/describe.js";
+import { objectFlagIsKnown, objectKnownShadow } from "../obj/known-object.js";
 import { ODESC, objDescNameFormat } from "../obj/desc.js";
 import type {
   TimedTempBrandSlayRecord,
@@ -3174,11 +3175,26 @@ function makeStoreApi(
       msg: (text: string): void => state.msg?.(text),
     });
   };
+  /**
+   * object_flag_is_known(player, obj, flag) bound to one object, for
+   * store_will_buy's buy-list branch (store.c:551). PORT_TODO 2.10 / 5.8.
+   *
+   * The shadow is synthesised ONCE per object rather than per flag: a buy list
+   * can name several flags for one tval, and objectKnownShadow walks the whole
+   * rune set each time it is called.
+   */
+  const flagKnownFor = (obj: GameObject): ((flag: number) => boolean) => {
+    const p = state.actor.player;
+    const shadow = objectKnownShadow(obj, p, state.runeEnv, knownDescOf(state));
+    return (flag) => objectFlagIsKnown(obj, shadow, p, state.runeEnv, flag);
+  };
+
   const txnKnow = (obj: GameObject): TxnKnowledge => ({
     flavor,
     flavorDeps: flavorAwareDeps(state),
     aware: flavor.isAware(obj.kind),
     noSelling: noSelling(),
+    flagKnown: flagKnownFor(obj),
     /* do_cmd_sell L1946-1951: selling teaches the runes as well as the flavour.
      * buildRuneList is rebuilt per call for the same reason effect-item.ts does
      * it (L930): a mod can add runes mid-session, so a cached list would go
@@ -3243,7 +3259,15 @@ function makeStoreApi(
       const obj = state.gear.store.get(handle);
       const know = obj
         ? txnKnow(obj)
-        : { flavor, flavorDeps: flavorAwareDeps(state), aware: false, noSelling: noSelling() };
+        : {
+            flavor,
+            flavorDeps: flavorAwareDeps(state),
+            aware: false,
+            noSelling: noSelling(),
+            /* No object behind the handle, so the sale is refused before the
+             * buy list is consulted; nothing can be known about a flag on it. */
+            flagKnown: (): boolean => false,
+          };
       const result = storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
       /* do_cmd_sell: selling an artifact reveals it (history_find_artifact,
        * store.c L1928); if the store then discards it, it is lost (L1992). */
@@ -3313,7 +3337,15 @@ function makeStoreApi(
     /* runesKnown matches storeSell's know (txnKnow never sets it, so the
      * transaction treats it as false); keep the filter aligned with the sale. */
     willBuy: (store, obj): boolean =>
-      storeWillBuy(reg.objects, store, obj, flavor.isAware(obj.kind), noSelling(), false),
+      storeWillBuy(
+        reg.objects,
+        store,
+        obj,
+        flavor.isAware(obj.kind),
+        noSelling(),
+        false,
+        flagKnownFor(obj),
+      ),
   };
 }
 

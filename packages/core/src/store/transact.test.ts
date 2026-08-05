@@ -125,7 +125,14 @@ function makeObj(tval: number): GameObject {
   return objectPrep(new Rng(7), reg, constants, kind, 0, "minimise");
 }
 
-const NO_SELL = { aware: true, noSelling: false };
+/**
+ * object_flag_is_known for a fixture whose player has learned nothing: every
+ * flag is unknown. Named rather than inlined so a test that means to exercise
+ * store_will_buy's buy-list branch has to say so (PORT_TODO 2.10 / 5.8).
+ */
+const NO_FLAGS_KNOWN = (): boolean => false;
+
+const NO_SELL = { aware: true, noSelling: false, flagKnown: NO_FLAGS_KNOWN };
 
 describe("storeBuy (store.c do_cmd_buy)", () => {
   it("pays the marked price, pockets the item, and debits gold", () => {
@@ -347,6 +354,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
       storeSell(ctx, weapon, handle, 1, player, gear, {
         aware: true,
         noSelling: true,
+        flagKnown: NO_FLAGS_KNOWN,
         learnRunes: { env, runes },
       });
 
@@ -381,6 +389,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     const res = storeSell(ctx, weapon, handle, 1, player, gear, {
       aware: true,
       noSelling: true,
+      flagKnown: NO_FLAGS_KNOWN,
     });
 
     expect(res.ok).toBe(true);
@@ -399,6 +408,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     const res = storeSell(ctx, weapon, handle, 1, player, gear, {
       aware: true,
       noSelling: true,
+      flagKnown: NO_FLAGS_KNOWN,
     });
     expect(res.ok).toBe(true);
     expect(res.reaction).toBeUndefined();
@@ -594,6 +604,7 @@ describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
     const res = storeBuy(ctx, general, item, 1, player, gear, {
       aware: false,
       noSelling: false,
+      flagKnown: NO_FLAGS_KNOWN,
       flavor,
       flavorDeps: rec.deps,
     });
@@ -626,6 +637,7 @@ describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
     const res = storeSell(ctx, weapon, handle, 1, player, gear, {
       aware: false,
       noSelling: false,
+      flagKnown: NO_FLAGS_KNOWN,
       flavor,
       flavorDeps: rec.deps,
     });

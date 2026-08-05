@@ -228,9 +228,20 @@ export function storeSaleShouldReduceStock(store: Store, obj: GameObject): boole
  * only buys listed tvals.
  *
  * `aware` feeds object_value; `runesKnown` is object_runes_known(obj) for the
- * no-selling worthless exception. The buy-list flag branch's
- * object_flag_is_known check is DEFERRED (needs the knowledge system); 4.2.6
- * data uses only bare tvals (flag 0), so it is unreached at the baseline.
+ * no-selling worthless exception.
+ *
+ * `flagKnown` is object_flag_is_known(player, obj, flag) bound to this object
+ * (PORT_TODO 2.10 / 5.8). It is REQUIRED rather than optional so the compiler
+ * enumerates the supplier set: an optional knowledge seam on a store check is
+ * how the gate came to be commented out in the first place, and a defaulted one
+ * would have re-created the same hole silently.
+ *
+ * The branch is unreachable on 4.2.6 data — every `buy:` line in
+ * `lib/gamedata/store.txt` is a bare tval and `buy-flag:` appears only in the
+ * file's own format comment — but "no shipped data reaches it" is a fact about
+ * the data, not about the code. A mod that adds a `buy-flag:` line gets
+ * upstream's behaviour now instead of a store that buys on a rune the player has
+ * never learned.
  */
 export function storeWillBuy(
   reg: ObjRegistry,
@@ -239,6 +250,7 @@ export function storeWillBuy(
   aware: boolean,
   noSelling: boolean,
   runesKnown: boolean,
+  flagKnown: (flag: number) => boolean,
 ): boolean {
   /* Home accepts anything. */
   if (store.feat === FEAT.HOME) return true;
@@ -259,8 +271,8 @@ export function storeWillBuy(
   for (const buy of store.buy) {
     if (buy.tval !== obj.tval) continue;
     if (!buy.flag) return true;
-    /* DEFERRED: && object_flag_is_known(player, obj, buy.flag). */
-    if (obj.flags.has(buy.flag)) return true;
+    /* OK if the object is known to have the flag (L550-551): BOTH conjuncts. */
+    if (obj.flags.has(buy.flag) && flagKnown(buy.flag)) return true;
   }
 
   return false;

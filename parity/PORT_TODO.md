@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 31 closed, 36 open.
+**67 items covering all 111 confirmed-absent citations** — 33 closed, 34 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -584,9 +584,32 @@ is reachable in play and a test constructs the case that used to be wrong.**
   remembered floor-pile contents, and the mimicked-object half that rides it.
   Sites: `packages/core/src/game/floor.ts:18`
 
-- [ ] **2.10 `object_flag_is_known` at the store sites.**
-  The answer is available — `equip-cmp.ts:413` synthesises the `obj->known`
-  shadow for exactly this question — and the store's buy check does not use it.
+- [x] **2.10 `object_flag_is_known` at the store sites.** DONE — **with 5.8, which
+  is the same line.** Both rows point at `storeWillBuy`'s buy-list branch, 2.10
+  through the buy check and 5.8 "reached through maintenance"; there is one gate
+  and it was commented out. Upstream needs BOTH conjuncts (store.c L550-551) and
+  the port had only the first, so a store would buy on a rune the player had
+  never learned.
+
+  `object_flag_is_known` did not exist as a function — it was inlined, partially,
+  in one place. It is now written once with all three of upstream's routes
+  (`obj/known-object.ts:398`) and `storeWillBuy` takes the bound predicate as a
+  **required** seventh argument, which is how the supplier set was enumerated:
+  the compiler named seven call sites, two of them production.
+
+  **Two things worth keeping.** First, the branch is unreachable on 4.2.6 data —
+  every `buy:` line in `lib/gamedata/store.txt` is a bare tval and `buy-flag:`
+  appears only in that file's own format comment — so the fix is for mod data and
+  for the code being right, not for a bug a player can hit today. That was
+  measured, not assumed from the port's comment saying so. Second, the third
+  route (`obj->known->flags`) is **provably redundant in this port**:
+  `objectKnownShadow` builds the shadow's flags as `obj.flags ∩ p->obj_k->flags`,
+  so route 3 implies route 2, and the one branch that copies wholesale is gated on
+  `objectFullyKnown` where route 1 has already returned. That is why
+  `game/ui-entry.ts:1256` inlining only two of three routes is **complete rather
+  than deficient** — it looked like a second gap until the shadow was read.
+
+  Both conjuncts are mutation-verified: dropping either kills a different test.
   Sites: `packages/core/src/store/store.ts:232`, `:262`,
   `parity/ledger/store-maint.yaml:34`
 
@@ -1329,11 +1352,19 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Needs the timed-effects failure tables.
   Sites: `packages/core/src/obj/randart-build.ts:38`
 
-- [ ] **5.8 `object_flag_is_known` on the store's buy list.**
-  Kept here rather than closed with the rest of `store-maint.yaml:34`: the store's
-  buy check reads `obj.flags` directly with the gate commented out
-  (`packages/core/src/store/store.ts:262`), so a store will buy on a flag the
-  player has never learned. Same defect as **2.10**, reached through maintenance.
+- [x] **5.8 `object_flag_is_known` on the store's buy list.** DONE, **as part of
+  2.10 — it was never a second defect.** This row was split off "rather than
+  closed with the rest of `store-maint.yaml:34`" on the theory that the
+  maintenance path reached the gate separately. It does not: both rows name
+  `packages/core/src/store/store.ts:262`, one line, one `if`. Fixing 2.10 fixed
+  this by construction, and the split cost a row on the list for a year.
+  **Two rows citing the same `file:line` are one row.** That prompted a sweep of
+  every `Sites:` line in this file for citations shared by more than one item, and
+  it came back with three: this pair, `game/context.ts:297` (1.1 and 2.5, closed
+  together on purpose), and `gen/generate.ts:11`, shared by **4.1** and **4.2**
+  because arena and quests sit under one `DEFERRED` comment — genuinely two
+  features, not one row twice. So no further row dies this way, and the sweep is
+  recorded here so nobody has to wonder whether it was run.
   Sites: `parity/ledger/store-maint.yaml:34`
 
 ## Tier 6 — Closed
