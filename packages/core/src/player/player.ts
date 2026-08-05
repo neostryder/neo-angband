@@ -25,10 +25,15 @@ import type { NameProbs } from "../obj/randname.js";
 import type { Rng } from "../rng.js";
 
 /**
- * Minimal struct player_upkeep: only the derived counters the headless core
- * needs. The full upkeep (trackees, redraw/update/notice masks, inventory and
- * quiver arrays) lives in game/gear.ts, which computes both (Gear.inven and
- * Gear.quiver, sized by calcInventory).
+ * Minimal struct player_upkeep: the derived counters the headless core needs,
+ * plus the one mask that is a queue of work rather than a dirty bit.
+ *
+ * The inventory and quiver arrays are Gear.inven / Gear.quiver (game/gear.ts,
+ * sized by calcInventory). The `update` (PU_*) and `redraw` (PR_*) masks are a
+ * ratified divergence, not an omission: see game/known.ts:153. `notice` (PN_*)
+ * is here because nothing else can do its work - the previous version of this
+ * comment claimed the notice mask "lives in game/gear.ts", and it did not live
+ * anywhere, which is how PORT_TODO 1.1 stayed open.
  */
 export interface PlayerUpkeep {
   playing: boolean;
@@ -36,6 +41,14 @@ export interface PlayerUpkeep {
   newSpells: number;
   /** Total weight of carried gear (tenths of a pound). */
   totalWeight: number;
+  /**
+   * player->upkeep->notice: the PN_* mask (player/types.ts PN), drained by
+   * noticeStuff (game/notice.ts). Transient within a turn - deliberately NOT
+   * serialized, exactly as upstream's savefile omits it, because every writer
+   * is a live action and the loop drains it before the player is asked for
+   * input again.
+   */
+  notice: number;
 }
 
 /**
@@ -330,7 +343,7 @@ export function blankPlayer(
     totalWinner: false,
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
-    upkeep: { playing: false, newSpells: 0, totalWeight: 0 },
+    upkeep: { playing: false, newSpells: 0, totalWeight: 0, notice: 0 },
   };
 }
 

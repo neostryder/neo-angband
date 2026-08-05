@@ -64,6 +64,7 @@ import { objectValueReal } from "../obj/value.js";
 import { earlierObject } from "../player/calcs.js";
 import type { EarlierObjectOpts } from "../player/calcs.js";
 import type { Player } from "../player/player.js";
+import { PN } from "../player/types.js";
 import type { PlayerBody } from "../player/types.js";
 
 /* ------------------------------------------------------------------ */
@@ -504,6 +505,12 @@ export function invenCarryResult(
   /* We did not find an object to combine with: add a new pack handle. */
   const handle = gearAdd(gear, obj);
   gear.pack.push(handle);
+  /* PN_COMBINE (obj-gear.c L877) - in the NON-combining branch only, which is
+   * upstream's placement and not an oversight: a pickup that already absorbed
+   * into an existing stack cannot have made any other pair mergeable, while a
+   * brand-new slot might merge with one the pack scan above rejected on a
+   * quiver/stack-limit ground that a later combine pass can satisfy. */
+  player.upkeep.notice |= PN.COMBINE;
   return { handle, combining: false };
 }
 
@@ -1132,6 +1139,12 @@ function gearExcise(gear: Gear, player: Player, handle: number): void {
     player.equipment[si] = 0;
     gear.store.delete(handle);
   }
+
+  /* Housekeeping (obj-gear.c L499-502): of PU_BONUS | PN_COMBINE | PR_INVEN |
+   * PR_EQUIP only the notice bit is owed here, the other two being the ratified
+   * update/redraw divergence (game/known.ts:153). Losing a stack is precisely
+   * when two stacks that could not merge before become able to. */
+  player.upkeep.notice |= PN.COMBINE;
 }
 
 /**
@@ -1152,6 +1165,12 @@ export function gearObjectForUse(
   if (!obj) throw new Error(`gearObjectForUse: no object for handle ${handle}`);
 
   const num = Math.min(amt, obj.number);
+
+  /* Housekeeping (obj-gear.c L616-619), raised on BOTH branches below and so
+   * hoisted: a partial take leaves a smaller stack that may now merge, and a
+   * whole take goes through gearExcise, which raises it again. Same bit twice is
+   * the same bit. */
+  player.upkeep.notice |= PN.COMBINE;
 
   /* Split off a usable object if we are not taking the whole stack. */
   if (obj.number > num) {

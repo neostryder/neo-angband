@@ -287,16 +287,13 @@ export interface GameState {
    * nothing is ignored.
    */
   isIgnored?: (obj: GameObject) => boolean;
-  /**
-   * player->upkeep->notice's PN_IGNORE bit: object_flavor_aware's ignore fix
-   * (obj-knowledge.c L2279) raises this when a newly-aware kind carries its
-   * ignore-when-aware bit over, requesting an ignore_drop() re-check of the
-   * pack. Set by FlavorAwareDeps.requestIgnoreNotice (obj/knowledge.ts) at
-   * the in-play becomes-aware sites (store/transact.ts, game/obj-cmd.ts).
-   * Consuming/clearing this (running ignore_drop, #25 UI) is a shell concern
-   * and is not wired yet - ledgered like the rest of the ignore-drop UI.
-   */
-  noticeIgnore?: boolean;
+  /* There used to be a `noticeIgnore?: boolean` here, standing in for
+   * player->upkeep->notice's PN_IGNORE bit because no notice mask existed.
+   * NOTHING EVER READ IT, and its own comment said so ("consuming/clearing this
+   * is a shell concern and is not wired yet"), which is how a stand-in for a
+   * missing mechanism read as the mechanism for months. The mask is real now
+   * (PlayerUpkeep.notice, drained by game/notice.ts), so the bit is raised where
+   * upstream raises it and consumed where upstream consumes it. PORT_TODO 2.5. */
   /**
    * object_flavor_is_aware(kind): whether the player has identified this
    * kind's flavour. Installed by the session (wireGame) from flavor
@@ -751,6 +748,18 @@ export interface GameState {
    * its full object/calc_inventory dependencies. */
   overflowPack?: () => void;
   /**
+   * combine_pack (obj-gear.c L1242), installed by the live session for the same
+   * reason overflowPack is: it needs z_info's pack_size / quiver_slot_size /
+   * thrown multiplier and a live calc_inventory options bag, none of which is
+   * on GameState.
+   *
+   * Read ONLY by noticeStuff, which leaves PN_COMBINE raised when this is
+   * absent rather than clearing a bit whose work it could not do. So an unwired
+   * harness owes the combine visibly instead of dropping it silently - the
+   * failure mode of every other optional seam in this file.
+   */
+  combinePack?: () => void;
+  /**
    * state->stat_ind: the six internal stat indices from the last
    * calc_bonuses, kept live (updateBonuses refreshes it in place). The
    * casting math (spell_chance / spell_cast) reads it, and a shell reads it
@@ -884,6 +893,17 @@ export interface PlayerCommand {
   confusedApplied?: boolean;
   /** Free-form arguments a mod-registered action may read. */
   args?: Readonly<Record<string, unknown>>;
+  /**
+   * struct command.background_command (cmd.ts Command, same numbering): 0 or
+   * absent = an ordinary player command; 1 = not a repeat target; >1 = not a
+   * repeat target AND exempt from the bloodlust coercion roll.
+   *
+   * Only ignore_drop's auto-drops set it (obj-ignore.c L695-702, ignoreDrop).
+   * The exemption is an RNG fact, not a convenience: processPlayer draws
+   * randint0(200) before every energy-capable command, so an unflagged
+   * auto-drop would shift the stream against upstream's.
+   */
+  background?: number;
   /**
    * cmd-core.c process_command auto-repeat budget (nrepeats): the number of
    * further attempts a repeatable command (tunnel / open / close / disarm /

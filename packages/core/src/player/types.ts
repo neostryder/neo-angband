@@ -54,6 +54,32 @@ export type SkillIndex = (typeof SKILL)[keyof typeof SKILL];
 /** Number of skills (player.h SKILL_MAX). */
 export const SKILL_MAX = 10;
 
+/**
+ * player->upkeep->notice bits (player-calcs.h L28-30): a QUEUE OF WORK, not a
+ * set of dirty bits. Every bit means "this pass is owed", and notice_stuff
+ * (game/notice.ts) is the only thing that clears one - it clears the bit and
+ * then does the work, in upstream's order (ignore, combine, monster messages).
+ *
+ * This is why the notice mask is ported while its siblings `update` (PU_*) and
+ * `redraw` (PR_*) are not: those two are dirty bits over a recomputable
+ * derivation, and this port's front end recomputes and repaints after every
+ * state-changing action, so there is nothing for a dirty bit to remember (the
+ * ratified divergence at game/known.ts:153). A queue of work has no such
+ * equivalent - if nobody drains it, the work simply never happens, which is
+ * exactly what PN_IGNORE did until this landed.
+ *
+ * PN_MON_MESSAGE (0x4) is deliberately ABSENT rather than defined-and-unused:
+ * show_monster_messages has no port yet (PORT_TODO 3.1), so a third constant
+ * here would be a bit nothing raises and nothing consumes. It goes in with the
+ * message queue, in the same change, or not at all.
+ */
+export const PN = {
+  /** PN_COMBINE: combine_pack is owed. */
+  COMBINE: 0x01,
+  /** PN_IGNORE: ignore_drop is owed. */
+  IGNORE: 0x02,
+} as const;
+
 /** Byte size of an object flag set (OF_SIZE = FLAG_SIZE(OF_MAX)). */
 export const OF_SIZE = flagSize(OF.MAX);
 
