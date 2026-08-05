@@ -110,6 +110,54 @@ function pathShapedTokens(doc: string): ReadonlySet<string> {
   return out;
 }
 
+/** One OPEN checklist row: its number, its title line, and its Sites: text. */
+interface OpenItem {
+  id: string;
+  title: string;
+  sites: string;
+}
+
+/**
+ * Every `- [ ]` row with the `Sites:` block that follows it. Ticked rows are
+ * skipped: a closed item's citation is history, and repointing it would erase
+ * where the gap used to be.
+ */
+function openItems(doc: string): readonly OpenItem[] {
+  const out: OpenItem[] = [];
+  let cur: OpenItem | null = null;
+  let collecting = false;
+  for (const line of doc.split("\n")) {
+    const head = /^- \[( |x)\] \*\*(\d+\.\d+) (.*)$/u.exec(line);
+    if (head) {
+      collecting = false;
+      cur = head[1] === " " ? { id: head[2]!, title: head[3]!, sites: "" } : null;
+      if (cur) out.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    if (line.includes("Sites:")) {
+      collecting = true;
+      cur.sites = line;
+      continue;
+    }
+    if (collecting) {
+      /* A Sites: block wraps onto continuation lines that still hold backticks. */
+      if (line.includes("`")) cur.sites += ` ${line}`;
+      else collecting = false;
+    }
+  }
+  return out;
+}
+
+/** The `packages/...:N` pairs in a Sites: block; ledger yaml rows are not code. */
+function citedPortLines(sites: string): ReadonlyArray<readonly [string, number]> {
+  const out: Array<readonly [string, number]> = [];
+  for (const m of sites.matchAll(/`(packages\/[\w./-]+):(\d+)`/gu)) {
+    out.push([m[1] as string, Number(m[2])]);
+  }
+  return out;
+}
+
 function uncovered(doc: string, files: readonly string[]): readonly string[] {
   const cited = citedPaths(doc);
   return files.filter((f) => !cited.has(f));
@@ -166,6 +214,92 @@ describe("parity/PORT_TODO.md", () => {
       missing,
       "A cited path that is not in the tree - renamed, typo'd, or never there.",
     ).toEqual([]);
+  });
+
+  /**
+   * A CITED LINE NUMBER ROTS SILENTLY, and the guard above cannot see it: a path
+   * keeps existing while every line in it moves. Measured on 2026-08-05, after a
+   * day of edits to the files the list cites: 2 of 28 port-cited sites on OPEN
+   * items had drifted off the note they were pointing at, and BOTH were shifted
+   * by that day's own commits (`gear.ts` gained the PN_COMBINE lines, `main.ts`
+   * gained an ignore-drop block). One of them, 2.7, is a row whose citation was
+   * then used to decide what to read.
+   *
+   * 2 of 28 rather than the systemic breakage that seemed likely - so this guard
+   * is a ratchet on a real but narrow problem, not a rewrite of how the list
+   * cites things.
+   *
+   * The test is deliberately WEAK-BUT-HONEST. It does not try to judge whether a
+   * line implements an item; it asks only whether the neighbourhood of the cited
+   * line contains SOME signal - a word from the item's own title, or the word
+   * "deferred"/"TODO". A citation with no signal within four lines is either
+   * rotted or was never right, and both need a human.
+   *
+   * WHAT IT DOES NOT CATCH, measured rather than guessed. The
+   * "deferred"/"TODO" fallback is permissive enough that a citation pointing at a
+   * MODULE DOCBLOCK which happens to mention a deferral passes - repointing 2.11
+   * from `obj/object.ts:923` to `:1` does not fail this test. Dropping the
+   * fallback would catch that, and it was tried: it produces FOUR false failures
+   * (3.2 twice, 3.23, 5.6), each a correct citation pointing at a real
+   * `DEFERRED:` / `TODO(` note whose prose simply does not repeat the item's
+   * title words. A guard that cries wolf four times gets deleted, so the
+   * fallback stays and the hole is written down here instead of implied away.
+   */
+  it("cites lines that still say something about their item", () => {
+    const doc = readFileSync(TODO, "utf8");
+    const suspect: string[] = [];
+
+    for (const item of openItems(doc)) {
+      for (const [path, lineNo] of citedPortLines(item.sites)) {
+        const abs = join(ROOT, path);
+        if (!existsSync(abs)) continue; /* the guard above owns missing paths */
+        const src = readFileSync(abs, "utf8").split("\n");
+        /* +/-4 lines: enough to survive ordinary drift inside one comment block,
+         * tight enough that a citation pointing at a different function fails. */
+        const window = src
+          .slice(Math.max(0, lineNo - 5), lineNo + 4)
+          .join("\n")
+          .toLowerCase();
+        const keys = item.title
+          .split(/\s+/u)
+          .map((w) => w.replace(/[`*.,'"()]/gu, "").toLowerCase())
+          .filter((w) => w.length > 4);
+        const hit =
+          keys.some((k) => window.includes(k)) ||
+          window.includes("deferred") ||
+          window.includes("todo");
+        if (!hit) suspect.push(`${item.id} -> ${path}:${lineNo}`);
+      }
+    }
+
+    expect(
+      suspect,
+      "A cited line whose neighbourhood says nothing about its item. Either the " +
+        "file moved under the citation (repoint it) or the citation was always " +
+        "wrong (read the code and rewrite the item).",
+    ).toEqual([]);
+  });
+
+  it("would notice a citation shifted off its note (mutation check on the guard above)", () => {
+    /* The guard has to bite on a real drift, not just on nonsense. `gear.ts:1`
+     * is the module docblock's first line: a valid path, a valid line, and
+     * nothing to do with pile_insert_end. */
+    const holed = [
+      "- [ ] **9.9 `pile_insert_end` is absent.**",
+      "  Sites: `packages/core/src/game/gear.ts:1`",
+      "",
+    ].join("\n");
+    const items = openItems(holed);
+    expect(items).toHaveLength(1);
+    const cites = [...citedPortLines(items[0]!.sites)];
+    expect(cites).toHaveLength(1);
+    const [path, lineNo] = cites[0]!;
+    expect(path).toBe("packages/core/src/game/gear.ts");
+    expect(lineNo).toBe(1);
+    const src = readFileSync(join(ROOT, path), "utf8").split("\n");
+    const window = src.slice(0, 5).join("\n").toLowerCase();
+    expect(window.includes("pile_insert_end")).toBe(false);
+    expect(window.includes("deferred")).toBe(false);
   });
 
   it("would notice a typo'd path prefix (mutation check on the guard above)", () => {
