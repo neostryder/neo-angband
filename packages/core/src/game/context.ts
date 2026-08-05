@@ -1001,6 +1001,29 @@ export function playerRestingCount(state: GameState): number {
   return state.resting?.count ?? 0;
 }
 
+/**
+ * player_of_has (player-util.c): does the player have object flag `flag`, from
+ * their race or from anything they are wearing?
+ *
+ * Lives here because it had THREE byte-identical private copies -
+ * game/effect-general.ts, game/mon-side.ts and game/player-side.ts - and a
+ * fourth was about to be written for the chest branches. A predicate with
+ * copies is a predicate where a correction lands in one place and not the
+ * others; upstream has exactly one.
+ *
+ * Note this is the DERIVED question, not `playerIsTrapsafe`'s: a caller asking
+ * "is a timed effect protecting me" wants that one, and a caller asking "is
+ * there a piece of equipment whose rune I should now learn" wants this one.
+ */
+export function playerOfHas(state: GameState, flag: number): boolean {
+  const p = state.actor.player;
+  if (p.race.flags.has(flag)) return true;
+  for (let i = 0; i < p.body.count; i++) {
+    if (state.runeEnv.slotObject(i)?.flags.has(flag)) return true;
+  }
+  return false;
+}
+
 /** cave_monster_max(cave): one past the highest occupied monster slot. */
 export function monsterMax(state: GameState): number {
   return state.monsters.length;

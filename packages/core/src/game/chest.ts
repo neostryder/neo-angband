@@ -34,6 +34,8 @@ import type { ObjCmdDeps } from "./obj-cmd.js";
 import { buildEffectContext } from "./effect-env.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import type { GameState } from "./context.js";
+import { playerOfHas } from "./context.js";
+import { equipLearnFlag } from "../obj/knowledge.js";
 import { playerIsTrapsafe } from "./trap.js";
 
 /* CHEST_QUERY / ChestQuery are obj/chest.ts's own exports (the index barrel
@@ -46,8 +48,14 @@ export interface ChestEnv {
   msg?: (text: string) => void;
   /** player_exp_gain on a pick/disarm. */
   expGain?: (amount: number) => void;
-  /** player_of_has(OF_TRAP_IMMUNE), for the equip-learn no-op path (#13). */
-  playerHasFlag?: (ofFlag: number) => boolean;
+  /*
+   * There used to be a `playerHasFlag?` here, guarding the two OF_TRAP_IMMUNE
+   * equip-learn branches. NOTHING EVER SUPPLIED IT. session/game.ts builds the
+   * trap env with it (:1632) and the chest env without (:1692), so both
+   * branches were `undefined?.(...)` - unreachable, and unreachable in a way
+   * that reads as ported. The predicate is now answered from the state
+   * directly (playerOfHas), which cannot be forgotten by a caller.
+   */
 }
 
 /** The effect stack shared with traps (session/game.ts assembles this once). */
@@ -264,8 +272,9 @@ export function doCmdOpenChest(
   if (flag) {
     if (!playerIsTrapsafe(state)) {
       chestTrap(state, obj, deps);
-    } else if (obj.pval > 0 && (env.playerHasFlag?.(OF.TRAP_IMMUNE) ?? false)) {
-      /* Learn trap immunity (equip_learn_flag): deferred, #13. */
+    } else if (obj.pval > 0 && playerOfHas(state, OF.TRAP_IMMUNE)) {
+      /* Learn trap immunity if there are traps (obj-chest.c L624-626). */
+      equipLearnFlag(state.actor.player, state.runeEnv, OF.TRAP_IMMUNE);
     }
     chestDeath(state, grid, obj, deps);
   }
@@ -342,8 +351,11 @@ export function doCmdDisarmChest(
   if (!playerIsTrapsafe(state)) {
     env.msg?.("You set off a trap!");
     chestTrap(state, obj, deps);
-  } else if (env.playerHasFlag?.(OF.TRAP_IMMUNE)) {
-    /* Learn trap immunity (equip_learn_flag): deferred, #13. */
+  } else if (playerOfHas(state, OF.TRAP_IMMUNE)) {
+    /* Learn trap immunity (obj-chest.c L722-724). Note the difference from the
+     * open path above: disarm has no `pval > 0` term, because do_cmd_disarm_chest
+     * has already established the chest is trapped. */
+    equipLearnFlag(state.actor.player, state.runeEnv, OF.TRAP_IMMUNE);
   }
   return false;
 }

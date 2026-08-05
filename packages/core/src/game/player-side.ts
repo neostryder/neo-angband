@@ -40,6 +40,7 @@ import { ODESC } from "../obj/desc.js";
 import { minusAc } from "./gear.js";
 import { describeObject } from "./describe.js";
 import type { GameState } from "./context.js";
+import { playerOfHas } from "./context.js";
 import type {
   PlayerProjActor,
   ProjectPlayerSideContext,
@@ -121,15 +122,6 @@ const STAT_NEG_ADJECTIVE: readonly string[] = [
   "sickly",
 ];
 
-/** player_of_has: the racial flags plus every equipped item's. */
-function playerOfHas(state: GameState, flag: number): boolean {
-  const p = state.actor.player;
-  if (p.race.flags.has(flag)) return true;
-  for (let i = 0; i < p.body.count; i++) {
-    if (state.runeEnv.slotObject(i)?.flags.has(flag)) return true;
-  }
-  return false;
-}
 
 /** sustain_flag(stat) over the OF_SUST_ block. */
 function sustained(state: GameState, stat: number): boolean {
