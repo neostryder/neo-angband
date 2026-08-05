@@ -46,10 +46,25 @@ A further 27 notes were not parity claims at all — a variable named `todo`, a
 are architectural (`notice_stuff` / `PN_*`, and the carried-weight total nothing
 sums); the largest by volume is a debug log.
 
-### Two live defects this found
+### Three live defects this found
 
-One was found by re-reading a note and one by reading a cross-check lead, and the
-second is the more serious of the two.
+Two of them by re-reading a note that had handed its work to somebody else, and
+one by reading a cross-check lead. Both of the first kind share a shape: **a
+function or a field that exists, is correct, and is wired to nothing.**
+
+**`disturb()` has no callers.** `game/player-path.ts:97` is a faithful port of
+upstream's `disturb()` — stop running, cancel the rest, free the path steps — and
+nothing in `packages/core` or `packages/web` calls it. It is also the only thing
+that clears `state.resting` (`:106`). The shell reimplements one slice locally
+(`anyVisibleMonster`, `web/src/main.ts`), so the two checks can drift, and the
+disturb on **taking damage**, on a status message, and on a monster waking behind
+you is absent outright: a run or a rest continues through events upstream stops
+for. It is **PORT_TODO 2.17**.
+
+Note the instrument that found it and the one that did not. Greping for callers
+found it in seconds; three coverage guards, a full test suite and a lint pass did
+not, because **nothing here can distinguish a function nobody calls yet from a
+function nobody needs to call.**
 
 **Nothing sums the player's carried weight.** `player.upkeep.totalWeight` is set
 to 0 in `playerOutfit` (`game/gear.ts:1284`) and thereafter written only by the
@@ -110,12 +125,14 @@ worked as a sample — `combat-melee.yaml`, 11 items — came out **ten stale, o
 real**, which is the same rate as the first tranche and the reason the live defect
 above sat unnoticed: it was in a list nobody re-read.
 
-**Progress: 94 of 331 adjudicated** — `ui-display`, `ui-player`, `ui-entry`,
-`wizard-debug`, `game-gear`, `obj-knowledge`, all four `store-*` and
-`player-history`. The rate held: **30 `ported`, 18 `stale-doc`, 8 `divergence`,
-5 `not-a-deferral` against 22 `real` and 7 `partial`** — two rows in three were
-not owed work. The `real` ones are what matters, and they include the
-carried-weight defect above. 237 remain.
+**Progress: 135 of 331 adjudicated** — `ui-display`, `ui-player`, `ui-entry`,
+`wizard-debug`, `game-gear`, `obj-knowledge`, all four `store-*`,
+`player-history`, `obj-desc`, `mon-lore`, `mon-lore-describe`,
+`game-effect-terrain`, `game-effect-teleport`, `game-player-path` and
+`game-mon-cmd`. The rate held: **47 `ported`, 19 `stale-doc`, 13 `divergence`,
+5 `not-a-deferral`, 3 `n-a`, 2 `note-is-fix` against 28 `real` and 18
+`partial`** — two rows in three were not owed work. The owed ones are what
+matters, and they include both live defects above. 196 remain.
 
 ## Genuinely not ported
 
