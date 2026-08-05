@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 25 closed, 42 open.
+**67 items covering all 111 confirmed-absent citations** — 26 closed, 41 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Five of the twenty-one closures are retractions rather than
+declared *closed*. **Six of the twenty-six closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -491,10 +491,47 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `parity/ledger/player-calcs-bonuses.yaml:78`,
   `parity/ledger/ui-display.yaml:120`, `parity/ledger/ui-player.yaml:75`
 
-- [ ] **2.7 `pile_insert_end` is absent.**
-  No pile links at all (`packages/core/src/game/gear.ts:134`), so ordering inside
-  a floor pile can differ from upstream's append-at-end. There is a dedicated
-  instrument saying so: `packages/core/src/game/pile.upstream.test.ts:28`.
+- [x] **2.7 `pile_insert_end` is absent.** CLOSED as a RETRACTION — the row named
+  the right function and got its mechanism **inverted**, in a way that would have
+  caused a regression if acted on as written.
+
+  It said ordering "inside a **floor** pile can differ from upstream's
+  append-at-end". Upstream's floor does not append at the end. Census of the two
+  primitives in 4.2.6:
+
+  | site | primitive | order |
+  |---|---|---|
+  | `floor_carry` (obj-pile.c:960) | `pile_insert` | **prepend** |
+  | `inven_carry` (obj-gear.c:867, via `gear_insert_end`) | `pile_insert_end` | append |
+  | `calc_inventory` splits (player-calcs.c:1101, :1164) | `pile_insert_end` | append |
+  | `load.c:1419` floor restore | `pile_insert_end` | append (saved order) |
+  | `wield_all` (player-birth.c:503) | `pile_insert_end` | append |
+  | `obj-knowledge.c:896, :927, :952` | `pile_insert_end` | the **known** cave |
+
+  The port already matches every one of those: the floor is an array with newest
+  FIRST (`floor.ts` `pile.unshift`), the pack is `gear.pack.push` at all three
+  gear sites, `deserializeFloor` maps the saved array 1:1, and `wieldAll`'s
+  docblock already records the deferred-append behaviour. The cited instrument
+  (`pile.upstream.test.ts:28`) says the true thing in its own header — "nothing in
+  the live port appends to a floor pile (floor_carry always prepends)" — which is
+  parity, not a gap. The three `obj-knowledge.c` sites are the **known-object
+  shadow cave** and belong to open item **2.9**, not here.
+
+  Closed by ADDING the tests it lacked, because a retraction with no test is the
+  next bug. What was genuinely untested was the **append** side — the item's real
+  subject — plus the floor's prepend, which nothing pinned:
+  - `inven_carry` APPENDS: `gear.test.ts` asserts the handle order `[a,b,c]`, not
+    a length or membership (a prepend gives `[c,b,a]` and must be distinguishable).
+  - `floor_carry` PREPENDS: a **negative control**, so that acting on this row's
+    wording and "fixing" the floor into an append fails loudly.
+  - `load.c:1419`: a save/load/re-save round trip comparing the pile's `kindId`
+    order to the saved order.
+
+  Mutation-verified: `pack.push`→`unshift` kills 1, `pile.unshift`→`push` kills 2
+  (including the pre-existing upstream instrument), and reversing
+  `deserializeFloor` kills 1. **My first draft of that last assertion compared
+  `pile.map(...)` to `pile.map(...)` — a tautology that could not fail whatever
+  the loader did.** It is now compared against the re-saved projection.
   Sites: `packages/core/src/game/gear.ts:1315`
 
 - [x] **2.8 `path_analyse` is absent.** DONE — and this one's description was
