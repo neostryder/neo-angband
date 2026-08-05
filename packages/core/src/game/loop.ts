@@ -464,6 +464,11 @@ export function processWorld(state: GameState): void {
   if (p.wordRecall > 0 && !state.arenaLevel) {
     p.wordRecall--;
     if (p.wordRecall === 0) {
+      /* "Disturbing!  Also, flush the command queue to avoid losing an action on
+       * the new level" (game-world.c:789-795). disturb() does both - the flush is
+       * its cmdq_flush - so the recall cannot arrive mid-run with a queued step
+       * waiting to spend itself on arrival. */
+      disturb(state);
       if (state.chunk.depth > 0) {
         state.msg?.("You feel yourself yanked upwards!");
         state.targetDepth = 0;
@@ -485,6 +490,10 @@ export function processWorld(state: GameState): void {
        * when it armed the descent. */
       const increment = Math.trunc(4 / state.z.stairSkip) + 1;
       const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
+      /* disturb(player) (game-world.c:820), before either outcome - the floor
+       * opening beneath you interrupts whatever you were doing even when the
+       * descent has nowhere to go and throws you back instead. */
+      disturb(state);
       if (targetDepth > state.chunk.depth) {
         state.msg?.("The floor opens beneath you!");
         state.targetDepth = targetDepth;

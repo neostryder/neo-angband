@@ -52,6 +52,7 @@ import {
   packTotalView,
 } from "./gear.js";
 import { gearToLabel } from "./project-obj.js";
+import { disturb } from "./player-path.js";
 import type { ActionRegistry } from "./player-turn.js";
 
 /** Hooks and options for the pickup routines; every slot is optional. */
@@ -84,8 +85,6 @@ export interface PickupEnv {
    * (obj-gear.c:893-921), not the bare floor object.
    */
   onPickup?: (msg: string) => void;
-  /** disturb(player). */
-  disturb?: () => void;
 }
 
 /** What the pickup routines need from the binder. */
@@ -456,7 +455,15 @@ export function doAutopickup(state: GameState, deps: PickupDeps): number {
   for (const obj of [...floorPile(state, grid)]) {
     /* Ignore all hidden objects and non-objects. */
     if (env.isIgnored?.(obj)) continue;
-    env.disturb?.();
+    /* disturb(p) (cmd-pickup.c:430), called for every non-ignored object on the
+     * grid whether or not it is picked up - stepping onto something worth
+     * noticing stops a run.
+     *
+     * This was a `env.disturb?.()` seam, and installPickup never supplied it, so
+     * it was a permanent no-op: an optional seam with no default is not a
+     * deferral, it is an absence with a comment on it. Called directly now, like
+     * every other disturb in the port. */
+    disturb(state);
     const autoNum = autoPickupOkay(state, obj, deps);
     if (autoNum) {
       playerPickupAux(state, obj, autoNum, deps);
