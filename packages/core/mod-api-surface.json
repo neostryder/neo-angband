@@ -799,6 +799,7 @@
     "gearGet",
     "gearObjectForUse",
     "gearToLabel",
+    "gearTotalWeight",
     "genDeps",
     "generateHistory",
     "generateHole",
