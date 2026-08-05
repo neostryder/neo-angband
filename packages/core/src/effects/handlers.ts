@@ -75,8 +75,11 @@ export function damageEffectApplyToPlayer(
 export function damageEffectKiller(context: EffectHandlerContext): string {
   switch (context.origin.what) {
     case "monster":
-      /* monster_desc(MDESC_DIED_FROM) is deferred (8.9); the game override
-       * supplies the race-name stand-in. */
+      /* This layer has no monster registry, so it cannot name the killer; the
+       * GAME override does, through monster_desc(MDESC_DIED_FROM)
+       * (game/effect-attack.ts, game/project-cast.ts). Reached only by a
+       * worldless harness, where there is no monster to name. Not a deferral -
+       * this comment used to say "deferred (8.9)" and it outlived the wiring. */
       return "a monster";
     case "trap":
       return "a trap";
