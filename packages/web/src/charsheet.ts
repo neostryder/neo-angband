@@ -34,6 +34,7 @@ import {
   colorToCss,
   buildUiEntryConfig,
   characterGrid,
+  liveUiEntryDeps,
   gearGet,
   describeObject,
   makeObjectInfoDeps,
@@ -267,7 +268,14 @@ function buildSustainBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
  * does not use this; it tiles the same buildGridBlock blocks side by side.
  */
 function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
-  const { resistPanels, statModPanel } = characterGrid(state, config);
+  /* liveUiEntryDeps (PORT_TODO 3.6/3.7/3.8): this call, and the two below,
+   * passed NO deps - so the timed-flag column, the temporary-resist row and every
+   * PF_* intrinsic read as absent on the character sheet in every game. */
+  const { resistPanels, statModPanel } = characterGrid(
+    state,
+    config,
+    liveUiEntryDeps(state),
+  );
   const lines: ScreenLine[] = [];
   // NARROW (phone) mode only: a section title precedes each block so the
   // stacked scroll list stays legible. The wide layout (the upstream screen)
@@ -376,7 +384,11 @@ function dumpItemLines(
  */
 function flagGridSection(state: GameState, packs?: UiEntryPackRecords): string[] {
   if (!packs) return [];
-  const { resistPanels } = characterGrid(state, buildUiEntryConfig(packs));
+  const { resistPanels } = characterGrid(
+    state,
+    buildUiEntryConfig(packs),
+    liveUiEntryDeps(state),
+  );
   const byKey = (k: string): UiGridPanel | undefined =>
     resistPanels.find((p) => p.key === k);
   const resistances = byKey("resistances");
@@ -648,7 +660,11 @@ export function showCharacterSheet(
         // exact upstream anchor, with NO on-screen region titles (upstream
         // shows those only in the character dump).
         paintPanel(term, ANCHOR.topleft, byKey("topleft"));
-        const { resistPanels, statModPanel } = characterGrid(state, gridConfig);
+        const { resistPanels, statModPanel } = characterGrid(
+          state,
+          gridConfig,
+          liveUiEntryDeps(state),
+        );
         const blit = (block: ScreenLine[], x: number, y0: number): void => {
           let y = y0;
           for (const line of block) {

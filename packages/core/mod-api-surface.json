@@ -941,6 +941,7 @@
     "likert",
     "liveObjectIsKnownArtifact",
     "liveTimedUiDeps",
+    "liveUiEntryDeps",
     "loadDunProfile",
     "loadGame",
     "loadRoomTemplates",
