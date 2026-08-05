@@ -186,12 +186,24 @@ is reachable in play and a test constructs the case that used to be wrong.**
   rejecting cases, not asserting today's answer.
   Sites: `packages/core/src/game/context.ts:1088`
 
-- [ ] **2.2 Monster-vs-monster theft ignores `react_to_slay`.**
-  `mon-util.c:1548`. The player's own pack is protected correctly
-  (`packages/core/src/game/mon-side.ts:421`), so this is an asymmetry:
-  `reactToSlay` is exported at `packages/core/src/combat/brand-slay.ts:121`,
-  `state.slays` is available at the caller, and the condition sits there
-  commented out.
+- [x] **2.2 Monster-vs-monster theft ignored `react_to_slay`.** DONE.
+  `mon-util.c:1548`. Two of upstream's three `react_to_slay` sites were already
+  ported — the player's own pack (`game/mon-side.ts:430`) and a monster's floor
+  pickup (`game/monster-turn.ts:1363`) — so this was a lone asymmetry, and the
+  comment excusing it cited those two as precedent for skipping it. **An excuse
+  that points at code doing the opposite of what the excuse claims is how a gap
+  survives review.**
+
+  Fixed at the line that mirrors L1548 rather than in each env builder:
+  `StealEnv` gained `thief(midx)` and `slays`, so `mon/steal.ts` calls
+  `reactToSlay` itself. `thief` is **required**, unlike the two neighbouring
+  thief seams, because it decides whether the theft happens at all — an optional
+  version would silently strip the protection again.
+  `packages/core/src/mon/steal.test.ts` proves it with a pair on the same seed
+  and the same slay-bearing item, differing only in whether the thief's race
+  carries the flag; deleting the guard fails the first on both assertions. Its
+  default `thief` is a real monster, not null, so `react_to_slay` is actually
+  invoked in every test that takes the monster path.
   Sites: `packages/core/src/mon/steal.ts:32`, `:33`, `:231`, `:234`
 
 - [ ] **2.3 `alter` (`+`) has no chest branch and no floor-trap branch.**
@@ -202,8 +214,31 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/web/src/context-menu.ts`.*
   Sites: `packages/core/src/game/cave-cmd.ts:1045`
 
-- [ ] **2.4 The chest `OF_TRAP_IMMUNE` rune is never learned.**
-  Two copies of the same empty branch.
+- [x] **2.4 The chest `OF_TRAP_IMMUNE` rune was never learned.** DONE, and it
+  was worse than "two copies of the same empty branch."
+
+  **Both branches were UNREACHABLE, not merely empty.** Each read
+  `env.playerHasFlag?.(OF.TRAP_IMMUNE)`, and *nothing in the repository ever
+  supplied `playerHasFlag` to a chest env*: `session/game.ts` gives it to the
+  trap env (`:1632`) and omits it from the chest env (`:1692`). Filling the
+  bodies in would have produced dead code that reads as ported — so the
+  predicate is now answered from the state, which no caller can forget.
+
+  A near-miss worth recording: my first grep for `playerHasFlag` covered
+  `game/**` and `web/**` and reported **no supplier anywhere**, which would have
+  made floor-trap immunity look broken too. It is supplied — from `session/**`,
+  which the grep never looked at. *A single-directory grep is not a census
+  either.*
+
+  Along the way, `player_of_has` had **three byte-identical private copies**
+  (`effect-general.ts`, `mon-side.ts`, `player-side.ts`) and a fourth was about
+  to be written; there is now one, `playerOfHas` in `game/context.ts`.
+
+  Four tests in `chest.test.ts` set the state up through the real
+  gear/equipment path rather than stubbing the env, so they would fail on the
+  unreachable version. Their docblock records what they do **not** pin: swapping
+  `playerOfHas` for `playerIsTrapsafe` leaves them green, because
+  `equipLearnFlag` self-guards — measured, not assumed.
   Sites: `packages/core/src/game/chest.ts:268`, `:346`
 
 - [ ] **2.5 Run the `PN_IGNORE` notice pass.** *(needs 1.1)*

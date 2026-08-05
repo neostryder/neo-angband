@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { SQUARE, STAT, TMD, TV } from "../generated/index.js";
+import { OF, SQUARE, STAT, TMD, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { SKILL } from "../player/types.js";
@@ -414,6 +414,118 @@ describe("do_cmd_disarm_chest (obj-chest.c L659)", () => {
     expect(msgs).toContain("You set off a trap!");
     expect(msgs).toContain("A small needle has pricked you!");
     expect(state.actor.player.chp).toBeLessThan(100);
+  });
+});
+
+/**
+ * equip_learn_flag(OF_TRAP_IMMUNE) on a trapped chest (obj-chest.c L624-626 for
+ * open, L722-724 for disarm).
+ *
+ * BOTH BRANCHES WERE UNREACHABLE, not merely empty. They read
+ * `env.playerHasFlag?.(OF.TRAP_IMMUNE)` and nothing ever supplied
+ * `playerHasFlag`: session/game.ts gives it to the TRAP env (:1632) and not to
+ * the CHEST env (:1692). So filling the branch bodies in would have produced
+ * dead code that reads as ported - the reason these tests set the state up
+ * through the real gear/equipment path rather than handing the env a stub.
+ */
+describe("OF_TRAP_IMMUNE is learned from a trapped chest", () => {
+  /** An equipped item carrying the flag, reached by both predicates: gearGet
+   * (playerIsTrapsafe) and runeEnv.slotObject (player_of_has). */
+  function equipTrapImmune(state: GameState): void {
+    const sval = reg.lookupSval(TV.SOFT_ARMOR, "Soft Leather Armour");
+    const kind = reg.lookupKind(TV.SOFT_ARMOR, sval)!;
+    const armour = objectPrep(new Rng(9), reg, constants, kind, 1, "average");
+    armour.flags.on(OF.TRAP_IMMUNE);
+    state.gear.store.set(77, armour);
+    state.actor.player.equipment[0] = 77;
+  }
+
+  it("opening a trapped chest learns the rune and the trap does not fire", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+    setSkill(state, SKILL.DISARM_PHYS, 200);
+    equipTrapImmune(state);
+    state.actor.player.chp = 100;
+    const grid = loc(6, 5);
+    const chest = chestObj("Small iron chest");
+    chest.pval = 1 | 4; // locked + poison needle/STR
+    chest.originDepth = 2;
+    floorCarry(state, grid, chest);
+
+    const msgs: string[] = [];
+    doCmdOpenChest(state, grid, chest, cmdDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+
+    expect(state.actor.player.objKnown.flags.has(OF.TRAP_IMMUNE)).toBe(true);
+    /* And it is trap immunity doing the work, not luck: the needle never fires. */
+    expect(msgs).not.toContain("A small needle has pricked you!");
+    expect(state.actor.player.chp).toBe(100);
+  });
+
+  it("disarming a trapped chest learns the rune", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    // Zero skill and an unseen grid: the disarm rolls miss, so control reaches
+    // the trap branch - which trap immunity then diverts to the learn.
+    setSkill(state, SKILL.DISARM_PHYS, 0);
+    setSkill(state, SKILL.DISARM_MAGIC, 0);
+    equipTrapImmune(state);
+    state.actor.player.chp = 100;
+    const chest = chestObj("Small iron chest");
+    chest.pval = 4;
+    chest.knownPval = 4;
+
+    let seed = -1;
+    for (let s = 1; s < 50 && seed < 0; s++) {
+      const probe = new Rng(s);
+      if (probe.randint0(100) >= 2 && probe.randint0(100) >= 2) seed = s;
+    }
+    state.rng = new Rng(seed);
+
+    const msgs: string[] = [];
+    doCmdDisarmChest(state, chest, cmdDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+
+    expect(state.actor.player.objKnown.flags.has(OF.TRAP_IMMUNE)).toBe(true);
+    expect(msgs).not.toContain("A small needle has pricked you!");
+    expect(state.actor.player.chp).toBe(100);
+  });
+
+  /**
+   * The negative case: TMD_TRAPSAFE stops the trap, and teaches nothing,
+   * because there is no equipment carrying the flag to learn it from.
+   *
+   * WHAT THIS DOES NOT PROVE, measured rather than assumed. Substituting
+   * `playerIsTrapsafe(state)` for `playerOfHas(state, OF.TRAP_IMMUNE)` in the
+   * else-if leaves all four tests here green - so this test does NOT pin the
+   * choice of predicate, and an earlier draft of this comment claimed it did.
+   * The reason is that equipLearnFlag self-guards (obj/knowledge.ts:723): it
+   * walks the equipment and learns nothing when no slot carries the flag, so
+   * calling it too eagerly is usually invisible. `else if (playerIsTrapsafe)`
+   * would in fact be VACUOUS, the `if` above having just tested its negation.
+   *
+   * There is one place the two would diverge: equipLearnFlag also runs
+   * objectCursesFindFlags over every equipped object unconditionally
+   * (knowledge.ts:730), so the vacuous form would let a merely-TRAPSAFE player
+   * discover a curse's flags by opening a chest. Constructing that needs a
+   * cursed object whose curse supplies OF_TRAP_IMMUNE and is left as a known
+   * limit of this file rather than a silent one.
+   */
+  it("a TRAPSAFE timer stops the trap but teaches nothing", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+    setSkill(state, SKILL.DISARM_PHYS, 200);
+    state.actor.player.timed[TMD.TRAPSAFE] = 20;
+    state.actor.player.chp = 100;
+    const grid = loc(6, 5);
+    const chest = chestObj("Small iron chest");
+    chest.pval = 1 | 4;
+    chest.originDepth = 2;
+    floorCarry(state, grid, chest);
+
+    const msgs: string[] = [];
+    doCmdOpenChest(state, grid, chest, cmdDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+
+    expect(state.actor.player.chp).toBe(100);
+    expect(msgs).not.toContain("A small needle has pricked you!");
+    expect(state.actor.player.objKnown.flags.has(OF.TRAP_IMMUNE)).toBe(false);
   });
 });
 

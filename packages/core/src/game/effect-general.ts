@@ -75,6 +75,7 @@ import { featIsTrapHolding } from "../world/chunk.js";
 import { squareIsView } from "../world/view.js";
 import { lookupTrap } from "../world/trap.js";
 import type { GameState } from "./context.js";
+import { playerOfHas } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
 import {
   caveFindDecoy,
@@ -128,15 +129,6 @@ function descStat(
   return positive ? prop.adjective : prop.negAdj;
 }
 
-/** player_of_has: the racial flags plus every equipped item's. */
-function playerOfHas(state: GameState, flag: number): boolean {
-  const p = state.actor.player;
-  if (p.race.flags.has(flag)) return true;
-  for (let i = 0; i < p.body.count; i++) {
-    if (state.runeEnv.slotObject(i)?.flags.has(flag)) return true;
-  }
-  return false;
-}
 
 /** The expDeps fallback: level changes still recompute, messages ride ctx. */
 function expDepsOf(
