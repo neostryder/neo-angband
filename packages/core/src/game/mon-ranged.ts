@@ -35,9 +35,10 @@ import { ELEM_MAX } from "../obj/types.js";
 import type { FlagSet } from "../bitflag.js";
 import { getLore, loreCountU16, loreCountU8 } from "../mon/lore.js";
 import type { Monster } from "../mon/monster.js";
-import { squareIsEmpty, squareMonster } from "./context.js";
+import { squareMonster } from "./context.js";
 import { squareIsWarded } from "./trap.js";
 import type { GameState } from "./context.js";
+import { squareIsEmptyLive } from "./mon-place.js";
 import { doMonSpell } from "./mon-cast.js";
 import type { DoMonSpellDeps } from "./mon-cast.js";
 import { monsterIsDecoyed } from "./monster-turn.js";
@@ -88,7 +89,7 @@ export function summonPossible(state: GameState, grid: Loc): boolean {
       if (distance(grid, near) > 2) continue;
       /* Hack: no summon on a glyph of warding (L257). */
       if (squareIsWarded(state, near)) continue;
-      if (squareIsEmpty(state, near) && los(c, grid, near)) return true;
+      if (squareIsEmptyLive(state, near) && los(c, grid, near)) return true;
     }
   }
   return false;

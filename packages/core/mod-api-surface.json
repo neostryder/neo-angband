@@ -1165,6 +1165,7 @@
     "objectHasStandardToH",
     "objectInfo",
     "objectInfoTextblock",
+    "objectIsCarried",
     "objectIsIgnored",
     "objectIsInQuiver",
     "objectIsKnownArtifact",

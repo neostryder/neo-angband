@@ -17,12 +17,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MON_TMD, MSG, PF, RF, SQUARE } from "../generated/index.js";
-import { loc } from "../loc.js";
+import { loc, locEq } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
 import { startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import type { GameState } from "./context.js";
-import { movePlayer, squareIsEmpty, updateMonsterDistances } from "./context.js";
+import { movePlayer, updateMonsterDistances } from "./context.js";
 import { monsterTurn } from "./monster-turn.js";
 import { worldTakeHit } from "./world.js";
 
@@ -184,7 +184,21 @@ describe("cheat_live survives the commonest death in Angband: a melee blow", () 
       [-1, 1],
     ] as const) {
       const grid = loc(mon.grid.x + dx, mon.grid.y + dy);
-      if (!squareIsEmpty(state, grid)) continue;
+      /*
+       * "Can the player stand here", which is NOT square_isempty. This used to
+       * call context.ts's squareIsEmpty, and that only worked because THAT
+       * predicate was weaker than upstream's: passable / no monster / not the
+       * player, which is exactly the question being asked here. Once it was
+       * corrected (PORT_TODO 2.1) this loop started rejecting any neighbour
+       * holding an object - common on a real generated level - and both tests in
+       * this describe block failed on the setup rather than on the behaviour.
+       * The question is spelled out inline so it cannot silently follow a
+       * predicate it never meant to share.
+       */
+      if (!state.chunk.inBounds(grid)) continue;
+      if (!state.chunk.isPassable(grid)) continue;
+      if (state.chunk.mon(grid) !== 0) continue;
+      if (locEq(grid, state.actor.grid)) continue;
       movePlayer(state, grid);
       mon.mTimed[MON_TMD.SLEEP] = 0;
       mon.mTimed[MON_TMD.FEAR] = 0;

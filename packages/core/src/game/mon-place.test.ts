@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, ORIGIN, RF, TV } from "../generated/index.js";
+import { MFLAG, MON_TMD, ORIGIN, RF, TRF, TV } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { TRF_SIZE } from "../world/trap.js";
 import { bindConstants } from "../constants.js";
 import { loc, locEq } from "../loc.js";
 import { distance } from "../loc.js";
@@ -25,7 +27,7 @@ import { tvalFindIdx } from "../obj/bind.js";
 import { deleteMonster, monPop, squareMonster } from "./context.js";
 import type { GameState } from "./context.js";
 import { summonGroup } from "./mon-group.js";
-import { floorPile } from "./floor.js";
+import { floorCarry, floorPile } from "./floor.js";
 import { compactMonsters } from "./world.js";
 import {
   createMimickedObject,
@@ -34,13 +36,14 @@ import {
   placeNewMonster,
   placeNewMonsterOne,
   squareAllowsSummon,
+  squareIsEmptyLive,
   summonSpecific,
   wipeMonsterCounts,
 } from "./mon-place.js";
 import type { MimicDeps, MonPlaceDeps, SummonDeps } from "./mon-place.js";
 import { Rng } from "../rng.js";
 import type { GameObject } from "../obj/object.js";
-import { GRANITE, addMon, makeRace, makeState, monReg } from "./harness.js";
+import { GRANITE, addMon, featureReg, makeRace, makeState, monReg } from "./harness.js";
 
 const summons = new SummonTable(monReg.summons, monReg.bases);
 
@@ -818,5 +821,83 @@ describe("compact_monsters' excise pass (mon-make.c L537-550)", () => {
     place(state, loc(14, 10), plainRace());
     compactMonsters(state, 0);
     expect(msgs).toEqual([]);
+  });
+});
+
+/**
+ * square_isempty (cave-square.c:604-608), the WHOLE predicate.
+ *
+ * WHY THIS EXISTS. There were two live-cave definitions of this. The one in
+ * game/context.ts tested passable / no monster / not the player and carried a
+ * comment saying the rest was DEFERRED - so five modules (effect-terrain,
+ * mon-ranged, project-feat, wizard, dump-level) were calling something weaker
+ * than upstream under upstream's name, at seven sites that all mirror a real
+ * square_isempty call in the C. That definition is gone; these are the terms it
+ * was missing, constructed rather than asserted from today's answer.
+ *
+ * And the strict terms here were themselves conditional until now:
+ * squareIsEmptyLive wrote `preds?.isPlayerTrap(grid)`, so the trap and web
+ * checks silently disappeared for any caller that passed no preds - which was
+ * every caller reached through the five modules above.
+ */
+describe("square_isempty rejects everything upstream rejects", () => {
+  const HERE = loc(5, 5);
+  const SPOT = loc(6, 5);
+
+  function floorAt(): GameState {
+    const state = makeState({ playerGrid: HERE });
+    state.chunk.setFeat(SPOT, featureReg.byCodeName("FLOOR").fidx);
+    return state;
+  }
+
+  /** A trap on SPOT carrying exactly `flag`. */
+  function trapWith(state: GameState, flag: number): void {
+    const flags = new FlagSet(TRF_SIZE);
+    flags.on(flag);
+    state.traps.set(SPOT.y * state.chunk.width + SPOT.x, [
+      { tidx: 1, grid: SPOT, power: 0, timeout: 0, flags } as never,
+    ]);
+  }
+
+  it("accepts a bare floor grid, so the rejections below mean something", () => {
+    expect(squareIsEmptyLive(floorAt(), SPOT)).toBe(true);
+  });
+
+  it("rejects a player trap (L605)", () => {
+    const state = floorAt();
+    trapWith(state, TRF.TRAP);
+    expect(squareIsEmptyLive(state, SPOT)).toBe(false);
+  });
+
+  it("rejects a web (L606)", () => {
+    const state = floorAt();
+    trapWith(state, TRF.WEB);
+    expect(squareIsEmptyLive(state, SPOT)).toBe(false);
+  });
+
+  it("rejects a grid holding an object (L607, !square_object)", () => {
+    const state = floorAt();
+    const kind = objReg.lookupKind(TV.LIGHT, objReg.lookupSval(TV.LIGHT, "Wooden Torch"));
+    floorCarry(state, SPOT, objectPrep(new Rng(3), objReg, objConstants, kind!, 1, "average"));
+    expect(squareIsEmptyLive(state, SPOT)).toBe(false);
+  });
+
+  it("rejects a monster (L607, square_isopen)", () => {
+    const state = floorAt();
+    addMon(state, plainRace(), SPOT);
+    expect(squareIsEmptyLive(state, SPOT)).toBe(false);
+  });
+
+  /**
+   * square_isopen requires square_isfloor, NOT square_ispassable. The retired
+   * predicate used isPassable, which admits rubble - so a rubble grid counted as
+   * empty at all seven call sites, including the earthquake's search for a safe
+   * square to shove a monster onto.
+   */
+  it("rejects passable-but-not-floor terrain (rubble)", () => {
+    const state = floorAt();
+    state.chunk.setFeat(SPOT, featureReg.byCodeName("PASS_RUBBLE").fidx);
+    expect(state.chunk.isPassable(SPOT), "the fixture must be passable").toBe(true);
+    expect(squareIsEmptyLive(state, SPOT)).toBe(false);
   });
 });

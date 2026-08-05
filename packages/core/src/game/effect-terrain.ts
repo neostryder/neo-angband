@@ -45,11 +45,11 @@ import {
   monsterTargetMonster,
 } from "./effect-mon-origin.js";
 import type { GameState } from "./context.js";
+import { squareIsEmptyLive } from "./mon-place.js";
 import {
   deleteMonster,
   monsterSwap,
   movePlayer,
-  squareIsEmpty,
   squareMonster,
 } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
@@ -278,7 +278,7 @@ const handleRUBBLE: EffectHandler = (ctx) => {
   let openGrids = 0;
   for (let d = 0; d < 8; d++) {
     const grid = locSum(pgrid, DDGRID_DDD[d]!);
-    if (c.inBounds(grid) && squareIsEmpty(state, grid)) openGrids++;
+    if (c.inBounds(grid) && squareIsEmptyLive(state, grid)) openGrids++;
   }
   if (rubbleGrids > openGrids) rubbleGrids = openGrids;
 
@@ -289,7 +289,7 @@ const handleRUBBLE: EffectHandler = (ctx) => {
     for (let d = 0; d < 8; d++) {
       const grid = locSum(pgrid, DDGRID_DDD[d]!);
       if (!c.inBoundsFully(grid)) continue;
-      if (!squareIsEmpty(state, grid)) continue;
+      if (!squareIsEmptyLive(state, grid)) continue;
 
       if (state.rng.oneIn(3)) {
         c.setFeat(grid, state.rng.oneIn(2) ? FEAT.PASS_RUBBLE : FEAT.RUBBLE);
@@ -763,7 +763,7 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
         for (let i = 0; i < 8; i++) {
           const safe = locSum(grid, DDGRID_DDD[i]!);
           /* Skip non-empty grids */
-          if (!squareIsEmpty(state, safe)) continue;
+          if (!squareIsEmptyLive(state, safe)) continue;
           /* No safety on glyph of warding */
           if (squareIsWarded(state, safe)) continue;
           /* Important -- Skip quake grids */

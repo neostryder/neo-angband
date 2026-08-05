@@ -177,6 +177,23 @@ export function gearGet(gear: Gear, handle: number): GameObject | null {
   return gear.store.get(handle) ?? null;
 }
 
+/**
+ * object_is_carried (obj-gear.c): the object lives in the player's gear -
+ * either the pack or a body slot. Identity, not equality: the caller holds the
+ * live object and is asking whether the player is the one holding it.
+ *
+ * Here rather than private to a caller, because it gates the carried-weight
+ * accounting (obj-gear.c's four choke points, and the wizard editor's own
+ * re-sum) and a second copy of it is a second chance to disagree about who is
+ * carrying what.
+ */
+export function objectIsCarried(gear: Gear, obj: GameObject): boolean {
+  for (const held of gear.store.values()) {
+    if (held === obj) return true;
+  }
+  return false;
+}
+
 /* ------------------------------------------------------------------ */
 /* obj-util.c object copy / split                                       */
 /* ------------------------------------------------------------------ */

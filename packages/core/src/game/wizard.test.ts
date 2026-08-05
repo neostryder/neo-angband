@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
 import { KF, SQUARE, TMD, TV } from "../generated/index.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { gearTotalWeight } from "./gear.js";
 import { loc } from "../loc.js";
 import {
   EffectRegistry,
@@ -18,6 +19,7 @@ import { ArtifactState, ObjAllocState } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
+import { objectCopy } from "../obj/object.js";
 import { FlavorKnowledge } from "../obj/knowledge.js";
 import { MonAllocTable } from "../mon/make.js";
 import { getLore } from "../mon/lore.js";
@@ -719,6 +721,7 @@ describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", ()
     const ran = wizPlayItemAccept(
       state,
       obj,
+      objectCopy(obj),
       { changed: true, equipped: true },
       wizDeps(state, true),
     );
@@ -732,11 +735,75 @@ describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", ()
     const ran = wizPlayItemAccept(
       state,
       obj,
+      objectCopy(obj),
       { changed: false, equipped: true },
       wizDeps(state, true),
     );
     expect(ran).toBe(true);
     expect(obj.notice & OBJ_NOTICE.WORN).toBe(0);
+  });
+
+  /**
+   * The total_weight correction (cmd-wizard.c L1685-1706).
+   *
+   * This was excused as "the total_weight / redraw upkeep is UI (the shell's)",
+   * which was a true reading when it was written and stopped being one the
+   * moment upkeep.totalWeight became a real running total (PORT_TODO 1.2). The
+   * sibling wizard command - runChangeQuantity - has done this arithmetic all
+   * along, so one screen maintained the burden and the other silently did not.
+   *
+   * Ground truth is the summed gear, not the arithmetic restated: an incremental
+   * total's failure mode is a path that skips the adjustment, and only an
+   * independent sum sees that.
+   */
+  it("accept re-accounts the carried weight when the quantity changes", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    obj.number = 2;
+    const handle = state.gear.next;
+    state.gear.store.set(handle, obj);
+    state.gear.pack.push(handle);
+    state.gear.next = handle + 1;
+    state.actor.player.upkeep.totalWeight = gearTotalWeight(state.gear);
+
+    const original = objectCopy(obj);
+    obj.number = 5;
+    wizPlayItemAccept(state, obj, original, { changed: true, equipped: false }, wizDeps(state, true));
+
+    expect(state.actor.player.upkeep.totalWeight).toBe(gearTotalWeight(state.gear));
+    /* And it actually moved, so the assertion above is not comparing two zeros. */
+    expect(state.actor.player.upkeep.totalWeight).toBeGreaterThan(0);
+  });
+
+  it("accept leaves the total alone for an object the player is not carrying", () => {
+    const state = makeState();
+    const onFloor = makeSword(state);
+    onFloor.number = 1;
+    state.actor.player.upkeep.totalWeight = 400;
+
+    const original = objectCopy(onFloor);
+    onFloor.number = 9;
+    wizPlayItemAccept(state, onFloor, original, { changed: true, equipped: false }, wizDeps(state, true));
+
+    /* object_is_carried gates it upstream: a floor object has no weight in the
+     * player's total to correct, so touching it must not invent one. */
+    expect(state.actor.player.upkeep.totalWeight).toBe(400);
+  });
+
+  /**
+   * object_touch (L1707), which is NOT gated on `equipped` - it sits between the
+   * weight block and the equipped-only learn. Only the equipped branch was
+   * ported, so an accepted edit to a pack item marked nothing as assessed.
+   */
+  it("accept marks the item assessed even when it is not equipped", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    obj.notice &= ~OBJ_NOTICE.ASSESSED;
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(0);
+
+    wizPlayItemAccept(state, obj, objectCopy(obj), { changed: true, equipped: false }, wizDeps(state, true));
+
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
   });
 });
 
