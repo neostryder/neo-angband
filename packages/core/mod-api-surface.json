@@ -1171,6 +1171,7 @@
     "objectEffect",
     "objectEffectIsKnown",
     "objectFindUnknownRune",
+    "objectFlagIsKnown",
     "objectFullyKnown",
     "objectGrab",
     "objectHasRune",

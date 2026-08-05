@@ -109,6 +109,14 @@ export interface TxnKnowledge {
   /** object_runes_known(obj), for store_will_buy's no-selling exception. */
   runesKnown?: boolean;
   /**
+   * object_flag_is_known(player, obj, flag) bound to the object being sold, for
+   * store_will_buy's buy-list branch (store.c:551). REQUIRED, unlike the
+   * knowledge fields above it: this one gates whether a store buys on a rune the
+   * player has not learned, and PORT_TODO 2.10 / 5.8 exist because it was absent.
+   * An optional field with a default is how it would go missing again.
+   */
+  flagKnown: (flag: number) => boolean;
+  /**
    * Selling TEACHES the object's runes (do_cmd_sell L1946-1951):
    *
    *   object_flavor_aware(player, obj);
@@ -448,7 +456,17 @@ function sellObject(
   amt = Math.min(amt, obj.number);
 
   /* Check the store wants the items being sold. */
-  if (!storeWillBuy(reg, store, obj, know.aware, know.noSelling, know.runesKnown ?? false)) {
+  if (
+    !storeWillBuy(
+      reg,
+      store,
+      obj,
+      know.aware,
+      know.noSelling,
+      know.runesKnown ?? false,
+      know.flagKnown,
+    )
+  ) {
     return { ok: false, failure: "refused" };
   }
 
