@@ -66,7 +66,7 @@ function makeObj(tval: number): GameObject {
 }
 
 function carry(state: GameState, obj: GameObject): number {
-  const h = invenCarry(state.gear, obj, {
+  const h = invenCarry(state.gear, state.actor.player, obj, {
     quiverSlotSize: constants.quiverSlotSize,
     thrownQuiverMult: constants.thrownQuiverMult,
   });

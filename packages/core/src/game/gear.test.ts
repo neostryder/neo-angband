@@ -88,6 +88,17 @@ const humanWarrior = () => {
   return { race, cls, body };
 };
 
+/**
+ * inven_carry updates the burden of the player doing the carrying (obj-gear.c
+ * L845, L875), so it takes one. These blocks are about stacking and pack
+ * PLACEMENT, not the carried-weight total, so they share a throwaway carrier;
+ * the total has its own derived-ground-truth test in gear-weight.test.ts.
+ */
+const carrier = ((): ReturnType<typeof blankPlayer> => {
+  const { race, cls, body } = humanWarrior();
+  return blankPlayer(race, cls, body);
+})();
+
 const constants = bindConstants(pack.constants);
 const limits: StackLimits = {
   quiverSlotSize: constants.quiverSlotSize,
@@ -156,8 +167,8 @@ describe("invenCarry (obj-gear.c inven_carry)", () => {
     const p2 = objectPrep(rng, reg, constants, potion, 0, "minimise");
     p2.number = 3;
 
-    const h1 = invenCarry(gear, p1, limits);
-    const h2 = invenCarry(gear, p2, limits);
+    const h1 = invenCarry(gear, carrier, p1, limits);
+    const h2 = invenCarry(gear, carrier, p2, limits);
 
     // The second stack merged into the first: same handle, one pack slot.
     expect(h2).toBe(h1);
@@ -187,8 +198,8 @@ describe("invenCarry (obj-gear.c inven_carry)", () => {
       "minimise",
     );
 
-    const hp = invenCarry(gear, potion, limits);
-    const hf = invenCarry(gear, food, limits);
+    const hp = invenCarry(gear, carrier, potion, limits);
+    const hf = invenCarry(gear, carrier, food, limits);
     expect(hf).not.toBe(hp);
     expect(gear.pack.length).toBe(2);
   });
@@ -211,7 +222,7 @@ describe("wieldAll (player-birth.c wield_all split)", () => {
       "minimise",
     );
     torches.number = 3;
-    invenCarry(gear, torches, limits);
+    invenCarry(gear, carrier, torches, limits);
 
     wieldAll(gear, player);
 
@@ -360,7 +371,7 @@ describe("object_learn_on_wield learns modifier runes (obj-knowledge.c)", () => 
       "minimise",
     );
     ring.modifiers[OBJ_MOD.STR] = 3;
-    const handle = invenCarry(gear, ring, limits);
+    const handle = invenCarry(gear, carrier, ring, limits);
 
     // Rune unknown until worn (born unknown, exactly as upstream).
     expect(player.objKnown.modifiers[OBJ_MOD.STR]).toBe(0);
@@ -390,7 +401,7 @@ describe("object_learn_on_wield learns modifier runes (obj-knowledge.c)", () => 
     // A plain wooden torch has a LIGHT modifier; it should learn that one and
     // nothing else, leaving every stat rune unknown.
     const hadLight = (torch.modifiers[OBJ_MOD.LIGHT] ?? 0) !== 0;
-    invenCarry(gear, torch, limits);
+    invenCarry(gear, carrier, torch, limits);
     wieldAll(gear, player);
 
     expect(player.objKnown.modifiers[OBJ_MOD.STR]).toBe(0);
@@ -449,8 +460,8 @@ describe("calcInventory re-arrange notice (player-calcs.c:1224-1233)", () => {
       .sort((x, y) => x.sval - y.sval);
     const a = objectPrep(rng, reg, constants, kinds[0]!, 0, "minimise");
     const b = objectPrep(rng, reg, constants, kinds[1]!, 0, "minimise");
-    const ha = invenCarry(gear, a, limits);
-    return { gear, handles: [ha, invenCarry(gear, b, limits)], lowSval: ha };
+    const ha = invenCarry(gear, carrier, a, limits);
+    return { gear, handles: [ha, invenCarry(gear, carrier, b, limits)], lowSval: ha };
   }
 
   it("says nothing the first time it runs - there is no old pack to differ from", () => {
@@ -507,7 +518,7 @@ describe("calcInventory re-arrange notice (player-calcs.c:1224-1233)", () => {
     gear.pack = gear.pack.filter((h) => h !== worn);
     const reg = new ObjRegistry(pack.obj);
     const extra = objectPrep(new Rng(2), reg, constants, firstOrdinaryKind(reg, TV.POTION), 0, "minimise");
-    invenCarry(gear, extra, limits);
+    invenCarry(gear, carrier, extra, limits);
 
     const said: string[] = [];
     calcInventory(gear, constants, {

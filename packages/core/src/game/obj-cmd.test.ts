@@ -150,7 +150,7 @@ function maxDeviceSkill(state: GameState): void {
 }
 
 function carry(state: GameState, obj: GameObject): number {
-  const handle = invenCarry(state.gear, obj, {
+  const handle = invenCarry(state.gear, state.actor.player, obj, {
     quiverSlotSize: constants.quiverSlotSize,
     thrownQuiverMult: constants.thrownQuiverMult,
   });

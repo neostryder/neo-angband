@@ -220,6 +220,7 @@ import {
   newGear,
   outfitPlayer,
   gearGet,
+  gearTotalWeight,
   calcInventory,
   minusAc as applyMinusAc,
   objectCopyAmt,
@@ -3080,7 +3081,14 @@ function makeStoreApi(
       /* do_cmd_retrieve (store.c:1783): Home Take is free - no price, no
        * ORIGIN_STORE, no shuffle/maint RNG. Reuse the existing homeRetrieve. */
       if (store.feat === FEAT.HOME) {
-        const r = homeRetrieve(store, obj, amt, state.gear, reg.constants);
+        const r = homeRetrieve(
+          store,
+          obj,
+          amt,
+          state.actor.player,
+          state.gear,
+          reg.constants,
+        );
         if (!r.ok) {
           return {
             ok: false,
@@ -3448,6 +3456,15 @@ export function loadGame(
   }
   const player = deserializePlayer(save.player, players, reg.objects, ids);
   const gear = deserializeGear(save.gear, reg.objects, ids);
+
+  /* rd_gear (load.c L1179-1185): the carried-weight total is RE-SUMMED from the
+   * restored gear, not trusted from the file. Upstream does this because its
+   * gear list and the total are written separately; the port needs it for a
+   * second reason - a character saved before this accounting existed carries a
+   * stored total of 0, and reading that back would leave them weightless for
+   * the rest of the game. It has to run before calcBonuses below, which reads
+   * the total for the carrying-capacity speed penalty. */
+  player.upkeep.totalWeight = gearTotalWeight(gear);
 
   const equipment = player.equipment.map((h) => (h ? gearGet(gear, h) : null));
   const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");

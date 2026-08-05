@@ -150,7 +150,7 @@ function wieldFromFloor(
   msgs?: string[],
 ): number {
   const { usable } = floorObjectForUse(state, obj, 1);
-  const handle = invenCarry(state.gear, usable, limits);
+  const handle = invenCarry(state.gear, state.actor.player, usable, limits);
   return wield(state, handle, msgs);
 }
 

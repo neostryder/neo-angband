@@ -70,7 +70,7 @@ function makeNamed(name: string, tval: number): GameObject {
 }
 
 function carry(state: GameState, obj: GameObject): number {
-  return invenCarry(state.gear, obj, {
+  return invenCarry(state.gear, state.actor.player, obj, {
     quiverSlotSize: constants.quiverSlotSize,
     thrownQuiverMult: constants.thrownQuiverMult,
   });

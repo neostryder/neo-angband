@@ -232,7 +232,7 @@ describe("W2-012/013 mushroom and zapper ID on pickup command", () => {
     const state = makeState();
     state.flavorKnown = new FlavorKnowledge(objReg.ordinaryKindCount);
     const inPack = bareObject(TV.MUSHROOM);
-    invenCarry(state.gear, inPack, {
+    invenCarry(state.gear, state.actor.player, inPack, {
       quiverSlotSize: constants.quiverSlotSize,
       thrownQuiverMult: constants.thrownQuiverMult,
     });
@@ -251,7 +251,7 @@ describe("W2-012/013 mushroom and zapper ID on pickup command", () => {
     const state = makeState();
     state.flavorKnown = new FlavorKnowledge(objReg.ordinaryKindCount);
     const inPack = bareObject(TV.WAND);
-    invenCarry(state.gear, inPack, {
+    invenCarry(state.gear, state.actor.player, inPack, {
       quiverSlotSize: constants.quiverSlotSize,
       thrownQuiverMult: constants.thrownQuiverMult,
     });
