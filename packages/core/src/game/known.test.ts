@@ -9,6 +9,7 @@ import { getLore } from "../mon/lore.js";
 import type { Monster } from "../mon/monster.js";
 import type { GameState } from "./context.js";
 import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
 import { Rng } from "../rng.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
@@ -828,5 +829,105 @@ describe("becomeAware (mon-util.c become_aware, L711)", () => {
 
     expect(floorPile(state, mon.grid)).not.toContain(obj);
     expect(mon.heldObj).toHaveLength(0);
+  });
+});
+
+describe("path_analyse (mon-util.c:209): PORT_TODO 2.8", () => {
+  /**
+   * The correction that makes infravision honest: you sense a warm-blooded
+   * monster through grids you have never lit, so a remembered WALL between you
+   * and it cannot be real, and it gets un-remembered.
+   *
+   * Driven through updateMon rather than by calling pathAnalyse directly, because
+   * the gap was a missing CALL as much as a missing function - the comment at the
+   * call site said `path_analyse ... DEFERRED` and everything it needed already
+   * existed (projectPath, featIsLos, squareForget, sqinfoOff).
+   */
+  function seeingState(): {
+    state: GameState;
+    mon: ReturnType<typeof addMon>;
+    between: Loc;
+  } {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* see_infra far enough to sense the monster, and it must be warm-blooded
+     * (no RF_COLD_BLOOD) or the infravision branch does not set `easy`.
+     * updateMon reads playerState.seeInfra when present, else the race's
+     * infravision (known.ts:748) - the race field is the one with no wiring. */
+    state.actor.player.race = {
+      ...state.actor.player.race,
+      infravision: 10,
+    };
+    const mon = addMon(state, makeRace({ flags: [] }), loc(14, 10));
+    /* square_isview on the monster's grid gates the whole block (mon-util.c:357). */
+    state.chunk.sqinfoOn(mon.grid, SQUARE["VIEW"]);
+    return { state, mon, between: loc(12, 10) };
+  }
+
+  it("forgets a remembered wall that the sighting proves is not there", () => {
+    const { state, mon, between } = seeingState();
+    /* The live grid is floor; the MEMORY says granite. That is the case the
+     * function exists for, and it is why the test reads the remembered feat. */
+    state.chunk.setFeat(between, FLOOR);
+    state.known.feat[between.y * state.chunk.width + between.x] = GRANITE;
+    state.chunk.sqinfoOn(between, SQUARE["SEEN"]);
+    expect(knownFeat(state, between), "fixture: remembered as granite").toBe(
+      GRANITE,
+    );
+
+    updateMon(state, mon, true);
+
+    expect(knownFeat(state, between), "forgotten").toBe(-1);
+    expect(state.chunk.sqinfoHas(between, SQUARE["SEEN"])).toBe(false);
+  });
+
+  it("leaves a remembered FLOOR alone", () => {
+    /* The negative half: only grids the memory says block LOS are touched. */
+    const { state, mon, between } = seeingState();
+    state.chunk.setFeat(between, FLOOR);
+    squareMemorize(state, between);
+    state.chunk.sqinfoOn(between, SQUARE["SEEN"]);
+
+    updateMon(state, mon, true);
+
+    expect(knownFeat(state, between)).toBe(FLOOR);
+    expect(state.chunk.sqinfoHas(between, SQUARE["SEEN"])).toBe(true);
+  });
+
+  it("treats an UNKNOWN intervening grid as blocking, as FEAT_NONE does", () => {
+    /* Upstream's player->cave holds FEAT_NONE on an unknown grid, and "unknown
+     * grid" carries NO flags in terrain.txt - so no LOS. path_analyse therefore
+     * clears SQUARE_SEEN there too. Treating unknown as transparent is the
+     * "helpful" reading and it is wrong; this is the assertion that pins it. */
+    const { state, mon, between } = seeingState();
+    state.chunk.setFeat(between, FLOOR);
+    state.chunk.sqinfoOn(between, SQUARE["SEEN"]);
+    expect(knownFeat(state, between), "fixture: never remembered").toBe(-1);
+
+    updateMon(state, mon, true);
+
+    expect(state.chunk.sqinfoHas(between, SQUARE["SEEN"])).toBe(false);
+  });
+
+  it("never touches the monster's OWN grid (the path_n - 1 bound)", () => {
+    const { state, mon } = seeingState();
+    state.chunk.setFeat(mon.grid, FLOOR);
+    state.known.feat[mon.grid.y * state.chunk.width + mon.grid.x] = GRANITE;
+    state.chunk.sqinfoOn(mon.grid, SQUARE["SEEN"]);
+
+    updateMon(state, mon, true);
+
+    /* Remembered as granite still: the loop excludes the final grid, so the
+     * monster's own square is never forgotten by this pass. */
+    expect(knownFeat(state, mon.grid)).toBe(GRANITE);
+  });
+
+  it("draws no randomness", () => {
+    const { state, mon, between } = seeingState();
+    state.chunk.setFeat(between, FLOOR);
+    state.known.feat[between.y * state.chunk.width + between.x] = GRANITE;
+
+    const before = JSON.stringify(state.rng.getState());
+    updateMon(state, mon, true);
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
   });
 });
