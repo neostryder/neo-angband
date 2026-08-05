@@ -727,6 +727,7 @@
     "equipLearnOnDefend",
     "equipLearnOnMeleeAttack",
     "equipLearnOnRangedAttack",
+    "equippedLauncher",
     "evalPrefExpr",
     "expressionTestCopy",
     "featIsBright",

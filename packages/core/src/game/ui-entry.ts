@@ -42,6 +42,8 @@ import {
   UI_ENTRY_RENDERER_ENTRIES,
 } from "../generated/ui-entry-renderers.js";
 import { EL_INFO_IGNORE, OF_SIZE } from "../obj/types.js";
+import { KF } from "../generated/kind-flags.js";
+import { equippedLauncher } from "../obj/knowledge.js";
 import { SKILL } from "../player/types.js";
 import { playerFlags } from "../player/calcs.js";
 import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
@@ -1331,12 +1333,20 @@ export interface UiEntryDeps {
    * ability flag. Default reads p.pflags if present, else false.
    */
   playerHas?: (flag: number) => boolean;
+  /**
+   * equipped_item_by_slot_name(p, "shooting") (ui-entry.c L975): the wielded
+   * launcher, needed by the PF_FAST_SHOT special case. Default null - which is
+   * indistinguishable from "no bow equipped", so the ONE live builder
+   * (liveUiEntryDeps) supplies it. PORT_TODO 3.9.
+   */
+  launcher?: GameObject | null;
 }
 
 interface ResolvedUiDeps {
   timedObjectFlags: FlagSet;
   timedElementEffect: (elem: number) => number;
   playerHas: (flag: number) => boolean;
+  launcher: GameObject | null;
 }
 
 /**
@@ -1391,7 +1401,7 @@ export function liveTimedUiDeps(
 }
 
 /**
- * ALL THREE UiEntryDeps, from the live GameState. PORT_TODO 3.6, 3.7, 3.8.
+ * ALL FOUR UiEntryDeps, from the live GameState. PORT_TODO 3.6, 3.7, 3.8, 3.9.
  *
  * Use this, not `liveTimedUiDeps`, at any screen call site. The two builders exist
  * because `liveTimedUiDeps` needs only a Player and a timed table (so a headless
@@ -1423,6 +1433,8 @@ export function liveUiEntryDeps(state: GameState): UiEntryDeps {
      * race + class + shape intrinsics are merged (calcs.ts). The old default read
      * `p.pflags`, which does not exist, so it answered false for everything. */
     playerHas: (flag: number): boolean => ps?.pflags.has(flag) ?? false,
+    /* PORT_TODO 3.9: the launcher the PF_FAST_SHOT push needs. */
+    launcher: equippedLauncher(p, state.runeEnv),
   };
 }
 
@@ -1434,6 +1446,7 @@ export function resolveUiDeps(p: Player, deps: UiEntryDeps): ResolvedUiDeps {
     timedObjectFlags: timed,
     timedElementEffect: deps.timedElementEffect ?? (() => 0),
     playerHas: deps.playerHas ?? ((flag: number) => (pflags ? pflags.has(flag) : false)),
+    launcher: deps.launcher ?? null,
   };
 }
 
@@ -1477,8 +1490,12 @@ export function computePlayerValues(
       } else {
         /* Special-case abilities that bound no value (uival "special"). */
         if (ind === PF.FAST_SHOT) {
-          /* Needs the equipped launcher + KF_SHOOTS_ARROWS; deferred -> 0. */
-          push(0, 0, pa.isaux);
+          /* ui-entry.c L974-984: p->lev / 3 when the shooting slot holds a
+             launcher that fires arrows, else 0. */
+          const launcher = deps.launcher;
+          const shootsArrows =
+            launcher !== null && launcher.kind.kindFlags.has(KF.SHOOTS_ARROWS);
+          push(shootsArrows ? Math.trunc(p.lev / 3) : 0, 0, pa.isaux);
         } else if (ind === PF.BRAVERY_30) {
           push(p.lev >= 30 ? 1 : 0, 0, pa.isaux);
         }
