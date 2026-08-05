@@ -2,6 +2,11 @@
 
 **Dated 2026-08-04. Every deferral note in this repository has a verdict.**
 
+**Working the list?** [PORT_TODO.md](PORT_TODO.md) is the checklist derived from
+this document — the same citations, tiered, with the two items that unlock a
+dozen others first. This document is the *accounting*: why each verdict was
+reached, and what was judged unnecessary rather than missing.
+
 For most of this port's life "deferred" was written in a comment by whoever was
 closing a lane, and nobody could tell afterwards which of those notes described a
 hole and which described work that had since landed. The word appeared 439 times.
@@ -19,7 +24,7 @@ node parity/tools/ledger-deferred-items.mjs       # the second tranche (see belo
 ## The headline
 
 **141 of the 367 notes were describing a state of the code that no longer held,
-and they have been rewritten.** The census is now 228 rows because 139 of those
+and they have been rewritten.** The census is now 227 rows because 140 of those
 notes no longer read as deferrals at all.
 
 The notes were a fossil record of the build order, not a description of the port.
@@ -36,8 +41,10 @@ twenty command codes the base registry registers as stubs.
 A further 27 notes were not parity claims at all — a variable named `todo`, a
 `setTimeout` "deferred a tick past focus", one mod that "defers to" another.
 
-**What is genuinely missing is 96 citations that collapse to about 35 distinct
-items,** listed next. None of them is a subsystem. The largest is a debug log.
+**What is genuinely missing is 95 citations, which collapse to 59 work items in
+[PORT_TODO.md](PORT_TODO.md),** grouped below by what a player would notice. Only
+one is architectural (`notice_stuff` / `PN_*`); the largest by volume is a debug
+log.
 
 ### One live defect this found and fixed
 
@@ -55,6 +62,12 @@ Note what it reproduces: `calc_bonuses` already folds a worn item's curse `to_h`
 into `state->to_h`, and `py_attack_real` then adds `object_to_hit(weapon)` on top,
 so upstream counts a cursed **weapon's** penalty twice. Core keeps the C's warts;
 the `bug-fixes` mod is where that would be corrected.
+
+The ledger line that carried the stale label — `combat-melee.yaml`'s
+`object_to_hit, object_to_dam, object_weight_one (curse terms DEFERRED)` — has
+been corrected too, which is why the census fell from 228 rows to 227 and the
+`real` count from 86 to 85. Recording a verdict and leaving the lie in the file
+is not a fix.
 
 ### The second tranche, measured: 331 items
 
@@ -85,12 +98,12 @@ in the appendix with the file, the C reference and the evidence.
 
 ### It changes what happens in play
 
-- **`square_isempty` is weaker than upstream's** (`game/context.ts:1080`).
+- **`square_isempty` is weaker than upstream's** (`game/context.ts:1088`).
   `cave-square.c:604` rejects a player trap, a web, and any object; the port
   checks only passable / no monster / not the player, at 48 call sites. Placement
   loops can accept grids upstream rejects, which also moves RNG draws.
-- **The `PN_IGNORE` notice pass is never run** (`game/context.ts:296`,
-  `session/game.ts:551`, `obj/knowledge.ts:1364`). Becoming aware of an item kind
+- **The `PN_IGNORE` notice pass is never run** (`game/context.ts:297`,
+  `session/game.ts:542`, `obj/knowledge.ts:1366`). Becoming aware of an item kind
   sets the flag and nothing consumes it, so newly-ignored items are not dropped.
   The menu / `K` trigger of the same pass *is* reproduced.
 - **Monster-vs-monster theft ignores `react_to_slay`** (`mon/steal.ts:234`,
@@ -98,13 +111,13 @@ in the appendix with the file, the C reference and the evidence.
 - **`alter` (`+`) has no chest or floor-trap branch** (`game/cave-cmd.ts:1045`).
   The note excused this because "alter is not wired to a shell key yet"; the
   shell has bound it since, which is what makes the gap reachable.
-- **The chest `OF_TRAP_IMMUNE` rune is never learned** (`game/chest.ts:267`,
-  `:345`) — the branch upstream learns in is empty in the port.
+- **The chest `OF_TRAP_IMMUNE` rune is never learned** (`game/chest.ts:268`,
+  `:346`) — the branch upstream learns in is empty in the port.
 - **`known_only` does not exist** (`player-calcs-bonuses.yaml:78`). `obj-info.c`
   calls `calc_bonuses` with `known_only = true` at six sites; the port's
   object-inspect passes no such flag, so an unknown property of worn equipment
   can leak into an item-inspection comparison.
-- **`pile_insert_end` is absent** (`game/gear.ts:1172`), so ordering inside a
+- **`pile_insert_end` is absent** (`game/gear.ts:1173`), so ordering inside a
   floor pile can differ from upstream's append-at-end.
 - **`path_analyse`** (`game/known.ts:750`) and the **`list_object` / `oidx`
   bookkeeping** (`game/mon-place.ts:267`, `:328`, `game/floor.ts:18`).
@@ -115,7 +128,7 @@ in the appendix with the file, the C reference and the evidence.
   objects the player cannot tell apart must not merge in a list context.
 - **`cmd_disable_repeat_floor_item`** (`cmd-core.yaml:25`).
 - The **monster-source decoy / target-monster branches of `EF_TOUCH`**
-  (`game/project-cast.ts:684`).
+  (`game/project-cast.ts:685`).
 
 ### It changes what the player is told
 
@@ -142,7 +155,7 @@ in the appendix with the file, the C reference and the evidence.
   `ui-entry.yaml:133`), and `show_combined` / `EQUIPCMP_SCREEN` are compiled and
   bound but never iterated (`ui-entry.yaml:136`).
 - **`update_sidebar`'s priority culling and from-bottom placement**
-  (`ui-display.yaml:123`). The sidebar itself is drawn.
+  (`ui-display.yaml:124`). The sidebar itself is drawn.
 - **The birth screens answer help with a no-op** (`web/birth.ts:1051`).
 - **Temporary brands/slays are not shown in object info**
   (`obj/object-info.ts:962`). The combat half is ported.
@@ -150,12 +163,12 @@ in the appendix with the file, the C reference and the evidence.
 - **`monster_x_char` / `monster_x_attr`'s secondary glyph**
   (`mon/lore-describe.ts:1348`).
 - **The flavour text shadow field** (`obj/known-object.ts:160`).
-- **`object_list_format_name`'s own decoration** (`game-obj-list.yaml:44`).
+- **`object_list_format_name`'s own decoration** (`game-obj-list.yaml:45`).
 
 ### Whole modes that were never begun
 
 - **Arena mode** (`mon/take-hit.ts:17`, `gen/cave.ts:31`, `gen/generate.ts:11`,
-  `gen-cave.yaml:49` with `hard_centre_gen`, `game-mon-ranged.yaml:30`).
+  `gen-cave.yaml:49` with `hard_centre_gen`, `game-mon-ranged.yaml:31`).
 - **The quest system** (`gen/cave.ts:2833`, `gen/generate.ts:11`).
 - **Persistent levels and the town builder's full store generation**
   (`gen/cave.ts:30`).
@@ -237,25 +250,36 @@ been generated. `dump_level`'s file half is now possible through `host/io.ts`.
 - `ledger-deferred-items.mjs` is deliberately NOT under that ratchet yet: 331
   items are unadjudicated, and a test asserting zero would just be turned off.
   Adjudicate them and then bring it under the same guard.
+- `port-todo.test.ts` holds [PORT_TODO.md](PORT_TODO.md) to the same census:
+  every file with an owed row must be cited by a work item, the stated totals
+  must match, and a cited path must exist. It is keyed on **file**, not
+  `file:line`, on purpose — a line-keyed guard fails on every unrelated edit
+  above a citation, and a churning test gets turned off.
+- **The hand-written `file:line` numbers in the prose above are the one part of
+  this document that drifts, and they already have once**: rewriting the notes
+  moved ten of them by a line or two, and nothing caught it until the two
+  documents were diffed against the census by hand. Prefer the generated
+  appendix and PORT_TODO.md's `Sites:` lines, which come from the TSV. When the
+  prose and the appendix disagree, the appendix is right.
 
 <!-- BEGIN GENERATED: deferral-report.mjs -->
 
 ## Appendix: every row, with its verdict
 
-Generated from `parity/reports/deferral-census.tsv` (228 rows).
+Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 86 |
+| `real` | Confirmed absent and owed | 85 |
 | `partial` | Part ported; the note must say which part is not | 10 |
 | `divergence` | Deliberately different, with the mechanism named | 30 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
 | `ported` | Done; the note was stale and has been rewritten | 3 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
-| | **total** | **228** |
+| | **total** | **227** |
 
-### `real` - Confirmed absent and owed (86)
+### `real` - Confirmed absent and owed (85)
 
 - `packages/core/src/effects/handlers.ts:78` - monsterDesc and MDESC_DIED_FROM both exist (mon/desc.ts:61) and the killer name still falls back to race.name; the death cause reads "kobold" where upstream writes "a kobold"
 - `packages/core/src/game/cave-cmd.ts:1045` - The premise is stale (web/src/main.ts:8090 binds "+" to alterCmd, main.ts:4501) which makes the gap reachable: alter still has no chest branch and no floor-trap disarm branch (do_cmd_alter_aux L969-992)
@@ -314,7 +338,6 @@ Generated from `parity/reports/deferral-census.tsv` (228 rows).
 - `packages/web/src/screens.ts:872` - The thematic monster_group columns of the upstream knowledge browser (the ui_knowledge.txt grouping) are not drawn; the flat list is the selectable membership only
 - `packages/web/src/wizard.ts:498` - The command-list absence tracked with the wizard-mode rows
 - `parity/ledger/cmd-core.yaml:25` - cmd_disable_repeat_floor_item has no port equivalent (0 references)
-- `parity/ledger/combat-melee.yaml:57` - CORRECTED from stale-doc: the curse terms of object_to_hit / object_to_dam are absent (obj-util.c:296-310). object_weight_one's curse adjustment IS ported (obj/object.ts:791-797), which is what makes the other two clearly owed rather than impossible
 - `parity/ledger/game-obj-list.yaml:45` - object_list_format_name's own formatting (the count/label decoration the list screen applies) is still not reproduced, even though the entry carries the real object
 - `parity/ledger/game-project-cast.yaml:53` - The monster decoy / target-monster branches of TOUCH, matching game/project-cast.ts:684
 - `parity/ledger/gamedata.yaml:478` - ui_knowledge.txt: it defines the knowledge browser's thematic grouping, and the browser IS ported, so the grouping columns are missing (see web/src/screens.ts:872)
@@ -465,7 +488,7 @@ Generated from `parity/reports/deferral-census.tsv` (228 rows).
 - `packages/core/src/store/transact.ts:13` - The header's LIVE list records that both sides of the rune learn loop are now wired, and says the DEFERRED label is what made the asymmetry read as intentional
 - `packages/core/src/store/transact.ts:24` - The sentence records the fix and why the stale label was harmful
 - `packages/web/src/main.ts:8410` - Records the state of things before updateFov was wired
-- `parity/ledger/combat-melee.yaml:86` - The comment recording that this list was adjudicated and that ten of its eleven entries had stopped being true
+- `parity/ledger/combat-melee.yaml:91` - The comment recording that this list was adjudicated and that ten of its eleven entries had stopped being true
 - `parity/ledger/game-effect-melee.yaml:44` - "Every formerly-deferred handler is now DONE"
 - `parity/ledger/game-effect-teleport.yaml:37` - Records that teleportMonster is the backing for the hook
 - `parity/ledger/game-monster-ai.yaml:40` - "NOW WIRED (were deferred)"
