@@ -60,6 +60,7 @@ import { noticeStuff } from "./notice.js";
 import { floorPile } from "./floor.js";
 import { isTrappedChest } from "../obj/chest.js";
 import {
+  clearMonsterShow,
   knownIsClosedDoor,
   knownIsEnterable,
   knownIsRubble,
@@ -67,6 +68,7 @@ import {
   squareForget,
   squareIsKnown,
   squareMemorize,
+  tickMonsterNiceAndMark,
 } from "./known.js";
 import { squareIsSeen } from "../world/view.js";
 import { playerConfuseDir } from "./obj-cmd.js";
@@ -80,7 +82,12 @@ import {
   squareRemoveAllTraps,
   squareTrap,
 } from "./trap.js";
-import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world.js";
+import {
+  PY_EXERT,
+  playerCheckTerrainDamage,
+  playerOverExert,
+  playerTakeTerrainDamage,
+} from "./world.js";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent
@@ -879,6 +886,44 @@ export interface PlayerTurnResult {
 }
 
 /**
+ * process_player_cleanup (game-world.c:839), everything but the energy
+ * accounting - which the port applies at the call site below, because `use` is
+ * only in scope there.
+ *
+ * Called at the END of every do-loop iteration in processPlayer, including the
+ * bloodlust-coercion path, exactly as the C calls it at L989. Two guards matter
+ * and neither is decoration:
+ *
+ * - The terrain damage and the NICE/MARK loop are inside `if (energy_use)`
+ *   (L844): a free command costs no lava burn and fades no detection.
+ * - The NICE/MARK loop is additionally skipped while `upkeep->dropping` (L867),
+ *   so an ignore_drop auto-drop does not spend the player's one turn of
+ *   detection on itself. The SHOW clear and the `dropping` reset are OUTSIDE
+ *   both guards (L903-909).
+ *
+ * `skip_cmd_coercion` (L859-861, L897-903) is not modelled - save gap 12.6.
+ */
+function processPlayerCleanup(state: GameState, energyUsed: number): void {
+  const up = state.actor.player.upkeep;
+
+  if (energyUsed) {
+    /* Player can be damaged by terrain (L864): fiery terrain burns after each
+     * acted turn. This used to live in game/loop.ts, one level out, which was
+     * equivalent only because the do-loop exits immediately after the
+     * energy-spending command - but it left no correct home for the block
+     * below. */
+    playerTakeTerrainDamage(state);
+
+    /* L867-892, minus the hallucination redraw and the multi-hued shimmer,
+     * which are PR_MAP / square_light_spot - the ratified redraw divergence. */
+    if (!up.dropping) tickMonsterNiceAndMark(state);
+  }
+
+  clearMonsterShow(state);
+  up.dropping = false;
+}
+
+/**
  * process_player: drain queued commands until one spends energy, the queue
  * empties (needsInput), or the player dies / a level change is requested.
  * Applies the process_player_cleanup energy accounting for the spending
@@ -960,6 +1005,10 @@ export function processPlayer(
             state.actor.totalEnergy += spent;
             energyUsed = spent;
           }
+          /* The coerced attack IS the command for this iteration, so the C
+           * reaches process_player_cleanup through it too (process_command
+           * returns and L989 runs). */
+          processPlayerCleanup(state, spent > 0 ? spent : 0);
           continue;
         }
       }
@@ -971,6 +1020,11 @@ export function processPlayer(
       state.actor.totalEnergy += use;
       energyUsed = use;
     }
+    /* process_player_cleanup (game-world.c:989), the last statement of the loop
+     * body. Runs after a FREE command too - that is where the SHOW clear lives,
+     * and without it a detected monster's MARK would never reach the
+     * MARK && !SHOW state its fade needs. */
+    processPlayerCleanup(state, use > 0 ? use : 0);
   } while (energyUsed === 0 && !state.isDead && !state.generateLevel);
 
   /* "Notice stuff (if needed)" (game-world.c:995-996), after the do-loop: the

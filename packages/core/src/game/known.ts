@@ -967,15 +967,26 @@ export function noteSpots(state: GameState): void {
 }
 
 /**
- * The MFLAG_NICE / MFLAG_MARK / MFLAG_SHOW housekeeping process_world runs at
- * the end of a player turn (game-world.c:882-908): clear NICE; where a monster
- * is MARKed but no longer SHOWn, drop the mark and re-run update_mon; then
- * clear every SHOW. This keeps a freshly detected monster displayed for one
- * more refresh before fading. Interim home until the world-clock / process_world
- * port absorbs it (the NICE clear must be preserved when it does).
+ * process_player_cleanup's monster housekeeping, first half (game-world.c
+ * L878-892): clear NICE, and where a monster is MARKed but no longer SHOWn, drop
+ * the mark and re-run update_mon.
+ *
+ * SPLIT FROM THE SECOND HALF ON PURPOSE. Upstream runs this loop only when
+ * `!p->upkeep->dropping` (L867) and only when the command spent energy, while the
+ * SHOW clear below is unconditional. A single function could not express that, and
+ * the single function this used to be is why both halves ran on the wrong clock:
+ * it was called from processWorld, once per TEN game turns, when upstream calls it
+ * after every player command. Two effects of that, both perceptible:
+ *
+ * - A detected monster kept its MARK for up to ten turns longer than upstream
+ *   (the fade needs MARK && !SHOW, which needs the SHOW clear to have run once).
+ * - MFLAG_NICE, the one-turn grace a FORCE_SLEEP monster is placed with
+ *   (mon/make.ts:306) and which blocks its ranged attacks (mon-ranged.ts:282),
+ *   lasted up to ten turns instead of one.
+ *
+ * RNG-free: flag clears plus updateMon.
  */
-export function tickMonsterMarks(state: GameState): void {
-  /* Clear NICE flag, and show marked monsters. */
+export function tickMonsterNiceAndMark(state: GameState): void {
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
@@ -985,8 +996,16 @@ export function tickMonsterMarks(state: GameState): void {
       updateMon(state, mon, false);
     }
   }
+}
 
-  /* Clear SHOW flag. */
+/**
+ * process_player_cleanup's monster housekeeping, second half (game-world.c
+ * L903-908): clear every MFLAG_SHOW. Outside both the `energy_use` and the
+ * `!dropping` guards in the C, so it runs on every cleanup - including after a
+ * free command, which is what makes the MARK fade above land on the next turn
+ * rather than never.
+ */
+export function clearMonsterShow(state: GameState): void {
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;

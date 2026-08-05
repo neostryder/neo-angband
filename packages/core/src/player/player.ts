@@ -49,6 +49,14 @@ export interface PlayerUpkeep {
    * input again.
    */
   notice: number;
+  /**
+   * player->upkeep->dropping: "the player has auto-dropped stuff this command".
+   * Set by ignore_drop when it queues a drop (obj-ignore.c:687), read once by
+   * process_player_cleanup to skip the monster housekeeping (game-world.c:867),
+   * and cleared there unconditionally (L909). Transient within a turn and so not
+   * serialized, like `notice`.
+   */
+  dropping: boolean;
 }
 
 /**
@@ -343,7 +351,7 @@ export function blankPlayer(
     totalWinner: false,
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
-    upkeep: { playing: false, newSpells: 0, totalWeight: 0, notice: 0 },
+    upkeep: { playing: false, newSpells: 0, totalWeight: 0, notice: 0, dropping: false },
   };
 }
 

@@ -39,7 +39,7 @@ import { getCommandedMonster } from "./mon-cmd.js";
 import { adj_con_fix, calcStatIndices } from "../player/calcs.js";
 import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge.js";
 import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed.js";
-import { tickMonsterMarks, updateMonsters } from "./known.js";
+import { updateMonsters } from "./known.js";
 import { noticeStuff } from "./notice.js";
 import {
   caveMonsterCount,
@@ -48,7 +48,6 @@ import {
   playAmbientSound,
   playerHasWorld,
   playerOfHasWorld,
-  playerTakeTerrainDamage,
   playerUpdateLight,
   processDamageOverTime,
   processExpDrain,
@@ -349,8 +348,8 @@ function decreaseTrapTimeouts(state: GameState): void {
 /**
  * process_world (game-world.c L532): the once-every-ten-game-turns upkeep,
  * reproduced statement by statement in upstream order (take_hit early-returns
- * on death and the RNG draw sequence are order-sensitive). The MFLAG detection
- * fade (tickMonsterMarks), monster-list compaction, ambient sound + town clock,
+ * on death and the RNG draw sequence are order-sensitive). Monster-list
+ * compaction, ambient sound + town clock,
  * ambient monster generation, damage / healing over time, food digestion,
  * HP/mana regen, timed-effect countdown, light-fuel burn, experience drain,
  * rod / activatable recharge, learn-after-time, trap timeouts, and the
@@ -359,8 +358,13 @@ function decreaseTrapTimeouts(state: GameState): void {
 export function processWorld(state: GameState): void {
   const p = state.actor.player;
 
-  /* MFLAG_NICE / MARK / SHOW detection-fade housekeeping (game-world.c:882). */
-  tickMonsterMarks(state);
+  /* The MFLAG_NICE / MARK / SHOW housekeeping used to be called from HERE, and
+   * it does not belong to process_world at all: upstream runs it in
+   * process_player_cleanup (game-world.c:867-908), after every player command.
+   * processWorld runs once per TEN game turns, so detection faded up to ten turns
+   * late and a FORCE_SLEEP monster's MFLAG_NICE grace lasted ten turns instead of
+   * one. It is now in game/player-turn.ts's processPlayerCleanup, split into the
+   * two halves upstream guards differently. PORT_TODO 1.3. */
 
   /* Compact the monster list if we're approaching the limit. */
   if (caveMonsterCount(state) + 32 > state.z.levelMonsterMax) {
@@ -609,14 +613,11 @@ function playerTurnsWhileEnergised(
      * block returns INPUT otherwise), so pausing here always makes progress. */
     const r = processPlayerChecked(state, registry, true);
     if (r === "pause") return LOOP_STATUS.PAUSE;
+    /* Terrain damage is now inside processPlayer's own process_player_cleanup
+     * (game-world.c:864), where the C has it, so this stop check covers a death
+     * by lava as well as one by a monster. */
     const s2 = loopStop(state);
     if (s2) return s2;
-    /* Terrain damage after each acted turn (game-world.c:864). */
-    if (r.energyUsed) {
-      playerTakeTerrainDamage(state);
-      const s3 = loopStop(state);
-      if (s3) return s3;
-    }
     if (r.needsInput || !r.energyUsed) return LOOP_STATUS.INPUT;
   }
   return null;
@@ -634,15 +635,9 @@ export function runGameLoop(
   {
     const r = processPlayerChecked(state, registry, false);
     if (r === "pause") return LOOP_STATUS.PAUSE;
+    /* As above: the terrain burn happened inside processPlayer. */
     const s = loopStop(state);
     if (s) return s;
-    /* Player can be damaged by terrain (game-world.c:864): fiery terrain (lava)
-     * burns the player after each acted turn. */
-    if (r.energyUsed) {
-      playerTakeTerrainDamage(state);
-      const st = loopStop(state);
-      if (st) return st;
-    }
     if (r.needsInput || !r.energyUsed) return LOOP_STATUS.INPUT;
   }
 
