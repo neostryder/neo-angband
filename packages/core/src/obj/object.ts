@@ -905,10 +905,11 @@ export interface StackLimits {
 }
 
 /**
- * object_similar: can one item like obj1 stack with one like obj2,
- * ignoring inscriptions? Player-knowledge inputs are deferred (module
- * docs): the equipped checks are skipped and the OSTACK_LIST known-kind
- * and fully-known comparisons behave as if everything were known.
+ * object_similar: can one item like obj1 stack with one like obj2, ignoring
+ * inscriptions? The equipped checks are deferred (no player gear here). The
+ * OSTACK_LIST known-kind and fully-known comparisons behave as if everything
+ * were known, which is exactly upstream's behaviour too, because nothing in
+ * 4.2.6 passes OSTACK_LIST - see the note at the check below.
  */
 export function objectSimilar(
   obj1: GameObject,
@@ -920,7 +921,17 @@ export function objectSimilar(
   /* Mimicked items do not stack */
   if (obj1.mimickingMIdx || obj2.mimickingMIdx) return false;
 
-  /* DEFERRED: OSTACK_LIST unknown-item checks (knowledge system). */
+  /* obj-pile.c:409-410's two OSTACK_LIST checks ("if either item is unknown, do
+   * not stack") are NOT ported, and they are UNREACHABLE upstream: nothing in
+   * Angband 4.2.6 ever passes OSTACK_LIST. Measured, not assumed - every
+   * OSTACK_* argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR
+   * (cmd-pickup.c:133, mon-util.c:1375, obj-gear.c:209/211/668/771/834/1259/1278,
+   * store.c:847), and the two `mode &` tests in obj-gear.c read STORE and QUIVER.
+   * OSTACK_LIST is declared at obj-pile.h:33, tested three times, and passed
+   * never - the object-list UI that once used it no longer does. PORT_TODO 2.11.
+   *
+   * If a caller ever appears, all three checks become owed;
+   * obj/ostack-list.test.ts is the ratchet that says so. */
 
   /* Identical items cannot be stacked */
   if (obj1 === obj2) return false;
@@ -997,7 +1008,9 @@ export function objectSimilar(
       return false;
     }
 
-    /* DEFERRED: OSTACK_LIST fully-known mismatch check. */
+    /* obj-pile.c:485-486's OSTACK_LIST fully-known mismatch check ("prevent
+     * unIDd items stacking with IDd items in the object list"). Unreachable for
+     * the same measured reason as the pair above. */
   } else {
     /* Anything else probably okay */
   }

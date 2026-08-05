@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 17 closed, 50 open.
+**67 items covering all 111 confirmed-absent citations** — 18 closed, 49 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Four of the seventeen closures are retractions rather than
+declared *closed*. **Five of the eighteen closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -544,9 +544,38 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/store/store.ts:232`, `:262`,
   `parity/ledger/store-maint.yaml:34`
 
-- [ ] **2.11 The `OSTACK_LIST` stacking checks.**
-  Two objects the player cannot tell apart must not merge in a list context, and
-  a fully-known mismatch must block the merge. The shadow can answer both.
+- [x] **2.11 The `OSTACK_LIST` stacking checks.** CLOSED as a RETRACTION —
+  **nothing in Angband 4.2.6 ever passes `OSTACK_LIST`**, so all three checks are
+  unreachable upstream too.
+
+  One grep settles it. Every `OSTACK_*` argument in the C tree is PACK, QUIVER,
+  MONSTER, STORE or FLOOR — `cmd-pickup.c:133`, `mon-util.c:1375`,
+  `obj-gear.c:209`/`:211`/`:668`/`:771`/`:834`/`:1259`/`:1278`, `store.c:847` — and
+  the only `mode &` tests outside `obj-pile.c` read STORE and QUIVER
+  (`obj-gear.c:1196`, `:1216`). `OSTACK_LIST` is declared at `obj-pile.h:33`,
+  tested three times (`obj-pile.c:409`, `:410`, `:485`) and **supplied never**: the
+  object-list UI that presumably once passed it does not any more.
+
+  The item's claim that "the shadow can answer both" was probably true and is
+  beside the point — there is no caller for it to answer *for*. Its citation did
+  pass the new line-rot guard, because it pointed at a genuine `DEFERRED:` note in
+  the right function. **So the guard is not a filter for this failure mode**: an
+  accurate note about an unreachable branch looks exactly like an accurate note
+  about a live one. Only reading the callers separates them, which is what closed
+  2.10 as well.
+
+  Both notes rewritten from "DEFERRED" to the measurement, and the reachability
+  claim is now a **ratchet** rather than a comment:
+  `packages/core/src/obj/ostack-list.test.ts` fails the moment any port code
+  passes `OSTACK_LIST`, which is the point at which the three checks come due. It
+  deliberately asserts nothing about stacking behaviour — the port ignores the
+  bit, so such a test would be a tautology dressed as coverage.
+
+  Three mutations, three dead tests — after the guard-on-the-guard was fixed:
+  it asserted `toContain("export const OSTACK_LIST")`, and renaming the constant
+  to `OSTACK_LIST_RENAMED` left it green, because the new name **contains** the
+  old one. A substring assertion about an identifier cannot tell a rename from a
+  match.
   Sites: `packages/core/src/obj/object.ts:923`, `:1000`
 
 - [x] **2.12 `cmd_disable_repeat_floor_item`.** DONE — and the item pointed at a
