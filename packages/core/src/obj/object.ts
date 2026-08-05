@@ -475,6 +475,85 @@ export function copySlays(
 }
 
 /** copy_brands: as copySlays, deduping on brand name. */
+/**
+ * append_brand (obj-slays.c:132): add brand `pick` to `current`, replacing a
+ * same-ELEMENT brand of lower multiplier. Returns the (possibly new) list when the
+ * brand was added, or null when it was rejected for being weaker than or equal to
+ * one already present — upstream's `bool` plus its in-place `bool **current`,
+ * expressed as a return value because this port does not pass pointers.
+ *
+ * Upstream's own note: "internally assumes that current has no redundant brands",
+ * which holds because every writer goes through this function or copyBrands.
+ *
+ * PROMOTED from a private copy in obj/randart-build.ts, which was typed to
+ * `Artifact` and so unusable by obj-info's brand gathering (PORT_TODO 3.20). The
+ * alternative was a third copy of the multiplier rule.
+ */
+export function appendBrand(
+  current: boolean[] | null,
+  pick: number,
+  brands: readonly (Brand | null)[],
+): boolean[] | null {
+  const brand = brands[pick];
+  if (!brand) return null;
+
+  /* No existing brands means OK to add. */
+  if (!current) {
+    const out = new Array<boolean>(brands.length).fill(false);
+    out[pick] = true;
+    return out;
+  }
+
+  /* Check the existing brands for NAME matches (the element, not the index). */
+  for (let i = 1; i < brands.length; i++) {
+    if (!current[i]) continue;
+    const other = brands[i];
+    if (!other || other.name !== brand.name) continue;
+    /* Same multiplier or smaller, fail. */
+    if (brand.multiplier <= other.multiplier) return null;
+    /* Greater multiplier, replace and accept. */
+    current[i] = false;
+    current[pick] = true;
+    return current;
+  }
+
+  current[pick] = true;
+  return current;
+}
+
+/**
+ * append_slay (obj-slays.c:181): the slay twin of appendBrand. The match test is
+ * same_monsters_slain rather than a name comparison, because two differently named
+ * slays can hit the same creatures.
+ */
+export function appendSlay(
+  current: boolean[] | null,
+  pick: number,
+  slays: readonly (Slay | null)[],
+): boolean[] | null {
+  const slay = slays[pick];
+  if (!slay) return null;
+
+  if (!current) {
+    const out = new Array<boolean>(slays.length).fill(false);
+    out[pick] = true;
+    return out;
+  }
+
+  for (let i = 1; i < slays.length; i++) {
+    if (!current[i]) continue;
+    if (!sameMonstersSlain(slays, i, pick)) continue;
+    const other = slays[i];
+    if (!other || slay.multiplier <= other.multiplier) return null;
+    current[i] = false;
+    current[pick] = true;
+    return current;
+  }
+
+  current[pick] = true;
+  return current;
+}
+
 export function copyBrands(
   dest: boolean[] | null,
   source: boolean[] | null,
