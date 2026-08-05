@@ -285,3 +285,121 @@ describe("attack effect handlers - dispatch through the registry", () => {
   });
 
 });
+
+/**
+ * A4 (effect-handler-attack.c:411-440): a monster TOUCH does not always hit the
+ * player. PORT_TODO 2.13 called these two branches deferred; they were BUILT,
+ * complete, and in upstream's order - the item existed because `castTouch`'s
+ * docblock in the neighbouring file still said they were not. What was genuinely
+ * missing is what a closed item needs most: any test at all.
+ *
+ * The branches are reachable, measured rather than assumed: exactly ONE monster
+ * spell uses TOUCH in 4.2.6 (`TRAPS`, `effect:TOUCH:MAKE_TRAP:3` at
+ * monster_spell.txt:1050), and a monster spell is always SRC_MONSTER. So with a
+ * decoy deployed, a caster that would otherwise ring the PLAYER with traps must
+ * ring the decoy instead - which is the whole point of a decoy.
+ */
+describe("EF_TOUCH's monster-source branches (A4)", () => {
+  /*
+   * A FIXTURE MISTAKE OF MINE IS BURIED HERE, and it is the reason the
+   * assertions below are shaped the way they are. My first draft asserted "the
+   * targeted monster is hit" - declared from intuition - and it failed. It failed
+   * because upstream sources the ball at `mon->target.midx`, the TARGET monster
+   * itself (effect-handler-attack.c:431), and project_m returns early for its own
+   * source monster (project-mon.c:1382, ported at project-monster.ts:149). So the
+   * victim is EXEMPT from the ball centred on it, and only its neighbours are
+   * struck. That is an upstream wart, not a port bug, and the way to see it is to
+   * derive the expectation from the C rather than declare it.
+   */
+  it("centres a monster's touch on the DECOY, not the player", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const caster = addMon(state, plainRace, loc(10, 13), { hp: 50 });
+    /* Far enough from the player that a player-centred ball cannot reach him, so
+     * "the player was spared" is a real observation and not a radius accident. */
+    state.decoy = loc(20, 10);
+    /* A bystander NEXT TO the decoy: the positive half. Without it this test
+     * would pass just as well if the effect did nothing at all. The decoy branch
+     * sources the ball at a TRAP, so no monster is exempt from it. */
+    const nearDecoy = addMon(state, plainRace, loc(21, 10), { hp: 50 });
+    state.actor.player.chp = 1000;
+
+    registry().effectSimple(EF.TOUCH, env(state), {
+      origin: sourceMonster(caster.midx),
+      diceString: "40",
+      subtype: PROJ.FIRE,
+      radius: 1,
+    });
+
+    expect(nearDecoy.hp, "the ball landed on the decoy").toBeLessThan(50);
+    expect(state.actor.player.chp, "and the player is untouched").toBe(1000);
+  });
+
+  it("centres it on the TARGET MONSTER when there is no decoy", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const caster = addMon(state, plainRace, loc(10, 20), { hp: 50 });
+    const victim = addMon(state, plainRace, loc(12, 20), { hp: 50 });
+    /* Adjacent to the victim, so it is inside a radius-1 ball centred there and
+     * NOT exempt from it. This is what proves the centring, since the victim
+     * itself cannot be hurt by its own source. */
+    const nearVictim = addMon(state, plainRace, loc(13, 20), { hp: 50 });
+    caster.target.midx = victim.midx;
+    state.actor.player.chp = 1000;
+    expect(
+      state.decoy,
+      "fixture: no decoy, so the second branch decides",
+    ).toBeUndefined();
+
+    registry().effectSimple(EF.TOUCH, env(state), {
+      origin: sourceMonster(caster.midx),
+      diceString: "40",
+      subtype: PROJ.FIRE,
+      radius: 1,
+    });
+
+    expect(nearVictim.hp, "the ball landed on the victim's grid").toBeLessThan(50);
+    expect(victim.hp, "the victim is its own source, so exempt").toBe(50);
+    expect(state.actor.player.chp, "the distant player is spared").toBe(1000);
+  });
+
+  it("prefers the decoy over the target monster, as the C order does", () => {
+    /* L421-434: the decoy branch is tested FIRST and returns. Swapping the two
+     * would send the ball at the monster while a decoy stood waiting. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const caster = addMon(state, plainRace, loc(10, 20), { hp: 50 });
+    const victim = addMon(state, plainRace, loc(12, 20), { hp: 50 });
+    const nearVictim = addMon(state, plainRace, loc(13, 20), { hp: 50 });
+    caster.target.midx = victim.midx;
+    state.decoy = loc(25, 10);
+    const nearDecoy = addMon(state, plainRace, loc(26, 10), { hp: 50 });
+
+    registry().effectSimple(EF.TOUCH, env(state), {
+      origin: sourceMonster(caster.midx),
+      diceString: "40",
+      subtype: PROJ.FIRE,
+      radius: 1,
+    });
+
+    expect(nearDecoy.hp, "the decoy branch won").toBeLessThan(50);
+    expect(nearVictim.hp, "so nothing landed near the target monster").toBe(50);
+  });
+
+  it("still centres a PLAYER-sourced touch on the player (the fall-through)", () => {
+    /* The base path castTouch owns, and the one the two branches must not steal:
+     * origin.what is SRC_PLAYER, so neither monster branch applies even with a
+     * decoy standing. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const adjacent = addMon(state, plainRace, loc(11, 10), { hp: 50 });
+    state.decoy = loc(25, 10);
+    const nearDecoy = addMon(state, plainRace, loc(26, 10), { hp: 50 });
+
+    registry().effectSimple(EF.TOUCH, env(state), {
+      origin: sourcePlayer(),
+      diceString: "40",
+      subtype: PROJ.FIRE,
+      radius: 1,
+    });
+
+    expect(adjacent.hp, "the ring around the player still lands").toBeLessThan(50);
+    expect(nearDecoy.hp, "and the decoy is irrelevant to a player source").toBe(50);
+  });
+});
