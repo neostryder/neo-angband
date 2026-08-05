@@ -65,6 +65,7 @@ import { earlierObject } from "../player/calcs.js";
 import type { EarlierObjectOpts } from "../player/calcs.js";
 import type { Player } from "../player/player.js";
 import { PN } from "../player/types.js";
+import { cmdDisableRepeat } from "./repeat.js";
 import type { PlayerBody } from "../player/types.js";
 
 /* ------------------------------------------------------------------ */
@@ -983,6 +984,31 @@ export function combinePack(
 }
 
 /**
+ * combine_pack INCLUDING its cmd_disable_repeat tail (obj-gear.c:1319-1321):
+ * "stop 'repeat last command' from working if a stack was completely combined
+ * with another". Only after a FULL combine, which is exactly what combinePack
+ * returns - the partial shuffle at inven_can_stack_partial leaves both stacks
+ * addressable and does not disable anything.
+ *
+ * A separate function rather than a fourth parameter on combinePack, because
+ * eleven of its fourteen call sites are tests with no Player, and rather than
+ * three production callers each remembering an `if (combined)` line - the
+ * shape that loses a rule the moment a fourth caller appears. Every production
+ * path uses THIS one; combinePack itself stays the gear-only primitive the
+ * upstream-parity tests drive.
+ */
+export function combinePackForPlayer(
+  gear: Gear,
+  player: Player,
+  constants: Constants,
+  opts: CalcInventoryOpts = {},
+): boolean {
+  const combined = combinePack(gear, constants, opts);
+  if (combined) cmdDisableRepeat(player);
+  return combined;
+}
+
+/**
  * object_copy_amt (obj-pile.c L743): a fresh copy of `src` holding `amt`
  * items, with wand/staff charges and rod/activation timeouts scaled to the
  * split (source unchanged). The AVERAGE charge time is deterministic.
@@ -1184,6 +1210,11 @@ export function gearObjectForUse(
 
   /* Using the entire stack. */
   gearExcise(gear, player, handle);
+  /* "Inventory has changed, so disable repeat command" (obj-gear.c:613). Only on
+   * the whole-stack branch, which is where the handle stops resolving. Reached
+   * through `player` rather than a GameState, which this module cannot see - the
+   * reason the flag lives on upkeep. */
+  cmdDisableRepeat(player);
   return { obj, noneLeft: true };
 }
 

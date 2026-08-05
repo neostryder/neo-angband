@@ -48,6 +48,7 @@ import {
   monsterIsInView,
   monsterIsMimicking,
 } from "../mon/predicate.js";
+import { cmdDisableRepeatFloorItem } from "./repeat.js";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -1195,10 +1196,16 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
   if (m1 < 0) {
     state.actor.grid = grid2;
     state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
+    /* "Don't allow command repeat if moved away from item used"
+     * (mon-util.c:624). The player has changed grid, so a remembered command
+     * holding args.floor now indexes a DIFFERENT pile. */
+    cmdDisableRepeatFloorItem(state.actor.player);
   } else if (m2 < 0) {
     /* Player at grid2 -> grid1 (mon-util.c:656-659). */
     state.actor.grid = grid1;
     state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
+    /* mon-util.c:671, the mirror of the branch above. */
+    cmdDisableRepeatFloorItem(state.actor.player);
   }
   updateMonsterDistances(state);
   if (lightChanged) state.updateFov?.(state);
