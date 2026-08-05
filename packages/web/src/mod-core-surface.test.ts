@@ -29,7 +29,7 @@
 
 import { describe, expect, it } from "vitest";
 import * as core from "@rpgm-tools/neo-angband-core";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -71,5 +71,60 @@ describe("the ctx.core surface does not move by accident", () => {
   it("is measuring a real and large namespace, not an empty one", () => {
     expect(surface().length).toBeGreaterThan(1000);
     expect(surface()).toContain("ENGINE_VERSION");
+  });
+
+  /**
+   * AND IT MUST BE MEASURING THE CURRENT SOURCE. `surface()` reads the package
+   * namespace, which resolves to `packages/core/dist/index.js` - so this whole
+   * file measures the last BUILD, not the working tree.
+   *
+   * CI runs `pnpm build` before `pnpm test` (.github/workflows/ci.yml) and a
+   * developer running `pnpm test` alone does not, so the two commands are not the
+   * same measurement. That difference shipped a red CI on 2026-08-04: a new core
+   * export passed every local run against a dist built before it existed, and
+   * failed the moment CI built first. A guard whose subject is a build artifact is
+   * only as current as the artifact, and it cannot say so unless it checks.
+   */
+  it("is measuring the CURRENT build, not a stale dist (run `pnpm build`)", () => {
+    /*
+     * The build STAMP, not dist/index.js. `tsc -b` is incremental and does not
+     * rewrite an output whose emitted text is unchanged - and index.js is a
+     * `export *` barrel, so adding an export to a module leaves it byte-identical
+     * and back-dated. The first draft of this check compared against it and
+     * reported a fresh build as stale. tsconfig.tsbuildinfo is rewritten by every
+     * `tsc -b` that does any work, which is the thing being asked about.
+     */
+    const stamp = resolve(here, "../../core/tsconfig.tsbuildinfo");
+    expect(existsSync(stamp), `no build stamp at ${stamp} - run \`pnpm build\``).toBe(true);
+    const built = statSync(stamp).mtimeMs;
+
+    /* The newest mtime under packages/core/src. Cheap, and precise enough: any
+     * source edit after the build makes every assertion above a statement about
+     * the past. */
+    const src = resolve(here, "../../core/src");
+    let newest = 0;
+    let newestFile = "";
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = resolve(dir, e.name);
+        if (e.isDirectory()) {
+          walk(p);
+        } else if (e.name.endsWith(".ts") && !e.name.includes(".test.")) {
+          const m = statSync(p).mtimeMs;
+          if (m > newest) {
+            newest = m;
+            newestFile = p;
+          }
+        }
+      }
+    };
+    walk(src);
+
+    expect(
+      newest <= built,
+      `packages/core/src is newer than its build (${newestFile}), so this file is ` +
+        "checking the API surface of the PREVIOUS build. Run `pnpm build` and re-run; " +
+        "if a new export is intentional, `node tools/api-surface.mjs --update`.",
+    ).toBe(true);
   });
 });
