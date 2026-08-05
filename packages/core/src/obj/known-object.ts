@@ -396,6 +396,33 @@ export function objectFullyKnown(
 }
 
 /**
+ * object_flag_is_known (obj-knowledge.c L773-787): does the player know this
+ * object carries this flag? THREE routes out, in upstream's order — fully known
+ * (L777), the player has learned the flag on any object (L780), or this object
+ * has already had a chance to display it (L783, `obj->known->flags`).
+ *
+ * The third route is kept for structural fidelity but is **provably redundant in
+ * this port**, and that was measured rather than assumed. `objectKnownShadow`
+ * builds the shadow's flags as `obj.flags ∩ p->obj_k->flags` (L502-504), so
+ * route 3 implies route 2; the one branch that copies flags wholesale (L597) is
+ * gated on `objectFullyKnown`, where route 1 has already returned true. So
+ * `game/ui-entry.ts:1256`, which inlines only the first two routes, is complete
+ * rather than deficient — worth knowing, because a two-of-three inline of a
+ * three-branch C function looks exactly like a gap until the shadow is read.
+ */
+export function objectFlagIsKnown(
+  obj: GameObject,
+  shadow: GameObject,
+  p: Player,
+  env: RuneEnv,
+  flag: number,
+): boolean {
+  if (objectFullyKnown(obj, shadow, p, env)) return true; // L777
+  if (p.objKnown.flags.has(flag)) return true; // L780
+  return shadow.flags.has(flag); // L783
+}
+
+/**
  * Synthesise the per-object known shadow (upstream obj->known) from the
  * player's cumulative rune knowledge. Ports object_set_base_known (L820) then
  * player_know_object (L1022) onto the port's fields; the shadow is a fresh

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { FEAT, TV } from "../generated/index.js";
+import { FEAT, OF, TV } from "../generated/index.js";
 import { ObjRegistry } from "../obj/bind.js";
 import { OBJ_NOTICE, learnBirthObviousFlags, makeRuneEnv } from "../obj/knowledge.js";
 import { ODESC, objectDesc } from "../obj/desc.js";
@@ -15,7 +15,7 @@ import { Rng } from "../rng.js";
 import { StoreRegistry } from "./bind.js";
 import { bindStoreRuntime, storeReset, storeWillBuy } from "./store.js";
 import type { Store, StoreMaintContext } from "./store.js";
-import type { StoreRecordJson } from "./types.js";
+import type { ObjectBuy, StoreRecordJson } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -180,6 +180,13 @@ function makeKind(tval: number): GameObject {
   return objectPrep(new Rng(7), reg, constants, kind, 0, "minimise");
 }
 
+/**
+ * object_flag_is_known for a player who has learned nothing. Every existing case
+ * below is about tvals and value, not flags, so they all take this; the
+ * buy-flag cases at the bottom of the block supply their own.
+ */
+const NO_FLAGS_KNOWN = (): boolean => false;
+
 describe("store_will_buy (store.c)", () => {
   const home = storeReg.byFeat(FEAT.HOME);
   const weapon = storeReg.byFeat(FEAT.STORE_WEAPON);
@@ -189,13 +196,13 @@ describe("store_will_buy (store.c)", () => {
   it("home accepts anything, even a worthless item", () => {
     const potion = makeKind(TV.POTION);
     potion.kind = { ...potion.kind, cost: 0 };
-    expect(storeWillBuy(reg, home, potion, true, false, false)).toBe(true);
+    expect(storeWillBuy(reg, home, potion, true, false, false, NO_FLAGS_KNOWN)).toBe(true);
   });
 
   it("the black market (no buy list) buys any item of positive value", () => {
     const sword = makeKind(TV.SWORD);
     expect(black.buy).toBeNull();
-    expect(storeWillBuy(reg, black, sword, false, false, false)).toBe(true);
+    expect(storeWillBuy(reg, black, sword, false, false, false, NO_FLAGS_KNOWN)).toBe(true);
   });
 
   it("a listed store buys tvals on its list and refuses others", () => {
@@ -203,9 +210,9 @@ describe("store_will_buy (store.c)", () => {
     const potion = makeKind(TV.POTION);
     const buysSword = (weapon.buy ?? []).some((b) => b.tval === TV.SWORD);
     expect(buysSword).toBe(true);
-    expect(storeWillBuy(reg, weapon, sword, false, false, false)).toBe(true);
+    expect(storeWillBuy(reg, weapon, sword, false, false, false, NO_FLAGS_KNOWN)).toBe(true);
     // Potions are not on the weaponsmith's buy list.
-    expect(storeWillBuy(reg, weapon, potion, false, false, false)).toBe(false);
+    expect(storeWillBuy(reg, weapon, potion, false, false, false, NO_FLAGS_KNOWN)).toBe(false);
   });
 
   it("refuses an apparently worthless item at a normal store", () => {
@@ -214,6 +221,56 @@ describe("store_will_buy (store.c)", () => {
     const potion = makeKind(TV.POTION);
     potion.kind = { ...potion.kind, cost: 0 };
     // aware flavored + cost 0 -> object_value 0 -> worthless.
-    expect(storeWillBuy(reg, general, potion, true, false, false)).toBe(false);
+    expect(storeWillBuy(reg, general, potion, true, false, false, NO_FLAGS_KNOWN)).toBe(false);
+  });
+
+  /*
+   * PORT_TODO 2.10 / 5.8: the buy-list flag branch (store.c L549-551).
+   *
+   * Upstream requires BOTH conjuncts - the object has the flag AND the player
+   * knows it has the flag - and the port shipped only the first, with
+   * object_flag_is_known commented out. A store would therefore buy on a rune
+   * the player had never learned.
+   *
+   * No shipped 4.2.6 store reaches this: every `buy:` line in
+   * lib/gamedata/store.txt is a bare tval, and `buy-flag:` appears only in that
+   * file's format comment. The store here is built with a flag entry on purpose,
+   * because the branch is reachable through mod data and "the shipped data does
+   * not reach it" is not a statement about the code.
+   */
+  describe("the buy-list flag branch requires BOTH conjuncts", () => {
+    /**
+     * A weaponsmith rewritten to buy swords only if they are known to grant free
+     * action. store_will_buy reads exactly `feat` and `buy`, so this is the whole
+     * store as far as the function is concerned.
+     */
+    function fussyStore(): { feat: number; buy: ObjectBuy[] } {
+      return { feat: weapon!.feat, buy: [{ tval: TV.SWORD, flag: OF.FREE_ACT }] };
+    }
+
+    it("refuses a sword whose free action the player has not learned", () => {
+      const sword = makeKind(TV.SWORD);
+      sword.flags.on(OF.FREE_ACT);
+      expect(sword.flags.has(OF.FREE_ACT)).toBe(true); // fixture is non-vacuous
+      expect(
+        storeWillBuy(reg, fussyStore(), sword, false, false, false, NO_FLAGS_KNOWN),
+      ).toBe(false);
+    });
+
+    it("buys the same sword once the free action is known", () => {
+      const sword = makeKind(TV.SWORD);
+      sword.flags.on(OF.FREE_ACT);
+      expect(
+        storeWillBuy(reg, fussyStore(), sword, false, false, false, (f) => f === OF.FREE_ACT),
+      ).toBe(true);
+    });
+
+    it("refuses a sword that does not have the flag, however much is known", () => {
+      const sword = makeKind(TV.SWORD);
+      expect(sword.flags.has(OF.FREE_ACT)).toBe(false);
+      expect(storeWillBuy(reg, fussyStore(), sword, false, false, false, () => true)).toBe(
+        false,
+      );
+    });
   });
 });
