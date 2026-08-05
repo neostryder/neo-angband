@@ -2383,6 +2383,13 @@ function makeChangeLevel(
         ...genDeps(
           reg,
           true,
+          /* The player-dependent make_object / make_gold foils. These were
+           * supplied to both STORE paths and to nothing else, so during level
+           * generation - the path they exist for - every book was browsable, no
+           * curse was ever foiled, and generated gold skipped the no-selling
+           * inflation. Two of the three are RNG draws, so the generation stream
+           * itself was off upstream's. */
+          genFoilFields(state),
           state.artifacts,
           state.options?.get("birth_no_artifacts") ?? false,
           /* mon_create_drop's unique theft reduction reads the live lore store. */

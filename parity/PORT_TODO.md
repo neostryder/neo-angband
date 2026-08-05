@@ -6,12 +6,13 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 12 closed, 55 open.
+**67 items covering all 111 confirmed-absent citations** — 13 closed, 54 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Two of the twelve closures are retractions rather than work —
-**2.16** asked for a call upstream does not make, and **2.1**'s own scope was
-overstated by a factor of seven. Both are written up in place, because a
+declared *closed*. Three of the thirteen closures are retractions rather than
+work — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
+overstated by a factor of seven, and **2.15** was already built and named by a
+stale `DEFERRED` comment (whose neighbourhood then yielded a real gap). Both are written up in place, because a
 corrected item is worth more than a deleted one: the shape of the error is the
 reusable part.
 
@@ -535,8 +536,51 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/context.ts:1161`,
   `parity/ledger/game-project-monster.yaml:50`
 
-- [ ] **2.15 The book out-of-depth value boost.**
-  The out-parameter carrying an out-of-depth magic book's value boost.
+- [x] **2.15 The book out-of-depth value boost.** CLOSED as a RETRACTION — and
+  reading it found a different, real gap in the same function.
+
+  **Both halves of this item were already built.** The `*value` out-parameter and
+  its 20 %-per-level out-of-depth boost are ported statement for statement
+  (`obj/make.ts` `makeObject`), including upstream's INT32 saturation, and the one
+  C caller that passes `value` — `place_object` — passes it
+  (`gen/util.ts:1297`, feeding `obj_rating`). The book *rejection* is ported too.
+  The citation exists because the function's docblock still said
+  *"DEFERRED: book rejection (needs the player class)"* long after
+  `deps.canBrowseBook` was added. **A stale note reads as a gap to a keyword
+  census exactly as reliably as a real one.**
+
+  **What WAS wrong is the wiring, and it is three things, not one.** The
+  player-dependent generation foils — `canBrowseBook`, `timedFoil` and
+  `noSelling` — were supplied to `refreshTownStores` and `makeStoreApi`, i.e. to
+  both STORE paths, and to nothing else. Level generation took its `objDeps` from
+  `genDeps` in `session/boot.ts`, which builds the bundle from the content pack
+  alone. So on the path these foils exist for:
+  - every book was browsable, so `obj_kind_can_browse`'s rejection
+    (`obj-make.c` L1185-1195) never fired — a Warrior found Magic Books at the
+    full rate;
+  - `append_object_curse`'s TIMED_INC foil (`obj-curse.c` L159-188) never
+    rejected a contradictory curse;
+  - `make_gold`'s 5× dungeon inflation (`obj-make.c` L1310-1312) never applied to
+    a generated floor pile, so `birth_no_selling` was half-on.
+
+  Two of the three are **RNG draws** — a rejected book costs another
+  `get_obj_num` and is accepted anyway one time in five; a foiled curse is not
+  appended — so the generation stream itself was off upstream's.
+
+  Fixed by making the answer **required**: `genDeps` takes a `GenObjectFoils`
+  whose only "nothing to supply" value is the literal `"no-player"`. Three CLI
+  stats callers and `bootLevel` say `"no-player"` out loud; the live level-change
+  path passes `genFoilFields(state)`. That is a compile-time guard on the call
+  site, which is what an optional property could never be.
+
+  Guarded by `packages/core/src/session/gen-foils-wiring.test.ts` — the wiring,
+  not the function, for the same reason `quiver-ammo-wiring.test.ts` exists. Both
+  its mutations bite. It deliberately has NO behavioural test for the book
+  predicate, and says why: spellbooks are not in `object.txt` in 4.2.6 at all
+  (`write_book_kind`, `init.c:208`, appends one kind per class book), so
+  `makeObject` with a book tval returns null against a registry-only fixture. A
+  first draft measured 40 draws against 40 and would have read as "no
+  difference" when the truth was "no book was ever picked".
   Sites: `packages/core/src/obj/make.ts:1238`
 
 - [x] **2.16 `history_find_artifact` on a store purchase.** CLOSED — **there is

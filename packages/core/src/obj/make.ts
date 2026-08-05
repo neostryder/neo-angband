@@ -1235,8 +1235,14 @@ export interface MakeObjectRating {
  * deferred stub, so failing it upgrades the drop to `good` exactly as
  * upstream does when no special artifact can be made), kind selection,
  * prep, apply_magic, stack generation, and (when `outValue` is supplied)
- * the *value out-parameter with its out-of-depth boost. DEFERRED: book
- * rejection (needs the player class).
+ * the *value out-parameter with its out-of-depth boost.
+ *
+ * The book rejection is live too. "DEFERRED: book rejection (needs the player
+ * class)" stood here long after `deps.canBrowseBook` was added and supplied, and
+ * it is what put PORT_TODO 2.15 on the list - a stale note reads as a gap to a
+ * keyword census exactly as reliably as a real one. What WAS wrong was the
+ * wiring: canBrowseBook reached the store paths and not the level generator.
+ * See session/boot.ts GenObjectFoils.
  */
 export function makeObject(
   rng: Rng,
