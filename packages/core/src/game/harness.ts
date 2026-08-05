@@ -226,6 +226,9 @@ export function makeState(opts: StateOptions = {}): GameState {
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],
     slays: [null],
+    /* No timed records in the worldless harness, so no temporary brand can be
+     * active. Spelled out rather than defaulted, per the field's doc. */
+    tempBrandSlay: { hasBrand: () => false, hasSlay: () => false },
     runeEnv: makeRuneEnv(
       (slot) => gear.store.get(actor.player.equipment[slot] ?? 0) ?? null,
       (v) => rng.randcalcVaries(v),

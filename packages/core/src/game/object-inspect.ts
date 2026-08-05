@@ -120,6 +120,9 @@ export function makeObjectInfoDeps(
   };
 
   const deps: ObjectInfoDeps = {
+    /* The ONE bound player_has_temporary_brand / _slay instance, off GameState -
+     * not a second copy built here (PORT_TODO 3.20). */
+    temp: state.tempBrandSlay,
     player,
     env: state.runeEnv,
     known: knownDescOf(state),

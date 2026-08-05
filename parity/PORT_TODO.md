@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 21 closed, 46 open.
+**67 items covering all 111 confirmed-absent citations** — 22 closed, 45 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Five of the twenty-one closures are retractions rather than
@@ -672,7 +672,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 - [ ] **2.14 Mimic bookkeeping.**
   Targeting is wired; mimicked-object bookkeeping is not.
-  Sites: `packages/core/src/game/context.ts:1218`,
+  Sites: `packages/core/src/game/context.ts:1231`,
   `parity/ledger/game-project-monster.yaml:50`
 
 - [x] **2.15 The book out-of-depth value boost.** CLOSED as a RETRACTION — and
@@ -1053,10 +1053,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `ui-birth.c` offers help on every birth screen; the port swallows the key.
   Sites: `packages/web/src/birth.ts:1051`
 
-- [ ] **3.20 Temporary brands and slays are not shown in object info.**
-  The combat half is ported and live
-  (`packages/core/src/combat/brand-slay.ts:141-201`).
-  Sites: `packages/core/src/obj/object-info.ts:962`
+- [x] **3.20 Temporary brands and slays are not shown in object info.** DONE.
+  The item was right, and its own "the combat half is ported and live" note was
+  the tell: the predicate existed, but `session/game.ts` built a **private**
+  `buildTempBrandSlay` for the melee hooks alone, so obj-info could not reach
+  one. Fix: one bound instance on `GameState.tempBrandSlay` (required field, so
+  every state literal must supply it), the melee hooks now read it instead of
+  building their own, and `obj-info.c:1130-1142`'s two gathering loops are ported
+  into `collectTotalBrandsSlays` behind the same `if (weapon)` gate, with
+  `appendBrand`/`appendSlay` promoted to `obj/object.ts`.
+  Two instructive misses are recorded in the test rather than tidied away: a
+  `/acid/i` grep over the textblock is **green before the fix** (the dagger's own
+  flavour text says "acid"), and a `console.log` probe that printed nothing led me
+  to conclude the brand never reached the text — vitest does not surface stdout
+  from a passing test. The assertion is now a before/after **diff**, run inside
+  the test. Mutation-verified: neutering the gathering loop kills 1 test, passing
+  the *bound* timed table instead of the raw pack records kills 4.
+  Sites: `packages/core/src/obj/object-info.ts:974`
 
 - [ ] **3.21 The shape-lore textblock chain.**
   Shapechange effects have no lore chain, and the port greys the entry rather
