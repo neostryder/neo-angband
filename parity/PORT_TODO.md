@@ -6,7 +6,11 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 33 closed, 34 open.
+**67 items covering all 118 confirmed-absent citations** — 33 closed, 34 open.
+The citation count **went up, not down**, and that is the adjudication working:
+seven rows this session moved from unadjudicated to `partial`, and a `partial` is
+a confirmed-absent citation. Reading the ledger finds work as often as it kills
+it, which is the whole reason Tier 0 sits above the tiers that do the work.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -104,19 +108,36 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 135 of 331 done.**
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 153 of 331 done, 23 of the
+  73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
-  from the key and mostly does not repeat the word. Adjudicated so far:
-`ui-display`, `ui-player`, `ui-entry`, `wizard-debug`, `game-gear`,
+  from the key and mostly does not repeat the word. Files fully adjudicated:
+  `ui-display`, `ui-player`, `ui-entry`, `wizard-debug`, `game-gear`,
   `obj-knowledge`, all four `store-*`, `player-history`, `obj-desc`, `mon-lore`,
   `mon-lore-describe`, `game-effect-terrain`, `game-effect-teleport`,
-  `game-player-path` and `game-mon-cmd`. That is **47 `ported`, 19 `stale-doc`,
-  13 `divergence`, 5 `not-a-deferral`, 3 `n-a`, 2 `note-is-fix` against 28 `real`
-  and 18 `partial`** — so **two rows in three were not owed work**, and the owed
-  ones include the two live defects at **1.2** and **2.17**, both since FIXED —
-  and 2.17's first verdict was wrong in a way worth reading, because the
-  instrument was a grep. **196 remain.**
+  `game-player-path`, `game-mon-cmd`, `game-cave-cmd`, `game-effect-melee`,
+  `game-floor`, `game-known` and `game-mon-group`.
+
+  The tally, **read from the TSV rather than carried forward** — the numbers this
+  paragraph used to quote had drifted, because they were incremented by hand while
+  rows were being re-verdicted elsewhere: **55 `ported`, 24 `partial`, 21
+  `stale-doc`, 15 `divergence`, 5 `not-a-deferral`, 4 `note-is-fix`, 3 `n-a`
+  against 26 `real`**. So **five rows in six are not owed as written**, and the
+  owed ones included the two live defects at **1.2** and **2.17**, both since
+  FIXED — 2.17's first verdict was wrong in a way worth reading, because the
+  instrument was a grep. **178 remain.**
+
+  **Finish a file before starting another.** The first batch of this session took
+  one row from each of five files and completed none of them, which reads as
+  progress and is not: a part-adjudicated file still has to be re-opened and
+  re-understood. The second batch closed all five.
+
+  **What the batches keep finding is bundled rows.** `game-cave-cmd.yaml:59`
+  names five things — steal, pathfinding, run, command repetition, direction
+  inference — of which three are fully ported and two are not, so the row cannot
+  be closed however much work is done. Same shape as **7.2**. When a row is
+  `partial`, the evidence must name which part, or the next reader learns nothing.
   Adjudicate with
   `node parity/tools/deferral-verdict.mjs --target parity/reports/ledger-deferred-items.tsv`,
   reading order from
@@ -1431,7 +1452,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**67 items, 111 citations, 81 `real` + 30
+2. the counts stated at the top (**67 items, 118 citations, 81 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
@@ -1439,7 +1460,11 @@ handling.
    the citations stayed at 111. This guard is what forced that difference to be
    written down rather than absorbed - and it also caught a duplicate item NUMBER
    (two 2.18s, from adding one while one existed), because renumbering is the only
-   way to keep an item referable;
+   way to keep an item referable. **It fired again on 2026-08-05 for the opposite
+   reason**: adjudicating thirteen ledger rows turned seven of them `partial`,
+   which RAISED the citation count 111 to 118 with no new item and no new work
+   discovered by reading. A guard that only ever catches the count going down
+   would have missed it;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
    cannot rot into fiction after a rename;
 4. **any cited LINE has drifted off the note it points at** — the neighbourhood
