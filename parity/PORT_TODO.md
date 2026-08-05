@@ -6,13 +6,17 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 15 closed, 52 open.
+**67 items covering all 111 confirmed-absent citations** — 16 closed, 51 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Three of the fifteen closures are retractions rather than
-work — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
-overstated by a factor of seven, and **2.15** was already built and named by a
-stale `DEFERRED` comment (whose neighbourhood then yielded a real gap). Both are written up in place, because a
+declared *closed*. **Four of the sixteen closures are retractions rather than
+work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
+overstated by a factor of seven, and **2.15** and **2.13** were already built and
+named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
+recognisable failure mode rather than an accident: a keyword census cannot tell a
+stale note from a real absence, so an item whose evidence is a comment needs the
+function read before any work is planned. 2.15's neighbourhood then yielded a real
+gap, and 2.13's yielded four missing tests. Both are written up in place, because a
 corrected item is worth more than a deleted one: the shape of the error is the
 reusable part.
 
@@ -603,9 +607,37 @@ is reachable in play and a test constructs the case that used to be wrong.**
   > now. The save round-trip guard caught it, which is what it is for.
   Sites: `parity/ledger/cmd-core.yaml:25`
 
-- [ ] **2.13 `EF_TOUCH`'s monster-source branches.**
-  The decoy and target-monster branches, so a monster casting a touch effect
-  cannot centre it on a decoy or another monster.
+- [x] **2.13 `EF_TOUCH`'s monster-source branches.** CLOSED as a RETRACTION —
+  **both branches were already built**, complete and in upstream's order, at
+  `packages/core/src/game/effect-attack.ts` `handleTOUCH`. The decoy branch sources
+  its ball at a trap and the target-monster branch at `mon->target.midx`, each
+  citing its C line.
+
+  The citation points at `castTouch`, a *different function in a different file*,
+  whose docblock said the branches were "deferred (#19)". `castTouch` is the base
+  player-centred touch and it is correct for it not to have them — they belong to
+  the handler. **The same shape as 2.15: a stale note about a neighbouring
+  function manufacturing an item.** Comment corrected.
+
+  **But the retraction came with work, because a closed item with no test is the
+  next bug.** There was no `EF_TOUCH` test of any kind. Four now, and they are
+  worth reading for one reason: my first draft asserted *"the targeted monster is
+  hit"* — declared from intuition — and it failed. Upstream sources the ball at
+  the target monster ITSELF (`effect-handler-attack.c:431`) and `project_m` returns
+  early for its own source (`project-mon.c:1382`, ported at
+  `project-monster.ts:149`), so **the victim is exempt from the ball centred on
+  it** and only its neighbours are struck. An upstream wart, and one only visible
+  by deriving the expectation from the C. Every test now asserts a POSITIVE (a
+  bystander adjacent to the intended centre takes damage) as well as the negative,
+  so none of them can pass against an effect that did nothing.
+
+  Reachability measured, not assumed: exactly **one** monster spell uses TOUCH in
+  4.2.6 — `TRAPS` (`effect:TOUCH:MAKE_TRAP:3`, `monster_spell.txt:1050`) — and a
+  monster spell is always `SRC_MONSTER`, so both branches are live. With a decoy
+  deployed, a caster that would otherwise ring the *player* with traps rings the
+  decoy, which is the entire point of a decoy.
+
+  Four mutations, four dead tests.
   Sites: `packages/core/src/game/project-cast.ts:685`,
   `parity/ledger/game-project-cast.yaml:53`
 

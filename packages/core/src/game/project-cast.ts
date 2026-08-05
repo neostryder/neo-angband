@@ -681,8 +681,13 @@ export function castStarBall(
  * project_touch (L112): a radius-1 (or given) ball centred on the player,
  * affecting grids, objects and monsters but hidden from bolt visuals
  * (PROJECT_HIDE). PROJECT_AWARE is set when the player is aware of the effect.
- * The monster-source decoy / target-monster branches of effect_handler_TOUCH
- * are deferred (#19); this is the base player-centred touch.
+ *
+ * This is the player-centred touch and NOTHING ELSE, correctly: the monster-source
+ * decoy / target-monster branches belong to effect_handler_TOUCH, one level up
+ * (game/effect-attack.ts handleTOUCH), and they are ported there. This comment
+ * used to say they were "deferred (#19)", which is what put PORT_TODO 2.13 on the
+ * list - a stale note about a NEIGHBOURING function, the same way a stale note in
+ * obj/make.ts manufactured 2.15.
  */
 export function castTouch(
   state: GameState,
