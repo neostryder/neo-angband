@@ -812,7 +812,11 @@ export function deserializePlayer(
       ? (players.shapes.find((s) => s.name === data.shapeName) ?? null)
       : null;
   p.skills = [...data.skills];
-  p.upkeep = { ...data.upkeep };
+  /* notice is NOT in the savefile, exactly as upstream's is not: it is a queue
+   * of work owed within a turn, and a save can only happen with the queue
+   * drained. A loaded character therefore starts it at 0 rather than at
+   * whatever a spread of the serialized subset would leave undefined. */
+  p.upkeep = { ...data.upkeep, notice: 0 };
   p.quests = data.quests ? data.quests.map((q) => ({ ...q })) : [];
   p.totalWinner = data.totalWinner ?? false;
   return p;

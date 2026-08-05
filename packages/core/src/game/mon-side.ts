@@ -17,13 +17,13 @@
  *
  * Stolen gold / items are attached to the monster's held-object pile
  * (monster_carry, mon/make.ts) so they drop on death via monster_death
- * (game/mon-death.ts). react_to_slay DOES block a theft here (L421); the
- * remaining gap is the monster-vs-monster path (mon/steal.ts:234) (no RNG
- * impact); ledgered in parity/ledger/combat-melee.yaml.
+ * (game/mon-death.ts). react_to_slay blocks a theft here (L421) and, since
+ * PORT_TODO 2.2, on the monster-vs-monster path too (mon/steal.ts) - the
+ * comment that used to cite that path as an open gap outlived it.
  */
 
 import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated/index.js";
-import { SKILL } from "../player/types.js";
+import { PN, SKILL } from "../player/types.js";
 import type { Loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
 import { monsterCarry } from "../mon/make.js";
@@ -335,6 +335,9 @@ export function makeMonBlowEnv(
           /* Don't heal more than max hp (PR_HEALTH redraw rides #25). */
           const heal = Math.min(rlev * unpower, mon.maxhp - mon.hp);
           mon.hp += heal;
+          /* "Combine the pack" PN_COMBINE (mon-blows.c:763): the drained stack's
+           * charge count changed, so it may now match another. */
+          state.actor.player.upkeep.notice |= PN.COMBINE;
           break;
         }
       }

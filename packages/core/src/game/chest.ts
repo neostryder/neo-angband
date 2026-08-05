@@ -18,7 +18,7 @@
 import type { Loc } from "../loc.js";
 import { DDGRID_DDD, locSum } from "../loc.js";
 import { OF, ORIGIN, TMD } from "../generated/index.js";
-import { SKILL } from "../player/types.js";
+import { PN, SKILL } from "../player/types.js";
 import type { GameObject } from "../obj/object.js";
 import { tvalIsChest } from "../obj/object.js";
 import { CHEST_QUERY, CHEST_TRAPS, isTrappedChest } from "../obj/chest.js";
@@ -277,6 +277,10 @@ export function doCmdOpenChest(
       equipLearnFlag(state.actor.player, state.runeEnv, OF.TRAP_IMMUNE);
     }
     chestDeath(state, grid, obj, deps);
+    /* "Ignore chest if autoignore calls for it" PN_IGNORE (obj-chest.c L633),
+     * after chest_death: an emptied chest is what ignore_item_ok starts
+     * matching, and the pval flip to negative happened inside chestDeath. */
+    state.actor.player.upkeep.notice |= PN.IGNORE;
   }
 
   return more;

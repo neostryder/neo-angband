@@ -29,6 +29,7 @@
 
 import type { Constants } from "../constants.js";
 import { PF } from "../generated/index.js";
+import { PN } from "../player/types.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   OSTACK_PACK,
@@ -262,6 +263,12 @@ function playerPickupAux(
   const env = deps.env ?? {};
   let max = invenCarryNum(state.gear, obj, deps.constants);
   if (max === 0) throw new Error(`Failed pickup of ${obj.kind.name}`);
+
+  /* "Set ignore status" PN_IGNORE (cmd-pickup.c:246), before the auto-pickup
+   * clamp exactly as the C has it: picking something up can make it - or, once
+   * a kind becomes aware through the pickup below, a whole class of things -
+   * ignorable. */
+  state.actor.player.upkeep.notice |= PN.IGNORE;
 
   /* Allow auto-pickup to limit the number if it wants to. */
   if (autoMax && max > autoMax) max = autoMax;

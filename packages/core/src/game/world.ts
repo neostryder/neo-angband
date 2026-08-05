@@ -35,6 +35,7 @@ import {
   rechargeTimeout,
   tvalCanHaveTimeout,
 } from "../obj/recharge.js";
+import { PN } from "../player/types.js";
 import type { TimedEffect } from "../player/types.js";
 import type { PlayerTimedHooks } from "../player/timed.js";
 import {
@@ -600,6 +601,11 @@ export function rechargeObjects(state: GameState): void {
     if (tvalCanHaveTimeout(obj.tval) && rechargeTimeout(rng, obj)) {
       if (obj.timeout === 0) rechargedNotice(state, obj, true);
       else if (dischargedStack) rechargedNotice(state, obj, false);
+      /* "Combine pack" PN_COMBINE (game-world.c:234), the PACK branch only -
+       * the equipment branch above raises PR_EQUIP and nothing else. A rod
+       * finishing its timeout is exactly when it becomes mergeable with the
+       * already-ready ones. */
+      p.upkeep.notice |= PN.COMBINE;
     }
   }
 

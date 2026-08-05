@@ -36,6 +36,7 @@ import { effectCalculateValue } from "../effects/interpreter.js";
 import type { GameObject } from "../obj/object.js";
 import {
   appendObjectCurse,
+  objectWeightOne,
   removeObjectCurse,
   tvalCanHaveCharges,
   tvalIsAmmo,
@@ -51,6 +52,7 @@ import {
   objectRunesKnown,
   playerLearnFlagRune,
 } from "../obj/knowledge.js";
+import { PN } from "../player/types.js";
 import { ODESC } from "../obj/desc.js";
 import { describeObject } from "./describe.js";
 import { updatePlayerObjectKnowledge } from "./known.js";
@@ -366,6 +368,10 @@ export function enchant(
 
   /* Recalculate bonuses (PU_BONUS | PU_INVEN) */
   state.updateBonuses?.();
+  /* "Combine the pack (later)" PN_COMBINE (L355), inside the success branch:
+   * a raised to-hit splits one stack from an identical one, or - going the
+   * other way - brings a lagging stack up to match. */
+  state.actor.player.upkeep.notice |= PN.COMBINE;
   return true;
 }
 
@@ -443,6 +449,9 @@ export function brandObject(
     obj.ego = ego;
     if (env.item?.reg) egoApplyMagic(state.rng, env.item.reg, obj, 0);
     state.updateBonuses?.();
+    /* "Combine the pack (later)" PN_COMBINE (L471), before the enchant, which
+     * raises it again - the ego alone already changed mergeability. */
+    state.actor.player.upkeep.notice |= PN.COMBINE;
 
     /* Enchant */
     enchant(state, obj, state.rng.randint0(3) + 4, ENCH_TOHIT | ENCH_TODAM);
@@ -533,6 +542,11 @@ const handleRECHARGE: EffectHandler = (ctx) => {
     if (t > 0) obj.pval += 2 + state.rng.randint1(t);
   }
 
+  /* "Combine the pack (later)" PN_COMBINE (L2185), outside the backfire/success
+   * split because both change the pack: a backfire destroys one item, a
+   * success changes the charge count that stacks are keyed on. */
+  state.actor.player.upkeep.notice |= PN.COMBINE;
+
   /* Something was done */
   return true;
 };
@@ -553,6 +567,17 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
    * Upstream tests the known twin; knowledge is rune-based here. */
   const obj = env.item?.getItem?.(requestForEffect(EF.REMOVE_CURSE, 0, state)!);
   if (!obj || !obj.curses) return false;
+
+  /* old_weight / new_weight (effect-handler-general.c L182-183). A curse can
+   * carry a weight modifier (object_weight_one, obj-util.c L280-288), so
+   * removing one changes what the player is carrying. This is the FIFTH
+   * total_weight choke point, and the one that was invisible until the running
+   * total became real (PORT_TODO 1.2, gear.ts): before that it adjusted a field
+   * nothing read. Captured here and applied at the tail, exactly as the C does,
+   * so the destroy branch - whose gearObjectForUse already did the arithmetic -
+   * contributes a delta of zero. */
+  const oldWeight = obj.number * objectWeightOne(obj, state.gear.curses);
+  let newWeight = oldWeight;
 
   /* get_curse: pick among the object's active curses. */
   const active: number[] = [];
@@ -582,6 +607,8 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
       true,
       curseReg ? { curses: curseReg, msg: (text) => say(ctx, text) } : undefined,
     );
+    /* L197: only the successful-removal branch re-measures. */
+    newWeight = obj.number * objectWeightOne(obj, state.gear.curses);
   } else if (!obj.flags.has(OF.FRAGILE)) {
     /* Failure to remove, object is now fragile */
     say(
@@ -606,6 +633,10 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     /* Non-destructive failure */
     say(ctx, "The removal fails.");
   }
+
+  /* L237-239, on every path that did not return false. */
+  state.actor.player.upkeep.totalWeight += newWeight - oldWeight;
+  state.actor.player.upkeep.notice |= PN.COMBINE;
 
   /* Recalculate bonuses (PU_BONUS) */
   state.updateBonuses?.();
@@ -849,6 +880,10 @@ const handleTAP_DEVICE: EffectHandler = (ctx) => {
   } else if (p.csp < p.msp) {
     /* Drain the object. */
     obj.pval = 0;
+
+    /* "Combine / Reorder the pack (later)" PN_COMBINE (L3416): a drained wand
+     * can now merge with an already-empty one of the same kind. */
+    p.upkeep.notice |= PN.COMBINE;
 
     /* Increase mana. */
     p.csp += Math.trunc(energy / 6);
