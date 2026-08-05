@@ -299,7 +299,7 @@ export function storeBuy(
   }
 
   /* Give it to the player. */
-  invenCarry(gear, bought, packLimits(constants));
+  invenCarry(gear, player, bought, packLimits(constants));
 
   /* Remove the bought objects unless a readily-replaced staple. */
   let emptied: "retired" | "restocked" | undefined;
@@ -552,6 +552,7 @@ export function homeRetrieve(
   store: Store,
   obj: GameObject,
   amt: number,
+  player: Player,
   gear: Gear,
   constants: Constants,
 ): HomeResult {
@@ -572,7 +573,7 @@ export function homeRetrieve(
   distributeCharges(obj, picked, amt, true);
 
   /* Give it to the player. */
-  invenCarry(gear, picked, packLimits(constants));
+  invenCarry(gear, player, picked, packLimits(constants));
 
   /* Reduce or remove the item. */
   storeDelete(store, obj, amt);

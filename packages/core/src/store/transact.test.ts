@@ -104,6 +104,18 @@ function setup(): {
   return { ctx: { rng, deps, maxDepth: 0, stores }, stores, player, gear: newGear() };
 }
 
+/**
+ * inven_carry updates the burden of the player doing the carrying (obj-gear.c
+ * L845, L875), so it takes one. These blocks are about gold and stock, not the
+ * carried-weight total, so they share a throwaway carrier; the total has its own
+ * derived-ground-truth test in game/gear-weight.test.ts.
+ */
+const carrier = ((): Player => {
+  const race = players.raceByName("Human")!;
+  const cls = players.classByName("Warrior")!;
+  return blankPlayer(race, cls, players.bodies[race.body]!);
+})();
+
 /** A fresh, minimised ordinary object of a tval. */
 function makeObj(tval: number): GameObject {
   const kind = reg.kinds.find(
@@ -185,7 +197,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     storeReset(ctx);
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
 
-    const handle = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     player.au = 0;
 
     const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
@@ -245,7 +257,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
       /* A sword carrying one modifier: exactly one unknown rune. */
       const sword = makeObj(TV.SWORD);
       sword.modifiers[0] = 2;
-      const handle = invenCarry(gear, sword, limits);
+      const handle = invenCarry(gear, carrier, sword, limits);
 
       expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
       expect(objectRunesKnown(player, env, sword, runes)).toBe(false);
@@ -270,7 +282,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
       sword.modifiers[0] = 2;
       sword.modifiers[1] = 3;
       sword.modifiers[2] = 1;
-      const handle = invenCarry(gear, sword, limits);
+      const handle = invenCarry(gear, carrier, sword, limits);
 
       storeSell(ctx, weapon, handle, 1, player, gear, {
         ...NO_SELL,
@@ -293,7 +305,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
 
       const sword = makeObj(TV.SWORD);
       sword.modifiers[0] = 2;
-      const handle = invenCarry(gear, sword, limits);
+      const handle = invenCarry(gear, carrier, sword, limits);
 
       const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
 
@@ -311,7 +323,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
       /* The weaponsmith does not buy potions (store_will_buy, L1901). */
       const potion = makeObj(TV.POTION);
       potion.modifiers[0] = 2;
-      const handle = invenCarry(gear, potion, limits);
+      const handle = invenCarry(gear, carrier, potion, limits);
 
       const res = storeSell(ctx, weapon, handle, 1, player, gear, {
         ...NO_SELL,
@@ -330,7 +342,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
 
       const sword = makeObj(TV.SWORD);
       sword.modifiers[0] = 2;
-      const handle = invenCarry(gear, sword, limits);
+      const handle = invenCarry(gear, carrier, sword, limits);
 
       storeSell(ctx, weapon, handle, 1, player, gear, {
         aware: true,
@@ -347,7 +359,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     storeReset(ctx);
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
 
-    const handle = invenCarry(gear, makeObj(TV.POTION), limits);
+    const handle = invenCarry(gear, carrier, makeObj(TV.POTION), limits);
     player.au = 42;
 
     const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
@@ -363,7 +375,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     storeReset(ctx);
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
 
-    const handle = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     player.au = 50;
 
     const res = storeSell(ctx, weapon, handle, 1, player, gear, {
@@ -383,7 +395,7 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     const { ctx, stores, player, gear } = setup();
     storeReset(ctx);
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
-    const handle = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     const res = storeSell(ctx, weapon, handle, 1, player, gear, {
       aware: true,
       noSelling: true,
@@ -398,14 +410,14 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
     const home = stores.find((s) => s.feat === FEAT.HOME)!;
 
-    const h1 = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const h1 = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     const real = storeSell(ctx, weapon, h1, 1, player, gear, NO_SELL);
     expect(real.ok).toBe(true);
     /* Computed (do_cmd_sell L1972); the exact bucket is price/value/guess
      * dependent, so assert it is a valid bucket or undefined. */
     expect([undefined, "worthless", "bad", "good", "great"]).toContain(real.reaction);
 
-    const h2 = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const h2 = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     const homeSale = storeSell(ctx, home, h2, 1, player, gear, NO_SELL);
     expect(homeSale.ok).toBe(true);
     expect(homeSale.reaction).toBeUndefined(); // the Home never reacts
@@ -513,7 +525,7 @@ describe("home stash / retrieve (store.c do_cmd_stash / do_cmd_retrieve)", () =>
     storeReset(ctx);
     const home = stores.find((s) => s.feat === FEAT.HOME)!;
 
-    const handle = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
     player.au = 100;
 
     const stash = homeStash(home, handle, 1, player, gear, constants);
@@ -522,7 +534,7 @@ describe("home stash / retrieve (store.c do_cmd_stash / do_cmd_retrieve)", () =>
     expect(home.stock.length).toBe(1);
     expect(player.au).toBe(100);
 
-    const retrieve = homeRetrieve(home, home.stock[0]!, 1, gear, constants);
+    const retrieve = homeRetrieve(home, home.stock[0]!, 1, player, gear, constants);
     expect(retrieve.ok).toBe(true);
     expect(retrieve.noneLeft).toBe(true);
     expect(gear.pack.length).toBe(1);
@@ -537,11 +549,11 @@ describe("home stash / retrieve (store.c do_cmd_stash / do_cmd_retrieve)", () =>
 
     const f1 = makeObj(TV.FOOD);
     f1.number = 2;
-    homeStash(home, invenCarry(gear, f1, limits), 2, player, gear, constants);
+    homeStash(home, invenCarry(gear, carrier, f1, limits), 2, player, gear, constants);
 
     const f2 = makeObj(TV.FOOD);
     f2.number = 3;
-    homeStash(home, invenCarry(gear, f2, limits), 3, player, gear, constants);
+    homeStash(home, invenCarry(gear, carrier, f2, limits), 3, player, gear, constants);
 
     expect(home.stock.length).toBe(1);
     expect(home.stock[0]!.number).toBe(5);
@@ -605,7 +617,7 @@ describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
     storeReset(ctx);
     const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
     const sword = makeObj(TV.SWORD);
-    const handle = invenCarry(gear, sword, limits);
+    const handle = invenCarry(gear, carrier, sword, limits);
     player.au = 0;
 
     const flavor = new FlavorKnowledge(reg.ordinaryKindCount);

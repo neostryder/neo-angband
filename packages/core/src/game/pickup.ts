@@ -273,7 +273,12 @@ function playerPickupAux(
   if (max === obj.number) {
     if (obj.grid) floorExcise(state, obj.grid, obj);
     obj.grid = null;
-    ({ handle, combining } = invenCarryResult(state.gear, obj, limits));
+    ({ handle, combining } = invenCarryResult(
+      state.gear,
+      state.actor.player,
+      obj,
+      limits,
+    ));
   } else {
     /* Partial pickup (cmd-pickup.c L262-274): an auto-pickup limit answers for
      * itself, otherwise upstream asks - get_quantity(NULL, max) - and a 0
@@ -281,7 +286,12 @@ function playerPickupAux(
     const num = autoMax || (env.getQuantity?.(max) ?? max);
     if (num <= 0) return;
     const { usable } = floorObjectForUse(state, obj, num);
-    ({ handle, combining } = invenCarryResult(state.gear, usable, limits));
+    ({ handle, combining } = invenCarryResult(
+      state.gear,
+      state.actor.player,
+      usable,
+      limits,
+    ));
   }
   /* object_touch (obj-knowledge.c L960-972; cmd-pickup.c L322 also touches the
    * grid pile on pickup): mark the object ASSESSED so it reveals its combat

@@ -54,10 +54,11 @@ import {
   tvalIsMoney,
   tvalIsRing,
   tvalIsRod,
+  objectWeightOne,
 } from "../obj/object.js";
 import type { PackTotalGear, StackLimits } from "../obj/object.js";
 import { EL_INFO_IGNORE } from "../obj/types.js";
-import type { ObjectKind } from "../obj/types.js";
+import type { Curse, ObjectKind } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import { objectValueReal } from "../obj/value.js";
 import { earlierObject } from "../player/calcs.js";
@@ -106,11 +107,61 @@ export interface Gear {
    * listing here while Player holds only equipment[] handles.
    */
   quiver?: number[];
+  /**
+   * The bound curse table, for object_weight_one. Upstream reaches the global
+   * `curses[]` from wherever it needs a weight; the port has no globals, so the
+   * gear carries the binding it needs to weigh its own contents - set once by
+   * whoever builds the gear (outfitPlayer at birth, deserializeGear on load)
+   * rather than passed to each of the four weight-accounting sites, where it
+   * would be a parameter every future caller has to remember.
+   *
+   * Optional, and absent is not a no-op: object_weight_one without a table is
+   * MAX(obj->weight, 0), which is the same number for every object no active
+   * curse gives a weight adjustment - i.e. every object in the shipped 4.2.6
+   * data, where no curse has a `weight` line at all. It is bound anyway so a
+   * mod that adds one is weighed correctly instead of silently.
+   *
+   * Derived and never persisted: save.ts serializes {next, pack, store} by name.
+   */
+  curses?: readonly (Curse | null)[];
 }
 
 /** A fresh, empty gear store (empty quiver; calcInventory sizes it). */
 export function newGear(): Gear {
   return { store: new Map<number, GameObject>(), next: 1, pack: [], inven: [], quiver: [] };
+}
+
+/* ------------------------------------------------------------------ */
+/* upkeep->total_weight (obj-gear.c / load.c)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The carried weight of a whole stack: `obj->number * object_weight_one(obj)`,
+ * the expression every one of upstream's total_weight adjustments uses.
+ */
+function stackWeight(gear: Gear, obj: GameObject): number {
+  return obj.number * objectWeightOne(obj, gear.curses);
+}
+
+/**
+ * upkeep->total_weight from scratch: the weight of everything in the gear,
+ * pack and equipment alike (upstream's p->gear holds both, and the body slots
+ * only point into it).
+ *
+ * This is load.c L1179-1185, which re-sums the whole list rather than trusting
+ * the saved number - and so does the port's loader, which is what makes a
+ * character saved before this accounting existed load with the right burden
+ * instead of zero.
+ *
+ * It is also the ground truth the invariant test derives, rather than declaring
+ * expected numbers: the running total below is maintained incrementally exactly
+ * as upstream maintains it, and the only way to catch a gear mutation that goes
+ * around a choke point is to compare the accumulated number against the sum.
+ */
+export function gearTotalWeight(gear: Gear): number {
+  let total = 0;
+  for (const obj of gear.store.values()) total += stackWeight(gear, obj);
+  return total;
 }
 
 /** Store an object under a fresh handle and return it (no pack insertion). */
@@ -408,9 +459,21 @@ export interface InvenCarryResult {
 /** inven_carry plus the C `combining` bit needed by pickup awareness. */
 export function invenCarryResult(
   gear: Gear,
+  player: Player,
   obj: GameObject,
   limits: StackLimits,
 ): InvenCarryResult {
+  /* Carrying it makes the player heavier. Upstream performs this addition in
+   * BOTH branches below - obj-gear.c L845-847 before object_absorb, L875-876
+   * after gear_insert_end - so it is hoisted here; the two are the same
+   * statement over the same object.
+   *
+   * Faithful to an upstream wart: the weight of the whole incoming stack is
+   * added even if object_absorb goes on to cap the merged stack at the stack
+   * limit and quietly lose items. Reachable game states cannot hit it, because
+   * every caller sizes the pickup with inven_carry_num first. */
+  player.upkeep.totalWeight += stackWeight(gear, obj);
+
   /* Check for combining with an existing non-equipped stack. */
   for (const handle of gear.pack) {
     const stack = gear.store.get(handle);
@@ -429,10 +492,11 @@ export function invenCarryResult(
 
 export function invenCarry(
   gear: Gear,
+  player: Player,
   obj: GameObject,
   limits: StackLimits,
 ): number {
-  return invenCarryResult(gear, obj, limits).handle;
+  return invenCarryResult(gear, player, obj, limits).handle;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1027,6 +1091,13 @@ export interface GearForUse {
  * clears its body slot. Either way the handle leaves the store map.
  */
 function gearExcise(gear: Gear, player: Player, handle: number): void {
+  /* The whole stack leaves the gear, so the player stops carrying its weight
+   * (obj-gear.c L486). Done before the handle is dropped from the store, and
+   * only when it was really there, so a stale handle cannot credit weight the
+   * player never had. */
+  const leaving = gear.store.get(handle);
+  if (leaving) player.upkeep.totalWeight -= stackWeight(gear, leaving);
+
   /* Clear any stale quiver reference (calc_inventory rebuilds it). */
   if (gear.quiver) {
     const qi = gear.quiver.indexOf(handle);
@@ -1051,8 +1122,8 @@ function gearExcise(gear: Gear, player: Player, handle: number): void {
  * object referenced by `handle`, returning a detached object to hand off.
  * When part of a stack is taken, the remainder stays under `handle` and a
  * fresh split is returned (noneLeft=false); when the whole stack is taken,
- * the original is excised (noneLeft=true). The total_weight upkeep and the
- * knowledge twin are DEFERRED (see the module ledger).
+ * the original is excised (noneLeft=true). The knowledge twin is DEFERRED
+ * (see the module ledger).
  */
 export function gearObjectForUse(
   gear: Gear,
@@ -1067,6 +1138,10 @@ export function gearObjectForUse(
 
   /* Split off a usable object if we are not taking the whole stack. */
   if (obj.number > num) {
+    /* Only the items handed off leave the gear (obj-gear.c L541). The per-item
+     * weight is read before the split, as upstream does, though objectSplit
+     * leaves it unchanged. */
+    player.upkeep.totalWeight -= num * objectWeightOne(obj, gear.curses);
     const usable = objectSplit(obj, num);
     return { obj: usable, noneLeft: false };
   }
@@ -1279,8 +1354,12 @@ export function outfitPlayer(
     thrownQuiverMult: constants.thrownQuiverMult,
   };
 
-  /* Currently carrying nothing (running total is owned by the calc/inventory
-   * side, which is DEFERRED; we mirror only the reset upstream performs). */
+  /* Bind the curse table this gear will weigh its contents against, before the
+   * first inven_carry below adds to the running total. */
+  gear.curses = reg.curses;
+
+  /* Currently carrying nothing (player-birth.c L591). Every start item below
+   * goes through inven_carry, which adds its weight. */
   player.upkeep.totalWeight = 0;
 
   /* Give the player obvious object knowledge (player-birth.c L597-602): the
@@ -1345,7 +1424,7 @@ export function outfitPlayer(
     opts.onStartKind?.(kind);
 
     /* Carry the item. */
-    invenCarry(gear, obj, limits);
+    invenCarry(gear, player, obj, limits);
   }
 
   /* Sanity check: never let the outfit drive starting gold negative

@@ -1735,7 +1735,8 @@ export function deserializeGear(
   for (const [h, saved] of data.store) {
     store.set(h, deserializeObject(saved, reg, ids));
   }
-  return { store, next: data.next, pack: [...data.pack] };
+  /* Bind the curse table so the gear can weigh itself (see Gear.curses). */
+  return { store, next: data.next, pack: [...data.pack], curses: reg.curses };
 }
 
 /** Rebuild the floor pile map (grid-keyed, pile order preserved). */
