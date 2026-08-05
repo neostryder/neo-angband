@@ -30,6 +30,22 @@ import { existsSync, readFileSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const CENSUS = join(ROOT, "parity", "reports", "deferral-census.tsv");
+/**
+ * The second tranche - the ledger's `deferred:` list items, which the keyword
+ * census structurally cannot see. It is counted but NOT coverage-checked, and
+ * the asymmetry is deliberate:
+ *
+ *  - COUNTED, because a work item whose only citation is a ledger row was
+ *    invisible to the count guard, which is exactly the hole that lets an owed
+ *    row hide inside an existing item. Three items added on 2026-08-04 sat
+ *    outside every guard for that reason.
+ *  - NOT coverage-checked, because most of this tranche is still unadjudicated
+ *    (PORT_TODO 0.1), and a coverage assertion over rows nobody has read is an
+ *    assertion about the reading order, not about the work.
+ *
+ * When 0.1 finishes, move it into the coverage guard too and delete this note.
+ */
+const LEDGER = join(ROOT, "parity", "reports", "ledger-deferred-items.tsv");
 const TODO = join(ROOT, "parity", "PORT_TODO.md");
 
 /** The verdicts that mean "still owed", i.e. the ones that need a work item. */
@@ -41,8 +57,8 @@ interface Census {
   readonly counts: Readonly<Record<string, number>>;
 }
 
-function census(): Census {
-  const lines = readFileSync(CENSUS, "utf8").split(/\r?\n/u);
+function census(tsv: string = CENSUS): Census {
+  const lines = readFileSync(tsv, "utf8").split(/\r?\n/u);
   const head = (lines[0] ?? "").split("\t");
   const iFile = head.indexOf("file");
   const iVerdict = head.indexOf("verdict");
@@ -121,11 +137,12 @@ describe("parity/PORT_TODO.md", () => {
     expect(uncovered(holed, files)).toEqual([victim]);
   });
 
-  it("states counts that match the census and its own checkboxes", () => {
+  it("states counts that match both tranches and its own checkboxes", () => {
     const doc = readFileSync(TODO, "utf8");
     const { counts } = census();
-    const real = counts["real"] ?? 0;
-    const partial = counts["partial"] ?? 0;
+    const led = census(LEDGER).counts;
+    const real = (counts["real"] ?? 0) + (led["real"] ?? 0);
+    const partial = (counts["partial"] ?? 0) + (led["partial"] ?? 0);
     const items = (doc.match(/^- \[[ x]\] /gmu) ?? []).length;
     /* Whitespace-collapsed, so re-wrapping a paragraph cannot fail this. */
     const flat = doc.replace(/\s+/gu, " ");
