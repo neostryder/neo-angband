@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 16 closed, 51 open.
+**67 items covering all 111 confirmed-absent citations** — 17 closed, 50 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Four of the sixteen closures are retractions rather than
+declared *closed*. **Four of the seventeen closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -813,14 +813,45 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/mon-message.ts:15`,
   `parity/ledger/mon-timed.yaml:29`
 
-- [ ] **3.2 The killer's name is a race name.**
-  `MDESC_DIED_FROM` is defined at `packages/core/src/mon/desc.ts:61` and unused
-  at both death sites, so the cause reads "kobold" where upstream writes "a
-  kobold". The third site is the high-score entry, which cannot name the killer
-  at all because it is not wired through `GameState` — one wiring lands all
-  three.
+- [x] **3.2 The killer's name is a race name.** DONE. `MDESC_DIED_FROM` was
+  defined and unused at both death sites, so the cause read "kobold" where
+  upstream writes "a kobold" — `MDESC_SHOW | MDESC_IND_VIS` is the indefinite
+  article an ordinary monster gets and a unique does not.
+
+  Two sites, both now `monsterDesc(mon, MDESC_DIED_FROM)`:
+  `game/effect-attack.ts:694` (`effect-handler-attack.c:490`) and
+  `monsterCastSource` in `game/project-cast.ts:136` — the latter is where every
+  monster projection's death cause comes from (`project-player.c:849`), so it was
+  handing out the literal string `"a monster"` for all of them.
+
+  **The item's third site was wrong, in the helpful direction.** It said the
+  high-score entry "cannot name the killer at all because it is not wired through
+  GameState". It is wired: `take-hit-hooks.ts:68` writes `p.diedFrom = killer` and
+  `score.ts:98` reads it as `how`. Fixing the two death sites fixed the score row
+  with them, and a test walks that chain end to end rather than trusting it.
+
+  Two neighbouring claims CHECKED rather than taken:
+  - `effects/handlers.ts`'s `"a monster"` is not a deferral, it is a layering
+    fallback — that layer has no monster registry, and the game override supplies
+    the name. Its comment said "deferred (8.9)" and had outlived the wiring;
+    rewritten.
+  - the `Killed <unique>` history line (`session/game.ts:951`) uses `race.name`
+    directly under a note claiming `MDESC_DIED_FROM` for a unique is just the race
+    name. Read `monsterDesc`: the unique branch returns `stripPhrase(race.name)`,
+    and with no `MDESC_POSS` that is the bare name. **The note is right**, and it
+    is now right on evidence rather than assertion.
+
+  One deliberate deviation, written at the call site: `monster_desc` appends
+  " (offscreen)" when the monster is off the panel, and upstream's death sites
+  pass the real panel — so upstream CAN write "Killed by a dragon (offscreen)".
+  The port leaves the panel predicate at its default, because plumbing viewport
+  state into core for one string is not worth it; the ledger row for the panel
+  argument covers it.
+
+  Five tests, three mutations, all three bite — including one that swaps
+  `MDESC_DIED_FROM` for `MDESC.SHOW` and so produces the definite article.
   Sites: `packages/core/src/effects/handlers.ts:78`,
-  `packages/core/src/game/effect-attack.ts:687`,
+  `packages/core/src/game/effect-attack.ts:694`,
   `parity/ledger/high-scores.yaml:96`
 
 - [ ] **3.3 Object and ego recall show no computed lines.**

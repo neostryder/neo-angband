@@ -27,6 +27,7 @@
 import { EF, MSG, PROJ, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { monsterIsPowerful } from "../mon/predicate.js";
+import { MDESC_DIED_FROM, monsterDesc } from "../mon/desc.js";
 import { breathDam } from "../mon/spell.js";
 import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter.js";
 import type {
@@ -684,10 +685,13 @@ const handleDAMAGE: EffectHandler = (ctx) => {
     return true;
   }
 
-  /* Otherwise damage the player. monster_desc(MDESC_DIED_FROM) is deferred
-   * (8.9); the caster's race name stands in as the death cause. */
+  /* Otherwise damage the player, with the killer named as
+   * monster_desc(MDESC_DIED_FROM) (effect-handler-attack.c:490). This used to be
+   * the bare `mon.race.name`, so the death read "Killed by kobold" - MDESC_DIED_FROM
+   * is MDESC_SHOW | MDESC_IND_VIS, i.e. the indefinite article a unique does not
+   * get and an ordinary monster does. PORT_TODO 3.2. */
   const mon = state.monsters[ctx.origin.monster];
-  const killer = mon ? mon.race.name : "a monster";
+  const killer = mon ? monsterDesc(mon, MDESC_DIED_FROM) : "a monster";
   damageEffectApplyToPlayer(ctx, dam, killer);
   return true;
 };

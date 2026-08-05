@@ -38,6 +38,7 @@ import { DIR_TARGET } from "../effects/interpreter.js";
 import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { monsterIsVisible } from "../mon/predicate.js";
+import { MDESC_DIED_FROM, monsterDesc } from "../mon/desc.js";
 import { PROJECT, project } from "../world/project.js";
 import type {
   BoltStep,
@@ -123,7 +124,16 @@ export function monsterCastSource(
     monster: midx,
     grid: mon ? mon.grid : loc(-1, -1),
     monsterVisible: mon ? monsterIsVisible(mon) : false,
-    killer: opts.killer ?? "a monster",
+    /* monster_desc(MDESC_DIED_FROM) (project-player.c:849): the death cause a
+     * monster projection writes. The default used to be the literal "a monster",
+     * which every projection death then inherited. PORT_TODO 3.2.
+     *
+     * The panel predicate is left at its default (everything on-panel), so the
+     * " (offscreen)" suffix monster_desc can append is never part of a death
+     * cause. Upstream passes the real panel and CAN write "Killed by a dragon
+     * (offscreen)"; reproducing that would mean plumbing viewport state into
+     * core for one string, and the ledger row for the panel argument covers it. */
+    killer: opts.killer ?? (mon ? monsterDesc(mon, MDESC_DIED_FROM) : "a monster"),
     power: opts.power ?? 0,
   };
 }
