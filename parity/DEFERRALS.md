@@ -41,13 +41,32 @@ twenty command codes the base registry registers as stubs.
 A further 27 notes were not parity claims at all — a variable named `todo`, a
 `setTimeout` "deferred a tick past focus", one mod that "defers to" another.
 
-**What is genuinely missing is 79 citations, which collapse to 60 work items in
-[PORT_TODO.md](PORT_TODO.md),** grouped below by what a player would notice. Only
-one is architectural (`notice_stuff` / `PN_*`); the largest by volume is a debug
-log.
+**What is genuinely missing is 68 citations, which collapse to 60 work items in
+[PORT_TODO.md](PORT_TODO.md),** grouped below by what a player would notice. Two
+are architectural (`notice_stuff` / `PN_*`, and the carried-weight total nothing
+sums); the largest by volume is a debug log.
 
-### One live defect this found and fixed
+### Two live defects this found
 
+One was found by re-reading a note and one by reading a cross-check lead, and the
+second is the more serious of the two.
+
+**Nothing sums the player's carried weight.** `player.upkeep.totalWeight` is set
+to 0 in `playerOutfit` (`game/gear.ts:1284`) and thereafter written only by the
+wizard's quantity editor (`game/wizard.ts:1470-1471`). `calc_inventory`'s weight
+accumulation has no port at all. So `calc_bonuses`' carrying-weight speed penalty
+(`player/calcs.ts:1216`) can never fire, the shield bash is short by
+`trunc(totalWeight / 80)` (`combat/melee.ts:617`), and the character sheet's
+Burden line always reads `0.0 lb`. It is **PORT_TODO 1.2**.
+
+How it hid is the interesting part. Its note read *"the running carried-weight
+total (beyond the reset to 0); recomputing it belongs to the calc/inventory
+owner"* — a deferral that names its successor instead of itself. The calc owner
+never took it, and because the note called it an upkeep counter rather than a
+mechanic, nothing about it looked like a gameplay bug. **A handoff with no
+recipient reads as done to everyone who passes it.**
+
+**The cursed weapon's combat terms** were the other, and they are fixed.
 `object_to_hit` and `object_to_dam` (`obj-util.c:296-326`) add each **active
 curse's** template bonus to the object's own, and the port returned `obj.toH` /
 `obj.toD` alone. The comment excusing it — *"no object carries curses through
@@ -86,10 +105,17 @@ claim); the reasoning written next to it, that the entries underneath are "match
 on their own text", was wrong, which is the worse of the two errors.
 
 `parity/tools/ledger-deferred-items.mjs` now scans those blocks structurally and
-finds **331 items across 72 ledger files**, none yet adjudicated. The one file
+finds **331 items across 72 ledger files**. The one file
 worked as a sample — `combat-melee.yaml`, 11 items — came out **ten stale, one
 real**, which is the same rate as the first tranche and the reason the live defect
 above sat unnoticed: it was in a list nobody re-read.
+
+**Progress: 94 of 331 adjudicated** — `ui-display`, `ui-player`, `ui-entry`,
+`wizard-debug`, `game-gear`, `obj-knowledge`, all four `store-*` and
+`player-history`. The rate held: **30 `ported`, 18 `stale-doc`, 8 `divergence`,
+5 `not-a-deferral` against 22 `real` and 7 `partial`** — two rows in three were
+not owed work. The `real` ones are what matters, and they include the
+carried-weight defect above. 237 remain.
 
 ## Genuinely not ported
 
@@ -98,6 +124,10 @@ in the appendix with the file, the C reference and the evidence.
 
 ### It changes what happens in play
 
+- **Nothing sums the player's carried weight** (`game-gear.yaml:77`,
+  `store-transact.yaml:54`). `player.upkeep.totalWeight` is written in exactly two
+  places — set to 0 at birth, and adjusted by the wizard — so the speed penalty for
+  being overloaded (`player/calcs.ts:1216`) can never fire. See above.
 - **`square_isempty` is weaker than upstream's** (`game/context.ts:1088`).
   `cave-square.c:604` rejects a player trap, a web, and any object; the port
   checks only passable / no monster / not the player, at 48 call sites. Placement
@@ -119,8 +149,11 @@ in the appendix with the file, the C reference and the evidence.
   can leak into an item-inspection comparison.
 - **`pile_insert_end` is absent** (`game/gear.ts:1173`), so ordering inside a
   floor pile can differ from upstream's append-at-end.
-- **`path_analyse`** (`game/known.ts:750`) and the **`list_object` / `oidx`
-  bookkeeping** (`game/mon-place.ts:267`, `:328`, `game/floor.ts:18`).
+- **`path_analyse`** (`game/known.ts:750`) and the **known-object shadow cave**
+  (`game/floor.ts:18`). ~~`list_object` / `oidx` bookkeeping~~ - re-adjudicated as
+  a DIVERGENCE (`game/mon-place.ts:267`, `:328`): the port replaced upstream's
+  `cave->objects[]` registry with a grid-keyed pile map plus `obj.mimickingMIdx`,
+  and nothing observable depends on an oidx.
 - **`object_flag_is_known` at the three store sites** (`store/store.ts:232`,
   `:262`, `store-maint.yaml:34`). `store_init`'s runtime owner selection turned
   out to be PORTED (`storeChooseOwner`, `store/store.ts:100`).
@@ -140,12 +173,20 @@ in the appendix with the file, the C reference and the evidence.
 - **The killer's name is a race name, not `monster_desc(MDESC_DIED_FROM)`**
   (`effects/handlers.ts:78`, `game/effect-attack.ts:687`). Both halves exist —
   `MDESC_DIED_FROM` is defined at `mon/desc.ts:61` — and are not joined.
-- **Monster recall has no computed percentages** (`mon/lore-describe.ts:22`,
-  `:132`, `:138`, `:154`, `:846`, `:1299`, `web/knowledge.ts:1095`, `:1185`).
-  The combat layer does not feed lore, so no hit-chance or spell-damage line
-  appears. `hitChance` exists at `combat/hit.ts:60`.
-- **Monster spells are not bound to the casting race** for recall
-  (`mon-lore-describe.yaml:55`) — the same family.
+- ~~Monster recall has no computed percentages~~ - PORTED and wired:
+  `meleeHitPercent` and `monsterHitPercent` at `web/main.ts:3650` and `:3652`,
+  `breathProjection` at `:3659`, with `web/screens.test.ts:929` asserting the real
+  melee percentage reaches the recall screen. Four interface comments still said
+  `DEFERRED`, which is the whole reason this line was here.
+- **Object and ego recall show no computed lines** (`web/knowledge.ts:1095`,
+  `:1185`). `desc_obj_fake` and `desc_ego_fake` print a name and the record's lore
+  text where upstream prints `object_info(OINFO_FAKE)` / `object_info_ego`'s flag
+  and combat lines. The producer exists (`obj/object-info.ts`).
+- **Monster spell and breath damage are not bound to the casting race**
+  (`mon-lore-describe.yaml:55`). `deps.spellLoreDamage`
+  (`mon/lore-describe.ts:149`) is a full override with no supplier anywhere, so
+  `monSpellLoreDamage` returns 0 and upstream's `(N)` is omitted at every spell.
+  Distinct from the two above: a `mon/spell.ts` binding, not a display call.
 - ~~`show_floor` for multiple objects~~ - PORTED: `showFloorList`
   (`web/src/overlay.ts:301`), called at `web/main.ts:5967`.
 - **The knowledge browser's thematic grouping columns** (`web/screens.ts:872`,
@@ -153,17 +194,29 @@ in the appendix with the file, the C reference and the evidence.
   grouping the datafile defines is not.
 - **The high-score entry cannot name the real killer** (`high-scores.yaml:96`).
 - **The character sheet's launcher contribution is 0** (`game/ui-entry.ts:1392`,
-  `ui-entry.yaml:133`), and `show_combined` / `EQUIPCMP_SCREEN` are compiled and
-  bound but never iterated (`ui-entry.yaml:136`).
+  `ui-entry.yaml:133`) — and the reach it calls deferred exists, at
+  `player/calcs.ts:1246`. ~~`show_combined` / `EQUIPCMP_SCREEN` never iterated~~ -
+  PORTED: `equipCmpCategories` (`game/ui-entry.ts:1965`) is iterated by
+  `equipCmpSummary` (`game/equip-cmp.ts:391`), with the combined row asserted the
+  same length as the columns (`game/equip-cmp.test.ts:116`).
 - **`update_sidebar`'s priority culling and from-bottom placement**
   (`ui-display.yaml:124`). The sidebar itself is drawn.
 - **The birth screens answer help with a no-op** (`web/birth.ts:1051`).
 - **Temporary brands/slays are not shown in object info**
   (`obj/object-info.ts:962`). The combat half is ported.
 - **The shape-lore textblock chain** (`web/main.ts:3697`, `:3701`).
-- **`monster_x_char` / `monster_x_attr`'s secondary glyph**
-  (`mon/lore-describe.ts:1348`).
-- **The flavour text shadow field** (`obj/known-object.ts:160`).
+- **The lore title does not recolour a unique with `purple_uniques`**
+  (`mon/lore-describe.ts:1348`). Of that row's three claims only this one survived
+  reading: the secondary glyph and the tile gating are the shell's, but
+  `purple_uniques` is a live option (`generated/options.ts:25`) honoured by the map
+  text layer and ignored by `loreTitle`.
+- **Rune-learning messages still use the `ODESC_BASE` stand-in**
+  (`obj/known-object.ts:160`). The real `object_desc` DID land - `describeObject`,
+  `game/describe.ts:48` - but `objBaseName` (`obj/knowledge.ts:220`) is still "the
+  kind's plain name" with `~` and `&` stripped, used by every rune message. The
+  layering reason is real, so the fix is a seam rather than an import.
+- **`equip_learn_flag` has no shape branch** (`obj-knowledge.yaml:98`), so gear
+  merged into a shape is still learned from while shapechanged.
 - ~~`object_list_format_name`'s own decoration~~ - PORTED:
   `objectListEntryName` (`game/obj-list.ts:289`) passes the summed count through
   `ODESC.ALTNUM` as upstream does. Only the shell-side "%3.3s" padding differs.
@@ -176,10 +229,10 @@ in the appendix with the file, the C reference and the evidence.
 - **The quest system** (`gen/cave.ts:2833`, `gen/generate.ts:11`).
 - **Persistent levels and the town builder's full store generation**
   (`gen/cave.ts:30`).
-- **`room_of_chambers` needs a caller** (`gen/gen-monster.ts:350`). The builder
-  WORKS - `gen.test.ts:2175` builds it, asserts true, and checks the chambers are
-  connected and themed. What is unproven is whether any dungeon profile reaches
-  it in play.
+- ~~`room_of_chambers` needs a caller~~ - CLOSED. The builder works
+  (`gen.test.ts:2175` builds it, asserts true, and checks the chambers are
+  connected and themed) AND `spreadMonsters`, whose note claimed no builder
+  reached it, is called twice: `gen/cave.ts:1721` and `:1865`.
 
 ### History, notes and files
 
@@ -292,29 +345,28 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 68 |
-| `partial` | Part ported; the note must say which part is not | 11 |
-| `divergence` | Deliberately different, with the mechanism named | 30 |
+| `real` | Confirmed absent and owed | 55 |
+| `partial` | Part ported; the note must say which part is not | 13 |
+| `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
-| `ported` | Done; the note was stale and has been rewritten | 19 |
+| `ported` | Done; the note was stale and has been rewritten | 23 |
+| `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
 | | **total** | **227** |
 
-### `real` - Confirmed absent and owed (68)
+### `real` - Confirmed absent and owed (55)
 
-- `packages/core/src/effects/handlers.ts:78` - monsterDesc and MDESC_DIED_FROM both exist (mon/desc.ts:61) and the killer name still falls back to race.name; the death cause reads "kobold" where upstream writes "a kobold"
-- `packages/core/src/game/cave-cmd.ts:1045` - The premise is stale (web/src/main.ts:8090 binds "+" to alterCmd, main.ts:4501) which makes the gap reachable: alter still has no chest branch and no floor-trap disarm branch (do_cmd_alter_aux L969-992)
-- `packages/core/src/game/chest.ts:268` - Second copy of the chest OF_TRAP_IMMUNE learn, same empty branch
-- `packages/core/src/game/chest.ts:346` - Second copy of the chest OF_TRAP_IMMUNE learn, same empty branch
+- `packages/core/src/effects/handlers.ts:78` - LEAD READ. Still real, and the note's reason is stale: monsterDesc IS ported (mon/desc.ts) and MDESC_DIED_FROM is defined at mon/desc.ts:61. The port hardcodes "a monster" where upstream's killer_desc calls monster_desc(mon, MDESC_DIED_FROM), so the death cause loses both the article and the visibility gate ("something" for an unseen killer). The work is one call, not a subsystem
+- `packages/core/src/game/cave-cmd.ts:1045` - LEAD READ, and the lead is a FALSE POSITIVE: web/src/context-menu.ts only names do_cmd_alter in a comment while routing "Attack"/"Alter" to this same core command (context-menu.ts:164-179), so it inherits the gap rather than filling it. The chest and floor-trap-disarm fall-through branches (do_cmd_alter_aux L969-992) are genuinely absent, and "+" is bound to alter at web/src/main.ts:8090
+- `packages/core/src/game/chest.ts:268` - LEAD READ. Still real, and the note's reason is stale: equipLearnFlag IS ported (obj/knowledge.ts) and called at game/effect-general.ts:388, :401 and game/loop.ts:224, :225. Trap immunity simply is not learned from a chest trap - one call at an existing seam, not #13's worth of work
+- `packages/core/src/game/chest.ts:346` - LEAD READ. Same as chest.ts:268: equipLearnFlag exists and is used elsewhere; this site does not call it
 - `packages/core/src/game/context.ts:297` - PN_IGNORE is SET (session/game.ts:551) and nothing ever reads it, so becoming aware of a kind never triggers the ignore_drop pass. ignoreDropTargets exists (game/ignore-cmd.ts:45, called from web main.ts:3119 for the menu) - it is the notice pass that is missing
 - `packages/core/src/game/context.ts:1088` - square_isempty (cave-square.c:604-608) rejects a player trap, a web and any object; the port checks only passable/no-monster/not-player, at 48 call sites. Placement loops can therefore accept grids upstream rejects, which also moves RNG draws
-- `packages/core/src/game/effect-attack.ts:687` - monsterDesc(mon, MDESC_DIED_FROM) is available (mon/desc.ts:61) and unused here; effect-handler-attack.c:490 is one of three upstream killer-name sites
-- `packages/core/src/game/gear.ts:1173` - Still real, and there is a dedicated instrument saying so: pile.upstream.test.ts:28 states "pile_insert_end has NO port counterpart: nothing in the live port appends", and gear.ts:1094 cites it for the equip path only
+- `packages/core/src/game/effect-attack.ts:687` - LEAD READ. Same as effects/handlers.ts:78 and the same one-call fix: mon.race.name stands in for monster_desc(mon, MDESC_DIED_FROM), which drops the article and prints a raw race name on the tombstone. MDESC_DIED_FROM exists (mon/desc.ts:61)
+- `packages/core/src/game/gear.ts:1173` - LEAD READ. Still real, and a dedicated instrument says so: game/pile.upstream.test.ts:28 states "pile_insert_end has NO port counterpart: nothing in the live port appends", and gear.ts:1094 cites it for the equip path only
 - `packages/core/src/game/known.ts:750` - path_analyse absent: no pathAnalyse anywhere in the port, so intervening-square terrain is never learned along a path.
 - `packages/core/src/game/mon-message.ts:15` - The message QUEUE is genuinely absent - there is no notice_stuff / PN_MON_MESSAGE machinery, so repeats never combine ("3 kobolds die.") and deaths are not shown last. The grammar half is ported verbatim
-- `packages/core/src/game/mon-place.ts:267` - list_object oidx bookkeeping absent (no listObject in the port).
-- `packages/core/src/game/mon-place.ts:328` - Same absence, second site.
 - `packages/core/src/game/project-cast.ts:685` - The monster-source decoy and target-monster branches of effect_handler_TOUCH are genuinely absent; a monster casting a touch effect cannot centre it on a decoy or another monster
 - `packages/core/src/game/spoil.ts:93` - timedDesc / summonDesc unwired, so a handful of activation descriptions in the spoiler files read worse than upstream's. Dev tool, small
 - `packages/core/src/game/spoil.ts:518` - Same root cause as the lore hit-chance gap: the combat layer does not feed lore, so every "chance to hit" line in the monster spoiler is absent
@@ -324,34 +376,24 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/gen/cave.ts:30` - The town builder's full store generation and persistent-level connectors
 - `packages/core/src/gen/cave.ts:31` - Second half of the same claim; the single-combat arena level is generated elsewhere
 - `packages/core/src/gen/cave.ts:2833` - Quest-system dungeon profile
-- `packages/core/src/gen/gen-monster.ts:350` - room_of_chambers / cavern callers absent, so this generator entry point has no caller.
 - `packages/core/src/gen/generate.ts:11` - Arena and quest level generation
-- `packages/core/src/mon/lore-describe.ts:22` - The combat layer does not feed lore, so every hit-chance and spell-damage percentage in monster recall is absent. hitChance exists (combat/hit.ts:60) and the lore side simply never receives it
-- `packages/core/src/mon/lore-describe.ts:132` - Same gap, second blow field
-- `packages/core/src/mon/lore-describe.ts:138` - Same gap, second blow field
-- `packages/core/src/mon/lore-describe.ts:154` - Same gap, breath default damage
-- `packages/core/src/mon/lore-describe.ts:846` - hit_chance(chance_of_melee_hit_base(...)) - the port has both halves (combat/hit.ts:60, chanceOfMeleeHitBase) and does not join them for recall
-- `packages/core/src/mon/lore-describe.ts:1299` - hit_chance(chance_of_monster_hit_base(...)) - same
-- `packages/core/src/mon/lore-describe.ts:1348` - monster_x_char / monster_x_attr secondary glyph absent (0 sites).
-- `packages/core/src/mon/steal.ts:32` - Monster-vs-monster theft still omits react_to_slay (mon-util.c:1548); the player path DOES apply it (game/mon-side.ts:421), so the note's "exactly as the EAT_ITEM blow already defers it" is no longer true
+- `packages/core/src/mon/steal.ts:32` - LEAD READ. The claim stands but its comparison is FALSE and must be fixed in the comment: reactToSlay IS ported (combat/brand-slay.ts:152) and the player's EAT_ITEM blow DOES apply it (game/mon-side.ts:421), so "deferred exactly as the EAT_ITEM blow already defers it" describes a state that no longer holds. combat/mon-melee.ts:36 already records the true remainder
 - `packages/core/src/mon/steal.ts:33` - Same claim, second line
 - `packages/core/src/mon/steal.ts:231` - Same gap at the site
-- `packages/core/src/mon/steal.ts:234` - The commented-out condition itself; reactToSlay is exported from combat/brand-slay.ts:121 and state.slays is available at the game caller
+- `packages/core/src/mon/steal.ts:234` - LEAD READ. The one genuine remainder, and the whole of it: the monster-vs-monster theft path does not call reactToSlay (vs mon-util.c:1548), so a slay-bearing item cannot resist being stolen monster-from-monster. No RNG impact. The function is right there in combat/brand-slay.ts:152
 - `packages/core/src/mon/take-hit.ts:17` - The arena branch, with the rest of arena mode
 - `packages/core/src/obj/knowledge.ts:1366` - The ignore-notice pass (PN_IGNORE) is the same gap as game/context.ts:296: the flag is set and never consumed
-- `packages/core/src/obj/known-object.ts:160` - The flavour TEXT (adjective / scroll title) shadow field; flavour naming itself is ported (obj/flavor.ts) so this is narrow
 - `packages/core/src/obj/make.ts:1238` - The book out-of-depth value boost out-parameter
 - `packages/core/src/obj/object-info.ts:962` - The COMBAT half of temporary brands/slays is ported (combat/brand-slay.ts:141-201, player_has_temporary_brand/slay); only the object-info display of them is missing
 - `packages/core/src/obj/object.ts:923` - OSTACK_LIST's unknown-item stacking checks: two objects the player cannot tell apart must not merge in a LIST context. The shadow can answer this, so it is owed rather than impossible
 - `packages/core/src/obj/object.ts:1000` - OSTACK_LIST fully-known mismatch check, same site family
 - `packages/core/src/obj/randart-build.ts:38` - The "property" branch needs the timed-effects failure tables; part of the randart generator's remaining edges
-- `packages/core/src/obj/randart.ts:38` - randart.log / randart.txt: upstream's do_randart writes it whenever randarts generate and exit(1)s if it cannot. 193 file_putf sites
-- `packages/core/src/session/game.ts:542` - Same gap as game/context.ts:296: PN_IGNORE is set here and never consumed, so nothing runs the ignore_drop pass
-- `packages/core/src/store/store.ts:232` - Still real, with better evidence than the transliteration grep: object_flag_is_known's answer IS available - equip-cmp.ts:413 synthesises the obj->known shadow for exactly this question - and the store's buy check does not use it
-- `packages/core/src/store/store.ts:262` - Same absence, second site.
+- `packages/core/src/obj/randart.ts:38` - LEAD READ. The lead (obj/randart-build.ts) is do_randart's generation half, which is fully ported; the file dumps are not. The maintainer has ruled to pursue parity here, so randart.txt (create_file / write_randart_entry, obj-randart.c L3057-L3215) and randart.log are both owed through the host seam, together with the second measurement pass (store_base_power / parse_frequencies, L3184-L3187) that exists only to populate the log
+- `packages/core/src/store/store.ts:232` - LEAD READ. Still real: object_flag_is_known's answer IS available - game/equip-cmp.ts:413 synthesises the obj->known shadow for exactly this question - and the store's buy check does not use it
+- `packages/core/src/store/store.ts:262` - LEAD READ. Same site, the buy-list loop: the flag test reads obj.flags directly with the object_flag_is_known gate commented out, so a store will buy on a flag the player has never learned
 - `packages/web/src/birth.ts:1051` - Upstream's birth screens offer help (ui-birth.c); the port answers the key with a no-op
-- `packages/web/src/knowledge.ts:1095` - Same gap as the lore hit-chance percentages: the computed flag / combat lines are absent from monster recall
-- `packages/web/src/knowledge.ts:1185` - Same for ego-item recall
+- `packages/web/src/knowledge.ts:1095` - LEAD READ. Still real: object_info's computed lines exist (obj/object-info.ts, which already calls chanceOfMeleeHitBase at :1090), and desc_obj_fake's recall still shows only the name and the kind's flavour text
+- `packages/web/src/knowledge.ts:1185` - LEAD READ. Still real, same shape: object_info_ego's flag lines are not produced, so ego recall shows the name and lore text only
 - `packages/web/src/main.ts:3697` - Greying rather than omitting is a divergence forced by a real gap - the shape-lore textblock chain named on the next line
 - `packages/web/src/main.ts:3701` - The shape-lore textblock chain for Shapechange effects
 - `packages/web/src/screens.ts:872` - The thematic monster_group columns of the upstream knowledge browser (the ui_knowledge.txt grouping) are not drawn; the flat list is the selectable membership only
@@ -363,21 +405,22 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/mon-lore-describe.yaml:55` - Monster spells are not bound to the casting race, so recall cannot show spell damage - the same family as the lore hit-chance gap
 - `parity/ledger/obj-randart.yaml:51` - RANDNAME_TOLKIEN from the names datafile is not loaded, so randart names come from artifactGenName's own generator
 - `parity/ledger/options.yaml:76` - options_save_custom / restore_custom / restore_maintainer - the per-user customized-defaults files in ANGBAND_DIR_USER. Now buildable: the host seam and the pref-file writer both exist
-- `parity/ledger/player-calcs-bonuses.yaml:78` - Still real. calcs.ts:606 says known_only callers pass false "so the derive stays pure", and :721 lists the known_only object-knowledge variant among what is NOT derived - so the flag is named in the port and deliberately unimplemented
+- `parity/ledger/player-calcs-bonuses.yaml:78` - LEAD READ. Still real, and named in the port as deliberately unimplemented: player/calcs.ts:606 says known_only callers pass false "so the derive stays pure", and :721 lists the known_only object-knowledge variant among what is NOT derived. weight_limit's hit in player/bonuses.test.ts is the ported half and not the deferral
 - `parity/ledger/player-history.yaml:75` - find-on-sight history entries, blocked on the remembered floor-pile contents
 - `parity/ledger/player-history.yaml:91` - The player notes command
 - `parity/ledger/project-path.yaml:58` - A ported function with no caller, because the UI branch that would call it is absent - worth deciding between wiring it and cordoning it
-- `parity/ledger/store-maint.yaml:34` - Same absence, third site - the maintenance half.
+- `parity/ledger/store-maint.yaml:34` - LEAD READ. Same object_flag_is_known gap as store/store.ts:232 and :262, reached through store maintenance
 - `parity/ledger/ui-entry.yaml:133` - The launcher-slot reach plus KF_SHOOTS_ARROWS, same as game/ui-entry.ts:1392
-- `parity/ledger/ui-entry.yaml:136` - The show_combined path and the EQUIPCMP_SCREEN iteration: the category is compiled and bound but never iterated
 - `parity/ledger/world-kernel.yaml:27` - The monster-list scan replacement and what the note lists after it
 
-### `partial` - Part ported; the note must say which part is not (11)
+### `partial` - Part ported; the note must say which part is not (13)
 
 - `packages/core/src/game/context.ts:1161` - The held-object drop IS handled (the caller runs monster_death first, as the note says); the mimic and targeting bookkeeping remain
 - `packages/core/src/game/floor.ts:18` - pushObject is ported and called (effect-general.ts:190, effect-terrain.ts:347); the known-object shadow cave, list_object/delist_object oidx bookkeeping and mimicked-object handling remain
 - `packages/core/src/game/monster-turn.ts:1425` - Item pickup and group behaviour are ported (monsterCarry, mon-group.ts); the lore half is largely wired via loreLearnFlagIfVisible. Left partial because the note covers three subsystems at once and only names them collectively
 - `packages/core/src/game/ui-entry.ts:26` - The gameplay half of player_flags_timed IS ported - calcs.ts:1094-1104 folds each active timed effect's oflagDup into state.flags. What is missing is ui-entry.c:928's separate timed cache, which lets the sheet mark a flag as temporary
+- `packages/core/src/mon/lore-describe.ts:1348` - LEAD READ. Three claims, two of them the shell's by construction (the secondary glyph and the tile width/height gating are presentation state the headless lore model does not carry). The third is real and small: OPT(purple_uniques) IS a live option (generated/options.ts:25, honoured by the map text layer per visuals/map-text.test.ts:26) and the lore title does not recolour a unique's name with it
+- `packages/core/src/session/game.ts:542` - LEAD READ. Half wired, half not. The scan half of ignore_drop IS ported (ignoreDropTargets, game/ignore-cmd.ts:45) and IS driven by the shell (web/src/main.ts:3119, applyIgnoreDrop, on the '=' and 'K' paths with the verify_object confirmation and the "!d" decline hack). What is missing is only the trigger: state.noticeIgnore is set here (session/game.ts:551) and read by nothing, which is PN_IGNORE and belongs to the notice_stuff gap rather than to ignore_drop
 - `packages/core/src/store/transact.ts:26` - Of the four named: the known twin is a divergence and total_weight IS maintained (gear.ts:1283, shown as Burden at char-sheet.ts:409). Autoinscription (the registry exists at game/context.ts:254) and history_find/lose_artifact are genuinely absent here
 - `parity/ledger/game-mon-ranged.yaml:31` - The glyph-of-warding exclusion is available (TRF.GLYPH is handled at monster-turn.ts:1536); the arena exclusion goes with arena mode
 - `parity/ledger/game-project-monster.yaml:50` - Targeting is wired; the mimic bookkeeping is not (same as game/context.ts:1153)
@@ -386,7 +429,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/mon-timed.yaml:29` - The GRAMMAR is ported verbatim (game/mon-message.ts: get_subject, get_message_text, message_pain, the [singular|plural] state machine). What is absent is the QUEUE - add_monster_message -> mon_msg[] flushed by show_monster_messages from notice_stuff's PN_MON_MESSAGE - so repeats are not combined into a counted line and deaths are not shown last. Root cause is the missing notice_stuff/PN_* machinery, not this file.
 - `parity/ledger/ui-display.yaml:124` - The sidebar IS drawn, by the front end on a canvas rather than with Term_* calls (web/src/main.ts sidebarModel). update_sidebar's screen-size priority culling and from-bottom placement are genuinely absent (game/display.ts:505 says so)
 
-### `divergence` - Deliberately different, with the mechanism named (30)
+### `divergence` - Deliberately different, with the mechanism named (32)
 
 - `packages/core/src/game/curse-tick.ts:98` - known-twin write; obj/known-object.ts synthesises the shadow on demand, so the object-info display reads the same value
 - `packages/core/src/game/gear.ts:135` - Same: the known twin is synthesised, not stored (obj/known-object.ts objectKnownShadow)
@@ -398,6 +441,8 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/game/gear.ts:1283` - Known-twin write, subsumed by the on-demand shadow
 - `packages/core/src/game/known.ts:819` - Known twin synthesised on demand (obj/known-object.ts)
 - `packages/core/src/game/known.ts:847` - Known twin synthesised on demand; monsterCarry itself is ported and called two lines below (known.ts:854)
+- `packages/core/src/game/mon-place.ts:267` - LEAD READ. Re-adjudicated from real. list_object/delist_object is oidx bookkeeping for upstream's cave->objects[] registry, and the port replaced that registry rather than omitting it: state.floor is a pile map keyed by grid, and the mon<->obj mimicry link is obj.mimickingMIdx === mon.midx, which become_aware reads and the save persists. Nothing observable depends on an oidx. Ratified in game/floor.ts:19-21
+- `packages/core/src/game/mon-place.ts:328` - LEAD READ. Same ratified substitution as mon-place.ts:267 - the pile map IS the object list
 - `packages/core/src/game/monster-turn.ts:1377` - The player-cave placeholder copy rides the knowledge subsystem, which the port models as synthesised knowledge rather than a second grid array
 - `packages/core/src/game/target-loop.ts:42` - Documented approximation for a UI-only branch: the port reads the live floor pile and live projectability where upstream reads the remembered map. project.ts carries the same note
 - `packages/core/src/gen/generate.ts:249` - The port's Connector carries grid + feat rather than a SQUARE info copy; matters only when persistent levels arrive
@@ -469,10 +514,13 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (19)
+### `ported` - Done; the note was stale and has been rewritten (23)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
 - `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
+- `packages/core/src/gen/gen-monster.ts:350` - LEAD READ, and CORRECTED from real. The note says spreadMonsters is "not wired to a builder yet (room_of_chambers/cavern callers are deferred)". It is wired, twice: gen/cave.ts:1721 (the lair, after setPitType/monRestrict) and gen/cave.ts:1865. room_of_chambers is built too, and its builder asserts true in gen/gen.test.ts:2175
+- `packages/core/src/mon/lore-describe.ts:846` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
+- `packages/core/src/mon/lore-describe.ts:1299` - LEAD READ, and CORRECTED from real. Same: monsterHitPercent is wired at web/src/main.ts:3652 as getHitChance(max(race.level,1)*3 + effect.power, defense.ac + defense.toA), which is chance_of_monster_hit_base (combat/mon-melee.ts:191) against the player's live defensive state
 - `packages/core/src/obj/object.ts:918` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
 - `packages/web/src/main.ts:5904` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
 - `packages/web/src/main.ts:5925` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
@@ -480,6 +528,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/player-history.yaml:46` - STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.
 - `parity/ledger/player-history.yaml:79` - CORRECTED from real. Both hooks ARE wired: onArtifactFound (game/context.ts:687-693, installed by wireGame, called from pickup.ts playerPickupAux) and onArtifactLost (:695-701, the destroy / abandon / store-discard paths). The store-PURCHASE site is the part still missing, tracked at store/transact.ts:26
 - `parity/ledger/store-price.yaml:21` - CORRECTED from real. store_init's runtime owner selection IS ported: storeChooseOwner (store/store.ts:100, rng.randint0 over store.owners) called at :116, :120 and :700. My "0 storeInit sites" was a transliteration grep
+- `parity/ledger/ui-entry.yaml:136` - CORRECTED from real, same bullet as ledger row :135. The EQUIPCMP_SCREEN category IS iterated: equipCmpCategories (game/ui-entry.ts:1965) is called by equipCmpSummary (game/equip-cmp.ts:391), one column per entry across all five categories plus a combined row of matching length (game/equip-cmp.test.ts:116). show_combined = false on CHAR_SCREEN1 is upstream's own character-screen behaviour
 - `parity/ledger/wizard-debug.yaml:14` - CORRECTED from real. The artifact-created registry EXISTS: ArtifactState (obj/make.ts:736) is aup_info[] with isCreated / mark, one instance per game, serialized as artifactsCreated (session/save.ts:976, :1200, :1346)
 - `parity/ledger/wizard-debug.yaml:87` - CORRECTED from real. The shell follow-up exists: runTweakItem (web/src/wizard.ts:2043), reached from the play-item T branch at :1914, alongside runRerollItem and runCurseItem
 - `parity/ledger/wizard-debug.yaml:112` - CORRECTED from real. dump_level IS ported: game/dump-level.ts with its own test (dump-level.test.ts), driven by runWriteMap (web/src/wizard.ts, case "write-map" at :878)
@@ -490,6 +539,14 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:164` - CORRECTED from real. do_cmd_wiz_change_item_quantity IS ported: runChangeQuantity (web/src/wizard.ts), reached from the play-item submenu's Q/q branch (wizard.ts:1921). My "0 changeItemQuantity sites" was a grep for a camelCase name the port never uses
 - `parity/ledger/wizard-debug.yaml:166` - CORRECTED from real. The play_item shell IS ported: runPlayItem (web/src/wizard.ts), case "play-item" at :779, with upstream's full A/K/S/R/T/C/Q submenu at :1894-1923 and the core-side session snapshot/restore/commit (wizPlayItemBegin / Reject / Accept, game/wizard.ts:61-63)
 - `parity/ledger/wizard-debug.yaml:167` - CORRECTED from real. Same: the play_item shell exists, so the quantity action does have somewhere to live
+
+### `stale-doc` - The note described a state of the code that no longer holds (5)
+
+- `packages/core/src/mon/lore-describe.ts:22` - LEAD READ. "The two hit-chance callbacks are the remaining integration seams for the combat layer (still default to 0 unwired)" is no longer true: web/src/main.ts:3650 and :3652 wire both, and web/src/screens.test.ts:929 asserts the real melee percentage reaches the recall screen. breathProjection is wired at main.ts:3659 too
+- `packages/core/src/mon/lore-describe.ts:132` - The interface comment marks meleeHitPercent DEFERRED. It is not: web/src/main.ts:3650 supplies getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). The 0 default survives only for callers with no player, which is the core spoiler dump (game/spoil.ts:518)
+- `packages/core/src/mon/lore-describe.ts:138` - Same: monsterHitPercent is supplied at web/src/main.ts:3652 from chance_of_monster_hit_base against the player's live defence
+- `packages/core/src/mon/lore-describe.ts:154` - breathProjection is supplied: web/src/main.ts:3659, (subtype) => projections?.[subtype]. Breath damage no longer shows as 0 in play
+- `packages/core/src/obj/known-object.ts:160` - LEAD READ. The note says "the flavour TEXT (adjective / scroll title) remains unavailable". It is available: flavorInit is ported (obj/flavor.ts:111), AssignedFlavor carries flavor->text (flavor.ts:42), the assignment is installed by wireGame (game/describe.ts:26) and desc.ts:173 reads it through deps.flavorText. What remains is only the local approximation - kindHasFlavor tests the tval instead of consulting deps.hasFlavor - which the interface itself notes agrees in practice for every shipped kind (known-object.ts:121-124)
 
 ### `note-is-fix` - The wording sits inside a record of a FIX, not a gap (25)
 
