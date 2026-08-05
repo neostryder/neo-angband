@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 10 closed, 57 open.
+**67 items covering all 111 confirmed-absent citations** — 11 closed, 56 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Two of the ten closures are retractions rather than work —
+declared *closed*. Two of the eleven closures are retractions rather than work —
 **2.16** asked for a call upstream does not make, and **2.1**'s own scope was
 overstated by a factor of seven. Both are written up in place, because a
 corrected item is worth more than a deleted one: the shape of the error is the
@@ -256,8 +256,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   > percentage reaches the recall screen. Four interface comments still said
   > `DEFERRED`, which is what kept the item alive.
 
-- [ ] **1.3 `process_player_cleanup`'s monster housekeeping runs every ten game
-  turns instead of after every player command.** NEW, found by walking
+- [x] **1.3 `process_player_cleanup`'s monster housekeeping ran every ten game
+  turns instead of after every player command.** DONE. Found by walking
   `notice_stuff`'s call sites for **1.1** — the two functions are neighbours in
   `game-world.c`.
 
@@ -284,8 +284,29 @@ is reachable in play and a test constructs the case that used to be wrong.**
     natural fix is one `processPlayerCleanup` holding all of it, called from the
     two places that call `playerTakeTerrainDamage` today.
 
-  RNG-free: `tickMonsterMarks` only clears flags and calls `updateMon`. So this is
-  a pure timing correction, but a **perceptible** one — detection fades sooner.
+  RNG-free: the housekeeping only clears flags and calls `updateMon`. So this is a
+  pure timing correction, but a **perceptible** one — detection fades sooner and a
+  FORCE_SLEEP monster starts using its ranged attacks when upstream lets it.
+
+  All three moved. `tickMonsterMarks` is split into `tickMonsterNiceAndMark` and
+  `clearMonsterShow` (`game/known.ts`), because one function could not express two
+  different guards. `upkeep.dropping` is real, set by `ignoreDrop` and read once.
+  And `processPlayerCleanup` (`game/player-turn.ts`) now holds the terrain damage
+  as well, called at the end of every do-loop iteration including the
+  bloodlust-coercion path — so `game/loop.ts` no longer does the cleanup's job one
+  level out.
+
+  **The old test could not have caught this.** `known.test.ts` called the
+  housekeeping directly, twice, and asserted the fade logic — which was correct.
+  Nothing asserted *when* it ran. The four new tests in
+  `packages/core/src/game/player-turn.test.ts` drive `processPlayer` and never
+  call the housekeeping themselves; one of them checks `state.turn` never moved,
+  so a pass cannot be coming from `processWorld`'s cadence.
+
+  Six mutations, six dead tests — but only after a fix: the free-command test
+  first queued `[free, act]`, which ran both guards and so could not tell them
+  apart. Removing the `if (energy_use)` guard left it green. It queues one free
+  command now and asserts `needsInput`.
   Sites: `packages/core/src/game/loop.ts:361`,
   `packages/core/src/game/known.ts:977`
 

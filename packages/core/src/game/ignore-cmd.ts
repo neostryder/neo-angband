@@ -106,6 +106,12 @@ export function ignoreDropQueue(
   state: GameState,
   target: IgnoreDropTarget,
 ): void {
+  /* p->upkeep->dropping = true (obj-ignore.c:687), read once by
+   * process_player_cleanup to skip that command's monster housekeeping
+   * (game-world.c:867) so an auto-drop does not consume the player's one turn of
+   * detection, and cleared there. */
+  state.actor.player.upkeep.dropping = true;
+
   if (!state.cmdQueue) state.cmdQueue = [];
   state.cmdQueue.push({
     code: "drop",

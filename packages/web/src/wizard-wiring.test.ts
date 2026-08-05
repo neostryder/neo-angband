@@ -164,7 +164,7 @@ describe("W2-007 live tweak dispatch", () => {
       objKnown: { dd: 1, ds: 1, ac: 1, toA: 1, toH: 1, toD: 1 },
       /* wiz_play_item_standard_upkeep raises PN_COMBINE here (cmd-wizard.c
        * L370). Not decoration: without it the tweak throws. */
-      upkeep: { playing: true, newSpells: 0, totalWeight: 0, notice: 0 },
+      upkeep: { playing: true, newSpells: 0, totalWeight: 0, notice: 0, dropping: false },
     };
     const state = {
       actor: { player },
