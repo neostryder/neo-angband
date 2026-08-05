@@ -41,7 +41,7 @@ twenty command codes the base registry registers as stubs.
 A further 27 notes were not parity claims at all — a variable named `todo`, a
 `setTimeout` "deferred a tick past focus", one mod that "defers to" another.
 
-**What is genuinely missing is 95 citations, which collapse to 59 work items in
+**What is genuinely missing is 79 citations, which collapse to 60 work items in
 [PORT_TODO.md](PORT_TODO.md),** grouped below by what a player would notice. Only
 one is architectural (`notice_stuff` / `PN_*`); the largest by volume is a debug
 log.
@@ -122,8 +122,8 @@ in the appendix with the file, the C reference and the evidence.
 - **`path_analyse`** (`game/known.ts:750`) and the **`list_object` / `oidx`
   bookkeeping** (`game/mon-place.ts:267`, `:328`, `game/floor.ts:18`).
 - **`object_flag_is_known` at the three store sites** (`store/store.ts:232`,
-  `:262`, `store-maint.yaml:34`) and **`store_init`'s runtime owner selection**
-  (`store-price.yaml:21`).
+  `:262`, `store-maint.yaml:34`). `store_init`'s runtime owner selection turned
+  out to be PORTED (`storeChooseOwner`, `store/store.ts:100`).
 - **The `OSTACK_LIST` stacking checks** (`obj/object.ts:923`, `:1000`): two
   objects the player cannot tell apart must not merge in a list context.
 - **`cmd_disable_repeat_floor_item`** (`cmd-core.yaml:25`).
@@ -146,7 +146,8 @@ in the appendix with the file, the C reference and the evidence.
   appears. `hitChance` exists at `combat/hit.ts:60`.
 - **Monster spells are not bound to the casting race** for recall
   (`mon-lore-describe.yaml:55`) — the same family.
-- **`show_floor` for multiple objects** (`web/main.ts:5904`, `:5925`).
+- ~~`show_floor` for multiple objects~~ - PORTED: `showFloorList`
+  (`web/src/overlay.ts:301`), called at `web/main.ts:5967`.
 - **The knowledge browser's thematic grouping columns** (`web/screens.ts:872`,
   `gamedata.yaml:478` — this is `ui_knowledge.txt`). The browser is ported; the
   grouping the datafile defines is not.
@@ -163,22 +164,28 @@ in the appendix with the file, the C reference and the evidence.
 - **`monster_x_char` / `monster_x_attr`'s secondary glyph**
   (`mon/lore-describe.ts:1348`).
 - **The flavour text shadow field** (`obj/known-object.ts:160`).
-- **`object_list_format_name`'s own decoration** (`game-obj-list.yaml:45`).
+- ~~`object_list_format_name`'s own decoration~~ - PORTED:
+  `objectListEntryName` (`game/obj-list.ts:289`) passes the summed count through
+  `ODESC.ALTNUM` as upstream does. Only the shell-side "%3.3s" padding differs.
 
 ### Whole modes that were never begun
 
 - **Arena mode** (`mon/take-hit.ts:17`, `gen/cave.ts:31`, `gen/generate.ts:11`,
-  `gen-cave.yaml:49` with `hard_centre_gen`, `game-mon-ranged.yaml:31`).
+  `gen-cave.yaml:49`, `game-mon-ranged.yaml:31`). `hard_centre_gen` is PORTED
+  (`hardCentreGen`, `gen/cave.ts:1914`); only `arena_gen` remains.
 - **The quest system** (`gen/cave.ts:2833`, `gen/generate.ts:11`).
 - **Persistent levels and the town builder's full store generation**
   (`gen/cave.ts:30`).
-- **`room_of_chambers` / cavern callers** (`gen/gen-monster.ts:350`): the
-  generator entry point exists and nothing calls it.
+- **`room_of_chambers` needs a caller** (`gen/gen-monster.ts:350`). The builder
+  WORKS - `gen.test.ts:2175` builds it, asserts true, and checks the chambers are
+  connected and themed. What is unproven is whether any dungeon profile reaches
+  it in play.
 
 ### History, notes and files
 
-- **`history_find_artifact` / `history_lose_artifact`** are not wired
-  (`player-history.yaml:79`); find-on-sight entries are blocked on remembered
+- **`history_find_artifact` / `history_lose_artifact`** ARE wired
+  (`game/context.ts:687`, `:695`, installed by `wireGame`) - only the store
+  PURCHASE site is missing (`store/transact.ts:26`); find-on-sight entries are blocked on remembered
   floor-pile contents (`:75`); there is **no player notes command** (`:91`).
 - **`randart.log` / `randart.txt`** (`obj/randart.ts:38`). Upstream's `do_randart`
   writes it whenever randarts generate and `exit(1)`s if it cannot open it: 193
@@ -192,14 +199,29 @@ in the appendix with the file, the C reference and the evidence.
 - The **spoiler files' missing lines** (`game/spoil.ts:93`, `:518`, `:519`,
   `:550`) and **`randart-build.ts:38`**'s timed-effects failure tables.
 
-### Wizard mode, owed by the 100 % mandate
+### Wizard mode: nothing owed. This section was wrong.
 
-`wizard-debug.yaml:14`, `:87`, `:112`, `:139`, `:144`, `:147`, `:154`, `:164`,
-`:166`, `:167`; `game/wizard.ts:68`; `web/wizard.ts:498`; `world-kernel.yaml:27`.
-The two that block the others: **`play_item`'s menu shell is absent**, which is
-why `do_cmd_wiz_change_item_quantity` has nowhere to live, and there is **no
-artifact-created registry**, so the wizard artifact listing cannot mark what has
-been generated. `dump_level`'s file half is now possible through `host/io.ts`.
+Every row here has been re-adjudicated to `ported`. **Wizard mode is built**:
+`runPlayItem` with upstream's full `A/K/S/R/T/C/Q` submenu
+(`web/src/wizard.ts:1894-1923`), `runChangeQuantity`, `runTweakItem` /
+`runRerollItem` / `runCurseItem`, `runWriteMap` over `game/dump-level.ts`,
+`runCollectObjMonStats` / `runCollectPitStats` / `runCollectDisconnectStats`,
+`runStatItem` over `wizStatItem`, `runSpoilers` over the four `spoil*`
+generators (`game/spoil.ts:255`, `:344`, `:453`, `:505`), and `ArtifactState`
+(`obj/make.ts:736`) as `aup_info[]`, serialized in the save.
+
+**Why this document said otherwise.** The verdicts rested on greps for a
+camelCase transliteration of the C name — `changeItemQuantity`, `playItem` —
+which the port never uses. A failed transliteration grep is not evidence of
+absence, and four of the eight verdicts of that shape were wrong.
+`parity/tools/deferral-crosscheck.mjs` now greps the port for the **C name**,
+which this codebase reliably cites beside its port, and its output is a list of
+leads for a reader rather than a verdict.
+
+The one thing that looked like a wizard gap and is real is the **ENTER command
+browser** (`web/wizard.ts:498`, `textui_action_menu_choose`), absent for every
+command list rather than for debug mode. `world-kernel.yaml:27` stays open as a
+decision.
 
 ### Dead, and a decision rather than a task
 
@@ -270,16 +292,16 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 85 |
-| `partial` | Part ported; the note must say which part is not | 10 |
+| `real` | Confirmed absent and owed | 68 |
+| `partial` | Part ported; the note must say which part is not | 11 |
 | `divergence` | Deliberately different, with the mechanism named | 30 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
-| `ported` | Done; the note was stale and has been rewritten | 3 |
+| `ported` | Done; the note was stale and has been rewritten | 19 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
 | | **total** | **227** |
 
-### `real` - Confirmed absent and owed (85)
+### `real` - Confirmed absent and owed (68)
 
 - `packages/core/src/effects/handlers.ts:78` - monsterDesc and MDESC_DIED_FROM both exist (mon/desc.ts:61) and the killer name still falls back to race.name; the death cause reads "kobold" where upstream writes "a kobold"
 - `packages/core/src/game/cave-cmd.ts:1045` - The premise is stale (web/src/main.ts:8090 binds "+" to alterCmd, main.ts:4501) which makes the gap reachable: alter still has no chest branch and no floor-trap disarm branch (do_cmd_alter_aux L969-992)
@@ -288,7 +310,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/game/context.ts:297` - PN_IGNORE is SET (session/game.ts:551) and nothing ever reads it, so becoming aware of a kind never triggers the ignore_drop pass. ignoreDropTargets exists (game/ignore-cmd.ts:45, called from web main.ts:3119 for the menu) - it is the notice pass that is missing
 - `packages/core/src/game/context.ts:1088` - square_isempty (cave-square.c:604-608) rejects a player trap, a web and any object; the port checks only passable/no-monster/not-player, at 48 call sites. Placement loops can therefore accept grids upstream rejects, which also moves RNG draws
 - `packages/core/src/game/effect-attack.ts:687` - monsterDesc(mon, MDESC_DIED_FROM) is available (mon/desc.ts:61) and unused here; effect-handler-attack.c:490 is one of three upstream killer-name sites
-- `packages/core/src/game/gear.ts:1173` - pile_insert_end is genuinely absent - the port has no pile links (gear.ts:134). Ordering inside a floor pile can therefore differ from upstream's append-at-end
+- `packages/core/src/game/gear.ts:1173` - Still real, and there is a dedicated instrument saying so: pile.upstream.test.ts:28 states "pile_insert_end has NO port counterpart: nothing in the live port appends", and gear.ts:1094 cites it for the equip path only
 - `packages/core/src/game/known.ts:750` - path_analyse absent: no pathAnalyse anywhere in the port, so intervening-square terrain is never learned along a path.
 - `packages/core/src/game/mon-message.ts:15` - The message QUEUE is genuinely absent - there is no notice_stuff / PN_MON_MESSAGE machinery, so repeats never combine ("3 kobolds die.") and deaths are not shown last. The grammar half is ported verbatim
 - `packages/core/src/game/mon-place.ts:267` - list_object oidx bookkeeping absent (no listObject in the port).
@@ -299,7 +321,6 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/game/spoil.ts:519` - Second half of the same line
 - `packages/core/src/game/spoil.ts:550` - loreDescription has no upstream-style spoiler flag, so the spoiler text differs from wiz-spoil.c's
 - `packages/core/src/game/ui-entry.ts:1392` - The launcher-slot reach plus KF_SHOOTS_ARROWS is genuinely absent, so this entry contributes 0 where upstream contributes the launcher's value
-- `packages/core/src/game/wizard.ts:68` - The wiz-spoil.c spoiler entry points owed by the 100%-including-wizard-mode mandate; tracked with the wizard-debug.yaml rows
 - `packages/core/src/gen/cave.ts:30` - The town builder's full store generation and persistent-level connectors
 - `packages/core/src/gen/cave.ts:31` - Second half of the same claim; the single-combat arena level is generated elsewhere
 - `packages/core/src/gen/cave.ts:2833` - Quest-system dungeon profile
@@ -326,48 +347,32 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/obj/randart-build.ts:38` - The "property" branch needs the timed-effects failure tables; part of the randart generator's remaining edges
 - `packages/core/src/obj/randart.ts:38` - randart.log / randart.txt: upstream's do_randart writes it whenever randarts generate and exit(1)s if it cannot. 193 file_putf sites
 - `packages/core/src/session/game.ts:542` - Same gap as game/context.ts:296: PN_IGNORE is set here and never consumed, so nothing runs the ignore_drop pass
-- `packages/core/src/store/store.ts:232` - object_flag_is_known absent (0 sites), so a store's buy check cannot gate on known flags.
+- `packages/core/src/store/store.ts:232` - Still real, with better evidence than the transliteration grep: object_flag_is_known's answer IS available - equip-cmp.ts:413 synthesises the obj->known shadow for exactly this question - and the store's buy check does not use it
 - `packages/core/src/store/store.ts:262` - Same absence, second site.
 - `packages/web/src/birth.ts:1051` - Upstream's birth screens offer help (ui-birth.c); the port answers the key with a no-op
 - `packages/web/src/knowledge.ts:1095` - Same gap as the lore hit-chance percentages: the computed flag / combat lines are absent from monster recall
 - `packages/web/src/knowledge.ts:1185` - Same for ego-item recall
 - `packages/web/src/main.ts:3697` - Greying rather than omitting is a divergence forced by a real gap - the shape-lore textblock chain named on the next line
 - `packages/web/src/main.ts:3701` - The shape-lore textblock chain for Shapechange effects
-- `packages/web/src/main.ts:5904` - show_floor with multiple objects: upstream opens the floor list, the port defers to the screen and skips ignored objects
-- `packages/web/src/main.ts:5925` - show_floor screen for multiple objects absent (0 showFloor sites).
 - `packages/web/src/screens.ts:872` - The thematic monster_group columns of the upstream knowledge browser (the ui_knowledge.txt grouping) are not drawn; the flat list is the selectable membership only
 - `packages/web/src/wizard.ts:498` - The command-list absence tracked with the wizard-mode rows
 - `parity/ledger/cmd-core.yaml:25` - cmd_disable_repeat_floor_item has no port equivalent (0 references)
-- `parity/ledger/game-obj-list.yaml:45` - object_list_format_name's own formatting (the count/label decoration the list screen applies) is still not reproduced, even though the entry carries the real object
 - `parity/ledger/game-project-cast.yaml:53` - The monster decoy / target-monster branches of TOUCH, matching game/project-cast.ts:684
 - `parity/ledger/gamedata.yaml:478` - ui_knowledge.txt: it defines the knowledge browser's thematic grouping, and the browser IS ported, so the grouping columns are missing (see web/src/screens.ts:872)
-- `parity/ledger/gen-cave.yaml:49` - hard_centre_gen and arena_gen
 - `parity/ledger/high-scores.yaml:96` - The real killer is not wired through GameState, so the score entry cannot name it
 - `parity/ledger/mon-lore-describe.yaml:55` - Monster spells are not bound to the casting race, so recall cannot show spell damage - the same family as the lore hit-chance gap
 - `parity/ledger/obj-randart.yaml:51` - RANDNAME_TOLKIEN from the names datafile is not loaded, so randart names come from artifactGenName's own generator
 - `parity/ledger/options.yaml:76` - options_save_custom / restore_custom / restore_maintainer - the per-user customized-defaults files in ANGBAND_DIR_USER. Now buildable: the host seam and the pref-file writer both exist
-- `parity/ledger/player-calcs-bonuses.yaml:78` - known_only has no port equivalent: obj-info.c calls calc_bonuses with known_only=true at six sites, and the port's object-inspect passes no such flag, so an unknown property of worn equipment can leak into the item-inspection analysis
+- `parity/ledger/player-calcs-bonuses.yaml:78` - Still real. calcs.ts:606 says known_only callers pass false "so the derive stays pure", and :721 lists the known_only object-knowledge variant among what is NOT derived - so the flag is named in the port and deliberately unimplemented
 - `parity/ledger/player-history.yaml:75` - find-on-sight history entries, blocked on the remembered floor-pile contents
-- `parity/ledger/player-history.yaml:79` - history_find_artifact / history_lose_artifact are not wired
 - `parity/ledger/player-history.yaml:91` - The player notes command
 - `parity/ledger/project-path.yaml:58` - A ported function with no caller, because the UI branch that would call it is absent - worth deciding between wiring it and cordoning it
 - `parity/ledger/store-maint.yaml:34` - Same absence, third site - the maintenance half.
-- `parity/ledger/store-price.yaml:21` - store_init runtime owner selection absent (0 storeInit sites).
 - `parity/ledger/ui-entry.yaml:133` - The launcher-slot reach plus KF_SHOOTS_ARROWS, same as game/ui-entry.ts:1392
 - `parity/ledger/ui-entry.yaml:136` - The show_combined path and the EQUIPCMP_SCREEN iteration: the category is compiled and bound but never iterated
-- `parity/ledger/wizard-debug.yaml:14` - No artifact-created registry, so the wizard artifact listing cannot mark what has been generated
-- `parity/ledger/wizard-debug.yaml:87` - The shell follow-up for this wizard command
-- `parity/ledger/wizard-debug.yaml:112` - dump_level + its file I/O; the host seam now makes the file half possible (host/io.ts)
-- `parity/ledger/wizard-debug.yaml:139` - Owed by the 100%-including-wizard-mode mandate
-- `parity/ledger/wizard-debug.yaml:144` - The wiz-stats histograms; heavy, but owed by the mandate
-- `parity/ledger/wizard-debug.yaml:147` - The wiz-stats sampler
-- `parity/ledger/wizard-debug.yaml:154` - do_cmd_wiz_change_item_quantity
-- `parity/ledger/wizard-debug.yaml:164` - do_cmd_wiz_change_item_quantity absent (0 changeItemQuantity sites). Owed: the mandate is 100% parity INCLUDING wizard mode.
-- `parity/ledger/wizard-debug.yaml:166` - The play_item menu shell is absent (0 playItem sites) - the reason the quantity action has nowhere to live.
-- `parity/ledger/wizard-debug.yaml:167` - Same: play_item shell absent.
 - `parity/ledger/world-kernel.yaml:27` - The monster-list scan replacement and what the note lists after it
 
-### `partial` - Part ported; the note must say which part is not (10)
+### `partial` - Part ported; the note must say which part is not (11)
 
 - `packages/core/src/game/context.ts:1161` - The held-object drop IS handled (the caller runs monster_death first, as the note says); the mimic and targeting bookkeeping remain
 - `packages/core/src/game/floor.ts:18` - pushObject is ported and called (effect-general.ts:190, effect-terrain.ts:347); the known-object shadow cave, list_object/delist_object oidx bookkeeping and mimicked-object handling remain
@@ -376,6 +381,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/store/transact.ts:26` - Of the four named: the known twin is a divergence and total_weight IS maintained (gear.ts:1283, shown as Burden at char-sheet.ts:409). Autoinscription (the registry exists at game/context.ts:254) and history_find/lose_artifact are genuinely absent here
 - `parity/ledger/game-mon-ranged.yaml:31` - The glyph-of-warding exclusion is available (TRF.GLYPH is handled at monster-turn.ts:1536); the arena exclusion goes with arena mode
 - `parity/ledger/game-project-monster.yaml:50` - Targeting is wired; the mimic bookkeeping is not (same as game/context.ts:1153)
+- `parity/ledger/gen-cave.yaml:49` - CORRECTED from real. hard_centre_gen IS ported (hardCentreGen, gen/cave.ts:1914, a greater vault surrounded by four caverns). Only arena_gen remains, with the rest of arena mode
 - `parity/ledger/mon-make.yaml:32` - monCreateDrop and updateMon are ported; monster lore is wired (including lore.txt). Level rating has no port equivalent (0 references)
 - `parity/ledger/mon-timed.yaml:29` - The GRAMMAR is ported verbatim (game/mon-message.ts: get_subject, get_message_text, message_pain, the [singular|plural] state machine). What is absent is the QUEUE - add_monster_message -> mon_msg[] flushed by show_monster_messages from notice_stuff's PN_MON_MESSAGE - so repeats are not combined into a counted line and deaths are not shown last. Root cause is the missing notice_stuff/PN_* machinery, not this file.
 - `parity/ledger/ui-display.yaml:124` - The sidebar IS drawn, by the front end on a canvas rather than with Term_* calls (web/src/main.ts sidebarModel). update_sidebar's screen-size priority culling and from-bottom placement are genuinely absent (game/display.ts:505 says so)
@@ -463,11 +469,27 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (3)
+### `ported` - Done; the note was stale and has been rewritten (19)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
+- `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
 - `packages/core/src/obj/object.ts:918` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
+- `packages/web/src/main.ts:5904` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
+- `packages/web/src/main.ts:5925` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
+- `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic
 - `parity/ledger/player-history.yaml:46` - STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.
+- `parity/ledger/player-history.yaml:79` - CORRECTED from real. Both hooks ARE wired: onArtifactFound (game/context.ts:687-693, installed by wireGame, called from pickup.ts playerPickupAux) and onArtifactLost (:695-701, the destroy / abandon / store-discard paths). The store-PURCHASE site is the part still missing, tracked at store/transact.ts:26
+- `parity/ledger/store-price.yaml:21` - CORRECTED from real. store_init's runtime owner selection IS ported: storeChooseOwner (store/store.ts:100, rng.randint0 over store.owners) called at :116, :120 and :700. My "0 storeInit sites" was a transliteration grep
+- `parity/ledger/wizard-debug.yaml:14` - CORRECTED from real. The artifact-created registry EXISTS: ArtifactState (obj/make.ts:736) is aup_info[] with isCreated / mark, one instance per game, serialized as artifactsCreated (session/save.ts:976, :1200, :1346)
+- `parity/ledger/wizard-debug.yaml:87` - CORRECTED from real. The shell follow-up exists: runTweakItem (web/src/wizard.ts:2043), reached from the play-item T branch at :1914, alongside runRerollItem and runCurseItem
+- `parity/ledger/wizard-debug.yaml:112` - CORRECTED from real. dump_level IS ported: game/dump-level.ts with its own test (dump-level.test.ts), driven by runWriteMap (web/src/wizard.ts, case "write-map" at :878)
+- `parity/ledger/wizard-debug.yaml:139` - CORRECTED from real. The wiz-spoil.c generators ARE ported (game/spoil.ts:255, :344, :453, :505) and wired through runSpoilers (web/src/wizard.ts:373). "Deferred entirely" has not been true for some time
+- `parity/ledger/wizard-debug.yaml:144` - CORRECTED from real. The three Monte-Carlo collectors ARE ported and wired: runCollectObjMonStats / runCollectPitStats / runCollectDisconnectStats (web/src/wizard.ts, cases at :883, :886, :889)
+- `parity/ledger/wizard-debug.yaml:147` - CORRECTED from real. The wiz-stats sampler IS ported: wizStatItem (game/wizard.ts) driven by runStatItem (web/src/wizard.ts)
+- `parity/ledger/wizard-debug.yaml:154` - CORRECTED from real. Same as :164 - runChangeQuantity (web/src/wizard.ts) is reached from the play-item Q branch at :1921
+- `parity/ledger/wizard-debug.yaml:164` - CORRECTED from real. do_cmd_wiz_change_item_quantity IS ported: runChangeQuantity (web/src/wizard.ts), reached from the play-item submenu's Q/q branch (wizard.ts:1921). My "0 changeItemQuantity sites" was a grep for a camelCase name the port never uses
+- `parity/ledger/wizard-debug.yaml:166` - CORRECTED from real. The play_item shell IS ported: runPlayItem (web/src/wizard.ts), case "play-item" at :779, with upstream's full A/K/S/R/T/C/Q submenu at :1894-1923 and the core-side session snapshot/restore/commit (wizPlayItemBegin / Reject / Accept, game/wizard.ts:61-63)
+- `parity/ledger/wizard-debug.yaml:167` - CORRECTED from real. Same: the play_item shell exists, so the quantity action does have somewhere to live
 
 ### `note-is-fix` - The wording sits inside a record of a FIX, not a gap (25)
 

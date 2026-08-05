@@ -73,6 +73,27 @@ function citedPaths(doc: string): ReadonlySet<string> {
   return out;
 }
 
+/**
+ * Tokens that ATTEMPT a repo-root path: the first segment begins with one of the
+ * top-level directory names but need not equal it.
+ *
+ * Kept separate from citedPaths, which is anchored on the exact names. An
+ * anchored pattern does not match "packagesges/core/src/..." at all, so a typo'd
+ * prefix is never collected and never checked - which is how one reached this
+ * file and survived a green run. Deliberate shorthand relative to a package
+ * root ("game/display.ts:505") has a first segment that starts with none of
+ * them, so it is left alone; upstream C references have no slash at all.
+ */
+function pathShapedTokens(doc: string): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const m of doc.matchAll(
+    /`((?:packages|parity|tools|docs)[\w.-]*(?:\/[\w.-]+)+\.(?:ts|tsx|mjs|js|yaml|tsv|md|txt))(?::[\d-]+)?`/gu,
+  )) {
+    out.add(m[1] as string);
+  }
+  return out;
+}
+
 function uncovered(doc: string, files: readonly string[]): readonly string[] {
   const cited = citedPaths(doc);
   return files.filter((f) => !cited.has(f));
@@ -121,9 +142,21 @@ describe("parity/PORT_TODO.md", () => {
   });
 
   it("cites only paths that exist", () => {
-    const missing = [...citedPaths(readFileSync(TODO, "utf8"))].filter(
-      (p) => !existsSync(join(ROOT, p)),
-    );
-    expect(missing, "A cited path that is not in the tree - renamed, or never there.").toEqual([]);
+    const doc = readFileSync(TODO, "utf8");
+    const all = new Set([...citedPaths(doc), ...pathShapedTokens(doc)]);
+    const missing = [...all].filter((p) => !existsSync(join(ROOT, p)));
+    expect(
+      missing,
+      "A cited path that is not in the tree - renamed, typo'd, or never there.",
+    ).toEqual([]);
+  });
+
+  it("would notice a typo'd path prefix (mutation check on the guard above)", () => {
+    /* The exact typo that reached this file: an anchored pattern does not match
+     * "packagesges/..." at all, so the path was never collected and never
+     * checked. pathShapedTokens has to see it. */
+    const holed = "Sites: `packagesges/core/src/mon/lore-describe.ts:22`";
+    expect([...pathShapedTokens(holed)]).toEqual(["packagesges/core/src/mon/lore-describe.ts"]);
+    expect(existsSync(join(ROOT, "packagesges/core/src/mon/lore-describe.ts"))).toBe(false);
   });
 });
