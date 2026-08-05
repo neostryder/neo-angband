@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { FEAT, MFLAG, MON_TMD, SQUARE, TV } from "../generated/index.js";
+import { FEAT, MFLAG, MON_TMD, SQUARE, TRF, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import type { Rng } from "../rng.js";
@@ -28,6 +28,12 @@ import { createDefaultRegistry, processPlayer } from "./player-turn.js";
 import { addMon, makeRace, makeState } from "./harness.js";
 import type { GameState } from "./context.js";
 import type { PlayerCommand } from "./context.js";
+import type { GameObject } from "../obj/object.js";
+import { placeTrap, squareIsDisarmableTrap, squareTrap } from "./trap.js";
+import { bindTraps } from "../world/trap.js";
+import type { TrapKind, TrapRecordJson } from "../world/trap.js";
+import { chestCheck } from "./chest.js";
+import { CHEST_QUERY } from "../obj/chest.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -684,5 +690,188 @@ describe("stairs go through dungeon_get_next_level", () => {
 
     expect(run({ code: "ascend" })).toBe(0);
     expect(state.generateLevel).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * do_cmd_alter_aux's full dispatch (cmd-cave.c:951-1002). PORT_TODO 2.3.
+ *
+ * FOUR branches were missing, not the two the deferral note named, and the
+ * fall-through spent no energy - which upstream's own comment above the function
+ * exists to forbid ("This command must always take energy, to prevent free
+ * detection of invisible monsters").
+ *
+ * The pre-existing alter test covered the two branches that WERE there. Nothing
+ * asserted the absence of the other five behaviours, which is why they survived
+ * the deferral note being marked reachable.
+ * ------------------------------------------------------------------ */
+describe("alter's remaining branches (do_cmd_alter_aux L974-997)", () => {
+  const trapKinds = bindTraps(
+    (
+      JSON.parse(
+        readFileSync(
+          new URL("../../../content/pack/trap.json", import.meta.url),
+          "utf8",
+        ),
+      ) as { records: TrapRecordJson[] }
+    ).records,
+  );
+
+  function alterSetup(): {
+    state: GameState;
+    run: (cmd: PlayerCommand) => number;
+    chestDeps: { makeDeps: MakeDeps; env: { msg: (t: string) => void } };
+    msgs: string[];
+  } {
+    const msgs: string[] = [];
+    /* chestDeps carries its OWN env (ChestEnv), separate from the cave-cmd env:
+     * doCmdOpenChest / doCmdDisarmChest read deps.env, not the command layer's.
+     * Without it every chest message is silently dropped, which is how the
+     * discriminating assertion below first came back with an empty log. */
+    const chestDeps = {
+      makeDeps: makeDeps(),
+      env: { msg: (t: string) => msgs.push(t) },
+    };
+    const { state, run } = setup({
+      chestDeps,
+      trapDeps: { kinds: trapKinds, env: { msg: (t: string) => msgs.push(t) } },
+      env: { msg: (t: string) => msgs.push(t) },
+    });
+    /* Both do_cmd_disarm_aux and do_cmd_open_chest divide the disarm skill by ten
+     * when `no_light` - !square_isseen on the PLAYER's own grid
+     * (cave-view.c:914-917). makeState never runs the view pass, so without this
+     * the harness silently applies the darkness penalty and a "high skill"
+     * fixture still fails its roll. Measured: this is what made two of the tests
+     * below fail on their first run. */
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE["SEEN"]);
+    return { state, run, chestDeps, msgs };
+  }
+
+  function putChest(
+    state: GameState,
+    chestDeps: { makeDeps: MakeDeps },
+    grid: Loc,
+    pval: number,
+  ): GameObject {
+    const kind = chestDeps.makeDeps.reg.lookupKind(
+      TV.CHEST,
+      chestDeps.makeDeps.reg.lookupSval(TV.CHEST, "Small wooden chest"),
+    )!;
+    const chest = objectPrep(
+      state.rng,
+      chestDeps.makeDeps.reg,
+      constants,
+      kind,
+      0,
+      "average",
+    );
+    /* pval > 0 is a locked chest with that trap mask; < 0 is unlocked-and-empty
+     * (obj-chest.c). Set explicitly rather than trusting the roll. */
+    chest.pval = pval;
+    floorCarry(state, grid, chest);
+    return chest;
+  }
+
+  it("closes an open door (L993-995)", () => {
+    const { state, run } = alterSetup();
+    state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
+    squareMemorize(state, loc(6, 5));
+
+    expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
+
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
+  });
+
+  it("disarms a floor trap (L984-986)", () => {
+    const { state, run } = alterSetup();
+    const pit = trapKinds.find((k: TrapKind) => k.desc === "pit")!;
+    placeTrap(state, loc(6, 5), pit.tidx, 5, { kinds: trapKinds });
+    /* placeTrap leaves a trap HIDDEN; square_isdisarmabletrap wants TRF_VISIBLE
+     * (cave-square.c:823), which the port reads through squareIsVisibleTrap. A
+     * fixture without this reads as "no trap", so the assertion below is here to
+     * make the fixture prove itself rather than let the test pass empty. */
+    for (const t of squareTrap(state, loc(6, 5))) t.flags.on(TRF.VISIBLE);
+    squareMemorize(state, loc(6, 5));
+    expect(
+      squareIsDisarmableTrap(state, loc(6, 5)),
+      "fixture: a disarmable trap is there",
+    ).toBe(true);
+    /* Enough skill that the roll cannot fail and leave the trap in place. */
+    setSkill(state, SKILL.DISARM_PHYS, 200);
+
+    expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
+
+    expect(squareIsDisarmableTrap(state, loc(6, 5))).toBe(false);
+  });
+
+  it("opens a closed chest (L989-991)", () => {
+    const { state, run, chestDeps } = alterSetup();
+    /* pval 1 is LOCKED and untrapped (isTrappedChest is `pval > 0 && pval !== 1`,
+     * obj/chest.ts), so this is the openable-not-trapped case and it picks the
+     * right branch of the C's order. do_cmd_open_chest's success is unlock_chest,
+     * which sets pval to 0 - it does not empty the chest in the same command. */
+    const chest = putChest(state, chestDeps, loc(6, 5), 1);
+    expect(
+      chestCheck(state, loc(6, 5), CHEST_QUERY.OPENABLE),
+      "fixture: an openable chest is there",
+    ).toBe(chest);
+    expect(
+      chestCheck(state, loc(6, 5), CHEST_QUERY.TRAPPED),
+      "fixture: and NOT a trapped one, or the earlier branch would win",
+    ).toBe(null);
+    setSkill(state, SKILL.DISARM_PHYS, 200);
+
+    expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
+
+    expect(chest.pval, "unlocked by do_cmd_open_chest").toBe(0);
+  });
+
+  it("prefers a TRAPPED chest over an openable one, as the C order does", () => {
+    /* L987-991: the trapped branch is tested first, and a chest with trap bits is
+     * BOTH trapped and openable - so the order is the only thing that decides.
+     *
+     * TWO FIXTURE MISTAKES OF MINE ARE BURIED HERE, both caught by mutation.
+     * The first draft used a skill of 0 and asserted "still locked": with the
+     * branch deleted the openable path ALSO fails its roll and leaves it locked,
+     * so removing the trapped branch entirely killed no test. The second was
+     * knownPval: do_cmd_disarm_chest early-returns "I don't see any traps"
+     * unless the chest's trap has been FOUND (obj-chest.c:702-704), so the
+     * branch was a no-op either way. The discriminator has to be an outcome only
+     * ONE branch can produce - disarm negates pval, open zeroes it. */
+    const { state, run, chestDeps, msgs } = alterSetup();
+    /* pval 3 = locked (bit 0) plus the first trap bit (2). pval 1 would be
+     * locked-and-untrapped, which is the case the previous test uses. */
+    const chest = putChest(state, chestDeps, loc(6, 5), 3);
+    chest.knownPval = chest.pval; /* the trap has been found */
+    expect(
+      chestCheck(state, loc(6, 5), CHEST_QUERY.TRAPPED),
+      "fixture: the chest reads as trapped",
+    ).toBe(chest);
+    expect(
+      chestCheck(state, loc(6, 5), CHEST_QUERY.OPENABLE),
+      "fixture: and openable too, so the ORDER is what decides",
+    ).toBe(chest);
+    setSkill(state, SKILL.DISARM_PHYS, 2000);
+
+    expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
+
+    /* obj-chest.c:747 negates pval on a successful disarm; a successful OPEN
+     * would have unlocked it to 0 and then emptied it. */
+    expect(chest.pval, "disarmed, not opened").toBe(-3);
+    expect(msgs).toContain("You have disarmed the chest.");
+    expect(msgs).not.toContain("You have picked the lock.");
+  });
+
+  it("spends a FULL TURN on the fall-through, so '+' is not a free probe", () => {
+    /* L961: energy_use is set before the dispatch, and the C says why - a
+     * zero-energy fall-through lets the player sweep every adjacent square for
+     * invisible monsters at no cost. This returned 0. */
+    const { state, run, msgs } = alterSetup();
+    /* Plain floor: no monster, not diggable, no door, no trap, no chest. */
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
+
+    expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
+
+    expect(msgs).toContain("You spin around.");
   });
 });
