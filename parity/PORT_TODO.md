@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 24 closed, 43 open.
+**67 items covering all 111 confirmed-absent citations** — 25 closed, 42 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Five of the twenty-one closures are retractions rather than
@@ -1118,20 +1118,45 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `!UNIQUE` guard kills 1, inverting the `"The "` prefix kills 3.
   Sites: `packages/core/src/mon/lore-describe.ts:1359`
 
-- [ ] **3.23 Rune-learning messages still use the `ODESC_BASE` stand-in.**
-  Re-scoped: the real `object_desc` **did** land — `describeObject`
-  (`packages/core/src/game/describe.ts:48`) with the full `ODESC` mode set — but
-  this path did not move to it. `objBaseName`
-  (`packages/core/src/obj/knowledge.ts:220`) is still "the kind's plain name" with
-  `~` and `&` stripped, used by every rune message (`:470`, `:520`, `:602`, `:725`,
-  `:745`, `:801`). The layering reason is real (`knowledge.ts` is in `obj/`,
-  `describeObject` is in `game/`), so the fix is a seam, not an import. Fold in
-  the same file's other approximation while there: `kindHasFlavor`
-  (`packages/core/src/obj/known-object.ts:163`) tests the tval instead of
-  consulting `deps.hasFlavor`, which the interface notes agrees in practice for
-  every shipped kind (`known-object.ts:121-124`) — a mod-facing hole, not a
-  parity one.
-  Sites: `packages/core/src/obj/known-object.ts:160`
+- [x] **3.23 Rune-learning messages still use the `ODESC_BASE` stand-in.** DONE,
+  and the row's stated REASON was wrong in a way worth recording. It said "the
+  layering reason is real (`knowledge.ts` is in `obj/`, `describeObject` is in
+  `game/`)". Opening `game/describe.ts` settles it: line 9 is
+  `import { ODESC, objectDesc } from "../obj/desc.js"`. The real `object_desc`
+  lives **next door in `obj/`**; `describeObject` is only a GameState wrapper. The
+  obstacle was never the directory — it was the `KnownDesc` bundle, which is
+  assembled from GameState fields (`isAware`, `options`, `hasFlavor`,
+  `flavorText`, `everseen`). A seam was still the right shape, for a different
+  reason than the one given.
+  Three consumers, and the item named only the first:
+  1. **The six rune / flag / curse messages.** `RuneEnv.describeBase`, supplied
+     at the one real `makeRuneEnv` call (the other two in `session/game.ts` are
+     the documented placeholders `wireGame` replaces). Six upstream `ODESC_BASE`
+     calls in obj-knowledge.c, six `baseName` sites here — a 1:1 mapping.
+  2. **`print_custom_message`'s `{name}` and `{kind}`** (`session/game.ts`, the
+     temporary-brand begin/end lines). Upstream uses **two different functions**:
+     `{name}` is `object_desc(ODESC_PREFIX | ODESC_BASE)` (so it carries the
+     article) and `{kind}` is `object_kind_name(kind, easy_know=true)`, which is
+     exactly `obj_desc_name_format(kind->name, NULL, false)`. The port passed
+     `w.kind.name` for both — **raw**, not even marker-stripped, so a kind named
+     `& Long Bow~` printed its `&` and `~` to the player. Both now exact.
+  3. **`kindHasFlavor`** now reads the live `deps.hasFlavor` with the tval test as
+     the fallback. The interface note claiming the two "agree in practice" is
+     true of 4.2.6's object.txt and false for a mod that adds a kind of a
+     flavoured tval without a flavour — a mod-facing hole, as the row said.
+  On the tests, an honest accounting. The full suite was **green before the fix**:
+  nothing exercised either path with a name that could show a difference. After
+  wiring, a mutation making `baseName` ignore the seam entirely killed **nothing**
+  — the first tests proved the seam was SUPPLIED, which is a different claim from
+  "the six sites read it". Behavioural tests now cover `objectLearnOnWield` and
+  the `{name}`/`{kind}` pair; the other five message sites need a curse record, a
+  timed equip pass or an element property to fire, so instead of five fixtures
+  there is one **source-level ratchet**: `objBaseName` must be referenced exactly
+  once, inside the dispatcher. Verified it fires — reverting any individual site
+  to `objBaseName(obj)` fails it. That guard is structural, not behavioural, and
+  is labelled as such in the test: it proves nothing bypasses the seam, not that
+  the seam yields the right string.
+  Sites: `packages/core/src/obj/known-object.ts:167`
 
 - [ ] **3.24 `equip_learn_flag` has no shape branch.**
   `packages/core/src/obj/knowledge.ts:716-732` walks every body slot with no
