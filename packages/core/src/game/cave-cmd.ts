@@ -1042,17 +1042,42 @@ export function installCaveCommands(
   });
 
   /*
-   * do_cmd_alter: attack, tunnel, or open, by what is there. DEFERRED: the
-   * chest and floor-trap-disarm branches upstream falls through to
-   * (do_cmd_alter_aux L969-992). REAL GAP, and reachable: the shell binds "+" to
-   * alter (web/src/main.ts:8090), so pressing it on a trapped chest or a floor
-   * trap does nothing upstream would do. See parity/DEFERRALS.md.
+   * do_cmd_alter_aux (cmd-cave.c:951): attack, tunnel, open, disarm, unlock a
+   * chest, open a chest, or close a door - by what is there, in exactly that
+   * order (L974-997).
+   *
+   * FOUR branches were missing, not the two the deferral note named: the
+   * floor-trap disarm, the trapped chest, the closed chest AND the open door.
+   * '+' on an open door said "You spin around." The note said "the chest and
+   * floor-trap-disarm branches"; the close-door branch is at L993-995 and was
+   * simply not counted.
+   *
+   * AND THE FALL-THROUGH SPENT NO ENERGY. Upstream sets
+   * energy_use = move_energy at L961, BEFORE the dispatch, with its reason
+   * written above the function: "This command must always take energy, to
+   * prevent free detection of invisible monsters." Returning 0 on the "You spin
+   * around." branch made '+' a free probe of any adjacent square - the exact
+   * thing the C comment exists to prevent.
+   *
+   * Confusion is applied UP FRONT here and the chest lookups use the redirected
+   * grid (L964-972), unlike do_cmd_open which tests before and re-resolves
+   * after. Same RNG draw either way; the difference is which grid the chest is
+   * looked for on, so it is worth not copying the open/disarm shape.
    */
   registry.register("alter", (state, cmd) => {
     const at = commandGrid(state, cmd);
     if (!at) return 0;
     const dir = playerConfuseDir(state, at.dir);
     const grid = locSum(state.actor.grid, DDGRID[dir] as Loc);
+
+    /* L970-972, both on the post-confusion grid. */
+    const chestTrapped = chestDeps
+      ? chestCheck(state, grid, CHEST_QUERY.TRAPPED)
+      : null;
+    const chestClosed = chestDeps
+      ? chestCheck(state, grid, CHEST_QUERY.OPENABLE)
+      : null;
+
     let more = false;
     if (state.chunk.mon(grid) > 0) {
       attackBlocker(state, grid, env);
@@ -1060,11 +1085,23 @@ export function installCaveCommands(
       more = tunnelAux(state, grid, deps);
     } else if (state.chunk.isClosedDoor(grid)) {
       more = openAux(state, grid, env);
+    } else if (trapDeps && squareIsDisarmableTrap(state, grid)) {
+      /* L984-986. No trapsafe test here - that belongs to move_player's bump
+       * branch (L1079-1083), not to an explicit alter. `trapDeps` gates the
+       * branch the same way bumpOpen's disarm does above: without the trap
+       * subsystem installed there is no aux to call. */
+      more = disarmAux(state, grid, trapDeps);
+    } else if (chestTrapped) {
+      more = doCmdDisarmChest(state, chestTrapped, chestDeps!);
+    } else if (chestClosed) {
+      more = doCmdOpenChest(state, grid, chestClosed, chestDeps!);
+    } else if (squareIsOpenDoor(state, grid)) {
+      more = closeAux(state, grid, env);
     } else {
       env.msg?.("You spin around.");
-      return 0;
     }
     queueCommandRepeat(state, cmd, more);
+    /* Always a full turn (L961), including the spin-around. */
     return state.z.moveEnergy;
   });
 

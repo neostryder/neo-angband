@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 11 closed, 56 open.
+**67 items covering all 111 confirmed-absent citations** — 12 closed, 55 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Two of the eleven closures are retractions rather than work —
+declared *closed*. Two of the twelve closures are retractions rather than work —
 **2.16** asked for a call upstream does not make, and **2.1**'s own scope was
 overstated by a factor of seven. Both are written up in place, because a
 corrected item is worth more than a deleted one: the shape of the error is the
@@ -373,12 +373,49 @@ is reachable in play and a test constructs the case that used to be wrong.**
   invoked in every test that takes the monster path.
   Sites: `packages/core/src/mon/steal.ts:32`, `:33`, `:231`, `:234`
 
-- [ ] **2.3 `alter` (`+`) has no chest branch and no floor-trap branch.**
-  `do_cmd_alter_aux` (`cmd-cave.c:969-992`). The note excused this because alter
+- [x] **2.3 `alter` (`+`) was missing FOUR branches, and its fall-through was
+  free.** DONE — and this item's own count was short by two.
+  `do_cmd_alter_aux` (`cmd-cave.c:951-1002`). The note excused this because alter
   was unbound; the shell has bound it since
-  (`packages/web/src/main.ts:8090` → `alterCmd`), which makes the gap reachable.
-  *Cross-check lead unread: `do_cmd_alter` is named in
-  `packages/web/src/context-menu.ts`.*
+  (`packages/web/src/main.ts:8090` → `alterCmd`), which made the gap reachable.
+
+  **Not two branches: four.** The note said "the chest branch and the floor-trap
+  branch". The missing ones were the floor-trap disarm (L984-986), the trapped
+  chest (L987-988), the closed chest (L989-991) **and the open door**
+  (L993-995) — so `+` on an open door said "You spin around." The close-door
+  branch was simply not counted.
+
+  **And the fall-through spent no energy, which upstream forbids in writing.**
+  L961 sets `energy_use = move_energy` *before* the dispatch, and the comment
+  above the function says why: *"This command must always take energy, to prevent
+  free detection of invisible monsters."* Returning 0 on the "You spin around."
+  branch made `+` a free probe of any adjacent square — exactly the thing that
+  comment exists to stop. This is the most consequential line in the item and it
+  was in neither the note nor the census.
+
+  Confusion is applied up front here and the chest lookups use the *redirected*
+  grid (L964-972), unlike `do_cmd_open`, which tests before and re-resolves
+  after. Same RNG draw; different grid. Worth not copying the open/disarm shape.
+
+  Six tests in `cave-cmd.test.ts`, six mutations, six dead tests — after two of
+  my own fixtures turned out unable to fail:
+  - the trapped-chest test first used a skill of 0 and asserted "still locked".
+    Deleting the whole trapped branch left it green, because the openable path
+    fails its roll too and leaves the chest locked as well. The discriminator has
+    to be an outcome only one branch can produce: disarm **negates** `pval`, open
+    zeroes it.
+  - `do_cmd_disarm_chest` early-returns *"I don't see any traps"* unless the trap
+    has been FOUND (`obj-chest.c:702-704`, `knownPval`), so the branch was a
+    no-op in either direction until the fixture set it.
+  - two more fixtures silently hit the darkness penalty: both aux functions
+    divide the disarm skill by ten when `no_light`, and `makeState` never runs the
+    view pass, so a "high skill" fixture still failed its roll. Recorded in the
+    helper.
+
+  *Cross-check lead READ:* `do_cmd_alter` is named in
+  `packages/web/src/context-menu.ts:164`, which collapses upstream's
+  "Attack"/"Alter" into one entry and relies on core resolving the grid — so the
+  menu needed no change, and now behaves correctly because core does.
   Sites: `packages/core/src/game/cave-cmd.ts:1045`
 
 - [x] **2.4 The chest `OF_TRAP_IMMUNE` rune was never learned.** DONE, and it
