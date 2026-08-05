@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 26 closed, 41 open.
+**67 items covering all 111 confirmed-absent citations** — 31 closed, 36 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. **Six of the twenty-six closures are retractions rather than
+declared *closed*. **Seven of the thirty-one closures are retractions rather than
 work** — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** and **2.13** were already built and
 named by stale `DEFERRED` comments on NEIGHBOURING functions. That is now a
@@ -19,6 +19,15 @@ function read before any work is planned. 2.15's neighbourhood then yielded a re
 gap, and 2.13's yielded four missing tests. Both are written up in place, because a
 corrected item is worth more than a deleted one: the shape of the error is the
 reusable part.
+
+**5.2 is the seventh, and it is the *other* recurring shape.** The player-notes
+command is fully built and fully tested; the row called it "confirmed absent by
+reading" on the strength of a grep for `HIST_USER_INPUT`, which the port spells
+`HIST.USER_INPUT`. That is the same **failed transliteration** that overturned
+four wizard-tier verdicts, surfacing again in a tier nobody had swept for it — so
+the sweep was not thorough, it was scoped to one tier. Every remaining row whose
+evidence is "grep found no `SOME_C_IDENTIFIER`" is suspect until the port's own
+spelling has been tried.
 
 > ### Correction, same day: the first cut of this list put finished work on it
 >
@@ -1050,28 +1059,39 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `parity/ledger/ui-entry.yaml:133`, `parity/ledger/ui-player.yaml:108`,
   `parity/ledger/ui-entry.yaml:132`
 
-- [ ] **3.10 `prt_moves` shows nothing.**
-  `PlayerState.numMoves` exists and is computed
-  (`packages/core/src/player/calcs.ts:1307`), and `displayDeps` does not pass it,
-  so `game/display.ts:209` defaults it to 0.
+- [x] **3.10 `prt_moves` shows nothing.** DONE.
+  `resolveDeps` already holds the `GameState`, so the fix is to **derive rather
+  than default**: `numMoves: deps.numMoves ?? state.playerState?.numMoves ?? 0`
+  (`game/display.ts:212`). No caller has to remember anything.
   Sites: `parity/ledger/ui-display.yaml:103`
 
-- [ ] **3.11 `prt_state`'s repeat branch can never fire.**
-  `cmd_get_nrepeats` has a port equivalent — `CommandQueue.getNRepeats`,
-  `packages/core/src/cmd.ts:534` — and `nRepeats` defaults to 0 with no supplier,
-  so `game/display.ts:712` is unreachable.
+- [x] **3.11 `prt_state`'s repeat branch can never fire.** DONE — **and the item
+  named the wrong mechanism.** `CommandQueue.getNRepeats` (`cmd.ts:534`) is a
+  faithful port that **nothing drives**, so wiring the cited answer would have
+  produced a permanent 0 by a longer route and looked fixed. The live repeat count
+  is `repeatRemaining` on `state.cmdQueue`, which `queueCommandRepeat` populates:
+  `nRepeats: deps.nRepeats ?? state.cmdQueue?.[0]?.repeatRemaining ?? 0`
+  (`game/display.ts:220`). Third time a row's stated *reason* has pointed at
+  undriven code while its *claim* was correct.
   Sites: `parity/ledger/ui-display.yaml:109`
 
-- [ ] **3.12 The wizard and winner markers never show.**
-  `wizard` and `totalWinner` default to false with no supplier, in both the
-  sidebar (`game/display.ts:215-216`) and the character sheet
-  (`game/char-sheet.ts:198-199`).
+- [x] **3.12 The wizard and winner markers never show.** DONE, both screens.
+  Derived on each resolver from the state that already carries them —
+  `state.wizard` and `player.totalWinner` — in the sidebar (`game/display.ts:222`,
+  `:223`) and the sheet (`game/char-sheet.ts:210`, `:211`). `fmt_title`'s
+  precedence is asserted: wizard outranks winner.
   Sites: `parity/ledger/ui-display.yaml:111`, `parity/ledger/ui-player.yaml:103`
 
-- [ ] **3.13 The sheet's Resting line always reads 0.**
-  Nothing supplies `restingTurn` and nothing increments `state.restingTurn`
-  during play — only save and load touch it (`session/save.ts:1398`,
-  `session/game.ts:3576`) — so `game/char-sheet.ts:395` shows 0 forever.
+- [x] **3.13 The sheet's Resting line always reads 0.** DONE — **and it was two
+  defects, not one.** The reader was an absent supplier like the rest
+  (`char-sheet.ts:198`). The writer was missing outright: upstream's
+  `player_resting_step_turn` bumps **two** counters (player-util.c:1487-1488) and
+  the web rest loop bumped one. `turnsRested` is the per-rest x2-regen gate;
+  `player->resting_turn` is the lifetime total the sheet shows, reset only at
+  birth. Fixed at `packages/web/src/main.ts:4962`. Because that write is the
+  **only** writer and `main.ts` is covered by source-text tests rather than unit
+  tests, it is ratcheted at `web/src/rest-steal-note.test.ts:38` — and the ratchet
+  was verified by deleting the line.
   Sites: `parity/ledger/ui-player.yaml:85`
 
 - [ ] **3.14 The object glyph ignores flavour awareness.**
@@ -1249,10 +1269,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 5 — History, notes, files and logs
 
-- [ ] **5.2 The player notes command.**
-  Confirmed absent by reading, and small: there is no `HIST_USER_INPUT` anywhere
-  and no take-notes key bound, while the history entry types and the screen that
-  shows them are both built.
+- [x] **5.2 The player notes command.** CLOSED as a RETRACTION — **it is built,
+  and "confirmed absent by reading" was neither.** `noteCmd`
+  (`packages/web/src/main.ts:4547`) is a complete `do_cmd_note`: the `"Note: "`
+  prompt at 69 chars (`char tmp[70]`), the empty / space-first rejection
+  (cmd-misc.c:100), `/say` and `/me` formatted exactly, the stored `"-- "` prefix
+  with the echoed line dropping it (`say(note.slice(3))`, cmd-misc.c:111), and
+  `historyAdd(..., HIST.USER_INPUT, ...)` stamped off live state. `':'` is bound
+  (ui-game.c:211). All six behaviours already had tests
+  (`web/src/rest-steal-note.test.ts:54-75`).
+  **Both halves of the stated reason were false, from one grep.** "There is no
+  `HIST_USER_INPUT` anywhere" is true only of that literal spelling — the port
+  writes `HIST.USER_INPUT`, an enum member rather than a C macro — and the key
+  bound follows from the same code the grep missed. This is the
+  **failed-transliteration** shape that already cost four wizard-tier verdicts,
+  recurring in a tier that had not been swept for it: a C identifier that does not
+  survive into the port's spelling proves nothing by its absence. Found while
+  ratcheting 3.13, in the same test file.
   Sites: `parity/ledger/player-history.yaml:91`,
   `parity/ledger/player-history.yaml:158`
 

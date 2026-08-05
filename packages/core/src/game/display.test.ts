@@ -337,3 +337,61 @@ describe("skipped indicators and handler-table order", () => {
     ]);
   });
 });
+
+/**
+ * PORT_TODO 3.10, 3.11, 3.12: three sidebar/status seams whose data was live and
+ * which had NO supplier, so each row was permanently blank or false.
+ *
+ * Same defect as 3.9's char-sheet half: an optional seam on a resolver that
+ * already holds the GameState. Fixed by deriving rather than defaulting, so no
+ * caller has to remember. These tests drive each seam THROUGH THE STATE and never
+ * pass a `deps` argument - passing deps is what the existing tests do, and it is
+ * exactly what cannot catch an absent supplier.
+ */
+describe("sidebar seams derive from the live state (PORT_TODO 3.10-3.12)", () => {
+  it("prt_moves reads PlayerState.numMoves (3.10)", () => {
+    const state = makeState();
+    /* No playerState: prt_moves emits nothing, as upstream does for num_moves 0. */
+    expect(field(statusLineModel(state), "moves")).toEqual([]);
+
+    (state as unknown as { playerState?: { numMoves: number } }).playerState = {
+      numMoves: 2,
+    };
+    expect(field(statusLineModel(state), "moves")[0]?.text).toBe("Moves +2 ");
+
+    (state as unknown as { playerState: { numMoves: number } }).playerState.numMoves =
+      -1;
+    expect(field(statusLineModel(state), "moves")[0]?.text).toBe("Moves -1 ");
+  });
+
+  it("prt_state's repeat branch reads the LIVE queue (3.11)", () => {
+    const state = makeState();
+    expect(field(statusLineModel(state), "state")).toEqual([
+      { text: " ", color: COLOUR_WHITE },
+    ]);
+
+    /* queueCommandRepeat (context.ts) pushes the repeat onto state.cmdQueue with
+     * repeatRemaining. cmd.ts's CommandQueue - which the item named as the
+     * available answer - is a faithful port nothing drives, so wiring THAT would
+     * still have read 0. */
+    state.cmdQueue = [{ code: "hold", repeatRemaining: 7 } as never];
+    expect(field(statusLineModel(state), "state")[0]?.text).toBe("Repeat   7 ");
+  });
+
+  it("fmt_title shows the winner and wizard markers (3.12)", () => {
+    const state = makeState();
+    const plain = field(sidebarModel(state), "title")[0]?.text ?? "";
+    expect(plain, "fixture: an ordinary character has a class title").not.toBe("");
+
+    state.actor.player.totalWinner = true;
+    expect(field(sidebarModel(state), "title")[0]?.text).toBe("***WINNER***");
+
+    /* wizard wins over winner (fmt_title L271 precedes L272). */
+    state.wizard = true;
+    expect(field(sidebarModel(state), "title")[0]?.text).toBe("[=-WIZARD-=]");
+
+    state.wizard = false;
+    state.actor.player.totalWinner = false;
+    expect(field(sidebarModel(state), "title")[0]?.text).toBe(plain);
+  });
+});

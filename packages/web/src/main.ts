@@ -4953,7 +4953,13 @@ async function driveRest(nArg: number): Promise<void> {
       // player_resting_step_turn (player-util.c:1472): decrement the timed
       // count, bump the rested counter; the seams read these during advance().
       if (rest.count > 0) rest.count -= 1;
+      // Upstream bumps TWO counters here (player-util.c:1487-1488) and this loop
+      // bumped one. player_turns_rested is the x2-regen gate that resets per
+      // rest; player->resting_turn is the lifetime total the character sheet's
+      // "Resting" line shows, and it is reset only at birth. Without this the
+      // sheet read 0 for every character forever. PORT_TODO 3.13.
       rest.turnsRested += 1;
+      state.restingTurn = (state.restingTurn ?? 0) + 1;
 
       // Take the turn: one hold action drives one player turn plus the world
       // catching up (process_world regenerates; monsters act).

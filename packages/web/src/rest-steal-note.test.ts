@@ -35,6 +35,12 @@ describe("WP-11 rest command (do_cmd_rest / textui_cmd_rest)", () => {
     // player_resting_step_turn: decrement the count, bump the rested counter.
     expect(MAIN_TS).toMatch(/rest\.count -= 1/);
     expect(MAIN_TS).toMatch(/rest\.turnsRested \+= 1/);
+    // PORT_TODO 3.13: upstream bumps TWO counters here (player-util.c:1487-1488)
+    // and this loop bumped one. turnsRested is the per-rest x2-regen gate;
+    // state.restingTurn is the lifetime total the sheet's "Resting" line reads,
+    // and it is the ONLY writer - char-sheet.ts derives from it but nothing else
+    // increments it, so without this ratchet the write can be deleted silently.
+    expect(MAIN_TS).toMatch(/state\.restingTurn = \(state\.restingTurn \?\? 0\) \+ 1/);
   });
 
   it("binds 'R' to the rest command (cmd_action ui-game.c:142)", () => {

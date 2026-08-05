@@ -206,14 +206,26 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
     feelingNeed: deps.feelingNeed ?? 10,
     timedEffects: deps.timedEffects ?? [],
     statUse: deps.statUse ?? defaultStatUse(player),
-    numMoves: deps.numMoves ?? 0,
+    /* PORT_TODO 3.10: derived, not defaulted. calc_bonuses computes num_moves
+     * (calcs.ts) and prt_moves read a hardcoded 0, so the sidebar's Moves row
+     * was blank for a character with +moves. */
+    numMoves: deps.numMoves ?? state.playerState?.numMoves ?? 0,
     healthWho: deps.healthWho ?? state.healthWho ?? null,
     unignoring: deps.unignoring ?? false,
     isResting: deps.isResting ?? playerIsResting(state),
     restingCount: deps.restingCount ?? playerRestingCount(state),
-    nRepeats: deps.nRepeats ?? 0,
-    wizard: deps.wizard ?? false,
-    totalWinner: deps.totalWinner ?? false,
+    /* PORT_TODO 3.11. The item pointed at `CommandQueue.getNRepeats`
+     * (cmd.ts:534) as the available answer, but that class is a faithful port
+     * NOTHING DRIVES (mod/registry-host.ts says so outright) - wiring it would
+     * have produced a permanent 0 by a longer route. The reachable repeat is the
+     * one queueCommandRepeat pushes (context.ts:952): `repeatRemaining` on the
+     * head of state.cmdQueue is what cmd_get_nrepeats() returns upstream, the
+     * repeats left on the command being executed. */
+    nRepeats: deps.nRepeats ?? state.cmdQueue?.[0]?.repeatRemaining ?? 0,
+    /* PORT_TODO 3.12: both flags exist on the live state and neither had a
+     * supplier, so fmt_title's wizard/winner markers could never appear. */
+    wizard: deps.wizard ?? state.wizard ?? false,
+    totalWinner: deps.totalWinner ?? player.totalWinner ?? false,
     bookHasUnlearnedSpells: deps.bookHasUnlearnedSpells ?? true,
     objectAttr:
       deps.objectAttr ?? ((obj) => colorCharToAttr(obj.kind.dAttr)),
