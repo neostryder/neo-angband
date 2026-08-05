@@ -366,7 +366,7 @@ export function runStatsBatch(
 
     for (let d = p.depthMin; d <= p.depthMax; d++) {
       const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-      const deps = genDeps(reg, true, artifacts, false);
+      const deps = genDeps(reg, true, "no-player", artifacts, false);
       const g = generateLevel(rng, d, deps, { daytime: true });
       collectLevel(depths[String(d)]!, g);
       /* kill_all_monsters (main-stats.c L557-560): every monster on the level is

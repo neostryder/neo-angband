@@ -191,6 +191,25 @@ export function bindCore(pack: CorePack): CoreRegistries {
 }
 
 /**
+ * The three make_object / make_gold foils that depend on the PLAYER, not on the
+ * content pack: obj_kind_can_browse's book rejection (obj-make.c L1185-1195,
+ * which needs the class's book list), append_object_curse's TIMED_INC foil
+ * (obj-curse.c L159-188, which needs the player timed table) and make_gold's
+ * birth_no_selling inflation (obj-make.c L1310-1312).
+ *
+ * `"no-player"` is a real answer, not a default: a standalone level boot or a
+ * stats run has no character, so none of the three can be evaluated. It is a
+ * REQUIRED argument for exactly that reason - all three were absent from the
+ * level-generation objDeps while being supplied to the store paths, and because
+ * they were optional properties nothing anywhere said so. Two of them are RNG
+ * draws (a rejected book re-rolls get_obj_num; a foiled curse is not appended),
+ * so their absence moved the generation stream off upstream's.
+ */
+export type GenObjectFoils =
+  | Pick<MakeDeps, "canBrowseBook" | "timedFoil" | "noSelling">
+  | "no-player";
+
+/**
  * Build the generator dependency bundle from bound registries.
  *
  * `artifacts` is the game's shared ArtifactState (aup_info[]); pass the
@@ -198,10 +217,13 @@ export function bindCore(pack: CorePack): CoreRegistries {
  * created flags. When omitted (standalone bootLevel / tests) a fresh
  * all-false instance is created. `noArtifacts` mirrors
  * OPT(player, birth_no_artifacts).
+ *
+ * `foils` is required; see GenObjectFoils for why.
  */
 export function genDeps(
   reg: CoreRegistries,
   placeContent: boolean,
+  foils: GenObjectFoils,
   artifacts?: ArtifactState,
   noArtifacts = false,
   lore?: LoreStore,
@@ -215,6 +237,7 @@ export function genDeps(
       constants: reg.constants,
       artifacts: artifacts ?? new ArtifactState(reg.objects.artifacts.length),
       noArtifacts,
+      ...(foils === "no-player" ? {} : foils),
     };
     monDeps = {
       table: new MonAllocTable(reg.monsters.races, {
@@ -316,6 +339,9 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
     ...genDeps(
       registries,
       opts.placeContent ?? true,
+      /* bootLevel produces a world, not a character - there is no class book
+       * list and no player timed table to foil against. */
+      "no-player",
       opts.artifacts,
       opts.noArtifacts ?? false,
     ),

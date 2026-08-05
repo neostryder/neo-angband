@@ -137,7 +137,7 @@ export function objMonStats(
       const artifacts = new ArtifactState(reg.objects.artifacts.length);
       for (const d of depths) {
         const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-        const deps = genDeps(reg, true, artifacts, false);
+        const deps = genDeps(reg, true, "no-player", artifacts, false);
         const g = generateLevel(rng, d, deps, { daytime: true });
         collectLevel(agg[String(d)]!, g);
       }
@@ -149,7 +149,7 @@ export function objMonStats(
         const reg = bindCore(pack);
         const artifacts = new ArtifactState(reg.objects.artifacts.length);
         const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-        const deps = genDeps(reg, true, artifacts, false);
+        const deps = genDeps(reg, true, "no-player", artifacts, false);
         const g = generateLevel(rng, d, deps, { daytime: true });
         collectLevel(agg[String(d)]!, g);
       }
@@ -414,7 +414,7 @@ export function disconnectStats(
     const reg: CoreRegistries = bindCore(pack);
     const artifacts = new ArtifactState(reg.objects.artifacts.length);
     const rng = new Rng(deriveSeed(p.baseSeed, i, p.depth));
-    const deps = genDeps(reg, true, artifacts, false);
+    const deps = genDeps(reg, true, "no-player", artifacts, false);
     const g = generateLevel(rng, p.depth, deps, { daytime: true });
     levels++;
 
