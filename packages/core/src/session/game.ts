@@ -21,7 +21,7 @@
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { MessageLog } from "../msg.js";
-import { SKILL, STAT_MAX } from "../player/types.js";
+import { PN, SKILL, STAT_MAX } from "../player/types.js";
 import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated/index.js";
 import { bindPlayer } from "../player/bind.js";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind.js";
@@ -222,13 +222,16 @@ import {
   gearGet,
   gearTotalWeight,
   calcInventory,
+  combinePack,
   minusAc as applyMinusAc,
   objectCopyAmt,
 } from "../game/gear.js";
+import type { CalcInventoryOpts } from "../game/gear.js";
 import { objectValue as computeObjectValue } from "../obj/value.js";
 import type { GameObject, CurseTimedFoil } from "../obj/object.js";
 import { buildCurseTimedFoil } from "../obj/object.js";
 import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn.js";
+import { noticeNewLevel } from "../game/notice.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
 import type {
@@ -538,18 +541,22 @@ interface WiredGame {
 /**
  * The real, in-play FlavorAwareDeps for object_flavor_aware's ignore fix
  * (obj-knowledge.c L2276-2279, #89): reads the live ignore settings so a
- * kind ignored while unaware keeps being ignored once identified, and flags
- * player->upkeep->notice's PN_IGNORE (state.noticeIgnore) so a later
- * ignore_drop() pass (#25 UI, not yet wired) can react. Shared by the two
- * in-play becomes-aware sites: game/obj-cmd.ts's item-use knowledge gain
+ * kind ignored while unaware keeps being ignored once identified, and raises
+ * player->upkeep->notice's PN_IGNORE (obj-knowledge.c L2279) so the next
+ * notice_stuff runs an ignore_drop pass. Shared by the two in-play
+ * becomes-aware sites: game/obj-cmd.ts's item-use knowledge gain
  * (installObjCommands below) and store/transact.ts's buy/sell (makeStoreApi).
+ *
+ * This used to set a bespoke `state.noticeIgnore` boolean because there was no
+ * notice mask to raise a bit in - and nothing ever read the boolean, which is
+ * PORT_TODO 2.5. It raises the real bit now.
  */
 function flavorAwareDeps(state: GameState): FlavorAwareDeps {
   return {
     isIgnoredUnaware: (kidx) => state.ignore.kindIsIgnoredUnaware(kidx),
     ignoreWhenAware: (kidx) => state.ignore.kindIgnoreWhenAware(kidx),
     requestIgnoreNotice: () => {
-      state.noticeIgnore = true;
+      state.actor.player.upkeep.notice |= PN.IGNORE;
     },
   };
 }
@@ -795,19 +802,23 @@ function wireGame(
     );
     noteSpots(s);
   };
+  /* The live calc_inventory inputs, shared by every closure below that has to
+   * re-derive upkeep->inven[] / upkeep->quiver[]. One function rather than a
+   * copy per seam, so a change to the options bag reaches all of them. */
+  const liveCalcInv = (): CalcInventoryOpts => ({
+    ammoTval: state.playerState?.ammoTval ?? 0,
+    objectValue: (obj: GameObject): number =>
+      computeObjectValue(reg.objects, obj, 1, true),
+    rogueLike: state.options?.get("rogue_like_commands") ?? false,
+    characterDungeon: true,
+    ...(state.msg ? { msg: state.msg } : {}),
+  });
   /* game-world.c:941-947: the C refreshes upkeep->inven[] before its
    * catch-all pack_overflow(NULL).  This closure has the same live
    * calc_inventory inputs used by pickup and command paths, preserving the
    * earlier_object order of the derived gear.inven view. */
   state.overflowPack = (): void => {
-    const calcInv = {
-      ammoTval: state.playerState?.ammoTval ?? 0,
-      objectValue: (obj: GameObject): number =>
-        computeObjectValue(reg.objects, obj, 1, true),
-      rogueLike: state.options?.get("rogue_like_commands") ?? false,
-      characterDungeon: true,
-      ...(state.msg ? { msg: state.msg } : {}),
-    };
+    const calcInv = liveCalcInv();
     /* notice_stuff()/handle_stuff() precede pack_overflow(NULL) at
      * game-world.c:941-947; materialize the current upkeep->inven[] analogue
      * before selecting its final entry. */
@@ -816,6 +827,11 @@ function wireGame(
       calcInv,
       ...(state.msg ? { msg: state.msg } : {}),
     });
+  };
+  /* notice_stuff's PN_COMBINE branch (player-calcs.c L2546-2549). combine_pack
+   * ends in its own calc_inventory, so this needs the same options bag. */
+  state.combinePack = (): void => {
+    combinePack(state.gear, reg.constants, liveCalcInv());
   };
   /* Stash the class list so refreshTownStores can expand the bookseller's
    * town-book always lines (object_kind_to_book, store.c:208-231). */
@@ -2148,6 +2164,9 @@ function makeChangeLevel(
         placePlayer(state, loc(1, 4));
         inArena = true;
         delete state.targetDepth;
+        /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
+         * one line BEFORE update_stuff, so the combine lands first. */
+        noticeNewLevel(state);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
@@ -2188,6 +2207,9 @@ function makeChangeLevel(
         state.healthWho = null;
         targetSetMonster(state, null);
         delete state.targetDepth;
+        /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
+         * one line BEFORE update_stuff, so the combine lands first. */
+        noticeNewLevel(state);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
@@ -2303,6 +2325,9 @@ function makeChangeLevel(
 
         refreshTownStores(state, reg);
         delete state.targetDepth;
+        /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff,
+         * one line BEFORE update_stuff, so the combine lands first. */
+        noticeNewLevel(state);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
         state.chunk.onlyPartial = true;
@@ -2468,6 +2493,9 @@ function makeChangeLevel(
       g.lightLevel = false;
     }
     delete state.targetDepth;
+    /* on_new_level (game-world.c:1034-1035): PN_COMBINE then notice_stuff, one
+     * line BEFORE update_stuff, so the combine lands first. */
+    noticeNewLevel(state);
     /* on_new_level (game-world.c:1034-1037): PU_BONUS -> update_bonuses ->
      * calc_light recomputes cur_light for the NEW depth, then the view is
      * flooded. Without this the daytime-town cur_light (0) leaks into the

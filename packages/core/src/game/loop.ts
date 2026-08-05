@@ -40,6 +40,7 @@ import { adj_con_fix, calcStatIndices } from "../player/calcs.js";
 import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge.js";
 import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed.js";
 import { tickMonsterMarks, updateMonsters } from "./known.js";
+import { noticeStuff } from "./notice.js";
 import {
   caveMonsterCount,
   compactMonsters,
@@ -653,6 +654,8 @@ export function runGameLoop(
 
   /* Run the world until the player is needed again. */
   for (;;) {
+    /* notice_stuff(player) (game-world.c:1126), the world loop's own refresh. */
+    noticeStuff(state);
     const s = loopStop(state);
     if (s) return s;
 
@@ -662,11 +665,17 @@ export function runGameLoop(
      * monster stepping into view during the rest/world phase disturbs the
      * player (C handle_stuff after process_monsters(0)). */
     updateMonsters(state, false);
+    /* notice_stuff(player) (game-world.c:1143), after the monster turns: a
+     * monster that stole or destroyed pack items has already raised its bit. */
+    noticeStuff(state);
     const s2 = loopStop(state);
     if (s2) return s2;
 
     if (state.turn % 10 === 0) {
       processWorld(state);
+      /* notice_stuff(player) (game-world.c:1154), after process_world -
+       * recharge_objects raises PN_COMBINE when a rod or wand comes back up. */
+      noticeStuff(state);
       const s3 = loopStop(state);
       if (s3) return s3;
     }

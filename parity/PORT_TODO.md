@@ -6,13 +6,14 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**66 items covering all 111 confirmed-absent citations** — 8 closed, 58 open.
-It started at 65; **2.18 was added by reading**,
-not by the census, and it landed in the tier this file had already declared
-closed. Two of the eight closures are retractions rather than work — **2.16** asked
-for a call upstream does not make, and **2.1**'s own scope was overstated by a
-factor of seven. Both are written up in place, because a corrected item is worth
-more than a deleted one: the shape of the error is the reusable part.
+**67 items covering all 111 confirmed-absent citations** — 10 closed, 57 open.
+It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
+both landed in tiers this file had already worked through — 2.20 in one it had
+declared *closed*. Two of the ten closures are retractions rather than work —
+**2.16** asked for a call upstream does not make, and **2.1**'s own scope was
+overstated by a factor of seven. Both are written up in place, because a
+corrected item is worth more than a deleted one: the shape of the error is the
+reusable part.
 
 > ### Correction, same day: the first cut of this list put finished work on it
 >
@@ -123,7 +124,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 1 — Foundations that unlock other rows
 
-- [ ] **1.1 `notice_stuff` / `PN_*` — the one architectural gap.**
+- [x] **1.1 `notice_stuff` / `PN_*` — the one architectural gap.** DONE.
   No `noticeStuff` and no `PN_*` pipeline anywhere. Root cause of both **2.5**
   (`PN_IGNORE` set and never consumed) and **3.1** (the monster-message queue
   has nowhere to be flushed from). The sibling `PU_*` / `PR_*` update-and-redraw
@@ -132,6 +133,79 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/game/known.ts:153`. `PN_*` is different: a queue of work,
   not a dirty bit, and nothing else does that work.
   Sites: `packages/core/src/game/context.ts:297`
+
+  **Built as upstream builds it**: `PlayerUpkeep.notice` is a real bitfield
+  (`packages/core/src/player/player.ts:33`), `PN` is two constants
+  (`packages/core/src/player/types.ts`), and `noticeStuff`
+  (`packages/core/src/game/notice.ts`) is the only thing that clears a bit. Every
+  one of upstream's eight `notice_stuff` call sites is wired — the two in
+  `process_player` (`game/player-turn.ts`), the three in the world loop
+  (`game/loop.ts`), and `on_new_level`'s own raise-then-drain at all four of the
+  port's level-entry paths (`noticeNewLevel`). So are the raise sites — **17
+  `|= PN.COMBINE` and 8 `|= PN.IGNORE`**, counted by grep, not estimated — across
+  `gear.ts`, `obj-cmd.ts`, `effect-item.ts`, `world.ts`, `mon-side.ts`,
+  `chest.ts`, `pickup.ts`, `wizard.ts`, `ignore-cmd.ts`, `notice.ts` and
+  `session/game.ts`. Two of those (inscribe, uninscribe) raise both and so appear
+  in both counts, as upstream does.
+
+  **`PN_MON_MESSAGE` is deliberately absent, not forgotten.** There is no third
+  constant, because `show_monster_messages` has no port (**3.1**) and a bit
+  nothing raises and nothing consumes is exactly what made `PN_IGNORE` look
+  ported for months. It goes in with the message queue or not at all.
+
+  Two design points worth keeping:
+  - **The order is load-bearing.** `ignore_drop` raises `PN_COMBINE` on its way
+    out, and because the ignore branch runs first that combine happens in the
+    *same* pass. Swapping the branches defers it a turn and breaks nothing
+    visible — so `notice.test.ts` asserts it.
+  - **An unbound combiner leaves the bit raised.** `combine_pack` needs z_info
+    sizing that `GameState` does not carry, so it is a session-bound closure like
+    `overflowPack`. Rather than clear a bit whose work it could not do,
+    `noticeStuff` leaves `PN_COMBINE` set — a worldless harness *owes* the
+    combine instead of silently forgetting it, which is the failure mode of every
+    other optional seam in `context.ts`.
+
+  **How it hid, and what it cost.** The comment that owned the notice mask said
+  it "lives in `game/gear.ts`". It lived nowhere. The same shape recurred at the
+  inscribe/uninscribe commands, whose omission was excused as "UI bookkeeping
+  this port doesn't model (combine already runs lazily on the next
+  `inven_carry`)" — `inven_carry` absorbs the *incoming* object and never runs
+  `combine_pack`, and nothing about inscribing implies a later pickup. Both are
+  the [[an-excuse-that-cites-a-sibling]] pattern, now the fourth and fifth
+  instances. Live consequences, in descending order:
+  1. **The pack was never combined except after a wield or takeoff.** Those two
+     sites call `combine_pack` directly in the C, which is why they were ported;
+     every one of the fourteen deferred sites was not. Identify two wands, drain
+     one to match the other, uncurse, enchant, let a rod recharge — the stacks
+     that became identical stayed in separate slots for the rest of the game.
+  2. **Un-inscribing never re-merged.** A note is part of the mergeability test
+     (`obj/object.ts:844`), so splitting a stack with `=g` and then removing it
+     left two slots permanently.
+  3. **Becoming aware of a kind dropped nothing** — that is **2.5**.
+
+  13 tests in `packages/core/src/game/notice.test.ts`, each mutation-verified.
+  One of them is end-to-end through the real `processPlayer` and names no line
+  number at all, because the thing that was broken was not any single line. One
+  line covered by no test is *marked as uncovered in the code*: `gearExcise`'s
+  own `PN_COMBINE` (`gear.ts`) has exactly one caller, which raises the same bit
+  itself, so deleting it kills nothing — measured, and recorded there rather than
+  counted as coverage.
+
+  > **Closed here too:** *the `PN_IGNORE` notice pass*, which used to be **2.5**,
+  > and a live weight defect found while porting `uncurse_object`'s `PN_COMBINE`.
+  > A curse can carry a weight modifier (`object_weight_one`, `obj-util.c`
+  > L280-288), so removing one changes what the player carries; upstream tracks
+  > `old_weight`/`new_weight` across the whole function (`effect-handler-general.c`
+  > L182-237) and the port did not. This is the **fifth** `total_weight` choke
+  > point, and it only became a defect when **1.2** made the running total real —
+  > before that it adjusted a field nothing read. Same shape as
+  > [[a-deferral-note-is-dated-evidence]]. Fixed at
+  > `packages/core/src/game/effect-item.ts`.
+  >
+  > And `wiz_play_item_standard_upkeep` (`cmd-wizard.c` L370) had **no port at
+  > all** at any of its six call sites — including one line past where **2.20**
+  > stopped last session, whose own docblock said "L1708-1714" when the fourth
+  > step is at L1715. All six are wired now through one helper in `wizard.ts`.
 
 - [x] **1.2 Nothing summed the player's carried weight.** DONE (`505c38bae`).
   `player.upkeep.totalWeight` is set to `0` once, in `playerOutfit`
@@ -181,6 +255,39 @@ is reachable in play and a test constructs the case that used to be wrong.**
   > `:3659`; `packages/web/src/screens.test.ts:929` asserts the real melee
   > percentage reaches the recall screen. Four interface comments still said
   > `DEFERRED`, which is what kept the item alive.
+
+- [ ] **1.3 `process_player_cleanup`'s monster housekeeping runs every ten game
+  turns instead of after every player command.** NEW, found by walking
+  `notice_stuff`'s call sites for **1.1** — the two functions are neighbours in
+  `game-world.c`.
+
+  `tickMonsterMarks` (`packages/core/src/game/known.ts:977`) is called from
+  `processWorld` (`packages/core/src/game/loop.ts:361`), which runs once per **ten**
+  game turns. Upstream runs that block in `process_player_cleanup`
+  (`game-world.c:867-892`), after **every** player command that spent energy. So a
+  monster revealed by detection keeps its `MFLAG_MARK` for up to ten turns longer
+  than it should, and `MFLAG_NICE` — the "don't act yet" grace flag — is cleared
+  on the same wrong cadence.
+
+  Three things have to move together, and the port currently conflates two of
+  them:
+  - The `MFLAG_NICE` + `MFLAG_MARK` loop is gated on `!p->upkeep->dropping`
+    (L867); the `MFLAG_SHOW` clear at L903-908 is **not**. `tickMonsterMarks` does
+    both in one function, so splitting it is part of the fix.
+  - `upkeep->dropping` itself has no port. It is set by `ignore_drop`
+    (`obj-ignore.c:687`) and cleared at L909, and **1.1** has just made the only
+    thing that sets it reachable — so it can be added now without being a field
+    nobody writes.
+  - The energy accounting and `player_take_terrain_damage` halves of
+    `process_player_cleanup` **are** ported, split across
+    `game/player-turn.ts` (energy) and `game/loop.ts:613`/`:641` (terrain). The
+    natural fix is one `processPlayerCleanup` holding all of it, called from the
+    two places that call `playerTakeTerrainDamage` today.
+
+  RNG-free: `tickMonsterMarks` only clears flags and calls `updateMon`. So this is
+  a pure timing correction, but a **perceptible** one — detection fades sooner.
+  Sites: `packages/core/src/game/loop.ts:361`,
+  `packages/core/src/game/known.ts:977`
 
 ## Tier 2 — It changes what happens in play
 
@@ -280,14 +387,36 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `equipLearnFlag` self-guards — measured, not assumed.
   Sites: `packages/core/src/game/chest.ts:268`, `:346`
 
-- [ ] **2.5 Run the `PN_IGNORE` notice pass.** *(needs 1.1)*
+- [x] **2.5 Run the `PN_IGNORE` notice pass.** DONE (with **1.1**).
   Set at `packages/core/src/session/game.ts:542`, never read, so becoming aware
-  of a kind never drops the newly-ignored items. `ignoreDropTargets` exists
-  (`packages/core/src/game/ignore-cmd.ts:45`) and the menu / `K` trigger *is*
-  reproduced — only the become-aware trigger is missing.
+  of a kind never dropped the newly-ignored items. `ignoreDropTargets` existed
+  (`packages/core/src/game/ignore-cmd.ts:45`) and the menu / `K` trigger *was*
+  reproduced — only the become-aware trigger was missing.
   Sites: `packages/core/src/game/context.ts:297`,
   `packages/core/src/session/game.ts:542`,
   `packages/core/src/obj/knowledge.ts:1366`
+
+  `ignore_drop` itself is now core (`ignoreDrop`, `game/ignore-cmd.ts`), which is
+  the part that mattered: the shell held the **only** copy of the queue-a-drop
+  rule, so the pass could only ever run from a keypress. Both callers now share
+  it, and `state.noticeIgnore` — a bespoke boolean that stood in for the bit — is
+  gone in favour of the real `PN_IGNORE`.
+
+  **The one thing core cannot do is confirm an equipped item.** Upstream asks
+  `verify_object` inline (`obj-ignore.c` L666); every confirmation in this port is
+  the shell's and asynchronous, and `notice_stuff` runs inside the synchronous
+  turn loop. So `ignoreDrop` *returns* those targets rather than deciding them,
+  and the notice pass leaves them alone — which is complete rather than a gap,
+  since an untouched target is still ignore-eligible and the confirm-capable
+  `=` / `K` pass offers it on the next press. What core must **not** do is write
+  `"!d"` on the player's behalf; upstream only does that after a real refusal, and
+  a test asserts core does not.
+
+  Also ported here: `background_command` (`PlayerCommand.background`). Upstream's
+  auto-drops are queued with `background_command = 2`, which exempts them from the
+  bloodlust coercion roll (`cmd-core.c:360`). Without it `processPlayer` would
+  draw `randint0(200)` for every auto-drop and move every later draw in the turn —
+  asserted as a draw **count**, not as a property of the flag.
 
 - [ ] **2.6 `known_only` does not exist.**
   `obj-info.c` calls `calc_bonuses` with `known_only = true` at six sites; the
@@ -375,7 +504,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/store/transact.ts:26`,
   `parity/ledger/player-history.yaml:160`
 
-- [x] **2.18 `do_cmd_wiz_play_item` skipped two of its four commit steps.**
+- [x] **2.20 `do_cmd_wiz_play_item` skipped two of its four commit steps.**
   NEW, found by walking every `object_touch` caller while closing 2.16 — in the
   tier the first correction at the top of this file declared **closed**.
 
@@ -816,13 +945,15 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**66 items, 111 citations, 81 `real` + 30
+2. the counts stated at the top (**67 items, 111 citations, 81 `real` + 30
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
-   and the citation count are coupled here but are not the same measurement: 2.18
-   was found by reading, not by the census, so it moved 65 to 66 while the
-   citations stayed at 111. This guard is what forced that difference to be
-   written down rather than absorbed;
+   and the citation count are coupled here but are not the same measurement: 2.20
+   and 1.3 were found by READING, not by the census, so they moved 65 to 67 while
+   the citations stayed at 111. This guard is what forced that difference to be
+   written down rather than absorbed - and it also caught a duplicate item NUMBER
+   (two 2.18s, from adding one while one existed), because renumbering is the only
+   way to keep an item referable;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
    cannot rot into fiction after a rename.
 

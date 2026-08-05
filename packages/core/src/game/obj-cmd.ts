@@ -29,7 +29,7 @@
 import type { Constants } from "../constants.js";
 import { EFFECT_ENTRIES, EQUIP_SLOT_ENTRIES, OF, TMD } from "../generated/index.js";
 import { DDD } from "../loc.js";
-import { SKILL } from "../player/types.js";
+import { PN, SKILL } from "../player/types.js";
 import { EffectBuilder } from "../effects/effect.js";
 import type { Effect, EffectBuilderInjections } from "../effects/effect.js";
 import { sourcePlayer } from "../effects/interpreter.js";
@@ -70,6 +70,7 @@ import {
   calcInventory,
   combinePack,
   gearGet,
+  objectIsCarried,
   gearObjectForUse,
   gearToLabel,
   invenCarry,
@@ -401,9 +402,15 @@ export function invenWield(
     }
   }
 
-  /* See if we have to overflow the pack (L1009-1010). */
+  /* See if we have to overflow the pack (L1009-1010). Note these two are DIRECT
+   * calls in the C, not notice bits - wield_item wants the pack combined before
+   * pack_overflow picks a victim, so it cannot wait for notice_stuff. */
   combinePack(state.gear, constants, overflowCalcInv(opts));
   packOverflow(state, oldHandle, constants, opts);
+
+  /* PN_IGNORE (obj-gear.c L1013): what you have just put on can change what
+   * counts as ignorable - a better weapon makes the old one junk. */
+  state.actor.player.upkeep.notice |= PN.IGNORE;
 
   /* object_learn_on_wield's player_learn_rune tail-calls
    * update_player_object_knowledge (obj-knowledge.c L1373): the wield learns the
@@ -822,6 +829,11 @@ export function refillLamp(
     } else {
       obj.timeout = 0;
     }
+    /* "Combine the pack (later)" (cmd-obj.c L1042). Only the lantern-donor
+     * branch raises it in the C, and that is consistent rather than an
+     * oversight: the flask branch below goes through gearObjectForUse, which
+     * raises the same bit itself. */
+    state.actor.player.upkeep.notice |= PN.COMBINE;
   } else {
     /* Refilled from a flask: consume one unit entirely. */
     if (opts.fromFloor) {
@@ -834,18 +846,6 @@ export function refillLamp(
   /* PU_TORCH: force the light-radius recalc so a just-refuelled, previously
    * spent (timeout 0) lantern stops reading as dark (player/calcs.ts). */
   state.updateBonuses?.();
-}
-
-/** Is `obj` presently carried (pack or equipped), by identity? */
-function objIsCarried(state: GameState, obj: GameObject): boolean {
-  for (const [handle, stored] of state.gear.store) {
-    if (stored !== obj) continue;
-    return (
-      state.gear.pack.includes(handle) ||
-      state.actor.player.equipment.includes(handle)
-    );
-  }
-  return false;
 }
 
 /**
@@ -942,7 +942,12 @@ export function applyAutoinscription(
 
   if (!note) return 0;
   if (obj.note) return 0;
-  if (!objIsCarried(state, obj)) return 0;
+  /* object_is_carried (obj-ignore.c:270). This used to be a private copy that
+   * additionally required the handle to be in `pack` or `equipment`; upstream's
+   * is pile_contains(p->gear, obj) and nothing more (obj-gear.c:155-158), and
+   * gear.store IS that pile. The stricter test was invented, and it was the third
+   * copy of this predicate in the tree. */
+  if (!objectIsCarried(state.gear, obj)) return 0;
   if (ignoreItemOk(obj, state.ignore, aware)) return 0;
 
   obj.note = note.length > 0 ? note : null;
@@ -1189,16 +1194,22 @@ export function playerConfuseDir(
 }
 
 /**
- * object_learn_on_use (obj-knowledge.c L1925-1936), XP slice (gap 4.3): the
- * flavor-awareness half is handled by the caller (objectFlavorAware); this adds
- * the experience reward player_exp_gain(p, (lev + p->lev/2)/p->lev) with lev the
- * used object's KIND level. Integer division throughout, exactly as upstream.
+ * object_learn_on_use (obj-knowledge.c L1925-1936), the XP + notice tail (gap
+ * 4.3): the flavor-awareness half is handled by the caller (objectFlavorAware);
+ * this adds the experience reward player_exp_gain(p, (lev + p->lev/2)/p->lev)
+ * with lev the used object's KIND level - integer division throughout, exactly as
+ * upstream - and L1935's PN_IGNORE.
+ *
+ * PN_IGNORE is raised whether or not an expGain hook is bound, which is why it
+ * comes first: it is upstream's own last line and does not depend on the reward.
  */
 function objectLearnOnUseXp(
   state: GameState,
   obj: GameObject,
   deps: ObjCmdDeps,
 ): void {
+  /* L1935: learning what a kind IS is the moment it can become ignorable. */
+  state.actor.player.upkeep.notice |= PN.IGNORE;
   if (!deps.expGain) return;
   const p = state.actor.player;
   const lev = obj.kind.level;
@@ -1578,6 +1589,10 @@ function useCommand(
       const left = state.gear.store.get(found.handle);
       if (left) applyAutoinscription(state, left, deps);
     }
+    /* "Mark as tried and redisplay" PN_COMBINE (cmd-obj.c L722), after the
+     * autoinscribe rather than before, so a note applied on this line is what
+     * the pending combine pass tests for mergeability. */
+    state.actor.player.upkeep.notice |= PN.COMBINE;
     return result.turnSpent ? state.z.moveEnergy : 0;
   };
 }
@@ -1743,6 +1758,11 @@ export function installObjCommands(
      * in yet. (The old comment here cited L1060 for combine_pack; L1060 is
      * update_stuff inside inven_takeoff.) */
     calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
+    /* PN_IGNORE (obj-gear.c L1061), raised inside inven_takeoff alongside the
+     * PU_INVEN above and so placed here rather than after the message: taking
+     * something off can make it ignorable, and this is the line at which it
+     * stopped being equipment. */
+    state.actor.player.upkeep.notice |= PN.IGNORE;
     /* inven_takeoff's message (obj-gear.c L1046-1065): the slot wording, then
      * the item named at its new pack label. */
     if (obj) {
@@ -1921,16 +1941,23 @@ export function installObjCommands(
    * renders " {}"). This port intentionally maps "" -> null instead: it is
    * a deliberate normalization (not literal parity) that keeps note's
    * truthiness meaningful for objectStackable/objectCombine (object.ts
-   * L844/L920), which already compare/merge notes by truthiness. No
-   * energy; upstream's PN_COMBINE/PN_IGNORE notice + PR_INVEN/PR_EQUIP
-   * redraw are UI bookkeeping this port doesn't model (combine already runs
-   * lazily on the next inven_carry; ignore/display refresh is #25). */
+   * L844/L920), which already compare/merge notes by truthiness. No energy.
+   *
+   * PN_COMBINE | PN_IGNORE (L211) is raised, and it is not bookkeeping. The
+   * previous version of this comment called the notice mask "UI bookkeeping this
+   * port doesn't model", on the grounds that "combine already runs lazily on the
+   * next inven_carry" - inven_carry absorbs the INCOMING object into a matching
+   * stack and never runs combine_pack, and nothing about inscribing implies a
+   * later pickup. The consequence was live: since a note is part of the
+   * mergeability test on the line above, un-noting two halves of a split stack
+   * left them in two pack slots for the rest of the game. */
   registry.register("inscribe", gated((state, cmd) => {
     const found = commandObject(state, cmd);
     if (!found) return 0;
     const raw = cmd.args?.["inscription"];
     const text = typeof raw === "string" ? raw : "";
     found.obj.note = text.length > 0 ? text : null;
+    state.actor.player.upkeep.notice |= PN.COMBINE | PN.IGNORE;
     return 0;
   }));
 
@@ -1940,6 +1967,9 @@ export function installObjCommands(
     if (!found || !objHasInscrip(found.obj)) return 0;
     found.obj.note = null;
     deps.env?.msg?.("Inscription removed.");
+    /* PN_COMBINE | PN_IGNORE (L172): removing "!d"/"=g" can make the object
+     * ignorable as well as mergeable, which is why upstream raises both. */
+    state.actor.player.upkeep.notice |= PN.COMBINE | PN.IGNORE;
     return 0;
   }));
 

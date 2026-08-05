@@ -154,9 +154,17 @@ describe("W2-007 live tweak dispatch", () => {
     /* upkeep->inven[] is derived (calc_inventory) and it is what the item
      * pickers list; a fixture that only fills the master gear list has none. */
     calcInventory(gear, constants);
+    /* A hand-written player stub, cast through `unknown` below, cannot be told
+     * off by the type system when core grows a field it reads - which is how
+     * this fixture came to have no `upkeep` at all. Every field the wizard path
+     * actually touches is spelled out, and the ones that exist only to satisfy a
+     * read are marked as such. */
     const player = {
       equipment: [],
       objKnown: { dd: 1, ds: 1, ac: 1, toA: 1, toH: 1, toD: 1 },
+      /* wiz_play_item_standard_upkeep raises PN_COMBINE here (cmd-wizard.c
+       * L370). Not decoration: without it the tweak throws. */
+      upkeep: { playing: true, newSpells: 0, totalWeight: 0, notice: 0 },
     };
     const state = {
       actor: { player },

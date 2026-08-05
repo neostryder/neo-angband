@@ -56,6 +56,7 @@ import { playerClearTimed, playerTimedGradeEq } from "../player/timed.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
 import { gearGet } from "./gear.js";
+import { noticeStuff } from "./notice.js";
 import { floorPile } from "./floor.js";
 import { isTrappedChest } from "../obj/chest.js";
 import {
@@ -891,6 +892,11 @@ export function processPlayer(
   do {
     if (state.isDead || state.generateLevel) break;
 
+    /* notice_stuff(player) (game-world.c:942), the first line of the refresh
+     * block: the ignore and combine passes owed by whatever ran last, drained
+     * BEFORE pack_overflow so the overflow sees a combined pack. */
+    noticeStuff(state);
+
     /* game-world.c:941-947: after the refresh equivalent and before command
      * preparation, recover an overfull/corrupt pack using calc_inventory's
      * sorted inven[] view. */
@@ -933,8 +939,16 @@ export function processPlayer(
      * coercion roll is drawn (unconditionally, even at zero bloodlust,
      * matching upstream's randint0(200) < timed[TMD_BLOODLUST]); on success
      * the command is dropped and a random adjacent monster is attacked.
-     * skip_cmd_coercion is not modelled (save gap 12.6, WP-10). */
-    if (!commanding && !NON_COERCION_COMMANDS.has(cmd.code)) {
+     * skip_cmd_coercion is not modelled (save gap 12.6, WP-10).
+     *
+     * background_command > 1 is exempt (cmd-core.c:360): ignore_drop
+     * queues its auto-drops that way, and drawing the roll for them would move
+     * every later draw in the turn. */
+    if (
+      !commanding &&
+      !NON_COERCION_COMMANDS.has(cmd.code) &&
+      (cmd.background ?? 0) <= 1
+    ) {
       if (
         state.rng.randint0(200) <
         (state.actor.player.timed[TMD.BLOODLUST] ?? 0)
@@ -958,6 +972,11 @@ export function processPlayer(
       energyUsed = use;
     }
   } while (energyUsed === 0 && !state.isDead && !state.generateLevel);
+
+  /* "Notice stuff (if needed)" (game-world.c:995-996), after the do-loop: the
+   * command that just spent energy may have raised a bit, and this is where
+   * upstream drains it rather than leaving it for the next turn. */
+  noticeStuff(state);
 
   return { needsInput: false, energyUsed };
 }

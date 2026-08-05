@@ -77,7 +77,7 @@ import type { Loc } from "../loc.js";
 import { PY_MAX_EXP, playerExpGain, playerExpLose } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
 import { PY_MAX_LEVEL } from "../player/calcs.js";
-import { STAT_MAX } from "../player/types.js";
+import { PN, STAT_MAX } from "../player/types.js";
 import {
   applyMagic,
   copyArtifactData,
@@ -709,7 +709,26 @@ export function wizCurseItem(
   } else if (!removeObjectCurse(obj, index)) {
     return false;
   }
+  wizPlayItemStandardUpkeep(state, obj); /* L1057. */
   return true;
+}
+
+/**
+ * wiz_play_item_standard_upkeep (cmd-wizard.c L370): "the typical updates needed
+ * to upkeep flags after playing with an item". Of PU_BONUS | PU_INVEN |
+ * PN_COMBINE | PR_INVEN | PR_EQUIP - or PR_ITEMLIST for an uncarried object -
+ * only the notice bit is owed; the rest is the ratified update/redraw divergence
+ * (game/known.ts:153). Since only the carried branch raises it, an object being
+ * edited on the floor asks for nothing.
+ *
+ * Six C call sites, one per editing command (L568, L1057, L1715, L2351, L2783,
+ * and twice inside the WIZ_TWEAK macro at L2828/L2847). All are wired; the
+ * WIZ_TWEAK pair collapses into wizTweakItem's single tail because the macro's
+ * two expansions are the same statement on the same object.
+ */
+function wizPlayItemStandardUpkeep(state: GameState, obj: GameObject): void {
+  if (!objectIsCarried(state.gear, obj)) return;
+  state.actor.player.upkeep.notice |= PN.COMBINE;
 }
 
 /**
@@ -997,6 +1016,15 @@ export function wizRerollItem(
     dst.flags = src.flags;
   }
   obj.origin = ORIGIN.CHEAT;
+  /* L2349-2354. Upstream branches on the command's "update" choice between this
+   * and wiz_play_item_notify_changed (a UI-only signal); called unconditionally
+   * here because the false branch is the play-item flow, whose Accept raises the
+   * same bit anyway, and a bit set twice is set once.
+   *
+   * Note that obj.weight was just overwritten from the reroll without touching
+   * upkeep->total_weight. That is upstream's wart, not an omission - C's
+   * object_copy at L2336 does the same - and core keeps warts. */
+  wizPlayItemStandardUpkeep(state, obj);
   return true;
 }
 
@@ -1104,6 +1132,8 @@ export function wizTweakItem(
   if (params.toA !== undefined) obj.toA = params.toA;
   if (params.toH !== undefined) obj.toH = params.toH;
   if (params.toD !== undefined) obj.toD = params.toD;
+  /* L2783 plus the WIZ_TWEAK macro's own two calls (L2828, L2847). */
+  wizPlayItemStandardUpkeep(state, obj);
   return true;
 }
 
@@ -1473,6 +1503,7 @@ export function wizChangeItemQuantity(
   }
 
   obj.number = n;
+  wizPlayItemStandardUpkeep(state, obj); /* L568. */
   return { number: n, max: nmax, changed: true };
 }
 
@@ -1607,6 +1638,11 @@ export function wizPlayItemAccept(
     objectLearnOnWield(state.actor.player, obj, state.runeEnv);
     updatePlayerObjectKnowledge(state); /* player_learn_rune sweep (L1373). */
   }
+
+  /* (4) L1715-1716. The step this function stopped one line short of when the
+   * first three landed - the docblock even said "L1708-1714". An edit that
+   * changes the item's identity is exactly when the pack may need combining. */
+  wizPlayItemStandardUpkeep(state, obj);
   return true;
 }
 

@@ -128,7 +128,8 @@ import {
   enterStoreGuard,
   TARGET,
   TMD,
-  ignoreDropTargets,
+  ignoreDrop,
+  ignoreDropQueue,
   projectPath,
   PROJECT,
   initTargetLoopUi,
@@ -3110,22 +3111,31 @@ function confirmYesNo(title: string): Promise<boolean> {
  * no modal open - the faithful stand-in for upstream's square_isshop guard.
  */
 async function applyIgnoreDrop(): Promise<void> {
-  let dropped = false;
-  for (const target of ignoreDropTargets(state)) {
+  /* The unequipped half, the "!d"/"!*" skips, the square_isshop guard and the
+   * PN_COMBINE tail are core's (game/ignore-cmd.ts ignoreDrop) - the same
+   * function notice_stuff calls, so there is one copy of the policy. What comes
+   * back is the equipped targets, which need upstream's inline verify_object
+   * (obj-ignore.c L666) and are therefore the only part that lives here. */
+  const { needConfirm, queued } = ignoreDrop(state);
+  let dropped = queued > 0;
+  for (const target of needConfirm) {
     const obj = gearGet(state.gear, target.handle);
     if (!obj) continue;
-    if (target.equipped) {
-      const name = objectName(state, obj);
-      const yes = await confirmYesNo(`Really take off and drop ${name}? `);
-      if (!yes) {
-        obj.note = obj.note ? `${obj.note}!d` : "!d";
-        continue;
-      }
+    const name = objectName(state, obj);
+    const yes = await confirmYesNo(`Really take off and drop ${name}? `);
+    if (!yes) {
+      /* The upstream Hack: inscribe "!d" so the same question stops being
+       * asked. Only ever written after a real refusal - which is why core
+       * cannot do this half. */
+      obj.note = obj.note ? `${obj.note}!d` : "!d";
+      continue;
     }
-    commandBuffer.push({
-      code: "drop",
-      args: { handle: target.handle, quantity: target.number },
-    });
+    /* Queued through core, onto state.cmdQueue - upstream's single cmdq - so
+     * this drop carries the same background_command = 2 as the unequipped ones.
+     * It used to go onto the shell's own commandBuffer without the flag, which
+     * both lost the bloodlust exemption and put one upstream mechanism's
+     * commands in two different queues. */
+    ignoreDropQueue(state, target);
     dropped = true;
   }
   if (dropped) advance();
