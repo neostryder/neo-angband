@@ -698,7 +698,20 @@ export function serializePlayer(
     },
     shapeName: p.shape ? p.shape.name : null,
     skills: [...p.skills],
-    upkeep: { ...p.upkeep },
+    /* THE THREE DECLARED FIELDS, NAMED. `{ ...p.upkeep }` wrote whatever the live
+     * object happened to hold, which is not what the type above says: `notice`,
+     * `dropping`, `repeatPrevAllowed` and `lastCmdUsedFloorItem` are transients
+     * that exist only within a turn, and every one of them was leaking into the
+     * savefile as soon as it was added - the declared type never objected,
+     * because a spread satisfies a narrower type by supplying MORE. Upstream's
+     * wr_player writes no part of upkeep at all. Named fields make the type the
+     * authority, and adding a fifth transient can no longer widen the save
+     * format by accident. */
+    upkeep: {
+      playing: p.upkeep.playing,
+      newSpells: p.upkeep.newSpells,
+      totalWeight: p.upkeep.totalWeight,
+    },
     quests: p.quests.map((q) => ({ ...q })),
     totalWinner: p.totalWinner,
   };
@@ -816,7 +829,15 @@ export function deserializePlayer(
    * of work owed within a turn, and a save can only happen with the queue
    * drained. A loaded character therefore starts it at 0 rather than at
    * whatever a spread of the serialized subset would leave undefined. */
-  p.upkeep = { ...data.upkeep, notice: 0, dropping: false };
+  p.upkeep = {
+    ...data.upkeep,
+    notice: 0,
+    dropping: false,
+    /* cmd-core.c:260's static initialiser: a loaded game starts with the repeat
+     * key inert, because there is no remembered command to repeat. */
+    repeatPrevAllowed: false,
+    lastCmdUsedFloorItem: false,
+  };
   p.quests = data.quests ? data.quests.map((q) => ({ ...q })) : [];
   p.totalWinner = data.totalWinner ?? false;
   return p;

@@ -25,6 +25,7 @@
  */
 
 import type { Loc } from "../loc.js";
+import { locEq } from "../loc.js";
 import { ELEM, PROJ } from "../generated/index.js";
 import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
@@ -35,6 +36,7 @@ import { squareIsSeen } from "../world/view.js";
 import type { GameState } from "./context.js";
 import { describeObject } from "./describe.js";
 import { floorExcise, floorPile } from "./floor.js";
+import { cmdDisableRepeatFloorItem } from "./repeat.js";
 import { gearObjectForUse, gearToLabel } from "./gear.js";
 
 /**
@@ -196,6 +198,12 @@ export function projectObject(
       /* Describe the destruction if it is observed (L566-571). */
       if (observed && noteKill) {
         env.msg?.(`The ${describeObject(state, obj, ODESC.BASE)} ${noteKill}!`);
+      }
+      /* "Prevent command repetition, if necessary" (project-obj.c:573-576):
+       * gated on the destroyed object being on the PLAYER's own grid, which is
+       * the only pile a remembered args.floor can index. */
+      if (locEq(grid, state.actor.grid)) {
+        cmdDisableRepeatFloorItem(state.actor.player);
       }
       floorExcise(state, grid, obj);
     }

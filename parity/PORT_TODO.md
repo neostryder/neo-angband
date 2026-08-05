@@ -6,10 +6,10 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**67 items covering all 111 confirmed-absent citations** — 13 closed, 54 open.
+**67 items covering all 111 confirmed-absent citations** — 14 closed, 53 open.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
-declared *closed*. Three of the thirteen closures are retractions rather than
+declared *closed*. Three of the fourteen closures are retractions rather than
 work — **2.16** asked for a call upstream does not make, **2.1**'s own scope was
 overstated by a factor of seven, and **2.15** was already built and named by a
 stale `DEFERRED` comment (whose neighbourhood then yielded a real gap). Both are written up in place, because a
@@ -520,9 +520,62 @@ is reachable in play and a test constructs the case that used to be wrong.**
   a fully-known mismatch must block the merge. The shadow can answer both.
   Sites: `packages/core/src/obj/object.ts:923`, `:1000`
 
-- [ ] **2.12 `cmd_disable_repeat_floor_item`.**
+- [x] **2.12 `cmd_disable_repeat_floor_item`.** DONE — and the item pointed at a
+  class with no callers.
+
   `repeatAllowed` in `cmd.ts` is a static table property, not the runtime
-  disable-for-this-item call.
+  disable-for-this-item call — **true, and beside the point.** `cmd.ts`'s
+  `CommandQueue` is a faithful port of upstream's whole ring buffer,
+  `repeat_prev_allowed` and `disableRepeat` and the `cmdq_push_copy` gate
+  included, and **nothing drives it**. `packages/core/src/mod/registry-host.ts:15`
+  says so in as many words: *"cmd.ts CommandQueue is a faithful port the web loop
+  does not drive."* Adding `cmd_disable_repeat_floor_item` there would have been
+  exactly faithful and completely inert — the
+  [[shipped-is-not-reachable]] shape, arrived at from the other direction.
+
+  The repeat the player gets is the shell re-dispatching `lastRepeatCmd`, and it
+  had **no gate at all**. So all **seven** `cmd_disable_repeat` sites and all
+  **four** `cmd_disable_repeat_floor_item` sites were unported on the path that
+  runs: taking the last of a stack, wielding, a full `combine_pack`, taking the
+  last of a floor pile, creating a trap in wizard mode, leaving a store, the
+  player changing grid (twice — `monster_swap` has two mirrored branches), an
+  object destroyed by a projection at the player's feet, and a level change.
+
+  **The floor case is worse in this port than in the C.** Upstream's guard exists
+  to avoid dereferencing an object pointer the command still holds after the
+  object was freed; its own comment says so. This port addresses a floor object as
+  `args.floor`, an INDEX into the pile under the player. An index does not
+  dangle — it **re-binds**. Quaff the first potion off a two-item pile and press
+  the repeat key, and index 0 is the other object. `repeat.test.ts` asserts that
+  re-binding directly, before asserting the guard, because if it were false the
+  whole justification would be.
+
+  `repeat_prev_allowed` lives on `player.upkeep` rather than in a module static,
+  and the reason is written at the field: three of its writers are in
+  `game/gear.ts`, which sits below `game/context.ts` and cannot see a GameState.
+  The alternative was a `disableRepeat?: () => void` threaded through four call
+  chains — a parameter every future caller has to remember. `combine_pack`'s
+  disable rides a new `combinePackForPlayer` rather than a fourth parameter,
+  because eleven of `combinePack`'s fourteen callers are tests with no Player.
+
+  **One of the seven is genuinely not owed, and that is recorded as a finding:**
+  `do_cmd_accept_character`'s disable (`player-birth.c:1309`, *"so we don't try to
+  be born again"*) guards `CMD_BIRTH_*` sharing a queue with game commands. Birth
+  is a shell flow here, not a registry command, so `lastRepeatCmd` can never hold
+  a birth step.
+
+  10 tests, 9 mutations. Two survived the first pass and both were fixed rather
+  than explained away: the second `monster_swap` branch had no test (every other
+  test entered through the first), and the L556 short-circuit turns out to be
+  **unobservable** — clearing an already-false flag is a no-op, so no test could
+  exist that deleting it would kill. That is marked in the code, not counted.
+
+  > **Found on the way, and it had nothing to do with repeat:** `save.ts` wrote
+  > `upkeep: { ...p.upkeep }` while its declared type named three fields. A spread
+  > satisfies a narrower type by supplying MORE, so every transient added to
+  > upkeep — `notice` and `dropping` earlier today, these two now — had been
+  > silently widening the **save format**. The three fields are named explicitly
+  > now. The save round-trip guard caught it, which is what it is for.
   Sites: `parity/ledger/cmd-core.yaml:25`
 
 - [ ] **2.13 `EF_TOUCH`'s monster-source branches.**

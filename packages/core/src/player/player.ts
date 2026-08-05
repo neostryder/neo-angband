@@ -57,6 +57,31 @@ export interface PlayerUpkeep {
    * serialized, like `notice`.
    */
   dropping: boolean;
+  /**
+   * cmd-core.c's `repeat_prev_allowed` static (L260): whether the repeat key may
+   * re-dispatch the remembered command. Set true before every command's handler
+   * runs (L353) and cleared by the handlers that must not be repeated.
+   *
+   * UPSTREAM KEEPS THIS IN cmd-core.c, not in upkeep, and the move is deliberate
+   * rather than sloppy. Three of its seven writers - gear_object_for_use,
+   * inven_wield, combine_pack - are in game/gear.ts, which sits BELOW
+   * game/context.ts and cannot see a GameState. The alternatives were a
+   * `disableRepeat?: () => void` parameter threaded through four call chains,
+   * which is a seam every future caller has to remember
+   * ([[a-parameter-the-caller-must-remember]]), or this. It is the same kind of
+   * per-command transient as `notice` and `dropping` above, and it lands where
+   * everything that writes it can already reach.
+   */
+  repeatPrevAllowed: boolean;
+  /**
+   * Whether the last command addressed a FLOOR object, for
+   * cmd_disable_repeat_floor_item (cmd-core.c:548). Upstream walks the queued
+   * command's args for an `arg_ITEM` whose object has a real grid, to avoid
+   * dereferencing a freed pointer. This port addresses a floor object as
+   * `args.floor`, an INDEX into the pile, and an index does not dangle - it
+   * silently re-binds to whatever is at that position now.
+   */
+  lastCmdUsedFloorItem: boolean;
 }
 
 /**
@@ -351,7 +376,16 @@ export function blankPlayer(
     totalWinner: false,
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
-    upkeep: { playing: false, newSpells: 0, totalWeight: 0, notice: 0, dropping: false },
+    upkeep: {
+      playing: false,
+      newSpells: 0,
+      totalWeight: 0,
+      notice: 0,
+      dropping: false,
+      /* cmd-core.c:260's static initialiser. */
+      repeatPrevAllowed: false,
+      lastCmdUsedFloorItem: false,
+    },
   };
 }
 

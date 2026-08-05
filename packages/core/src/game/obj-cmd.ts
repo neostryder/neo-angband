@@ -63,12 +63,13 @@ import {
 import type { FlavorAwareDeps } from "../obj/knowledge.js";
 import { ignoreItemOk } from "../obj/ignore.js";
 import type { GameState, ItemTargetRef, PlayerCommand } from "./context.js";
+import { cmdDisableRepeat } from "./repeat.js";
 import { dropNear, floorObjectForUse, floorPile } from "./floor.js";
 import type { FloorEnv } from "./floor.js";
 import type { TeleportEnv } from "./effect-teleport.js";
 import {
   calcInventory,
-  combinePack,
+  combinePackForPlayer,
   gearGet,
   objectIsCarried,
   gearObjectForUse,
@@ -405,12 +406,17 @@ export function invenWield(
   /* See if we have to overflow the pack (L1009-1010). Note these two are DIRECT
    * calls in the C, not notice bits - wield_item wants the pack combined before
    * pack_overflow picks a victim, so it cannot wait for notice_stuff. */
-  combinePack(state.gear, constants, overflowCalcInv(opts));
+  combinePackForPlayer(state.gear, state.actor.player, constants, overflowCalcInv(opts));
   packOverflow(state, oldHandle, constants, opts);
 
   /* PN_IGNORE (obj-gear.c L1013): what you have just put on can change what
    * counts as ignorable - a better weapon makes the old one junk. */
   state.actor.player.upkeep.notice |= PN.IGNORE;
+
+  /* "Disable repeats" (obj-gear.c:1020), inven_wield's last statement: the pack
+   * letters have all shifted, so re-dispatching the remembered command would
+   * wield whatever is at the old letter now. */
+  cmdDisableRepeat(state.actor.player);
 
   /* object_learn_on_wield's player_learn_rune tail-calls
    * update_player_object_knowledge (obj-knowledge.c L1373): the wield learns the
@@ -1779,7 +1785,12 @@ export function installObjCommands(
      * obj-gear.c L1060) then pack_overflow on the item just taken off
      * (cmd-obj.c L255-257). */
     const opts = packOpts(state, deps);
-    combinePack(state.gear, deps.constants, calcInvOpts(state, deps));
+    combinePackForPlayer(
+      state.gear,
+      state.actor.player,
+      deps.constants,
+      calcInvOpts(state, deps),
+    );
     packOverflow(state, handle, deps.constants, opts);
     return Math.trunc(state.z.moveEnergy / 2);
   }));

@@ -128,8 +128,10 @@ import {
   enterStoreGuard,
   TARGET,
   TMD,
+  cmdDisableRepeat,
   ignoreDrop,
   ignoreDropQueue,
+  repeatPrevAllowed,
   projectPath,
   PROJECT,
   initTargetLoopUi,
@@ -6031,6 +6033,16 @@ state.checkInterrupt = (): InterruptResponse => {
  */
 function repeatLastCommand(): void {
   if (!lastRepeatCmd) return;
+  /* cmdq_push_copy's CMD_REPEAT gate (cmd-core.c:296-297): the command that
+   * ran last gets to say it must not be repeated, and seven `cmd_disable_repeat`
+   * sites plus four `cmd_disable_repeat_floor_item` sites say so. This check did
+   * not exist - cmd.ts's CommandQueue has the whole mechanism and nothing drives
+   * it (mod/registry-host.ts:15), so the repeat the player gets was ungated.
+   *
+   * The floor case is the sharp one: a floor item is `args.floor`, an INDEX into
+   * the pile under the player, so re-dispatching after the pile changed or the
+   * player stepped away acted on a DIFFERENT object rather than failing. */
+  if (!repeatPrevAllowed(state.actor.player)) return;
   commandBuffer.push({ ...lastRepeatCmd });
   advance();
 }
@@ -7542,7 +7554,12 @@ function enterStoreModal(store: Store): Promise<void> {
         quiver: () => showTextScreen(term, "Quiver", quiverLines()),
       },
     }),
-  );
+  ).then(() => {
+    /* leave_store's "Disable repeats" (ui-store.c:1315-1317). A store visit
+     * rearranges the pack wholesale, so the remembered command's handle or floor
+     * index no longer means what it did when it was recorded. */
+    cmdDisableRepeat(state.actor.player);
+  });
 }
 
 /** The store the player is currently standing on (square_shopnum), or null. */
