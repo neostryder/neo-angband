@@ -58,7 +58,7 @@ import type { ObjRegistry } from "../obj/bind.js";
 import { egoApplyMagic, makeObject } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import type { GameState } from "./context.js";
-import { gearObjectForUse } from "./gear.js";
+import { gearObjectForUse, objectIsCarried } from "./gear.js";
 import { dropNear, floorExcise } from "./floor.js";
 import { gameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
@@ -259,14 +259,6 @@ function say(ctx: EffectHandlerContext, text: string): void {
   ctx.env.messages?.msg(text);
 }
 
-/** object_is_carried: the object lives in the player's gear store. */
-function objectIsCarried(state: GameState, obj: GameObject): boolean {
-  for (const o of state.gear.store.values()) {
-    if (o === obj) return true;
-  }
-  return false;
-}
-
 /**
  * Destroy one item of the stack, wherever it lives (the recharge backfire /
  * staff consumption path: gear_object_for_use or floor_object_for_use plus
@@ -396,7 +388,7 @@ function enchantSpell(
   const name = describeObject(state, obj, ODESC.BASE);
   say(
     ctx,
-    `${objectIsCarried(state, obj) ? "Your" : "The"} ${name} glow${
+    `${objectIsCarried(state.gear, obj) ? "Your" : "The"} ${name} glow${
       obj.number > 1 ? "" : "s"
     } brightly!`,
   );

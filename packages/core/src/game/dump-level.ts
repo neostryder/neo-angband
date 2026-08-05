@@ -17,10 +17,11 @@
  */
 
 import { floorPile } from "./floor.js";
-import { squareIsEmpty, squareIsPlayer } from "./context.js";
+import { squareIsPlayer } from "./context.js";
 import { squareIsTrap, squareIsPlayerTrap, squareIsWebbed } from "./trap.js";
 import { squareIsVault, squareIsNoStairs } from "../gen/util.js";
 import type { GameState } from "./context.js";
+import { squareIsEmptyLive } from "./mon-place.js";
 
 /** dump_level_escaped_string (gen-util.c L1000-1026). */
 export function dumpLevelEscapedString(s: string): string {
@@ -92,7 +93,7 @@ export function dumpLevelBody(
         else if (squareIsTrap(state, grid) || squareIsPlayerTrap(state, grid)) s = alt ?? "^";
         else if (squareIsWebbed(state, grid)) s = alt ?? "w";
         else if (floorPile(state, grid).length > 0) s = alt ?? "$";
-        else if (squareIsEmpty(state, grid) && (squareIsVault(c, grid) || squareIsNoStairs(c, grid))) {
+        else if (squareIsEmptyLive(state, grid) && (squareIsVault(c, grid) || squareIsNoStairs(c, grid))) {
           s = alt ?? " ";
         } else if (c.isPassable(grid)) s = alt ?? ".";
       }

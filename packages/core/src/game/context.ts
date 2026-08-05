@@ -1106,16 +1106,23 @@ export function squareIsPlayer(state: GameState, grid: Loc): boolean {
   return locEq(grid, state.actor.grid);
 }
 
-/**
- * square_isempty reduced to the loop's needs: passable feature, no monster
- * and not the player. (Player-trap / web / object refinements DEFERRED.)
+/*
+ * There was a `squareIsEmpty(state, grid)` here, and it was NOT square_isempty:
+ * it tested passable / no monster / not the player, where upstream
+ * (cave-square.c:604) rejects a player trap, a web, any object, and requires
+ * FLOOR rather than merely passable. Its own comment said the refinements were
+ * DEFERRED, under the upstream name, at every call site.
+ *
+ * It is gone rather than repaired, because game/mon-place.ts already had the
+ * faithful port - squareIsEmptyLive - and the fix for a predicate with two
+ * definitions is not a third. This module cannot host the strict version in any
+ * case: the trap and web terms need game/trap.ts, which imports movePlayer from
+ * here, so the strict predicate has to live on the far side of that edge.
+ *
+ * `squareIsOpen`/`squareIsEmpty` in gen/util.ts are a separate pair over the
+ * generation-time Gen, and were faithful already - which is why the claim that
+ * this could shift level generation was wrong; see PORT_TODO 2.1.
  */
-export function squareIsEmpty(state: GameState, grid: Loc): boolean {
-  if (!state.chunk.inBounds(grid)) return false;
-  if (!state.chunk.isPassable(grid)) return false;
-  if (state.chunk.mon(grid) !== 0) return false;
-  return !squareIsPlayer(state, grid);
-}
 
 /**
  * monster_swap (mon-util.c:566-677): swap mon markers at two grids, update

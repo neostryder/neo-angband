@@ -69,6 +69,7 @@ import { scatterExt } from "../world/scatter.js";
 import { los } from "../world/view.js";
 import { monPop, monsterMax, monsterSwap, squareMonster } from "./context.js";
 import type { GameState } from "./context.js";
+import { trapPredicates } from "./trap.js";
 import { floorCarry } from "./floor.js";
 import type { FloorEnv } from "./floor.js";
 import { monsterGroupAssign, summonGroup } from "./mon-group.js";
@@ -149,15 +150,26 @@ export function squareIsOpenLive(state: GameState, grid: Loc): boolean {
   return state.chunk.isFloor(grid) && state.chunk.mon(grid) === 0;
 }
 
-/** square_isempty on the live cave: open, no objects, no player trap / web. */
+/**
+ * square_isempty on the live cave (cave-square.c:604): open, no objects, no
+ * player trap, no web.
+ *
+ * `preds` used to be honoured only when present - `preds?.isPlayerTrap(grid)` -
+ * which quietly made the trap and web terms vanish for every caller that did not
+ * pass it, leaving a predicate weaker than upstream's under upstream's name. It
+ * now falls back to trapPredicates(state), which needs nothing but the state, so
+ * the argument is a substitution point and no longer a switch that turns half
+ * the predicate off. Callers that inject their own still win.
+ */
 export function squareIsEmptyLive(
   state: GameState,
   grid: Loc,
   preds?: MonPlaceDeps["preds"],
 ): boolean {
   if (!state.chunk.inBounds(grid)) return false;
-  if (preds?.isPlayerTrap(grid)) return false;
-  if (preds?.isWebbed(grid)) return false;
+  const p = preds ?? trapPredicates(state);
+  if (p.isPlayerTrap(grid)) return false;
+  if (p.isWebbed(grid)) return false;
   if (!squareIsOpenLive(state, grid)) return false;
   const pile = state.floor.get(grid.y * state.chunk.width + grid.x);
   return !pile || pile.length === 0;

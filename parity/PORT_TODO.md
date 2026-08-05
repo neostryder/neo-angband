@@ -1,11 +1,18 @@
 # Every item that still needs porting
 
-**Dated 2026-08-04.** The work list derived from [DEFERRALS.md](DEFERRALS.md),
-which is the accounting of what was found and how each verdict was reached.
-This one is the checklist: **65 items covering all 111 confirmed-absent
-citations**, ordered so the things a player would notice come before the things
-only a developer sees, and so the two items that unlock a dozen others come
-first of all.
+**Dated 2026-08-04, last worked 2026-08-05.** The work list derived from
+[DEFERRALS.md](DEFERRALS.md), which is the accounting of what was found and how
+each verdict was reached. This one is the checklist, ordered so the things a
+player would notice come before the things only a developer sees, and so the
+items that unlock others come first of all.
+
+**66 items covering all 111 confirmed-absent citations** — 8 closed, 58 open.
+It started at 65; **2.18 was added by reading**,
+not by the census, and it landed in the tier this file had already declared
+closed. Two of the eight closures are retractions rather than work — **2.16** asked
+for a call upstream does not make, and **2.1**'s own scope was overstated by a
+factor of seven. Both are written up in place, because a corrected item is worth
+more than a deleted one: the shape of the error is the reusable part.
 
 > ### Correction, same day: the first cut of this list put finished work on it
 >
@@ -177,13 +184,45 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 2 — It changes what happens in play
 
-- [ ] **2.1 `square_isempty` is weaker than upstream's.**
-  `cave-square.c:604-608` rejects a player trap, a web and any object; the port
-  checks only passable / no monster / not the player, **at 48 call sites**.
-  Placement loops accept grids upstream rejects, which moves RNG draws — so this
-  can shift a whole level's generation. Fix the predicate, then check the 48
-  sites for any that wanted the weaker test. Wants a test constructing the three
-  rejecting cases, not asserting today's answer.
+- [x] **2.1 `square_isempty` was weaker than upstream's.** DONE — and **two of
+  this item's own numbers were wrong**, in the direction of overstating it.
+
+  **Not 48 call sites: seven, in five modules.** The 48 counted every occurrence
+  of the identifier repo-wide, and there were *three* definitions sharing two
+  spellings. `gen/util.ts:437` (generation-time, over `Gen`) and
+  `mon-place.ts:153` (`squareIsEmptyLive`) were **already faithful**; only
+  `context.ts`'s was weak.
+
+  **So it could NOT shift level generation.** `gen/gen-monster.ts` and
+  `gen/cave.ts` import the `gen/util.ts` predicate, which has the trap and object
+  terms. The claim that this "can shift a whole level's generation" was an
+  inference from the call count, not a reading of the imports.
+
+  What was real, and is now fixed:
+  - `context.ts`'s version tested **passable** / no monster / not the player. It
+    was missing the player trap, the web *and* the object, and `square_isopen`
+    requires **FLOOR**, not passable — so a rubble grid counted as empty.
+  - The seven sites are `effect-terrain.ts:281`, `:292`, `:766`,
+    `mon-ranged.ts:91`, `project-feat.ts:298`, `wizard.ts:1122`,
+    `dump-level.ts:95`. Every one mirrors a genuine `square_isempty` call in the
+    C (`effect-handler-general.c:2949`/`:2964`, `effect-handler-attack.c:1496`,
+    `mon-attack.c:260`, `project-feat.c:283`, `cmd-wizard.c:2608`), so all seven
+    wanted the strict test and none wanted the weak one.
+  - The weak definition is **deleted**, not repaired: `squareIsEmptyLive` was
+    already the faithful port, and the answer to a predicate with two definitions
+    is not a third. `context.ts` could not host the strict version anyway —
+    the trap and web terms need `game/trap.ts`, which imports `movePlayer` from
+    `context.ts`.
+  - **`squareIsEmptyLive`'s strict terms were themselves conditional.** It wrote
+    `preds?.isPlayerTrap(grid)`, so the trap and web checks evaporated for any
+    caller that passed no `preds` — which is every one of the seven. It now
+    defaults to `trapPredicates(state)`, needing nothing but the state.
+
+  Seven tests at the end of `mon-place.test.ts` construct each rejection
+  (including one that asserts the rubble fixture really is passable, so the
+  floor-vs-passable term cannot pass by accident) plus an acceptance case so the
+  rejections mean something. Restoring `preds?.` fails the trap and web tests;
+  restoring `isPassable` fails the rubble test.
   Sites: `packages/core/src/game/context.ts:1088`
 
 - [x] **2.2 Monster-vs-monster theft ignored `react_to_slay`.** DONE.
@@ -313,17 +352,56 @@ is reachable in play and a test constructs the case that used to be wrong.**
   The out-parameter carrying an out-of-depth magic book's value boost.
   Sites: `packages/core/src/obj/make.ts:1238`
 
-- [ ] **2.16 `history_find_artifact` on a store purchase.**
-  Narrowed by reading: `apply_autoinscription` **is** ported as a seam
-  (`packages/core/src/game/context.ts:259`, covered by
-  `packages/core/src/game/obj-cmd.test.ts:737`), and `history_lose_artifact`
-  fires on the destroy, abandon and store-discard paths
-  (`packages/core/src/game/context.ts:695`). One site is left: the purchase path
-  in `store/transact.ts` never calls `onArtifactFound`, which **is** installed and
-  used by pickup (`context.ts:687`). "Stores do not stock artifacts" is not a
-  reason to leave the call out — a mod can stock them, and the hook is there.
+- [x] **2.16 `history_find_artifact` on a store purchase.** CLOSED — **there is
+  no such call upstream, and the one that does exist is already ported.**
+
+  `store.c` contains exactly one `history_find_artifact`, at **L1928**, and
+  L1928 is inside **`do_cmd_sell`** (L1869–2008), not `do_cmd_buy` (L1650–1782).
+  Its own comment says so: *"Update the auto-history if selling an artifact that
+  was previously un-IDed. (Ouch!)"*. This item asked for the call on the
+  **purchase** path, where upstream does not make it.
+
+  And the sell path is wired: `session/game.ts:3162` (gear handle) and `:3207`
+  (floor object) both call `state.onArtifactFound`, citing `store.c L1928`, and
+  fire `onArtifactLost` when the store discards it (L1992).
+
+  The whole-surface check, since a wrong path name is exactly the kind of error
+  that hides a second one: `history_find_artifact` has **two** call sites
+  upstream — `store.c:1928` and `obj-knowledge.c:971` (inside `object_touch`).
+  `object_touch` is called from three places (`cave-square.c:1181`,
+  `obj-knowledge.c:1012`, `cmd-wizard.c:1707`); the first two are ported at
+  `game/known.ts:461` and `game/pickup.ts:303`. **The third was not** — see
+  the wizard finding below, which this check is what surfaced.
   Sites: `packages/core/src/store/transact.ts:26`,
   `parity/ledger/player-history.yaml:160`
+
+- [x] **2.18 `do_cmd_wiz_play_item` skipped two of its four commit steps.**
+  NEW, found by walking every `object_touch` caller while closing 2.16 — in the
+  tier the first correction at the top of this file declared **closed**.
+
+  Upstream does four things under `if (object_changed)` (cmd-wizard.c
+  L1685–1717): re-account `total_weight` when the number or unit weight changed
+  *and the object is carried*; `object_touch`; then, **only if equipped**, clear
+  the WORN notice and re-run `object_learn_on_wield`; then redraw. The port had
+  only the third.
+
+  - The weight step was excused as *"the total_weight / redraw upkeep is UI (the
+    shell's)"* — **true when written, false now.** `upkeep.totalWeight` became a
+    real running total in **1.2**, so the editor could change an item's quantity
+    and leave the burden the speed penalty reads out of step. The sibling command
+    `runChangeQuantity` had done the same arithmetic all along (`wizard.ts:1470`),
+    so two halves of one wizard screen disagreed. **A deferral note is dated
+    evidence, and a fix elsewhere can turn it into a defect.**
+  - `object_touch` sits *between* the weight block and the equipped-only branch
+    and is **not** gated on `equipped`, so an accepted edit to a pack item marked
+    nothing assessed and logged no artifact find.
+
+  `wizPlayItemAccept` now takes the `wizPlayItemBegin` snapshot, because the
+  weight diff is against the pre-edit stack. Three tests in `wizard.test.ts`
+  pin it, with ground truth from `gearTotalWeight` rather than from restating the
+  arithmetic; dropping the weight block, the touch, or the `object_is_carried`
+  gate each fails exactly one of them.
+  Sites: `packages/core/src/game/wizard.ts:1551`
 
 - [x] **2.17 Twelve of upstream's 53 `disturb()` sites had no port.** DONE
   (`505c38bae`+). **This item previously said "`disturb()` is exported and nothing
@@ -738,9 +816,13 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**65 items, 111 citations, 81 `real` + 30
+2. the counts stated at the top (**66 items, 111 citations, 81 `real` + 30
    `partial`**) disagree with the census — so a new `real` row in a file that
-   already appears cannot hide inside an existing item;
+   already appears cannot hide inside an existing item. Note that the item count
+   and the citation count are coupled here but are not the same measurement: 2.18
+   was found by reading, not by the census, so it moved 65 to 66 while the
+   citations stayed at 111. This guard is what forced that difference to be
+   written down rather than absorbed;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
    cannot rot into fiction after a rename.
 
