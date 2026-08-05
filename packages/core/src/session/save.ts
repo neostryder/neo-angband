@@ -816,7 +816,7 @@ export function deserializePlayer(
    * of work owed within a turn, and a save can only happen with the queue
    * drained. A loaded character therefore starts it at 0 rather than at
    * whatever a spread of the serialized subset would leave undefined. */
-  p.upkeep = { ...data.upkeep, notice: 0 };
+  p.upkeep = { ...data.upkeep, notice: 0, dropping: false };
   p.quests = data.quests ? data.quests.map((q) => ({ ...q })) : [];
   p.totalWinner = data.totalWinner ?? false;
   return p;

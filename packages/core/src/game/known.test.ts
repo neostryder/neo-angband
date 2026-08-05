@@ -32,7 +32,8 @@ import {
   squareMemorize,
   squareMemoryBad,
   squareSensePile,
-  tickMonsterMarks,
+  clearMonsterShow,
+  tickMonsterNiceAndMark,
   updateMon,
   updateMonsters,
 } from "./known.js";
@@ -492,7 +493,7 @@ describe("update_mon distance and determinism", () => {
   });
 });
 
-describe("tickMonsterMarks (process_world detection fade)", () => {
+describe("the detection fade (process_player_cleanup, game-world.c:867-908)", () => {
   it("a detection MARK survives one refresh, then fades", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const ghost = addMon(state, makeRace({ flags: [RF.INVISIBLE] }), loc(12, 10));
@@ -503,13 +504,23 @@ describe("tickMonsterMarks (process_world detection fade)", () => {
     updateMon(state, ghost, true);
     expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(true);
 
-    /* First tick: SHOW present, so MARK is kept (SHOW then cleared). */
-    tickMonsterMarks(state);
+    /* One cleanup = the NICE/MARK loop then the SHOW clear, which is the order
+     * process_player_cleanup runs them in (L878-892 then L903-908) and the whole
+     * reason a fresh mark survives its first cleanup. Called as two functions
+     * because upstream guards them differently: the first is skipped when the
+     * command spent no energy or the player auto-dropped, the second never is. */
+    const cleanup = (): void => {
+      tickMonsterNiceAndMark(state);
+      clearMonsterShow(state);
+    };
+
+    /* First cleanup: SHOW present, so MARK is kept (SHOW then cleared). */
+    cleanup();
     expect(ghost.mflag.has(MFLAG.MARK)).toBe(true);
     expect(ghost.mflag.has(MFLAG.SHOW)).toBe(false);
 
-    /* Second tick: SHOW gone, so MARK is dropped and the monster fades. */
-    tickMonsterMarks(state);
+    /* Second cleanup: SHOW gone, so MARK is dropped and the monster fades. */
+    cleanup();
     expect(ghost.mflag.has(MFLAG.MARK)).toBe(false);
     expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(false);
   });

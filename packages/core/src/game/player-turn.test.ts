@@ -368,3 +368,104 @@ describe("walkTerrainPrompt (move_player damaging-terrain confirm, cmd-cave.c L1
     expect(damActual).toBe(damCheck);
   });
 });
+
+describe("process_player_cleanup (game-world.c:839): PORT_TODO 1.3", () => {
+  /**
+   * WHAT WAS WRONG. The MFLAG_NICE / MARK / SHOW housekeeping was called from
+   * processWorld, which runs once per TEN game turns; upstream runs it after
+   * every player command. There was no test at the loop level at all - known.test
+   * called the function directly, so it proved the fade LOGIC and said nothing
+   * about its clock. These tests drive processPlayer and never call the
+   * housekeeping themselves.
+   */
+  function cleanupState(): { state: GameState; registry: ActionRegistry } {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const registry = new ActionRegistry();
+    registry.register("free", () => 0);
+    registry.register("act", (s) => s.z.moveEnergy);
+    state.nextCommand = (): PlayerCommand | null => null;
+    return { state, registry };
+  }
+
+  it("fades a detection MARK across two player commands, not two world ticks", () => {
+    const { state, registry } = cleanupState();
+    const ghost = addMon(state, makeRace({ flags: [] }), loc(12, 10));
+    ghost.mflag.on(MFLAG.MARK);
+    ghost.mflag.on(MFLAG.SHOW);
+
+    /* First command: SHOW is cleared, MARK survives. */
+    state.cmdQueue = [{ code: "act" }];
+    processPlayer(state, registry);
+    expect(ghost.mflag.has(MFLAG.SHOW)).toBe(false);
+    expect(ghost.mflag.has(MFLAG.MARK), "one turn of grace").toBe(true);
+
+    /* Second command: MARK is gone. state.turn never moved, so nothing here
+     * could have come from processWorld's ten-turn cadence. */
+    expect(state.turn, "no game turn elapsed").toBe(0);
+    state.cmdQueue = [{ code: "act" }];
+    processPlayer(state, registry);
+    expect(ghost.mflag.has(MFLAG.MARK)).toBe(false);
+  });
+
+  it("clears MFLAG_NICE after ONE command (the FORCE_SLEEP ranged grace)", () => {
+    /* mon/make.ts places a FORCE_SLEEP monster with NICE, and mon-ranged.ts:282
+     * refuses its ranged attacks while it holds it. On the ten-turn cadence that
+     * grace lasted up to ten game turns. */
+    const { state, registry } = cleanupState();
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.NICE);
+
+    state.cmdQueue = [{ code: "act" }];
+    processPlayer(state, registry);
+
+    expect(mon.mflag.has(MFLAG.NICE)).toBe(false);
+  });
+
+  it("a FREE command clears SHOW and NOTHING else", () => {
+    /* The two guards. The SHOW clear is outside `if (energy_use)` (L903-908); the
+     * NICE/MARK loop is inside it (L844). So a zero-energy command advances the
+     * fade by exactly one step and no further.
+     *
+     * The free command is the ONLY one queued, so processPlayer returns
+     * needsInput without ever reaching an energy command - an earlier draft of
+     * this test queued `[free, act]` and could not tell the two guards apart at
+     * all, which a mutation removing the energy guard proved by staying green. */
+    const { state, registry } = cleanupState();
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.MARK);
+    mon.mflag.on(MFLAG.SHOW);
+    mon.mflag.on(MFLAG.NICE);
+
+    state.cmdQueue = [{ code: "free" }];
+    const r = processPlayer(state, registry);
+
+    expect(r.needsInput, "no energy command followed").toBe(true);
+    expect(mon.mflag.has(MFLAG.SHOW), "the free command cleared SHOW").toBe(false);
+    expect(mon.mflag.has(MFLAG.NICE), "but not NICE").toBe(true);
+    expect(mon.mflag.has(MFLAG.MARK), "and not MARK").toBe(true);
+  });
+
+  it("upkeep->dropping suppresses one command's housekeeping, then resets", () => {
+    /* obj-ignore.c:687 sets it, game-world.c:867 reads it, L909 clears it. An
+     * auto-drop must not spend the player's one turn of detection. */
+    const { state, registry } = cleanupState();
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.MARK);
+    mon.mflag.on(MFLAG.NICE);
+    state.actor.player.upkeep.dropping = true;
+
+    state.cmdQueue = [{ code: "act" }];
+    processPlayer(state, registry);
+
+    expect(mon.mflag.has(MFLAG.NICE), "housekeeping skipped").toBe(true);
+    expect(mon.mflag.has(MFLAG.MARK)).toBe(true);
+    expect(state.actor.player.upkeep.dropping, "and cleared for next time").toBe(
+      false,
+    );
+
+    /* The very next command does the work it skipped. */
+    state.cmdQueue = [{ code: "act" }];
+    processPlayer(state, registry);
+    expect(mon.mflag.has(MFLAG.NICE)).toBe(false);
+  });
+});
