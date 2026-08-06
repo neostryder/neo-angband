@@ -1566,33 +1566,63 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the *bound* timed table instead of the raw pack records kills 4.
   Sites: `packages/core/src/obj/object-info.ts:974`
 
-- [ ] **3.21 The shape-lore textblock chain.**
-  **RE-SCOPED 2026-08-06, because the row was describing a state that ended
-  some time ago.** It said shapechange effects "have no lore chain" and that
-  the port "greys the entry". Neither is true now: `shapeLoreLines`
-  (`packages/core/src/player/shape-lore.ts:234`) is a faithful port of
-  `shape_lore` (`ui-knowledge.c:3111`) driving the browser through
-  `showShapeKnowledge`, and the menu row is not greyed. The row's citations
-  pointed at a docblock in `main.ts` that made the same stale claim; both have
-  been corrected. *A deferral note is evidence about the day it was written.*
+- [x] **3.21 The shape-lore textblock chain.**
+  **The row described a state that had ended some time ago, and its citation
+  pointed at a docblock making the same stale claim.** It said shapechange
+  effects "have no lore chain" and that the port "greys the entry". Neither was
+  true: `shapeLoreLines` has been a faithful port of `shape_lore`
+  (`ui-knowledge.c:3111`) driving the browser for a long time, and the row is
+  not greyed. *A deferral note is evidence about the day it was written.* The
+  `main.ts` docblock it cited went further and was wrong about three greyed
+  browsers, none of which is greyed for the reason it gave; rewritten.
 
-  What IS still missing is the tail of that chain — two of its ten sections,
-  and both are the exact shape of the trap 3.4 taught: an OPTIONAL env field
-  with an INERT default, so no supplier means the section silently is not
-  there.
+  **What was actually missing: the tail.** Two of the chain's ten sections, and
+  both are the exact trap 3.4 taught — an OPTIONAL env field whose default is
+  INERT, so no supplier means the section silently is not there. Every shape
+  page stopped after the misc flags. A player reading about Bear form was told
+  what it does to their stats and nothing about how to enter or leave it.
   - `shape_lore_append_change_effects` (`:3043`) —
-    `effect_describe(s->effect, "Changing into the shape ", 0, false)`, the
-    seam `ShapeLoreEnv.changeEffectText` (`shape-lore.ts:48`).
+    `effect_describe(s->effect, "Changing into the shape ", 0, false)`. Bat form
+    now says "Changing into the shape does 5 damage to the player."
   - `shape_lore_append_triggering_spells` (`:3059`) — every class's every book's
-    every spell, looking for an `EF_SHAPECHANGE` whose subtype is this shape,
-    printed as "The %s spell, %s, from %s triggers the shapechange." The seam
-    is `ShapeLoreEnv.triggeringSpells` (`:54`).
+    every spell, hunting an `EF_SHAPECHANGE` into this shape. Bear form now says
+    "The Druid spell, Bear Form, from [Creature Dominion] triggers the
+    shapechange." All eight shipped shapechange spells across three classes now
+    appear on the shape they reach.
 
-  `main.ts`'s `shapeEnv` supplies neither, so a player reading about Bear form
-  is told what it does to their stats and nothing about how to get into it or
-  out of it.
-  Sites: `packages/core/src/player/shape-lore.ts:251`,
-  `packages/web/src/main.ts:3885`
+  **The seams became CALLBACKS**, `changeEffectText?(shape)` /
+  `triggeringSpells?(shape)`. They were bare strings, and one env serves the
+  whole shape list — so no caller could have supplied them correctly for more
+  than one shape, which is a fair part of why none supplied them at all. The
+  supplier is `makeShapeLoreEnv` (new `packages/core/src/game/shape-inspect.ts`,
+  the sibling of `object-inspect.ts`), so every shell gets the whole env rather
+  than hand-assembling three easy fields and leaving the two hard ones off.
+
+  **A separate defect the rendered page exposed, found by reading the output
+  rather than the code.** Every shape's stat line read `Adds -3 to .` — an
+  empty name. `shape-lore.ts` had its own copy of `lookup_obj_property` that
+  omitted upstream's *"special case - stats count as mods"*
+  (`obj-properties.c:207`), and the stat section looks stats up as MODs exactly
+  as upstream does. `obj/power.ts` had the correct copy the whole time; only
+  one of the two ever learned. There is now one implementation
+  (`lookupObjPropertyIn`) and both call it. Fox reads "Adds -3 to strength",
+  Pukel-man "Adds +4 to strength and +4 to constitution".
+
+  **Verified.** 13 tests in `game/shape-inspect.test.ts`, expectations derived
+  by walking `class.txt` rather than transcribing it. **12 mutations, 12
+  killed** — but two only after the tests earned it, and both were the same
+  fault: *a guard that cannot fire*. The shipped data has nine shapes and eight
+  shapechange spells, and the only shape without one is `normal`, which the
+  browser never lists — so both "no spell" negatives were passing by not
+  running, and both are now built rather than hunted. A third mutation
+  (dropping the `eff === SHAPECHANGE` check) survived the whole catalogue
+  because no other effect carries a shape name as its subtype; that test now
+  constructs a spell which CURES something called "bear". One redundant line
+  was deleted rather than tested: an early-out on an empty effect list that
+  `describeEffect` already handles, and which nothing could distinguish.
+  Sites: `packages/core/src/game/shape-inspect.ts` (new),
+  `packages/core/src/player/shape-lore.ts:70`, `:253`,
+  `packages/core/src/obj/power.ts:216`, `packages/web/src/main.ts:3885`
 
 - [x] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
   DONE. The row's own triage was right: of its three claims only `purple_uniques`

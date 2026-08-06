@@ -192,7 +192,7 @@ import type {
   MonsterLore,
   LoreDeps,
 } from "@rpgm-tools/neo-angband-core";
-import { GameEvents, useFlavorGlyph } from "@rpgm-tools/neo-angband-core";
+import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
@@ -3879,19 +3879,23 @@ async function openKnowledgeMenu(): Promise<void> {
   });
   add("Display shapechange effects", () => {
     // do_cmd_knowledge_shapechange (ui-knowledge.c L3142).
-    /* PORT_TODO 3.21: changeEffectText and triggeringSpells are the two
-     * shape-lore sections still unsupplied here, and their defaults are inert
-     * (see shape-lore.ts), so the shape recall stops after the misc flags. */
-    const shapeEnv = {
+    /* makeShapeLoreEnv rather than an object literal: the three table fields
+     * are trivial and the two tails are not, and hand-assembly here is exactly
+     * what left shape_lore_append_change_effects and
+     * shape_lore_append_triggering_spells off the page (PORT_TODO 3.21). */
+    const shapeEnv = makeShapeLoreEnv(state, {
       properties: booted.registries.objects.properties,
-      elementNames: (booted.registries.projections ?? []).map((pr) => pr.name),
       playerAbilities: players.properties
         .filter((pr) => pr.type === "player" && pr.code)
         .map((pr) => ({
           index: (PF as Record<string, number>)[pr.code!]!,
           desc: pr.desc,
         })),
-    };
+      classes: players.classes,
+      bookKindName: (tvalIdx, sval) =>
+        booted.registries.objects.lookupKind(tvalIdx, sval)?.name ?? null,
+      inspect: inspectExtras,
+    });
     return showShapeKnowledge(term, players.shapes, shapeEnv);
   });
 

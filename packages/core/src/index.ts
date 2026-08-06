@@ -142,6 +142,7 @@ export * from "./game/mon-cmd.js";
 export * from "./game/describe.js";
 export * from "./game/history.js";
 export * from "./game/object-inspect.js";
+export * from "./game/shape-inspect.js";
 export * from "./game/mon-message.js";
 export * from "./game/mon-list.js";
 export * from "./game/obj-list.js";
