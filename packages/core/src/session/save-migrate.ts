@@ -365,6 +365,82 @@ const V2_TO_V3: SaveMigration = {
 };
 
 /* ------------------------------------------------------------------ *
+ * 3 -> 4: the remembered pile becomes a pile.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Widen one grid's memory from a single record to the list version 4 stores.
+ *
+ * A version-3 record says "this grid remembers kind K" and carries no link to
+ * the object it came from, so it converts to a one-element list with no `at`
+ * locator. deserializeKnownObject rebuilds that as a DETACHED memory: it draws
+ * exactly the glyph version 3 drew, and the first square_know_pile of the grid
+ * excises it in favour of real entries - which is what upstream's
+ * forget_remembered_objects does to a shadow whose original has moved on.
+ *
+ * A record with neither `kindId` nor `money` is the pre-0.18 glyph shape, whose
+ * `ch`/`attr` cannot be turned back into a kind. It is dropped rather than
+ * guessed at, and the grid heals the next time the player sees it. Returns
+ * null so the caller can count what was dropped.
+ */
+function v3KnownEntry(m: unknown): Record<string, unknown> | null {
+  if (!isObj(m)) return null;
+  if (typeof m.kindId === "string") {
+    return { kindId: m.kindId, ...(m.money === true ? { money: true } : {}) };
+  }
+  if (m.money === true) return { money: true, sensed: true };
+  return null;
+}
+
+/** Rewrite one `known` block in place; returns how many memories were dropped. */
+function v3KnownBlock(known: unknown): number {
+  if (!isObj(known) || !Array.isArray(known.objects)) return 0;
+  let dropped = 0;
+  const widened: Array<[number, Record<string, unknown>[]]> = [];
+  for (const pair of known.objects) {
+    if (!Array.isArray(pair) || typeof pair[0] !== "number") continue;
+    const entry = v3KnownEntry(pair[1]);
+    if (entry === null) {
+      dropped++;
+      continue;
+    }
+    widened.push([pair[0], [entry]]);
+  }
+  known.objects = widened;
+  return dropped;
+}
+
+const V3_TO_V4: SaveMigration = {
+  from: 3,
+  to: 4,
+  summary:
+    "the remembered floor memory becomes a remembered PILE, so a grid can " +
+    "hold more than one known object",
+  step(save, ids, notes) {
+    void ids;
+    let dropped = v3KnownBlock(save.known);
+
+    /* The frozen-level cache carries the same block per stored level. */
+    if (Array.isArray(save.levelCache)) {
+      for (const level of save.levelCache) {
+        if (isObj(level)) dropped += v3KnownBlock(level.known);
+      }
+    }
+
+    if (dropped > 0) {
+      notes.push(
+        `${dropped} remembered floor ${dropped === 1 ? "object" : "objects"} ` +
+          "could not be identified and were forgotten; they reappear as soon " +
+          "as you see those grids again.",
+      );
+    }
+
+    save.version = 4;
+    return save;
+  },
+};
+
+/* ------------------------------------------------------------------ *
  * The chain.
  * ------------------------------------------------------------------ */
 
@@ -372,7 +448,11 @@ const V2_TO_V3: SaveMigration = {
  * Every step, in order. ADD A STEP HERE IN THE SAME COMMIT THAT BUMPS
  * SAVE_VERSION - save-migrate.test.ts fails otherwise, on purpose.
  */
-export const SAVE_MIGRATIONS: readonly SaveMigration[] = [V1_TO_V2, V2_TO_V3];
+export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
+  V1_TO_V2,
+  V2_TO_V3,
+  V3_TO_V4,
+];
 
 /** The oldest save version this build can read. */
 export const OLDEST_READABLE_SAVE = SAVE_MIGRATIONS[0]?.from ?? SAVE_VERSION;

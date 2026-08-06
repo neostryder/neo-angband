@@ -6381,16 +6381,17 @@ function versionCmd(): void {
  *
  * map_info re-walks the KNOWN pile every frame and skips ignored objects
  * ("Item stays hidden", cave-map.c:162), so ignoring a kind hides it from the
- * map at once - it is not merely dropped from the pack. The port stores the
- * memory as one glyph, so the live pile is consulted here instead: when every
- * object still on that grid is ignored, there is nothing to remember.
+ * map at once - it is not merely dropped from the pack.
+ *
+ * That skip now happens inside knownObject, which IS map_info's object loop
+ * over the remembered pile. This used to consult the LIVE pile instead,
+ * because the memory was a single glyph with no objects to test: it could only
+ * ask "is EVERY object still on that grid ignored", so an ignored item lying
+ * on top of a wanted one hid both, and a grid the player had never seen the
+ * contents of was judged by contents they could not know (PORT_TODO 2.9).
  */
 function knownObjectShown(x: number, y: number): ReturnType<typeof knownObject> {
-  const mem = knownObject(state, loc(x, y));
-  if (!mem) return null;
-  const pile = state.floor.get(gridIndex(x, y));
-  if (pile && pile.length > 0 && !pile.some((o) => !state.isIgnored?.(o))) return null;
-  return mem;
+  return knownObject(state, loc(x, y));
 }
 
 // Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
@@ -6524,11 +6525,17 @@ function rememberedObjectCell(
   gy: number,
 ): CellGlyph {
   const kinds = booted.registries.objects;
-  const kind = mem.seen
-    ? kinds.kindByIdx(mem.kidx)
-    : mem.money
+  /* ui-map.c:200-224's priority: the money star, then the item star, then the
+   * `<pile>` glyph when the grid remembers more than one displayable object,
+   * then the object's own kind. pile_kind was bound and read by nothing until
+   * the remembered memory became a remembered PILE (PORT_TODO 2.9). */
+  const kind = !mem.seen
+    ? mem.money
       ? kinds.unknownGoldKind
-      : kinds.unknownItemKind;
+      : kinds.unknownItemKind
+    : mem.multiple
+      ? (kinds.pileKind ?? kinds.kindByIdx(mem.kidx))
+      : kinds.kindByIdx(mem.kidx);
   /* dimmed: this grid is remembered, not seen. Without it the item was the one
    * thing on a dim corridor drawn at full brightness - "the cell stays lit
    * instead of going dim when I walk away". */

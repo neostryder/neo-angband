@@ -232,8 +232,15 @@ function putRealFloor(state: GameState, at: Loc, kindName: string, number = 1): 
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, { seen: true, kidx: kind.kidx });
+  rememberSeen(state, idx, obj);
   return obj;
+}
+
+/** The player has SEEN `obj` here: one entry in the remembered pile. */
+function rememberSeen(state: GameState, idx: number, obj: GameObject): void {
+  const known = state.known.objects.get(idx) ?? [];
+  known.push({ obj, sensed: false });
+  state.known.objects.set(idx, known);
 }
 
 interface FakeOpts {
@@ -265,14 +272,20 @@ function putFakeFloor(state: GameState, at: Loc, opts: FakeOpts = {}): GameObjec
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, { seen: true, kidx: 1 });
+  rememberSeen(state, idx, obj);
   return obj;
 }
 
-/** Mark a grid as sensed-but-unidentified (a detection marker, no glyph). */
+/**
+ * Mark a grid as sensed-but-unidentified (a detection marker, no glyph). A
+ * sensed memory is still a memory OF an object, so this puts one on the floor
+ * and flags its entry, exactly as object_sense does.
+ */
 function senseUnknown(state: GameState, at: Loc): void {
+  const obj = putFakeFloor(state, at);
   const idx = at.y * state.chunk.width + at.x;
-  state.known.objects.set(idx, { seen: false, money: false });
+  const entry = state.known.objects.get(idx)?.find((e) => e.obj === obj);
+  if (entry) entry.sensed = true;
 }
 
 describe("wrapRuns (object-info Textblock -> ScreenLine[])", () => {

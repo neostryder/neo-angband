@@ -236,7 +236,11 @@ describe("object memory (square_know_pile / square_sense_pile)", () => {
      * the tile the way it does for a visible object. A memory of the glyph
      * `obj.kind.dChar`/`dAttr` could do neither - for a flavoured kind those
      * ARE the placeholder, which is why a remembered potion drew invisibly. */
-    expect(knownObject(state, grid)).toEqual({ seen: true, kidx: obj.kind.kidx });
+    expect(knownObject(state, grid)).toEqual({
+      seen: true,
+      kidx: obj.kind.kidx,
+      multiple: false,
+    });
 
     /* The object is picked up: knowing the (empty) pile clears memory. */
     floorExcise(state, grid, obj);

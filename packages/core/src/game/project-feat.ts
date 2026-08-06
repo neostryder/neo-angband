@@ -69,6 +69,14 @@ function observed(state: GameState, grid: Loc): boolean {
  * objects. As upstream, the grid temporarily becomes an open door so
  * drop_near cannot land anything back on it; the caller's feature change
  * happens after.
+ *
+ * NOT PORTED: the unrevealed-MIMIC arm (obj-pile.c:1213-1256). Upstream tests
+ * obj->mimicking_m_idx before dropping, and for a mimic it scatters outward
+ * from d=1 and MOVES THE MONSTER with its object (monster_swap) on the first
+ * grid that takes it, destroying both at d>=4 rather than letting them part.
+ * The loop below drops every object through dropNear, so a door created on a
+ * grid holding an unrevealed mimic leaves the monster behind while the object
+ * it is pretending to be lands elsewhere. Tracked as PORT_TODO 2.14.
  */
 export function pushObject(state: GameState, grid: Loc): void {
   const c = state.chunk;

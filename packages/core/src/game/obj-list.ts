@@ -40,6 +40,7 @@ import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { tvalIsMoney } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import { describeObject } from "./describe.js";
+import { knownObject } from "./known.js";
 import type { GameState } from "./context.js";
 
 /** Which part of the list an entry falls under. */
@@ -83,8 +84,19 @@ export function objectListNew(): ObjectList {
 }
 
 /**
- * object_list_collect (obj-list.c L156): gather the known floor objects of the
- * live cave into per-object entries, skipping ignored items and money.
+ * object_list_collect (obj-list.c:156-176): one entry per REMEMBERED object.
+ *
+ * Upstream walks `player->cave->objects[]` - the shadow registry, every object
+ * the player has seen or sensed - and places each at the shadow's own grid.
+ * It never consults the live pile, which is the whole point: the list reports
+ * the player's knowledge, not the level.
+ *
+ * This used to walk `state.floor` for any grid that carried a memory, so an
+ * object dropped out of view onto a grid the player had once seen was listed
+ * the moment it landed - the `[` screen announced loot nobody had witnessed.
+ * The same shape hid the reverse: an object picked up out of view vanished
+ * from the list at once, where upstream keeps showing it until the grid is
+ * re-seen (PORT_TODO 2.9).
  */
 export function objectListCollect(state: GameState): ObjectList {
   const list = objectListNew();
@@ -95,8 +107,8 @@ export function objectListCollect(state: GameState): ObjectList {
   const knownGrids = Array.from(state.known.objects.keys()).sort((a, b) => a - b);
 
   for (const idx of knownGrids) {
-    const marker = state.known.objects.get(idx);
-    if (!marker) continue;
+    const remembered = state.known.objects.get(idx);
+    if (!remembered) continue;
     const grid = { x: idx % w, y: Math.floor(idx / w) };
 
     /* Determine which section this grid's objects are in. */
@@ -105,37 +117,43 @@ export function objectListCollect(state: GameState): ObjectList {
       (grid.x === pgrid.x && grid.y === pgrid.y);
     const field = los ? OBJECT_LIST_SECTION_LOS : OBJECT_LIST_SECTION_NO_LOS;
 
-    if (!marker.seen) {
-      /* Sensed but unidentified: a single unknown entry, never ignored. */
-      const entry: ObjectListEntry = {
-        object: null,
-        unknown: true,
-        count: [0, 0],
-        dx: grid.x - pgrid.x,
-        dy: grid.y - pgrid.y,
-      };
-      entry.count[field] = 1;
-      list.entries.push(entry);
-      continue;
-    }
+    /* is_unknown (obj-util.c:402) runs map_info on the grid and returns
+     * gd.unseen_object, so it is a question about the GRID, not the object:
+     * while a grid shows the red star, ignore rules do not filter it. */
+    const memory = knownObject(state, grid);
+    const gridIsUnknown = memory !== null && !memory.seen && !memory.money;
 
-    /* Known grid: list each live floor object here. */
-    const pile = state.floor.get(idx);
-    if (!pile) continue;
-    for (const obj of pile) {
-      /* Skip ignored items and money (obj-list.c object_list_should_ignore). */
+    for (const entry of remembered) {
+      const obj = entry.obj;
+
+      /* object_list_should_ignore_object (obj-list.c:135-149), which resolves
+       * the shadow to its ORIGINAL and tests that. */
+      if (!gridIsUnknown && state.isIgnored?.(obj)) continue;
       if (tvalIsMoney(obj.tval)) continue;
-      if (state.isIgnored && state.isIgnored(obj)) continue;
 
-      const entry: ObjectListEntry = {
+      if (entry.sensed) {
+        /* The shadow wears unknown_item_kind, so the row is a bare "unknown". */
+        const row: ObjectListEntry = {
+          object: null,
+          unknown: true,
+          count: [0, 0],
+          dx: grid.x - pgrid.x,
+          dy: grid.y - pgrid.y,
+        };
+        row.count[field] = 1;
+        list.entries.push(row);
+        continue;
+      }
+
+      const row: ObjectListEntry = {
         object: obj,
         unknown: false,
         count: [0, 0],
         dx: grid.x - pgrid.x,
         dy: grid.y - pgrid.y,
       };
-      entry.count[field] = obj.number;
-      list.entries.push(entry);
+      row.count[field] = obj.number;
+      list.entries.push(row);
     }
   }
 
