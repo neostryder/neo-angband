@@ -23,11 +23,21 @@ upstream:
   - path: src/ui-mon-lore.c
     items:
       - lore_title (L38) as loreTitle and lore_description (L89) as
-        loreDescription - the non-spoiler recall assembly. The section call
-        order (title, kills, flavor, movement, toughness, exp, drop,
-        abilities, awareness, friends, spells, attack, fully-known note,
-        questor note) is transcribed from L110-150. The title's " ('glyph')"
-        is upstream (textblock_append_pict).
+        loreDescription, BOTH paths. The section call order (title, kills,
+        flavor, movement, toughness, exp, drop, abilities, awareness, friends,
+        spells, attack, fully-known note, questor note) is transcribed from
+        L110-150. The title's " ('glyph')" is upstream
+        (textblock_append_pict).
+
+        The `spoilers` argument (L90) is ported as of PORT_TODO 5.6, and it
+        gates FOUR sections rather than the one the port used to assume: the
+        title (L108-112), the kill counts (L114-116), the toughness block
+        (L124-125) and the experience reward (L128-129). game/spoil.ts used to
+        pass no flag and slice the first line off the result, which removed the
+        title and left three sections upstream never prints - each of them a
+        sentence about a player the dump does not have. cheat_monster_lore
+        (L101-102) is deliberately left with the CALLER: spoil.ts already
+        reveals the lore copy it owns.
   - path: src/mon-spell.c
     items:
       - mon_spell_lore_description (L681) as monSpellLoreDescription and

@@ -565,19 +565,22 @@ export function spoilMonInfo(pack: GamePack): string {
       `Spd:${speedText(race.speed)}  Hp:${race.avgHp}  Ac:${race.ac}  ` +
       `Exp:${race.mexp}\n`;
 
-    /* Full lore (lore_description(tb, race, lore, true), L729). The port's
-     * loreDescription has no `spoilers` bool to suppress its own title line, so
-     * it always emits a leading "The X ('c')\n"; we drop that first line since
-     * the header block above already names the monster.
-     * TODO(B2): give core's loreDescription an upstream-style spoiler flag and
-     * remove this slice. */
+    /*
+     * Full lore (lore_description(tb, race, lore, TRUE), wiz-spoil.c L729).
+     *
+     * The fourth argument is now real (PORT_TODO 5.6). This used to pass no
+     * flag and slice the first line off the result, on the theory that the
+     * title was the only thing `spoilers` suppressed. It suppresses four
+     * things - title, kill counts, toughness and experience - so the slice
+     * removed the title and left three sections upstream never prints, every
+     * one of them a statement about a player this file does not have.
+     */
     const lore = newMonsterLore(race);
     cheatMonsterLore(race, lore);
-    const loreText = loreDescription(race, lore, loreDeps)
-      .map((r) => r.text)
-      .join("");
-    const nl = loreText.indexOf("\n");
-    out += (nl >= 0 ? loreText.slice(nl + 1) : loreText) + "\n";
+    out +=
+      loreDescription(race, lore, loreDeps, true)
+        .map((r) => r.text)
+        .join("") + "\n";
   }
 
   return out;

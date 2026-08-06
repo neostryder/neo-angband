@@ -241,3 +241,73 @@ describe("lore_title and purple_uniques (ui-mon-lore.c L38-60, PORT_TODO 3.22)",
     expect(p[0]?.text).toBe("The ");
   });
 });
+
+/**
+ * lore_description's `spoilers` argument (ui-mon-lore.c L90), PORT_TODO 5.6.
+ *
+ * It gates FOUR sections, and the port used to have none of them: game/spoil.ts
+ * passed no flag and sliced the first line off the result, which removed the
+ * title and left the kill counts, the toughness block and the experience reward
+ * in a file that has no player to be subjective about.
+ *
+ * Every expectation below is DERIVED from the same race's player-view text
+ * rather than declared, so the test says "the spoiler view drops what the
+ * player view shows" and cannot drift with the content pack.
+ */
+describe("lore_description spoilers (ui-mon-lore.c L90)", () => {
+  /** A race whose player view exercises all four gated sections. */
+  const race = normalRace;
+
+  function view(spoilers: boolean): string {
+    const lore = newMonsterLore(race);
+    cheatMonsterLore(race, lore);
+    /* Kills are lore, not race data: give the player some to count, so the
+     * kills section has something to print in the player view. Without this
+     * the "dropped" assertion would pass against an empty section. */
+    lore.pkills = 7;
+    lore.tkills = 9;
+    return loreDescription(race, lore, deps(), spoilers)
+      .map((r) => r.text)
+      .join("");
+  }
+
+  const player = view(false);
+  const spoiler = view(true);
+
+  it("drops the title, so the caller needs no slice", () => {
+    expect(player.startsWith("The ")).toBe(true);
+    expect(spoiler.startsWith("The ")).toBe(false);
+    expect(spoiler).not.toContain(`The ${race.name} ('`);
+  });
+
+  it("drops the kill counts", () => {
+    /* lore_append_kills' player-view sentence names the count; the spoiler
+     * view has no player whose kills could be counted. */
+    expect(player).toMatch(/killed at least 7 of these/u);
+    expect(spoiler).not.toMatch(/killed at least/u);
+  });
+
+  it("drops the toughness and experience blocks", () => {
+    /* toughness: the life / armour sentence, which also carries the player's
+       own melee hit chance - subjective twice over. */
+    expect(player).toMatch(/armor rating/u);
+    expect(player).toMatch(/chance to hit such a creature/u);
+    expect(spoiler).not.toMatch(/armor rating/u);
+    expect(spoiler).not.toMatch(/chance to hit such a creature/u);
+    /* exp: "worth N points for a Kth level character" - scaled by the player's
+       level, so upstream leaves it out of a file with no player. */
+    expect(player).toMatch(/points for a \d+\w+ level character/u);
+    expect(spoiler).not.toMatch(/points for a/u);
+  });
+
+  it("keeps everything that is not about the player", () => {
+    /* The control. If `spoilers` suppressed too much, this would catch it:
+     * flavour, movement, drops, abilities and attacks all survive. */
+    expect(spoiler.length).toBeGreaterThan(0);
+    expect(spoiler).toContain(race.text.slice(0, 24));
+    /* lore_append_movement's opening clause is in both views. */
+    const moves = /moves|never moves/u;
+    expect(player).toMatch(moves);
+    expect(spoiler).toMatch(moves);
+  });
+});
