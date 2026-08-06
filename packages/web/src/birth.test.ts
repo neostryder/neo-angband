@@ -51,6 +51,8 @@ interface TestTerm extends GlyphTerm {
   snapshot(): string[];
   /** CSS colour written to the cell at (x, y), or "" if never printed. */
   colorAt(x: number, y: number): string;
+  /** Deliver a tap to whatever handler is installed, or report that none is. */
+  tap(row: number, col?: number): boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ interface TestTerm extends GlyphTerm {
 function makeTerm(cols = 80, rows = 24): TestTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
   const colors: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(""));
+  let onTap: ((cell: { row: number; col: number }) => void) | null = null;
   return {
     size: () => ({ cols, rows }),
     clear: () => {
@@ -101,6 +104,18 @@ function makeTerm(cols = 80, rows = 24): TestTerm {
     },
     snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
     colorAt: (x: number, y: number) => colors[y]?.[x] ?? "",
+    /* The touch seam. It used to be absent, so every `term.onCellTap?.(...)`
+     * in the birth screens was an optional call on undefined - which means the
+     * tap handlers were never registered and never tested, and a screen that
+     * forgot to re-install one after a modal would look fine here. */
+    onCellTap: (fn: ((cell: { row: number; col: number }) => void) | null) => {
+      onTap = fn;
+    },
+    tap: (row: number, col = 0) => {
+      if (!onTap) return false;
+      onTap({ row, col });
+      return true;
+    },
   } as unknown as TestTerm;
 }
 
@@ -1070,5 +1085,115 @@ describe("birth screens draw the real character sheet", () => {
     // display_player(0) at BIRTH_NAME_CHOICE / HISTORY_CHOICE / FINAL_CONFIRM
     // (ui-birth.c:1707/1721/1733).
     expect(src.match(/drawBirthSheet\(/gu)?.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * PORT_TODO 3.19: '?' on a birth screen opens the help browser.
+ *
+ * Upstream has exactly two keyboard help sites in birth - menu_question
+ * (ui-birth.c:859-861) and roller_command (:925-926 -> :993-994) - and
+ * point_based_command has none. Both live INSIDE the stage's own input loop and
+ * leave the stage alone, so what these tests check is not only that help opens
+ * but that the screen behind it comes back byte-identical and still responds to
+ * keys: the stage's listener is suspended while the modal runs, and a stage that
+ * failed to re-arm it would be a dead birth screen.
+ */
+describe("runBirth: '?' opens help and returns to the same screen", () => {
+  it("race menu: the cursor, the screen and the keyboard all survive help", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    // Move off the initial cursor, so "the cursor survived" is a real claim:
+    // re-entering the stage would put it back on row 0 (Human).
+    press(win, "ArrowDown");
+    press(win, "ArrowDown");
+    await tick();
+    expect(term.colorAt(2, 11)).toBe(colorToCss(COLOUR_L_BLUE)); // Dwarf highlighted
+    const before = term.snapshot().join("\n");
+
+    press(win, "?");
+    await tick();
+    const help = term.snapshot().join("\n");
+    expect(help).toContain("Angband Help");
+    expect(help).toContain("Available commands");
+    // The birth menu is gone while help is up - this is a modal, not an overlay.
+    expect(help).not.toContain("Please select your character traits");
+
+    press(win, "Escape"); // ESC at the help index exits help
+    await tick();
+    expect(term.snapshot().join("\n")).toBe(before);
+    expect(term.colorAt(2, 11)).toBe(colorToCss(COLOUR_L_BLUE));
+    // The TOUCH handler has to come back too - the help overlay nulls it on the
+    // way out, so a stage that only re-armed its keyboard listener would leave
+    // a tablet with no way to pick a race at all.
+    expect(term.tap(-1)).toBe(true); // a row outside the column: registered, no-op
+
+    // And the stage takes keys again: Enter picks the row the cursor is on.
+    press(win, "Enter");
+    await tick();
+    expect(term.snapshot()[7]).toContain("Class affects stats");
+    press(win, "a");
+    await tick();
+    press(win, "a"); // point-based
+    await tick();
+    press(win, "Enter"); // accept the allocation
+    await tick();
+    press(win, "Enter"); // default name
+    await tick();
+    press(win, "a"); // begin
+    const choice = await done;
+    expect(choice!.raceName).toBe("Dwarf");
+  });
+
+  it("standard roller: help is not a reroll, and 'p' is still on offer after it", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(7) });
+    await tick();
+    press(win, "a"); await tick();  // Human
+    press(win, "a"); await tick();  // Warrior
+    press(win, "b"); await tick();  // Standard roller
+    press(win, "r"); await tick();  // one reroll, so the 'p' clause is showing
+    const before = term.snapshot().join("\n");
+    expect(before).toContain("'p' for previous roll");
+
+    press(win, "?");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Angband Help");
+    press(win, "Escape");
+    await tick();
+    // Byte-identical: the same roll, and the same prompt - so neither the stats
+    // nor roller_command's static prev_roll was reset by opening help.
+    expect(term.snapshot().join("\n")).toBe(before);
+    expect(term.tap(-1)).toBe(true); // the footer-tap handler is back too
+
+    press(win, "Enter"); // the roll help did not disturb is the one accepted
+    await tick();
+    expect(term.snapshot()[0]).toContain("name");
+    press(win, "Enter"); await tick();
+    press(win, "a");
+    const choice = await done;
+    expect(choice!.rolledStats).toHaveLength(5);
+  });
+
+  it("point-based has no help key (point_based_command does not offer one)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    void runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    press(win, "a"); await tick();  // Human
+    press(win, "a"); await tick();  // Warrior
+    press(win, "a"); await tick();  // Point-based
+    const before = term.snapshot().join("\n");
+    expect(before).toContain("'r' to reset");
+    press(win, "?");
+    await tick();
+    expect(term.snapshot().join("\n")).not.toContain("Angband Help");
+    expect(term.snapshot().join("\n")).toBe(before);
   });
 });
