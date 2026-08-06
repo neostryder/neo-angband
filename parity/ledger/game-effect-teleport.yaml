@@ -78,10 +78,14 @@ deferred:
   - The trap / glyph-ward / damaging-terrain / web destination predicates
     (square_isplayertrap / _iswarded / _isdamaging / _iswebbed): traps (#21) and
     damaging terrain; injected predicates that default to absent.
-  - Arena levels, decoys (cave_find_decoy / square_destroy_decoy), sound
-    (MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL) and the monster "puzzled" message
-    (add_monster_message): their subsystems are not modelled (sound #26, lore
-    #19).
+  - Arena levels, decoys (cave_find_decoy / square_destroy_decoy) and sound
+    (MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL): their subsystems are not
+    modelled (sound #26, lore #19).
+  - The monster "puzzled" line (effect-handler-general.c:2649
+    MON_MSG_BRIEF_PUZZLE) is still not emitted here. The reason is no longer
+    "the message queue is not modelled" - it is (game/mon-message.ts
+    addMonsterMessage, PORT_TODO 3.1) - so this is now an ordinary missing call
+    at one site, not a missing subsystem.
 verified-by:
   - game/effect-teleport.test.ts (15 tests): through a real EffectRegistry
     (registerCoreHandlers + registerTeleportHandlers), EF_TELEPORT moves the

@@ -60,7 +60,13 @@ import {
 import type { GameState, PlayerCommand } from "./context.js";
 import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target.js";
 import { describeObject } from "./describe.js";
-import { formatMonsterMessage, formatPainMessage, monMessageSoundType } from "./mon-message.js";
+import {
+  addMonsterMessage,
+  formatMonsterMessage,
+  messagePain,
+  monMessageSoundType,
+} from "./mon-message.js";
+import { noticeStuff } from "./notice.js";
 import type { ActionRegistry } from "./player-turn.js";
 
 /* Keypad direction deltas (ddx/ddy), indexed by keypad digit 1..9. */
@@ -220,6 +226,10 @@ function rangedHelper(
       });
       if (res.died) {
         if (!state.arenaLevel) {
+          /* "Make sure to flush any monster messages first" (mon-util.c:1046):
+           * a piercing shot that hurt one monster and killed the next has to
+           * report the pain before the kill. */
+          noticeStuff(state);
           const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
           const text = formatMonsterMessage(mon, dieMsg);
           /* get_message_type (mon-msg.c:450): a unique's death plays
@@ -231,12 +241,11 @@ function rangedHelper(
           deleteMonster(state, mon.midx);
         }
       } else {
-        /* message_pain, then the delayed flee message (player-attack.c:1192). */
-        const pain = formatPainMessage(mon, dmg);
-        if (pain) state.msg?.(pain);
+        /* message_pain, then the delayed flee message (player-attack.c:1192).
+         * Both go on the queue; the flee line takes the delayed pass. */
+        messagePain(state, mon, dmg);
         if (res.fear && monsterIsObvious(mon)) {
-          const flee = formatMonsterMessage(mon, MON_MSG.FLEE_IN_TERROR);
-          if (flee) state.msg?.(flee);
+          addMonsterMessage(state, mon, MON_MSG.FLEE_IN_TERROR, true);
         }
       }
     }

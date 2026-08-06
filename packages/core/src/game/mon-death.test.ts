@@ -35,6 +35,7 @@ import {
   monTakeNonplayerHit,
 } from "./mon-death.js";
 import type { MonsterDeathDeps } from "./mon-death.js";
+import { noticeStuff } from "./notice.js";
 import { addMon, makeRace, makeState } from "./harness.js";
 
 /**
@@ -496,7 +497,10 @@ describe("monTakeNonplayerHit (mon-util.c L1193)", () => {
     const died = monTakeNonplayerHit(state, mon, 50, MON_MSG.NONE, MON_MSG.DIE, deathDeps(state));
 
     expect(died).toBe(true);
-    /* MON_MSG code 5 is a die-family message rendered with the subject. */
+    /* The die message is QUEUED (mon-util.c:1223 add_monster_message), so it
+     * only reaches the sink once notice_stuff drains it. */
+    expect(messages).toEqual([]);
+    noticeStuff(state);
     expect(messages.length).toBeGreaterThan(0);
     /* delete_monster_idx: the slot is cleared. */
     expect(state.monsters[midx]).toBeFalsy();

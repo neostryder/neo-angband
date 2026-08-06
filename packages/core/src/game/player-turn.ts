@@ -81,7 +81,7 @@ import { squareIsSeen } from "../world/view.js";
 import { playerConfuseDir } from "./obj-cmd.js";
 import { disturb } from "./player-path.js";
 import { playerAdjustManaPrecise } from "./loop.js";
-import { formatMonsterMessage } from "./mon-message.js";
+import { addMonsterMessage } from "./mon-message.js";
 import {
   playerIsTrapsafe,
   squareIsDisarmableTrap,
@@ -351,10 +351,10 @@ export function attackMonster(state: GameState, target: Monster): number {
    * faithful "You hit/miss/slay the X" text (combat returns HitType keys
    * only). Before deletion so the monster name is still resolvable. */
   state.onMelee?.(target, result);
-  /* Hack - delay fear messages (player-attack.c:1023). */
+  /* "Hack - delay fear messages" (player-attack.c:1023): add_monster_message
+   * with delay = true, so the flee line comes out in the second pass. */
   if (result.monsterFled) {
-    const flee = formatMonsterMessage(target, MON_MSG.FLEE_IN_TERROR);
-    if (flee) state.msg?.(flee);
+    addMonsterMessage(state, target, MON_MSG.FLEE_IN_TERROR, true);
   }
   if (result.monsterDied && !arenaInterceptDeath(state, target)) {
     state.onPlayerKill?.(target);

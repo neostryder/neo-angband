@@ -68,16 +68,14 @@ export const SKILL_MAX = 10;
  * equivalent - if nobody drains it, the work simply never happens, which is
  * exactly what PN_IGNORE did until this landed.
  *
- * PN_MON_MESSAGE (0x4) is deliberately ABSENT rather than defined-and-unused:
- * show_monster_messages has no port yet (PORT_TODO 3.1), so a third constant
- * here would be a bit nothing raises and nothing consumes. It goes in with the
- * message queue, in the same change, or not at all.
  */
 export const PN = {
   /** PN_COMBINE: combine_pack is owed. */
   COMBINE: 0x01,
   /** PN_IGNORE: ignore_drop is owed. */
   IGNORE: 0x02,
+  /** PN_MON_MESSAGE: the mon_msg[] queue has lines waiting to be shown. */
+  MON_MESSAGE: 0x04,
 } as const;
 
 /** Byte size of an object flag set (OF_SIZE = FLAG_SIZE(OF_MAX)). */

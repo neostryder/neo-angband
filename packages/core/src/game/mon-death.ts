@@ -51,7 +51,7 @@ import type { GameState } from "./context.js";
 import { deleteMonster } from "./context.js";
 import { monsterPrimaryGroupSize } from "./mon-group.js";
 import { monsterRevertShape } from "./mon-shape.js";
-import { formatMonsterMessage, formatPainMessage } from "./mon-message.js";
+import { addMonsterMessage, messagePain } from "./mon-message.js";
 import type { FloorEnv } from "./floor.js";
 import { dropNear, floorExcise, floorPile } from "./floor.js";
 
@@ -344,10 +344,14 @@ export function monsterDeath(
 }
 
 /** The hooks mon_take_nonplayer_hit needs beyond the death deps. */
-export interface NonplayerHitDeps extends MonsterDeathDeps {
-  /** add_monster_message text sink (routes formatted lines to state.msg). */
-  message?: (text: string) => void;
-}
+/**
+ * mon_take_nonplayer_hit takes no deps of its own beyond monster_death's: its
+ * three messages are add_monster_message calls (mon-util.c:1223-1236), so they
+ * go on the mon_msg[] queue and out through noticeStuff, not through a sink
+ * threaded in here. The alias is kept because the scheduler's registry and the
+ * session's install site both name it.
+ */
+export type NonplayerHitDeps = MonsterDeathDeps;
 
 /**
  * The per-state registry the scheduler reads for terrain damage
@@ -389,9 +393,6 @@ export function monTakeNonplayerHit(
   deps: NonplayerHitDeps,
 ): boolean {
   const rng: Rng = state.rng;
-  const emit = (text: string | null): void => {
-    if (text) (deps.message ?? state.msg ?? (() => {}))(text);
-  };
 
   /* "Unique" or arena monsters can only be "killed" by the player. */
   if (monsterIsUnique(tMon) || state.arenaLevel) {
@@ -408,8 +409,9 @@ export function monTakeNonplayerHit(
     /* Shapechanged monsters revert on death. */
     if (tMon.originalRace) monsterRevertShape(state, tMon);
 
-    /* Death message. */
-    emit(formatMonsterMessage(tMon, dieMsgCode));
+    /* Death message (mon-util.c:1223), queued like every other MON_MSG so a
+     * lava pool that kills three of a pack reports "3 kobolds die." */
+    addMonsterMessage(state, tMon, dieMsgCode, false);
 
     /* Generate treasure and delete the monster. */
     monsterDeath(state, tMon, deps);
@@ -420,9 +422,9 @@ export function monTakeNonplayerHit(
   /* Give detailed messages if visible and not camouflaged. */
   if (!monsterIsCamouflaged(tMon)) {
     if (hurtMsgCode !== MON_MSG.NONE) {
-      emit(formatMonsterMessage(tMon, hurtMsgCode));
+      addMonsterMessage(state, tMon, hurtMsgCode, false);
     } else if (dam > 0) {
-      emit(formatPainMessage(tMon, dam));
+      messagePain(state, tMon, dam);
     }
   }
 

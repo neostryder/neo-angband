@@ -25,12 +25,14 @@ upstream:
 notes: >-
   The monster timed-effect engine over mon.mTimed[]. The effect table is the
   generated MON_TIMED_ENTRIES; resistFlag strings ("RF_NO_SLEEP" | 0) resolve to
-  RF indices. Two upstream couplings, both faithful in reachable states: the
-  monster-message queue (mon-msg.c add_monster_message) is not ported, so
-  mon_set_timed emits through an optional MonTimedMessageSink while preserving
-  exactly which MON_MSG_ fires and its NOTIFY/NOMESSAGE/visibility gate; and the
-  saving throw / inc / dec / clear entry points take an Rng explicitly (no
-  globals). monster_effect_level here is the consolidation of the copy
+  RF indices. One upstream coupling remains: the saving throw / inc / dec / clear
+  entry points take an Rng explicitly (no globals). mon_set_timed still reports
+  through an optional MonTimedMessageSink rather than calling
+  add_monster_message itself - mon/ sits below game/, where the queue lives -
+  but the sink the game supplies IS add_monster_message(mon, m_note, true)
+  (game/monster-turn.ts monsterTimedMessage), so the line is stacked and
+  delayed exactly as mon-timed.c:215 does it (PORT_TODO 3.1, closed).
+  monster_effect_level here is the consolidation of the copy
   game/monster-turn.ts had defined locally (now imported from this module).
 deferred:
   - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,

@@ -184,13 +184,11 @@ import type { BuyResult, SellResult, TxnKnowledge } from "../store/transact.js";
 import { storeCheckNum } from "../store/store.js";
 import { priceItem } from "../store/price.js";
 import {
-  formatMonsterMessage,
-  formatMonsterMessageByName,
-  formatMonsterMessageShowDamage,
-  formatPainMessage,
-  formatPainMessageShowDamage,
-  monMessageSoundType,
-  painMessageCode,
+  addMonsterMessage,
+  addMonsterMessageShowDamage,
+  messagePain,
+  messagePainShowDamage,
+  monMessageCodeByName,
 } from "../game/mon-message.js";
 import {
   AutoinscriptionRegistry,
@@ -1264,20 +1262,18 @@ function wireGame(
             if (deathDeps) monsterDeath(state, m, deathDeps);
           },
           /* add_monster_message: "the kobold dies", "wakes up", "catches
-           * fire" - the MON_MSG grammar, routed to the game's message sink so
-           * a shell shows ranged/spell/status monster messages the same way
-           * melee shows "You hit/slay the X". The projection already gates on
+           * fire" - STACKED on the mon_msg[] queue, not emitted here, so one
+           * breath over a pit produces "8 kobolds die." and the deaths come
+           * last. noticeStuff drains it. The projection already gates on
            * visibility before calling this. */
-          message: (m, msgCode, _delay, damage): void => {
+          message: (m, msgCode, delay, damage): void => {
             /* add_monster_message_show_damage (mon-msg.c:288) when the driver
              * passed a damage total, else add_monster_message (L252). */
-            const text =
-              damage === undefined
-                ? formatMonsterMessage(m, msgCode)
-                : formatMonsterMessageShowDamage(m, msgCode, damage);
-            const type = monMessageSoundType(msgCode, m.race);
-            if (text) state.msg?.(text, type);
-            state.sound?.(type);
+            if (damage === undefined) {
+              addMonsterMessage(state, m, msgCode, delay);
+            } else {
+              addMonsterMessageShowDamage(state, m, msgCode, delay, damage);
+            }
           },
           /* OPT(player, show_damage): project_m_player_attack's display_dam
            * (project-mon.c:1111) picks the *_show_damage message variants. */
@@ -1285,17 +1281,15 @@ function wireGame(
           /* message_pain: the graded "shrugs off the attack" / "cries out in
            * pain" line for a monster hurt but not killed. */
           messagePain: (m, dam, showDamage): void => {
-            const text = showDamage
-              ? formatPainMessageShowDamage(m, dam)
-              : formatPainMessage(m, dam);
-            const type = monMessageSoundType(painMessageCode(m, dam), m.race);
-            if (text) state.msg?.(text, type);
-            state.sound?.(type);
+            if (showDamage) messagePainShowDamage(state, m, dam);
+            else messagePain(state, m, dam);
           },
-          /* mon_set_timed's queued status messages (slowed, confused, held). */
+          /* mon_set_timed's queued status messages (slowed, confused, held),
+           * add_monster_message(mon, m_note, true) at mon-timed.c:215 - the
+           * delayed pass, so a status line follows the blow that caused it. */
           timedMessage: (m, note): void => {
-            const text = formatMonsterMessageByName(m, note);
-            if (text) state.msg?.(text);
+            const code = monMessageCodeByName(note);
+            if (code !== null) addMonsterMessage(state, m, code, true);
           },
           /* Lore learning when a projection's outcome is seen. */
           learnRaceFlag: (m, flag): void =>
@@ -1491,10 +1485,7 @@ function wireGame(
      * path - die/pain messages, loot via monster_death, fear rolls. The
      * scheduler reads these for monster_take_terrain_damage; without them
      * terrain damage was inert. */
-    installNonplayerHitDeps(state, {
-      ...deathDeps,
-      message: (text: string): void => state.msg?.(text),
-    });
+    installNonplayerHitDeps(state, deathDeps);
 
     /* does_resist lore (mon-timed.c L107-110, gap 8.6): when a monster resists a
      * timed effect via a race flag, learn that flag into visible lore. The

@@ -835,6 +835,18 @@ export interface GameState {
    */
   msg?: (text: string, type?: MessageType) => void;
   /**
+   * panel_contains (ui-output.c): is this grid inside the map viewport? Read by
+   * message_flags (game/mon-message.ts) for the "(offscreen)" tag on a stacked
+   * monster message, and available to monster_desc's MDESC_SHOW callers.
+   *
+   * UNBOUND MEANS "EVERYTHING IS ON SCREEN", which is what core assumes when it
+   * has no camera - the port's camera is the web shell's (packages/web/src
+   * main.ts viewport()), because core has no idea how many rows the terminal
+   * gave the map. A shell that does not bind this simply never prints
+   * "(offscreen)"; nothing else changes.
+   */
+  panelContains?: (grid: Loc) => boolean;
+  /**
    * sound(msgt): play the sound bound to a MSG_* type (message.c sound()).
    * A front end wires it to its audio engine (the web build emits the core
    * EVENT_SOUND onto its sound bus); absent, sound is silent. The engine's

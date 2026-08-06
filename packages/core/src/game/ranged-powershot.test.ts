@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, TMD, TV } from "../generated/index.js";
+import { MFLAG, MON_MSG, TMD, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson, ObjectKind } from "../obj/types.js";
@@ -25,6 +25,8 @@ import { installRangedCommands } from "./ranged-cmd.js";
 import { gearAdd } from "./gear.js";
 import type { GameState } from "./context.js";
 import { addMon, makeRace, makeState } from "./harness.js";
+import { noticeStuff } from "./notice.js";
+import { pendingMonsterMessages } from "./mon-message.js";
 
 function load(name: string): unknown {
   return JSON.parse(
@@ -168,10 +170,57 @@ describe("ranged fear + pain messages (player-attack.c:1191-1195, gap 2.4)", () 
     fire(state, handle, 6);
     expect(mon.hp).toBeLessThan(100);
     expect(mon.hp).toBeGreaterThan(0);
+    /* Both lines are queued; fire() is do_cmd_fire, and process_player is
+     * what drains (game-world.c:996). The flee line takes the DELAYED pass
+     * (player-attack.c:1194 passes true), which is what keeps it behind an
+     * immediate line queued after it - by another pierce, or another monster. */
+    const flee = pendingMonsterMessages(state).find(
+      (m) => m.msgCode === MON_MSG.FLEE_IN_TERROR,
+    );
+    expect(flee?.delay).toBe(1);
+    noticeStuff(state);
     /* message_pain fired (a line beyond the hit message)... */
     expect(msgs.length).toBeGreaterThan(1);
     /* ...and the new fright printed the flee line. */
     expect(msgs.some((m) => m.includes("flees in terror"))).toBe(true);
+  });
+
+  /*
+   * player_kill_monster's flush (mon-util.c:1046). The ranged death line is
+   * said directly, so without it the second shot's kill would be printed
+   * before the first shot's pain line - which is the order a player would read
+   * as the wrong monster dying.
+   */
+  it("a kill flushes the pain line the previous shot queued", () => {
+    const msgs: string[] = [];
+    const state = makeState({ playerGrid: loc(5, 10) });
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    const handle = armArcher(state);
+    const survivor = addMon(state, makeRace({ ac: 0 }), loc(7, 10), { hp: 1000 });
+    survivor.mflag.on(MFLAG.VISIBLE);
+    state.rng.randFix(100);
+    fire(state, handle, 6);
+    expect(survivor.hp).toBeGreaterThan(0);
+    const beforeKill = msgs.length;
+    expect(msgs.some((m) => m.includes("dies"))).toBe(false);
+
+    /* Second shot, a monster that cannot survive it, on the same turn. */
+    const doomed = addMon(state, makeRace({ ac: 0 }), loc(6, 10), { hp: 1000 });
+    doomed.mflag.on(MFLAG.VISIBLE);
+    doomed.hp = 1;
+    fire(state, handle, 6);
+    expect(state.monsters[doomed.midx]).toBeFalsy();
+
+    const dieAt = msgs.findIndex((m) => m.includes(" dies."));
+    expect(dieAt).toBeGreaterThan(-1);
+    /* The queued pain line landed BEFORE the kill line, not after it. */
+    const painAt = msgs.findIndex(
+      (m, i) => i >= beforeKill && !m.startsWith("Your ") && !m.includes(" dies."),
+    );
+    expect(painAt).toBeGreaterThan(-1);
+    expect(painAt).toBeLessThan(dieAt);
   });
 });
 

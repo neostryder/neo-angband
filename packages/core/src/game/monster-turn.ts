@@ -128,7 +128,7 @@ import {
   monsterEffectLevel,
   type MonTimedMessageSink,
 } from "../mon/timed.js";
-import { formatMonsterMessageByName } from "./mon-message.js";
+import { addMonsterMessage, monMessageCodeByName } from "./mon-message.js";
 import { tvalIsMoney } from "../obj/object.js";
 import { monMeleeAttack } from "../combat/mon-melee.js";
 import { reactToSlay } from "../combat/brand-slay.js";
@@ -1651,8 +1651,10 @@ export function monsterTurn(mon: Monster, state: GameState): void {
  */
 function monsterTimedMessage(state: GameState): MonTimedMessageSink {
   return (mon, note) => {
-    const text = formatMonsterMessageByName(mon, note);
-    if (text) state.msg?.(text);
+    /* add_monster_message(mon, m_note, true) (mon-timed.c:215): the DELAYED
+     * pass, so "The kobold is no longer confused." follows whatever hurt it. */
+    const code = monMessageCodeByName(note);
+    if (code !== null) addMonsterMessage(state, mon, code, true);
   };
 }
 

@@ -210,8 +210,9 @@ export interface MeleeAttack {
   monsterDied: boolean;
   /**
    * The monster survived and was left frightened and visible: py_attack's
-   * end-of-loop add_monster_message(MON_MSG_FLEE_IN_TERROR). The caller emits
-   * the "flees in terror" line.
+   * end-of-loop add_monster_message(MON_MSG_FLEE_IN_TERROR, true). The caller
+   * queues it (game/player-turn.ts); the delayed pass is what makes it read as
+   * a reaction to the blow rather than an interleaved line.
    */
   monsterFled: boolean;
   /**

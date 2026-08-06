@@ -197,9 +197,6 @@ function applyMonVsMonHit(
     reg: null as never,
     floorEnv: {},
     lore: state.lore,
-    message: (text: string): void => {
-      state.msg?.(text);
-    },
   });
 }
 
