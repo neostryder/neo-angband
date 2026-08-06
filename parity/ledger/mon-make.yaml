@@ -29,7 +29,7 @@ notes: >-
   SEASONAL is an option flag instead of reading the wall clock;
   turn_energy clamps speed to 0..199 where upstream indexes unchecked;
   builder throws when a race's level breaches max-depth (upstream would
-  corrupt memory). Deferred (ledgered here): level rating, update_mon,
+  corrupt memory). Deferred (ledgered here): update_mon,
   mon_create_drop and mon_create_drop_count, mimicked-object creation,
   summon placement, compaction (compact_monsters, monster_index_move,
   wipe_mon_list). Town generation counts (town-day/town-night) belong
@@ -39,6 +39,13 @@ notes: >-
   gen/util.ts with generation-time group indices; monster_group_assign
   and delete_monster_idx's group removal live in game/mon-group.ts +
   game/context.ts (see game-mon-group.yaml, gen-framework.yaml).
+  LEVEL RATING was listed above as deferred and is not: it is ported end to
+  end and was when this row was written. add_to_monster_rating (mon-make.c
+  L1112-1126) is wired in game/mon-place.ts for generation AND live
+  summons/breeders, matching upstream's single place_new_monster_one;
+  place_object accumulates obj_rating in gen/util.ts; and gen/generate.ts:518
+  is upstream's own line, chunk->feeling = calc_obj_feeling(chunk, p) +
+  calc_mon_feeling(chunk) (generate.c:1241). PORT_TODO 7.3.
 verified-by:
   - make.test.ts against the real pack (617 legal alloc entries,
     level-sorted, prob1 formula; seeded getMonNum at depths 1/10/40/98
