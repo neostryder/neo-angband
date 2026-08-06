@@ -1208,11 +1208,35 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `chanceOfMeleeHitBase` at `:1090`.
   Sites: `packages/web/src/knowledge.ts:1095`, `:1185`
 
-- [ ] **3.4 Monster spell and breath damage are not bound to the casting race.**
-  `deps.spellLoreDamage` (`packages/core/src/mon/lore-describe.ts:149`) is a full
-  override with **no supplier anywhere**, so `monSpellLoreDamage` returns 0 and
-  upstream's `(N)` is omitted at every spell. Distinct from 3.3: this one is a
-  `mon/spell.ts` binding, not a display call.
+- [x] **3.4 Monster spell and breath damage are not bound to the casting race.**
+  **NOT A GAP — the item was wrong, and its own reasoning is what made it
+  wrong.** It went from "`deps.spellLoreDamage` has no supplier" to
+  "`monSpellLoreDamage` returns 0 and the `(N)` is omitted at every spell."
+  But `spellLoreDamage` is an *override*, not the producer. With it absent the
+  default computes the damage from bound data (`lore-describe.ts:449`):
+  `monSpellNonhpDamage` for ordinary damaging spells, needing **nothing**
+  injected, and `breathDam` for breaths, needing only `breathProjection` —
+  **supplied since `bd06e3539` (2026-07-13)** at `packages/web/src/main.ts:3679`,
+  in the very commit that built the recall viewer. *An unsupplied optional is
+  not evidence of an unreachable feature.* The item never opened the default.
+
+  Verified rather than assumed, and with **derived** expectations rather than
+  declared ones: `mon/lore-describe.test.ts:110` computes
+  `min(avgHp / divisor, damageCap)` from the shipped projection record for the
+  breath and `15 + 3*spellPower` / `trunc(spellPower/3) + 56` from
+  `monster_spell.txt`'s dice for BA_ACID and BO_ACID, and pins that
+  `armour_known` gates the breath number but not the dice one (upstream's
+  `nonhp_dam` takes no hp). `web/screens.test.ts:907` repeats it through
+  `monsterRecallLines`, including the negative case with `breathProjection`
+  unwired.
+
+  **The limit those green tests do not cover:** `screens.test.ts` rebuilds
+  `recallDeps()` by hand rather than importing it, because nothing imports
+  `main.ts` — a hand-written mirror. So the *values* are proven and the *shell
+  binding line* is not; I read it instead, and `booted.registries.projections`
+  is the same PROJ-indexed `bindProjections` array the fixture binds, so
+  `projections?.[subtype]` resolves. Same status as `state.sound` and the
+  `panelContains` binding at 3.1.
   Sites: `parity/ledger/mon-lore-describe.yaml:55`
 
 - [x] **3.5 The sidebar's stat rows ignore equipment.**
