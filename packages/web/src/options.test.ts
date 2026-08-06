@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
-import { OptionState, Rng } from "@rpgm-tools/neo-angband-core";
-import type { GameState } from "@rpgm-tools/neo-angband-core";
+import { HostDir, NULL_HOST, OptionState, Rng, setHost } from "@rpgm-tools/neo-angband-core";
+import type { GameState, HostIo } from "@rpgm-tools/neo-angband-core";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { GlyphTerm } from "./term";
 
@@ -101,6 +101,21 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** A HostIo whose USER directory is a Map, for the s/r custom-defaults keys. */
+function memHost(files: Map<string, string>): HostIo {
+  return {
+    ...NULL_HOST,
+    displayPath: (dir, name) => `${dir}/${name}`,
+    exists: (dir, name) => dir === HostDir.USER && files.has(name),
+    read: (dir, name) => (dir === HostDir.USER ? (files.get(name) ?? null) : null),
+    write: (dir, name, text) => {
+      if (dir !== HostDir.USER) return "create-failed";
+      files.set(name, text);
+      return "ok";
+    },
+  };
+}
+
 /** A minimal GameState stand-in: only .options and .rng are read by options.ts. */
 function makeState(init?: ConstructorParameters<typeof OptionState>[0]): GameState {
   return {
@@ -112,6 +127,7 @@ function makeState(init?: ConstructorParameters<typeof OptionState>[0]): GameSta
 describe("runOptionsMenu (do_cmd_options, '=')", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
+    setHost(NULL_HOST);
   });
 
   it("lists the faithful top-level entries with upstream-stable letters", () => {
@@ -186,10 +202,151 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(state.options!.get("rogue_like_commands")).toBe(false);
     const snap = term.snapshot().join("\n");
     expect(snap).toMatch(/rogue_like_commands\)/);
-    expect(snap).toContain("'x' to reset to defaults");
+    /* m->prompt for OP_INTERFACE, verbatim (ui-options.c L341). The port used
+     * to print "'x' to reset to defaults", which named a key it had and omitted
+     * the two it did not. */
+    expect(snap).toContain("Set option (y/n/t), 's' to save, 'r' to restore, 'x' to reset");
     press(win, "Escape"); // back to top menu
     await tick();
     press(win, "Escape"); // exit
+    await done;
+  });
+
+  /* ---------------------------------------------------------------------
+   * PORT_TODO 5.3: 's' and 'r', the customised-defaults keys.
+   * ------------------------------------------------------------------ */
+
+  it("'s' writes the page's customised-defaults file and acknowledges", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const files = new Map<string, string>();
+    setHost(memHost(files));
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "y"); // rogue_like_commands -> true, so the file is not the table
+    press(win, "s");
+    await tick();
+
+    const text = files.get("customized_interface_options.txt");
+    expect(text).toBeDefined();
+    expect(text).toContain("option:rogue_like_commands:yes");
+    /* get_com's exact literal (ui-options.c L171). Snapshot BEFORE the
+     * dismissing key, because finishing the prompt erases row 0. */
+    expect(term.snapshot().join("\n")).toContain(
+      "Successfully saved.  Press any key to continue.",
+    );
+    press(win, " "); // dismiss
+    await tick();
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
+  it("'s' reports a failed write with upstream's other literal", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    setHost({ ...NULL_HOST, write: () => "create-failed" });
+    const term = makeTerm(100, 40);
+    const done = runOptionsMenu(term, makeState(), async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "s");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Save failed.  Press any key to continue.");
+    press(win, " ");
+    await tick();
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
+  it("'r' pulls the saved defaults back into the live options and the rows", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const files = new Map<string, string>([
+      [
+        "customized_interface_options.txt",
+        "option:rogue_like_commands:yes\noption:use_sound:yes\n",
+      ],
+    ]);
+    setHost(memHost(files));
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    expect(state.options!.get("rogue_like_commands")).toBe(false);
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "r");
+    await tick();
+    expect(state.options!.get("rogue_like_commands")).toBe(true);
+    expect(state.options!.get("use_sound")).toBe(true);
+    /* menu_refresh: the drawn rows moved too, not just the store. A restore
+     * that updated only the store would leave the screen lying. */
+    const snap = term.snapshot().join("\n");
+    expect(snap).toMatch(/Use the roguelike command keyset\s+: yes/);
+    /* A SUCCESSFUL restore prints nothing (ui-options.c L184-186). */
+    expect(snap).not.toContain("Press any key to continue.");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
+  it("'r' reports a restore that failed to open the file", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    /* Present but unreadable - the ONE case options_restore_custom returns
+     * false for (L280-282). An ABSENT file is a silent success that resets to
+     * the maintainer defaults. */
+    setHost({ ...NULL_HOST, exists: () => true, read: () => null });
+    const term = makeTerm(100, 40);
+    const done = runOptionsMenu(term, makeState(), async () => {});
+    press(win, "a");
+    await tick();
+    press(win, "r");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Restore failed.  Press any key to continue.");
+    press(win, " ");
+    await tick();
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
+  it("the CHEAT page has no s/r/x at all (cmd_keys is just YyNnTt)", async () => {
+    /* option_toggle_menu gives OP_CHEAT the default branch (ui-options.c
+     * L331-333). 'x' used to work here because optionToggleScreen ran it for
+     * every editable page. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const files = new Map<string, string>();
+    setHost(memHost(files));
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "x"); // the top-menu tag for Cheat options
+    await tick();
+    press(win, "y"); // cheat_hear (first CHEAT row) -> true
+    expect(state.options!.get("cheat_hear")).toBe(true);
+
+    press(win, "x"); // would be options_restore_maintainer, if the page had it
+    expect(state.options!.get("cheat_hear")).toBe(true);
+    press(win, "s"); // would be options_save_custom
+    await tick();
+    expect(files.size).toBe(0);
+
+    const snap = term.snapshot().join("\n");
+    expect(snap).toContain("Set option (y/n/t), select with movement keys or index");
+    expect(snap).not.toContain("'s' to save");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
     await done;
   });
 

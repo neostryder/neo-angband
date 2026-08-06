@@ -52,7 +52,7 @@ import {
   selectFromMenu,
 } from "./overlay";
 import type { ScreenLine } from "./overlay";
-import { runBirthOptionsEditor } from "./options";
+import { customPageDefaults, runBirthOptionsEditor } from "./options";
 import { runHelp } from "./help";
 import { log } from "./logging";
 import { argForceName, argName } from "./launch";
@@ -1303,8 +1303,18 @@ export async function runBirth(
   };
 
   // birth_* options chosen via '=' during birth (do_cmd_options_birth). Applied
-  // as startGame optionOverrides after acceptance. Empty => every default kept.
-  const birthOptions: Record<string, boolean> = { ...(opts.birthOptions ?? {}) };
+  // as startGame optionOverrides after acceptance.
+  //
+  // SEEDED FROM THE PLAYER'S CUSTOMISED DEFAULTS FIRST (options_init_defaults'
+  // OP_BIRTH restore, option.c:198, which runs in player_init BEFORE any birth
+  // stage). Without this the '=' screen would open on the table defaults every
+  // time and the 's' key on it would write a file nothing ever read - the
+  // savefile cannot do this job, because at birth there is no savefile. A value
+  // this session already chose still wins over the file.
+  const birthOptions: Record<string, boolean> = {
+    ...customPageDefaults("BIRTH"),
+    ...(opts.birthOptions ?? {}),
+  };
   // Wrap birthMenu so '=' opens the editable birth-options screen and then
   // re-shows the SAME stage (ui-birth.c:848-850, next = current), for every
   // menu_question stage without threading the option state into each.

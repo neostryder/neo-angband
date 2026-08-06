@@ -2179,11 +2179,69 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:2713`,
   `parity/ledger/store-maint.yaml:54`
 
-- [ ] **5.3 `options_save_custom` / `restore_custom` / `restore_maintainer`.**
-  The per-user customised-defaults files in `ANGBAND_DIR_USER`. Buildable now:
-  the host seam and the pref-file writer both exist. Watch the parser traps —
-  one parse loop, and it must not be stricter than `strtol`.
-  Sites: `parity/ledger/options.yaml:76`
+- [x] **5.3 `options_save_custom` / `restore_custom` / `restore_maintainer`.**
+  DONE — and the row understated it: this is not one deferred file pair but
+  **two persistences**, and the port only had one of them.
+
+  `packages/core/src/player/options-file.ts` is option.c L207-328 whole: the
+  writer's exact bytes (the three header lines, then description-comment +
+  `option:name:yes|no` per option), the reader, `options_restore_maintainer`,
+  and `options_init_defaults` in its order — table defaults, customised BIRTH,
+  customised INTERFACE, *then* `delay_factor = 40` and `hitpoint_warn = 3`.
+
+  **The read side is the feature, and it needed wiring in two places.**
+  `startGame` now runs `optionsInitDefaults(host())` where upstream's
+  `player_init` calls it (player.c:491), and birth.ts seeds its birth-choice map
+  from `customPageDefaults("BIRTH")` before the first stage. Without the second,
+  the '=' editor opens on the table every time and its own 's' key writes a file
+  nothing reads — the savefile cannot carry this, because at birth there is no
+  savefile. `session/options-custom-wiring.test.ts` boots a real game against a
+  memory host and reads the live `OptionState`, including the FROZEN birth
+  snapshot; `birth.test.ts` drives the '=' screen and asserts the row shows the
+  file's value, not the table's.
+
+  **Three live divergences surfaced on the way, all now fixed:**
+
+  > **`get_parser_error_limit()` is 20, not 0.** `visuals/prefs.ts` carried
+  > `opts.errorLimit ?? 0` under a comment reading "Upstream's default is 0
+  > (ui-init.c / z-util), so every error is reported". The value is
+  > `PARSE_ERROR_LIMIT` (parser.c:38) and it is in neither of those files. This
+  > is **behavioural, not cosmetic**: ui-prefs.c:1222's loop `break`s on
+  > reaching the limit, so upstream stops applying a pref file after its
+  > twentieth bad line and the port applied every line to the end.
+  >
+  > **The CHEAT page offered `x`.** `optionToggleScreen` ran the
+  > reset-to-defaults key for every non-read-only page. Upstream gives `cmd_keys`
+  > containing `"SsRrXx"` to exactly two pages — OP_INTERFACE and
+  > OPT_PAGE_BIRTH+10 (ui-options.c L333-348) — and the cheat page gets the
+  > default `"YyNnTt"`. The keys are now gated on the page declaring
+  > `OptionCustomDefaults`, which also gave s and r somewhere to live.
+  >
+  > **All three page prompts were one string.** The screen printed `"Set option
+  > (y/n/t), 'x' to reset to defaults"` everywhere, which named a key it had and
+  > omitted two it did not. Upstream has three (L331, L337, L342) and now so
+  > does this.
+
+  `packages/core/src/parser.ts` is new and is where the shared half of parser.c
+  now lives: `parserErrorText`, the limit, `containsOnlySpaces`, the blank/comment
+  skip, and a real `Strtok`. The tokeniser is reproduced rather than approximated
+  because a `split(":")` reader gets three things wrong **in the direction that
+  accepts malformed input** — `option:show_damage::yes` is
+  PARSE_ERROR_INVALID_VALUE upstream and would have silently set the option here.
+  `PrefError` is now an alias of the one `ParserState`.
+
+  26 mutations across the two halves, 26 killed, plus **one recorded as
+  unkillable by construction rather than faked**: `if (ok) writeBack(opts)` in
+  customDefaultsFor, because a failed restore returns before touching `opts`, so
+  writing the snapshot back is provably a no-op. The `errmsg`-threading in
+  parseOptionLine is upstream's scruffiness reproduced deliberately — a handler
+  error inherits whatever the last FIELD error left in `p->errmsg`, which is why
+  the first bad line in a file reports an empty token.
+  Sites: `packages/core/src/player/options-file.ts`,
+  `packages/core/src/parser.ts`,
+  `packages/core/src/session/game.ts:2776`,
+  `packages/web/src/options.ts`, `packages/web/src/birth.ts`,
+  `parity/ledger/options.yaml:76`
 
 - [x] **5.4 `RANDNAME_TOLKIEN` is not loaded.** CLOSED as a RETRACTION — it is
   loaded, and it has been since before this row was written. `randnameMake` and
