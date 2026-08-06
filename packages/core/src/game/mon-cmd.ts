@@ -17,7 +17,7 @@
  * drop branch empties one item from the monster's held pile (PORT_TODO 2.18).
  */
 
-import { EF, FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated/index.js";
+import { EF, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated/index.js";
 import { EffectRegistry, sourceMonster } from "../effects/interpreter.js";
 import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
 import type { BlowMethod } from "../mon/types.js";
@@ -45,6 +45,13 @@ import { monsterSwap, squareMonster } from "./context.js";
 import { doMonSpell } from "./mon-cast.js";
 import type { DoMonSpellDeps } from "./mon-cast.js";
 import { chooseAttackSpell } from "./mon-ranged.js";
+import {
+  squareDestroyWall,
+  squareIsSecretDoor,
+  squareOpenDoor,
+  squareSmashDoor,
+  squareSmashWall,
+} from "./cave-square.js";
 import { describeObject } from "./describe.js";
 import { dropNear } from "./floor.js";
 import { buildEffectContext } from "./effect-env.js";
@@ -56,8 +63,6 @@ import {
 } from "./mon-death.js";
 import { basicPlayerActor } from "./project-cast.js";
 import { thrustAway } from "./thrust.js";
-import { squareDoorPower, squareSetDoorLock } from "./trap.js";
-import type { TrapDeps } from "./trap.js";
 
 /** Trailing punct that suppresses MDESC_COMMA after {target} (mon-blows.c L76). */
 const BLOW_PUNCT = ".!?;:,'";
@@ -607,7 +612,6 @@ function commandedWalk(
   /* m_name, built once by the caller (cmd-cave.c L1797-1798). */
   name: string,
   dir: number,
-  trapDeps: TrapDeps | null,
   spellDeps: DoMonSpellDeps | null,
 ): boolean {
   const c = state.chunk;
@@ -644,14 +648,19 @@ function commandedWalk(
 
     if (mon.race.flags.has(RF.PASS_WALL)) {
       canMove = true;
-    } else if (
-      mon.race.flags.has(RF.KILL_WALL) ||
-      mon.race.flags.has(RF.SMASH_WALL)
-    ) {
-      /* Remove the wall (square_destroy_wall / square_smash_wall). */
-      c.setFeat(grid, FEAT.FLOOR);
+    } else if (mon.race.flags.has(RF.KILL_WALL)) {
+      /* Remove the wall (cmd-cave.c L1919-1920). */
+      squareDestroyWall(state, grid);
       canMove = true;
-    } else if (c.feat(grid) === FEAT.CLOSED || c.feat(grid) === FEAT.SECRET) {
+    } else if (mon.race.flags.has(RF.SMASH_WALL)) {
+      /* Remove EVERYTHING (L1922-1924) - the wall and, roll by roll, most of
+       * what is next to it. This branch used to share KILL_WALL's body, which
+       * made a SMASH_WALL monster dig a corridor instead of a hole AND skipped
+       * the per-neighbour survival draws, so the RNG stream diverged from the
+       * same monster smashing the same wall on its own turn. */
+      squareSmashWall(state, grid);
+      canMove = true;
+    } else if (c.isClosedDoor(grid) || squareIsSecretDoor(state, grid)) {
       const canOpen = mon.race.flags.has(RF.OPEN_DOOR);
       const canBash = mon.race.flags.has(RF.BASH_DOOR);
 
@@ -662,8 +671,11 @@ function commandedWalk(
       }
 
       if (canBash || canOpen) {
-        const k = trapDeps ? squareDoorPower(state, grid, trapDeps) : 0;
-        if (k > 0 && trapDeps) {
+        /* square_door_power / square_set_door_lock through the state seams -
+         * the same two monster_turn_can_move uses, rather than a second route
+         * to the same trap. */
+        const k = state.doorLockPower?.(grid) ?? 0;
+        if (k > 0) {
           /* Test strength against door strength. */
           if (state.rng.randint0(Math.trunc(mon.hp / 10)) > k) {
             state.msg?.(
@@ -672,15 +684,15 @@ function commandedWalk(
                 : `${name} fiddles with the lock.`,
             );
             /* Reduce the power of the door by one. */
-            squareSetDoorLock(state, grid, k - 1, trapDeps);
+            state.setDoorLock?.(grid, k - 1);
           }
         } else if (canBash) {
           /* Closed or secret door: bash (square_smash_door). */
-          c.setFeat(grid, FEAT.BROKEN);
+          squareSmashDoor(state, grid);
           state.msg?.("You hear a door burst open!");
           canMove = true;
         } else {
-          c.setFeat(grid, FEAT.OPEN);
+          squareOpenDoor(state, grid);
           canMove = true;
         }
       }
@@ -787,7 +799,6 @@ export function doCmdMonCommand(
           mon,
           mName,
           dir,
-          deps.general?.trapDeps ?? null,
           deps,
         )
       ) {
