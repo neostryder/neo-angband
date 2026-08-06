@@ -888,3 +888,37 @@ export function statusLineModel(
     { key: "terrain", runs: terrainRuns(state) },
   ];
 }
+
+/* ------------------------------------------------------------------ */
+/* panel_contains (ui-output.c:689)                                    */
+/* ------------------------------------------------------------------ */
+
+/** The map viewport a shell is currently drawing: top-left plus size in grids. */
+export interface MapPanel {
+  camX: number;
+  camY: number;
+  mapCols: number;
+  mapRows: number;
+}
+
+/**
+ * textui_panel_contains (ui-output.c:689): is this grid inside the drawn map?
+ *
+ * Upstream writes it in UNSIGNED arithmetic - `(y - offset_y) < hgt` - so a
+ * grid above or left of the camera wraps to a huge number and reads false. The
+ * signed form below is the same predicate, written the way it can be read.
+ *
+ * Lives here rather than in the shell because it is the one piece of the camera
+ * that CORE needs: message_flags (game/mon-message.ts) tags a stacked monster
+ * message "(offscreen)" from it. The shell owns the camera itself - core has no
+ * idea how many rows the terminal gave the map - and binds
+ * `state.panelContains` to this with its own viewport numbers.
+ */
+export function panelContains(panel: MapPanel, grid: Loc): boolean {
+  return (
+    grid.x >= panel.camX &&
+    grid.x < panel.camX + panel.mapCols &&
+    grid.y >= panel.camY &&
+    grid.y < panel.camY + panel.mapRows
+  );
+}

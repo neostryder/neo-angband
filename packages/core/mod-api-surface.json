@@ -1236,6 +1236,7 @@
     "packTotalSuppressed",
     "packTotalView",
     "painMessageCode",
+    "panelContains",
     "parseId",
     "parseLaunchArgs",
     "parseLoreFile",

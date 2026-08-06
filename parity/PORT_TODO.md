@@ -1141,13 +1141,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   **Nineteen mutations, nineteen kills**, after the three survivors each earned a
   test rather than an excuse.
 
-  **One thing deliberately left visible, not hidden.** `message_flags` reads
-  `state.panelContains` for `MON_MSG_FLAG_OFFSCREEN`, and **nothing binds it** —
-  the port's camera lives in the web shell (`packages/web/src/main.ts`
-  `viewport()`), not in core. So the "(offscreen)" tag never appears in play. The
-  mechanism is faithful and tested with a bound predicate; the binding is a
-  separate, small piece of work and is recorded here rather than left as a seam
-  with no supplier.
+  **The `(offscreen)` tag, and the one line no test can reach.** `message_flags`
+  reads `state.panelContains` for `MON_MSG_FLAG_OFFSCREEN`. Core cannot compute
+  it — it has no idea how many rows the terminal gave the map — so `panelContains`
+  (`game/display.ts`, `ui-output.c:689`) takes the camera as an argument and the
+  shell binds `state.panelContains` from its own `viewport()`. The predicate is
+  tested at all four edges plus the negative-coordinate case that upstream's
+  UNSIGNED `(y - offset_y) < hgt` relies on. `mon-cast.ts`'s separate
+  `panelContains` dep — which also had no supplier — is deleted and reads the
+  state instead, so there is one camera and one place to bind it.
+
+  **What is NOT covered:** the binding line itself in `packages/web/src/main.ts`.
+  Nothing imports `main.ts`, so no vitest can see it — the same status as
+  `state.sound` and every other wiring line in that file. Verifying it means
+  driving the desktop build over CDP with a monster outside the panel, which has
+  not been done. Said here rather than left to be assumed from "tested".
 
 - [x] **3.2 The killer's name is a race name.** DONE. `MDESC_DIED_FROM` was
   defined and unused at both death sites, so the cause read "kobold" where

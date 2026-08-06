@@ -101,6 +101,7 @@ import {
   objHasInscrip,
   objectIsIgnored,
   OF,
+  panelContains,
   sidebarModel,
   statusLineModel,
   playerRestingIsSpecial,
@@ -8442,6 +8443,18 @@ state.sound = (type: number): void => {
   if (!(state.options?.get("use_sound") ?? false)) return;
   soundEvents.emit("sound", { msg: "", type });
 };
+
+// panel_contains (ui-output.c:689), the one piece of the camera core needs:
+// message_flags (game/mon-message.ts) tags a stacked monster message
+// "(offscreen)" from it, so a kobold dying out of shot reads "The kobold
+// (offscreen) dies." Core cannot compute this - it has no idea how many rows
+// the terminal gave the map - so the shell binds it from its own viewport.
+// Read LIVE on each call rather than captured: the camera pans, the terminal
+// resizes, and '=' can move the sidebar, all between two messages in one turn.
+// The PREDICATE is tested (core game/display.test.ts, all four edges plus the
+// negative-coordinate case); this BINDING is not, because nothing imports
+// main.ts - same as state.sound above and every other wiring line here.
+state.panelContains = (grid: Loc): boolean => panelContains(viewport(), grid);
 
 /* First FOV after birth/load: clear only_partial left sticky by startGame
  * when updateFov was not yet wired (ui-display.c:2556-2557).
