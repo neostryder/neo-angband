@@ -29,8 +29,10 @@ import { lookupTrap } from "../world/trap.js";
 import { isDaytime } from "./world.js";
 import type { GameState } from "./context.js";
 import { squareIsEmptyLive } from "./mon-place.js";
-import { squareIsPlayer, squareMonster } from "./context.js";
+import { deleteMonster, monsterSwap, squareIsPlayer, squareMonster } from "./context.js";
 import { dropNear, floorExcise, floorPile, floorCarry } from "./floor.js";
+import { scatterExt } from "../world/scatter.js";
+import type { GameObject } from "../obj/object.js";
 import type { MakeDeps } from "../obj/make.js";
 import { squareIsSecretDoor } from "./cave-cmd.js";
 import {
@@ -65,18 +67,74 @@ function observed(state: GameState, grid: Loc): boolean {
 }
 
 /**
+ * push_object's unrevealed-mimic arm (obj-pile.c:1213-1256).
+ *
+ * An object with a mimicking monster behind it may not simply be dropped: the
+ * monster IS the object as far as the player can tell, so upstream keeps the
+ * pair together. It scatters outward from d=1 looking for an empty grid that
+ * will take the object, then MOVES THE MONSTER onto it with monster_swap and
+ * re-links the two. At d >= 4 it gives up and destroys both rather than let
+ * them part.
+ *
+ * The C resets mimicked_obj to NULL up front because its queued object is a
+ * COPY and the pointer it holds has just been freed. The port has no copy -
+ * the same GameObject is excised and re-placed - so nothing dangles here. The
+ * clear is kept anyway, because monster_swap reads the link three times and
+ * one of those readings is observable:
+ *
+ * - become_aware and move_mimicked_object both resolve the object through the
+ *   monster's OLD grid, which push_object has already emptied, so neither can
+ *   tell whether the link is up. (In the C they read the pointer directly and
+ *   still cannot: it is NULL there for the same stretch.)
+ * - update_mon can. A monster still mimicking a non-ignored item KEEPS
+ *   MFLAG_VISIBLE when it drops out of sight (mon-util.c L429-433), because
+ *   what the player is looking at is the item. Leave the link up and the mimic
+ *   stays marked visible in transit, where upstream clears the mark.
+ *
+ * game/push-object.test.ts pins that third case; without the clear it fails.
+ */
+function pushMimic(state: GameState, grid: Loc, obj: GameObject): void {
+  const midx = obj.mimickingMIdx;
+  const mimic = state.monsters[midx];
+  /* Upstream asserts the monster exists. A live game cannot reach this with a
+   * dangling index, but a mod or a hand-built save could; dropping the stale
+   * link and treating it as an ordinary object beats aborting the turn. */
+  if (!mimic) {
+    obj.mimickingMIdx = 0;
+    dropNear(state, obj, 0, grid, false, false);
+    return;
+  }
+
+  mimic.mimickedObj = 0;
+
+  for (let d = 1; ; d++) {
+    if (d >= 4) {
+      /* Give up: destroy both the mimic and the object. The object is already
+       * excised, so letting the reference go IS object_delete - and the
+       * player's memory of it, which upstream deletes alongside, is dropped by
+       * forget_remembered_objects the next time this grid is known (its
+       * original is no longer held here). */
+      deleteMonster(state, midx);
+      obj.mimickingMIdx = 0;
+      return;
+    }
+    const [newgrid] = scatterExt(state.chunk, state.rng, 1, grid, d, true, (_c, g) =>
+      squareIsEmptyLive(state, g),
+    );
+    if (newgrid && floorCarry(state, newgrid, obj)) {
+      /* Move the monster and give it the object back. */
+      monsterSwap(state, grid, newgrid);
+      mimic.mimickedObj = 1;
+      return;
+    }
+  }
+}
+
+/**
  * push_object (obj-pile.c): move the pile off a grid that stopped holding
  * objects. As upstream, the grid temporarily becomes an open door so
  * drop_near cannot land anything back on it; the caller's feature change
  * happens after.
- *
- * NOT PORTED: the unrevealed-MIMIC arm (obj-pile.c:1213-1256). Upstream tests
- * obj->mimicking_m_idx before dropping, and for a mimic it scatters outward
- * from d=1 and MOVES THE MONSTER with its object (monster_swap) on the first
- * grid that takes it, destroying both at d>=4 rather than letting them part.
- * The loop below drops every object through dropNear, so a door created on a
- * grid holding an unrevealed mimic leaves the monster behind while the object
- * it is pretending to be lands elsewhere. Tracked as PORT_TODO 2.14.
  */
 export function pushObject(state: GameState, grid: Loc): void {
   const c = state.chunk;
@@ -90,7 +148,9 @@ export function pushObject(state: GameState, grid: Loc): void {
    * excising every member removes the entry - there is no head pointer to null. */
   for (const obj of [...floorPile(state, grid)]) {
     floorExcise(state, grid, obj);
-    dropNear(state, obj, 0, grid, false, false);
+    /* "Unrevealed mimics require special handling, as always" (:1211). */
+    if (obj.mimickingMIdx) pushMimic(state, grid, obj);
+    else dropNear(state, obj, 0, grid, false, false);
   }
   c.setFeat(grid, featOld);
 }
