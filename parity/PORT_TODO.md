@@ -1123,12 +1123,54 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/mon/take-hit.ts:180`,
   `packages/core/src/game/player-turn.ts:185`
 
-- [ ] **2.19 A commanded monster's blow does nothing but damage to a monster.**
-  The monster-target branches of the mon-blow-effect handlers reduce to damage plus
-  the critical stun, so blind / confuse / poison and the blinked teleport are lost
-  when the victim is a monster. `square_smash_wall`'s neighbour scouring and
-  upstream's broken-vs-open door split belong with it.
-  Sites: `parity/ledger/game-mon-cmd.yaml:64`, `:68`
+- [x] **2.19 A commanded monster's blow does nothing but damage to a monster.**
+  DONE, and **the row's headline was already false while its footnote was the
+  real defect.** Both halves are worth writing down, because they fail in
+  opposite directions.
+
+  **The headline — retracted.** The mon-target blow handlers do NOT reduce to
+  damage plus the critical stun. `BLIND -> MON_TMD_STUN`,
+  `CONFUSE -> MON_TMD_CONF`, `TERRIFY -> MON_TMD_FEAR` and
+  `PARALYZE -> MON_TMD_HOLD` are ported at upstream's own amounts and tested.
+  Poison against a monster carries no timed poison **upstream either**
+  (`mon-blows.c:679-681` returns before the player-only tail), so naming it was
+  a description of 4.2.6. And the "blinked teleport" **cannot happen**: all four
+  `context->blinked = true` sites (`mon-blows.c:301`, `:795`, `:840`, `:863`)
+  sit inside an `if (context->p)` arm or behind a
+  `monster_damage_target(context, true)` that returns first for a monster
+  target, so `monster_attack_monster`'s teleport tail at `mon-attack.c:887` is
+  **upstream dead code**. Omitting it is exact, not reduced.
+
+  **The footnote — real, and mis-described.** It said door bashing "does not
+  roll the upstream broken-vs-open split". There is no such roll:
+  `square_smash_door` always sets `FEAT_BROKEN`, and the open-vs-bash choice is
+  a flag test the port already made. The two genuine defects were:
+
+  - **`SMASH_WALL` shared `KILL_WALL`'s body.** A commanded smasher bored a
+    corridor instead of blowing a hole, and — because `square_smash_wall`'s
+    per-neighbour `one_in_(4 / 10 / 20)` survival rolls never happened — the
+    RNG stream diverged from the *same monster smashing the same wall on its
+    own turn*.
+  - **Both door branches set the feature and left the lock.** A door's lock is
+    a "door lock" trap on the grid, so a burst-open door kept a lock
+    `square_door_power` would still report.
+
+  > **The cause was structural, and the fix is the part that lasts.**
+  > `monster-turn.ts` held a correct, **file-private** copy of all five
+  > `cave-square.c` mutators; `mon-cmd.ts` had open-coded a degraded second
+  > set. Neither could learn from the other. They are now one module,
+  > `packages/core/src/game/cave-square.ts` — one body per C function, and the
+  > C file finally has a name in the port. Same shape as
+  > `neo-angband-duplicated-c-functions`.
+  >
+  > The commanded walk also read the door lock through a **different seam**
+  > from the one the monster's own turn used (a threaded `TrapDeps` versus
+  > `state.doorLockPower`), so a caller could supply one and not the other. One
+  > seam now.
+
+  10 mutations, 10 killed.
+  Sites: `packages/core/src/game/cave-square.ts:1`,
+  `packages/core/src/game/mon-cmd.ts:604`
 
 ## Tier 3 — It changes what the player is told
 
@@ -2147,7 +2189,7 @@ handling.
   only collectively, which is why it is still `partial` when most of it is live
   (`monsterCarry`, `mon-group.ts`, `loreLearnFlagIfVisible`). A row that cannot
   be closed is a row nobody works.
-  Sites: `packages/core/src/game/monster-turn.ts:1425`
+  Sites: `packages/core/src/game/monster-turn.ts:1380`
 
 - [ ] **7.3 Decide the level-rating question.**
   `monCreateDrop` and `updateMon` are ported and monster lore is wired including

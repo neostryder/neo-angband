@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
 import { FlagSet } from "../bitflag.js";
-import { EF, MFLAG, MON_TMD, RF, SQUARE, TMD, TV } from "../generated/index.js";
+import { EF, FEAT, MFLAG, MON_TMD, RF, SQUARE, TMD, TV } from "../generated/index.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
@@ -803,5 +803,137 @@ describe("do_cmd_mon_command CMD_DROP (cmd-cave.c L1854)", () => {
     expect(mon.heldObj).toHaveLength(0);
     expect(floorPile(state, loc(14, 10))).toContain(only);
     expect(msgs.some((m) => m.includes("drops"))).toBe(false);
+  });
+});
+
+/**
+ * The commanded walk's terrain branch (cmd-cave.c L1900-1968), PORT_TODO 2.19.
+ *
+ * Upstream calls the same five cave-square.c mutators here that it calls from
+ * monster_turn_can_move. The port had two sets: a correct one private to
+ * monster-turn.ts and a degraded one open-coded here, which folded SMASH_WALL
+ * into KILL_WALL and set the door feature without removing the door's lock.
+ * Both sets are now one module (game/cave-square.ts), so these tests are
+ * about the CALL, not about the bodies - which monster-turn.test.ts already
+ * covers.
+ */
+describe("commanded walk terrain (cmd-cave.c L1900), PORT_TODO 2.19", () => {
+  /** A commanded monster at (14,10) with granite everywhere it could reach. */
+  function inTheRock(flags: number[], seed = 11) {
+    const state = makeState({ playerGrid: loc(10, 10), seed });
+    const msgs: string[] = [];
+    state.msg = (t) => msgs.push(t);
+    const mon = commandable(state, loc(14, 10));
+    mon.race.flags = new FlagSet(mon.race.flags.size);
+    for (const f of flags) mon.race.flags.on(f);
+    mon.mTimed[MON_TMD.COMMAND] = 10;
+    /* A 5x5 block of granite around the target, so the survival rolls have
+     * neighbours to roll for. */
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const g = loc(15 + dx, 10 + dy);
+        if (!locEq(g, mon.grid)) state.chunk.setFeat(g, GRANITE);
+      }
+    }
+    return { state, mon, msgs, target: loc(15, 10) };
+  }
+
+  /** Every grid within 1 of the target that is no longer rock. */
+  function clearedNeighbours(state: GameState, target: { x: number; y: number }) {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        if (state.chunk.feat(loc(target.x + dx, target.y + dy)) === FEAT.FLOOR) n++;
+      }
+    }
+    return n;
+  }
+
+  it("SMASH_WALL scours the neighbours; KILL_WALL bores one hole", () => {
+    const smash = inTheRock([RF.SMASH_WALL]);
+    doCmdMonCommand(smash.state, { code: "walk", dir: 6 }, deps(smash.state));
+
+    const kill = inTheRock([RF.KILL_WALL]);
+    doCmdMonCommand(kill.state, { code: "walk", dir: 6 }, deps(kill.state));
+
+    /* Both clear the wall itself and step in. */
+    expect(smash.state.chunk.feat(smash.target)).toBe(FEAT.FLOOR);
+    expect(kill.state.chunk.feat(kill.target)).toBe(FEAT.FLOOR);
+    expect(smash.mon.grid).toEqual(smash.target);
+    expect(kill.mon.grid).toEqual(kill.target);
+
+    /* square_destroy_wall touches exactly one grid; square_smash_wall keeps
+     * only the neighbours that survive one_in_(4). Seed 11 is fixed, so the
+     * count is deterministic - the point is that it is not zero. */
+    expect(clearedNeighbours(kill.state, kill.target)).toBe(
+      /* only the grid the monster vacated, which was floor already */ 1,
+    );
+    expect(clearedNeighbours(smash.state, smash.target)).toBeGreaterThan(1);
+  });
+
+  it("SMASH_WALL draws the survival rolls the RNG stream expects", () => {
+    const smash = inTheRock([RF.SMASH_WALL]);
+    const before = smash.state.rng.getState();
+    doCmdMonCommand(smash.state, { code: "walk", dir: 6 }, deps(smash.state));
+    const after = smash.state.rng.getState();
+
+    /* The old body was a bare setFeat: no draws at all, so a commanded smash
+     * and a self-directed one desynchronised from each other. */
+    expect(after).not.toEqual(before);
+
+    const kill = inTheRock([RF.KILL_WALL]);
+    const killBefore = kill.state.rng.getState();
+    doCmdMonCommand(kill.state, { code: "walk", dir: 6 }, deps(kill.state));
+    expect(
+      kill.state.rng.getState(),
+      "square_destroy_wall draws nothing - the control",
+    ).toEqual(killBefore);
+  });
+
+  it("bashing a door removes its lock, not just its feature", () => {
+    const { state, target } = inTheRock([RF.BASH_DOOR]);
+    state.chunk.setFeat(target, FEAT.CLOSED);
+    const unlocked: (typeof target)[] = [];
+    state.removeDoorLock = (g) => unlocked.push(g);
+
+    doCmdMonCommand(state, { code: "walk", dir: 6 }, deps(state));
+
+    expect(state.chunk.feat(target)).toBe(FEAT.BROKEN);
+    /* square_smash_door (cave-square.c L1367) removes every "door lock" trap
+     * first. Without it the burst-open door keeps a lock nothing can pick. */
+    expect(unlocked).toHaveLength(1);
+    expect(unlocked[0]).toEqual(target);
+  });
+
+  it("opening a door removes its lock too", () => {
+    const { state, target } = inTheRock([RF.OPEN_DOOR]);
+    state.chunk.setFeat(target, FEAT.CLOSED);
+    const unlocked: (typeof target)[] = [];
+    state.removeDoorLock = (g) => unlocked.push(g);
+
+    doCmdMonCommand(state, { code: "walk", dir: 6 }, deps(state));
+
+    expect(state.chunk.feat(target)).toBe(FEAT.OPEN);
+    expect(unlocked).toHaveLength(1);
+  });
+
+  it("a locked door is worked on through the state's own door seams", () => {
+    const { state, msgs, target } = inTheRock([RF.BASH_DOOR]);
+    state.chunk.setFeat(target, FEAT.CLOSED);
+    /* The two seams monster_turn_can_move already used. The commanded walk
+     * used to reach the same trap by a second route (squareDoorPower with a
+     * threaded TrapDeps), so a caller could supply one and not the other. */
+    state.doorLockPower = () => 1;
+    const set: number[] = [];
+    state.setDoorLock = (_g, power) => set.push(power);
+
+    doCmdMonCommand(state, { code: "walk", dir: 6 }, deps(state));
+
+    /* hp 100 -> randint0(10) > 1 usually succeeds; on this seed it does. */
+    expect(msgs.some((m) => m.includes("slams against the door"))).toBe(true);
+    expect(set).toEqual([0]);
+    /* A locked door is never opened by the attempt, only weakened. */
+    expect(state.chunk.feat(target)).toBe(FEAT.CLOSED);
   });
 });
