@@ -85,9 +85,12 @@ deferred:
     monster) rides monster-spell targeting (#19); update_smart_learn
     (PF_NO_MANA) rides lore (#24). MDESC monster names ride the display
     layer (#25); the race name stands in.
-  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30);
-    likewise RECALL's birth_no_recall / birth_levels_persist options and
-    total_winner. Arena levels are not modelled.
+  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30).
+    RECALL is no longer on this list: birth_no_recall (with its
+    !total_winner exemption), birth_levels_persist, total_winner and the
+    arena refusal are all live, and player_set_recall_depth (player-util.c
+    L79) backs the countdown in game/loop.ts instead of the old
+    recallDepth = maxDepth substitution (PORT_TODO 4.2).
 verified-by:
   - game/effect-wonder.test.ts (2 BIZARRE tests) - the malignant aura
     drains all stats and a quarter of the experience permanently, and

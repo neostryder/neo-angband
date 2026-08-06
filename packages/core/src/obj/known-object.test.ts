@@ -176,7 +176,7 @@ describe("known shadow dd/ds/ac runes (obj-knowledge.c L830-838, L1039-1041)", (
     const data = JSON.parse(
       JSON.stringify(serializePlayer(p, ids)),
     ) as SavedPlayer;
-    const loaded = deserializePlayer(data, players, reg, ids);
+    const loaded = deserializePlayer(data, players, reg, ids, []);
     expect(loaded.objKnown.dd).toBe(1);
     expect(loaded.objKnown.ds).toBe(1);
     expect(loaded.objKnown.ac).toBe(1);
@@ -192,7 +192,7 @@ describe("known shadow dd/ds/ac runes (obj-knowledge.c L830-838, L1039-1041)", (
     delete data.objKnown!.ds;
     delete data.objKnown!.ac;
 
-    const loaded = deserializePlayer(data, players, reg, ids);
+    const loaded = deserializePlayer(data, players, reg, ids, []);
     expect(loaded.objKnown.dd).toBe(1);
     expect(loaded.objKnown.ds).toBe(1);
     expect(loaded.objKnown.ac).toBe(1);

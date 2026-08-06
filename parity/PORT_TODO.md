@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 100 confirmed-absent citations** — 64 closed, 4 open.
+**68 items covering all 100 confirmed-absent citations** — 65 closed, 3 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -2163,9 +2163,78 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/save.ts`, `packages/core/src/session/game.ts`,
   `parity/ledger/game-arena.yaml`, `parity/ledger/game-mon-ranged.yaml:31`
 
-- [ ] **4.2 The quest system.**
-  Sites: `packages/core/src/gen/cave.ts:3011`,
-  `packages/core/src/gen/generate.ts:11`
+- [x] **4.2 The quest system.** DONE — and, for the third row running, what the
+  row named was already built and what was broken was somewhere else.
+
+  `player-quest.c` is ported whole: `bindQuests`, `playerQuestsReset`,
+  `isQuest`, `buildQuestStairs` (with `square_changeable` reimplemented so the
+  stagger loop matches), and `questCheck` including `total_winner` and the
+  victory messages. So do the pieces around it — `dun.quest` reaches every
+  builder, `questSpawns` places the guardians with the unique-already-alive
+  skip, `dungeonGetNextLevel`'s quest scan is what keeps a player on 99 while
+  Sauron lives, the crown screen is drawn, and the score gates on the winner
+  flag. This closes on **a census of every `quest` / `is_quest` /
+  `recall_depth` / `total_winner` site in 4.2.6** instead.
+
+  **Five were absent. Four of them are player-visible, and three are one
+  finding pulling the next out.**
+
+  > **`TrapEnv.isQuest` was never supplied.** trap.c:310-311 forbids trap doors
+  > on a quest level — the guardian's floor must not open under the player. The
+  > *generation* path passed it (`gen/util.ts`, from `dun.quest`); the
+  > **runtime** path — every trap created after generation — passed nothing, and
+  > the optional seam defaulted to `false`. This is the seam-supplied-to-every-
+  > path-but-one shape, and it is not cosmetic: dropping a kind also drops its
+  > slice from `pick_trap`'s cumulative total, so the omission moved the whole
+  > draw, not just the trapdoor.
+  >
+  > **`player_set_recall_depth` (player-util.c:79) was not ported at all.** The
+  > countdown in `process_world` substituted `recallDepth = maxDepth`. That
+  > threw away every other producer's answer — including the level a
+  > persistent-levels player had *just been prompted for*, which the port asked
+  > for and then ignored — skipped the force_descend step-down entirely, and
+  > sent a character who had never descended to **depth 0**, regenerating the
+  > town under them, where upstream's `MAX(recall_depth, 1)` sends them to 1.
+  >
+  > **And that fix could not stand alone.** `on_new_level` sets
+  > `max_depth = recall_depth = depth` (game-world.c:1024) — *both*. The port
+  > set only `max_depth`, at two sites. Nobody noticed because the substitution
+  > above was papering over it: recall worked by accident, and removing the
+  > paper is what exposed the missing producer. Both sites now assign the pair.
+  >
+  > **`EF_RECALL` had no `birth_no_recall` guard** (L1098-1102). Option #34,
+  > "Word of Recall has no effect", was in the option table, offered at birth,
+  > and read by nothing — the scroll worked exactly as normal for a player who
+  > had chosen to give it up. The `!total_winner` exemption is there too: a
+  > winner gets the scroll back, which is how they return to town to retire.
+  >
+  > **`rd_quests` (load.c:623-645) restored the wrong half.** Upstream calls
+  > `player_quests_reset` FIRST and then overlays only `level` and `cur_num`;
+  > name, race and max_num always come from the game's current quest table. The
+  > port restored the whole array out of the savefile, so a stored race index
+  > survived a shift in the monster table, and — as its own comment admitted —
+  > a save written before the quest system **reloaded with no quests and no win
+  > condition**. That is a documented limitation that had become a defect. The
+  > over-count rejection is upstream's too.
+
+  Everything else in the census matched, including the parts no row mentions:
+  `square_add_stairs`, `place_stairs`'s "all stairs on an unfinished quest level
+  go up", the four `size_percent = 100` overrides, `handle_level_stairs`,
+  the room-template `>` case, `EF_TELEPORT_LEVEL`'s three quest branches, the
+  `do_cmd_go_down` force_descend warning, the retire confirmation's winner
+  branch, and `display_winner`.
+
+  **12 mutations, 12 killed.** Two needed the test rewritten before they would
+  die, and the reason is recorded in the code rather than hidden: both
+  conjuncts of the force_descend guard are shadowed in play by
+  `dungeonGetNextLevel`'s own clamp and quest scan, because `recall_depth`
+  always equals `max_depth` under that option. They are kept because they are
+  upstream's, and covered by a contract test that constructs the state play
+  cannot.
+  Sites: `packages/core/src/game/quest.ts`,
+  `packages/core/src/game/effect-general.ts`,
+  `packages/core/src/game/loop.ts`, `packages/core/src/session/game.ts`,
+  `packages/core/src/session/save.ts`, `packages/core/src/gen/generate.ts:11`
 
 - [x] **4.3 Persistent levels, and the town builder's full store generation.**
   DONE — but **both halves of the row's premise were already false, and what
