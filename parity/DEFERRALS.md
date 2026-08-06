@@ -413,17 +413,17 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 51 |
+| `real` | Confirmed absent and owed | 50 |
 | `partial` | Part ported; the note must say which part is not | 12 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
-| `ported` | Done; the note was stale and has been rewritten | 28 |
+| `ported` | Done; the note was stale and has been rewritten | 29 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
 | | **total** | **227** |
 
-### `real` - Confirmed absent and owed (51)
+### `real` - Confirmed absent and owed (50)
 
 - `packages/core/src/effects/handlers.ts:78` - LEAD READ. Still real, and the note's reason is stale: monsterDesc IS ported (mon/desc.ts) and MDESC_DIED_FROM is defined at mon/desc.ts:61. The port hardcodes "a monster" where upstream's killer_desc calls monster_desc(mon, MDESC_DIED_FROM), so the death cause loses both the article and the visibility gate ("something" for an unseen killer). The work is one call, not a subsystem
 - `packages/core/src/game/cave-cmd.ts:1045` - LEAD READ, and the lead is a FALSE POSITIVE: web/src/context-menu.ts only names do_cmd_alter in a comment while routing "Attack"/"Alter" to this same core command (context-menu.ts:164-179), so it inherits the gap rather than filling it. The chest and floor-trap-disarm fall-through branches (do_cmd_alter_aux L969-992) are genuinely absent, and "+" is bound to alter at web/src/main.ts:8090
@@ -454,7 +454,6 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/obj/object-info.ts:962` - The COMBAT half of temporary brands/slays is ported (combat/brand-slay.ts:141-201, player_has_temporary_brand/slay); only the object-info display of them is missing
 - `packages/core/src/obj/object.ts:923` - OSTACK_LIST's unknown-item stacking checks: two objects the player cannot tell apart must not merge in a LIST context. The shadow can answer this, so it is owed rather than impossible
 - `packages/core/src/obj/object.ts:1000` - OSTACK_LIST fully-known mismatch check, same site family
-- `packages/core/src/obj/randart-build.ts:38` - The "property" branch needs the timed-effects failure tables; part of the randart generator's remaining edges
 - `packages/core/src/obj/randart.ts:38` - LEAD READ. The lead (obj/randart-build.ts) is do_randart's generation half, which is fully ported; the file dumps are not. The maintainer has ruled to pursue parity here, so randart.txt (create_file / write_randart_entry, obj-randart.c L3057-L3215) and randart.log are both owed through the host seam, together with the second measurement pass (store_base_power / parse_frequencies, L3184-L3187) that exists only to populate the log
 - `packages/core/src/store/store.ts:232` - LEAD READ. Still real: object_flag_is_known's answer IS available - game/equip-cmp.ts:413 synthesises the obj->known shadow for exactly this question - and the store's buy check does not use it
 - `packages/core/src/store/store.ts:262` - LEAD READ. Same site, the buy-list loop: the flag test reads obj.flags directly with the object_flag_is_known gate commented out, so a store will buy on a flag the player has never learned
@@ -577,7 +576,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (28)
+### `ported` - Done; the note was stale and has been rewritten (29)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
 - `packages/core/src/game/mon-message.ts:15` - CLOSED by PORT_TODO 3.1 (2026-08-05). The queue is ported whole into this file - add_monster_message / _show_damage, stack_message with its saturating damage add, redundant_monster_message + store_monster, message_flags, what_delay, show_message and show_monster_messages - PN_MON_MESSAGE is the third PN bit, and noticeStuff drains it. 25 tests in game/mon-msg-queue.test.ts; 19 mutations, 19 kills. Remaining gap is narrower and recorded in 3.1: nothing binds state.panelContains, so the "(offscreen)" tag never appears.
@@ -586,6 +585,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/mon/lore-describe.ts:846` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
 - `packages/core/src/mon/lore-describe.ts:1299` - LEAD READ, and CORRECTED from real. Same: monsterHitPercent is wired at web/src/main.ts:3652 as getHitChance(max(race.level,1)*3 + effect.power, defense.ac + defense.toA), which is chance_of_monster_hit_base (combat/mon-melee.ts:191) against the player's live defensive state
 - `packages/core/src/obj/object.ts:918` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
+- `packages/core/src/obj/randart-build.ts:38` - CLOSED by PORT_TODO 5.7 (2026-08-06) as a RETRACTION - the tables are bound (player/bind.ts:733), curseTimedIncFoiled walks them for FLAG_OBJECT/RESIST/VULN exactly as obj-curse.c:267-296 does, and BOTH swapRandartSet call sites (birth game.ts:2882, load :3603) supply buildCurseTimedFoil(players.timed). The missing piece was the assertion that the shipped table yields a usable map and that the generator receives it - added in session/describe-wiring.test.ts, on a seed the sweep proved is foil-sensitive.
 - `packages/web/src/main.ts:5904` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
 - `packages/web/src/main.ts:5925` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
 - `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic

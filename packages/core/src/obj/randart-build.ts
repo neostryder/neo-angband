@@ -35,10 +35,15 @@
  *   When no summarizer is supplied this stays a conservative no-op (activations
  *   are never treated as redundant).
  * - artifact_curse_conflicts's TIMED_INC "effect foiled by an existing
- *   property" branch depends on the timed-effects failure tables (not ported);
- *   only the explicit conflict-flags branch is ported. This affects only the
- *   cursed-artifact path (make_bad) and consumes no RNG. Noted as an
- *   approximation.
+ *   property" branch IS ported (PORT_TODO 5.7) and is no longer an
+ *   approximation: the timed-effects failure tables are bound
+ *   (player/bind.ts:733), curseTimedIncFoiled (obj/object.ts:703) walks them
+ *   for TMD_FAIL_FLAG_OBJECT / _RESIST / _VULN and skips _PLAYER /
+ *   _TIMED_EFFECT exactly as obj-curse.c:267-296 does, and both swapRandartSet
+ *   call sites supply the map. It reaches here through the optional
+ *   `timedFoil`; absent (a caller with no player table) the branch stays
+ *   dormant and only the explicit conflict-flags arm runs. Affects the
+ *   cursed-artifact path (make_bad) and consumes no RNG.
  * - add_curse computes power as randint1(9) + 10 * m_bonus(9, level); C leaves
  *   the evaluation order of the two calls unspecified, so this port draws
  *   randint1 then m_bonus (left-to-right textual order).

@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 117 confirmed-absent citations** — 56 closed, 12 open.
+**68 items covering all 116 confirmed-absent citations** — 57 closed, 11 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -18,7 +18,9 @@ with the evidence written into the census itself: 3.1 retired two
 `parity/ledger/player-calcs-bonuses.yaml` (120 to 119), and 5.9's neighbourhood
 retired `parity/ledger/store-maint.yaml:34` — a row PORT_TODO 2.10 had already
 fixed while its ledger prose went on saying otherwise (119 to 118). 5.4 retired
-`parity/ledger/obj-randart.yaml:51` the same way, 118 to 117.
+`parity/ledger/obj-randart.yaml:51` the same way (118 to 117), and 5.7 retired
+`packages/core/src/obj/randart-build.ts:38` (117 to 116). **Four of those five
+were rows whose gap had been closed while their note went on describing it.**
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -2223,20 +2225,36 @@ is reachable in play and a test constructs the case that used to be wrong.**
   needs a state-carrying spoiler variant rather than a seam.
   Sites: `packages/core/src/game/spoil.ts:93`, `:518`, `:519`, `:550`
 
-- [ ] **5.7 The randart generator's `property` branch.**
-  `artifact_curse_conflicts`' `TIMED_INC` "effect foiled by an existing
-  property" arm; only the explicit conflict-flags arm is ported. Cursed
-  artifacts only (`make_bad`), and it draws no RNG.
+- [x] **5.7 The randart generator's `property` branch.** CLOSED as a
+  RETRACTION — **the sixth this session, and it was wired the whole way down.**
 
-  **The stated blocker is gone.** This row read "needs the timed-effects failure
-  tables", and they are bound: `player/bind.ts:733` maps each record's `fail`
-  array into `TimedFail[]` (`code` + `flag`), and `player_inc_check` already
-  walks them (`player-timed.c:930-1000`, ported). So this is buildable now, and
-  the work is threading that table into `randart-build.ts` rather than porting
-  anything new. Left open because it is real work, not a retraction — noted
-  while closing 5.4, in the same sweep that found three other rows describing
-  states that had ended.
-  Sites: `packages/core/src/obj/randart-build.ts:38`
+  The row read "needs the timed-effects failure tables". Every link exists:
+  `player/bind.ts:733` binds each record's `fail` array; `buildCurseTimedFoil`
+  turns it into the lookup; `curseTimedIncFoiled` (`obj/object.ts:703`) walks
+  it for `TMD_FAIL_FLAG_OBJECT` / `_RESIST` / `_VULN` and skips
+  `_PLAYER` / `_TIMED_EFFECT` exactly as `obj-curse.c:267-296` does;
+  `artifactCurseConflicts` consults it; `doRandart` takes it; and **both**
+  `swapRandartSet` call sites — birth (`session/game.ts:2882`) and load
+  (`:3603`) — supply `buildCurseTimedFoil(players.timed)` next to the
+  activation summarizer.
+
+  What was missing is the assertion that would have caught the row being right,
+  and it is the same one 5.4 was missing: the foil is an **optional argument**,
+  and the unit tests in `obj/randart.test.ts` build a hand-written two-entry
+  map. Nothing said the SHIPPED `player_timed` table yields a usable one, and
+  nothing said the generator ever receives it.
+  `session/describe-wiring.test.ts` now asserts both, the second by generating
+  the same seed twice and differing only in the foil.
+
+  > **The seed is measured, not assumed.** The first two seeds I tried produced
+  > identical sets with and without the foil — most randart sets contain no
+  > artifact whose own properties foil the curse it drew. Sweeping 1..60 found
+  > 9 that do (1, 4, 15, 31, 36, 41, 47, 52, 58); the test uses seed 1. A test
+  > pinned to either of the first two guesses would have asserted nothing while
+  > looking exactly like this one.
+  Sites: `packages/core/src/obj/object.ts:703`,
+  `packages/core/src/session/game.ts:2882`,
+  `packages/core/src/obj/randart-build.ts:38`
 
 - [x] **5.8 `object_flag_is_known` on the store's buy list.** DONE, **as part of
   2.10 — it was never a second defect.** This row was split off "rather than
@@ -2317,7 +2335,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 117 citations, 80 `real` + 37
+2. the counts stated at the top (**68 items, 116 citations, 79 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
