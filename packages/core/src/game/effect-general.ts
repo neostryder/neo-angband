@@ -85,7 +85,7 @@ import {
 import { floorPile } from "./floor.js";
 import { castProjection, playerCastSource } from "./project-cast.js";
 import { pushObject } from "./project-feat.js";
-import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap.js";
+import { placeTrap, squareIsTrap } from "./trap.js";
 import type { TrapDeps } from "./trap.js";
 import { dungeonGetNextLevel } from "./quest.js";
 
@@ -529,13 +529,14 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
 
   ctx.ident = true;
 
-  /* Target was a decoy - destroy it. */
+  /* Target was a decoy - destroy it (effect-handler-general.c:586).
+   *
+   * Through the shared destroyDecoy, not open-coded. This block used to be a
+   * line-for-line copy of that function's body MINUS its message, so a decoy
+   * soaking a mana drain in full view of the player died in silence while the
+   * same decoy killed by any of the five other callers announced itself. */
   if (state.decoy) {
-    const decoyKind = env.general?.trapDeps
-      ? lookupTrap(env.general.trapDeps.kinds, "decoy")
-      : null;
-    squareRemoveAllTraps(state, state.decoy, decoyKind ? decoyKind.tidx : -1);
-    state.decoy = null;
+    destroyDecoy(state, env.general?.trapDeps, (t) => say(ctx, t));
     return true;
   }
 

@@ -15,6 +15,7 @@ import type { GameState, RunState } from "./context.js";
 import { updateMonsterDistances } from "./context.js";
 import { monsterAddToGroup, monsterGroupStart } from "./mon-group.js";
 import { squareIsWebbed } from "./trap.js";
+import { getLore } from "../mon/lore.js";
 import {
   STAGGER,
   getMove,
@@ -181,6 +182,138 @@ describe("monster movement AI", () => {
       monsterTurn(leader, state);
     }
     expect(friend.mTimed[MON_TMD.SLEEP]).toBe(0);
+  });
+});
+
+describe("monster_turn's lore learns (PORT_TODO 7.2)", () => {
+  /*
+   * mon-move.c carries 22 rf_on(lore->flags, ...) calls. The port carried 14,
+   * and the missing eight were filed collectively as "the remaining
+   * monster-lore updates" - a phrase that names nothing and so was never
+   * worked. Counting them turned it into this list. Each one is a line the
+   * player reads in monster recall, so an absent learn is a recall entry that
+   * never fills in however long you watch the monster.
+   *
+   * Every case asserts the flag is OFF first. Without that the assertions
+   * would pass against a lore object that happened to start full.
+   */
+  it("RAND_25 and RAND_50 are learned from watching it stagger", () => {
+    const { state, mon } = beeliner({ flags: [RF.RAND_25, RF.RAND_50] });
+    mon.mflag.on(MFLAG.VISIBLE);
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.RAND_25)).toBe(false);
+    expect(lore.flags.has(RF.RAND_50)).toBe(false);
+
+    monsterTurnShouldStagger(mon, state);
+
+    expect(lore.flags.has(RF.RAND_25)).toBe(true);
+    expect(lore.flags.has(RF.RAND_50)).toBe(true);
+  });
+
+  it("learns nothing from a monster it cannot see (the control)", () => {
+    /* Every learn upstream is gated on monster_is_visible. Without this,
+     * "learn unconditionally" passes the test above. */
+    const { state, mon } = beeliner({ flags: [RF.RAND_25, RF.RAND_50] });
+    /* MFLAG.VISIBLE deliberately left off. */
+    monsterTurnShouldStagger(mon, state);
+
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.RAND_25)).toBe(false);
+    expect(lore.flags.has(RF.RAND_50)).toBe(false);
+  });
+
+  it("KILL_BODY and MOVE_BODY are learned from watching it shove", () => {
+    /*
+     * Upstream teaches BOTH flags whenever the push is allowed at all
+     * (L1345-1349), so either one alone is enough to reach the learn. The
+     * mexp gap is what makes the push legal - the first version of this test
+     * gave both monsters the harness default and neither kill_ok nor move_ok
+     * was true, so monster_turn_try_push returned before the learn and the
+     * test failed against correct code.
+     */
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const strong = makeRace({ level: 20, mexp: 1000, flags: [RF.KILL_BODY] });
+    const mover = addMon(state, strong, loc(17, 10));
+    addMon(state, makeRace({ level: 1, mexp: 1 }), loc(16, 10));
+    mover.mflag.on(MFLAG.VISIBLE);
+    state.chunk.sqinfoOn(mover.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+    const lore = getLore(state.lore, mover.race);
+    expect(lore.flags.has(RF.KILL_BODY)).toBe(false);
+
+    monsterTurn(mover, state);
+
+    expect(lore.flags.has(RF.KILL_BODY)).toBe(true);
+    expect(lore.flags.has(RF.MOVE_BODY)).toBe(true);
+  });
+
+  it("NEVER_MOVE is learned from a monster that holds its ground", () => {
+    const { state, mon } = beeliner({ flags: [RF.NEVER_MOVE] });
+    mon.mflag.on(MFLAG.VISIBLE);
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.NEVER_MOVE)).toBe(false);
+
+    monsterTurn(mon, state);
+
+    expect(lore.flags.has(RF.NEVER_MOVE)).toBe(true);
+  });
+
+  it("NEVER_MOVE is ALSO learned from one that does move", () => {
+    /*
+     * mon-move.c L1662-1664 - "learn about no lack of movement". The same
+     * flag, taught by the opposite observation: seeing a monster act proves
+     * it is not a NEVER_MOVE monster, and the recall text reads off whether
+     * the flag has been seen, not what it is set to.
+     */
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, hearing: 30 });
+    const mon = addMon(state, race, loc(25, 10));
+    /*
+     * The DESTINATION has to be in view, not just the starting grid.
+     * monsterSwap calls updateMon (game/context.ts:1247), which recomputes
+     * MFLAG_VISIBLE from where the monster now stands - so a monster that
+     * walks out of view is no longer visible by the time the tail of
+     * monster_turn runs, and the learn correctly does not happen. Marking
+     * only loc(25,10) failed against correct code for exactly that reason.
+     * SEEN as well as VIEW: updateMon's `easy = flag = true` hangs off
+     * squareIsSeen (game/known.ts:930), so VIEW alone left it invisible.
+     */
+    for (const x of [23, 24, 25]) {
+      state.chunk.sqinfoOn(loc(x, 10), SQUARE.VIEW);
+      state.chunk.sqinfoOn(loc(x, 10), SQUARE.SEEN);
+    }
+    mon.mflag.on(MFLAG.VISIBLE);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+    updateMonsterDistances(state);
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.NEVER_MOVE)).toBe(false);
+
+    monsterTurn(mon, state);
+
+    expect(mon.grid, "fixture: it actually moved").not.toEqual(loc(25, 10));
+    expect(
+      mon.mflag.has(MFLAG.VISIBLE),
+      "fixture: still visible where it landed",
+    ).toBe(true);
+    expect(lore.flags.has(RF.NEVER_MOVE)).toBe(true);
+  });
+
+  it("NEVER_BLOW is learned when it reaches the player, not only a decoy", () => {
+    /* The decoy branch already taught this; the player branch is the same
+     * learn on the far commoner path (mon-move.c L1622-1624). */
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const blow = makeBlow("HIT", "HURT", "1d1");
+    const race = makeRace({ level: 20, blows: [blow] });
+    const mon = addMon(state, race, loc(16, 10));
+    mon.mflag.on(MFLAG.VISIBLE);
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.NEVER_BLOW)).toBe(false);
+
+    monsterTurn(mon, state);
+
+    expect(lore.flags.has(RF.NEVER_BLOW)).toBe(true);
   });
 });
 
@@ -762,6 +895,49 @@ describe("decoy handling (square_isdecoyed / square_destroy_decoy)", () => {
     expect(state.traps.get(key)).toBeUndefined();
     /* Destroying the decoy spends the turn; the monster stays put. */
     expect(mon.grid).toEqual(loc(17, 10));
+  });
+
+  it("announces it, because square_destroy_decoy always has", () => {
+    /*
+     * PORT_TODO 7.2. destroyDecoy (game/effect-mon-origin.ts) prints "The
+     * decoy is destroyed!" gated on los-and-not-blind, exactly as
+     * cave-square.c:1409-1411, and five callers have used it all along. This
+     * site did not call it - it cleared the grid itself and filed the message
+     * as deferred UI - so the most common way a decoy actually dies, a
+     * monster walking into it, was the one that happened in silence.
+     *
+     * The test above cannot see that: it asserts the trap and cave->decoy are
+     * cleared, which the open-coded copy did correctly.
+     */
+    const { state, mon, barrier } = beeliner({ level: 20 });
+    state.decoy = barrier;
+    putTrap(state, barrier, 2, TRF.GLYPH);
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+
+    monsterTurn(mon, state);
+
+    expect(msgs).toContain("The decoy is destroyed!");
+  });
+
+  it("stays silent when the player is blind", () => {
+    /* The gate is los(player, grid) && !blind (cave-square.c:1409). Without
+     * this, "announce unconditionally" passes the test above. */
+    const { state, mon, barrier } = beeliner({ level: 20 });
+    state.decoy = barrier;
+    putTrap(state, barrier, 2, TRF.GLYPH);
+    state.actor.player.timed[TMD.BLIND] = 20;
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+
+    monsterTurn(mon, state);
+
+    expect(state.decoy, "the decoy still dies, it is only unannounced").toBeNull();
+    expect(msgs).not.toContain("The decoy is destroyed!");
   });
 });
 
