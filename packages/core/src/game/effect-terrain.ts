@@ -331,15 +331,20 @@ const handleCREATE_STAIRS: EffectHandler = (ctx) => {
   const grid = state.actor.grid;
   ctx.ident = true;
 
-  /* Fails in arenas (birth_levels_persist rides #30). */
-  if (state.arenaLevel) {
-    say(ctx, "Nothing happens!");
+  /* Only allow stairs to be created on empty floor. This test comes FIRST
+   * upstream (L1979-1983), before the persist/arena refusal, so standing on a
+   * non-floor grid in an arena reports the floor, not "Nothing happens!". */
+  if (!state.chunk.isFloor(grid)) {
+    say(ctx, "There is no empty floor here.");
     return false;
   }
 
-  /* Only allow stairs to be created on empty floor. */
-  if (!state.chunk.isFloor(grid)) {
-    say(ctx, "There is no empty floor here.");
+  /* Fails for persistent levels (for now) and arenas (L1985-1989). The
+   * persistent half is not decoration: a staircase conjured after generation
+   * is not in the level's join list, so the neighbour it appears to lead to
+   * would be built without a matching stair. */
+  if ((state.options?.get("birth_levels_persist") ?? false) || state.arenaLevel) {
+    say(ctx, "Nothing happens!");
     return false;
   }
 

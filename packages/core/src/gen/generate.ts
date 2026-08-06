@@ -9,9 +9,13 @@
  * objects and monsters, and the player start location.
  *
  * DEFERRED (ledgered in parity/ledger/gen-framework.yaml): arena and quest
- * levels, persistent-level connectors, and the known-level ("player cave")
- * duplicate. Monster-count overflow is the one upstream post-build
- * regeneration trigger that is kept.
+ * levels, and the known-level ("player cave") duplicate. Monster-count overflow
+ * is the one upstream post-build regeneration trigger that is kept.
+ *
+ * Persistent-level connectors are NOT deferred and have not been for some time
+ * (PORT_TODO 4.3): getJoinInfo, getMinLevelSize and collectJoins are here, the
+ * builders honour dun.persist, and session/changeLevel drives all three off the
+ * frozen-level cache.
  *
  * NO ADDITIONS BEYOND UPSTREAM. This file holds no fix and no mod's name. It
  * offers ONE extension point - the levelGenerated hook (mod/hooks.ts), consulted
@@ -243,11 +247,50 @@ export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
 }
 
 /**
+ * get_min_level_size (generate.c L997-1013): the minimum dimensions a level
+ * must be generated at so that the stairs of an already-frozen neighbour can
+ * be reproduced on it. Each relevant connector needs its grid to exist with a
+ * wall beyond it, hence `+ 2`.
+ *
+ * `above` selects which neighbour is being measured, exactly as upstream: for
+ * the level ABOVE the target we take its DOWN staircases (FEAT_MORE), because
+ * those become our up staircases; for the level BELOW, its up staircases.
+ *
+ * Called by prepare_next_level (L1531-1546) only on the persistent first-visit
+ * path, and threaded into the builders as ctx.minHeight / ctx.minWidth. It is
+ * NOT decoration: build_staircase_rooms quits outright when a seeded connector
+ * has no room on the level (gen-cave.c L925-934, `quit("Failed to place
+ * stairs")`), so a level generated smaller than its neighbour's deepest stair
+ * is an abort, not a cosmetic mismatch.
+ */
+export function getMinLevelSize(
+  join: readonly Connector[],
+  above: boolean,
+  min: { height: number; width: number } = { height: 0, width: 0 },
+): { height: number; width: number } {
+  const want = above ? FEAT.MORE : FEAT.LESS;
+  let { height, width } = min;
+  for (const j of join) {
+    if (j.feat !== want) continue;
+    height = Math.max(height, j.grid.y + 2);
+    width = Math.max(width, j.grid.x + 2);
+  }
+  return { height, width };
+}
+
+/**
  * Collect the finished level's staircases as join connectors
- * (generate.c L1203-1214 populating chunk->join): each stair grid plus its
- * feature. RNG-free; the per-connector SQUARE info copy upstream also makes is
- * a deferred detail (the port's Connector carries grid + feat). Feeds the next
- * level's getJoinInfo when persistent levels are wired.
+ * (generate.c L1203-1214 populating chunk->join): each stair grid, its feature
+ * and a copy of its SQUARE info bytes (L1208-1211). Feeds the next level's
+ * getJoinInfo.
+ *
+ * The info copy has no reader in 4.2.6 - get_join_info builds fresh connectors
+ * and sets only grid/feat, transform_join_list does the same, and build_staircase
+ * reads only the grid; the bytes exist to be written to and read back from the
+ * savefile (save.c L850-866 / load.c L1366-1379) and are then freed. It is
+ * carried here anyway because that is what the original stores, and an absent
+ * field invites the same "is this a gap?" question every time somebody reads
+ * this function.
  *
  * Order matters: upstream PREPENDS each stair (new->next = chunk->join;
  * chunk->join = new, L1212-1213), so chunk->join ends up in reverse scan order

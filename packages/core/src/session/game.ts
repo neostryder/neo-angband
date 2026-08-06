@@ -270,7 +270,12 @@ import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
 import { makeActivationSummarizer } from "../obj/effects-info.js";
 import type { RawTimedRecord } from "../obj/effects-info.js";
 import type { ActivationSummarizer } from "../obj/randart-build.js";
-import { generateLevel, getJoinInfo, type QuestSpawn } from "../gen/generate.js";
+import {
+  generateLevel,
+  getJoinInfo,
+  getMinLevelSize,
+  type QuestSpawn,
+} from "../gen/generate.js";
 import { iToGrid } from "../gen/util.js";
 import {
   deserializeAutoinscriptions,
@@ -2442,6 +2447,7 @@ function makeChangeLevel(
      * and generateLevel builds exactly as before. */
     const persistCache = state.levelCache;
     let joinInfo: ReturnType<typeof getJoinInfo> | undefined;
+    let minSize: { height: number; width: number } | undefined;
     if (persist && persistCache) {
       const above = persistCache.get(depth - 1)?.join;
       const twoAbove = persistCache.get(depth - 2)?.join;
@@ -2453,6 +2459,13 @@ function makeChangeLevel(
         ...(below ? { below } : {}),
         ...(twoBelow ? { twoBelow } : {}),
       });
+      /* get_min_level_size (prepare_next_level L1531-1546): the new level must
+       * be big enough to hold the stairs its frozen neighbours already expect,
+       * or build_staircase_rooms has nowhere to put them and quits. Only the
+       * IMMEDIATE neighbours are measured - a one-off connector two levels away
+       * seeds dun.one_off_* (an avoid list), never a staircase room, so it
+       * imposes no minimum. Starts at 0/0 exactly as the C's locals do. */
+      minSize = getMinLevelSize(below ?? [], false, getMinLevelSize(above ?? [], true));
     }
 
     /* choose_profile's NOSCORE_JUMPING request (generate.c L824-836): consumed
@@ -2506,6 +2519,10 @@ function makeChangeLevel(
          * unconditionally; only read under persist. */
         hasAdjacentAbove: persistCache?.has(depth - 1) ?? false,
         hasAdjacentBelow: persistCache?.has(depth + 1) ?? false,
+        /* get_min_level_size's answer (prepare_next_level L1531-1546), the
+         * only producer these two builder inputs have. Omitted entirely when
+         * not persisting, so generateLevel keeps its own defaults. */
+        ...(minSize ? { minHeight: minSize.height, minWidth: minSize.width } : {}),
         /* birth_connect_stairs (gen-util.c:427-433): lay the arrival stair the
          * stair command requested ("up" after a descent, "down" after an
          * ascent), unless the option is off. Recall/first-spawn leave
@@ -3010,6 +3027,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     /* birth_levels_persist (#30) frozen-level cache; empty until a level is
      * left with the option on (the whole persist path is option-gated). */
     levelCache: new Map(),
+    /* The STARTING level's stair connectors, on the same option gate
+     * changeLevel uses. Without this the first level a character ever stands on
+     * freezes with an empty join list and its neighbour cannot align to it. */
+    ...((options.get("birth_levels_persist") ?? false)
+      ? { currentJoins: [...booted.joins] }
+      : {}),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -3942,6 +3965,10 @@ export function loadGame(
   const booted: BootedLevel = {
     chunk,
     depth: chunk.depth,
+    /* The restored level's connectors live on state.currentJoins, which the
+     * savefile already carries; this view describes a level nothing
+     * generated, so it reports none. */
+    joins: [],
     playerSpot: actor.grid,
     monsters: [],
     objects: [],

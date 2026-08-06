@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MON_TMD } from "../generated/index.js";
+import { FEAT, MON_TMD } from "../generated/index.js";
 import { loadGame, saveGame, startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import type { Monster } from "../mon/monster.js";
@@ -203,8 +203,9 @@ describe("birth_levels_persist (A1 persistent levels)", () => {
     });
     const state = game.state;
 
-    /* Take the fresh-generation path (bootLevel does not set currentJoins), so
-     * a dungeon level with real stairs populates state.currentJoins. */
+    /* Descend once so the connectors under test come from the changeLevel
+     * generation path rather than from bootLevel (which records its own; see
+     * the starting-level case below). */
     game.changeLevel(5);
     expect(state.currentJoins).toBeDefined();
     expect(state.currentJoins!.length).toBeGreaterThan(0);
@@ -262,5 +263,122 @@ describe("birth_levels_persist (A1 persistent levels)", () => {
     /* A clean load leaves currentJoins unset. */
     const restored = loadGame(pack, saved);
     expect(restored.state.currentJoins).toBeUndefined();
+  });
+  it("sizes a first-visit level to fit BOTH neighbours' stairs", () => {
+    /* get_min_level_size (prepare_next_level L1531-1546). The port threaded
+     * ctx.minHeight / ctx.minWidth into every builder and had NOTHING computing
+     * them, so a persistent level was always built at its own random size.
+     *
+     * That is a crash, not a cosmetic mismatch: build_staircase_rooms has to
+     * place a room at every seeded connector and quits when one is off the map
+     * (gen-cave.c L925-934). Measured on this port before the fix, five of the
+     * first forty seeds died here on an ORDINARY walk down - no doctored
+     * fixture needed. Seed 8 is one of them; it aborted with "failed to place
+     * staircase room at row=8 col=180".
+     *
+     * The expected minimum is DERIVED from the frozen neighbours rather than
+     * written down, so the test cannot pass by agreeing with a stale constant. */
+    const game = startGame(pack, {
+      seed: 8,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+    });
+    const state = game.state;
+
+    /* Freeze 3 and 5, leaving 4 unvisited: depth 4 then has a neighbour on
+     * both sides, which is the case get_min_level_size exists for. */
+    game.changeLevel(5);
+    game.changeLevel(6);
+    expect(state.levelCache?.has(3)).toBe(true);
+    expect(state.levelCache?.has(5)).toBe(true);
+    expect(state.levelCache?.has(4)).toBe(false);
+
+    /* What the two neighbours demand: the level above by its DOWN stairs, the
+     * level below by its UP stairs, each needing its grid plus a wall. */
+    const above = state.levelCache!.get(3)!.join;
+    const below = state.levelCache!.get(5)!.join;
+    const wanted = [
+      ...above.filter((j) => j.feat === FEAT.MORE),
+      ...below.filter((j) => j.feat === FEAT.LESS),
+    ];
+    expect(wanted.length).toBeGreaterThan(0);
+    const minHeight = Math.max(...wanted.map((j) => j.grid.y + 2));
+    const minWidth = Math.max(...wanted.map((j) => j.grid.x + 2));
+
+    game.changeLevel(4);
+
+    expect(state.chunk.depth).toBe(4);
+    expect(state.chunk.height).toBeGreaterThanOrEqual(minHeight);
+    expect(state.chunk.width).toBeGreaterThanOrEqual(minWidth);
+
+    /* Sizing is the means; the end is that every one of those stairs actually
+     * landed, on the matching grid and facing the right way. */
+    for (const j of above.filter((c) => c.feat === FEAT.MORE)) {
+      expect(state.chunk.isUpstairs(j.grid)).toBe(true);
+    }
+    for (const j of below.filter((c) => c.feat === FEAT.LESS)) {
+      expect(state.chunk.isDownstairs(j.grid)).toBe(true);
+    }
+  });
+  it("sizes for the level BELOW even when the level above asks for nothing", () => {
+    /* prepare_next_level measures BOTH neighbours into the same running
+     * minimum. The case above happens to be dominated by the level above on
+     * most seeds, which leaves the second call unexercised - so this one
+     * empties the upper neighbour's connector list and gives the lower one a
+     * single up staircase near the far corner of the maximum dungeon.
+     *
+     * The grid is doctored; the demand is not unrealistic (real levels here
+     * record stairs past x=175). Seed 4 comes out at exactly 65 x 192, which
+     * IS the derived minimum - the level was sized by the constraint rather
+     * than happening to be big enough. */
+    const game = startGame(pack, {
+      seed: 4,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+    });
+    const state = game.state;
+    game.changeLevel(5);
+    game.changeLevel(6);
+
+    state.levelCache!.get(3)!.join = [];
+    state.levelCache!.get(5)!.join = [{ grid: { x: 190, y: 63 }, feat: FEAT.LESS }];
+
+    game.changeLevel(4);
+
+    expect(state.chunk.height).toBeGreaterThanOrEqual(65);
+    expect(state.chunk.width).toBeGreaterThanOrEqual(192);
+    expect(state.chunk.isDownstairs({ x: 190, y: 63 })).toBe(true);
+  });
+
+  it("records the STARTING level's stair connectors, not an empty list", () => {
+    /* cave_generate populates chunk->join for every level it builds, the first
+     * one included. bootLevel dropped it, so under persist the level a
+     * character starts on froze with no connectors and the first neighbour
+     * generated had nothing to line up with. Found by measuring which
+     * neighbour was constraining the level size in the test above: the answer
+     * was "never the one above", for every seed. */
+    const game = startGame(pack, {
+      seed: 8,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+    });
+    const state = game.state;
+
+    expect(state.currentJoins).toBeDefined();
+    expect(state.currentJoins!.length).toBeGreaterThan(0);
+    /* Every recorded connector is a real staircase on the starting level. */
+    for (const j of state.currentJoins!) {
+      expect(state.chunk.isStairs(j.grid)).toBe(true);
+    }
+
+    /* And it survives into the cache when that level is left. */
+    const before = state.currentJoins!.length;
+    game.changeLevel(4);
+    expect(state.levelCache!.get(3)!.join).toHaveLength(before);
+  });
+
+  it("records no starting joins with the option OFF", () => {
+    const game = startGame(pack, { seed: 8, depth: 3 });
+    expect(game.state.currentJoins).toBeUndefined();
   });
 });
