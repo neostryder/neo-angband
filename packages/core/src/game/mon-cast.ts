@@ -31,7 +31,6 @@ import { chanceOfSpellHit, updateSmartLearn } from "../mon/spell.js";
 import type { SmartLearnEnv } from "../mon/spell.js";
 import type { MonsterSpell } from "../mon/types.js";
 import type { Monster } from "../mon/monster.js";
-import type { Loc } from "../loc.js";
 import { buildEffectContext } from "./effect-env.js";
 import type { EffectEnvDeps } from "./effect-env.js";
 import { attachGameEnv } from "./effect-game-env.js";
@@ -133,8 +132,6 @@ export interface MonSpellHooksDeps {
    * the projection name the caster's first blow's lash_type resolves to.
    */
   lashDesc?: (projectionName: string) => string | null;
-  /** panel_contains for the "(offscreen)" naming tag; default on-screen. */
-  panelContains?: (grid: Loc) => boolean;
   /** spell_check_for_fail_rune seams (equip_learn_element + player_inc_check). */
   failRune?: FailRuneEnv;
 }
@@ -284,7 +281,11 @@ export function buildMonSpellHooks(
         mon.target.midx > 0 ? (state.monsters[mon.target.midx] ?? null) : null;
       const out = spellMessageText(mon, spell, seen, hits, {
         targetMon,
-        ...(deps.panelContains ? { panelContains: deps.panelContains } : {}),
+        /* panel_contains for monster_desc's "(offscreen)" tag. Read off the
+         * STATE, not a dep: the shell binds it once (web/src/main.ts) and every
+         * consumer sees the same camera. A second dep here would be a second
+         * thing to forget to supply. */
+        ...(state.panelContains ? { panelContains: state.panelContains } : {}),
         ...(deps.lashDesc ? { lashDesc: deps.lashDesc } : {}),
       });
       if (out) {

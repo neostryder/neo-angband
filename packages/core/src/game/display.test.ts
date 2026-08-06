@@ -16,7 +16,8 @@ import type { ObjectKind } from "../obj/types.js";
 import { gearAdd } from "./gear.js";
 import { makeState, plReg } from "./harness.js";
 import type { DisplayRun, SidebarField, StatusIndicator } from "./display.js";
-import { cnvStat, sidebarModel, statusLineModel } from "./display.js";
+import { loc } from "../loc.js";
+import { cnvStat, panelContains, sidebarModel, statusLineModel } from "./display.js";
 
 function field(fields: SidebarField[] | StatusIndicator[], key: string): DisplayRun[] {
   const f = fields.find((x) => x.key === key);
@@ -441,5 +442,40 @@ describe("prt_equippy uses object_attr / object_char (PORT_TODO 3.14)", () => {
 
   it("falls back to the kind record when the kind has no flavour", () => {
     expect(wearing(false, false)[0]).toEqual({ text: "=", color: COLOUR_DARK });
+  });
+});
+
+/*
+ * panel_contains (ui-output.c:689). Upstream writes it in UNSIGNED arithmetic,
+ * `(y - offset_y) < hgt`, so a grid ABOVE or LEFT of the camera wraps to a huge
+ * number and reads false rather than negative-and-true. The port writes the
+ * signed form, and these pin that the two agree at all four edges.
+ */
+describe("panelContains (ui-output.c:689)", () => {
+  const PANEL = { camX: 10, camY: 20, mapCols: 66, mapRows: 22 };
+
+  it("the top-left grid is inside and one step out on each axis is not", () => {
+    expect(panelContains(PANEL, loc(10, 20))).toBe(true);
+    expect(panelContains(PANEL, loc(9, 20))).toBe(false);
+    expect(panelContains(PANEL, loc(10, 19))).toBe(false);
+  });
+
+  it("the bottom-right grid is inside and one past it is not", () => {
+    expect(panelContains(PANEL, loc(75, 41))).toBe(true);
+    expect(panelContains(PANEL, loc(76, 41))).toBe(false);
+    expect(panelContains(PANEL, loc(75, 42))).toBe(false);
+  });
+
+  /* The unsigned wrap is the whole reason the C reads the way it does: a
+   * negative difference must be OUTSIDE, not inside. */
+  it("a grid far above and left of the camera is outside, not wrapped inside", () => {
+    expect(panelContains(PANEL, loc(0, 0))).toBe(false);
+    expect(panelContains(PANEL, loc(-5, -5))).toBe(false);
+  });
+
+  it("a zero-size panel contains nothing, including its own origin", () => {
+    expect(panelContains({ camX: 0, camY: 0, mapCols: 0, mapRows: 0 }, loc(0, 0))).toBe(
+      false,
+    );
   });
 });
