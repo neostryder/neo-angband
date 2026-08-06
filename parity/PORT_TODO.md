@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 120 confirmed-absent citations** — 38 closed, 30 open.
+**68 items covering all 119 confirmed-absent citations** — 54 closed, 14 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -14,7 +14,8 @@ ledger finds work as often as it kills it, which is the whole reason Tier 0 sits
 above the tiers that do the work. It comes **down** only when a row is retired
 with the evidence written into the census itself: 3.1 retired two
 (`packages/core/src/game/mon-message.ts` and `parity/ledger/mon-timed.yaml`),
-122 to 120.
+122 to 120, and 2.6 retired
+`parity/ledger/player-calcs-bonuses.yaml`, 120 to 119.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -542,15 +543,63 @@ is reachable in play and a test constructs the case that used to be wrong.**
   draw `randint0(200)` for every auto-drop and move every later draw in the turn —
   asserted as a draw **count**, not as a property of the flag.
 
-- [ ] **2.6 `known_only` does not exist.**
-  `obj-info.c` calls `calc_bonuses` with `known_only = true` at six sites; the
-  port passes no such flag. `calcs.ts:606` says known_only callers "pass false so
-  the derive stays pure" and `:721` lists it among what is deliberately not
-  derived. **Wider than first scoped**: `prt_ac` and the character sheet's combat
-  panel both read the real state, so an unlearned `+to_a` rune is included in the
-  AC the player is shown (`ui-display.yaml:120`, `ui-player.yaml:75`).
-  Sites: `parity/ledger/player-calcs-bonuses.yaml:78`,
-  `parity/ledger/ui-display.yaml:120`, `parity/ledger/ui-player.yaml:75`
+- [x] **2.6 `known_only` does not exist.** DONE, **and the row's own example was
+  the one number the flag can never hide.** Both halves matter.
+
+  **What was built.** `CalcBonusesOptions.knownOnly` takes the known-twin view
+  and opens exactly the five gates upstream puts behind the flag:
+  `object_flags_known` instead of `object_flags` (1933-1939), the `el_info`
+  res_level test (1985), and `to_a` / `to_h` / `to_d` (1997 / 2001 / 2004).
+  `state->ac += obj->ac` (1996) is deliberately **not** gated — base armour is
+  obvious on sight. The session derives `p->known_state` beside `p->state` on
+  every `refreshDerived`, exactly as `update_bonuses` does
+  (`player-calcs.c:2348-2349`), and once more at the end of `wireGame` so a
+  loaded character is not shown true numbers until they next change a ring.
+
+  It is a **function, not a boolean**: `known_only = true` with no way to ask
+  what is known is not a state the derive can be in, so it is not a state the
+  type can express. `PlayerActor.knownCombat` is **required** for the same
+  reason — an optional field would let a caller supply `combat` alone and every
+  display would silently fall back to the real state, which is the bug.
+
+  **Three readers, all upstream's own.** `prt_ac` (`ui-display.c:307`), the
+  character sheet's combat panel (`ui-player.c:736-768`, which also puts the
+  weapon and launcher through `objectKnownShadow` because upstream reads
+  `obj->known` there), and — the one that actually changes play — the monster
+  recall's danger colouring. `player_inc_check` takes a `lore` argument whose
+  entire job is to switch three checks from `state` to `known_state`
+  (`player-timed.c:930-1000`), and `buildLoreColorState` was reading the real
+  one.
+
+  > **The correction.** The row said "an unlearned `+to_a` rune is included in
+  > the AC the player is shown". It cannot be:
+  > `do_cmd_accept_character` sets `obj_k->to_a = to_h = to_d = 1` at birth
+  > (`player-birth.c:1264-1267`, under the comment *"Hack - player knows all
+  > combat runes. Maybe make them not runes? NRM"*), so **all three combat
+  > gates are permanently open** for an ordinary character. What `known_state`
+  > really withholds is **resists and object flags**, which are learned by use —
+  > and those are what the recall reads. The scoping sentence pointed at the two
+  > screens that barely move and missed the one that does.
+  >
+  > The other path on which the combat gates DO close is an **unassessed**
+  > object: `player_know_object` returns after the base properties for an item
+  > the player has seen but never handled (`obj-knowledge.c:1033-1035`).
+
+  A curse contributes nothing to the known state, and that is measured rather
+  than assumed: `write_curse_kinds` (`obj-init.c:174-195`) gives every curse
+  template a twin from `object_new()` and writes only its kind, sval and the
+  ASSESSED bit, so its flags, `el_info` and combat numbers stay zero forever.
+
+  16 mutations, 16 killed — but one only after its test was rewritten. The
+  fixture for "`knownCombat` is the known derive" passed against a mutant that
+  aliased it to `actor.combat`, because `refreshDerived` computes the known
+  state **before** it reassigns `actor.combat`, so the alias held the previous
+  turn's object and that object happened to carry the right answer. Two
+  `updateBonuses` calls settle it. Same family as
+  `a-fixture-value-that-cannot-disagree`.
+  Sites: `packages/core/src/player/calcs.ts:634`,
+  `packages/core/src/obj/known-object.ts:762`,
+  `packages/core/src/game/lore-color.ts:44`
 
 - [x] **2.7 `pile_insert_end` is absent.** CLOSED as a RETRACTION — the row named
   the right function and got its mechanism **inverted**, in a way that would have
@@ -2209,7 +2258,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 120 citations, 83 `real` + 37
+2. the counts stated at the top (**68 items, 119 citations, 82 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

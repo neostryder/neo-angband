@@ -43,6 +43,8 @@ import { EXTRACT_ENERGY } from "../mon/monster.js";
 import { BTH_PLUS_ADJ } from "../combat/hit.js";
 import { objectToDam, objectToHit } from "../combat/brand-slay.js";
 import { equippedLauncher } from "../obj/knowledge.js";
+import { objectKnownShadow } from "../obj/known-object.js";
+import { knownDescOf } from "./describe.js";
 import { PY_MAX_LEVEL, SKILL, STAT_MAX } from "../player/types.js";
 import { modifyStatValue, player_exp } from "../player/calcs.js";
 import { cnvStat } from "./display.js";
@@ -141,9 +143,10 @@ export interface CharSheetDeps {
   totalWinner?: boolean;
   /**
    * equipped_item_by_slot_name(player, "weapon") (get_panel_combat L739): the
-   * wielded melee weapon, or null. Default state.actor.weapon. Upstream reads
-   * obj->known (the rune-gated known item); the port uses the real object, the
-   * same known_state deferral display.ts's prt_ac took.
+   * wielded melee weapon, or null. Default state.actor.weapon. Supply the REAL
+   * object: panelCombat puts it through objectKnownShadow itself, because
+   * upstream reads obj->known for the dice and the two combat bonuses
+   * (L743-746) and there must be exactly one place that decides that.
    */
   meleeWeapon?: GameObject | null;
   /**
@@ -431,12 +434,33 @@ function panelMidleft(state: GameState, deps: ResolvedDeps): CharSheetLine[] {
   ];
 }
 
-/** get_panel_combat (ui-player.c L728). */
+/**
+ * get_panel_combat (ui-player.c L728).
+ *
+ * EVERY NUMBER HERE IS THE KNOWN ONE. Upstream reads `player->known_state` for
+ * ac / to_a / to_h / to_d / bless_wield (L736-763) and `obj->known` for the
+ * weapon's dice and its own to-hit and to-dam (L743-746, L765-768); only the
+ * two BTH skills and the blow / shot counts come from `player->state`. The port
+ * read the real state throughout, so this panel told a player the exact bonus
+ * of a ring they had not identified (PORT_TODO 2.6).
+ */
 function panelCombat(state: GameState, deps: ResolvedDeps): CharSheetLine[] {
-  const c = state.actor.combat;
+  const c = state.actor.knownCombat;
+  /* obj->known. Derived here rather than added as a seam, for the same reason
+   * `launcher` is (see resolveDeps): a seam a caller must remember to fill is a
+   * seam that ends up unfilled. */
+  const knownObj = (obj: GameObject | null): GameObject | null =>
+    obj
+      ? objectKnownShadow(
+          obj,
+          state.actor.player,
+          state.runeEnv,
+          knownDescOf(state),
+        )
+      : null;
 
   /* Melee */
-  const melee = deps.meleeWeapon;
+  const melee = knownObj(deps.meleeWeapon);
   let meleeDice = 1;
   let meleeSides = 1;
   let dam = c.toD;
@@ -451,7 +475,7 @@ function panelCombat(state: GameState, deps: ResolvedDeps): CharSheetLine[] {
   const bthMelee = Math.trunc((skill(state, SKILL.TO_HIT_MELEE) * 10) / BTH_PLUS_ADJ);
 
   /* Ranged */
-  const launcher = deps.launcher;
+  const launcher = knownObj(deps.launcher);
   let damR = 0;
   let hitR = c.toH;
   if (launcher) {

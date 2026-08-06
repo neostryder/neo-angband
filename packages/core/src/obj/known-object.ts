@@ -67,6 +67,7 @@
  *   object, so it is not modelled here.
  */
 
+import { FlagSet } from "../bitflag.js";
 import type { RandomValue } from "../rng.js";
 import type { Player } from "../player/player.js";
 import type { CurseData, GameObject } from "./object.js";
@@ -87,7 +88,7 @@ import {
   playerKnowsCurse,
   playerKnowsSlay,
 } from "./knowledge.js";
-import type { ObjectKind, EgoItem } from "./types.js";
+import type { ElementInfo, ObjectKind, EgoItem } from "./types.js";
 import { ELEM_MAX, OBJ_MOD_MAX } from "./types.js";
 
 /**
@@ -745,4 +746,74 @@ export function objectSee(obj: GameObject, deps: KnownFloorDeps): void {
       deps.setNumber(obj);
       break;
   }
+}
+
+/**
+ * The four things calc_bonuses reads off `obj->known` when `known_only` is set
+ * (player-calcs.c:1933-2007), gathered once per object.
+ *
+ * A view rather than the whole shadow because the equipment loop needs exactly
+ * these and nothing else, and because `flags` is NOT the shadow's flag set:
+ * upstream calls object_flags_known, which widens the known flags again by an
+ * aware kind's own (see objectFlagsKnown).
+ */
+export interface KnownBonusView {
+  /** object_flags_known(obj) (obj-util.c:364). */
+  readonly flags: FlagSet;
+  /** obj->known->el_info: the resist levels whose runes are learned. */
+  readonly elInfo: readonly ElementInfo[];
+  /** obj->known->to_a / to_h / to_d: zero until the combat rune is learned. */
+  readonly toA: number;
+  readonly toH: number;
+  readonly toD: number;
+}
+
+/**
+ * object_flags_known (obj-util.c:364): the object's own flags narrowed to the
+ * runes the player has learned, then WIDENED again by the kind's own flags once
+ * the flavour is aware.
+ *
+ * That last union is why this is not simply the known twin's flag set.
+ * Recognising a Ring of Free Action by its flavour tells you it grants free
+ * action - the knowledge came from the kind, not from a rune - so the flag is
+ * known even though `obj->known->flags` never received it.
+ */
+export function objectFlagsKnown(
+  obj: GameObject,
+  p: Player,
+  env: RuneEnv,
+  deps: KnownDesc,
+): FlagSet {
+  const flags = new FlagSet(obj.flags.size);
+  /* of_copy(obj->flags) then of_inter(obj->known->flags) (L366-367). */
+  for (const f of p.objKnown.flags) {
+    if (obj.flags.has(f)) flags.on(f);
+  }
+  /* object_flavor_is_aware(obj) -> of_union(kind->flags) (L373-375). */
+  if (deps.isAware(obj.kind)) flags.union(obj.kind.flags);
+  return flags;
+}
+
+/**
+ * Everything calc_bonuses' known_only pass needs from one worn object.
+ *
+ * The three combat numbers and the element info come straight off the
+ * synthesised twin, so they carry player_know_object's own gating exactly -
+ * including the wart that an object with a STANDARD to_h contributes none
+ * (obj-knowledge.c:1047, objectHasStandardToH).
+ */
+export function knownBonusView(
+  obj: GameObject,
+  p: Player,
+  env: RuneEnv,
+  deps: KnownDesc,
+): KnownBonusView {
+  const shadow = objectKnownShadow(obj, p, env, deps);
+  return {
+    flags: objectFlagsKnown(obj, p, env, deps),
+    elInfo: shadow.elInfo,
+    toA: shadow.toA,
+    toH: shadow.toH,
+    toD: shadow.toD,
+  };
 }

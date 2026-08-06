@@ -75,10 +75,22 @@ notes: >-
   (1480-2322) is ported in player/spell.ts (calcMana, wired at birth and on
   level change, see player-spell.yaml), and the PF_NO_MANA check reads the
   computed msp. The encumbrance overweight speed penalty reads the live
-  weight_limit (calcs.ts weight block). DEFERRED only: the known_only
-  object-knowledge display variant and the update=false hypothetical-blows
-  index shift (1891-1893, 2077-2088) -- birth-UI display paths; calcBonuses is
-  the update=true real-state path. calcSkills was extended with the
+  weight_limit (calcs.ts weight block). known_only (1891-1893) is PORTED as
+  of PORT_TODO 2.6: CalcBonusesOptions.knownOnly takes the known-twin view
+  (obj/known-object.ts knownBonusView) and opens exactly the five gates
+  upstream puts behind the flag -- object_flags_known at 1933-1939, the
+  el_info res_level test at 1985, and to_a / to_h / to_d at 1997 / 2001 / 2004.
+  state->ac (1996) is deliberately NOT gated. It is a FUNCTION rather than a
+  boolean so "known_only with no way to ask what is known" is unrepresentable.
+  The session derives p->known_state beside p->state on every refreshDerived
+  and once at the end of wireGame. The update=false hypothetical-blows index
+  shift (2077-2088) is options.statIndBoost, also ported.
+
+  MEASURED, and it corrects this row's own framing: all THREE combat runes are
+  granted at birth (player-birth.c:1264-1267, "Hack - player knows all combat
+  runes"), so the to_a / to_h / to_d gates never close on an ordinary
+  character. What known_state actually withholds is RESISTS and OBJECT FLAGS,
+  plus everything about an object the player has not assessed. calcSkills was extended with the
   adj_dex_dis / adj_int_dis disarm terms (2240-2241) it previously omitted,
   making it agree with calcBonuses for the innate case.
 verified-by:

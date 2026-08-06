@@ -69,7 +69,15 @@ deferred:
   - spell_color (mon-lore.c L59) and blow_color (L178) read the player's
     known_state (resists / skills / inventory) for danger colouring; defaulted
     to the datum's base lore colour (loreColorBase), overridable via
-    deps.spellColor / deps.blowColor.
+    deps.spellColor / deps.blowColor. game/lore-color.ts buildLoreColorState
+    supplies the real thing, and as of PORT_TODO 2.6 it reads
+    state.knownPlayerState rather than state.playerState - which is what
+    player_inc_check's `lore` argument exists to switch (player-timed.c:930-1000,
+    three checks that read known_state when lore is true and state when it is
+    not). A fire resist from a ring whose rune is unlearned no longer recolours
+    a fire breath as survivable. This is the split's most visible consequence:
+    all three combat runes are birth-granted, so the panels barely move, but
+    resists and object flags are learned by use and the recall reads both.
   - The title's optional secondary glyph (monster_x_char / monster_x_attr),
     purple_uniques recolouring, and tile-size gating (ui-mon-lore.c L47-L74)
     are presentation state not modelled; only "The " / name / primary glyph

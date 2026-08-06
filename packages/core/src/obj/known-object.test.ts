@@ -19,6 +19,8 @@ import {
 import type { RuneEnv } from "./knowledge.js";
 import {
   KNOWN_STATE,
+  knownBonusView,
+  objectFlagsKnown,
   objectGrab,
   objectKnownShadow,
   objectSee,
@@ -26,7 +28,7 @@ import {
   objectTouch,
 } from "./known-object.js";
 import type { KnownDesc, KnownFloorDeps, KnownState } from "./known-object.js";
-import { TV } from "../generated/index.js";
+import { ELEM, OF, TV } from "../generated/index.js";
 import { deserializePlayer, serializePlayer } from "../session/save.js";
 import type { SavedPlayer } from "../session/save.js";
 import { ContentIdResolver } from "../mod/ids.js";
@@ -451,5 +453,126 @@ describe("object_see / object_sense (obj-knowledge.c L862-955, gap 4.8)", () => 
     const floor = fakeFloor();
     objectSense(obj, floor.deps);
     expect(floor.calls).toEqual(["sensed-money"]);
+  });
+});
+
+/**
+ * object_flags_known (obj-util.c:364) and the view calc_bonuses' known_only
+ * pass reads off it (PORT_TODO 2.6).
+ */
+describe("objectFlagsKnown / knownBonusView (obj-util.c:364)", () => {
+  it("carries only the flags whose runes are learned", () => {
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SOFT_ARMOR));
+    stripRunes(obj);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    obj.flags.on(OF.FEATHER);
+
+    expect(
+      objectFlagsKnown(obj, p, env, knownDescOf(flavor)).has(OF.FEATHER),
+    ).toBe(false);
+
+    p.objKnown.flags.on(OF.FEATHER);
+    expect(
+      objectFlagsKnown(obj, p, env, knownDescOf(flavor)).has(OF.FEATHER),
+    ).toBe(true);
+  });
+
+  it("adds an AWARE kind's own flags even with the rune unlearned", () => {
+    /*
+     * The half of object_flags_known that the known TWIN cannot supply
+     * (L373-375). Recognising a Ring of Free Action by its flavour tells you
+     * what it does; the rune has nothing to do with it. A shadow-only
+     * implementation would answer "no free action" for a ring the player has
+     * used for fifty levels.
+     */
+    const kind = reg.kinds.find(
+      (k) =>
+        k.kidx < reg.ordinaryKindCount &&
+        k.tval === TV.RING &&
+        k.flags.has(OF.FREE_ACT),
+    );
+    expect(kind, "fixture: the pack ships a ring with OF_FREE_ACT").toBeTruthy();
+
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const obj = mkObj(kind!);
+    obj.flags.union(kind!.flags);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+
+    expect(
+      objectFlagsKnown(obj, p, env, knownDescOf(flavor)).has(OF.FREE_ACT),
+      "unaware and no rune: nothing is known",
+    ).toBe(false);
+
+    flavor.objectFlavorAware(kind!, NOOP_FLAVOR_AWARE_DEPS);
+    expect(
+      objectFlagsKnown(obj, p, env, knownDescOf(flavor)).has(OF.FREE_ACT),
+      "aware of the flavour: the kind's own flags are known",
+    ).toBe(true);
+  });
+
+  it("passes the combat bonuses straight through, and gates the resist", () => {
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SOFT_ARMOR));
+    stripRunes(obj);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    obj.toA = 5;
+    obj.toD = 3;
+    obj.elInfo[ELEM.FIRE]!.resLevel = 1;
+
+    /*
+     * ALL THREE COMBAT RUNES ARE GRANTED AT BIRTH, and this is the measurement
+     * that corrects PORT_TODO 2.6's own example.
+     * do_cmd_accept_character (player-birth.c:1264-1267) sets
+     * obj_k->to_a = to_h = to_d = 1 under the comment "Hack - player knows all
+     * combat runes.  Maybe make them not runes? NRM". So the three gates
+     * calc_bonuses opens at 1997 / 2001 / 2004 can never CLOSE on an ordinary
+     * character: the row's claim that an unlearned +to_a is hidden from the
+     * sidebar was describing a rune nobody has to learn.
+     *
+     * What known_state really withholds is resists and object flags.
+     */
+    expect([p.objKnown.toA, p.objKnown.toH, p.objKnown.toD]).toEqual([1, 1, 1]);
+
+    const blind = knownBonusView(obj, p, env, knownDescOf(flavor));
+    expect(blind.toA).toBe(5);
+    expect(blind.toD).toBe(3);
+    expect(blind.elInfo[ELEM.FIRE]?.resLevel).toBe(0);
+
+    p.objKnown.elInfo[ELEM.FIRE]!.resLevel = 1;
+    expect(
+      knownBonusView(obj, p, env, knownDescOf(flavor)).elInfo[ELEM.FIRE]
+        ?.resLevel,
+    ).toBe(1);
+  });
+
+  it("withholds everything from an object that has not been assessed", () => {
+    /*
+     * player_know_object returns after the base properties for an object that
+     * is seen but not touched (obj-knowledge.c:1033-1035), so a worn item the
+     * player has never handled contributes no bonus at all to known_state -
+     * the one path on which the combat gates DO close.
+     */
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SOFT_ARMOR));
+    stripRunes(obj);
+    obj.toA = 5;
+    obj.toD = 3;
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(0);
+
+    const view = knownBonusView(obj, p, env, knownDescOf(flavor));
+    expect(view.toA).toBe(0);
+    expect(view.toD).toBe(0);
+
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    expect(knownBonusView(obj, p, env, knownDescOf(flavor)).toA).toBe(5);
   });
 });

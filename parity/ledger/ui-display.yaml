@@ -125,10 +125,12 @@ deferred:
       flavoured item in the colour every flavoured kind shares, `d` (PORT_TODO
       3.14). The pref (x_attr/x_char) override and the big-tile clear are still
       the shell's: the seam remains for a front end with a TileMap.
-  - prt_ac reads player->known_state (rune-gated display state); the port uses
-    the real combat state (actor.combat.ac + toA), so an unknown +to_a rune is
-    not hidden from the AC total. The known_state / real-state distinction is
-    the same deferral tracked in obj-desc.yaml.
+  - prt_ac reads player->known_state (ui-display.c:307) and now so does the
+    port: actor.knownCombat.ac + toA (PORT_TODO 2.6). The session derives it
+    with calc_bonuses' known_only flag beside the real state, exactly as
+    update_bonuses does. In 4.2.6 the to_a rune is granted at birth, so this
+    changes the printed number only for an unassessed worn item - the visible
+    payoff of the split is elsewhere (the recall colouring, mon-lore.yaml).
   - update_sidebar's row selection IS ported (PORT_TODO 3.17): side_handlers[]
     with its priorities, including the four NULL grouping rows, is SIDE_HANDLERS
     in game/display.ts, and sidebarLayout(termRows) is L866-889 - the
