@@ -2219,7 +2219,20 @@ is reachable in play and a test constructs the case that used to be wrong.**
   The generators and their menu are **done** (`runSpoilers`, `game/spoil.ts`).
   What is missing is content: `timedDesc` / `summonDesc` are unwired so some
   activation descriptions read worse than upstream's; and `loreDescription` has no
-  upstream-style spoiler flag. `:518` and `:519` are the hit-chance lines, and
+  upstream-style spoiler flag.
+
+  > **Scoped by measurement, 2026-08-06, and it is not the one-line fix it
+  > looks like.** The spoiler boot already holds `game.players.timed` and
+  > `reg.monsters.summons`, so filling the two seams is three lines. I wrote
+  > them, diffed `spoilObjDesc + spoilArtifact` whole against the shipped pack,
+  > and got **zero bytes of difference** — then reverted rather than commit a
+  > no-op that reads like a fix. It is not that the content lacks the cases:
+  > `activation.json` ships 163 activations, **30 TIMED_INC and 25 CURE**. So
+  > the seams are not reaching the effect-description layer at all, and the
+  > work here is finding where the thread stops below `ObjectInfoExtras` —
+  > start at `effects/effect-info.ts:390` and `:402`, which read
+  > `deps.timedDesc` / `deps.summonDesc`, and walk back to
+  > `game/object-inspect.ts:118`. `:518` and `:519` are the hit-chance lines, and
   they no longer wait on anything — the callbacks are wired for the *game* path
   (`packages/web/src/main.ts:3650`); a core-level dump has no player, so this
   needs a state-carrying spoiler variant rather than a seam.
