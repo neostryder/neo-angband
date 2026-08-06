@@ -137,12 +137,15 @@ deferred:
     screen always sets show_combined = false and alternate_color_first = false,
     so no combined cell is produced - the combined value only colours the row
     label). The EQUIPCMP_SCREEN category is compiled and bound but not iterated.
-  - Per-category priority overrides are not reconstructable: the pack compiler
-    erases the intra-record order of category vs priority lines, so a priority set
-    after a specific category cannot be attributed to it. The shipped ui_entry.txt
-    / ui_entry_base.txt never do this (priority always precedes any category, i.e.
-    it sets the default priority), so every category inherits defaultPriority -
-    faithful for the shipped data.
+  - Per-category priority overrides ARE reconstructable (PORT_TODO 3.25). The
+    spec marks priority childOf category, which is parse_entry_priority's own
+    last_category_index branch: with no requireParent, a priority before any
+    category attaches to the record (the default) and one after a category
+    attaches to that category. finish_parse honours CategoryRef.prioritySet
+    rather than overwriting every category with the default. Measured: the
+    shipped ui_entry.txt / ui_entry_base.txt contain ZERO priority-after-category
+    lines, so this changes nothing the game shows - it is a pack-extensibility
+    fix, and a test re-derives the zero from the files.
   - The DRAW half stays with the shell: the Term_putch / Term_putstr / safe_queue_
     chars row/col placement, region_erase, the value/label/combined position
     stepping (struct ui_entry_details positions), vertical labels, the equippy

@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { compileGamedata } from "./records.js";
 import type { FileSpec } from "./records.js";
+import { uiEntrySpec, uiEntryBaseSpec } from "./specs/ui-entry.js";
 
 const effectSpec: FileSpec = {
   name: "synthetic",
@@ -132,5 +134,82 @@ describe("compileGamedata", () => {
     const out = compileGamedata("name:x\n", effectSpec);
     expect(out.file).toBe("synthetic");
     expect(out.source).toBe("lib/gamedata/synthetic.txt");
+  });
+});
+
+/**
+ * PORT_TODO 3.25: ui_entry's `category` and `priority` are ordered with respect
+ * to each other. parse_entry_priority (ui-entry.c:2173) branches on
+ * `last_category_index == -1`: a priority BEFORE any category is the record's
+ * default, and one AFTER a category overrides that category's own.
+ *
+ * The spec used to make `priority` a record scalar, which threw the ordering
+ * away. Nothing in the shipped ui_entry.txt / ui_entry_base.txt uses the second
+ * form - measured, both files have ZERO priority-after-category lines - so
+ * these records are CONSTRUCTED. A test that only read the shipped files could
+ * not tell the two specs apart.
+ */
+describe("ui_entry priority attaches to the preceding category", () => {
+  it("a leading priority is the record default; a following one is that category's", () => {
+    const out = compileGamedata(
+      [
+        "name:leading",
+        "priority:7",
+        "category:alpha",
+        "category:beta",
+        "",
+        "name:following",
+        "category:alpha",
+        "priority:7",
+        "category:beta",
+        "",
+      ].join("\n"),
+      uiEntrySpec,
+    );
+    expect(out.records[0]).toEqual({
+      name: "leading",
+      priority: "7",
+      category: [{ category: "alpha" }, { category: "beta" }],
+    });
+    /* The 7 belongs to alpha alone. beta, declared after it, gets nothing - and
+     * the record has no default priority at all. */
+    expect(out.records[1]).toEqual({
+      name: "following",
+      category: [{ category: "alpha", priority: "7" }, { category: "beta" }],
+    });
+  });
+
+  it("a second priority under the same category replaces the first", () => {
+    /* parse_entry_priority assigns, it does not accumulate (:2216-2220). */
+    const out = compileGamedata(
+      ["name:x", "category:alpha", "priority:1", "priority:2", ""].join("\n"),
+      uiEntrySpec,
+    );
+    expect(out.records[0]).toEqual({
+      name: "x",
+      category: [{ category: "alpha", priority: "2" }],
+    });
+  });
+
+  it("every shipped record still compiles to a bare default priority", () => {
+    /* The guard on the claim that this changes nothing the game shows: if any
+     * shipped record grew a per-category priority, the ledger note and the row
+     * would both be wrong. */
+    for (const file of ["ui_entry", "ui_entry_base"]) {
+      const text = readFileSync(
+        new URL(`../../../reference/lib/gamedata/${file}.txt`, import.meta.url),
+        "utf8",
+      );
+      const out = compileGamedata(text, file === "ui_entry" ? uiEntrySpec : uiEntryBaseSpec);
+      for (const rec of out.records) {
+        const cats = rec["category"];
+        if (!Array.isArray(cats)) continue;
+        for (const c of cats) {
+          expect(c, `${String(rec["name"])} has a per-category priority`).not.toHaveProperty(
+            "priority",
+          );
+        }
+      }
+    }
   });
 });
