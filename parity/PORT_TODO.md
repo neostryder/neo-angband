@@ -106,7 +106,7 @@ citation was a ledger row used to sit outside every guard.
 | **4** | A whole mode nobody has begun |
 | **5** | History, files and logs |
 | **6** | **Closed.** Wizard mode is ported; see the correction above |
-| **7** | A decision to take, not code to write |
+| **7** | **Closed.** Was "a decision to take, not code to write" — and three of the four turned out to be unmeasured claims, two hiding live defects |
 
 Tier order is priority, not dependency; dependencies are named on the item.
 
@@ -2360,7 +2360,19 @@ temporary brands and slays reaching `improveAttackModifier`; `object_learn_on_us
 XP; and the birth-kit gold deduction, `eopts` exclusion and pack-overflow
 handling.
 
-## Tier 7 — Decisions to take, not code to write
+## Tier 7 — Decisions to take, not code to write. CLOSED
+
+**The tier's own premise did not survive being read.** It held four rows on the
+grounds that each needed a judgement call rather than work. Measuring them
+found: one live defect on every level (**7.4** — no monster emitted light or
+darkness), one live information leak (**7.1** — the targeting preview drew
+terrain from the real map instead of the player's memory), one flat retraction
+(**7.3** — level rating was ported before the row was written), and one genuine
+bookkeeping task (**7.2**) whose split immediately turned up eight missing lore
+learns and a message two call sites had dropped.
+
+A one-line row invites the reader to trust its summary. **7.4 had no
+description at all**, and it was the worst of the four.
 
 - [x] **7.1 `project-path`: wire it or cordon it. DONE — the choice was
   false, because the UI branch exists.**
