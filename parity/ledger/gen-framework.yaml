@@ -66,10 +66,13 @@ deferred:
     level-local (plus the shared-registry cur_num check for friend uniques).
   - place_trap only records the grid (the trap domain / trap objects are not
     ported); square_set_door_lock is a no-op but its RNG roll is preserved.
-  - "Arena and quest levels, the known-level (\"player cave\") duplicate, and
-    dump_level HTML output. Level feeling came OFF this list when
-    place_feeling / calc_obj_feeling / calc_mon_feeling landed, and the line
-    kept naming it; gen/generate.ts runs all three."
+  - "The known-level (\"player cave\") duplicate and dump_level HTML output.
+    Three things came OFF this list and the line kept naming them: level
+    feeling, when place_feeling / calc_obj_feeling / calc_mon_feeling landed;
+    arena levels (PORT_TODO 4.1), built by arenaGen off prepare_next_level's
+    arena_level branch, which is not a dungeon profile; and quest levels
+    (PORT_TODO 4.2), which are options.quest -> dun.quest through every
+    builder plus questSpawns for the guardians."
   - "Persistent-level connectors: NOT deferred (PORT_TODO 4.3). getJoinInfo
     (generate.c L893-992), getMinLevelSize (L997-1013) and collectJoins
     (L1203-1214) are all in gen/generate.ts, dun.join / one_off_above /

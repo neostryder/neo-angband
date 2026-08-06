@@ -367,13 +367,20 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(rs.actor.player.totalWinner).toBe(true);
   });
 
-  it("an old save without a `quests` field loads with no quests", () => {
+  it("an old save without a `quests` field loads with the standard quest table", () => {
+    /* rd_quests (load.c:636) calls player_quests_reset FIRST and only then
+     * overlays the saved level/cur_num, so a save that carries no quest block
+     * at all still lands on the game's own quest table. This test used to
+     * assert `[]` - a character who could never win - and that was the port's
+     * behaviour, not upstream's. */
     const game = startGame(pack, { seed: 321, depth: 3 });
+    const fresh = game.state.actor.player.quests.map((q) => ({ ...q }));
     const saved = JSON.parse(JSON.stringify(saveGame(game)));
     delete saved.player.quests;
     delete saved.player.totalWinner;
     const rs = loadGame(pack, saved).state;
-    expect(rs.actor.player.quests).toEqual([]);
+    expect(rs.actor.player.quests).toEqual(fresh);
+    expect(rs.actor.player.quests.length).toBeGreaterThan(0);
     expect(rs.actor.player.totalWinner).toBe(false);
   });
 

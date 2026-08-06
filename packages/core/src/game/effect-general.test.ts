@@ -513,11 +513,98 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     const state = makeState({ seed: 62 });
     const p = state.actor.player;
     state.chunk.depth = 0;
+    /* on_new_level (game-world.c:1023-1024) sets max_depth AND recall_depth
+     * together, so a character who has been to 12 has both. Setting only
+     * max_depth is a state play cannot produce, and the countdown reads
+     * recall_depth - it does not re-derive it from max_depth. */
     p.maxDepth = 12;
+    p.recallDepth = 12;
     p.wordRecall = 1;
     processWorld(state);
     expect(state.targetDepth).toBe(12);
     expect(state.generateLevel).toBe(true);
+  });
+
+  it("in town, recall honours a persistent-levels player's CHOSEN depth", () => {
+    /* The concrete failure the player_set_recall_depth port fixes: the town
+     * prompt asked which frozen level to return to, and the countdown then
+     * overwrote the answer with max_depth. */
+    const state = makeState({ seed: 62 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 12;
+    p.recallDepth = 12;
+    state.levelCache = new Map([[5, {} as StoredLevel]]);
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: true },
+    });
+    registry().effectSimple(
+      EF.RECALL,
+      env(state, { general: { trapDeps, chooseDepth: () => 5 } }, []),
+      { origin: sourcePlayer() },
+    );
+    expect(p.recallDepth).toBe(5);
+
+    p.wordRecall = 1;
+    processWorld(state);
+    expect(state.targetDepth).toBe(5);
+  });
+
+  it("in town, a character who never descended is yanked to 1, not the town", () => {
+    /* MAX(recall_depth, 1) (player-util.c:92). Word of Recall bought and read
+     * before the first descent has to go somewhere; upstream sends it to level
+     * 1. targetDepth 0 would have regenerated the town under the player. */
+    const state = makeState({ seed: 62 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 0;
+    p.recallDepth = 0;
+    p.wordRecall = 1;
+    processWorld(state);
+    expect(state.targetDepth).toBe(1);
+    expect(state.generateLevel).toBe(true);
+  });
+
+  it("in town under force_descend, recall lands one level BELOW max_depth", () => {
+    const state = makeState({ seed: 62 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 12;
+    p.recallDepth = 12;
+    state.options = new OptionState({
+      overrides: { birth_force_descend: true },
+    });
+    p.wordRecall = 1;
+    processWorld(state);
+    expect(state.targetDepth).toBe(13);
+  });
+
+  it("RECALL does nothing at all under birth_no_recall, until the game is won", () => {
+    /* effect-handler-general.c L1098-1102. The option ("Word of Recall has no
+     * effect", #34) was in the table and read by nothing, so the scroll worked
+     * exactly as normal for a player who had chosen to give it up. */
+    const state = makeState({ seed: 62 });
+    const p = state.actor.player;
+    state.chunk.depth = 7;
+    p.maxDepth = 7;
+    p.recallDepth = 7;
+    state.options = new OptionState({
+      overrides: { birth_no_recall: true },
+    });
+    const r = registry();
+    const msgs: string[] = [];
+    r.effectSimple(EF.RECALL, env(state, {}, msgs), { origin: sourcePlayer() });
+    expect(p.wordRecall).toBe(0);
+    expect(msgs).toContain("Nothing happens.");
+    expect(msgs).not.toContain("The air about you becomes charged...");
+
+    /* !player->total_winner: a winner gets the scroll back, which is how they
+     * return to town to retire. */
+    p.totalWinner = true;
+    const msgs2: string[] = [];
+    r.effectSimple(EF.RECALL, env(state, {}, msgs2), { origin: sourcePlayer() });
+    expect(p.wordRecall).toBeGreaterThanOrEqual(15);
+    expect(msgs2).toContain("The air about you becomes charged...");
   });
 
   describe("player_get_recall_depth (player-util.c L100)", () => {

@@ -8,14 +8,22 @@
  * returns the Gen context, which exposes the finished Chunk, the placed
  * objects and monsters, and the player start location.
  *
- * DEFERRED (ledgered in parity/ledger/gen-framework.yaml): arena and quest
- * levels, and the known-level ("player cave") duplicate. Monster-count overflow
- * is the one upstream post-build regeneration trigger that is kept.
+ * DEFERRED (ledgered in parity/ledger/gen-framework.yaml): the known-level
+ * ("player cave") duplicate. Monster-count overflow is the one upstream
+ * post-build regeneration trigger that is kept.
  *
- * Persistent-level connectors are NOT deferred and have not been for some time
- * (PORT_TODO 4.3): getJoinInfo, getMinLevelSize and collectJoins are here, the
- * builders honour dun.persist, and session/changeLevel drives all three off the
- * frozen-level cache.
+ * Neither arena nor quest levels are deferred, and neither has been for some
+ * time. Arena levels are built by arenaGen and driven by session/game.ts
+ * (PORT_TODO 4.1). Quest levels are `options.quest`, which forces the classic
+ * profile exactly as choose_profile does (generate.c L841), reaches every
+ * builder as `dun.quest` - the size_percent = 100 override, handle_level_stairs
+ * and every alloc_stairs / place_random_stairs call - and drives the quest
+ * guardian placement below (PORT_TODO 4.2).
+ *
+ * Persistent-level connectors are not deferred either (PORT_TODO 4.3):
+ * getJoinInfo, getMinLevelSize and collectJoins are here, the builders honour
+ * dun.persist, and session/changeLevel drives all three off the frozen-level
+ * cache.
  *
  * NO ADDITIONS BEYOND UPSTREAM. This file holds no fix and no mod's name. It
  * offers ONE extension point - the levelGenerated hook (mod/hooks.ts), consulted

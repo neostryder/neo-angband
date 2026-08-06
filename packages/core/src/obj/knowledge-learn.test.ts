@@ -407,7 +407,7 @@ describe("rune knowledge in the save format", () => {
     const saved = JSON.parse(
       JSON.stringify(serializePlayer(p, ids)),
     ) as ReturnType<typeof serializePlayer>;
-    const restored = deserializePlayer(saved, players, reg, ids);
+    const restored = deserializePlayer(saved, players, reg, ids, []);
 
     expect(restored.objKnown.toA).toBe(1);
     expect(restored.objKnown.modifiers).toEqual(p.objKnown.modifiers);
@@ -436,6 +436,7 @@ describe("rune knowledge in the save format", () => {
       players,
       reg,
       ids,
+      [],
     );
     expect(restored.objKnown.modifiers[3]).toBe(1);
     /* A legacy save predating combat-rune serialization loads to the upstream

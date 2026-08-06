@@ -14,7 +14,12 @@ upstream:
       - square_player_trap_allowed (L255): one trap, no objects, TF TRAP
         terrain.
       - pick_trap (L275): cumulative-rarity pick with the min-depth,
-        TRF_FLOOR and trapdoor legality rules (quest hook, max-depth).
+        TRF_FLOOR and trapdoor legality rules. is_quest is no longer a
+        "hook": session/game.ts supplies TrapEnv.isQuest from the player's
+        quest history, so the runtime trap-creation path enforces "no trap
+        doors on quest levels" as the generation path already did
+        (PORT_TODO 4.2). Skipping a kind also removes its slice from the
+        cumulative total, so this changes the draw, not only the outcome.
       - place_trap (L356): random pick on an illegal index, power rolled
         from the kind's random-value at trap level, instance flag copy.
       - square_reveal_trap (L399): SEARCH vs power, forced reveal, the
@@ -54,7 +59,10 @@ deferred:
   - no_light in the unlock/disarm penalties (light model); monster glyph
     and web interactions in the monster AI (mon-move); trap-created
     terrain effects that need unported effect handlers fizzle silently.
-  - The trapdoor persistent-levels option check (birth options).
+  - "NOT deferred: the trapdoor persistent-levels check reads the live
+    birth_levels_persist from the option store (trap.ts pickTrap), and so
+    does the is_quest check beside it. This row named the option system as
+    unbuilt; the option system landed and the row was never revisited."
 verified-by:
   - game/trap.test.ts (14 tests): the bound pit kind's flags/power/save;
     lookup_trap; specific and random placement (none in town); reveal vs

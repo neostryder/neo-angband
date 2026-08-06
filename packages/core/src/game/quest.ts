@@ -145,6 +145,54 @@ export function dungeonGetNextLevel(
 }
 
 /**
+ * player_set_recall_depth (player-util.c L79): settle where a Word of Recall
+ * read in TOWN is about to drop the player. Called at the moment the countdown
+ * fires (game-world.c:803), not when the scroll is read.
+ *
+ * Provenance is player-util.c; it lives here for the same reason
+ * dungeonGetNextLevel does - the force_descend arm is a quest scan, and refusing
+ * to step past `max_depth` when max_depth itself is an unfinished quest is the
+ * rule that keeps a force_descend character from being recalled straight past
+ * Sauron.
+ *
+ * Note what it does NOT do: outside force_descend it leaves `recall_depth`
+ * exactly as it stands. The value is maintained elsewhere - on_new_level sets
+ * `max_depth = recall_depth = depth` on reaching a new deepest level
+ * (game-world.c:1024), EF_RECALL re-anchors it when read in the dungeon, and
+ * player_get_recall_depth sets it from the prompt under persistent levels. The
+ * only floor is the final MAX(recall_depth, 1): a character who reads Word of
+ * Recall in town having never descended goes to level 1, not to the town.
+ */
+export function playerSetRecallDepth(
+  p: Player,
+  forceDescend: boolean,
+  z: { readonly stairSkip: number; readonly maxDepth: number },
+): void {
+  /* Account for forced descent. */
+  if (forceDescend) {
+    /* Force descent to a lower level if allowed.
+     *
+     * MUTATION NOTE. Both conjuncts are unkillable through gameplay, and the
+     * reason is worth writing down rather than rediscovering. dungeonGetNextLevel
+     * already clamps to maxDepth - 1 and already returns the first quest depth
+     * it scans over, so whenever recall_depth equals max_depth this guard and
+     * the call it guards give the same answer - dropping either conjunct changes
+     * nothing. And recall_depth DOES always equal max_depth under force_descend:
+     * on_new_level assigns them together, EF_RECALL's re-anchor assigns them
+     * together, and player_get_recall_depth returns early under this very
+     * option. The conjuncts are kept because they are upstream's, and covered by
+     * a contract test on the exported function (quest.test.ts) that constructs
+     * the differing recall_depth play cannot produce. */
+    if (p.maxDepth < z.maxDepth - 1 && !isQuest(p, p.maxDepth)) {
+      p.recallDepth = dungeonGetNextLevel(p, p.maxDepth, 1, z);
+    }
+  }
+
+  /* Players who haven't left town before go to level 1. */
+  p.recallDepth = Math.max(p.recallDepth, 1);
+}
+
+/**
  * square_changeable (cave-square.c L868): a grid that may be "destroyed" - no
  * permanent walls, shops or stairs, and no artifact lying on it. Reimplemented
  * locally (the effect-terrain.c copy is module-private) so build_quest_stairs

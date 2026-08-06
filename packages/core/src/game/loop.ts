@@ -66,7 +66,7 @@ import {
 import { disturb } from "./player-path.js";
 import { processPlayer } from "./player-turn.js";
 import type { ActionRegistry, PlayerTurnResult } from "./player-turn.js";
-import { dungeonGetNextLevel } from "./quest.js";
+import { dungeonGetNextLevel, playerSetRecallDepth } from "./quest.js";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
 const PY_REGEN_NORMAL = 197;
@@ -481,8 +481,16 @@ export function processWorld(state: GameState): void {
         state.targetDepth = 0;
       } else {
         msgt(state, "TPLEVEL", "You feel yourself yanked downwards!");
-        /* player_set_recall_depth: non-persistent levels use max_depth. */
-        p.recallDepth = p.maxDepth;
+        /* player_set_recall_depth(player) (game-world.c:803). This used to be
+         * `p.recallDepth = p.maxDepth`, which clobbered the destination every
+         * other producer had already chosen - including the level a
+         * persistent-levels player had just been prompted for - and sent a
+         * character who had never descended to the town instead of to level 1. */
+        playerSetRecallDepth(
+          p,
+          state.options?.get("birth_force_descend") ?? false,
+          state.z,
+        );
         state.targetDepth = p.recallDepth;
       }
       state.generateLevel = true;

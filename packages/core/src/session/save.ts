@@ -94,6 +94,8 @@ import type { MonsterLore } from "../mon/lore.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
+import { playerQuestsReset } from "../game/quest.js";
+import type { Quest } from "../game/quest.js";
 import type { PlayerRegistry } from "../player/bind.js";
 import type { TrapKind } from "../world/trap.js";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context.js";
@@ -723,6 +725,12 @@ export function deserializePlayer(
   players: PlayerRegistry,
   objReg: ObjRegistry,
   ids: ContentIdResolver,
+  /* The bound standard quest table (registries.quests), for rd_quests below.
+   * Required rather than defaulted: a caller that forgets it would silently
+   * load a character with no quests and no win condition, which is precisely
+   * the failure this parameter exists to prevent. Pass [] to mean "this game
+   * has no quest table". */
+  quests: readonly Quest[],
 ): Player {
   const race = players.raceByName(data.raceName);
   const cls = players.classByName(data.clsName);
@@ -839,7 +847,30 @@ export function deserializePlayer(
     repeatPrevAllowed: false,
     lastCmdUsedFloorItem: false,
   };
-  p.quests = data.quests ? data.quests.map((q) => ({ ...q })) : [];
+  /* rd_quests (load.c:623-645). Upstream does NOT restore the quest list from
+   * the savefile: it calls player_quests_reset to rebuild the whole history
+   * from the CURRENT quest table, then overlays only the two mutable fields,
+   * `level` and `cur_num`. Name, race and max_num therefore always come from
+   * the game's own data, never from the save - which is what keeps a character
+   * loading correctly after the monster table has shifted underneath their
+   * stored race index, and what re-arms the win condition for a save written
+   * before this system existed.
+   *
+   * The over-count rejection is upstream's too (load.c:630-633: "Too many (%u)
+   * quests!" and a failed load) - a save claiming more quests than the game
+   * defines is not something to silently truncate. */
+  playerQuestsReset(p, quests);
+  if (data.quests) {
+    if (data.quests.length > quests.length) {
+      throw new Error(`save: too many (${data.quests.length}) quests`);
+    }
+    data.quests.forEach((saved, i) => {
+      const q = p.quests[i];
+      if (!q) return;
+      q.level = saved.level;
+      q.curNum = saved.curNum;
+    });
+  }
   p.totalWinner = data.totalWinner ?? false;
   return p;
 }

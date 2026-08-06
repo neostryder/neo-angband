@@ -3007,8 +3007,10 @@ export class DungeonProfiles {
  * upstream key (town/classic/modified/labyrinth/cavern/moria/lair/gauntlet/
  * hard_centre - all faithful ports now) plus every dungeon_profile.txt profile,
  * loaded in file order so choose_profile's weighted selection matches upstream.
- * Mods extend both via registerBuilder/addProfile. (arena is quest-only and not
- * a dungeon profile; it lives with the deferred quest system.)
+ * Mods extend both via registerBuilder/addProfile. (arena is deliberately
+ * absent: upstream's arena_gen is reached through prepare_next_level's
+ * arena_level branch, not through choose_profile, so it is not a dungeon
+ * profile and must not be selectable as one.)
  */
 export function createDungeonProfiles(
   profileRecords: DunProfileRecordJson[],

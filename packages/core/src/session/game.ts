@@ -1691,6 +1691,16 @@ function wireGame(
           /* player_of_has for trap saves / OF_TRAP_IMMUNE (trap.c:515-539). */
           playerHasFlag: (flag: number): boolean =>
             state.playerState?.flags.has(flag) ?? false,
+          /* is_quest(player->depth) (trap.c:310-311): no trap doors on a quest
+           * level - the guardian's floor must not open under the player. The
+           * generation path already supplied this (gen/util.ts, from dun.quest);
+           * the RUNTIME path did not, so every trap laid after generation - by
+           * EF_TOUCH:MAKE_TRAP, by square_add_trap - drew from a table that
+           * still contained the trapdoor on depths 99 and 100. Dropping a kind
+           * also shifts pick_trap's cumulative total, so the omission moved the
+           * whole draw, not just the trapdoor. */
+          isQuest: (depth: number): boolean =>
+            isQuest(state.actor.player, depth),
           changeLevel: (s: GameState): void => {
             /* trap.c:579-582: a TRF_DOWN trapdoor drops you through
              * dungeon_get_next_level, not blindly one level. */
@@ -1987,9 +1997,14 @@ function populateFromLevel(
   state.actor.grid = spot;
   placePlayer(state, spot);
 
-  /* Track the deepest level reached (player->max_depth). */
+  /* Track the deepest level reached: on_new_level (game-world.c:1023-1024)
+   * sets `max_depth = recall_depth = depth`, BOTH of them. recall_depth is the
+   * anchor Word of Recall drops you back to, and this assignment is its only
+   * producer on the ordinary walk down - EF_RECALL re-anchors it only when the
+   * scroll is read in the dungeon. Setting max_depth alone left recall_depth at
+   * 0 forever for a character who never read one below the town. */
   if (level.depth > state.actor.player.maxDepth) {
-    state.actor.player.maxDepth = level.depth;
+    state.actor.player.maxDepth = state.actor.player.recallDepth = level.depth;
   }
   /* A new level clears the decoy (glyph traps do not persist the swap). */
   state.decoy = null;
@@ -2302,9 +2317,12 @@ function makeChangeLevel(
       delete state.oldGrid;
     }
 
-    /* dungeon_change_level: track the deepest level reached. */
+    /* dungeon_change_level: track the deepest level reached. The same
+     * `max_depth = recall_depth = depth` pair as populateFromLevel, because the
+     * port checks on both the request and the arrival where upstream checks
+     * once in on_new_level - whichever fires first, the other is a no-op. */
     if (depth > state.actor.player.maxDepth) {
-      state.actor.player.maxDepth = depth;
+      state.actor.player.maxDepth = state.actor.player.recallDepth = depth;
     }
 
     /* birth_levels_persist (#30, off by default): when on, the level being
@@ -3677,7 +3695,13 @@ export function loadGame(
   if (!save.chunk && save.dungeonDepth !== undefined) {
     chunk.depth = save.dungeonDepth;
   }
-  const player = deserializePlayer(save.player, players, reg.objects, ids);
+  const player = deserializePlayer(
+    save.player,
+    players,
+    reg.objects,
+    ids,
+    reg.quests,
+  );
   const gear = deserializeGear(save.gear, reg.objects, ids);
 
   /* rd_gear (load.c L1179-1185): the carried-weight total is RE-SUMMED from the
