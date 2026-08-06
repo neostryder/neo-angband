@@ -1616,31 +1616,59 @@ is reachable in play and a test constructs the case that used to be wrong.**
   answer but an unused one.
   Sites: `packages/core/src/game/display.ts:627`, `parity/ledger/ui-display.yaml:128`
 
-- [ ] **3.18 The ENTER command browser does not exist, for any command list.**
-  `textui_action_menu_choose` / `cmd_menu` (`ui-context.c:1176-1215`). Upstream's
-  nested command categories are reachable only through it, which is why the
-  debug menu's categories look absent — but the gap is general, not
-  wizard-specific (`packages/web/src/wizard.ts:492-499` states this).
+- [x] **3.18 The ENTER command browser does not exist, for any command list.** DONE.
+  ENTER now opens `textui_action_menu_choose` (`ui-context.c:1268`) over
+  `cmd_menu` (`:1157`): the `cmds_all` list names in a `window_make(19,4,58,11)`
+  box, a chosen list's entries as `desc (key)` in a box two columns right and one
+  row up per nesting level, ESC going back one level rather than out. It is the
+  only route upstream offers to a nested command category, and a discoverable
+  route to every command for a player who does not know the keys.
 
-  **Scouted 2026-08-06, not started.** The row is accurate. What the scout found
-  is that most of the data already exists and the obstacle is where it lives:
-  - The port's `COMMANDS` table in `main.ts`'s keydown handler **is `cmds_all`
-    flattened**, in upstream's own order, with the six `cmd_*` arrays marked by
-    comments (`// Item commands (cmd_item, ui-game.c:118-133)` and so on). Every
-    row already carries its original and roguelike keys.
-  - It is missing two fields the browser needs: `cmd_info.desc` (upstream's
-    exact strings, `ui-game.c:116-232`) and which of the six lists the row is
-    in. Both are recoverable from the C without invention.
-  - **The blocker is scope, not content.** `COMMANDS` is a `const` declared
-    INSIDE the keydown handler, rebuilt per keypress and reachable from nowhere
-    else, so an ENTER menu cannot see it. It has to be hoisted to module level
-    first — every `act` closure already calls module-scope functions, so the
-    hoist is mechanical, but it is surgery on the live dispatcher for every
-    command in the game and wants its own careful pass.
-  - Recursion and ESC-goes-back-one-level are `cmd_menu`'s (`:1157`), and the
-    nested tier is the nine `cmd_debug_*` categories, which
-    `packages/web/src/wizard.ts` already holds frozen and exact.
-  Sites: `packages/web/src/wizard.ts:498`
+  **The obstacle was scope, and the scout call was right.** The port's `COMMANDS`
+  table already WAS `cmds_all` flattened in upstream's order with both keysets on
+  every row — but it was a `const` inside the keydown handler, rebuilt per
+  keypress and reachable from nowhere. It is `buildCommandTable()` at module
+  level now, behind one lazily-built instance, and **both** readers use it: the
+  dispatcher and the browser. The two things it lacked are transcribed from the C
+  — `cmd_info.desc` on all 62 rows, and which of the six lists each is in.
+
+  **One copy of everything that could have become two.** `keyForKeyset` is the
+  shared `key[mode]` rule; `runConfirmedCommand` is the shared
+  `key_confirm_command` veto, so an inscription that refuses a key refuses the
+  menu row too — which is upstream's own structure, since
+  `textui_action_menu_choose` returns a `cmd_info` and its CALLER dispatches.
+  The browser returns the command rather than running it, for exactly that
+  reason. Two rows carry `cat: null` — `x` swap-weapon and numpad `5` — because
+  they are port additions with no `cmd_info` behind them, and upstream's menu is
+  `cmds_all` and nothing else.
+
+  **The nested tier too**, which is the consequence the row itself named. The
+  `cmd_hidden` placeholder "Debug mode commands (^A)" opens `cmd_debug`'s nine
+  categories and each opens its own `cmd_debug_*` list — built from `wizard.ts`'s
+  already-frozen `DEBUG_MENU` rather than transcribed a second time. Both routes
+  into a debug command dispatch through one `runWizardDebugCommand`, so the menu
+  is not a way around `player_can_debug_prereq` and the NOSCORE_DEBUG marking.
+  Before this those categories were unreachable by any means.
+
+  24 mutations, 24 killed. Six only after the tests earned it, and three of those
+  are one fault: **a test that grades its own mirror.** The keyset rule was
+  reimplemented in the test file, so "the browser ignores the keyset" survived;
+  the fixture had no row with an absent `r` read under the ROGUELIKE keyset, so
+  "absent means none, not same" survived; and the wiring guard accepted a handler
+  that had stopped reading the shared table. `keyForKeyset` is one exported
+  function now, called by the shell and by the tests.
+
+  **Two defects came from printing the screens rather than reviewing the code.**
+  The command box left its frame behind when it closed — the port has no
+  `screen_save`/`screen_load`, so the redraw is a REQUIRED parameter rather than
+  an optional one nobody would pass. And `^A` rendered as `[^A]`: a control key
+  is not bracketed (`ui-event.c:317-321`), and the two forms are mutually
+  exclusive upstream. A third thing the dump corrected was my own assertion
+  rather than the code — the category names are COVERED by the command box, and
+  only its frame at columns 19-20 stays visible, which is what the nesting indent
+  is for.
+  Sites: `packages/web/src/command-menu.ts:1`, `packages/web/src/main.ts:8138`,
+  `packages/web/src/wizard.ts:498`
 
 - [x] **3.19 The birth screens answer help with a no-op.** DONE.
   The row was right, and understated by one screen: the menu stages carried a

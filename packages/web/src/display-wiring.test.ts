@@ -57,3 +57,67 @@ describe("displayDeps", () => {
     expect(displayDeps).toContain("feelingNeed: constants.feelingNeed");
   });
 });
+
+/**
+ * PORT_TODO 3.18: ENTER opens the command browser, and the table it browses is
+ * upstream's.
+ *
+ * The browser itself is verified in command-menu.test.ts. What only the source
+ * can show from here is that main.ts reaches it, that the command table is
+ * MODULE level (it used to be a const inside the keydown handler, rebuilt per
+ * keypress and reachable from nowhere - the whole reason this could not be
+ * ported), and that every cmd_info.desc in it is the C's own string.
+ */
+describe("the ENTER command browser", () => {
+  it("is reached from the keydown handler, through the key-confirm gate", () => {
+    expect(src).toContain('if (ev.key === "Enter")');
+    expect(src).toContain("chooseCommand(term, commandCategories(), render)");
+    /* Not a second copy of the inscription veto: the menu row and the keypress
+     * go through the one runConfirmedCommand. */
+    expect(src.match(/runConfirmedCommand\(/gu)?.length).toBe(3); // 1 definition, 2 callers
+    expect(src.match(/keyConfirmCount\(/gu)?.length).toBe(1);
+  });
+
+  it("builds the command table at module level, not per keypress", () => {
+    expect(src).toContain("function buildCommandTable(): CommandRow[] {");
+    /* If this reverts to a `const COMMANDS` inside the handler, the browser
+     * silently loses its data source - and so does the dispatcher, which is why
+     * the handler must be reading the shared one and not a local of its own. */
+    expect(src).not.toContain("    const COMMANDS: {");
+    expect(src).toContain("const COMMANDS = commandTable();");
+    /* And the browser reads the same table through the same keyset rule. */
+    expect(src).toContain("groupCommands(");
+    expect(src).toContain("commandTable(),");
+    expect(src).toContain("keyForKeyset(row, roguelike)");
+  });
+
+  it("carries the C's own desc for every row (spot-checked against ui-game.c)", () => {
+    const cSrc = readFileSync(
+      new URL("../../../reference/src/ui-game.c", import.meta.url),
+      "utf8",
+    );
+    /* Derived, not declared: pull every cmd_info description out of the six
+     * tables and require that each desc main.ts uses is one of them. A typo or
+     * a paraphrase fails here rather than reading fine. */
+    const block = cSrc.slice(
+      cSrc.indexOf("struct cmd_info cmd_item[]"),
+      cSrc.indexOf("struct cmd_info cmd_debug[]"),
+    );
+    const STR = String.raw`"((?:[^"\\]|\\.)*)"`;
+    const upstream = new Set(
+      [...block.matchAll(new RegExp(String.raw`\{\s*` + STR + String.raw`,\s*\{`, "gu"))].map(
+        (m) => m[1]!.replaceAll(String.raw`\"`, '"'),
+      ),
+    );
+    expect(upstream.size).toBeGreaterThan(50);
+    const used = [
+      ...src.matchAll(new RegExp(String.raw`\{ desc: ` + STR + String.raw`, cat: (null|"[^"]*")`, "gu")),
+    ];
+    expect(used.length).toBeGreaterThan(50);
+    for (const m of used) {
+      const desc = m[1]!.replaceAll(String.raw`\"`, '"');
+      if (m[2] === "null") continue; // a port addition, with no cmd_info behind it
+      expect(upstream, `"${desc}" is not a cmd_info desc in ui-game.c`).toContain(desc);
+    }
+  });
+});

@@ -445,7 +445,13 @@ import {
 import type { CommandCode } from "@rpgm-tools/neo-angband-core";
 import { monsterIsVisible, monsterIsDestroyed } from "@rpgm-tools/neo-angband-core";
 import type { WizardDeps } from "@rpgm-tools/neo-angband-core";
-import { runWizardToggle, runWizardDebugMenu, runSpoilers } from "./wizard";
+import {
+  runWizardToggle,
+  runWizardDebugMenu,
+  runWizardDebugCommand,
+  runSpoilers,
+  DEBUG_MENU,
+} from "./wizard";
 import type { WizardUiCtx, WizKeypress } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
 import type { SellPick } from "./shop";
@@ -457,6 +463,8 @@ import {
 } from "./ignore-menu";
 import type { Store } from "@rpgm-tools/neo-angband-core";
 import { runHelp } from "./help";
+import { chooseCommand, groupCommands, keyForKeyset } from "./command-menu";
+import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
@@ -7717,6 +7725,230 @@ const KEYLOG: WizKeypress[] = [];
 const KEYLOG_MAX = 8;
 
 /** keypress_to_text (ui-event.c:233) over a browser KeyboardEvent. */
+/** One row of cmds_all: what it is called, where it lives, and what runs it. */
+interface CommandRow {
+  /** cmd_info.desc (ui-game.c:116-232), verbatim. */
+  desc: string;
+  /** Which cmds_all list this row is in; null = a PORT ADDITION that is
+   * not a cmd_info row upstream, so the ENTER browser must not list it. */
+  cat: string | null;
+  o?: string | null;
+  r?: string | null;
+  /** A control key, for rows the ctrl branch of the dispatcher owns. Label
+   * only: keypress_to_readable renders KTRL('A') as "^A". */
+  ctrl?: string;
+  act: () => void;
+  /** cmd_info.nested_name: this row opens a nested list instead of running. */
+  nested?: () => CommandCategory[];
+}
+
+/**
+ * cmds_all (ui-game.c:329-353) for this shell: every command the port
+ * implements, in upstream's own table order, each row carrying the exact
+ * cmd_info.desc, the cmds_all list it belongs to, and its key in each keyset.
+ *
+ * `r: null` means the command has no plain roguelike key (it moves to a control
+ * key, handled in the ctrl branch of the keydown handler), so that letter stays
+ * free for roguelike movement; `o: null` means original has no binding (a
+ * roguelike-only key). This mirrors cmd_lookup exactly - no key differs.
+ *
+ * MODULE LEVEL, not a const inside the keydown handler where it used to live.
+ * Two things read it now: that handler, and the ENTER command browser
+ * (runCommandBrowser), which upstream reaches every nested command category
+ * through and which could not see a table rebuilt per keypress inside a
+ * closure. It is built by a function rather than written as a top-level array
+ * because every `act` closes over module state that is not initialised yet at
+ * module-evaluation time.
+ */
+function buildCommandTable(): CommandRow[] {
+  const COMMANDS: CommandRow[] = [
+    // Item commands (cmd_item, ui-game.c:118-133).
+    { desc: "Inscribe an object", cat: "Items", o: "{", act: () => void openModal(inscribeItem) },
+    { desc: "Uninscribe an object", cat: "Items", o: "}", act: () => void openModal(uninscribeItem) },
+    // do_cmd_wield's item_tester is obj_can_wear = wield_slot(obj) >= 0
+    // (cmd-obj.c L284, obj-util.c L810) - the slot lookup, not the tval set.
+    { desc: "Wear/wield an item", cat: "Items", o: "w", act: () => void openModal(() => useItem("wield", (t) => objCanWear(state, t), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
+    { desc: "Take off/unwield an item", cat: "Items", o: "t", r: "T", act: () => void openModal(takeOffItem) },
+    { desc: "Examine an item", cat: "Items", o: "I", act: () => void openModal(() => inspectItem()) },
+    { desc: "Drop an item", cat: "Items", o: "d", act: () => void openModal(dropItem) },
+    { desc: "Fire your missile weapon", cat: "Items", o: "f", r: "t", act: () => void openModal(fireCmd) },
+    { desc: "Use a staff", cat: "Items", o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.", { inven: true, floor: true })) },
+    { desc: "Aim a wand", cat: "Items", o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.", { inven: true, floor: true })) },
+    { desc: "Zap a rod", cat: "Items", o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "Zap which rod? ", "You have no rods to zap.", { inven: true, floor: true })) },
+    { desc: "Activate an object", cat: "Items", o: "A", act: () => void openModal(activateItem) },
+    { desc: "Eat some food", cat: "Items", o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.", { inven: true, floor: true })) },
+    { desc: "Quaff a potion", cat: "Items", o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.", { inven: true, floor: true })) },
+    { desc: "Read a scroll", cat: "Items", o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.", { inven: true, floor: true })) },
+    // player_can_refuel_prereq gates 'F' (ui-game.c:132) before CMD_REFILL.
+    { desc: "Fuel your light source", cat: "Items", o: "F", act: () => { if (playerCanRefuelPrereq()) void openModal(refuelItem); else render(); } },
+    { desc: "Use an item", cat: "Items", o: "U", r: "X", act: () => void openModal(useGenericCmd) },
+    // General actions (cmd_action, ui-game.c:141-153).
+    { desc: "Disarm a trap or chest", cat: "Action commands", o: "D", act: () => void openModal(disarmCmd) },
+    { desc: "Rest for a while", cat: "Action commands", o: "R", act: () => void openModal(restCmd) },
+    { desc: "Look around", cat: "Action commands", o: "l", r: "x", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected."); }) },
+    // Swap weapon: the original keyset maps 'x' to the pref.prf "w0" macro
+    // (wield the item inscribed @0). The roguelike keyset uses 'x' for Look
+    // (the look row above), so this binds 'x' only in the original keyset.
+    { desc: "Swap weapon", cat: null, o: "x", r: null, act: () => void openModal(swapWeaponCmd) },
+    { desc: "Target monster or location", cat: "Action commands", o: "*", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected."); else say("Target Aborted."); }) },
+    { desc: "Target closest monster", cat: "Action commands", o: "'", act: () => { targetSetClosest(state, TARGET.KILL); render(); } },
+    // Tunnel: 'T' in the original keyset; the roguelike keyset uses ^T (handled
+    // above) since roguelike 'T' is Take off.
+    { desc: "Dig a tunnel", cat: "Action commands", o: "T", r: null, act: () => void openModal(tunnelCmd) },
+    { desc: "Go up staircase", cat: "Action commands", o: "<", act: () => { commandBuffer.push({ code: "ascend" }); advance(); } },
+    { desc: "Go down staircase", cat: "Action commands", o: ">", act: () => { commandBuffer.push({ code: "descend" }); advance(); } },
+    { desc: "Open a door or a chest", cat: "Action commands", o: "o", act: () => void openModal(openCmd) },
+    { desc: "Close a door", cat: "Action commands", o: "c", act: () => void openModal(closeCmd) },
+    { desc: "Fire at nearest target", cat: "Action commands", o: "h", r: "Tab", act: () => fireAtNearestCmd() },
+    { desc: "Throw an item", cat: "Action commands", o: "v", act: () => void openModal(throwCmd) },
+    { desc: "Walk into a trap", cat: "Action commands", o: "W", r: "-", act: () => void openModal(jumpCmd) },
+    // Item management (cmd_item_manage, ui-game.c:161-165).
+    /* do_cmd_equip / do_cmd_inven / do_cmd_quiver open with an emptiness
+     * check that says why rather than showing an empty screen
+     * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123). */
+    /* do_cmd_equip / do_cmd_inven / do_cmd_quiver: each opens its listing as a
+     * PICKER into context_menu_object, not as a read-only screen. */
+    { desc: "Display equipment listing", cat: "Manage items", o: "e", act: () => void openModal(() => doCmdItemListing("equip")) },
+    { desc: "Display inventory listing", cat: "Manage items", o: "i", act: () => void openModal(() => doCmdItemListing("inven")) },
+    { desc: "Display quiver listing", cat: "Manage items", o: "|", act: () => void openModal(() => doCmdItemListing("quiver")) },
+    { desc: "Pick up objects", cat: "Manage items", o: "g", act: () => void openModal(pickupCmd) },
+    // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
+    // roguelike 'k' stays free for movement.
+    { desc: "Ignore an item", cat: "Manage items", o: "k", r: null, act: () => void openModal(ignoreItemCmd) },
+    // Information commands (cmd_info, ui-game.c:173-185).
+    { desc: "Browse a book", cat: "Information", o: "b", r: "P", act: () => void openModal(browseCmd) },
+    { desc: "Gain new spells", cat: "Information", o: "G", act: () => void openModal(studySpell) },
+    { desc: "View abilities", cat: "Information", o: "S", act: () => void openModal(showAbilitiesScreen) },
+    { desc: "Cast a spell", cat: "Information", o: "m", act: () => void openModal(castSpell) },
+    { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
+    { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
+    { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(showMonsterList) },
+    { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
+    { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
+    { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
+    { desc: "Check knowledge", cat: "Information", o: "~", act: () => void openModal(openKnowledgeMenu) },
+    // Utility/assorted (cmd_util, ui-game.c:196-203).
+    { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); } },
+    { desc: "Retire character and quit", cat: "Utility", o: "Q", act: () => void openModal(retireCmd) },
+    { desc: "Save \"screen dump\"", cat: "Utility", o: ")", act: () => screenDumpCmd() },
+    // Hidden commands (cmd_hidden, ui-game.c:211-223).
+    { desc: "Take notes", cat: "Hidden", o: ":", act: () => void openModal(noteCmd) },
+    { desc: "Version info", cat: "Hidden", o: "V", act: () => versionCmd() },
+    { desc: "Load a single pref line", cat: "Hidden", o: '"', act: () => void openModal(prefLineCmd) },
+    { desc: "Alter a grid", cat: "Hidden", o: "+", act: () => void openModal(alterCmd) },
+    { desc: "Steal from a monster", cat: "Hidden", o: "s", act: () => void openModal(stealCmd) },
+    { desc: "Walk", cat: "Hidden", o: ";", act: () => void openModal(walkStepCmd) },
+    // Run/stand: the two keys swap between keysets (CMD_RUN {'.',','} and
+    // CMD_HOLD {',','.'}), so '.' runs and ',' stands in the original keyset,
+    // and the reverse in the roguelike keyset.
+    { desc: "Start running", cat: "Hidden", o: ".", r: ",", act: () => void openModal(runDirCmd) },
+    { desc: "Stand still", cat: "Hidden", o: ",", r: ".", act: () => holdCmd() },
+    // Numpad 5 is the stay-still key in both keysets (do_cmd_hold): standing
+    // still on a shop door re-enters the store (EVENT_ENTER_STORE,
+    // cmd-cave.c:1592), and it is the canonical "wait one turn" command.
+    { desc: "Stand still (numpad)", cat: null, o: "5", r: "5", act: () => holdCmd() },
+    { desc: "Start exploring", cat: "Hidden", o: "p", act: () => exploreCmd() },
+    // Repeat: 'n' in the original keyset; roguelike uses ^V (handled above).
+    { desc: "Repeat previous command", cat: "Hidden", o: "n", r: null, act: () => repeatLastCommand() },
+    // Center map: roguelike '@' (original uses ^L, handled above).
+    { desc: "Center map", cat: "Hidden", o: null, r: "@", act: () => centerMapCmd() },
+    /* cmd_hidden's last row (ui-game.c:225): a PLACEHOLDER whose cmd and hook
+     * are both NULL and whose nested_name is "Debug". Its key is ^A in both
+     * keysets - handled in the ctrl branch, which is why `o`/`r` are null - and
+     * selecting it in the browser opens the nine debug categories, which is the
+     * only place they are reachable at all. */
+    {
+      desc: "Debug mode commands",
+      cat: "Hidden",
+      ctrl: "A",
+      o: null,
+      r: null,
+      act: () => void openModal(() => runWizardDebugMenu(wizardCtx())),
+      nested: debugCommandCategories,
+    },
+  ];
+  return COMMANDS;
+}
+
+/**
+ * key_confirm_command (ui-input.c:1995) at ui-game.c:562-565's exact position:
+ * the key has resolved to a real command, and the WORN equipment's `^*` /
+ * `^<key>` inscriptions get to veto it before the command runs. Refusing drops
+ * the key entirely - upstream sets cmd to NULL, so nothing is queued and no
+ * turn passes.
+ *
+ * The command runs AFTER the confirm modal closes, not inside it: `act` opens
+ * its own modal, and running it nested meant this one's close repainted over
+ * it.
+ *
+ * One copy, called from both routes into a command - the keypress and the ENTER
+ * browser. Upstream has one too: textui_action_menu_choose returns a cmd_info
+ * and its caller puts it through the same gate a keypress goes through, so a
+ * second copy here would be a second place to forget the veto.
+ */
+function runConfirmedCommand(key: string | null, act: () => void): void {
+  const owed = key === null ? 0 : keyConfirmCount(state.actor.player, state.gear, key);
+  if (owed > 0) {
+    let allowed = false;
+    void openModal(async () => {
+      for (let i = 0; i < owed; i++) {
+        if (!(await confirmYesNo(KEY_CONFIRM_PROMPT))) return;
+      }
+      allowed = true;
+    }).then(() => {
+      if (allowed) act();
+    });
+    return;
+  }
+  act();
+}
+
+/**
+ * cmds_all grouped into its lists for the ENTER browser, with each row's key in
+ * the keyset the player is actually using (cmd_sub_entry reads
+ * `commands[oid].key[mode]`, ui-context.c:1132-1135). Built per open so a
+ * keyset change between openings is picked up.
+ */
+function commandCategories(): CommandCategory[] {
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
+  return groupCommands(
+    commandTable(),
+    (row) => (row.ctrl !== undefined ? `^${row.ctrl}` : keyForKeyset(row, roguelike)),
+    (row) => row.act,
+    (row) => row.nested,
+  );
+}
+
+/**
+ * cmd_debug + the nine cmd_debug_* lists (ui-game.c:341-351) as the browser's
+ * nested tier, built from wizard.ts's DEBUG_MENU - the frozen, exact copy of
+ * upstream's own tables - rather than a second transcription of them.
+ *
+ * Each command goes through the SAME gate ^A does, because it dispatches
+ * through runWizardDebugCommand: a row reached from the menu must not be a way
+ * around player_can_debug_prereq and the NOSCORE_DEBUG marking (ui-game.c:595).
+ */
+function debugCommandCategories(): CommandCategory[] {
+  return DEBUG_MENU.map((cat) => ({
+    name: cat.title,
+    commands: cat.commands.map((cmd) => ({
+      desc: cmd.label,
+      key: cmd.letter,
+      run: () => void openModal(() => runWizardDebugCommand(wizardCtx(), cmd.action)),
+    })),
+  }));
+}
+
+let commandTableCache: CommandRow[] | null = null;
+
+/** The one cmds_all instance. Built on first use, not at module evaluation:
+ * every `act` closes over module state that is not initialised until boot. */
+function commandTable(): CommandRow[] {
+  commandTableCache ??= buildCommandTable();
+  return commandTableCache;
+}
+
 function logKeypress(ev: KeyboardEvent): void {
   if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
     return; // a modifier alone is not a keypress upstream would log
@@ -7929,99 +8161,7 @@ window.addEventListener("keydown", (ev) => {
     // roguelike key (it moves to a control key, handled above), so that letter
     // stays free for roguelike movement; `o: null` means original has no binding
     // (a roguelike-only key). This mirrors cmd_lookup exactly - no key differs.
-    const COMMANDS: { o?: string | null; r?: string | null; act: () => void }[] = [
-      // Item commands (cmd_item, ui-game.c:118-133).
-      { o: "{", act: () => void openModal(inscribeItem) },
-      { o: "}", act: () => void openModal(uninscribeItem) },
-      // do_cmd_wield's item_tester is obj_can_wear = wield_slot(obj) >= 0
-      // (cmd-obj.c L284, obj-util.c L810) - the slot lookup, not the tval set.
-      { o: "w", act: () => void openModal(() => useItem("wield", (t) => objCanWear(state, t), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
-      { o: "t", r: "T", act: () => void openModal(takeOffItem) },
-      { o: "I", act: () => void openModal(() => inspectItem()) },
-      { o: "d", act: () => void openModal(dropItem) },
-      { o: "f", r: "t", act: () => void openModal(fireCmd) },
-      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.", { inven: true, floor: true })) },
-      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.", { inven: true, floor: true })) },
-      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "Zap which rod? ", "You have no rods to zap.", { inven: true, floor: true })) },
-      { o: "A", act: () => void openModal(activateItem) },
-      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.", { inven: true, floor: true })) },
-      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.", { inven: true, floor: true })) },
-      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.", { inven: true, floor: true })) },
-      // player_can_refuel_prereq gates 'F' (ui-game.c:132) before CMD_REFILL.
-      { o: "F", act: () => { if (playerCanRefuelPrereq()) void openModal(refuelItem); else render(); } },
-      { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
-      // General actions (cmd_action, ui-game.c:141-153).
-      { o: "D", act: () => void openModal(disarmCmd) },
-      { o: "R", act: () => void openModal(restCmd) },
-      { o: "l", r: "x", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected."); }) },
-      // Swap weapon: the original keyset maps 'x' to the pref.prf "w0" macro
-      // (wield the item inscribed @0). The roguelike keyset uses 'x' for Look
-      // (the look row above), so this binds 'x' only in the original keyset.
-      { o: "x", r: null, act: () => void openModal(swapWeaponCmd) },
-      { o: "*", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected."); else say("Target Aborted."); }) },
-      { o: "'", act: () => { targetSetClosest(state, TARGET.KILL); render(); } },
-      // Tunnel: 'T' in the original keyset; the roguelike keyset uses ^T (handled
-      // above) since roguelike 'T' is Take off.
-      { o: "T", r: null, act: () => void openModal(tunnelCmd) },
-      { o: "<", act: () => { commandBuffer.push({ code: "ascend" }); advance(); } },
-      { o: ">", act: () => { commandBuffer.push({ code: "descend" }); advance(); } },
-      { o: "o", act: () => void openModal(openCmd) },
-      { o: "c", act: () => void openModal(closeCmd) },
-      { o: "h", r: "Tab", act: () => fireAtNearestCmd() },
-      { o: "v", act: () => void openModal(throwCmd) },
-      { o: "W", r: "-", act: () => void openModal(jumpCmd) },
-      // Item management (cmd_item_manage, ui-game.c:161-165).
-      /* do_cmd_equip / do_cmd_inven / do_cmd_quiver open with an emptiness
-       * check that says why rather than showing an empty screen
-       * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123). */
-      /* do_cmd_equip / do_cmd_inven / do_cmd_quiver: each opens its listing as a
-       * PICKER into context_menu_object, not as a read-only screen. */
-      { o: "e", act: () => void openModal(() => doCmdItemListing("equip")) },
-      { o: "i", act: () => void openModal(() => doCmdItemListing("inven")) },
-      { o: "|", act: () => void openModal(() => doCmdItemListing("quiver")) },
-      { o: "g", act: () => void openModal(pickupCmd) },
-      // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
-      // roguelike 'k' stays free for movement.
-      { o: "k", r: null, act: () => void openModal(ignoreItemCmd) },
-      // Information commands (cmd_info, ui-game.c:173-185).
-      { o: "b", r: "P", act: () => void openModal(browseCmd) },
-      { o: "G", act: () => void openModal(studySpell) },
-      { o: "S", act: () => void openModal(showAbilitiesScreen) },
-      { o: "m", act: () => void openModal(castSpell) },
-      { o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
-      { o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
-      { o: "]", act: () => void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))) },
-      { o: "[", act: () => void openModal(showMonsterList) },
-      { o: "L", r: "W", act: () => void openModal(() => runLocate()) },
-      { o: "/", act: () => void openModal(querySymbolCmd) },
-      { o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
-      { o: "~", act: () => void openModal(openKnowledgeMenu) },
-      // Utility/assorted (cmd_util, ui-game.c:196-203).
-      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); } },
-      { o: "Q", act: () => void openModal(retireCmd) },
-      { o: ")", act: () => screenDumpCmd() },
-      // Hidden commands (cmd_hidden, ui-game.c:211-223).
-      { o: ":", act: () => void openModal(noteCmd) },
-      { o: "V", act: () => versionCmd() },
-      { o: '"', act: () => void openModal(prefLineCmd) },
-      { o: "+", act: () => void openModal(alterCmd) },
-      { o: "s", act: () => void openModal(stealCmd) },
-      { o: ";", act: () => void openModal(walkStepCmd) },
-      // Run/stand: the two keys swap between keysets (CMD_RUN {'.',','} and
-      // CMD_HOLD {',','.'}), so '.' runs and ',' stands in the original keyset,
-      // and the reverse in the roguelike keyset.
-      { o: ".", r: ",", act: () => void openModal(runDirCmd) },
-      { o: ",", r: ".", act: () => holdCmd() },
-      // Numpad 5 is the stay-still key in both keysets (do_cmd_hold): standing
-      // still on a shop door re-enters the store (EVENT_ENTER_STORE,
-      // cmd-cave.c:1592), and it is the canonical "wait one turn" command.
-      { o: "5", r: "5", act: () => holdCmd() },
-      { o: "p", act: () => exploreCmd() },
-      // Repeat: 'n' in the original keyset; roguelike uses ^V (handled above).
-      { o: "n", r: null, act: () => repeatLastCommand() },
-      // Center map: roguelike '@' (original uses ^L, handled above).
-      { o: null, r: "@", act: () => centerMapCmd() },
-    ];
+    const COMMANDS = commandTable();
     for (const c of COMMANDS) {
       const key = roguelike ? (c.r === undefined ? c.o : c.r) : c.o;
       if (key != null && ev.key === key) {
@@ -8035,22 +8175,22 @@ window.addEventListener("keydown", (ev) => {
          * The command runs AFTER this modal closes, not inside it: c.act opens
          * its own modal, and running it nested meant this one's close repainted
          * over it. */
-        const owed = keyConfirmCount(state.actor.player, state.gear, key);
-        if (owed > 0) {
-          let allowed = false;
-          void openModal(async () => {
-            for (let i = 0; i < owed; i++) {
-              if (!(await confirmYesNo(KEY_CONFIRM_PROMPT))) return;
-            }
-            allowed = true;
-          }).then(() => {
-            if (allowed) c.act();
-          });
-          return;
-        }
-        c.act();
+        runConfirmedCommand(key, c.act);
         return;
       }
+    }
+    /* ENTER opens the command browser (textui_action_menu_choose,
+     * ui-context.c:1268), which is how upstream lets a player who does not know
+     * the keys reach any command, and the ONLY route it offers to a nested
+     * category. The chosen command goes through runConfirmedCommand, so an
+     * inscription that vetoes a key vetoes the menu row too - upstream
+     * dispatches the returned cmd_info down the same path a keypress takes. */
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      void openModal(() => chooseCommand(term, commandCategories(), render)).then((chosen) => {
+        if (chosen) runConfirmedCommand(chosen.key, chosen.run);
+      });
+      return;
     }
     // The game menu: the discoverable home for save / switch / new character
     // (so a player who does not know the keys is never stuck).

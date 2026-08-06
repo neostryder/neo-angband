@@ -50,7 +50,9 @@ describe("do_cmd_drop (cmd-obj.c:360-388)", () => {
   it("is what the 'd' key runs", () => {
     /* It used to be a useItem("drop", ...) call with the default pack-only mode
      * and no amount prompt - both defects on one line. */
-    expect(MAIN).toMatch(/\{ o: "d", act: \(\) => void openModal\(dropItem\) \}/);
+    expect(MAIN).toMatch(
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "d", act: \(\) => void openModal\(dropItem\) \}`),
+    );
   });
 
   it("offers equipment, pack and quiver, and NOT the floor (L374)", () => {
