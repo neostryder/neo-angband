@@ -277,7 +277,7 @@ import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-t
 import { runModManager } from "./mods";
 import type { ModCatalogueDeps } from "./mod-catalogue";
 import { showModUpgrades } from "./mod-browse";
-import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
@@ -375,7 +375,7 @@ import {
   SVAL_DEPENDENT,
   objectListLines,
   monsterRecallLines,
-  monsterKnowledgeMenu,
+  knownMonsterEntries,
   monsterKnowledgeGroupViews,
   capRaceName,
   tombstoneLines,
@@ -392,6 +392,7 @@ import {
   showEgoKnowledge,
   showShapeKnowledge,
   showArtifactKnowledge,
+  showMonsterKnowledge as showMonsterKnowledgeBrowser,
   type ObjectRecallDeps,
   type FakeRecallDeps,
 } from "./knowledge";
@@ -3769,7 +3770,7 @@ async function openKnowledgeMenu(): Promise<void> {
   };
   // Grayed unless something is known (ui-knowledge.c:3751-3799 MN_ACT_GRAYED).
   const monKnown =
-    monsterKnowledgeMenu(booted.registries.monsters.races, state.lore).items.length > 0;
+    knownMonsterEntries(booted.registries.monsters.races, state.lore).length > 0;
   const egoKnown = booted.registries.objects.egos.some((e) => game.everseen.egoSeen(e));
   /* The live handles desc_obj_fake / object_info_ego need to run object_info on
    * a throwaway object. Built fresh per browse so a knowledge screen opened
@@ -3972,192 +3973,33 @@ async function showStoreKnowledge(store: Store): Promise<void> {
 }
 
 /**
- * do_cmd_knowledge_monsters (ui-knowledge.c): a selectable list of every race
- * the player has memory of (monsterKnowledgeMenu off the live lore store);
- * picking one opens its recall through the SAME monsterRecallLines +
- * recallDeps path the look/target loop's 'r' uses (showRaceRecall). Loops
- * back to the list after a recall closes, like the upstream browser, until
- * ESC.
+ * do_cmd_knowledge_monsters (ui-knowledge.c L1382-1454): the thematic browser -
+ * the ui_knowledge.txt categories on the left, the chosen category's known
+ * races on the right with display_monster's Sym / Kills / Full columns and
+ * mon_summary underneath. Picking one opens its recall through the SAME
+ * monsterRecallLines + recallDeps path the look/target loop's 'r' uses
+ * (showRaceRecall).
+ *
+ * The screen itself is showMonsterKnowledge in knowledge.ts, on the shared
+ * runGroupedBrowser every other knowledge browser uses; this had a second
+ * renderer of its own here, which is how it came to be the only one of them
+ * missing display_knowledge's Group label, `=` rule and `|` divider.
  */
 async function showMonsterKnowledge(): Promise<void> {
   const races = booted.registries.monsters.races;
-  const groups = monsterKnowledgeGroupViews(races, state.lore, booted.registries.monsterCategories);
-  if (groups.length === 0) {
+  const views = monsterKnowledgeGroupViews(races, state.lore, booted.registries.monsterCategories);
+  if (views.length === 0) {
     say("You have not encountered any monsters yet.");
     return;
   }
-  await runMonsterKnowledgeBrowser(groups);
-}
-
-/**
- * do_cmd_knowledge_monsters two-pane browser (ui-knowledge.c display_knowledge
- * L795): a thematic group list on the left, the selected group's members on the
- * right with the Sym / Kills / Full columns (display_monster L1170-1213) and
- * the group summary line (mon_summary L1303). Left/right (or Enter/Esc) switch
- * panes; Enter/'r' on a member opens its recall; Esc backs out then exits.
- */
-function runMonsterKnowledgeBrowser(
-  groups: ReturnType<typeof monsterKnowledgeGroupViews>,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    modalDepth++;
-    let gCur = 0;
-    let oCur = 0;
-    let oTop = 0;
-    let gTop = 0;
-    let active: "group" | "member" = "group";
-
-    const gNameLen = Math.min(20, groups.reduce((m, g) => Math.max(m, g.name.length), 0));
-    const memberCol = gNameLen + 3;
-    const SYM_COL = 64;
-    const KILLS_COL = 68;
-    const FULL_COL = 75;
-    const HEADER_ROW = 2;
-    const BODY_TOP = 3;
-
-    /* mon_summary's total is over EVERY race's kills (l_list); dedupe the
-       multi-membership joins by ridx so a unique is counted once. */
-    const seenRidx = new Set<number>();
-    let totalKills = 0;
-    for (const g of groups) {
-      for (const row of g.rows) {
-        if (seenRidx.has(row.race.ridx)) continue;
-        seenRidx.add(row.race.ridx);
-        totalKills += row.lore.pkills;
-      }
-    }
-
-    const paint = (): void => {
-      const { cols, rows } = term.size();
-      term.clear();
-      term.print(0, 0, "Knowledge - Monsters".slice(0, cols - 1), UI_GOLD);
-      term.print(memberCol, HEADER_ROW, "Name", UI_TEXT);
-      term.print(SYM_COL, HEADER_ROW, "Sym", UI_TEXT);
-      term.print(KILLS_COL, HEADER_ROW, "Kills", UI_TEXT);
-      term.print(FULL_COL, HEADER_ROW, "Full", UI_TEXT);
-
-      const bodyRows = Math.max(1, rows - BODY_TOP - 1);
-      const memRows = Math.max(1, bodyRows - 1); /* leave a row for the summary */
-
-      if (gCur < gTop) gTop = gCur;
-      if (gCur >= gTop + bodyRows) gTop = gCur - bodyRows + 1;
-      for (let r = 0; r < bodyRows; r++) {
-        const g = groups[gTop + r];
-        if (!g) break;
-        const sel = gTop + r === gCur;
-        const color = sel && active === "group" ? UI_CURSOR : UI_TEXT;
-        term.print(0, BODY_TOP + r, g.name.slice(0, gNameLen), color);
-      }
-
-      const members = groups[gCur]?.rows ?? [];
-      if (oCur >= members.length) oCur = Math.max(0, members.length - 1);
-      if (oCur < oTop) oTop = oCur;
-      if (oCur >= oTop + memRows) oTop = oCur - memRows + 1;
-      for (let r = 0; r < memRows; r++) {
-        const row = members[oTop + r];
-        if (!row) break;
-        const y = BODY_TOP + r;
-        const sel = oTop + r === oCur && active === "member";
-        const { race, lore } = row;
-        term.print(memberCol, y, race.name.slice(0, SYM_COL - memberCol - 1), sel ? UI_CURSOR : UI_TEXT);
-        term.print(SYM_COL, y, race.dChar, colorToCss(race.dAttr));
-        let kills: string;
-        if (!race.rarity) kills = "shape";
-        else if (race.flags.has(RF.UNIQUE)) kills = race.maxNum === 0 ? " dead" : "alive";
-        else kills = String(lore.pkills).padStart(5);
-        term.print(KILLS_COL, y, kills, UI_TEXT);
-        term.print(FULL_COL, y, lore.allKnown ? "yes" : "no", UI_TEXT);
-      }
-
-      /* Group summary (mon_summary): the Uniques group shows slain uniques, the
-         rest show in-group / total creatures slain. */
-      const first = members[0];
-      const groupKills = members.reduce((s, m) => s + m.lore.pkills, 0);
-      const summary =
-        gCur === 0 && first && first.race.flags.has(RF.UNIQUE)
-          ? `${members.length} known uniques, ${groupKills} slain.`
-          : `Creatures slain: ${groupKills}/${totalKills} (in group/in total)`;
-      term.print(memberCol, rows - 2, summary.slice(0, cols - memberCol - 1), UI_CURSOR);
-      term.print(
-        0,
-        rows - 1,
-        "[ up/down: move  left/right: switch pane  Enter/r: recall  ESC: back ]".slice(0, cols - 1),
-        UI_DIM,
-      );
-    };
-
-    let done = false;
-    const finish = (): void => {
-      if (done) return;
-      done = true;
-      window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
-      modalDepth--;
-      resolve();
-    };
-
-    const openRecall = async (): Promise<void> => {
-      const row = groups[gCur]?.rows[oCur];
-      if (!row) return;
-      window.removeEventListener("keydown", onKey, true);
+  await showMonsterKnowledgeBrowser(
+    term,
+    views,
+    state.options?.get("purple_uniques") ?? false,
+    async (row) => {
       await showRaceRecall(row.race, getLore(state.lore, row.race));
-      if (done) return;
-      window.addEventListener("keydown", onKey, true);
-      paint();
-    };
-
-    function onKey(ev: KeyboardEvent): void {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      if (ev.key === "Escape") {
-        if (active === "member") {
-          active = "group";
-          paint();
-        } else {
-          finish();
-        }
-        return;
-      }
-      if ((ev.key === "r" || ev.key === "R") && active === "member") {
-        void openRecall();
-        return;
-      }
-      const nav = menuNav(ev);
-      const right = ev.key === "ArrowRight" || ev.code === "Numpad6";
-      const left = ev.key === "ArrowLeft" || ev.code === "Numpad4";
-      /* Both panes wrap, as menu_handle_keypress does: its is_valid_row loop
-       * turns a cursor past the end into 0 and one below 0 into count-1, so down
-       * at the bottom of an Angband list lands on the first row. These two panes
-       * clamped instead, which on a category holding sixty monsters means holding
-       * the key to get back to the top. */
-      const wrap = (cur: number, delta: number, count: number): number =>
-        count === 0 ? 0 : (cur + delta + count) % count;
-      if (active === "group") {
-        if (nav === "up") gCur = wrap(gCur, -1, groups.length);
-        else if (nav === "down") gCur = wrap(gCur, +1, groups.length);
-        else if (right || ev.key === "Enter") {
-          if ((groups[gCur]?.rows.length ?? 0) > 0) active = "member";
-        } else return;
-        oCur = 0;
-        oTop = 0;
-        paint();
-        return;
-      }
-      /* member pane */
-      const members = groups[gCur]?.rows ?? [];
-      if (nav === "up") oCur = wrap(oCur, -1, members.length);
-      else if (nav === "down") oCur = wrap(oCur, +1, members.length);
-      else if (left) active = "group";
-      else if (ev.key === "Enter") {
-        void openRecall();
-        return;
-      } else return;
-      paint();
-    }
-
-    window.addEventListener("keydown", onKey, true);
-    paint();
-  });
+    },
+  );
 }
 
 /**

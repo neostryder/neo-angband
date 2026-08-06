@@ -25,6 +25,8 @@
 
 import {
   COLOUR_YELLOW,
+  COLOUR_VIOLET,
+  RF,
   buildRuneList,
   playerKnowsRune,
   runeName,
@@ -55,6 +57,8 @@ import {
 import type {
   Rune,
   Player,
+  MonsterRace,
+  MonsterLore,
   Artifact,
   ObjectBase,
   ObjectKind,
@@ -181,10 +185,14 @@ export interface KnowledgeRow<T> {
   color: string;
   member: T;
   /**
-   * A right-hand annotation in its own colour at a fixed column: display_rune's
-   * yellow autoinscription at column 47 (ui-knowledge.c:2201-2202).
+   * Extra fields the member renderer writes at FIXED columns, in its own
+   * colours - upstream's member display callback after the name: display_rune's
+   * yellow autoinscription at column 47 (ui-knowledge.c:2201-2202),
+   * display_monster's symbol / kills / fully-known at 64 / 68 / 75
+   * (`:1200-1213`). A list rather than one annotation because that is what the
+   * callbacks do; the header above them is the browser's `otherfields`.
    */
-  suffix?: { text: string; color: string; col: number };
+  cells?: readonly { text: string; color: string; col: number }[];
   /**
    * The row's own prompt line, i.e. an xtra_prompt hook (rune_xtra_prompt,
    * ui-knowledge.c:2238-2244 returns a DIFFERENT string per row depending on
@@ -214,9 +222,25 @@ export interface GroupedBrowserHooks<T> {
    * get_string.
    */
   xtraAct?: (key: string, member: T) => Promise<boolean>;
+  /**
+   * display_knowledge's `otherfields` (ui-knowledge.c:931-932): one header
+   * string printed at column 46 of the label row, naming whatever extra columns
+   * that browser's member renderer writes. It is passed VERBATIM by the caller
+   * because upstream's is a literal with its own leading padding - monsters
+   * pass `"                 Sym  Kills  Full"` (`:1451`).
+   */
+  otherfields?: string;
+  /**
+   * g_funcs.summary (ui-knowledge.c:997-1001): one line for the CURRENT group,
+   * drawn at the member column just under the member list. Only the monster
+   * browser supplies one (mon_summary, `:1303`); every other g_funcs leaves the
+   * field NULL and the row stays blank.
+   */
+  summary?: (groupIndex: number) => { text: string; color: string } | null;
 }
 
 /** Row 5's rule and the `|` divider are drawn at these fixed offsets. */
+const OTHERFIELDS_COL = 46;
 const BROWSER_TITLE_ROW = 2;
 const BROWSER_LABEL_ROW = 4;
 const BROWSER_RULE_ROW = 5;
@@ -291,6 +315,16 @@ export async function runGroupedBrowser<T>(
         term.print(0, BROWSER_TITLE_ROW, `Knowledge - ${title}`.slice(0, cols - 1), UI_CURSOR);
         term.print(0, BROWSER_LABEL_ROW, "Group", UI_DIM);
         term.print(memberCol, BROWSER_LABEL_ROW, "Name", UI_DIM);
+        /* prt(otherfields, 4, 46) (ui-knowledge.c:931-932) - the same row as the
+         * Group/Name labels, at a column upstream hard-codes. */
+        if (hooks.otherfields && OTHERFIELDS_COL < cols - 1) {
+          term.print(
+            OTHERFIELDS_COL,
+            BROWSER_LABEL_ROW,
+            hooks.otherfields.slice(0, cols - 1 - OTHERFIELDS_COL),
+            UI_DIM,
+          );
+        }
         term.print(0, BROWSER_RULE_ROW, "=".repeat(Math.min(cols - 1, 79)), UI_DIM);
 
         const rows_ = live[group]?.rows ?? [];
@@ -323,11 +357,23 @@ export async function runGroupedBrowser<T>(
               row.label.slice(0, cols - 1 - memberCol),
               sel ? (panel === 1 ? UI_CURSOR : UI_DIM) : row.color,
             );
-            const sfx = row.suffix;
-            if (sfx && sfx.text && sfx.col < cols - 1) {
-              term.print(sfx.col, y, sfx.text.slice(0, cols - 1 - sfx.col), sfx.color);
+            for (const cell of row.cells ?? []) {
+              if (!cell.text || cell.col >= cols - 1) continue;
+              term.print(cell.col, y, cell.text.slice(0, cols - 1 - cell.col), cell.color);
             }
           }
+        }
+        /* g_funcs.summary(..., object_menu.active.row + active.page_rows,
+         * object_region.col) (ui-knowledge.c:997-1001): the row immediately
+         * below the member list, at the member column. */
+        const sum = hooks.summary?.(group);
+        if (sum && sum.text) {
+          term.print(
+            memberCol,
+            BROWSER_TOP + browserRows,
+            sum.text.slice(0, cols - 1 - memberCol),
+            sum.color,
+          );
         }
         term.setCursor?.(
           panel === 0 ? 0 : memberCol,
@@ -545,7 +591,7 @@ export function runeKnowledgeGroups(
        * at column 47. `col` counts from screen column 0 exactly as upstream
        * does; the label already sits at the same offset via the menu prefix. */
       ...(note !== undefined
-        ? { suffix: { text: note, color: UI_YELLOW, col: 47 } }
+        ? { cells: [{ text: note, color: UI_YELLOW, col: 47 }] }
         : {}),
       /* rune_xtra_prompt (ui-knowledge.c:2238-2244): the '}' uninscribe key is
        * offered only for a rune that already carries a note. */
@@ -1328,6 +1374,117 @@ export async function showEgoKnowledge(
   await runGroupedBrowser(term, "ego items", groups, async (ego, groupName) => {
     const { title, lines } = egoFakeRecall(recallDeps, ego, groupName);
     await showTextScreen(term, title, lines);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Monster knowledge - do_cmd_knowledge_monsters, ui-knowledge.c L1382
+// ---------------------------------------------------------------------------
+
+/** display_knowledge's `otherfields` for monsters (ui-knowledge.c:1451). */
+export const MONSTER_OTHERFIELDS = "                 Sym  Kills  Full";
+
+/** The absolute columns display_monster writes (ui-knowledge.c:1200-1213). */
+const MON_SYM_COL = 64;
+const MON_KILLS_COL = 68;
+const MON_FULL_COL = 75;
+
+/** display_monster's kills field (ui-knowledge.c:1202-1210). */
+export function monsterKillsCell(race: MonsterRace, pkills: number): string {
+  if (!race.rarity) return "shape";
+  if (race.flags.has(RF.UNIQUE)) return race.maxNum === 0 ? " dead" : "alive";
+  /* "%5d" - right-justified in five columns, which is what keeps this field
+   * clear of "Full" at 75 when a player has killed ten thousand of something. */
+  return String(pkills).padStart(5);
+}
+
+/**
+ * mon_summary (ui-knowledge.c:1303-1328). Two forms: the uniques group (gid 0,
+ * when its first member is a unique) counts known uniques and how many are
+ * slain; every other group reports its own kills against the total.
+ *
+ * `total` is upstream's `tkills`, summed over the whole of `l_list` - so the
+ * caller must sum EVERY race's kills once. A race with kills has necessarily
+ * been sighted, so summing the known set is the same number, but a race that
+ * joins two categories must not be counted twice.
+ */
+export function monsterSummaryLine(
+  groupIndex: number,
+  members: readonly { race: MonsterRace; lore: MonsterLore }[],
+  total: number,
+): string {
+  const kills = members.reduce((s, m) => s + m.lore.pkills, 0);
+  const first = members[0];
+  if (groupIndex === 0 && first && first.race.flags.has(RF.UNIQUE)) {
+    return `${members.length} known uniques, ${kills} slain.`;
+  }
+  return `Creatures slain: ${kills}/${total} (in group/in total)`;
+}
+
+/**
+ * do_cmd_knowledge_monsters' browser (ui-knowledge.c L1382-1454). The thematic
+ * ui_knowledge.txt categories on the left, their members on the right with
+ * display_monster's Sym / Kills / Full columns and mon_summary underneath.
+ *
+ * It goes through runGroupedBrowser like every other knowledge screen. It used
+ * to have a renderer of its own, in main.ts, which is why it was the one
+ * knowledge screen with no "Group" label, no `=` rule and no `|` divider, and
+ * why its group column could be narrower than the eight columns
+ * display_knowledge floors g_name_len at. The two extra things it needs -
+ * `otherfields` and `summary` - are seams display_knowledge already has and the
+ * port had simply never carried, since monsters are the only caller that passes
+ * either.
+ *
+ * `purpleUniques` is display_monster's OPT(player, purple_uniques) branch
+ * (`:1188-1194`), which recolours a unique's SYMBOL violet - not its name; the
+ * name takes the cursor colour like every other row.
+ */
+export async function showMonsterKnowledge(
+  term: GlyphTerm,
+  views: readonly { name: string; rows: readonly { race: MonsterRace; lore: MonsterLore }[] }[],
+  purpleUniques: boolean,
+  recall: (row: { race: MonsterRace; lore: MonsterLore }) => Promise<void>,
+): Promise<void> {
+  const seen = new Set<number>();
+  let total = 0;
+  for (const v of views) {
+    for (const row of v.rows) {
+      if (seen.has(row.race.ridx)) continue;
+      seen.add(row.race.ridx);
+      total += row.lore.pkills;
+    }
+  }
+
+  const groups: KnowledgeGroup<{ race: MonsterRace; lore: MonsterLore }>[] = views.map((v) => ({
+    name: v.name,
+    rows: v.rows.map((row) => {
+      const violet = purpleUniques && row.race.flags.has(RF.UNIQUE);
+      return {
+        /* c_prt(attr, race->name, ...) (:1197): the RAW name, uncapitalised,
+         * in the cursor colour rather than the monster's. */
+        label: row.race.name,
+        color: UI_TEXT,
+        member: row,
+        cells: [
+          {
+            text: row.race.dChar,
+            color: colorToCss(violet ? COLOUR_VIOLET : row.race.dAttr),
+            col: MON_SYM_COL,
+          },
+          { text: monsterKillsCell(row.race, row.lore.pkills), color: UI_TEXT, col: MON_KILLS_COL },
+          { text: row.lore.allKnown ? "yes" : "no", color: UI_TEXT, col: MON_FULL_COL },
+        ],
+      };
+    }),
+  }));
+
+  await runGroupedBrowser(term, "monsters", groups, (row) => recall(row), {
+    otherfields: MONSTER_OTHERFIELDS,
+    summary: (gi) => {
+      const members = groups[gi]?.rows.map((r) => r.member) ?? [];
+      if (members.length === 0) return null;
+      return { text: monsterSummaryLine(gi, members, total), color: UI_CURSOR };
+    },
   });
 }
 

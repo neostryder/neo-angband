@@ -868,11 +868,9 @@ export interface KnownMonsterRow {
  * `l_list[i].all_known || l_list[i].sights` gate (L1402), skipping the
  * nameless r_info[0] blank (L1405). Sorted by what the group comparator
  * m_cmp_race falls back to within a group: level ascending, then name by
- * ordinal strcmp (L1258-1262). The thematic monster_group columns the
- * full-screen upstream browser draws over this set are a display grouping
- * only and are deferred (a larger follow-up alongside object/artifact
- * knowledge); this flat list is exactly the selectable membership those
- * columns partition.
+ * ordinal strcmp (L1258-1262). This is the flat membership; the thematic
+ * ui_knowledge.txt columns the browser draws over it are a display grouping of
+ * this same set, built by monsterKnowledgeGroupViews just below.
  *
  * Reads the lore store directly (store.get) rather than getLore so building
  * the list never creates blank lore records for unseen races as a side
@@ -896,25 +894,6 @@ export function knownMonsterEntries(
     return strcmp(a.race.name, b.race.name);
   });
   return rows;
-}
-
-/**
- * The monster-knowledge list as a selection menu (the '~' -> Monsters screen,
- * ui-knowledge.c). Each row is the capitalized race name plus its kill tally
- * (the browser's "Kills" column), coloured by the monster's display attr
- * (m_xattr); the parallel row list lets the caller open the picked race's
- * recall. Row order and membership come straight from knownMonsterEntries.
- */
-export function monsterKnowledgeMenu(
-  races: readonly MonsterRace[],
-  store: LoreStore,
-): { items: MenuItem[]; rows: KnownMonsterRow[] } {
-  const rows = knownMonsterEntries(races, store);
-  const items: MenuItem[] = rows.map(({ race, lore }) => {
-    const kills = lore.pkills > 0 ? `  (${lore.pkills} killed)` : "";
-    return { label: `${capRaceName(race)}${kills}`, color: colorToCss(race.dAttr) };
-  });
-  return { items, rows };
 }
 
 /** A thematic monster-knowledge category with its ordered known members. */

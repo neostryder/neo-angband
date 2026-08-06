@@ -469,13 +469,18 @@ notes: >-
   each shell.
 ---
 module: packages/content/pack/ui_knowledge.json
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/ui_knowledge.txt
   - path: src/ui-knowledge.c
 notes: >-
-  Deferred: front-end/UI concern, not part of the core rules pack.
+  The monster-knowledge categories. bindMonsterCategories (mon/knowledge-groups)
+  parses the compiled records at boot; monsterKnowledgeGroups assigns each known
+  race to EVERY category it matches, Unclassified last, in m_cmp_race order. The
+  shell draws them through the shared runGroupedBrowser. The row used to read
+  "deferred: front-end/UI concern, not part of the core rules pack" - the pack
+  ships the file and core parses it, so both halves of that were wrong.
 ---
 module: packages/content/pack/visuals.json
 status: ported
