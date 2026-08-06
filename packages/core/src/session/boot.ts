@@ -45,7 +45,13 @@ import { createDungeonProfiles } from "../gen/cave.js";
 import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave.js";
 import { generateLevel } from "../gen/generate.js";
 import type { GenDeps, GenerateOptions } from "../gen/generate.js";
-import type { GenTrap, MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util.js";
+import type {
+  Connector,
+  GenTrap,
+  MonPlaceDeps,
+  PlacedMonster,
+  PlacedObject,
+} from "../gen/util.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection.js";
 import { bindTraps } from "../world/trap.js";
@@ -308,6 +314,11 @@ export interface BootLevelOptions {
 export interface BootedLevel {
   chunk: Chunk;
   depth: number;
+  /**
+   * chunk->join: the level's stair connectors (generate.c L1203-1214). Always
+   * produced; only the persistent-level path has a use for it.
+   */
+  joins: readonly Connector[];
   playerSpot: Loc | null;
   monsters: readonly PlacedMonster[];
   objects: readonly PlacedObject[];
@@ -352,6 +363,14 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
   return {
     chunk: g.c,
     depth,
+    /* chunk->join (generate.c L1203-1214). cave_generate populates it for EVERY
+     * level including the first, and this used to be dropped on the floor here:
+     * under birth_levels_persist the level the character starts on was frozen
+     * with an empty connector list, so the first neighbour generated could not
+     * line its stairs up with it. Returned unconditionally; startGame only
+     * records it when the option is on, so a non-persistent savefile is
+     * unchanged. */
+    joins: g.joins,
     playerSpot: g.playerSpot,
     monsters: g.monsters,
     objects: g.objects,

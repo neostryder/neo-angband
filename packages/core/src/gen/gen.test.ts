@@ -1046,6 +1046,76 @@ describe("moria / lair / gauntlet / hard_centre generators", () => {
     expect(a.objects.length).toBe(b.objects.length);
   });
 
+  it("lair_gen under persist splits on a join-free seam and lands both halves' stairs", () => {
+    /* lair_gen is the one multi-region builder that SUPPORTS persistent levels
+     * (labyrinth, gauntlet and hard_centre all refuse outright). It has to do
+     * two things the port was not doing: pick the seam with
+     * find_joinfree_vertical_seam so the split does not cut a staircase in
+     * half, and translate the level-wide connector list into each half's own
+     * coordinates with transform_join_list before building it.
+     *
+     * Without the second, both halves were handed the level-wide list and
+     * build_staircase_rooms was asked to place a room at a column outside the
+     * half it was building - an abort, not a wrong layout. */
+    const ctx = builderCtxNamed(25, 20260806, "lair");
+    ctx.dun.persist = true;
+    ctx.dun.join = [
+      { grid: loc(20, 15), feat: FEAT.LESS },
+      { grid: loc(100, 30), feat: FEAT.MORE },
+    ];
+
+    const built = lairGen(ctx);
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g).not.toBeNull();
+
+    /* Both connectors are in the finished, merged level at their ORIGINAL
+     * level-wide grids: the transform into each half and the chunk_copy back
+     * out are inverses. */
+    expect(g.c.isUpstairs(loc(20, 15))).toBe(true);
+    expect(g.c.isDownstairs(loc(100, 30))).toBe(true);
+
+    /* The seam did not cut through either staircase's column. */
+    assertLevelInvariants(g);
+  });
+
+  it("lair_gen under persist moves the seam off an occupied middle column", () => {
+    /* The seam search only earns its keep when the natural midpoint is taken.
+     * The level width is DERIVED, not written down: build once with no
+     * connectors to learn it (the width is drawn before any join is read, so
+     * the same seed gives the same width), then rebuild with a connector
+     * sitting exactly on x_size / 2 - the column a plain down-the-middle split
+     * would cut. */
+    const probe = lairGen(builderCtxNamed(25, 616161, "lair")).gen as Gen;
+    const mid = Math.trunc(probe.c.width / 2);
+
+    const ctx = builderCtxNamed(25, 616161, "lair");
+    ctx.dun.persist = true;
+    ctx.dun.join = [{ grid: loc(mid, 20), feat: FEAT.LESS }];
+
+    const built = lairGen(ctx);
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g.c.width).toBe(probe.c.width);
+    expect(g.c.isUpstairs(loc(mid, 20))).toBe(true);
+  });
+
+  it("lair_gen leaves dun.join untouched for its caller", () => {
+    /* Upstream caches dun->join, swaps in a transformed list per half, and
+     * restores the cached one (L3592-3614). The level's own join list is the
+     * untransformed one, so a builder that left a half's list behind would
+     * corrupt the next level's stair alignment. */
+    const ctx = builderCtxNamed(25, 4242, "lair");
+    ctx.dun.persist = true;
+    const seeded = [{ grid: loc(30, 20), feat: FEAT.LESS }];
+    ctx.dun.join = seeded;
+
+    lairGen(ctx);
+
+    expect(ctx.dun.join).toBe(seeded);
+    expect(ctx.dun.join).toEqual([{ grid: loc(30, 20), feat: FEAT.LESS }]);
+  });
+
   it("gauntlet_gen splits two caverns with an unmappable labyrinth (connected)", () => {
     const built = gauntletGen(builderCtxNamed(30, 99887, "gauntlet"));
     expect(built.error).toBeNull();

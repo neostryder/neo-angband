@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 116 confirmed-absent citations** — 57 closed, 11 open.
+**68 items covering all 100 confirmed-absent citations** — 64 closed, 4 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -21,6 +21,17 @@ fixed while its ledger prose went on saying otherwise (119 to 118). 5.4 retired
 `parity/ledger/obj-randart.yaml:51` the same way (118 to 117), and 5.7 retired
 `packages/core/src/obj/randart-build.ts:38` (117 to 116). **Four of those five
 were rows whose gap had been closed while their note went on describing it.**
+**4.3 then took it 116 to 100**, and the drop has two halves worth separating.
+Some of it is 4.3's own: `gen-cave.yaml` was still asserting that labyrinth,
+cavern, moria, lair, gauntlet and hard-centre generation were "NOT ported" and
+that `town_gen` was "replaced by a minimal open, lit level", all of it built
+long ago. The rest was **already true and merely unrecorded**: re-running
+`ledger-deferred-items.mjs` retired sixteen verdicts whose bullets had been
+REWRITTEN by earlier items (3.25's priority overrides, 5.9's `daycount`, and
+others) without the census being regenerated afterwards. The generator carries
+a verdict forward by its bullet's TEXT, so rewriting a bullet correctly retires
+its verdict — but only when somebody runs it. **Re-run it whenever a ledger
+`deferred:` bullet is edited**, or the count keeps quoting work already done.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -2113,14 +2124,95 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `parity/ledger/gen-cave.yaml:49`, `parity/ledger/game-mon-ranged.yaml:31`
 
 - [ ] **4.2 The quest system.**
-  Sites: `packages/core/src/gen/cave.ts:2833`,
+  Sites: `packages/core/src/gen/cave.ts:3011`,
   `packages/core/src/gen/generate.ts:11`
 
-- [ ] **4.3 Persistent levels, and the town builder's full store generation.**
-  `Connector` carries grid + feat rather than a copy of `SQUARE` info — a
-  divergence that only starts to matter when persistent levels arrive, so decide
-  it as part of this item.
-  Sites: `packages/core/src/gen/cave.ts:30`
+- [x] **4.3 Persistent levels, and the town builder's full store generation.**
+  DONE — but **both halves of the row's premise were already false, and what
+  was actually broken was none of what it named.**
+
+  The row said `Connector` carries grid + feat "rather than a copy of `SQUARE`
+  info". It carries the info: `collectJoins` copies `c.info(grid).bits` into
+  every connector. It also would not have mattered — **4.2.6 never reads those
+  bytes.** `get_join_info` and `transform_join_list` both `mem_zalloc` fresh
+  connectors and set only grid and feat; `build_staircase` reads only the grid.
+  The bytes are written to the savefile (save.c L850-866), read back
+  (load.c L1366-1379), and freed. They are carried here anyway, because that is
+  what the original stores — but the comment now says so, instead of leaving the
+  next reader to re-derive it.
+
+  "The town builder's full store generation" was stale too: `town_gen_layout`
+  is ported whole — lava streamers, the town-sized starburst, the north-wall
+  stair search, the lot grid, all **eight** stores via `build_store`
+  (`TOWN_STORE_FEATS`, Home included), `lot_is_clear` / `lot_has_shop`,
+  `build_ruin` at 80% a lot, the cleared street and the day/night residents.
+
+  **What was actually wrong — four things, three of them crashes:**
+
+  > **`get_min_level_size` had no producer.** `ctx.minHeight` / `ctx.minWidth`
+  > were threaded into every builder and **nothing computed them**, so a
+  > persistent level was always built at its own random size. `build_staircase_rooms`
+  > must place a room at every seeded connector and `quit()`s when one is off
+  > the map (gen-cave.c L925-934) — so this is an abort, not a wrong layout.
+  > **Measured before the fix: 5 of the first 40 seeds died on an ordinary walk
+  > down**, no doctored fixture involved. Seed 8 is the one the test uses.
+  >
+  > **`lair_gen` ignored `dun.persist` entirely.** It split down the middle
+  > wherever that fell, and handed each half the LEVEL-WIDE connector list —
+  > so the half was asked to build a staircase room at a column outside itself.
+  > `find_joinfree_vertical_seam` (splits on a pair of columns carrying no
+  > stair) and `transform_join_list` (translate + clip into each half, order
+  > preserved, info deliberately not carried) are now ported, and `lair_gen`
+  > caches / swaps / restores `dun.join` around each half exactly as upstream.
+  >
+  > **`build_colors` / `clear_small_regions` had dropped their `stairs[]` map.**
+  > Same shape as 5.5's missing table columns: the port left it out because
+  > nothing read it, and nothing read it *because persistent levels were
+  > dormant*. It is indexed by COLOUR, not grid — one staircase anywhere in a
+  > region spares the whole region — and without it a persistent cavern half
+  > that opened its connector stair into a pocket of fewer than nine grids had
+  > that stair quietly walled back up. Not a crash: a level whose down
+  > staircase does not exist.
+  >
+  > **`EF_CREATE_STAIRS` did not refuse under `birth_levels_persist`**, and
+  > checked its two conditions in the wrong order. A staircase conjured after
+  > generation is in no join list, so the neighbour it appears to lead to gets
+  > built with no matching stair. The order matters on its own: upstream tests
+  > the floor FIRST (L1979) and refuses second (L1985), so a blocked grid **in
+  > an arena** — the one refusal the port did implement — named the wrong
+  > reason.
+
+  Everything else the row implied was missing is live and was already driven
+  from `session/changeLevel`: the frozen-level cache and its save round-trip,
+  `restore_monsters` over the elapsed turns, `compact_monsters`, the staircase
+  rooms, `handle_level_stairs`' persistent minsep of 4 and its
+  `chunk_find_adjacent` skip, `player_get_recall_depth`, the trap-door
+  suppression, and `cave_illuminate` on a persistent town.
+
+  **A fifth gap fell out of measuring the fourth.** Chasing why the
+  `get_min_level_size` mutation "measure only the level above" would not die
+  turned up the answer: the level above was contributing *nothing, on every
+  seed*, because **`bootLevel` threw `g.joins` away**. `cave_generate`
+  populates `chunk->join` for every level it builds, the first one included —
+  so under persist the level a character starts on froze with an empty
+  connector list and the first neighbour generated had nothing to align to. A
+  surviving mutant is a question about the test; this one turned out to be a
+  question about the code.
+
+  Tests: 17 pure-function cases in `gen/join.test.ts` (`getMinLevelSize`,
+  `findJoinfreeVerticalSeam`, `transformJoinList`), three
+  `lair_gen`-under-persist cases in `gen/gen.test.ts`, four
+  `EF_CREATE_STAIRS` cases, and four in `session/persist-levels.test.ts` that
+  walk a real game 3→5→6→4 and **derive** the expected minimum from the frozen
+  neighbours rather than declaring it. 16 mutations, **15 killed**. The
+  survivor is recorded in the code as unkillable by construction rather than
+  papered over: `find_joinfree_vertical_seam`'s `i += 2` skip is provably the
+  same walk as `i++`, because the grid it skips fails the very next test.
+  Sites: `packages/core/src/gen/generate.ts`, `packages/core/src/gen/cave.ts`,
+  `packages/core/src/game/effect-terrain.ts`,
+  `packages/core/src/session/boot.ts`,
+  `packages/core/src/session/game.ts:2456`,
+  `parity/ledger/gen-cave.yaml`, `parity/ledger/gen-framework.yaml`
 
 ## Tier 5 — History, notes, files and logs
 
@@ -2656,7 +2748,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 116 citations, 79 `real` + 37
+2. the counts stated at the top (**68 items, 100 citations, 67 `real` + 33
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

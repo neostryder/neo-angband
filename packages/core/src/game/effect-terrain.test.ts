@@ -202,6 +202,62 @@ describe("EF_CREATE_STAIRS (effect-handler-general.c L1975)", () => {
     expect(state.chunk.isStairs(loc(10, 10))).toBe(true);
     expect(state.floor.get(10 * state.chunk.width + 10) ?? []).toHaveLength(0);
   });
+
+  it("refuses under birth_levels_persist (L1985-1989)", () => {
+    /* A staircase conjured after generation is not in the level's join list,
+     * so the neighbour it appears to lead to would be built with no matching
+     * stair. Upstream refuses; the port only refused in arenas. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 5;
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: true },
+    });
+    const msgs: string[] = [];
+    const ran = registry().effectSimple(EF.CREATE_STAIRS, env(state, {}, msgs), {
+      origin: sourcePlayer(),
+    });
+    expect(ran).toBe(false);
+    expect(msgs).toContain("Nothing happens!");
+    expect(state.chunk.isStairs(loc(10, 10))).toBe(false);
+  });
+
+  it("still works with the option OFF, on the same setup", () => {
+    /* The control: without this the refusal above could be coming from
+     * anything about the fixture. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 5;
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: false },
+    });
+    const ran = registry().effectSimple(EF.CREATE_STAIRS, env(state), {
+      origin: sourcePlayer(),
+    });
+    expect(ran).toBe(true);
+    expect(state.chunk.isStairs(loc(10, 10))).toBe(true);
+  });
+
+  it.each([
+    ["an arena", { arena: true, persist: false }],
+    ["a persistent level", { arena: false, persist: true }],
+  ])("reports the floor before refusing, on %s", (_name, { arena, persist }) => {
+    /* effect-handler-general.c tests square_isfloor FIRST (L1979) and only
+     * then the persist/arena refusal (L1985). The port had the two the other
+     * way round, so a blocked grid IN AN ARENA - the one refusal it did
+     * implement - named the wrong reason. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 5;
+    state.chunk.setFeat(loc(10, 10), FEAT.RUBBLE);
+    state.arenaLevel = arena;
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: persist },
+    });
+    const msgs: string[] = [];
+    registry().effectSimple(EF.CREATE_STAIRS, env(state, {}, msgs), {
+      origin: sourcePlayer(),
+    });
+    expect(msgs).toContain("There is no empty floor here.");
+    expect(msgs).not.toContain("Nothing happens!");
+  });
 });
 
 describe("EF_LIGHT_AREA / EF_DARKEN_AREA (effect-handler-general.c L3026)", () => {

@@ -15,7 +15,9 @@
  * PORTED (standalone): labyrinth_gen and cavern_gen (with labyrinth_chunk's
  * Kruskal maze, and init_cavern/mutate_cavern/clear_small_regions/cavern_chunk's
  * cellular automaton). cavern_chunk's persistent-level `join` stair machinery is
- * ported but dormant (dun.join is empty for non-persistent levels).
+ * LIVE: dun.join is empty for non-persistent levels, but a persistent lair half
+ * arrives with connectors and its stairs are protected from clear_small_regions
+ * by the per-region `stairs` map.
  *
  * PORTED (multi-region): moria_gen (modified-style with the moria profile +
  * "Moria dwellers" restriction), lair_gen (a modified half joined to a themed
@@ -27,10 +29,17 @@
  * L866-878), so any profile with alloc > 0 - moria and the multi-region
  * builders included - is picked by depth exactly as upstream.
  *
- * DEFERRED: the town builder's full store generation and persistent-level
- * connectors remain deferred. The single-combat arena level is generated in
- * the session layer (session/game.ts, matching arena_gen at gen-cave.c:3984),
- * as upstream also special-cases it outside the normal builder loop.
+ * NEITHER of the two things this header used to call deferred still is, and
+ * both had been done for long enough that the note was misleading (PORT_TODO
+ * 4.3). The town builder places all eight stores through build_store, with
+ * lot_is_clear / lot_has_shop / build_ruin and the starburst; and the
+ * persistent-level connectors are live end to end - get_join_info, the
+ * staircase rooms, handle_level_stairs' minsep, get_min_level_size, and
+ * lair_gen's join-free seam and per-half connector transform.
+ *
+ * The single-combat arena level is generated in the session layer
+ * (session/game.ts, matching arena_gen at gen-cave.c:3984), as upstream also
+ * special-cases it outside the normal builder loop.
  */
 
 import type { Constants } from "../constants.js";
@@ -748,6 +757,7 @@ function buildColorPoint(
   g: Gen,
   colors: Int32Array,
   counts: Int32Array,
+  stairs: Uint8Array | null,
   grid: Loc,
   color: number,
   diagonal: boolean,
@@ -765,6 +775,9 @@ function buildColorPoint(
     if (ignorePoint(g, colors, g1)) continue;
     colors[n1] = color;
     counts[color] = (counts[color] as number) + 1;
+    /* Indexed by COLOUR, not by grid: one staircase anywhere in the region
+     * marks the whole region as unclearable (gen-cave.c L1247). */
+    if (stairs && g.c.isStairs(g1)) stairs[color] = 1;
     for (let i = 0; i < nDir; i++) {
       const off = ddd[i] as Loc;
       const g2 = loc(g1.x + off.x, g1.y + off.y);
@@ -781,18 +794,24 @@ function buildColorPoint(
  * build_colors: colour every NESW- (or, when `diagonal`, 8-)contiguous region.
  * The port's long-standing callers (ensureConnectedness, cavernChunk) pass
  * `diagonal = false`; connect_caverns passes `true` to match gen-cave.c.
+ *
+ * `stairs`, when supplied, is filled in by colour: stairs[color] is set for any
+ * region containing a staircase, so clear_small_regions can spare it. Upstream
+ * allocates it only when cavern_chunk was given a connector list (L2100), so
+ * `null` here means the same thing as its NULL: nothing to protect.
  */
 function buildColors(
   g: Gen,
   colors: Int32Array,
   counts: Int32Array,
+  stairs: Uint8Array | null,
   diagonal: boolean,
 ): void {
   let color = 1;
   for (let y = 0; y < g.c.height; y++) {
     for (let x = 0; x < g.c.width; x++) {
       if (ignorePoint(g, colors, loc(x, y))) continue;
-      buildColorPoint(g, colors, counts, loc(x, y), color, diagonal);
+      buildColorPoint(g, colors, counts, stairs, loc(x, y), color, diagonal);
       color++;
     }
   }
@@ -885,7 +904,7 @@ export function ensureConnectedness(g: Gen, allowVaultDisconnect: boolean): void
   const size = g.c.height * g.c.width;
   const colors = new Int32Array(size);
   const counts = new Int32Array(size);
-  buildColors(g, colors, counts, false);
+  buildColors(g, colors, counts, null, false);
   let num = countColors(counts);
   while (num > 1) {
     const color = firstColor(counts);
@@ -906,7 +925,7 @@ export function connectCaverns(g: Gen, floor: Loc[]): void {
   const colorOfFloor = [0, 0, 0, 0];
 
   /* Colour the regions (diagonally, as upstream), find each cavern's colour. */
-  buildColors(g, colors, counts, true);
+  buildColors(g, colors, counts, null, true);
   for (let i = 0; i < 4; i++) {
     const spot = gridToI(floor[i] as Loc, g.c.width);
     colorOfFloor[i] = colors[spot] as number;
@@ -1429,7 +1448,9 @@ const MAX_CAVERN_TRIES = 10;
  * init_cavern: fill the chunk with rock, then open `density` percent of the
  * interior to floor at random. The `join` connector list (empty for
  * non-persistent levels) builds in stairs surrounded by protected floor/rock;
- * it is ported faithfully but dormant until persistent levels wire dun.join.
+ * a persistent level supplies them through dun.join (transformed into this
+ * chunk's own coordinates by transform_join_list when the chunk is one half of
+ * a lair level).
  */
 function initCavern(g: Gen, density: number, join: Connector[]): void {
   const c = g.c;
@@ -1442,7 +1463,7 @@ function initCavern(g: Gen, density: number, join: Connector[]): void {
   /* Fill the entire chunk with rock. */
   fillRectangle(c, 0, 0, h - 1, w - 1, FEAT.GRANITE, SQUARE.WALL_SOLID);
 
-  /* Add in the desired stairs (dormant for non-persistent levels). */
+  /* Add in the desired stairs (`join` is empty for non-persistent levels). */
   for (const j of join) {
     if (
       j.grid.y > 0 &&
@@ -1524,16 +1545,28 @@ function mutateCavern(g: Gen): void {
 
 /**
  * clear_small_regions: delete all open regions smaller than 9 squares (turning
- * them back to granite). No stair-preservation here: join is empty for
- * non-persistent levels, so no region carries a staircase to protect.
+ * them back to granite) - EXCEPT a region flagged in `stairs`, which contains a
+ * staircase that has to line up with an adjacent persistent level and must
+ * survive however small its pocket of cavern is (gen-cave.c L1274).
+ *
+ * That exception used to be absent here, on the reasoning that a
+ * non-persistent level has no stair to protect. True, and the reason it went
+ * unnoticed: a persistent cavern half could open its connector stair into a
+ * region of fewer than nine grids and this would quietly wall it back up,
+ * leaving a level whose down staircase does not exist.
  */
-function clearSmallRegions(g: Gen, colors: Int32Array, counts: Int32Array): void {
+function clearSmallRegions(
+  g: Gen,
+  colors: Int32Array,
+  counts: Int32Array,
+  stairs: Uint8Array | null,
+): void {
   const c = g.c;
   const size = c.height * c.width;
   const deleted = new Uint8Array(size);
 
   for (let i = 0; i < size; i++) {
-    if ((counts[i] as number) < 9) {
+    if ((counts[i] as number) < 9 && !stairs?.[i]) {
       deleted[i] = 1;
       counts[i] = 0;
     }
@@ -1584,15 +1617,18 @@ function cavernChunk(
 
   const colors = new Int32Array(size);
   const counts = new Int32Array(size);
-  buildColors(g, colors, counts, false);
-  clearSmallRegions(g, colors, counts);
+  /* stairs = (join) ? mem_zalloc(...) : NULL (gen-cave.c L2100): only a chunk
+   * that was seeded with connectors has staircases worth protecting. */
+  const stairs = join.length > 0 ? new Uint8Array(size) : null;
+  buildColors(g, colors, counts, stairs, false);
+  clearSmallRegions(g, colors, counts, stairs);
   let num = countColors(counts);
   while (num > 1) {
     joinRegion(g, colors, counts, firstColor(counts), -1, true);
     num--;
   }
 
-  /* Convert the permanent rock walls near stairs back to granite (dormant). */
+  /* Convert the permanent rock walls near stairs back to granite. */
   for (const j of join) {
     for (let i = 0; i < 8; i++) {
       const adj = locSum(j.grid, DDGRID_DDD[i] as Loc);
@@ -1646,6 +1682,114 @@ export const cavernGen: CaveBuilder = (ctx) => {
   return { gen: g, error: null };
 };
 
+/**
+ * find_joinfree_vertical_seam (gen-cave.c L984-1031): locate two consecutive
+ * columns in [colpref - range, colpref + range] that carry no connector, so a
+ * persistent lair level can be split there without cutting through a staircase
+ * that has to line up with a neighbouring level. Returns the LEFT column of the
+ * pair, preferring the pair closest to colpref, or -1 when there is none.
+ *
+ * Connectors outside the row window [rowmin, rowmax] are ignored (they cannot
+ * be cut by a vertical seam over that span).
+ */
+export function findJoinfreeVerticalSeam(
+  join: readonly Connector[],
+  colpref: number,
+  range: number,
+  rowmin: number,
+  rowmax: number,
+): number {
+  if (range < 0) throw new RangeError(`findJoinfreeVerticalSeam: range ${range} < 0`);
+  const disallowed = new Array<boolean>(range + range + 1).fill(false);
+  for (const j of join) {
+    if (Math.abs(j.grid.x - colpref) <= range && j.grid.y >= rowmin && j.grid.y <= rowmax) {
+      disallowed[range + j.grid.x - colpref] = true;
+    }
+  }
+
+  let metric = range + 1;
+  let result = -1;
+  let i = 0;
+  while (i < range + range) {
+    if (!disallowed[i]) {
+      if (!disallowed[i + 1]) {
+        if (metric > Math.abs(i - range)) {
+          metric = Math.abs(i - range);
+          result = colpref + i - range;
+        }
+        i++;
+      } else {
+        /* i + 1 is blocked, so it cannot start a pair either - skip it.
+         * MUTATION NOTE: changing this to i++ is unkillable BY CONSTRUCTION.
+         * Landing on i + 1 finds disallowed[i + 1] true and takes the else
+         * below, which increments again; the two are provably the same walk,
+         * one iteration apart. Recorded rather than covered by a contrived
+         * test. */
+        i += 2;
+      }
+    } else {
+      i++;
+    }
+  }
+  return result;
+}
+
+/**
+ * transform_join_list (gen-cave.c L1060-1117): map a level-wide connector list
+ * into the coordinate system of one sub-chunk, dropping the connectors that
+ * fall outside it. The arguments describe the FORWARD transform (sub-chunk ->
+ * level, matching the chunk_copy call that will place it), so this applies the
+ * inverse: undo the translation, bounds-check, undo the reflection, undo the
+ * rotations.
+ *
+ * Two faithful details:
+ *  - Order is PRESERVED (upstream appends through a tail pointer), unlike
+ *    get_join_info and collect_joins, which prepend.
+ *  - The SQUARE info bytes are NOT carried: upstream mem_zallocs each new
+ *    connector and sets only grid and feat, leaving info NULL.
+ *
+ * Upstream also computes ntrow/ntcol here and never reads them; the bounds test
+ * on the following line uses nrow/ncol. That dead local is not reproduced -
+ * there is no behaviour in it, and TypeScript would reject it.
+ */
+export function transformJoinList(
+  join: readonly Connector[],
+  nrow: number,
+  ncol: number,
+  y0: number,
+  x0: number,
+  rotate: number,
+  reflect: boolean,
+): Connector[] {
+  const result: Connector[] = [];
+  for (const j of join) {
+    /* Undo the translation. */
+    let gy = j.grid.y - y0;
+    let gx = j.grid.x - x0;
+    let rheight = nrow;
+    let rwidth = ncol;
+
+    /* Only keep the ones that are in bounds for the chunk. */
+    if (gy < 0 || gy >= nrow || gx < 0 || gx >= ncol) continue;
+
+    /* Undo the reflection. */
+    if (reflect) gx = ncol - 1 - gx;
+
+    /* Undo the rotations. */
+    for (let i = 0; i < rotate % 4; i++) {
+      const ty = gy;
+      gy = rwidth - 1 - gx;
+      gx = ty;
+      const tw = rwidth;
+      rwidth = rheight;
+      rheight = tw;
+    }
+
+    result.push({ grid: loc(gx, gy), feat: j.feat });
+  }
+  return result;
+}
+
 /* ------------------------------------------------------------------ *
  * Lair generator (gen-cave.c lair_gen L3534): a modified-style half joined to
  * a themed-monster cavern half.
@@ -1663,8 +1807,32 @@ export const lairGen: CaveBuilder = (ctx) => {
   dun.blockHgt = ctx.profile.blockSize;
   dun.blockWid = ctx.profile.blockSize;
 
-  /* Non-persistent: split the level down the middle. */
-  const leftWidth = Math.trunc(xSize / 2);
+  /* Choose the seam (gen-cave.c L3566-3575). Persistent levels must not split
+   * through a column that carries a stair connector, or the two sub-chunks
+   * would each try to build the same staircase room; find_joinfree_vertical_seam
+   * looks for a clear pair of columns near the middle and the level is rejected
+   * when there is none. Non-persistent levels split down the middle, and
+   * upstream asserts dun->join is empty on that path. */
+  const cachedJoin = dun.join;
+  dun.join = [];
+  let leftWidth: number;
+  if (dun.persist) {
+    leftWidth =
+      1 +
+      findJoinfreeVerticalSeam(
+        cachedJoin,
+        Math.trunc(xSize / 2),
+        Math.min(5, Math.trunc(xSize / 20)),
+        0,
+        ySize - 1,
+      );
+    if (leftWidth < 4 || xSize - leftWidth < 4) {
+      dun.join = cachedJoin;
+      return { gen: null, error: "no joinfree vertical seam for a lair level" };
+    }
+  } else {
+    leftWidth = Math.trunc(xSize / 2);
+  }
   let normalWidth: number;
   let normalOffset: number;
   let lairWidth: number;
@@ -1683,10 +1851,20 @@ export const lairGen: CaveBuilder = (ctx) => {
     lairOffset = 0;
   }
 
+  /* Each half is built in its OWN coordinate system, so the level-wide
+   * connectors have to be translated into it and clipped to it first - and
+   * restored afterwards, because the halves are merged back into a level-sized
+   * chunk below and the level's own join list is the untransformed one. The
+   * transform here must match the chunk_copy offsets used for the merge
+   * (gen-cave.c L3590-3614 and L3681-3682). */
+  dun.join = transformJoinList(cachedJoin, ySize, normalWidth, 0, normalOffset, 0, false);
   const normal = modifiedChunk(ctx, ySize, normalWidth);
+  dun.join = cachedJoin;
   if (!normal) return { gen: null, error: "modified chunk could not be created" };
 
+  dun.join = transformJoinList(cachedJoin, ySize, lairWidth, 0, lairOffset, 0, false);
   const lair = cavernChunk(ctx, depth, ySize, lairWidth, dun.join);
+  dun.join = cachedJoin;
   if (!lair) return { gen: null, error: "cavern chunk could not be created" };
 
   /* General amount of rubble, traps and monsters (halved for lairs). */
