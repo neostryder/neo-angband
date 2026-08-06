@@ -40,6 +40,7 @@ import {
   squareIsNoEsp,
   squareIsSeen,
   squareIsView,
+  type LightSource,
   type ViewerState,
 } from "../world/view.js";
 import { getLore, loreCountU16 } from "../mon/lore.js";
@@ -1110,6 +1111,44 @@ export function viewerStateOf(state: GameState): ViewerState {
     hasUnlight: actor.unlight,
     level: actor.player.lev,
   };
+}
+
+/**
+ * calc_lighting's monster scan (cave-view.c L696-719), as a source list.
+ *
+ * world/view.ts is the pure view kernel and has no idea what a monster is, so
+ * upstream's inline `for (k = 1; k < cave_monster_max(c); k++)` cannot live
+ * inside calcLighting. It became a `sources` parameter instead - and then
+ * nothing ever built one. `LightSource` had two consumers and no producer, the
+ * lone production call site passed `[]`, and the parameter's own default was
+ * `[]` as well, so there was no arrangement of hosts under which a monster lit
+ * anything. 107 of the 624 shipped races carry a non-zero `light`: 95 emit it
+ * (every town person's lantern, Grip, Fang, the Phoenix) and 12 emit darkness.
+ *
+ * The skips are upstream's: empty slots, then camouflaged monsters - an
+ * unrevealed mimic must not give itself away by glowing - then `light == 0`.
+ * The `distance - radius > max_sight` gate is deliberately NOT repeated here;
+ * it is calcLighting's own (view.ts L353), and duplicating it is how the two
+ * copies of `viewerStateOf` came to disagree.
+ *
+ * Visibility is not a skip. An unseen monster still lights its surroundings,
+ * which is the entire point: light spilling around a corner is how upstream
+ * tells you something is coming.
+ *
+ * Iterates `state.monsters` rather than calling context.ts's `monsterMax` /
+ * `monsterAt`, because context.ts imports this module at runtime and taking
+ * the values back would close the cycle. Same array, same index-0-unused rule.
+ */
+export function monsterLightSources(state: GameState): LightSource[] {
+  const sources: LightSource[] = [];
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    if (monsterIsCamouflaged(mon)) continue;
+    if (!mon.race.light) continue;
+    sources.push({ grid: mon.grid, light: mon.race.light });
+  }
+  return sources;
 }
 
 /**
