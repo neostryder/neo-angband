@@ -2238,9 +2238,27 @@ is reachable in play and a test constructs the case that used to be wrong.**
   > it (`web/src/main.ts:1043`, `:2029`). Supplying them here would be correct
   > and **inert**, so the code carries the measurement instead of the change.
   >
-  > **What is left of 5.6** is the other half: `loreDescription` has no
-  > upstream-style spoiler flag (so `spoilMonInfo` slices off a title line it
-  > should never have emitted), and `:518` / `:519`'s hit-chance lines need a
+  > **The `loreDescription` spoiler flag is DONE, and it was bigger than the
+  > row said.** `spoilers` (`ui-mon-lore.c:90`) gates **four** sections, not
+  > one: the title (L108-112), the kill counts (L114-116), the toughness block
+  > (L124-125) and the experience reward (L128-129). The port had none of them
+  > — `spoil.ts` passed no flag and sliced the first line off the result, which
+  > removed the title and left three sections upstream never prints. Every one
+  > is a statement about a player, and the dump has no player: *"You have
+  > killed at least 7 of these creatures"*, *"You have a 0% chance to hit such
+  > a creature in melee"*, *"worth 0 points for a 10th level character"*.
+  >
+  > `cheat_monster_lore` stays with the CALLER rather than moving inside the
+  > flag as upstream has it (L101-102): `spoil.ts` already reveals the lore
+  > copy it owns, and doing it twice is the same work for the same answer.
+  >
+  > 7 mutations, 7 killed — across two files on purpose. The
+  > `mon/lore-describe.test.ts` cases prove the four gates, and would stay
+  > green if `spoil.ts` stopped passing `true`; the new `game/spoil.test.ts` is
+  > what kills that one. Both sets include the reverse control (flavour and
+  > movement must survive), so a flag that suppressed too much fails too.
+  >
+  > **What is left of 5.6** is `:518` / `:519`: the hit-chance lines need a
   > state-carrying spoiler variant rather than a seam. `:518` and `:519` are the hit-chance lines, and
   they no longer wait on anything — the callbacks are wired for the *game* path
   (`packages/web/src/main.ts:3650`); a core-level dump has no player, so this

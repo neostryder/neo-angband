@@ -1374,38 +1374,58 @@ function loreTitle(b: LoreTextBuilder, race: MonsterRace, deps: LoreDeps): void 
 }
 
 /**
- * lore_description (ui-mon-lore.c L89), non-spoiler path: assemble the full
- * recall for what the player knows. Returns the finished flat run list.
+ * lore_description (ui-mon-lore.c L89): assemble the full recall. Returns the
+ * finished flat run list.
  *
  * The order of sections is transcribed from ui-mon-lore.c L110-150:
  *   title, kills, flavor, movement, toughness, exp, drop, abilities,
  *   awareness, friends, spells, attack, fully-known note, questor note.
+ *
+ * `spoilers` is upstream's fourth argument (L90) and means "full information,
+ * without the subjective parts". It suppresses FOUR sections, not just the
+ * title: the title (L108-112), the kill counts (L114-116), the toughness block
+ * (L124-125) and the experience reward (L128-129). Every one of those is a
+ * statement about a player, and a spoiler file has no player.
+ *
+ * Upstream also calls cheat_monster_lore inside here when the flag is set
+ * (L101-102). The port leaves that to the caller: game/spoil.ts already does it
+ * on the lore copy it owns, and doing it twice is the same work for the same
+ * answer.
  */
 export function loreDescription(
   race: MonsterRace,
   lore: MonsterLore,
   deps: LoreDeps,
+  /**
+   * ui-mon-lore.c's `spoilers` (L90). Defaults false, the player view. There
+   * are exactly two callers and they want different values, so this is a live
+   * branch rather than an option nobody sets.
+   */
+  spoilers = false,
 ): LoreText {
   const b = new LoreTextBuilder();
   const knownFlags = monsterFlagsKnown(race, lore);
 
-  /* Title (only in the non-spoiler player view). */
-  loreTitle(b, race, deps);
-  b.append("\n");
+  /* Title (L108-112). Upstream's own comment: appending it here simplifies the
+     callers, "and it also causes a crash when generating spoilers". */
+  if (!spoilers) {
+    loreTitle(b, race, deps);
+    b.append("\n");
+  }
 
-  /* Kills of monster vs. player(s). */
-  loreAppendKills(b, race, lore, knownFlags);
+  /* Kills of monster vs. player(s) (L114-116). */
+  if (!spoilers) loreAppendKills(b, race, lore, knownFlags);
 
   loreAppendFlavor(b, race);
 
   /* Type, location, speed. */
   loreAppendMovement(b, race, lore, knownFlags, deps);
 
-  /* Life and armor, and player's hit chance. */
-  loreAppendToughness(b, race, lore, knownFlags, deps);
+  /* Life and armor, and player's hit chance (L124-125). */
+  if (!spoilers) loreAppendToughness(b, race, lore, knownFlags, deps);
 
-  /* Experience reward. */
-  loreAppendExp(b, race, lore, knownFlags, deps);
+  /* Experience reward (L128-129). */
+  if (!spoilers) loreAppendExp(b, race, lore, knownFlags, deps);
 
   loreAppendDrop(b, race, lore, knownFlags);
 
