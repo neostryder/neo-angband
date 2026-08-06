@@ -25,7 +25,9 @@
 
 import { colorCharToAttr, colorChannel, colorTextToAttr, COLOR_TABLE, BASIC_COLORS, MAX_COLORS } from "../color.js";
 import { projNameToIdx } from "../effects/effect.js";
-import { PARSE_ERROR, PARSER_ERROR_ENTRIES } from "../generated/index.js";
+import { PARSE_ERROR } from "../generated/index.js";
+import { getParserErrorLimit, parserErrorText } from "../parser.js";
+import type { ParserState } from "../parser.js";
 import { tvalFindIdx, tvalFindName } from "../obj/bind.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { messageLookupByName } from "../sound/engine.js";
@@ -59,24 +61,12 @@ export interface PrefDeps {
  * One `parser_error`, as print_error formats it (ui-prefs.c L1195-1202).
  * `msg` is the offending token (parser_state.msg) and `error` the enum_parser
  * error CODE, resolved to parser_error_str[]'s text by prefErrorMessage.
+ *
+ * An alias rather than a second declaration: upstream has ONE
+ * `struct parser_state`, and the options-file grammar reports in the same shape
+ * (parser.ts ParserState).
  */
-export interface PrefError {
-  line: number;
-  col: number;
-  msg: string;
-  error: number;
-}
-
-/**
- * parser_error_str[] (parser.c L36-100), generated straight from
- * list-parser-errors.h - the codegen'd table, NOT a hand-typed copy. Upstream
- * spells several of these differently from the handler names ("invalid colour",
- * "unrecognized tval"), which is exactly the sort of thing a transcription gets
- * wrong.
- */
-export function parserErrorText(code: number): string {
-  return PARSER_ERROR_ENTRIES[code]?.description ?? "generic error";
-}
+export type PrefError = ParserState;
 
 /**
  * Everything a parsed pref line can change. The six glyph directives are
@@ -487,7 +477,14 @@ export interface ProcessPrefOptions {
   vars?: PrefExprVars;
   /**
    * get_parser_error_limit(): stop after this many bad lines (0 = no limit).
-   * Upstream's default is 0 (ui-init.c / z-util), so every error is reported.
+   *
+   * The default is **20**, not 0. This used to read "Upstream's default is 0
+   * (ui-init.c / z-util), so every error is reported" - wrong on both counts:
+   * the value is PARSE_ERROR_LIMIT (parser.c:38) and it is in neither of those
+   * files. The difference is behavioural, because the read loop this models
+   * (ui-prefs.c:1222) BREAKS on reaching the limit: upstream stops applying a
+   * pref file after its twentieth bad line, and the port applied every line to
+   * the end of the file.
    */
   errorLimit?: number;
   /** Recursion guard for `%` includes; upstream relies on the filesystem. */
@@ -511,7 +508,7 @@ export function processPrefText(
   opts: ProcessPrefOptions = {},
 ): PrefError[] {
   const errors: PrefError[] = [];
-  const limit = opts.errorLimit ?? 0;
+  const limit = opts.errorLimit ?? getParserErrorLimit();
   const depth = opts.depth ?? 0;
   let bypass = false;
   let keymapAct = "";
