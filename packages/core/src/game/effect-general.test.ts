@@ -398,12 +398,21 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     const race = monReg.races.find((rr) => rr.rarity > 0)!;
     const mon = addMon(state, race, loc(3, 3), { hp: 50 });
 
-    r.effectSimple(EF.DRAIN_MANA, env(state), {
+    const msgs: string[] = [];
+    r.effectSimple(EF.DRAIN_MANA, env(state, {}, msgs), {
       origin: sourceMonster(mon.midx),
       diceString: "4",
     });
     expect(p.csp).toBe(10); /* untouched */
     expect(state.decoy).toBeNull();
+    /*
+     * PORT_TODO 7.2. square_destroy_decoy always announces (cave-square.c:
+     * 1409-1411) and destroyDecoy does too - but this handler open-coded the
+     * function's body MINUS the message, so a decoy soaking a mana drain in
+     * full view died in silence while the TIMED_INC path below, which calls
+     * the shared function, announced. The two now agree.
+     */
+    expect(msgs).toContain("The decoy is destroyed!");
   });
 
   it("EF_TIMED_INC from a monster destroys the player's decoy (5.2)", () => {

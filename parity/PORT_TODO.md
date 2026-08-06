@@ -2393,11 +2393,44 @@ handling.
   recorded in the test rather than killed by a fixture the caller never builds.
   Sites: `parity/ledger/project-path.yaml:58`
 
-- [ ] **7.2 Split the monster-turn partial into rows that can be closed.**
-  The note covers item pickup, group behaviour and lore at once and names them
-  only collectively, which is why it is still `partial` when most of it is live
-  (`monsterCarry`, `mon-group.ts`, `loreLearnFlagIfVisible`). A row that cannot
-  be closed is a row nobody works.
+- [x] **7.2 Split the monster-turn partial into rows that can be closed. DONE
+  — splitting it closed it.**
+  The row asked for a bookkeeping split: the note "covers item pickup, group
+  behaviour and lore at once and names them only collectively, which is why it
+  is still `partial` when most of it is live". That diagnosis was exactly right,
+  and doing the split is what surfaced what the collective phrasing was hiding.
+
+  Taking the module's own NOTES clause by clause — *"react_to_slay pickup
+  safety, the confused-move / door-burst / glyph-break / decoy-destroy UI
+  messages and disturb, and the remaining monster-lore updates"*:
+
+  - **`react_to_slay`** — ported, gating the pickup at `monsterTurnGrabObjects`.
+  - **confused stumble, "You hear a door burst open!", "The rune of protection
+    is broken!"** — all printed. The glyph one is the sharpest case: its own
+    docblock called the message deferred UI *four lines above the code that
+    prints it*.
+  - **disturb** — runs at the tail, gated on `disturb_near`.
+  - **decoy-destroy** — the one real message gap, and its cause was structural
+    rather than missing work. `destroyDecoy` (`game/effect-mon-origin.ts`) has
+    printed "The decoy is destroyed!" for **five** callers all along, gated on
+    los-and-not-blind exactly as cave-square.c:1409. **Two sites went around
+    it** and open-coded the body minus the message — `handleDRAIN_MANA`, and
+    the monster branch in `monsterTurn`, which is *the commonest way a decoy
+    actually dies*. Both now call the shared function.
+  - **the lore** — the real gap, and it was real. `mon-move.c` carries **22**
+    `rf_on(lore->flags, ...)`; the port carried **14**. The missing eight were
+    RAND_25, RAND_50, KILL_BODY, MOVE_BODY, NEVER_MOVE (twice — once from a
+    monster that holds its ground and once, the same flag, from one seen to
+    move) and NEVER_BLOW's player branch, which the decoy branch beside it
+    already had. Each is a line of monster recall that never filled in however
+    long you watched. **Now 22 to 22**, counted per flag.
+
+  **3 + 7 = 10 mutations, 10 killed.** Two fixtures failed against correct code
+  first and both are recorded in the tests: the pushing monster needed an
+  `mexp` gap before `monster_turn_try_push` would run at all, and the moving
+  monster needed its DESTINATION marked seen, because `monsterSwap` calls
+  `updateMon` and a monster that walks out of view is legitimately no longer
+  visible by the time the tail of `monster_turn` runs.
   Sites: `packages/core/src/game/monster-turn.ts:1380`
 
 - [x] **7.3 Decide the level-rating question. RETRACTED — there is no
