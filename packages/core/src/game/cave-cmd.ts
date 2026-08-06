@@ -39,6 +39,7 @@
  */
 
 import type { Loc } from "../loc.js";
+import { SHIPPED_FEELING_NEED } from "../constants.js";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc.js";
 import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated/index.js";
 import { SKILL } from "../player/types.js";
@@ -171,8 +172,10 @@ const MON_FEELING_TEXT = [
  * (birth_feelings off) get nothing; the town gets the fixed line; a level not
  * yet explored to feeling_need grids gets only the monster feeling, otherwise
  * the joined "<mon>, and/yet <obj>" line with the exact conjunction rule.
- * feelingNeed defaults to the shipped constants.txt world:feeling-need (10),
- * matching the display-model default (display.ts).
+ * feelingNeed defaults to SHIPPED_FEELING_NEED, the shipped constants.txt
+ * world:feeling-need, which is also the display model's default. A caller with
+ * a loaded pack must pass constants.feelingNeed - the default exists for the
+ * worldless harness, not as a substitute for the data.
  */
 export function displayFeeling(
   state: GameState,
@@ -180,7 +183,7 @@ export function displayFeeling(
 ): void {
   const chunk = state.chunk;
   const objOnly = opts.objOnly ?? false;
-  const feelingNeed = opts.feelingNeed ?? 10;
+  const feelingNeed = opts.feelingNeed ?? SHIPPED_FEELING_NEED;
 
   /* Don't show feelings for cold-hearted characters (L1736). */
   if (!(state.options?.get("birth_feelings") ?? true)) return;

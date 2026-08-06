@@ -690,9 +690,12 @@ export function equipLearnOnDefend(p: Player, env: RuneEnv): void {
     objectCursesFindToA(p, env, obj);
     if (p.objKnown.toA) return;
   }
-  /* Shape to_a: shapes are bound raw. The shapechange system is ported
-   * (player.shape, game/effect-general.ts:850), so this can read the bound
-   * shape's own to_a. */
+  /* The shape's OWN to_a (obj-knowledge.c:1992-1998). Reached only when the
+   * gear taught nothing, because the loop returns the moment it does - so this
+   * is a tail, not a branch, and it is here in the same place upstream has it.
+   * `p.shape` is the bound record, so upstream's lookup_player_shape by name
+   * is a step this port does not need. */
+  if (p.shape && p.shape.toA !== 0) playerLearnCombat(p, env, "toA");
 }
 
 function slotIndexByType(p: Player, type: string): number {
@@ -734,6 +737,8 @@ export function equipLearnOnRangedAttack(p: Player, env: RuneEnv): void {
     objectCursesFindToH(p, env, obj);
     if (p.objKnown.toH) return;
   }
+  /* The shape's own to_h (obj-knowledge.c:2026-2032). */
+  if (p.shape && p.shape.toH !== 0) playerLearnCombat(p, env, "toH");
 }
 
 /**
@@ -752,6 +757,12 @@ export function equipLearnOnMeleeAttack(p: Player, env: RuneEnv): void {
     objectCursesFindToH(p, env, obj);
     objectCursesFindToD(p, env, obj);
     if (p.objKnown.toH && p.objKnown.toD) return;
+  }
+  /* The shape's own to_h and to_d (obj-knowledge.c:2066-2078). Both, and
+   * independently - a shape with only a damage bonus still teaches to_d. */
+  if (p.shape) {
+    if (p.shape.toH !== 0) playerLearnCombat(p, env, "toH");
+    if (p.shape.toD !== 0) playerLearnCombat(p, env, "toD");
   }
 }
 
