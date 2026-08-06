@@ -49,13 +49,15 @@ export interface ProjectMonsterHooks {
   /**
    * add_monster_message(mon, msg_code, delay): queue a message about the monster
    * (by MON_MSG index). `delay` is upstream's third argument (what_delay,
-   * mon-msg.c:238), not a comma flag. When `damage` is given the caller must use
-   * add_monster_message_show_damage (mon-msg.c:288) and append " (N)".
+   * mon-msg.c:238), not a comma flag, and is REQUIRED - upstream writes it out
+   * at every call site, and a default here would silently move a line from the
+   * delayed pass into the immediate one. When `damage` is given the caller must
+   * use add_monster_message_show_damage (mon-msg.c:288) and append " (N)".
    */
   message?: (
     mon: Monster,
     msg: number,
-    delay?: boolean,
+    delay: boolean,
     damage?: number,
   ) => void;
   /**
@@ -253,7 +255,7 @@ function playerAttack(
     /* add_monster_message_show_damage vs add_monster_message
      * (project-mon.c:1127-1132). */
     if (displayDam) hooks.message?.(mon, dieMsg, false, dam);
-    else hooks.message?.(mon, dieMsg);
+    else hooks.message?.(mon, dieMsg, false);
   }
 
   let died = false;
@@ -281,7 +283,7 @@ function playerAttack(
      * twins. The FLEE_IN_TERROR line never shows damage. */
     if (seen && ctx.hurtMsg !== MON_MSG.NONE) {
       if (displayDam) hooks.message?.(mon, ctx.hurtMsg, false, dam);
-      else hooks.message?.(mon, ctx.hurtMsg);
+      else hooks.message?.(mon, ctx.hurtMsg, false);
     } else if (dam > 0) {
       hooks.messagePain?.(mon, dam, displayDam);
     }
@@ -316,7 +318,7 @@ function monsterAttack(
   if (mon.hp < 0) {
     hooks.revertShape?.(mon);
     const dieMsg = seen ? ctx.dieMsg : MON_MSG.MORIA_DEATH;
-    hooks.message?.(mon, dieMsg);
+    hooks.message?.(mon, dieMsg, false);
     hooks.onMonsterDeath?.(mon);
     deleteMonster(state, mIdx);
     return true;
@@ -324,7 +326,7 @@ function monsterAttack(
 
   if (!monsterIsCamouflaged(mon)) {
     if (ctx.hurtMsg !== MON_MSG.NONE && seen) {
-      hooks.message?.(mon, ctx.hurtMsg);
+      hooks.message?.(mon, ctx.hurtMsg, false);
     } else if (dam > 0) {
       hooks.messagePain?.(mon, dam);
     }
@@ -352,7 +354,7 @@ function applySideEffects(
     /* Uniques cannot be polymorphed, nor can anything on an arena level
      * (project-mon.c L1197: monster_is_unique(mon) || player->arena_level). PR3. */
     if (monsterIsUnique(mon) || state.arenaLevel) {
-      if (seen) hooks.message?.(mon, MON_MSG.UNAFFECTED);
+      if (seen) hooks.message?.(mon, MON_MSG.UNAFFECTED, false);
       return;
     }
 
@@ -368,6 +370,7 @@ function applySideEffects(
         hooks.message?.(
           mon,
           typ === PROJ.MON_POLY ? MON_MSG.MAINTAIN_SHAPE : MON_MSG.UNAFFECTED,
+          false,
         );
       }
       return;
@@ -376,10 +379,10 @@ function applySideEffects(
     const newMon =
       hooks.polymorph?.(mon, ctx.doPoly, typ === PROJ.MON_POLY) ?? null;
     if (newMon && newMon !== mon) {
-      if (seen) hooks.message?.(mon, MON_MSG.CHANGE);
+      if (seen) hooks.message?.(mon, MON_MSG.CHANGE, false);
       ctx.mon = newMon;
     } else if (seen) {
-      hooks.message?.(mon, MON_MSG.MAINTAIN_SHAPE);
+      hooks.message?.(mon, MON_MSG.MAINTAIN_SHAPE, false);
     }
   } else if (ctx.teleportDistance > 0) {
     hooks.teleport?.(mon, ctx.teleportDistance);

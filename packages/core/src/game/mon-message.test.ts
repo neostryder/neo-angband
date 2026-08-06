@@ -5,7 +5,7 @@
  * selection, per-race ALTMSG overrides (message-vis / -invis / -miss,
  * including the empty-string suppression), and the power-level selection.
  * Also covers the get_subject count/invisible/offscreen grammar via
- * formatMonsterMessage's single-monster path (mon-msg.c L318).
+ * formatMonsterMessage's single-monster path (mon-msg.c L320).
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,13 +21,29 @@ import type {
   MonsterSpell,
   MonsterSpellLevel,
 } from "../mon/types.js";
+import type { GameState } from "./context.js";
 import {
+  addMonsterMessageShowDamage,
   formatMonsterMessage,
-  formatMonsterMessageShowDamage,
-  formatPainMessageShowDamage,
+  messagePainShowDamage,
   monMessageSoundType,
+  showMonsterMessages,
   spellMessageText,
 } from "./mon-message.js";
+
+/**
+ * The smallest state the queue reads: the notice mask it raises PN_MON_MESSAGE
+ * in, and the sink show_monster_messages emits to. game/mon-msg-queue.test.ts
+ * drives the same code through the real harness state.
+ */
+function sink(): { state: GameState; lines: string[] } {
+  const lines: string[] = [];
+  const state = {
+    actor: { player: { upkeep: { notice: 0 } } },
+    msg: (text: string): void => void lines.push(text),
+  } as unknown as GameState;
+  return { state, lines };
+}
 
 function level(overrides: Partial<MonsterSpellLevel>): MonsterSpellLevel {
   return {
@@ -224,31 +240,33 @@ describe("formatMonsterMessage subject grammar (mon-msg.c get_subject)", () => {
  */
 describe("show_damage monster messages (mon-msg.c L132/L288/L494)", () => {
   it("appends ' (N)' to a coded message (count == 1 form)", () => {
-    const m = mon(race("kobold"));
-    expect(formatMonsterMessageShowDamage(m, MON_MSG.DIE, 17)).toBe(
-      "The kobold dies. (17)",
-    );
+    const { state, lines } = sink();
+    addMonsterMessageShowDamage(state, mon(race("kobold")), MON_MSG.DIE, false, 17);
+    showMonsterMessages(state);
+    expect(lines).toEqual(["The kobold dies. (17)"]);
   });
 
   it("appends ' (N)' to the graded pain message", () => {
+    const { state, lines } = sink();
     const m = mon(race("kobold"));
     m.maxhp = 100;
     m.hp = 40; /* 40/47 == 85% -> MON_MSG_75 */
-    expect(formatPainMessageShowDamage(m, 7)).toBe(
-      "The kobold grunts with pain. (7)",
-    );
+    messagePainShowDamage(state, m, 7);
+    showMonsterMessages(state);
+    expect(lines).toEqual(["The kobold grunts with pain. (7)"]);
   });
 
   it("a zero-damage hit takes the plain branch, with no ' (0)'", () => {
     /* message_pain_show_damage only calls the show-damage variant when dam > 0
      * (mon-msg.c L136-140), so MON_MSG_UNHARMED never carries a suffix. */
+    const { state, lines } = sink();
     const m = mon(race("kobold"));
     m.maxhp = 100;
     m.hp = 100;
-    expect(formatPainMessageShowDamage(m, 0)).toBe(
-      formatMonsterMessage(m, MON_MSG.UNHARMED),
-    );
-    expect(formatPainMessageShowDamage(m, 0)).not.toMatch(/\(0\)/);
+    messagePainShowDamage(state, m, 0);
+    showMonsterMessages(state);
+    expect(lines).toEqual([formatMonsterMessage(m, MON_MSG.UNHARMED)]);
+    expect(lines[0]).not.toMatch(/\(0\)/);
   });
 });
 

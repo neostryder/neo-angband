@@ -31,6 +31,8 @@ import {
   shortRange,
 } from "./monster-turn.js";
 import { GRANITE, featureReg, addMon, makeRace, makeBlow, makeState } from "./harness.js";
+import { noticeStuff } from "./notice.js";
+import { pendingMonsterMessages } from "./mon-message.js";
 
 const LAVA = featureReg.byCodeName("LAVA").fidx;
 
@@ -507,6 +509,48 @@ describe("aggravation (monster_reduce_sleep)", () => {
     processMonsterTimed(mon, state);
     expect(msgs.some((m) => m.endsWith("wakes up."))).toBe(false);
     expect(mon.mTimed[MON_TMD.SLEEP]).toBe(0); /* still woken, just quietly */
+  });
+});
+
+/*
+ * mon_set_timed's own message (mon-timed.c:215 add_monster_message(mon, m_note,
+ * true)). Distinct from the aggravation wake above, which upstream says with a
+ * bare msg() and which therefore does NOT go through the queue.
+ *
+ * Nothing exercised this sink at all before PORT_TODO 3.1 - deleting its body
+ * outright broke no test.
+ */
+describe("the timed-effect message sink (mon-timed.c:215)", () => {
+  it("queues the end-of-effect line on the DELAYED pass, and notice_stuff says it", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    const mon = addMon(state, makeRace({ level: 5 }), loc(20, 10));
+    mon.mflag.on(MFLAG.VISIBLE); /* monster_is_obvious gates the message */
+    mon.mTimed[MON_TMD.CONF] = 1; /* one turn left: this tick ends it */
+
+    processMonsterTimed(mon, state);
+    expect(mon.mTimed[MON_TMD.CONF]).toBe(0);
+
+    const queued = pendingMonsterMessages(state);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]?.delay).toBe(1);
+    expect(msgs).toEqual([]);
+
+    noticeStuff(state);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatch(/no longer confused/);
+  });
+
+  it("an unseen monster's timed line is not queued at all", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 5 }), loc(20, 10));
+    /* MFLAG.VISIBLE stays off: monster_is_obvious is false. */
+    mon.mTimed[MON_TMD.CONF] = 1;
+    processMonsterTimed(mon, state);
+    expect(pendingMonsterMessages(state)).toEqual([]);
   });
 });
 
