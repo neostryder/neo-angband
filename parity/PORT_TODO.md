@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 119 confirmed-absent citations** — 54 closed, 14 open.
+**68 items covering all 118 confirmed-absent citations** — 55 closed, 13 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -14,8 +14,10 @@ ledger finds work as often as it kills it, which is the whole reason Tier 0 sits
 above the tiers that do the work. It comes **down** only when a row is retired
 with the evidence written into the census itself: 3.1 retired two
 (`packages/core/src/game/mon-message.ts` and `parity/ledger/mon-timed.yaml`),
-122 to 120, and 2.6 retired
-`parity/ledger/player-calcs-bonuses.yaml`, 120 to 119.
+122 to 120, 2.6 retired
+`parity/ledger/player-calcs-bonuses.yaml` (120 to 119), and 5.9's neighbourhood
+retired `parity/ledger/store-maint.yaml:34` — a row PORT_TODO 2.10 had already
+fixed while its ledger prose went on saying otherwise (119 to 118).
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -2139,12 +2141,40 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `parity/ledger/player-history.yaml:91`,
   `parity/ledger/player-history.yaml:158`
 
-- [ ] **5.9 A store's stock does not age.**
-  There is no `daycount` in `packages/core` or `packages/web`, so the
-  return-to-town multi-day maintenance — one `store_update` per elapsed day, and
-  the shopkeeper-shuffle probability that rides it — never runs. Stock is frozen
-  for as long as the player is in the dungeon.
-  Sites: `parity/ledger/store-maint.yaml:54`
+- [x] **5.9 A store's stock does not age.** CLOSED as a RETRACTION — **it is
+  built end to end, and nothing had ever run it.** The row said "there is no
+  `daycount` in `packages/core` or `packages/web`". There are eight references:
+  the accumulator (`game/loop.ts:397`), the field
+  (`game/context.ts:434`), the consumer (`session/game.ts:2713-2714`), and the
+  save round-trip (`session/save.ts:947`, `:1482`). `storeUpdate` had been
+  written, with its per-day maintenance loop and its `one_in_(store_shuffle)`
+  shopkeeper shuffle, and **not one test called it.**
+
+  So this closes with the tests that would have answered the question by
+  running the code — the state a row like this leaves behind is not "absent",
+  it is "unmeasured", and those look identical from a grep:
+
+  - `game/loop.test.ts` — a day accrues once per `10 * store_turns` below town
+    and **never in town**, because `game-world.c:545-573` is an if/else and
+    deferring the update is the whole point (the knowledge menu must not leak
+    tomorrow's stock).
+  - `store/store.test.ts` — zero days changes nothing **and draws no RNG**;
+    several days turn the stock over and leave the home alone; and six days
+    differ from one. That last is the control: one day already changes the
+    snapshot, so "it changed" would pass a `store_update` that ignored the
+    count entirely.
+  - `session/store-aging-wiring.test.ts` — a real game, down and back up. A
+    zero-day return leaves the shops identical; a four-day return moves them
+    and zeroes `daycount`.
+
+  5 mutations, 5 killed. **A sixth was dropped rather than faked**: removing
+  `store_update`'s `feat === HOME` skip changes nothing, because `store_maint`
+  opens with the same guard — and so does upstream (`store.c:1430` and
+  `:1296-1298`). An unkillable mutation whose target is a faithful
+  belt-and-braces disjunct is a fact to record, not a test to contrive.
+  Sites: `packages/core/src/game/loop.ts:397`,
+  `packages/core/src/session/game.ts:2713`,
+  `parity/ledger/store-maint.yaml:54`
 
 - [ ] **5.3 `options_save_custom` / `restore_custom` / `restore_maintainer`.**
   The per-user customised-defaults files in `ANGBAND_DIR_USER`. Buildable now:
@@ -2258,7 +2288,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 119 citations, 82 `real` + 37
+2. the counts stated at the top (**68 items, 118 citations, 81 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

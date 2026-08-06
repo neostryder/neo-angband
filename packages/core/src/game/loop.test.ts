@@ -336,3 +336,39 @@ describe("process_world upkeep", () => {
     expect(p.timed[TMD.FOOD]).toBe(5000);
   });
 });
+
+/**
+ * daycount (game-world.c:572), PORT_TODO 5.9.
+ *
+ * The accumulator was already here; nothing tested it. The row that tracked it
+ * said "there is no daycount in packages/core or packages/web", which is how a
+ * built-but-unproven feature ends up on a work list - so these are the two
+ * assertions that would have answered the question by running the code.
+ */
+describe("daycount accrues in the dungeon only (game-world.c:572)", () => {
+  it("ticks once per store day below town, and never in town", () => {
+    const deep = makeState();
+    deep.chunk.depth = 5;
+    deep.turn = 10 * deep.z.storeTurns;
+    processWorld(deep);
+    expect(deep.daycount).toBe(1);
+
+    /* The very next world tick is not a multiple, so nothing accrues. */
+    deep.turn += 10;
+    processWorld(deep);
+    expect(deep.daycount).toBe(1);
+
+    deep.turn = 20 * deep.z.storeTurns;
+    processWorld(deep);
+    expect(deep.daycount).toBe(2);
+
+    /* In town the same turn number takes the daybreak branch instead
+     * (game-world.c:545-573 is an if/else), so the shops age only while the
+     * player is away - which is the whole point of deferring the update. */
+    const town = makeState();
+    town.chunk.depth = 0;
+    town.turn = 10 * town.z.storeTurns;
+    processWorld(town);
+    expect(town.daycount ?? 0).toBe(0);
+  });
+});

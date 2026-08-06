@@ -13,7 +13,7 @@ import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { Rng } from "../rng.js";
 import { StoreRegistry } from "./bind.js";
-import { bindStoreRuntime, storeReset, storeWillBuy } from "./store.js";
+import { bindStoreRuntime, storeReset, storeUpdate, storeWillBuy } from "./store.js";
 import type { Store, StoreMaintContext } from "./store.js";
 import type { ObjectBuy, StoreRecordJson } from "./types.js";
 
@@ -272,5 +272,75 @@ describe("store_will_buy (store.c)", () => {
         false,
       );
     });
+  });
+});
+
+/**
+ * store_update over the accrued days (store.c:1422-1464), PORT_TODO 5.9.
+ *
+ * The function was written and had no test. The row that tracked the gap said
+ * there was no `daycount` anywhere in the port, which is how a built-and-unrun
+ * feature reaches a work list - so these run it, at zero days and at several.
+ */
+describe("store_update: the days spent in the dungeon (store.c:1422)", () => {
+  /** A snapshot that changes when the stock changes: kind + count per slot. */
+  function stockOf(stores: Store[]): string {
+    return stores
+      .filter((s) => s.feat !== FEAT.HOME)
+      .map((s) => s.stock.map((o) => `${o.kind.kidx}x${o.number}`).join(","))
+      .join("|");
+  }
+
+  it("does nothing at all for zero days, and draws no RNG", () => {
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const before = stockOf(stores);
+    const rngBefore = ctx.rng.getState();
+
+    storeUpdate(ctx, 0);
+
+    expect(stockOf(stores)).toBe(before);
+    /* `while (daycount--)` never enters its body, so not one draw happens -
+     * which is what makes a town-to-town move free of stream drift. */
+    expect(ctx.rng.getState()).toEqual(rngBefore);
+  });
+
+  it("turns the stock over across several days, and leaves the home alone", () => {
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const home = stores.find((s) => s.feat === FEAT.HOME);
+    if (!home) throw new Error("missing home");
+    /* Put something in the home so "untouched" is a claim with a value behind
+     * it rather than "still empty" - and hold the OBJECT, not the count:
+     * store_maint replaces stock, and a replacement that happens to leave one
+     * item would satisfy a length assertion. */
+    const stashed = objectPrep(new Rng(3), reg, constants, reg.kinds[1]!, 0, "average");
+    home.stock = [stashed];
+    const before = stockOf(stores);
+
+    storeUpdate(ctx, 5);
+
+    expect(stockOf(stores), "five days of maintenance move the stock").not.toBe(
+      before,
+    );
+    expect(home.stock, "the home is never maintained").toEqual([stashed]);
+  });
+
+  it("more days move the stock further than fewer", () => {
+    /*
+     * The control that makes the test above mean something. One day already
+     * changes the snapshot, so "changed" alone would pass a mutant that
+     * ignored the count and maintained once. Two runs from the SAME seed,
+     * differing only in the day count, must diverge.
+     */
+    const one = context();
+    storeReset(one.ctx);
+    const many = context();
+    storeReset(many.ctx);
+    expect(stockOf(one.stores)).toBe(stockOf(many.stores));
+
+    storeUpdate(one.ctx, 1);
+    storeUpdate(many.ctx, 6);
+    expect(stockOf(one.stores)).not.toBe(stockOf(many.stores));
   });
 });
