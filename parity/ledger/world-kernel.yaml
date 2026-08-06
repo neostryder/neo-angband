@@ -24,7 +24,16 @@ notes: >-
   Divergences by design: flat typed arrays instead of pointer grids;
   objects/traps attach later via handles; ViewerState injects the player
   fields update_view reads; monster lights arrive as an injected source
-  list instead of scanning the monster array. Deferred (ledgered here):
+  list instead of scanning the monster array - SUPPLIED since PORT_TODO 7.4
+  by game/known.ts monsterLightSources, which is what upstream's inline
+  `for (k = 1; k < cave_monster_max(c); k++)` (cave-view.c L696-719)
+  becomes once the view kernel is not allowed to know what a monster is.
+  It was NOT supplied for the life of this row: the type had two consumers
+  and no producer, session/game.ts passed a literal `[]`, and updateView's
+  own parameter defaulted to `[]` as well, so none of the 107 shipped races
+  carrying a non-zero light (95 emit, 12 emit darkness) lit or darkened a
+  single grid. Verified on generated levels, not in the abstract - see
+  session/monster-light-wiring.test.ts. Deferred (ledgered here):
   square predicates needing objects/traps/knowledge (isempty variants,
   trap and player-knowledge predicates), square_set_feat in-game side
   effects (trap destruction, note/light spot), update_one knowledge
@@ -41,3 +50,8 @@ verified-by:
   - LOS symmetry sweep over seeded random maps; knight-move cases
   - FOV behavior tests (torch radius, glowing room fully seen on entry,
     wall blocking, blindness, lit wall faces, feeling square counting)
+  - session/monster-light-wiring.test.ts: calc_lighting's monster scan on a
+    booted game - a lantern-bearer lights a grid nothing else lights and
+    reaches its neighbours at radius ABS(light)-1; camouflaged bearers emit
+    nothing; a huorn SUBTRACTS light from a lit grid. 5 mutations, 5 killed,
+    including the `[]` that was the original defect.
