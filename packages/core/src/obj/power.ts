@@ -213,17 +213,25 @@ function powerClone(obj: PowerObject): PowerObject {
 /* ------------------------------------------------------------------ */
 
 /**
- * lookup_obj_property: the property whose type and stored index match. Stats
- * count as mods for a MOD lookup, exactly as upstream.
+ * lookup_obj_property (obj-properties.c:196) over a bare property table: the
+ * property whose type and stored index match, PLUS upstream's "special case -
+ * stats count as mods" (:207), which is the half that is easy to leave out and
+ * costs a NAME when you do.
+ *
+ * THE ONE IMPLEMENTATION. player/shape-lore.ts had a second copy that omitted
+ * the special case, so every shape's stat line rendered as "Adds -3 to ." with
+ * an empty name - a screen-visible blank that the copy with the special case
+ * could never have produced. Anything needing this lookup calls here.
  */
-export function lookupObjProperty(
-  reg: ObjRegistry,
+export function lookupObjPropertyIn(
+  properties: readonly (ObjectProperty | null)[],
   type: number,
   index: number,
 ): ObjectProperty | null {
-  for (const prop of reg.properties) {
+  for (const prop of properties) {
     if (!prop) continue;
     if (prop.type === type && prop.propIndex === index) return prop;
+    /* Special case - stats count as mods (obj-properties.c:207). */
     if (
       type === OBJ_PROPERTY.MOD &&
       prop.type === OBJ_PROPERTY.STAT &&
@@ -233,6 +241,15 @@ export function lookupObjProperty(
     }
   }
   return null;
+}
+
+/** lookup_obj_property against an ObjRegistry's table. */
+export function lookupObjProperty(
+  reg: ObjRegistry,
+  type: number,
+  index: number,
+): ObjectProperty | null {
+  return lookupObjPropertyIn(reg.properties, type, index);
 }
 
 /* ------------------------------------------------------------------ */

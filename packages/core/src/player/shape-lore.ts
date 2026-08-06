@@ -23,6 +23,7 @@ import { OBJ_PROPERTY, OBJ_MOD_MAX, ELEM_MAX, OFT } from "../obj/types.js";
 import type { ObjectProperty } from "../obj/types.js";
 import { OF } from "../generated/index.js";
 import { sustainFlag } from "../obj/knowledge.js";
+import { lookupObjPropertyIn } from "../obj/power.js";
 
 /** One entry of the player_abilities list, filtered to type "player". */
 export interface ShapeLorePlayerAbility {
@@ -42,28 +43,38 @@ export interface ShapeLoreEnv {
   playerAbilities: readonly ShapeLorePlayerAbility[];
   /**
    * effect_describe(s->effect, "Changing into the shape ", 0, false) rendered to
-   * text, or null/absent when the shape has no change effect. Optional: absent
-   * omits shape_lore_append_change_effects (L3044-3056).
+   * text, or null when the shape has no change effect
+   * (shape_lore_append_change_effects, L3043-3056).
+   *
+   * A CALLBACK, not a string: one env serves the whole shape list, and this
+   * text is per-shape. It used to be a bare string, which meant no caller could
+   * supply it correctly for more than one shape and so none supplied it at all.
    */
-  changeEffectText?: string | null;
+  changeEffectText?(shape: Shape): string | null;
   /**
-   * shape_lore_append_triggering_spells (L3059-3113) output, one string per
-   * "The <class> spell, <spell>, from <book> triggers the shapechange." line.
-   * Optional: absent omits that tail.
+   * shape_lore_append_triggering_spells (L3059-3105): one string per
+   * "The <class> spell, <spell>, from <book> triggers the shapechange." line,
+   * empty when no spell reaches this shape. Per-shape for the same reason.
    */
-  triggeringSpells?: readonly string[];
+  triggeringSpells?(shape: Shape): readonly string[];
 }
 
-/** lookup_obj_property(type, propIndex): match on (type, the OF_/OBJ_MOD value). */
+/**
+ * lookup_obj_property(type, propIndex). This USED TO BE a second, incomplete
+ * copy of that C function: it matched on (type, index) and left out upstream's
+ * "special case - stats count as mods" (obj-properties.c:207). The stat
+ * modifier section looks stats up as MODs, exactly as upstream does
+ * (shape_lore_append_stat_modifiers, ui-knowledge.c:2874), so without the
+ * special case every stat line rendered with an empty name - "Adds -3 to ."
+ * on the fox, "Adds +4 to  and +4 to ." on the Pukel-man. obj/power.ts had the
+ * correct copy the whole time; only one of the two ever learned.
+ */
 function lookupProp(
   env: ShapeLoreEnv,
   type: number,
   propIndex: number,
 ): ObjectProperty | null {
-  for (const p of env.properties) {
-    if (p && p.type === type && p.propIndex === propIndex) return p;
-  }
-  return null;
+  return lookupObjPropertyIn(env.properties, type, propIndex);
 }
 
 /** skill_index_to_name (ui-knowledge.c L2721-2767); STEALTH has no case. */
@@ -251,7 +262,8 @@ export function shapeLoreLines(shape: Shape, env: ShapeLoreEnv): string[] {
    * their stats and nothing about how to enter or leave it. Nothing supplies
    * either today (main.ts's shapeEnv). See the 3.4 note: an unsupplied
    * optional is a gap only when its default is inert, and these are. */
-  if (env.changeEffectText) lines.push(`${env.changeEffectText}.`);
-  if (env.triggeringSpells) for (const l of env.triggeringSpells) lines.push(l);
+  const change = env.changeEffectText?.(shape);
+  if (change) lines.push(`${change}.`);
+  for (const l of env.triggeringSpells?.(shape) ?? []) lines.push(l);
   return lines;
 }

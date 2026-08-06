@@ -82,8 +82,10 @@ describe("shapeLoreLines (ui-knowledge.c shape_lore chain)", () => {
   it("appends the change-effect and triggering-spell tails from the env", () => {
     const withTails: ShapeLoreEnv = {
       ...env,
-      changeEffectText: "Changing into the shape heals you",
-      triggeringSpells: ["The Mage spell, Bat Form, from Magic Book triggers the shapechange."],
+      changeEffectText: () => "Changing into the shape heals you",
+      triggeringSpells: () => [
+        "The Mage spell, Bat Form, from Magic Book triggers the shapechange.",
+      ],
     };
     const lines = shapeLoreLines(makeShape({}), withTails);
     expect(lines).toContain("Changing into the shape heals you.");
