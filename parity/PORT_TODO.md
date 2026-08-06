@@ -2400,10 +2400,32 @@ handling.
   be closed is a row nobody works.
   Sites: `packages/core/src/game/monster-turn.ts:1380`
 
-- [ ] **7.3 Decide the level-rating question.**
-  `monCreateDrop` and `updateMon` are ported and monster lore is wired including
-  `lore.txt`; upstream's level *rating* has no port equivalent at all. Port it or
-  record it as `n-a` with the mechanism.
+- [x] **7.3 Decide the level-rating question. RETRACTED — there is no
+  question. Level rating is ported end to end, and was before the row was
+  written.**
+  The claim was that "upstream's level *rating* has no port equivalent at all",
+  offering a choice between porting it and recording it `n-a`. Neither applies:
+
+  - `add_to_monster_rating` (mon-make.c L1112-1126) is wired in
+    `game/mon-place.ts` for generation **and** for live summons and breeders,
+    matching upstream's single `place_new_monster_one`;
+  - `place_object` accumulates `obj_rating` in `gen/util.ts`;
+  - and `gen/generate.ts:518` is upstream's own line —
+    `chunk->feeling = calc_obj_feeling(chunk, p) + calc_mon_feeling(chunk)`
+    (generate.c:1241) — with both halves ported at `:320` and `:343`.
+
+  It is also *tested*, which is why this is a retraction rather than a
+  discovery: `gen.test.ts` has the level-feeling lifecycle and asserts
+  `mon_rating` accumulates exactly `level^2` plus the OOD bonus,
+  `mon-place.test.ts` asserts the same for the live path, and
+  `session/feeling-announce.test.ts` proves every arrival site announces it.
+  19 of them run under a `-t feeling` filter and pass.
+
+  **The lesson is the row's shape, not its content.** It bundled three subjects
+  — `monCreateDrop`, `updateMon`, level rating — and was true about the first
+  two. A reader checking the parts that were right had no reason to check the
+  third. Same failure as **7.2**: a row that names several things collectively
+  cannot be closed, and is not read either.
   Sites: `parity/ledger/mon-make.yaml:32`
 
 - [x] **7.4 The world kernel's monster-list scan replacement. DONE — and it
