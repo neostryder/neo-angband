@@ -67,8 +67,15 @@ function putRealFloor(
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, { seen: true, kidx: kind.kidx });
+  remember(state, idx, obj);
   return obj;
+}
+
+/** The player has SEEN `obj` at this grid: one entry in the remembered pile. */
+function remember(state: GameState, idx: number, obj: GameObject): void {
+  const known = state.known.objects.get(idx) ?? [];
+  known.push({ obj, sensed: false });
+  state.known.objects.set(idx, known);
 }
 
 interface FakeOpts {
@@ -104,14 +111,21 @@ function putFloor(state: GameState, at: Loc, opts: FakeOpts = {}): GameObject {
   const pile = state.floor.get(idx) ?? [];
   pile.push(obj);
   state.floor.set(idx, pile);
-  state.known.objects.set(idx, { seen: true, kidx: 1 });
+  remember(state, idx, obj);
   return obj;
 }
 
-/** Mark a grid as sensed-but-unidentified (detection marker, no glyph). */
+/**
+ * Mark a grid as sensed-but-unidentified (detection marker, no glyph). A
+ * sensed memory is still a memory OF an object, so this puts one on the floor
+ * and remembers it with the fake kind, exactly as object_sense does.
+ */
 function senseUnknown(state: GameState, at: Loc): void {
+  const obj = putFloor(state, at);
   const idx = at.y * state.chunk.width + at.x;
-  state.known.objects.set(idx, { seen: false, money: false });
+  const known = state.known.objects.get(idx) ?? [];
+  const entry = known.find((e) => e.obj === obj);
+  if (entry) entry.sensed = true;
 }
 
 describe("object_list_collect (obj-list.c L156)", () => {

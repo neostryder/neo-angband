@@ -3655,6 +3655,12 @@ export function loadGame(
       )
     : new Map();
 
+  /* Hoisted: the remembered pile is saved as locators into these very piles,
+   * so deserializeKnown must be handed the same map the state runs on. */
+  const loadedFloor = !save.isDead && save.floor
+    ? deserializeFloor(save.floor, reg.objects, chunk.width, ids)
+    : new Map<number, GameObject[]>();
+
   const state: GameState = {
     rng,
     chunk,
@@ -3667,13 +3673,19 @@ export function loadGame(
     groups: (save.isDead ? [null] : (save.groups ?? [null])).map((g) =>
       g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
     ),
-    floor: !save.isDead && save.floor
-      ? deserializeFloor(save.floor, reg.objects, chunk.width, ids)
-      : new Map(),
+    floor: loadedFloor,
     traps: loadedTraps,
     known: save.isDead
       ? newKnownMap(chunk.width, chunk.height)
-      : deserializeKnown(save.known, chunk.width, chunk.height, featRemap, ids),
+      : deserializeKnown(
+          save.known,
+          chunk.width,
+          chunk.height,
+          featRemap,
+          ids,
+          loadedFloor,
+          reg.objects,
+        ),
     /* birth_levels_persist (#30) frozen-level cache; empty in saves written
      * before the field or with the option off (back-compat). */
     levelCache: deserializeLevelCache(

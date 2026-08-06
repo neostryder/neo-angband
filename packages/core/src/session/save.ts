@@ -82,6 +82,7 @@ import { FlagSet } from "../bitflag.js";
 import { Chunk, SQUARE_SIZE } from "../world/chunk.js";
 import type { ChunkSquaresData } from "../world/chunk.js";
 import type { GameObject } from "../obj/object.js";
+import { objectNew, tvalIsMoney } from "../obj/object.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { ElementInfo } from "../obj/types.js";
 import type { AutoinscriptionRegistry, Rune } from "../obj/knowledge.js";
@@ -102,7 +103,7 @@ import type { Gear } from "../game/gear.js";
 import type { Store } from "../store/store.js";
 import type { BoundStore } from "../store/types.js";
 import { newKnownMap } from "../game/known.js";
-import type { KnownMap, KnownObjectMemory } from "../game/known.js";
+import type { KnownMap, KnownObject } from "../game/known.js";
 import {
   fnv1aIntegrity,
   stampSavefile,
@@ -136,7 +137,7 @@ import type {
  * character into "Could not read the save; starting a new game", which in a
  * permadeath game reads as "your character is gone".
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /* ------------------------------------------------------------------ *
  * Objects.
@@ -1128,54 +1129,113 @@ export function deserializeMessages(
 /** Serialized map knowledge (remembered terrain and floor objects). */
 export interface SavedKnown {
   feat: number[];
-  objects: Array<[number, SavedKnownObject]>;
+  /**
+   * The remembered PILE per grid, in the order map_info walks it. SAVE_VERSION
+   * 4; version 3 stored a single memory per grid, which migrate3to4 widens to
+   * a one-element list.
+   */
+  objects: Array<[number, SavedKnownObject[]]>;
 }
 
 /**
- * A remembered floor object (game/known.ts KnownObjectMemory).
+ * One remembered floor object (game/known.ts KnownObject).
  *
- * `kindId` present = an exact memory of that kind (grid_data.first_kind).
- * Absent = a sensed marker, `money` choosing unknown_gold_kind over
- * unknown_item_kind.
+ * A remembered object IS a live object - the port's twin link is a reference
+ * (see game/known.ts) - so the saved form is a LOCATOR into the saved floor
+ * rather than a copy: `at` is `[grid index of the pile, position within it]`,
+ * and the floor is written pile-by-pile in order, so the pair round-trips
+ * reference identity exactly. Identity is what forget_remembered_objects
+ * compares, so a copy here would quietly drop every memory on the next
+ * know/sense.
+ *
+ * `sensed` is object_sense's fake kind: something is here, but not what.
+ *
+ * `kindId` / `money` are the fallback for a memory whose original is no longer
+ * on any floor pile - upstream keeps such a shadow until the grid is re-seen,
+ * and it is rebuilt here as a detached object that the next know/sense of that
+ * grid excises, which is precisely what upstream's forget_remembered_objects
+ * does with it.
  *
  * `ch` / `attr` are the PRE-0.18 shape, when the memory was a glyph resolved at
- * memorize time rather than a kind. Kept readable so an existing character
- * loads without a SAVE_VERSION bump: a glyph cannot be turned back into a kind,
+ * memorize time rather than a kind. A glyph cannot be turned back into a kind,
  * so such an entry degrades to the sensed marker - "something is here" - and
  * heals to an exact memory the next time the player sees the grid. Written
  * alongside `kindId` so that an OLDER build reading a NEWER save degrades the
  * same benign way instead of drawing `undefined`.
  */
 export interface SavedKnownObject {
+  at?: [number, number];
+  sensed?: boolean;
   kindId?: string;
   money?: boolean;
   ch?: string | null;
   attr?: string;
 }
 
-/** KnownObjectMemory -> its saved form. */
+/** Where each live floor object sits: object -> [grid index, pile position]. */
+function floorLocators(
+  floor: ReadonlyMap<number, GameObject[]>,
+): Map<GameObject, [number, number]> {
+  const at = new Map<GameObject, [number, number]>();
+  for (const [idx, pile] of floor) {
+    for (let i = 0; i < pile.length; i++) at.set(pile[i]!, [idx, i]);
+  }
+  return at;
+}
+
+/** KnownObject -> its saved form. */
 function serializeKnownObject(
-  m: KnownObjectMemory,
+  entry: KnownObject,
+  at: ReadonlyMap<GameObject, [number, number]>,
   ids: ContentIdResolver,
 ): SavedKnownObject {
   const legacy = { ch: null, attr: "" };
-  if (!m.seen) return { ...legacy, ...(m.money ? { money: true } : {}) };
-  const kindId = ids.kindIdOrNull(m.kidx);
-  /* Kind unbound in this pack (e.g. a mod that supplied it is gone): the grid
-   * still held SOMETHING, which is exactly what the sensed marker says. */
-  return kindId === null ? legacy : { ...legacy, kindId };
+  const sensed = entry.sensed ? { sensed: true } : {};
+  const where = at.get(entry.obj);
+  if (where) return { ...legacy, ...sensed, at: where };
+  /* Detached: the original has left every floor pile (picked up, destroyed).
+   * Keep the kind so the glyph survives one more load. A kind unbound in this
+   * pack (a mod that supplied it is gone) still means SOMETHING was here,
+   * which is exactly what the sensed marker says. */
+  const kindId = ids.kindIdOrNull(entry.obj.kind.kidx);
+  return kindId === null
+    ? { ...legacy, sensed: true }
+    : { ...legacy, ...sensed, kindId, ...(tvalIsMoney(entry.obj.tval) ? { money: true } : {}) };
 }
 
-/** The saved form -> KnownObjectMemory, tolerating both shapes. */
+/**
+ * The saved form -> a KnownObject, or null when the memory cannot be rebuilt.
+ *
+ * A locator resolves against the floor that was rebuilt from the same save, so
+ * the entry points at the very object the pile holds. A detached memory is
+ * rebuilt as a fresh object from its kind. A memory with neither - the
+ * pre-0.18 glyph shape, or a kind this pack no longer binds - is DROPPED: with
+ * nothing to draw and nothing to compare identity against it would be a
+ * memory of nothing, and the grid heals to an exact memory the moment the
+ * player next sees it.
+ *
+ * `money` is written but not read: it is derived from the rebuilt object's
+ * tval, and is kept in the file so an older build still reads the split.
+ */
 function deserializeKnownObject(
   m: SavedKnownObject,
+  floor: ReadonlyMap<number, GameObject[]>,
+  reg: ObjRegistry,
   ids: ContentIdResolver,
-): KnownObjectMemory {
-  if (m.kindId !== undefined) {
-    const kidx = ids.kindIndex(m.kindId);
-    if (kidx !== undefined) return { seen: true, kidx };
+): KnownObject | null {
+  if (m.at) {
+    const obj = floor.get(m.at[0])?.[m.at[1]];
+    if (obj) return { obj, sensed: m.sensed === true };
+    return null;
   }
-  return { seen: false, money: m.money === true };
+  const kidx = m.kindId !== undefined ? ids.kindIndex(m.kindId) : undefined;
+  const kind = kidx !== undefined ? reg.kinds[kidx] : undefined;
+  if (!kind) return null;
+  const obj = objectNew(kind);
+  obj.tval = kind.tval;
+  obj.sval = kind.sval;
+  obj.grid = null;
+  return { obj, sensed: m.sensed === true };
 }
 
 /** One serialized race-lore record. */
@@ -1265,6 +1325,8 @@ export function serializeGame(
       objs: pile.map((o) => serializeObject(o, ids)),
     });
   }
+  /* Remembered objects are saved as locators into these piles, not as copies. */
+  const liveFloorAt = floorLocators(state.floor);
   const traps: NonNullable<SavedGame["traps"]> = [];
   for (const list of state.traps.values()) {
     const head = list[0];
@@ -1434,9 +1496,9 @@ export function serializeGame(
       ? {
           known: {
             feat: knownFeat,
-            objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
+            objects: Array.from(state.known.objects.entries()).map(([i, pile]) => [
               i,
-              serializeKnownObject(m, ids),
+              pile.map((e) => serializeKnownObject(e, liveFloorAt, ids)),
             ]),
           },
         }
@@ -1736,6 +1798,10 @@ export function deserializeKnown(
   height: number,
   featRemap: Map<number, number>,
   ids: ContentIdResolver,
+  /* The floor rebuilt from the SAME save: remembered objects are locators into
+   * it, so this must be the live map the game will run on, not a copy. */
+  floor: ReadonlyMap<number, GameObject[]>,
+  reg: ObjRegistry,
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
@@ -1744,8 +1810,12 @@ export function deserializeKnown(
     featRemap,
   );
   known.feat.set(feat);
-  for (const [i, m] of data.objects) {
-    known.objects.set(i, deserializeKnownObject(m, ids));
+  for (const [i, pile] of data.objects) {
+    const entries = pile
+      .map((m) => deserializeKnownObject(m, floor, reg, ids))
+      .filter((e): e is KnownObject => e !== null);
+    /* An empty remembered pile is not a memory - known.ts never stores one. */
+    if (entries.length > 0) known.objects.set(i, entries);
   }
   return known;
 }
@@ -1974,6 +2044,8 @@ function serializeStoredLevel(
       objs: pile.map((o) => serializeObject(o, ids)),
     });
   }
+  /* Remembered objects are saved as locators into these piles, not as copies. */
+  const cachedFloorAt = floorLocators(level.floor);
   const traps: SavedStoredLevel["traps"] = [];
   for (const list of level.traps.values()) {
     const head = list[0];
@@ -2005,9 +2077,9 @@ function serializeStoredLevel(
     traps,
     known: {
       feat: knownFeat,
-      objects: Array.from(level.known.objects.entries()).map(([i, m]) => [
+      objects: Array.from(level.known.objects.entries()).map(([i, pile]) => [
         i,
-        serializeKnownObject(m, ids),
+        pile.map((e) => serializeKnownObject(e, cachedFloorAt, ids)),
       ]),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
@@ -2050,6 +2122,7 @@ export function deserializeLevelCache(
     const featRemap = buildFeatRemap(entry.featLegend, ids);
     const chunk = deserializeChunk(entry.chunk, features, featRemap);
     chunk.turn = entry.turn;
+    const cachedFloor = deserializeFloor(entry.floor, objects, chunk.width, ids);
     cache.set(entry.depth, {
       chunk,
       monsters: entry.monsters.map((m) =>
@@ -2060,11 +2133,19 @@ export function deserializeLevelCache(
           ? { index: g.index, leader: g.leader, members: [...g.members] }
           : null,
       ),
-      floor: deserializeFloor(entry.floor, objects, chunk.width, ids),
+      floor: cachedFloor,
       traps: traps
         ? deserializeTraps(entry.traps, traps, chunk.width, ids)
         : new Map(),
-      known: deserializeKnown(entry.known, chunk.width, chunk.height, featRemap, ids),
+      known: deserializeKnown(
+        entry.known,
+        chunk.width,
+        chunk.height,
+        featRemap,
+        ids,
+        cachedFloor,
+        objects,
+      ),
       decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
       turn: entry.turn,
       /* chunk->join stair connectors; tolerate absence for pre-field saves. */

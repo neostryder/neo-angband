@@ -91,12 +91,49 @@ import type { GameState } from "./context.js";
  * The sensed marker keeps upstream's money/item split too: unknown_gold_kind
  * and unknown_item_kind are real object kinds (`<unknown treasure>` and
  * `<unknown item>` in object.txt), so a tile set draws them like anything else.
+ *
+ * This is the DERIVED draw result - what map_info leaves in grid_data - not
+ * what is stored. The store is a remembered PILE per grid (KnownObject below),
+ * and knownObject() is map_info's object loop over it.
  */
 export type KnownObjectMemory =
-  /** An exact memory: grid_data.first_kind. */
-  | { seen: true; kidx: number }
+  /** An exact memory: grid_data.first_kind, plus grid_data.multiple_objects. */
+  | { seen: true; kidx: number; multiple: boolean }
   /** grid_data.unseen_money / unseen_object: sensed, kind unknown. */
   | { seen: false; money: boolean };
+
+/**
+ * One remembered floor object: the port of a `player->cave` shadow object.
+ *
+ * Upstream links a shadow to its original by an integer index into the level's
+ * object registry (`obj->oidx`, resolved through `cave->objects[]`), because C
+ * has no way to hold a pointer that stays valid across a level's lifetime and
+ * a savefile. A JS reference IS that link, so the port needs no registry: the
+ * `obj` field is exactly what `ignore_known_item_ok` resolves oidx to
+ * (obj-ignore.c:636-646, which checks the ORIGINAL's ignore state, not the
+ * shadow's), and reference identity is what forget_remembered_objects compares.
+ *
+ * The port stored ONE memory per grid until this was written, which could not
+ * express any of the three things a pile does - see PORT_TODO 2.9.
+ *
+ * `sensed` stands in for the shadow's fake kind. object_sense (obj-knowledge.c
+ * L863-897) overwrites the twin's kind with unknown_gold_kind or
+ * unknown_item_kind rather than adding a second twin, so this is a flag on the
+ * entry and not an entry of its own; the money/item split is read off the
+ * original's tval at draw time, exactly as the fake kind encodes it.
+ *
+ * What is still deferred is the shadow's own PROPERTY set (obj->known's runes,
+ * brands, curses): an entry points at the original, so a remembered object
+ * reports the original's properties. That is the known-object twin, tracked
+ * separately - it is what obj-value.yaml:37 and game-effect-detect.yaml:41 are
+ * blocked on, and it is not needed for anything map_info does.
+ */
+export interface KnownObject {
+  /** The original. Reference identity replaces upstream's `oidx`. */
+  obj: GameObject;
+  /** object_sense's fake kind: something is here, but not what. */
+  sensed: boolean;
+}
 
 /** The player's knowledge of the current level. */
 export interface KnownMap {
@@ -104,8 +141,15 @@ export interface KnownMap {
   height: number;
   /** Remembered feat per grid; -1 = unknown. May be stale, as upstream. */
   feat: Int16Array;
-  /** Remembered floor objects by grid index (y * width + x). */
-  objects: Map<number, KnownObjectMemory>;
+  /**
+   * The remembered floor PILE per grid index (y * width + x), in the order
+   * upstream's `square_object(player->cave, grid)` list walks: oldest memory
+   * first, because object_see / object_sense pile_insert_end at the tail.
+   *
+   * A grid with an empty list is not the same as a grid with no entry, so the
+   * empty list is never stored - forgetRememberedObjects deletes the key.
+   */
+  objects: Map<number, KnownObject[]>;
 }
 
 /** A blank (all-unknown) knowledge map for a fresh level. */
@@ -458,25 +502,123 @@ export function squareIsInteresting(state: GameState, grid: Loc): boolean {
   return state.chunk.features.featHas(knownFeat(state, grid), TF.INTERESTING);
 }
 
-/** The remembered floor object at a grid, if any. */
+/**
+ * The player's remembered pile at a grid, oldest memory first. Empty when the
+ * player remembers nothing here. This is `square_object(player->cave, grid)`.
+ */
+export function knownPile(state: GameState, grid: Loc): readonly KnownObject[] {
+  return state.known.objects.get(gi(state, grid)) ?? [];
+}
+
+/**
+ * map_info's object loop (cave-map.c:155-169), which is the whole reason the
+ * remembered pile is a list.
+ *
+ * Upstream walks the player's SHADOW pile - not the live one - and classifies
+ * each entry in this exact order, stopping at the second displayable object:
+ *
+ *   unknown_gold_kind  -> g->unseen_money
+ *   unknown_item_kind  -> g->unseen_object
+ *   ignore_known_item_ok -> "Item stays hidden": skipped, and NOT counted, so
+ *                           an ignored item on top falls through to the one
+ *                           under it instead of hiding the grid
+ *   no first_kind yet  -> g->first_kind
+ *   otherwise          -> g->multiple_objects, and break
+ *
+ * The draw then reads them in the priority ui-map.c:200-224 uses: money star,
+ * then item star, then the `<pile>` glyph when multiple_objects, then the
+ * kind's own glyph. So a SENSED entry outranks an exact memory on the same
+ * grid, which is why this cannot short-circuit on the first seen entry.
+ */
 export function knownObject(
   state: GameState,
   grid: Loc,
 ): KnownObjectMemory | null {
-  return state.known.objects.get(gi(state, grid)) ?? null;
+  const pile = state.known.objects.get(gi(state, grid));
+  if (!pile || pile.length === 0) return null;
+
+  let unseenMoney = false;
+  let unseenObject = false;
+  let firstKind: number | null = null;
+  let multiple = false;
+
+  for (const entry of pile) {
+    if (entry.sensed) {
+      if (tvalIsMoney(entry.obj.tval)) unseenMoney = true;
+      else unseenObject = true;
+    } else if (state.isIgnored?.(entry.obj)) {
+      /* Item stays hidden. */
+    } else if (firstKind === null) {
+      firstKind = entry.obj.kind.kidx;
+    } else {
+      multiple = true;
+      break;
+    }
+  }
+
+  if (unseenMoney) return { seen: false, money: true };
+  if (unseenObject) return { seen: false, money: false };
+  if (firstKind !== null) return { seen: true, kidx: firstKind, multiple };
+  return null;
 }
 
-function pileHead(
+/**
+ * forget_remembered_objects (cave-square.c:1104-1134), the tail of both
+ * square_know_pile and square_sense_pile.
+ *
+ * Upstream walks the SHADOW pile and excises every entry whose ORIGINAL is no
+ * longer held by this grid - gated on the same predicate the caller passed, so
+ * a know/sense of one object class cannot clear another class's memory. The
+ * port used to drop the whole grid's memory only when the live pile was
+ * completely empty, and ignored the predicate entirely.
+ *
+ * Upstream's OBJ_NOTICE_IMAGINED arm additionally deletes an object that
+ * exists nowhere. Nothing in the port ever sets IMAGINED (it is upstream's
+ * mechanism for objects that were only ever hallucinated into the shadow), so
+ * excising the entry is the whole of it here: with no registry, an original
+ * that nothing references is simply collected.
+ */
+function forgetRememberedObjects(
   state: GameState,
   grid: Loc,
   pred?: (obj: GameObject) => boolean,
-): GameObject | null {
-  const pile = state.floor.get(gi(state, grid));
-  if (!pile) return null;
-  for (const obj of pile) {
-    if (!pred || pred(obj)) return obj;
+): void {
+  const idx = gi(state, grid);
+  const pile = state.known.objects.get(idx);
+  if (!pile) return;
+  const kept = pile.filter(
+    (entry) =>
+      squareHoldsObject(state, grid, entry.obj) || (pred ? !pred(entry.obj) : false),
+  );
+  if (kept.length === 0) state.known.objects.delete(idx);
+  else state.known.objects.set(idx, kept);
+}
+
+/** The remembered entry for `obj` at `grid`, if the player remembers it here. */
+function knownEntry(
+  state: GameState,
+  grid: Loc,
+  obj: GameObject,
+): KnownObject | undefined {
+  return state.known.objects.get(gi(state, grid))?.find((e) => e.obj === obj);
+}
+
+/** pile_insert_end into the remembered pile for a grid. */
+function rememberObject(
+  state: GameState,
+  grid: Loc,
+  obj: GameObject,
+  sensed: boolean,
+): void {
+  const idx = gi(state, grid);
+  const pile = state.known.objects.get(idx);
+  if (!pile) {
+    state.known.objects.set(idx, [{ obj, sensed }]);
+    return;
   }
-  return null;
+  const existing = pile.find((e) => e.obj === obj);
+  if (existing) existing.sensed = sensed;
+  else pile.push({ obj, sensed });
 }
 
 /**
@@ -484,12 +626,8 @@ function pileHead(
  * exactly; forget a remembered object that is no longer there. Without a
  * predicate the whole pile is considered (the note_spot case).
  *
- * forget_remembered_objects (cave-square.c:1106, called at :1156 and :1186):
- * upstream walks player->cave's shadow pile and excises/deletes any known
- * twin whose original is no longer on the grid. The port's knowledge is one
- * glyph per grid (state.known.objects), so that whole walk collapses to the
- * "nothing here any more -> delete the entry" branch at the end of this
- * function and of squareSensePile.
+ * object_see (obj-knowledge.c:900) gives the twin the object's REAL kind, so a
+ * seen entry clears any sensed marker the same object already had.
  */
 export function squareKnowPile(
   state: GameState,
@@ -518,15 +656,14 @@ export function squareKnowPile(
     }
   }
 
-  const head = pileHead(state, grid, pred);
-  if (head) {
-    /* grid_data.first_kind (cave-map.c:165): the KIND, resolved to a glyph and
-     * a tile at draw time by object_kind_attr / object_kind_char. */
-    state.known.objects.set(gi(state, grid), { seen: true, kidx: head.kind.kidx });
-  } else if (!pileHead(state, grid)) {
-    /* Nothing at all here: any memory is stale. */
-    state.known.objects.delete(gi(state, grid));
+  /* object_see for every matching object on the grid (cave-square.c:1175-1183),
+   * not just the first: upstream remembers the whole pile, and the draw decides
+   * which one shows. */
+  for (const obj of floorPile(state, grid)) {
+    if (!pred || pred(obj)) rememberObject(state, grid, obj, false);
   }
+
+  forgetRememberedObjects(state, grid, pred);
 }
 
 /**
@@ -653,30 +790,31 @@ export function updatePlayerObjectKnowledge(state: GameState): void {
 }
 
 /**
- * square_sense_pile (reduced): become aware that something matching is
- * here without learning what (the sensed marker), keeping an exact
- * memory if one exists; forget stale memories like squareKnowPile.
+ * square_sense_pile (cave-square.c:1140-1158): become aware that something
+ * matching is here without learning what, then forget stale memories.
+ *
+ * object_sense (obj-knowledge.c:863-897) only acts when the object has no twin
+ * on THIS grid - `known_obj == NULL || !square_holds_object(p->cave, grid,
+ * known_obj)`. An object already remembered here keeps the memory it has, so
+ * sensing a pile you have already SEEN does not downgrade it back to a star.
+ *
+ * The fake kind is unknown_gold_kind for money and unknown_item_kind
+ * otherwise, and the two draw differently (a white `*` and a red one, plus
+ * whatever the tile set maps them to), so the split is read off the original's
+ * tval rather than collapsed to one colourless marker.
  */
 export function squareSensePile(
   state: GameState,
   grid: Loc,
   pred?: (obj: GameObject) => boolean,
 ): void {
-  const idx = gi(state, grid);
-  const head = pileHead(state, grid, pred);
-  if (head) {
-    const existing = state.known.objects.get(idx);
-    if (!existing || !existing.seen) {
-      /* object_sense's fake-kind assignment (obj-knowledge.c:886-892): the
-       * marker is unknown_gold_kind for money and unknown_item_kind otherwise,
-       * and the two draw differently (a white `*` and a red one, plus whatever
-       * the tile set maps them to). The port used to collapse both to one
-       * colourless marker. */
-      state.known.objects.set(idx, { seen: false, money: tvalIsMoney(head.tval) });
-    }
-  } else if (!pileHead(state, grid)) {
-    state.known.objects.delete(idx);
+  for (const obj of floorPile(state, grid)) {
+    if (pred && !pred(obj)) continue;
+    if (knownEntry(state, grid, obj)) continue;
+    rememberObject(state, grid, obj, true);
   }
+
+  forgetRememberedObjects(state, grid, pred);
 }
 
 /* forgetMap (a whole-map "forget everything + wipe DTRAP" pass) was removed:

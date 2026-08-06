@@ -3,6 +3,7 @@ import { FEAT, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
+import type { GameObject } from "../obj/object.js";
 import { deleteMonster } from "./context.js";
 import type { GameState } from "./context.js";
 import { squareMemorize } from "./known.js";
@@ -159,8 +160,11 @@ describe("target_accept (L325)", () => {
     /* Plain, unremembered floor is not. */
     expect(targetAccept(state, loc(12, 12))).toBe(false);
 
-    /* A remembered floor object. */
-    state.known.objects.set(13 * state.chunk.width + 13, { seen: true, kidx: 1 });
+    /* A remembered floor object: map_info needs a kind to put in first_kind. */
+    const seen = { kind: { kidx: 1 }, tval: 80 } as unknown as GameObject;
+    state.known.objects.set(13 * state.chunk.width + 13, [
+      { obj: seen, sensed: false },
+    ]);
     expect(targetAccept(state, loc(13, 13))).toBe(true);
 
     /* Remembered interesting terrain (a staircase). */

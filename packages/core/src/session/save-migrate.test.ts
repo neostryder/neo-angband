@@ -156,6 +156,69 @@ function idsToDense(idList: unknown, index: (id: string) => number | undefined):
 }
 
 /** The version-3 document as version 2 wrote it. */
+/**
+ * The current document as version 3 wrote it: the remembered pile collapses
+ * back to the single per-grid memory, keeping only its kind.
+ *
+ * Version 3 could not express a pile, so a down-conversion keeps the entry
+ * map_info would have drawn - the first non-sensed one, or the sensed marker
+ * if that is all there is. That is the information version 3 held, and it is
+ * exactly what V3_TO_V4 has to be able to widen again.
+ */
+function toV3(save: SavedGame, ids: ContentIdResolver): Json {
+  const doc = JSON.parse(JSON.stringify(save)) as Json;
+
+  const collapse = (known: unknown, floor: unknown, width: number): void => {
+    if (!isObj(known) || !Array.isArray(known.objects)) return;
+    /* Version 3 stored a kind, so a locator has to be resolved through the
+     * floor the same save carries. */
+    const kindAt = (at: unknown): string | null => {
+      if (!Array.isArray(at) || !Array.isArray(floor)) return null;
+      for (const pile of floor) {
+        if (!isObj(pile) || !Array.isArray(pile.objs)) continue;
+        const idx = (pile.y as number) * width + (pile.x as number);
+        if (idx !== at[0]) continue;
+        const obj = pile.objs[at[1] as number];
+        return isObj(obj) && typeof obj.kindId === "string" ? obj.kindId : null;
+      }
+      return null;
+    };
+    const out: Array<[number, Json]> = [];
+    for (const pair of known.objects) {
+      if (!Array.isArray(pair)) continue;
+      const entries = pair[1] as unknown[];
+      if (!Array.isArray(entries) || entries.length === 0) continue;
+      const seen = entries.find((e) => isObj(e) && e.sensed !== true);
+      const pick = seen ?? entries[0];
+      if (!isObj(pick)) continue;
+      const kindId =
+        typeof pick.kindId === "string" ? pick.kindId : kindAt(pick.at);
+      out.push([
+        pair[0] as number,
+        kindId !== null && pick.sensed !== true
+          ? { ch: null, attr: "", kindId }
+          : { ch: null, attr: "", money: pick.money === true },
+      ]);
+    }
+    known.objects = out;
+  };
+
+  /* The grid index a locator carries is y * width + x, so the collapse needs
+   * the same width the save was written with - never a guessed constant. */
+  const widthOf = (chunk: unknown): number =>
+    isObj(chunk) && typeof chunk.width === "number" ? chunk.width : 0;
+
+  collapse(doc.known, doc.floor, widthOf(doc.chunk));
+  if (Array.isArray(doc.levelCache)) {
+    for (const level of doc.levelCache) {
+      if (isObj(level)) collapse(level.known, level.floor, widthOf(level.chunk));
+    }
+  }
+  void ids;
+  doc.version = 3;
+  return doc;
+}
+
 function toV2(save: SavedGame, ids: ContentIdResolver): Json {
   const doc = JSON.parse(JSON.stringify(save)) as Json;
   const kidxs = (v: unknown): number[] =>
@@ -339,22 +402,57 @@ describe("a save from the future is refused, and says why", () => {
 });
 
 describe("round trip: a save walked back and migrated forward is unchanged", () => {
-  it("survives version 2 -> 3", () => {
-    const ids = resolver();
+  /**
+   * 3 -> 4 is the one step that cannot round-trip to byte equality, and the
+   * reason is in the formats rather than in the step: version 3 stored a KIND
+   * per grid and version 4 stores a LINK to an object, so walking a version-4
+   * save back to 3 throws the link away and no forward step can invent it.
+   *
+   * What must survive is what version 3 could express - the grid still
+   * remembers the same kind - so that is what this asserts, on the widened
+   * shape, rather than pretending at an equality the formats cannot support.
+   */
+  it("survives version 3 -> 4, keeping every remembered kind", () => {
     const save = currentSave();
-    const back = toV2(save, ids);
-    expect(back.version).toBe(2);
+    const ids = resolver();
+    const back = toV3(save, ids);
+    expect(back.version).toBe(3);
+    /* The down-converter has to have actually collapsed something, or the
+     * assertion below passes vacuously. */
+    expect(JSON.stringify(back)).not.toEqual(JSON.stringify(save));
 
     const forward = migrateSave(back as never, resolver());
     expect(forward.applied).toHaveLength(1);
     expect(forward.notes).toEqual([]);
-    expect(forward.save).toEqual(save);
+
+    const widened = (forward.save as unknown as SavedGame).known!.objects;
+    const before = toV3(save, resolver()).known as {
+      objects: Array<[number, { kindId?: string }]>;
+    };
+    expect(widened).toHaveLength(before.objects.length);
+    /* Every grid keeps its identity and its kind, as a one-element pile. */
+    for (const [idx, entry] of before.objects) {
+      const after = widened.find(([i]) => i === idx)!;
+      expect(after[1]).toHaveLength(1);
+      expect(after[1][0]!.kindId).toBe(entry.kindId);
+    }
   });
 
-  it("survives version 1 -> 2 -> 3", () => {
+  it("survives version 2 -> 3 -> 4", () => {
     const ids = resolver();
     const save = currentSave();
-    const back = toV1(toV2(save, ids), ids);
+    const back = toV2(toV3(save, ids) as unknown as SavedGame, ids);
+    expect(back.version).toBe(2);
+
+    const forward = migrateSave(back as never, resolver());
+    expect(forward.applied).toHaveLength(2);
+    expect(forward.notes).toEqual([]);
+  });
+
+  it("survives version 1 -> 2 -> 3 -> 4", () => {
+    const ids = resolver();
+    const save = currentSave();
+    const back = toV1(toV2(toV3(save, ids) as unknown as SavedGame, ids), ids);
     expect(back.version).toBe(1);
     /* Proof the down-converter actually undid something, so an equality that
      * passes cannot be passing vacuously. */
@@ -362,18 +460,17 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(back)).toContain('"kidx"');
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(2);
+    expect(forward.applied).toHaveLength(3);
     expect(forward.notes).toEqual([]);
-    expect(forward.save).toEqual(save);
   });
 
   it("the migrated version-1 document actually loads and plays", () => {
     const ids = resolver();
     const original = currentSave();
-    const back = toV1(toV2(original, ids), ids);
+    const back = toV1(toV2(toV3(original, ids) as unknown as SavedGame, ids), ids);
 
     const game = loadGame(pack, back as never);
-    expect(game.saveMigration?.applied).toHaveLength(2);
+    expect(game.saveMigration?.applied).toHaveLength(3);
     expect(game.saveMigration?.notes).toEqual([]);
     /* It is a real game, not just a document that parsed. */
     playTurns(game, 3);
