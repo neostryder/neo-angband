@@ -26,7 +26,7 @@
  * squareIsDecoyed / monsterIsDecoyed).
  */
 
-import { EF, MON_TMD, OF, PROJ, TMD } from "../generated/index.js";
+import { EF, MON_TMD, MSG, OF, PROJ, TMD } from "../generated/index.js";
 import { DDGRID, distance, loc, locSum } from "../loc.js";
 import { PROJECT } from "../world/project.js";
 import { GLYPH_DECOY } from "../effects/effect.js";
@@ -148,9 +148,13 @@ interface GameEffectEnvLike {
   general?: GeneralEffectEnv;
 }
 
-/** msg() over the effect context's optional message sink. */
-function say(ctx: EffectHandlerContext, text: string): void {
-  ctx.env.messages?.msg(text);
+/**
+ * msg() over the effect context's optional message sink. `msgt` is a MSG_*
+ * name and supplies msgt's message half; the sound half is state.sound at the
+ * call site (this helper has no state).
+ */
+function say(ctx: EffectHandlerContext, text: string, msgt?: string): void {
+  ctx.env.messages?.msg(text, msgt);
 }
 
 /**
@@ -715,14 +719,20 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
   const increment = Math.trunc(4 / state.z.stairSkip) + 1;
   const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
 
+  /* Both arms are msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:1171,
+   * :1178) - the message carries the type, and msgt's other half is the
+   * sound. Neither half existed here (PORT_TODO 3.26). */
   if (targetDepth > state.chunk.depth) {
-    say(ctx, "The air around you starts to swirl...");
+    say(ctx, "The air around you starts to swirl...", "TPLEVEL");
+    state.sound?.(MSG.TPLEVEL);
     p.deepDescent = 3 + state.rng.randint1(4);
   } else {
     say(
       ctx,
       "You sense a malevolent presence blocking passage to the levels below.",
+      "TPLEVEL",
     );
+    state.sound?.(MSG.TPLEVEL);
   }
   ctx.ident = true;
   return true;

@@ -26,6 +26,7 @@
  */
 
 import { MON_TMD, OF, PF, STAT, TMD } from "../generated/index.js";
+import { msgt } from "../msg.js";
 import { TMD_MAX } from "../player/types.js";
 import { los } from "../world/view.js";
 import { makeNoise, updateScent } from "../world/flow.js";
@@ -474,11 +475,12 @@ export function processWorld(state: GameState): void {
        * its cmdq_flush - so the recall cannot arrive mid-run with a queued step
        * waiting to spend itself on arrival. */
       disturb(state);
+      /* msgt(MSG_TPLEVEL, ...) (game-world.c:799, :802) - both halves. */
       if (state.chunk.depth > 0) {
-        state.msg?.("You feel yourself yanked upwards!");
+        msgt(state, "TPLEVEL", "You feel yourself yanked upwards!");
         state.targetDepth = 0;
       } else {
-        state.msg?.("You feel yourself yanked downwards!");
+        msgt(state, "TPLEVEL", "You feel yourself yanked downwards!");
         /* player_set_recall_depth: non-persistent levels use max_depth. */
         p.recallDepth = p.maxDepth;
         state.targetDepth = p.recallDepth;
@@ -499,13 +501,14 @@ export function processWorld(state: GameState): void {
        * opening beneath you interrupts whatever you were doing even when the
        * descent has nowhere to go and throws you back instead. */
       disturb(state);
+      /* msgt(MSG_TPLEVEL, ...) (game-world.c:824, :828) - both halves. */
       if (targetDepth > state.chunk.depth) {
-        state.msg?.("The floor opens beneath you!");
+        msgt(state, "TPLEVEL", "The floor opens beneath you!");
         state.targetDepth = targetDepth;
         state.generateLevel = true;
       } else {
         /* The disastrous EF_DESTRUCTION fallback rides that handler. */
-        state.msg?.("You are thrown back in an explosion!");
+        msgt(state, "TPLEVEL", "You are thrown back in an explosion!");
       }
     }
   }

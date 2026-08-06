@@ -10,7 +10,8 @@ import {
   COLOUR_WHITE,
   COLOUR_YELLOW,
 } from "../color.js";
-import { playerSpAttr } from "../player/calcs.js";
+import { calcBonuses, playerSpAttr } from "../player/calcs.js";
+import { statTable } from "./char-sheet.js";
 import { objectNew } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 import { gearAdd } from "./gear.js";
@@ -158,6 +159,64 @@ describe("sidebar stat drain (prt_stat, ui-display.c:153-171)", () => {
     expect(label[5]).toBe(" "); /* blank column at col 5 */
     expect(str[1]?.text).toBe("18/100"); /* six-char cnv_stat value of stat_use 118 */
     expect(str[1]?.text.length).toBe(6);
+  });
+});
+
+describe("the sidebar's stat rows read the live calc_bonuses result (PORT_TODO 3.5)", () => {
+  /* prt_stat reads player->state.stat_use. Before this, the model's default
+   * was race + class over stat_cur and no shell supplied the dep, so a worn
+   * +STR ring changed the character sheet (which reads playerState.statUse)
+   * and left the sidebar alone. The fixture goes through calcBonuses rather
+   * than hand-writing a statUse array, so the assertion is about the producer
+   * the live shell actually installs (session/game.ts:718). */
+  function withStrRing(): { state: ReturnType<typeof makeState>; bare: number } {
+    const state = makeState();
+    const p = state.actor.player;
+    const equipment: (ReturnType<typeof objectNew> | null)[] = new Array(
+      p.body.count,
+    ).fill(null);
+    const ring = objectNew({} as ObjectKind);
+    ring.modifiers[STAT.STR] = 5;
+    equipment[p.body.count - 1] = ring;
+    /* Rune known, or calc_bonuses is right to ignore the modifier. */
+    p.objKnown.modifiers[STAT.STR] = 1;
+    const bare = calcBonuses(p).statUse[STAT.STR] ?? 0;
+    state.playerState = calcBonuses(p, { equipment });
+    return { state, bare };
+  }
+
+  it("shows the equipped value, not the race+class one", () => {
+    const { state, bare } = withStrRing();
+    const worn = state.playerState?.statUse[STAT.STR] ?? 0;
+    expect(worn).toBeGreaterThan(bare); /* the fixture must be able to fail */
+
+    const str = field(sidebarModel(state), "str");
+    expect(str[1]?.text).toBe(cnvStat(worn));
+    expect(str[1]?.text).not.toBe(cnvStat(bare));
+  });
+
+  it("agrees with the character sheet, which is the screen it used to contradict", () => {
+    const { state } = withStrRing();
+    const ps = state.playerState;
+    /* Undrained, so the sheet's headline "Best" (stat_top) is the same number
+     * prt_stat prints; the sheet gets it from playerState and always did. */
+    if (!ps) throw new Error("fixture did not set playerState");
+    const sheet = statTable(state, {
+      statAdd: ps.statAdd,
+      statTop: ps.statTop,
+      statUse: ps.statUse,
+    })[STAT.STR];
+    expect(sheet?.drained).toBe(false);
+    expect(field(sidebarModel(state), "str")[1]?.text).toBe(sheet?.best);
+    expect(sheet?.equipBonus.trim()).toBe("+5");
+  });
+
+  it("still falls back to race+class when there is no playerState at all", () => {
+    const state = makeState();
+    delete state.playerState; /* the worldless harness never sets it */
+    const p = state.actor.player;
+    const str = field(sidebarModel(state), "str");
+    expect(str[1]?.text).toBe(cnvStat(calcBonuses(p).statUse[STAT.STR] ?? 0));
   });
 });
 

@@ -111,9 +111,9 @@ export interface DisplayDeps {
   timedEffects?: readonly TimedEffect[];
   /**
    * player->state.stat_use[STAT_MAX]: the current modified stats prt_stat
-   * shows. Default derived from Player.statCur with the race + class modifiers
-   * only (equipment and timed contributions come from calcBonuses - no stored
-   * player_state on GameState).
+   * shows. Defaults to state.playerState.statUse, the last calc_bonuses result,
+   * which is what upstream reads. Only a state with no playerState at all (the
+   * worldless test harness) falls back to race + class over statCur.
    */
   statUse?: readonly number[];
   /**
@@ -246,7 +246,14 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
       deps.birthFeelings ?? state.options?.get("birth_feelings") ?? true,
     feelingNeed: deps.feelingNeed ?? 10,
     timedEffects: deps.timedEffects ?? [],
-    statUse: deps.statUse ?? defaultStatUse(player),
+    /* PORT_TODO 3.5: derived, not defaulted - the same shape as numMoves
+     * below. prt_stat reads player->state.stat_use, which calc_bonuses fills
+     * from equipment, runes and timed effects; the fallback below sees only
+     * race + class. No shell ever supplied the dep, so the sidebar showed the
+     * unequipped number while the character sheet (which DOES read
+     * playerState.statUse) showed the real one: a +STR ring moved one screen
+     * and not the other. */
+    statUse: deps.statUse ?? state.playerState?.statUse ?? defaultStatUse(player),
     /* PORT_TODO 3.10: derived, not defaulted. calc_bonuses computes num_moves
      * (calcs.ts) and prt_moves read a hardcoded 0, so the sidebar's Moves row
      * was blank for a character with +moves. */
