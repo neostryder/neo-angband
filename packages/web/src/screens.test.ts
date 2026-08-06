@@ -88,7 +88,6 @@ import {
   deviceMenu,
   monsterRecallLines,
   knownMonsterEntries,
-  monsterKnowledgeMenu,
   autoinscriptionMenu,
   tombstoneLines,
   winnerLines,
@@ -990,7 +989,7 @@ describe("monsterRecallLines ('r' recall screen, ui-mon-lore.c lore_description)
 });
 
 /* ------------------------------------------------------------------ */
-/* knownMonsterEntries / monsterKnowledgeMenu ('~' -> Monsters,          */
+/* knownMonsterEntries ('~' -> Monsters,                                 */
 /* ui-knowledge.c do_cmd_knowledge_monsters): the list-building and      */
 /* filtering logic behind the monster-knowledge screen, over the real   */
 /* shipped monster registry.                                            */
@@ -1060,30 +1059,6 @@ describe("knownMonsterEntries (ui-knowledge.c monster-knowledge filter/sort)", (
     ]);
     knownMonsterEntries(namedRaces, store);
     expect(store.size).toBe(1); // unseen races got no blank records
-  });
-});
-
-describe("monsterKnowledgeMenu ('~' -> Monsters selection list)", () => {
-  it("labels each row by capitalized name, appends a kill tally, colours by dAttr", () => {
-    const killed = namedRaces[6]!;
-    const unkilled = namedRaces[9]!;
-    const store = new Map<number, MonsterLore>([
-      [killed.ridx, seenLore(killed, { sights: 1, pkills: 4 })],
-      [unkilled.ridx, seenLore(unkilled, { sights: 1, pkills: 0 })],
-    ]);
-    const { items, rows } = monsterKnowledgeMenu(namedRaces, store);
-    expect(items.length).toBe(rows.length);
-    for (let i = 0; i < rows.length; i++) {
-      const { race, lore } = rows[i]!;
-      const item = items[i]!;
-      const cap = race.name.charAt(0).toUpperCase() + race.name.slice(1);
-      expect(item.label.startsWith(cap)).toBe(true);
-      expect(item.label.includes("killed")).toBe(lore.pkills > 0);
-      expect(item.color).toBe(colorToCss(race.dAttr));
-    }
-    // The killed race carries its "(N killed)" tally.
-    const killedItem = items[rows.findIndex((r) => r.race.ridx === killed.ridx)]!;
-    expect(killedItem.label).toContain("(4 killed)");
   });
 });
 

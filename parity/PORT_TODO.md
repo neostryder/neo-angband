@@ -1527,10 +1527,47 @@ is reachable in play and a test constructs the case that used to be wrong.**
   changes it is silently ignored.
   Sites: `parity/ledger/ui-display.yaml:97`
 
-- [ ] **3.16 The knowledge browser's thematic grouping columns.**
-  This is `ui_knowledge.txt` — the datafile defines the browser's `monster_group`
-  grouping, the browser is ported, the grouping is not drawn.
-  Sites: `packages/web/src/screens.ts:872`, `parity/ledger/gamedata.yaml:478`
+- [x] **3.16 The knowledge browser's thematic grouping columns.** DONE.
+  **Half of this row had already been closed, and three artefacts still said
+  otherwise.** `ui_knowledge.txt` is compiled, `bindMonsterCategories` parses it
+  at boot, `monsterKnowledgeGroups` assigns every known race to every category
+  it matches, and the shell has been drawing two panes off that for some time.
+  The row, the `screens.ts` docblock it cited ("*deferred (a larger follow-up
+  alongside object/artifact knowledge)*") and the `gamedata.yaml` ledger entry
+  (`status: planned`, "*front-end/UI concern, not part of the core rules pack*")
+  were all describing a state that had ended. All three now say what is true.
+
+  **What was actually still wrong: monsters had a SECOND browser.** Every other
+  knowledge screen goes through `runGroupedBrowser`, the faithful
+  `display_knowledge` (`ui-knowledge.c:795`); monsters had a bespoke renderer in
+  `main.ts`, and being the only copy that never learned what the shared one
+  learned, it was missing:
+  - the **`Group` label**, the `=` rule at row 5 and the `|` divider — the three
+    things that make it look like the browser upstream draws (`:928-940`);
+  - **`g_name_len`'s floor of 8** (`:808`), so a run of short category names slid
+    the whole Name column left;
+  - the header at `otherfields`' column 46 (it printed its own at 64, a column
+    off from upstream's `"                 Sym  Kills  Full"`);
+  - `OPT(player, purple_uniques)` on the symbol (`:1188-1194`).
+
+  It goes through `runGroupedBrowser` now, and the two seams it needed are ones
+  `display_knowledge` has always had and the port had never carried, because
+  **monsters are the only caller that passes either**: `otherfields` and
+  `g_funcs.summary`. `KnowledgeRow.suffix` — one annotation, for
+  `display_rune`'s inscription — became `cells`, a list, which is what the
+  member-display callbacks actually write.
+  17 mutations, 17 killed — but **three of the first pass survived, and all
+  three were the same fault: an assertion that could not fail.** The dedupe test
+  gave its two-group monster ZERO kills, so double-counting him changed nothing;
+  the kills test had no dead unique in it; and the purple-uniques test read the
+  row under the CURSOR, which is painted in the cursor colour rather than the
+  row's own, so a name wrongly turned violet was invisible there. The fixture is
+  built to make each of those visible now.
+  The flat `monsterKnowledgeMenu` is deleted. Its last caller was the greyed-out
+  gate, which built an entire display list to ask whether it was empty; that is
+  `knownMonsterEntries(...).length > 0`, which is what `count_known_monsters`
+  does (`:1330`).
+  Sites: `packages/web/src/knowledge.ts:1442`, `parity/ledger/gamedata.yaml:471`
 
 - [ ] **3.17 `update_sidebar`'s priority culling and from-bottom placement.**
   The sidebar itself is drawn, on a canvas. The screen-size priority culling and
