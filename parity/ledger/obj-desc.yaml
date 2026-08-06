@@ -62,11 +62,16 @@ deferred:
     special-artifact branches (mutating the shared FlavorKnowledge and
     propagating over gear + stores) are not run from the shadow (KnownDesc is
     read-only); they belong with the awareness-propagation wiring.
-  - Store "{tried}" marker: no live tried seam on GameState, so the adapter's
-    isTried reports false (game/describe.ts).
-  - chest trap name, the " {ignore}"/"{ignore}" markers (no ignore-name
-    surface), the everseen mutations, and ODESC_CAPITAL (a caller concern in
-    4.2.6) are omitted.
+  - The "{tried}" and "{ignore}" markers are PORTED (PORT_TODO 3.27, closed
+    2026-08-05). Both deferrals above were wrong about their own cause: the
+    claim was "no live tried seam" and "no ignore-name surface", but
+    FlavorKnowledge.setTried has been called on every device use since
+    obj-cmd.ts:1444 and its set is saved with the character, and ignoreItemOk
+    (obj/ignore.ts:380) has driven pickup, running and projection through
+    state.isIgnored all along. Only knownDescOf's two reads were missing, and
+    the notes describing the absence are what kept anyone from checking.
+  - chest trap name, the everseen mutations, and ODESC_CAPITAL (a caller
+    concern in 4.2.6) are omitted.
   - The game-layer name sites are migrated onto describeObject: obj-list.ts
     objectListEntryName (ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM, the summed
     count driving the article / "~" plural), the effect-handler messages

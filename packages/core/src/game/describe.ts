@@ -15,10 +15,14 @@ import type { GameState } from "./context.js";
 export function knownDescOf(state: GameState): KnownDesc {
   return {
     isAware: (kind) => (state.isAware ? state.isAware(kind) : false),
-    /* object_flavor_was_tried: only affects the in-store "{tried}" marker.
-     * The port has no live tried seam on GameState yet, so it reports false;
-     * ledgered in game-describe.yaml. */
-    isTried: () => false,
+    /* object_flavor_was_tried (obj-knowledge.c:2257), the "{tried}" marker at
+     * obj-desc.c:527. This used to be a hardcoded `false` saying the port had
+     * no live tried seam. It has had one all along: FlavorKnowledge.setTried
+     * is called on every device use (obj-cmd.ts:1444, knowledge.ts:623) and
+     * the set is saved and restored - only this read was missing, so an
+     * unidentified wand you had already zapped looked identical to one you
+     * had never touched (PORT_TODO 3.27). */
+    isTried: (kind) => state.flavorKnown?.wasTried(kind) ?? false,
     /* OPT(p, show_flavors) (obj-desc.c L89): once aware, keep the flavour only
      * when the option is on. Reads the wired option store; absent (worldless
      * tests), it reports true so the prior seam-absent behaviour is preserved. */
@@ -27,6 +31,13 @@ export function knownDescOf(state: GameState): KnownDesc {
      * Absent seams leave object_desc on its tval-only fallback. */
     ...(state.hasFlavor ? { hasFlavor: state.hasFlavor } : {}),
     ...(state.flavorText ? { flavorText: state.flavorText } : {}),
+    /* ignore_item_ok(p, obj) (obj-desc.c:536-538), the "{ignore}" marker. The
+     * predicate has been ported and in use since obj/ignore.ts:380 - the game
+     * calls it as state.isIgnored on the pickup, running and projection paths
+     * - and object_desc's own slot for it was simply never filled, so an item
+     * the player had told the game to ignore said nothing about it in the
+     * inventory (PORT_TODO 3.27). */
+    ...(state.isIgnored ? { ignoreItemOk: state.isIgnored } : {}),
     /* kind->everseen / ego->everseen (obj-desc.c L633-637): a live describe of
      * an item whose name the player knows marks it seen for the object/ego
      * knowledge browsers. Pure Set insert, no RNG. Absent (worldless) = no-op. */
