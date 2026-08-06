@@ -629,6 +629,10 @@ const MAX_SHORTENED = 10;
 interface CategoryRef {
   name: string;
   priority: number;
+  /** struct category_reference.priority_set (ui-entry.c:58): this category was
+   * given a priority of its own, so finish_parse must not fill it from the
+   * entry's default. */
+  prioritySet: boolean;
 }
 
 interface BoundObjProp {
@@ -677,7 +681,11 @@ function priorityScheme(name: string): number {
 }
 function applyPriorityScheme(scheme: number, i: number): number {
   if (scheme === 1) return i;
-  if (scheme === 2) return -i;
+  /* get_priority_from_negative_index returns `-i` on an int, and negating 0
+   * there gives 0. JavaScript gives -0, which compares equal to 0 everywhere
+   * that matters and is still a value the C cannot produce, so it is not
+   * allowed to escape: `|| 0` maps -0 to 0 and leaves every other value alone. */
+  if (scheme === 2) return -i || 0;
   return 0;
 }
 
@@ -767,7 +775,12 @@ function blankEntry(name: string): UiEntry {
 }
 
 /** search_categories on a UiEntry: insert if absent (kept sorted by name). */
-function addCategory(entry: UiEntry, name: string, priority: number): void {
+function addCategory(
+  entry: UiEntry,
+  name: string,
+  priority: number,
+  prioritySet = false,
+): void {
   let lo = 0;
   let hi = entry.categories.length;
   while (lo < hi) {
@@ -777,7 +790,7 @@ function addCategory(entry: UiEntry, name: string, priority: number): void {
     if (cmp < 0) lo = mid + 1;
     else hi = mid;
   }
-  entry.categories.splice(lo, 0, { name, priority });
+  entry.categories.splice(lo, 0, { name, priority, prioritySet });
 }
 
 function categoryPriority(entry: UiEntry, name: string): number | null {
@@ -808,13 +821,29 @@ function buildEntries(
     return Array.isArray(v) ? v.map(String) : [String(v)];
   };
 
+  /** A `category` entry: `{ category, priority? }`, or a bare name. */
+  const catField = (rec: Json, key: string): { name: string; priority?: string }[] => {
+    const v = rec[key];
+    if (v === undefined) return [];
+    const list = Array.isArray(v) ? v : [v];
+    return list.map((item) => {
+      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
+        const o = item as Record<string, unknown>;
+        const name = String(o["category"] ?? "");
+        const pr = o["priority"];
+        return pr === undefined ? { name } : { name, priority: String(pr) };
+      }
+      return { name: String(item) };
+    });
+  };
+
   const hatch = (rec: UiEntryRecord, templateOnlyDefault: boolean): void => {
     const name = rec.name;
     const existing = table.get(name);
 
     if (existing) {
       /* Edit an existing entry. */
-      applyRecordToEntry(rec, existing, renderers, strField, arrField, -1, 0);
+      applyRecordToEntry(rec, existing, renderers, strField, arrField, catField, -1, 0);
       return;
     }
 
@@ -826,7 +855,7 @@ function buildEntries(
     if (kind === 0) {
       const entry = blankEntry(name);
       entry.templateOnly = templateOnlyDefault;
-      applyRecordToEntry(rec, entry, renderers, strField, arrField, -1, 0);
+      applyRecordToEntry(rec, entry, renderers, strField, arrField, catField, -1, 0);
       table.set(name, entry);
       return;
     }
@@ -838,7 +867,7 @@ function buildEntries(
       const entry = blankEntry(`${name}<${pname}>`);
       entry.templateOnly = templateOnlyDefault;
       entry.paramIndex = i;
-      applyRecordToEntry(rec, entry, renderers, strField, arrField, i, psource);
+      applyRecordToEntry(rec, entry, renderers, strField, arrField, catField, i, psource);
       /* Default label is the parameter name unless one was set. */
       if (entry.nlabel === 0) {
         entry.label = pname;
@@ -861,15 +890,16 @@ function buildEntries(
     }
     fillOutShortened(entry);
     /*
-     * finish_parse (ui-entry.c L2389): categories with no explicit per-category
-     * priority inherit the entry's final default priority. The shipped data
-     * never sets a per-category priority (priority always precedes any category
-     * line, so it sets the default), so every category takes defaultPriority -
-     * which is what makes the priority line seen after a template's categories
-     * still order the row correctly.
+     * finish_parse (ui-entry.c L2389): categories with NO explicit per-category
+     * priority inherit the entry's final default. That `priority_set` test used
+     * to be missing here, because the compiler flattened `priority` to a record
+     * scalar and no category could ever carry one of its own (PORT_TODO 3.25).
+     * The shipped files still never set one - every `priority` line precedes
+     * any `category` line, so it sets the default - which is what makes a
+     * priority seen after a template's categories still order the row right.
      */
     for (const c of entry.categories) {
-      c.priority = entry.defaultPriority;
+      if (!c.prioritySet) c.priority = entry.defaultPriority;
     }
   }
 
@@ -887,6 +917,7 @@ function applyRecordToEntry(
   renderers: RendererInfo[],
   strField: (rec: Json, key: string) => string | undefined,
   arrField: (rec: Json, key: string) => string[],
+  catField: (rec: Json, key: string) => { name: string; priority?: string }[],
   paramIdx: number,
   psource: number,
 ): void {
@@ -936,9 +967,23 @@ function applyRecordToEntry(
     entry.defaultPriority = applyPriorityScheme(psource, paramIdx);
   }
 
-  /* Categories: added with the (now-resolved) default priority. */
-  for (const cat of arrField(rec, "category")) {
-    addCategory(entry, cat, entry.defaultPriority);
+  /*
+   * Categories, in file order, each with the priority it was given or the
+   * entry's default. A compiled entry is `{ category, priority? }` - a
+   * `priority` line FOLLOWING a `category` line is that category's override
+   * (parse_entry_priority, ui-entry.c:2211-2221). A BARE STRING is the older
+   * compiled shape and still reads, so a pack built before this is not a crash.
+   */
+  for (const cat of catField(rec, "category")) {
+    if (cat.priority === undefined) {
+      addCategory(entry, cat.name, entry.defaultPriority);
+      continue;
+    }
+    const scheme = priorityScheme(cat.priority);
+    const idx = paramIdx >= 0 ? paramIdx : entry.paramIndex >= 0 ? entry.paramIndex : 0;
+    const value =
+      scheme !== 0 ? applyPriorityScheme(scheme, idx) : Number.parseInt(cat.priority, 10);
+    addCategory(entry, cat.name, Number.isNaN(value) ? entry.defaultPriority : value, true);
   }
 
   /* Flags. */

@@ -36,7 +36,20 @@ const uiEntryDirectives = [
   { fmt: "label9 str label9" },
   { fmt: "label10 str label10" },
   { fmt: "category str category", repeat: true },
-  { fmt: "priority str priority" },
+  /**
+   * parse_entry_priority (ui-entry.c:2173) branches on
+   * `embryo->last_category_index == -1`: a priority BEFORE any category in the
+   * record is the record's default, and one AFTER a category overrides that
+   * category's own priority (`:2211-2221`). So the two directives are ordered
+   * with respect to each other, and flattening `priority` to a record scalar
+   * threw that ordering away - PORT_TODO 3.25.
+   *
+   * `childOf` is exactly that branch: with no `requireParent`, a priority with
+   * no preceding category attaches to the record, and one after a category
+   * attaches to that category. The shipped files only ever use the first form,
+   * so this changes nothing the game shows and everything a pack can say.
+   */
+  { fmt: "priority str priority", childOf: ["category"] },
   { fmt: "flags ?str flags", repeat: true },
   { fmt: "desc str desc", repeat: true },
 ] as const;

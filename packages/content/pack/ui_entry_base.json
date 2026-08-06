@@ -7,9 +7,15 @@
       "renderer": "char_screen1_flag_renderer",
       "combine": "LOGICAL_OR",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN",
-        "abilities"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        },
+        {
+          "category": "abilities"
+        }
       ],
       "flags": [
         "TIMED_AS_AUX"
@@ -25,9 +31,15 @@
       "renderer": "char_screen1_flag_renderer",
       "combine": "LOGICAL_OR",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN",
-        "hindrances"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        },
+        {
+          "category": "hindrances"
+        }
       ],
       "flags": [
         "TIMED_AS_AUX"
@@ -43,9 +55,15 @@
       "renderer": "char_screen1_numeric_as_sign_renderer",
       "combine": "ADD",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN",
-        "modifiers"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        },
+        {
+          "category": "modifiers"
+        }
       ],
       "flags": [
         "TIMED_AS_AUX"
