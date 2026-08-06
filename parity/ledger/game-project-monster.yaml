@@ -46,8 +46,10 @@ deferred:
   - The teleport and thrustAway hooks are now BACKED in wireGame by
     teleportMonster (game/effect-teleport.ts) and thrustAway
     (game/thrust.ts); worldless callers still get the inert defaults.
-  - delete_monster_idx's held-object drop, monster-group, mimic, racial-counter
-    and targeting/redraw bookkeeping are deferred with their subsystems.
+  - delete_monster_idx's monster-group, mimicked-object, racial-counter and
+    targeting bookkeeping are PORTED (game/context.ts deleteMonster). The
+    held-object drop and the redraw requests are still deferred with their
+    subsystems.
   - update_mon / square_light_spot / PR_MONSTER collapse into the onUpdate hook.
 verified-by:
   - game/project-monster.test.ts (12 tests): misses an empty or impassable grid
