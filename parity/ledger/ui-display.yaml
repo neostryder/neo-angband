@@ -113,10 +113,14 @@ deferred:
       lev > PY_MAX_LEVEL winner branch IS live.
     - bookHasUnlearnedSpells (default true): player_book_has_unlearned_spells
       (needs the spellbook pack, not on GameState).
-    - objectAttr / objectChar (defaults colorCharToAttr(kind.dAttr) /
-      kind.dChar): object_attr / object_char. The flavour-aware and pref
-      (x_attr/x_char) overrides, and the big-tile clear, are presentation
-      concerns each shell supplies.
+    - objectAttr / objectChar: object_attr / object_char, now DEFAULTED to the
+      flavour-aware answer (game/display.ts objectAttrChar, over
+      visuals/object-glyph.ts useFlavorGlyph). The old defaults read the kind
+      record and called the flavour rule "a presentation concern each shell
+      supplies" - and no shell supplied it, so prt_equippy drew every worn
+      flavoured item in the colour every flavoured kind shares, `d` (PORT_TODO
+      3.14). The pref (x_attr/x_char) override and the big-tile clear are still
+      the shell's: the seam remains for a front end with a TileMap.
   - prt_ac reads player->known_state (rune-gated display state); the port uses
     the real combat state (actor.combat.ac + toA), so an unknown +to_a rune is
     not hidden from the AC total. The known_state / real-state distinction is

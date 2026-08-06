@@ -26,9 +26,9 @@ import {
   TRF,
 } from "../generated/index.js";
 import type { FlagSet } from "../bitflag.js";
+import { useFlavorGlyph } from "../visuals/object-glyph.js";
 import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
-import { tvalIsScroll } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import { LIGHTING } from "../visuals/tile-prefs.js";
 import { OBJ_MOD_NAMES } from "../obj/bind.js";
@@ -350,8 +350,7 @@ function addGlyphs(
      * because a scroll's flavour is its title rather than its appearance. */
     const flavor = state.flavorGlyph?.(obj.kind);
     const aware = deps.aware ?? state.isAware ?? ((): boolean => true);
-    const useFlavor =
-      flavor !== undefined && !(tvalIsScroll(obj.kind.tval) && aware(obj.kind));
+    const useFlavor = useFlavorGlyph(obj.kind, flavor, aware(obj.kind));
     view.objectGlyph =
       (useFlavor ? glyphs.flavorChar(flavor.fidx) : glyphs.kindChar(obj.kind.kidx)) ??
       (useFlavor ? flavor.char : obj.kind.dChar);

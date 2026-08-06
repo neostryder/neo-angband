@@ -36,6 +36,7 @@ import {
   characterGrid,
   liveUiEntryDeps,
   gearGet,
+  objectAttrChar,
   describeObject,
   makeObjectInfoDeps,
   objectInfo,
@@ -206,7 +207,16 @@ function buildGridBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
   ];
   for (let i = 0; i < p.body.count; i++) {
     const obj = gearGet(state.gear, p.equipment[i] ?? 0);
-    equippy.push({ text: obj ? obj.kind.dChar : " ", color: FG });
+    /* object_attr / object_char, not the kind record and not a fixed colour
+     * (ui-player.c:365-367). This row used to paint every slot FG, so a Long
+     * Sword and a Ring of Speed were the same white; and it read kind.dChar
+     * directly, so a flavoured item ignored its flavour. */
+    if (obj) {
+      const g = objectAttrChar(state, obj);
+      equippy.push({ text: g.char, color: colorToCss(g.attr) });
+    } else {
+      equippy.push({ text: " ", color: FG });
+    }
   }
   equippy.push({ text: " ", color: FG });
   out.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });

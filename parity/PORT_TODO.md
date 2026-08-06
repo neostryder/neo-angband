@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 122 confirmed-absent citations** — 36 closed, 32 open.
+**68 items covering all 122 confirmed-absent citations** — 37 closed, 31 open.
 The citation count **went up, not down**, and that is the adjudication working:
 seven rows this session moved from unadjudicated to `partial`, and a `partial` is
 a confirmed-absent citation. Reading the ledger finds work as often as it kills
@@ -1295,11 +1295,63 @@ is reachable in play and a test constructs the case that used to be wrong.**
   was verified by deleting the line.
   Sites: `parity/ledger/ui-player.yaml:85`
 
-- [ ] **3.14 The object glyph ignores flavour awareness.**
-  Nothing supplies `objectAttr` / `objectChar`, so `game/display.ts:432` uses
-  `kind.dAttr` / `kind.dChar` and an unaware potion shows the kind's colour
-  rather than its flavour colour.
-  Sites: `parity/ledger/ui-display.yaml:116`
+- [x] **3.14 The object glyph ignores flavour awareness.** CLOSED, and the item
+  understated it: the map renderer already had the rule right, and every OTHER
+  place that draws an object had it wrong, each in its own way.
+
+  `use_flavor_glyph` (`ui-object.c:87-90`) is
+  `kind->flavor && !(tval == TV_SCROLL && kind->aware)`. The scroll exception
+  runs against intuition — a scroll's flavour is its unreadable TITLE, so
+  awareness ENDS it, where a potion's flavour is what the potion looks like and
+  awareness does not. Small enough to inline, and just wrong enough when
+  inlined, which is why it now lives once at
+  `packages/core/src/visuals/object-glyph.ts:45` and every consumer calls it.
+
+  **How bad it looked.** Measured from the shipped pack rather than assumed:
+  every flavoured kind carries colour `d` (dark) except scrolls (`w`), while
+  flavour colours are Green, Violet, Light Blue, Light Umber. So a worn ring or
+  amulet drew as a BLACK glyph anywhere the rule was skipped. Nothing leaked —
+  the kind colours inside a tval are all identical, so the dark glyph told the
+  player nothing they should not know — but the item was invisible.
+
+  The five draw sites in the C (`object_char` / `object_kind_attr` /
+  `object_kind_char` callers), each checked against the port:
+
+  1. `prt_equippy` (`ui-display.c:285`) — the `objectAttr` / `objectChar` seam
+     had a comment saying the flavour-aware version was "a presentation concern
+     each shell supplies", and **no shell supplied it**. Now the DEFAULT
+     (`game/display.ts:271`), so the seam is an override rather than a
+     requirement. The seam stays for a front end with a pref-file TileMap,
+     because upstream reads `flavor_x_attr` / `kind_x_attr`, not the record.
+  2. `display_player_equippy` (`ui-player.c:365-367`) — the character sheet's
+     resistance-panel row read `kind.dChar` and painted every slot a fixed
+     white, so a Long Sword and a Ring of Speed were the same colour. Now
+     `packages/web/src/charsheet.ts:215`.
+  3. `ui-obj-list.c:131-141` — the `[` list gives the GLYPH the kind's own
+     colour and only the NAME the line attribute, and an unknown entry is a RED
+     asterisk. The port painted the glyph the line colour and never went red.
+     Now `packages/web/src/screens.ts:1047`.
+  4. `ui-equip-cmp.c:2107-2108` — `packages/core/src/game/equip-cmp.ts:468`.
+  5. `ui-map.c:203-204` — already correct (`packages/web/src/main.ts:6478`),
+     and its own comment claimed it was "THE one place the port decides how an
+     object kind draws". It was not; that claim is what this item disproves.
+     It now calls the shared rule instead of its own copy, as does the agent
+     API's grid view (`packages/core/src/agent/perceive.ts:353`), which had a
+     third copy.
+
+  NOT done, and neither is a glyph bug: the port has no missile-flight
+  animation at all, so `ui-display.c:1707`'s `print_rel(object_char(...))` has
+  nothing to be wrong in; and the autoinscribe menu
+  (`packages/web/src/screens.ts:993`) still reads `kind.dAttr`, left alone
+  because it is a port-specific screen with no GameState in scope and I could
+  not tie it to an upstream site.
+
+  Tests: `packages/core/src/visuals/object-glyph.test.ts` (8) and the
+  `prt_equippy` describe in `packages/core/src/game/display.test.ts` (3). Three
+  mutations, three kills — one of them a verbatim restore of the old defaults.
+  Sites: `packages/core/src/visuals/object-glyph.ts:45`,
+  `packages/core/src/game/display.ts:232`,
+  `parity/ledger/ui-display.yaml:116`
 
 - [ ] **3.15 `feeling-need` is hardcoded.**
   The constant IS loaded (`packages/core/src/constants.ts:113`, mapped at `:185`)

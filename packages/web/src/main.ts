@@ -191,7 +191,7 @@ import type {
   MonsterLore,
   LoreDeps,
 } from "@rpgm-tools/neo-angband-core";
-import { GameEvents } from "@rpgm-tools/neo-angband-core";
+import { GameEvents, useFlavorGlyph } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
@@ -6475,8 +6475,7 @@ function objectKindCell(
   dimmed = false,
 ): CellGlyph {
   const flavor = state.flavorGlyph?.(kind);
-  const useFlavor =
-    !!flavor && !(tvalIsScroll(kind.tval) && (game.flavor?.isAware(kind) ?? false));
+  const useFlavor = useFlavorGlyph(kind, flavor, game.flavor?.isAware(kind) ?? false);
   /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
    * unconditionally, two lines above the code that carefully worked out that
    * the kind is not what should be drawn - so every flavoured item fell back

@@ -60,6 +60,7 @@ import {
   objectListSort,
   objectListStandardCompare,
   objectListEntryName,
+  objectKindAttrChar,
   objectListEntryLineAttribute,
   OBJECT_LIST_SECTION_LOS,
   OBJECT_LIST_SECTION_NO_LOS,
@@ -1038,14 +1039,26 @@ export function objectListLines(state: GameState): ScreenLine[] {
   objectListSort(list, objectListStandardCompare(state));
 
   const entryLine = (entry: (typeof list.entries)[number]): ScreenLine => {
-    const glyph = entry.object ? entry.object.kind.dChar : "*";
+    /* ui-obj-list.c:131-141: the glyph is object_kind_char in the KIND's own
+     * colour, and an unknown entry is a RED asterisk - only the NAME takes the
+     * line attribute. The port painted the glyph the line colour and read the
+     * kind record directly, so a flavoured item showed the wrong symbol
+     * colour and an unknown one was never red. */
+    const g = entry.object ? objectKindAttrChar(state, entry.object.kind) : null;
+    const glyph = g ? g.char : "*";
+    const glyphColor = colorToCss(g ? g.attr : COLOUR_RED);
     const name = objectListEntryName(entry, state);
     const dirY = entry.dy <= 0 ? "N" : "S";
     const dirX = entry.dx <= 0 ? "W" : "E";
     const loc = `${Math.abs(entry.dy)} ${dirY} ${Math.abs(entry.dx)} ${dirX}`;
+    const lineColor = colorToCss(objectListEntryLineAttribute(entry, state));
     return {
       text: `${glyph} ${name}   ${loc}`,
-      color: colorToCss(objectListEntryLineAttribute(entry, state)),
+      color: lineColor,
+      runs: [
+        { text: `${glyph} `, color: glyphColor },
+        { text: `${name}   ${loc}`, color: lineColor },
+      ],
     };
   };
 
