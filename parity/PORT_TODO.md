@@ -2265,13 +2265,80 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:3458`,
   `parity/ledger/obj-randart.yaml:51`
 
-- [ ] **5.5 `randart.log` / `randart.txt`.**
-  Upstream's `do_randart` writes it whenever randarts generate and `exit(1)`s if
-  it cannot open it. **193 `file_putf` sites — the largest single item here.**
+- [ ] **5.5 `randart.log` / `randart.txt`. IN PROGRESS — the file exists and
+  108 of its 233 emission sites are written. The remainder is MEASURED, not
+  estimated.**
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
-  **pursue parity**, so it is a port with no asterisk. The `exit(1)` goes through
-  the host seam rather than killing the process.
-  Sites: `packages/core/src/obj/randart.ts:38`
+  **pursue parity**, so it is a port with no asterisk.
+
+  **The row's own count was low.** "193 `file_putf` sites" is the raw grep of
+  obj-randart.c, and 19 of those go to `fff` — that is `write_randart_entry`,
+  a different file. The real accounting, taken 2026-08-06:
+
+  | | sites | done |
+  |---|---|---|
+  | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 52 |
+  | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | 0 |
+
+  DONE so far, and each part is load-bearing on its own:
+
+  - **`obj/randart-log.ts`**, the sink. One module-level static, because that is
+    exactly upstream's shape — `object_log` in obj-power.c and `log_file` in
+    obj-randart.c are both statics, NULL for the whole game except inside
+    do_randart, and `log_obj` opens with `if (!object_log) return;`. Threading a
+    parameter through 233 sites would model as an argument something that is
+    global in the original.
+  - **The file lifecycle in `doRandart`.** Opened by truncating (which is what
+    `MODE_WRITE` does), closed in a `finally` so a throw mid-generation cannot
+    leave the static installed and narrate the next run into this one's buffer.
+    Upstream's `exit(1)` on a failed open is **the one deliberate divergence**:
+    a browser tab has no process to kill and a desktop player did not ask to
+    lose a character over a log file, so the message goes to `onLogError` and
+    generation continues. Both of upstream's messages are now emitted, which is
+    why the text census's KNOWN_ABSENT entry for them is deleted.
+  - **All 59 obj-power.c sites**, including `slay_power`'s `verbose` block. An
+    open log IS upstream's `verbose` flag here: it is threaded from
+    object_power's caller purely to gate four lines, every randart evaluation
+    passes it, and nothing else calls slayPower with a log open.
+  - **`count_weapon_abilities`, `count_bow_abilities`,
+    `count_nonweapon_abilities`** (48 sites), with two upstream asymmetries
+    reproduced and commented: both to-dam arms use a plain `else`, so a bonus of
+    exactly 0 logs `"Subtracting 0"`, while the to-hit arms above them do test
+    `< 0`.
+  - **The `desc` / `name` columns of `flag_sets`, `element_sets` and
+    `el_powers`**, restored to the port's tables. They had been dropped as
+    unused — true only because the log they exist for had been dropped, which is
+    the same shape as 7.4.
+
+  **One upstream wart NOT reproduced, on purpose.** obj-power.c:994 passes an
+  `int` to `"%p"`. That is undefined behaviour with no portable output, so there
+  is nothing to be byte-identical to; the port prints the number the line plainly
+  means. Recorded rather than normalised silently, because this repo's default
+  is to keep C warts.
+
+  **How the remainder is kept visible.** There is no compiled Angband here and no
+  toolchain to build one, so a byte-for-byte diff of a real randart.log is not
+  available and no such claim is made. `obj/randart-log.census.test.ts` extracts
+  every format string from both C files, reduces each to its literal spans, and
+  requires each span to appear in the port. obj-power.c must be at **zero**
+  missing; obj-randart.c is a **two-way ratchet** at 122 distinct strings, so the
+  number cannot drift up (a lost line) or down (finish the row and lower it).
+  `obj/randart-log.test.ts` runs `doRandart` against a memory host and reads the
+  file, which is the guard a fresh sink most needs.
+
+  STILL TO WRITE: `count_modifiers`, `count_low_resists`, `count_high_resists`,
+  `count_abilities`, `collect_artifact_data`, `parse_frequencies`,
+  `store_base_power`, `artifact_power`, `get_base_item`, `artifact_prep`,
+  `build_freq_table`, `try_supercharge`, the `add_*` family, `choose_ability`,
+  `make_bad`, `design_artifact` — then the whole of `randart.txt`
+  (`write_randart_entry` + `write_flags` / `write_mods` / `write_elements`, and
+  `do_randart`'s `create_file` argument). The post-generation measurement pass
+  (L3184-3187) comes back with `parse_frequencies`; it draws no RNG and exists
+  only to print the closing statistics.
+  Sites: `packages/core/src/obj/randart-log.ts`,
+  `packages/core/src/obj/randart.ts`, `packages/core/src/obj/power.ts`,
+  `packages/core/src/obj/randart-data.ts`
 
 - [x] **5.6 The spoiler files' missing lines.** DONE — one half retracted on
   measurement, the other two built.

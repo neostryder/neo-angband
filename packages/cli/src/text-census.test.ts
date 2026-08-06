@@ -57,12 +57,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Error - can't close pricing.log file.",
     ],
 
-  "GAP (block E, measured 2026-07-28 - this was previously excused as \"developer log files\" and it is not one): do_randart (obj-randart.c:3154) opens randart.log in the USER directory and writes the whole artifact-generation log EVERY time the set is generated, and it is called from player-birth.c:1286 (birth) and load.c:987 (load) whenever birth_randarts is on - so a randart game writes this file in a stock build. The port's randart generator (core/obj/randart.ts) emits no log at all, so porting these two messages means porting obj-randart.c's LOG_PRINT surface (artifact_power's verbose lines and the frequency dumps). The user directory to write it into now exists":
-    [
-      "Error - can't open randart.log for writing.",
-      "Error - can't close randart.log file.",
-    ],
-
   "GAP (block E): the wiz-stats reporting half, all of it behind USE_STATS (configure.ac:258, \"default: disabled\"), so the interactive build correctly says STATS_DISABLED_MSG - but packages/cli IS the port's stats build, and there the equivalents are owed. stats.log is the Monte-Carlo report (wiz-stats.c:1214); the last five are disconnect_stats' output (wiz-stats.c:3137-3153): the five tallies, disconnect.html written through dump_level_header + a dump_level_body per problem level with a composed label and the distance array, and disconnect_gstat.txt from dump_generation_stats. dump_level is now ported (core game/dump-level.ts) including its dist[] '*' marking, which is exactly what this report needs; disconnectStats (cli/wiz-stats.ts) computes the tallies but returns only counts":
     [
       "Error - can't open stats.log for writing.",

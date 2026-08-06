@@ -1,0 +1,152 @@
+/**
+ * randart.log coverage, MEASURED against the C rather than claimed (5.5).
+ *
+ * WHY A CENSUS AND NOT A GOLDEN FILE. There is no compiled Angband in this
+ * repository and no toolchain to build one, so no byte-for-byte diff of a real
+ * randart.log is available. Saying "the log is ported" without one would be a
+ * claim with nothing behind it. What CAN be measured exactly is the set of
+ * format strings: upstream emits one per site, and a site that has no
+ * counterpart in the port is a line the file will be missing.
+ *
+ * So this test extracts every `log_obj(...)` in obj-power.c and every
+ * `file_putf(log_file, ...)` in obj-randart.c, reduces each format string to
+ * its literal spans, and requires each span to appear in the port. It is a
+ * RATCHET: `EXPECTED_MISSING` is the count still outstanding, and the test
+ * fails if that number goes UP (a regression) or DOWN (finish the row and
+ * lower the number). A list that can drift silently is the same as no list.
+ *
+ * It cannot prove ORDER or ARGUMENTS. Those are covered by the port's function
+ * decomposition being 1:1 with the C's - each emitter sits inside the function
+ * that owns it - and by randart-log.test.ts, which runs a real generation and
+ * reads the text.
+ */
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const REF = new URL("../../../../reference/src/", import.meta.url);
+const SRC = new URL("./", import.meta.url);
+
+function read(base: URL, name: string): string {
+  return readFileSync(new URL(name, base), "utf8");
+}
+
+/**
+ * Every literal span of a C format string, in order: "Add %d for slays\n"
+ * yields ["Add ", " for slays"]. Trailing "\n" and spans shorter than four
+ * characters are dropped - " " and "x" match everything and would make the
+ * check unfalsifiable.
+ */
+function literalSpans(fmt: string): string[] {
+  return fmt
+    .replace(/\\n/g, "\n")
+    .split(/%[-+ #0-9.]*(?:l|ll|h|hh|z)?[diouxXeEfgGcsp%]/)
+    .map((s) => s.replace(/\n/g, "").trim())
+    .filter((s) => s.length >= 4);
+}
+
+/** Pull the (possibly continued) string literal out of each matching call. */
+function formatStrings(src: string, callPattern: RegExp): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(callPattern)) {
+    const parts = m[1]!.match(/"(?:[^"\\]|\\.)*"/g) ?? [];
+    out.push(parts.map((p) => p.slice(1, -1)).join(""));
+  }
+  return out;
+}
+
+const PORT = [
+  "power.ts",
+  "randart.ts",
+  "randart-data.ts",
+  "randart-build.ts",
+  "randart-log.ts",
+]
+  .map((f) => read(SRC, f))
+  .join("\n");
+
+interface Site {
+  file: string;
+  fmt: string;
+  spans: string[];
+}
+
+function sites(file: string, pattern: RegExp): Site[] {
+  return formatStrings(read(REF, file), pattern)
+    .map((fmt) => ({ file, fmt, spans: literalSpans(fmt) }))
+    .filter((s) => s.spans.length > 0);
+}
+
+/** log_obj(...) in obj-power.c, minus the definition's own `fmt` parameter. */
+const POWER_SITES = sites(
+  "obj-power.c",
+  /log_obj\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
+);
+/** file_putf(log_file, ...) in obj-randart.c. */
+const RANDART_SITES = sites(
+  "obj-randart.c",
+  /file_putf\(log_file,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
+);
+
+/** A site is covered when every one of its literal spans is in the port. */
+function covered(s: Site): boolean {
+  return s.spans.every((span) => PORT.includes(span));
+}
+
+/**
+ * The obj-randart.c sites still to write, counted 2026-08-06. Lower this as the
+ * row is finished; it must never rise.
+ *
+ * What is left, by function (from the same extraction this test performs):
+ * count_modifiers, count_low_resists, count_high_resists, count_abilities,
+ * collect_artifact_data, parse_frequencies, store_base_power, artifact_power,
+ * get_base_item, artifact_prep, build_freq_table, try_supercharge, the add_*
+ * family, choose_ability, make_bad, design_artifact and do_randart's own
+ * randart.txt header.
+ */
+const EXPECTED_MISSING_RANDART = 122;
+
+describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
+  it("finds the C's log sites at all", () => {
+    /* A fixture guard: an extraction that matched nothing would make every
+     * assertion below pass for free. 60 = 59 emitters + log_obj's own `fmt`,
+     * which has no literal spans and is filtered out above. */
+    expect(POWER_SITES.length).toBeGreaterThanOrEqual(55);
+  });
+
+  it("every obj-power.c log line has a counterpart in the port", () => {
+    const missing = POWER_SITES.filter((s) => !covered(s)).map((s) => s.fmt);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("randart.log coverage of obj-randart.c (PORT_TODO 5.5, in progress)", () => {
+  it("finds the C's log sites at all", () => {
+    expect(RANDART_SITES.length).toBeGreaterThanOrEqual(170);
+  });
+
+  it("is at exactly the recorded coverage - a ratchet in both directions", () => {
+    const missing = RANDART_SITES.filter((s) => !covered(s));
+    expect(
+      missing.length,
+      missing.length > EXPECTED_MISSING_RANDART
+        ? "a randart.log line was LOST - see the first few missing below"
+        : "randart.log gained coverage: lower EXPECTED_MISSING_RANDART to " +
+          String(missing.length),
+    ).toBe(EXPECTED_MISSING_RANDART);
+  });
+
+  it("the sites already written stay written", () => {
+    /* Named explicitly so the ratchet above cannot be satisfied by losing one
+     * of these and gaining another. */
+    for (const span of [
+      "instances of extra to-hit bonus for weapon",
+      "for super-charged damage dice!",
+      "for supercharged blows (3 or more!)",
+      "for aggravation - nonweapon",
+      "for AC bonus - body armor",
+      "instances of extra to-hit and to-dam bonus for gloves",
+    ]) {
+      expect(PORT, span).toContain(span);
+    }
+  });
+});

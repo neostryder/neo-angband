@@ -35,14 +35,22 @@
  *   (game.ts:2511-2514) - so the in-game randart names draw faithfully too.
  *   randNameFallback (a local syllable table) is retained only as a defensive
  *   guard for callers that pass no corpus (it never runs on the wired paths).
- * - Spoiler file (DEFERRED): upstream do_randart optionally writes randart.txt
- *   (create_file / write_randart_entry, obj-randart.c L3057-L3215) and always
- *   writes randart.log. Both are spoiler/log dumps that never affect any
- *   artifact field or RNG draw; they are dropped. do_randart therefore takes
- *   no create_file argument and returns the artifact array directly. Noted as
- *   a deferral. The second measurement pass upstream runs after generation
- *   (store_base_power/parse_frequencies on the finished set, L3184-L3187) exists
- *   only to populate the log and consumes no RNG, so it is dropped too.
+ * - randart.log (PORT_TODO 5.5, IN PROGRESS - see the tally below). do_randart
+ *   now opens and closes it through the host, so it is a real file again rather
+ *   than a dropped dump; the maintainer's disposition on 2026-08-04 was pursue
+ *   parity, so the "it never affects an artifact field" argument the old note
+ *   made here is not a reason to omit it. The emitters are being filled in
+ *   against the C site by site, and the exact count of what is and is not
+ *   written yet is measured by obj/randart-log.census.test.ts rather than
+ *   claimed in prose. See randart-log.ts for the sink and the reason it is a
+ *   module-level static.
+ * - randart.txt (STILL OUTSTANDING): the optional data file
+ *   (create_file / write_randart_entry, obj-randart.c L3040-L3215). do_randart
+ *   takes no create_file argument yet.
+ * - The second measurement pass upstream runs after generation
+ *   (store_base_power/parse_frequencies on the finished set, L3184-L3187)
+ *   exists only to populate the log's closing statistics and consumes no RNG.
+ *   It is still dropped; it comes back with the parse_frequencies emitters.
  * - copy_artifact activation/alt_msg quirk (FAITHFUL): upstream copy_artifact
  *   memcpy's the whole struct and then explicitly nulls a_dst->activation and
  *   a_dst->alt_msg (obj-randart.c L2689-L2690). copyArtifact reproduces this:
@@ -57,6 +65,9 @@
  *   so this is unobservable, but it is reproduced exactly. Noted.
  */
 
+import { FileMode, FileType, HostDir, host } from "../host/io.js";
+import type { HostIo } from "../host/io.js";
+import { setRandartLog } from "./randart-log.js";
 import { KF, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
 import type { ObjRegistry } from "./bind.js";
@@ -510,43 +521,91 @@ export function createArtifactSet(
  * spoiler file (create_file / write_randart_entry) are all dropped as they
  * never affect an artifact field or an RNG draw (see module note).
  */
+/** path_build(ANGBAND_DIR_USER, "randart.log") (obj-randart.c L3165). */
+export const RANDART_LOG = "randart.log";
+
 export function doRandart(
   reg: ObjRegistry,
   randartSeed: number,
   tolkienWords?: readonly string[],
   extras?: Pick<ArtifactSetData, "timedFoil" | "activationSummarize">,
+  io: HostIo = host(),
+  onLogError?: (message: string) => void,
 ): (Artifact | null)[] {
+  /*
+   * OPEN randart.log (obj-randart.c L3164-L3171).
+   *
+   * Upstream file_opens ANGBAND_DIR_USER/randart.log for writing before it
+   * touches an artifact, and `exit(1)`s if it cannot. That exit is the one
+   * thing the port cannot copy: a browser tab has no process to kill, and a
+   * desktop player did not ask to lose a character over a log file. So the
+   * failure goes through the host instead - the open is probed by truncating
+   * the file to empty (which is what MODE_WRITE does), and if that fails the
+   * sink stays closed, `onLogError` gets upstream's own message, and every
+   * emitter downstream is the no-op it already is with no log running.
+   * Generation continues, which is the deliberate divergence.
+   *
+   * BUFFERED, not appended line by line: HostIo.write is one whole-file call
+   * (that is what a localStorage-backed adapter can express), and a run of the
+   * standard set emits tens of thousands of lines.
+   */
   /* Prepare to use the Angband "simple" (quick LCRNG) RNG. */
   const rng = new Rng(randartSeed, { quick: true });
 
-  /*
-   * Build the RANDNAME_TOLKIEN transition table once (build_prob is cached
-   * per-type upstream, randname.c L94-L103; here we build it once per run).
-   * When no corpus is supplied (the current game-path seam), fall back to the
-   * non-faithful syllable generator (see module SEAM note). An empty word list
-   * is treated as "no corpus" because build_prob/randname_make would otherwise
-   * loop forever on an empty table.
-   */
-  const nameProbs: NameProbs | null =
-    tolkienWords && tolkienWords.length > 0 ? buildProb(tolkienWords) : null;
-
-  /* Store the original power ratings and determine generation probabilities.
-   * `extras` threads the curse TIMED_INC foil tables (gap 3.3) and the
-   * activation redundancy summarizer (gap 3.8); absent, both checks are
-   * skipped as before. */
-  const data = collectArtifactData(reg, rng);
-  if (extras?.timedFoil) data.timedFoil = extras.timedFoil;
-  if (extras?.activationSummarize) {
-    data.activationSummarize = extras.activationSummarize;
+  const lines: string[] = [];
+  let logging = false;
+  if (io.write(HostDir.USER, RANDART_LOG, "", FileMode.WRITE, FileType.TEXT) === "ok") {
+    logging = true;
+    setRandartLog((text) => lines.push(text));
+  } else {
+    onLogError?.("Error - can't open randart.log for writing.");
   }
 
-  /* Work on a fresh copy so the registry's standard artifacts are preserved. */
-  const arts: (Artifact | null)[] = reg.artifacts.map((a) =>
-    a ? cloneArtifact(a) : null,
-  );
+  try {
+    /*
+     * Build the RANDNAME_TOLKIEN transition table once (build_prob is cached
+     * per-type upstream, randname.c L94-L103; here we build it once per run).
+     * When no corpus is supplied (the current game-path seam), fall back to the
+     * non-faithful syllable generator (see module SEAM note). An empty word list
+     * is treated as "no corpus" because build_prob/randname_make would otherwise
+     * loop forever on an empty table.
+     */
+    const nameProbs: NameProbs | null =
+      tolkienWords && tolkienWords.length > 0 ? buildProb(tolkienWords) : null;
 
-  /* Generate the random artifacts. */
-  createArtifactSet(reg, arts, data, rng, nameProbs);
+    /* Store the original power ratings and determine generation probabilities.
+     * `extras` threads the curse TIMED_INC foil tables (gap 3.3) and the
+     * activation redundancy summarizer (gap 3.8); absent, both checks are
+     * skipped as before. */
+    const data = collectArtifactData(reg, rng);
+    if (extras?.timedFoil) data.timedFoil = extras.timedFoil;
+    if (extras?.activationSummarize) {
+      data.activationSummarize = extras.activationSummarize;
+    }
 
-  return arts;
+    /* Work on a fresh copy so the registry's standard artifacts are preserved. */
+    const arts: (Artifact | null)[] = reg.artifacts.map((a) =>
+      a ? cloneArtifact(a) : null,
+    );
+
+    /* Generate the random artifacts. */
+    createArtifactSet(reg, arts, data, rng, nameProbs);
+
+    return arts;
+  } finally {
+    /* CLOSE (L3189-L3193). In a `finally` so a throw mid-generation cannot
+     * leave the sink installed for the next caller - upstream's log_file is a
+     * static, and a stale one would narrate the following run into this one. */
+    setRandartLog(null);
+    if (logging) {
+      const outcome = io.write(
+        HostDir.USER,
+        RANDART_LOG,
+        lines.join(""),
+        FileMode.WRITE,
+        FileType.TEXT,
+      );
+      if (outcome !== "ok") onLogError?.("Error - can't close randart.log file.");
+    }
+  }
 }

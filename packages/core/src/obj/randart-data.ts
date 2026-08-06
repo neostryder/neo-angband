@@ -35,6 +35,7 @@
  *   varianceFloored below, rather than reimplemented here.
  */
 
+import { randartLog, randartLogf } from "./randart-log.js";
 import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
@@ -516,67 +517,104 @@ export function countWeaponAbilities(
   let bonus = Math.trunc(
     (art.toH - minToH - data.hitStartval) / data.hitIncrement,
   );
+  if (bonus > 0) {
+    randartLogf(
+      () => `Adding ${bonus} instances of extra to-hit bonus for weapon\n`,
+    );
+  } else if (bonus < 0) {
+    randartLogf(
+      () => `Subtracting ${bonus} instances of extra to-hit bonus for weapon\n`,
+    );
+  }
   data.artProbs[ART_IDX.WEAPON_HIT]! += bonus;
 
   bonus = Math.trunc((art.toD - minToD - data.damStartval) / data.damIncrement);
+  /* Asymmetric with to-hit ON PURPOSE: the to-dam arm has no `< 0` test, so a
+   * bonus of exactly 0 logs "Subtracting 0" (obj-randart.c L359-363). */
+  if (bonus > 0) {
+    randartLogf(
+      () => `Adding ${bonus} instances of extra to-dam bonus for weapon\n`,
+    );
+  } else {
+    randartLogf(
+      () => `Subtracting ${bonus} instances of extra to-dam bonus for weapon\n`,
+    );
+  }
   data.artProbs[ART_IDX.WEAPON_DAM]! += bonus;
 
   /* Does this weapon have an unusual bonus to AC? */
   bonus = Math.trunc((art.toA - minToA) / data.acIncrement);
   if (art.toA > 20) {
+    randartLogf(() => `Adding ${bonus} for supercharged AC\n`);
     data.artProbs[ART_IDX.MELEE_AC_SUPER]!++;
   } else if (bonus > 0) {
+    randartLogf(
+      () => `Adding ${bonus} instances of extra AC bonus for weapon\n`,
+    );
     data.artProbs[ART_IDX.MELEE_AC]! += bonus;
   }
 
   /* Check damage dice - are they more than normal? */
   if (art.dd > kind.dd) {
     if (art.dd - kind.dd > 2) {
+      randartLog(`Adding 1 for super-charged damage dice!\n`);
       data.artProbs[ART_IDX.MELEE_DICE_SUPER]!++;
     } else {
+      randartLog(`Adding 1 for extra damage dice.\n`);
       data.artProbs[ART_IDX.MELEE_DICE]!++;
     }
   }
 
   /* Check weight - is it different from normal? */
   if (art.weight !== kind.weight) {
+    randartLog(`Adding 1 for unusual weight.\n`);
     data.artProbs[ART_IDX.MELEE_WEIGHT]!++;
   }
 
   /* Do we have 3 or more extra blows? */
   const blows = art.modifiers[OBJ_MOD.BLOWS] ?? 0;
   if (blows > 2) {
+    randartLog(`Adding 1 for supercharged blows (3 or more!)\n`);
     data.artProbs[ART_IDX.MELEE_BLOWS_SUPER]!++;
   } else if (blows > 0) {
+    randartLog(`Adding 1 for extra blows\n`);
     data.artProbs[ART_IDX.MELEE_BLOWS]!++;
   }
 
   /* Aggravation. */
   if (art.flags.has(OF.AGGRAVATE)) {
+    randartLog(`Adding 1 for aggravation - weapon\n`);
     data.artProbs[ART_IDX.WEAPON_AGGR]!++;
   }
 
   /* Blessed weapon? */
   if (art.flags.has(OF.BLESSED)) {
+    randartLog(`Adding 1 for blessed weapon\n`);
     data.artProbs[ART_IDX.MELEE_BLESS]!++;
   }
 
   /* See invisible? */
   if (art.flags.has(OF.SEE_INVIS)) {
+    randartLog(`Adding 1 for see invisible (weapon case)\n`);
     data.artProbs[ART_IDX.MELEE_SINV]!++;
   }
 
   /* Tunnelling ability. */
   if ((art.modifiers[OBJ_MOD.TUNNEL] ?? 0) > 0) {
+    randartLog(`Adding 1 for tunnelling bonus.\n`);
     data.artProbs[ART_IDX.MELEE_TUNN]!++;
   }
 
   /* Count brands and slays. */
   if (art.slays) {
-    data.artProbs[ART_IDX.MELEE_SLAY]! += countTrue(art.slays);
+    const n = countTrue(art.slays);
+    data.artProbs[ART_IDX.MELEE_SLAY]! += n;
+    randartLogf(() => `Adding ${n} for slays\n`);
   }
   if (art.brands) {
-    data.artProbs[ART_IDX.MELEE_BRAND]! += countTrue(art.brands);
+    const n = countTrue(art.brands);
+    data.artProbs[ART_IDX.MELEE_BRAND]! += n;
+    randartLogf(() => `Adding ${n} for brands\n`);
   }
 }
 
@@ -598,45 +636,76 @@ export function countBowAbilities(
   let bonus = Math.trunc(
     (art.toH - minToH - data.hitStartval) / data.hitIncrement,
   );
+  if (bonus > 0) {
+    randartLogf(
+      () => `Adding ${bonus} instances of extra to-hit bonus for weapon\n`,
+    );
+  } else if (bonus < 0) {
+    randartLogf(
+      () => `Subtracting ${bonus} instances of extra to-hit bonus for weapon\n`,
+    );
+  }
   data.artProbs[ART_IDX.WEAPON_HIT]! += bonus;
 
   /* To-dam. */
   bonus = Math.trunc((art.toD - minToD - data.damStartval) / data.damIncrement);
+  /* Plain `else`, as in count_weapon_abilities: the to-dam arm has no `< 0`
+   * test either here (obj-randart.c L461-466), so a bonus of exactly 0 logs
+   * "Subtracting 0". The to-hit arm above DOES have one. */
+  if (bonus > 0) {
+    randartLogf(
+      () => `Adding ${bonus} instances of extra to-dam bonus for weapon\n`,
+    );
+  } else {
+    randartLogf(
+      () => `Subtracting ${bonus} instances of extra to-dam bonus for weapon\n`,
+    );
+  }
   data.artProbs[ART_IDX.WEAPON_DAM]! += bonus;
 
   /* Armor class. */
   bonus = Math.trunc((art.toA - minToA - data.acStartval) / data.acIncrement);
   if (bonus > 0) {
+    randartLogf(() => `Adding ${bonus} for AC bonus - general\n`);
     data.artProbs[ART_IDX.GEN_AC]! += bonus;
   }
 
   /* Aggravation. */
   if (art.flags.has(OF.AGGRAVATE)) {
+    randartLog(`Adding 1 for aggravation - weapon\n`);
     data.artProbs[ART_IDX.WEAPON_AGGR]!++;
   }
 
   /* Do we have more than 1 extra shot? */
   const shots = art.modifiers[OBJ_MOD.SHOTS] ?? 0;
   if (shots > 10) {
+    randartLog(`Adding 1 for supercharged shots (more than 1!)\n`);
     data.artProbs[ART_IDX.BOW_SHOTS_SUPER]!++;
   } else if (shots > 0) {
+    randartLog(`Adding 1 for extra shots\n`);
     data.artProbs[ART_IDX.BOW_SHOTS]!++;
   }
 
   /* Do we have 3 or more extra might? */
   const might = art.modifiers[OBJ_MOD.MIGHT] ?? 0;
   if (might > 2) {
+    randartLog(`Adding 1 for supercharged might (3 or more!)\n`);
     data.artProbs[ART_IDX.BOW_MIGHT_SUPER]!++;
   } else if (might > 0) {
+    randartLog(`Adding 1 for extra might\n`);
     data.artProbs[ART_IDX.BOW_MIGHT]!++;
   }
 
   /* Count brands and slays. */
   if (art.slays) {
-    data.artProbs[ART_IDX.BOW_SLAY]! += countTrue(art.slays);
+    const n = countTrue(art.slays);
+    data.artProbs[ART_IDX.BOW_SLAY]! += n;
+    randartLogf(() => `Adding ${n} for slays\n`);
   }
   if (art.brands) {
-    data.artProbs[ART_IDX.BOW_BRAND]! += countTrue(art.brands);
+    const n = countTrue(art.brands);
+    data.artProbs[ART_IDX.BOW_BRAND]! += n;
+    randartLogf(() => `Adding ${n} for brands\n`);
   }
 }
 
@@ -659,24 +728,32 @@ export function countNonweaponAbilities(
   /* Armor class. */
   if (bonus > 0) {
     if (art.toA > 20) {
+      randartLogf(() => `Adding ${bonus} for supercharged AC\n`);
       data.artProbs[ART_IDX.GEN_AC_SUPER]!++;
     } else if (art.tval === TV.BOOTS) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - boots\n`);
       data.artProbs[ART_IDX.BOOT_AC]! += bonus;
     } else if (art.tval === TV.GLOVES) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - gloves\n`);
       data.artProbs[ART_IDX.GLOVE_AC]! += bonus;
     } else if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - hat\n`);
       data.artProbs[ART_IDX.HELM_AC]! += bonus;
     } else if (art.tval === TV.SHIELD) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - shield\n`);
       data.artProbs[ART_IDX.SHIELD_AC]! += bonus;
     } else if (art.tval === TV.CLOAK) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - cloak\n`);
       data.artProbs[ART_IDX.CLOAK_AC]! += bonus;
     } else if (
       art.tval === TV.SOFT_ARMOR ||
       art.tval === TV.HARD_ARMOR ||
       art.tval === TV.DRAG_ARMOR
     ) {
+      randartLogf(() => `Adding ${bonus} for AC bonus - body armor\n`);
       data.artProbs[ART_IDX.ARMOR_AC]! += bonus;
     } else {
+      randartLogf(() => `Adding ${bonus} for AC bonus - general\n`);
       data.artProbs[ART_IDX.GEN_AC]! += bonus;
     }
   }
@@ -688,53 +765,76 @@ export function countNonweaponAbilities(
     );
     if (bonus > 0) {
       if (art.tval === TV.GLOVES) {
+        randartLogf(
+          () =>
+            `Adding ${bonus} instances of extra to-hit and to-dam bonus for gloves\n`,
+        );
         data.artProbs[ART_IDX.GLOVE_HIT_DAM]! += bonus;
       } else {
+        randartLogf(
+          () =>
+            `Adding ${bonus} instances of extra to-hit and to-dam bonus for non-weapon\n`,
+        );
         data.artProbs[ART_IDX.NONWEAPON_HIT_DAM]! += bonus;
       }
     }
   } else if (toHit > 0) {
     bonus = Math.trunc(toHit / data.hitIncrement);
     if (bonus > 0) {
+      randartLogf(
+        () => `Adding ${bonus} instances of extra to-hit bonus for non-weapon\n`,
+      );
       data.artProbs[ART_IDX.NONWEAPON_HIT]! += bonus;
     }
   } else if (toDam > 0) {
     bonus = Math.trunc(toDam / data.damIncrement);
     if (bonus > 0) {
+      randartLogf(
+        () => `Adding ${bonus} instances of extra to-dam bonus for non-weapon\n`,
+      );
       data.artProbs[ART_IDX.NONWEAPON_DAM]! += bonus;
     }
   }
 
   /* Check weight - is it different from normal? */
   if (art.weight !== kind.weight) {
+    randartLog(`Adding 1 for unusual weight.\n`);
     data.artProbs[ART_IDX.ALLARMOR_WEIGHT]!++;
   }
 
   /* Aggravation. */
   if (art.flags.has(OF.AGGRAVATE)) {
+    randartLog(`Adding 1 for aggravation - nonweapon\n`);
     data.artProbs[ART_IDX.NONWEAPON_AGGR]!++;
   }
 
   /* Count brands and slays. */
   if (art.slays) {
-    data.artProbs[ART_IDX.NONWEAPON_SLAY]! += countTrue(art.slays);
+    const n = countTrue(art.slays);
+    data.artProbs[ART_IDX.NONWEAPON_SLAY]! += n;
+    randartLogf(() => `Adding ${n} for slays\n`);
   }
   if (art.brands) {
-    data.artProbs[ART_IDX.NONWEAPON_BRAND]! += countTrue(art.brands);
+    const n = countTrue(art.brands);
+    data.artProbs[ART_IDX.NONWEAPON_BRAND]! += n;
+    randartLogf(() => `Adding ${n} for brands\n`);
   }
 
   /* Blows. */
   if ((art.modifiers[OBJ_MOD.BLOWS] ?? 0) > 0) {
+    randartLog(`Adding 1 for extra blows on nonweapon\n`);
     data.artProbs[ART_IDX.NONWEAPON_BLOWS]!++;
   }
 
   /* Shots. */
   if ((art.modifiers[OBJ_MOD.SHOTS] ?? 0) > 0) {
+    randartLog(`Adding 1 for extra shots on nonweapon\n`);
     data.artProbs[ART_IDX.NONWEAPON_SHOTS]!++;
   }
 
   /* Tunnelling ability. */
   if ((art.modifiers[OBJ_MOD.TUNNEL] ?? 0) > 0) {
+    randartLog(`Adding 1 for tunnelling bonus - general.\n`);
     data.artProbs[ART_IDX.GEN_TUNN]!++;
   }
 }
