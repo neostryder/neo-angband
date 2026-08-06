@@ -2362,9 +2362,35 @@ handling.
 
 ## Tier 7 — Decisions to take, not code to write
 
-- [ ] **7.1 `project-path`: wire it or cordon it.**
-  A ported function whose only caller would be a UI branch that does not exist.
-  Leaving it is the shipped-is-not-reachable trap.
+- [x] **7.1 `project-path`: wire it or cordon it. DONE — the choice was
+  false, because the UI branch exists.**
+  The row said "a ported function whose only caller would be a UI branch that
+  does not exist", so the decision offered was wire-or-cordon. Both halves were
+  wrong. `squareIsBelievedWall` (`game/known.ts:342`, cave-square.c L901-912) is
+  ported AND already wired — the effect path supplies it as `project()`'s
+  `believedWall` hook (`game/project-cast.ts:361`). And the UI branch exists:
+  `game/target-loop.ts` is the ported look/target loop.
+
+  Which turned a bookkeeping question into a live one. `draw_path` colours the
+  projected path from `square_isprojectable(player->cave, ...)` — the player's
+  REMEMBERED map (ui-target.c:1149-1150) — and the port was reading the live
+  chunk. For a known grid those agree until the terrain changes behind the
+  player's back, and then the preview shows what is really there: a wall
+  tunnelled out of sight still paints blue upstream, and a wall that appeared
+  while the player was elsewhere paints white. An information leak, small but
+  not cosmetic. Both copies of the predicate were fixed — the plain-terrain
+  branch and the camouflaged-monster branch that masquerades as terrain — and
+  fixing one and not the other is how a divergence survives its own fix.
+
+  **The object half stays approximate and its reason has not expired**:
+  `square_object(player->cave, ...)` needs a per-object remembered twin, which
+  the port does not have.
+
+  3 mutations, **2 killed**. The third is the `squareIsKnown(...) &&` conjunct,
+  and it is **unkillable by construction**: `squareIsBelievedWall` already
+  answers false for an unknown grid, so the two disagree only out-of-bounds,
+  which a projected path never contains. Kept because upstream keeps it, and
+  recorded in the test rather than killed by a fixture the caller never builds.
   Sites: `parity/ledger/project-path.yaml:58`
 
 - [ ] **7.2 Split the monster-turn partial into rows that can be closed.**

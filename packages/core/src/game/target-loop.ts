@@ -36,10 +36,16 @@
  *   "an object") instead of the exact remembered name/count.
  * - draw_path's object/wall colours read square_object(player->cave, ...)
  *   and square_isprojectable(player->cave, ...) - the player's remembered
- *   map. Without a remembered-object list or a "believed wall" predicate
- *   (project.ts's own note on PROJECT_INFO), this port uses the live floor
- *   pile and the live projectability, which project.ts already documents as
- *   the approximation for this exact, UI-only, deferred branch.
+ *   map. The WALL half is now exact: `squareIsBelievedWall` (game/known.ts)
+ *   is square_isprojectable against the remembered feat, and this note used
+ *   to say no such predicate existed. It was written before the predicate
+ *   was, and then outlived it - PORT_TODO 7.1. Reading the live map here was
+ *   an information leak, not a cosmetic one: a wall tunnelled out of sight,
+ *   or rubble dropped behind the player, coloured the path by what is really
+ *   there rather than by what the player has seen.
+ *   The OBJECT half stays approximate, and for a reason that has not gone
+ *   away: there is no per-object remembered twin (game/known.ts's own
+ *   ledger), so `floorPile` is the live pile.
  */
 
 import { RF, TMD } from "../generated/index.js";
@@ -67,6 +73,7 @@ import {
   squareApparentLookInPreposition,
   squareApparentLookPrefix,
   squareApparentName,
+  squareIsBelievedWall,
   squareIsKnown,
 } from "./known.js";
 import { squareIsVisibleTrap, squareTrap } from "./trap.js";
@@ -253,14 +260,14 @@ export function computePathColours(
         colour = COLOUR_L_RED;
       } else if (hasObj) {
         colour = COLOUR_YELLOW;
-      } else if (squareIsKnown(state, grid) && !state.chunk.isProjectable(grid)) {
+      } else if (squareIsKnown(state, grid) && squareIsBelievedWall(state, grid)) {
         colour = COLOUR_BLUE;
       } else {
         colour = COLOUR_WHITE;
       }
     } else if (hasObj) {
       colour = COLOUR_YELLOW;
-    } else if (squareIsKnown(state, grid) && !state.chunk.isProjectable(grid)) {
+    } else if (squareIsKnown(state, grid) && squareIsBelievedWall(state, grid)) {
       colour = COLOUR_BLUE;
     } else if (!squareIsKnown(state, grid)) {
       pastKnown = true;
