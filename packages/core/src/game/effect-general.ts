@@ -625,10 +625,13 @@ export function playerGetRecallDepth(
  * EF_RECALL: toggle Word of Recall (effect-handler-general.c L1096) - a
  * delayed level change counted down by process_world (game/loop.ts). The
  * get_check prompts are the injected confirm (default yes, as an
- * unprompted terminal would auto-accept); birth_no_recall is an option (#30,
- * off); force_descend and is_quest read the teleport env; arenas are not
- * modelled. birth_levels_persist IS honoured: it suppresses the "set recall
- * depth to current depth?" prompt and turns on player_get_recall_depth.
+ * unprompted terminal would auto-accept). All four refusals are here in
+ * upstream order: birth_no_recall (unless the character has already won),
+ * force_descend on a quest level, single combat, and the force_descend
+ * descend-into-a-quest warning. force_descend and is_quest read the teleport
+ * env; birth_no_recall and birth_levels_persist read the option store.
+ * birth_levels_persist suppresses the "set recall depth to current depth?"
+ * prompt and turns on player_get_recall_depth.
  */
 const handleRECALL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -639,14 +642,27 @@ const handleRECALL: EffectHandler = (ctx) => {
   const confirm = env.general?.confirm ?? ((): boolean => true);
   ctx.ident = true;
 
-  /* No recall from single combat. */
-  if (state.arenaLevel) {
+  /* No recall (effect-handler-general.c L1098-1102). The birth option "Word of
+   * Recall has no effect" (#34) turns the scroll into a dead item for the whole
+   * game EXCEPT once the character has won: total_winner re-enables it, which is
+   * how a winner gets back to town to retire. This guard was absent, so the
+   * option did nothing at all. */
+  if (
+    (state.options?.get("birth_no_recall") ?? false) &&
+    !p.totalWinner
+  ) {
     say(ctx, "Nothing happens.");
     return true;
   }
 
   /* No recall from quest levels with force_descend. */
   if (tp.forceDescend && tp.isQuest?.(state.chunk.depth)) {
+    say(ctx, "Nothing happens.");
+    return true;
+  }
+
+  /* No recall from single combat. */
+  if (state.arenaLevel) {
     say(ctx, "Nothing happens.");
     return true;
   }

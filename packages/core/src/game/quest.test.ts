@@ -4,11 +4,14 @@ import { FEAT } from "../generated/index.js";
 import { addMon, makeRace, makeState, monReg } from "./harness.js";
 import {
   bindQuests,
+  dungeonGetNextLevel,
   isQuest,
   playerQuestsReset,
+  playerSetRecallDepth,
   questCheck,
 } from "./quest.js";
 import type { QuestRecordJson } from "./quest.js";
+import type { Player } from "../player/player.js";
 
 /** The shipped quest table (quest.txt / quest.json). */
 const QUEST_RECORDS: QuestRecordJson[] = [
@@ -171,5 +174,88 @@ describe("questCheck (player-quest.c L219)", () => {
     expect(p.totalWinner).toBe(true);
     expect(state.chunk.feat(grid)).toBe(FEAT.MORE);
     expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+});
+
+describe("playerSetRecallDepth (player-util.c L79)", () => {
+  /* z_info: stair_skip 1, max_depth 128 - the shipped constants. */
+  const z = { stairSkip: 1, maxDepth: 128 };
+
+  function player(maxDepth: number, recallDepth: number): Player {
+    const state = makeState();
+    playerQuestsReset(state.actor.player, quests);
+    state.actor.player.maxDepth = maxDepth;
+    state.actor.player.recallDepth = recallDepth;
+    return state.actor.player;
+  }
+
+  it("leaves an already-chosen recall depth alone without force_descend", () => {
+    /* The whole point of the function upstream: outside force_descend it is a
+     * floor, not an assignment. The port used to overwrite recallDepth with
+     * maxDepth here, which threw away the destination a persistent-levels
+     * player had just been prompted for. */
+    const p = player(40, 17);
+    playerSetRecallDepth(p, false, z);
+    expect(p.recallDepth).toBe(17);
+    expect(p.maxDepth).toBe(40);
+  });
+
+  it("sends a character who has never descended to level 1, not the town", () => {
+    const p = player(0, 0);
+    playerSetRecallDepth(p, false, z);
+    expect(p.recallDepth).toBe(1);
+  });
+
+  it("force_descend recalls one level BELOW max_depth", () => {
+    const p = player(40, 40);
+    playerSetRecallDepth(p, true, z);
+    expect(p.recallDepth).toBe(41);
+    /* Derived, not written down: whatever dungeon_get_next_level says. */
+    expect(p.recallDepth).toBe(dungeonGetNextLevel(p, 40, 1, z));
+  });
+
+  it("force_descend does NOT step past an unfinished quest at max_depth", () => {
+    /* Sauron alive at max_depth: the step-down arm is skipped ENTIRELY, so
+     * recall_depth keeps whatever it held.
+     *
+     * recall_depth is deliberately not 99 here. With recall_depth == max_depth
+     * this guard cannot be observed at all, because dungeonGetNextLevel's own
+     * intermediate-quest scan already returns 99 for (99, +1) - the same answer
+     * the guard produces by doing nothing. See the MUTATION NOTE in quest.ts:
+     * in play the two are always equal, so this is a contract test on the
+     * exported function, not a reachable scenario. */
+    const p = player(99, 40);
+    expect(isQuest(p, 99)).toBe(true);
+    playerSetRecallDepth(p, true, z);
+    expect(p.recallDepth).toBe(40);
+  });
+
+  it("force_descend steps past a quest depth once it is completed", () => {
+    const p = player(99, 99);
+    p.quests[0]!.level = 0; /* Sauron slain. */
+    playerSetRecallDepth(p, true, z);
+    expect(p.recallDepth).toBe(100);
+  });
+
+  it("force_descend does not step below the bottom of the dungeon", () => {
+    /* Same shape as the quest guard above: with recall_depth == max_depth the
+     * guard is shadowed by dungeonGetNextLevel's own max_depth - 1 clamp, so
+     * the separating input is a recall_depth that differs. */
+    const p = player(z.maxDepth - 1, 40);
+    playerSetRecallDepth(p, true, z);
+    expect(p.recallDepth).toBe(40);
+
+    /* And the in-play state, which the clamp answers identically. */
+    const q = player(z.maxDepth - 1, z.maxDepth - 1);
+    playerSetRecallDepth(q, true, z);
+    expect(q.recallDepth).toBe(z.maxDepth - 1);
+  });
+
+  it("applies the level-1 floor even under force_descend", () => {
+    /* max_depth 0 in town: the step-down arm runs (0 < 127, town is never a
+     * quest) and lands on 1 by itself; the floor is what guarantees it. */
+    const p = player(0, 0);
+    playerSetRecallDepth(p, true, z);
+    expect(p.recallDepth).toBe(1);
   });
 });
