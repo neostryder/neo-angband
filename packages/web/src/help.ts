@@ -119,6 +119,7 @@ export function helpCommandLines(): ScreenLine[] {
   lines.push(keyLine("N", "New character (also available after death)"));
   lines.push(keyLine("V", "Display the hall of fame"));
   lines.push(keyLine("Ctrl-P", "Show previous messages"));
+  lines.push(keyLine("Enter", "Browse every command by category"));
   lines.push(keyLine("?", "Display this help"));
   lines.push(keyLine("Escape", "Game menu (save / switch / new character)"));
 

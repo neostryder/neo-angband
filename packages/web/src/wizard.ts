@@ -492,11 +492,12 @@ function deepFreezeMenu(cats: readonly DebugCategory[]): readonly DebugCategory[
  *
  * The nesting is DATA, not the ^A interaction: upstream calls these categories
  * "placeholders for the Enter menu system" (ui-game.c L232), and ^A never shows
- * them - it resolves one keypress against the flat DEBUG_BY_KEY table below. The
- * categories become reachable only through the ENTER command browser
- * (textui_action_menu_choose / cmd_menu, ui-context.c L1176-1215), which this
- * port has not yet ported for any command list; that absence is tracked
- * separately and is not specific to debug mode.
+ * them - it resolves one keypress against the flat DEBUG_BY_KEY table below.
+ * They are reachable through the ENTER command browser (textui_action_menu_choose
+ * / cmd_menu, ui-context.c L1176-1215), which main.ts drives off this table -
+ * Hidden -> "Debug mode commands (^A)" -> these nine -> each one's commands.
+ * PORT_TODO 3.18. Either route dispatches through runWizardDebugCommand, so the
+ * menu is not a way around player_can_debug_prereq.
  *
  * FROZEN (deeply), AND DELIBERATELY NOT A MOD SEAM. These are upstream's own
  * tables and must match the C exactly, which is what the parity tests assert.
@@ -685,12 +686,27 @@ export async function runWizardDebugMenu(ctx: WizardUiCtx): Promise<void> {
     return;
   }
   /* Check prereqs (ui-game.c L595): player_can_debug_prereq runs AFTER the key
-   * resolves to a command, so an unbound key never triggers the warning. */
+   * resolves to a command, so an unbound key never triggers the warning. It is
+   * inside runWizardDebugCommand, which both routes into a debug command use. */
+  await runWizardDebugCommand(ctx, cmd.action);
+}
+
+/**
+ * One debug command, with the gate ^A puts in front of it: player_can_debug_prereq
+ * runs AFTER the command has resolved (ui-game.c:595), so it is here rather than
+ * at the menu, and every route to a debug command goes through this one function.
+ *
+ * Two routes exist now - the ^A keypress above, and the ENTER command browser's
+ * nested "Debug mode commands" tier, which is the only place the nine cmd_debug
+ * categories are reachable at all. Neither may be a way around the NOSCORE_DEBUG
+ * marking, which is why this is a shared function and not a copied three lines.
+ */
+export async function runWizardDebugCommand(ctx: WizardUiCtx, action: string): Promise<void> {
   if (!(await confirmDebugGate(ctx))) {
     ctx.refresh();
     return;
   }
-  await dispatchDebug(ctx, cmd.action);
+  await dispatchDebug(ctx, action);
   ctx.refresh();
 }
 

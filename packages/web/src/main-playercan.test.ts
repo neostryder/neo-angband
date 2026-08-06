@@ -62,7 +62,9 @@ describe("player_can_refuel_prereq gates 'F' at the key (player-util.c:1287)", (
 
   it("the 'F' binding calls the prereq before opening the refuel picker", () => {
     expect(src).toMatch(
-      /\{ o: "F", act: \(\) => \{ if \(playerCanRefuelPrereq\(\)\) void openModal\(refuelItem\); else render\(\); \} \}/,
+      new RegExp(
+        String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "F", act: \(\) => \{ if \(playerCanRefuelPrereq\(\)\) void openModal\(refuelItem\); else render\(\); \} \}`,
+      ),
     );
   });
 });

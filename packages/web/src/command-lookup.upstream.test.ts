@@ -75,7 +75,9 @@ describe("command/lookup (reference/src/tests/command/lookup.c)", () => {
     const mainPath = join(dirname(fileURLToPath(import.meta.url)), "main.ts");
     const src = readFileSync(mainPath, "utf8");
     // Spot-check the rows the upstream suite cares about.
-    expect(src).toContain('{ o: "{", act: () => void openModal(inscribeItem) }');
+    expect(src).toContain(
+      '{ desc: "Inscribe an object", cat: "Items", o: "{", act: () => void openModal(inscribeItem) }',
+    );
     expect(src).toMatch(/o:\s*"u",\s*r:\s*"Z"/); // use-staff
     expect(src).toMatch(/o:\s*"T",\s*r:\s*null/); // tunnel (orig only)
     expect(src).toMatch(/o:\s*"g"/); // pickup
