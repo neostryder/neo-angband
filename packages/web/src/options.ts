@@ -32,16 +32,24 @@
  *       option, so it lives in the web layer (main.ts, localStorage) and is
  *       injected here exactly like the graphics tile-mode selector below.
  * Omitted (documented, not silently dropped):
- *   (w) Subwindow setup - no subwindows modelled; ({) Auto-inscription /
- * (e) keymaps / (c) colours / (v) visuals / (s/t/u/p) pref-file dump-load -
- * no filesystem, the core save IS the persistence.
+ *   (w) Subwindow setup - the port is ONE terminal, not eight.
+ *   ({) Auto-inscription - built, but reachable only from the knowledge
+ *       browser ('~'), which is the same screen upstream's row opens.
+ * The rest of that list is no longer omitted: (e) keymaps, (c) colours,
+ * (v) visuals and the (s/t/u/p) pref-file rows all exist, over the virtual
+ * ANGBAND_DIR_USER (prefs-ui.ts, host/io.ts).
  *
- * PERSISTENCE: every toggle/setter here calls straight into the live
- * OptionState (state.options), which is already serialized into the core
- * save (SavedGame.options, save.ts) and restored additively (OptionState.
- * restore falls back to table defaults for any field an older save lacks).
- * The caller (main.ts) autosaves after this screen closes; no storage code
- * lives here.
+ * PERSISTENCE, and it is TWO stores, not one - the sentence that used to sit
+ * here ("no filesystem, the core save IS the persistence") was true of only
+ * half of it:
+ *   - the SAVE holds what THIS character is playing with. Every toggle and
+ *     setter below writes the live OptionState (state.options), which
+ *     serialises into SavedGame.options and restores additively. main.ts
+ *     autosaves when this screen closes; no storage code lives here.
+ *   - `customized_birth_options.txt` / `customized_interface_options.txt` in
+ *     ANGBAND_DIR_USER hold what the PLAYER wants the NEXT character to start
+ *     from ('s' to save, 'r' to restore, option.c L207-328). The save cannot
+ *     do that job: at birth there is no save. See customPageDefaults.
  *
  * RNG SAFETY: nothing in this module reads state.rng, directly or indirectly
  * - every toggle/setter is a pure OptionState mutation, exactly like
@@ -89,14 +97,19 @@ import {
   DEFAULT_DELAY_FACTOR,
   DEFAULT_LAZYMOVE_DELAY,
   GRAPHICS_NONE,
+  host,
+  optionsRestoreCustom,
+  optionsRestoreMaintainer,
+  optionsSaveCustom,
 } from "@rpgm-tools/neo-angband-core";
-import type { GameState } from "@rpgm-tools/neo-angband-core";
+import type { GameState, OptionOpts } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
-import { selectFromMenu, promptNumber, menuNav } from "./overlay";
+import { getKeyInline, selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 import { runColorsEditor, saveColorPrefs } from "./colors";
 import { runKeymapEditor } from "./keymap-edit";
+import { log } from "./logging";
 import {
   dumpAutoinscriptionsRow,
   dumpCharScreenOptions,
@@ -121,8 +134,72 @@ export interface OptionRow {
   description: string;
   value: boolean;
   locked: boolean;
-  /** The maintainer/table default (OPTION_ENTRIES.normal), for 'x' reset. */
-  defaultValue?: boolean;
+}
+
+/**
+ * Build the s/r/x actions for one page over whatever store holds its values -
+ * the live OptionState in game, or the plain birth-choice map during birth.
+ *
+ * The store is adapted to `OptionOpts` (core's spelling of
+ * `struct player_options.opt[]`) for the duration of each action, because
+ * option.c's three functions all read and write that array and nothing else.
+ * Going through a snapshot rather than handing them OptionState directly is
+ * what keeps the birth lock intact: OptionState.set refuses birth options after
+ * construction, and it should - the at-birth editor is not an OptionState.
+ */
+function customDefaultsFor(
+  term: GlyphTerm,
+  page: string,
+  rows: OptionRow[],
+  get: (name: string) => boolean,
+  set: (name: string, value: boolean) => void,
+): OptionCustomDefaults {
+  const snapshot = (): OptionOpts => {
+    const opts: OptionOpts = {};
+    for (const row of rows) opts[row.name] = get(row.name);
+    return opts;
+  };
+  const writeBack = (opts: OptionOpts): void => {
+    for (const row of rows) {
+      const v = opts[row.name];
+      if (v !== undefined) set(row.name, v);
+    }
+  };
+  return {
+    save: () => optionsSaveCustom(host(), snapshot(), page),
+    restore: () => {
+      const opts = snapshot();
+      /* A parse error goes to the console rather than the message line:
+       * upstream's plog_fmt is stderr on the curses front ends, and this
+       * screen's one row is already the get_com prompt. */
+      const ok = optionsRestoreCustom(host(), opts, page, (m) => log.warn("options", m));
+      /* The `if` is belt-and-braces and a mutation battery says so: dropping it
+       * kills nothing, because optionsRestoreCustom returns false only from its
+       * pre-parse early return, so a failed restore leaves `opts` byte-identical
+       * to the snapshot and writing it back is a no-op. Kept anyway - the guard
+       * is what makes that a property of THIS function rather than a fact about
+       * the other one. Not a test to contrive; an unkillable mutant to record. */
+      if (ok) writeBack(opts);
+      return ok;
+    },
+    reset: () => {
+      const opts = snapshot();
+      optionsRestoreMaintainer(opts, page);
+      writeBack(opts);
+    },
+    reload: () => {
+      for (const row of rows) row.value = get(row.name);
+    },
+    /* get_com(", &dummy) with upstream's three literals composed here so the
+     * "Press any key to continue." half is written once:
+     *   "Successfully saved.  Press any key to continue."
+     *   "Save failed.  Press any key to continue."
+     *   "Restore failed.  Press any key to continue."
+     * Two spaces after the period, as the C has. */
+    acknowledge: async (message) => {
+      await getKeyInline(term, `${message}  Press any key to continue.`);
+    },
+  };
 }
 
 /**
@@ -143,19 +220,60 @@ function pageRows(
     description: e.description,
     value: state.options?.get(e.name) ?? e.normal,
     locked: page === "BIRTH",
-    defaultValue: e.normal,
   }));
+}
+
+/**
+ * The player's customised defaults for one page, as options_init_defaults reads
+ * them (option.c L192-199): the table defaults, then whatever
+ * `customized_<page>_options.txt` overrides.
+ *
+ * This is the READ side of the feature and the reason it exists. What 's' saves
+ * on the birth screen has to come back on the NEXT character's birth screen,
+ * and the savefile cannot do that job - at that point there is no savefile.
+ * birth.ts seeds its birth-choice map from this before the first stage runs.
+ */
+export function customPageDefaults(page: string): Record<string, boolean> {
+  const opts: OptionOpts = {};
+  optionsRestoreMaintainer(opts, page);
+  optionsRestoreCustom(host(), opts, page, (m) => log.warn("options", m));
+  return opts;
 }
 
 /**
  * option_toggle_menu's curated jump-tag string (ui-options.c L326,
  * `selections`): index letters that deliberately EXCLUDE the y/n/t toggle
- * command letters (and s/r/x, upstream's save/restore/reset-to-default
- * actions, which this screen does not implement) so a row jump never shadows
- * a command key. Case-sensitive (MN_DBL_TAP, not MN_CASELESS_TAGS) - lower
- * and upper case are distinct rows, exactly like upstream.
+ * command letters and s/r/x, upstream's save/restore/reset-to-default actions,
+ * so a row jump never shadows a command key. Case-sensitive (MN_DBL_TAP, not
+ * MN_CASELESS_TAGS) - lower and upper case are distinct rows, exactly like
+ * upstream.
  */
 const TOGGLE_TAGS = "abcdefgimopquvwzABCDEFGHIJKLMOPQUVWZ";
+
+/**
+ * The three s/r/x actions upstream gives a page whose `cmd_keys` contains
+ * "SsRrXx" - the INTERFACE page and the AT-BIRTH birth page, and NO others
+ * (ui-options.c L333-348). Passing this to optionToggleScreen is how a page
+ * declares it has them; a page that passes nothing is upstream's default
+ * `cmd_keys = "YyNnTt"`, which is what the CHEAT page gets.
+ *
+ * `save` and `restore` return upstream's boolean so the screen can print the
+ * right one of "Successfully saved." / "Save failed." / "Restore failed.";
+ * `reload` re-reads every row after a successful restore or a reset, which is
+ * upstream's menu_refresh(m, false).
+ */
+export interface OptionCustomDefaults {
+  /** 's' -> options_save_custom (option.c L212). */
+  save: () => boolean;
+  /** 'r' -> options_restore_custom (option.c L263). */
+  restore: () => boolean;
+  /** 'x' -> options_restore_maintainer (option.c L313). No failure mode. */
+  reset: () => void;
+  /** menu_refresh: pull each row's value back out of the store. */
+  reload: () => void;
+  /** get_com("<message>  Press any key to continue.", &dummy). */
+  acknowledge: (message: string) => Promise<void>;
+}
 
 /**
  * option_toggle_menu/option_toggle_display/option_toggle_handle (ui-options.c
@@ -176,6 +294,12 @@ const TOGGLE_TAGS = "abcdefgimopquvwzABCDEFGHIJKLMOPQUVWZ";
  * read-only page; the caller (options.ts) wires it straight to
  * state.options.set(), which already refuses birth-locked names on its own
  * (belt-and-braces - this screen never even offers to toggle one).
+ *
+ * `custom` carries the s/r/x actions, and its PRESENCE is what upstream spells
+ * as `cmd_keys` (L333-348): only the INTERFACE page and the at-birth birth page
+ * have them. Everything else - the CHEAT page in this port - gets y/n/t alone.
+ * That gating is not cosmetic: 'x' used to be offered on every editable page
+ * here, including CHEAT, where upstream has no such key.
  */
 export function optionToggleScreen(
   term: GlyphTerm,
@@ -183,16 +307,22 @@ export function optionToggleScreen(
   rows: OptionRow[],
   onToggle: (name: string, value: boolean) => void,
   readOnly: boolean,
+  custom?: OptionCustomDefaults,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let cursor = 0;
     let top = 0;
+    /* m->prompt, all three of upstream's (ui-options.c L331, L337, L342). */
     const prompt = readOnly
       ? "You can only modify these options at character birth."
-      : "Set option (y/n/t), 'x' to reset to defaults";
+      : custom
+        ? "Set option (y/n/t), 's' to save, 'r' to restore, 'x' to reset"
+        : "Set option (y/n/t), select with movement keys or index";
     const footer = readOnly
       ? "[ ESC to return ]"
-      : "[ y/n/t to set, x reset, a-z index to jump, ESC to return ]";
+      : custom
+        ? "[ y/n/t to set, s save, r restore, x reset, a-z jump, ESC to return ]"
+        : "[ y/n/t to set, a-z index to jump, ESC to return ]";
     const bodyTop = 3;
 
     const paint = (): void => {
@@ -243,6 +373,23 @@ export function optionToggleScreen(
     const advance = (): void => {
       if (rows.length > 0) cursor = (cursor + 1) % rows.length;
     };
+    /**
+     * screen_save() / <action> / screen_load() around the s and r keys
+     * (ui-options.c L168-193). The listener comes off for the duration so the
+     * get_com acknowledgement owns the keyboard - without that, the keypress
+     * that dismisses "Successfully saved." also lands on the option list
+     * underneath. Re-registered and repainted afterwards, which is
+     * screen_load + menu_refresh.
+     */
+    const runAction = async (action: () => Promise<void>): Promise<void> => {
+      window.removeEventListener("keydown", onKey, true);
+      try {
+        await action();
+      } finally {
+        window.addEventListener("keydown", onKey, true);
+        paint();
+      }
+    };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -290,19 +437,42 @@ export function optionToggleScreen(
         paint();
         return;
       }
-      /* 'x' -> options_restore_maintainer (ui-options.c L196-199): reset every
-       * writable row on this page to its table/maintainer default, immediately
-       * and with no confirm (exactly as upstream). Rows without a known default
-       * (should not happen on the INTERFACE page) are left untouched. Custom
-       * save/restore ('s'/'r') stay unimplemented: the port has no separate
-       * custom-defaults snapshot - the game save IS the persistence. */
-      if (ev.key === "x" || ev.key === "X") {
-        for (let i = 0; i < rows.length; i++) {
-          const row = rows[i];
-          if (row && row.defaultValue !== undefined) setAt(i, row.defaultValue);
+      /* s / r / x exist only where upstream's cmd_keys has "SsRrXx" - see
+       * OptionCustomDefaults. A page without them falls through to the jump
+       * tags, which is right: TOGGLE_TAGS excludes s, r and x, so the keys are
+       * simply inert there, exactly as an unlisted cmd_key is upstream. */
+      if (custom) {
+        /* 's' -> options_save_custom (ui-options.c L167-175), then get_com's
+         * acknowledgement. Not gated on the page being editable: upstream lets
+         * you save from any page whose cmd_keys carries S. */
+        if (ev.key === "s" || ev.key === "S") {
+          void runAction(async () => {
+            await custom.acknowledge(
+              custom.save() ? "Successfully saved." : "Save failed.",
+            );
+          });
+          return;
         }
-        paint();
-        return;
+        /* 'r' -> options_restore_custom (L180-193). On success the menu just
+         * refreshes; only a FAILED restore prints anything. */
+        if (ev.key === "r" || ev.key === "R") {
+          void runAction(async () => {
+            if (custom.restore()) {
+              custom.reload();
+            } else {
+              await custom.acknowledge("Restore failed.");
+            }
+          });
+          return;
+        }
+        /* 'x' -> options_restore_maintainer (L196-199): every row on this page
+         * back to its table default, immediately and with no confirm. */
+        if (ev.key === "x" || ev.key === "X") {
+          custom.reset();
+          custom.reload();
+          paint();
+          return;
+        }
       }
       if (ev.key.length === 1) {
         const i = TOGGLE_TAGS.indexOf(ev.key);
@@ -317,16 +487,30 @@ export function optionToggleScreen(
   });
 }
 
-/** (a) User interface options: every INTERFACE row, editable. */
+/**
+ * (a) User interface options: every INTERFACE row, editable, WITH the s/r/x
+ * custom-defaults actions - upstream gives this page `cmd_keys = "YyNnTtSsRrXx"`
+ * (ui-options.c L341-347), and it is one of only two pages that get them.
+ */
 async function runInterfacePage(term: GlyphTerm, state: GameState): Promise<void> {
+  const rows = pageRows(state, "INTERFACE");
   await optionToggleScreen(
     term,
     "User interface options",
-    pageRows(state, "INTERFACE"),
+    rows,
     (name, value) => {
       state.options?.set(name, value);
     },
     false,
+    customDefaultsFor(
+      term,
+      "INTERFACE",
+      rows,
+      (name) => state.options?.get(name) ?? false,
+      (name, value) => {
+        state.options?.set(name, value);
+      },
+    ),
   );
 }
 
@@ -373,6 +557,18 @@ export async function runBirthOptionsEditor(
       store[name] = value;
     },
     false,
+    /* OPT_PAGE_BIRTH + 10 is the other page with "SsRrXx" (L341-347). This is
+     * the screen the customised birth defaults exist FOR: what is saved here is
+     * what the NEXT character's birth screen opens on. */
+    customDefaultsFor(
+      term,
+      "BIRTH",
+      rows,
+      (name) => store[name] ?? OPTION_ENTRIES.find((e) => e.name === name)?.normal ?? false,
+      (name, value) => {
+        store[name] = value;
+      },
+    ),
   );
 }
 
@@ -385,6 +581,13 @@ export async function runBirthOptionsEditor(
  * character is no longer eligible for the high-score table (enter_score's
  * "cheating" gate, score.c L277) - the same score invalidation upstream
  * applies. That coupling lives in OptionState.set, so this screen just calls it.
+ *
+ * NO s/r/x HERE, and that is upstream: option_toggle_menu gives the cheat page
+ * the default `cmd_keys = "YyNnTt"` (ui-options.c L332), so it has no
+ * save/restore/reset. This screen used to offer 'x' - optionToggleScreen ran it
+ * for every editable page - which was a key upstream does not have. It is now
+ * gated on the page declaring OptionCustomDefaults, which only INTERFACE and
+ * the at-birth birth page do.
  */
 async function runCheatPage(term: GlyphTerm, state: GameState): Promise<void> {
   await optionToggleScreen(

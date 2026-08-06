@@ -17,11 +17,17 @@ import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import type { GlyphTerm } from "./term";
 import type { PlayerClass, PlayerRace } from "@rpgm-tools/neo-angband-core";
 import {
+  HostDir,
+  NULL_HOST,
+  OPTION_ENTRIES,
   Rng,
   colorToCss,
   COLOUR_L_BLUE,
   COLOUR_YELLOW,
+  optionsSaveCustomText,
+  setHost,
 } from "@rpgm-tools/neo-angband-core";
+import type { HostIo } from "@rpgm-tools/neo-angband-core";
 
 interface FakeWindow {
   addEventListener(type: string, fn: (ev: Event) => void, capture?: boolean): void;
@@ -159,7 +165,23 @@ const RACES11 = [
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
+  setHost(NULL_HOST);
 });
+
+/** A HostIo whose USER directory is a Map (PORT_TODO 5.3). */
+function memHost(files: Map<string, string>): HostIo {
+  return {
+    ...NULL_HOST,
+    displayPath: (dir, name) => `${dir}/${name}`,
+    exists: (dir, name) => dir === HostDir.USER && files.has(name),
+    read: (dir, name) => (dir === HostDir.USER ? (files.get(name) ?? null) : null),
+    write: (dir, name, text) => {
+      if (dir !== HostDir.USER) return "create-failed";
+      files.set(name, text);
+      return "ok";
+    },
+  };
+}
 
 describe("runBirth: faithful stage order (no sex stage)", () => {
   it("race -> class -> roller -> name -> confirm yields the full choice", async () => {
@@ -804,6 +826,63 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const choice = await done;
     expect(choice!.raceName).toBe("Dwarf");
     expect(choice!.className).toBe("Mage");
+  });
+
+  it("the birth-options editor OPENS ON the player's customised defaults", async () => {
+    /* PORT_TODO 5.3, and the point of the whole row: options_init_defaults
+     * restores OP_BIRTH from customized_birth_options.txt in player_init
+     * (option.c:198), long before any stage runs, so what a previous character
+     * saved with 's' is what this one's '=' screen shows. Without the seeding
+     * the editor opens on the table every time and 's' writes a file nothing
+     * reads. */
+    const first = OPTION_ENTRIES.find((e) => e.type === "BIRTH")!;
+    const inverted: Record<string, boolean> = {};
+    for (const e of OPTION_ENTRIES) if (e.type === "BIRTH") inverted[e.name] = !e.normal;
+    setHost(memHost(new Map([
+      ["customized_birth_options.txt", optionsSaveCustomText(inverted, "BIRTH")],
+    ])));
+
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100);
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+    await tick();
+    press(win, "="); await tick();
+    const snap = term.snapshot().join("\n");
+    expect(snap).toContain("Birth options");
+    /* The row shows the FILE's value, which is the opposite of the table's. */
+    expect(snap).toMatch(
+      new RegExp(`: ${first.normal ? "no " : "yes"}\\s+\\(${first.name}\\)`),
+    );
+
+    press(win, "Escape"); await tick();
+    press(win, "C"); await tick();
+    press(win, "Enter"); await tick();
+    press(win, "a");
+    /* ...and it rides out as the birth choice startGame freezes. */
+    expect((await done)!.birthOptions?.[first.name]).toBe(!first.normal);
+  });
+
+  it("a choice made in this session still beats the customised file", async () => {
+    const first = OPTION_ENTRIES.find((e) => e.type === "BIRTH")!;
+    const inverted: Record<string, boolean> = { [first.name]: !first.normal };
+    setHost(memHost(new Map([
+      ["customized_birth_options.txt", optionsSaveCustomText(inverted, "BIRTH")],
+    ])));
+
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100);
+    const done = runBirth(term, RACES, CLASSES, {
+      ...QUICK,
+      rng: new Rng(1),
+      birthOptions: { [first.name]: first.normal },
+    });
+    await tick();
+    press(win, "C"); await tick();
+    press(win, "Enter"); await tick();
+    press(win, "a");
+    expect((await done)!.birthOptions?.[first.name]).toBe(first.normal);
   });
 });
 

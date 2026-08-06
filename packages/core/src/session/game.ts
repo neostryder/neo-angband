@@ -264,6 +264,8 @@ import { Rng } from "../rng.js";
 import type { Player } from "../player/player.js";
 import { OptionState } from "../player/options.js";
 import type { OptionName } from "../player/options.js";
+import { optionsInitDefaults } from "../player/options-file.js";
+import { host } from "../host/io.js";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
 import { makeActivationSummarizer } from "../obj/effects-info.js";
 import type { RawTimedRecord } from "../obj/effects-info.js";
@@ -2765,17 +2767,24 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
 
-  // The player option store (option.c options_init_defaults): seeded from
-  // OPTION_ENTRIES defaults, with the birth/interface choices applied. Built
-  // before level generation so birth_randarts can swap the artifact set first.
-  // Every Angband option (show_damage, center_player, auto_more, ...) ships in
-  // core with its faithful upstream default (OPTION_ENTRIES.normal); the player
-  // changes them in the options menu exactly as upstream. Only explicit birth /
-  // interface CHOICES (birth screen, point-buy) are applied here as overrides,
-  // so with none supplied the store is byte-identical to the table.
+  // The player option store, options_init_defaults whole (option.c L186-205,
+  // called from player_init at player.c:491). In upstream's order:
+  //
+  //   1. every option from its table `normal` (OPTION_ENTRIES),
+  //   2. the player's customised BIRTH defaults from ANGBAND_DIR_USER,
+  //   3. their customised INTERFACE defaults,
+  //   4. delay_factor = 40 and hitpoint_warn = 3,
+  //
+  // and only then this call's explicit birth/interface CHOICES on top. Steps 2
+  // and 3 read customized_<page>_options.txt through the installed host; with
+  // no host, or no such file, they are exactly the table defaults, which is why
+  // a test or an MCP session sees no change. Built before level generation so
+  // birth_randarts can swap the artifact set first.
+  const initial = optionsInitDefaults(host());
   const options = new OptionState({
-    ...(opts.optionOverrides ? { overrides: opts.optionOverrides } : {}),
-    ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
+    overrides: { ...initial.opts, ...(opts.optionOverrides ?? {}) },
+    hitpointWarn: opts.hitpointWarn ?? initial.hitpointWarn,
+    delayFactor: initial.delayFactor,
   });
 
   // options_init_cheat (player-birth.c:1234, gap 1.12): at character accept,

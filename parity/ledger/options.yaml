@@ -66,15 +66,35 @@ seams_wired:
     feeds EnterScoreGating.cheated (score/score.ts stays pure; the web shell
     supplies the gate at the death path).
 deferred:
-  - src/ui-options.c (2092 lines): the entire option MENU (keypress screens,
-    the birth-option editor, the customized_*_options.txt load/save). This is
-    the draw half / a platform-native menu concern (repo decision: platform-
-    native menus). The store exposes get/set/names so a native menu can drive
-    it, but no in-engine menu UI is ported.
+  - src/ui-options.c (2092 lines): STALE as written, re-read 2026-08-06. It
+    said "no in-engine menu UI is ported" and named three things: the keypress
+    screens, the birth-option editor, and the customized_*_options.txt
+    load/save. All three exist. web/src/options.ts is do_cmd_options
+    (option_actions[]' letters, MN_CASELESS_TAGS) plus option_toggle_menu
+    (option_toggle_display's 45-column layout, option_toggle_handle's y/n/t and
+    s/r/x, the `selections` jump tags, all three of m->prompt, and MN_NO_TAGS
+    for the in-game birth page); runBirthOptionsEditor is
+    do_cmd_options_birth; do_cmd_delay / do_cmd_hp_warn /
+    do_cmd_lazymove_delay are the d/h/m rows; do_cmd_keymaps, do_cmd_colors
+    and do_cmd_visuals are e/c/v (keymap-edit.ts, colors.ts, prefs-ui.ts).
+    The customised-defaults files are the row below.
+    WHAT IS GENUINELY NOT PORTED, and why: (w) subwindow setup, because
+    ANGBAND_TERM_MAX is 8 and this port is one canvas; use_option_context_menu,
+    the MOUSE equivalent of s/r/x, which needs a right-click menu the shell has
+    no general machinery for and duplicates keys that all work; and
+    ui-entry.c's char-screen renderer editor behind (u).
   - options_save_custom / options_restore_custom / options_restore_maintainer
-    (option.c L213-L328): the per-user customized-defaults text files
-    (ANGBAND_DIR_USER). Filesystem-bound and menu-adjacent; deferred with
-    ui-options.c.
+    (option.c L213-L328): NO LONGER DEFERRED. Ported 2026-08-06 in
+    player/options-file.ts (PORT_TODO 5.3), reader and writer, with parser.c's
+    real strtok tokenisation rather than a split(":"). The "filesystem-bound"
+    half of the reason expired when host/io.ts landed; the "menu-adjacent" half
+    was wrong in a way worth recording -- these files are what
+    options_init_defaults reads in player_init (option.c:198-199, player.c:491),
+    BEFORE any menu, and they are the only thing that can carry a player's
+    preferred defaults to the NEXT character. Wired at both ends:
+    session/game.ts startGame runs optionsInitDefaults(host()), and web
+    birth.ts seeds its birth-choice map from customPageDefaults("BIRTH").
+    The 's' and 'r' keys exist on the two pages upstream gives them to.
   - The wizard/debug gate (game/wizard.ts WizardDeps.wizard) is NOT an OPT_
     option (no list-options.h entry): it is the ALLOW_DEBUG + NOSCORE_WIZARD
     flag, a player/debug concern with no option-table value to read, so it
