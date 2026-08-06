@@ -53,9 +53,20 @@ deferred:
   - Decoys (cave_find_decoy): not modelled, so the PROJECT_STOP decoy check uses
     a (-1,-1) sentinel that never matches; a decoy exists only once the
     create-decoy effect is ported.
-  - PROJECT_INFO's square_isbelievedwall (the player's remembered map): not
-    modelled, approximated by real projectability. Only targeting display uses
-    it (deferred UI), so it is currently unreached by ported callers.
+  - PROJECT_INFO's square_isbelievedwall (the player's remembered map): PORTED
+    and wired, both halves. This entry used to read "not modelled, approximated
+    by real projectability; only targeting display uses it (deferred UI), so it
+    is currently unreached by ported callers", and every clause of that had
+    stopped being true. The predicate is game/known.ts squareIsBelievedWall
+    (cave-square.c L901-912); the effect path supplies it as project()'s
+    believedWall hook (game/project-cast.ts:361); and the targeting display is
+    not deferred - game/target-loop.ts is the ported look/target loop, which is
+    what made the remaining gap a live one rather than a hypothetical. Its
+    draw_path was colouring the projected path from the LIVE chunk, so a wall
+    tunnelled out of sight, or rubble dropped behind the player, showed through
+    a preview that upstream draws from memory. Closed at PORT_TODO 7.1.
+    Still approximate on the OBJECT half only (square_object(player->cave,...)),
+    which needs a per-object remembered twin that does not exist.
   - player_sees_grid / panel_contains and update_stuff: viewport + upkeep
     concerns left to the caller/UI, so the driver does not compute them.
   - Faithful deviation: on the player-death early return the driver clears the
