@@ -18,12 +18,31 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# TWO JOBS, AND THE SPLIT IS THE POINT.
+#
+# This used to be one job: install, build, bundle, upload the `github-pages`
+# artifact, deploy. That works until a deploy fails on GitHub's side, and on
+# 2026-08-06 one did - every build step green, then `actions/deploy-pages` sat
+# at `Current status: deployment_queued` for eleven minutes and hit its own
+# timeout. Nothing was wrong with the repository, so the remedy was a re-run.
+#
+# `gh run rerun <id> --failed` then failed DIFFERENTLY, and worse:
+#
+#   Found 2 artifact(s)
+#   Error: Multiple artifacts named "github-pages" were unexpectedly found for
+#   this workflow run. Artifact count is 2.
+#
+# With one job there is no "just the deploy step" to retry - the re-run repeats
+# the upload, the first attempt's artifact is still attached to the run, and
+# deploy-pages refuses to choose between them. A transient stall became an
+# unrecoverable run, and the only way out was a fresh workflow_dispatch.
+#
+# Split as below - which is also the shape actions/deploy-pages documents - a
+# re-run of the failed job re-runs `deploy` ALONE. It uploads nothing, so there
+# is nothing to collide with, and a stalled deployment costs one click.
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     env:
       # This job builds the WEB bundle; it never launches the desktop shell, so
       # skip Electron's ~110 MB binary download (see the same note in ci.yml).
@@ -42,5 +61,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: packages/web/dist-web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
