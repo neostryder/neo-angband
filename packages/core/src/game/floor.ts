@@ -27,9 +27,10 @@
  *   pointer, and the port's grid-keyed pile map plus obj.mimickingMIdx carries
  *   everything observable. A JS reference is the link oidx stands in for.
  *
- * What is genuinely left is ONE branch: push_object's unrevealed-mimic arm
- * (obj-pile.c:1213-1256), which moves the mimic monster along with its object
- * instead of dropping the object on its own. Tracked as PORT_TODO 2.14.
+ * - push_object's unrevealed-mimic arm (obj-pile.c:1213-1256), the fourth, IS
+ *   now ported too: game/project-feat.ts pushMimic moves the mimic monster
+ *   along with its object instead of dropping the object on its own
+ *   (PORT_TODO 2.14).
  */
 
 import type { Loc } from "../loc.js";

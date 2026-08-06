@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 122 confirmed-absent citations** — 35 closed, 33 open.
+**68 items covering all 122 confirmed-absent citations** — 36 closed, 32 open.
 The citation count **went up, not down**, and that is the adjudication working:
 seven rows this session moved from unadjudicated to `partial`, and a `partial` is
 a confirmed-absent citation. Reading the ledger finds work as often as it kills
@@ -817,33 +817,63 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/project-cast.ts:685`,
   `parity/ledger/game-project-cast.yaml:53`
 
-- [ ] **2.14 Mimic bookkeeping.**
-  Targeting is wired; mimicked-object bookkeeping is not.
+- [x] **2.14 Mimic bookkeeping.** CLOSED. Two unported arms, both found by
+  reading every `mimicked_obj` / `mimicking_m_idx` site in the C rather than
+  trusting the row that grouped them — which is how 2.9 turned up the first one.
 
-  **`push_object` has no mimic arm — found while closing 2.9**, by reading the
-  four `mimicking_m_idx` sites in `obj-pile.c` rather than trusting the row that
-  grouped them. Two of the four are closed: `object_stackable`'s "mimicked items
-  do not stack" (`obj-pile.c:406`) is ported at `obj/object.ts:1001` and IS
-  reached, since `objectMergeable` delegates to it; and the orphaning arm at
-  `:338` belongs to the shadow registry the port replaced.
+  **`push_object` had no mimic arm.** Upstream (`obj-pile.c:1213-1256`) treats
+  an unrevealed mimic specially: it clears `mimic->mimicked_obj`, scatters
+  outward from d=1, and on the first grid that takes the object it **moves the
+  monster with it** (`monster_swap`) and re-links the pair — or, at d>=4,
+  destroys BOTH. The port sent every object through `dropNear`, so a door
+  created on a grid holding an unrevealed mimic separated the monster from the
+  object it was pretending to be, leaving `obj.mimickingMIdx` pointing at a
+  monster somewhere else. Now `pushMimic`
+  (`packages/core/src/game/project-feat.ts:96`). Reachable through the
+  door-creating effects (`game/effect-general.ts:190`,
+  `game/effect-terrain.ts:347`).
 
-  The third is real. Upstream's `push_object` (`obj-pile.c:1213-1256`) treats an
-  unrevealed mimic specially: it clears the dangling `mimic->mimicked_obj`, then
-  scatters outward from d=1, and on the first grid that takes the object it
-  **moves the monster with it** (`monster_swap`) and re-links the pair — or, at
-  d>=4, destroys BOTH. The port's `pushObject` (`game/project-feat.ts:81`) sends
-  every object through `dropNear` with no such branch, so a door created on a
-  grid holding an unrevealed mimic separates the monster from the object it is
-  pretending to be, leaving `obj.mimickingMIdx` pointing at a monster that is
-  somewhere else. Reachable: `pushObject`'s two callers are the door-creating
-  effects (`game/effect-general.ts:190`, `game/effect-terrain.ts:347`).
+  Keeping the `mimickedObj = 0` clear across the scatter is not hygiene. Two of
+  `monster_swap`'s three readers cannot tell (both resolve through the
+  monster's old grid, which `push_object` has emptied), but `update_mon` can:
+  a monster still mimicking a non-ignored item KEEPS `MFLAG_VISIBLE` when it
+  drops out of sight (`mon-util.c:429-433`). Leave the link up and the mimic is
+  marked visible in transit. A mutation that drops the clear survived nine
+  tests before that one was written.
 
-  This is what is left of the `floor.ts:18` census row now that the known-object
-  shadow cave (2.9) is closed and the oidx bookkeeping is a ratified divergence.
-  Sites: `packages/core/src/game/context.ts:1231`,
+  **`delete_monster_idx` never deleted the mimicked object**
+  (`mon-make.c:385-387`). `monster_death` always has
+  (`game/mon-death.ts`, `mon-util.c:957-961`) — but 17 of the 18 ways a monster
+  leaves the level go through `deleteMonster` instead, including banishment
+  (`game/effect-monster.ts:119`, `:152`). Any of them left the fake item on the
+  floor forever, pointing at a monster index the next monster would reuse. Now
+  handled at `packages/core/src/game/context.ts:1266`.
+
+  The other two `mimicking_m_idx` sites in `obj-pile.c` were already closed:
+  `object_stackable`'s "mimicked items do not stack" (`:406`) is ported at
+  `obj/object.ts:1001` and IS reached through `objectMergeable`; the orphaning
+  arm at `:338` belongs to the shadow registry the port replaced. The remaining
+  eleven `mimicked_obj` sites in the C all have live ports —
+  `monster_index_move` (`game/world.ts:690`), `mon_create_mimicked_object`
+  (`game/mon-place.ts:335`), `monster_is_mimicking` (`mon/predicate.ts:190`),
+  `update_mon`'s two (`game/known.ts:949`, `:972`), `move_mimicked_object`
+  (`game/known.ts:1063`), `monster_swap`'s two — folded into one `moved()`
+  helper that runs for each half (`game/context.ts:1197`) —
+  `become_aware` (`game/known.ts:1022`), `monster_death`
+  (`game/mon-death.ts:306`) and the save/load relink.
+
+  NOT closed by this, and still deferred: `delete_monster_idx`'s **held-object**
+  drop and its redraw requests. Those are a different subsystem, not mimicry.
+
+  Tests: `packages/core/src/game/push-object.test.ts` (13). Seven mutations,
+  seven kills — two of them only after a test was added to catch a survivor
+  (the `mimickedObj` clear above, and the d>=4 cutoff, which the walled-in
+  fixture could not distinguish from d>=5 because granite blocks the line of
+  sight the scatter needs).
+  Sites: `packages/core/src/game/context.ts:1266`,
   `packages/core/src/game/floor.ts:30`,
-  `packages/core/src/game/project-feat.ts:81`,
-  `parity/ledger/game-project-monster.yaml:50`
+  `packages/core/src/game/project-feat.ts:96`,
+  `parity/ledger/game-project-monster.yaml:49`
 
 - [x] **2.15 The book out-of-depth value boost.** CLOSED as a RETRACTION — and
   reading it found a different, real gap in the same function.

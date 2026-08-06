@@ -50,6 +50,7 @@ import {
   monsterIsMimicking,
 } from "../mon/predicate.js";
 import { cmdDisableRepeatFloorItem } from "./repeat.js";
+import { floorExcise, floorPile } from "./floor.js";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -1226,11 +1227,11 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
 }
 
 /**
- * delete_monster_idx (mon-make.c): remove the monster from its groups
+ * delete_monster_idx (mon-make.c:314-397): remove the monster from its groups
  * (leader succession / group split happen here), forget its racial
- * occurrence, clear its square and free its slot. The held-object drop,
- * mimic and targeting/redraw bookkeeping are DEFERRED with their subsystems
- * (floor objects, lore); the caller runs monster_death (drops) beforehand.
+ * occurrence, delete the object it was mimicking, clear its square and free
+ * its slot. The held-object drop and the redraw bookkeeping are DEFERRED with
+ * their subsystems; the caller runs monster_death (drops) beforehand.
  */
 export function deleteMonster(state: GameState, midx: number): void {
   const mon = state.monsters[midx];
@@ -1261,6 +1262,20 @@ export function deleteMonster(state: GameState, midx: number): void {
    * MULTIPLY flag decides, clamped for the same harness reason as curNum. */
   if (mon.race.flags.has(RF.MULTIPLY) && (state.numRepro ?? 0) > 0) {
     state.numRepro = (state.numRepro ?? 0) - 1;
+  }
+  /* "Delete mimicked objects" (mon-make.c:385-387). Without this the fake item
+   * outlives the monster: a mimic removed by anything that does NOT run
+   * monster_death - banishment, a teleport that despawns it, level cleanup -
+   * left a permanent phantom on the floor, pointing at a monster index that is
+   * free for the next monster to take. monster_death has always done this
+   * (game/mon-death.ts, mon-util.c:957-961); delete_monster_idx does it too,
+   * and it is the one the other 17 call sites reach. */
+  if (mon.mimickedObj) {
+    const fake = floorPile(state, mon.grid).find(
+      (o) => o.mimickingMIdx === mon.midx,
+    );
+    if (fake) floorExcise(state, mon.grid, fake);
+    mon.mimickedObj = 0;
   }
   state.chunk.setMon(mon.grid, 0);
   state.monsters[midx] = null;
