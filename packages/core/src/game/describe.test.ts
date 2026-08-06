@@ -3,7 +3,8 @@ import { TV } from "../generated/index.js";
 import { FlagSet } from "../bitflag.js";
 import { ODESC } from "../obj/desc.js";
 import { objectNew } from "../obj/object.js";
-import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { FlavorKnowledge, OBJ_NOTICE } from "../obj/knowledge.js";
+import { ignoreItemOk } from "../obj/ignore.js";
 import { KF_SIZE } from "../obj/types.js";
 import type { ObjectKind } from "../obj/types.js";
 import type { Artifact } from "../obj/types.js";
@@ -110,5 +111,78 @@ describe("describeObject / object_desc (obj-desc.c L607)", () => {
     const shown = describeObject(state, touched, ODESC.PREFIX | ODESC.FULL);
     expect(shown).toContain("of Power");
     expect(shown.startsWith("the ")).toBe(true);
+  });
+});
+
+/*
+ * PORT_TODO 3.27. Two slots in obj_desc_inscrip (obj-desc.c:527, :536-538)
+ * that object_desc has always had and knownDescOf never filled, even though
+ * both suppliers were live: FlavorKnowledge.setTried is called on every device
+ * use and is saved with the character, and ignoreItemOk drives pickup,
+ * running and projection through state.isIgnored.
+ *
+ * The fixtures wire the REAL producers - a FlavorKnowledge the game's own
+ * setTried marks, and state.isIgnored built exactly as session/game.ts:618
+ * builds it - so these assert the wiring, not a stand-in for it.
+ */
+describe("the {tried} and {ignore} markers (PORT_TODO 3.27)", () => {
+  function withFlavor(state: GameState): FlavorKnowledge {
+    const flavor = new FlavorKnowledge(10_000);
+    state.flavorKnown = flavor;
+    state.isAware = (kind) => flavor.isAware(kind);
+    return flavor;
+  }
+
+  it("marks an unaware kind {tried} once it has been used, and not before", () => {
+    const state = freshState();
+    const flavor = withFlavor(state);
+    const kind = makeKind("& Wand~ of Nothing", TV.WAND);
+    const obj = makeObj(kind, { number: 1, pval: 3 });
+
+    expect(describeObject(state, obj)).not.toContain("{tried}");
+    flavor.setTried(kind); /* object_flavor_tried, as a device use calls it */
+    expect(describeObject(state, obj)).toContain("{tried}");
+  });
+
+  it("drops {tried} once the kind becomes aware, as the !aware gate requires", () => {
+    const state = freshState();
+    const flavor = withFlavor(state);
+    const kind = makeKind("& Wand~ of Nothing", TV.WAND);
+    const obj = makeObj(kind, { number: 1, pval: 3 });
+    flavor.setTried(kind);
+    expect(describeObject(state, obj)).toContain("{tried}");
+
+    flavor.setAware(kind);
+    expect(describeObject(state, obj)).not.toContain("{tried}");
+  });
+
+  it("marks an ignored item {ignore}, and stops while the player is unignoring", () => {
+    const state = freshState();
+    const flavor = withFlavor(state);
+    const kind = makeKind("& Ration~ of Food", TV.FOOD);
+    const obj = makeObj(kind, { number: 1 });
+    /* The one binding session/game.ts installs. */
+    state.isIgnored = (o) =>
+      ignoreItemOk(o, state.ignore, flavor.isAware(o.kind));
+
+    expect(describeObject(state, obj)).not.toContain("{ignore}");
+
+    /* object_is_ignored's first route: OBJ_NOTICE_IGNORE on the object. */
+    obj.notice |= OBJ_NOTICE.IGNORE;
+    expect(describeObject(state, obj)).toContain("{ignore}");
+
+    /* p->unignoring suppresses it (obj-ignore.c:624). */
+    state.ignore.unignoring = true;
+    expect(describeObject(state, obj)).not.toContain("{ignore}");
+  });
+
+  it("keeps both markers out when no supplier is bound (worldless)", () => {
+    const state = freshState();
+    const kind = makeKind("& Wand~ of Nothing", TV.WAND);
+    const obj = makeObj(kind, { number: 1, pval: 3 });
+    obj.notice |= OBJ_NOTICE.IGNORE;
+    const name = describeObject(state, obj);
+    expect(name).not.toContain("{tried}");
+    expect(name).not.toContain("{ignore}");
   });
 });
