@@ -1198,15 +1198,75 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/game/effect-attack.ts:694`,
   `parity/ledger/high-scores.yaml:96`
 
-- [ ] **3.3 Object and ego recall show no computed lines.**
-  Re-scoped down to what survived reading: monster recall's percentages **are**
-  wired (see the closed note under 1.2). What is still bare is the object side —
-  `desc_obj_fake` (`ui-knowledge.c:1938`) and `desc_ego_fake` (`:1789`) print
-  only a name and the record's lore text, where upstream prints
-  `object_info(OINFO_FAKE)` / `object_info_ego`'s flag and combat lines. The
-  producer exists: `packages/core/src/obj/object-info.ts` already calls
-  `chanceOfMeleeHitBase` at `:1090`.
-  Sites: `packages/web/src/knowledge.ts:1095`, `:1185`
+- [x] **3.3 Object and ego recall show no computed lines.**
+  Both recalls now print what upstream prints. Browsing `~` → known objects and
+  selecting a Short Sword used to give the name and the record's one-line
+  flavour; it now gives the blows-per-round table, the average damage, the
+  digging times and the flag lines — `object_info(OINFO_FAKE | OINFO_SUBJ)` over
+  an `object_prep(EXTREMIFY)` throwaway. An ego row used to give the ego name
+  and its `desc:` line; it now gives what that ego grants.
+
+  **The item undercounted the work in the same way 3.26 did.** Two things it
+  did not mention were missing outright, both because the only mode bit that
+  reaches them is the one only `object_info_ego` sets, and nothing set it:
+  - `object_info_ego` itself (`obj-info.c:2402`) — the whole producer, now
+    `objectInfoEgo` in the new `packages/core/src/obj/fake-object.ts`;
+  - **`describe_ego` (`obj-info.c:2281`) had never been ported at all.** The
+    port's `objectInfo` carried the comment *"describe_ego is skipped for
+    inspect (ego bit off)"* — true, and the reason the omission was invisible.
+    Its five lines ("It provides one random higher resistance." and the rest)
+    are the only place the game ever tells you what a random-pick ego rolls.
+
+  Three more things that reading the C turned up, each measured rather than
+  assumed:
+  - **`ego->poss_items` is a stack, not a list.** Upstream PREPENDS every
+    parsed entry (`obj-init.c:2322`, `:2350`), so the head `object_info_ego`
+    describes the ego on is the kidx added **last** — and that is not
+    recoverable from the port's `Set<number>`, because re-adding a kidx is a
+    no-op there and a re-prepend upstream. `of *Slay Undead*` declares
+    `type:sword|polearm` and then hafted `item:` lines, so it picks a hafted
+    kind where the Set's first member is a sword. New `EgoItem.firstPossItem`,
+    computed in `bind.ts` as upstream computes it.
+  - **`get_known_flags` (`obj-info.c:2217`) had one of its two branches.** The
+    port hardwired `flags = shadow.flags` — the `else`. Both arms are now
+    written. Both are transcription rather than repair, and the measurement is
+    in the comment: with the twin a full `object_copy` the EGO arm returns the
+    same set as the other, and **every** base in the shipped `object_base.txt`
+    carries zero object flags, so the TERSE diff removes nothing today. They
+    are there so a mod that adds a base flag does not find half a function.
+  - **The no-abilities fallback had three newlines where upstream has two**
+    (`obj-info.c:2381`). Nothing printed that line until these recalls started
+    running, which is exactly why it survived.
+
+  And one adjacent hole the new screen made visible: `inspectExtras` in
+  `main.ts` never supplied `summonDesc`, so an item that summons read
+  "it summons ." The effect MENU has always had it; this list did not.
+
+  **The one branch the engine cannot express.** For an unaware flavoured kind
+  upstream's known twin is a blank `OBJECT_NULL`, so `object_info_out` returns
+  at its very first line with "You do not know what this is." The port's
+  knowledge shadow ALWAYS mirrors `obj.kind` (`objectKnownShadow`), so that
+  branch is written at the call site and tested there — without it an
+  unidentified potion would have leaked its full effect list.
+
+  **Verified.** 18 core tests (`obj/fake-object.test.ts`) + 10 web tests
+  (`knowledge-recall.test.ts`), fixtures FOUND by the property under test
+  rather than named — "of Elvenkind" alone is three different egos and only two
+  carry `RAND_HI_RES`. Two of them are guards built to be able to fire at all:
+  no shipped ego carries two random-pick flags, so the else-if chain is tested
+  against a constructed two-flag ego; and the one ego with `NO_FUEL` also turns
+  `TAKES_FUEL` off, so `&&` vs `||` is tested by taking each half away.
+  **17 mutations, 16 killed.** The survivor is `flags = obj.flags` →
+  `shadow.flags` in the EGO arm, which is the equivalence documented above, not
+  a hole. Three of the kills only arrived after the test earned them: the
+  `&&`/`||` pair, the else-if chain, and the all-runes player inside
+  `objectInfoEgo` — that last one *survived a core-only run* because this test
+  file's module-level player already knows every rune, which is the scoped-file
+  trap again.
+  Sites: `packages/core/src/obj/fake-object.ts` (new),
+  `packages/core/src/obj/object-info.ts:1725`, `:1777`, `:1836`,
+  `packages/core/src/obj/bind.ts:958`, `packages/core/src/obj/types.ts:410`,
+  `packages/web/src/knowledge.ts:1054`, `:1180`, `packages/web/src/main.ts:2020`
 
 - [x] **3.4 Monster spell and breath damage are not bound to the casting race.**
   **NOT A GAP — the item was wrong, and its own reasoning is what made it
@@ -1507,10 +1567,32 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/obj/object-info.ts:974`
 
 - [ ] **3.21 The shape-lore textblock chain.**
-  Shapechange effects have no lore chain, and the port greys the entry rather
-  than omitting it — a divergence forced by the real gap, so fixing the chain
-  lets the divergence go too.
-  Sites: `packages/web/src/main.ts:3720`, `:3701`
+  **RE-SCOPED 2026-08-06, because the row was describing a state that ended
+  some time ago.** It said shapechange effects "have no lore chain" and that
+  the port "greys the entry". Neither is true now: `shapeLoreLines`
+  (`packages/core/src/player/shape-lore.ts:234`) is a faithful port of
+  `shape_lore` (`ui-knowledge.c:3111`) driving the browser through
+  `showShapeKnowledge`, and the menu row is not greyed. The row's citations
+  pointed at a docblock in `main.ts` that made the same stale claim; both have
+  been corrected. *A deferral note is evidence about the day it was written.*
+
+  What IS still missing is the tail of that chain — two of its ten sections,
+  and both are the exact shape of the trap 3.4 taught: an OPTIONAL env field
+  with an INERT default, so no supplier means the section silently is not
+  there.
+  - `shape_lore_append_change_effects` (`:3043`) —
+    `effect_describe(s->effect, "Changing into the shape ", 0, false)`, the
+    seam `ShapeLoreEnv.changeEffectText` (`shape-lore.ts:48`).
+  - `shape_lore_append_triggering_spells` (`:3059`) — every class's every book's
+    every spell, looking for an `EF_SHAPECHANGE` whose subtype is this shape,
+    printed as "The %s spell, %s, from %s triggers the shapechange." The seam
+    is `ShapeLoreEnv.triggeringSpells` (`:54`).
+
+  `main.ts`'s `shapeEnv` supplies neither, so a player reading about Bear form
+  is told what it does to their stats and nothing about how to get into it or
+  out of it.
+  Sites: `packages/core/src/player/shape-lore.ts:251`,
+  `packages/web/src/main.ts:3885`
 
 - [x] **3.22 The lore title does not recolour a unique with `purple_uniques`.**
   DONE. The row's own triage was right: of its three claims only `purple_uniques`

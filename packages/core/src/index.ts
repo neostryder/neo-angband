@@ -59,6 +59,7 @@ export * from "./obj/ignore.js";
 export * from "./obj/known-object.js";
 export * from "./obj/artifact-known.js";
 export * from "./obj/artifact-fake.js";
+export * from "./obj/fake-object.js";
 export * from "./obj/desc.js";
 export * from "./obj/object-info.js";
 export * from "./obj/randname.js";

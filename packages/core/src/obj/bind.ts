@@ -956,6 +956,12 @@ export class ObjRegistry {
         }
       }
       const possItems = new Set<number>();
+      /* Upstream PREPENDS each parsed entry onto ego->poss_items (obj-init.c
+       * L2322, L2350), so the list HEAD - the base kind object_info_ego
+       * describes the ego on - is whichever kidx was added LAST. Track it as
+       * we go; the Set cannot answer this, because re-adding a kidx is a
+       * no-op there but a re-prepend upstream. */
+      let firstPossItem = -1;
       for (const tvalName of rec.type ?? []) {
         const tval = tvalFindIdx(tvalName);
         if (tval < 0) throw new Error(`ego: unknown tval ${tvalName}`);
@@ -963,6 +969,7 @@ export class ObjRegistry {
         for (const kind of this.kinds) {
           if (kind.tval === tval) {
             possItems.add(kind.kidx);
+            firstPossItem = kind.kidx;
             foundOne = true;
           }
         }
@@ -980,6 +987,7 @@ export class ObjRegistry {
           throw new Error(`ego: invalid item ${item.tval}:${item.sval}`);
         }
         possItems.add(kind.kidx);
+        firstPossItem = kind.kidx;
       }
       const ego: EgoItem = {
         name: rec.name,
@@ -1000,6 +1008,7 @@ export class ObjRegistry {
         allocMin: 0,
         allocMax: 0,
         possItems,
+        firstPossItem,
         toH: parseRand(rec.combat?.th),
         toD: parseRand(rec.combat?.td),
         toA: parseRand(rec.combat?.ta),
