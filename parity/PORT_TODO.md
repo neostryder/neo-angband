@@ -1621,6 +1621,25 @@ is reachable in play and a test constructs the case that used to be wrong.**
   nested command categories are reachable only through it, which is why the
   debug menu's categories look absent — but the gap is general, not
   wizard-specific (`packages/web/src/wizard.ts:492-499` states this).
+
+  **Scouted 2026-08-06, not started.** The row is accurate. What the scout found
+  is that most of the data already exists and the obstacle is where it lives:
+  - The port's `COMMANDS` table in `main.ts`'s keydown handler **is `cmds_all`
+    flattened**, in upstream's own order, with the six `cmd_*` arrays marked by
+    comments (`// Item commands (cmd_item, ui-game.c:118-133)` and so on). Every
+    row already carries its original and roguelike keys.
+  - It is missing two fields the browser needs: `cmd_info.desc` (upstream's
+    exact strings, `ui-game.c:116-232`) and which of the six lists the row is
+    in. Both are recoverable from the C without invention.
+  - **The blocker is scope, not content.** `COMMANDS` is a `const` declared
+    INSIDE the keydown handler, rebuilt per keypress and reachable from nowhere
+    else, so an ENTER menu cannot see it. It has to be hoisted to module level
+    first — every `act` closure already calls module-scope functions, so the
+    hoist is mechanical, but it is surgery on the live dispatcher for every
+    command in the game and wants its own careful pass.
+  - Recursion and ESC-goes-back-one-level are `cmd_menu`'s (`:1157`), and the
+    nested tier is the nine `cmd_debug_*` categories, which
+    `packages/web/src/wizard.ts` already holds frozen and exact.
   Sites: `packages/web/src/wizard.ts:498`
 
 - [x] **3.19 The birth screens answer help with a no-op.** DONE.
