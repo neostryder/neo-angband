@@ -8,10 +8,14 @@
  * end-increase messages) is the generated MON_TIMED_ENTRIES (from
  * list-mon-timed.h). Two upstream couplings are handled as follows, both
  * faithful in reachable states:
- * - Messages: the monster-message queue (mon-msg.c add_monster_message) is not
- *   ported, so mon_set_timed emits through an optional MonTimedMessageSink
- *   instead. The decision of WHICH message fires (and its NOTIFY/NOMESSAGE/
- *   visibility gate) is preserved exactly; callers that have a sink pass one.
+ * - Messages: the mon_msg[] queue lives in game/mon-message.ts, and mon/ sits
+ *   below game/, so mon_set_timed reports through an optional
+ *   MonTimedMessageSink rather than calling add_monster_message itself. The
+ *   sink the game supplies IS add_monster_message(mon, m_note, true)
+ *   (game/monster-turn.ts monsterTimedMessage), so the line is stacked on the
+ *   delayed pass exactly as mon-timed.c:215 does it. The decision of WHICH
+ *   message fires (and its NOTIFY/NOMESSAGE/visibility gate) is made here, and
+ *   is preserved exactly; a caller with no sink queues nothing.
  * - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,
  *   mon-util.c) belongs to the GAME layer, not here: game/mon-shape.ts swaps the
  *   form off the MON_TMD_CHANGED timer this module maintains, and the SHAPECHANGE
@@ -42,7 +46,8 @@ const MON_INC_MIN_TURNS = 2;
 /**
  * A sink for the monster message that mon_set_timed would queue. `note` is the
  * MON_MSG_* name (or the synthetic "MON_MSG_UNAFFECTED" / "MON_MSG_SHAPE_FAIL")
- * upstream would pass to add_monster_message; `add` mirrors its 3rd argument.
+ * upstream would pass to add_monster_message; `add` mirrors its 3rd argument
+ * (what_delay's `delay`), which the game's sink passes straight through.
  */
 /**
  * monster_change_shape / monster_revert_shape (game/mon-shape.ts), passed

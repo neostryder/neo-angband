@@ -11,7 +11,7 @@
  *   attack (player-attack.c:1023-1025).
  */
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, TMD } from "../generated/index.js";
+import { MFLAG, MON_MSG, MON_TMD, TMD } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { PlayerState } from "../player/calcs.js";
 import {
@@ -22,6 +22,8 @@ import {
   walkAction,
 } from "./player-turn.js";
 import { addMon, makeRace, makeState } from "./harness.js";
+import { noticeStuff } from "./notice.js";
+import { pendingMonsterMessages } from "./mon-message.js";
 
 describe("energy_per_move (player-util.c:323-328, gap 2.3)", () => {
   it("two extra moves cost a third of a turn per step", () => {
@@ -163,6 +165,16 @@ describe("delayed flee message (player-attack.c:1023-1025, gap 2.4)", () => {
 
     walkAction(state, { code: "walk", dir: 6 });
     expect(mon.mTimed[MON_TMD.FEAR]).toBeGreaterThan(0);
+    /* The flee line is queued with delay = true; walkAction is do_cmd_walk,
+     * and it is process_player that drains (game-world.c:996). The `true` is
+     * upstream's "Hack - delay fear messages" and it is what keeps the line
+     * behind any immediate message queued after the blow. */
+    expect(msgs.some((m) => m.includes("flees in terror"))).toBe(false);
+    const flee = pendingMonsterMessages(state).find(
+      (m) => m.msgCode === MON_MSG.FLEE_IN_TERROR,
+    );
+    expect(flee?.delay).toBe(1);
+    noticeStuff(state);
     expect(msgs.some((m) => m.includes("flees in terror"))).toBe(true);
   });
 });

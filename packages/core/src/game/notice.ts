@@ -2,9 +2,10 @@
  * notice_stuff (player-calcs.c L2536), the "Generic deal-with functions"
  * section's first entry: drain player->upkeep->notice.
  *
- * WHY THIS IS NOT IN player/calcs.ts, where its C neighbours are: both of the
- * passes it dispatches to are game-layer (combine_pack is game/gear.ts,
- * ignore_drop is game/ignore-cmd.ts and needs GameState), and player/ sits
+ * WHY THIS IS NOT IN player/calcs.ts, where its C neighbours are: all three of
+ * the passes it dispatches to are game-layer (combine_pack is game/gear.ts,
+ * ignore_drop is game/ignore-cmd.ts, show_monster_messages is
+ * game/mon-message.ts, and every one of them needs GameState), and player/ sits
  * BELOW game/ in this port's dependency order. update_stuff and redraw_stuff,
  * the two functions that follow it in the C file, have no port at all - a
  * ratified divergence, not an omission (game/known.ts:153).
@@ -19,6 +20,7 @@
 import { PN } from "../player/types.js";
 import type { GameState } from "./context.js";
 import { ignoreDrop } from "./ignore-cmd.js";
+import { showMonsterMessages } from "./mon-message.js";
 
 /**
  * Handle player->upkeep->notice: clear each raised bit and do its work, in
@@ -55,9 +57,17 @@ export function noticeStuff(state: GameState): void {
     }
   }
 
-  /* PN_MON_MESSAGE / show_monster_messages (L2552-2557) is absent along with
-   * the mon_msg[] queue itself - PORT_TODO 3.1. There is no bit for it in PN
-   * either, on purpose: a constant nothing raises reads as ported. */
+  /* Show all queued monster messages (L2552-2557).
+   *
+   * Unconditionally clears the bit, unlike PN_COMBINE above: the work needs no
+   * binding beyond state.msg, and show_monster_messages empties the queue
+   * whether or not a sink was there to receive it - exactly as upstream, where
+   * an unread message still leaves size_mon_msg at zero. Leaving the bit raised
+   * here would re-show nothing forever. */
+  if (up.notice & PN.MON_MESSAGE) {
+    up.notice &= ~PN.MON_MESSAGE;
+    showMonsterMessages(state);
+  }
 }
 
 /**

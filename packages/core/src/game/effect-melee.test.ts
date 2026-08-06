@@ -19,7 +19,17 @@ import type { CastContext } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import { closestTarget, registerMeleeHandlers } from "./effect-melee.js";
-import { formatPainMessage } from "./mon-message.js";
+import { formatMonsterMessage, painMessageCode } from "./mon-message.js";
+import { noticeStuff } from "./notice.js";
+
+/**
+ * The pain / flee lines are queued (mon_msg[]) and come out of notice_stuff,
+ * so a test that wants to see them has to drain the queue first - exactly what
+ * process_player does after every command.
+ */
+function painLine(mon: Monster, dam: number): string | null {
+  return formatMonsterMessage(mon, painMessageCode(mon, dam));
+}
 import { monsterIsUndead } from "../mon/predicate.js";
 
 const projections = bindProjections(
@@ -89,6 +99,9 @@ function env(
     showDamage,
     ...(msgs ? { messages: { msg: (t: string) => msgs.push(t) } } : {}),
   };
+  /* One sink, as in a live session: session/game.ts routes the effect
+   * context's messages AND the queue drain to the same state.msg. */
+  if (msgs) state.msg = (t: string): void => void msgs.push(t);
   return attachGameEnv(base, { state, cast: castContext(state), ...game });
 }
 
@@ -165,7 +178,8 @@ describe("EF_TAP_UNLIFE (effect-handler-attack.c L1615)", () => {
       origin: sourcePlayer(),
       diceString: "40",
     });
-    expect(msgs).toContain(formatPainMessage(mon, 40));
+    noticeStuff(state);
+    expect(msgs).toContain(painLine(mon, 40));
   });
 
   it("fails without an undead in sight", () => {
@@ -237,9 +251,39 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
     );
     expect(mon.hp).toBe(480);
     /* 480/500 = 96% -> MON_MSG_95, the mildest pain grade. */
-    const expected = formatPainMessage(mon, 20);
+    const expected = painLine(mon, 20);
     expect(expected).toBeTruthy();
+    noticeStuff(state);
     expect(msgs).toContain(expected);
+  });
+
+  /*
+   * player_kill_monster's own flush (mon-util.c:1046 "Make sure to flush any
+   * monster messages first"). The kill line is said DIRECTLY, so without the
+   * flush it would jump ahead of every pain line still sitting on the queue -
+   * the player reads "Kobold dies." and only then "The rat cries out in pain."
+   */
+  it("flushes the queued pain lines before it says the kill line", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
+    const survivor = addVisible(state, loc(14, 10), [], 500);
+    const doomed = addVisible(state, loc(10, 14), [], 20);
+    const msgs: string[] = [];
+
+    registry().effectSimple(EF.CURSE, env(state, msgs, { aimed: loc(14, 10) }), {
+      origin: sourcePlayer(),
+      diceString: "20",
+    });
+    /* Queued, not said: nothing has drained yet. */
+    expect(msgs).toEqual([]);
+
+    registry().effectSimple(EF.CURSE, env(state, msgs, { aimed: loc(10, 14) }), {
+      origin: sourcePlayer(),
+      diceString: "50",
+    });
+    expect(state.monsters[doomed.midx]).toBeFalsy();
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toBe(painLine(survivor, 20));
+    expect(msgs[1]).toMatch(/ dies!$/);
   });
 
   it("show_damage puts the number on both the pain line and the death note", () => {
@@ -251,9 +295,12 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
       env(state, msgs, { aimed: loc(14, 10) }, true),
       { origin: sourcePlayer(), diceString: "20" },
     );
+    noticeStuff(state);
     expect(msgs.some((m) => m.endsWith(" (20)"))).toBe(true);
 
-    /* effect-handler-attack.c:1684-1689: the death note itself carries it. */
+    /* effect-handler-attack.c:1684-1689: the death note itself carries it.
+     * A DEATH note is said directly, not queued - player_kill_monster's own
+     * msgt - so this half needs no drain. */
     const state2 = makeState({ playerGrid: loc(10, 10), seed: 3 });
     addVisible(state2, loc(14, 10), [], 20);
     const msgs2: string[] = [];
@@ -329,7 +376,8 @@ describe("EF_JUMP_AND_BITE (effect-handler-attack.c L1710)", () => {
       origin: sourcePlayer(),
       diceString: "30",
     });
-    expect(msgs).toContain(formatPainMessage(mon, 30));
+    noticeStuff(state);
+    expect(msgs).toContain(painLine(mon, 30));
   });
 
   it("fails with no living monster in sight", () => {

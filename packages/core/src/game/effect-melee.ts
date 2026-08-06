@@ -17,9 +17,11 @@
  * (GameEffectEnv.aimed, now backed by the live target) and falls back to
  * the effect direction.
  *
- * Simplifications, ledgered in parity/ledger/game-effect-melee.yaml:
- * MDESC names and message_pain grammar ride the display layer (#25) - the
- * race name stands in, pain messages are the flee message only.
+ * Simplification, ledgered in parity/ledger/game-effect-melee.yaml: the kill
+ * line is `race name + note` where upstream builds it with monster_desc, so it
+ * reads "Kobold dies." rather than "The kobold dies." The pain and flee lines
+ * are no longer a simplification - they go on the mon_msg[] queue with the
+ * real grammar (PORT_TODO 3.1).
  *
  * EF_SINGLE_COMBAT is modelled: the arena level is built in the session layer
  * (session/game.ts, arena_gen at gen-cave.c:3984), the kill gate is
@@ -60,10 +62,11 @@ import {
 import { gameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import {
-  formatMonsterMessage,
-  formatPainMessage,
-  formatPainMessageShowDamage,
+  addMonsterMessage,
+  messagePain,
+  messagePainShowDamage,
 } from "./mon-message.js";
+import { noticeStuff } from "./notice.js";
 import { castProjection, playerCastSource } from "./project-cast.js";
 import { squareIsPlayerTrap, squareIsWebbed } from "./trap.js";
 import {
@@ -127,6 +130,9 @@ function playerBlow(state: GameState, mon: Monster): boolean {
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
   if (blow.monsterDied && !arenaInterceptDeath(state, mon)) {
+    /* player_kill_monster's flush (mon-util.c:1055), so an EF_SWEEP that hurts
+     * one monster and kills the next does not report them out of order. */
+    noticeStuff(state);
     state.onPlayerKill?.(mon);
     deleteMonster(state, mon.midx);
   }
@@ -154,6 +160,11 @@ function effectHit(
   });
   if (result.died) {
     if (arenaInterceptDeath(state, mon)) return true;
+    /* "Make sure to flush any monster messages first" (mon-util.c:1046): the
+     * kill line has to land AFTER the pain the earlier blows queued, not
+     * before it. Upstream's player_kill_monster does this itself, and it does
+     * it with the whole notice_stuff pass, not just the message drain. */
+    noticeStuff(state);
     if (monsterIsVisible(mon)) say(ctx, `${mon.race.name}${note}`);
     state.onPlayerKill?.(mon);
     deleteMonster(state, mon.midx);
@@ -168,15 +179,12 @@ function effectHit(
    * the message_pain_show_damage branch, under OPT(player, show_damage).
    */
   if (monsterIsVisible(mon)) {
-    const pain = showDamage
-      ? formatPainMessageShowDamage(mon, dam)
-      : formatPainMessage(mon, dam);
-    if (pain) say(ctx, pain);
+    if (showDamage) messagePainShowDamage(state, mon, dam);
+    else messagePain(state, mon, dam);
     if (result.fear) {
-      /* add_monster_message(MON_MSG_FLEE_IN_TERROR): "The kobold flees in
-       * terror!" through get_subject, not a bare race name. */
-      const flee = formatMonsterMessage(mon, MON_MSG.FLEE_IN_TERROR);
-      if (flee) say(ctx, flee);
+      /* add_monster_message(MON_MSG_FLEE_IN_TERROR, true): the DELAYED pass,
+       * so the flee line follows the pain line that provoked it. */
+      addMonsterMessage(state, mon, MON_MSG.FLEE_IN_TERROR, true);
     }
   }
   return false;

@@ -6,11 +6,15 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 122 confirmed-absent citations** — 37 closed, 31 open.
-The citation count **went up, not down**, and that is the adjudication working:
-seven rows this session moved from unadjudicated to `partial`, and a `partial` is
-a confirmed-absent citation. Reading the ledger finds work as often as it kills
-it, which is the whole reason Tier 0 sits above the tiers that do the work.
+**68 items covering all 120 confirmed-absent citations** — 38 closed, 30 open.
+The count has moved in both directions, and both directions were the process
+working. It **went up** when seven ledger rows moved from unadjudicated to
+`partial`, because a `partial` is a confirmed-absent citation — reading the
+ledger finds work as often as it kills it, which is the whole reason Tier 0 sits
+above the tiers that do the work. It comes **down** only when a row is retired
+with the evidence written into the census itself: 3.1 retired two
+(`packages/core/src/game/mon-message.ts` and `parity/ledger/mon-timed.yaml`),
+122 to 120.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -172,8 +176,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 - [x] **1.1 `notice_stuff` / `PN_*` — the one architectural gap.** DONE.
   No `noticeStuff` and no `PN_*` pipeline anywhere. Root cause of both **2.5**
-  (`PN_IGNORE` set and never consumed) and **3.1** (the monster-message queue
-  has nowhere to be flushed from). The sibling `PU_*` / `PR_*` update-and-redraw
+  (`PN_IGNORE` set and never consumed) and **3.1** (the monster-message queue had
+  nowhere to be flushed from — since closed). The sibling `PU_*` / `PR_*` update-and-redraw
   flags are *not* owed — the front end recomputes and repaints after every
   state-changing action, a ratified divergence recorded at
   `packages/core/src/game/known.ts:153`. `PN_*` is different: a queue of work,
@@ -181,23 +185,39 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/context.ts:297`
 
   **Built as upstream builds it**: `PlayerUpkeep.notice` is a real bitfield
-  (`packages/core/src/player/player.ts:33`), `PN` is two constants
-  (`packages/core/src/player/types.ts`), and `noticeStuff`
-  (`packages/core/src/game/notice.ts`) is the only thing that clears a bit. Every
-  one of upstream's eight `notice_stuff` call sites is wired — the two in
+  (`packages/core/src/player/player.ts:33`), `PN` is three constants
+  (`packages/core/src/player/types.ts` — the third arrived with 3.1), and
+  `noticeStuff` (`packages/core/src/game/notice.ts`) is the only thing that
+  clears a bit.
+
+  **How many `notice_stuff` call sites, exactly.** `grep -rn notice_stuff
+  reference/src/*.c` finds **fifteen**, not the eight this item first claimed —
+  the claim was counting `game-world.c` and stopping there, which is the
+  [[a-claim-wider-than-what-was-checked]] shape. The honest accounting:
+  `game-world.c` has seven and all seven are covered — the two in
   `process_player` (`game/player-turn.ts`), the three in the world loop
-  (`game/loop.ts`), and `on_new_level`'s own raise-then-drain at all four of the
-  port's level-entry paths (`noticeNewLevel`). So are the raise sites — **17
+  (`game/loop.ts`), `on_new_level` at all four of the port's level-entry paths
+  (`noticeNewLevel`), and `on_leave_level`'s, which this port folds into the
+  ENTRY path and documents as observationally identical (`session/game.ts:2176`).
+  `mon-util.c` has two, both inside `player_kill_monster`, and **both were
+  unwired until 3.1** — they are the flush that keeps a kill line behind the pain
+  it caused. The remaining six are `obj-gear.c`'s trailing drain in
+  `pack_overflow` (a within-turn ordering nuance; the port's `overflowPack` runs
+  between the two `process_player` drains) and five in the store subsystem
+  (`store.c`, `ui-store.c`), which raise no bit this port's stores can raise.
+
+  The raise sites are wired too — **17
   `|= PN.COMBINE` and 8 `|= PN.IGNORE`**, counted by grep, not estimated — across
   `gear.ts`, `obj-cmd.ts`, `effect-item.ts`, `world.ts`, `mon-side.ts`,
   `chest.ts`, `pickup.ts`, `wizard.ts`, `ignore-cmd.ts`, `notice.ts` and
   `session/game.ts`. Two of those (inscribe, uninscribe) raise both and so appear
   in both counts, as upstream does.
 
-  **`PN_MON_MESSAGE` is deliberately absent, not forgotten.** There is no third
-  constant, because `show_monster_messages` has no port (**3.1**) and a bit
-  nothing raises and nothing consumes is exactly what made `PN_IGNORE` look
-  ported for months. It goes in with the message queue or not at all.
+  **`PN_MON_MESSAGE` was deliberately absent, and then it was earned.** This item
+  left the third constant out on purpose: `show_monster_messages` had no port,
+  and a bit nothing raises and nothing consumes is exactly what made `PN_IGNORE`
+  look ported for months. It went in with the message queue, in **3.1**, in one
+  change — which is what was promised here.
 
   Two design points worth keeping:
   - **The order is load-bearing.** `ignore_drop` raises `PN_COMBINE` on its way
@@ -1080,14 +1100,54 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 3 — It changes what the player is told
 
-- [ ] **3.1 `add_monster_message` has no queue.** *(needs 1.1)*
-  The grammar is ported verbatim — `get_subject`, `get_message_text`,
-  `message_pain`, the `[singular|plural]` state machine. What is absent is
-  `add_monster_message` → `mon_msg[]` flushed by `show_monster_messages` from
-  `PN_MON_MESSAGE`, so repeats never combine into "3 kobolds die." and deaths
-  are not shown last.
-  Sites: `packages/core/src/game/mon-message.ts:15`,
-  `parity/ledger/mon-timed.yaml:29`
+- [x] **3.1 `add_monster_message` has no queue.** DONE. The grammar was already
+  verbatim — `get_subject`, `get_message_text`, `message_pain`, the
+  `[singular|plural]` state machine — and every one of those was reachable, so
+  the item read like a polish job. It was not: the BATCHING is the behaviour,
+  and none of it existed.
+
+  **What the port did instead.** Every emit site formatted one sentence and
+  printed it where it happened. A fireball over a kobold pit produced eight
+  identical "The kobold dies." lines in projection order; a monster caught twice
+  by one splash was described twice; and a death could be reported before the
+  pain that preceded it. Upstream has never done any of that, and the reason is
+  one 200-entry array.
+
+  **Ported whole** into `game/mon-message.ts`: `add_monster_message` /
+  `add_monster_message_show_damage`, `stack_message` (with its saturating damage
+  add), `redundant_monster_message` + `store_monster`, `message_flags`,
+  `what_delay`, `show_message` and `show_monster_messages`. `PN_MON_MESSAGE` is
+  the third `PN` bit — the one 1.1 deliberately left out until there was
+  something to raise it — and `noticeStuff` drains it. The queue is a
+  `WeakMap<GameState, ...>`, the closest thing to upstream's file statics that
+  two games in one process can both have; it is transient and not serialised,
+  exactly as `size_mon_msg` is.
+
+  **Three things that had to be found by reading, not by grepping the item.**
+  1. `player_kill_monster` calls `notice_stuff` ITSELF before saying the kill
+     line (`mon-util.c:1046` and `:1055`, both commented "Make sure to flush any
+     monster messages first"). Without that the direct kill line jumps ahead of
+     every queued pain line — the player reads "Kobold dies." and only then "The
+     rat cries out in pain." Wired at the port's two analogues,
+     `game/ranged-cmd.ts` and `game/effect-melee.ts`, both tested.
+  2. `ProjectMonsterHooks.message` had `delay?: boolean` and eight of its eleven
+     call sites omitted it. Upstream writes the argument out at every single
+     call. Made required and filled in, because a defaulted `delay` silently
+     moves a line from the delayed pass into the immediate one and nothing
+     fails.
+  3. The timed-effect sink (`mon-timed.c:215`) had **no test at all** — deleting
+     its body outright broke nothing. Found by mutation, now covered both ways.
+
+  **Nineteen mutations, nineteen kills**, after the three survivors each earned a
+  test rather than an excuse.
+
+  **One thing deliberately left visible, not hidden.** `message_flags` reads
+  `state.panelContains` for `MON_MSG_FLAG_OFFSCREEN`, and **nothing binds it** —
+  the port's camera lives in the web shell (`packages/web/src/main.ts`
+  `viewport()`), not in core. So the "(offscreen)" tag never appears in play. The
+  mechanism is faithful and tested with a bound predicate; the binding is a
+  separate, small piece of work and is recorded here rather than left as a seam
+  with no supplier.
 
 - [x] **3.2 The killer's name is a race name.** DONE. `MDESC_DIED_FROM` was
   defined and unused at both death sites, so the cause read "kobold" where
@@ -1661,7 +1721,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 122 citations, 84 `real` + 38
+2. the counts stated at the top (**68 items, 120 citations, 83 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

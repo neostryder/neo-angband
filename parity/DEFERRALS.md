@@ -222,11 +222,17 @@ in the appendix with the file, the C reference and the evidence.
 
 ### It changes what the player is told
 
-- **`add_monster_message` has no queue** (`game/mon-message.ts:15`). The grammar
-  is ported verbatim; the queue is not, so repeats never combine into
-  "3 kobolds die." and deaths are not shown last. The root cause is that there is
-  no `notice_stuff` / `PN_*` machinery at all, which is also why `PN_IGNORE`
-  above has no consumer. **This is the one architectural item on the list.**
+- ~~**`add_monster_message` has no queue**~~ (`game/mon-message.ts:15`) - CLOSED
+  by PORT_TODO 3.1. This was called "the one architectural item on the list", and
+  it was: the grammar was verbatim and every emit site printed its own sentence,
+  so repeats never combined into "3 kobolds die.", a monster caught twice by one
+  splash was described twice, and a death could be reported before the pain that
+  caused it. `mon_msg[]`, `stack_message`, `redundant_monster_message`,
+  `what_delay` and `show_monster_messages` are now ported whole, `PN_MON_MESSAGE`
+  is the third `PN` bit, and `noticeStuff` drains it. What reading the C then
+  turned up, and the item did not say: `player_kill_monster` calls `notice_stuff`
+  ITSELF before the kill line (`mon-util.c:1046`, `:1055`) — two of upstream's
+  fifteen `notice_stuff` sites, both unwired until now.
 - **The killer's name is a race name, not `monster_desc(MDESC_DIED_FROM)`**
   (`effects/handlers.ts:78`, `game/effect-attack.ts:687`). Both halves exist —
   `MDESC_DIED_FROM` is defined at `mon/desc.ts:61` — and are not joined.
@@ -402,17 +408,17 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 55 |
-| `partial` | Part ported; the note must say which part is not | 13 |
+| `real` | Confirmed absent and owed | 54 |
+| `partial` | Part ported; the note must say which part is not | 12 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
-| `ported` | Done; the note was stale and has been rewritten | 23 |
+| `ported` | Done; the note was stale and has been rewritten | 25 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
 | | **total** | **227** |
 
-### `real` - Confirmed absent and owed (55)
+### `real` - Confirmed absent and owed (54)
 
 - `packages/core/src/effects/handlers.ts:78` - LEAD READ. Still real, and the note's reason is stale: monsterDesc IS ported (mon/desc.ts) and MDESC_DIED_FROM is defined at mon/desc.ts:61. The port hardcodes "a monster" where upstream's killer_desc calls monster_desc(mon, MDESC_DIED_FROM), so the death cause loses both the article and the visibility gate ("something" for an unseen killer). The work is one call, not a subsystem
 - `packages/core/src/game/cave-cmd.ts:1045` - LEAD READ, and the lead is a FALSE POSITIVE: web/src/context-menu.ts only names do_cmd_alter in a comment while routing "Attack"/"Alter" to this same core command (context-menu.ts:164-179), so it inherits the gap rather than filling it. The chest and floor-trap-disarm fall-through branches (do_cmd_alter_aux L969-992) are genuinely absent, and "+" is bound to alter at web/src/main.ts:8090
@@ -423,7 +429,6 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/game/effect-attack.ts:687` - LEAD READ. Same as effects/handlers.ts:78 and the same one-call fix: mon.race.name stands in for monster_desc(mon, MDESC_DIED_FROM), which drops the article and prints a raw race name on the tombstone. MDESC_DIED_FROM exists (mon/desc.ts:61)
 - `packages/core/src/game/gear.ts:1173` - LEAD READ. Still real, and a dedicated instrument says so: game/pile.upstream.test.ts:28 states "pile_insert_end has NO port counterpart: nothing in the live port appends", and gear.ts:1094 cites it for the equip path only
 - `packages/core/src/game/known.ts:750` - path_analyse absent: no pathAnalyse anywhere in the port, so intervening-square terrain is never learned along a path.
-- `packages/core/src/game/mon-message.ts:15` - The message QUEUE is genuinely absent - there is no notice_stuff / PN_MON_MESSAGE machinery, so repeats never combine ("3 kobolds die.") and deaths are not shown last. The grammar half is ported verbatim
 - `packages/core/src/game/project-cast.ts:685` - The monster-source decoy and target-monster branches of effect_handler_TOUCH are genuinely absent; a monster casting a touch effect cannot centre it on a decoy or another monster
 - `packages/core/src/game/spoil.ts:93` - timedDesc / summonDesc unwired, so a handful of activation descriptions in the spoiler files read worse than upstream's. Dev tool, small
 - `packages/core/src/game/spoil.ts:518` - Same root cause as the lore hit-chance gap: the combat layer does not feed lore, so every "chance to hit" line in the monster spoiler is absent
@@ -470,7 +475,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/ui-entry.yaml:133` - The launcher-slot reach plus KF_SHOOTS_ARROWS, same as game/ui-entry.ts:1392
 - `parity/ledger/world-kernel.yaml:27` - The monster-list scan replacement and what the note lists after it
 
-### `partial` - Part ported; the note must say which part is not (13)
+### `partial` - Part ported; the note must say which part is not (12)
 
 - `packages/core/src/game/context.ts:1161` - The held-object drop IS handled (the caller runs monster_death first, as the note says); the mimic and targeting bookkeeping remain
 - `packages/core/src/game/floor.ts:18` - pushObject is ported and called (effect-general.ts:190, effect-terrain.ts:347); the known-object shadow cave, list_object/delist_object oidx bookkeeping and mimicked-object handling remain
@@ -483,7 +488,6 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/game-project-monster.yaml:50` - Targeting is wired; the mimic bookkeeping is not (same as game/context.ts:1153)
 - `parity/ledger/gen-cave.yaml:49` - CORRECTED from real. hard_centre_gen IS ported (hardCentreGen, gen/cave.ts:1914, a greater vault surrounded by four caverns). Only arena_gen remains, with the rest of arena mode
 - `parity/ledger/mon-make.yaml:32` - monCreateDrop and updateMon are ported; monster lore is wired (including lore.txt). Level rating has no port equivalent (0 references)
-- `parity/ledger/mon-timed.yaml:29` - The GRAMMAR is ported verbatim (game/mon-message.ts: get_subject, get_message_text, message_pain, the [singular|plural] state machine). What is absent is the QUEUE - add_monster_message -> mon_msg[] flushed by show_monster_messages from notice_stuff's PN_MON_MESSAGE - so repeats are not combined into a counted line and deaths are not shown last. Root cause is the missing notice_stuff/PN_* machinery, not this file.
 - `parity/ledger/ui-display.yaml:124` - The sidebar IS drawn, by the front end on a canvas rather than with Term_* calls (web/src/main.ts sidebarModel). update_sidebar's screen-size priority culling and from-bottom placement are genuinely absent (game/display.ts:505 says so)
 
 ### `divergence` - Deliberately different, with the mechanism named (32)
@@ -571,9 +575,10 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (23)
+### `ported` - Done; the note was stale and has been rewritten (25)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
+- `packages/core/src/game/mon-message.ts:15` - CLOSED by PORT_TODO 3.1 (2026-08-05). The queue is ported whole into this file - add_monster_message / _show_damage, stack_message with its saturating damage add, redundant_monster_message + store_monster, message_flags, what_delay, show_message and show_monster_messages - PN_MON_MESSAGE is the third PN bit, and noticeStuff drains it. 25 tests in game/mon-msg-queue.test.ts; 19 mutations, 19 kills. Remaining gap is narrower and recorded in 3.1: nothing binds state.panelContains, so the "(offscreen)" tag never appears.
 - `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
 - `packages/core/src/gen/gen-monster.ts:350` - LEAD READ, and CORRECTED from real. The note says spreadMonsters is "not wired to a builder yet (room_of_chambers/cavern callers are deferred)". It is wired, twice: gen/cave.ts:1721 (the lair, after setPitType/monRestrict) and gen/cave.ts:1865. room_of_chambers is built too, and its builder asserts true in gen/gen.test.ts:2175
 - `packages/core/src/mon/lore-describe.ts:846` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
@@ -582,6 +587,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/web/src/main.ts:5904` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
 - `packages/web/src/main.ts:5925` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
 - `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic
+- `parity/ledger/mon-timed.yaml:29` - CLOSED by PORT_TODO 3.1 (2026-08-05). mon_set_timed still reports through an optional MonTimedMessageSink because mon/ sits below game/, but the sink the game supplies IS add_monster_message(mon, m_note, true) (game/monster-turn.ts monsterTimedMessage), so the line is stacked on the delayed pass exactly as mon-timed.c:215 does it. This sink had no test at all until 3.1 - deleting its body broke nothing - and now has two.
 - `parity/ledger/player-history.yaml:46` - STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.
 - `parity/ledger/player-history.yaml:79` - CORRECTED from real. Both hooks ARE wired: onArtifactFound (game/context.ts:687-693, installed by wireGame, called from pickup.ts playerPickupAux) and onArtifactLost (:695-701, the destroy / abandon / store-discard paths). The store-PURCHASE site is the part still missing, tracked at store/transact.ts:26
 - `parity/ledger/store-price.yaml:21` - CORRECTED from real. store_init's runtime owner selection IS ported: storeChooseOwner (store/store.ts:100, rng.randint0 over store.owners) called at :116, :120 and :700. My "0 storeInit sites" was a transliteration grep
