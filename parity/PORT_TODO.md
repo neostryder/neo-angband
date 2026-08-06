@@ -2221,18 +2221,27 @@ is reachable in play and a test constructs the case that used to be wrong.**
   activation descriptions read worse than upstream's; and `loreDescription` has no
   upstream-style spoiler flag.
 
-  > **Scoped by measurement, 2026-08-06, and it is not the one-line fix it
-  > looks like.** The spoiler boot already holds `game.players.timed` and
+  > **The `timedDesc` / `summonDesc` half is RETRACTED, on three measurements
+  > taken 2026-08-06.** The spoiler boot already holds `game.players.timed` and
   > `reg.monsters.summons`, so filling the two seams is three lines. I wrote
-  > them, diffed `spoilObjDesc + spoilArtifact` whole against the shipped pack,
-  > and got **zero bytes of difference** — then reverted rather than commit a
-  > no-op that reads like a fix. It is not that the content lacks the cases:
-  > `activation.json` ships 163 activations, **30 TIMED_INC and 25 CURE**. So
-  > the seams are not reaching the effect-description layer at all, and the
-  > work here is finding where the thread stops below `ObjectInfoExtras` —
-  > start at `effects/effect-info.ts:390` and `:402`, which read
-  > `deps.timedDesc` / `deps.summonDesc`, and walk back to
-  > `game/object-inspect.ts:118`. `:518` and `:519` are the hit-chance lines, and
+  > them and diffed `spoilObjDesc + spoilArtifact` whole against the shipped
+  > pack: **zero bytes of difference.** Replaced them with sentinel strings and
+  > counted: **zero occurrences** in either dump, so the callbacks are never
+  > invoked and it is not a formatting coincidence. And the reason:
+  > `spoilObjDesc` prints no effect text at all — upstream's basic-item table
+  > is a stat grid — while of `spoilArtifact`'s **67 "When used" lines not one**
+  > resolves to `EFINFO_TIMED` / `EFINFO_CURE` / `EFINFO_SUMM`. The 30
+  > `TIMED_INC` and 25 `CURE` entries in `activation.json` belong to items
+  > these two dumps do not describe.
+  >
+  > The chain below the seams is sound and the in-game inspect path exercises
+  > it (`web/src/main.ts:1043`, `:2029`). Supplying them here would be correct
+  > and **inert**, so the code carries the measurement instead of the change.
+  >
+  > **What is left of 5.6** is the other half: `loreDescription` has no
+  > upstream-style spoiler flag (so `spoilMonInfo` slices off a title line it
+  > should never have emitted), and `:518` / `:519`'s hit-chance lines need a
+  > state-carrying spoiler variant rather than a seam. `:518` and `:519` are the hit-chance lines, and
   they no longer wait on anything — the callbacks are wired for the *game* path
   (`packages/web/src/main.ts:3650`); a core-level dump has no player, so this
   needs a state-carrying spoiler variant rather than a seam.
