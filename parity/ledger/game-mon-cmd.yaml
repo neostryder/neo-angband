@@ -54,17 +54,35 @@ notes: >-
   the same spell stack as the monster's own turn. The mon-timed
   MON_TMD_COMMAND target reset (mon-timed.c L169) was already ported.
   processMonsterTimed already skips a commanded monster's own turn.
+
+  THREE DEFERRALS WERE REMOVED FROM THE LIST BELOW BECAUSE THEY HAD ALREADY
+  ENDED, and two of the three were describing something the code does not do:
+
+  - "Monster names are the race name until MDESC (#25); the light-purple
+    commanded-monster highlight rides #25." Both halves false. mon/desc.ts is
+    a full monster_desc, and mon-cmd.ts calls it with upstream's own flag sets
+    (MDESC_STANDARD, MDESC_TARG, MDESC_CAPITAL|IND_HID|COMMA). The health-bar
+    highlight is game/display.ts:396,
+    `if (mon.mTimed[MON_TMD.COMMAND]) attr = COLOUR_L_PURPLE`, in upstream's
+    own precedence order (ui-display.c:407).
+  - "The monster-target branches of the mon-blow-effects handlers reduce to
+    their damage + the critical stun (blind/confuse/poison etc. on a monster
+    victim, and the blinked teleport, ride the full path)." The timed statuses
+    are ported and have their own tests: BLIND -> MON_TMD_STUN,
+    CONFUSE -> CONF, TERRIFY -> FEAR, PARALYZE -> HOLD, at upstream's amounts.
+    POISON against a monster carries no timed poison UPSTREAM either
+    (mon-blows.c:679-681 returns before the player-only tail), so naming it was
+    a description of 4.2.6, not of a gap. And `blinked` cannot be true in
+    monster_attack_monster at all: every one of the four
+    `context->blinked = true` sites (mon-blows.c:301, :795, :840, :863) is
+    inside an `if (context->p)` arm or behind a
+    monster_damage_target(context, true) that returns first for a monster
+    target. The teleport tail at mon-attack.c:887 is upstream dead code, so
+    omitting it is EXACT rather than reduced.
+  - CMD_DROP (PORT_TODO 2.18), which is now built.
 deferred:
-  - Monster names are the race name until MDESC (#25); the light-purple
-    commanded-monster highlight (ui-display.c) rides #25.
   - The cast branch's interactive re-target prompt (target_set_monster
     NULL + get_aim_dir) is UI; the player's current target stands in.
-  - CMD_DROP no-ops: monster-held objects (mon->held_obj,
-    get_random_monster_object) are not modelled yet.
-  - The monster-target branches of the mon-blow-effects handlers reduce
-    to their damage + the critical stun (blind/confuse/poison etc. on a
-    monster victim, and the blinked teleport, ride the full
-    mon-blow-effects monster path).
   - square_smash_wall's neighbour scouring reduces to the wall becoming
     floor; door bashing does not roll the upstream broken-vs-open split
     beyond square_smash_door -> BROKEN.
@@ -81,3 +99,11 @@ verified-by:
     world tick keeps the timers aligned in sight and clears both out of
     sight; a commanded monster dying releases the player; NEVER_BLOW
     monsters cannot attack.
+  - game/mon-cmd.test.ts "do_cmd_mon_command CMD_DROP" (5 tests, all
+    mutation-verified, 7 of 7 killed) - one held item lands on the MONSTER'S
+    grid with a "<Name> drops <item>." line; two distinct pile entries lose
+    exactly one; an empty pile still spends the turn and says nothing; an
+    ignored item lands silently; and held_m_idx is cleared even when the drop
+    finds nowhere to land. That last fixture walls off drop_find_grid's whole
+    7x7 window on purpose: on the ordinary path floorCarry clears held_m_idx
+    itself, so an assertion after a successful drop passed with L1858 deleted.
