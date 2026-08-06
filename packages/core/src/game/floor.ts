@@ -15,10 +15,21 @@
  * - birthStacking (OPT birth_stacking): defaults true as shipped.
  * - onBreak / onDrop / onNote: message and redraw hooks (UI layer).
  *
- * DEFERRED with their subsystems (ledgered in parity/ledger/game-floor.yaml):
- * push_object (needs doors/traps interplay), the known-object shadow cave
- * (player->cave, knowledge #24), list_object/delist_object oidx bookkeeping
- * (the pile map is the object list), and mimicked-object handling.
+ * This list used to name four deferrals; three are closed and saying so is the
+ * point, because a stale grouping is what stops the fourth from being read:
+ * - push_object IS ported (game/project-feat.ts pushObject, called from
+ *   effect-general.ts:190 and effect-terrain.ts:347).
+ * - The known-object shadow cave IS ported: state.known.objects is a
+ *   remembered PILE per grid, one entry per remembered object, and
+ *   game/known.ts knownObject is map_info's loop over it (PORT_TODO 2.9).
+ * - list_object / delist_object's oidx bookkeeping is a RATIFIED DIVERGENCE,
+ *   not an omission: upstream needs cave->objects[] because C has no lasting
+ *   pointer, and the port's grid-keyed pile map plus obj.mimickingMIdx carries
+ *   everything observable. A JS reference is the link oidx stands in for.
+ *
+ * What is genuinely left is ONE branch: push_object's unrevealed-mimic arm
+ * (obj-pile.c:1213-1256), which moves the mimic monster along with its object
+ * instead of dropping the object on its own. Tracked as PORT_TODO 2.14.
  */
 
 import type { Loc } from "../loc.js";

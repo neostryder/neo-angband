@@ -283,6 +283,7 @@ describe("object detection (L1682-L1761)", () => {
     expect(knownObject(state, loc(12, 10))).toEqual({
       seen: true,
       kidx: potion.kind.kidx,
+      multiple: false,
     });
     expect(msgs).toContain("You detect the presence of objects!");
   });

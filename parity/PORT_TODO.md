@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 122 confirmed-absent citations** — 34 closed, 34 open.
+**68 items covering all 122 confirmed-absent citations** — 35 closed, 33 open.
 The citation count **went up, not down**, and that is the adjudication working:
 seven rows this session moved from unadjudicated to `partial`, and a `partial` is
 a confirmed-absent citation. Reading the ledger finds work as often as it kills
@@ -605,16 +605,62 @@ is reachable in play and a test constructs the case that used to be wrong.**
   tests.
   Sites: `packages/core/src/game/known.ts:750`
 
-- [ ] **2.9 The known-object shadow cave.**
-  Re-scoped by reading. `pushObject` **is** ported and called
-  (`packages/core/src/game/effect-general.ts:190`,
-  `packages/core/src/game/effect-terrain.ts:347`), and `list_object` /
-  `delist_object`'s oidx bookkeeping is now recorded as a **divergence** — the port
-  replaced upstream's `cave->objects[]` registry with a grid-keyed pile map plus
-  `obj.mimickingMIdx`, which `become_aware` reads and the save persists, so nothing
-  observable depends on an oidx. What is left of the row is `player->cave`, the
-  remembered floor-pile contents, and the mimicked-object half that rides it.
-  Sites: `packages/core/src/game/floor.ts:18`
+- [x] **2.9 The known-object shadow cave — the remembered PILE.** DONE. The
+  remaining half of this row was that the player's memory of a grid's floor was
+  ONE object. Upstream's `player->cave` holds a shadow object per remembered
+  object, and three things read that list: `map_info`'s object loop
+  (`cave-map.c:155-169`), `object_list_collect` (`obj-list.c:167`) and
+  `forget_remembered_objects` (`cave-square.c:1104`). With one memory per grid
+  none of them could be faithful.
+
+  **The blocker was imaginary, and naming it is what unblocked the row.** A
+  shadow needs a link to its original; upstream spends `obj->oidx` plus the
+  whole `cave->objects[]` registry on that link because C cannot hold a pointer
+  that survives a level and a savefile. **A JS reference is that link.** The
+  registry the earlier scoping assumed had to be built first — 80 factory call
+  sites — was never needed: `KnownObject` is `{ obj, sensed }`, `obj` IS what
+  `ignore_known_item_ok` resolves oidx to (`obj-ignore.c:636-646`, which tests
+  the ORIGINAL, not the shadow), and reference identity is what
+  `forget_remembered_objects` compares.
+
+  **Three player-visible defects, each proved by a test that fails without the
+  fix.** All three had been invisible because the two consumers papered over
+  the single memory by reading the LIVE floor pile — the level, not the
+  player's knowledge of it:
+
+  - **A knowledge leak in the `[` object list.** Any grid carrying a memory had
+    its whole live pile listed, so an object dropped out of view onto a grid the
+    player had once seen was announced the moment it landed. The reverse too: an
+    object taken out of view vanished at once, where upstream keeps showing it
+    until the grid is re-seen.
+  - **The `<pile>` glyph never drew.** `grid_data.multiple_objects` had nothing
+    to compute it from, and `ObjRegistry.pileKind` was bound, asserted in a test
+    and read by **no production code** — shipped and unreachable. A grid holding
+    two or more remembered items drew the top item instead of `&`.
+  - **Ignore hid the wrong thing.** `"Item stays hidden"` (`cave-map.c:162`)
+    SKIPS an ignored entry without consuming the `first_kind` slot, so upstream
+    falls through to the object underneath. The port could only ask "is EVERY
+    live object here ignored", so an ignored item lying on top of a wanted one
+    hid both.
+
+  Also fixed on the way: `forget_remembered_objects` now honours its predicate,
+  so a know/sense of one object class no longer clears another class's memory;
+  and a sensed marker correctly outranks an exact memory on the same grid
+  (`ui-map.c:200-212` tests the stars before `first_kind`).
+
+  **SAVE_VERSION 3 → 4, with the 3 → 4 step in the same commit.** A memory is
+  saved as a LOCATOR into the saved floor (`[grid index, position in pile]`),
+  not a copy — identity is what `forget_remembered_objects` compares, so a
+  lookalike would make every pile forget itself the first time the player
+  looked at it. That claim has its own test. A version-3 memory carried a kind
+  and no link, so it widens to a one-element detached memory that draws exactly
+  what version 3 drew and heals on the next sight of the grid; the round-trip
+  test adds a `toV3` down-converter and asserts every remembered kind survives.
+
+  Six mutations, six kills.
+  Sites: `packages/core/src/game/known.ts:131`,
+  `packages/core/src/game/known.ts:533`,
+  `packages/core/src/session/save.ts:1187`
 
 - [x] **2.10 `object_flag_is_known` at the store sites.** DONE — **with 5.8, which
   is the same line.** Both rows point at `storeWillBuy`'s buy-list branch, 2.10
@@ -773,7 +819,30 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 - [ ] **2.14 Mimic bookkeeping.**
   Targeting is wired; mimicked-object bookkeeping is not.
+
+  **`push_object` has no mimic arm — found while closing 2.9**, by reading the
+  four `mimicking_m_idx` sites in `obj-pile.c` rather than trusting the row that
+  grouped them. Two of the four are closed: `object_stackable`'s "mimicked items
+  do not stack" (`obj-pile.c:406`) is ported at `obj/object.ts:1001` and IS
+  reached, since `objectMergeable` delegates to it; and the orphaning arm at
+  `:338` belongs to the shadow registry the port replaced.
+
+  The third is real. Upstream's `push_object` (`obj-pile.c:1213-1256`) treats an
+  unrevealed mimic specially: it clears the dangling `mimic->mimicked_obj`, then
+  scatters outward from d=1, and on the first grid that takes the object it
+  **moves the monster with it** (`monster_swap`) and re-links the pair — or, at
+  d>=4, destroys BOTH. The port's `pushObject` (`game/project-feat.ts:81`) sends
+  every object through `dropNear` with no such branch, so a door created on a
+  grid holding an unrevealed mimic separates the monster from the object it is
+  pretending to be, leaving `obj.mimickingMIdx` pointing at a monster that is
+  somewhere else. Reachable: `pushObject`'s two callers are the door-creating
+  effects (`game/effect-general.ts:190`, `game/effect-terrain.ts:347`).
+
+  This is what is left of the `floor.ts:18` census row now that the known-object
+  shadow cave (2.9) is closed and the oidx bookkeeping is a ratified divergence.
   Sites: `packages/core/src/game/context.ts:1231`,
+  `packages/core/src/game/floor.ts:30`,
+  `packages/core/src/game/project-feat.ts:81`,
   `parity/ledger/game-project-monster.yaml:50`
 
 - [x] **2.15 The book out-of-depth value boost.** CLOSED as a RETRACTION — and

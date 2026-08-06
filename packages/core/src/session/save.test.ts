@@ -13,6 +13,7 @@ import { runGameLoop, LOOP_STATUS } from "../game/loop.js";
 import { monsterGroupsVerify } from "../game/mon-group.js";
 import type { PlayerCommand } from "../game/context.js";
 import { objectNew } from "../obj/object.js";
+import { loc } from "../loc.js";
 import { buildObjectEffectChain } from "../game/obj-cmd.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import { EverseenKnowledge } from "../obj/knowledge.js";
@@ -1399,95 +1400,115 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
   });
 });
 
-describe("remembered floor objects (game/known.ts KnownObjectMemory)", () => {
-  /** The grid index a memory is written at, plus the potion kind used. */
+describe("the remembered floor pile (game/known.ts KnownObject)", () => {
+  /**
+   * Put a potion on the floor and remember it, the way square_know_pile does:
+   * a remembered object IS the live object, so the save has to carry identity
+   * and not a copy of its kind.
+   */
   function rememberPotion(game: StartedGame): { idx: number; kind: ObjectKind } {
     const kind = game.booted.registries.objects.kinds.find(
       (k) => k.tval === TV.POTION,
     ) as ObjectKind;
     const idx = 5 * game.state.chunk.width + 7;
-    game.state.known.objects.set(idx, { seen: true, kidx: kind.kidx });
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.grid = loc(7, 5);
+    game.state.floor.set(idx, [obj]);
+    game.state.known.objects.set(idx, [{ obj, sensed: false }]);
     return { idx, kind };
   }
 
-  it("round-trips the remembered KIND, so the draw can still resolve a tile", () => {
-    /* The memory used to be a resolved glyph, which the save stored as
-     * `{ ch, attr }`. A glyph has no kind, so the remembered draw could look up
-     * neither the flavour nor the x_attr tile - which is why an item on the
-     * floor turned into ASCII the moment it left view. */
+  it("a restored memory IS the restored floor object, not a copy of it", () => {
+    /* The whole reason the saved form is a locator. forget_remembered_objects
+     * compares the memory against the grid's pile BY IDENTITY, so a memory
+     * restored as a lookalike would be excised the first time the player
+     * looked at the grid - the pile would forget itself on sight. */
     const game = startGame(pack, { seed: 909, depth: 2 });
     const { idx, kind } = rememberPotion(game);
 
     const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
     const restored = loadGame(pack, saved);
 
-    expect(restored.state.known.objects.get(idx)).toEqual({
-      seen: true,
-      kidx: kind.kidx,
-    });
+    const pile = restored.state.known.objects.get(idx)!;
+    expect(pile).toHaveLength(1);
+    expect(pile[0]!.sensed).toBe(false);
+    expect(pile[0]!.obj.kind.kidx).toBe(kind.kidx);
+    /* The identity claim, which a kind comparison cannot make. */
+    expect(pile[0]!.obj).toBe(restored.state.floor.get(idx)![0]);
   });
 
-  it("stores the kind by content ID, not by index", () => {
+  it("stores a locator into the saved floor, not the kind", () => {
     const game = startGame(pack, { seed: 910, depth: 2 });
-    const { idx, kind } = rememberPotion(game);
-    const ids = new ContentIdResolver(game.booted.registries);
+    const { idx } = rememberPotion(game);
 
     const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
     const entry = saved.known!.objects.find(([i]) => i === idx)!;
 
-    expect(entry[1].kindId).toBe(ids.kindId(kind.kidx));
+    expect(entry[1]).toHaveLength(1);
+    expect(entry[1][0]!.at).toEqual([idx, 0]);
+    expect(entry[1][0]!.kindId).toBeUndefined();
   });
 
-  it("a sensed marker keeps its money-ness across a save", () => {
+  it("a whole pile round-trips, in order, with its sensed flags", () => {
     const game = startGame(pack, { seed: 911, depth: 2 });
-    const w = game.state.chunk.width;
-    game.state.known.objects.set(3 * w + 3, { seen: false, money: true });
-    game.state.known.objects.set(3 * w + 4, { seen: false, money: false });
+    const reg = game.booted.registries.objects;
+    const potion = reg.kinds.find((k) => k.tval === TV.POTION) as ObjectKind;
+    const scroll = reg.kinds.find((k) => k.tval === TV.SCROLL) as ObjectKind;
+    const idx = 4 * game.state.chunk.width + 9;
+    const objs = [potion, scroll].map((kind) => {
+      const o = objectNew(kind);
+      o.tval = kind.tval;
+      o.sval = kind.sval;
+      o.number = 1;
+      o.grid = loc(9, 4);
+      return o;
+    });
+    game.state.floor.set(idx, objs);
+    game.state.known.objects.set(idx, [
+      { obj: objs[0]!, sensed: false },
+      { obj: objs[1]!, sensed: true },
+    ]);
 
     const restored = loadGame(pack, JSON.parse(JSON.stringify(saveGame(game))));
 
-    expect(restored.state.known.objects.get(3 * w + 3)).toEqual({
-      seen: false,
-      money: true,
-    });
-    expect(restored.state.known.objects.get(3 * w + 4)).toEqual({
-      seen: false,
-      money: false,
-    });
+    const pile = restored.state.known.objects.get(idx)!;
+    expect(pile.map((e) => e.sensed)).toEqual([false, true]);
+    expect(pile.map((e) => e.obj.kind.kidx)).toEqual([potion.kidx, scroll.kidx]);
+    expect(pile.map((e) => e.obj)).toEqual(restored.state.floor.get(idx));
   });
 
-  it("a PRE-0.18 glyph memory loads as 'something is here' instead of corrupting", () => {
-    /* No SAVE_VERSION bump: an existing character must load. A glyph cannot be
-     * turned back into a kind, so the honest degradation is the sensed marker,
-     * which heals to an exact memory the next time the player sees the grid. */
+  it("a memory whose object has left the floor survives as a detached one", () => {
+    /* Upstream keeps such a shadow until the grid is re-seen (the original is
+     * gone but the memory is not), so the locator is dropped and the kind is
+     * written instead. */
     const game = startGame(pack, { seed: 912, depth: 2 });
-    const { idx } = rememberPotion(game);
+    const { idx, kind } = rememberPotion(game);
+    /* Somebody picked it up, out of the player's view. */
+    game.state.floor.delete(idx);
+
     const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
-    const entry = saved.known!.objects.find(([i]) => i === idx)!;
-    delete entry[1].kindId; // what a pre-0.18 save looks like
-    entry[1].ch = "!";
-    entry[1].attr = "d";
+    expect(saved.known!.objects.find(([i]) => i === idx)![1][0]!.at).toBeUndefined();
 
     const restored = loadGame(pack, saved);
-
-    expect(restored.state.known.objects.get(idx)).toEqual({
-      seen: false,
-      money: false,
-    });
+    const pile = restored.state.known.objects.get(idx)!;
+    expect(pile).toHaveLength(1);
+    expect(pile[0]!.obj.kind.kidx).toBe(kind.kidx);
+    expect(restored.state.floor.get(idx)).toBeUndefined();
   });
 
-  it("a kind the pack no longer binds degrades to a sensed marker", () => {
+  it("a kind the pack no longer binds is forgotten rather than drawn as nothing", () => {
     const game = startGame(pack, { seed: 913, depth: 2 });
     const { idx } = rememberPotion(game);
+    game.state.floor.delete(idx); // force the kind fallback
     const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
-    saved.known!.objects.find(([i]) => i === idx)![1].kindId = "mod:gone/potion";
+    saved.known!.objects.find(([i]) => i === idx)![1][0]!.kindId = "mod:gone/potion";
 
     const restored = loadGame(pack, saved);
 
-    expect(restored.state.known.objects.get(idx)).toEqual({
-      seen: false,
-      money: false,
-    });
+    expect(restored.state.known.objects.get(idx)).toBeUndefined();
   });
 });
 

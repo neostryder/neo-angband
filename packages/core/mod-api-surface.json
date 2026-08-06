@@ -934,6 +934,7 @@
     "knownIsPerm",
     "knownIsRubble",
     "knownObject",
+    "knownPile",
     "labyrinthGen",
     "lairGen",
     "launchUsage",
