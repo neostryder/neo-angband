@@ -90,10 +90,23 @@ function boot(pack: GamePack): SpoilCtx {
         comma: race.flags.has(RF.NAME_COMMA),
       };
     },
-    /* TODO(B2): timedDesc / summonDesc are not wired, so a handful of activation
-     * effect strings (EFINFO_CURE / EFINFO_TIMED / EFINFO_SUMM) render their
-     * generic fallback rather than the timed-effect / summon name. Everything
-     * else in the object-info dump is fully realised. */
+    /*
+     * timedDesc / summonDesc are still unsupplied here, and PORT_TODO 5.6 is
+     * NOT the one-line fix that looks like - MEASURED 2026-08-06 rather than
+     * assumed.
+     *
+     * The obvious move is to fill them from `game.players.timed` and
+     * `reg.monsters.summons`, which this boot already has. Doing that changes
+     * ZERO BYTES of spoilObjDesc + spoilArtifact on the shipped pack, diffed
+     * whole. That is not because the content lacks the cases: activation.json
+     * ships 163 activations, 30 of them TIMED_INC and 25 CURE. So the two
+     * seams are not reaching the effect-description layer that would use them,
+     * and 5.6's real work is finding where the thread stops below
+     * ObjectInfoExtras - not adding the two closures.
+     *
+     * The change was written, diffed, and reverted rather than committed,
+     * because a no-op that reads like a fix is worse than the honest note.
+     */
   };
   return { game, reg, extras };
 }
