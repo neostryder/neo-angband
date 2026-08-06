@@ -1463,6 +1463,7 @@
     "serializeMonster",
     "serializeObject",
     "serializePlayer",
+    "serializeStoredLevel",
     "serializeStores",
     "serveRawFs",
     "setAutoinscription",

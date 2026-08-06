@@ -2143,19 +2143,16 @@ function makeChangeLevel(
   trapDeps: TrapDeps | null,
   opts: { inArena?: boolean } = {},
 ): (depth: number) => void {
-  /* The level stashed when entering an arena: leaving a level FOR an
-   * arena persists it even without birth_levels_persist (generate.c
-   * L1349), and the arena exit restores it. */
-  let arenaStash: {
-    chunk: GameState["chunk"];
-    monsters: GameState["monsters"];
-    groups: GameState["groups"];
-    floor: GameState["floor"];
-    traps: GameState["traps"];
-    known: GameState["known"];
-    decoy: Loc | null;
-    monMidx: number;
-  } | null = null;
+  /* The level stashed when entering an arena lives on GameState
+   * (state.arenaStash), not in this closure: leaving a level FOR an arena
+   * persists it even without birth_levels_persist (generate.c L1349), and
+   * upstream keeps that copy in the chunk_list, which the savefile carries. A
+   * save taken mid-fight used to lose the level behind it and exit onto a
+   * fresh one; now it exits where it went in.
+   *
+   * `inArena` stays a separate flag rather than "the stash exists", because a
+   * save written before the stash was persisted restores with arena_level set
+   * and no stash, and still has to be let out of the arena. */
   let inArena = opts.inArena ?? false;
 
   return (depth: number): void => {
@@ -2171,7 +2168,7 @@ function makeChangeLevel(
     if (state.arenaLevel && !inArena) {
       const mon = state.healthWho;
       if (mon) {
-        arenaStash = {
+        state.arenaStash = {
           chunk: state.chunk,
           monsters: state.monsters,
           groups: state.groups,
@@ -2180,6 +2177,11 @@ function makeChangeLevel(
           known: state.known,
           decoy: state.decoy ?? null,
           monMidx: mon.midx,
+          /* StoredLevel's other two fields. The freeze turn is stamped as
+           * cave_store does; `join` is empty because an arena exit restores
+           * the level wholesale and never re-aligns stairs against it. */
+          turn: state.turn,
+          join: [],
         };
         /* arena_gen (gen-cave.c L3984): 6x6 floor bounded by perm rock,
          * the player in one corner and the opponent in the other. */
@@ -2252,8 +2254,8 @@ function makeChangeLevel(
     if (inArena) {
       inArena = false;
       state.arenaLevel = false;
-      const stash = arenaStash;
-      arenaStash = null;
+      const stash = state.arenaStash;
+      delete state.arenaStash;
       if (stash) {
         /* Restore the level left behind (the player marker stayed). */
         state.chunk = stash.chunk;
@@ -3920,11 +3922,29 @@ export function loadGame(
     state.isDead = false;
   }
 
-  /* A save taken in single combat resumes it (the stashed pre-arena
-   * level is gone: winning exits to a fresh level of the same depth). */
+  /* A save taken in single combat resumes it, INCLUDING the level it was
+   * entered from - upstream keeps that in the chunk_list and the savefile
+   * carries it. Rebuilt through the frozen-level cache deserializer, which is
+   * the same code path the live level and the persistent cache use. A save
+   * written before the stash was persisted has no `stash` key and reloads with
+   * the old behaviour: winning exits to a fresh level of the same depth. */
   if (save.arena) {
     state.arenaLevel = true;
     state.oldGrid = loc(save.arena.oldGrid.x, save.arena.oldGrid.y);
+    if (save.arena.stash) {
+      const rebuilt = deserializeLevelCache(
+        [save.arena.stash],
+        reg.features,
+        reg.monsters,
+        reg.objects,
+        reg.traps,
+        ids,
+      );
+      const level = rebuilt.get(save.arena.stash.depth);
+      if (level) {
+        state.arenaStash = { ...level, monMidx: save.arena.monMidx ?? 0 };
+      }
+    }
   }
 
   /* seed_flavor from the save (load.c L960). Older saves predate it; fall
