@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import { objBaseName } from "../obj/knowledge.js";
+import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -144,5 +145,40 @@ describe("print_custom_message {name} and {kind} (PORT_TODO 3.23)", () => {
     (state.actor as { weapon: unknown }).weapon = null;
     const desc = state.world!.timedHooks!.weapon!;
     expect(desc).toEqual({ name: "hands", kind: "hands", number: 2 });
+  });
+});
+
+/**
+ * PORT_TODO 5.4: the RANDNAME_TOLKIEN corpus reaches artifact_gen_name.
+ *
+ * randnameMake, build_prob and artifactGenName are ported and unit-tested
+ * against an independent oracle (obj/randname.upstream.test.ts,
+ * obj/randart.test.ts), and doRandart takes the word list as an argument - so
+ * every one of those tests would still pass if the live boot handed it an empty
+ * list and the generator fell back to its own syllables. This is the assertion
+ * that the SHIPPED pack fills it.
+ */
+describe("the names corpus is supplied to the live randart generator (5.4)", () => {
+  it("boot loads names.txt section 1, and it is not empty", () => {
+    const { booted } = startGame(pack, { seed: 5, depth: 1 });
+    const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN) ?? [];
+    expect(words.length, "names.json section 1 reached CoreRegistries").toBeGreaterThan(
+      100,
+    );
+    /* Real words, not placeholders - a corpus of empty strings would satisfy a
+     * length check and produce nothing but the fallback. */
+    expect(words.every((w) => /^[A-Za-z]{2,}$/u.test(w))).toBe(true);
+  });
+
+  it("the corpus changes the names, so the argument is not decorative", () => {
+    const { booted } = startGame(pack, { seed: 5, depth: 1 });
+    const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN) ?? [];
+    const withCorpus = doRandart(booted.registries.objects, 4242, words);
+    const without = doRandart(booted.registries.objects, 4242, []);
+    /* doRandart returns a slot-indexed array with holes (index 0 and any base
+     * item it could not use), so filter before reading a name. */
+    const names = (set: readonly ({ name: string } | null)[]): string =>
+      set.filter((a) => a !== null).map((a) => a.name).join("|");
+    expect(names(withCorpus)).not.toBe(names(without));
   });
 });

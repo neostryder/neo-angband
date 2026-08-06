@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 118 confirmed-absent citations** — 55 closed, 13 open.
+**68 items covering all 117 confirmed-absent citations** — 56 closed, 12 open.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -17,7 +17,8 @@ with the evidence written into the census itself: 3.1 retired two
 122 to 120, 2.6 retired
 `parity/ledger/player-calcs-bonuses.yaml` (120 to 119), and 5.9's neighbourhood
 retired `parity/ledger/store-maint.yaml:34` — a row PORT_TODO 2.10 had already
-fixed while its ledger prose went on saying otherwise (119 to 118).
+fixed while its ledger prose went on saying otherwise (119 to 118). 5.4 retired
+`parity/ledger/obj-randart.yaml:51` the same way, 118 to 117.
 It started at 65; **2.20 and 1.3 were added by reading**, not by the census, and
 both landed in tiers this file had already worked through — 2.20 in one it had
 declared *closed*. **Seven of the thirty-one closures are retractions rather than
@@ -2182,10 +2183,27 @@ is reachable in play and a test constructs the case that used to be wrong.**
   one parse loop, and it must not be stricter than `strtol`.
   Sites: `parity/ledger/options.yaml:76`
 
-- [ ] **5.4 `RANDNAME_TOLKIEN` is not loaded.**
-  Randart names come from `artifactGenName`'s own generator instead of the names
-  datafile.
-  Sites: `parity/ledger/obj-randart.yaml:51`
+- [x] **5.4 `RANDNAME_TOLKIEN` is not loaded.** CLOSED as a RETRACTION — it is
+  loaded, and it has been since before this row was written. `randnameMake` and
+  `build_prob` are ported in `obj/randname.ts` and checked against an
+  independent oracle (`obj/randname.upstream.test.ts`); the corpus ships as
+  `names.json` section 1; `bootLevel` reads it into
+  `CoreRegistries.nameSections` (`session/boot.ts:163-165`, reversing each
+  section because `init.c:1476` PREPENDS); and `session/game.ts:3458-3461`
+  hands `doRandart` the section-1 word list. `randart.ts`'s own module header
+  says all of this. The row's evidence was a ledger line, not the code.
+
+  One assertion was genuinely missing and is added, because it is the only one
+  that could have caught the row being right: **`doRandart` takes the corpus as
+  an ARGUMENT**, so every unit test above still passes if the live boot hands it
+  an empty list and `artifactGenName` falls back to its own syllables — the
+  classic "supplied is not read". `session/describe-wiring.test.ts` now boots a
+  real game and asserts section 1 arrives with >100 entries that are all real
+  words, and that generating with it produces a different name set than
+  generating without.
+  Sites: `packages/core/src/session/boot.ts:163`,
+  `packages/core/src/session/game.ts:3458`,
+  `parity/ledger/obj-randart.yaml:51`
 
 - [ ] **5.5 `randart.log` / `randart.txt`.**
   Upstream's `do_randart` writes it whenever randarts generate and `exit(1)`s if
@@ -2206,7 +2224,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   Sites: `packages/core/src/game/spoil.ts:93`, `:518`, `:519`, `:550`
 
 - [ ] **5.7 The randart generator's `property` branch.**
-  Needs the timed-effects failure tables.
+  `artifact_curse_conflicts`' `TIMED_INC` "effect foiled by an existing
+  property" arm; only the explicit conflict-flags arm is ported. Cursed
+  artifacts only (`make_bad`), and it draws no RNG.
+
+  **The stated blocker is gone.** This row read "needs the timed-effects failure
+  tables", and they are bound: `player/bind.ts:733` maps each record's `fail`
+  array into `TimedFail[]` (`code` + `flag`), and `player_inc_check` already
+  walks them (`player-timed.c:930-1000`, ported). So this is buildable now, and
+  the work is threading that table into `randart-build.ts` rather than porting
+  anything new. Left open because it is real work, not a retraction — noted
+  while closing 5.4, in the same sweep that found three other rows describing
+  states that had ended.
   Sites: `packages/core/src/obj/randart-build.ts:38`
 
 - [x] **5.8 `object_flag_is_known` on the store's buy list.** DONE, **as part of
@@ -2288,7 +2317,7 @@ handling.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 118 citations, 81 `real` + 37
+2. the counts stated at the top (**68 items, 117 citations, 80 `real` + 37
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
