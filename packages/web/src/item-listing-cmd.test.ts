@@ -52,9 +52,15 @@ function functionBody(src: string, name: string): string {
 
 describe("i / e / | run do_cmd_inven's picker, not a listing", () => {
   it("binds all three keys to it, each opening on its own list", () => {
-    expect(MAIN).toMatch(/\{ o: "i", act: \(\) => void openModal\(\(\) => doCmdItemListing\("inven"\)\) \}/);
-    expect(MAIN).toMatch(/\{ o: "e", act: \(\) => void openModal\(\(\) => doCmdItemListing\("equip"\)\) \}/);
-    expect(MAIN).toMatch(/\{ o: "\|", act: \(\) => void openModal\(\(\) => doCmdItemListing\("quiver"\)\) \}/);
+    expect(MAIN).toMatch(
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "i", act: \(\) => void openModal\(\(\) => doCmdItemListing\("inven"\)\) \}`),
+    );
+    expect(MAIN).toMatch(
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "e", act: \(\) => void openModal\(\(\) => doCmdItemListing\("equip"\)\) \}`),
+    );
+    expect(MAIN).toMatch(
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "\|", act: \(\) => void openModal\(\(\) => doCmdItemListing\("quiver"\)\) \}`),
+    );
   });
 
   it("dropped the passive listing stand-in entirely", () => {
