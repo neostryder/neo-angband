@@ -1943,11 +1943,34 @@ is reachable in play and a test constructs the case that used to be wrong.**
   bound. Mutation-checked (M17, M18).
   Sites: `parity/ledger/obj-desc.yaml:65`, `:67`
 
-- [ ] **3.25 Per-category priority overrides are not reconstructable.**
-  The pack compiler erases the intra-record order of category vs priority lines,
-  so a priority override attached to a category cannot be reproduced. A compiler
-  fix, not a renderer one.
-  Sites: `parity/ledger/ui-entry.yaml:140`
+- [x] **3.25 Per-category priority overrides are not reconstructable.** DONE.
+  The row was right, and the fix turned out to be one line of spec plus the
+  `priority_set` test it enables. `parse_entry_priority` (`ui-entry.c:2173`)
+  branches on `last_category_index == -1`: a `priority` before any `category` is
+  the record's default, one after a `category` overrides that category's own.
+  The compiler flattened `priority` to a record scalar, so the second form could
+  not survive compilation.
+
+  **The mechanism already existed.** `DirectiveDef.childOf` attaches a directive
+  to the most recent instance of another, and with no `requireParent` it falls
+  back to the record — which is upstream's branch exactly. `priority` is now
+  `childOf: ["category"]`, and `finish_parse`'s fill (`:2389`) honours
+  `CategoryRef.prioritySet` instead of overwriting every category.
+
+  **Measured, not assumed: this changes nothing the game shows.** Parsing both
+  shipped files, `ui_entry.txt` and `ui_entry_base.txt` contain **zero**
+  `priority`-after-`category` lines, and a test re-derives that from the files so
+  the claim cannot go stale. It is a pack-extensibility fix, which is why it was
+  correctly last by player-visibility. The older compiled shape — a bare category
+  string — still reads, so a mod's pack built before this is not a crash.
+
+  One unrelated wart fixed in passing: `negative_index` on index 0 returned
+  JavaScript's `-0`, a value `get_priority_from_negative_index` cannot produce.
+  8 mutations, 8 killed — the last only after the test earned it. "The scheme
+  name is never resolved" survived because `parseInt("negative_index")` is NaN
+  and falls back to a default that, on a record with no default, is also 0. The
+  record has a non-zero default now.
+  Sites: `packages/content/src/specs/ui-entry.ts:52`, `parity/ledger/ui-entry.yaml:140`
 
 ## Tier 4 — Whole modes nobody has begun
 

@@ -8,9 +8,15 @@
       "renderer": "char_screen1_stat_mod_renderer",
       "combine": "ADD",
       "category": [
-        "stat_modifiers",
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "stat_modifiers"
+        },
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ],
       "priority": "negative_index",
       "desc": [
@@ -27,7 +33,9 @@
       "renderer": "char_screen1_resist_renderer",
       "combine": "RESIST_0",
       "category": [
-        "resistances"
+        {
+          "category": "resistances"
+        }
       ],
       "priority": "negative_index",
       "flags": [
@@ -45,32 +53,48 @@
       "name": "resist_ui_compact_0<ACID>",
       "label": "Acid",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<ELEC>",
       "label": "Elec",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<FIRE>",
       "label": "Fire",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<COLD>",
       "label": "Cold",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
@@ -78,40 +102,60 @@
       "label": "Poison",
       "label5": "Pois",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<LIGHT>",
       "label": "Light",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<DARK>",
       "label": "Dark",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<SOUND>",
       "label": "Sound",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<SHARD>",
       "label": "Shard",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
@@ -119,8 +163,12 @@
       "label": "Nexus",
       "label2": "Nx",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
@@ -128,24 +176,36 @@
       "label": "Nether",
       "label5": "Nethr",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<CHAOS>",
       "label": "Chaos",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {
       "name": "resist_ui_compact_0<DISEN>",
       "label": "Disenchant",
       "category": [
-        "CHAR_SCREEN1",
-        "EQUIPCMP_SCREEN"
+        {
+          "category": "CHAR_SCREEN1"
+        },
+        {
+          "category": "EQUIPCMP_SCREEN"
+        }
       ]
     },
     {

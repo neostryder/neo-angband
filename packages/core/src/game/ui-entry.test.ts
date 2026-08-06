@@ -669,3 +669,93 @@ describe("PF_FAST_SHOT reads the equipped launcher (ui-entry.c L974-984)", () =>
     expect(fastShotValue(null, 30)).toBe(0);
   });
 });
+
+/**
+ * PORT_TODO 3.25: a category can carry a priority of its own.
+ *
+ * parse_entry_priority (ui-entry.c:2173) branches on `last_category_index`: a
+ * priority before any category is the record's default, one after a category
+ * overrides that category's, and finish_parse (:2389) fills only the categories
+ * with no `priority_set`. The compiler used to flatten `priority` to a record
+ * scalar, so the second form could not survive compilation and the fill here
+ * could overwrite unconditionally without anyone noticing.
+ *
+ * CONSTRUCTED records, not the shipped pack: measured, ui_entry.txt and
+ * ui_entry_base.txt contain ZERO priority-after-category lines, so nothing in
+ * the shipped data can tell the two behaviours apart.
+ */
+describe("per-category priority overrides (ui-entry.c:2211-2221, :2389)", () => {
+  const build = (uiEntry: unknown[]) =>
+    buildUiEntryConfig({
+      uiEntry: uiEntry as never,
+      uiEntryBase: [] as never,
+      uiEntryRenderer: load("ui_entry_renderer") as never,
+      objectProperty: load("object_property") as never,
+      playerProperty: load("player_property") as never,
+    });
+
+  const catsOf = (cfg: UiEntryConfig, name: string) =>
+    new Map((cfg.entries.find((e) => e.name === name)?.categories ?? []).map((c) => [c.name, c.priority]));
+
+  it("a category with its own priority keeps it; the others take the default", () => {
+    const cfg = build([
+      {
+        name: "row",
+        renderer: "char_screen1_flag_renderer",
+        priority: "3",
+        category: [{ category: "alpha", priority: "9" }, { category: "beta" }],
+      },
+    ]);
+    const cats = catsOf(cfg, "row");
+    expect(cats.get("alpha")).toBe(9);
+    expect(cats.get("beta")).toBe(3);
+  });
+
+  it("finish_parse does not overwrite an explicit one with a LATER default", () => {
+    /* The default is set by the record's own leading priority line, which the
+     * fill loop applies afterwards - so "9 survives 3" is only true because of
+     * the priority_set test. Without it the fill flattens both to 3. */
+    const cfg = build([
+      {
+        name: "row",
+        renderer: "char_screen1_flag_renderer",
+        category: [{ category: "alpha", priority: "9" }],
+        priority: "3",
+      },
+    ]);
+    expect(catsOf(cfg, "row").get("alpha")).toBe(9);
+  });
+
+  it("still reads the older compiled shape, a bare category name", () => {
+    /* A mod's pack built before this compiler change must not be a crash. */
+    const cfg = build([
+      {
+        name: "row",
+        renderer: "char_screen1_flag_renderer",
+        priority: "4",
+        category: ["alpha", "beta"],
+      },
+    ]);
+    const cats = catsOf(cfg, "row");
+    expect(cats.get("alpha")).toBe(4);
+    expect(cats.get("beta")).toBe(4);
+  });
+
+  it("a per-category priority scheme name resolves like a default one", () => {
+    /* priority_schemes[] is consulted for both forms (:2186-2209).
+     *
+     * The record needs a NON-ZERO default for this to be a real claim: with the
+     * scheme ignored, parseInt("negative_index") is NaN and the code falls back
+     * to the default, so a record whose default is 0 gives 0 either way. That
+     * version of this test let "the scheme is never resolved" survive. */
+    const cfg = build([
+      {
+        name: "row",
+        renderer: "char_screen1_flag_renderer",
+        priority: "5",
+        category: [{ category: "alpha", priority: "negative_index" }],
+      },
+    ]);
+    expect(catsOf(cfg, "row").get("alpha")).toBe(0); // index 0, negated - not 5
+  });
+});
