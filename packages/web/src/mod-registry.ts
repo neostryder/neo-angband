@@ -112,8 +112,7 @@ export interface RecommendedMod {
  * (FIRST_PARTY_MOD_IDS in mod-store.ts is empty). That is the whole point of the list
  * rather than a milestone: a fresh install is Angband 4.2.6 and nothing else, and every
  * mod - mine included - arrives the same way, through the same verification, as
- * somebody else's. neo-angband-mod-borg is absent because it has no release; the
- * repository reserves the name.
+ * somebody else's.
  *
  * EVERY DIGEST BELOW WAS MEASURED, not transcribed. `node tools/pack.mjs --json` in
  * the mod repository printed them, and each was then re-fetched from
@@ -132,30 +131,30 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "qol",
     name: "Quality of Life",
     repo: "neostryder/neo-angband-mod-qol",
-    /* v0.13.0 adds "Remember my settings": what you change in the '=' menu is
-     * kept, and the next character you create starts with it. It is the first
-     * tag whose PLUGIN.JS moved - v0.10.0 through v0.12.0 all pinned one
-     * identical build and only manifest.json ever changed, so a reader who
-     * remembers that as a standing fact should stop. Both digests below were
-     * re-fetched from raw.githubusercontent.com at the tag.
+    /* v0.14.0 declares the mod's own `repository`, which is what an imported .zip
+     * reads to pin its origin (mod-install.ts importedOrigin), and shortens
+     * `author` to the handle alone. Only manifest.json moved: plugin.js carries
+     * v0.13.0's digest unchanged, and v0.13.0 - "Remember my settings" - remains
+     * the ONE tag in this mod's history whose plugin.js ever changed.
      *
-     * It also raises the mod's floor to `engine >=0.18.0`, because the two new
-     * toggles need seams 0.18.0 added. A 0.17.0 game keeps v0.12.0, which is
-     * still a correct mod - unlike v0.10.0, which declared no `engine` range at
-     * all while shipping a plugin.js, the one case where the range matters most. */
-    tag: "v0.13.0",
+     * The floor is still `engine >=0.18.0`, because those two toggles need seams
+     * 0.18.0 added. A 0.17.0 game keeps v0.12.0, which is still a correct mod -
+     * unlike v0.10.0, which declared no `engine` range at all while shipping a
+     * plugin.js, the one case where the range matters most. Both digests below
+     * were re-fetched from raw.githubusercontent.com at the tag. */
+    tag: "v0.14.0",
     summary: "Conveniences Angband does not have, each one a switch you can turn off",
     /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
      * the game being FAITHFUL, not the game being worse. A pre-checked row would make
      * the default experience something other than 4.2.6. */
     preChecked: false,
-    approxBytes: 5_550,
+    approxBytes: 5_606,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "5b27c2172eb4c70b103ab30b015067fdeb946dc26d6a45ab5cae7888b5a61ba3",
+          sha256: "ff3aaf716e92005ba361bd498b0da7823eac40f904d4dd7fc05012c9d10e011d",
         },
         {
           path: "plugin.js",
@@ -168,27 +167,28 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "bug-fixes",
     name: "Bug Fixes",
     repo: "neostryder/neo-angband-mod-bug-fixes",
-    /* v0.13.0, the description rewritten short (see qol above). Two older tags are
-     * wrong to pin rather than merely superseded: v0.10.0 declares
-     * `"engine": "4.2.x"` - the Angband baseline in a field that ranges over the
-     * PORT's version - which the engine gate (mod-engine.ts) now evaluates, so it
-     * installs and is then refused; and v0.11.0 predates the mod taking its gamedata
-     * from npm rather than from a checkout of this repository. plugin.js has carried
-     * the same digest through all four: only manifest.json has ever moved. */
-    tag: "v0.13.0",
+    /* v0.14.0 declares the mod's own `repository` and shortens `author` (see qol
+     * above). Two older tags are wrong to pin rather than merely superseded:
+     * v0.10.0 declares `"engine": "4.2.x"` - the Angband baseline in a field that
+     * ranges over the PORT's version - which the engine gate (mod-engine.ts) now
+     * evaluates, so it installs and is then refused; and v0.11.0 predates the mod
+     * taking its gamedata from npm rather than from a checkout of this repository.
+     * plugin.js has carried the same digest through all five: only manifest.json
+     * has ever moved. */
+    tag: "v0.14.0",
     summary: "Fixes for upstream Angband bugs the port keeps on purpose",
     /* Also clear, and this is the row where that is worth defending. Core keeps
      * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
      * turning these on by default would quietly make the game unfaithful for everyone
      * who never opened the mod list. It also flags the save, permanently. */
     preChecked: false,
-    approxBytes: 7_817,
+    approxBytes: 7_880,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "f6063e7cabc7bc8632a41189effe02e02e3f904b7c79a5e05965b2068185a0c6",
+          sha256: "ba5e832f08b95718f70cdce559342104dc14032ee2f460281697c7f52b28ecc9",
         },
         {
           path: "plugin.js",
@@ -201,9 +201,11 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "borg",
     name: "The Borg",
     repo: "neostryder/neo-angband-mod-borg",
-    /* v0.2.0, the description rewritten short (see qol above). v0.1.0 is correct
-     * and merely superseded; plugin.js is byte-identical between the two. */
-    tag: "v0.2.0",
+    /* v0.3.0 declares the mod's own `repository` and shortens `author` (see qol
+     * above). v0.1.0 and v0.2.0 are correct and merely superseded; plugin.js is
+     * byte-identical across all three, so the half-megabyte digest below has
+     * never moved. */
+    tag: "v0.3.0",
     summary: "Angband's automatic player, ported faithfully - it plays the game for you",
     /* Not pre-checked, and for this row that is not a judgement call at all: a
      * pre-checked autoplayer is a game that plays itself out of the box. Note that
@@ -215,13 +217,13 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
      * being honest about on the row: it is the whole port bundled into one
      * plugin.js. None of it is the engine - the builder refuses that - it is 86
      * source files of danger model, think ladder and world model. */
-    approxBytes: 514_268,
+    approxBytes: 514_325,
     payload: {
       kind: "files",
       files: [
         {
           path: "manifest.json",
-          sha256: "74c8910c2c701b7b96fa7371963872bb1f462e6d879d46e09ea1744b5bf052b1",
+          sha256: "c1a18205ae6f223b81219b2a81ce8e85a755bb2ed6a832307737ef19a0823a11",
         },
         {
           path: "plugin.js",
@@ -234,8 +236,9 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "neo-linoleum",
     name: "neo-linoleum",
     repo: "neostryder/neo-angband-mod-linoleum",
-    /* v0.11.0, and every tag before it is wrong to pin for a DIFFERENT reason, which
-     * is why the history earns its space here:
+    /* v0.13.0 declares the mod's own `repository` and shortens `author` (see qol
+     * above), and every tag up to v0.11.0 is wrong to pin for a DIFFERENT reason,
+     * which is why the history earns its space here:
      *   v0.9.0   points at content that shipped one pack, not six.
      *   v0.9.1   declares `"engine": "4.2.x"` - the Angband baseline in a field that
      *            ranges over the PORT's version - which the engine gate now refuses.
@@ -244,27 +247,35 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
      *            conversion produces. Its own CI says so.
      *   v0.11.0  is correct, and superseded: its description is the 1,625-character
      *            block that squeezed the manager's mod list to one row.
-     * Three ways for a pinned tag to be quietly WRONG plus one that is merely old,
+     *   v0.12.0  is correct, and superseded: it predates the `payload` block, so
+     *            discovery had to GUESS that dist/*.zip are archives to unpack
+     *            rather than files to store - and guessed wrong, seven archives
+     *            installed shut. This row's own digests never went through that
+     *            path, but the tags query (mod-discover.ts) does.
+     *   v0.12.1  is correct, and superseded by this one alone.
+     * Four ways for a pinned tag to be quietly WRONG plus two that are merely old,
      * none of which moving a tag would fix - which is the argument for pinning one
      * in the first place. */
-    tag: "v0.12.0",
+    tag: "v0.13.0",
     summary:
       "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
     /* Its absence is the game being faithful, not the game being worse: every tile set
      * it converts is already selectable, drawn by the tilesheet engine. And it is a
      * 25 MiB download. So the row starts clear. */
     preChecked: false,
-    approxBytes: 25_780_682,
+    approxBytes: 25_781_133,
     payload: {
       kind: "archive",
       archives: [
         {
-          /* The only archive whose digest moved: manifest.json travels inside it.
-           * The six tile archives rebuilt byte-identically from the same source art,
-           * which is the packer's determinism claim (tools/pack.mjs) holding on a
-           * different day - so their pins below are unchanged. */
+          /* The only archive whose digest moved, twice running: manifest.json
+           * travels inside it. The six tile archives came back byte-identical from
+           * a FORCED reconversion of the source art - not from the cached packs/
+           * directory, which would have agreed with itself and proved nothing - so
+           * the packer's determinism claim (tools/pack.mjs) is holding on a
+           * different day and their pins below are unchanged. */
           path: "dist/neo-linoleum-mod.zip",
-          sha256: "b5ad279b6eeae9a617a35a58f364eed0c090ee9a5f4137d30ffe25f2668eff27",
+          sha256: "ddae0ea74b14db985ce3024a98be53e3a01460e216ab5eb796411ff1ae025f47",
         },
         {
           path: "dist/neo-linoleum-original-tiles.zip",
