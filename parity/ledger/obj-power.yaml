@@ -45,6 +45,25 @@ notes: >-
 deferred:
   - The moddable-body case where a data file maps a non-bow tval to the shooting
     slot; on the 4.2.6 baseline only TV_BOW does, so tvalIsLauncher is exact.
+  - "The `verbose`/`log_file` logging is dropped": NOT ANY MORE. All 59 log_obj
+    sites are ported (PORT_TODO 5.5, 2026-08-06) through obj/randart-log.ts,
+    and the desc/name columns of flag_sets, element_sets and el_powers are
+    restored to the port's tables -- they had been dropped as unused, which was
+    true only because the log they exist for had been dropped with them. The
+    `verbose` bool is not a separate parameter here: it is threaded from
+    object_power's caller purely to gate four lines in slay_power, every
+    randart evaluation passes it, and nothing else in the port calls slayPower
+    with a log open, so an open log IS the flag.
+  - "One upstream wart deliberately NOT reproduced. obj-power.c:994 passes an
+    int to \"%p\": log_obj(\"Add %d power combined for non-standard weight; \"
+    \"total is %p\\n\", adj, p). That is undefined behaviour with no portable
+    output, so there is nothing to be byte-identical to; the port prints the
+    number the line plainly means. Recorded rather than normalised silently,
+    because this repo's default (the staircase invariant) is to keep C warts."
+  - object_value_real's pricing.log (L1119-1204) stays unported and is a
+    different file from randart.log. It is inside `#ifdef PRICE_DEBUG`, which
+    is defined nowhere in the tree, so its seven file_putf sites are dead in
+    every build a player can obtain. The text census records the same fact.
 verified-by:
   - obj/power.test.ts: a plain 1d4 melee weapon rates 6 (dice only); adding
     to_dam 4 rates 16 (no non-weapon second lot for a melee weapon); a ring with
