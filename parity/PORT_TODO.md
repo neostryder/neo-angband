@@ -1520,12 +1520,27 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/game/display.ts:232`,
   `parity/ledger/ui-display.yaml:116`
 
-- [ ] **3.15 `feeling-need` is hardcoded.**
-  The constant IS loaded (`packages/core/src/constants.ts:113`, mapped at `:185`)
-  and both consumers hardcode 10 (`game/display.ts:206`,
-  `game/cave-cmd.ts:179`). Equals shipped data today, so a pack or mod that
-  changes it is silently ignored.
-  Sites: `parity/ledger/ui-display.yaml:97`
+- [x] **3.15 `feeling-need` is hardcoded.** DONE.
+  The row was right about the smell and one step off about the defect. The two
+  `10`s are FALLBACKS, and both live call sites of `displayFeeling` were already
+  passing `constants.feelingNeed`. The one place that was not is the one the row
+  did not name: **`displayDeps()` in `main.ts` never supplied the dep at all**,
+  so `prt_level_feeling` — the `LF:` indicator on the status line — read the
+  fallback. A pack that changed `world:feeling-need` was obeyed by `^F` and
+  ignored by the indicator sitting next to it.
+
+  Fixed at the shell, and the two literals are now one exported
+  `SHIPPED_FEELING_NEED` with its citation, checked against
+  `reference/lib/gamedata/constants.txt` by a test that **parses the file** —
+  a number typed into two places agrees with the data only until it doesn't.
+  12 mutations (shared with 3.24), 12 killed. One survivor on the first pass, and
+  it is the reason the guard above matters: **every existing `displayFeeling`
+  test passed `feelingNeed: 10`, the same value as the fallback**, so all of them
+  pass whether the argument is read or thrown away. Neutering the option survived
+  them all. The new case uses 20 and 3, and asserts the answer changes in both
+  directions. (The mutation also survived a first run because its test file was
+  not in the run's file list — both faults at once.)
+  Sites: `packages/core/src/constants.ts:159`, `parity/ledger/ui-display.yaml:97`
 
 - [x] **3.16 The knowledge browser's thematic grouping columns.** DONE.
   **Half of this row had already been closed, and three artefacts still said
@@ -1596,7 +1611,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   **parsing the real array out of `reference/src/ui-display.c`** rather than by a
   second transcription in the test file, so a priority typed wrong fails instead
   of two copies of one mistake agreeing. The shell's use of it is a source-text
-  guard (`sidebar-wiring.test.ts`) and says so at the top: `renderSidebar` is a
+  guard (`display-wiring.test.ts`) and says so at the top: `renderSidebar` is a
   closure in `main.ts`'s module body, and the failure it guards is not a wrong
   answer but an unused one.
   Sites: `packages/core/src/game/display.ts:627`, `parity/ledger/ui-display.yaml:128`
@@ -1783,12 +1798,32 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the seam yields the right string.
   Sites: `packages/core/src/obj/known-object.ts:167`
 
-- [ ] **3.24 `equip_learn_flag` has no shape branch.**
-  `packages/core/src/obj/knowledge.ts:716-732` walks every body slot with no
-  shapechange test at all, so gear merged into a shape is still learned from while
-  shapechanged. `shapeLearnOnAssume` (`obj/knowledge.ts:758`) is already there for
-  the other half.
-  Sites: `parity/ledger/obj-knowledge.yaml:98`
+- [x] **3.24 `equip_learn_flag` has no shape branch.** DONE — **and the row named
+  the wrong function and the wrong direction.**
+  `equip_learn_flag` (`obj-knowledge.c:2088`) has no shape branch **in 4.2.6
+  either**: it walks the body slots and stops, exactly like the port. So the
+  described defect — "gear merged into a shape is still learned from" — is not a
+  defect and could not have been found by looking where the row pointed.
+
+  The three functions that DO test `p->shape` are its neighbours, and **all three
+  were missing their tail**: `equip_learn_on_defend` (`:1991`),
+  `_on_ranged_attack` (`:2026`) and `_on_melee_attack` (`:2066`). The direction is
+  the opposite of the row's: it is the SHAPE's own `to_a` / `to_h` / `to_d` that
+  never taught their runes. A Druid in bear form — `+15` to-hit and `+15` to-dam
+  — learned neither rune by fighting in it. `equipLearnOnDefend` even carried a
+  comment noting it could read the bound shape.
+
+  They are tails, not branches: upstream puts them after the slot loop, and the
+  loop returns the moment the gear teaches, so the shape is consulted only when
+  nothing worn did. `p.shape` is the bound record, so `lookup_player_shape` by
+  name is a step this port does not need.
+  12 mutations (shared with 3.15), 12 killed. Every case uses a **shipped** shape
+  rather than a constructed one, so the numbers are the game's and each covers
+  something a made-up shape would have let slide: Pukel-man is `to-h 0, to-d 5`,
+  which is what makes "the two are independent" a claim that can fail; warg is
+  `to-a 0`, which is what makes the `!== 0` guard one; and bat is `to-d -10`, so
+  "a negative bonus is still a bonus" is not theory.
+  Sites: `packages/core/src/obj/knowledge.ts:693`, `parity/ledger/obj-knowledge.yaml:98`
 
 - [x] **3.26 Teleporting is silent.**
   DONE — and the row's own estimate was the thing to distrust. It said "three

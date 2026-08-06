@@ -21,6 +21,7 @@ import {
   equipLearnFlag,
   equipLearnOnDefend,
   equipLearnOnMeleeAttack,
+  equipLearnOnRangedAttack,
   makeRuneEnv,
   missileLearnOnRangedAttack,
   OBJ_NOTICE,
@@ -828,5 +829,106 @@ describe("no ODESC_BASE site bypasses the seam (PORT_TODO 3.23)", () => {
      * locals plus flagMessage's parameter and its one use. A change to the
      * count means a site was added or removed - read it, do not just bump it. */
     expect(sites.length, "the ODESC_BASE surface changed size").toBe(12);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shape tails of the three equip_learn_on_* functions - PORT_TODO 3.24
+// ---------------------------------------------------------------------------
+
+/**
+ * PORT_TODO 3.24 named `equip_learn_flag`, which in 4.2.6 has NO shape branch -
+ * it walks the body slots and stops. The three functions that DO test
+ * `p->shape` are equip_learn_on_defend (obj-knowledge.c:1991), _on_ranged_attack
+ * (:2026) and _on_melee_attack (:2066), and all three were missing their tail
+ * here; equipLearnOnDefend even carried a comment saying it could read the bound
+ * shape. So a Druid in bear form, with a to-hit and to-damage of +15 each and
+ * nothing enchanted worn, learned neither rune by fighting in it.
+ *
+ * Every case below uses a SHIPPED shape rather than a constructed one, so the
+ * numbers are the game's: Pukel-man has to-h 0 and to-d 5, which is what makes
+ * "the two are independent" a real claim, and warg has to-a 0, which is what
+ * makes the `!== 0` guard one.
+ */
+describe("equip_learn_on_* shape tails (obj-knowledge.c:1991/2026/2066)", () => {
+  const shape = (name: string) => {
+    const s = players.shapes.find((x) => x.name === name);
+    expect(s, `shipped shape ${name}`).toBeTruthy();
+    return s!;
+  };
+
+  it("bear form's +5 to-armor teaches the to-armor rune with nothing worn", () => {
+    const { p, env } = fixture();
+    p.objKnown.toA = 0;
+    p.shape = shape("bear"); // to-a 5
+    equipLearnOnDefend(p, env);
+    expect(p.objKnown.toA).toBe(1);
+  });
+
+  it("a shape with to-a 0 teaches nothing", () => {
+    const { p, env } = fixture();
+    p.objKnown.toA = 0;
+    p.shape = shape("warg"); // to-h 5, to-d 5, to-a 0
+    equipLearnOnDefend(p, env);
+    expect(p.objKnown.toA).toBe(0);
+  });
+
+  it("no shape at all teaches nothing", () => {
+    const { p, env } = fixture();
+    p.objKnown.toA = 0;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
+    p.shape = null;
+    equipLearnOnDefend(p, env);
+    equipLearnOnMeleeAttack(p, env);
+    equipLearnOnRangedAttack(p, env);
+    expect([p.objKnown.toA, p.objKnown.toH, p.objKnown.toD]).toEqual([0, 0, 0]);
+  });
+
+  it("melee teaches to-hit and to-dam INDEPENDENTLY (Pukel-man is to-h 0, to-d 5)", () => {
+    const { p, env } = fixture();
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
+    p.shape = shape("Pukel-man");
+    equipLearnOnMeleeAttack(p, env);
+    expect(p.objKnown.toD).toBe(1);
+    expect(p.objKnown.toH).toBe(0);
+  });
+
+  it("a NEGATIVE bonus is still a bonus to learn from (bat is to-d -10)", () => {
+    const { p, env } = fixture();
+    p.objKnown.toD = 0;
+    p.shape = shape("bat");
+    equipLearnOnMeleeAttack(p, env);
+    expect(p.objKnown.toD).toBe(1);
+  });
+
+  it("firing reads the shape's to-hit and NOT its to-dam", () => {
+    const { p, env } = fixture();
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
+    p.shape = shape("bat"); // to-h 0, to-d -10
+    equipLearnOnRangedAttack(p, env);
+    expect(p.objKnown.toH).toBe(0);
+    expect(p.objKnown.toD).toBe(0); // equip_learn_on_ranged_attack has no to_d arm
+
+    p.shape = shape("eagle"); // to-h 5, to-d 0
+    equipLearnOnRangedAttack(p, env);
+    expect(p.objKnown.toH).toBe(1);
+    expect(p.objKnown.toD).toBe(0);
+  });
+
+  it("the tail runs after the gear loop, so worn gear still teaches first", () => {
+    /* Both routes set the same flag, so this cannot distinguish which one fired;
+     * what it does prove is that adding the tail did not break the gear path,
+     * which is the regression the change could plausibly cause. */
+    const { p, eq, env } = fixture();
+    const armor = objectNew(kindOfTval(TV.SOFT_ARMOR));
+    armor.toA = 2;
+    eq[p.body.slots.findIndex((s) => s.type === "BODY_ARMOR")] = armor;
+    p.objKnown.toA = 0;
+    p.shape = shape("warg"); // to-a 0: cannot be the one that taught it
+    equipLearnOnDefend(p, env);
+    expect(p.objKnown.toA).toBe(1);
   });
 });

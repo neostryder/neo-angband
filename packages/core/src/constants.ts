@@ -143,6 +143,21 @@ export interface Constants {
   oRangedCritical: ORangedCritical;
 }
 
+/**
+ * `world:feeling-need` in the SHIPPED constants.txt (`:119`): how many grids of
+ * a level the player must have explored before the object half of the level
+ * feeling is revealed rather than shown as `?`.
+ *
+ * It is here, named and cited, because two display functions need a value when
+ * no caller hands them one - the worldless harness, mainly - and they each had
+ * a bare `10` written into them instead. A literal in two files is a value that
+ * can drift from its data and from itself; this one is checked against
+ * constants.txt by a test. Anything with a loaded pack must pass
+ * `constants.feelingNeed`, which is the whole point of the row: a pack or mod
+ * that changes the number has to be obeyed.
+ */
+export const SHIPPED_FEELING_NEED = 10;
+
 /** section -> label -> Constants field, mirroring init.c parse_constants_*. */
 const SCALAR_MAP: Record<string, Record<string, string>> = {
   "level-max": { monsters: "levelMonsterMax" },

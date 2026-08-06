@@ -114,6 +114,30 @@ describe("do_cmd_feeling / display_feeling (cmd-cave.c:1729)", () => {
     ]);
   });
 
+  it("obeys a feeling_need that is not the shipped one, in both directions", () => {
+    /* Every other test here passes `feelingNeed: 10`, which is exactly the
+     * value the parameter falls back to - so all of them pass whether the
+     * argument is read or ignored. Neutering the option survived a mutation run
+     * against them. These two numbers are not 10. */
+    const below = makeState();
+    below.chunk.depth = 5;
+    below.chunk.feelingSquares = 15; // past the shipped 10, short of this pack's 20
+    below.chunk.feeling = 4 * 10 + 4;
+    const belowMsgs = collectMsgs(below);
+    displayFeeling(below, { feelingNeed: 20 });
+    expect(belowMsgs).toEqual(["You feel anxious about this place."]);
+
+    const above = makeState();
+    above.chunk.depth = 5;
+    above.chunk.feelingSquares = 5; // short of the shipped 10, past this pack's 3
+    above.chunk.feeling = 2 * 10 + 2;
+    const aboveMsgs = collectMsgs(above);
+    displayFeeling(above, { feelingNeed: 3 });
+    expect(aboveMsgs).toEqual([
+      "This place seems murderous, and there are superb treasures here.",
+    ]);
+  });
+
   it("says nothing when birth_feelings is off (cold-hearted)", () => {
     const state = makeState();
     state.chunk.depth = 5;

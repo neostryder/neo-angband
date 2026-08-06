@@ -29,6 +29,7 @@
  * listed in parity/ledger/ui-display.yaml.
  */
 
+import { SHIPPED_FEELING_NEED } from "../constants.js";
 import {
   COLOUR_BLUE,
   COLOUR_DARK,
@@ -244,7 +245,7 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
       deps.effectiveSpeed ?? state.options?.get("effective_speed") ?? false,
     birthFeelings:
       deps.birthFeelings ?? state.options?.get("birth_feelings") ?? true,
-    feelingNeed: deps.feelingNeed ?? 10,
+    feelingNeed: deps.feelingNeed ?? SHIPPED_FEELING_NEED,
     timedEffects: deps.timedEffects ?? [],
     /* PORT_TODO 3.5: derived, not defaulted - the same shape as numMoves
      * below. prt_stat reads player->state.stat_use, which calc_bonuses fills

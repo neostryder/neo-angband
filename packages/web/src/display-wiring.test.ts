@@ -1,5 +1,8 @@
 /**
+ * The two ui-display seams the shell has to supply, guarded from the source.
+ *
  * PORT_TODO 3.17: the shell draws the sidebar through sidebarLayout.
+ * PORT_TODO 3.15: displayDeps passes the pack's feeling-need.
  *
  * update_sidebar's culling is verified where it lives, in core
  * (display.test.ts). What core cannot verify is that the shell USES it -
@@ -35,5 +38,22 @@ describe("renderSidebar", () => {
     /* sidebarLayout is given the height, but a from-bottom row on a table a mod
      * supplied could still compute a row outside it. */
     expect(renderSidebar).toContain("y >= rows");
+  });
+});
+
+/**
+ * PORT_TODO 3.15: the status line's level-feeling indicator reads
+ * z_info->feeling_need. `displayDeps()` did not supply it, so the model used
+ * its shipped-value fallback and a pack that changed world:feeling-need was
+ * obeyed by ^F (which is passed constants.feelingNeed) and ignored by the
+ * indicator beside it. The two answers agree on the shipped data, which is why
+ * this can only be checked structurally from here.
+ */
+describe("displayDeps", () => {
+  const displayDeps = /function displayDeps\(\)[\s\S]*?\n\}/u.exec(src)?.[0] ?? "";
+
+  it("supplies feelingNeed from the loaded constants", () => {
+    expect(displayDeps).not.toBe("");
+    expect(displayDeps).toContain("feelingNeed: constants.feelingNeed");
   });
 });
