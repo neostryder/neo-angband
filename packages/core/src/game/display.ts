@@ -560,9 +560,104 @@ function depthRuns(state: GameState): DisplayRun[] {
 }
 
 /**
+ * side_handlers[] (ui-display.c L810-833), verbatim: all 22 rows in table
+ * order with the priority update_sidebar culls on, INCLUDING the four entries
+ * whose hook is NULL. Those four are the blank grouping rows, and they belong
+ * in the table rather than being spacers a shell hand-places, because they are
+ * culled and they consume a row exactly like a drawn field does.
+ *
+ * "1 is most important (always displayed)"; the higher the number, the sooner
+ * the row goes as the screen shrinks.
+ */
+export interface SideHandler {
+  /** The sidebarModel key this row draws, or null for a blank grouping row. */
+  key: string | null;
+  /** Negative means "print from the bottom" (L871-875). */
+  priority: number;
+}
+
+export const SIDE_HANDLERS: readonly SideHandler[] = [
+  { key: "race", priority: 19 },
+  { key: "title", priority: 18 },
+  { key: "class", priority: 22 },
+  { key: "level", priority: 10 },
+  { key: "exp", priority: 16 },
+  { key: "gold", priority: 11 },
+  { key: "equippy", priority: 17 },
+  { key: "str", priority: 6 },
+  { key: "int", priority: 5 },
+  { key: "wis", priority: 4 },
+  { key: "dex", priority: 3 },
+  { key: "con", priority: 2 },
+  { key: null, priority: 15 },
+  { key: "ac", priority: 7 },
+  { key: "hp", priority: 8 },
+  { key: "sp", priority: 9 },
+  { key: null, priority: 21 },
+  { key: "health", priority: 12 },
+  { key: null, priority: 20 },
+  { key: null, priority: 22 },
+  { key: "speed", priority: 13 },
+  { key: "depth", priority: 14 },
+];
+
+/** Where one sidebar field lands: its model key and its terminal row. */
+export interface SidebarPlacement {
+  key: string;
+  row: number;
+}
+
+/**
+ * update_sidebar (ui-display.c L844-889): which rows survive at this terminal
+ * height, and where each one goes. `max_priority = y - 2` keeps the top and
+ * bottom lines clear, and the row counter advances for EVERY surviving entry -
+ * a blank grouping row included - which is what puts the gaps where they are.
+ *
+ * This is the half the port did not have. A shell that instead drew the model
+ * top to bottom and stopped when it ran out of screen dropped exactly the wrong
+ * rows: depth, speed and the monster health bar go first, while `class` - the
+ * least important row in the table - survives. Upstream's whole reason for the
+ * priorities is that inversion.
+ *
+ * The negative-priority arm is ported although no shipped entry uses one. It is
+ * a line of the C, not a description of the shipped data, and the table is
+ * exported - so anything that supplies its own gets upstream's behaviour rather
+ * than a silent fall-through to the top-down placement.
+ */
+export function sidebarLayout(
+  termRows: number,
+  handlers: readonly SideHandler[] = SIDE_HANDLERS,
+): SidebarPlacement[] {
+  /* Keep the top and bottom lines clear (L862-863). */
+  const maxPriority = termRows - 2;
+  const out: SidebarPlacement[] = [];
+  let row = 1;
+  for (let i = 0; i < handlers.length; i++) {
+    const hnd = handlers[i]!;
+    let priority = hnd.priority;
+    let fromBottom = false;
+    if (priority < 0) {
+      priority = -priority;
+      fromBottom = true;
+    }
+    if (priority <= maxPriority) {
+      if (hnd.key !== null) {
+        out.push({
+          key: hnd.key,
+          row: fromBottom ? termRows - (handlers.length - i) : row,
+        });
+      }
+      /* Increment for next time (L886-887) - the NULL rows count too. */
+      row++;
+    }
+  }
+  return out;
+}
+
+/**
  * sidebarModel: the 18 real side_handlers[] fields in table order (the four
- * NULL spacer rows are not represented). update_sidebar's priority culling is
- * a draw-half concern each shell applies.
+ * NULL spacer rows are not represented; they carry no data, only a row).
+ * Pair it with sidebarLayout for where each field goes at a given height.
  */
 export function sidebarModel(
   state: GameState,

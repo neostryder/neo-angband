@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { STAT, TMD, TV } from "../generated/index.js";
 import {
@@ -17,6 +18,7 @@ import type { ObjectKind } from "../obj/types.js";
 import { gearAdd } from "./gear.js";
 import { makeState, plReg } from "./harness.js";
 import type { DisplayRun, SidebarField, StatusIndicator } from "./display.js";
+import { SIDE_HANDLERS, sidebarLayout } from "./display.js";
 import { loc } from "../loc.js";
 import { cnvStat, panelContains, sidebarModel, statusLineModel } from "./display.js";
 
@@ -536,5 +538,144 @@ describe("panelContains (ui-output.c:689)", () => {
     expect(panelContains({ camX: 0, camY: 0, mapCols: 0, mapRows: 0 }, loc(0, 0))).toBe(
       false,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// side_handlers[] and update_sidebar (ui-display.c L805-889) - PORT_TODO 3.17
+// ---------------------------------------------------------------------------
+
+describe("SIDE_HANDLERS (side_handlers[], ui-display.c L810)", () => {
+  /**
+   * The table is transcribed from C, so the ground truth is the C - not a
+   * second transcription in this file. Parse the real array out of the
+   * reference tree and compare, so a priority typed wrong is a failure rather
+   * than two copies of the same mistake agreeing.
+   */
+  it("is the upstream array, parsed out of ui-display.c", () => {
+    const src = readFileSync(
+      new URL("../../../../reference/src/ui-display.c", import.meta.url),
+      "utf8",
+    );
+    const block = /\}\s*side_handlers\[\]\s*=\s*\{([\s\S]*?)\n\};/u.exec(src);
+    expect(block).not.toBeNull();
+    const parsed: { key: string | null; priority: number }[] = [];
+    for (const m of block![1]!.matchAll(/\{\s*(\w+),\s*(-?\d+),/gu)) {
+      const hook = m[1]!;
+      parsed.push({
+        key: hook === "NULL" ? null : hook.replace(/^prt_/u, ""),
+        priority: Number(m[2]),
+      });
+    }
+    expect(parsed).toHaveLength(22);
+    expect(SIDE_HANDLERS).toEqual(parsed);
+  });
+
+  it("names a real sidebarModel field for every non-NULL row, and nothing else", () => {
+    const st = makeState();
+    const modelKeys = sidebarModel(st).map((f) => f.key);
+    const handlerKeys = SIDE_HANDLERS.filter((h) => h.key !== null).map((h) => h.key);
+    /* Both directions: a handler with no field would draw nothing, and a field
+     * with no handler would never be placed at all. */
+    expect(handlerKeys).toEqual(modelKeys);
+  });
+});
+
+describe("sidebarLayout (update_sidebar, ui-display.c L844)", () => {
+  const at = (rows: number) => new Map(sidebarLayout(rows).map((p) => [p.key, p.row]));
+
+  it("at the standard 24 rows nothing is culled, and the four gaps land where the C puts them", () => {
+    const placed = sidebarLayout(24);
+    expect(placed).toHaveLength(18); // the 22 rows minus the four blank ones
+    const rows = at(24);
+    expect(rows.get("race")).toBe(1);
+    expect(rows.get("con")).toBe(12);
+    /* 13 is the NULL at index 12, so AC starts the next block at 14. */
+    expect(rows.get("ac")).toBe(14);
+    expect(rows.get("sp")).toBe(16);
+    /* 17 is a NULL; health is 18; 19 and 20 are two more NULLs in a row. */
+    expect(rows.get("health")).toBe(18);
+    expect(rows.get("speed")).toBe(21);
+    expect(rows.get("depth")).toBe(22);
+    /* No two fields share a row. */
+    expect(new Set(placed.map((p) => p.row)).size).toBe(placed.length);
+  });
+
+  it("culls the LEAST important rows first - the inversion the priorities exist for", () => {
+    /* 18 rows is the reflow floor (web term.ts minRows), so max_priority = 16.
+     * A renderer that just walked the model until it ran out of screen would
+     * keep class/race/title/equippy and lose these three. */
+    const rows = at(18);
+    expect(rows.has("depth")).toBe(true);
+    expect(rows.has("speed")).toBe(true);
+    expect(rows.has("health")).toBe(true);
+    expect(rows.has("hp")).toBe(true);
+    expect(rows.has("class")).toBe(false); // priority 22, the least important
+    expect(rows.has("race")).toBe(false); // 19
+    expect(rows.has("title")).toBe(false); // 18
+    expect(rows.has("equippy")).toBe(false); // 17
+    expect(rows.has("exp")).toBe(true); // 16, exactly at max_priority
+  });
+
+  it("max_priority is height - 2, so a row appears the moment its height allows", () => {
+    /* prt_exp is priority 16: absent at 17 rows (max 15), present at 18. */
+    expect(at(17).has("exp")).toBe(false);
+    expect(at(18).has("exp")).toBe(true);
+    /* And CON, priority 2, survives a screen with nothing else on it. */
+    expect(at(4).has("con")).toBe(true);
+  });
+
+  it("shrinking the screen only ever removes rows", () => {
+    for (let h = 5; h < 24; h++) {
+      const smaller = new Set(sidebarLayout(h).map((p) => p.key));
+      const bigger = new Set(sidebarLayout(h + 1).map((p) => p.key));
+      for (const key of smaller) expect(bigger.has(key)).toBe(true);
+    }
+  });
+
+  it("a blank grouping row consumes a row even though nothing draws it", () => {
+    /* Constructed, because every shipped NULL is followed by rows whose offsets
+     * this would otherwise be indistinguishable from. */
+    const withGap = sidebarLayout(24, [
+      { key: "hp", priority: 1 },
+      { key: null, priority: 1 },
+      { key: "sp", priority: 1 },
+    ]);
+    expect(withGap).toEqual([
+      { key: "hp", row: 1 },
+      { key: "sp", row: 3 },
+    ]);
+  });
+
+  it("a culled blank grouping row does NOT consume one", () => {
+    const culled = sidebarLayout(24, [
+      { key: "hp", priority: 1 },
+      { key: null, priority: 90 }, // above max_priority (22): skipped entirely
+      { key: "sp", priority: 1 },
+    ]);
+    expect(culled).toEqual([
+      { key: "hp", row: 1 },
+      { key: "sp", row: 2 },
+    ]);
+  });
+
+  it("a negative priority prints from the bottom (L871-875, L880-881)", () => {
+    /* No shipped entry has one; the arm is ported because it is a line of the C,
+     * so it is exercised with a table that supplies one. -3 is priority 3, and
+     * the row is hgt - (count - index) = 24 - (3 - 1) = 22. */
+    const table = [
+      { key: "hp", priority: 1 },
+      { key: "depth", priority: -3 },
+      { key: "sp", priority: 1 },
+    ];
+    expect(sidebarLayout(24, table)).toEqual([
+      { key: "hp", row: 1 },
+      { key: "depth", row: 22 },
+      /* It still advanced the counter, so sp is on 3 and not 2. */
+      { key: "sp", row: 3 },
+    ]);
+    /* And it is culled on its ABSOLUTE priority: |-3| = 3 > 24 - 2 is false, so
+     * try a screen where it is: max_priority = 2. */
+    expect(sidebarLayout(4, table).map((p) => p.key)).toEqual(["hp", "sp"]);
   });
 });
