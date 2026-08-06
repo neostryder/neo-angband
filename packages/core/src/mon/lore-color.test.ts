@@ -148,15 +148,21 @@ describe("blowColorFor (mon-lore.c L178)", () => {
 });
 
 describe("buildLoreColorState (game/lore-color.ts)", () => {
-  it("mirrors the derived player_state and an empty pack/light", () => {
+  it("mirrors the KNOWN player_state and an empty pack/light", () => {
     const state = makeState();
-    state.playerState = calcBonuses(state.actor.player, { timedEffects: plReg.timed });
+    state.knownPlayerState = calcBonuses(state.actor.player, {
+      timedEffects: plReg.timed,
+    });
     const cs = buildLoreColorState(state, plReg.timed);
 
     // saveSkill / resists / flags read straight off the derived state.
-    expect(cs.saveSkill).toBe(state.playerState.skills[SKILL.SAVE]);
-    expect(cs.resLevel(PROJ.FIRE)).toBe(state.playerState.elInfo[PROJ.FIRE]?.resLevel ?? 0);
-    expect(cs.hasFlag(OF.FREE_ACT)).toBe(state.playerState.flags.has(OF.FREE_ACT));
+    expect(cs.saveSkill).toBe(state.knownPlayerState.skills[SKILL.SAVE]);
+    expect(cs.resLevel(PROJ.FIRE)).toBe(
+      state.knownPlayerState.elInfo[PROJ.FIRE]?.resLevel ?? 0,
+    );
+    expect(cs.hasFlag(OF.FREE_ACT)).toBe(
+      state.knownPlayerState.flags.has(OF.FREE_ACT),
+    );
 
     // Fresh character carries no food / chargeables and wields no burning light.
     expect(cs.hasEdible).toBe(false);
@@ -165,5 +171,31 @@ describe("buildLoreColorState (game/lore-color.ts)", () => {
 
     // A bound timed effect resolves through player_inc_check without throwing.
     expect(typeof cs.incCheck("AFRAID")).toBe("boolean");
+  });
+
+  it("follows known_state when the two states disagree (PORT_TODO 2.6)", () => {
+    /*
+     * The whole point of the split, and the only way to prove which state this
+     * builder reads: give the two DIFFERENT answers. mon-lore.c reads
+     * p->known_state at every site (L82-L268), so a fire resist the player has
+     * not identified must not recolour a fire breath as survivable.
+     */
+    const state = makeState();
+    const real = calcBonuses(state.actor.player, { timedEffects: plReg.timed });
+    const known = calcBonuses(state.actor.player, { timedEffects: plReg.timed });
+    real.elInfo[PROJ.FIRE]!.resLevel = 1;
+    real.flags.on(OF.FREE_ACT);
+    real.skills[SKILL.SAVE] = 99;
+    state.playerState = real;
+    state.knownPlayerState = known;
+
+    const cs = buildLoreColorState(state, plReg.timed);
+    expect(cs.resLevel(PROJ.FIRE), "the unidentified resist stays hidden").toBe(0);
+    expect(cs.hasFlag(OF.FREE_ACT)).toBe(false);
+    expect(cs.saveSkill).not.toBe(99);
+
+    /* And once it IS known, the recall colours change. */
+    known.elInfo[PROJ.FIRE]!.resLevel = 1;
+    expect(buildLoreColorState(state, plReg.timed).resLevel(PROJ.FIRE)).toBe(1);
   });
 });

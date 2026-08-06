@@ -52,6 +52,7 @@ import type {
 } from "./types.js";
 import type { Player } from "./player.js";
 import type { GameObject } from "../obj/object.js";
+import type { KnownBonusView } from "../obj/known-object.js";
 import type { Curse, ElementInfo } from "../obj/types.js";
 import {
   tvalCanHaveFlavor,
@@ -602,10 +603,36 @@ export interface CalcBonusesOptions {
    * calc_bonuses' `update` arg (player-calcs.c:1877): when true the derive is
    * allowed its faithful side effects -- zeroing p->timed[TMD_FASTCAST] on a
    * Stun/Heavy Stun grade (2141-2143/2148-2150) and the calc_light town
-   * redraw flag. Defaults to true (the live refresh path). Hypothetical /
-   * known_only callers pass false so the derive stays pure.
+   * redraw flag. Defaults to true (the live refresh path); the hypothetical
+   * obj-info callers pass false so the derive stays pure.
    */
   update?: boolean;
+  /**
+   * calc_bonuses' `known_only` (player-calcs.c:1877), the derive that answers
+   * "what does the player BELIEVE their character to be" -- upstream's
+   * p->known_state, computed beside p->state on every update_bonuses (2348-2349)
+   * and read by prt_ac, the character sheet's combat panel, monster recall and
+   * the timed-effect grade messages.
+   *
+   * Supplying the known-twin view opens all five gates upstream puts behind the
+   * flag, and only those five:
+   *   1933-1939  object_flags_known instead of object_flags
+   *   1985       an element's resist applies only if its rune is learned
+   *   1997       to_a likewise
+   *   2001/2004  to_h / to_d likewise, on the non-weapon slots
+   * `state->ac += obj->ac` (1996) is NOT gated: base armour is known from birth.
+   * The pval MODIFIERS are not gated here either, because they are already
+   * multiplied by p->obj_k on BOTH passes.
+   *
+   * A FUNCTION rather than a boolean, and deliberately: `known_only = true` with
+   * no way to ask what is known is not a state this derive can be in, so it is
+   * not a state the type can express. Absent is known_only = false, the real
+   * state.
+   *
+   * Build it with obj/known-object.ts knownBonusView bound to the live rune and
+   * flavour knowledge; the session does this in refreshDerived.
+   */
+  knownOnly?: (obj: GameObject) => KnownBonusView;
   /**
    * The hypothetical-blows stat-index shift (player-calcs.c:2077-2088), the
    * "Hack for hypothetical blows - NRM" upstream runs when update is false and
@@ -627,6 +654,35 @@ export interface CalcBonusesOptions {
    * early-out is dormant until the world clock lands (see calcLight).
    */
   isDaytime?: boolean;
+}
+
+/**
+ * What a curse template's known twin contributes to the known_only pass:
+ * nothing at all.
+ *
+ * This is measured from upstream rather than assumed. write_curse_kinds
+ * (obj-init.c:174-195) gives every `curses[i].obj` a `known` twin from
+ * object_new() and then writes only its kind, sval and the ASSESSED notice
+ * bit - so its flags, el_info and to_a/to_h/to_d stay zero forever, and the
+ * known_only gates at 1985/1997/2001/2004 all close on a curse. The
+ * object_flags_known aware-kind union adds nothing either: the `<curse object>`
+ * kind carries no object flags.
+ *
+ * So the curse's resists and combat bonuses are in p->state and absent from
+ * p->known_state, which is exactly the point of the split - a curse you have
+ * not identified is not a curse you can see the effects of.
+ */
+function curseUnknown(elemCount: number): KnownBonusView {
+  return {
+    flags: new FlagSet(OF_SIZE),
+    elInfo: Array.from({ length: elemCount }, () => ({
+      resLevel: 0,
+      flags: 0,
+    })),
+    toA: 0,
+    toH: 0,
+    toD: 0,
+  };
 }
 
 /**
@@ -718,8 +774,11 @@ function calcLight(
  * - calc_mana (2322): ported (player/spell.ts calcMana) but called by the
  *   session layer just after this pass, not inline; the PF_NO_MANA check
  *   (2323-2325) is ported here and reads p->msp populated by that call
- * - the known_only object-knowledge variant and the !update hypothetical
- *   blows index shift (1891-1893, 2077-2088): birth-UI only
+ * - known_only (1891-1893) is PORTED (options.knownOnly, PORT_TODO 2.6): the
+ *   session derives p->known_state beside p->state on every update_bonuses,
+ *   and prt_ac, the character sheet's combat panel and the monster-recall
+ *   colouring read it. The !update hypothetical-blows index shift (2077-2088)
+ *   is ported too, as options.statIndBoost
  */
 export function calcBonuses(
   player: Player,
@@ -835,11 +894,18 @@ export function calcBonuses(
   }
   const applySource = (
     src: BonusSource,
+    /**
+     * obj->known's contribution when known_only is set, else null. Every
+     * upstream `known_only ? ... : ...` in the loop reads this and nothing
+     * else, so the two passes cannot drift into two loop bodies.
+     */
+    known: KnownBonusView | null,
     isWeaponSlot: boolean,
     isBowSlot: boolean,
   ): void => {
-    /* Extract the item flags (1933-1939). */
-    collectF.union(src.flags);
+    /* Extract the item flags (1933-1939): object_flags_known under known_only,
+       object_flags otherwise. */
+    collectF.union(known ? known.flags : src.flags);
 
     /* Apply modifiers (1941-1981), each multiplied by the learned-rune mask
        (obj->modifiers[X] * p->obj_k->modifiers[X]). The five stat modifiers
@@ -875,11 +941,16 @@ export function calcBonuses(
     extraMight += (src.modifiers[OBJ_MOD.MIGHT] ?? 0) * (knownMods[OBJ_MOD.MIGHT] ?? 0);
     extraMoves += (src.modifiers[OBJ_MOD.MOVES] ?? 0) * (knownMods[OBJ_MOD.MOVES] ?? 0);
 
-    /* Apply element info, noting vulnerabilities for later (1983-1993). */
+    /* Apply element info, noting vulnerabilities for later (1983-1993).
+       `!known_only || obj->known->el_info[j].res_level` (1985): an unlearned
+       element rune contributes NEITHER the resist nor the vulnerability, so a
+       player wearing an unidentified ring of vulnerability is not shown as
+       vulnerable either. */
     for (let jj = 0; jj < elemCount; jj++) {
       const oel = src.elInfo[jj];
       const sel = state.elInfo[jj] as PlayerElementInfo;
       if (!oel) continue;
+      if (known && !(known.elInfo[jj]?.resLevel ?? 0)) continue;
       if (oel.resLevel === -1) vuln[jj] = true;
       if (oel.resLevel > sel.resLevel) sel.resLevel = oel.resLevel;
     }
@@ -887,11 +958,12 @@ export function calcBonuses(
     /* Apply combat bonuses (1995-2007). The wielded weapon's and launcher's
        own to_h/to_d are applied at attack time, not here. A curse object's ac
        is 0 (curse struct carries none). */
+    /* state->ac is NOT gated by known_only (1995): base armour is obvious. */
     state.ac += src.ac;
-    state.toA += src.toA;
+    if (!known || known.toA) state.toA += src.toA;
     if (!isWeaponSlot && !isBowSlot) {
-      state.toH += src.toH;
-      state.toD += src.toD;
+      if (!known || known.toH) state.toH += src.toH;
+      if (!known || known.toD) state.toD += src.toD;
     }
   };
 
@@ -911,9 +983,12 @@ export function calcBonuses(
        we walk the item and its curse objects (1928, 2009-2023). */
     const curse = worn.curses;
     let obj: BonusSource | null = worn;
+    /* The worn item's known twin on the first pass; from then on the curse
+       templates', which is CURSE_UNKNOWN - see the constant. */
+    let known: KnownBonusView | null = options.knownOnly?.(worn) ?? null;
     let index = 0;
     while (obj) {
-      applySource(obj, isWeaponSlot, isBowSlot);
+      applySource(obj, known, isWeaponSlot, isBowSlot);
 
       /* Move to any unprocessed curse object (2009-2023). Scan the worn item's
          curse_data for the next active (power != 0) curse, resolving its
@@ -925,6 +1000,7 @@ export function calcBonuses(
         while (index < curseTable.length) {
           if (curse[index]?.power) {
             const template = curseTable[index]?.obj;
+            known = options.knownOnly ? curseUnknown(elemCount) : null;
             obj = template
               ? {
                   flags: template.flags,

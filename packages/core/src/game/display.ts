@@ -497,9 +497,16 @@ function equippyRuns(state: GameState, deps: ResolvedDeps): DisplayRun[] {
   return runs;
 }
 
-/** prt_ac (ui-display.c L301): "Cur AC " + (ac + to_a). */
+/**
+ * prt_ac (ui-display.c L301): "Cur AC " + (ac + to_a).
+ *
+ * `known_state`, not `state` (ui-display.c:307). The number on the sidebar is
+ * what the player BELIEVES their armour to be: an unidentified +5 to-a ring
+ * protects for 5 and shows 0 until its rune is learned, and then the number
+ * jumps - which is the moment upstream wants you to notice.
+ */
 function acRuns(state: GameState): DisplayRun[] {
-  const c = state.actor.combat;
+  const c = state.actor.knownCombat;
   return [
     { text: "Cur AC ", color: COLOUR_WHITE },
     { text: rjust(c.ac + c.toA, 5), color: COLOUR_L_GREEN },

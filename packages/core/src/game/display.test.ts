@@ -719,3 +719,29 @@ describe("SHIPPED_FEELING_NEED (world:feeling-need)", () => {
     expect(hidden({ feelingNeed: SHIPPED_FEELING_NEED + 1 })).toBe(true); // a pack that asks for more
   });
 });
+
+describe("prt_ac reads known_state (ui-display.c:307, PORT_TODO 2.6)", () => {
+  it("shows the AC the player believes, not the AC they have", () => {
+    const state = makeState();
+    state.actor.combat.ac = 20;
+    state.actor.combat.toA = 15;
+    state.actor.knownCombat.ac = 20;
+    state.actor.knownCombat.toA = 0;
+
+    const ac = field(sidebarModel(state), "ac");
+    const text = ac.map((r) => r.text).join("");
+    /* `player->known_state.ac + player->known_state.to_a` (ui-display.c:307),
+     * so the 15 the player has not identified is not on the sidebar. Reading
+     * the real state would print 35. */
+    expect(text.trim()).toBe("Cur AC    20");
+
+    state.actor.knownCombat.toA = 15;
+    expect(
+      field(sidebarModel(state), "ac")
+        .map((r) => r.text)
+        .join("")
+        .trim(),
+      "learning the rune moves the number",
+    ).toBe("Cur AC    35");
+  });
+});

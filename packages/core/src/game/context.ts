@@ -145,6 +145,21 @@ export interface PlayerActor {
   totalEnergy: number;
   /** player-attack.c reads this as p->state. */
   combat: PlayerCombatState;
+  /**
+   * p->known_state (player.h:604), the derive the player is SHOWN.
+   *
+   * Upstream keeps two: `p->state` decides what happens, `p->known_state`
+   * decides what is printed, and calc_bonuses computes both on every
+   * update_bonuses (player-calcs.c:2348-2349). The difference is the runes the
+   * player has not learned yet - an unidentified +5 to-hit ring hits for +5 and
+   * displays as +0.
+   *
+   * REQUIRED, not optional, and that is the whole point: an optional field here
+   * would let a caller supply `combat` alone, and every display would silently
+   * fall back to the real state - which is the bug this exists to fix
+   * (PORT_TODO 2.6). prt_ac and the character sheet's combat panel read THIS.
+   */
+  knownCombat: PlayerCombatState;
   /** make_attack_normal reads ac + to_a from this. */
   defense: DefenderState;
   /** The wielded melee weapon, or null for unarmed (py_attack). */
@@ -374,6 +389,23 @@ export interface GameState {
    * infravision and an empty flag set.
    */
   playerState?: import("../player/calcs.js").PlayerState;
+  /**
+   * p->known_state (player.h:604), the same derive with calc_bonuses'
+   * `known_only` set - what the player BELIEVES their character to be.
+   *
+   * Read by the paths upstream reads it on: prt_ac and the character sheet's
+   * combat panel (through actor.knownCombat, which is this state's combat
+   * view), and player_inc_check's LORE arm (player-timed.c:933-995), which is
+   * what colours a monster's spell and blow lines - "you resist this" is a
+   * claim about what the player knows, so a resist from an unidentified ring
+   * must not colour it.
+   *
+   * Optional for the same reason playerState is: the worldless harness has no
+   * derive. It is never defaulted to `playerState` - falling back to the real
+   * state is the bug this exists to fix, so an absent known state reads as
+   * "nothing is known", exactly as an absent playerState does.
+   */
+  knownPlayerState?: import("../player/calcs.js").PlayerState;
   /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).

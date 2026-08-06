@@ -12,6 +12,7 @@ import { objectNew } from "../obj/object.js";
 import type { CurseData, GameObject } from "../obj/object.js";
 import { newElemInfo, zeroRv } from "../obj/types.js";
 import type { Curse, CurseObject, ObjectKind } from "../obj/types.js";
+import type { KnownBonusView } from "../obj/known-object.js";
 import { FlagSet } from "../bitflag.js";
 import { Rng } from "../rng.js";
 import { OF_SIZE } from "./types.js";
@@ -782,5 +783,206 @@ describe("calcBonuses: food grades outside Fed", () => {
     vamp.timed[TMD.FOOD] = 9500;
     vamp.timed[TMD.ATT_VAMP] = 1;
     expect(calcBonuses(vamp, opt).speed - base.speed).toBe(0);
+  });
+});
+
+/**
+ * calc_bonuses' known_only pass (player-calcs.c:1877), PORT_TODO 2.6.
+ *
+ * These test the GATE in isolation, with the known view written by hand: what
+ * calcBonuses does with an answer, not where the answer comes from. The
+ * supplier is tested next door in obj/known-object.test.ts, and the two screens
+ * that read the result in game/char-sheet.test.ts and game/display.test.ts.
+ */
+describe("calcBonuses: known_only (player-calcs.c:1877)", () => {
+  const STATS = [16, 12, 11, 15, 14] as const;
+
+  /** A known view that knows NOTHING: every gate closed. */
+  function knowsNothing(): KnownBonusView {
+    return {
+      flags: new FlagSet(OF_SIZE),
+      elInfo: newElemInfo(),
+      toA: 0,
+      toH: 0,
+      toD: 0,
+    };
+  }
+
+  /** One worn item in the last (non-weapon, non-bow) slot. */
+  function wearing(p: Player, item: GameObject): (GameObject | null)[] {
+    const equipment: (GameObject | null)[] = new Array<GameObject | null>(
+      p.body.count,
+    ).fill(null);
+    equipment[p.body.count - 1] = item;
+    return equipment;
+  }
+
+  it("hides an unlearned to_a, to_h and to_d, and keeps the base ac", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const item = objectNew({} as ObjectKind);
+    item.ac = 8;
+    item.toA = 5;
+    item.toH = 4;
+    item.toD = 3;
+    const equipment = wearing(p, item);
+
+    const real = calcBonuses(p, { equipment });
+    const known = calcBonuses(p, { equipment, knownOnly: () => knowsNothing() });
+    /* The innate baseline: a level-1 Warrior already has to_a 1 from
+       adj_dex_ta, so every assertion below is a DELTA against wearing nothing
+       rather than an absolute - the hidden bonus is what is being measured. */
+    const bare = calcBonuses(p, { equipment: wearing(p, objectNew({} as ObjectKind)) });
+
+    expect(real.toA - bare.toA).toBe(5);
+    expect(real.toH - known.toH).toBe(4);
+    expect(real.toD - known.toD).toBe(3);
+    expect(known.toA).toBe(bare.toA);
+    /* state->ac += obj->ac is NOT behind the flag (1996): base armour is
+     * obvious on sight, so both passes carry it and prt_ac still shows it. */
+    expect(known.ac).toBe(8);
+    expect(real.ac).toBe(8);
+  });
+
+  it("shows each combat bonus as soon as its own rune is known", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const item = objectNew({} as ObjectKind);
+    item.toA = 5;
+    item.toH = 4;
+    item.toD = 3;
+    const equipment = wearing(p, item);
+
+    /* Only to_a learned: the other two stay hidden. Three separate gates
+     * upstream (1997 / 2001 / 2004), so one rune must not open all three. */
+    const partly = calcBonuses(p, {
+      equipment,
+      knownOnly: () => ({ ...knowsNothing(), toA: 5 }),
+    });
+    const bare = calcBonuses(p, { equipment: wearing(p, objectNew({} as ObjectKind)) });
+    expect(partly.toA - bare.toA).toBe(5);
+    expect(partly.toH).toBe(bare.toH);
+    expect(partly.toD).toBe(bare.toD);
+  });
+
+  it("hides an unlearned resist, and an unlearned VULNERABILITY with it", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const resistant = objectNew({} as ObjectKind);
+    resistant.elInfo[ELEM.FIRE]!.resLevel = 1;
+    const vulnerable = objectNew({} as ObjectKind);
+    vulnerable.elInfo[ELEM.COLD]!.resLevel = -1;
+
+    const realFire = calcBonuses(p, { equipment: wearing(p, resistant) });
+    const knownFire = calcBonuses(p, {
+      equipment: wearing(p, resistant),
+      knownOnly: () => knowsNothing(),
+    });
+    expect(realFire.elInfo[ELEM.FIRE]?.resLevel).toBe(1);
+    expect(knownFire.elInfo[ELEM.FIRE]?.resLevel).toBe(0);
+
+    /* `!known_only || obj->known->el_info[j].res_level` (1985) guards the
+     * res_level == -1 vulnerability arm too, so an unidentified ring of
+     * vulnerability does not show the player as vulnerable either. */
+    const realCold = calcBonuses(p, { equipment: wearing(p, vulnerable) });
+    const knownCold = calcBonuses(p, {
+      equipment: wearing(p, vulnerable),
+      knownOnly: () => knowsNothing(),
+    });
+    expect(realCold.elInfo[ELEM.COLD]?.resLevel).toBeLessThan(0);
+    expect(knownCold.elInfo[ELEM.COLD]?.resLevel).toBe(0);
+  });
+
+  it("collects object_flags_known, not object_flags", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const item = objectNew({} as ObjectKind);
+    item.flags.on(OF.FEATHER);
+    const equipment = wearing(p, item);
+
+    expect(calcBonuses(p, { equipment }).flags.has(OF.FEATHER)).toBe(true);
+    expect(
+      calcBonuses(p, { equipment, knownOnly: () => knowsNothing() }).flags.has(
+        OF.FEATHER,
+      ),
+      "an unlearned rune's flag is not in the state the player is shown",
+    ).toBe(false);
+
+    /* And it comes from the VIEW, not from the object: a flag the view carries
+     * is collected even though the loop is reading a known-only pass. */
+    const aware = knowsNothing();
+    aware.flags.on(OF.FEATHER);
+    expect(
+      calcBonuses(p, { equipment, knownOnly: () => aware }).flags.has(OF.FEATHER),
+    ).toBe(true);
+  });
+
+  it("leaves a curse's own bonuses out of the known state entirely", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const item = objectNew({} as ObjectKind);
+    const curseData: CurseData[] = [
+      { power: 0, timeout: 0 },
+      { power: 50, timeout: 0 },
+    ];
+    item.curses = curseData;
+
+    const curseObj: CurseObject = {
+      ...objectNew({} as ObjectKind),
+      toA: 9,
+      toH: 9,
+      toD: 9,
+    } as unknown as CurseObject;
+    curseObj.elInfo[ELEM.ACID]!.resLevel = 1;
+    curseObj.flags.on(OF.AGGRAVATE);
+    const curses: (Curse | null)[] = [
+      null,
+      { name: "test", obj: curseObj } as unknown as Curse,
+    ];
+
+    const equipment = wearing(p, item);
+    const real = calcBonuses(p, { equipment, curses });
+    /* The worn item itself knows nothing, and write_curse_kinds gives a curse
+     * template a twin that is zero forever (obj-init.c:174-195) - so the whole
+     * curse drops out of the known pass. */
+    const known = calcBonuses(p, {
+      equipment,
+      curses,
+      knownOnly: () => knowsNothing(),
+    });
+
+    const bare = calcBonuses(p, { equipment: wearing(p, objectNew({} as ObjectKind)) });
+    expect(real.toA - bare.toA).toBe(9);
+    expect(real.flags.has(OF.AGGRAVATE)).toBe(true);
+    expect(real.elInfo[ELEM.ACID]?.resLevel).toBe(1);
+    expect(known.toA).toBe(bare.toA);
+    expect(known.flags.has(OF.AGGRAVATE)).toBe(false);
+    expect(known.elInfo[ELEM.ACID]?.resLevel).toBe(0);
+  });
+
+  it("changes nothing when there is nothing unknown", () => {
+    /* The control. A character wearing gear whose every rune is learned must
+     * derive the SAME state twice - otherwise the gate is subtracting
+     * something upstream does not. */
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const item = objectNew({} as ObjectKind);
+    item.ac = 8;
+    item.toA = 5;
+    item.toH = 4;
+    item.toD = 3;
+    item.elInfo[ELEM.FIRE]!.resLevel = 1;
+    item.flags.on(OF.FEATHER);
+    const equipment = wearing(p, item);
+
+    const everything: KnownBonusView = {
+      flags: item.flags,
+      elInfo: item.elInfo,
+      toA: item.toA,
+      toH: item.toH,
+      toD: item.toD,
+    };
+    const real = calcBonuses(p, { equipment });
+    const known = calcBonuses(p, { equipment, knownOnly: () => everything });
+    expect(known.toA).toBe(real.toA);
+    expect(known.toH).toBe(real.toH);
+    expect(known.toD).toBe(real.toD);
+    expect(known.ac).toBe(real.ac);
+    expect(known.elInfo[ELEM.FIRE]?.resLevel).toBe(real.elInfo[ELEM.FIRE]?.resLevel);
+    expect(known.flags.has(OF.FEATHER)).toBe(true);
   });
 });

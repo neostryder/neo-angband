@@ -37,7 +37,7 @@ import {
   toCombatState,
   toDefenderState,
 } from "../player/calcs.js";
-import type { PlayerState } from "../player/calcs.js";
+import type { CalcBonusesOptions, PlayerState } from "../player/calcs.js";
 import {
   playerBestDiggerDigging,
   playerBestDiggerWithClause,
@@ -234,7 +234,11 @@ import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
 import { describeObject, knownDescOf } from "../game/describe.js";
-import { objectFlagIsKnown, objectKnownShadow } from "../obj/known-object.js";
+import {
+  knownBonusView,
+  objectFlagIsKnown,
+  objectKnownShadow,
+} from "../obj/known-object.js";
 import { ODESC, objDescNameFormat } from "../obj/desc.js";
 import type {
   TimedTempBrandSlayRecord,
@@ -698,6 +702,36 @@ function wireGame(
   // fail-chance display always read the current stats.
   const liveStatInd: number[] = [...pstate.statInd];
   state.statInd = liveStatInd;
+  /**
+   * calc_bonuses(p, &known_state, TRUE, TRUE) (player-calcs.c:2349): the SECOND
+   * derive, the one the player is SHOWN. Same options and the same `update`
+   * flag upstream passes - its side effects (zeroing TMD_FASTCAST on a stun
+   * grade) are idempotent, so running them twice is what upstream does and
+   * costs nothing.
+   *
+   * knownBonusView is the whole difference: it hands the equipment loop each
+   * worn item's known twin, so an unlearned rune's to_a / to_h / to_d / resist
+   * / flag is left out of what gets printed while staying in what gets rolled.
+   *
+   * A named function rather than three lines inside refreshDerived because it
+   * is also called ONCE at the end of wiring. Without that seed, actor
+   * .knownCombat would hold the real state until the first equipment change,
+   * and a loaded character wearing unidentified gear would see true numbers on
+   * the sidebar for exactly as long as they stood still.
+   */
+  const refreshKnownCombat = (
+    p: Player,
+    bonusOptions: CalcBonusesOptions,
+  ): void => {
+    const known = calcBonuses(p, {
+      ...bonusOptions,
+      knownOnly: (obj) =>
+        knownBonusView(obj, p, state.runeEnv, knownDescOf(state)),
+    });
+    state.knownPlayerState = known;
+    state.actor.knownCombat = toCombatState(known);
+  };
+
   const refreshDerived = (): void => {
     const p = state.actor.player;
     const equipment = p.equipment.map((h) =>
@@ -707,15 +741,17 @@ function wireGame(
     /* p->state before the memcpy at the end of calc_bonuses: the encumbrance
      * notices below diff against it (player-calcs.c:2412-2453). */
     const before = derived;
-    derived = calcBonuses(p, {
+    const bonusOptions = {
       equipment,
       timedEffects: players.timed,
       curses: reg.objects.curses,
       update: true,
       depth: state.chunk.depth,
       isDaytime: daytime,
-    });
+    };
+    derived = calcBonuses(p, bonusOptions);
     state.playerState = derived;
+    refreshKnownCombat(p, bonusOptions);
     /* calc_light's town-daytime branch (player-calcs.c 1608-1611) flags
      * PU_UPDATE_VIEW | PU_MONSTERS before returning; reinstate that refresh so
      * ambient town light tracks the day/night cycle. */
@@ -1894,6 +1930,18 @@ function wireGame(
     ...(trapDeps ? { trapDeps } : {}),
   };
 
+  /* Seed p->known_state now that runeEnv and the flavour store are live. */
+  refreshKnownCombat(state.actor.player, {
+    equipment: state.actor.player.equipment.map((h) =>
+      h ? gearGet(state.gear, h) : null,
+    ),
+    timedEffects: players.timed,
+    curses: reg.objects.curses,
+    update: true,
+    depth: state.chunk.depth,
+    isDaytime: isDaytime(state.turn, state.z.dayLength),
+  });
+
   return { registry, trapDeps, flavor, everseen, effects: effectRegistry, wizardBundles };
 }
 
@@ -2909,6 +2957,10 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     speed: pstate.speed,
     totalEnergy: 0,
     combat,
+    /* p->known_state, seeded with the real state and replaced with the true
+     * known derive at the end of wireGame - the flavour store and the rune env
+     * it needs do not exist yet at this line. */
+    knownCombat: combat,
     defense: toDefenderState(pstate),
     weapon,
     stealth: combat.skills[SKILL.STEALTH] ?? 0,
@@ -3625,6 +3677,10 @@ export function loadGame(
     speed: pstate.speed,
     totalEnergy: save.actor.totalEnergy,
     combat,
+    /* p->known_state, seeded with the real state and replaced with the true
+     * known derive at the end of wireGame - the flavour store and the rune env
+     * it needs do not exist yet at this line. */
+    knownCombat: combat,
     defense: toDefenderState(pstate),
     weapon,
     stealth: combat.skills[SKILL.STEALTH] ?? 0,
