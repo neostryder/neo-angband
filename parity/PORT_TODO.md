@@ -2380,7 +2380,53 @@ handling.
   record it as `n-a` with the mechanism.
   Sites: `parity/ledger/mon-make.yaml:32`
 
-- [ ] **7.4 The world kernel's monster-list scan replacement.**
+- [x] **7.4 The world kernel's monster-list scan replacement. DONE — and it
+  was never a decision. It was a live defect, on every level, since the port
+  began.**
+  This row had no description at all, which is how it sat in the "decide it"
+  tier: nobody could tell from the title that anything was wrong. Reading it
+  cost twenty minutes and found that **no monster in the game emitted light or
+  darkness.**
+
+  The kernel was never at fault. `world/view.ts` calcLighting is a faithful port
+  of cave-view.c L696-719 — it takes a `sources` list, honours the sign through
+  `add_light`'s two arms, and applies the `distance - radius > max_sight` gate.
+  What it could not do is scan the monster array, because the view kernel is not
+  allowed to know what a monster is. So the scan became a parameter, and **the
+  parameter never got an argument**: `LightSource` had two consumers and no
+  producer anywhere in the repository, `session/game.ts` passed a literal `[]`,
+  and `updateView`'s own parameter defaulted to `[]` behind it. There was no
+  arrangement of hosts under which a monster lit a grid — and the comment above
+  the call site asserted the opposite ("a host that wants its own light sources
+  still replaces this, **and the web does**"), which is exactly how the `[]`
+  survived: a seam documented as host-supplied reads as deliberate rather than
+  empty. The web does not replace it. Neither does the MCP session. Both were
+  checked, and the comment now says so.
+
+  **107 of the 624 shipped races carry a non-zero `light`** — 95 emit it (every
+  townsperson's lantern, Grip, Fang, the Phoenix), 12 emit darkness (dark hound
+  at depth 15 up to Ungoliant at 75). None of it reached the map.
+
+  Fixed by `monsterLightSources` (`packages/core/src/game/known.ts`), which
+  carries upstream's skips in upstream's order — empty slots, camouflaged
+  monsters (an unrevealed mimic must not give itself away by glowing), then
+  `light == 0`. It iterates `state.monsters` directly rather than calling
+  context.ts's `monsterMax`/`monsterAt`, because context.ts imports known.ts at
+  runtime and taking the values back would close the cycle.
+
+  **The test is a wiring test on generated levels, and the fixture took three
+  attempts** — worth recording, because the first two were wrong in opposite
+  directions. Depth 5's nearest light-bearer stood 38 grids away, past
+  `max_sight`, so the light maps came back byte-identical and the test failed
+  against a *correct* fix. The town has bearers in arm's reach but is
+  `SQUARE_GLOW` by day, so their own grid is never dark and the proof degrades
+  from `0 -> lit` to `1 -> 2`. A sweep of 60 seeds found seed 2 / depth 4: six
+  bearers in sight standing on unlit grids, the nearest a tamer at distance 8 —
+  which is the real case this fixes, a lantern coming down a dark corridor.
+  The sign needed its own fixture and is rarer still: a darkness-emitter must
+  stand on a grid something *else* lights, or there is nothing to subtract
+  from. 80 seeds x 7 depths found it once, a huorn at seed 11 / depth 36.
+  **5 mutations, 5 killed**, including the `[]` that was the defect.
   Sites: `parity/ledger/world-kernel.yaml:27`
 
 ---

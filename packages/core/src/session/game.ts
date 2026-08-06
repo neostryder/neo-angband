@@ -96,6 +96,7 @@ import {
   caveKnown,
   newKnownMap,
   noteSpots,
+  monsterLightSources,
   viewerStateOf,
 } from "../game/known.js";
 import { updateView } from "../world/view.js";
@@ -817,9 +818,12 @@ function wireGame(
    * with nothing installed.
    *
    * `??=` rather than `=`: a host that wants its own events bus or light sources
-   * still replaces this, and the web does. Wired in wireGame so startGame and
-   * loadGame both get it - a resumed character has the same right to a map as a
-   * new one.
+   * can still replace this. NOTE that no shipped host does - the web calls core's
+   * (main.ts:8484 throws if wireGame did not install one) and so does the MCP
+   * session. This comment used to assert "and the web does", which is how the
+   * hardcoded `[]` below survived: a seam documented as host-supplied reads as
+   * deliberate rather than empty. Wired in wireGame so startGame and loadGame
+   * both get it - a resumed character has the same right to a map as a new one.
    *
    * The viewer fields come from `viewerStateOf` (game/known.ts) rather than being
    * spelled out again here, because spelling them out twice is how both hosts came
@@ -830,7 +834,8 @@ function wireGame(
       s.chunk,
       viewerStateOf(s),
       { maxSight: reg.constants.maxSight, feelingNeed: reg.constants.feelingNeed },
-      [],
+      /* calc_lighting's monster scan (cave-view.c L696-719). Was `[]`. */
+      monsterLightSources(s),
       s.events,
       /* cave-view.c:852: the object feeling, the moment the player has seen
        * enough of the level to earn it. objOnly is display_feeling(true) - the
