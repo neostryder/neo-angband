@@ -91,21 +91,26 @@ function boot(pack: GamePack): SpoilCtx {
       };
     },
     /*
-     * timedDesc / summonDesc are still unsupplied here, and PORT_TODO 5.6 is
-     * NOT the one-line fix that looks like - MEASURED 2026-08-06 rather than
-     * assumed.
+     * timedDesc / summonDesc are deliberately NOT supplied, and PORT_TODO 5.6's
+     * first half is retracted. MEASURED 2026-08-06 rather than argued:
      *
-     * The obvious move is to fill them from `game.players.timed` and
-     * `reg.monsters.summons`, which this boot already has. Doing that changes
-     * ZERO BYTES of spoilObjDesc + spoilArtifact on the shipped pack, diffed
-     * whole. That is not because the content lacks the cases: activation.json
-     * ships 163 activations, 30 of them TIMED_INC and 25 CURE. So the two
-     * seams are not reaching the effect-description layer that would use them,
-     * and 5.6's real work is finding where the thread stops below
-     * ObjectInfoExtras - not adding the two closures.
+     * 1. Filling them from `game.players.timed` / `reg.monsters.summons` -
+     *    which this boot already holds, so it is three lines - changes ZERO
+     *    BYTES of spoilObjDesc + spoilArtifact on the shipped pack, diffed
+     *    whole.
+     * 2. Replacing them with SENTINEL strings and counting: zero occurrences
+     *    in either dump. The callbacks are never invoked, so this is not a
+     *    formatting coincidence.
+     * 3. Why: spoilObjDesc prints no effect text at all (upstream's basic-item
+     *    table is a stat grid), and of spoilArtifact's 67 "When used" lines not
+     *    one resolves to EFINFO_TIMED / EFINFO_CURE / EFINFO_SUMM. The 30
+     *    TIMED_INC and 25 CURE entries in activation.json belong to items these
+     *    two dumps do not describe.
      *
-     * The change was written, diffed, and reverted rather than committed,
-     * because a no-op that reads like a fix is worse than the honest note.
+     * The chain below them is fine and is exercised by the in-game inspect
+     * path, which supplies both (web/src/main.ts:1043, :2029). Supplying them
+     * here would be correct and inert - so the note stays instead, because a
+     * no-op that reads like a fix is worse than an honest measurement.
      */
   };
   return { game, reg, extras };
