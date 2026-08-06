@@ -47,12 +47,15 @@ notes: >-
   discrepancies) and then independently verified here (typecheck + the
   determinism / integrity test suite).
 deferred:
-  - artifact_gen_name's word list (randname.c randname_make +
-    RANDNAME_TOLKIEN from the names datafile) is not ported; artifactGenName
-    assembles a deterministic Tolkien-flavoured name from a local syllable
-    table (bounded MIN_NAME_LEN..MAX_NAME_LEN) then applies the upstream
-    one_in_(3) "'Name'" / "of Name" wrapper. Reproducible within the port,
-    but names and their RNG draw count differ from upstream Angband.
+  - NOT DEFERRED ANY MORE, and this line said otherwise for longer than it was
+    true (PORT_TODO 5.4). artifact_gen_name's word list IS ported:
+    randname_make and build_prob are obj/randname.ts, checked against an
+    independent oracle in obj/randname.upstream.test.ts; the corpus ships as
+    names.json section 1; boot.ts:163-165 reads it into
+    CoreRegistries.nameSections (reversing each section, because init.c:1476
+    prepends); and session/game.ts:3458-3461 hands doRandart the section-1
+    list, so in-game randart names draw faithfully. The local syllable table
+    survives only as the fallback for a caller that supplies no corpus.
   - The spoiler / log output (create_file, write_randart_entry L3043-L3215,
     randart.log, and the post-generation second measurement pass) is
     dropped: it never affects an artifact field or an RNG draw.

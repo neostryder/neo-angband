@@ -413,17 +413,17 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 52 |
+| `real` | Confirmed absent and owed | 51 |
 | `partial` | Part ported; the note must say which part is not | 12 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 47 |
-| `ported` | Done; the note was stale and has been rewritten | 27 |
+| `ported` | Done; the note was stale and has been rewritten | 28 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 25 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 27 |
 | | **total** | **227** |
 
-### `real` - Confirmed absent and owed (52)
+### `real` - Confirmed absent and owed (51)
 
 - `packages/core/src/effects/handlers.ts:78` - LEAD READ. Still real, and the note's reason is stale: monsterDesc IS ported (mon/desc.ts) and MDESC_DIED_FROM is defined at mon/desc.ts:61. The port hardcodes "a monster" where upstream's killer_desc calls monster_desc(mon, MDESC_DIED_FROM), so the death cause loses both the article and the visibility gate ("something" for an unseen killer). The work is one call, not a subsystem
 - `packages/core/src/game/cave-cmd.ts:1045` - LEAD READ, and the lead is a FALSE POSITIVE: web/src/context-menu.ts only names do_cmd_alter in a comment while routing "Attack"/"Alter" to this same core command (context-menu.ts:164-179), so it inherits the gap rather than filling it. The chest and floor-trap-disarm fall-through branches (do_cmd_alter_aux L969-992) are genuinely absent, and "+" is bound to alter at web/src/main.ts:8090
@@ -470,7 +470,6 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/gamedata.yaml:478` - ui_knowledge.txt: it defines the knowledge browser's thematic grouping, and the browser IS ported, so the grouping columns are missing (see web/src/screens.ts:872)
 - `parity/ledger/high-scores.yaml:96` - The real killer is not wired through GameState, so the score entry cannot name it
 - `parity/ledger/mon-lore-describe.yaml:55` - Monster spells are not bound to the casting race, so recall cannot show spell damage - the same family as the lore hit-chance gap
-- `parity/ledger/obj-randart.yaml:51` - RANDNAME_TOLKIEN from the names datafile is not loaded, so randart names come from artifactGenName's own generator
 - `parity/ledger/options.yaml:76` - options_save_custom / restore_custom / restore_maintainer - the per-user customized-defaults files in ANGBAND_DIR_USER. Now buildable: the host seam and the pref-file writer both exist
 - `parity/ledger/player-history.yaml:75` - find-on-sight history entries, blocked on the remembered floor-pile contents
 - `parity/ledger/player-history.yaml:91` - The player notes command
@@ -578,7 +577,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (27)
+### `ported` - Done; the note was stale and has been rewritten (28)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
 - `packages/core/src/game/mon-message.ts:15` - CLOSED by PORT_TODO 3.1 (2026-08-05). The queue is ported whole into this file - add_monster_message / _show_damage, stack_message with its saturating damage add, redundant_monster_message + store_monster, message_flags, what_delay, show_message and show_monster_messages - PN_MON_MESSAGE is the third PN bit, and noticeStuff drains it. 25 tests in game/mon-msg-queue.test.ts; 19 mutations, 19 kills. Remaining gap is narrower and recorded in 3.1: nothing binds state.panelContains, so the "(offscreen)" tag never appears.
@@ -591,6 +590,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/web/src/main.ts:5925` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
 - `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic
 - `parity/ledger/mon-timed.yaml:29` - CLOSED by PORT_TODO 3.1 (2026-08-05). mon_set_timed still reports through an optional MonTimedMessageSink because mon/ sits below game/, but the sink the game supplies IS add_monster_message(mon, m_note, true) (game/monster-turn.ts monsterTimedMessage), so the line is stacked on the delayed pass exactly as mon-timed.c:215 does it. This sink had no test at all until 3.1 - deleting its body broke nothing - and now has two.
+- `parity/ledger/obj-randart.yaml:51` - CLOSED by PORT_TODO 5.4 (2026-08-06) as a RETRACTION - it was already ported and the ledger line was stale. randname_make/build_prob are obj/randname.ts against an independent oracle, the corpus is names.json section 1, boot.ts:163-165 loads it into CoreRegistries.nameSections, and session/game.ts:3458-3461 passes it to doRandart. The missing assertion, now added in session/describe-wiring.test.ts, is that the LIVE boot supplies a non-empty list - doRandart takes the corpus as an argument, so every unit test passed with it empty.
 - `parity/ledger/player-calcs-bonuses.yaml:78` - CLOSED by PORT_TODO 2.6 (2026-08-06). CalcBonusesOptions.knownOnly opens the five gates upstream puts behind known_only (object_flags_known 1933-1939, el_info 1985, to_a/to_h/to_d 1997/2001/2004; state->ac 1996 is deliberately not gated), the session derives p->known_state beside p->state on every refreshDerived and once at the end of wireGame, and prt_ac, the character sheet combat panel and buildLoreColorState read it. 16 mutations, 16 kills. The row's own example was wrong: player-birth.c:1264-1267 grants all three combat runes at birth, so the to_a/to_h/to_d gates never close - what known_state withholds is resists and object flags, which is why the visible change is the monster recall colouring.
 - `parity/ledger/player-history.yaml:46` - STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.
 - `parity/ledger/player-history.yaml:79` - CORRECTED from real. Both hooks ARE wired: onArtifactFound (game/context.ts:687-693, installed by wireGame, called from pickup.ts playerPickupAux) and onArtifactLost (:695-701, the destroy / abandon / store-discard paths). The store-PURCHASE site is the part still missing, tracked at store/transact.ts:26
