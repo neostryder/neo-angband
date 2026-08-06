@@ -32,6 +32,7 @@ import { copyArtifactData, objectPrep } from "../obj/make.js";
 import { objectPower } from "../obj/power.js";
 import { objectValue } from "../obj/value.js";
 import { tvalIsAmmo, tvalIsArmor, tvalIsMeleeWeapon } from "../obj/object.js";
+import { getHitChance } from "../combat/hit.js";
 import { cheatMonsterLore, newMonsterLore } from "../mon/lore.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { knownDescOf } from "./describe.js";
@@ -530,18 +531,37 @@ export function spoilMonInfo(pack: GamePack): string {
   out += `Monster Spoilers for ${BUILDID}\n`;
   out += `------------------------------------------\n\n`;
 
-  /* Lore deps: a fully-known character view. effectiveSpeed is off, so
-   * playerSpeed is inert; playerLevel drives the exp reward and playerMaxDepth
-   * only colours the depth line (text is unaffected).
-   * TODO(B2): meleeHitPercent / monsterHitPercent are omitted (a core-level
-   * DEFERRED - the combat layer does not feed lore), so every "chance to hit"
-   * and per-blow "(NdM, X%)" renders X as 0%. Wire them when core supplies
-   * hit_chance to the lore layer. */
+  /*
+   * Lore deps: a fully-known character view. effectiveSpeed is off, so
+   * playerSpeed is inert; playerMaxDepth only colours the depth line (text is
+   * unaffected), and playerLevel no longer drives anything printed here - the
+   * exp reward it scaled is one of the four sections `spoilers` suppresses.
+   *
+   * meleeHitPercent is deliberately ABSENT and is no longer a gap: it feeds
+   * lore_append_toughness' "you have a N% chance to hit such a creature", and
+   * that whole section is suppressed in the spoiler view (ui-mon-lore.c
+   * L124-125). Supplying it would be inert.
+   *
+   * monsterHitPercent IS supplied, and it was the real half of PORT_TODO 5.6's
+   * hit-chance note: lore_append_attack prints a per-blow "(NdM, X%)" in BOTH
+   * views (mon-lore.c:1710-1715), so without it every blow in the dump read
+   * "0%" - and the running centidamage total that multiplies by it read zero
+   * too. Upstream computes it against the live player's REAL ac + to_a, not
+   * the known state, which the headless boot has.
+   */
   const loreDeps: LoreDeps = {
     playerLevel: player.lev,
     playerMaxDepth: player.maxDepth,
     playerSpeed: 110,
     effectiveSpeed: false,
+    /* hit_chance(chance_of_monster_hit_base(race, effect), p->state.ac +
+     * p->state.to_a) (mon-lore.c:1710-1712). chance_of_monster_hit_base is
+     * MAX(race->level, 1) * 3 + effect->power (mon-attack.c). */
+    monsterHitPercent: (race, effect) =>
+      getHitChance(
+        Math.max(race.level, 1) * 3 + effect.power,
+        ctx.game.state.actor.defense.ac + ctx.game.state.actor.defense.toA,
+      ),
     /* Inert here: the spoiler writes its own name/colour/symbol line (L692-711)
      * rather than going through loreTitle, and the output is a plain-text file
      * with no colour runs at all. */
