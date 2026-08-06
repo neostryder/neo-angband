@@ -66,11 +66,23 @@ deferred:
     level-local (plus the shared-registry cur_num check for friend uniques).
   - place_trap only records the grid (the trap domain / trap objects are not
     ported); square_set_door_lock is a no-op but its RNG roll is preserved.
-  - Arena and quest levels, persistent-level connectors (join / one_off), the
-    known-level ("player cave") duplicate, level feeling (place_feeling /
-    calc_*_feeling), and dump_level HTML output.
-  - The birth_connect_stairs / birth_levels_persist player-option paths of
-    new_player_spot (exposed as an injected createStair parameter).
+  - "Arena and quest levels, the known-level (\"player cave\") duplicate, and
+    dump_level HTML output. Level feeling came OFF this list when
+    place_feeling / calc_obj_feeling / calc_mon_feeling landed, and the line
+    kept naming it; gen/generate.ts runs all three."
+  - "Persistent-level connectors: NOT deferred (PORT_TODO 4.3). getJoinInfo
+    (generate.c L893-992), getMinLevelSize (L997-1013) and collectJoins
+    (L1203-1214) are all in gen/generate.ts, dun.join / one_off_above /
+    one_off_below are seeded before the builder runs, and session/changeLevel
+    resolves all of them from the frozen-level cache. The one_off lists are an
+    AVOID list for alloc_stairs, not a build list, so they impose no minimum
+    level size - only the immediate neighbours do."
+  - "birth_connect_stairs is wired (session/changeLevel resolves the pending
+    stair command and passes createStair, gated on the option).
+    birth_levels_persist's own path through new_player_spot is the same
+    injected parameter; a restored persistent level does not use it at all,
+    because prepare_next_level sanitizes and places the retained grid instead
+    of laying an arrival stair."
 verified-by:
   - packages/core/src/gen/gen.test.ts: determinism, connectivity flood fill,
     stair/player invariants, monster/object count ranges, bounds
