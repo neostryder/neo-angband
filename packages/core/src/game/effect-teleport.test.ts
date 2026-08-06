@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, RF, SQUARE } from "../generated/index.js";
+import { EF, MSG, RF, SQUARE } from "../generated/index.js";
 import {
   EffectRegistry,
   sourceMonster,
@@ -20,6 +20,9 @@ import {
   chooseTeleportDestination,
   registerTeleportHandlers,
   teleportMonster,
+  teleportPlayer,
+  teleportPlayerLevel,
+  teleportPlayerTo,
 } from "./effect-teleport.js";
 import { caveFindDecoy } from "./effect-mon-origin.js";
 import { targetIsSet, targetSetLocation } from "./target.js";
@@ -360,5 +363,137 @@ describe("teleportMonster (project_m backing)", () => {
     expect(state.chunk.isMonsterWalkable(mon.grid)).toBe(true);
     expect(state.chunk.mon(mon.grid)).toBe(mon.midx);
     expect(movedMidx).toBe(mon.midx);
+  });
+});
+
+/*
+ * PORT_TODO 3.26. MSG_TELEPORT, MSG_TPOTHER and MSG_TPLEVEL sat in the
+ * generated table with no caller: every teleport in the game was silent, and
+ * `sound()` is not something a message test can notice. These assert the code
+ * that reaches state.sound, which is the channel a sound pack subscribes to.
+ */
+function sounds(state: GameState): number[] {
+  const out: number[] = [];
+  state.sound = (type: number): void => void out.push(type);
+  return out;
+}
+
+describe("teleport sounds (PORT_TODO 3.26)", () => {
+  it("EF_TELEPORT plays MSG_TELEPORT when the player moves", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 7 });
+    const heard = sounds(state);
+    registry().effectSimple(EF.TELEPORT, env(state), {
+      origin: sourcePlayer(),
+      diceString: "10",
+    });
+    expect(heard).toEqual([MSG.TELEPORT]);
+  });
+
+  it("EF_TELEPORT plays MSG_TPOTHER when a monster teleports itself", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 11 });
+    const mon = addMon(state, plainRace, loc(10, 10), { hp: 30 });
+    const heard = sounds(state);
+    registry().effectSimple(EF.TELEPORT, env(state), {
+      origin: sourceMonster(mon.midx),
+      diceString: "10",
+      subtype: 0,
+    });
+    expect(heard).toEqual([MSG.TPOTHER]);
+  });
+
+  it("a blocked teleport is silent, because upstream's sound is past the return", () => {
+    const start = loc(20, 12);
+    const state = makeState({ playerGrid: start, seed: 7 });
+    state.chunk.sqinfoOn(start, SQUARE.NO_TELEPORT);
+    const heard = sounds(state);
+    registry().effectSimple(EF.TELEPORT, env(state), {
+      origin: sourcePlayer(),
+      diceString: "100",
+    });
+    expect(heard).toEqual([]);
+  });
+
+  it("EF_TELEPORT_TO plays MSG_TELEPORT", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 3 });
+    const mon = addMon(state, plainRace, loc(26, 12), { hp: 30 });
+    const heard = sounds(state);
+    registry().effectSimple(
+      EF.TELEPORT_TO,
+      env(state, { teleport: {} }),
+      { origin: sourcePlayer(), x: mon.grid.x, y: mon.grid.y },
+    );
+    expect(heard).toEqual([MSG.TELEPORT]);
+  });
+
+  it("EF_TELEPORT_LEVEL plays MSG_TPLEVEL and types the message with it", () => {
+    const state = makeState();
+    state.chunk.depth = 0;
+    const heard = sounds(state);
+    const typed: (string | undefined)[] = [];
+    const base: EffectContext = {
+      rng: state.rng,
+      messages: { msg: (_t, msgt) => void typed.push(msgt) },
+    };
+    registry().effectSimple(
+      EF.TELEPORT_LEVEL,
+      attachGameEnv(base, {
+        state,
+        cast: { projections, maxRange: 20, playerActor: basicPlayerActor(state) },
+        teleport: { changeLevel: () => {} },
+      }),
+      { origin: sourcePlayer() },
+    );
+    expect(heard).toEqual([MSG.TPLEVEL]);
+    expect(typed).toEqual(["TPLEVEL"]);
+  });
+
+  it("teleportMonster plays MSG_TPOTHER, not the player's sound", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 9 });
+    const mon = addMon(state, plainRace, loc(10, 10), { hp: 30 });
+    const heard = sounds(state);
+    teleportMonster(state, mon.midx, 8, {});
+    expect(heard).toEqual([MSG.TPOTHER]);
+  });
+});
+
+/*
+ * The three sound sites the first mutation pass could not kill, because
+ * nothing anywhere drove them: teleportPlayer and teleportPlayerTo are only
+ * reachable from PROJ_NEXUS's random branches (player-side.ts:394,405), and
+ * the TPLEVEL "up" arm needs a depth the town test cannot have.
+ */
+describe("the teleport helpers PROJ_NEXUS dispatches to", () => {
+  it("teleportPlayer plays MSG_TELEPORT and moves the player", () => {
+    const start = loc(20, 12);
+    const state = makeState({ playerGrid: start, seed: 13 });
+    const heard = sounds(state);
+    teleportPlayer(state, 20, {});
+    expect(heard).toEqual([MSG.TELEPORT]);
+    expect(locEq(state.actor.grid, start)).toBe(false);
+  });
+
+  it("teleportPlayerTo plays MSG_TELEPORT and lands near the aim", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 5 });
+    const aim = loc(30, 18);
+    const heard = sounds(state);
+    teleportPlayerTo(state, aim, {});
+    expect(heard).toEqual([MSG.TELEPORT]);
+    expect(distance(state.actor.grid, aim)).toBeLessThanOrEqual(2);
+  });
+
+  it("teleportPlayerLevel's UP arm plays MSG_TPLEVEL too, not just the down one", () => {
+    const state = makeState();
+    state.chunk.depth = 5;
+    const heard = sounds(state);
+    const said: [string, string | undefined][] = [];
+    /* maxDepth 6 forces down false (depth >= maxDepth - 1), leaving up. */
+    teleportPlayerLevel(
+      state,
+      { maxDepth: 6, changeLevel: () => {} },
+      (t, msgt) => void said.push([t, msgt]),
+      false,
+    );
+    expect(said).toEqual([["You rise up through the ceiling.", "TPLEVEL"]]);
+    expect(heard).toEqual([MSG.TPLEVEL]);
   });
 });

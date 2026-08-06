@@ -25,15 +25,19 @@
  * #19), the Dimension Door aim prompt (targeting, #24), the trap / glyph / web /
  * damaging-terrain destination predicates (traps #21, terrain), and
  * dungeon_get_next_level / dungeon_change_level (level change, #23). Arena,
- * decoy, and target state use their live GameState counterparts. Sound and the
- * monster "puzzled" message are omitted and ledgered.
+ * decoy, and target state use their live GameState counterparts.
+ *
+ * The sounds ARE ported now (PORT_TODO 3.26): MSG_TELEPORT / MSG_TPOTHER at
+ * the two swap sites and MSG_TPLEVEL on the level-change messages, each
+ * through state.sound at the point upstream calls sound(). Only the monster
+ * "puzzled" message (lore, #19) is still omitted.
  *
  * teleportMonster is the concrete backing for the project_m `teleport` hook
  * (game/project-monster.ts) deferred there: a monster teleported a fixed number
  * of grids by an area effect.
  */
 
-import { EF, SQUARE } from "../generated/index.js";
+import { EF, MSG, SQUARE } from "../generated/index.js";
 import { distance, loc, randLoc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import type {
@@ -94,9 +98,14 @@ export interface TeleportEnv {
   maxDepth?: number;
 }
 
-/** msg() convenience over the effect context's optional message sink. */
-function say(ctx: EffectHandlerContext, text: string): void {
-  ctx.env.messages?.msg(text);
+/**
+ * msg() convenience over the effect context's optional message sink. `msgt` is
+ * a MSG_* NAME (the sink's convention, shared with effect-attack and
+ * take-hit-hooks), and supplies msgt's message half only - the sound half is
+ * state.sound at the call site, because this helper has no state.
+ */
+function say(ctx: EffectHandlerContext, text: string, msgt?: string): void {
+  ctx.env.messages?.msg(text, msgt);
 }
 
 /**
@@ -266,6 +275,10 @@ const handleTELEPORT: EffectHandler = (ctx) => {
     return true;
   }
 
+  /* sound(is_player ? MSG_TELEPORT : MSG_TPOTHER) (effect-handler-general.c
+   * :2666): after the spot is picked, before the swap. */
+  state.sound?.(isPlayer ? MSG.TELEPORT : MSG.TPOTHER);
+
   const startOcc = state.chunk.mon(start);
   moveOccupant(state, start, dest);
   if (isPlayer) tp.onPlayerPostMove?.(ctx.origin.what === "monster");
@@ -385,6 +398,9 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
   /* Find a usable location, widening the search when it keeps failing. */
   const land = findLandingNear(state, aim, dis, playerMoves, tp);
 
+  /* sound(MSG_TELEPORT) (effect-handler-general.c:2808). */
+  state.sound?.(MSG.TELEPORT);
+
   const startOcc = state.chunk.mon(start);
   moveOccupant(state, start, land);
   if (playerMoves) tp.onPlayerPostMove?.(isMonsterOrigin);
@@ -421,6 +437,8 @@ export function teleportPlayerTo(
   }
 
   const land = findLandingNear(state, aim, 0, true, tp);
+  /* sound(MSG_TELEPORT) (effect-handler-general.c:2808), the handler's. */
+  state.sound?.(MSG.TELEPORT);
   movePlayer(state, land);
   tp.onPlayerPostMove?.(true);
   state.chunk.sqinfoOff(land, SQUARE.PROJECT);
@@ -435,7 +453,7 @@ export function teleportPlayerTo(
 export function teleportPlayerLevel(
   state: GameState,
   tp: TeleportEnv,
-  say: (text: string) => void,
+  say: (text: string, msgt?: string) => void,
   hostile: boolean,
 ): void {
   const depth = state.chunk.depth;
@@ -483,11 +501,16 @@ export function teleportPlayerLevel(
   }
 
   if (up) {
-    say("You rise up through the ceiling.");
+    /* msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:2909): the type is the
+     * message's, the sound is msgt's other half. */
+    say("You rise up through the ceiling.", "TPLEVEL");
+    state.sound?.(MSG.TPLEVEL);
     targetDepth = getNext(depth, -1);
     tp.changeLevel?.(targetDepth);
   } else if (down) {
-    say("You sink through the floor.");
+    /* msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:2915). */
+    say("You sink through the floor.", "TPLEVEL");
+    state.sound?.(MSG.TPLEVEL);
     targetDepth = forceDescend
       ? getNext(maxPlayerDepth, 1)
       : getNext(depth, 1);
@@ -530,7 +553,7 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
   teleportPlayerLevel(
     state,
     tp,
-    (t) => say(ctx, t),
+    (t, type) => say(ctx, t, type),
     ctx.origin.what === "monster",
   );
   return true;
@@ -587,6 +610,8 @@ export function teleportPlayer(
     return;
   }
 
+  /* sound(MSG_TELEPORT) (effect-handler-general.c:2666, is_player arm). */
+  state.sound?.(MSG.TELEPORT);
   movePlayer(state, dest);
   tp.onPlayerPostMove?.(true);
   state.chunk.sqinfoOff(dest, SQUARE.PROJECT);
@@ -608,6 +633,8 @@ export function teleportMonster(
   const start = mon.grid;
   const dest = chooseTeleportDestination(state, start, dist, 0, false, tp);
   if (!dest) return;
+  /* sound(MSG_TPOTHER) (effect-handler-general.c:2666, the !is_player arm). */
+  state.sound?.(MSG.TPOTHER);
   monsterSwap(state, start, dest);
   tp.onMonsterPostMove?.(midx);
   state.chunk.sqinfoOff(dest, SQUARE.PROJECT);

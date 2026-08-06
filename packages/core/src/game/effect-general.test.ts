@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, MON_TMD, OF, RF, TMD, TV } from "../generated/index.js";
+import { EF, MFLAG, MON_TMD, MSG, OF, RF, TMD, TV } from "../generated/index.js";
 import { loc, locEq } from "../loc.js";
 import {
   EffectRegistry,
@@ -666,5 +666,117 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
       diceString: "10",
     });
     expect(mon.mTimed[MON_TMD.FAST]!).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * PORT_TODO 3.26. Every one of these is msgt(MSG_TPLEVEL, ...) upstream -
+ * message AND sound - and the port had only the message. The existing tests
+ * above reach the same lines and assert only the text, which is exactly how
+ * the missing half stayed invisible.
+ */
+describe("the level-change messages carry MSG_TPLEVEL (PORT_TODO 3.26)", () => {
+  function typedSink(state: GameState): {
+    heard: number[];
+    said: [string, unknown][];
+  } {
+    const heard: number[] = [];
+    const said: [string, unknown][] = [];
+    state.sound = (t: number): void => void heard.push(t);
+    state.msg = (t: string, type?: unknown): void => void said.push([t, type]);
+    return { heard, said };
+  }
+
+  it("DEEP_DESCENT types and sounds both of its arms", () => {
+    const state = makeState({ seed: 63 });
+    state.chunk.depth = 10;
+    state.actor.player.maxDepth = 10;
+    const heard: number[] = [];
+    state.sound = (t: number): void => void heard.push(t);
+    const typed: (string | undefined)[] = [];
+    const base: EffectContext = {
+      rng: state.rng,
+      messages: { msg: (_t, msgt) => void typed.push(msgt) },
+    };
+    registry().effectSimple(
+      EF.DEEP_DESCENT,
+      attachGameEnv(base, {
+        state,
+        cast: { projections: [], maxRange: 20, playerActor: basicPlayerActor(state) },
+      }),
+      { origin: sourcePlayer() },
+    );
+    expect(typed).toEqual(["TPLEVEL"]);
+    expect(heard).toEqual([MSG.TPLEVEL]);
+
+    /* The blocked arm at the dungeon bottom is msgt too (:1178). */
+    const bottom = makeState({ seed: 63 });
+    bottom.chunk.depth = 127;
+    bottom.actor.player.maxDepth = 127;
+    const heard2: number[] = [];
+    bottom.sound = (t: number): void => void heard2.push(t);
+    const typed2: (string | undefined)[] = [];
+    registry().effectSimple(
+      EF.DEEP_DESCENT,
+      attachGameEnv(
+        { rng: bottom.rng, messages: { msg: (_t, m) => void typed2.push(m) } },
+        {
+          state: bottom,
+          cast: {
+            projections: [],
+            maxRange: 20,
+            playerActor: basicPlayerActor(bottom),
+          },
+        },
+      ),
+      { origin: sourcePlayer() },
+    );
+    expect(typed2).toEqual(["TPLEVEL"]);
+    expect(heard2).toEqual([MSG.TPLEVEL]);
+  });
+
+  it("the word-of-recall yank types and sounds, upwards and downwards", () => {
+    const up = makeState({ seed: 61 });
+    up.chunk.depth = 7;
+    up.actor.player.wordRecall = 1;
+    const u = typedSink(up);
+    processWorld(up);
+    expect(u.said).toContainEqual(["You feel yourself yanked upwards!", "TPLEVEL"]);
+    expect(u.heard).toContain(MSG.TPLEVEL);
+
+    const down = makeState({ seed: 61 });
+    down.chunk.depth = 0; /* in town: recall pulls you back under */
+    down.actor.player.maxDepth = 9;
+    down.actor.player.wordRecall = 1;
+    const d = typedSink(down);
+    processWorld(down);
+    expect(d.said).toContainEqual([
+      "You feel yourself yanked downwards!",
+      "TPLEVEL",
+    ]);
+    expect(d.heard).toContain(MSG.TPLEVEL);
+  });
+
+  it("the delayed deep descent types and sounds, arriving or thrown back", () => {
+    const drop = makeState({ seed: 63 });
+    drop.chunk.depth = 10;
+    drop.actor.player.maxDepth = 10;
+    drop.actor.player.deepDescent = 1;
+    const a = typedSink(drop);
+    processWorld(drop);
+    expect(a.said).toContainEqual(["The floor opens beneath you!", "TPLEVEL"]);
+    expect(a.heard).toContain(MSG.TPLEVEL);
+
+    const stuck = makeState({ seed: 63 });
+    stuck.chunk.depth = 127;
+    stuck.actor.player.maxDepth = 127;
+    stuck.actor.player.deepDescent = 1;
+    const b = typedSink(stuck);
+    processWorld(stuck);
+    expect(b.said).toContainEqual([
+      "You are thrown back in an explosion!",
+      "TPLEVEL",
+    ]);
+    expect(b.heard).toContain(MSG.TPLEVEL);
   });
 });
