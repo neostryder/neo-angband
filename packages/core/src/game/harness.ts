@@ -197,6 +197,10 @@ export function makeState(opts: StateOptions = {}): GameState {
     speed: opts.speed ?? 110,
     totalEnergy: 0,
     combat: defaultCombat(),
+    /* p->known_state. A harness player has learned no runes and wears no
+     * gear, so the two derives are equal by construction; a test that wants
+     * them to differ sets knownCombat itself. */
+    knownCombat: defaultCombat(),
     defense: defaultDefense(),
     weapon: null,
     stealth: opts.stealth ?? 0,

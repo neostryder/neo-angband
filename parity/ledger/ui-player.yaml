@@ -72,12 +72,15 @@ deferred:
     ui_entry_renderer_apply, char_sheet_config loaded from ui_entry.txt /
     ui_entry_renderers.txt) plus display_player_equippy. That whole grid, and
     its cached char_sheet layout, belong to the ui-entry.c port slice.
-  - The combat panel reads player->known_state (the rune-gated display state)
-    for ac / to_a / to_h / to_d / bless_wield and obj->known for the weapon
-    dice and object_to_hit / object_to_dam. The port uses the REAL combat state
-    (actor.combat) and the real weapon object, exactly the known_state /
-    real-state deferral display.ts's prt_ac took (tracked in ui-display.yaml and
-    obj-desc.yaml); an unknown rune is therefore not hidden from the panel.
+  - The combat panel reads player->known_state for ac / to_a / to_h / to_d /
+    bless_wield and obj->known for the weapon dice and object_to_hit /
+    object_to_dam (ui-player.c:736-768), and the port now does both
+    (PORT_TODO 2.6): panelCombat reads actor.knownCombat and puts the weapon
+    and launcher through objectKnownShadow itself. The shadow is derived in
+    panelCombat rather than added to CharSheetDeps, for the same reason
+    `launcher` is derived in resolveDeps - a seam a caller must remember to
+    fill is a seam that ends up unfilled. The two BTH skills and the blow /
+    shot counts still read player->state, as upstream does.
   - CharSheetDeps seams (defaults chosen for a freshly born headless character;
     the session wires the real player_state values):
     - fullName (default ""): player->full_name; the port Player has no name

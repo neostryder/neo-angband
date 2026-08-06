@@ -106,6 +106,13 @@ function makeTestState(playerGrid: Loc): GameState {
       toH: 0, toD: 0, ac: 0, toA: 0, skills: [],
       numBlows: 100, ammoMult: 1, numShots: 0, ammoTval: 0, blessWield: false,
     },
+    /* p->known_state. A separate object, not a second reference to `combat`:
+     * the sheet reads THIS one for ac / to_a / to_h / to_d, and sharing would
+     * make a test that means to move only the real state move both. */
+    knownCombat: {
+      toH: 0, toD: 0, ac: 0, toA: 0, skills: [],
+      numBlows: 100, ammoMult: 1, numShots: 0, ammoTval: 0, blessWield: false,
+    },
     defense: { ac: 0, toA: 0 },
     weapon: null,
     stealth: 0,

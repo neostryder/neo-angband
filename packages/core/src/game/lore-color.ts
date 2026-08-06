@@ -41,7 +41,19 @@ export function buildLoreColorState(
   timedTable: readonly TimedEffect[] = [],
 ): LoreColorState {
   const p = state.actor.player;
-  const ps = state.playerState;
+  /*
+   * p->known_state, not p->state. Every one of mon-lore.c's reads is a
+   * known_state read (L82-L268), and player_inc_check takes a `lore` flag whose
+   * only job is to switch the same three checks over to it
+   * (player-timed.c:930-1000). The recall is telling the player what THEY know
+   * they resist, so a resist from a ring whose rune is unlearned must not
+   * recolour a monster's breath as harmless (PORT_TODO 2.6).
+   *
+   * Absent (the worldless harness) reads as "nothing known", which is what the
+   * `?? 0` fallbacks below already meant - it is deliberately NOT defaulted to
+   * state.playerState, because falling back to the real state is the defect.
+   */
+  const ps = state.knownPlayerState;
 
   const resLevel = (elem: number): number => ps?.elInfo[elem]?.resLevel ?? 0;
   const hasFlag = (of: number): boolean => (ps ? ps.flags.has(of) : false);

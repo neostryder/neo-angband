@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STAT, TMD } from "../generated/index.js";
+import { STAT, TMD, TV } from "../generated/index.js";
+import { bindConstants } from "../constants.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
 import {
   COLOUR_L_BLUE,
   COLOUR_L_GREEN,
@@ -7,6 +14,7 @@ import {
   COLOUR_RED,
   COLOUR_YELLOW,
 } from "../color.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { SKILL, STAT_MAX } from "../player/types.js";
 import { makeState } from "./harness.js";
 import type { CharSheetPanel } from "./char-sheet.js";
@@ -17,6 +25,38 @@ import {
   showDepth,
   statTable,
 } from "./char-sheet.js";
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+const objReg = new ObjRegistry({
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson);
+const objConstants = bindConstants(loadJson("constants"));
+
+/** A plain object of the first ordinary kind of a tval. */
+function makeObj(tval: number): GameObject {
+  const kind = objReg.kinds.find(
+    (k) => k.tval === tval && k.kidx < objReg.ordinaryKindCount,
+  );
+  if (!kind) throw new Error(`no ordinary kind for tval ${tval}`);
+  return objectPrep(new Rng(9), objReg, objConstants, kind, 0, "average");
+}
 
 function panel(panels: CharSheetPanel[], key: string): CharSheetPanel {
   const p = panels.find((x) => x.key === key);
@@ -150,12 +190,15 @@ describe("get_panel_combat / topleft label + format (ui-player.c L728/L694)", ()
   it("formats Armor, Melee, To-hit, Blows and the ranged rows", () => {
     const state = makeState();
     setSkills(state, {}); /* all 20 -> bth = 20*10/3 = 66 -> /10 = 6 */
-    const c = state.actor.combat;
-    c.toD = 0;
-    c.toH = 0;
-    c.toA = 0;
-    c.ac = 0;
-    c.numBlows = 100;
+    /* The panel reads p->known_state for ac / to_a / to_h / to_d and p->state
+     * for the blow count (ui-player.c:736-757), so the fixture zeroes the two
+     * separately - PORT_TODO 2.6. */
+    const k = state.actor.knownCombat;
+    k.toD = 0;
+    k.toH = 0;
+    k.toA = 0;
+    k.ac = 0;
+    state.actor.combat.numBlows = 100;
     const combat = panel(characterPanels(state), "combat").lines;
     expect(combat[0]).toEqual({ label: "Armor", value: "[0,+0]", color: COLOUR_L_BLUE });
     expect(combat[1]!.label).toBe(""); /* panel_space */
@@ -249,33 +292,50 @@ describe("the sheet's ranged rows read the equipped launcher (PORT_TODO 3.9)", (
     return rows;
   }
 
-  it("a bow with a to-dam bonus moves Shoot to-dam off zero", () => {
+  it("a bow's to-dam is shown only once its rune is learned", () => {
     const state = makeState();
     const bowSlot = state.actor.player.body.slots.findIndex((s) => s?.type === "BOW");
     expect(bowSlot, "fixture: the body has a shooting slot").toBeGreaterThanOrEqual(0);
 
-    const before = combatRows(state);
-    expect(before.get("Shoot to-dam"), "unarmed baseline").toBe("+0");
+    expect(
+      combatRows(state).get("Shoot to-dam"),
+      "unarmed baseline",
+    ).toBe("+0");
 
-    /* A minimal launcher: the sheet reads only object_to_dam / object_to_hit off
-     * it, both of which are the object's own known to_d / to_h. Constructing the
-     * object here rather than prepping a real kind keeps the assertion about the
-     * WIRING - a real kind rolls +0 to-dam at "average" and would read the same
-     * as no launcher at all, which is exactly the vacuous test to avoid. */
+    /*
+     * A REAL kind, prepped from the shipped pack, with the to-dam written on
+     * afterwards. The fixture used to be a spread of `{}` with two numbers on
+     * it, which was enough while the sheet read the object directly - it is not
+     * enough now that it reads obj->known, because synthesising the twin needs
+     * the kind's own dice and armour (PORT_TODO 2.6). A prepped bow rolls +0
+     * to-dam at "average", so the bonus is still written by hand rather than
+     * hoped for.
+     */
     const handle = state.gear.next++;
-    state.gear.store.set(handle, {
-      ...(state.gear.store.get(state.actor.player.equipment[0] ?? 0) ?? {}),
-      toD: 7,
-      toH: 5,
-      dd: 0,
-      ds: 0,
-      number: 1,
-      known: { toD: 7, toH: 5 },
-    } as never);
+    const bow = makeObj(TV.BOW);
+    bow.toD = 7;
+    bow.toH = 5;
+    state.gear.store.set(handle, bow);
     state.actor.player.equipment[bowSlot] = handle;
 
-    const after = combatRows(state);
-    expect(after.get("Shoot to-dam"), "the bow's to-dam is counted").not.toBe("+0");
+    /*
+     * ui-player.c:767 reads object_to_dam(obj->KNOWN), so an unidentified bow
+     * shows nothing. Upstream, and the reason this row exists twice.
+     */
+    expect(
+      combatRows(state).get("Shoot to-dam"),
+      "an unidentified bow's to-dam is not shown",
+    ).toBe("+0");
+
+    /* Learn the to-dam rune and assess the object - what player_know_object
+     * wants before it fills the twin's combat numbers. */
+    state.actor.player.objKnown.toD = 1;
+    bow.notice |= OBJ_NOTICE.ASSESSED;
+
+    expect(
+      combatRows(state).get("Shoot to-dam"),
+      "the bow's to-dam is counted once the rune is known",
+    ).toBe("+7");
   });
 });
 
