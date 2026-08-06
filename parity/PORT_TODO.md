@@ -1037,12 +1037,44 @@ is reachable in play and a test constructs the case that used to be wrong.**
   A grep gave three wrong answers in a row before it existed.
   Sites: `parity/ledger/game-player-path.yaml:94`
 
-- [ ] **2.18 A commanded monster cannot drop what it is carrying.**
-  `packages/core/src/game/mon-cmd.ts:720` no-ops `CMD_DROP` with the comment
-  "Monster-held objects are not modelled". They **are**: `mon.heldObj` is a real
-  pile, `monsterCarry` fills it, and `getRandomMonsterObject` is ported at
-  `packages/core/src/mon/steal.ts:54` and used at `:148`.
-  Sites: `parity/ledger/game-mon-cmd.yaml:62`
+- [x] **2.18 A commanded monster cannot drop what it is carrying.** DONE, and
+  the row was right about the shape of the error: the branch's own comment said
+  monster-held objects "are not modelled", and every piece it needed already
+  existed. `mon.heldObj` is a real pile, `monsterCarry` fills it from generated
+  treasure / a TAKE_ITEM pickup / an EAT_ITEM theft, `monsterDeath` empties it
+  onto the floor, and `getRandomMonsterObject` is the same `one_in_(i)`
+  reservoir draw upstream makes. `commandedDrop` is now the eleven lines of
+  `cmd-cave.c:1854-1868` over those pieces.
+
+  Two details worth keeping:
+
+  - **The empty pile still spends the turn.** Upstream `break`s out of the
+    switch rather than returning, so a monster told to drop nothing stands
+    there for a move. A `return 0` would have been the natural-looking mistake.
+  - **`object_desc` runs AFTER `drop_near`, and the port is the safer of the
+    two.** When the drop merges into a floor stack, `object_absorb` writes the
+    new count into the PILE's object and leaves the dropped one untouched, so
+    both read pre-merge values - except that upstream is reading a struct
+    `floor_carry` has already freed. Same string, one of them by luck.
+
+  > **The first version of the `held_m_idx` test could not fail.** It asserted
+  > `obj.heldMIdx === 0` after an ordinary drop - and `floorCarry` sets that
+  > field itself (`floor.ts:364`), so deleting upstream's `obj->held_m_idx = 0`
+  > left it green. The line only matters when the carry FAILS, so the fixture
+  > now walls off `drop_find_grid`'s entire 7x7 window and the object ends up
+  > nowhere with nobody but L1858 to clear it. Same lesson as
+  > `a-fixture-value-that-cannot-disagree`.
+
+  **Two neighbouring ledger deferrals were retired in the same pass, both
+  describing states that had ended and two of the three claims false outright**
+  - see `parity/ledger/game-mon-cmd.yaml`. Monster names are a full
+  `monster_desc` with upstream's own flag sets, the light-purple commanded
+  highlight is `game/display.ts:396`, the mon-target timed statuses are ported
+  and tested, and `blinked` is upstream **dead code** in
+  `monster_attack_monster`: all four `context->blinked = true` sites are behind
+  `if (context->p)` or behind a `monster_damage_target(context, true)` that
+  returns first for a monster target.
+  Sites: `packages/core/src/game/mon-cmd.ts:583`
 
 - [x] **2.21 Two `mon_take_hit` branches no production caller could reach.** DONE
   — found while proving **0.1**'s `combat-melee.yaml:91` wrong, and both are the

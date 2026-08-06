@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { bindConstants } from "../constants.js";
 import { FlagSet } from "../bitflag.js";
-import { EF, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
+import { EF, MFLAG, MON_TMD, RF, SQUARE, TMD, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { monsterCarry } from "../mon/make.js";
+import { floorPile } from "./floor.js";
 import { distance, loc, locEq } from "../loc.js";
 import { Rng } from "../rng.js";
 import { RSF_SIZE } from "../mon/types.js";
@@ -37,6 +44,38 @@ const projections = bindProjections(
     ) as { records: ProjectionRecordJson[] }
   ).records,
 );
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+const objReg = new ObjRegistry({
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson);
+const objConstants = bindConstants(loadJson("constants"));
+
+/** A plain object of the first ordinary kind of a tval (steal.test.ts pattern). */
+function makeObj(tval: number): GameObject {
+  const kind = objReg.kinds.find(
+    (k) => k.tval === tval && k.kidx < objReg.ordinaryKindCount,
+  );
+  if (!kind) throw new Error(`no ordinary kind for tval ${tval}`);
+  return objectPrep(new Rng(9), objReg, objConstants, kind, 0, "average");
+}
 
 function registry(): EffectRegistry {
   const r = new EffectRegistry();
@@ -655,5 +694,114 @@ describe("SHATTER sub-paths (mon-blows.c L1086-1115)", () => {
       "damage 102 -> value 2 -> randint1(2) must consume a draw the HURT control does not",
     ).not.toEqual(hurt102.rngAfter);
     expect(at102.target.grid, "randint1(2) can never exceed 40").toEqual(TARGET);
+  });
+});
+
+/**
+ * The commanded drop (cmd-cave.c CMD_DROP, L1854-1868), PORT_TODO 2.18.
+ *
+ * The branch used to be a `break` under the note "monster-held objects are not
+ * modelled". Every fixture below fills mon.heldObj with monsterCarry - the same
+ * call a generated monster's treasure, a TAKE_ITEM pickup and an EAT_ITEM theft
+ * all make - which is the measurement that the note was describing a state that
+ * had ended.
+ */
+describe("do_cmd_mon_command CMD_DROP (cmd-cave.c L1854)", () => {
+  /** A commanded monster holding `n` distinct wands, and the message sink. */
+  function holding(n: number) {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
+    const msgs: string[] = [];
+    state.msg = (t) => msgs.push(t);
+    const mon = commandable(state, loc(14, 10));
+    mon.mTimed[MON_TMD.COMMAND] = 10;
+    const carried: GameObject[] = [];
+    for (let i = 0; i < n; i++) {
+      const obj = makeObj(TV.WAND);
+      monsterCarry(mon.heldObj, obj, mon.midx);
+      carried.push(obj);
+    }
+    return { state, mon, msgs, carried };
+  }
+
+  it("moves one held item onto the monster's own grid and says so", () => {
+    const { state, mon, msgs, carried } = holding(1);
+    const only = carried[0]!;
+
+    const energy = doCmdMonCommand(state, { code: "drop" }, deps(state));
+
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(mon.heldObj).toHaveLength(0);
+    expect(floorPile(state, loc(14, 10))).toContain(only);
+    /* drop_near(..., mon->grid, ...) - the monster's grid, not the player's. */
+    expect(floorPile(state, loc(10, 10))).toHaveLength(0);
+    /* "%s drops %s." with m_name = MDESC_CAPITAL|IND_HID|COMMA. */
+    expect(msgs.some((m) => / drops .*\.$/u.test(m))).toBe(true);
+  });
+
+  it("clears held_m_idx even when the drop finds nowhere to land", () => {
+    const { state, mon, carried } = holding(1);
+    const only = carried[0]!;
+    expect(only.heldMIdx).toBeGreaterThan(0);
+
+    /*
+     * WHY THE OBJECT MUST FAIL TO LAND. `obj->held_m_idx = 0` is L1858, BEFORE
+     * drop_near - and on the success path floorCarry sets the same field itself
+     * (floor.ts:364), so an assertion after an ordinary drop passes whether the
+     * line is there or not. It did: the mutation that deleted L1858 survived
+     * the first version of this test. drop_find_grid needs a floor grid within
+     * its 7x7 window, so walling the window off is what makes floor_carry fail
+     * and leaves the object with nobody to clear it but L1858.
+     */
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        state.chunk.setFeat(loc(14 + dx, 10 + dy), GRANITE);
+      }
+    }
+
+    doCmdMonCommand(state, { code: "drop" }, deps(state));
+
+    expect(mon.heldObj).toHaveLength(0);
+    expect(floorPile(state, loc(14, 10))).toHaveLength(0);
+    expect(only.heldMIdx).toBe(0);
+  });
+
+  it("drops exactly one PILE ENTRY of two, and keeps the other held", () => {
+    const { state, mon } = holding(0);
+    /* Two different tvals: monsterCarry stacks mergeable objects into ONE
+     * entry, and upstream excises a whole entry - so two wands would be one
+     * drop and prove nothing about the choice. */
+    monsterCarry(mon.heldObj, makeObj(TV.WAND), mon.midx);
+    monsterCarry(mon.heldObj, makeObj(TV.SWORD), mon.midx);
+    expect(mon.heldObj).toHaveLength(2);
+
+    doCmdMonCommand(state, { code: "drop" }, deps(state));
+
+    expect(mon.heldObj).toHaveLength(1);
+    expect(floorPile(state, loc(14, 10))).toHaveLength(1);
+  });
+
+  it("an empty pile still spends the turn and says nothing", () => {
+    const { state, msgs } = holding(0);
+
+    const energy = doCmdMonCommand(state, { code: "drop" }, deps(state));
+
+    /* Upstream `break`s out of the switch rather than returning, so the
+     * monster still loses its turn standing there (L1857). */
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(msgs).toHaveLength(0);
+  });
+
+  it("an ignored item lands silently", () => {
+    const { state, mon, msgs, carried } = holding(1);
+    const only = carried[0]!;
+    /* ignore_item_ok(player, obj) (L1863): the drop happens either way, only
+     * the message is suppressed. */
+    state.isIgnored = (o) => o === only;
+
+    doCmdMonCommand(state, { code: "drop" }, deps(state));
+
+    expect(mon.heldObj).toHaveLength(0);
+    expect(floorPile(state, loc(14, 10))).toContain(only);
+    expect(msgs.some((m) => m.includes("drops"))).toBe(false);
   });
 });
