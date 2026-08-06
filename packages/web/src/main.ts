@@ -6727,6 +6727,12 @@ function displayDeps() {
      * the player has spell slots but no book holding a studiable spell. The dep
      * defaulted to true, so the indicator was always WHITE. */
     bookHasUnlearnedSpells: playerBookHasUnlearnedSpells(state),
+    /* prt_level_feeling (ui-display.c:1041) shows the object half as `?` until
+     * feeling_squares reaches z_info->feeling_need. This dep was NOT supplied,
+     * so the status line read the model's shipped-value fallback and a pack or
+     * mod that changed world:feeling-need was obeyed by ^F and ignored by the
+     * indicator right next to it (PORT_TODO 3.15). */
+    feelingNeed: constants.feelingNeed,
   };
 }
 

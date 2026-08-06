@@ -19,6 +19,7 @@ import { gearAdd } from "./gear.js";
 import { makeState, plReg } from "./harness.js";
 import type { DisplayRun, SidebarField, StatusIndicator } from "./display.js";
 import { SIDE_HANDLERS, sidebarLayout } from "./display.js";
+import { SHIPPED_FEELING_NEED } from "../constants.js";
 import { loc } from "../loc.js";
 import { cnvStat, panelContains, sidebarModel, statusLineModel } from "./display.js";
 
@@ -677,5 +678,44 @@ describe("sidebarLayout (update_sidebar, ui-display.c L844)", () => {
     /* And it is culled on its ABSOLUTE priority: |-3| = 3 > 24 - 2 is false, so
      * try a screen where it is: max_priority = 2. */
     expect(sidebarLayout(4, table).map((p) => p.key)).toEqual(["hp", "sp"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// world:feeling-need - PORT_TODO 3.15
+// ---------------------------------------------------------------------------
+
+describe("SHIPPED_FEELING_NEED (world:feeling-need)", () => {
+  it("equals the value in the upstream constants.txt", () => {
+    /* Derived, not declared: the number lived as a bare `10` in two files, and
+     * a literal that agrees with the data only because someone typed it twice
+     * is a literal that can quietly stop agreeing. */
+    const txt = readFileSync(
+      new URL("../../../../reference/lib/gamedata/constants.txt", import.meta.url),
+      "utf8",
+    );
+    const m = /^world:feeling-need:(\d+)$/mu.exec(txt);
+    expect(m).not.toBeNull();
+    expect(SHIPPED_FEELING_NEED).toBe(Number(m![1]));
+  });
+
+  it("prt_level_feeling honours a supplied feelingNeed over the fallback", () => {
+    /* The real defect was a dep nobody passed, which is invisible while the
+     * pack's value equals the fallback. So: pass one that does not. */
+    const state = makeState();
+    /* prt_level_feeling returns nothing above ground (`if (!depth) return []`),
+     * which is what the first version of this test measured. */
+    state.chunk.depth = 5;
+    state.chunk.feeling = 55;
+    state.chunk.feelingSquares = SHIPPED_FEELING_NEED; // enough for the default
+    const hidden = (deps: { feelingNeed?: number }) =>
+      statusLineModel(state, deps)
+        .find((i) => i.key === "level_feeling")
+        ?.runs.some((r) => r.text.includes("?")) ?? false;
+    /* The indicator has to be DRAWN for either answer to mean anything. */
+    expect(statusLineModel(state, {}).find((i) => i.key === "level_feeling")?.runs.length)
+      .toBeGreaterThan(0);
+    expect(hidden({})).toBe(false); // fallback: revealed
+    expect(hidden({ feelingNeed: SHIPPED_FEELING_NEED + 1 })).toBe(true); // a pack that asks for more
   });
 });

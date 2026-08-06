@@ -95,9 +95,13 @@ deferred:
     system (#25).
   - object_learn_on_use's exp reward + PN_IGNORE (cmd-obj.c wiring exists
     for flavor awareness; the exp formula joins it with the ignore system).
-  - shape_learn_on_assume is DONE (game-shape.yaml); the shape branches
-    of equip_learn_* (skipping merged gear while shapechanged) still ride
-    the gear-merge model.
+  - shape_learn_on_assume is DONE (game-shape.yaml). The shape TAILS of
+    equip_learn_on_defend / _on_ranged_attack / _on_melee_attack are DONE too
+    (PORT_TODO 3.24): the shape's own to_a / to_h / to_d teach their runes when
+    the gear loop taught nothing. This row used to describe them as "skipping
+    merged gear while shapechanged" and to attach them to equip_learn_flag,
+    which has no shape branch upstream at all - the direction was backwards and
+    the function was the wrong one.
   - temporary brands/slays (player-timed table, ledgered with
     improveAttackModifier). learn_brand_slay_helper's monster-lore learns
     are DONE (mon-lore.yaml).

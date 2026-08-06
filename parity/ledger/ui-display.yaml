@@ -94,7 +94,11 @@ deferred:
       the options store IS ported (player/options.ts, GameState.options).
     - effectiveSpeed (default false): OPT(player, effective_speed).
     - birthFeelings (default true): OPT(player, birth_feelings).
-    - feelingNeed (default 10): z_info->feeling_need (constants.txt).
+    - feelingNeed (default SHIPPED_FEELING_NEED, the shipped constants.txt
+      world:feeling-need): z_info->feeling_need. The web shell DID NOT supply
+      this one, so prt_level_feeling read the default while ^F read the pack -
+      PORT_TODO 3.15. It is supplied now; the default remains for the worldless
+      harness and is checked against constants.txt by a test.
     - timedEffects (default []): the timed_effects[] table (player/bind.ts,
       TMD-indexed); [] means prt_tmd names nothing.
     - statUse (default: modify_stat_value(stat_cur, race+class adj)):
