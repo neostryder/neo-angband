@@ -95,7 +95,7 @@ import {
   locIsZero,
   locSum,
 } from "../loc.js";
-import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TMD, TRF } from "../generated/index.js";
+import { MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TMD, TRF } from "../generated/index.js";
 import type { Monster } from "../mon/monster.js";
 import { MON_GROUP } from "../mon/types.js";
 import {
@@ -147,6 +147,13 @@ import { disturb } from "./player-path.js";
 import { floorExcise, floorPile } from "./floor.js";
 import { describeObject } from "./describe.js";
 import { ODESC } from "../obj/desc.js";
+import {
+  squareDestroyWall,
+  squareIsSecretDoor,
+  squareOpenDoor,
+  squareSmashDoor,
+  squareSmashWall,
+} from "./cave-square.js";
 import { squareIsEmptyLive } from "./mon-place.js";
 import {
   squareIsPlayerTrap,
@@ -1011,58 +1018,6 @@ export function monsterTurnShouldStagger(
   const roll = state.rng.randint0(100);
   if (roll < confusedChance) return STAGGER.CONFUSED;
   return roll < chance ? STAGGER.INNATE : STAGGER.NO;
-}
-
-/** square_issecretdoor: a door still disguised as rock (cave-square.c L304). */
-function squareIsSecretDoor(state: GameState, grid: Loc): boolean {
-  const f = state.chunk.feature(grid).flags;
-  return f.has(TF.DOOR_ANY) && f.has(TF.ROCK);
-}
-
-/** square_destroy_wall (cave-square.c L1419): turn a wall to floor. */
-function squareDestroyWall(state: GameState, grid: Loc): void {
-  state.chunk.setFeat(grid, FEAT.FLOOR);
-}
-
-/** square_open_door (cave-square.c L1351): remove the lock, open the door. */
-function squareOpenDoor(state: GameState, grid: Loc): void {
-  state.removeDoorLock?.(grid);
-  state.chunk.setFeat(grid, FEAT.OPEN);
-}
-
-/** square_smash_door (cave-square.c L1367): remove the lock, break the door. */
-function squareSmashDoor(state: GameState, grid: Loc): void {
-  state.removeDoorLock?.(grid);
-  state.chunk.setFeat(grid, FEAT.BROKEN);
-}
-
-/**
- * square_smash_wall (cave-square.c L1424): reduce the wall and much of what is
- * next to it to floor. Each adjacent granite / quartz / magma grid gets a
- * survival roll (one_in_ 4 / 10 / 20) - the RNG draws happen in ddgrid_ddd
- * order, exactly once per mineral neighbour. (Decoy destruction on adjacent
- * floors is DEFERRED and draws no RNG.)
- */
-function squareSmashWall(state: GameState, grid: Loc): void {
-  const c = state.chunk;
-  c.setFeat(grid, FEAT.FLOOR);
-
-  for (let i = 0; i < 8; i++) {
-    const adj = locSum(grid, DDGRID_DDD[i] as Loc);
-    if (!c.inBoundsFully(adj)) continue;
-    if (c.isPerm(adj)) continue;
-    /* Ignore floors (adjacent-decoy destruction DEFERRED). */
-    if (c.isFloor(adj)) continue;
-    /* Give this grid a chance to survive. */
-    if (
-      (c.isGranite(adj) && state.rng.oneIn(4)) ||
-      (c.isQuartz(adj) && state.rng.oneIn(10)) ||
-      (c.isMagma(adj) && state.rng.oneIn(20))
-    ) {
-      continue;
-    }
-    c.setFeat(adj, FEAT.FLOOR);
-  }
 }
 
 /**

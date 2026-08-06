@@ -80,12 +80,25 @@ notes: >-
     target. The teleport tail at mon-attack.c:887 is upstream dead code, so
     omitting it is EXACT rather than reduced.
   - CMD_DROP (PORT_TODO 2.18), which is now built.
+
+  A FOURTH (PORT_TODO 2.19) named a real gap and mis-described it. It said
+  "square_smash_wall's neighbour scouring reduces to the wall becoming floor;
+  door bashing does not roll the upstream broken-vs-open split beyond
+  square_smash_door -> BROKEN." There is no broken-vs-open ROLL upstream -
+  square_smash_door always sets FEAT_BROKEN, and the open-vs-bash choice is a
+  flag test the port already had. The real defects were that SMASH_WALL shared
+  KILL_WALL's body (no neighbour scour, and no RNG draws, so a commanded smash
+  desynchronised from the same monster smashing on its own turn), and that both
+  door branches set the feature WITHOUT removing the door's lock trap, leaving
+  a burst-open door with a lock square_door_power would still report.
+
+  The cause was structural and is now removed: monster-turn.ts held a correct,
+  file-private copy of all five cave-square.c mutators and mon-cmd.ts had
+  open-coded a degraded second set. Both call game/cave-square.ts now, so there
+  is one body per C function.
 deferred:
   - The cast branch's interactive re-target prompt (target_set_monster
     NULL + get_aim_dir) is UI; the player's current target stands in.
-  - square_smash_wall's neighbour scouring reduces to the wall becoming
-    floor; door bashing does not roll the upstream broken-vs-open split
-    beyond square_smash_door -> BROKEN.
   - TMD_COMMAND's timed-effect definition messages ride the player-timed
     grade table (the direct field set matches player_set_timed's
     no-notify call).
@@ -107,3 +120,10 @@ verified-by:
     finds nowhere to land. That last fixture walls off drop_find_grid's whole
     7x7 window on purpose: on the ordinary path floorCarry clears held_m_idx
     itself, so an assertion after a successful drop passed with L1858 deleted.
+  - game/mon-cmd.test.ts "commanded walk terrain" (5 tests, all
+    mutation-verified, 10 of 10 killed) - SMASH_WALL scours neighbours where
+    KILL_WALL bores one hole; SMASH_WALL moves the RNG state and KILL_WALL is
+    the control that must not; a bashed and an opened door each call
+    removeDoorLock exactly once for their own grid; and a locked door is read
+    and weakened through state.doorLockPower / state.setDoorLock, the same two
+    seams monster_turn_can_move uses.
