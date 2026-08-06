@@ -14,7 +14,7 @@ import { basicPlayerActor } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import { registerMeleeHandlers } from "./effect-melee.js";
 import { targetSetMonster } from "./target.js";
-import { startGame } from "../session/game.js";
+import { loadGame, saveGame, startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 
 const projections = bindProjections(
@@ -224,5 +224,51 @@ describe("the arena round trip (generate.c / game-world.c)", () => {
     expect(locEq(state.actor.grid, homeGrid)).toBe(true);
     expect(state.monsters[midx]).toBeNull(); /* defeated and removed */
     expect(msgs.some((m) => m.endsWith("is defeated!"))).toBe(true);
+  });
+  it("survives a save taken mid-fight, and exits onto the SAME level", () => {
+    /* Upstream stores the pre-arena level in the chunk_list and the savefile
+     * carries it (generate.c:1349 takes the persistent path for an arena too),
+     * so a reload resumes the fight and still knows where to put the player
+     * back. The port kept that level in a closure variable, so a save taken
+     * mid-fight lost it and winning dumped the player on a FRESH level of the
+     * same depth. */
+    const game = startGame(pack, { seed: 4711, depth: 2 });
+    const state = game.state;
+    const homeFeats = Array.from(state.chunk.snapshotSquares().feats);
+    const homeGrid = state.actor.grid;
+
+    const mon = state.monsters.find((m) => m !== null)!;
+    const midx = mon.midx;
+    state.healthWho = mon;
+    state.arenaLevel = true;
+    state.oldGrid = homeGrid;
+    state.generateLevel = true;
+    game.changeLevel(state.chunk.depth);
+    state.generateLevel = false;
+    expect(state.chunk.width).toBe(6);
+    expect(state.arenaStash).toBeDefined();
+
+    /* Save and reload from inside the arena, through real JSON. */
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as ReturnType<
+      typeof saveGame
+    >;
+    expect(saved.arena?.stash).toBeDefined();
+    const reloaded = loadGame(pack, saved);
+    const rs = reloaded.state;
+    expect(rs.arenaLevel).toBe(true);
+    expect(rs.chunk.width).toBe(6);
+    expect(rs.arenaStash).toBeDefined();
+
+    /* Win, and land back on the level the fight started from - the terrain is
+     * the same grid, not a regenerated one of the same depth. */
+    const copy = rs.monsters.find((m) => m !== null)!;
+    expect(arenaInterceptDeath(rs, copy)).toBe(true);
+    reloaded.changeLevel(rs.chunk.depth);
+
+    expect(rs.arenaLevel).toBe(false);
+    expect(Array.from(rs.chunk.snapshotSquares().feats)).toEqual(homeFeats);
+    expect(locEq(rs.actor.grid, homeGrid)).toBe(true);
+    /* kill_arena_monster still finishes the original on the restored level. */
+    expect(rs.monsters[midx]).toBeNull();
   });
 });

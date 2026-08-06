@@ -925,11 +925,20 @@ export interface SavedGame {
    */
   lore?: Array<[string, SavedLore]>;
   /**
-   * Single combat in progress (upkeep->arena_level + player->old_grid).
-   * The stashed pre-arena level does not survive the save boundary:
-   * winning after a reload exits to a fresh level of the same depth.
+   * Single combat in progress (upkeep->arena_level + player->old_grid), plus
+   * the level the player left to get here and the midx of the opponent's
+   * ORIGINAL on it. Upstream keeps that level in the chunk_list, which the
+   * savefile carries, so a reload resumes the fight AND still knows where to
+   * put the player back; `stash` is that level. Absent in saves written before
+   * it was persisted (and in a save taken with the pre-arena level already
+   * lost), which reload with the old behaviour: winning exits to a fresh level
+   * of the same depth.
    */
-  arena?: { oldGrid: { x: number; y: number } };
+  arena?: {
+    oldGrid: { x: number; y: number };
+    stash?: SavedStoredLevel;
+    monMidx?: number;
+  };
   /**
    * The town stores (store.c wr_stores, save.c:744-765): every shop's current
    * proprietor and full stock, in registry order - including FEAT_HOME, whose
@@ -1510,6 +1519,19 @@ export function serializeGame(
               x: state.oldGrid?.x ?? state.actor.grid.x,
               y: state.oldGrid?.y ?? state.actor.grid.y,
             },
+            /* The pre-arena level, through the same serializer the frozen-level
+             * cache uses. Its depth key is the arena's own depth: the arena
+             * chunk carries the depth it was entered from. */
+            ...(state.arenaStash
+              ? {
+                  stash: serializeStoredLevel(
+                    state.chunk.depth,
+                    state.arenaStash,
+                    ids,
+                  ),
+                  monMidx: state.arenaStash.monMidx,
+                }
+              : {}),
           },
         }
       : {}),
@@ -2029,7 +2051,7 @@ export interface SavedStoredLevel {
 }
 
 /** Serialize one frozen level, reusing the current-level serializers. */
-function serializeStoredLevel(
+export function serializeStoredLevel(
   depth: number,
   level: StoredLevel,
   ids: ContentIdResolver,
