@@ -51,10 +51,16 @@ notes: >-
   porter agent and then verified here (typecheck + the recall test over real
   races, both normal and unique, fresh and fully-known lore).
 deferred:
-  - Spell / breath damage numbers (mon_spell_dam / nonhp_dam, mon-spell.c) are
-    not bound to the casting race yet (mon/spell.ts defers them), so
-    monSpellLoreDamage returns 0 via deps.spellLoreDamage when absent - upstream
-    omits the "(N)" at 0 damage. The integration seam is deps.spellLoreDamage.
+  - Spell / breath damage numbers are PORTED, and this row was wrong when it
+    was written (PORT_TODO 3.4, adjudicated 2026-08-05). deps.spellLoreDamage
+    is an OVERRIDE, not the producer: absent, monSpellLoreDamage computes the
+    damage itself (lore-describe.ts:449) - monSpellNonhpDamage for ordinary
+    damaging spells with nothing injected, breathDam for breaths needing only
+    deps.breathProjection, which main.ts:3679 has supplied since bd06e3539
+    (2026-07-13). Tested with derived expectations at
+    mon/lore-describe.test.ts:110 and web/screens.test.ts:907. The web test
+    rebuilds recallDeps by hand (nothing imports main.ts), so the binding LINE
+    is read, not run.
   - The player's melee hit chance (lore_append_toughness L1086) and the
     monster's blow hit chance / its centidamage average (lore_append_attack
     L1710) need the player-attack combat math + live defensive state; they are
