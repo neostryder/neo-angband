@@ -53,6 +53,8 @@ import {
 } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { runBirthOptionsEditor } from "./options";
+import { runHelp } from "./help";
+import { log } from "./logging";
 import { argForceName, argName } from "./launch";
 import {
   charSheetDeps,
@@ -845,6 +847,14 @@ function standardRoller(
       term.onCellTap?.(null);
       resolve(value);
     };
+    /** Touch: a tap on the footer accepts the current roll. Named because '?'
+     * suspends the stage and has to put it back (see openBirthHelp). */
+    const installTap = (): void => {
+      term.onCellTap?.((cell) => {
+        const { rows } = term.size();
+        if (cell.row === rows - 1) finish([...current]);
+      });
+    };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -854,6 +864,16 @@ function standardRoller(
           return;
         case "Enter":
           finish([...current]);
+          return;
+        case "?":
+          // '?' opens help and comes back to the SAME roll - it is not a
+          // reroll and not a stage change (roller_command, ui-birth.c:925-926
+          // -> ACT_CTX_BIRTH_ROLL_HELP, :993-994).
+          openBirthHelp(term, onKey, () => {
+            window.addEventListener("keydown", onKey, true);
+            installTap();
+            paint();
+          });
           return;
         case "r":
         case "R":
@@ -879,11 +899,7 @@ function standardRoller(
       paint();
     };
     window.addEventListener("keydown", onKey, true);
-    // Touch: a tap on the footer accepts the current roll.
-    term.onCellTap?.((cell) => {
-      const { rows } = term.size();
-      if (cell.row === rows - 1) finish([...current]);
-    });
+    installTap();
     paint();
   });
 }
@@ -925,13 +941,53 @@ type BirthMenuResult =
   | { kind: "options" };
 
 /**
+ * '?' during birth opens the general help browser (do_cmd_help). Upstream calls
+ * it from INSIDE the stage's own input loop and does not change stage
+ * (menu_question, ui-birth.c:859-861; roller_command, :925-926 -> :993-994), so
+ * the screen the player comes back to is the one they left, cursor and current
+ * roll intact. That rules out the treatment '=' gets - resolve the stage and let
+ * the caller re-enter it - because re-entry rebuilds the stage from its initial
+ * cursor, and on the roller it would throw the displayed roll away.
+ *
+ * So the stage's input is SUSPENDED for the duration instead. It has to be:
+ * the stage's keydown listener is registered first and calls
+ * stopImmediatePropagation, so leaving it attached would eat every key the help
+ * browser needs. `restore` is the stage's job and must re-register its tap
+ * handler as well as its listener - the overlay nulls term.onCellTap on the way
+ * out - and repaint, since help has cleared the screen.
+ */
+function openBirthHelp(
+  term: GlyphTerm,
+  onKey: (ev: KeyboardEvent) => void,
+  restore: () => void,
+): void {
+  window.removeEventListener("keydown", onKey, true);
+  /* Nulling the tap is belt-and-braces and mutation-verified as such: runHelp's
+   * first act is selectFromMenu, which installs its own handler synchronously,
+   * so there is no instant at which a tap could still reach the stage behind
+   * the modal. It stays because that is a property of the help browser, not of
+   * this call, and a help screen that opened without a tap handler would
+   * otherwise let a stray tap pick a race nobody could see. */
+  term.onCellTap?.(null);
+  void runHelp(term)
+    .catch((err: unknown) => {
+      log.error("birth", "the help browser failed", err);
+    })
+    /* Not `.then(restore, restore)`: the catch above already absorbs the
+     * rejection, and a stage left with no listener is an unrecoverable birth
+     * screen - the player would have no key that does anything. */
+    .then(restore);
+}
+
+/**
  * The faithful multi-column birth menu (ui-birth.c menu_question +
  * birthmenu_display + print_menu_instructions): draws the two-line instruction
  * header (rows 1-6), the yellow stage hint (QUESTION_ROW=7), any already-chosen
  * prior columns with their selection highlighted, the active column with a
  * cursor, and the aux info panel for the highlighted active row. Handles up/down
  * (numpad via menuNav), Enter / tag-letter to select, '*' random, '@' finish
- * (when allowed), '='/'?' as recognized no-ops, ESC / left-arrow to step back,
+ * (when allowed), '=' (birth options, via the caller) and '?' (help, in place),
+ * ESC / left-arrow to step back,
  * and tap-to-select. Resolves a BirthMenuResult.
  */
 function birthMenu(
@@ -1012,6 +1068,15 @@ function birthMenu(
       resolve(res);
     };
 
+    /** Touch: tap a row in the active column to select it. Named because '?'
+     * suspends the stage and has to put it back (see openBirthHelp). */
+    const installTap = (): void => {
+      term.onCellTap?.((cell) => {
+        const i = cell.row - TABLE_ROW;
+        if (i >= 0 && i < count) finish({ kind: "pick", index: i });
+      });
+    };
+
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -1048,7 +1113,14 @@ function birthMenu(
           finish({ kind: "options" });
           return;
         case "?":
-          // Help is not wired into birth in this port: a recognized no-op.
+          // '?' opens help and returns to THIS menu, cursor untouched
+          // (menu_question, ui-birth.c:859-861). The instruction header has
+          // been advertising this key since print_menu_instructions was ported.
+          openBirthHelp(term, onKey, () => {
+            window.addEventListener("keydown", onKey, true);
+            installTap();
+            paint();
+          });
           return;
         default:
           break;
@@ -1061,11 +1133,7 @@ function birthMenu(
       }
     };
     window.addEventListener("keydown", onKey, true);
-    // Touch: tap a row in the active column to select it.
-    term.onCellTap?.((cell) => {
-      const i = cell.row - TABLE_ROW;
-      if (i >= 0 && i < count) finish({ kind: "pick", index: i });
-    });
+    installTap();
     paint();
   });
 }

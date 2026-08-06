@@ -1544,9 +1544,41 @@ is reachable in play and a test constructs the case that used to be wrong.**
   wizard-specific (`packages/web/src/wizard.ts:492-499` states this).
   Sites: `packages/web/src/wizard.ts:498`
 
-- [ ] **3.19 The birth screens answer help with a no-op.**
-  `ui-birth.c` offers help on every birth screen; the port swallows the key.
-  Sites: `packages/web/src/birth.ts:1051`
+- [x] **3.19 The birth screens answer help with a no-op.** DONE.
+  The row was right, and understated by one screen: the menu stages carried a
+  `case "?"` commented *"Help is not wired into birth in this port: a recognized
+  no-op"*, and the standard roller swallowed `?` in its `default` arm with no
+  comment at all. Both now call the help browser, which has existed and been
+  complete the whole time (`packages/web/src/help.ts`, `runHelp`) — **the port
+  was advertising a key it ate.** `print_menu_instructions` is ported verbatim,
+  so the header on every menu stage has been reading "'?' for help" since it
+  landed.
+
+  Its scope is exactly upstream's, checked rather than assumed: `do_cmd_help` is
+  reachable from `menu_question` (`ui-birth.c:859-861`) and `roller_command`
+  (`:925-926` → `:993-994`) and from **nowhere else** — `point_based_command`
+  (`:1106`) has no help key and `textui_birth_quickstart` (`:103`) has none
+  either, so a test asserts `?` does nothing on the point-buy screen. (The two
+  context-menu `ACT_CTX_BIRTH_*_HELP` entries at `:443`/`:950` belong to 3.18,
+  the ENTER command browser.)
+
+  **Help does not change stage, so the stage is suspended, not resolved.** The
+  `'='` treatment — resolve, let the caller re-enter — was the obvious thing to
+  copy and is wrong here: re-entry rebuilds the stage from `initialCursor`, and
+  on the roller it would discard the roll on screen and the `prev_roll` flag
+  with it. `openBirthHelp` detaches the stage's keydown listener (it is
+  registered first and calls `stopImmediatePropagation`, so leaving it attached
+  would eat every key help needs), runs the modal, then re-arms listener AND tap
+  and repaints. Both tests assert the screen comes back **byte-identical** and
+  still answers keys.
+  11 mutations, 10 killed. The survivor is a documented equivalence, noted at
+  the line: nulling the tap before opening help is redundant *today* because
+  `selectFromMenu` installs its own synchronously.
+  One test-harness gap closed on the way: `birth.test.ts`'s fake terminal had no
+  `onCellTap`, so every `term.onCellTap?.(...)` in the birth screens was an
+  optional call on `undefined` and the touch handlers were never registered in a
+  test at all. It has one now, and dropping either `installTap()` is a kill.
+  Sites: `packages/web/src/birth.ts:1115`, `packages/web/src/birth.ts:868`
 
 - [x] **3.20 Temporary brands and slays are not shown in object info.** DONE.
   The item was right, and its own "the combat half is ported and live" note was
