@@ -392,7 +392,8 @@ import {
   showEgoKnowledge,
   showShapeKnowledge,
   showArtifactKnowledge,
-  type ObjectBrowserDeps,
+  type ObjectRecallDeps,
+  type FakeRecallDeps,
 } from "./knowledge";
 import { runCharacterSelect } from "./charselect";
 import {
@@ -2016,6 +2017,12 @@ const inspectExtras: ObjectInfoExtras = {
   projections: booted.registries.projections ?? [],
   constants: booted.registries.constants,
   timedDesc: (i) => players.timed[i]?.desc ?? "",
+  /* summon_desc(idx) (mon-summon.c:258), for EFINFO_SUMM. Unsupplied, the
+   * effect text formats an empty string into its "%s" and an item that summons
+   * reads "it summons ." - the same shape as the missing timedDesc, and now
+   * reachable from the object-knowledge recall as well as from Inspect. The
+   * effect MENU has always had it (effectMenuDeps); this list did not. */
+  summonDesc: (i) => booted.registries.monsters.summons[i]?.desc ?? "",
   raceOrigin: (h) => {
     const r = booted.registries.monsters.races[h];
     if (!r) return null;
@@ -3714,20 +3721,22 @@ async function showAbilitiesScreen(): Promise<void> {
  * The knowledge menu ('~', ui-knowledge.c reset_main_knowledge_menu
  * L3593-3688): upstream's home for browsing everything the character has
  * learned. The entries appear in the exact upstream order (pre-store actions,
- * then the store contents, then the post-store actions). Browsers whose core
- * knowledge state is not yet ported are shown greyed rather than omitted, so
- * the menu keeps its faithful shape:
- *   - Object knowledge and Ego item knowledge need per-kind/ego `everseen`
- *     tracking (not modelled in core yet - obj/desc.ts L629); greyed.
- *   - Shapechange effects needs the shape-lore textblock chain (not ported);
- *     greyed.
- *   - Store/home contents (L3662-3676) pairs with Home persistence (12.1) and
- *     is out of this package's scope; omitted for now.
- * Wired: hall of fame (openHallOfFame), rune (14.10), artifact (14.11), monster, feature + trap (14.13),
- * character history, and equippable comparison. The port's interim
- * autoinscription manager (upstream lives inside the object browser via '{')
- * is retained as a trailing entry so that functionality is not lost while the
- * object browser awaits `everseen`.
+ * then the store contents, then the post-store actions).
+ *
+ * THIS NOTE USED TO LIST THREE GREYED BROWSERS AND WAS WRONG ABOUT ALL THREE.
+ * It said object and ego knowledge "need per-kind/ego `everseen` tracking (not
+ * modelled in core yet)" and that shapechange effects "needs the shape-lore
+ * textblock chain (not ported)". `everseen` has been modelled and wired for
+ * long enough that neither row is greyed on the everseen count alone (ego is
+ * greyed when nothing is seen, which is upstream's own MN_ACT_GRAYED), and
+ * `shapeLoreLines` is a full port of shape_lore driving the shape browser. A
+ * deferral note is evidence about the day it was written; left standing, it
+ * sends the next reader off to build something that already exists.
+ *
+ * What is still true: store/home contents (L3662-3676) pairs with Home
+ * persistence (12.1) and is omitted, and the trailing autoinscription-manager
+ * entry is this port's own addition kept from before '{' worked inside the
+ * object browser.
  */
 /**
  * Every live object find_artifact scans (ui-knowledge.c L1537): floor piles,
@@ -3762,13 +3771,24 @@ async function openKnowledgeMenu(): Promise<void> {
   const monKnown =
     monsterKnowledgeMenu(booted.registries.monsters.races, state.lore).items.length > 0;
   const egoKnown = booted.registries.objects.egos.some((e) => game.everseen.egoSeen(e));
+  /* The live handles desc_obj_fake / object_info_ego need to run object_info on
+   * a throwaway object. Built fresh per browse so a knowledge screen opened
+   * after the player's state moved on describes the state it is looking at. */
+  const fakeRecallDeps = (): FakeRecallDeps => ({
+    state,
+    reg: booted.registries.objects,
+    constants: booted.registries.constants,
+    player: p,
+    inspectExtras,
+    runeEnv: state.runeEnv,
+  });
 
   // Pre-store block (pre_store_actions[], ui-knowledge.c:3597-3606).
   add("Display object knowledge", async () => {
     // textui_browse_object_knowledge (ui-knowledge.c L2139): everseen ||
     // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
     // leaking an unidentified flavoured kind's real name.
-    const objDeps: ObjectBrowserDeps = {
+    const objDeps: ObjectRecallDeps = {
       isAware: (k) => game.flavor.isAware(k),
       wasTried: (k) => game.flavor.wasTried(k),
       everseen: (k) => game.everseen.kindSeen(k),
@@ -3795,6 +3815,8 @@ async function openKnowledgeMenu(): Promise<void> {
         if (text === null) return; // ESC: leave the kind's note unchanged
         registry.set(k.kidx, text, aware);
       },
+      // desc_obj_fake's object_info(OINFO_FAKE) body (ui-knowledge.c L1968).
+      recall: fakeRecallDeps(),
     };
     await showObjectKnowledge(
       term,
@@ -3843,6 +3865,8 @@ async function openKnowledgeMenu(): Promise<void> {
         booted.registries.objects.kinds,
         booted.registries.objects.bases,
         game.everseen,
+        // desc_ego_fake's object_info_ego body (ui-knowledge.c L1798).
+        fakeRecallDeps(),
       ),
     !egoKnown,
   );
@@ -3855,6 +3879,9 @@ async function openKnowledgeMenu(): Promise<void> {
   });
   add("Display shapechange effects", () => {
     // do_cmd_knowledge_shapechange (ui-knowledge.c L3142).
+    /* PORT_TODO 3.21: changeEffectText and triggeringSpells are the two
+     * shape-lore sections still unsupplied here, and their defaults are inert
+     * (see shape-lore.ts), so the shape recall stops after the misc flags. */
     const shapeEnv = {
       properties: booted.registries.objects.properties,
       elementNames: (booted.registries.projections ?? []).map((pr) => pr.name),

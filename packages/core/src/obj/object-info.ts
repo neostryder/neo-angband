@@ -37,7 +37,7 @@ import {
   COLOUR_WHITE,
   COLOUR_YELLOW,
 } from "../color.js";
-import { OF, OBJ_MOD } from "../generated/index.js";
+import { KF, OF, OBJ_MOD } from "../generated/index.js";
 import { ORIGIN, ORIGIN_ENTRIES } from "../generated/origins.js";
 import {
   MELEE_CRIT,
@@ -96,6 +96,7 @@ import {
   OBJ_MOD_MAX,
   OBJ_PROPERTY,
   OFT,
+  type EgoItem,
   type ObjectProperty,
 } from "./types.js";
 
@@ -1527,6 +1528,44 @@ function describeBook(tb: Textblock, deps: ObjectInfoDeps, obj: GameObject): boo
   return true;
 }
 
+/**
+ * describe_ego (obj-info.c L2281): the lines that describe what an EGO TYPE
+ * grants rather than what one instance rolled - the random-pick blurb and the
+ * fuelless-light note. Reached only under the OINFO_EGO bit, i.e. only from
+ * object_info_ego (objectInfoEgo, obj/fake-object.ts). Upstream reads the ego
+ * record directly, not the object, because the point is the class of items.
+ *
+ * The chain is else-if in upstream's order (HI_RES, SUSTAIN, POWER,
+ * RES_POWER), which is NOT ego_apply_magic's order - an ego carrying two of
+ * these flags would be described by one and rolled by the other. Kept as
+ * written; the shipped ego_item.txt gives no ego more than one.
+ */
+function describeEgo(tb: Textblock, ego: EgoItem | null): boolean {
+  if (!ego) return false;
+  let something = false;
+
+  if (ego.kindFlags.has(KF.RAND_HI_RES)) {
+    something = true;
+    tbAppend(tb, "It provides one random higher resistance.  ");
+  } else if (ego.kindFlags.has(KF.RAND_SUSTAIN)) {
+    something = true;
+    tbAppend(tb, "It provides one random sustain.  ");
+  } else if (ego.kindFlags.has(KF.RAND_POWER)) {
+    something = true;
+    tbAppend(tb, "It provides one random ability.  ");
+  } else if (ego.kindFlags.has(KF.RAND_RES_POWER)) {
+    something = true;
+    tbAppend(tb, "It provides one random ability or base resistance.  ");
+  }
+
+  if (ego.flags.has(OF.NO_FUEL) && ego.flagsOff.has(OF.TAKES_FUEL)) {
+    something = true;
+    tbAppend(tb, "It burns forever without fuel.  ");
+  }
+
+  return something;
+}
+
 function describeEffect(
   tb: Textblock,
   deps: ObjectInfoDeps,
@@ -1718,8 +1757,27 @@ export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps):
     return tb;
   }
 
-  /* get_known_flags: non-ego, non-terse -> the shadow's flags. */
-  const flags = shadow.flags;
+  /* get_known_flags (obj-info.c L2217). Both of its branches, which this used
+   * to collapse into the second one:
+   * - EGO: object_flags(obj) - the RAW flags. object_info_ego describes a
+   *   CLASS of item, so the browsing player's rune knowledge has no bearing on
+   *   what it lists.
+   * - otherwise: object_flags_known, i.e. the shadow's - and under TERSE (the
+   *   character dump) minus the base kind's flags.
+   *
+   * Both additions are transcription, not repair, and the measurement says so:
+   * with the twin a full object_copy, object_flags and object_flags_known
+   * return the same set, and EVERY base in the shipped object_base.txt carries
+   * ZERO object flags (its `flags:` lines are all HATES_* element info and KF_*
+   * kind flags), so the TERSE diff removes nothing today. They are here because
+   * a mod that adds a base flag would otherwise find half a function. */
+  let flags = shadow.flags;
+  if (ego) {
+    flags = obj.flags;
+  } else if (terse) {
+    flags = shadow.flags.clone();
+    flags.diff(obj.kind.base.flags);
+  }
   const el = getKnownElements(obj, shadow, deps.player, mode);
 
   if (subjective) describeOrigin(tb, deps, obj, terse);
@@ -1748,7 +1806,9 @@ export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps):
   if (describeMiscMagic(tb, flags, deps.env)) something = true;
   if (describeLight(tb, deps, obj, mode)) something = true;
   if (describeBook(tb, deps, obj)) something = true;
-  /* describe_ego is skipped for inspect (ego bit off). */
+  /* ego && describe_ego(tb, obj->ego) (obj-info.c L2360): only object_info_ego
+   * sets the bit, so this is silent for inspect. */
+  if (ego && describeEgo(tb, obj.ego)) something = true;
   if (something) tbAppend(tb, "\n");
 
   if (!ego) {
@@ -1764,7 +1824,10 @@ export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps):
   }
 
   if (!something && !terse) {
-    tbAppend(tb, "\n\n\nThis item does not seem to possess any special abilities.");
+    /* TWO newlines, not three (obj-info.c L2381). The extra one was a typo that
+     * only showed on the rare item with nothing to say - and no screen printed
+     * this line until desc_obj_fake / desc_ego_fake started running. */
+    tbAppend(tb, "\n\nThis item does not seem to possess any special abilities.");
   }
   return tb;
 }

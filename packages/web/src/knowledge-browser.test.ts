@@ -166,7 +166,11 @@ describe("runGroupedBrowser: the screen upstream draws", () => {
     await tick();
     /* o_cur = 0 on a group change (L1153-1160), so this is the Amulet group's
      * FIRST row and not whatever index the cursor held in the Ring group. */
-    expect(recall).toHaveBeenCalledWith("amulet");
+    /* Second argument: the group the row was chosen from. desc_ego_fake heads
+     * its page with `ego_grp_name(default_group_id(oid))` + the ego name
+     * (ui-knowledge.c L1801), so the browser has to hand it along - an ego
+     * listed under two groups gets two different headers. */
+    expect(recall).toHaveBeenCalledWith("amulet", "Amulet");
     press(win, "Escape");
     press(win, "Escape");
     await done;
@@ -183,7 +187,7 @@ describe("runGroupedBrowser: the screen upstream draws", () => {
     press(win, "ArrowUp"); // row 0 -> wraps to row 59
     press(win, "r"); // 'r'ecall, from ui-knowledge.c:1072
     await tick();
-    expect(recall).toHaveBeenCalledWith("potion-59");
+    expect(recall).toHaveBeenCalledWith("potion-59", "Potion");
     press(win, "Escape");
     press(win, "Escape");
     await done;

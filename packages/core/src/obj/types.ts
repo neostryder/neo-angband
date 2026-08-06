@@ -408,6 +408,16 @@ export interface EgoItem {
   allocMax: number;
   /** kidx values this ego can be applied to (upstream poss_items list). */
   possItems: Set<number>;
+  /**
+   * `ego->poss_items->kidx`: the HEAD of upstream's poss_items list, which
+   * object_info_ego (obj-info.c L2415) picks as the base item to describe the
+   * ego on. Upstream PREPENDS every parsed entry (obj-init.c L2322, L2350), so
+   * the head is the LAST one added - which is not the first member of the Set
+   * above, and is not recoverable from it (a repeated kidx re-prepends
+   * upstream but is a no-op on a Set). -1 when the ego has no poss_items at
+   * all, matching the `if (ego->poss_items)` guard.
+   */
+  firstPossItem: number;
   toH: RandomValue;
   toD: RandomValue;
   toA: RandomValue;
