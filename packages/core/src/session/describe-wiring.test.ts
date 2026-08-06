@@ -16,6 +16,9 @@ import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import { objBaseName } from "../obj/knowledge.js";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
+import { buildCurseTimedFoil } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import type { Artifact } from "../obj/types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -180,5 +183,49 @@ describe("the names corpus is supplied to the live randart generator (5.4)", () 
     const names = (set: readonly ({ name: string } | null)[]): string =>
       set.filter((a) => a !== null).map((a) => a.name).join("|");
     expect(names(withCorpus)).not.toBe(names(without));
+  });
+});
+
+/**
+ * PORT_TODO 5.7: the TIMED_INC curse foil reaches the randart generator.
+ *
+ * artifact_curse_conflicts' "effect foiled by an existing artifact property"
+ * arm (obj-curse.c:267-296) is ported and unit-tested in obj/randart.test.ts -
+ * but against a HAND-BUILT two-entry foil map, so nothing said the SHIPPED
+ * player_timed table produces a usable one, and nothing said swapRandartSet
+ * hands it over. doRandart takes it as an optional argument; an optional
+ * argument nobody passes is a branch that never runs.
+ */
+describe("the curse TIMED_INC foil reaches the randart generator (5.7)", () => {
+  it("the shipped player_timed table yields a foil map with real entries", () => {
+    const foil = buildCurseTimedFoil(bindPlayer(pack.player).timed);
+    expect(foil.size, "player_timed.json ships fail: lines").toBeGreaterThan(0);
+    /* Derived, not declared: at least one entry must carry a real failure
+     * code, or the map would be a set of empty lists that can foil nothing. */
+    const withFails = [...foil.values()].filter((f) => f.length > 0);
+    expect(withFails.length).toBeGreaterThan(0);
+  });
+
+  it("the foil changes the generated set, so the argument is load-bearing", () => {
+    const { booted } = startGame(pack, { seed: 5, depth: 1 });
+    const foil = buildCurseTimedFoil(bindPlayer(pack.player).timed);
+    const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN) ?? [];
+
+    /*
+     * Same seed, same corpus; the ONLY difference is the foil. Seed 1 is
+     * chosen rather than assumed: sweeping 1..60 found the foil changes the
+     * set on 9 of them (1, 4, 15, 31, 36, 41, 47, 52, 58), so most seeds
+     * generate no artifact whose own properties foil the curse it drew. The
+     * first two seeds tried produced identical sets and would have asserted
+     * nothing.
+     */
+    const withFoil = doRandart(booted.registries.objects, 1, words, { timedFoil: foil });
+    const without = doRandart(booted.registries.objects, 1, words);
+    const curses = (set: readonly (Artifact | null)[]): string =>
+      set
+        .filter((a): a is Artifact => a !== null)
+        .map((a) => `${a.name}:${(a.curses ?? []).join(",")}`)
+        .join("|");
+    expect(curses(withFoil)).not.toBe(curses(without));
   });
 });
