@@ -1605,13 +1605,28 @@ is reachable in play and a test constructs the case that used to be wrong.**
   so the "rise up through the ceiling" arm was untested.
   Sites: `parity/ledger/game-effect-teleport.yaml:81`
 
-- [ ] **3.27 The `{tried}` and `{ignore}` name markers never appear.**
-  Two seams that exist on `KnownDesc` and are never supplied.
-  `packages/core/src/game/describe.ts:21` hardcodes `isTried: () => false`, so the
-  in-store "{tried}" marker is dead (`obj/desc.ts:553` is ready for it). And
-  `ignore_item_ok` **is** ported (`packages/core/src/obj/ignore.ts:380`) and used at
-  `packages/core/src/game/obj-cmd.ts:946`, but `knownDescOf` never passes it as
-  `KnownDesc.ignoreItemOk`, so `obj/desc.ts:537` never emits "{ignore}" either.
+- [x] **3.27 The `{tried}` and `{ignore}` name markers never appear.**
+  DONE, and it is two lines — but the reason it sat this long is the reason
+  worth recording. **Both ledger notes explained the absence by naming a
+  missing subsystem, and both were wrong.** `obj-desc.yaml:65` said there was
+  "no live tried seam on GameState"; `FlavorKnowledge.setTried` has been called
+  on every device use since `obj-cmd.ts:1444`, its set is saved and restored
+  with the character, and `wasTried` was sitting right next to it.
+  `obj-desc.yaml:67` said there was "no ignore-name surface"; `state.isIgnored`
+  is bound in `session/game.ts:618` and already drives pickup, running and
+  projection. Nothing was missing except `knownDescOf`'s two reads. *An item
+  that explains WHY something is absent is the one to distrust* — this is the
+  same shape as the deferral notes retired at 0.1.
+
+  What the player sees now: an unidentified wand you have already zapped reads
+  `{tried}` and one you have never touched does not, and an item you told the
+  game to ignore says `{ignore}` — suppressed while `K` unignoring is on,
+  exactly as `ignore_item_ok` requires (`obj-ignore.c:624`).
+
+  Tests: four in `game/describe.test.ts` driving the real `FlavorKnowledge` and
+  the real `ignoreItemOk`, including the `!aware` gate (the marker must vanish
+  when the kind becomes aware) and the worldless case where neither supplier is
+  bound. Mutation-checked (M17, M18).
   Sites: `parity/ledger/obj-desc.yaml:65`, `:67`
 
 - [ ] **3.25 Per-category priority overrides are not reconstructable.**
