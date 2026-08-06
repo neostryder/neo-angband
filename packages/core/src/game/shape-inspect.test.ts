@@ -18,7 +18,8 @@ import type { GamePack } from "../session/game.js";
 import { shapeLoreLines } from "../player/shape-lore.js";
 import type { Shape } from "../player/types.js";
 import { PF } from "../generated/index.js";
-import { OBJ_PROPERTY, STAT_MAX } from "../obj/types.js";
+import { OBJ_PROPERTY } from "../obj/types.js";
+import { STAT_MAX } from "../player/types.js";
 import type { ObjectInfoExtras } from "./object-inspect.js";
 import {
   makeShapeLoreEnv,
