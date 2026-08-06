@@ -35,6 +35,8 @@ import {
   historyIsArtifactKnown,
   artifactIsKnown as coreArtifactIsKnown,
   makeFakeArtifact,
+  makeFakeKind,
+  objectInfoEgo,
   makeObjectInfoDeps,
   objectInfo,
   objectDesc,
@@ -249,7 +251,7 @@ export async function runGroupedBrowser<T>(
   term: GlyphTerm,
   title: string,
   groups: readonly KnowledgeGroup<T>[],
-  recall: (member: T) => Promise<void>,
+  recall: (member: T, groupName: string) => Promise<void>,
   hooks: GroupedBrowserHooks<T> = {},
 ): Promise<void> {
   /* Upstream builds g_list from the sorted object list, so a group with no
@@ -273,7 +275,10 @@ export async function runGroupedBrowser<T>(
   for (;;) {
     const wanted = await browsePanels();
     if (wanted === null) return;
-    await recall(wanted);
+    /* desc_ego_fake's header names the group the row was chosen from
+     * (ego_grp_name(default_group_id(oid)), ui-knowledge.c L1801), so hand the
+     * highlighted group's name along with the member. */
+    await recall(wanted, live[group]?.name ?? "");
   }
 
   /** Paint, then read keys until a member is chosen for recall (or ESC leaves). */
@@ -1016,6 +1021,115 @@ export interface ObjectBrowserDeps {
   setAutoinscription?(kind: ObjectKind): Promise<void> | void;
 }
 
+/**
+ * What the object BROWSER needs on top of the list predicates: the live-game
+ * handles desc_obj_fake runs object_info with. REQUIRED, not optional - it is
+ * what produces the recall body, and an absent supplier would leave the recall
+ * silently back where it was, a name and no lines. Split from
+ * ObjectBrowserDeps so the pure grouping builder still takes only predicates.
+ */
+export interface ObjectRecallDeps extends ObjectBrowserDeps {
+  recall: FakeRecallDeps;
+}
+
+/**
+ * The live-game handles the two fake-object recalls need to run object_info on
+ * a throwaway object: the state and player the knowledge shadow is derived
+ * from, the registry and constants the builders read, and the object-info
+ * extras (projections / race origins / timed + summon names).
+ */
+export interface FakeRecallDeps {
+  state: GameState;
+  reg: ObjRegistry;
+  constants: Constants;
+  player: Player;
+  inspectExtras: ObjectInfoExtras;
+  runeEnv: RuneEnv;
+}
+
+/**
+ * A textblock's flat text as screen lines: trailing whitespace stripped (the
+ * run stream ends sections with two spaces) and the leading blanks object_info
+ * emits before its first real line dropped, since the overlay already puts the
+ * body under a title.
+ */
+function recallBodyLines(text: string): ScreenLine[] {
+  const lines: ScreenLine[] = text
+    .split("\n")
+    .map((raw) => ({ text: raw.replace(/\s+$/u, ""), color: FG }));
+  while (lines.length > 1 && lines[0]!.text === "") lines.shift();
+  return lines;
+}
+
+/**
+ * desc_obj_fake (ui-knowledge.c L1938-1981): the known-objects recall. Upstream
+ * preps a throwaway object of the kind on the EXTREMIFY aspect, points its
+ * known twin at either a full object_copy (when the kind is aware, or has no
+ * flavour to be unaware of) or a blank OBJECT_NULL, and dumps
+ * object_info(obj, OINFO_FAKE) under object_desc(ODESC_PREFIX|ODESC_CAPITAL).
+ *
+ * The port synthesises the known shadow from the player's rune knowledge, so
+ * the two twin states are reproduced with a scratch player, exactly as
+ * artifactFakeRecall does:
+ * - aware: every rune learned + the object marked ASSESSED, so the shadow
+ *   reveals the full mechanics as the object_copy twin would;
+ * - unaware flavoured kind: upstream's blank twin has `known->kind == NULL`, so
+ *   object_info_out returns at its very first branch (obj-info.c L2328) with
+ *   "You do not know what this is." The port's shadow ALWAYS mirrors obj.kind
+ *   (objectKnownShadow, known-object.ts), so that branch is unreachable through
+ *   the engine and is written out here instead.
+ *
+ * The header still reads the live flavour knowledge (state.flavorKnown), so an
+ * unaware kind the player has tried keeps its "{tried}" exactly as the browser
+ * row shows it.
+ */
+export function objectFakeRecall(
+  deps: ObjectRecallDeps,
+  kind: ObjectKind,
+): { title: string; lines: ScreenLine[] } {
+  const { state, reg, constants, player, runeEnv, inspectExtras } = deps.recall;
+  /* `kind->aware || !kind->flavor` (L1958). */
+  const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
+
+  const obj = makeFakeKind(reg, constants, kind);
+
+  const scratchKnown = blankObjKnowledge();
+  const scratchPlayer: Player = { ...player, objKnown: scratchKnown };
+  if (aware) {
+    playerLearnAllRunes(scratchPlayer, runeEnv);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+  }
+  const scratchState: GameState = {
+    ...state,
+    actor: { ...state.actor, player: scratchPlayer },
+    /* Only this kind is ever described here, so a constant is exact. */
+    isAware: () => aware,
+  };
+
+  const title = objectDesc(
+    obj,
+    ODESC.PREFIX | ODESC.CAPITAL,
+    scratchPlayer,
+    runeEnv,
+    knownDescOf(scratchState),
+  );
+
+  if (!aware) {
+    return {
+      title,
+      lines: [{ text: "You do not know what this is.", color: FG }],
+    };
+  }
+
+  /* object_info ORs in OINFO_SUBJ (obj-info.c L2394). */
+  const tb = objectInfo(
+    obj,
+    OINFO.FAKE | OINFO.SUBJ,
+    makeObjectInfoDeps(scratchState, obj, inspectExtras),
+  );
+  return { title, lines: recallBodyLines(textblockToString(tb)) };
+}
+
 /** o_cmp_tval within-group order (ui-knowledge.c L1984-2024). */
 function objCmpTval(a: ObjectKind, b: ObjectKind, deps: ObjectBrowserDeps): number {
   /* aware has low sort weight: aware kinds sort first (return -c). */
@@ -1085,20 +1199,11 @@ export async function showObjectKnowledge(
   term: GlyphTerm,
   kinds: readonly ObjectKind[],
   bases: readonly (ObjectBase | undefined)[],
-  deps: ObjectBrowserDeps,
+  deps: ObjectRecallDeps,
 ): Promise<void> {
   const groups = objectKnowledgeGroups(kinds, bases, deps);
   const recall = async (kind: ObjectKind): Promise<void> => {
-    const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
-    const title = deps.kindName(kind, aware);
-    // desc_obj_fake (ui-knowledge.c L1938) shows object_info(OINFO_FAKE); the
-    // computed flag/combat lines are deferred, so the recall shows the name and
-    // the kind's flavour/description text when known.
-    const lines: ScreenLine[] = [{ text: title, color: UI_CURSOR }];
-    if (aware && kind.text) {
-      lines.push({ text: "", color: FG });
-      lines.push({ text: kind.text, color: FG });
-    }
+    const { title, lines } = objectFakeRecall(deps, kind);
     await showTextScreen(term, title, lines);
   };
 
@@ -1172,24 +1277,57 @@ export function egoKnowledgeGroups(
   });
 }
 
+/**
+ * desc_ego_fake (ui-knowledge.c L1789-1804): the ego-knowledge recall - the
+ * object_info_ego textblock under a "<group name> <ego name>" header.
+ *
+ * The ego's own flavour text is NOT prepended here: object_info_out reaches
+ * describe_flavor_text with the ego bit set, which prints `obj->ego->text`
+ * itself (obj-info.c L2244), so adding it would print it twice.
+ *
+ * object_info_ego builds a FULLY KNOWN object (`object_copy(&known_obj, &obj)`,
+ * L2437), which the port reproduces the same way artifactFakeRecall does: a
+ * scratch player with every rune learned, and the object marked ASSESSED.
+ */
+export function egoFakeRecall(
+  deps: FakeRecallDeps,
+  ego: EgoItem,
+  groupName: string,
+): { title: string; lines: ScreenLine[] } {
+  const { state, reg, player, runeEnv, inspectExtras } = deps;
+  const title = `${groupName} ${ego.name}`;
+
+  const scratchPlayer: Player = { ...player, objKnown: blankObjKnowledge() };
+  playerLearnAllRunes(scratchPlayer, runeEnv);
+
+  const tb = objectInfoEgo(reg, ego, (obj) => {
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    const scratchState: GameState = {
+      ...state,
+      actor: { ...state.actor, player: scratchPlayer },
+      isAware: () => true,
+    };
+    return makeObjectInfoDeps(scratchState, obj, inspectExtras);
+  });
+
+  return { title, lines: recallBodyLines(textblockToString(tb)) };
+}
+
 export async function showEgoKnowledge(
   term: GlyphTerm,
   egos: readonly EgoItem[],
   kinds: readonly ObjectKind[],
   bases: readonly (ObjectBase | undefined)[],
   everseen: EverseenKnowledge,
+  recallDeps: FakeRecallDeps,
 ): Promise<void> {
   const groups = egoKnowledgeGroups(egos, kinds, bases, everseen);
-  await runGroupedBrowser(term, "ego items", groups, async (ego) => {
-    // desc_ego_fake (ui-knowledge.c L1789) shows object_info_ego's flag lines;
-    // those computed lines are deferred, so the recall shows the ego name and
-    // its lore text when the record carries one.
-    const lines: ScreenLine[] = [{ text: ego.name, color: UI_CURSOR }];
-    if (ego.text) {
-      lines.push({ text: "", color: FG });
-      lines.push({ text: ego.text, color: FG });
-    }
-    await showTextScreen(term, ego.name, lines);
+  /* The header is `format("%s %s", ego_grp_name(default_group_id(oid)),
+   * ego->name)` (L1801) - the group the highlighted row sits under, which is
+   * why one ego browsed from two groups gets two different headers. */
+  await runGroupedBrowser(term, "ego items", groups, async (ego, groupName) => {
+    const { title, lines } = egoFakeRecall(recallDeps, ego, groupName);
+    await showTextScreen(term, title, lines);
   });
 }
 

@@ -244,6 +244,13 @@ export function shapeLoreLines(shape: Shape, env: ShapeLoreEnv): string[] {
   push(protection(shape, env));
   push(sustains(shape, env));
   push(miscFlags(shape, env));
+  /* PORT_TODO 3.21: the last two sections of the shape-lore textblock chain,
+   * and the only two of the ten that are still seams rather than code. Both
+   * defaults are INERT - absent, the section is silently not there - so no
+   * supplier means a player reading about Bear form is told what it does to
+   * their stats and nothing about how to enter or leave it. Nothing supplies
+   * either today (main.ts's shapeEnv). See the 3.4 note: an unsupplied
+   * optional is a gap only when its default is inert, and these are. */
   if (env.changeEffectText) lines.push(`${env.changeEffectText}.`);
   if (env.triggeringSpells) for (const l of env.triggeringSpells) lines.push(l);
   return lines;
