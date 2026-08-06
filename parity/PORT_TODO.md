@@ -2215,11 +2215,13 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the host seam rather than killing the process.
   Sites: `packages/core/src/obj/randart.ts:38`
 
-- [ ] **5.6 The spoiler files' missing lines.**
-  The generators and their menu are **done** (`runSpoilers`, `game/spoil.ts`).
-  What is missing is content: `timedDesc` / `summonDesc` are unwired so some
-  activation descriptions read worse than upstream's; and `loreDescription` has no
-  upstream-style spoiler flag.
+- [x] **5.6 The spoiler files' missing lines.** DONE — one half retracted on
+  measurement, the other two built.
+  The generators and their menu were already done (`runSpoilers`,
+  `game/spoil.ts`). The row named three content gaps: `timedDesc` /
+  `summonDesc`, the missing `loreDescription` spoiler flag, and the hit-chance
+  lines at `:518` / `:519`. One was not a gap; the other two were, and the
+  second turned out to shrink the third.
 
   > **The `timedDesc` / `summonDesc` half is RETRACTED, on three measurements
   > taken 2026-08-06.** The spoiler boot already holds `game.players.timed` and
@@ -2258,8 +2260,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   > what kills that one. Both sets include the reverse control (flavour and
   > movement must survive), so a flag that suppressed too much fails too.
   >
-  > **What is left of 5.6** is `:518` / `:519`: the hit-chance lines need a
-  > state-carrying spoiler variant rather than a seam. `:518` and `:519` are the hit-chance lines, and
+  > **`:518` / `:519` are done too, and the spoiler flag had already halved
+  > them.** `meleeHitPercent` fed `lore_append_toughness`' "you have a N%
+  > chance to hit such a creature" — the section `spoilers` now suppresses — so
+  > supplying it would be inert and it is deliberately still absent.
+  > `monsterHitPercent` was the real one: `lore_append_attack` prints a
+  > per-blow `(NdM, X%)` in BOTH views (`mon-lore.c:1710-1715`), so every blow
+  > in the dump read **0%**, and the running centidamage total that multiplies
+  > by it read zero with it. The headless boot has a player, so it is
+  > `hit_chance(MAX(level,1) * 3 + power, ac + to_a)` against
+  > `actor.defense` — upstream's REAL state, not the known one.
+  >
+  > 3 mutations, 3 killed, and the first version killed only one: "some
+  > percentage is non-zero" passed against a formula that dropped the blow's
+  > power AND against one measuring against no armour at all. The test now
+  > boots the same headless game the spoiler boots, recomputes the expected
+  > percentage per blow, and compares 25 whole monster blocks — with a guard
+  > that fails if fewer than 25 were actually compared. `:518` and `:519` are the hit-chance lines, and
   they no longer wait on anything — the callbacks are wired for the *game* path
   (`packages/web/src/main.ts:3650`); a core-level dump has no player, so this
   needs a state-carrying spoiler variant rather than a seam.

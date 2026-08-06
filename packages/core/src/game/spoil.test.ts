@@ -10,6 +10,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { spoilMonInfo } from "./spoil.js";
+import { getHitChance } from "../combat/hit.js";
+import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 
 function loadJson<T>(name: string): T {
@@ -96,5 +98,65 @@ describe("spoil_mon_info passes lore_description's spoilers flag (5.6)", () => {
      * the movement clause and the attack summary all survive. */
     expect(out).toMatch(/moves/u);
     expect(out).toMatch(/averaging \d+ damage/u);
+  });
+
+  it("prints a real per-blow hit chance, not 0%", () => {
+    /*
+     * lore_append_attack's "(NdM, X%)" runs in BOTH views (mon-lore.c:1710-1715),
+     * so it needs monsterHitPercent even though the toughness block that used
+     * meleeHitPercent is now suppressed. Without it every blow in the dump read
+     * 0% - and the centidamage total that multiplies by it read zero too, which
+     * is the "averaging 0 damage" the control above would have accepted.
+     */
+    const percents = [...out.matchAll(/, (\d+)%\)/gu)].map((m) => Number(m[1]));
+    expect(percents.length, "the dump prints per-blow hit chances").toBeGreaterThan(
+      200,
+    );
+    expect(
+      percents.some((p) => p > 0),
+      "at least one blow can land on the spoiler character",
+    ).toBe(true);
+    /* And the damage average it feeds is non-zero somewhere, which it cannot
+     * be while every percentage is 0. */
+    const damages = [...out.matchAll(/averaging (\d+) damage/gu)].map((m) =>
+      Number(m[1]),
+    );
+    expect(damages.some((d) => d > 0)).toBe(true);
+  });
+
+  it("uses upstream's formula, derived rather than eyeballed", () => {
+    /*
+     * "some percentage is non-zero" passes against a formula that drops the
+     * blow's power or measures against no armour at all - both of those
+     * mutations survived the assertion above. So DERIVE the numbers: boot the
+     * same headless game the spoiler boots (same call, same seed), read the
+     * defence it would see, and recompute
+     * hit_chance(MAX(level,1) * 3 + power, ac + to_a) per blow.
+     */
+    const game = startGame(pack, { seed: 1, depth: 1 });
+    const ac = game.state.actor.defense.ac + game.state.actor.defense.toA;
+    const races = game.booted.registries.monsters.races;
+
+    let checked = 0;
+    for (const race of races) {
+      if (!race || race.rarity <= 0 || race.blows.length === 0) continue;
+      /* The race's own block: from its "=== Num:<ridx>" header to the next. */
+      const start = out.indexOf(`=== Num:${race.ridx}  `);
+      if (start < 0) continue;
+      const nextAt = out.indexOf("=== Num:", start + 1);
+      const block = out.slice(start, nextAt < 0 ? undefined : nextAt);
+
+      const seen = [...block.matchAll(/, (\d+)%\)/gu)].map((m) => Number(m[1]));
+      const want = race.blows
+        .filter((b) => b.effect && b.dice)
+        .map((b) => getHitChance(Math.max(race.level, 1) * 3 + b.effect.power, ac));
+      if (seen.length === 0 || seen.length !== want.length) continue;
+
+      expect(seen, `${race.name} hit chances`).toEqual(want);
+      checked++;
+      if (checked >= 25) break;
+    }
+    /* The fixture guard: an empty loop would pass every assertion in it. */
+    expect(checked, "blocks actually compared").toBeGreaterThanOrEqual(25);
   });
 });
