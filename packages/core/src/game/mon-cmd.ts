@@ -11,11 +11,10 @@
  * (cmd-core.c L333) so the movement/hold/read/cast/drop keys drive the
  * monster; processPlayer mirrors that with the state.monCommand hook this
  * module installs. Reductions, ledgered in parity/ledger/game-mon-cmd.yaml:
- * monster names are the race name (MDESC, #25); the cast branch uses the
- * player's current target instead of re-prompting (get_aim_dir is UI);
- * the drop branch no-ops (monster inventory drop; held-object theft via
- * EAT_ITEM mon-vs-mon is wired). The blow loop runs the mon-target RBE
- * handlers (armour, elemental, timed, SHATTER quake/thrust, EAT_ITEM steal).
+ * the cast branch uses the player's current target instead of re-prompting
+ * (get_aim_dir is UI). The blow loop runs the mon-target RBE handlers
+ * (armour, elemental, timed, SHATTER quake/thrust, EAT_ITEM steal), and the
+ * drop branch empties one item from the monster's held pile (PORT_TODO 2.18).
  */
 
 import { EF, FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated/index.js";
@@ -27,7 +26,7 @@ import type { Monster } from "../mon/monster.js";
 import { monsterCarry } from "../mon/make.js";
 import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore.js";
 import { monsterIsVisible } from "../mon/predicate.js";
-import { stealMonsterItem } from "../mon/steal.js";
+import { getRandomMonsterObject, stealMonsterItem } from "../mon/steal.js";
 import {
   MON_TMD_FLG_NOTIFY,
   monClearTimed,
@@ -46,6 +45,8 @@ import { monsterSwap, squareMonster } from "./context.js";
 import { doMonSpell } from "./mon-cast.js";
 import type { DoMonSpellDeps } from "./mon-cast.js";
 import { chooseAttackSpell } from "./mon-ranged.js";
+import { describeObject } from "./describe.js";
+import { dropNear } from "./floor.js";
 import { buildEffectContext } from "./effect-env.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import { registerTerrainHandlers } from "./effect-terrain.js";
@@ -539,6 +540,55 @@ export function monsterAttackMonster(
   return true;
 }
 
+/**
+ * The commanded drop (cmd-cave.c CMD_DROP, L1854-1868): the monster lets go of
+ * one item from its held pile, chosen by get_random_monster_object's reservoir
+ * draw, and it lands with drop_near like any other dropped thing.
+ *
+ * The note that stood here said "monster-held objects are not modelled". They
+ * have been all along: `mon.heldObj` is a real pile, monsterCarry fills it
+ * (generated treasure, a TAKE_ITEM floor pickup, an EAT_ITEM theft),
+ * monsterDeath empties it onto the floor, and getRandomMonsterObject is the
+ * same reservoir draw upstream makes, one_in_(i) for i from 1 - so this branch
+ * was the only place in the port that could not see a pile every other place
+ * could.
+ */
+function commandedDrop(state: GameState, mon: Monster, mName: string): void {
+  const obj = getRandomMonsterObject(state.rng, mon);
+  /* No object (an empty pile, or nothing but quest artifacts) - and NOT a
+   * `return 0`: upstream breaks out of the switch, so the turn is still
+   * spent (L1857). */
+  if (!obj) return;
+
+  obj.heldMIdx = 0;
+  /* pile_excise(&mon->held_obj, obj) (L1859). */
+  const at = mon.heldObj.indexOf(obj);
+  if (at >= 0) mon.heldObj.splice(at, 1);
+
+  /* drop_near(cave, &obj, 0, mon->grid, true, false) (L1860): verbose true,
+   * prefer_pile false. */
+  dropNear(
+    state,
+    obj,
+    0,
+    mon.grid,
+    true,
+    false,
+    getNonplayerHitDeps(state)?.floorEnv ?? {},
+  );
+
+  /* object_desc AFTER the drop, which is where upstream calls it (L1861-1862).
+   * The order matters and the port is the safer of the two: when the drop
+   * merges into a floor stack, object_absorb writes the new count into the
+   * PILE's object and leaves the dropped one alone, so both read the pre-merge
+   * values - except that upstream is reading a struct floor_carry has already
+   * freed. Same string, one of them by luck. */
+  const oName = describeObject(state, obj);
+  if (!(state.isIgnored?.(obj) ?? false)) {
+    state.msg?.(`${mName} drops ${oName}.`);
+  }
+}
+
 /** Release the commanded monster ('r' while commanding). */
 function releaseCommand(state: GameState, mon: Monster): void {
   monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY);
@@ -554,15 +604,14 @@ function releaseCommand(state: GameState, mon: Monster): void {
 function commandedWalk(
   state: GameState,
   mon: Monster,
+  /* m_name, built once by the caller (cmd-cave.c L1797-1798). */
+  name: string,
   dir: number,
   trapDeps: TrapDeps | null,
   spellDeps: DoMonSpellDeps | null,
 ): boolean {
   const c = state.chunk;
   const lore = getLore(state.lore, mon.race);
-  /* monster_desc(mon, MDESC_CAPITAL | MDESC_IND_HID | MDESC_COMMA)
-   * (cmd-cave.c L1798). */
-  const name = monsterDesc(mon, MDESC.CAPITAL | MDESC.IND_HID | MDESC.COMMA);
   const grid = locSum(mon.grid, DDGRID[dir] ?? loc(0, 0));
   let canMove = false;
   let hasHit = false;
@@ -707,6 +756,10 @@ export function doCmdMonCommand(
   const mon = getCommandedMonster(state);
   if (!mon) return 0;
 
+  /* monster_desc(m_name, mon, MDESC_CAPITAL | MDESC_IND_HID | MDESC_COMMA)
+   * (cmd-cave.c L1797-1798), once for the whole dispatch as upstream does. */
+  const mName = monsterDesc(mon, MDESC.CAPITAL | MDESC.IND_HID | MDESC.COMMA);
+
   switch (cmd.code) {
     case "read": {
       /* Actually 'r'elease monster. */
@@ -718,7 +771,7 @@ export function doCmdMonCommand(
       break;
     }
     case "drop": {
-      /* Monster-held objects are not modelled; nothing to drop. */
+      commandedDrop(state, mon, mName);
       break;
     }
     case "hold":
@@ -732,6 +785,7 @@ export function doCmdMonCommand(
         !commandedWalk(
           state,
           mon,
+          mName,
           dir,
           deps.general?.trapDeps ?? null,
           deps,
