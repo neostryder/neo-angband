@@ -29,7 +29,7 @@
  * (kill_arena_monster). game/arena.test.ts walks the round trip.
  */
 
-import { EF, MON_MSG, TMD } from "../generated/index.js";
+import { EF, MON_MSG, MSG, TMD } from "../generated/index.js";
 import { PROJECT } from "../world/project.js";
 import type { Loc } from "../loc.js";
 import { CLOCKWISE_GRID, DDGRID, DDGRID_DDD, distance, loc, locDiff, locSum } from "../loc.js";
@@ -368,6 +368,10 @@ const handleJUMP_AND_BITE: EffectHandler = (ctx) => {
     say(ctx, `Not enough room next to ${name}!`);
     return false;
   }
+
+  /* sound(MSG_TELEPORT) (effect-handler-attack.c:1746) - the jump is a
+   * teleport and upstream says so out loud (PORT_TODO 3.26). */
+  state.sound?.(MSG.TELEPORT);
 
   /* Move player (monster_swap + player_handle_post_move). */
   movePlayer(state, grid);

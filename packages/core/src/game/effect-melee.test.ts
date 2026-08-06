@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, PROJ, RF, TMD } from "../generated/index.js";
+import { EF, MFLAG, MSG, PROJ, RF, TMD } from "../generated/index.js";
 import { loc, locEq } from "../loc.js";
 import { distance } from "../loc.js";
 import {
@@ -331,6 +331,34 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
 });
 
 describe("EF_JUMP_AND_BITE (effect-handler-attack.c L1710)", () => {
+  it("plays MSG_TELEPORT for the jump (PORT_TODO 3.26)", () => {
+    /* sound(MSG_TELEPORT) at :1746: the jump IS a teleport and upstream says
+     * so. Nothing in the port emitted it, and no message test could tell. */
+    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
+    state.actor.player.chp = 500;
+    addVisible(state, loc(16, 10), [], 80);
+    const heard: number[] = [];
+    state.sound = (t: number): void => void heard.push(t);
+    registry().effectSimple(EF.JUMP_AND_BITE, env(state), {
+      origin: sourcePlayer(),
+      diceString: "30",
+    });
+    expect(heard).toContain(MSG.TELEPORT);
+  });
+
+  it("stays silent when there is no room next to the victim", () => {
+    /* upstream returns before its sound() at :1740-1743. */
+    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
+    const heard: number[] = [];
+    state.sound = (t: number): void => void heard.push(t);
+    registry().effectSimple(EF.JUMP_AND_BITE, env(state), {
+      origin: sourcePlayer(),
+      diceString: "30",
+    });
+    /* No monster at all: the handler bails before the jump. */
+    expect(heard).toEqual([]);
+  });
+
   it("jumps adjacent to the closest living monster and drains it", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
     const p = state.actor.player;

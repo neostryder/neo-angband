@@ -108,6 +108,59 @@ export class MessageLog {
 export const MSG_BELL = MSG.BELL;
 
 /**
+ * Resolve a MSG_* name or index to its numeric code, accepting either spelling
+ * ("SHOOT_HIT", "MSG_SHOOT_HIT", 42) and defaulting to MSG_GENERIC.
+ *
+ * Core's own answer, because core needs it: this used to exist only in the web
+ * shell (web/messages.ts) while five core modules open-coded
+ * `(MSG as Record<string, number>)[name] ?? 0` inline.
+ */
+export function messageTypeCode(type?: MessageType): number {
+  if (typeof type === "number") return type;
+  if (type === undefined) return MSG_GENERIC;
+  const key = type.replace(/^MSG_/, "") as keyof typeof MSG;
+  return MSG[key] ?? MSG_GENERIC;
+}
+
+/**
+ * The two sinks msgt drives. Declared structurally so GameState satisfies it
+ * without this module importing game/context.ts (which imports this one).
+ */
+export interface MessageSinks {
+  msg?: (text: string, type?: MessageType) => void;
+  sound?: (type: number) => void;
+}
+
+/**
+ * msgt (message.c:428): print a message AND play the sound its type names.
+ *
+ * The pair is the whole reason upstream has this function - `msg()` is the
+ * silent one - and the port had been spelling it out at thirteen call sites
+ * instead. Predictably, some sites wrote only the first half: every teleport
+ * in the game (PORT_TODO 3.26) printed its line and played nothing, and the
+ * MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL codes sat in the generated table
+ * with no caller at all.
+ *
+ * `Messages.msgt` below is the same C function ported against the event-bus
+ * facade. That facade has no production caller - the live message path is the
+ * shell's `state.msg` binding, which also runs the mod messageText hook and
+ * the renderer - so this free function is the one the game uses.
+ *
+ * ONE ORDERING DIVERGENCE: upstream is message_add, sound, then the display
+ * event; the port's `state.msg` does the add and the event together, so sound
+ * cannot land between them. It goes after, which keeps the log order (what
+ * Ctrl-P shows) exact and moves the sound event one slot later on the bus.
+ */
+export function msgt(
+  sinks: MessageSinks,
+  type: MessageType,
+  text: string,
+): void {
+  sinks.msg?.(text, type);
+  sinks.sound?.(messageTypeCode(type));
+}
+
+/**
  * The msg()/msgt()/sound()/bell() facade: adds to the log and signals the
  * event bus, honoring the use_sound option via an injected getter.
  */

@@ -1215,13 +1215,28 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `mon/spell.ts` binding, not a display call.
   Sites: `parity/ledger/mon-lore-describe.yaml:55`
 
-- [ ] **3.5 The sidebar's stat rows ignore equipment.**
-  `displayDeps` (`packages/web/src/main.ts:6815`) never supplies `statUse`, and
-  the default (`game/display.ts:189`) is race+class adj over `statCur` with **no
-  equipment or timed contribution**. The character sheet *does* get the computed
-  value (`charSheetDeps` → `ps.statUse`, `packages/web/src/screens.ts:479`), so a
-  `+STR` ring changes the sheet and not the sidebar.
-  Sites: `parity/ledger/ui-display.yaml:100`
+- [x] **3.5 The sidebar's stat rows ignore equipment.**
+  DONE. The row was exactly right, including the contradiction it named: a
+  `+STR` ring moved the character sheet and left the sidebar alone.
+
+  The fix is one line and it is the same shape as **3.10**'s: the dep was
+  DERIVABLE, not merely unsupplied. `state.playerState` already carries the
+  live `calc_bonuses` result — the shell reinstalls it on every equipment
+  change (`session/game.ts:718`) and `numMoves` had already been rewired to
+  read it — so `statUse` now defaults from there, and only a state with no
+  `playerState` at all (the worldless test harness) falls back to race+class.
+  Chasing the shell for a `displayDeps` line would have fixed the web and left
+  every other host with the same bug.
+
+  Nothing else in `prt_stat` was wrong: the reduced label, the yellow/green
+  split, the `!` at col+3 and the six-char `cnv_stat` value are verbatim
+  (`display.ts:417`), which is why only the number was off.
+
+  Tests: three in `game/display.test.ts`, built through the real `calcBonuses`
+  with a +5 STR item and the rune learned rather than a hand-written
+  `statUse` array — one asserts the sidebar shows the worn value, one that it
+  now agrees with the character sheet's Best column, one that the fallback
+  still stands when `playerState` is absent. Mutation-checked (M16).
 
 - [x] **3.6 No `PF_*` intrinsic ability ever appears on the character sheet.**
   DONE — and this item was **accurate in every particular**, including the three
@@ -1543,12 +1558,51 @@ is reachable in play and a test constructs the case that used to be wrong.**
   the other half.
   Sites: `parity/ledger/obj-knowledge.yaml:98`
 
-- [ ] **3.26 Teleporting is silent.**
-  `MSG_TELEPORT`, `MSG_TPOTHER` and `MSG_TPLEVEL` all exist in the generated table
-  with their sound names (`packages/core/src/generated/message.ts:18`, `:23`,
-  `:33`) and are used **nowhere** — `packages/core/src/game/effect-teleport.ts`
-  emits no sound at all, while seventeen other sites do call `state.sound`. Three
-  one-line calls.
+- [x] **3.26 Teleporting is silent.**
+  DONE — and the row's own estimate was the thing to distrust. It said "three
+  one-line calls." `grep -n 'MSG_TELEPORT\|MSG_TPOTHER\|MSG_TPLEVEL'
+  reference/src/*.c` finds **eleven sites in three files**, and the two the row
+  named as the whole job were the easy half.
+
+  What the eleven are: two bare `sound()` calls inside `EF_TELEPORT` and
+  `EF_TELEPORT_TO` (`effect-handler-general.c:2666`, `:2808`), one in
+  `EF_JUMP_AND_BITE` (`effect-handler-attack.c:1746` — the jump is a teleport
+  and upstream says so), four `msgt(MSG_TPLEVEL, …)` in the effect handlers
+  (`:1171`, `:1178`, `:2909`, `:2915`) and four more in `process_world`
+  (`game-world.c:799`, `:802`, `:824`, `:828`). The port had the text of every
+  message and the sound of none.
+
+  **What reading the C turned up that the row did not mention.** `msgt` is not
+  "a message with a colour" — `message.c:428` is `message_add(buf, type)` **and
+  then** `sound(type)`, and `msg()` is the silent one. That is the whole reason
+  the function exists. The port has no `msgt`: **thirteen call sites spell the
+  pair out by hand** as `state.msg(text, type)` followed by
+  `state.sound(code)`, each also open-coding the name→code lookup. Predictably
+  some sites wrote only the first half, and this family is all of them. So the
+  fix is not eleven sound calls bolted on; it is `msgt` existing
+  (`packages/core/src/msg.ts`) so the next site cannot half-write it.
+
+  **A faithful `Messages.msgt` was already there and nothing called it**
+  (`msg.ts:128`, sound included, only test subscribers). It cannot be the one
+  the game uses — the live path is the shell's `state.msg` binding, which also
+  runs the mod `messageText` hook and the renderer — so the free function
+  `msgt(sinks, type, text)` is now core's spelling and the class is documented
+  as the facade the architecture went around.
+
+  One ordering divergence, written into the function: upstream is add → sound →
+  display event, and the port's `state.msg` does the add and the event
+  together, so the sound lands after both. The log order (what Ctrl-P shows) is
+  exact; the sound event moves one slot later on the bus.
+
+  Tests: fourteen across `effect-teleport`, `effect-general` and `effect-melee`
+  asserting the code that reaches `state.sound`, including two negative cases
+  where upstream returns before its `sound()` (a no-teleport grid, no room next
+  to the victim) — a sound test that only ever asserts presence cannot catch an
+  unconditional call. **Sixteen mutations, sixteen kills**, but only after
+  three survivors earned tests: `teleportPlayer` and `teleportPlayerTo` are
+  reachable only through `PROJ_NEXUS`'s random branches and nothing drove
+  them, and my first `TELEPORT_LEVEL` test used the town, which can only sink —
+  so the "rise up through the ceiling" arm was untested.
   Sites: `parity/ledger/game-effect-teleport.yaml:81`
 
 - [ ] **3.27 The `{tried}` and `{ignore}` name markers never appear.**
