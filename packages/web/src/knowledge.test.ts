@@ -262,8 +262,8 @@ describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", (
     const rows = groups.flatMap((g) => g.rows);
     const ac = rows.find((r) => r.label === "enchantment to armor")!;
     const fire = rows.find((r) => r.label === "fire brand")!;
-    expect(ac.suffix).toEqual({ text: "{ac}", color: colorToCss(COLOUR_YELLOW), col: 47 });
-    expect(fire.suffix).toBeUndefined();
+    expect(ac.cells).toEqual([{ text: "{ac}", color: colorToCss(COLOUR_YELLOW), col: 47 }]);
+    expect(fire.cells).toBeUndefined();
   });
 
   it("offers '}' only for an inscribed rune (rune_xtra_prompt, :2238-2244)", () => {
@@ -277,13 +277,13 @@ describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", (
     expect(rows.find((r) => r.label === "fire brand")!.hint).toBe(", 'r'ecall, '{'");
   });
 
-  it("gives every inscribed row a suffix and a per-row prompt", () => {
-    /* Both are read straight off the row by runGroupedBrowser - the suffix at
+  it("gives every inscribed row a cell and a per-row prompt", () => {
+    /* Both are read straight off the row by runGroupedBrowser - the cell at
      * display_rune's column 47, the hint as the xtra_prompt on the bottom line. */
     const { groups } = runeKnowledgeGroups(runes, player, () => "{x}");
     const rows = groups.flatMap((g) => g.rows);
-    expect(rows.filter((r) => r.suffix !== undefined)).toHaveLength(2);
-    expect(rows[0]!.suffix!.col).toBe(47);
+    expect(rows.filter((r) => r.cells !== undefined)).toHaveLength(2);
+    expect(rows[0]!.cells![0]!.col).toBe(47);
     expect(rows.every((r) => r.hint !== undefined)).toBe(true);
   });
 });
