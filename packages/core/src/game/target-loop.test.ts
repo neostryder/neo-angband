@@ -464,6 +464,64 @@ describe("computePathColours (draw_path colour rules)", () => {
     expect(computePathColours(state, [grid])).toEqual([COLOUR_BLUE]);
   });
 
+  it("colours a known wall by MEMORY, not by what is really there", () => {
+    /*
+     * PORT_TODO 7.1. draw_path reads square_isprojectable(player->cave, ...)
+     * (ui-target.c:1149-1150) - the remembered map. Reading the live chunk
+     * instead leaks terrain the player has not seen.
+     *
+     * The wall-dug-out direction: the player remembers granite, an earthquake
+     * or another monster's KILL_WALL has since cleared it, and the player has
+     * not looked again. Upstream still paints it blue. The test above cannot
+     * see this - it memorizes AFTER setting granite, so memory and reality
+     * agree and the assertion passes against either predicate.
+     *
+     * Not asserted, and deliberately: dropping the `squareIsKnown(...) &&`
+     * conjunct changes nothing measurable, because squareIsBelievedWall
+     * already answers false for an unknown grid. The two disagree only
+     * out-of-bounds, which a projected path never contains. The conjunct is
+     * kept because upstream keeps it; a mutation of it is unkillable by
+     * construction rather than untested.
+     */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(11, 10);
+    state.chunk.setFeat(grid, GRANITE);
+    squareMemorize(state, grid);
+    state.chunk.setFeat(grid, FLOOR);
+    expect(computePathColours(state, [grid])).toEqual([COLOUR_BLUE]);
+  });
+
+  it("does not paint a wall the player has never seen appear", () => {
+    /* The other direction, and the one that actually leaks information: the
+     * player remembers open floor and something has since filled it. Blue
+     * here would announce the new wall without the player looking. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(11, 10);
+    squareMemorize(state, grid);
+    state.chunk.setFeat(grid, GRANITE);
+    expect(computePathColours(state, [grid])).toEqual([COLOUR_WHITE]);
+  });
+
+  it("a camouflaged monster looks like the wall the player REMEMBERS", () => {
+    /*
+     * The same predicate appears twice in draw_path - once for a camouflaged
+     * monster masquerading as terrain (ui-target.c:1133-1135) and once for
+     * plain terrain (:1149-1150) - and the two tests above only exercise the
+     * second. Fixing one copy and not the other is how a divergence survives
+     * its own fix, so this covers the first: a camouflaged monster standing
+     * where the player remembers granite is painted blue like the wall,
+     * whatever the live map now says.
+     */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(11, 10);
+    const mon = addVisible(state, grid);
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    state.chunk.setFeat(grid, GRANITE);
+    squareMemorize(state, grid);
+    state.chunk.setFeat(grid, FLOOR);
+    expect(computePathColours(state, [grid])).toEqual([COLOUR_BLUE]);
+  });
+
   it("colours an unmemorized grid dark, and everything after it dark too", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const unknown = loc(11, 10);
