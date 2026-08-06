@@ -232,6 +232,16 @@ const handleTELEPORT: EffectHandler = (ctx) => {
   const dis = ctx.value.base + state.rng.damroll(ctx.value.dice, ctx.value.sides);
   const perc = ctx.value.mBonus;
 
+  /* No teleporting in arena levels (effect-handler-general.c:2529-2530).
+   *
+   * Position matters, and not where a reader would guess. The damroll above is
+   * a C LOCAL INITIALISER (L2510-2511), evaluated before the function body, so
+   * upstream spends the distance roll even when the arena refusal is about to
+   * return - and this refusal must too, or a single-combat scroll read would
+   * shift every RNG draw in the rest of the game. The refusal comes after
+   * ident, so the scroll still identifies. */
+  if (state.arenaLevel) return true;
+
   /* is_player: not a monster source, or a monster spell that moves the player. */
   const isPlayer = ctx.origin.what !== "monster" || ctx.subtype !== 0;
   const tMon =
@@ -561,14 +571,23 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
 
 /**
  * EF_ALTER_REALITY: regenerate the current dungeon level in place. The world
- * change is the injected changeLevel hook (staying on the same depth, #23); the
- * arena-level guard is omitted (arenas are not modelled).
+ * change is the injected changeLevel hook (staying on the same depth, #23).
+ *
+ * The arena guard used to be omitted here "because arenas are not modelled".
+ * They are, and were when that was written: state.arenaLevel is set by
+ * EF_SINGLE_COMBAT and honoured at a dozen sites. Regenerating the level from
+ * inside single combat would have thrown away the arena and the opponent.
  */
 const handleALTER_REALITY: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
-  ctx.ident = true;
   const { state } = env;
+
+  /* effect-handler-general.c:1186-1187: the refusal returns BEFORE ident is
+   * set, so an arena use does not even identify the scroll. */
+  if (state.arenaLevel) return true;
+
+  ctx.ident = true;
   const tp = env.teleport ?? {};
   say(ctx, "The world changes!");
   tp.changeLevel?.(state.chunk.depth);

@@ -52,20 +52,35 @@ upstream:
         ("The ground shakes for a moment.", the monster-origin quake
         exemption kept).
 notes: >-
-  A save taken in single combat records SavedGame.arena (old_grid); the
-  stashed pre-arena level does not survive the save boundary, so winning
-  after a reload exits to a FRESH level of the same depth (loadGame
-  passes inArena to makeChangeLevel and the exit falls through to the
-  normal generator). With this handler, EVERY effect in effect_kind[]
-  that upstream implements is ported - task #18's surface is closed.
+  A save taken in single combat records SavedGame.arena: old_grid, the
+  pre-arena level itself (SavedGame.arena.stash, through the same
+  serializeStoredLevel the frozen-level cache uses) and the midx of the
+  opponent's original on it. That level lives on GameState.arenaStash,
+  which is upstream's chunk_list entry - prepare_next_level takes the
+  persistent-level path for an arena too (persist = OPT(...) ||
+  arena_level, generate.c:1349). With this handler, EVERY effect in
+  effect_kind[] that upstream implements is ported.
 deferred:
   - monster_turn_multiply's no-breeding-in-arena guard rides monster
     reproduction (unported); mon_take_nonplayer_hit's arena floor
     (monsters cannot kill the arena opponent) is moot while the arena
     holds exactly one monster.
-  - ALTER_REALITY's arena guard rides that (unported, deprecated
-    upstream) effect; TELEPORT_LEVEL in arenas is blocked by the same
-    generate_level flow it signals.
+  - "NOT DEFERRED ANY MORE (PORT_TODO 4.1, 2026-08-06), and this line was
+    wrong in both halves. ALTER_REALITY is ported (game/effect-teleport.ts
+    handleALTER_REALITY), so its arena guard did not \"ride an unported
+    effect\" - it was simply missing, and regenerating the level from inside
+    single combat would have discarded the arena and the opponent. It now
+    refuses BEFORE setting ident, as effect-handler-general.c:1186-1187 does.
+    EF_TELEPORT was missing its guard too (L2529-2530) and is the one that
+    mattered: Phase Door worked in the one place upstream forbids it. Its
+    distance damroll is a C local initialiser and so is spent even by the
+    refusal; the port matches, and the ordering is recorded rather than
+    tested because effectSimple's own dice work makes it unobservable here.
+    TELEPORT_LEVEL's own guard was already present (effect-teleport.ts:539)."
+  - "A save taken mid-fight USED to lose the pre-arena level, because it was a
+    closure variable in makeChangeLevel. It is state.arenaStash now and
+    round-trips; a save written before the key exists still reloads with the
+    old fall-through, which is why loadGame keeps passing inArena."
   - The arena event banners / EVENT_GEN_LEVEL_START("arena") ride
     presentation (#25).
 verified-by:

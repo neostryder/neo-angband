@@ -323,6 +323,52 @@ describe("EF_ALTER_REALITY", () => {
     expect(changed).toBe(12);
     expect(msgs).toContain("The world changes!");
   });
+
+  it("refuses inside a single-combat arena, without identifying", () => {
+    /* effect-handler-general.c:1186-1187 returns BEFORE setting ident, so an
+     * arena use neither regenerates the level nor teaches the scroll.
+     * Regenerating here would have discarded the arena and the opponent. */
+    const state = makeState();
+    state.chunk.depth = 12;
+    state.arenaLevel = true;
+    let changed: number | null = null;
+    const msgs: string[] = [];
+    const ctx = env(state, { teleport: { changeLevel: (d) => (changed = d) } }, msgs);
+    registry().effectSimple(EF.ALTER_REALITY, ctx, { origin: sourcePlayer() });
+    expect(changed).toBeNull();
+    expect(msgs).not.toContain("The world changes!");
+  });
+});
+
+describe("EF_TELEPORT in an arena (effect-handler-general.c:2529-2530)", () => {
+  it("does not move the player", () => {
+    /* NOT ASSERTED HERE, and deliberately: upstream computes the distance
+     * damroll in a local INITIALISER (L2510-2511), so it runs before the arena
+     * refusal returns, and the port matches that. The ordering is not
+     * observable through this seam - effectSimple does its own dice work
+     * around the handler and dominates the stream - so it is recorded in
+     * effect-teleport.ts rather than covered by a fixture that cannot tell the
+     * two placements apart. Two placements were measured (28 vs 30 draws on
+     * this fixture); no assertion available here distinguishes them. */
+    const arena = makeState({ playerGrid: loc(20, 12), seed: 99 });
+    arena.chunk.depth = 12;
+    arena.arenaLevel = true;
+    registry().effectSimple(EF.TELEPORT, env(arena), {
+      origin: sourcePlayer(),
+      diceString: "10+2d8",
+    });
+    expect(arena.actor.grid).toEqual(loc(20, 12));
+  });
+
+  it("still teleports with the flag clear, on the same setup", () => {
+    const state = makeState({ playerGrid: loc(20, 12), seed: 99 });
+    state.chunk.depth = 12;
+    registry().effectSimple(EF.TELEPORT, env(state), {
+      origin: sourcePlayer(),
+      diceString: "10+2d8",
+    });
+    expect(state.actor.grid).not.toEqual(loc(20, 12));
+  });
 });
 
 describe("chooseTeleportDestination", () => {

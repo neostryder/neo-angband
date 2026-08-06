@@ -560,6 +560,20 @@ export interface GameState {
   arenaLevel?: boolean;
   /** player->old_grid: where to stand again after the arena. */
   oldGrid?: Loc;
+  /**
+   * The level the player left to enter single combat, frozen whole, plus the
+   * midx of the opponent's ORIGINAL on that level (the arena fights a copy;
+   * kill_arena_monster finishes the original on the way out).
+   *
+   * This is upstream's chunk_list entry: prepare_next_level takes the
+   * persistent-level path for an arena too (`persist = OPT(...) ||
+   * arena_level`, generate.c:1349), so the pre-arena level is cave_store'd and
+   * found again by name on the way back. It lives on GameState rather than in
+   * a closure so it round-trips through the savefile the way upstream's does -
+   * a save taken mid-fight used to lose the level behind it and exit onto a
+   * fresh one. Present exactly while the player is in an arena.
+   */
+  arenaStash?: StoredLevel & { monMidx: number };
 
   /**
    * The running engine's live state (player-path.c). Created lazily by the

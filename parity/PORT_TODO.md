@@ -2113,15 +2113,55 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 4 — Whole modes nobody has begun
 
-- [ ] **4.1 Arena mode.**
-  The `mon_take_hit` arena branch, `arena_gen`, the arena level generation, and
-  the arena exclusion in monster ranged attacks. `hard_centre_gen` is **done**
-  (`hardCentreGen`, `packages/core/src/gen/cave.ts:1914`); the
-  glyph-of-warding half of the exclusion is available
-  (`game/monster-turn.ts:1536`).
-  Sites: `packages/core/src/mon/take-hit.ts:17`,
-  `packages/core/src/gen/cave.ts:31`, `packages/core/src/gen/generate.ts:11`,
-  `parity/ledger/gen-cave.yaml:49`, `parity/ledger/game-mon-ranged.yaml:31`
+- [x] **4.1 Arena mode.** DONE — and every item the row named was already
+  built. `mon_take_hit`'s arena branch is `arenaInterceptDeath` wired at five
+  kill sites, `arena_gen` is the 6x6 build in `session/game.ts`, and the
+  monster-ranged exclusion is `mon-ranged.ts:83`. So this closes on a **census
+  of all 29 `arena_level` sites in 4.2.6**, one at a time, rather than on the
+  row's list.
+
+  **Three of the 29 were absent, and two of them mattered:**
+
+  > **`EF_TELEPORT` had no arena guard** (effect-handler-general.c:2529-2530).
+  > Phase Door and Teleportation worked inside single combat, which is the one
+  > place upstream forbids them — the whole point of the arena is that you
+  > cannot leave. Placement is not where a reader would guess: upstream's
+  > distance `damroll` is a C **local initialiser**, evaluated before the
+  > function body, so the roll is spent even when the refusal is about to
+  > return. The port matches. That ordering is **recorded, not tested** — the
+  > port's `effectSimple` does its own dice work around the handler and no
+  > fixture here can tell the two placements apart (28 vs 30 draws, measured).
+  >
+  > **`EF_ALTER_REALITY` had no arena guard either**, under a comment saying
+  > "arenas are not modelled". They were modelled when that was written.
+  > Regenerating the level from inside single combat would have thrown away the
+  > arena and the opponent. Upstream returns **before** setting `ident`, so an
+  > arena use does not even identify the scroll; the port had `ident` first.
+  >
+  > **A save taken mid-fight lost the level behind it.** The pre-arena level
+  > was a closure variable in `makeChangeLevel`, so winning after a reload
+  > dumped the player onto a *fresh* level of the same depth. Upstream has no
+  > separate mechanism for this: `prepare_next_level` takes the
+  > persistent-level path for an arena too (`persist = OPT(...) ||
+  > arena_level`, generate.c:1349), the pre-arena level goes into the
+  > chunk_list, and the savefile carries it. It is now `state.arenaStash`,
+  > serialized through the very same `serializeStoredLevel` the frozen-level
+  > cache uses. A save without the key reloads with the old behaviour.
+
+  The other 26 all matched, including the ones the row did not mention:
+  `DESTRUCTION` and `EARTHQUAKE`'s town-or-arena no-ops, `RECALL`, `SUMMON`,
+  the two monster effects, `TELEPORT_TO`, `TELEPORT_LEVEL`, the suspended
+  Word of Recall, no trap doors, no monster summons, no breeding, the
+  unique-or-arena damage clamp in both `mon_take_hit` and `project_mon`, no
+  polymorph, and `on_new_level`'s two arena early-outs.
+
+  One test of mine had to be thrown away first: it passed a `dice` option that
+  `EffectSimpleParams` does not have, so it ran with no dice at all and still
+  went green. `tsc` caught it; `vitest` alone never would have.
+  Sites: `packages/core/src/game/effect-teleport.ts`,
+  `packages/core/src/game/context.ts`,
+  `packages/core/src/session/save.ts`, `packages/core/src/session/game.ts`,
+  `parity/ledger/game-arena.yaml`, `parity/ledger/game-mon-ranged.yaml:31`
 
 - [ ] **4.2 The quest system.**
   Sites: `packages/core/src/gen/cave.ts:3011`,
