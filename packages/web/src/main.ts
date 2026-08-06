@@ -103,6 +103,7 @@ import {
   OF,
   panelContains,
   sidebarModel,
+  sidebarLayout,
   statusLineModel,
   playerRestingIsSpecial,
   PARITY_BASELINE,
@@ -6730,20 +6731,25 @@ function displayDeps() {
 }
 
 /**
- * Render the left status sidebar from the engine's sidebarModel (ui-display.c),
- * one field per row in side_handlers[] order. Blank separators are inserted at
- * the original NULL-spacer positions to reproduce the classic grouping; the
- * priority culling of update_sidebar is not needed at full height.
+ * Render the left status sidebar from the engine's sidebarModel (ui-display.c).
+ * WHERE each field goes is sidebarLayout, the port of update_sidebar (L844):
+ * it culls by priority at short heights and counts the four blank grouping rows
+ * of side_handlers[], which is what produces the classic gaps.
+ *
+ * This used to walk the model top to bottom, hand-placing the spacers from a
+ * set of key names and stopping when it ran off the screen - correct at 24 rows
+ * and backwards below them, since it dropped depth, speed and the monster
+ * health bar while keeping `class`, the least important row upstream has.
  */
 function renderSidebar(rows: number): void {
-  const fields = sidebarModel(state, displayDeps());
-  const spacerAfter = new Set(["con", "sp"]);
-  // The sidebar starts at row 1 (ui-display.c:866 `for (i = 0, row = 1; ...)`),
+  const fields = new Map(sidebarModel(state, displayDeps()).map((f) => [f.key, f]));
+  // sidebarLayout starts at row 1 (ui-display.c:866 `for (i = 0, row = 1; ...)`),
   // leaving row 0 as the full-width message line and aligning the first field
   // with the map's top row (ROW_MAP = row_top_map[SIDEBAR_LEFT] = 1, ui-term.c).
-  let y = 1;
-  for (const f of fields) {
-    if (y >= rows) break;
+  for (const { key, row: y } of sidebarLayout(rows)) {
+    if (y < 1 || y >= rows) continue;
+    const f = fields.get(key);
+    if (!f) continue;
     let x = 0;
     for (const run of f.runs) {
       if (x >= SIDEBAR_W - 1) break;
@@ -6751,12 +6757,6 @@ function renderSidebar(rows: number): void {
       term.print(x, y, text, colorToCss(run.color));
       x += run.text.length;
     }
-    y++;
-    if (spacerAfter.has(f.key)) y++;
-    // side_handlers[] has TWO NULL spacer slots between prt_health and prt_speed
-    // (ui-display.c:823-832, indices 20 and 22), so the health bar is separated
-    // from Speed/Depth by two blank rows, not one.
-    if (f.key === "health") y += 2;
   }
 }
 

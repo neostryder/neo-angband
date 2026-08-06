@@ -1569,10 +1569,37 @@ is reachable in play and a test constructs the case that used to be wrong.**
   does (`:1330`).
   Sites: `packages/web/src/knowledge.ts:1442`, `parity/ledger/gamedata.yaml:471`
 
-- [ ] **3.17 `update_sidebar`'s priority culling and from-bottom placement.**
-  The sidebar itself is drawn, on a canvas. The screen-size priority culling and
-  from-bottom placement are absent, as `game/display.ts:505` says.
-  Sites: `parity/ledger/ui-display.yaml:124`
+- [x] **3.17 `update_sidebar`'s priority culling and from-bottom placement.** DONE.
+  The row was right. `side_handlers[]` is now `SIDE_HANDLERS` — all 22 rows with
+  their priorities, the four **NULL grouping rows included**, because those are
+  culled and consume a row exactly like a drawn field does — and
+  `sidebarLayout(termRows)` is `update_sidebar` (`ui-display.c:844-889`):
+  `max_priority = y - 2`, the row counter a blank row also advances, and the
+  negative-priority from-bottom arm.
+
+  **It lives in core, not the shell.** The old split called this "a draw-half
+  concern each shell applies", and what the shell applied was: walk the model
+  top to bottom, hand-place the gaps from a `Set` of key names, stop when you run
+  off the screen. Correct at 24 rows and **backwards below them** — it drops
+  depth, speed and the monster health bar while keeping `class`, priority 22, the
+  least important row upstream has. Inverting that is the entire reason the
+  priorities exist ("*as the screen gets smaller, the rows start to disappear in
+  the order of lowest to highest importance*", `:840-842`). Not reachable at the
+  fixed 80×24 term, but 18 rows is `term.ts`'s reflow floor and reflow is a
+  shipped opt-in.
+
+  The from-bottom arm is ported although **no shipped entry has a negative
+  priority**, and it is tested with a constructed table rather than hunted for in
+  the shipped one. The table is exported, so a mod that supplies its own gets
+  upstream's behaviour instead of a silent fall-through.
+  12 mutations, 12 killed. The `SIDE_HANDLERS` transcription is checked by
+  **parsing the real array out of `reference/src/ui-display.c`** rather than by a
+  second transcription in the test file, so a priority typed wrong fails instead
+  of two copies of one mistake agreeing. The shell's use of it is a source-text
+  guard (`sidebar-wiring.test.ts`) and says so at the top: `renderSidebar` is a
+  closure in `main.ts`'s module body, and the failure it guards is not a wrong
+  answer but an unused one.
+  Sites: `packages/core/src/game/display.ts:627`, `parity/ledger/ui-display.yaml:128`
 
 - [ ] **3.18 The ENTER command browser does not exist, for any command list.**
   `textui_action_menu_choose` / `cmd_menu` (`ui-context.c:1176-1215`). Upstream's
