@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { STAT, TMD } from "../generated/index.js";
+import { STAT, TMD, TV } from "../generated/index.js";
 import {
+  COLOUR_DARK,
   COLOUR_L_GREEN,
   COLOUR_L_UMBER,
   COLOUR_ORANGE,
   COLOUR_RED,
+  COLOUR_VIOLET,
   COLOUR_WHITE,
   COLOUR_YELLOW,
 } from "../color.js";
 import { playerSpAttr } from "../player/calcs.js";
+import { objectNew } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
+import { gearAdd } from "./gear.js";
 import { makeState, plReg } from "./harness.js";
 import type { DisplayRun, SidebarField, StatusIndicator } from "./display.js";
 import { cnvStat, sidebarModel, statusLineModel } from "./display.js";
@@ -393,5 +398,48 @@ describe("sidebar seams derive from the live state (PORT_TODO 3.10-3.12)", () =>
     state.wizard = false;
     state.actor.player.totalWinner = false;
     expect(field(sidebarModel(state), "title")[0]?.text).toBe(plain);
+  });
+});
+
+/**
+ * prt_equippy (ui-display.c:269-296) reads object_attr / object_char, which
+ * route through use_flavor_glyph. The port defaulted both to the KIND record,
+ * and the seam that was supposed to supply the flavour-aware version had no
+ * supplier in either shell - so a worn ring drew in the kind colour every
+ * flavoured kind in the shipped data shares: `d`, dark.
+ */
+describe("prt_equippy uses object_attr / object_char (PORT_TODO 3.14)", () => {
+  const RING_KIND = {
+    kidx: 42,
+    tval: TV.RING,
+    dChar: "=",
+    dAttr: "d" /* every ring kind ships this colour */,
+  } as unknown as ObjectKind;
+  const FLAVOR = { fidx: 3, char: "=", attr: "Violet" };
+
+  function wearing(flavoured: boolean, aware: boolean): DisplayRun[] {
+    const state = makeState();
+    const obj = objectNew(RING_KIND);
+    obj.tval = TV.RING;
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    if (flavoured) state.flavorGlyph = () => FLAVOR as never;
+    state.isAware = () => aware;
+    return field(sidebarModel(state), "equippy");
+  }
+
+  it("draws a worn flavoured ring in its FLAVOUR colour, not the kind's dark", () => {
+    const runs = wearing(true, false);
+    expect(runs[0]).toEqual({ text: "=", color: COLOUR_VIOLET });
+    expect(runs[0]?.color).not.toBe(COLOUR_DARK);
+  });
+
+  it("keeps the flavour colour after the player learns the kind", () => {
+    /* A ring is not a scroll: awareness does not end its flavour. */
+    expect(wearing(true, true)[0]?.color).toBe(COLOUR_VIOLET);
+  });
+
+  it("falls back to the kind record when the kind has no flavour", () => {
+    expect(wearing(false, false)[0]).toEqual({ text: "=", color: COLOUR_DARK });
   });
 });

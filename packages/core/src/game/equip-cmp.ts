@@ -44,7 +44,7 @@ import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
 import { tvalIsWearable } from "../obj/object.js";
 import { describeObject, knownDescOf } from "./describe.js";
 import { ODESC } from "../obj/desc.js";
-import { colorCharToAttr } from "../color.js";
+import { objectAttrChar } from "./display.js";
 import { FEAT } from "../generated/index.js";
 import {
   buildUiEntryConfig,
@@ -462,8 +462,11 @@ export function equipCmpSummary(
       src,
       quality: quality(obj),
       slot: wieldSlot(player.body, obj.tval, player.equipment),
-      equippyCh: obj.kind.dChar,
-      equippyAttr: colorCharToAttr(obj.kind.dAttr),
+      /* object_char / object_attr (ui-equip-cmp.c:2107-2108), not the kind
+       * record: an unidentified ring listed here drew dark like everywhere
+       * else the flavour rule was skipped. */
+      equippyCh: objectAttrChar(state, obj).char,
+      equippyAttr: objectAttrChar(state, obj).attr,
       cells,
     };
   });

@@ -48,8 +48,10 @@ import {
   COLOUR_WHITE,
   COLOUR_YELLOW,
   colorCharToAttr,
+  colorTextToAttr,
 } from "../color.js";
 import { MON_TMD, SQUARE, STAT, TMD } from "../generated/index.js";
+import { objectKindGlyph } from "../visuals/object-glyph.js";
 import { nextGrid } from "../world/view.js";
 import { EXTRACT_ENERGY } from "../mon/monster.js";
 import { monsterIsVisible } from "../mon/predicate.js";
@@ -60,6 +62,7 @@ import type { Loc } from "../loc.js";
 import type { Player } from "../player/player.js";
 import type { Monster } from "../mon/monster.js";
 import type { GameObject } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
 import type { GameState } from "./context.js";
 import { playerIsResting, playerRestingCount } from "./context.js";
 
@@ -152,11 +155,11 @@ export interface DisplayDeps {
   bookHasUnlearnedSpells?: boolean;
   /**
    * object_attr(obj): the display colour of a worn item (prt_equippy, L286).
-   * Default colorCharToAttr(obj.kind.dAttr) - the flavour-aware / pref x_attr
-   * override is a presentation concern each shell supplies.
+   * Defaults to the flavour-aware answer (objectAttrChar below). A shell with a
+   * pref-file TileMap supplies this to get the x_attr override upstream reads.
    */
   objectAttr?: (obj: GameObject) => number;
-  /** object_char(obj): the display glyph of a worn item. Default obj.kind.dChar. */
+  /** object_char(obj): the display glyph of a worn item. Same default. */
   objectChar?: (obj: GameObject) => string;
 }
 
@@ -195,6 +198,44 @@ function defaultStatUse(player: Player): number[] {
   return out;
 }
 
+/**
+ * object_attr / object_char (ui-object.c:118-131) for prt_equippy, answered
+ * from gamedata.
+ *
+ * This used to be `colorCharToAttr(obj.kind.dAttr)` with a comment saying the
+ * flavour-aware version was "a presentation concern each shell supplies" - and
+ * then no shell supplied it, in either of the two places that draw the equippy
+ * row. Every flavoured kind in the shipped data carries colour `d` (scrolls
+ * `w`), so a worn ring or amulet drew as a BLACK glyph, while upstream draws it
+ * in its flavour colour: Green, Violet, Light Blue. Nothing leaked - the kind
+ * colours within a tval are all identical, so the dark glyph told the player
+ * nothing it should not know - but the item was invisible.
+ *
+ * The seam is still there. A shell with a pref-file TileMap should supply it,
+ * because upstream reads flavor_x_attr/kind_x_attr rather than the gamedata
+ * record; this is the answer when nobody does.
+ */
+export function objectKindAttrChar(
+  state: GameState,
+  kind: ObjectKind,
+): { attr: number; char: string } {
+  const flavor = state.flavorGlyph?.(kind);
+  const aware = state.isAware?.(kind) ?? false;
+  const g = objectKindGlyph(kind, flavor, aware);
+  return {
+    attr: g.fromFlavor ? colorTextToAttr(g.attr) : colorCharToAttr(g.attr),
+    char: g.char,
+  };
+}
+
+/** object_attr / object_char (ui-object.c:118-131), which are kind-only. */
+export function objectAttrChar(
+  state: GameState,
+  obj: GameObject,
+): { attr: number; char: string } {
+  return objectKindAttrChar(state, obj.kind);
+}
+
 function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
   const player = state.actor.player;
   return {
@@ -227,9 +268,8 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
     wizard: deps.wizard ?? state.wizard ?? false,
     totalWinner: deps.totalWinner ?? player.totalWinner ?? false,
     bookHasUnlearnedSpells: deps.bookHasUnlearnedSpells ?? true,
-    objectAttr:
-      deps.objectAttr ?? ((obj) => colorCharToAttr(obj.kind.dAttr)),
-    objectChar: deps.objectChar ?? ((obj) => obj.kind.dChar),
+    objectAttr: deps.objectAttr ?? ((obj) => objectAttrChar(state, obj).attr),
+    objectChar: deps.objectChar ?? ((obj) => objectAttrChar(state, obj).char),
   };
 }
 
