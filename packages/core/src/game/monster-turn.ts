@@ -76,10 +76,22 @@
  *
  * NOTES (ledgered in parity/ledger/game-monster-ai.yaml; parity/DEFERRALS.md is
  * the list of what is actually missing):
- * - react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
+ * - NOTHING in this module, as of PORT_TODO 7.2. This block used to list
+ *   "react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
  *   decoy-destroy UI messages and disturb, and the remaining monster-lore
- *   updates. None of these draw RNG until taken, so the RNG order for the ported
- *   paths is unaffected.
+ *   updates", and every clause of it was false or had become false:
+ *     react_to_slay gates the pickup at monsterTurnGrabObjects; the confused
+ *     stumble, "You hear a door burst open!" and "The rune of protection is
+ *     broken!" are all printed; disturb runs at the tail. Only the decoy
+ *     message was genuinely absent, and only because two call sites open-coded
+ *     square_destroy_decoy instead of calling the shared destroyDecoy that has
+ *     printed it for its other five callers all along.
+ *   The lore was the real gap and it was real: mon-move.c carries 22
+ *   rf_on(lore->flags, ...) and this file carried 14. The missing eight -
+ *   RAND_25, RAND_50, KILL_BODY, MOVE_BODY, NEVER_MOVE twice and NEVER_BLOW's
+ *   player branch - are ported, and the counts now match 22 to 22.
+ *   A note that names several things collectively is why this took so long to
+ *   find: nobody can close it, so nobody reads it.
  */
 
 import type { Loc } from "../loc.js";
@@ -134,6 +146,7 @@ import { monMeleeAttack } from "../combat/mon-melee.js";
 import { reactToSlay } from "../combat/brand-slay.js";
 import { equipLearnOnDefend } from "../obj/knowledge.js";
 import { updatePlayerObjectKnowledge } from "./known.js";
+import { destroyDecoy } from "./effect-mon-origin.js";
 import { los, squareIsSeen, squareIsView } from "../world/view.js";
 import { PROJECT, projectPath, projectable } from "../world/project.js";
 import type { GameState } from "./context.js";
@@ -1012,8 +1025,18 @@ export function monsterTurnShouldStagger(
   }
   const confusedChance = chance;
 
-  if (mon.race.flags.has(RF.RAND_25)) chance += 25;
-  if (mon.race.flags.has(RF.RAND_50)) chance += 50;
+  /* RAND_25 and RAND_50 are cumulative, and each teaches its own lore line
+   * when the monster is visible (mon-move.c L1088-1098). This is what puts
+   * "moves erratically" in the recall. */
+  const staggerLore = getLore(state.lore, mon.race);
+  if (mon.race.flags.has(RF.RAND_25)) {
+    chance += 25;
+    loreLearnFlagIfVisible(staggerLore, mon, RF.RAND_25);
+  }
+  if (mon.race.flags.has(RF.RAND_50)) {
+    chance += 50;
+    loreLearnFlagIfVisible(staggerLore, mon, RF.RAND_50);
+  }
 
   const roll = state.rng.randint0(100);
   if (roll < confusedChance) return STAGGER.CONFUSED;
@@ -1191,6 +1214,12 @@ function monsterTurnTryPush(
     monsterCanMoveInto(state, mon, next) && state.chunk.isPassable(mon.grid);
   if (!killOk && !moveOk) return false;
 
+  /* Learn about pushing and shoving (mon-move.c L1345-1349). Both flags are
+   * taught together, whichever of the two actually applied. */
+  const pushLore = getLore(state.lore, mon.race);
+  loreLearnFlagIfVisible(pushLore, mon, RF.KILL_BODY);
+  loreLearnFlagIfVisible(pushLore, mon, RF.MOVE_BODY);
+
   /* Reveal a camouflaged blocker (mon-move.c L1352) before it is potentially
    * trampled. */
   const victim = squareMonster(state, next);
@@ -1354,7 +1383,8 @@ function monsterTurnGrabObjects(
  * to break the glyph of warding. Draws exactly one randint1(glyph_hardness); on
  * a roll below the monster's level the ward breaks (the glyph trap is removed)
  * and it returns true, else the ward holds and it returns false. The
- * "rune of protection is broken!" message is UI (DEFERRED, no RNG).
+ * "rune of protection is broken!" message IS printed below when the grid is
+ * seen; this line used to call it deferred while the code beside it did it.
  */
 function monsterTurnAttackGlyph(
   mon: Monster,
@@ -1377,8 +1407,9 @@ function monsterTurnAttackGlyph(
  * first through the injected state.monsterCast hook (make_ranged_attack, wired by
  * game/mon-ranged.ts installMonsterCasting); when it spends the turn we stop
  * here, exactly as upstream's `if (make_ranged_attack(mon)) return;`.
- * Item pickup, group behaviour and lore are partially DEFERRED (see the module
- * header); this ports the movement/attack core plus web/glyph/decoy handling.
+ * Item pickup, group behaviour and lore are all ported (PORT_TODO 7.2); this
+ * line used to call the three of them partially deferred, which was already
+ * untrue of the first two when it was written.
  */
 export function monsterTurn(mon: Monster, state: GameState): void {
   /* W2.2 mod seam: a trusted plugin may take this monster's turn over entirely.
@@ -1487,16 +1518,25 @@ export function monsterTurn(mon: Monster, state: GameState): void {
       if (monsterIsVisible(mon)) lore.flags.on(RF.NEVER_BLOW);
       /* Some monsters never attack. */
       if (mon.race.flags.has(RF.NEVER_BLOW)) continue;
-      /* Destroy the decoy (square_destroy_decoy, cave-square.c L1402): remove
-       * the decoy trap and clear cave->decoy. The "decoy is destroyed!" message
-       * is UI (DEFERRED, no RNG). */
-      removeTrapsWithFlag(state, next, TRF.GLYPH);
-      state.decoy = null;
+      /* square_destroy_decoy (cave-square.c L1402), via the shared body in
+       * effect-mon-origin.ts rather than open-coded here.
+       *
+       * This site used to clear the grid itself and note the message as
+       * deferred UI. It was not deferred - destroyDecoy has printed "The
+       * decoy is destroyed!" for its five other callers all along, gated on
+       * los-and-not-blind exactly as upstream. Only the two sites that went
+       * around the function were silent, and this was the one a MONSTER
+       * reaches: the most common way a decoy actually dies. Draws no RNG. */
+      destroyDecoy(state, undefined, (t) => state.msg?.(t));
       didSomething = true;
       break;
     }
 
     if (squareIsPlayer(state, next)) {
+      /* Learn about if the monster attacks (mon-move.c L1622-1624). The decoy
+       * branch above already did this; the player branch is the SAME learn on
+       * the far commoner path and it was missing. */
+      loreLearnFlagIfVisible(getLore(state.lore, mon.race), mon, RF.NEVER_BLOW);
       if (mon.race.flags.has(RF.NEVER_BLOW)) continue;
       const result = monMeleeAttack(
         state.rng,
@@ -1554,7 +1594,11 @@ export function monsterTurn(mon: Monster, state: GameState): void {
       break;
     }
 
-    if (mon.race.flags.has(RF.NEVER_MOVE)) return;
+    if (mon.race.flags.has(RF.NEVER_MOVE)) {
+      /* Learn about lack of movement (mon-move.c L1638-1640). */
+      loreLearnFlagIfVisible(getLore(state.lore, mon.race), mon, RF.NEVER_MOVE);
+      return;
+    }
 
     if (squareMonster(state, next)) {
       didSomething = monsterTurnTryPush(mon, state, next);
@@ -1569,10 +1613,17 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     }
   }
 
-  /* Possible disturb (mon-move.c L1661-1670): a visible monster that acted in
+  /* Learn about NO lack of movement (mon-move.c L1662-1664): a monster seen to
+   * act teaches that it is not a NEVER_MOVE monster. This used to be waved off
+   * as riding "the lore layer"; nothing supplied it, so a player who watched a
+   * monster walk learned nothing from having watched. */
+  if (didSomething) {
+    loreLearnFlagIfVisible(getLore(state.lore, mon.race), mon, RF.NEVER_MOVE);
+  }
+
+  /* Possible disturb (mon-move.c L1666-1669): a visible monster that acted in
    * the player's view stops the player running / resting, gated by the
-   * disturb_near option (shipped default true). The did_something NEVER_MOVE
-   * lore learn rides the lore layer; disturb draws no RNG. */
+   * disturb_near option (shipped default true). Draws no RNG. */
   if (
     didSomething &&
     monsterIsVisible(mon) &&
