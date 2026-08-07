@@ -1539,13 +1539,27 @@ export function newPlayerSpot(
  *
  * Nothing here guarantees the player can walk to a staircase, because upstream
  * 4.2.6 does not: alloc_stairs (gen-util.c:629) picks any square_isempty grid
- * and does not exclude vault interiors, while ensure_connectedness runs with
- * allow_vault_disconnect = true at five of its six sites (gen-cave.c:1271, 2836,
- * 3083, 3693, 3953; only 3464 passes false), so a vault the tunneller never
- * joined can swallow a staircase. Measured on this port: 53 stranded levels in
- * 520 (10.2%), overwhelmingly the UP stair, because a level gets 3-4 down stairs
- * against only 1-2 up (gen-cave.c:958). 37 of the 53 had the orphaned stair
- * inside SQUARE_VAULT.
+ * and does not exclude vault interiors - unlike find_start just above, which
+ * excludes square_isvault at all three of its tiers, so keeping something out of
+ * a vault is a thing upstream does deliberately and declines to do here. Then
+ * ensure_connectedness runs with allow_vault_disconnect = true at five of its
+ * six sites (gen-cave.c:1271, 2836, 3083, 3693, 3953; only 3464 passes false),
+ * and join_region plans a path THROUGH a vault it will not dig - so a vault the
+ * tunneller never joined can swallow a staircase.
+ *
+ * Measured 2026-08-06 over 15,000 levels (3,000 each at depths 1/20/40/50/60):
+ * 22 stranded, 0.15%, overwhelmingly the UP stair because a level gets 3-4 down
+ * stairs against only 1-2 up (gen-cave.c:958). ALL 22 carry the mechanism's
+ * signature - the sealed stair is SQUARE_VAULT and the region it is sealed into
+ * is vault to the last grid.
+ *
+ * An older note here read "53 stranded levels in 520 (10.2%), 37 of the 53
+ * inside SQUARE_VAULT". Both numbers were real and neither described upstream:
+ * the non-vault majority was the port's own build_streamer predicate bricking up
+ * secret doors, fixed in gen/cave.ts, and the same sweep run against the old
+ * predicate splits 137 stranded into 33 upstream and 104 port defect. A wart
+ * kept on purpose has to be measured after every generator change, or core ends
+ * up defending its own bugs.
  *
  * This was briefly a core guarantee (owner ruling 2026-07-25) and was withdrawn
  * the next day once the owner learned the C really does strand floors:

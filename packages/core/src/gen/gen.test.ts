@@ -397,25 +397,48 @@ describe("full level generation", () => {
    * says so out loud.
    *
    * Faithful core does NOT hold it, deliberately (owner ruling 2026-07-26: "Core
-   * must retain all warts of the reference code"). Upstream alloc_stairs happily
-   * drops a stair inside a vault that ensure_connectedness(c, true) then declines
-   * to join, and a level gets only 1-2 up stairs against 3-4 down, so 53 of 520
-   * sampled levels (10.2%) are stranded, 44 of them on the up stair.
+   * must retain all warts of the reference code"). The ruling only stands, of
+   * course, if the stranding really is upstream's; a port defect would have to be
+   * FIXED here and un-fixed in the mod. Adjudicated 2026-08-06 against the C, and
+   * every piece of the mechanism is upstream's:
    *
-   * The repair is the bug-fixes mod's, in packages/web/mods/bug-fixes/stairs.ts,
-   * and it reaches this generator through the levelGenerated hook like any
-   * third-party level mod would. Everything that asserts the repair WORKS - the
-   * synthetic sealed-vault levels, the RNG-freedom pin, the under-the-player
-   * fallback, the unrepairable refusal, the quest-floor guard, and the sweep over
-   * every stranded seed - moved with it. What is left here is core's half: the
-   * wart, and the seam.
+   *   - alloc_stairs (gen-util.c:629) accepts any square_isempty grid with the
+   *     required wall count. It does NOT exclude vault interiors. The asymmetry
+   *     is deliberate rather than an oversight: find_start, three tiers deep
+   *     (square_suits_stairs_well / _ok at cave-square.c:929/939, then the
+   *     walls-6-and-falling fallback at gen-util.c:387), excludes
+   *     square_isvault at EVERY tier. Upstream knows how to keep something out
+   *     of a vault, and keeps the player out but not the staircase.
+   *   - join_region (gen-cave.c:1983, 2017) refuses to dig a vault grid, and
+   *     with allow_vault_disconnect = true it still plans a path THROUGH one,
+   *     so the two regions are recoloured as joined without a passage ever being
+   *     cut. Five of the six ensure_connectedness sites pass true; only
+   *     hard_centre_gen (gen-cave.c:3464) passes false.
+   *   - The port matches all eight of the C's generation-time square_isvault
+   *     sites, and both files mark SQUARE_VAULT from exactly one place
+   *     (gen-room.c:1506 <-> gen/room.ts).
+   *
+   * The census that closed it: all 22 pinned seeds strand a stair that is itself
+   * SQUARE_VAULT, and in every one of them the sealed region is 100% vault
+   * grids - not one grid of ordinary level leaks into it. So the port is not
+   * failing to connect the dungeon; it is reproducing upstream's refusal to
+   * connect a vault. The control test below re-measures that on every run.
+   *
+   * The repair is the bug-fixes mod's, in the neo-angband-mod-bug-fixes repo
+   * (stairs.ts, flag bugfix.stairsReachable), and it reaches this generator
+   * through the levelGenerated hook like any third-party level mod would.
+   * Everything that asserts the repair WORKS - the synthetic sealed-vault
+   * levels, the RNG-freedom pin, the under-the-player fallback, the unrepairable
+   * refusal, the quest-floor guard, and the sweep over every stranded seed -
+   * moved with it. What is left here is core's half: the wart, and the seam.
    */
 
   /**
    * Measured stranded levels in FAITHFUL core: every staircase of at least one
-   * direction sealed away from the player, mostly inside a vault. These drive
-   * the control/fix pair below - the control proves core still has the wart,
-   * the fix test proves the mod flag repairs exactly these.
+   * direction sealed away from the player, in all 22 cases inside a vault. These
+   * drive the control/fix pair below - the control proves core still has the
+   * wart AND that it is upstream's wart, the fix test proves the mod flag
+   * repairs exactly these.
    */
   const STRANDED: readonly [number, number, readonly string[]][] = [
     /*
@@ -440,14 +463,27 @@ describe("full level generation", () => {
      *     before   137 / 15000   0.91% stranded
      *     after     22 / 15000   0.15% stranded
      *
-     * Depth 1 went 24 -> 0. The wart is retained - the 22 seeds below are the
-     * complete list from that sweep - but it is six times rarer, and that
-     * difference is NOT fully explained here. The streamer's own edits are all
-     * wall-to-wall and cannot change reachability by themselves; the change
-     * arrives through the shifted stream, because rubble (passable), stairs,
-     * objects and monsters are all placed after the streamers run. Which of
-     * those dominates has not been isolated, and saying so is better than
-     * inventing a mechanism.
+     * Depth 1 went 24 -> 0. The 22 seeds below are the complete list from that
+     * sweep.
+     *
+     * WHERE THE OTHER 115 WENT, measured 2026-08-06 by re-running both sweeps
+     * through notUpstreamStranding (below), which separates upstream's
+     * vault-swallowed stair from an ordinary sealed region:
+     *
+     *     before   137 stranded =  33 upstream-signature + 104 PORT DEFECT
+     *     after     22 stranded =  22 upstream-signature +   0 port defect
+     *
+     * So the six-fold drop was not a stream shift at all: 104 of the 137 were
+     * the port's own damage, and the mechanism is the obvious one in hindsight.
+     * A secret door is WALKABLE. The old predicate converted FEAT_SECRET into a
+     * magma or quartz vein, which is not - so any room whose only link to the
+     * level was a secret door was bricked up, stairs and all. The offender list
+     * is full of ordinary sealed regions, one of them 2,750 grids of a depth-1
+     * level (seed 10485). The residual 33 -> 22 IS a stream shift, and small.
+     *
+     * The earlier claim in this file that the drop was "NOT fully explained" is
+     * withdrawn: it was true when written and stopped being true the moment
+     * anyone asked which KIND of stranding each one was.
      */
     [20, 201097, ["up"]],
     [20, 201980, ["up"]],
@@ -472,6 +508,61 @@ describe("full level generation", () => {
     [60, 602631, ["up"]],
     [60, 602920, ["up"]],
   ];
+
+  /**
+   * Upstream's stranding has a SIGNATURE, and this is the classifier for it.
+   *
+   * join_region (gen-cave.c:1983, 2017) declines to dig exactly one kind of
+   * grid: SQUARE_VAULT. So the mechanism that swallows a staircase leaves a
+   * vault grid sealed into a region that is vault to the last square, and all 22
+   * pinned seeds plus every stranding in a 15,000-seed sweep look exactly like
+   * that.
+   *
+   * A violation is a LEAD, not a verdict. The likely cause is the port failing
+   * to connect the dungeon - core's bug to fix, and the bug-fixes mod's repair
+   * to withdraw. But upstream has one other route to the same shape: join_region
+   * plans a path THROUGH a vault and then refuses to dig the vault grids on it,
+   * so if the only crossing was through a vault WALL the corridor is left with a
+   * hole and an ordinary region stays sealed with no vault grid in it. That has
+   * not been observed in 15,000 levels; if it ever fires, rule it out before
+   * touching the generator.
+   *
+   * Returns one string per violation, empty when every stranding is upstream's.
+   */
+  const notUpstreamStranding = (g: Gen): string[] => {
+    const c = g.c;
+    const reachable = walkFrom(g, g.playerSpot as Loc);
+    const out: string[] = [];
+    for (const [name, feat] of [["down", FEAT.MORE], ["up", FEAT.LESS]] as const) {
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          const stair = loc(x, y);
+          if (c.feat(stair) !== feat) continue;
+          if (reachable[y * c.width + x]) continue;
+          if (!c.sqinfoHas(stair, SQUARE.VAULT)) {
+            out.push(`sealed ${name} stair at (${x},${y}) is not SQUARE_VAULT`);
+            continue;
+          }
+          /* The region it is sealed into, by the same walk rule. */
+          const sealed = walkFrom(g, stair);
+          let size = 0;
+          let outside = 0;
+          for (let i = 0; i < sealed.length; i++) {
+            if (!sealed[i]) continue;
+            size++;
+            if (!c.sqinfoHas(loc(i % c.width, Math.trunc(i / c.width)), SQUARE.VAULT)) outside++;
+          }
+          if (outside > 0) {
+            out.push(
+              `${name} stair at (${x},${y}) is sealed into a ${size}-grid region ` +
+                `with ${outside} non-vault grids`,
+            );
+          }
+        }
+      }
+    }
+    return out;
+  };
 
   /** The directions of `g` that have a stair but no reachable one. */
   const strandedDirs = (g: Gen): string[] => {
@@ -504,6 +595,14 @@ describe("full level generation", () => {
      * seeds strand upward only and exactly one strands downward, and a label
      * nothing reads could have said anything at all. Derived and asserted, it
      * is a second measurement per seed rather than a decoration. */
+    /* The fourth measurement: WHY it stranded. See the long note above - the
+     * ruling that core keeps this wart rests on the stranding being upstream's,
+     * and upstream's mechanism has a signature. Every sealed stair must be a
+     * vault grid, and the region sealed with it must be vault to the last grid.
+     * A stranding that fails either half is not join_region declining to dig a
+     * vault; it is the port failing to connect the dungeon, and it would have to
+     * be fixed HERE and un-fixed in the bug-fixes mod. */
+    const notUpstream: string[] = [];
     const notStranded: string[] = [];
     const wrongDirs: string[] = [];
     for (const [depth, seed, dirs] of STRANDED) {
@@ -514,7 +613,17 @@ describe("full level generation", () => {
       } else if (actual.join("+") !== [...dirs].join("+")) {
         wrongDirs.push(`d${depth} seed ${seed}: pinned ${dirs.join("+")}, got ${actual.join("+")}`);
       }
+      for (const v of notUpstreamStranding(g)) notUpstream.push(`d${depth} seed ${seed}: ${v}`);
     }
+    expect(
+      notUpstream,
+      `these strandings do not carry upstream's signature: ${notUpstream.join("; ")}. ` +
+        `join_region declines to dig SQUARE_VAULT grids and nothing else, so a sealed ` +
+        `region that reaches ordinary floor is most likely a PORT connectivity defect - ` +
+        `it would belong in core's generator, not in the bug-fixes mod. Read the note on ` +
+        `notUpstreamStranding for the one upstream route to the same shape, and rule it ` +
+        `out before changing anything.`,
+    ).toEqual([]);
     expect(wrongDirs, `stranded directions moved: ${wrongDirs.join("; ")}`).toEqual([]);
     expect(
       notStranded,
@@ -525,6 +634,77 @@ describe("full level generation", () => {
         `many of the ${STRANDED.length} still strand: a handful going stale is a stream ` +
         `shift, most of them going stale is a behavioural regression.`,
     ).toEqual([]);
+  });
+
+  /**
+   * A CONTROL ON THE CONTROL. The signature check above passes on all 22 pinned
+   * seeds, and a check that has only ever been seen passing is not yet evidence.
+   *
+   * The obvious mutant does not reach it: disabling ensureConnectedness's join
+   * loop entirely still produced zero non-vault strandings on these seeds - it
+   * moved the generation stream instead, and seven seeds simply stopped
+   * stranding, which the OLDER assertion catches. So the signature check needs
+   * an input built to violate it, and here it is: one hand-built level with a
+   * floor pocket sealed off by granite and an up staircase inside it, and its
+   * twin with the pocket marked SQUARE_VAULT. Identical geometry; only the flag
+   * that join_region reads differs, and the verdict flips with it.
+   */
+  it("CONTROL for the control: a sealed NON-vault stair is called a port defect", () => {
+    /**
+     * A level with one sealed 3x3 pocket holding an up stair.
+     *
+     * `markVault`: "none" leaves the pocket as ordinary floor, "all" flags the
+     * whole pocket the way build_vault does, and "stair" flags only the stair -
+     * which is the case that separates the classifier's two halves, since the
+     * stair passes the SQUARE_VAULT test and the region it is sealed into does
+     * not.
+     */
+    const sealedPocket = (mark: "none" | "all" | "stair"): Gen => {
+      const markVault = mark === "all";
+      const g = bareGen(40, 25, 10);
+      const c = g.c;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) c.setFeat(loc(x, y), FEAT.GRANITE);
+      }
+      /* The player's room. */
+      for (let y = 2; y <= 10; y++) {
+        for (let x = 2; x <= 10; x++) c.setFeat(loc(x, y), FEAT.FLOOR);
+      }
+      /* The pocket, nowhere near it and walled off by the granite fill. */
+      for (let y = 18; y <= 20; y++) {
+        for (let x = 20; x <= 22; x++) {
+          const grid = loc(x, y);
+          c.setFeat(grid, FEAT.FLOOR);
+          if (markVault) c.sqinfoOn(grid, SQUARE.VAULT);
+        }
+      }
+      const stair = loc(21, 19);
+      c.setFeat(stair, FEAT.LESS);
+      if (mark !== "none") c.sqinfoOn(stair, SQUARE.VAULT);
+      g.playerSpot = loc(6, 6);
+      return g;
+    };
+
+    /* All three levels really do strand the up stair - otherwise the classifier
+     * is being asked about a level that has nothing to classify. */
+    const plain = sealedPocket("none");
+    const vaulted = sealedPocket("all");
+    const stairOnly = sealedPocket("stair");
+    expect(strandedDirs(plain)).toEqual(["up"]);
+    expect(strandedDirs(vaulted)).toEqual(["up"]);
+    expect(strandedDirs(stairOnly)).toEqual(["up"]);
+
+    /* Ordinary floor: a port connectivity defect, and named as one. */
+    expect(notUpstreamStranding(plain)).toEqual([
+      "sealed up stair at (21,19) is not SQUARE_VAULT",
+    ]);
+    /* The same pocket, flagged the way build_vault flags one: upstream's wart. */
+    expect(notUpstreamStranding(vaulted)).toEqual([]);
+    /* Vault stair, ordinary sealed region: still not upstream's mechanism, and
+     * the half of the classifier the other two cases never reach. */
+    expect(notUpstreamStranding(stairOnly)).toEqual([
+      "up stair at (21,19) is sealed into a 9-grid region with 8 non-vault grids",
+    ]);
   });
 
   /* ------------------------------------------------------------------ *
