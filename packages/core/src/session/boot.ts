@@ -163,6 +163,11 @@ export function bindCore(pack: CorePack): CoreRegistries {
   });
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
   const projections = pack.projection ? bindProjections(pack.projection) : null;
+  /* Upstream reads projections[] as a global, and obj-randart.c does so from
+   * inside the object domain (add_brand L1951, add_resist / add_immunity's log
+   * lines). Attach the bound table to the object registry so those sites read
+   * the pack's real names rather than a mirror of them. */
+  objects.projections = projections;
   const traps = pack.trap ? bindTraps(pack.trap) : null;
   /* names.txt words are prepended in C (init.c:1476); reverse each section so
    * index 0 is the last word in file order (matches name_sections lookup). */
