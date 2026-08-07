@@ -67,16 +67,18 @@ notes: >-
   (confused / target-monster / decoy targeting, breath_dam) are the
   monster-spell layer's (#19).
 deferred:
-  - breath_dam(type, mon->hp) for monster breath damage (#19); the dice value is
-    used until then.
-  - resolveAimedTarget's monster targeting (confused direction, target-monster,
-    decoy) and the target system (target_okay / target_get provide env.aimed) -
-    #19 / #24.
+  - breath_dam IS ported and called: mon/spell.ts breathDam, read at
+    game/effect-attack.ts:224 off the breather's current hitpoints. The "the
+    dice value is used until then" half is spent.
+  - resolveAimedTarget is ported with BOTH paths complete (used at
+    game/effect-attack.ts:117 and :128) - confused direction, target-monster
+    and decoy - and the real target system (game/target.ts) supplies env.aimed.
   - PROJECT_LOS_AWARE's awareness-gated notice difference (a UI/notice nuance);
     both codes apply the same projection. BOLT_AWARE's PROJECT_AWARE flag is
     the same notice nuance (#25).
-  - EF_LASH's monster-vs-monster target and decoy branches (#19); the target
-    is the player.
+  - EF_LASH's monster-vs-monster target and decoy branches are ported
+    (game/effect-attack.ts:369-379): monsterTargetMonster first, then
+    monsterIsDecoyed / caveFindDecoy, then the player - upstream's exact order.
 verified-by:
   - game/effect-attack.test.ts (8 tests): through a real EffectRegistry
     (registerCoreHandlers + registerAttackHandlers), EF_BOLT damages the aimed

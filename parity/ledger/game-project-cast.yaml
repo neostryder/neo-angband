@@ -82,17 +82,20 @@ notes: >-
   it lands; chp and is_dead are live getters/setters so take_hit's mutations
   write back to the player and the game state.
 deferred:
-  - effect_handler_LASH (L899): the whip/spit finite beam - its damage is summed
-    from the caster's monster blows (mon->race->blow[]), so it lands with the
-    monster-spell layer (#19) that already has that data; the projection shape
-    itself is a short beam (castShortBeam).
+  - effect_handler_LASH (L899) IS ported, in the module that has the blow data -
+    game/effect-attack.ts:356, summing the full first blow plus half of every
+    other, with lash_type off the first blow - and it casts through this
+    module's short beam.
   - The effect-registry wiring (registering these as the EF_* handlers) and the
     player-timed / EffectPlayer adapters for the general handlers - next
     increment.
-  - resolveAimedTarget's monster branch (confused direction, target-monster,
-    decoy) and the target system (target_okay / target_get) - #19 / #24.
-  - onObject (#20 floor objects) and onFeature (#21 traps/terrain) projection
-    hooks; breath_dam for monster breath damage (#19).
+  - resolveAimedTarget's monster branch and the real target system are ported
+    (game/effect-attack.ts, game/target.ts); env.aimed is backed by the live
+    target rather than a stand-in.
+  - All three are supplied: onObject and onFeature are wired at
+    game/project-cast.ts:341-344 to projectObject / projectFeature over the live
+    floor piles and terrain (whenever a world env exists), and breath_dam is
+    mon/spell.ts breathDam, read at game/effect-attack.ts:224.
   - A real PlayerProjActor from calc_bonuses (resists, damage reduction,
     minus_ac) replaces basicPlayerActor's zeroes.
 verified-by:

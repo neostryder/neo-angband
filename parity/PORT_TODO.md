@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 200 of 338 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 213 of 338 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **104 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **117 `ported`,
   35 `stale-doc`, 18 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 6 `partial` against **5** `real`**. **138 remain.**
+  9 `n-a`, 6 `partial` against **5** `real`**. **125 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -221,6 +221,25 @@ is reachable in play and a test constructs the case that used to be wrong.**
   was ever owed there.
 
   Thirteen mutants across both passes, thirteen kills.
+
+  **Then the same question, asked of the whole open pile.** If a row that names
+  its blocker expires when the blocker closes, the cheapest next move is to grep
+  the OPEN rows for blocker citations and check each one's status. Thirteen more
+  rows fell out immediately: five citing PORT_TODO items that are `[x]` (5.3,
+  5.4, 2.6, 3.15, 3.17 - three of those rows had already been rewritten to say
+  "NOT DEFERRED ANY MORE" and were simply never given a verdict), and all eight
+  citing task **#19**, the monster-spell layer, which has landed entire -
+  `breathDam`, `resolveAimedTarget` with both paths, `EF_LASH`'s
+  monster-target and decoy branches, `chooseAttackSpell` / `removeBadSpells`
+  reached from the live monster turn, `findAnyNearbyInjuredKin` as the filter's
+  DEFAULT rather than an unsupplied hook, and `onObject` / `onFeature` wired to
+  the live floor and terrain. 200 -> 213 adjudicated, no feature work behind it.
+
+  **What remains in the open pile is mostly two citations**: 17 rows on `#24`
+  (object knowledge / ignore) and 15 on `#25` (presentation). Both have moved a
+  long way - 2.9 shipped the known-object pile, `obj/ignore.ts` is real, and the
+  unconditional-repaint divergence is ratified - so the same sweep should be run
+  on them next, one citation at a time rather than one file at a time.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
