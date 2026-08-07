@@ -131,11 +131,17 @@ notes: >-
   Save format: SavedPlayer.hist is a new, optional, additive array field
   (session/save.ts) - old saves without it load as an empty log (p.hist =
   []), matching the additive-optional-field posture already used for
-  maxDepth/objKnown. Unlike upstream (save.c:1063/load.c:1748, which persists
+  maxDepth/objKnown. LIKE upstream (save.c:1063/load.c:1748, which persists
   the artifact by NAME and re-resolves aidx via lookup_artifact_name so a
-  save survives artifact renumbering across versions), the port stores aIdx
-  as a raw number; acceptable for a port with stable aidx numbering, but a
-  deliberate divergence worth remembering if artifacts are ever renumbered.
+  save survives artifact renumbering across versions), the port persists the
+  NAME: SavedHistoryInfo.artifactName (session/save.ts:628), written as
+  ids.artifactName(e.aIdx) (:682) and resolved back through
+  objReg.artifacts.find(a => a?.name === artifactName) with a `continue` on
+  failure (:790-809), which is load.c:1748-1755 line for line. The numeric
+  aIdx survives only as an optional legacy field save-migrate.ts:200 reads.
+  This note previously claimed the raw index was stored and called that a
+  deliberate divergence; it was wrong when written, and DIVERGENCES.md
+  records the retraction rather than dropping the row.
 
   Player.hist (the new event-log array) is intentionally distinct from the
   pre-existing Player.history string (the birth background/bio paragraph,

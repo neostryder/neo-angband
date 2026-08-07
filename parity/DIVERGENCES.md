@@ -1,12 +1,14 @@
 # Where this port is deliberately not Angband 4.2.6
 
-Written 2026-08-07, the day [PORT_TODO.md](PORT_TODO.md) reached zero open items.
-That milestone means *every gap this project found and wrote down is closed*. This
-file is the other half of the sentence: the things that are different **on purpose**
-and are not going to be closed, each with the reason.
+Written 2026-08-07, the day [PORT_TODO.md](PORT_TODO.md) closed the last of the 68
+gaps it had written down — and, later the same day, re-ran the census and reopened
+two. So the honest version of that milestone is *every gap this project found and
+wrote down is closed except two, which are named in PORT_TODO.md*. This file is the
+other half of the sentence: the things that are different **on purpose** and are not
+going to be closed, each with the reason.
 
 It is derived from the ledger census — `parity/reports/deferral-census.tsv`, the
-**32 rows adjudicated `divergence`** and the **47 adjudicated `n-a`** — plus the
+**32 rows adjudicated `divergence`** and the **52 adjudicated `n-a`** — plus the
 divergences stated in the ledger files themselves. Everything below is a real,
 checkable claim about the code, not a category someone invented afterwards.
 
@@ -52,17 +54,7 @@ consumer). No row found a write whose value could not be re-derived. That is an
 argument, not a proof, and it is the single most valuable thing for a future reviewer
 to attack.
 
-## C2. A randart set is not pinned by name
-
-**Upstream** persists a character's artifact by NAME and re-resolves the index through
-`lookup_artifact_name` (save.c:1063 / load.c:1748), so a save survives artifacts being
-renumbered between versions. **Here**, `player-history.ts` stores the raw `aIdx`.
-
-**Class C.** Acceptable while `aidx` numbering is stable, and a real hazard the day it
-is not. Recorded in `parity/ledger/player-history.yaml` rather than left to be
-rediscovered.
-
-## C3. `add_brand` matches element names from a local table
+## C2. `add_brand` matches element names from a local table
 
 **Upstream** compares `brand->name` against `projections[i].name` (obj-randart.c
 L1951). **Here**, `randart-build.ts` reads a local `ELEMENT_PROJ_NAMES` table, because
@@ -75,6 +67,21 @@ projections in it.
 4.2.6's own data fails the build. What it still costs: a **mod** whose
 `projection.txt` renames an element would diverge at runtime — upstream would stop
 matching, this port would not.
+
+## Retired: "a randart set is not pinned by name"
+
+A third `C` row stood here claiming the port persists a character's artifact history by
+raw `aIdx` where upstream persists it by NAME and re-resolves through
+`lookup_artifact_name` (save.c:1063 / load.c:1748). **The claim was already false when
+it was written.** `SavedHistoryInfo` carries `artifactName: string`
+(`session/save.ts:628`), serialisation writes `ids.artifactName(e.aIdx)` (`:682`), and
+load resolves it back through `objReg.artifacts.find(a => a?.name === artifactName)`
+and `continue`s when it fails (`:790-809`) — which is load.c:1748-1755 line for line.
+The numeric `aIdx` survives only as an optional legacy field a migration reads.
+
+It is recorded here rather than deleted because a divergence row is a standing claim
+about the code, and a claim that quietly disappears takes with it the chance to notice
+it was wrong. This one was wrong; the mechanism it named exists and matches upstream.
 
 ---
 
