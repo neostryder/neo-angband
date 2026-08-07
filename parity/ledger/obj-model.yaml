@@ -59,7 +59,13 @@ deferred:
     CurseTimedFoil / buildCurseTimedFoil, threaded through obj/make.ts as
     deps.timedFoil (:1074, :1089, :1188) so applyCurse can reject a curse the
     player's timed-effect resists would foil. Landed as PORT_TODO 5.7.
-  - Inscription-driven ignore/pickup behavior (needs player + UI).
+  - CLOSED (2026-08-07). Inscriptions drive both: obj/ignore.ts's
+    check_for_inscrip honours "!k" and "!*" so an inscribed item is never
+    ignored by rule, game/ignore-cmd.ts excludes an item inscribed "!d" from the
+    drop pass, and the pickup path reads inscriptions through the same
+    state.isIgnored seam. The autoinscription machinery is
+    obj/knowledge.ts's AutoinscriptionRegistry, applied by
+    game/obj-cmd.ts.
 verified-by:
   - unit tests against real pack terrain data (counts + spot checks:
     Broad Sword dice/weight, Ringil artifact fields, ego binding, brand

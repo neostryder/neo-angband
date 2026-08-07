@@ -35,13 +35,17 @@ notes: >-
   load from the generated string expressions, aligned to RSF value so the
   lookups mirror mon_spell_types[index] exactly.
 deferred:
-  - do_mon_spell (L345): executes a spell's effect chain through effect_do with
-    a monster source - the game/ layer wiring (spell messages, the saving throw,
-    spell_check_for_fail_rune), a follow-up increment now that the effect
-    handlers and the game effect env exist.
-  - choose_attack_spell / remove_bad_spells / make_attack_spell (mon-attack.c):
-    the spell-selection AI, a follow-up increment (needs player resist knowledge
-    and the monster turn integration).
+  - CLOSED (2026-08-07). The follow-up increment landed: game/mon-cast.ts
+    doMonSpell runs the chain through the effect stack with a monster source,
+    with the spell messages, the saving throw and spell_check_for_fail_rune
+    (buildFailRuneEnv), and installMonsterCasting wires it at
+    session/game.ts:1529.
+  - CLOSED (2026-08-07). All three are ported: chooseAttackSpell
+    (game/mon-ranged.ts:248, called live from mon-cmd.ts:735), removeBadSpells
+    (:173, applied at :342), and make_attack_spell's driver half is
+    monsterCanCast plus installMonsterCasting. The player resist knowledge it
+    said it needed is buildSmartLearnEnv / the smart-learn memory, and the
+    monster-turn integration is monster-turn.ts.
   - The monster-lore / recall layer this row waited on is built, and the lore
     damage calculations landed with it: monSpellLoreDescription
     (mon/lore-describe.ts:426) and monSpellLoreDamage (:457) are called from the
