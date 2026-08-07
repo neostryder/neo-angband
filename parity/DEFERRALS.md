@@ -41,8 +41,11 @@ twenty command codes the base registry registers as stubs.
 A further 27 notes were not parity claims at all — a variable named `todo`, a
 `setTimeout` "deferred a tick past focus", one mod that "defers to" another.
 
-**What is genuinely missing is 68 citations, which collapse to 60 work items in
-[PORT_TODO.md](PORT_TODO.md),** grouped below by what a player would notice. Two
+**What was genuinely missing was 76 citations, collapsing to 68 work items in
+[PORT_TODO.md](PORT_TODO.md)** - all of them closed as of 2026-08-07. The counts
+in this sentence have moved in both directions since it was first written, which
+is the point: re-reading the ledger finds work about as often as it kills it.
+Grouped below by what a player would notice. Two
 are architectural (`notice_stuff` / `PN_*`, and the carried-weight total nothing
 sums); the largest by volume is a debug log.
 

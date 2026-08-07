@@ -18,19 +18,23 @@
  *   through the randartLog sink in ./randart-log.js. It never affects any
  *   returned value, so a run with no log open behaves identically.
  * - artifact_power (obj-randart.c L186) builds a "fake" object with
- *   make_fake_artifact (obj-make.c L728), which is object_prep(kind, 0,
- *   MAXIMISE) (obj-make.c L817) followed by copy_artifact_data (obj-make.c
- *   L520). artifactPower reproduces that field mapping directly into a
- *   PowerObject; the MAXIMISE and MINIMISE aspects it uses consume no RNG, so
- *   the two are inlined as pure rvMaximise/rvMinimise helpers and artifactPower
- *   needs no Rng.
+ *   make_fake_artifact (obj-make.c L728) and calls object_power on it. It calls
+ *   the REAL one: obj/artifact-fake.ts, the same builder the knowledge browser
+ *   and the spoiler dump use, which is object_prep(kind, 0, MAXIMISE)
+ *   (obj-make.c L817) followed by copy_artifact_data (obj-make.c L520).
+ *   This file used to carry its own hand-written copy of that field mapping,
+ *   flattened into a PowerObject because object_power reads only a few fields.
+ *   Two hand-written copies of one C function agree until they do not, and the
+ *   divergence would have been silent and total (artifact_power drives the
+ *   whole design loop). It also cost the object_desc log line, which needs the
+ *   whole object. Both are gone: one builder, one field mapping.
  * - The fake object's curse timeouts (copy_curses, obj-curse.c) are set from a
  *   RANDOMISE roll upstream, and that roll DRAWS. The timeout never enters
  *   object_power, so this file used to skip it and say no RNG was consumed;
  *   that was measured on the standard artifact set (one curse in the whole
  *   file) and was wrong during generation, where design_artifact re-powers an
- *   artifact make_bad has just cursed. The rolls are made, in upstream's order.
- *   See makeFakeArtifactPower.
+ *   artifact make_bad has just cursed. The rolls are made, in upstream's order,
+ *   by copyArtifactData itself now that the real builder does the work.
  * - Upstream mean()/variance() (z-util.c L1389/L1516) are exact-rational
  *   multi-precision routines; store_base_power calls them with a non-NULL frac,
  *   which is the "round the result down" path. Both are now ported for real in
@@ -42,24 +46,20 @@ import { randartLog, randartLogf } from "./randart-log.js";
 import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
+import type { Constants } from "../constants.js";
 import type { ObjRegistry } from "./bind.js";
 import { tvalFindName } from "./bind.js";
-import type { CurseData, CurseTimedFoil } from "./object.js";
+import type { CurseTimedFoil } from "./object.js";
+import { makeFakeArtifact } from "./artifact-fake.js";
+import { ODESC, objectDesc } from "./desc.js";
+import type { KnownDesc } from "./known-object.js";
+import { makeRuneEnv } from "./knowledge.js";
 import type { ActivationSummarizer } from "./randart-build.js";
-import {
-  copyBrands,
-  copySlays,
-  tvalCanHaveCharges,
-  tvalIsEdible,
-  tvalIsFuel,
-  tvalIsLauncher,
-  tvalIsPotion,
-} from "./object.js";
+import { ELEMENT_PROJ_NAMES } from "./randart-build.js";
 import { mean, variance } from "../rational.js";
 import { objectPower } from "./power.js";
-import type { PowerObject } from "./power.js";
 import type { Artifact, ElementInfo } from "./types.js";
-import { ELEM_MAX, newOfFlags, OBJ_MOD_MAX, TV_MAX } from "./types.js";
+import { TV_MAX } from "./types.js";
 import type { RandomValue } from "../rng.js";
 
 /** ART_IDX_TOTAL: number of learned-probability slots (obj-randart.h). */
@@ -223,11 +223,6 @@ function rvMinimise(v: RandomValue): number {
   return v.base + v.dice;
 }
 
-/** randcalc(v, 0, MAXIMISE): base + dice*sides + mBonus. */
-function rvMaximise(v: RandomValue): number {
-  return v.base + v.dice * v.sides + v.mBonus;
-}
-
 /** Number of set entries in a 1-based boolean slay/brand array, or 0. */
 function countTrue(arr: readonly boolean[] | null): number {
   if (!arr) return 0;
@@ -263,152 +258,20 @@ function varianceFloored(nums: readonly number[]): number {
 /* ------------------------------------------------------------------ */
 /* artifact_power (obj-randart.c L186)                                 */
 /* ------------------------------------------------------------------ */
-
-/**
- * Build the "fake" object object_power evaluates for an artifact, reproducing
- * make_fake_artifact (obj-make.c L728) = object_prep(kind, 0, MAXIMISE)
- * followed by copy_artifact_data (obj-make.c L520). Returns null when the
- * artifact has no tval or no base kind (make_fake_artifact would return false).
- */
-function makeFakeArtifactPower(
-  reg: ObjRegistry,
-  art: Artifact,
-  rng: Rng,
-): PowerObject | null {
-  if (!art.tval) return null;
-  const kind = reg.lookupKind(art.tval, art.sval);
-  if (!kind) return null;
-
-  /* Flags: object_prep copies base then kind flags (the second copy
-   * overwrites the first, upstream quirk kept in objectPrep), then
-   * copy_artifact_data clears the light-fuel flags and unions art flags. */
-  const flags = newOfFlags();
-  flags.copy(kind.base.flags);
-  flags.copy(kind.flags);
-  flags.off(OF.TAKES_FUEL);
-  flags.off(OF.BURNS_OUT);
-  flags.union(art.flags);
-
-  /* Modifiers: object_prep fills from the kind (MAXIMISE), then
-   * copy_artifact_data overwrites every entry with the artifact's. */
-  const modifiers: number[] = new Array<number>(OBJ_MOD_MAX).fill(0);
-  for (let i = 0; i < OBJ_MOD_MAX; i++) {
-    modifiers[i] = art.modifiers[i] ?? 0;
-  }
-
-  /* pval: object_prep assigns charges then food/oil/launcher pval; the
-   * artifact copy does not touch pval. */
-  let pval = 0;
-  if (tvalCanHaveCharges(art.tval)) {
-    pval = rvMaximise(kind.charge);
-  }
-  if (
-    tvalIsEdible(art.tval) ||
-    tvalIsPotion(art.tval) ||
-    tvalIsFuel(art.tval) ||
-    tvalIsLauncher(art.tval)
-  ) {
-    pval = rvMaximise(kind.pval);
-  }
-
-  /* Slays/brands: object_prep copies the kind's, copy_artifact_data unions
-   * the artifact's on top. */
-  let slays = copySlays(null, kind.slays, reg.slays);
-  slays = copySlays(slays, art.slays, reg.slays);
-  let brands = copyBrands(null, kind.brands, reg.brands);
-  brands = copyBrands(brands, art.brands, reg.brands);
-
-  /* Element info: object_prep sets res_level and flags from kind (+ base
-   * flags); copy_artifact_data overrides res_level with any non-zero
-   * artifact level and unions the artifact ignore flags. */
-  const elInfo: ElementInfo[] = [];
-  for (let i = 0; i < ELEM_MAX; i++) {
-    const ke = kind.elInfo[i] as ElementInfo;
-    const be = kind.base.elInfo[i] as ElementInfo;
-    const ae = art.elInfo[i] as ElementInfo;
-    let resLevel = ke.resLevel;
-    let elFlags = ke.flags | be.flags;
-    if (ae.resLevel !== 0) resLevel = ae.resLevel;
-    elFlags |= ae.flags;
-    elInfo.push({ resLevel, flags: elFlags });
-  }
-
-  /*
-   * Curses. Upstream reaches copy_curses (obj-curse.c L36) TWICE: once from
-   * object_prep with the kind's curses, once from copy_artifact_data with the
-   * artifact's. Each call walks the whole curse array and, for every non-zero
-   * source slot, rolls
-   *
-   *     obj->curses[i].timeout = randcalc(curses[i].obj->time, 0, RANDOMISE)
-   *
-   * and that roll DRAWS. The timeout never enters object_power (cursePower
-   * reads only the power), so this port used to leave it at 0 and note that no
-   * RNG was consumed -- true of the standard artifact set, which carries one
-   * curse in the whole file, and WRONG everywhere it mattered: design_artifact
-   * calls artifact_power again on every loop iteration after make_bad has
-   * cursed the artifact (obj-randart.c L2833-L2846), so upstream draws here
-   * repeatedly during generation and the port did not. The streams parted at
-   * the first cursed artifact and every artifact designed after it differed.
-   *
-   * So the rolls are made and discarded-into-the-field, in upstream's order:
-   * the kind's slots ascending, then the artifact's. randcalc draws even for a
-   * curse whose time has no dice, because m_bonus_calc(0, ...) still goes
-   * through m_bonus -- which is why this reproduces the COUNT and not just the
-   * shape.
-   */
-  let curses: CurseData[] | null = null;
-  if (kind.curses || art.curses) {
-    const slots: CurseData[] = [];
-    for (let i = 0; i < reg.curses.length; i++) {
-      slots.push({ power: 0, timeout: 0 });
-    }
-    const copyCurses = (source: readonly number[] | null | undefined): void => {
-      if (!source) return;
-      for (let i = 0; i < reg.curses.length; i++) {
-        const power = source[i] ?? 0;
-        if (!power) continue;
-        const slot = slots[i] as CurseData;
-        slot.power = power;
-        slot.timeout = rng.randcalc(reg.curses[i]!.obj.time, 0, "randomise");
-      }
-    };
-    copyCurses(kind.curses);
-    copyCurses(art.curses);
-    curses = slots;
-  }
-
-  /* Activation comes from the artifact or, failing that, the kind. */
-  const act = art.activation ?? kind.activation;
-  const activation = act ? { power: act.power } : null;
-
-  return {
-    tval: art.tval,
-    toH: art.toH,
-    toD: art.toD,
-    toA: art.toA,
-    ac: art.ac,
-    dd: art.dd,
-    ds: art.ds,
-    weight: art.weight,
-    pval,
-    modifiers,
-    brands,
-    slays,
-    flags,
-    elInfo,
-    curses,
-    activation,
-    kind: { power: kind.power, kindFlags: kind.kindFlags },
-    ego: null,
-  };
-}
-
 /**
  * artifact_power (obj-randart.c L186): the artifact's power, by generating a
  * fake object from the artifact and calling the common object_power.
  */
 export function artifactPower(
   reg: ObjRegistry,
+  /**
+   * object_prep's z_info / player constants, reached upstream as globals. Only
+   * the real make_fake_artifact needs them, which is why this argument appears
+   * here at all: the flattened builder that used to live in this file could
+   * skip object_prep, and skipping object_prep is what let the two copies of
+   * one C function drift.
+   */
+  constants: Constants,
   art: Artifact,
   /**
    * artifact_power's `reason` (obj-randart.c:186), which exists only to head
@@ -419,37 +282,62 @@ export function artifactPower(
   reason: string,
   /**
    * make_fake_artifact's copy_curses rolls a timeout per cursed slot and those
-   * rolls DRAW (see makeFakeArtifactPower). Required, because a default would
-   * hand back a private Rng and silently restore the divergence this argument
-   * exists to close.
+   * rolls DRAW. Required, because a default would hand back a private Rng and
+   * silently restore the divergence this argument exists to close.
    */
   rng: Rng,
 ): number {
   randartLogf(() => `********** Evaluating ${reason} ********\n`);
   randartLogf(() => `Artifact index is ${art.aidx}\n`);
 
-  const obj = makeFakeArtifactPower(reg, art, rng);
+  const obj = makeFakeArtifact(reg, constants, art, rng);
   if (!obj) return 0;
 
   /*
-   * obj-randart.c:205-206 also logs the fake artifact's object_desc with
-   * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL. STILL NOT WRITTEN, and the reason
-   * is bigger than the one recorded here before.
+   * object_desc of the fake artifact (obj-randart.c L205-L206), with
+   * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL and a NULL player - upstream's own
+   * argument, and the reason this needs no knowledge state. A null player is
+   * an omniscient observer: objectDesc uses the object as its own known shadow
+   * and every gate opens, so the RuneEnv below is never asked a knowledge
+   * question. It supplies the registries and nothing else, and slot_object is
+   * null for every slot because there is no player to have equipment.
    *
-   * A KnownDesc is not the obstacle: SPOIL describes the object as it truly
-   * is, so aware-and-tried for everything is the only answer consistent with
-   * it, and a RuneEnv over reg.brands/slays/curses/properties with a null
-   * slot_object is buildable right here. Attempted 2026-08-07 and abandoned on
-   * the real blocker: makeFakeArtifactPower returns a PowerObject - the
-   * reduced shape object_power needs - and object_desc wants a whole
-   * GameObject. Writing this line means building the full fake object upstream
-   * builds, which is a change to the power path, not to the log.
+   * The KnownDesc is equally thin, and deliberately says the honest thing
+   * rather than the convenient one: isAware/isTried are FALSE, exactly as
+   * upstream's kind->aware at this point in birth. It does not matter -- SPOIL
+   * forces `aware` true a line later, and obj_desc_get_basename returns
+   * kind->name for an artifact regardless -- but a KnownDesc that lied here
+   * would be a claim about the player, and this code has no player.
    *
-   * Its format string is "%s\n", which has no literal span, so the census in
-   * randart-log.census.test.ts cannot see it - it is carried there as
-   * UNWRITTEN_SPANLESS instead, and PORT_TODO 5.5 stays open on it. Left to
-   * the ratchet alone this would be a line quietly dropped.
+   * Its format string is "%s\n", which has no literal span for the census in
+   * randart-log.census.test.ts to match, so this line was carried there as
+   * UNWRITTEN_SPANLESS = 1 for as long as it went unwritten. That count is now
+   * zero, which is the only reason the reassuring EXPECTED_MISSING_RANDART = 0
+   * can be read as "nothing left".
    */
+  randartLogf(() => {
+    const env = makeRuneEnv(
+      () => null,
+      (v) => rng.randcalcVaries(v),
+      {
+        brands: reg.brands,
+        slays: reg.slays,
+        curses: reg.curses,
+        properties: reg.properties,
+        elementNames: ELEMENT_PROJ_NAMES,
+      },
+    );
+    const deps: KnownDesc = { isAware: () => false, isTried: () => false };
+    const name = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL | ODESC.SPOIL,
+      null,
+      env,
+      deps,
+    );
+    return `${name}
+`;
+  });
 
   return objectPower(reg, obj);
 }
@@ -465,6 +353,7 @@ export function artifactPower(
  */
 export function storeBasePower(
   reg: ObjRegistry,
+  constants: Constants,
   arts: readonly (Artifact | null)[],
   data: ArtifactSetData,
   rng: Rng,
@@ -485,7 +374,9 @@ export function storeBasePower(
 
   for (let i = 0; i < aMax; i++) {
     const art = arts[i] ?? null;
-    const power = art ? artifactPower(reg, art, "for original power", rng) : 0;
+    const power = art
+      ? artifactPower(reg, constants, art, "for original power", rng)
+      : 0;
     data.basePower[i] = power;
 
     /* Capture power stats, ignoring cursed and uber arts. */
@@ -1627,11 +1518,12 @@ export function artifactSetDataNew(reg: ObjRegistry): ArtifactSetData {
  */
 export function collectArtifactData(
   reg: ObjRegistry,
+  constants: Constants,
   arts: readonly (Artifact | null)[],
   rng: Rng,
 ): ArtifactSetData {
   const data = artifactSetDataNew(reg);
-  storeBasePower(reg, arts, data, rng);
+  storeBasePower(reg, constants, arts, data, rng);
   parseFrequencies(reg, arts, data);
   return data;
 }

@@ -76,6 +76,8 @@ import {
   wizPlayItemAccept,
   describeObject,
   makeFakeArtifact,
+  FAKE_ARTIFACT_SEED,
+  Rng,
   objDescNameFormat,
   colorTextToAttr,
   lookupTrap,
@@ -1066,7 +1068,11 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
       /* get_art_name (ui-wizard.c:150): a fake artifact described with
        * ODESC_SINGULAR | ODESC_SPOIL. */
       const a = artifacts[idx];
-      const fake = a ? makeFakeArtifact(reg, make.constants, a) : null;
+      /* A preview, as in the knowledge browser: a throwaway stream at a fixed
+       * seed so listing the artifacts does not move the game's RNG. */
+      const fake = a
+        ? makeFakeArtifact(reg, make.constants, a, new Rng(FAKE_ARTIFACT_SEED))
+        : null;
       return {
         label: fake
           ? describeObject(state, fake, ODESC.SINGULAR | ODESC.SPOIL)

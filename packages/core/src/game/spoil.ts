@@ -28,7 +28,8 @@ import { PARITY_BASELINE } from "../version.js";
 import { ODESC, objectDesc } from "../obj/desc.js";
 import { OINFO, objectInfo, textblockToString } from "../obj/object-info.js";
 import { OBJ_NOTICE, playerLearnAllRunes } from "../obj/knowledge.js";
-import { copyArtifactData, objectPrep } from "../obj/make.js";
+import { objectPrep } from "../obj/make.js";
+import { makeFakeArtifact } from "../obj/artifact-fake.js";
 import { objectPower } from "../obj/power.js";
 import { objectValue } from "../obj/value.js";
 import { tvalIsAmmo, tvalIsArmor, tvalIsMeleeWeapon } from "../obj/object.js";
@@ -333,26 +334,25 @@ export function spoilObjDesc(pack: GamePack): string {
  * ================================================================== */
 
 /**
- * make_fake_artifact (obj-make.c L728): object_prep(kind, 0, MAXIMISE) then
- * copy_artifact_data, with obj->artifact set. Returns null when the artifact
- * has no base kind (make_fake_artifact would return false).
+ * make_fake_artifact (obj-make.c L728) for the spoiler dump: the shared builder
+ * in obj/artifact-fake.ts, plus the two things wiz-spoil.c does around it.
+ *
+ * It used to be a second hand-written copy of the same C function, which is how
+ * its two harmless-looking deviations went unnoticed: it set obj->artifact
+ * AFTER copy_artifact_data rather than before (upstream's order, L740-742), and
+ * it was one of three implementations that had to be kept in step by hand.
  */
-function makeFakeArtifact(
+function spoilFakeArtifact(
   ctx: SpoilCtx,
   rng: Rng,
   art: Artifact,
 ): GameObject | null {
-  const objs = ctx.reg.objects;
-  const kind = objs.lookupKind(art.tval, art.sval);
-  if (!kind) return null;
   /* Hide the flavour text: spoilers spoil the mechanics, not the atmosphere
    * (wiz-spoil.c L433-435 memcpy's the artifact and nulls artc.text). The base
    * item's description still shows, exactly as upstream's object_info does. */
   const artc: Artifact = { ...art, text: "" };
-  const obj = objectPrep(rng, objs, ctx.reg.constants, kind, 0, "maximise");
-  copyArtifactData(rng, objs, obj, artc);
-  obj.artifact = artc;
-  obj.number = 1;
+  const obj = makeFakeArtifact(ctx.reg.objects, ctx.reg.constants, artc, rng);
+  if (!obj) return null;
   /* Mark assessed: with every rune learned (see boot), objectKnownShadow then
    * reveals the full mechanics the OINFO_SPOIL dump needs (object-info.c
    * gates modifiers/flags/brands/slays behind the ASSESSED notice). */
@@ -383,7 +383,7 @@ export function spoilArtifact(pack: GamePack): string {
       const art = objs.artifacts[j];
       if (!art || art.tval !== group.tval) continue;
 
-      const obj = makeFakeArtifact(ctx, rng, art);
+      const obj = spoilFakeArtifact(ctx, rng, art);
       if (!obj) continue; // L438-442
 
       /* Name: ODESC_PREFIX|ODESC_COMBAT|ODESC_EXTRA|ODESC_SPOIL (L447). */

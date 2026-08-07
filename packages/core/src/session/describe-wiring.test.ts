@@ -176,8 +176,14 @@ describe("the names corpus is supplied to the live randart generator (5.4)", () 
   it("the corpus changes the names, so the argument is not decorative", () => {
     const { booted } = startGame(pack, { seed: 5, depth: 1 });
     const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN) ?? [];
-    const withCorpus = doRandart(booted.registries.objects, 4242, false, words);
-    const without = doRandart(booted.registries.objects, 4242, false, []);
+    const withCorpus = doRandart(
+      booted.registries.objects,
+      booted.registries.constants,
+      4242, false, words);
+    const without = doRandart(
+      booted.registries.objects,
+      booted.registries.constants,
+      4242, false, []);
     /* doRandart returns a slot-indexed array with holes (index 0 and any base
      * item it could not use), so filter before reading a name. */
     const names = (set: readonly ({ name: string } | null)[]): string =>
@@ -219,8 +225,14 @@ describe("the curse TIMED_INC foil reaches the randart generator (5.7)", () => {
      * first two seeds tried produced identical sets and would have asserted
      * nothing.
      */
-    const withFoil = doRandart(booted.registries.objects, 1, false, words, { timedFoil: foil });
-    const without = doRandart(booted.registries.objects, 1, false, words);
+    const withFoil = doRandart(
+      booted.registries.objects,
+      booted.registries.constants,
+      1, false, words, { timedFoil: foil });
+    const without = doRandart(
+      booted.registries.objects,
+      booted.registries.constants,
+      1, false, words);
     const curses = (set: readonly (Artifact | null)[]): string =>
       set
         .filter((a): a is Artifact => a !== null)

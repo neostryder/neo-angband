@@ -6,8 +6,11 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 76 confirmed-absent citations** — 67 closed, **1 open**,
-and the one is a single log line whose blocker is named (5.5).
+**68 items covering all 76 confirmed-absent citations** — **all 68 closed**, as
+of 2026-08-07, when 5.5's last log line landed. That is a statement about this
+list and nothing wider: see [What "zero open" does and does not
+mean](#what-zero-open-does-and-does-not-mean) at the foot of this file, which
+names what is still deliberately divergent and what has never been measured.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -2974,8 +2977,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:3458`,
   `parity/ledger/obj-randart.yaml:51`
 
-- [ ] **5.5 `randart.log` / `randart.txt`. ONE LINE LEFT of 252 sites, and it is
-  not visible to the census. The remainder is MEASURED, not estimated.**
+- [x] **5.5 `randart.log` / `randart.txt`. ALL 252 sites written, CLOSED
+  2026-08-07. The accounting is MEASURED, not estimated.**
 
   **The second measurement pass — DONE, and finding it was the point.**
   `do_randart` measures the artifact set **twice** (obj-randart.c:3181-3186):
@@ -3048,26 +3051,49 @@ is reachable in play and a test constructs the case that used to be wrong.**
   | | sites | done |
   |---|---|---|
   | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
-  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | **173** |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | **174** |
   | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | **19** |
 
-  **What is left is one line, and it is worth naming precisely.**
-  `artifact_power` logs the fake artifact's own `object_desc` with
-  `ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL` (obj-randart.c:205-206). Its format
-  string is `"%s\n"`, which has no literal span, so the ratchet in
-  `randart-log.census.test.ts` **cannot see it** — it is carried there as
-  `UNWRITTEN_SPANLESS = 1` so the reassuring `EXPECTED_MISSING_RANDART = 0`
-  cannot be read as "nothing left".
+  **The last line, and what it cost.** `artifact_power` logs the fake
+  artifact's own `object_desc` with `ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL`
+  (obj-randart.c:205-206). Its format string has no literal span, so the ratchet
+  in `randart-log.census.test.ts` **could not see it** — it was carried there as
+  `UNWRITTEN_SPANLESS = 1` rather than hidden inside the reassuring
+  `EXPECTED_MISSING_RANDART = 0`. That number is now 0, and because no source
+  grep can distinguish "emitted" from "emitted wrongly", the line is also
+  asserted behaviourally: a real generation run's log must carry a non-empty
+  description under every `Evaluating` header. Verified by mutation.
 
-  The blocker is not the `KnownDesc`, which was the older note's guess and is
-  wrong: `SPOIL` describes the object as it truly is, so aware-and-tried for
-  everything is the only answer consistent with it, and a `RuneEnv` over the
-  registry's tables with a null `slot_object` is buildable in
-  `randart-data.ts`. The real blocker, measured 2026-08-07 by writing it and
-  failing to compile: `makeFakeArtifactPower` returns a `PowerObject` — the
-  reduced shape `object_power` needs — and `object_desc` wants a whole
-  `GameObject`. Writing this line means building the full fake object upstream
-  builds, which is a change to the **power path**, not to the log.
+  **It was closed by deleting a copy, not by adding a dependency.** The blocker
+  looked like a missing `KnownDesc`; it was not. Upstream passes `object_desc` a
+  **NULL player**, which is an omniscient observer — the object is its own known
+  shadow, every gate opens, and no knowledge state is consulted. The real
+  blocker was that `randart-data.ts` held its own hand-written
+  `make_fake_artifact` (`makeFakeArtifactPower`), flattened into the reduced
+  `PowerObject` that `object_power` reads, and `object_desc` wants a whole
+  object.
+
+  `make_fake_artifact` had **three** implementations in this port —
+  `obj/artifact-fake.ts`, a local copy in `game/spoil.ts`, and that one. Two
+  hand-written copies of one C function agree until they do not, and this is not
+  hypothetical: the flattened copy is the one that dropped the curse-timeout
+  roll above. Skipping `object_prep` is what made skipping the roll look
+  reasonable. All three are now the one builder, which made `constants` a
+  required parameter of `artifactPower`, `storeBasePower`,
+  `collectArtifactData`, `designArtifact`, `createArtifactSet` and `doRandart` —
+  upstream reads `z_info` as a global, so in the port every caller has to state
+  it.
+
+  **Verified behaviour-preserving rather than assumed.** The whole generated set
+  — name, tval/sval, every combat field, curses, modifiers, activation — was
+  diffed against the pre-change tree at three seeds and is identical. What
+  replaces the old two-implementations-agree check is the property that makes it
+  unnecessary: `randart-fake-agreement.test.ts` fails if any module other than
+  `artifact-fake.ts` pairs `objectPrep` on the **MAXIMISE** aspect with
+  `copyArtifactData`. MAXIMISE is the discriminator — three other modules pair
+  those calls on RANDOMISE and are `make_artifact` / `wiz_create_artifact`, a
+  different C function, so a census on the calls alone would need an allowlist
+  and would stop meaning anything the first time the allowlist was edited.
 
   DONE so far, and each part is load-bearing on its own:
 
@@ -3505,3 +3531,65 @@ test: its output is leads, and a lead needs a human. Tiers 0.1 and 0.2 are
 deliberately **not** under the ratchet — 297 items are unadjudicated, and a test
 asserting zero would be turned off within the day. The honest control is that
 both numbers are written down here.
+
+---
+
+## What "zero open" does and does not mean
+
+Added 2026-08-07, the day the list reached zero. **It means every citation this
+project has confirmed absent has been closed. It does not mean the port is
+identical to Angband 4.2.6 in every respect, and reading it that way would undo
+the only thing this file is for.**
+
+Four separate things stand between "no open items" and "identical", and they are
+different in kind, so they are listed separately rather than blurred into a
+percentage.
+
+### 1. Things that are deliberately different, and stay different
+
+The ledger census carries **32 rows adjudicated `divergence`** and **47 `n-a`**,
+each with its mechanism named — see the appendix of
+[DEFERRALS.md](DEFERRALS.md). These are not owed work; they are decisions with
+consequences, and a reader chasing a behavioural difference should look here
+first. The largest single one is structural: **`obj->known` is synthesised on
+demand rather than stored** (31 of those rows), because the port has no
+persistent known-twin object. Others are forced by the platform — upstream's
+`exit(1)` when `randart.log` cannot be opened has no analogue in a browser tab,
+so the message goes to the caller and generation continues.
+
+### 2. Things nobody has looked at yet
+
+The absence of an open item is evidence about **what has been examined**, not
+about what is true. The list was built from deferral notes in the port's own
+source and ledger, so it can only ever contain gaps somebody wrote down. It has
+been wrong in both directions and recently: thirteen items on this list turned
+out to be already done, and seven ledger rows moved *into* it on a re-read. A
+whole subsystem that was ported cleanly and never annotated would appear nowhere
+in this file whether it is faithful or not.
+
+### 3. The measured parity claim is statistical, and covers generation
+
+[docs/PARITY.md](../docs/PARITY.md) is the measurement, and it is worth reading
+for its limits rather than its greens. It compares 1000 generated levels per
+depth against 1000 from the compiled C at α = 0.01 across depths 1-20 — and it
+**measures generation**. Formulas, messages, screens and keys are checked by
+other lanes. One metric in that table, the **monster species mix, is printed and
+deliberately not gated**, because the instrument is not good enough to gate it:
+run against itself at a second seed the port reaches p = 2e-97. Answering the
+species question properly is open work that is not on this list, because it is a
+measurement problem rather than a missing port.
+
+### 4. The frontend is a reimplementation, not a transliteration
+
+Core is the port. The UI reproduces upstream's layouts, keys and messages, but
+it is original code against a canvas rather than a port of `ui-*.c` against
+curses, so "faithful" there is a claim about what the player sees, checked by
+eye and by targeted tests, not by a function-for-function census. **Desktop is
+the parity bar**; the web build is reduced by what a browser can do.
+
+### The honest one-line version
+
+*Every gap this project has found and written down is closed.* That is a real
+milestone and it is the strongest claim the evidence supports. It is not "100%
+faithful", and the difference between those two sentences is exactly the margin
+this file exists to keep visible.

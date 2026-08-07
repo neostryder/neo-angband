@@ -10,8 +10,10 @@ files and in the source comments - has been adjudicated with evidence, and 141 o
 the 367 turned out to describe a state of the code that no longer held. A
 `deferred:` entry below is a lead, not a finding.
 
-**Working the list? [PORT_TODO.md](PORT_TODO.md)** is the tiered checklist of the
-95 citations that are genuinely owed.
+**Working the list? [PORT_TODO.md](PORT_TODO.md)** is the tiered checklist. As of
+2026-08-07 every one of its 68 items is closed, covering all 76 confirmed-absent
+citations - read its closing section on what "zero open" does and does not mean
+before quoting that anywhere.
 
 ## Format
 
