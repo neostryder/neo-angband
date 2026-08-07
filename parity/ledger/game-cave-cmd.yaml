@@ -47,18 +47,32 @@ notes: >-
   is known). Registered by installCaveCommands; startGame wires it with the
   object generator.
 deferred:
-  - Locked / jammed doors, do_cmd_lock_door: door locks are the "door lock"
-    trap upstream - all land with trap.c (#21) through the isLockedDoor /
-    pickLock seams (supplied at session/game.ts:1716); the disarm door-lock branch
-      is a real remainder.
+  - Locked / jammed doors and do_cmd_lock_door ARE ported and wired: the
+    isLockedDoor / pickLock seams (game/cave-cmd.ts:93, :369) are supplied for
+    real at session/game.ts:1716, and cmd.ts:160 records that "lock" has no
+    upstream game_cmd of its own because do_cmd_lock_door is reached through
+    the door-lock branch. ONE branch is owed: disarming a door lock. Upstream
+    reaches it through do_cmd_disarm_aux, which walks the square's trap list for
+    the first TRF_TRAP (cmd-cave.c:791-807) - a door lock IS a trap instance
+    there, and the port does not yet give it that representation.
   - The swap-digger machinery (player_best_digger + the temporary
     calc_bonuses with a swapped weapon): digging reads the wielded state's
     DIGGING skill.
   - do_cmd_alter_aux's chest and floor-trap-disarm fallback branches
     (alter IS bound, to "+", at web/src/main.ts:8090).
-  - do_cmd_steal (shapechanged players, #22); run / explore / pathfind /
-    navigate (player-path.c, #24); command repetition and the count_feats
-    single-target direction inference (UI); messages are hooks.
+  - SPLIT (2026-08-07): this row named five things that now have five different
+    answers, and a row like that can never be closed. The five, separately:
+  - do_cmd_steal is PORTED (game/steal.ts, "ported from do_cmd_steal /
+    do_cmd_steal_aux") and bound to "s". Its shapechanged-player gate is NOT:
+    there is no "shape" reference anywhere in steal.ts. That gate is the owed
+    part, and it is the only owed part of the steal half.
+  - run / explore / pathfind / navigate are PORTED (game/player-path.ts:27,
+    cmd.ts:48 and :201, upkeep->steps at game/context.ts:986).
+  - Command repetition is PORTED and closed as PORT_TODO 2.12, on the LIVE
+    repeat path rather than a parallel one.
+  - count_feats' single-target direction inference is genuinely absent - the
+    "there is exactly one adjacent door, so open THAT one" shortcut.
+  - "Messages are hooks" is a description of the port's design, not a deferral.
 verified-by:
   - game/cave-cmd.test.ts (14 tests): the digging-chance formulas at skill
     50 and the zero floor; open/close round-trip with full-turn energy; a

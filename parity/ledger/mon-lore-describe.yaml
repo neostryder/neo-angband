@@ -93,10 +93,19 @@ deferred:
     a fire breath as survivable. This is the split's most visible consequence:
     all three combat runes are birth-granted, so the panels barely move, but
     resists and object flags are learned by use and the recall reads both.
-  - The title's optional secondary glyph (monster_x_char / monster_x_attr),
-    purple_uniques recolouring, and tile-size gating (ui-mon-lore.c L47-L74)
-    are presentation state not modelled; only "The " / name / primary glyph
-    are emitted.
+  - CLOSED (2026-08-07). All three things this row grouped as "presentation
+    state not modelled" were wrong, each differently. purple_uniques is a live
+    option the map layer already honoured, and landed as PORT_TODO 3.22.
+    monster_x_attr / monster_x_char are a REAL table in the port
+    (visuals/glyph-table.ts, GlyphTable.monsterGlyph) - the same table the map
+    draw reads - so the recall title was showing the race's default glyph while
+    the map showed the override; loreTitle now takes an optional monsterGlyph
+    dep, supplied from that table at web/src/main.ts's recallDeps, and appends
+    the second pair exactly as ui-mon-lore.c L69-74 does, including the
+    `!(optional_attr & 0x80)` tile-code exemption from the violet recolour. The
+    tile-size gate is not deferred either: tile_width / tile_height are always 1
+    in this port (a ratified divergence recorded at web/src/mapview.ts:70), so
+    the gate is unconditionally true and is omitted rather than faked.
   - A game-layer LoreDeps adapter (building the deps from GameState + the combat
     callbacks) lands when the recall panel is wired into a shell; the module is
     pure and deps-injected until then.

@@ -79,12 +79,16 @@ deferred:
     patched-distance A* (an equal-result performance optimization);
     paths match upstream up to tie-breaking. The relaxation queue is a
     plain array shift() (upstream's q_queue); correctness is identical.
-  - convert_turn_penalty (the door / rubble penalties assume moving costs
-    z_info->move_energy, the common case; movement-speed class energy is
-    unported) and compute_rubble_penalty's swap-to-best-digger
-    recalculation (the wielded DIGGING skill decides, as in tunnelAux).
-    compute_locked_penalty's dark / PF_UNLIGHT lighting nuance rides
-    light. square_isdamaging is reduced to fiery terrain (lava).
+  - Three real remainders and one non-gap. Owed: convert_turn_penalty's
+    movement-speed class energy (the door / rubble penalties assume moving costs
+    z_info->move_energy, the common case), compute_rubble_penalty's
+    swap-to-best-digger recalculation (the wielded DIGGING skill decides, as in
+    tunnelAux), and compute_locked_penalty's dark / PF_UNLIGHT lighting nuance.
+    NOT a gap: "square_isdamaging is reduced to fiery terrain (lava)" - in 4.2.6
+    square_isdamaging IS feat_is_fiery, i.e. lava only, so that is exact parity
+    rather than a reduction (game/mon-death.ts:442 and game/monster-turn.ts:64
+    both record the same reading). compute_locked_penalty and
+    compute_rubble_penalty are themselves ported and reached.
   - Pathfinding reads live terrain gated by square_isknown rather than
     the remembered feat itself (identical for seen grids; only stale
     memory from magic mapping could differ), matching the running engine.
@@ -96,13 +100,13 @@ deferred:
     message, resting). disturb() is exported so those sites call it as
     they land with the monster-AI / message / rest layers; run_test
     already stops for anything the runner moves toward.
-  - The OF_TRAP_IMMUNE / shape-flag half of player_is_trapsafe (only the
-    TMD_TRAPSAFE timer is read; #13 equipment flags); the running
-    torch-radius recompute (PU_TORCH, light layer); the
-    running-straight-into-a-trap-disarms nuance (move_player's disarm arg,
-    trap layer); ignore_item_ok on remembered objects (#24 ignore) - any
-    remembered floor object aborts, matching the "everything seen is
-    known" front end.
+  - The player_is_trapsafe half is CLOSED: game/trap.ts:88-97 now reads THREE
+    sources - the TMD_TRAPSAFE timer, playerState.flags OF_TRAP_IMMUNE, and a
+    direct walk of the equipment for OF_TRAP_IMMUNE - and game/cave-cmd.ts:810
+    uses it. Still owed, and all three are small: the running torch-radius
+    recompute (PU_TORCH, light layer), the running-straight-into-a-trap-disarms
+    nuance (move_player's disarm arg), and ignore_item_ok on remembered objects,
+    where today any remembered floor object aborts the run.
 verified-by:
   - game/player-path.test.ts (13 tests). Running (7): run_init detects a
     hallway (open-area cleared, both breaks set), treats unmemorized walls

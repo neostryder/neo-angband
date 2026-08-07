@@ -93,8 +93,13 @@ deferred:
     sweep, object_sense / object_see / object_touch / object_grab, and
     rune_note inscriptions. All land with the known-object/display
     system (#25).
-  - object_learn_on_use's exp reward + PN_IGNORE (cmd-obj.c wiring exists
-    for flavor awareness; the exp formula joins it with the ignore system).
+  - CLOSED. object_learn_on_use's exp reward AND its PN_IGNORE are both at
+    game/obj-cmd.ts:1212-1218 (objectLearnOnUseXp) - the reward is the exact
+    integer-division formula, wired to playerExpGain through the expGain hook
+    and asserted at game/obj-cmd.test.ts:258, and PN_IGNORE is raised FIRST,
+    unconditionally, because upstream's own last line does not depend on the
+    reward. The PN_* pipeline this row was waiting for landed as PORT_TODO 1.1;
+    game/notice.ts is the only thing that clears the bit.
   - shape_learn_on_assume is DONE (game-shape.yaml). The shape TAILS of
     equip_learn_on_defend / _on_ranged_attack / _on_melee_attack are DONE too
     (PORT_TODO 3.24): the shape's own to_a / to_h / to_d teach their runes when
@@ -105,14 +110,36 @@ deferred:
   - temporary brands/slays (player-timed table, ledgered with
     improveAttackModifier). learn_brand_slay_helper's monster-lore learns
     are DONE (mon-lore.yaml).
-  - equip_learn_flag/element call sites living in unported upstream files
-    (project-player.c resist learning rides #17; effect-handler learn calls
-    ride #18; cmd-cave.c OF_AFRAID, player-util.c OF_REGEN/IMPAIR,
-    mon-util.c, obj-chest.c ride their subsystems).
-  - object_flavor_aware's side effects (ignore/autoinscribe, store sweeps,
-    floor-tile refresh) - FlavorKnowledge.setAware still sets only the bit.
-  - ODESC_BASE via object_desc: baseName() strips ~ and & from the kind
-    name until the real object_desc lands (#25).
+  - CLOSED. Every call-site family this row deferred is wired:
+    project-player.c resist learning (game/project-player.ts:183, via
+    hooks.equipLearnElement), the effect handlers (game/effect-general.ts:388
+    and :401, game/effect-terrain.ts:578), player-util.c's OF_REGEN / OF_IMPAIR
+    (game/loop.ts:224-225 and :266-267), mon-util.c (game/mon-cast.ts:175-176),
+    cmd-cave.c's OF_AFRAID (game/player-turn.ts:485), and BOTH obj-chest.c
+    OF_TRAP_IMMUNE sites - the chest-open path (game/chest.ts:277,
+    obj-chest.c:626, with its `pval > 0` term) and the disarm-failure path
+    (game/chest.ts:359, obj-chest.c:724, which has no pval term because
+    do_cmd_disarm_chest has already established the chest is trapped).
+  - CLOSED, two by wiring and two by a ratified substitution. The
+    ignore/autoinscribe half is live: flavorAwareDeps (session/game.ts:542)
+    reads the live ignore settings and raises PN_IGNORE, shared by both in-play
+    becomes-aware sites (game/obj-cmd.ts item use, store/transact.ts buy/sell),
+    so a kind ignored while unaware keeps being ignored once identified - and
+    setAware no longer only sets the bit. The gear and store loops
+    (obj-knowledge.c:2282-2290) are object_set_base_known over every carried and
+    stocked object, i.e. re-syncing a STORED known twin; the port synthesises
+    each twin on demand (objectKnownShadow), so there is no stored copy to
+    re-sync and the loops have no work to do here. The floor-tile refresh
+    (:2297-2311) is square_light_spot, which falls under the ratified
+    unconditional-repaint divergence recorded at game/known.ts:153.
+  - CLOSED as PORT_TODO 3.23. All six ODESC_BASE messages in this file read
+    RuneEnv.describeBase (obj/knowledge.ts:250), and wireGame supplies it for
+    real - session/game.ts:685, describeObject(state, obj, ODESC.BASE) - with
+    session/describe-wiring.test.ts asserting the seam is bound and produces the
+    real string. objBaseName survives only as the worldless fallback, and its
+    own comment says so. The obstacle was never the layering the note blamed
+    (obj/desc.ts is next door); it was the KnownDesc bundle, which only the
+    session can assemble.
 verified-by:
   - knowledge-learn.test.ts rune-list block (3 tests) - the list builds
     in upstream order with one brand rune per name and no

@@ -43,6 +43,7 @@ import {
   colorTextToAttr,
 } from "../color.js";
 import { EF, MON_RACE_FLAG_ENTRIES, OF, PROJ, RF } from "../generated/index.js";
+import { ATTR_TILE_BIT } from "../visuals/map-text.js";
 import { createMonFlagMask, monsterFlagsKnown } from "./lore.js";
 import type { MonsterLore } from "./lore.js";
 import { EXTRACT_ENERGY } from "./monster.js";
@@ -122,6 +123,13 @@ export interface LoreDeps {
    * the player is looking at on the same screen.
    */
   purpleUniques: boolean;
+  /**
+   * monster_x_attr[race->ridx] / monster_x_char[race->ridx] (ui-mon-lore.c
+   * L47/L51): the pref-file / picker override pair for a race. Optional, and
+   * absent means "no override table" - a spoiler file and a worldless test have
+   * none, and upstream's arrays would hold the default pair there anyway.
+   */
+  monsterGlyph?: (race: MonsterRace) => { attr: number; char: string } | undefined;
   /** monster_spell_by_index: the bound spell list, keyed by RSF_ index. */
   spells: ReadonlyMap<number, MonsterSpell>;
   /**
@@ -1355,22 +1363,44 @@ function isFullyKnown(race: MonsterRace, lore: MonsterLore): boolean {
  * (L56-60). Upstream also recolours the OPTIONAL attr there, but only when it is
  * not a tile index (`!(optional_attr & 0x80)`).
  *
- * Still shell-owned by construction, and not a gap in this model: the secondary
- * glyph itself (`monster_x_char` / `monster_x_attr`, L47/L51) is the pref-file
- * override table, and its display is gated on `tile_width == 1 && tile_height
- * == 1` (L69). A headless lore model carries no tile state and no pref table, so
- * there is nothing here for either to read. The `purple_uniques` half was
- * lumped in with them and was NOT shell-owned — the option is live and the map
- * text layer already honours it.
+ * The secondary glyph is ported too, through the optional `monsterGlyph` dep.
+ * It used to be filed here as shell-owned along with `purple_uniques` and the
+ * tile-size gate, and all three of those groupings were wrong in different
+ * ways: `purple_uniques` is a live option the map layer already honours;
+ * `monster_x_attr` / `monster_x_char` are a real table in the port
+ * (`visuals/glyph-table.ts`, `GlyphTable.monsterGlyph`); and the
+ * `tile_width == 1 && tile_height == 1` gate (L69) is unconditionally TRUE
+ * here — the port has no multi-cell tiles, a ratified divergence recorded at
+ * `packages/web/src/mapview.ts:70` — so the gate is omitted rather than
+ * deferred. Absent `monsterGlyph` (spoiler files, worldless tests) the pair
+ * equals the race's own and nothing extra is emitted, exactly as upstream's
+ * unmodified array would give.
  */
 function loreTitle(b: LoreTextBuilder, race: MonsterRace, deps: LoreDeps): void {
   const unique = race.flags.has(RF.UNIQUE);
-  if (!unique) b.append("The ");
-  const attr = unique && deps.purpleUniques ? COLOUR_VIOLET : race.dAttr;
+  const optional = deps.monsterGlyph?.(race);
+  let standardAttr = race.dAttr;
+  let optionalAttr = optional?.attr ?? race.dAttr;
+  const optionalChar = optional?.char ?? race.dChar;
+
+  if (!unique) {
+    b.append("The ");
+  } else if (deps.purpleUniques) {
+    standardAttr = COLOUR_VIOLET;
+    /* L58-59: a tile code in the slot is left alone. */
+    if (!(optionalAttr & ATTR_TILE_BIT)) optionalAttr = COLOUR_VIOLET;
+  }
+
   b.append(race.name);
   b.append(" ('");
-  b.append(race.dChar, attr);
+  b.append(race.dChar, standardAttr);
   b.append("')");
+
+  if (optionalAttr !== standardAttr || optionalChar !== race.dChar) {
+    b.append(" ('");
+    b.append(optionalChar, optionalAttr);
+    b.append("')");
+  }
 }
 
 /**

@@ -58,10 +58,17 @@ deferred:
   - PlayerObjectKnowledge has no dd/ds/ac runes (upstream p->obj_k->dd/ds/ac);
     the dice / base-ac display is gated by the object's ASSESSED bit, which is
     when upstream learns them in practice.
-  - object_flavor_aware side effects in player_know_object's jewellery /
-    special-artifact branches (mutating the shared FlavorKnowledge and
-    propagating over gear + stores) are not run from the shadow (KnownDesc is
-    read-only); they belong with the awareness-propagation wiring.
+  - CLOSED. The row is right that a describe must not mutate knowledge -
+    KnownDesc being read-only is a deliberate constraint, not an omission - and
+    the wiring it points at exists. Both in-play becomes-aware sites run the
+    real side effects through flavorAwareDeps (session/game.ts:542), shared by
+    game/obj-cmd.ts's item-use gain and store/transact.ts's buy/sell, and
+    player_know_object's jewellery / special-artifact awareness branches are
+    game/known.ts's updatePlayerObjectKnowledge (obj-knowledge.c L1163-1198),
+    called at the live rune-learn sites exactly where C tail-calls it. The
+    "propagating over gear + stores" half needs no store sweep: flavour
+    awareness is per-KIND and global to the game, so making a kind aware from a
+    carried jewel already covers every store and curse-template instance.
   - The "{tried}" and "{ignore}" markers are PORTED (PORT_TODO 3.27, closed
     2026-08-05). Both deferrals above were wrong about their own cause: the
     claim was "no live tried seam" and "no ignore-name surface", but

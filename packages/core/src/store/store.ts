@@ -41,7 +41,7 @@ import {
   tvalIsWeapon,
 } from "../obj/object.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
-import type { ObjectKind } from "../obj/types.js";
+import type { Artifact, ObjectKind } from "../obj/types.js";
 import type { PlayerClass } from "../player/types.js";
 import { objectValue, objectValueReal } from "../obj/value.js";
 import type { Rng } from "../rng.js";
@@ -83,6 +83,17 @@ export interface StoreMaintContext {
    * when cheat_xtra is on, so faithful play stays silent.
    */
   cheatMsg?: (text: string) => void;
+  /**
+   * history_lose_artifact (store.c:1091 inside store_delete_random, and :1307
+   * in the black-market purge). Those are the only two of upstream's four
+   * store_delete callers that log a loss - do_cmd_buy's two (L1754, L1847) do
+   * not, because the player is taking the artifact, not losing it.
+   *
+   * Reachable in this port only through an artifact the PLAYER sold into stock:
+   * store generation never produces one (applyMagic is called with
+   * allowArtifacts false). Absent for worldless callers.
+   */
+  onArtifactLost?: (art: Artifact) => void;
 }
 
 /** OSTACK_STORE/PACK never read the quiver limits, so these go unused here. */
@@ -459,7 +470,11 @@ function storeFindKind(
 }
 
 /** store_delete_random (L1040): imitate a non-PC buyer taking some stock. */
-function storeDeleteRandom(rng: Rng, store: Store): void {
+function storeDeleteRandom(
+  rng: Rng,
+  store: Store,
+  onArtifactLost?: (art: Artifact) => void,
+): void {
   if (store.stock.length === 0) return;
   const what = rng.randint0(store.stock.length);
   const obj = store.stock[what];
@@ -480,6 +495,9 @@ function storeDeleteRandom(rng: Rng, store: Store): void {
       }
     }
   }
+
+  /* store.c:1090-1092, AFTER num is settled and before the delete. */
+  if (obj.artifact) onArtifactLost?.(obj.artifact);
 
   storeDelete(store, obj, num);
 }
@@ -618,6 +636,8 @@ export function storeMaint(ctx: StoreMaintContext, store: Store): void {
   if (store.feat === FEAT.STORE_BLACK) {
     for (const obj of [...store.stock]) {
       if (!blackMarketOk(deps.reg, obj, ctx.stores)) {
+        /* store.c:1305-1310. */
+        if (obj.artifact) ctx.onArtifactLost?.(obj.artifact);
         storeDelete(store, obj, obj.number);
       }
     }
@@ -631,11 +651,13 @@ export function storeMaint(ctx: StoreMaintContext, store: Store): void {
     const max = store.normalStockMax;
     if (stock < min) stock = min;
     if (stock > max) stock = max;
-    while (store.stock.length > stock) storeDeleteRandom(rng, store);
+    while (store.stock.length > stock) {
+      storeDeleteRandom(rng, store, ctx.onArtifactLost);
+    }
   } else if (alwaysNum && store.stock.length) {
     /* For the Bookseller, occasionally sell a book. */
     let sales = rng.randint1(store.stock.length);
-    while (sales--) storeDeleteRandom(rng, store);
+    while (sales--) storeDeleteRandom(rng, store, ctx.onArtifactLost);
   }
 
   /* Ensure staples exist. */
