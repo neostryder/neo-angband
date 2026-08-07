@@ -49,12 +49,16 @@ deferred:
   - The pickup menu (get_item over USE_FLOOR) is the chooseItem seam; the
     headless default picks the pile head, one object per 'g' press (ui #25
     supplies the real menu, restoring the recursive menu loop).
-  - square_know_pile / OFLOOR_VISIBLE marking (knowledge #24): every object
-    on the grid is visible; unmarked objects cannot yet exist. This also
-    means object_touch's find-ON-SIGHT path (square_know_pile calling it the
-    instant a pile becomes known, not only on pickup) is not reproduced;
-    only the pickup path fires state.onArtifactFound (ledgered in
-    player-history.yaml).
+  - The "find-ON-SIGHT" half of this row was WRONG ABOUT UPSTREAM, and is now
+    moot either way. square_know_pile does NOT touch a pile the instant it
+    becomes known: object_touch is gated on `loc_eq(grid, player->grid)`
+    (cave-square.c:1176-1182), so upstream only touches the pile the player is
+    standing on - there is no find-at-a-distance to reproduce. And the port now
+    matches it exactly: game/known.ts's squareKnowPile iterates the pile (the
+    "reduced glyph-only port" is gone, PORT_TODO 2.9) and fires
+    state.onArtifactFound under the same player-grid gate. What remains here is
+    only OFLOOR_VISIBLE marking: every object on a grid is visible, so an
+    unmarked object cannot yet exist.
   - ignore_item_ok is live: the isIgnored seam (pickup.ts:62, read at :188) is
     supplied by the session from obj/ignore.ts, so an ignored object no longer
     makes the pickup verbal.
