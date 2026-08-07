@@ -47,8 +47,11 @@ notes: >-
   (spell-cmd env.expGain) and disarm experience (trap env.expGain) are now
   wired to player_exp_gain instead of no-op hooks.
 deferred:
-  - The PR_/PU_ display masks (redraw bookkeeping only; the derived state
-    itself is recomputed regardless via onLevelChange).
+  - RATIFIED DIVERGENCE, not a deferral (2026-08-07). The PR_/PU_ display masks
+    are repaint bookkeeping, and this port has one immediate-mode renderer - the
+    same call this ledger records everywhere else. The row's own second clause is
+    the proof nothing is owed: the derived state is recomputed regardless, via
+    onLevelChange.
   - (RESOLVED, task #56: history_add(HIST_GAIN_LEVEL) now fires from
     ExpDeps.onGainLevel, wired in session/game.ts and verified by this
     file's onGainLevel tests plus session/game.test.ts's level-up history
@@ -59,7 +62,11 @@ deferred:
     reload - the load path re-derives it from lore pkills), the HIST_SLAY_UNIQUE
     entry, monsterDeath's drops, and quest_check through the quest system
     (PORT_TODO 4.2).
-  - Ranged/thrown kill sites land with the fire/throw commands.
+  - CLOSED (2026-08-07). The fire/throw commands landed and took their kill
+    sites with them: game/ranged-cmd.ts:246 fires state.onPlayerKill on a lethal
+    shot, and session/game.ts:991 supplies it - the same hook melee
+    (player-turn.ts:360) and the effect kills (effect-melee.ts:137/:176) use, so
+    a bow kill rewards experience exactly as a melee one does.
   - (EF_GAIN_STAT and the other stat/exp effect callers are now wired -
     game/effect-general.ts.)
 verified-by:

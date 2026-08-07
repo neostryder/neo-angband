@@ -63,13 +63,25 @@ notes: >-
   Book/spell selection MENUS are the UI layer's (#25) - commands take
   args.spell / args.handle, as upstream resolves via cmd_get_spell.
 deferred:
-  - convert_mana_to_hp (PF_COMBAT_REGEN) and player_over_exert's
-    faint / CON drain on overcasting (the mana still empties; hook).
-  - The low-mana "Attempt it anyway?" confirmation (get_check, UI) and
-    TMD_FASTCAST's 3/4-turn cast (that timed effect's consumers).
-  - no_light in player_can_cast and square_islit for the UNLIGHT penalty
-    (light model); hooks default dark/lit-unknown.
-  - player_exp_gain on first success (experience/level-up system; hook).
+  - CLOSED (2026-08-07). Both halves are ported and reached. convert_mana_to_hp
+    runs inline for PF_COMBAT_REGEN casters (game/spell-cmd.ts:256-258,
+    player-spell.c L519-521), and player_over_exert is env.overExert
+    (spell-cmd.ts:276), supplied for real at session/game.ts:1689. The module
+    header has said so since it was wired; this row did not.
+  - CLOSED (2026-08-07). Both landed. TMD_FASTCAST's three-quarter turn is
+    game/spell-cmd.ts:342-344 (cmd-obj.c:1164-1168), and the get_check
+    confirmation is real in the shell: packages/web/src/main.ts:3385-3386 prints
+    "You do not have enough mana to ..." and abandons the cast unless the player
+    confirms. A UI-layer item is still an item, and this one was done.
+  - CLOSED (2026-08-07). The light model shipped and both reads are live:
+    player_can_cast's darkness gate is game/spell-cmd.ts:162 (`noLight(state)`),
+    and the PF_UNLIGHT +25 fail penalty (player/spell.ts:364) reads gridIsLit,
+    supplied at spell-cmd.ts:188 as squareIsLit(state.chunk, state.actor.grid).
+    Neither sits on a default any more.
+  - CLOSED (2026-08-07). game/spell-cmd.ts:264 awards spell.exp * spell.level
+    the first time a spell works (the PY_SPELL_WORKED branch), and expGain is
+    supplied at session/game.ts:1680 inside installSpellCommands' env - the same
+    ExpDeps hook the trap, chest and identify-by-use rewards go through.
   - get_spell_info is PORTED, and in core rather than the shell:
     effects/effect-info.ts:809 getSpellInfo builds the value descriptions from
     the effect chain, and web/src/screens.ts:719 is the browse menu reading
