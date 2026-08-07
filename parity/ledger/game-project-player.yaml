@@ -23,15 +23,27 @@ notes: >-
   name (monster_desc / trap name / "yourself") is resolved by the caller. This
   is the same seam discipline as the project_m driver.
 deferred:
-  - The per-type side effects themselves (blindness from light, stun from sound,
-    cuts from shards, poison, confusion, stat/exp drain, inventory damage) land
-    with their subsystems and the player-timed adapter; supplied via
-    onSideEffects.
-  - The decoy-hit branch (square_isdecoyed / square_destroy_decoy) is omitted -
-    decoys ARE modelled: EF_GLYPH with the DECOY subtype sets GameState.decoy
-    (game/effect-general.ts:199), exactly as upstream creates one.
-  - update_smart_learn (the monster learning the player's resistances) and the
-    killer-name resolution are the caller's responsibility.
+  - CLOSED (2026-08-07). The side effects landed as a set:
+    game/player-side.ts makePlayerSideEffects is the whole
+    project_player_handler_* table - inventory damage, blindness, stun, cuts,
+    poison, confusion, the stat and experience drains with their HOLD_LIFE and
+    sustain checks, and the teleport branches - wired onto the cast context by
+    wireGame. "Supplied via onSideEffects" is still how it reaches the driver,
+    which is the architecture rather than a gap.
+  - NOT OMITTED - RELOCATED, and verified 2026-08-07. project-player.c:823-824
+    destroys a decoy whose grid the projection reached; the port does it at the
+    cast layer, which has the live GameState the driver deliberately does not:
+    game/project-cast.ts:328-331 tests `state.decoy && locEq(g, state.decoy)`
+    and calls destroyDecoy (game/effect-mon-origin.ts:84). The comment at
+    game/project-player.ts:159-162 says so, and it is accurate - checked rather
+    than believed.
+  - CLOSED (2026-08-07). Both halves are supplied on the live path now.
+    update_smart_learn reaches a projection since the acting monster was threaded
+    into ProjectPlayerSource (cave->mon_current, project-cast.ts forwards
+    source.monster and player-side.ts builds the inc-check hooks from it). The
+    killer name is origin.killer, resolved by monsterCastSource's
+    monster_desc(MDESC_DIED_FROM) (PORT_TODO 3.2) rather than the literal "a
+    monster" it used to default to.
 verified-by:
   - game/project-player.test.ts (10 tests): returns false when the player is not
     in the grid and when a player source lacks self; applies unresisted damage;
