@@ -3200,6 +3200,8 @@ async function openEgoMenu(): Promise<void> {
       booted.registries.objects.egos,
       booted.registries.objects.kinds,
       state.ignore,
+      /* ego->everseen (ui-options.c:1427). */
+      (ego) => state.everseen?.egoSeen(ego) ?? true,
     );
     if (items.length === 0) {
       say("No known ego items to configure.");
