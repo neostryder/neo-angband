@@ -22,11 +22,12 @@
  *   including the lookup_obj_property calls in add_flag / add_mod whose only
  *   use is the name they put in the line. Logging never affects a returned
  *   value or an RNG draw, so the emitters sit outside the decision points.
- * - Projections are not bound in ObjRegistry, so projections[element].name is
- *   held in a local table (ELEMENT_PROJ_NAMES) mirroring projection.txt. It is
- *   read by add_brand, to add the resist matching the brand it just picked, and
- *   by add_resist / add_immunity's log lines. randart-proj-names.test.ts
- *   derives the same list from projection.txt, so the mirror cannot drift.
+ * - projections[element].name is read from the bound table on ObjRegistry
+ *   (attached by bindCore from the pack's projection.json), by add_brand to add
+ *   the resist matching the brand it just picked and by add_resist /
+ *   add_immunity's log lines. It used to be a hand-written mirror of
+ *   projection.txt; see the note above `projections()` for why reading the
+ *   loaded data is not merely tidier.
  * - remove_contradictory_activation depends on effect_summarize_properties
  *   (effects-info.c). That summarizer lives in the effects domain, so it is
  *   ported in ./effects-info.ts (makeActivationSummarizer) and injected here as
@@ -55,6 +56,7 @@ import type { Rng } from "../rng.js";
 import { randartLog, randartLogf } from "./randart-log.js";
 import { objectShortName } from "./bind.js";
 import type { ObjRegistry } from "./bind.js";
+import type { ProjectionInfo } from "../world/projection.js";
 import type { CurseTimedFoil } from "./object.js";
 import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
 import { INHIBIT_POWER, lookupObjProperty } from "./power.js";
@@ -110,44 +112,28 @@ const ART_IDX_TOTAL = ART_IDX.TOTAL;
  * brand's name against the four base elements to add the matching resist, and
  * add_resist / add_immunity quote the name into randart.log.
  *
- * Projections are not bound in ObjRegistry, so the names are held here rather
- * than threaded in. A hand-written mirror drifts silently, so
- * randart-proj-names.test.ts derives this list from
- * reference/lib/gamedata/projection.txt and fails if the two ever part.
+ * The names come from the bound projection table on ObjRegistry, which is the
+ * pack's own projection.json. This used to be a hand-written mirror of
+ * projection.txt guarded by a test that re-derived the list from the reference
+ * data. That guard proved the mirror matched 4.2.6 and nothing else: a MOD
+ * that renames an element would have stopped matching upstream while the port
+ * carried on matching, which is precisely the divergence the mirror existed to
+ * bound. Reading the loaded data removes the question.
  */
-export const ELEMENT_PROJ_NAMES: readonly string[] = [
-  "acid", // ELEM_ACID
-  "lightning", // ELEM_ELEC
-  "fire", // ELEM_FIRE
-  "cold", // ELEM_COLD
-  "poison", // ELEM_POIS
-  "light", // ELEM_LIGHT
-  "dark", // ELEM_DARK
-  "sound", // ELEM_SOUND
-  "shards", // ELEM_SHARD
-  "nexus", // ELEM_NEXUS
-  "nether", // ELEM_NETHER
-  "chaos", // ELEM_CHAOS
-  "disenchantment", // ELEM_DISEN
-  "water",
-  "ice",
-  "gravity",
-  "inertia",
-  "force",
-  "time",
-  "plasma",
-  "meteors",
-  "magic missiles",
-  "mana",
-  "holy power",
-  "arrows",
-];
 
-/** The four base elements add_brand matches against (ACID..COLD). */
-const BASE_ELEMENT_PROJ_NAMES: readonly string[] = ELEMENT_PROJ_NAMES.slice(
-  0,
-  4,
-);
+/** projections[] for the object domain; throws rather than substituting. */
+function projections(reg: ObjRegistry): readonly ProjectionInfo[] {
+  const table = reg.projections;
+  if (!table) {
+    throw new Error(
+      "randart: ObjRegistry.projections is not bound. add_brand and the " +
+        "randart log read projections[i].name (obj-randart.c:1951); a " +
+        "registry built without them cannot answer that question, and " +
+        "guessing an answer would be an unchecked claim about projection.txt.",
+    );
+  }
+  return table;
+}
 
 /* ------------------------------------------------------------------ */
 /* Arrays of indices by item type (obj-randart.c L52)                  */
@@ -675,8 +661,8 @@ function propName(prop: ObjectProperty | null): string {
 }
 
 /** `projections[i].name` for randart.log - the in-game name, e.g. "acid". */
-function projName(index: number): string {
-  return ELEMENT_PROJ_NAMES[index] ?? "(unknown)";
+function projName(reg: ObjRegistry, index: number): string {
+  return projections(reg)[index]?.name ?? "(unknown)";
 }
 
 /* ------------------------------------------------------------------ */
@@ -705,7 +691,7 @@ export function addResist(
   const info = art.elInfo[element] as ElementInfo;
   if (info.resLevel > 0) return false;
   info.resLevel = 1;
-  randartLogf(() => `Adding resistance to ${projName(element)}\n`);
+  randartLogf(() => `Adding resistance to ${projName(reg, element)}\n`);
   return true;
 }
 
@@ -717,7 +703,7 @@ export function addResist(
 export function addImmunity(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   const r = rng.randint0(4);
   (art.elInfo[r] as ElementInfo).resLevel = 3;
-  randartLogf(() => `Adding immunity to ${projName(r)}\n`);
+  randartLogf(() => `Adding immunity to ${projName(reg, r)}\n`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1013,9 +999,10 @@ export function addBrand(reg: ObjRegistry, art: Artifact, rng: Rng): void {
    * brand was actually added. */
   if (brandIdx && rng.randint0(4)) {
     const brand = reg.brands[brandIdx]!;
+    const projTable = projections(reg);
     for (let i = ELEM_BASE_MIN; i < ELEM_HIGH_MIN; i++) {
       if (
-        brand.name === BASE_ELEMENT_PROJ_NAMES[i] &&
+        brand.name === projTable[i]?.name &&
         (art.elInfo[i] as ElementInfo).resLevel <= 0
       ) {
         addResist(reg, art, i);

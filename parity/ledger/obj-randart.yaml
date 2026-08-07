@@ -155,17 +155,17 @@ deferred:
     artifactPower. NOTE for a reader chasing a changed character: a randart
     set is regenerated from its seed on load, so this fix changes an existing
     birth_randarts character's artifacts -- to what 4.2.6 makes from that seed.
-  - add_brand's base-element matching reads a local table (ELEMENT_PROJ_NAMES
-    in obj/randart-build.ts) where upstream compares brand->name against
-    projections[i].name (L1951). KEPT, and no longer a hand-written guess:
-    the table is the full 25 entries and obj/randart-proj-names.test.ts
-    derives the same list from reference/lib/gamedata/projection.txt and
-    compares entry for entry, so a rename in the data file fails the build
-    rather than silently desyncing. What it still costs: ObjRegistry is bound
-    from the object domain of the pack and has no projections, so a PACK
-    whose projection.txt renames an element would diverge from upstream at
-    runtime -- upstream would stop matching, this port would not. That is a
-    mod-authored data change, not a 4.2.6 one.
+  - add_brand's base-element matching reads projections[i].name (L1951) from
+    the bound table on ObjRegistry, which bindCore attaches from the pack's
+    projection.json. CLOSED 2026-08-07; this used to be a local 25-entry
+    mirror (ELEMENT_PROJ_NAMES) guarded by a test that re-derived the list
+    from reference/lib/gamedata/projection.txt. That guard proved the mirror
+    matched 4.2.6 and could not touch the cost the row itself named: a PACK
+    or MOD renaming an element would diverge at runtime, upstream ceasing to
+    match while this port carried on. A registry with no projections now
+    throws from randart rather than substituting a list, and randart.test.ts
+    renames the four base elements and asserts the generated set changes --
+    a check a mirror-reading implementation cannot pass.
 verified-by:
   - obj/randart.test.ts (7 tests) - do_randart is deterministic (same seed
     => identical set), seed-sensitive (different seeds differ), never

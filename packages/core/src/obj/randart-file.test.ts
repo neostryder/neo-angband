@@ -15,6 +15,8 @@ import { HostDir, NULL_HOST } from "../host/io.js";
 import type { HostIo, WriteOutcome } from "../host/io.js";
 import { ObjRegistry } from "./bind.js";
 import { bindConstants } from "../constants.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
 import { doRandart } from "./randart.js";
 import { RANDART_TXT } from "./randart-file.js";
 import type { ObjPackJson } from "./types.js";
@@ -29,7 +31,7 @@ function loadJson<T>(name: string): T {
 }
 
 function makeReg(): ObjRegistry {
-  return new ObjRegistry({
+  const reg = new ObjRegistry({
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
     egoItem: loadJson("ego_item"),
@@ -41,6 +43,11 @@ function makeReg(): ObjRegistry {
     objectProperty: loadJson("object_property"),
     flavor: loadJson("flavor"),
   } as ObjPackJson);
+  /* randart.log quotes projections[i].name; bind them from the pack. */
+  reg.projections = bindProjections(
+    loadJson<{ records: ProjectionRecordJson[] }>("projection").records,
+  );
+  return reg;
 }
 
 /** object_prep's z_info, for the real make_fake_artifact. */

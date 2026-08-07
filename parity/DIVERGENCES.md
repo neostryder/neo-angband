@@ -54,19 +54,24 @@ consumer). No row found a write whose value could not be re-derived. That is an
 argument, not a proof, and it is the single most valuable thing for a future reviewer
 to attack.
 
-## C2. `add_brand` matches element names from a local table
+## Closed: `add_brand` matched element names from a local table
 
-**Upstream** compares `brand->name` against `projections[i].name` (obj-randart.c
-L1951). **Here**, `randart-build.ts` reads a local `ELEMENT_PROJ_NAMES` table, because
-`ObjRegistry` is bound from the object domain of the content pack and has no
-projections in it.
+A second `C` row stood here. `add_brand` compared a brand's name against a local
+`ELEMENT_PROJ_NAMES` table mirroring `projection.txt`, because `ObjRegistry` is bound
+from the object domain of the content pack and carried no projections. The mirror was
+guarded by a test that re-derived the list from `reference/lib/gamedata/projection.txt`
+— which proved it matched 4.2.6 and nothing else. The cost that guard could not touch
+was named in the row itself: **a mod that renames an element would diverge at
+runtime**, upstream ceasing to match while this port carried on matching.
 
-**Class C, with the risk bounded.** The table is the full 25 entries and
-`obj/randart-proj-names.test.ts` derives the same list from
-`reference/lib/gamedata/projection.txt` and compares entry for entry, so a rename in
-4.2.6's own data fails the build. What it still costs: a **mod** whose
-`projection.txt` renames an element would diverge at runtime — upstream would stop
-matching, this port would not.
+**Closed 2026-08-07.** The bound projection table now hangs off `ObjRegistry`
+(`obj/bind.ts`, attached by `bindCore`), `add_brand` compares against
+`projections[i].name` as obj-randart.c:1951 does, and the mirror and its test are
+deleted. A registry built without projections **throws** from randart rather than
+substituting a list, because a substitute is an unchecked claim about
+`projection.txt`. The check is now the mod rather than the reference: `randart.test.ts`
+renames the four base elements and asserts the generated set changes, which an
+implementation reading a mirror cannot do.
 
 ## Retired: "a randart set is not pinned by name"
 

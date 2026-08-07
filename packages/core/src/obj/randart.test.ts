@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ELEM, KF, OF } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
 import { bindConstants } from "../constants.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
 import type { ObjPackJson } from "./types.js";
 import { buildCurseTimedFoil } from "./object.js";
 import { doRandart, artifactGenName, RANDART_LOG, RANDNAME_TOLKIEN } from "./randart.js";
@@ -28,7 +30,7 @@ function loadJson<T>(name: string): T {
 }
 
 function makeReg(): ObjRegistry {
-  return new ObjRegistry({
+  const reg = new ObjRegistry({
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
     egoItem: loadJson("ego_item"),
@@ -40,6 +42,14 @@ function makeReg(): ObjRegistry {
     objectProperty: loadJson("object_property"),
     flavor: loadJson("flavor"),
   } as ObjPackJson);
+  /* add_brand and the randart log read projections[i].name, so a registry
+   * without them cannot run do_randart at all. Bound from the same pack the
+   * game boots from, not from a list written here - a list written here would
+   * be this test asserting what projection.json says. */
+  reg.projections = bindProjections(
+    loadJson<{ records: ProjectionRecordJson[] }>("projection").records,
+  );
+  return reg;
 }
 
 /** object_prep's z_info, for the real make_fake_artifact. */
@@ -70,6 +80,60 @@ function fingerprint(arts: (Artifact | null)[]): string {
     )
     .join("\n");
 }
+
+/**
+ * add_brand reads the LOADED projection names, not a copy of them.
+ *
+ * obj-randart.c:1951 compares the brand it just picked against
+ * projections[i].name to grant the matching resist. The port used to compare
+ * against a hand-written table mirroring projection.txt, guarded by a test that
+ * re-derived the list from the reference data. That guard proved the mirror
+ * matched 4.2.6, which is not the question: a MOD that renames an element would
+ * have stopped matching upstream while the port carried on matching.
+ *
+ * So the check is the mod, not the reference. Rename the four base elements and
+ * the generated set must change. A projection NAME is read at exactly two
+ * places in this file - add_brand's comparison, and the add_resist /
+ * add_immunity log lines, which write text and change no state - so a rename
+ * can only reach the output through add_brand. It does not merely subtract the
+ * resists it would have granted: a resist raises the artifact's power, which
+ * the design loop spends, so the two runs diverge rather than one being a
+ * subset of the other. Either way an implementation reading a mirror produces
+ * the identical set both times and fails here.
+ */
+describe("add_brand reads projections[i].name (obj-randart.c L1951)", () => {
+  /** Base-element (ACID..COLD) resists across a whole generated set. */
+  function baseResists(reg: ObjRegistry): number {
+    let n = 0;
+    for (const art of doRandart(reg, constants, 20260807, false)) {
+      if (!art) continue;
+      for (let i = 0; i < 4; i++) {
+        if ((art.elInfo[i]?.resLevel ?? 0) > 0) n++;
+      }
+    }
+    return n;
+  }
+
+  it("generates a different set once the elements are renamed", () => {
+    const withReal = baseResists(makeReg());
+    /* The set has to grant SOME, or the renamed run proves nothing. */
+    expect(withReal).toBeGreaterThan(0);
+
+    const renamed = makeReg();
+    renamed.projections = (renamed.projections ?? []).map((p, i) =>
+      i < 4 ? { ...p, name: `not-${p.name}` } : p,
+    );
+    expect(baseResists(renamed)).not.toBe(withReal);
+  });
+
+  it("refuses to generate at all when projections are not bound", () => {
+    const orphan = makeReg();
+    orphan.projections = null;
+    expect(() => doRandart(orphan, constants, 1, false)).toThrow(
+      /projections is not bound/,
+    );
+  });
+});
 
 describe("do_randart (obj-randart.c L3154)", () => {
   it("is deterministic: the same seed yields the same artifact set", () => {
