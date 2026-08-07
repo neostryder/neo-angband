@@ -2970,9 +2970,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:3458`,
   `parity/ledger/obj-randart.yaml:51`
 
-- [ ] **5.5 `randart.log` / `randart.txt`. IN PROGRESS — the file exists and
-  232 of its 233 emission sites are written. The remainder is MEASURED, not
-  estimated.**
+- [ ] **5.5 `randart.log` / `randart.txt`. ONE LINE LEFT of 252, and it is a
+  line the census cannot see. The remainder is MEASURED, not estimated.**
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
 
@@ -2983,8 +2982,26 @@ is reachable in play and a test constructs the case that used to be wrong.**
   | | sites | done |
   |---|---|---|
   | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
-  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 173 |
-  | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | 0 |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | **174** |
+  | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | **19** |
+
+  **What is left is one line, and it is worth naming precisely.**
+  `artifact_power` logs the fake artifact's own `object_desc` with
+  `ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL` (obj-randart.c:205-206). Its format
+  string is `"%s\n"`, which has no literal span, so the ratchet in
+  `randart-log.census.test.ts` **cannot see it** — it is carried there as
+  `UNWRITTEN_SPANLESS = 1` so the reassuring `EXPECTED_MISSING_RANDART = 0`
+  cannot be read as "nothing left".
+
+  The blocker is not the `KnownDesc`, which was the older note's guess and is
+  wrong: `SPOIL` describes the object as it truly is, so aware-and-tried for
+  everything is the only answer consistent with it, and a `RuneEnv` over the
+  registry's tables with a null `slot_object` is buildable in
+  `randart-data.ts`. The real blocker, measured 2026-08-07 by writing it and
+  failing to compile: `makeFakeArtifactPower` returns a `PowerObject` — the
+  reduced shape `object_power` needs — and `object_desc` wants a whole
+  `GameObject`. Writing this line means building the full fake object upstream
+  builds, which is a change to the **power path**, not to the log.
 
   DONE so far, and each part is load-bearing on its own:
 
