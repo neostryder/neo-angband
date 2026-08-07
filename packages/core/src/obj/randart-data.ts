@@ -25,10 +25,12 @@
  *   the two are inlined as pure rvMaximise/rvMinimise helpers and artifactPower
  *   needs no Rng.
  * - The fake object's curse timeouts (copy_curses, obj-curse.c) are set from a
- *   RANDOMISE dice roll upstream. Timeouts never enter object_power (cursePower
- *   reads only curse power), so artifactPower maps curse powers with timeout 0
- *   and consumes no RNG. Standard artifacts carry no curses, so RNG order in
- *   storeBasePower is unaffected either way.
+ *   RANDOMISE roll upstream, and that roll DRAWS. The timeout never enters
+ *   object_power, so this file used to skip it and say no RNG was consumed;
+ *   that was measured on the standard artifact set (one curse in the whole
+ *   file) and was wrong during generation, where design_artifact re-powers an
+ *   artifact make_bad has just cursed. The rolls are made, in upstream's order.
+ *   See makeFakeArtifactPower.
  * - Upstream mean()/variance() (z-util.c L1389/L1516) are exact-rational
  *   multi-precision routines; store_base_power calls them with a non-NULL frac,
  *   which is the "round the result down" path. Both are now ported for real in
@@ -271,6 +273,7 @@ function varianceFloored(nums: readonly number[]): number {
 function makeFakeArtifactPower(
   reg: ObjRegistry,
   art: Artifact,
+  rng: Rng,
 ): PowerObject | null {
   if (!art.tval) return null;
   const kind = reg.lookupKind(art.tval, art.sval);
@@ -330,27 +333,48 @@ function makeFakeArtifactPower(
     elInfo.push({ resLevel, flags: elFlags });
   }
 
-  /* Curses: copy_curses copies the kind's then the artifact's powers.
-   * Timeouts (a RANDOMISE roll upstream) never affect power, so they are
-   * left at 0 and no RNG is consumed. */
+  /*
+   * Curses. Upstream reaches copy_curses (obj-curse.c L36) TWICE: once from
+   * object_prep with the kind's curses, once from copy_artifact_data with the
+   * artifact's. Each call walks the whole curse array and, for every non-zero
+   * source slot, rolls
+   *
+   *     obj->curses[i].timeout = randcalc(curses[i].obj->time, 0, RANDOMISE)
+   *
+   * and that roll DRAWS. The timeout never enters object_power (cursePower
+   * reads only the power), so this port used to leave it at 0 and note that no
+   * RNG was consumed -- true of the standard artifact set, which carries one
+   * curse in the whole file, and WRONG everywhere it mattered: design_artifact
+   * calls artifact_power again on every loop iteration after make_bad has
+   * cursed the artifact (obj-randart.c L2833-L2846), so upstream draws here
+   * repeatedly during generation and the port did not. The streams parted at
+   * the first cursed artifact and every artifact designed after it differed.
+   *
+   * So the rolls are made and discarded-into-the-field, in upstream's order:
+   * the kind's slots ascending, then the artifact's. randcalc draws even for a
+   * curse whose time has no dice, because m_bonus_calc(0, ...) still goes
+   * through m_bonus -- which is why this reproduces the COUNT and not just the
+   * shape.
+   */
   let curses: CurseData[] | null = null;
   if (kind.curses || art.curses) {
-    curses = [];
+    const slots: CurseData[] = [];
     for (let i = 0; i < reg.curses.length; i++) {
-      curses.push({ power: 0, timeout: 0 });
+      slots.push({ power: 0, timeout: 0 });
     }
-    if (kind.curses) {
+    const copyCurses = (source: readonly number[] | null | undefined): void => {
+      if (!source) return;
       for (let i = 0; i < reg.curses.length; i++) {
-        const power = kind.curses[i] ?? 0;
-        if (power) (curses[i] as CurseData).power = power;
+        const power = source[i] ?? 0;
+        if (!power) continue;
+        const slot = slots[i] as CurseData;
+        slot.power = power;
+        slot.timeout = rng.randcalc(reg.curses[i]!.obj.time, 0, "randomise");
       }
-    }
-    if (art.curses) {
-      for (let i = 0; i < reg.curses.length; i++) {
-        const power = art.curses[i] ?? 0;
-        if (power) (curses[i] as CurseData).power = power;
-      }
-    }
+    };
+    copyCurses(kind.curses);
+    copyCurses(art.curses);
+    curses = slots;
   }
 
   /* Activation comes from the artifact or, failing that, the kind. */
@@ -393,11 +417,18 @@ export function artifactPower(
    * one evaluation as another in the log the argument exists to produce.
    */
   reason: string,
+  /**
+   * make_fake_artifact's copy_curses rolls a timeout per cursed slot and those
+   * rolls DRAW (see makeFakeArtifactPower). Required, because a default would
+   * hand back a private Rng and silently restore the divergence this argument
+   * exists to close.
+   */
+  rng: Rng,
 ): number {
   randartLogf(() => `********** Evaluating ${reason} ********\n`);
   randartLogf(() => `Artifact index is ${art.aidx}\n`);
 
-  const obj = makeFakeArtifactPower(reg, art);
+  const obj = makeFakeArtifactPower(reg, art, rng);
   if (!obj) return 0;
 
   /*
@@ -436,6 +467,7 @@ export function storeBasePower(
   reg: ObjRegistry,
   arts: readonly (Artifact | null)[],
   data: ArtifactSetData,
+  rng: Rng,
 ): void {
   const aMax = arts.length;
 
@@ -453,7 +485,7 @@ export function storeBasePower(
 
   for (let i = 0; i < aMax; i++) {
     const art = arts[i] ?? null;
-    const power = art ? artifactPower(reg, art, "for original power") : 0;
+    const power = art ? artifactPower(reg, art, "for original power", rng) : 0;
     data.basePower[i] = power;
 
     /* Capture power stats, ignoring cursed and uber arts. */
@@ -1579,10 +1611,11 @@ export function artifactSetDataNew(reg: ObjRegistry): ArtifactSetData {
 /**
  * Allocate an ArtifactSetData and run the measurement pipeline over `arts`:
  * store_base_power, then parse_frequencies (which runs collect_artifact_data,
- * rescale_freqs and adjust_freqs). Returns the populated data. `rng` is
- * threaded through for parity with upstream do_randart (store_base_power's
- * fake-object build consumes no RNG - see the module note on curse timeouts -
- * so this holds for a generated, cursed set as well as the standard one).
+ * rescale_freqs and adjust_freqs). Returns the populated data. `rng` is drawn
+ * from, not merely threaded: store_base_power powers every artifact, and
+ * make_fake_artifact rolls a timeout per cursed slot (see
+ * makeFakeArtifactPower). Over the standard set that is a handful of draws;
+ * over a generated set it is one per curse the design loop added.
  *
  * WHICH SET is a parameter because do_randart measures TWICE (obj-randart.c
  * L3175-L3186): once over the standard artifacts, and once more over the
@@ -1597,9 +1630,8 @@ export function collectArtifactData(
   arts: readonly (Artifact | null)[],
   rng: Rng,
 ): ArtifactSetData {
-  void rng;
   const data = artifactSetDataNew(reg);
-  storeBasePower(reg, arts, data);
+  storeBasePower(reg, arts, data, rng);
   parseFrequencies(reg, arts, data);
   return data;
 }
