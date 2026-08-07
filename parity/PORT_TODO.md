@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 219 of 338 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 228 of 338 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **123 `ported`,
-  35 `stale-doc`, 18 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 7 `partial` against **5** `real`**. **119 remain.**
+  The tally, **read from the TSV rather than carried forward**: **130 `ported`,
+  35 `stale-doc`, 19 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
+  9 `n-a`, 7 `partial` against **5** `real`**. **110 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -264,6 +264,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   only the pile the player STANDS on. There is no discovery-at-a-distance to
   reproduce, the port's gate is the same one, and the reduced glyph-only
   `square_know_pile` the rows blamed for it stopped existing at 2.9.
+
+  **`#24` is now clear: all twenty rows, and not one of them was owed.** Twelve
+  came back `ported` on inspection with no work needed, seven had the work done
+  in this pass or an earlier one, and one - `monster_race_track` - is a
+  `divergence`: its entire body is `upkeep->monster_race = race` plus
+  `PR_MONSTER`, which exists to tell a recall SUBWINDOW what to show, and this
+  port opens the recall as a modal with the race under the cursor. The citation
+  had outlived the subsystem by a wide margin: `obj/ignore.ts` supplies
+  `isIgnored` at every site that asked for it, `describeObject` is used
+  throughout `obj-cmd.ts`, `exposeToSun` runs on the town 4.3 built, and the
+  whole `player_kill_monster` tail - experience, shape revert, dead uniques,
+  kill history, drops, quest completion - is live behind `onPlayerKill`.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been

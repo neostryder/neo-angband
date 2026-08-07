@@ -31,9 +31,12 @@ notes: >-
   chance_of_spell_hit (mon/spell.ts). The base-value providers for the spell dice
   are built per cast so SPELL_POWER binds the casting monster.
 deferred:
-  - disturb(player), spell_message and spell_check_for_fail_rune are injected
-    hooks: the message selection (seen / blind / save text) and the fail-rune
-    learning are UI / lore concerns (#24).
+  - All three hooks are BUILT and INSTALLED, not merely injectable.
+    buildMonSpellHooks (game/mon-cast.ts:271) supplies disturb, the real
+    spell_message through spellMessageText (with panel_contains for the
+    "(offscreen)" tag and the msgt sound channel), the save message, and
+    spell_check_for_fail_rune; session/game.ts:1519 installs them. A cast
+    announces itself and, on a save, teaches the runes upstream would.
   - Summon and shapechange subtypes (S_KIN, SHAPECHANGE, ...) need their name
     resolvers injected (mon-summon.c summon_name_to_idx, player shapes); absent,
     the chain cannot build and the cast fizzles via the unresolved hook. The
