@@ -40,6 +40,7 @@ import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
 import type { ObjRegistry } from "./bind.js";
+import { tvalFindName } from "./bind.js";
 import type { CurseData, CurseTimedFoil } from "./object.js";
 import type { ActivationSummarizer } from "./randart-build.js";
 import {
@@ -381,9 +382,28 @@ function makeFakeArtifactPower(
  * artifact_power (obj-randart.c L186): the artifact's power, by generating a
  * fake object from the artifact and calling the common object_power.
  */
-export function artifactPower(reg: ObjRegistry, art: Artifact): number {
+export function artifactPower(
+  reg: ObjRegistry,
+  art: Artifact,
+  /**
+   * artifact_power's `reason` (obj-randart.c:186), which exists only to head
+   * the log block. REQUIRED rather than optional: upstream writes it out at
+   * every one of its four call sites, and a default here would silently label
+   * one evaluation as another in the log the argument exists to produce.
+   */
+  reason: string,
+): number {
+  randartLogf(() => `********** Evaluating ${reason} ********\n`);
+  randartLogf(() => `Artifact index is ${art.aidx}\n`);
+
   const obj = makeFakeArtifactPower(reg, art);
   if (!obj) return 0;
+
+  /* obj-randart.c:205-206 also logs the fake artifact's object_desc with
+   * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL. Not written yet: object_desc here
+   * needs a KnownDesc this pure module does not hold, so it is one of the 68
+   * the census still counts rather than a line quietly dropped. */
+
   return objectPower(reg, obj);
 }
 
@@ -413,7 +433,7 @@ export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
 
   for (let i = 0; i < aMax; i++) {
     const art = reg.artifacts[i] ?? null;
-    const power = art ? artifactPower(reg, art) : 0;
+    const power = art ? artifactPower(reg, art, "for original power") : 0;
     data.basePower[i] = power;
 
     /* Capture power stats, ignoring cursed and uber arts. */
@@ -1231,6 +1251,12 @@ export function collectArtifactCounts(
 
   for (let i = 0; i < aMax; i++) {
     const art = reg.artifacts[i] ?? null;
+
+    /* obj-randart.c:1066-1067 logs the index BEFORE any skip, so a cursed,
+     * tval-0 or absent entry still prints its line. Upstream reads a_info[i]
+     * out of a dense array and never has a null to guard, so the port's own
+     * null check has to come after this to keep the counts aligned. */
+    randartLogf(() => `Current artifact index is ${i}\n`);
     if (!art) continue;
 
     /* Don't parse cursed or null items. */
@@ -1246,6 +1272,7 @@ export function collectArtifactCounts(
 
     /* Add the base item tval to the tv_probs array. */
     data.tvProbs[kind.tval] = (data.tvProbs[kind.tval] ?? 0) + 1;
+    randartLogf(() => `Base item is ${kind.kidx}\n`);
 
     /* Count combat abilities broken up by type. */
     if (
@@ -1370,6 +1397,8 @@ export function adjustFreqs(data: ArtifactSetData): void {
  * generation probabilities.
  */
 export function parseFrequencies(reg: ObjRegistry, data: ArtifactSetData): void {
+  randartLog("\n****** BEGINNING GENERATION OF FREQUENCIES\n\n");
+
   /* Zero the frequencies for artifact attributes. */
   for (let i = 0; i < ART_IDX_TOTAL; i++) data.artProbs[i] = 0;
 
@@ -1382,17 +1411,44 @@ export function parseFrequencies(reg: ObjRegistry, data: ArtifactSetData): void 
     }
   }
 
+  /* "Print out some of the abilities, to make sure that everything's fine"
+   * (obj-randart.c:1295-1301). Both loops run to their FULL extent, before any
+   * rescaling - the pre- and post-rescale dumps are what make the log usable
+   * for comparing two runs. */
+  for (let i = 0; i < ART_IDX_TOTAL; i++) {
+    randartLogf(() => `Frequency of ability ${i}: ${data.artProbs[i]}\n`);
+  }
+  for (let i = 0; i < TV_MAX; i++) {
+    randartLogf(
+      () => `Frequency of ${tvalFindName(i)}: ${data.tvProbs[i]}\n`,
+    );
+  }
+
   /* Rescale frequencies. */
   rescaleFreqs(data);
 
   /* Perform any additional rescaling and adjustment. */
   adjustFreqs(data);
 
+  /* "Log the final frequencies to check that everything's correct" (:1309). */
+  for (let i = 0; i < ART_IDX_TOTAL; i++) {
+    randartLogf(
+      () => `Rescaled frequency of ability ${i}: ${data.artProbs[i]}\n`,
+    );
+  }
+
   /* Build a cumulative frequency table for tvals. */
   for (let i = 0; i < TV_MAX; i++) {
     for (let j = i; j < TV_MAX; j++) {
       data.tvFreq[j] = (data.tvFreq[j] ?? 0) + (data.tvProbs[i] ?? 0);
     }
+  }
+
+  /* "Print out the frequency table, for verification" (:1319). */
+  for (let i = 0; i < TV_MAX; i++) {
+    randartLogf(
+      () => `Cumulative frequency of ${tvalFindName(i)} is: ${data.tvFreq[i]}\n`,
+    );
   }
 }
 

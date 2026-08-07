@@ -2971,7 +2971,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `parity/ledger/obj-randart.yaml:51`
 
 - [ ] **5.5 `randart.log` / `randart.txt`. IN PROGRESS — the file exists and
-  155 of its 233 emission sites are written. The remainder is MEASURED, not
+  164 of its 233 emission sites are written. The remainder is MEASURED, not
   estimated.**
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
@@ -2983,7 +2983,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   | | sites | done |
   |---|---|---|
   | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
-  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 99 |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 108 |
   | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | 0 |
 
   DONE so far, and each part is load-bearing on its own:
@@ -3027,7 +3027,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   available and no such claim is made. `obj/randart-log.census.test.ts` extracts
   every format string from both C files, reduces each to its literal spans, and
   requires each span to appear in the port. obj-power.c must be at **zero**
-  missing; obj-randart.c is a **two-way ratchet** at 75 distinct strings, so the
+  missing; obj-randart.c is a **two-way ratchet** at 66 distinct strings, so the
   number cannot drift up (a lost line) or down (finish the row and lower it).
   It was 122 until the whole `count_*` family landed on 2026-08-07. The ratchet
   was verified by deleting one emitted line and watching it fail — worth doing,
@@ -3036,11 +3036,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `obj/randart-log.test.ts` runs `doRandart` against a memory host and reads the
   file, which is the guard a fresh sink most needs.
 
-  DONE 2026-08-07: `count_modifiers` (18 sites), `count_low_resists` and
-  `count_high_resists` (20), `count_abilities` (9) — the whole `count_*` family,
-  47 sites, exactly the number the extraction predicted.
+  DONE 2026-08-07: the whole `count_*` family (47 sites, exactly the number the
+  extraction predicted), `parse_frequencies`' five dumps, `collect_artifact_data`'s
+  index/base-item pair, and `artifact_power`'s header pair — 122 -> 66.
 
-  STILL TO WRITE: `collect_artifact_data`, `parse_frequencies`,
+  Two things that pass are worth naming. `collect_artifact_data` logs the index
+  **before** its skip checks, so a cursed or absent artifact still prints a line;
+  the port's own null guard had to move below it to keep the counts aligned.
+  And `artifact_power` gained a **required** `reason` parameter rather than an
+  optional one — upstream writes it at every one of its four call sites, and a
+  default would silently label one evaluation as another in the very log the
+  argument exists to produce.
+
+  `artifact_power`'s third line — the fake artifact's `object_desc` under
+  `ODESC_SPOIL` — is deliberately still in the 66: it needs a `KnownDesc` this
+  pure module does not hold, so it is counted rather than quietly dropped.
+
+  STILL TO WRITE: `store_base_power`,
   `store_base_power`, `artifact_power`, `get_base_item`, `artifact_prep`,
   `build_freq_table`, `try_supercharge`, the `add_*` family, `choose_ability`,
   `make_bad`, `design_artifact` — then the whole of `randart.txt`

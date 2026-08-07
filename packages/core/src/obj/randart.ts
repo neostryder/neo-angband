@@ -351,7 +351,7 @@ export function designArtifact(
     /* Get the kind again in case it's changed. */
     kind = reg.lookupKind(art.tval, art.sval);
 
-    const basePower = artifactPower(reg, art);
+    const basePower = artifactPower(reg, art, "for base item power");
 
     /* New base item power too close to target artifact power. */
     if (basePower > Math.trunc((power * 6) / 10) + 1 && power - basePower < 20) {
@@ -370,7 +370,7 @@ export function designArtifact(
 
   /* Give this artifact a shot at being supercharged. */
   trySupercharge(reg, art, power, data, rng);
-  ap = artifactPower(reg, art);
+  ap = artifactPower(reg, art, "result of supercharge");
   if (ap > Math.trunc((power * 23) / 20) + 1) {
     /* Too powerful -- put it back. */
     copyArtifact(aOld, art);
@@ -391,7 +391,7 @@ export function designArtifact(
     removeContradictory(reg, art, data.timedFoil, data.activationSummarize);
 
     /* Check the power, handle negative power. */
-    ap = artifactPower(reg, art);
+    ap = artifactPower(reg, art, "artifact attempt");
     if (ap < 0) {
       ap = -ap;
       break;
