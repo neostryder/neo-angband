@@ -48,11 +48,21 @@ notes: >-
   PROJECT_SHORT quartering (a player's COVERTRACKS state) by passing a reduced
   value.
 deferred:
-  - The per-target GF_ handlers project_f/o/m/p (project-feat/obj/mon/player.c):
-    supplied to project() as hooks for now; ported with the effect handlers.
-  - Decoys (cave_find_decoy): not modelled, so the PROJECT_STOP decoy check uses
-    a (-1,-1) sentinel that never matches; a decoy exists only once the
-    create-decoy effect is ported.
+  - All four are ported AND supplied for real: game/project-cast.ts wires
+    onMonster (:322), onPlayer (:323), onObject (:341) and onFeature (:343) to
+    projectMonster / projectPlayer / projectObject / projectFeature over the
+    live world. "Hooks for now" is spent.
+  - HALF-CLOSED, and the remaining half is a LIVE DEFECT rather than a
+    deferral. Decoys ARE modelled: GameState.decoy (game/context.ts:205) is
+    written by EF_GLYPH's decoy arm, read by caveFindDecoy, and persisted
+    (session/save.ts:2138). But world/project.ts:50 still holds
+    `const NO_DECOY: Loc = loc(-1, -1)` and :108 compares against it, so
+    projectPath's PROJECT_STOP arm can never stop on the decoy. Upstream breaks
+    the path there (project.c:216-219, `if (loc_eq(loc(x, y), decoy)) break;`),
+    which is most of what a decoy is FOR against a bolt. The fix is to thread
+    the decoy grid in beside `believedWall`; it touches project() and its
+    callers and shifts path lengths, so it wants a deliberate pass rather than a
+    drive-by.
   - PROJECT_INFO's square_isbelievedwall (the player's remembered map): PORTED
     and wired, both halves. This entry used to read "not modelled, approximated
     by real projectability; only targeting display uses it (deferred UI), so it
