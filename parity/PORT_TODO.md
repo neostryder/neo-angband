@@ -12,6 +12,21 @@ list and nothing wider: see [What "zero open" does and does not
 mean](#what-zero-open-does-and-does-not-mean) at the foot of this file, which
 names what is still deliberately divergent and what has never been measured.
 
+**And then re-running the census reopened two, on the same day.** Closing the 68
+rewrote the notes they were written on, so the census retired 71 rows and returned
+76 to be adjudicated again ([DEFERRALS.md](DEFERRALS.md), "The second pass"). Of
+the `real` rows that survived that, four proved stale — PN_IGNORE is consumed,
+both TOUCH branches are ported, the notes command exists, the killer reaches the
+score entry — and **two are genuinely owed and are not on the list above**:
+
+| Owed | Where |
+|---|---|
+| `pile_insert_end` has no port counterpart; nothing appends to a pile tail, so pile ORDER can differ | `game/gear.ts:1315`, `game/pile.upstream.test.ts:28` |
+| `cmd_disable_repeat_floor_item` (0 references), where the sibling `cmd_disable_repeat` is ported | `parity/ledger/cmd-core.yaml:25` |
+
+Two is the honest number for this list today, not zero. It will move again, in
+both directions, for exactly the reason the paragraph below gives.
+
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
 census as a group found that **thirteen described work that had already been
