@@ -71,7 +71,7 @@ import {
   knownIsClosedDoor,
   knownIsEnterable,
   knownIsRubble,
-  knownObject,
+  knownFloorObject,
   squareForget,
   squareIsKnown,
   squareMemorize,
@@ -734,21 +734,17 @@ export function search(state: GameState): void {
       }
 
       /*
-       * The C tests knowledge PER OBJECT (`if (!obj->known || ...) continue;`),
-       * which has no exact analogue here: this port's object memory is per GRID
-       * (KnownObjectMemory holds the remembered pile head's glyph, not a shadow
-       * per object), so the closest check is "is this grid's pile remembered".
-       *
-       * For floor piles the two agree, because square_know_pile shadows the
-       * WHOLE pile at once -- either every object on the grid has a shadow or
-       * none does. They diverge only for an object added to an
-       * already-remembered grid since the last know_pile, e.g. a chest dropped
-       * onto a mapped floor: upstream will not discover its trap until the pile
-       * is known again, this will. Narrow, and recorded as a finding rather than
-       * faked, since a per-object shadow is a larger design change.
+       * `if (!obj->known || ignore_item_ok(p, obj) || !is_trapped_chest(obj))`
+       * (player-util.c:1701-1705) - a PER-OBJECT knowledge test. This used to be
+       * approximated with "is this grid's pile remembered", because the port's
+       * object memory was one entry per grid; PORT_TODO 2.9 replaced that with a
+       * remembered pile holding the object references themselves, so the exact
+       * test is available and the recorded divergence (a chest dropped onto an
+       * already-mapped floor had its trap discovered here but not upstream) is
+       * gone.
        */
-      if (!knownObject(state, grid)) continue;
       for (const obj of floorPile(state, grid)) {
+        if (!knownFloorObject(state, grid, obj)) continue;
         if ((state.isIgnored?.(obj) ?? false) || !isTrappedChest(obj)) continue;
         if (obj.knownPval !== obj.pval) {
           state.msg?.("You have discovered a trap on the chest!");

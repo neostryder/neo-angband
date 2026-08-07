@@ -50,23 +50,38 @@ notes: >-
   wiz_light/wiz_dark live here (exported) until a dedicated cave-map module
   is warranted. Handlers no-op without a game env (worldless rule).
 deferred:
-  - The player square-memory half of cave-map.c (square_memorize / mark /
-    forget, square_know_pile / sense_pile, square_light_spot redraws) rides
-    the map-memory layer (#24/#25); the web renderer holds its own explored
-    set. PF_UNLIGHT's dark-memorization likewise.
+  - The square-memory functions this row defers are all PORTED and CALLED:
+    squareMemorize (game/cave-cmd.ts:495, gated on !knownIsPerm),
+    squareKnowPile (game/known.ts:442) and squareSensePile
+    (game/effect-detect.ts:352, chosen by the `full` flag exactly as
+    cave-map.c:445-452 does). PF_UNLIGHT is modelled at player/calcs.ts:684.
+    square_light_spot is a redraw and falls under the ratified
+    unconditional-repaint divergence. The last piece - the player->cave shadow
+    the note calls "the web renderer holds its own explored set" - closed as
+    PORT_TODO 2.9: state.known is the port's player->cave, and
+    state.known.objects is a remembered pile per grid rather than one entry
+    (game/floor.ts:18 records the same). Nothing owed here.
   - expose_to_sun / is_daytime on the surface ride the town day-night cycle;
     arena levels are not modelled (depth 0 takes the town branch).
-  - birth_levels_persist (CREATE_STAIRS) and show_damage (EARTHQUAKE) are
-    options (#30); total_winner recall interplay is with RECALL's ledger.
+  - birth_levels_persist (CREATE_STAIRS) is an option (#30); total_winner
+    recall interplay is with RECALL's ledger. show_damage on EARTHQUAKE is
+    PORTED (2026-08-07) - the quake reads ctx.env.showDamage and picks
+    addMonsterMessageShowDamage, so a quaked monster's line carries " (N)".
   - DESTRUCTION's artifact bookkeeping (history_lose_artifact /
     mark_artifact_created) rides artifact upkeep (#24) - nothing marks
     artifacts created yet, so a destroyed artifact can regenerate;
     EARTHQUAKE's square_changeable artifact check IS ported (artifact piles
     shield their grid).
-  - DARKEN_AREA's monster-target branch (monster_target_monster, #19) and
-    decoy branch (monster_is_decoyed, #24); MDESC names and the MON_MSG
-    plural grammar ride the display layer (#25) - the race name stands in
-    for the quake messages, shown only for visible monsters.
+  - CLOSED (2026-08-07), every part of it. Both branches were already ported -
+    monsterTargetMonster (game/effect-attack.ts:370) and monsterIsDecoyed
+    (game/effect-mon-origin.ts) - and the two things this row said "ride the
+    display layer" had both landed without anyone revisiting it. DARKEN_AREA
+    now names its target with monsterDesc(tMon, MDESC_TARG) as
+    effect-handler-general.c:3061 does, so an unseen target reads "something"
+    instead of being named outright; and the quake queues MON_MSG.QUAKE_DEATH /
+    QUAKE_HURT through addMonsterMessage (PORT_TODO 3.1) rather than writing
+    its own sentence, which restores both the plural stacking and
+    add_monster_message's own visibility rule.
   - player_handle_post_move after the quake displacement rides the teleport
     env's onPlayerPostMove hook (installed by wireGame).
 verified-by:

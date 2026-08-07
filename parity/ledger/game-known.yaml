@@ -8,11 +8,12 @@ upstream:
         square_ismemorybad over a remembered-feat array (-1 unknown) that
         can go stale exactly like the player->cave twin (you remember the
         door, not the floor it became).
-      - square_know_pile / square_sense_pile reduced to a per-grid
-        remembered-object marker - the (first matching) pile head's
-        display glyph for know, a null-glyph "something is there" marker
-        for sense (upstream's unknown_item_kind / unknown_gold_kind), and
-        stale-memory forgetting when the pile is gone.
+      - square_know_pile / square_sense_pile over a remembered PILE, one
+        entry per remembered object (PORT_TODO 2.9 - the earlier one-entry-
+        per-grid reduction is gone). Each entry holds the object reference
+        itself plus a `sensed` marker standing in for upstream's
+        unknown_item_kind / unknown_gold_kind fake kind, and a remembered
+        object that is no longer on the floor is forgotten.
   - path: src/cave-view.c
     items:
       - note_spot as the seen half of noteSpots - every SEEN grid is
@@ -38,11 +39,16 @@ notes: >-
   GameState, wiped by level changes, and persists in the save
   (SavedGame.known; absent in older saves, which load all-unknown).
 deferred:
-  - The full player->cave twin (known traps as trap instances, per-object
-    known twins with pval/ego knowledge) rides object knowledge and #25;
-    the sense markers do not record which predicate sensed them, so a
-    know/sense of a different object class can clear them (upstream keeps
-    per-object knowledge).
+  - The remembered pile is PER OBJECT as of PORT_TODO 2.9, so this row's
+    "per-object known twins" half is spent: knownFloorObject(state, grid, obj)
+    is `obj->known`, obj.knownPval is `obj->known->pval` (the chest-trap
+    knowledge search and DETECT_TRAPS both write), and objectKnownShadow
+    synthesises the rest of the twin on demand. Two things are genuinely left,
+    and they are different sizes. (a) Known traps as trap INSTANCES rather than
+    a per-grid SQUARE_DTRAP-style memory. (b) The sense markers do not record
+    which predicate sensed them, so a know/sense of a different object class can
+    clear them - a real divergence from upstream's per-object knowledge, kept
+    here because this is the file that owns the marker.
   - update_mon's telepathy (RF_TELEPATHY equipment), infravision,
     SEE_INVIS, monster_is_in_view distance/light weighting and the
     disturb-on-appear side effects ride the full visibility model;

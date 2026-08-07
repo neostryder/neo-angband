@@ -38,10 +38,19 @@ notes: >-
 deferred:
   - push_object (L1166): needs the door/trap interplay (squares become
     unable to hold objects) - lands with trap.c (#21) / door commands (#20).
-  - The known-object shadow cave (player->cave, obj->known) and
-    list_object/delist_object oidx bookkeeping - knowledge system (#24);
-    the pile map itself serves as the object list.
-  - Mimicked-object handling (obj->mimicking_m_idx) - mimic reveal.
+  - Both halves of this row are CLOSED (2026-08-07). list_object /
+    delist_object's oidx bookkeeping is a ratified substitution and the note
+    names its mechanism itself - the pile map IS the object list, and a JS
+    reference is the link C spends oidx on. The known-object shadow cave landed
+    as PORT_TODO 2.9: state.known.objects is a remembered pile per grid holding
+    the object references, which is what map_info's object loop,
+    object_list_collect and forget_remembered_objects each read.
+  - Mimicked-object handling (obj->mimicking_m_idx) is PORTED. The
+    back-reference is real (obj.mimickingMIdx, written by
+    monCreateMimickedObject, read at known.ts:700 for the
+    monster_is_mimicking / ignore_item_ok test) and the reveal-path bookkeeping
+    closed as PORT_TODO 2.14, including push_object's unrevealed-mimic arm
+    (game/project-feat.ts pushMimic).
   - square_note_spot / square_light_spot redraw calls - render layer (#25).
 verified-by:
   - game/floor.test.ts (13 tests): carry places and records the grid; merges
