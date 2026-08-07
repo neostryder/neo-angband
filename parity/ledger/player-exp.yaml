@@ -53,8 +53,12 @@ deferred:
     ExpDeps.onGainLevel, wired in session/game.ts and verified by this
     file's onGainLevel tests plus session/game.test.ts's level-up history
     assertion. See parity/ledger/player-history.yaml.)
-  - The rest of player_kill_monster (uniques' max_num, quest checks, drops
-    and monster_death) rides mon-util/lore (#24); onPlayerKill is the seam.
+  - The rest of player_kill_monster is BUILT behind that seam. session/game.ts
+    installs state.onPlayerKill at :983 and it does the lot: the experience off
+    the killed form, monsterRevertShape, uniques' max_num = 0 (which survives a
+    reload - the load path re-derives it from lore pkills), the HIST_SLAY_UNIQUE
+    entry, monsterDeath's drops, and quest_check through the quest system
+    (PORT_TODO 4.2).
   - Ranged/thrown kill sites land with the fire/throw commands.
   - (EF_GAIN_STAT and the other stat/exp effect callers are now wired -
     game/effect-general.ts.)

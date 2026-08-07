@@ -42,10 +42,11 @@ deferred:
   - choose_attack_spell / remove_bad_spells / make_attack_spell (mon-attack.c):
     the spell-selection AI, a follow-up increment (needs player resist knowledge
     and the monster turn integration).
-  - nonhp_dam (L571) / mon_spell_dam (L637) / mon_spell_lore_description (L681) /
-    mon_spell_lore_damage (L698): the lore damage calculations roll spell-effect
-    dice whose expressions can reference the casting race (upstream's ref_race),
-    which is bound with the monster-lore / recall layer (#24).
+  - The monster-lore / recall layer this row waited on is built, and the lore
+    damage calculations landed with it: monSpellLoreDescription
+    (mon/lore-describe.ts:426) and monSpellLoreDamage (:457) are called from the
+    spell section of the recall at :390 and :400, with the casting race passed
+    in as upstream's ref_race.
 verified-by:
   - mon/spell.test.ts (10 tests): MON_SPELL_TYPES evaluates the generated
     expressions aligned to RSF value; the breath / damage / innate predicates and

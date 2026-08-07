@@ -87,10 +87,14 @@ deferred:
     unknown_item_kind - you cannot have chosen to ignore what you have not
     identified. Both halves it needed had landed: the per-object remembered pile
     (PORT_TODO 2.9) and obj/ignore.ts.
-  - monster_race_track in target_set_closest rides monster lore (#24);
-    healthWho covers health_track. project.c's health_track on a struck
-    visible monster (L978) and player-attack.c's ranged-fire targeting
-    (L1070) / fire_at_nearest (L1440) ride the missile-fire command.
+  - monster_race_track is a RATIFIED DIVERGENCE, not a deferral. Its whole body
+    (player-calcs.c:2479-2486) is `upkeep->monster_race = race` plus
+    `PR_MONSTER` - it exists to tell a monster-recall SUBWINDOW which race to
+    show. This port has no subwindows: the recall is a modal the look/target
+    loop opens on demand with the race under the cursor
+    (web/src/main.ts:3713), so there is no tracked race to store and PR_* is
+    already ratified as not-owed (game/known.ts:153). healthWho covers
+    health_track, including project.c:978 and the ranged-fire sites.
   - cmd-core.c L959 (the cmd_get_target retry when a stale DIR_TARGET
     has no okay target) rides the command-prompt layer (#25).
 verified-by:

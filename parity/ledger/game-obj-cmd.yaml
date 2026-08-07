@@ -57,8 +57,12 @@ deferred:
     (game-shape.yaml): takeoff/wield/drop and the scroll/staff/wand/rod/
     activate family resume the normal form first (confirm seam, default
     yes); eat/quaff stay ungated as upstream.
-  - The work_obj known-copy machinery and object descriptions (knowledge
-    #24 / UI #25); messages are hooks.
+  - Object descriptions are live: describeObject (game/describe.ts) is used
+    throughout this module (obj-cmd.ts:309, :398, :532 among others) with the
+    real ODESC modes. The work_obj known-COPY machinery has no port and needs
+    none - it is C's way of describing an object as the player knows it without
+    mutating the original, and the port synthesises that view on demand
+    (objectKnownShadow) instead of copying. A ratified substitution, not a gap.
 verified-by:
   - game/obj-cmd.test.ts (13 tests): wield/takeoff round-trip; occupied-slot
     replacement keeps the old item; drop lands on the player's grid pile;

@@ -35,9 +35,13 @@ deferred:
   - The protected_obj parameter (the object that created the projection):
     the engine's onObject hook does not thread it and no live caller
     projects from an object yet.
-  - obj->known twin updates in inven_damage, ignore_item_ok checks (#24),
-    gear_to_label lettering, PU_BONUS/PR_EQUIP redraw flags (display), and
-    cmd_disable_repeat_floor_item.
+  - Three of the five are wired and two are ratified substitutions, so nothing
+    is owed. Wired: ignore_item_ok (state.isIgnored, project-obj.ts:164 and
+    :180), gear_to_label lettering (:291), and cmd_disable_repeat_floor_item
+    (:206). Substituted: the obj->known twin is synthesised on demand
+    (objectKnownShadow) rather than stored, so there is no copy to update; and
+    PU_BONUS / PR_EQUIP fall under the unconditional-repaint divergence at
+    game/known.ts:153.
   - inven_damage call sites in project-player.c (side effects computing
     cperc from elemental damage) land with the project-player tail.
 verified-by:

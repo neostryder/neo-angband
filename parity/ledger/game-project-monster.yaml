@@ -38,9 +38,13 @@ notes: >-
   minimal delete_monster_idx (square clear + slot free) runs in the driver; the
   hook does the rest. Message and update ordering follows upstream.
 deferred:
-  - The onKill / onMonsterDeath bodies (player_kill_monster / monster_death:
-    experience, treasure drops, quest completion) are blocked on floor-object
-    piles (#20), lore (#24), experience and quests; supplied as hooks.
+  - The hooks are supplied for real and every subsystem the bodies needed has
+    landed. project-monster.ts:266 threads onKill into monTakeHit, and the
+    session binds it to the live player_kill_monster tail
+    (session/game.ts:983): experience from the killed FORM, the shape revert,
+    dead-uniques-stay-dead, the kill-history entry, treasure drops through
+    monsterDeath, and quest completion (PORT_TODO 4.2). Floor-object piles,
+    lore and experience are all built.
   - polymorph needs monster generation (get_mon_num / place_new_monster); a
     hook that no-ops until then.
   - The teleport and thrustAway hooks are now BACKED in wireGame by
