@@ -55,7 +55,9 @@ deferred:
     instant a pile becomes known, not only on pickup) is not reproduced;
     only the pickup path fires state.onArtifactFound (ledgered in
     player-history.yaml).
-  - ignore_item_ok (obj-ignore #24): isIgnored hook, nothing ignored.
+  - ignore_item_ok is live: the isIgnored seam (pickup.ts:62, read at :188) is
+    supplied by the session from obj/ignore.ts, so an ignored object no longer
+    makes the pickup verbal.
   - get_quantity partial-pickup prompt (ui): defaults to the carryable max.
   - Weight tracking (p->upkeep->total_weight) and PN_IGNORE notice - with
     the inventory upkeep layer.

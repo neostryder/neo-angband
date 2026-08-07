@@ -26,8 +26,10 @@ notes: >-
   elemental side effects (the #17/#18 tail that computes cperc from damage)
   and for effect handlers that call it directly.
 deferred:
-  - KILL_TRAP's chest unlock (is_locked_chest / unlock_chest): chests ride
-    with obj-chest.c (#24).
+  - KILL_TRAP's chest unlock is ported: obj/chest.ts supplies isLockedChest /
+    unlockChest, imported at game/project-obj.ts:33 and applied in the
+    PROJ.KILL_TRAP arm (:155-156), which unlocks a locked chest instead of
+    destroying it.
   - Mimic reveal (obj->mimicking_m_idx -> become_aware): mimics are not in
     the live loop yet.
   - The protected_obj parameter (the object that created the projection):

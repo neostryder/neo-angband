@@ -42,7 +42,8 @@ deferred:
     holds its own explored set); FOV refresh rides state.updateFov.
   - expose_to_sun / is_daytime and square_isbright's surface interplay:
     no town or day-night cycle yet (#24/#25).
-  - The decoy branch (square_destroy_decoy) rides mon-desire (#24).
+  - The decoy branch is ported: square_destroy_decoy is destroyDecoy, called at
+    game/effect-attack.ts:684 on the grid holding the player's decoy.
   - push_object's trap re-run (square_add_trap on the restored feature)
     and its queue-size cap (z_info->floor_size) are simplified: the port
     excises a snapshot and re-drops it.
