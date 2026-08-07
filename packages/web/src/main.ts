@@ -229,7 +229,6 @@ import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
 import {
   installModFromRepo,
-  installRecommendedMod,
   installedMeta,
   installedMods,
   loadInstalledMods,
@@ -277,7 +276,6 @@ import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
-import type { ModCatalogueDeps } from "./mod-catalogue";
 import { showModUpgrades } from "./mod-browse";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -5384,11 +5382,6 @@ async function openModManager(): Promise<void> {
         return null;
       }
     },
-    /* The download catalogue. Wired unconditionally: every surface the game runs on
-     * has fetch and IndexedDB, and installRecommendedMod already answers "this
-     * browser will not let the game store downloaded mods" as a result rather than a
-     * throw - so the honest failure is a message on the row, not a hidden row. */
-    modCatalogue: modCatalogueDeps(),
     /* The three doors. Same reasoning as above for wiring it unconditionally: every
      * failure it can hit - offline, rate-limited, storage refused - is a message on a
      * row rather than a reason to hide the screen. */
@@ -8893,26 +8886,6 @@ async function waitingModUpdates(): Promise<readonly ModUpgrade[]> {
   }
 }
 
-function modCatalogueDeps(): ModCatalogueDeps {
-  return {
-    installed: async () => {
-      const metas = await installedMods(globalThis);
-      return new Map(metas.map((m) => [m.id, m.tag] as const));
-    },
-    install: (mod, onProgress) =>
-      installRecommendedMod(
-        mod,
-        {
-          fetch: (url) => fetch(url),
-          subtle: crypto.subtle,
-          scope: globalThis,
-          now: () => new Date().toISOString(),
-        },
-        onProgress,
-      ),
-    uninstall: (id) => uninstallMod(id, globalThis),
-  };
-}
 
 /**
  * The browse screen's dependencies - the wiring that makes six modules reachable.

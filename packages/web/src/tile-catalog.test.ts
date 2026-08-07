@@ -21,7 +21,6 @@ import {
   composeTileModes,
   coreTileModes,
 } from "./tile-catalog";
-import { usableRecommendedMods } from "./mod-registry";
 import { BUNDLED_MODS_BASE, tilePackResolver } from "./tile-mods";
 import type { TileModePack } from "./tile-mods";
 
@@ -643,33 +642,28 @@ describe("bundled mods", () => {
     }
   });
 
-  it("offers neo-linoleum for download, since it is no longer in the bundle", () => {
+  it("the curated list still points at neo-linoleum, since it is not in the bundle", () => {
     /* The half of the chain that replaced the generator: the game reaches these packs
-     * by installing them, so the catalogue entry IS the wiring, and a broken one is a
+     * by installing them, so the curated entry IS the wiring, and a broken one is a
      * Graphics screen with no Linoleum rows and nothing to say why.
      *
-     * usableRecommendedMods is the real validator (digest shape, path safety,
-     * duplicate ids), so this asserts through it rather than eyeballing the literal. */
-    const { mods, problems } = usableRecommendedMods();
-    expect(problems).toEqual([]);
-    const entry = mods.find((m) => m.id === "neo-linoleum");
-    expect(entry, "neo-linoleum is not in RECOMMENDED_MODS").toBeDefined();
-    expect(entry?.payload.kind).toBe("archive");
-
-    /* One archive per converter pack key, plus the mod's own root files. Named from
-     * ALL_PACKS so adding a pack to the converter and forgetting to ship it fails
-     * here rather than as a silently ASCII row. */
-    const paths =
-      entry?.payload.kind === "archive"
-        ? entry.payload.archives.map((a) => a.path)
-        : [];
-    expect(paths).toContain("dist/neo-linoleum-mod.zip");
-    for (const key of ALL_PACKS.map((p) => p.key)) {
-      expect(paths, `no archive ships the ${key} pack`).toContain(
-        `dist/neo-linoleum-${key}.zip`,
-      );
-    }
-    expect(paths.length).toBe(ALL_PACKS.length + 1);
+     * THE PER-PACK CHECK MOVED, and it is worth saying where. This used to assert one
+     * archive per ALL_PACKS key against the shipped catalogue's file list, which
+     * caught "a pack was added to the converter and never shipped". The catalogue is
+     * gone: a mod's payload now comes from its own manifest at a tag, so that
+     * question cannot be answered without the network and it is asked in
+     * mod-discover-canary.test.ts instead. What stays here is the half that is still
+     * local - that the list points at the repository at all. */
+    const registry = JSON.parse(
+      readFileSync(new URL("../../../mods/registry.json", import.meta.url), "utf8"),
+    ) as { mods: { repo: string }[] };
+    expect(registry.mods.map((m) => m.repo)).toContain(
+      "neostryder/neo-angband-mod-linoleum",
+    );
+    /* Not vacuous on an empty converter: if ALL_PACKS ever emptied, the canary that
+     * inherited the per-pack check would pass by finding nothing, so the count is
+     * pinned where the packs are defined. */
+    expect(ALL_PACKS.length).toBeGreaterThan(0);
   });
 
   it("no longer claims the game's own tile sets as a mod's contribution", () => {

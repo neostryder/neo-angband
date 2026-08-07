@@ -1,10 +1,15 @@
-# Does the catalogue still describe the world?
+# Do the curated mods still describe the world?
 #
-# Every promise RECOMMENDED_MODS makes - the file is at that tag, it hashes to
-# that digest, it is served with CORS open, its manifest admits this engine
-# version - is checked at INSTALL time against digests baked into the build. So
-# until now the way anyone found out a promise had stopped being true was a
-# player's install failing.
+# Every promise the curated list relies on - the repository is there, its tag
+# serves the payload its manifest declares, the files come back CORS-open, the
+# manifest admits this engine version and this mod API - is checked at INSTALL
+# time, on the player's machine. So the way anyone finds out a promise has
+# stopped being true is a player's install failing.
+#
+# (It used to say RECOMMENDED_MODS and "hashes to that digest". That catalogue
+# shipped inside the build and is gone: a mod is now discovered from its own
+# repository, and nothing here knows what its files should hash to. The check
+# this job lost is named at the top of packages/web/src/mod-canary.test.ts.)
 #
 # Two of them stopped being true on 2026-07-31 and both were caught by accident:
 # a manifest at a pinned tag declared the wrong `engine` range (found by wiring

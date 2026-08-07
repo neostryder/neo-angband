@@ -23,7 +23,6 @@ import {
   migrateModIds,
   type StorageLike,
 } from "./mod-store";
-import { RECOMMENDED_MODS } from "./mod-registry";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
 import { discoverContentModManifests, loadEnabledModRuleDecls } from "./pack";
 
@@ -82,7 +81,7 @@ describe("the shipped mod set (isShippedMod)", () => {
     /* The de-bundling, stated where the list is. qol and bug-fixes were here;
      * neo-linoleum left before them when its six converted packs - 9161 files, 42 MiB of
      * art that belongs to the mod - moved to their own repository. All three are equally
-     * first-party and all three now arrive through RECOMMENDED_MODS, which is the point:
+     * first-party and all three now arrive from their own repositories, which is the point:
      * a fresh install is Angband 4.2.6 and nothing else, and the author's own mods take
      * the same route, through the same verification, as anyone else's.
      *
@@ -620,15 +619,23 @@ describe("renamed mod ids keep working", () => {
     ]);
   });
 
-  it("the catalogue names the NEW id, and no bundled folder claims either", () => {
+  it("the curated list still points at the mod, and no bundled folder claims it", () => {
     /* The rename outlives the de-bundling: the id is still what a player's saved
      * enabled set and an external manager's load-order.json record, and it is now
-     * the id the INSTALLER writes. So the migration still has to hold, and the
-     * thing that must agree with it is the download catalogue rather than a
-     * manifest in this repository - there is no longer one. */
-    const entry = RECOMMENDED_MODS.find((m) => m.id === "neo-linoleum");
-    expect(entry, "neo-linoleum is missing from RECOMMENDED_MODS").toBeDefined();
-    expect(entry?.repo).toBe("neostryder/neo-angband-mod-linoleum");
+     * the id the INSTALLER writes from the mod's own manifest.
+     *
+     * WHAT CAN AND CANNOT BE CHECKED HERE, since the shipped catalogue went. That
+     * catalogue named an id, so this test could compare it with the migration's
+     * target. The curated list names REPOSITORIES only - the id comes from the
+     * manifest at discovery time - so the local half of the claim is that the list
+     * still points at this mod, and the id half belongs to the discovery canary,
+     * which is the only thing that can read a manifest at a tag. */
+    const registry = JSON.parse(
+      readFileSync(new URL("../../../mods/registry.json", import.meta.url), "utf8"),
+    ) as { mods: { repo: string }[] };
+    expect(registry.mods.map((m) => m.repo)).toContain(
+      "neostryder/neo-angband-mod-linoleum",
+    );
     expect(FIRST_PARTY_MOD_IDS).not.toContain("linoleum");
     expect(existsSync(new URL("../mods/neo-linoleum/", import.meta.url))).toBe(false);
     expect(existsSync(new URL("../mods/linoleum/", import.meta.url))).toBe(false);

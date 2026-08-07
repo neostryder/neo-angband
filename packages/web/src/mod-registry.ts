@@ -1,28 +1,33 @@
 /**
- * The recommended-mod catalogue: what first run offers to download.
+ * The three facts about fetching a mod from GitHub that every install path needs:
+ * where a file lives at a tag, whether a path is safe to write, and how two tags
+ * order.
  *
- * The game does not bundle its own mods. Instead it ships this catalogue - a list of
- * repositories, a tag in each, and a SHA-256 for every file - and offers to fetch
- * them. That trade is deliberate and worth stating, because it moves code out of the
- * build and onto the network:
+ * WHAT THIS FILE USED TO BE, because the deletion is the interesting part. It held
+ * RECOMMENDED_MODS: a catalogue compiled into the game build naming every mod, its
+ * tag, and a SHA-256 for each of its files. The digest shipped INSIDE the build, so
+ * bytes were checked against a value that had not travelled over the connection that
+ * delivered them - a genuinely stronger check than what replaced it, and it is worth
+ * being blunt about that rather than describing the change as an upgrade.
  *
- *   - A mod is developed, versioned, released and reported against on its own, at its
- *     own pace, in its own repository. A fix to the QoL mod is not a game release.
- *   - Third-party mods are then not a second-class path. The catalogue's entries and
- *     someone else's mod are the same shape, installed by the same code.
+ * WHY IT WENT ANYWAY. A shipped digest pins a mod to a VERSION, and a version is the
+ * thing a mod is supposed to be able to change on its own. Under that model:
  *
- * WHY THE HASHES ARE HERE AND NOT FETCHED. This is the only thing standing between
- * "download from the internet" and "execute arbitrary code as the player". The digest
- * ships INSIDE the game build, so the bytes are checked against a value that did not
- * come over the same connection that delivered them: a compromised repository, a
- * replaced tag, or an intercepted response all fail the comparison. A hash fetched
- * alongside the file would authenticate nothing at all - whoever supplied the file
- * supplied the hash.
+ *   - a mod could never be newer than the game, so "check for updates" was a local
+ *     comparison that could only ever offer what this build already knew. Its silence
+ *     meant "nothing newer shipped HERE" and it said "you are up to date";
+ *   - a fix to a mod needed a game release to reach anyone;
+ *   - and a third-party mod was structurally second class - it could not appear in a
+ *     list compiled into somebody else's build, so it arrived by a different path
+ *     with different code and different guarantees.
  *
- * That is also why entries pin a TAG and not a branch. `refs/heads/master` is whatever
- * the author pushed last, so its bytes change under a fixed digest and every install
- * would break on the next commit; and pinning a moving target is how a mod that was
- * reviewed becomes a mod that was not.
+ * What stands in its place is TRUST ON FIRST USE, pinned on ORIGIN rather than on
+ * bytes (mod-install.ts installModFromRepo): a mod may only ever be replaced by a
+ * copy from the same repository it was installed from, which survives a version bump
+ * where a digest cannot. The digest of what actually arrived is recorded at install,
+ * so "has this changed since I installed it" stays answerable; "is this what the
+ * author published" is what was given up, and the curated list at mods/registry.json
+ * now names repositories and nothing else.
  *
  * WHY raw.githubusercontent.com AND NOT A RELEASE ZIP. Measured from the real origin
  * (https://neostryder.github.io) rather than assumed, because the answer decides
@@ -45,319 +50,18 @@
 
 import { compareSemver } from "@rpgm-tools/neo-angband-mod-sdk";
 
-/** Where one file of a mod lives, and what it must hash to. */
-export interface RegistryFile {
-  /** Path inside the repository, which is also the path inside the mod folder. */
-  readonly path: string;
-  /** Lower-case hex SHA-256 of the exact bytes. 64 characters. */
-  readonly sha256: string;
-}
-
-/**
- * A mod's payload: either its files listed one by one, or committed archives.
- *
- * Two shapes rather than one because the sizes differ by three orders of magnitude. A
- * code mod is a manifest and a script - listing them is clearer, and each file gets
- * its own digest. A converted tile pack is 1505 files and 2.3 MB, where listing them
- * would mean 1505 requests and a catalogue longer than the game.
- */
-export type RegistryPayload =
-  | { readonly kind: "files"; readonly files: readonly RegistryFile[] }
-  /**
-   * ZIPs committed in the repository, unpacked after each digest matches. A digest
-   * covers a whole ARCHIVE, so one comparison authenticates every file inside it -
-   * and it is checked before a single entry is decompressed, so a malicious archive
-   * never gets to be parsed.
-   *
-   * A LIST rather than one archive, because a tiles mod is many separable packs.
-   * Measured on neo-linoleum: 9161 loose files and 42 MiB of art become 7 archives
-   * and 24.6 MiB, the largest 10.6 MiB. As one archive that would be a 24.6 MiB blob
-   * rewritten in full whenever a single tile changed, carrying one digest whose
-   * failure says only "something in here is wrong". Per pack, a digest names what
-   * failed, a fix rewrites one pack, and the installer is free to offer a subset.
-   */
-  | { readonly kind: "archive"; readonly archives: readonly RegistryFile[] };
-
-export interface RecommendedMod {
-  /** The mod id, which is also its folder name and its manifest's `id`. */
-  readonly id: string;
-  /** Human name, as the manifest says it. */
-  readonly name: string;
-  /** `owner/repo` on GitHub. */
-  readonly repo: string;
-  /** The tag to install. Never a branch - see the header. */
-  readonly tag: string;
-  /**
-   * One line for the checkbox row. The long description comes from the manifest once
-   * the mod is installed, so it is not duplicated here and cannot disagree with it.
-   */
-  readonly summary: string;
-  /**
-   * Whether this row starts CHECKED on first run.
-   *
-   * Only for a mod whose absence a player would experience as the game being worse
-   * rather than as the game being faithful. A pre-checked row is still a row they can
-   * clear, and nothing installs without them pressing the button.
-   */
-  readonly preChecked: boolean;
-  /** Roughly how big the download is, so the row can say so before it starts. */
-  readonly approxBytes: number;
-  readonly payload: RegistryPayload;
-}
-
-/**
- * The catalogue this build ships.
- *
- * EVERY FIRST-PARTY MOD THAT EXISTS IS HERE, because the game now bundles none of them
- * (FIRST_PARTY_MOD_IDS in mod-store.ts is empty). That is the whole point of the list
- * rather than a milestone: a fresh install is Angband 4.2.6 and nothing else, and every
- * mod - mine included - arrives the same way, through the same verification, as
- * somebody else's.
- *
- * EVERY DIGEST BELOW WAS MEASURED, not transcribed. `node tools/pack.mjs --json` in
- * the mod repository printed them, and each was then re-fetched from
- * raw.githubusercontent.com at the pinned tag and hashed again, so what is pinned is
- * the bytes GitHub actually serves rather than the bytes a local build produced. The
- * same check confirmed `Access-Control-Allow-Origin: *` on that path, which is what
- * makes an install from the static web build possible at all.
- *
- * A placeholder entry with an invented tag or digest would be worse than an empty
- * list: it would fail verification, and a verification failure is the signal that
- * something has TAMPERED with a download. Filling this with fake hashes would train
- * whoever sees it to ignore the one alarm that matters.
- */
-export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
-  {
-    id: "qol",
-    name: "Quality of Life",
-    repo: "neostryder/neo-angband-mod-qol",
-    /* v0.14.0 declares the mod's own `repository`, which is what an imported .zip
-     * reads to pin its origin (mod-install.ts importedOrigin), and shortens
-     * `author` to the handle alone. Only manifest.json moved: plugin.js carries
-     * v0.13.0's digest unchanged, and v0.13.0 - "Remember my settings" - remains
-     * the ONE tag in this mod's history whose plugin.js ever changed.
-     *
-     * The floor is still `engine >=0.18.0`, because those two toggles need seams
-     * 0.18.0 added. A 0.17.0 game keeps v0.12.0, which is still a correct mod -
-     * unlike v0.10.0, which declared no `engine` range at all while shipping a
-     * plugin.js, the one case where the range matters most. Both digests below
-     * were re-fetched from raw.githubusercontent.com at the tag. */
-    tag: "v0.14.0",
-    summary: "Conveniences Angband does not have, each one a switch you can turn off",
-    /* Not pre-checked, and the reason is the mandate rather than modesty: its absence is
-     * the game being FAITHFUL, not the game being worse. A pre-checked row would make
-     * the default experience something other than 4.2.6. */
-    preChecked: false,
-    approxBytes: 5_606,
-    payload: {
-      kind: "files",
-      files: [
-        {
-          path: "manifest.json",
-          sha256: "ff3aaf716e92005ba361bd498b0da7823eac40f904d4dd7fc05012c9d10e011d",
-        },
-        {
-          path: "plugin.js",
-          sha256: "524ee183678b2c6b0244c06fca7adfcf9cb68e04be2195d227c7375fbfaacb72",
-        },
-      ],
-    },
-  },
-  {
-    id: "bug-fixes",
-    name: "Bug Fixes",
-    repo: "neostryder/neo-angband-mod-bug-fixes",
-    /* v0.14.0 declares the mod's own `repository` and shortens `author` (see qol
-     * above). Two older tags are wrong to pin rather than merely superseded:
-     * v0.10.0 declares `"engine": "4.2.x"` - the Angband baseline in a field that
-     * ranges over the PORT's version - which the engine gate (mod-engine.ts) now
-     * evaluates, so it installs and is then refused; and v0.11.0 predates the mod
-     * taking its gamedata from npm rather than from a checkout of this repository.
-     * plugin.js has carried the same digest through all five: only manifest.json
-     * has ever moved. */
-    tag: "v0.14.0",
-    summary: "Fixes for upstream Angband bugs the port keeps on purpose",
-    /* Also clear, and this is the row where that is worth defending. Core keeps
-     * upstream's warts BY DESIGN - a faithful port of 4.2.6 includes its bugs - so
-     * turning these on by default would quietly make the game unfaithful for everyone
-     * who never opened the mod list. It also flags the save, permanently. */
-    preChecked: false,
-    approxBytes: 7_880,
-    payload: {
-      kind: "files",
-      files: [
-        {
-          path: "manifest.json",
-          sha256: "ba5e832f08b95718f70cdce559342104dc14032ee2f460281697c7f52b28ecc9",
-        },
-        {
-          path: "plugin.js",
-          sha256: "12803351c2a6c0ceb122ce6c8f4bc614d4249a5d1e2781247ee6f27e292aa1d7",
-        },
-      ],
-    },
-  },
-  {
-    id: "borg",
-    name: "The Borg",
-    repo: "neostryder/neo-angband-mod-borg",
-    /* v0.3.0 declares the mod's own `repository` and shortens `author` (see qol
-     * above). v0.1.0 and v0.2.0 are correct and merely superseded; plugin.js is
-     * byte-identical across all three, so the half-megabyte digest below has
-     * never moved. */
-    tag: "v0.3.0",
-    summary: "Angband's automatic player, ported faithfully - it plays the game for you",
-    /* Not pre-checked, and for this row that is not a judgement call at all: a
-     * pre-checked autoplayer is a game that plays itself out of the box. Note that
-     * even ENABLING it does not hand over the character - the mod ships with its
-     * own `borg.autoplay` toggle off, so taking the keyboard is a second,
-     * deliberate act. */
-    preChecked: false,
-    /* Half a megabyte, which is by far the largest `files` payload here and worth
-     * being honest about on the row: it is the whole port bundled into one
-     * plugin.js. None of it is the engine - the builder refuses that - it is 86
-     * source files of danger model, think ladder and world model. */
-    approxBytes: 514_325,
-    payload: {
-      kind: "files",
-      files: [
-        {
-          path: "manifest.json",
-          sha256: "c1a18205ae6f223b81219b2a81ce8e85a755bb2ed6a832307737ef19a0823a11",
-        },
-        {
-          path: "plugin.js",
-          sha256: "6362048531ed833c5ee08b669d267980de8b18d4a2e44a51da711b85e619ce1b",
-        },
-      ],
-    },
-  },
-  {
-    id: "neo-linoleum",
-    name: "neo-linoleum",
-    repo: "neostryder/neo-angband-mod-linoleum",
-    /* v0.13.0 declares the mod's own `repository` and shortens `author` (see qol
-     * above), and every tag up to v0.11.0 is wrong to pin for a DIFFERENT reason,
-     * which is why the history earns its space here:
-     *   v0.9.0   points at content that shipped one pack, not six.
-     *   v0.9.1   declares `"engine": "4.2.x"` - the Angband baseline in a field that
-     *            ranges over the PORT's version - which the engine gate now refuses.
-     *   v0.10.0  fixes that, but its six tile archives were built by the converter as
-     *            it was before the @rpgm-tools rename, so they are not what a fresh
-     *            conversion produces. Its own CI says so.
-     *   v0.11.0  is correct, and superseded: its description is the 1,625-character
-     *            block that squeezed the manager's mod list to one row.
-     *   v0.12.0  is correct, and superseded: it predates the `payload` block, so
-     *            discovery had to GUESS that dist/*.zip are archives to unpack
-     *            rather than files to store - and guessed wrong, seven archives
-     *            installed shut. This row's own digests never went through that
-     *            path, but the tags query (mod-discover.ts) does.
-     *   v0.12.1  is correct, and superseded by this one alone.
-     * Four ways for a pinned tag to be quietly WRONG plus two that are merely old,
-     * none of which moving a tag would fix - which is the argument for pinning one
-     * in the first place. */
-    tag: "v0.13.0",
-    summary:
-      "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
-    /* Its absence is the game being faithful, not the game being worse: every tile set
-     * it converts is already selectable, drawn by the tilesheet engine. And it is a
-     * 25 MiB download. So the row starts clear. */
-    preChecked: false,
-    approxBytes: 25_781_133,
-    payload: {
-      kind: "archive",
-      archives: [
-        {
-          /* The only archive whose digest moved, twice running: manifest.json
-           * travels inside it. The six tile archives came back byte-identical from
-           * a FORCED reconversion of the source art - not from the cached packs/
-           * directory, which would have agreed with itself and proved nothing - so
-           * the packer's determinism claim (tools/pack.mjs) is holding on a
-           * different day and their pins below are unchanged. */
-          path: "dist/neo-linoleum-mod.zip",
-          sha256: "ddae0ea74b14db985ce3024a98be53e3a01460e216ab5eb796411ff1ae025f47",
-        },
-        {
-          path: "dist/neo-linoleum-original-tiles.zip",
-          sha256: "78cf1842702873617817701d78b305f2bbf1d45710690f273823613752e8ad0b",
-        },
-        {
-          path: "dist/neo-linoleum-adam-bolt.zip",
-          sha256: "10fe50b2992917238a9569980976b114cf34b64a400e8bcd5899eec397cf8cd2",
-        },
-        {
-          path: "dist/neo-linoleum-gervais.zip",
-          sha256: "1dea2487f6b94753ee94228560f213d40cf70de3996ba42bbe4cedb89af5f6ae",
-        },
-        {
-          path: "dist/neo-linoleum-nomad.zip",
-          sha256: "b8a074ac4184fe99e7fd592775a4bc829275e9b1c02b2ba004ba15f03d4ad02c",
-        },
-        {
-          path: "dist/neo-linoleum-shockbolt-dark.zip",
-          sha256: "38975c01720bdeb48efe0b327d34ec7f39d7b7f40723d2c9d3ac17da57aa3835",
-        },
-        {
-          path: "dist/neo-linoleum-shockbolt-light.zip",
-          sha256: "9e0b27f41005e5730702b8de264c2cbfd1c269973b3e440eb25d119a5bb62213",
-        },
-      ],
-    },
-  },
-];
-
-const SHA256_HEX = /^[0-9a-f]{64}$/u;
-/* `owner/repo`, GitHub's own character set for both halves. */
-const REPO_RE = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/u;
-
-/**
- * Why this entry is unusable, or null when it is fine.
- *
- * Exists because the catalogue will eventually be editable outside a TypeScript build
- * - a private registry, a mod manager's own list - and because a typo in a digest here
- * would otherwise surface as an install that fails with "the bytes do not match",
- * pointing the player at the mod author for a mistake in the game.
- *
- * Returns a message rather than throwing, so a single bad row costs one row.
- */
-export function validateRecommendedMod(mod: RecommendedMod): string | null {
-  if (!/^[a-z0-9][a-z0-9-]*$/u.test(mod.id)) {
-    return `id "${mod.id}" is not a lower-case folder-safe name`;
-  }
-  if (!REPO_RE.test(mod.repo)) return `${mod.id}: repo "${mod.repo}" is not owner/name`;
-  if (mod.tag === "") return `${mod.id}: no tag`;
-  /* A ref that is a branch or a bare SHA is the mistake this catches: both resolve
-   * over HTTP and both make the pinned digest a lie the moment anything is pushed. */
-  if (mod.tag.includes("/")) return `${mod.id}: tag "${mod.tag}" looks like a ref path`;
-
-  const seen = new Set<string>();
-  const files = mod.payload.kind === "files" ? mod.payload.files : mod.payload.archives;
-  if (files.length === 0) return `${mod.id}: nothing to download`;
-  for (const f of files) {
-    if (!SHA256_HEX.test(f.sha256)) {
-      return `${mod.id}/${f.path}: "${f.sha256}" is not a lower-case hex SHA-256`;
-    }
-    const bad = badPath(f.path);
-    if (bad) return `${mod.id}/${f.path}: ${bad}`;
-    if (seen.has(f.path)) return `${mod.id}: ${f.path} is listed twice`;
-    seen.add(f.path);
-  }
-  if (mod.payload.kind === "files" && !seen.has("manifest.json")) {
-    /* Caught here rather than at load time so the catalogue cannot describe an
-     * install that readModDir will then reject as "not a mod folder". */
-    return `${mod.id}: no manifest.json in the file list`;
-  }
-  return null;
-}
-
 /**
  * Why this path may not be written, or null when it is safe.
  *
- * A path from the catalogue becomes a key under the mod's own prefix, and on the
- * desktop build the same shape becomes a real filename. `..` is the whole reason this
- * function exists: a mod that lists `../../saves/x` would otherwise escape its folder.
+ * A downloaded path becomes a key under the mod's own prefix, and on the desktop
+ * build the same shape becomes a real filename. `..` is the whole reason this
+ * function exists: a mod shipping `../../saves/x` would otherwise escape its folder.
  * Rejected rather than normalised, because a path that needed normalising was written
  * by something with intent, and quietly repairing it hides that.
+ *
+ * It matters MORE under trust-on-first-use than it did under the shipped catalogue.
+ * Those paths had been read by whoever wrote the catalogue entry; these come from a
+ * manifest, or from inside a zip, and nobody has looked at them.
  */
 export function badPath(path: string): string | null {
   if (path === "") return "empty path";
@@ -373,66 +77,39 @@ export function badPath(path: string): string | null {
   return null;
 }
 
-/** The catalogue rows that are actually usable, and one message per row that is not. */
-export function usableRecommendedMods(
-  catalogue: readonly RecommendedMod[] = RECOMMENDED_MODS,
-): { readonly mods: readonly RecommendedMod[]; readonly problems: readonly string[] } {
-  const mods: RecommendedMod[] = [];
-  const problems: string[] = [];
-  const seen = new Set<string>();
-  for (const mod of catalogue) {
-    const bad = validateRecommendedMod(mod);
-    if (bad !== null) {
-      problems.push(bad);
-      continue;
-    }
-    if (seen.has(mod.id)) {
-      problems.push(`${mod.id}: listed twice in the catalogue`);
-      continue;
-    }
-    seen.add(mod.id);
-    mods.push(mod);
-  }
-  return { mods, problems };
-}
-
 /**
- * The URL for one file of a mod, at its pinned tag.
+ * The URL for one file of a mod, at a tag.
  *
  * `refs/tags/` is spelled out rather than left to raw.githubusercontent's shorthand,
  * because the short form resolves a BRANCH of the same name first - so a repository
- * with both `v1.0.0` the tag and `v1.0.0` the branch would serve the branch, which is
- * exactly the moving target the pinned digest is meant to exclude.
+ * with both `v1.0.0` the tag and `v1.0.0` the branch would serve the branch. That was
+ * a way round the pinned digest when there was one; it is now a way to serve
+ * something other than the release the player chose, which is the same problem
+ * wearing different clothes.
  */
 export function rawUrl(repo: string, tag: string, path: string): string {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   return `https://raw.githubusercontent.com/${repo}/refs/tags/${encodeURIComponent(tag)}/${encoded}`;
 }
 
-/** Where a player can go to read the mod's own page. */
-export function repoUrl(mod: RecommendedMod): string {
-  return `https://github.com/${mod.repo}/tree/${encodeURIComponent(mod.tag)}`;
-}
-
 /**
  * Order two release tags: negative if `a` is older, 0 if equal, positive if `a`
  * is newer, and null when they cannot be ordered.
  *
- * WHY ORDER THEM AT ALL, when a catalogue row only has to notice a difference.
- * Because "different" was being RENDERED as "update", and the two are not the
- * same claim. A player who installed a mod from its repository at a tag the
- * shipped catalogue predates would be shown their newer copy with an arrow
- * pointing at the older one and the word "update" next to it - and pressing
- * Enter would quietly roll them back. A string `!==` cannot tell those apart,
- * and neither can a string `<`: it puts v0.9.0 above v0.10.0.
+ * WHY ORDER THEM AT ALL, when noticing a difference sounds like enough. Because
+ * "different" was being RENDERED as "update", and the two are not the same claim. A
+ * player whose installed tag is newer than the one on offer would be shown their
+ * newer copy with an arrow pointing at the older one and the word "update" next to
+ * it - and pressing Enter would quietly roll them back. A string `!==` cannot tell
+ * those apart, and neither can a string `<`: it puts v0.9.0 above v0.10.0.
  *
  * Null is a real answer, not a fallback. A tag need not be a version at all
  * (`latest`, a date, a commit-ish), and saying "these differ, in an order I
  * cannot work out" is honest where guessing a direction is not.
  */
 export function compareTags(a: string, b: string): number | null {
-  /* The one convention this strips: a leading `v`, which is how every tag in the
-   * catalogue is written and is not part of the version. Nothing else is
+  /* The one convention this strips: a leading `v`, which is how every tag this
+   * project publishes is written and is not part of the version. Nothing else is
    * normalised - a tag that is not a version should come back null rather than be
    * bent into one. */
   const version = (tag: string): string => (/^v\d/u.test(tag) ? tag.slice(1) : tag);
