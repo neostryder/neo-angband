@@ -3549,8 +3549,10 @@ percentage.
 
 The ledger census carries **32 rows adjudicated `divergence`** and **47 `n-a`**,
 each with its mechanism named — see the appendix of
-[DEFERRALS.md](DEFERRALS.md). These are not owed work; they are decisions with
-consequences, and a reader chasing a behavioural difference should look here
+[DEFERRALS.md](DEFERRALS.md), and **[DIVERGENCES.md](DIVERGENCES.md)**, which
+groups them by whether a faithful transliteration was impossible, would have been
+worse, or was simply not chosen. These are not owed work; they are decisions with
+consequences, and a reader chasing a behavioural difference should look there
 first. The largest single one is structural: **`obj->known` is synthesised on
 demand rather than stored** (31 of those rows), because the port has no
 persistent known-twin object. Others are forced by the platform — upstream's

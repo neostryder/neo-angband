@@ -4,6 +4,10 @@ Machine-readable provenance: which upstream sources each port module ports,
 pinned to the parity baseline (tag `4.2.6`). Methodology in
 [docs/PARITY.md](../docs/PARITY.md).
 
+**Looking for what is deliberately DIFFERENT? Read
+[DIVERGENCES.md](DIVERGENCES.md)** - every divergence that is not going to be
+closed, with the reason and whether it was forced or chosen.
+
 **Looking for what is missing? Read [DEFERRALS.md](DEFERRALS.md), not the `notes:`
 and `deferred:` fields here.** Every "deferred" note in this repository - in these
 files and in the source comments - has been adjudicated with evidence, and 141 of
