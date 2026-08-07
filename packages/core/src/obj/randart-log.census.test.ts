@@ -60,6 +60,7 @@ const PORT = [
   "randart-data.ts",
   "randart-build.ts",
   "randart-log.ts",
+  "randart-file.ts",
 ]
   .map((f) => read(SRC, f))
   .join("\n");
@@ -86,6 +87,15 @@ const RANDART_SITES = sites(
   "obj-randart.c",
   /file_putf\(log_file,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
 );
+/**
+ * file_putf(fff, ...) in obj-randart.c - write_randart_entry, i.e. randart.txt.
+ * A DIFFERENT FILE with a different grammar, counted separately because
+ * "randart.log is complete" says nothing about it.
+ */
+const TXT_SITES = sites(
+  "obj-randart.c",
+  /file_putf\(fff,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
+);
 
 /** A site is covered when every one of its literal spans is in the port. */
 function covered(s: Site): boolean {
@@ -96,10 +106,10 @@ function covered(s: Site): boolean {
  * The obj-randart.c sites still to write, counted 2026-08-06. Lower this as the
  * row is finished; it must never rise.
  *
- * Down to ONE: do_randart's randart.txt header, which upstream writes only
- * under `create_file` by reusing the log_file handle for a second file.
+ * ZERO as of 2026-08-07: every file_putf(log_file, ...) in obj-randart.c has
+ * a counterpart. Keep it there.
  *
- * ONE IS NOT THE WHOLE REMAINDER. This number counts only sites the span
+ * ZERO IS NOT "NOTHING LEFT". This number counts only sites the span
  * filter can SEE, and a format string with no literal span of four characters
  * is invisible to it - "%s\n" reduces to nothing at all. The spanless sites
  * are enumerated and given a status by the test below, so the gap has a name
@@ -111,7 +121,7 @@ function covered(s: Site): boolean {
  * try_supercharge, choose_ability, make_bad and design_artifact - landed
  * 2026-08-07, taking this from 122 to 1.
  */
-const EXPECTED_MISSING_RANDART = 1;
+const EXPECTED_MISSING_RANDART = 0;
 
 /**
  * Spanless sites the port does NOT emit. Only one: artifact_power's
@@ -134,7 +144,22 @@ describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
   });
 });
 
-describe("randart.log coverage of obj-randart.c (PORT_TODO 5.5, in progress)", () => {
+describe("randart.txt covers write_randart_entry (PORT_TODO 5.5)", () => {
+  it("finds the C's writer sites at all", () => {
+    /* 19 file_putf(fff, ...) calls; the ones whose format is a bare "%s\n"
+     * style conversion have no span and are dropped, so this is the visible
+     * subset. Guarding it stops an extraction that matched nothing from making
+     * the assertion below pass for free. */
+    expect(TXT_SITES.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("every write_randart_entry line has a counterpart in the port", () => {
+    const missing = TXT_SITES.filter((s) => !covered(s)).map((s) => s.fmt);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("randart.log coverage of obj-randart.c (PORT_TODO 5.5)", () => {
   it("finds the C's log sites at all", () => {
     expect(RANDART_SITES.length).toBeGreaterThanOrEqual(170);
   });
