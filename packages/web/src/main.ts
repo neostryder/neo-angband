@@ -100,6 +100,7 @@ import {
   playerBookHasUnlearnedSpells,
   objHasInscrip,
   objectIsIgnored,
+  objectKnownView,
   OF,
   panelContains,
   sidebarModel,
@@ -2445,7 +2446,12 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
     canWear: !equipped && tvalIsWearable(obj.tval),
     canThrow: true,
     hasInscription: objHasInscrip(obj),
-    isIgnored: objectIsIgnored(obj, state.ignore, isKindAware(obj.kind)),
+    isIgnored: objectIsIgnored(
+      obj,
+      objectKnownView(state, obj),
+      state.ignore,
+      isKindAware(obj.kind),
+    ),
   };
   const items = buildObjectMenu(ctx);
   const idx = await selectFromMenu(

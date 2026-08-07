@@ -25,10 +25,12 @@ import { Rng } from "../rng.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
 import type { GameObject } from "../obj/object.js";
 import { IGNORE, IgnoreSettings, ignoreItemOk } from "../obj/ignore.js";
 import { PN } from "../player/types.js";
 import { combinePack, gearGet, invenCarry, gearObjectForUse } from "./gear.js";
+import { objectKnownView } from "./describe.js";
 import { makeState } from "./harness.js";
 import type { GameState } from "./context.js";
 import { ignoreDrop } from "./ignore-cmd.js";
@@ -67,6 +69,22 @@ function kindByName(name: string, tval: number) {
 function makeSword(rng: Rng, kindName: string, toD: number): GameObject {
   const obj = objectPrep(rng, reg, constants, kindByName(kindName, TV.SWORD), 0, "minimise");
   obj.toD = toD;
+  return obj;
+}
+
+/**
+ * Learn everything about `obj`, so ignore_level_of grades it by its combat
+ * bonuses rather than returning IGNORE_MAX (obj-ignore.c:489 - the good / bad /
+ * average tiers are behind object_fully_known).
+ *
+ * Not decoration: a Dagger carries OF_THROWING, whose id-type is "on wield"
+ * (object_property.txt:740-744), so an un-wielded one is not fully known and
+ * upstream will not quality-ignore it below IGNORE_ALL. These tests are about
+ * the drop pass, not the knowledge gate.
+ */
+function identify(state: GameState, obj: GameObject): GameObject {
+  obj.notice |= OBJ_NOTICE.ASSESSED;
+  for (const flag of obj.flags) state.actor.player.objKnown.flags.on(flag);
   return obj;
 }
 
@@ -231,15 +249,16 @@ describe("ignoreDrop: the pass, not just the scan (obj-ignore.c L651)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     state.ignore = new IgnoreSettings();
     state.ignore.level[ITYPE.SHARP] = IGNORE.BAD;
-    state.isIgnored = (obj) => ignoreItemOk(obj, state.ignore, true);
+    state.isIgnored = (obj) =>
+      ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, true);
     return state;
   }
 
   it("queues a background drop for each unequipped target, and raises PN_COMBINE", () => {
     const state = ignoringState();
     const rng = new Rng(4);
-    const bad = carry(state, makeSword(rng, "& Dagger~", -3));
-    const good = carry(state, makeSword(rng, "& Tulwar~", 4));
+    const bad = carry(state, identify(state, makeSword(rng, "& Dagger~", -3)));
+    const good = carry(state, identify(state, makeSword(rng, "& Tulwar~", 4)));
 
     const { needConfirm, queued } = ignoreDrop(state);
 
@@ -262,7 +281,7 @@ describe("ignoreDrop: the pass, not just the scan (obj-ignore.c L651)", () => {
      * NOT do is write "!d" on the player's behalf - upstream only does that
      * after a real refusal. */
     const state = ignoringState();
-    const worn = carry(state, makeSword(new Rng(5), "& Dagger~", -3));
+    const worn = carry(state, identify(state, makeSword(new Rng(5), "& Dagger~", -3)));
     state.actor.player.equipment[0] = worn;
     state.gear.pack.splice(state.gear.pack.indexOf(worn), 1);
 
@@ -277,7 +296,7 @@ describe("ignoreDrop: the pass, not just the scan (obj-ignore.c L651)", () => {
 
   it("queues nothing while standing in a shop, but still asks for a combine", () => {
     const state = ignoringState();
-    carry(state, makeSword(new Rng(6), "& Dagger~", -3));
+    carry(state, identify(state, makeSword(new Rng(6), "& Dagger~", -3)));
     /* square_isshop (L683). Assert the fixture really is a shop first, or this
      * test passes for the wrong reason on any grid. */
     state.chunk.isShop = () => true;

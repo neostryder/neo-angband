@@ -11,11 +11,15 @@
  * engine (packages/core/src/obj/ignore.ts); showIgnoreItemMenu wires the item
  * picker, the overlay menu and the ignore-drop pass together for main.ts.
  *
- * The port carries no per-object `known` twin (obj/ignore.ts's KNOWLEDGE note):
- * every object runs as fully known, so `obj->known->notice` reads obj.notice
- * and `obj->known->ego` reads obj.ego directly. The upstream
- * `player->upkeep->notice |= PN_IGNORE` re-run (ui-object.c:1820) is the shell's
- * applyIgnoreDrop() pass, invoked by showIgnoreItemMenu after the choice.
+ * The port DOES carry a per-object `known` twin - synthesised on demand by
+ * objectKnownShadow and read here through objectKnownView - so `obj->known->ego`
+ * (ui-object.c:1755) and ignore_level_of both gate on the player's knowledge,
+ * not on the item's hidden truth. `obj->known->notice` is the one exception that
+ * still reads obj.notice, and legitimately: the port keeps assessment state on
+ * the live object and the shadow mirrors it byte for byte (known-object.ts:459).
+ * The upstream `player->upkeep->notice |= PN_IGNORE` re-run (ui-object.c:1820)
+ * is the shell's applyIgnoreDrop() pass, invoked by showIgnoreItemMenu after the
+ * choice.
  *
  * Attribution: neostryder / RPGM Tools.
  */
@@ -25,6 +29,7 @@ import {
   ODESC,
   ignoreTypeOf,
   ignoreLevelOf,
+  objectKnownView,
   ITYPE_MAX,
   IGNORE,
   QUALITY_VALUE_NAMES,
@@ -174,6 +179,7 @@ export function ignoreItemMenuCtx(
 
   const type = ignoreTypeOf(obj);
   const aware = flavorIsAware(state, game, obj);
+  const view = objectKnownView(state, obj);
 
   /* Flavour row (ui-object.c:1735-1736). */
   if (ignoreTval(obj.tval) && (!obj.artifact || !aware)) {
@@ -186,19 +192,21 @@ export function ignoreItemMenuCtx(
     };
   }
 
-  /* Ego row (ui-object.c:1755). The label is the ignore type's name + " " +
-   * the full ego name (ego_item_name's tmp+4 with an empty short_name). */
-  if (obj.ego && type !== ITYPE_MAX) {
+  /* Ego row (ui-object.c:1755), gated on obj->known->ego: an ego the player has
+   * not recognised yet offers no "All <ego>" row, because from the player's side
+   * there is no ego to name. The label is the ignore type's name + " " + the
+   * full ego name (ego_item_name's tmp+4 with an empty short_name). */
+  if (view.known.ego && type !== ITYPE_MAX) {
     const typeName = IGNORE_TYPE_ENTRIES[type]?.description ?? "";
     ctx.ego = {
-      name: `${typeName} ${obj.ego.name}`,
-      ignored: state.ignore.egoIsIgnored(obj.ego.eidx, type),
+      name: `${typeName} ${view.known.ego.name}`,
+      ignored: state.ignore.egoIsIgnored(view.known.ego.eidx, type),
     };
   }
 
   /* Quality row (ui-object.c:1773-1784) with the jewelry special-case. */
-  let value: number = ignoreLevelOf(obj);
-  if (tvalIsJewelry(obj.tval) && ignoreLevelOf(obj) !== IGNORE.BAD) {
+  let value: number = ignoreLevelOf(obj, view);
+  if (tvalIsJewelry(obj.tval) && ignoreLevelOf(obj, view) !== IGNORE.BAD) {
     value = IGNORE.MAX;
   }
   if (value !== IGNORE.MAX && type !== ITYPE_MAX) {
@@ -262,7 +270,9 @@ export function applyIgnoreItemChoice(
      * (ui-object.c:1813-1817). */
     case IGNORE_ACTION.QUALITY: {
       const type = ignoreTypeOf(obj);
-      if (type !== ITYPE_MAX) state.ignore.level[type] = ignoreLevelOf(obj);
+      if (type !== ITYPE_MAX) {
+        state.ignore.level[type] = ignoreLevelOf(obj, objectKnownView(state, obj));
+      }
       break;
     }
   }

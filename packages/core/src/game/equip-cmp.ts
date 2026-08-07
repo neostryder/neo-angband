@@ -42,7 +42,7 @@ import { wieldSlot } from "./gear.js";
 import { ignoreLevelOf, IGNORE } from "../obj/ignore.js";
 import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
 import { tvalIsWearable } from "../obj/object.js";
-import { describeObject, knownDescOf } from "./describe.js";
+import { describeObject, knownDescOf, objectKnownView } from "./describe.js";
 import { ODESC } from "../obj/desc.js";
 import { objectAttrChar } from "./display.js";
 import { FEAT } from "../generated/index.js";
@@ -275,8 +275,8 @@ function shortName(state: GameState, obj: GameObject): string {
 }
 
 /** equippable_quality (add_obj_to_summary L2080-2104). */
-function quality(obj: GameObject): EquipCmpQuality {
-  switch (ignoreLevelOf(obj)) {
+function quality(state: GameState, obj: GameObject): EquipCmpQuality {
+  switch (ignoreLevelOf(obj, objectKnownView(state, obj))) {
     case IGNORE.GOOD:
       return "good";
     case IGNORE.AVERAGE:
@@ -460,7 +460,7 @@ export function equipCmpSummary(
       vals,
       shortName: shortName(state, obj),
       src,
-      quality: quality(obj),
+      quality: quality(state, obj),
       slot: wieldSlot(player.body, obj.tval, player.equipment),
       /* object_char / object_attr (ui-equip-cmp.c:2107-2108), not the kind
        * record: an unidentified ring listed here drew dark like everywhere

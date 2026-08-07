@@ -7,7 +7,9 @@
  */
 
 import { ODESC, objectDesc } from "../obj/desc.js";
+import type { ObjectKnownView } from "../obj/ignore.js";
 import type { KnownDesc } from "../obj/known-object.js";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "./context.js";
 
@@ -48,6 +50,23 @@ export function knownDescOf(state: GameState): KnownDesc {
         }
       : {}),
   };
+}
+
+/**
+ * `obj->known` plus object_fully_known(obj) for a live object: the knowledge
+ * view obj/ignore.ts reads. Upstream both are one pointer dereference off the
+ * object; here the twin is synthesised on demand, so this is where that happens
+ * for the ignore path.
+ *
+ * One shadow per call, as at every other synthesis site (obj/desc.ts:639,
+ * game/equip-cmp.ts:422, game/ui-entry.ts:2035) - objectKnownShadow is pure and
+ * allocation-only, and caching it would need an invalidation rule keyed on
+ * every rune-learn and assessment, which is a bigger surface than the copy.
+ */
+export function objectKnownView(state: GameState, obj: GameObject): ObjectKnownView {
+  const p = state.actor.player;
+  const known = objectKnownShadow(obj, p, state.runeEnv, knownDescOf(state));
+  return { known, fullyKnown: objectFullyKnown(obj, known, p, state.runeEnv) };
 }
 
 /**
