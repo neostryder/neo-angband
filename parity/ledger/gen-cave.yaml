@@ -70,8 +70,15 @@ deferred:
     so a cavern half cannot wall up the staircase it was seeded with. labyrinth,
     gauntlet and hard_centre refuse persistent levels exactly as upstream does.
     Driven from session/changeLevel via getJoinInfo and getMinLevelSize."
-  - Themed levels and the streamer treasure-chance nuances beyond
-    magma/quartz upgrade.
+  - "Neither half exists upstream. 4.2.6 has no themed levels; the only
+    \"themed\" in the source is a comment describing lair_gen's themed MONSTERS
+    (gen-cave.c:3526), which IS ported via setPitType + monRestrict. And
+    build_streamer's whole treasure behaviour is
+    `if (one_in_(chance)) square_upgrade_mineral(...)` (gen-cave.c:133),
+    magma/quartz to the K variant (cave-square.c:1494) - there are no nuances
+    beyond it. Reading this row is what surfaced the real bug: buildStreamer
+    tested isMagma || isQuartz || isGranite where upstream tests square_isrock,
+    so it overwrote existing veins and DESTROYED SECRET DOORS. Fixed."
 verified-by:
   - packages/core/src/gen/gen.test.ts: profile selection by depth (town at 0,
     classic/modified below), full-level connectivity/stairs/player invariants,

@@ -363,6 +363,20 @@ export class EffectRegistry {
     return [...this.defs.keys()];
   }
 
+  /**
+   * The coverage status of ONE code, or undefined when unregistered.
+   *
+   * `coverage()` counts, which cannot answer "is THIS effect a stub in a live
+   * game" - and that is the question the ledger keeps asking about a subsystem
+   * whose effects come from data (traps, activations, monster spells). The
+   * core registry stubs almost everything and wireGame re-registers the real
+   * handlers over the top, so a count taken from registerCoreHandlers alone
+   * says "stubbed" about handlers that are live in play.
+   */
+  statusOf(code: EffectCode): EffectHandlerStatus | undefined {
+    return this.defs.get(code)?.status;
+  }
+
   /** Coverage counts by status, for the parity ledger. */
   coverage(): { implemented: number; partial: number; stub: number } {
     const counts = { implemented: 0, partial: 0, stub: 0 };

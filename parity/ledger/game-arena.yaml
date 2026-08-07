@@ -61,10 +61,13 @@ notes: >-
   arena_level, generate.c:1349). With this handler, EVERY effect in
   effect_kind[] that upstream implements is ported.
 deferred:
-  - monster_turn_multiply's no-breeding-in-arena guard rides monster
-    reproduction (unported); mon_take_nonplayer_hit's arena floor
-    (monsters cannot kill the arena opponent) is moot while the arena
-    holds exactly one monster.
+  - "NOT deferred, and this row was wrong in both halves. Monster
+    reproduction is ported and wired: multiplyMonster (game/mon-place.ts:695)
+    is supplied as state.monsterMultiply at session/game.ts:1855, num_repro is
+    tracked, and monsterTurnMultiply carries the no-breeding-in-arena guard
+    itself (game/monster-turn.ts, `if (state.arenaLevel) return false`).
+    mon_take_nonplayer_hit's arena floor is at game/mon-death.ts:398 and does
+    not depend on the arena holding a single monster.
   - "NOT DEFERRED ANY MORE (PORT_TODO 4.1, 2026-08-06), and this line was
     wrong in both halves. ALTER_REALITY is ported (game/effect-teleport.ts
     handleALTER_REALITY), so its arena guard did not \"ride an unported
@@ -81,8 +84,10 @@ deferred:
     closure variable in makeChangeLevel. It is state.arenaStash now and
     round-trips; a save written before the key exists still reloads with the
     old fall-through, which is why loadGame keeps passing inArena."
-  - The arena event banners / EVENT_GEN_LEVEL_START("arena") ride
-    presentation (#25).
+  - "EVENT_GEN_LEVEL_START(\"arena\"): nothing to defer, because there are no
+    arena banners upstream either. Its only subscriber in 4.2.6 is
+    wiz-stats.c:2635, the cgenstat statistics collector - a debug tool. This
+    row described a UI that does not exist."
 verified-by:
   - game/arena.test.ts (4 tests) - EF_SINGLE_COMBAT sets the arena
     flags on the targeted monster (spell-power 0 cannot resist) and

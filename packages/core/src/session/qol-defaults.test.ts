@@ -225,19 +225,26 @@ describe("the levelGenerated seam reaches level generation from startGame", () =
    * swallowing every deep level it is roughly 1-2%, matching the raw generator.
    */
   const STRANDED: readonly [number, number, string][] = [
-    [40, 740014, "down+up"],
-    /* 750000 sat here until 2026-07-26, when help_greater_vault (gen-room.c
-     * L3075) was restored to core: before that fix a greater vault was the
-     * first room of nearly every level at depth 35+, and this seed's up stair
-     * was sealed inside it. 740014 still strands, so this is a
-     * deliberate generation-stream change at depth >= 35, not a regression -
-     * see the note in gen/gen.test.ts' STRANDED list. */
-    [50, 750080, "up"],
-    [60, 1300081, "down+up"],
-    /* A down-only case - the direction that actually blocks descent. 760000
-     * was the down-only pin until 2026-07-26; it went stale in the same
-     * help_greater_vault restoration described above. */
-    [40, 1100361, "down"],
+    /*
+     * RE-PINNED 2026-08-06 with the build_streamer predicate fix (gen/cave.ts:
+     * square_isrock, not isMagma || isQuartz || isGranite - the old test
+     * overwrote existing veins and destroyed secret doors). That moves the
+     * generation stream from the first streamer onward, so every previously
+     * pinned seed stopped stranding. See the long note on gen/gen.test.ts'
+     * STRANDED list for the before/after measurement (137/15000 -> 22/15000
+     * over an identical sweep) and for what is and is not explained by it.
+     *
+     * Found by scanning, and every direction here is DERIVED from
+     * strandedDirs, never hand-written: the gen.test.ts re-pin nearly shipped
+     * 22 guessed labels.
+     */
+    [40, 800126, "up"],
+    [40, 800733, "up"],
+    [50, 1000004, "up"],
+    [50, 1000369, "up"],
+    /* The down+up case: the direction that actually blocks descent. */
+    [60, 1200060, "down+up"],
+    [60, 1200312, "up"],
   ];
 
   /** The directions of this level that have a stair but no walk-reachable one. */

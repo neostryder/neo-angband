@@ -54,10 +54,11 @@ notes: >-
   is verified end to end (identical terrain, player spot and monster/object
   counts across two runs).
 deferred:
-  - Pit/nest monster theming (mon_restrict): pits place any depth-appropriate
-    monster (group_ok off, as upstream). Placement RNG order therefore
-    diverges from upstream where theming would have restricted the table;
-    structural invariants are asserted instead. NOTE monster group/escort
+  - "Pit/nest theming is NOT deferred: buildPit and buildNest (gen/room.ts)
+    both call setPitType and then table.prep(monPitHook(pit)) before drawing
+    their 16 races, which is set_pit_type + mon_restrict. The RNG-order caveat
+    that followed from \"no theming\" went stale with it. What remains true is
+    the escort-base note: NOTE monster group/escort
     spawning (place_new_monster / place_friends / place_new_monster_group /
     the escort-base prep hook) is now PORTED in gen/util.ts: group indices
     come from a per-generation counter recorded on each monster's group_info,

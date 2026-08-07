@@ -704,7 +704,16 @@ function buildStreamer(g: Gen, feat: number, chance: number): void {
     for (let i = 0; i < g.profileStr.den; i++) {
       const d = g.profileStr.rng;
       const change = findNearbyGrid(c, g.rng, grid, d, d);
-      if (change && (c.isMagma(change) || c.isQuartz(change) || c.isGranite(change))) {
+      /* square_isrock (gen-cave.c:128), which is NARROWER than it looks:
+       * TF_GRANITE && !TF_DOOR_ANY, and in 4.2.6 only FEAT_GRANITE and
+       * FEAT_SECRET carry TF_GRANITE. So a streamer converts plain granite
+       * ONLY - never an existing magma/quartz vein, and never a secret door,
+       * which the !TF_DOOR_ANY half exists to protect (cave-square.c:203 says
+       * so in as many words). The test here used to be
+       * isMagma || isQuartz || isGranite: wider at both ends, so streamers
+       * overwrote veins and destroyed secret doors, and every extra conversion
+       * spent another one_in_(chance) draw and moved the rest of the level. */
+      if (change && c.isRock(change)) {
         c.setFeat(change, feat);
         if (g.rng.oneIn(chance)) {
           /* square_upgrade_mineral: magma/quartz -> the treasure variant. */
@@ -1495,18 +1504,25 @@ function initCavern(g: Gen, density: number, join: Connector[]): void {
         count--;
         c.setFeat(adj, FEAT.FLOOR);
       }
+      /* square_isrock (gen-cave.c:1667-1684), not square_isgranite: the three
+       * grids behind a seeded staircase are sealed with permanent wall, and a
+       * SECRET DOOR must not be one of them. isGranite is TF_GRANITE, which
+       * FEAT_SECRET carries; isRock subtracts TF_DOOR_ANY, which is the whole
+       * point of the predicate. Two lines up, the tunnel sites at :392 and
+       * :575 DO mirror square_isgranite (gen-cave.c:355, :693) - upstream uses
+       * both predicates within this file, so they are not interchangeable. */
       adj = loc(j.grid.x - offx, j.grid.y - offy);
-      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+      if (c.isRock(adj)) c.setFeat(adj, FEAT.PERM);
       adj = loc(j.grid.x, j.grid.y - offy);
-      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+      if (c.isRock(adj)) c.setFeat(adj, FEAT.PERM);
       adj = loc(j.grid.x - offx, j.grid.y);
-      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+      if (c.isRock(adj)) c.setFeat(adj, FEAT.PERM);
     }
   }
 
   while (count > 0) {
     const grid = loc(rng.randint1(w - 2), rng.randint1(h - 2));
-    if (c.isGranite(grid)) {
+    if (c.isRock(grid)) {
       c.setFeat(grid, FEAT.FLOOR);
       count--;
     }

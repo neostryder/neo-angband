@@ -169,8 +169,19 @@ const EXPECTED = {
    * its own level-local placed set, matching C's early cur_num increment) both
    * intentionally move the generation RNG stream, so the descended level is a
    * different level. Verified this delta predates the staircase guarantee
-   * (437ad97c3), which draws no RNG and cannot move a golden. */
-  descend: { monsterCount: 44 },
+   * (437ad97c3), which draws no RNG and cannot move a golden.
+   *
+   * 44 -> 28: re-pinned 2026-08-06 for the build_streamer predicate fix
+   * (gen/cave.ts). Upstream's streamer tests square_isrock - TF_GRANITE and
+   * NOT TF_DOOR_ANY, which in 4.2.6 is FEAT_GRANITE alone - and the port was
+   * testing isMagma || isQuartz || isGranite, so it converted existing veins
+   * and destroyed secret doors, spending an extra one_in_(chance) draw for
+   * every one of them. Correcting it moves the stream from the first streamer
+   * onward, so the descended level is again a different level. This is a
+   * self-captured pin, not a C-derived expectation: the cross-implementation
+   * check that IS C-derived, parity-c-stat.test.ts, was re-run against this
+   * change and still passes. */
+  descend: { monsterCount: 28 },
 } as const;
 
 /** Run every golden scenario and return their results. */
