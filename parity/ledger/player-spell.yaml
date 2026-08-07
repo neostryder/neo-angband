@@ -70,7 +70,10 @@ deferred:
   - no_light in player_can_cast and square_islit for the UNLIGHT penalty
     (light model); hooks default dark/lit-unknown.
   - player_exp_gain on first success (experience/level-up system; hook).
-  - get_spell_info / spell value descriptions (ui-*.c, #25); browse menus.
+  - get_spell_info is PORTED, and in core rather than the shell:
+    effects/effect-info.ts:809 getSpellInfo builds the value descriptions from
+    the effect chain, and web/src/screens.ts:719 is the browse menu reading
+    it.
 verified-by:
   - player/spell.test.ts (13 tests): registerBookKinds creates one kind
     per distinct book with alloc/cost, dedupes Paladin/Priest shares,

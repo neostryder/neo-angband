@@ -75,8 +75,12 @@ deferred:
     normal unarmed path.
   - TMD_ATT_VAMP's vampire-bite effect rides that timed effect's
     consumers; resume just clears the timer.
-  - MON_MSG_SHAPE_FAIL's message text rides the monster-message table
-    (#25); PR_TITLE / PR_MISC / PR_HEALTH redraws ride #25.
+  - The monster-message table landed as PORT_TODO 3.1 and SHAPE_FAIL rides it:
+    mon/timed.ts:205 raises the note and game/monster-turn.ts:1658 resolves it
+    through monMessageCodeByName into addMonsterMessage's DELAYED pass, so the
+    text ("shimmers for a moment.") comes from the generated table with the
+    right grammar. PR_TITLE / PR_MISC / PR_HEALTH are the ratified
+    unconditional-repaint divergence, not a deferral.
   - The commanded-monster / mimic interactions with shapes (mimicked
     objects) ride monster mimicry.
 verified-by:

@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 228 of 338 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 236 of 339 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **130 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **137 `ported`,
   35 `stale-doc`, 19 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 7 `partial` against **5** `real`**. **110 remain.**
+  9 `n-a`, 8 `partial` against **5** `real`**. **103 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -276,6 +276,22 @@ is reachable in play and a test constructs the case that used to be wrong.**
   throughout `obj-cmd.ts`, `exposeToSun` runs on the town 4.3 built, and the
   whole `player_kill_monster` tail - experience, shape revert, dead uniques,
   kill history, drops, quest completion - is live behind `onPlayerKill`.
+
+  **`#25` (presentation) went the same way**, and its rows were wrong in a
+  specific direction: they assigned work to "the display layer" and the display
+  layer then did it, without anyone coming back. `runTargetLoop` is the
+  interactive targeting UI those rows deferred, `chooseItem` is the real "Get
+  which item?" picker, `getSpellInfo` turned out to live in CORE rather than the
+  shell it was assigned to, and **every interface option the options row listed
+  as having "no wired reader" now has one** - `solid_walls`, `hybrid_walls`,
+  `auto_more`, `animate_flicker`, `mouse_movement`, `rogue_like_commands`,
+  `purple_uniques`. Two rows were also mis-scoped: `PN_IGNORE`'s notice pass
+  landed with 1.1, and `MON_MSG_SHAPE_FAIL` rides the message table 3.1 built.
+
+  What survives the sweep is a short, honest list: the `recharge_pow` failure
+  RATE (a number no core path computes), `PROJECT_LOS_AWARE`'s notice nuance,
+  the `!t` take-off confirmation and ring-slot choice, and the `cmd_get_target`
+  retry.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
@@ -3064,7 +3080,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
+2. the counts stated at the top (**68 items, 75 citations, 55 `real` + 20
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

@@ -62,10 +62,13 @@ notes: >-
   cancel path). destroyOneItem covers both gear (gear_object_for_use) and
   floor piles.
 deferred:
-  - ODESC_BASE / ODESC_FULL descriptions and gear letters ride the display
-    layer (#25); the kind's base name is used. obj->known->to_h/to_d/to_a
-    display sync rides rune-based knowledge. The recharge_pow failure-rate
-    display (ui-object.c) rides #25.
+  - The descriptions are LIVE, not the kind's base name: this module calls
+    describeObject with the real ODESC modes throughout (effect-item.ts:394 and
+    :445 with ODESC.BASE, :616 and :730 with ODESC.FULL). obj->known's
+    to_h/to_d/to_a "display sync" needs nothing here - the port synthesises the
+    known twin on demand from rune knowledge rather than storing a copy to
+    sync. Genuinely shell-owned and still open: the recharge_pow failure-RATE
+    readout (ui-object.c), which is a number no core path computes.
   - REMOVE_CURSE's known-twin curse tester (obj->known->curses) is read
     from the live curses (knowledge is rune-based); show_damage (#30).
   - Both are wired. The total_weight upkeep is effect-item.ts:638
