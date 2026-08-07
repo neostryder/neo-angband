@@ -78,11 +78,17 @@ function fire(
   m: Monster,
   type: number,
   dam: number,
-  opts: { seen?: boolean; charm?: boolean; hooks?: MonProjectHooks } = {},
+  opts: {
+    seen?: boolean;
+    charm?: boolean;
+    healthTracked?: boolean;
+    hooks?: MonProjectHooks;
+  } = {},
 ) {
   const ctx = newMonProjectContext(rng(), m, type, dam, {
     seen: opts.seen ?? true,
     charm: opts.charm ?? false,
+    healthTracked: opts.healthTracked ?? false,
     hooks: opts.hooks ?? {},
   });
   runMonsterHandler(ctx);
@@ -383,6 +389,19 @@ describe("MON_POLY / MON_HEAL / MON_CLONE", () => {
     const ctx = fire(m, PROJ.MON_HEAL, 1000);
     expect(m.hp).toBe(100);
     expect(ctx.hurtMsg).toBe(MON_MSG.HEALTHIER);
+    expect(ctx.dam).toBe(0);
+  });
+
+  it("MON_HEAL is SILENT for a health-tracked monster (project-mon.c:929-932)", () => {
+    /* Upstream's redraw and its message are an if/ELSE: a monster the health
+     * bar is following gets the bar moved and no line. Taking the message
+     * branch unconditionally gave the monster you just hit an extra "looks
+     * healthier" upstream never prints. */
+    const m = mon({ hp: 30, maxhp: 100 });
+    const ctx = fire(m, PROJ.MON_HEAL, 1000, { healthTracked: true });
+    /* The heal itself is unchanged - only the message is suppressed. */
+    expect(m.hp).toBe(100);
+    expect(ctx.hurtMsg).toBe(MON_MSG.NONE);
     expect(ctx.dam).toBe(0);
   });
 

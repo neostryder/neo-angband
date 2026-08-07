@@ -87,11 +87,15 @@ deferred:
     a preview that upstream draws from memory. Closed at PORT_TODO 7.1.
     Still approximate on the OBJECT half only (square_object(player->cave,...)),
     which needs a per-object remembered twin that does not exist.
-  - player_sees_grid / panel_contains and update_stuff: viewport + upkeep
-    concerns left to the caller/UI, so the driver does not compute them.
-  - Faithful deviation: on the player-death early return the driver clears the
-    SQUARE_PROJECT marks first (upstream leaves them set and relies on level
-    teardown); unobservable but avoids stale marks on a retained Chunk.
+  - RATIFIED DIVERGENCE (2026-08-07), not a deferral: player_sees_grid /
+    panel_contains are viewport questions and update_stuff is upkeep, both of
+    which belong to the caller in this port's shell split. The driver computing
+    them would mean the geometry layer knowing about a panel.
+  - RATIFIED DIVERGENCE (2026-08-07), and self-labelled as one: on the
+    player-death early return the driver clears the SQUARE_PROJECT marks where
+    upstream leaves them for level teardown. Unobservable in play, and it exists
+    because this port RETAINS Chunks (persistent levels) where upstream throws
+    them away - so a stale mark would outlive the projection that set it.
 verified-by:
   - world/project.test.ts: empty path when source==target; straight horizontal
     and pure-diagonal walks ending on target; the hand-derived 4:2 slope walk;

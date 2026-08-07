@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, PROJ, RF } from "../generated/index.js";
+import { MFLAG, MON_MSG, MON_TMD, PROJ, RF } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
 import { PROJECT } from "../world/project.js";
@@ -353,5 +353,37 @@ describe("projectMonster - become_aware (mimic reveal)", () => {
     projectMonster(playerCtx(gs, rec.hooks), 0, loc(15, 15), 20, PROJ.FIRE, PROJECT.KILL);
     expect(mon.hp).toBe(30);
     expect(called).toBe(false);
+  });
+});
+
+describe("the driver reads health_who for PROJ_MON_HEAL (project-mon.c:929)", () => {
+  /**
+   * The pure handler's test supplies healthTracked itself, so nothing there can
+   * show whether the DRIVER reads state.healthWho. This does.
+   */
+  function healMessages(tracked: boolean): number[] {
+    const gs = makeState();
+    const mon = addMon(gs, plainRace, loc(5, 5), { hp: 20 });
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.maxhp = 100;
+    if (tracked) gs.healthWho = mon;
+
+    const msgs: number[] = [];
+    projectMonster(
+      playerCtx(gs, { message: (_m, code) => msgs.push(code) }),
+      0, mon.grid, 50, PROJ.MON_HEAL, PROJECT.KILL,
+    );
+    /* Ground truth: the heal happened either way, so a silent result is the
+     * message being suppressed and not the projection missing. */
+    expect(mon.hp).toBe(70);
+    return msgs;
+  }
+
+  it("an untracked monster gets the HEALTHIER line", () => {
+    expect(healMessages(false)).toContain(MON_MSG.HEALTHIER);
+  });
+
+  it("a tracked monster does not", () => {
+    expect(healMessages(true)).not.toContain(MON_MSG.HEALTHIER);
   });
 });

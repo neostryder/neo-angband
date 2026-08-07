@@ -23,8 +23,10 @@
  * - thrust_away (PROJ_FORCE) mutates the cave (monster_swap, feature checks); the
  *   handler only records the requested distance in context.thrustGridsAway and
  *   the driver performs the thrust.
- * - PR_HEALTH redraw (PROJ_MON_HEAL) is a UI concern; the "looks healthier"
- *   message branch is taken unconditionally, matching an untracked monster.
+ * - PR_HEALTH redraw (PROJ_MON_HEAL) is a UI concern and stays with the caller,
+ *   but the redraw and the "looks healthier" message are an if/ELSE upstream:
+ *   MonProjectContext.healthTracked carries player->upkeep->health_who == mon so
+ *   a tracked monster gets no message, as upstream gives it none.
  */
 
 import { MON_MSG, MON_TMD, PROJ, RF, RSF } from "../generated/index.js";
@@ -75,6 +77,14 @@ export interface MonProjectContext {
   mon: Monster;
   /** Source is an extra-charming player (PF_CHARM): boosts effects vs animals. */
   charm: boolean;
+  /**
+   * player->upkeep->health_who == mon: the monster the health bar is tracking.
+   *
+   * PROJ_MON_HEAL's redraw and its message are an if/ELSE upstream
+   * (project-mon.c:929-932), so a TRACKED monster gets the bar moved and NO
+   * "looks healthier" line. Defaults false, which is the untracked case.
+   */
+  healthTracked?: boolean;
   /** Whether the player can see the monster (drives lore learning + obvious). */
   seen: boolean;
   /** The effect was obvious to the player. */
@@ -103,6 +113,8 @@ export interface MonProjectContextOptions {
   r?: number;
   grid?: Loc;
   charm?: boolean;
+  /** player->upkeep->health_who == mon (project-mon.c:929). */
+  healthTracked?: boolean;
   seen?: boolean;
   obvious?: boolean;
   hooks?: MonProjectHooks;
@@ -129,6 +141,7 @@ export function newMonProjectContext(
     type,
     mon,
     charm: opts.charm ?? false,
+    healthTracked: opts.healthTracked ?? false,
     seen: opts.seen ?? false,
     obvious: opts.obvious ?? false,
     skipped: false,
@@ -698,8 +711,12 @@ function hMonHeal(ctx: MonProjectContext): void {
   /* No overflow */
   if (ctx.mon.hp > ctx.mon.maxhp) ctx.mon.hp = ctx.mon.maxhp;
 
-  /* The PR_HEALTH-tracked branch is a UI concern; take the message branch. */
-  ctx.hurtMsg = MON_MSG.HEALTHIER;
+  /* project-mon.c:929-932. The redraw half is a UI concern and is the caller's,
+   * but the two are an if/ELSE: a monster the health bar is tracking gets the
+   * bar moved and NO message. Taking the message branch unconditionally gave a
+   * tracked monster - the one you just hit, or your target - an extra "looks
+   * healthier" line upstream never prints. */
+  if (!ctx.healthTracked) ctx.hurtMsg = MON_MSG.HEALTHIER;
 
   /* No "real" damage */
   ctx.dam = 0;

@@ -28,15 +28,23 @@ notes: >-
   with the aspect inverted (least damage uses the largest divisor), matching
   upstream; integer division via Math.trunc throughout.
 deferred:
-  - adjust_dam's internal el_info[res_type].res_level lookup, the ICE->COLD
-    res_type remap, equip_learn_element, and minus_ac(p) are the caller's
-    responsibility (they read live player state / knowledge); adjustDam takes
-    the resolved resistLevel and a minusAc flag.
-  - The damage-cap and divisor are bound but not applied here; the attack effect
-    handlers apply the cap when they compute breath / ball damage, and the
-    geometry layer (world/project.ts) computes its own distance falloff.
-  - Colour is kept as the raw name for the render layer to resolve; msgt as the
-    MSG_ name.
+  - NOT A DEFERRAL (2026-08-07): a module boundary, and the callers do their
+    half. adjustDam takes a resolved resistLevel and a minusAc flag because
+    world/projection.ts is pure; game/project-player.ts:191 calls
+    hooks.equipLearnElement(resType) and reads actor.resistLevel / actor.minusAc
+    right before invoking it, and mon-side.ts, player-side.ts and world.ts are
+    the other three callers. The ICE->COLD remap is resolved there too.
+  - NOT A DEFERRAL (2026-08-07): the same boundary. The cap belongs where breath
+    and ball damage are computed (the attack effect handlers) and the distance
+    falloff belongs to the geometry layer (world/project.ts), which is where
+    upstream applies them too. Binding them on the projection record so both
+    layers can read one source is the point of this module.
+  - RATIFIED DIVERGENCE (2026-08-07): the projection record carries `colour` as
+    the datafile's name and `msgt` as the MSG_ name, and the render / message
+    layers resolve them. Upstream resolves both at parse time into a terminal
+    attr and a sound index; this port has neither a fixed terminal palette nor a
+    sound table in core, so resolving early would bake a shell's choices into
+    the data.
 verified-by:
   - world/projection.test.ts (8 tests): binds all 56 types in PROJ order despite
     the differing record order; captures element resist data + obvious/wake and
