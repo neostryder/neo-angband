@@ -51,9 +51,29 @@ deferred:
     "None of the ported effects substitute" stopped being true when the timed
     registry was completed. The disturb + PR_/PU_ + handle_stuff half is the
     ratified repaint divergence.
-  - player_inc_check's learning side effects (equip_learn_flag /
-    equip_learn_element / update_smart_learn and the "You resist!" message) are
-    part of the lore / knowledge system, which is ported.
+  - CLOSED (2026-08-07), and reading it turned up a bigger defect than the row
+    described. The MECHANISM was never missing: player/timed.ts:237-273
+    implements all of it - equipLearnFlag, updateSmartLearn, resistMessage,
+    equipLearnElement - in upstream's order. What was missing was the SUPPLY,
+    and it was uneven across the four paths that need it. Monster melee
+    (game/mon-side.ts:254-262) had the lot. Monster casts had only
+    updateSmartLearn, which covers the object-flag arm via its own internal
+    equip_learn_flag (mon-util.c:797) but never the RESIST / VULN arms, so a
+    monster spell blocked by an element resist taught nothing. Monster
+    projections (game/player-side.ts) and the whole interpreter path - traps,
+    potions, wands, player spells - passed no hooks at all. Upstream's non-lore
+    branch runs equip_learn_flag / equip_learn_element unconditionally: the
+    source does not matter.
+    All three gaps are supplied now, through one shared builder
+    (game/player-side.ts makeIncCheckHooks). It is RNG-free, measured rather
+    than assumed, because these paths had no hooks before and a draw would have
+    moved every seeded test.
+    AND: game/player-side.ts's incTimed passed `check` to player_inc_timed while
+    supplying no incCheck hook - and player/timed.ts:391 honours `check` ONLY
+    through that hook. So on the projection path every resist gate was inert:
+    Free Action did not stop a paralysing breath, PROT_CONF did not stop
+    confusion, PROT_BLIND did not stop blindness. That is the defect this row
+    was sitting next to and did not name. Five mutants, five kills.
 verified-by:
   - player/timed.test.ts (15 tests): the binder now captures NONSTACKING /
     on-increase / on-decrease and STUN's graded severity; playerTimedGrade walks

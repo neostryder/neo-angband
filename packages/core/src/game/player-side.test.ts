@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ELEM, OF, PROJ, TMD, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { objectNew } from "../obj/object.js";
+import { FlagSet } from "../bitflag.js";
+import { OF_SIZE } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 import { makeState, plReg } from "./harness.js";
@@ -91,6 +93,44 @@ describe("project-player side effects (project-player.c handlers)", () => {
     sideFx(prot)({ dam: 60, typ: PROJ.SOUND, power: 0 });
     expect(prot.actor.player.timed[TMD.STUN]!).toBe(0);
     expect(prot.actor.player.objKnown.flags.has(OF.PROT_STUN)).toBe(true);
+  });
+
+  /**
+   * player_inc_check's equip-learn side effects on the PROJECTION path
+   * (player-timed.c:945). This closure used to pass no hooks at all, so a breath
+   * you shrugged off taught you nothing - upstream runs equip_learn_flag
+   * whether the source is a monster, a trap or a potion.
+   *
+   * SOUND above 300 damage is the gate: project-player.c:328 asks
+   * player_inc_check(TMD_CONFUSED, false) before printing "The noise disorients
+   * you.", and that ask is what learns the rune.
+   */
+  it("a resisted SOUND breath teaches PROT_CONF from worn gear", () => {
+    const state = makeState({ seed: 24 });
+    equipWithFlag(state, OF.PROT_CONF);
+    /* calc_bonuses' output is what the check reads (makeIncCheckQueries), so
+     * the derived state has to carry the flag the gear grants. */
+    const flags = new FlagSet(OF_SIZE);
+    flags.on(OF.PROT_CONF);
+    (state as unknown as { playerState: { flags: FlagSet } }).playerState = { flags };
+
+    expect(state.actor.player.objKnown.flags.has(OF.PROT_CONF)).toBe(false);
+    sideFx(state)({ dam: 400, typ: PROJ.SOUND, power: 0 });
+
+    /* The confusion was blocked... */
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBe(0);
+    /* ...and the block is what taught the rune. */
+    expect(state.actor.player.objKnown.flags.has(OF.PROT_CONF)).toBe(true);
+  });
+
+  it("teaches nothing when the gear does not carry the flag", () => {
+    /* The control: without PROT_CONF the check passes, the player IS confused,
+     * and no rune is learned - so the assertion above cannot be reading a
+     * learn that happens on every SOUND hit regardless. */
+    const state = makeState({ seed: 24 });
+    sideFx(state)({ dam: 400, typ: PROJ.SOUND, power: 0 });
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBeGreaterThan(0);
+    expect(state.actor.player.objKnown.flags.has(OF.PROT_CONF)).toBe(false);
   });
 
   it("DARK_WEAK briefly blinds, or messages when DARK is resisted (6.1)", () => {
