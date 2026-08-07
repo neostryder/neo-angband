@@ -52,6 +52,7 @@
 import { ELEM, KF, OBJ_MOD, OF, STAT_ENTRIES, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
+import { randartLogf } from "./randart-log.js";
 import type { ObjRegistry } from "./bind.js";
 import type { CurseTimedFoil } from "./object.js";
 import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
@@ -919,8 +920,20 @@ export function addSlay(reg: ObjRegistry, art: Artifact, rng: Rng): void {
 /* ------------------------------------------------------------------ */
 
 /** add_damage_dice (obj-randart.c L1986): add one or two damage dice. */
+/**
+ * C's "%+d": a signed integer that keeps an explicit "+" on non-negatives.
+ * printf writes "+3" and "0" as "+0"; JS template interpolation writes "3" and
+ * "0", so the log lines that use it need this rather than the default.
+ */
+function plusD(n: number): string {
+  return n < 0 ? String(n) : `+${n}`;
+}
+
 export function addDamageDice(art: Artifact, rng: Rng): void {
   art.dd += rng.randint1(2);
+  randartLogf(
+    () => `Adding ability: extra damage dice (now ${art.dd} dice)\n`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -938,11 +951,22 @@ export function addToHit(
   rng: Rng,
 ): void {
   if (art.toH > VERYHIGH_TO_HIT) {
-    if (!rng.oneIn(6)) return;
+    if (!rng.oneIn(6)) {
+      randartLogf(
+        () => `Failed to add to-hit, value ${art.toH} is too high\n`,
+      );
+      return;
+    }
   } else if (art.toH > HIGH_TO_HIT) {
-    if (!rng.oneIn(2)) return;
+    if (!rng.oneIn(2)) {
+      randartLogf(
+        () => `Failed to add to-hit, value ${art.toH} is too high\n`,
+      );
+      return;
+    }
   }
   art.toH += fixed + rng.randint0(random);
+  randartLogf(() => `Adding ability: extra to_h (now ${plusD(art.toH)})\n`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -961,11 +985,24 @@ export function addToDam(
   rng: Rng,
 ): void {
   if (art.toD > VERYHIGH_TO_DAM) {
-    if (!rng.oneIn(6)) return;
+    if (!rng.oneIn(6)) {
+      randartLogf(
+        () => `Failed to add to-dam, value ${art.toD} is too high\n`,
+      );
+      return;
+    }
   } else if (art.toH > HIGH_TO_DAM) {
-    if (!rng.oneIn(2)) return;
+    if (!rng.oneIn(2)) {
+      randartLogf(
+        () => `Failed to add to-dam, value ${art.toD} is too high\n`,
+      );
+      return;
+    }
   }
   art.toD += fixed + rng.randint0(random);
+  randartLogf(
+    () => `Adding ability: extra to_dam (now ${plusD(art.toD)})\n`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -984,11 +1021,24 @@ export function addToAC(
   rng: Rng,
 ): void {
   if (art.toA > VERYHIGH_TO_AC) {
-    if (!rng.oneIn(6)) return;
+    if (!rng.oneIn(6)) {
+      randartLogf(
+        () => `Failed to add to-AC, value ${art.toA} is too high\n`,
+      );
+      return;
+    }
   } else if (art.toH > HIGH_TO_AC) {
-    if (!rng.oneIn(2)) return;
+    if (!rng.oneIn(2)) {
+      randartLogf(
+        () => `Failed to add to-AC, value ${art.toA} is too high\n`,
+      );
+      return;
+    }
   }
   art.toA += fixed + rng.randint0(random);
+  randartLogf(
+    () => `Adding ability: AC bonus (new bonus is ${plusD(art.toA)})\n`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -998,6 +1048,9 @@ export function addToAC(
 /** add_weight_mod (obj-randart.c L2068): lower the artifact's weight by 10%. */
 export function addWeightMod(art: Artifact): void {
   art.weight = Math.trunc((art.weight * 9) / 10);
+  randartLogf(
+    () => `Adding ability: lower weight (new weight is ${art.weight})\n`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
