@@ -51,6 +51,7 @@ import {
 } from "../obj/knowledge.js";
 import { ODESC } from "../obj/desc.js";
 import { describeObject } from "./describe.js";
+import { GEAR_LABELS } from "./gear.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { Shape } from "../player/types.js";
 import { buildObjectEffectChain } from "./obj-cmd.js";
@@ -71,6 +72,7 @@ import { monIncTimed } from "../mon/timed.js";
 import { monsterWake } from "../mon/take-hit.js";
 import { loreDoProbe } from "../mon/lore.js";
 import { monsterIsVisible } from "../mon/predicate.js";
+import { MDESC, MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import { featIsTrapHolding } from "../world/chunk.js";
 import { squareIsView } from "../world/view.js";
 import { lookupTrap } from "../world/trap.js";
@@ -286,11 +288,19 @@ export function disenchantEquipment(
   if (obj.toH <= 0 && obj.toD <= 0 && obj.toA <= 0) return;
 
   const name = describeObject(state, obj, ODESC.BASE);
+  /* gear_to_label's equipment branch (obj-gear.c:452) is a single index into
+   * the label table by body slot, and `slot` here IS that index. Both messages
+   * below print it, as upstream does - without it the player is told an item
+   * "was disenchanted" with no way to tell which of two rings of the same base
+   * name it was. The row that deferred this called the letter part of the
+   * display layer; GEAR_LABELS is game/gear.ts and known.ts:775 already
+   * indexes it exactly this way. */
+  const label = GEAR_LABELS[slot] ?? "";
 
   /* Artifacts have a 60% chance to resist */
   if (obj.artifact && rng.randint0(100) < 60) {
     opts.msg?.(
-      `Your ${name} resist${obj.number !== 1 ? "" : "s"} disenchantment!`,
+      `Your ${name} (${label}) resist${obj.number !== 1 ? "" : "s"} disenchantment!`,
     );
     return;
   }
@@ -312,7 +322,7 @@ export function disenchantEquipment(
   }
 
   opts.msg?.(
-    `Your ${name} ${obj.number !== 1 ? "were" : "was"} disenchanted!`,
+    `Your ${name} (${label}) ${obj.number !== 1 ? "were" : "was"} disenchanted!`,
   );
 
   /* Recalculate bonuses (PU_BONUS) */
@@ -529,6 +539,31 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
 
   ctx.ident = true;
 
+  /* Target is another monster - disenchant it (effect-handler-general.c:580).
+   *
+   * FIRST, before the decoy check, as upstream orders them: a monster aiming a
+   * mana drain at another monster never reaches the player's mana or a decoy.
+   * The row that deferred this said it "rides monster-spell targeting (#19)",
+   * which stopped being true when monsterTargetMonster landed - it is imported
+   * into this very file and used 300 lines below, and monIncTimed with
+   * MON_TMD.DISEN is the whole body. */
+  const tMon =
+    ctx.origin.what === "monster"
+      ? monsterTargetMonster(state, ctx.origin.monster)
+      : null;
+  if (tMon) {
+    monIncTimed(
+      state.rng,
+      tMon,
+      MON_TMD.DISEN,
+      Math.max(drain, 0),
+      0,
+      undefined,
+      env.monShape,
+    );
+    return true;
+  }
+
   /* Target was a decoy - destroy it (effect-handler-general.c:586).
    *
    * Through the shared destroyDecoy, not open-coded. This block used to be a
@@ -561,8 +596,7 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
     mon.hp += 6 * drain;
     if (mon.hp > mon.maxhp) mon.hp = mon.maxhp;
     if (monsterIsVisible(mon)) {
-      /* MDESC_STANDARD rides the display layer; the race name stands in. */
-      say(ctx, `${mon.race.name} appears healthier.`);
+      say(ctx, `${monsterDesc(mon, MDESC_STANDARD)} appears healthier.`);
     }
   }
 
@@ -937,11 +971,11 @@ const handleCOMMAND: EffectHandler = (ctx) => {
 
   /* Explicit saving throw. */
   if (state.rng.randint1(p.lev) < state.rng.randint1(mon.race.level)) {
-    const name = mon.race.name;
-    say(
-      ctx,
-      `${name.charAt(0).toUpperCase()}${name.slice(1)} resists your command!`,
-    );
+    /* monster_desc(MDESC_STANDARD), not a hand-rolled capitalisation of the
+     * race name: MDESC_STANDARD already carries CAPITAL, and it is the only
+     * thing that renders an unseen monster as "Something" instead of naming a
+     * race the player cannot see. */
+    say(ctx, `${monsterDesc(mon, MDESC_STANDARD)} resists your command!`);
     /* Take a turn and deduct mana when the monster resists. */
     return true;
   }
@@ -1050,7 +1084,6 @@ const handleBIZARRE: EffectHandler = (ctx) => {
 /**
  * EF_PROBE: learn everything about every visible monster in line of
  * sight, reporting its hit points (effect-handler-general.c L2451).
- * Monster names are the race name until MDESC (#25).
  */
 const handlePROBE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -1065,12 +1098,13 @@ const handlePROBE: EffectHandler = (ctx) => {
     if (!monsterIsVisible(mon)) continue;
 
     if (!probe) say(ctx, "Probing...");
-    const name = mon.race.name;
-    say(
-      ctx,
-      `${name.charAt(0).toUpperCase()}${name.slice(1)} has ${mon.hp} hit ` +
-        `point${mon.hp === 1 ? "" : "s"}.`,
-    );
+    /* PROBE's own flag set, NOT MDESC_STANDARD: IND_HID | CAPITAL | COMMA,
+     * with no PRO_HID (effect-handler-general.c L2466). The loop has already
+     * skipped every unseen monster, so the difference never shows in play -
+     * but the flags are upstream's choice at this site and copying the wrong
+     * constant here would make the next site that reuses them wrong too. */
+    const name = monsterDesc(mon, MDESC.IND_HID | MDESC.CAPITAL | MDESC.COMMA);
+    say(ctx, `${name} has ${mon.hp} hit point${mon.hp === 1 ? "" : "s"}.`);
     loreDoProbe(state.lore, mon);
     probe = true;
   }

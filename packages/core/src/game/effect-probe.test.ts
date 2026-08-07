@@ -62,10 +62,16 @@ describe("EF_PROBE (effect-handler-general.c L2451)", () => {
 
     expect(used).toBe(true);
     expect(msgs[0]).toBe("Probing...");
-    expect(msgs).toContain(
-      `${seen.race.name.charAt(0).toUpperCase()}${seen.race.name.slice(1)}` +
-        " has 33 hit points.",
-    );
+    /* monster_desc(MDESC_IND_HID | MDESC_CAPITAL | MDESC_COMMA) at
+     * effect-handler-general.c L2466, NOT the bare race name capitalised.
+     *
+     * The expectation is written out from upstream's rule rather than read back
+     * from monsterDesc, so it is a claim about the C and not a mirror of the
+     * port: a visible non-unique monster takes the definite article, and
+     * CAPITAL raises the "T". "The " is also the separating property - the old
+     * hand-rolled `race.name` stand-in could produce "Kobold" but never "The
+     * kobold", so this assertion is what fails if anyone puts it back. */
+    expect(msgs).toContain(`The ${seen.race.name} has 33 hit points.`);
     expect(msgs[msgs.length - 1]).toBe("That's all.");
     expect(getLore(state.lore, seen.race).allKnown).toBe(true);
   });

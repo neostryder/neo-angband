@@ -70,8 +70,17 @@ deferred:
     (obj/ignore.ts:380) has driven pickup, running and projection through
     state.isIgnored all along. Only knownDescOf's two reads were missing, and
     the notes describing the absence are what kept anyone from checking.
-  - chest trap name, the everseen mutations, and ODESC_CAPITAL (a caller
-    concern in 4.2.6) are omitted.
+  - chest trap name and the everseen mutations are PORTED, and ODESC_CAPITAL
+    is dead in 4.2.6. This row said all three were "omitted"; none of that
+    held when it was checked (2026-08-06). obj_desc_chest is obj/desc.ts:410,
+    reading the real object for the trap name and gating on the shadow's pval
+    exactly as upstream. The L633-637 everseen marks are desc.ts:643, wired to
+    a LIVE store - session/game.ts:609 creates the EverseenKnowledge and
+    game/describe.ts:44-47 hands markKindSeen / markEgoSeen to every describe.
+    ODESC_CAPITAL is the odd one: seven upstream sites SET it (ui-store.c:764,
+    ui-death.c, ui-equip-cmp.c x2, ui-knowledge.c x2, ui-object.c) and
+    object_desc never tests it, so the flag capitalises nothing in 4.2.6. The
+    port defines it (desc.ts:82) and applies it nowhere, which is parity.
   - The game-layer name sites are migrated onto describeObject: obj-list.ts
     objectListEntryName (ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM, the summed
     count driving the article / "~" plural), the effect-handler messages

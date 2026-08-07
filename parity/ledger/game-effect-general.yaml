@@ -73,20 +73,32 @@ notes: >-
   bundles). Handlers no-op without a game env (worldless rule) and glyph /
   web creation no-ops without the trap system.
 deferred:
-  - The equipment letter (gear_to_label) and ODESC_BASE description in the
-    disenchant messages ride the display layer (#25); the kind's base name
-    is used.
+  - The disenchant messages are WHOLE (2026-08-06). ODESC_BASE was already
+    describeObject(state, obj, ODESC.BASE); the equipment letter was the
+    missing half and is now printed by both messages, resist and hit.
+    gear_to_label's equipment branch (obj-gear.c:452) is one index into
+    GEAR_LABELS by body slot, and disenchantEquipment already holds that
+    slot - "rides the display layer (#25)" described a lookup that lives in
+    game/gear.ts and that known.ts:775 was already doing.
   - obj->known->to_h/to_d/to_a display sync - knowledge is rune-based
     here (obj/knowledge.ts).
-  - Monster-AI decoy targeting (monster_is_decoyed and the decoy's death)
-    rides lore/AI (#24); the decoy grid is tracked and the glyph trap is
-    real.
-  - DRAIN_MANA's monster-vs-monster branch (MON_TMD_DISEN on the target
-    monster) rides monster-spell targeting (#19); update_smart_learn
-    (PF_NO_MANA) rides lore (#24). MDESC monster names ride the display
-    layer (#25); the race name stands in.
-  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30).
-    RECALL is no longer on this list: birth_no_recall (with its
+  - Monster-AI decoy targeting is PORTED. monsterIsDecoyed lives in
+    game/monster-turn.ts (it needs the live cave for cave_find_decoy + los)
+    and game/mon-ranged.ts:44 imports it for monster_get_target_dist_grid;
+    the decoy itself is EF_GLYPH here and its death is destroyDecoy.
+    mon/predicate.ts:17-19 has said so since that work landed.
+  - DRAIN_MANA's monster-vs-monster branch is PORTED (2026-08-06), and it
+    was a live defect rather than a missing subsystem: a monster draining
+    another monster fell through to the decoy and then to the PLAYER's mana.
+    monsterTargetMonster (game/effect-mon-origin.ts) was already imported
+    into this file and used by MON_TIMED_INC below, so "rides monster-spell
+    targeting (#19)" had been spent for some time. The branch is first of
+    the three, as upstream orders them. MDESC monster names are done too -
+    "appears healthier" is monsterDesc(mon, MDESC_STANDARD). Still deferred
+    here: update_smart_learn(PF_NO_MANA), which rides lore (#24).
+  - DRAIN_STAT's show_damage " (%d)" suffix is PORTED - the options system
+    landed and ctx.env.showDamage (game/effect-env.ts:238) feeds it.
+    RECALL is no longer on this list either: birth_no_recall (with its
     !total_winner exemption), birth_levels_persist, total_winner and the
     arena refusal are all live, and player_set_recall_depth (player-util.c
     L79) backs the countdown in game/loop.ts instead of the old

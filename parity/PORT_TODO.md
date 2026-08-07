@@ -129,7 +129,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 186 of 335 done, 42 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 197 of 335 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -143,16 +143,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon`,
   `game-mon-list`, and - 2026-08-06, on the back of Tier 4 - `game-arena`,
   `game-trap`, `gen-cave`, `gen-framework`, `game-effect-monster`,
-  `game-effect-teleport`, `mon-take-hit` and `session-save`.
+  `game-effect-teleport`, `mon-take-hit`, `session-save` and
+  `game-effect-general`.
 
-  The tally, **read from the TSV rather than carried forward** — the numbers this
-  paragraph used to quote had drifted, because they were incremented by hand while
-  rows were being re-verdicted elsewhere: **64 `ported`, 25 `partial`, 21
-  `stale-doc`, 16 `divergence`, 7 `not-a-deferral`, 6 `n-a`, 4 `note-is-fix`
-  against 29 `real`**. So **five rows in six are not owed as written**, and the
-  owed ones included the two live defects at **1.2** and **2.17**, both since
-  FIXED — 2.17's first verdict was wrong in a way worth reading, because the
-  instrument was a grep. **149 remain.**
+  The tally, **read from the TSV rather than carried forward**: **77 `ported`,
+  35 `stale-doc`, 21 `partial`, 18 `divergence`, 13 `note-is-fix`, 9 `n-a`,
+  7 `not-a-deferral` against 17 `real`**. So **five rows in six are not owed as
+  written**, and the owed ones included the two live defects at **1.2** and
+  **2.17**, both since FIXED — 2.17's first verdict was wrong in a way worth
+  reading, because the instrument was a grep. **138 remain.**
+
+  The complete-file count in the heading is derived the same way, and it has now
+  drifted **twice**: it read 42 while the TSV said 34, having been incremented by
+  hand across batches. Both numbers in that heading are computed from
+  `ledger-deferred-items.tsv` (rows with no verdict; files with no such rows) and
+  neither should ever be edited by hand again.
 
   **The 2026-08-06 batch: four files, 17 rows, and one live generation bug.**
   The four were chosen because Tier 4 had just been read end to end, so the

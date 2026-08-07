@@ -152,6 +152,46 @@ describe("EF_COMMAND (effect-handler-general.c L3479)", () => {
     expect(resisted).toBe(true);
   });
 
+  it("names an UNSEEN resister without naming its race", () => {
+    /*
+     * effect-handler-general.c L3498 is monster_desc(MDESC_STANDARD). The port
+     * hand-capitalised `mon.race.name`, which is right for a monster in plain
+     * sight and wrong for one the player cannot see: it told the player exactly
+     * what had just resisted them in the dark.
+     *
+     * The assertion is "the race name does not appear" rather than a literal
+     * expected word. MDESC_STANDARD carries both PRO_HID and IND_HID, and which
+     * of "It" / "Something" / "Someone" comes out depends on the race's own
+     * flags - declaring one of them here would be asserting a guess about
+     * monsterDesc instead of the property that separates the two
+     * implementations.
+     */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.actor.player.lev = 1;
+    const mon = addMon(state, makeRace({ level: 50 }), loc(14, 10), { hp: 100 });
+    /* Deliberately NOT visible - that is the whole point. The target is set
+     * directly rather than through targetSetMonster, which (like upstream's
+     * target_able) refuses an unseen monster: this is the state a monster
+     * reaches by going unseen BETWEEN being targeted and the effect resolving,
+     * and the handler re-reads state.target.midx at resolution time. */
+    mon.mflag.on(MFLAG.VISIBLE);
+    targetSetMonster(state, mon);
+    mon.mflag.off(MFLAG.VISIBLE);
+
+    let resist: string | undefined;
+    for (let seed = 1; seed <= 5 && !resist; seed++) {
+      state.rng = new Rng(seed);
+      const msgs: string[] = [];
+      registry().effectSimple(EF.COMMAND, env(state, msgs), {
+        origin: sourcePlayer(),
+        diceString: "10",
+      });
+      resist = msgs.find((m) => m.endsWith("resists your command!"));
+    }
+    expect(resist).toBeDefined();
+    expect(resist).not.toContain(mon.race.name);
+  });
+
   it("refuses without a monster target", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const msgs: string[] = [];

@@ -18,6 +18,7 @@ import { objectNew } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import { makeRuneEnv } from "../obj/knowledge.js";
 import { addMon, makeRace, makeState, monReg } from "./harness.js";
+import { GEAR_LABELS } from "./gear.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
@@ -228,6 +229,53 @@ describe("EF_DISENCHANT (effect-handler-general.c L2003)", () => {
     expect(mail.toA).toBeLessThan(10);
   });
 
+  it("names the equipment SLOT LETTER in both messages", () => {
+    /*
+     * effect-handler-general.c L2044/L2074 print "Your %s (%c) ...", the %c
+     * being gear_to_label. The port printed the base name alone, so a player
+     * wearing two Rings of the Mouse - or any two items sharing a base name -
+     * was told one of them was disenchanted with no way to tell which. The row
+     * deferring it called the letter part of the display layer (#25); the label
+     * table is game/gear.ts and its equipment branch is a single index by body
+     * slot, which is the number this function already holds.
+     *
+     * Both branches are asserted, because they are two separate format strings
+     * and fixing one is exactly the kind of half-fix that reads as done.
+     */
+    const state = makeState({ seed: 35 });
+    const eq = equipArray(state);
+    const weaponSlot = slotOf(state, "WEAPON");
+    const sword = makeItem(TV.SWORD, "Test Sword");
+    sword.toH = 9;
+    sword.toD = 9;
+    eq[weaponSlot] = sword;
+
+    const artSlot = slotOf(state, "BODY_ARMOR");
+    const mail = makeItem(TV.HARD_ARMOR, "Test Mail");
+    mail.toA = 10;
+    mail.artifact = { aidx: 1 } as GameObject["artifact"];
+    eq[artSlot] = mail;
+
+    const msgs: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      disenchantEquipment(state, { msg: (t) => msgs.push(t) });
+    }
+
+    /* The letters are read out of the same table upstream indexes, at the slot
+     * each item was actually placed in - not typed in as "a" and "b", which
+     * would pass on any body layout and prove nothing about the mapping. */
+    const swordLabel = GEAR_LABELS[weaponSlot];
+    const mailLabel = GEAR_LABELS[artSlot];
+    expect(swordLabel).toBeTruthy();
+    expect(mailLabel).toBeTruthy();
+    expect(swordLabel).not.toBe(mailLabel);
+
+    expect(msgs).toContain(`Your Test Sword (${swordLabel}) was disenchanted!`);
+    expect(msgs).toContain(
+      `Your Test Mail (${mailLabel}) resists disenchantment!`,
+    );
+  });
+
   it("never touches rings, amulets or lights", () => {
     const state = makeState({ seed: 33 });
     const eq = equipArray(state);
@@ -372,7 +420,11 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     });
     expect(p.csp).toBe(6);
     expect(mon.hp).toBe(20 + 6 * 4);
-    expect(msgs.some((m) => m.includes("appears healthier."))).toBe(true);
+    /* monster_desc(MDESC_STANDARD), not the bare race name. The definite
+     * article is the separating property: this test used to accept any message
+     * containing "appears healthier." and passed just as happily on
+     * "kobold appears healthier.". */
+    expect(msgs).toContain(`The ${race.name} appears healthier.`);
 
     /* No mana: the draining fails. */
     p.csp = 0;
@@ -413,6 +465,48 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
      * the shared function, announced. The two now agree.
      */
     expect(msgs).toContain("The decoy is destroyed!");
+  });
+
+  it("DRAIN_MANA aimed at another MONSTER disenchants it and stops there", () => {
+    /*
+     * effect-handler-general.c L580: the t_mon branch, and it is the FIRST of
+     * the three, ahead of the decoy check and the player's mana. The port had
+     * no such branch at all, so a monster draining another monster fell through
+     * and drained the PLAYER - across the room, with a decoy standing between
+     * them. The row deferring it said this "rides monster-spell targeting
+     * (#19)"; monsterTargetMonster was by then imported into that same file and
+     * used three hundred lines below.
+     *
+     * A decoy is placed on purpose: it is the branch that used to swallow this
+     * one, so leaving it standing is what proves the ORDER and not just the
+     * presence of the new arm.
+     */
+    const state = makeState({ playerGrid: loc(5, 5), seed: 57 });
+    const p = state.actor.player;
+    p.msp = 10;
+    p.csp = 10;
+    const r = registry();
+    r.effectSimple(EF.GLYPH, env(state), {
+      origin: sourcePlayer(),
+      subtype: GLYPH_DECOY,
+    });
+    expect(state.decoy).toBeTruthy();
+
+    const race = monReg.races.find((rr) => rr.rarity > 0)!;
+    const caster = addMon(state, race, loc(10, 10), { hp: 50 });
+    const victim = addMon(state, race, loc(12, 10), { hp: 50 });
+    caster.target.midx = victim.midx;
+
+    const msgs: string[] = [];
+    r.effectSimple(EF.DRAIN_MANA, env(state, {}, msgs), {
+      origin: sourceMonster(caster.midx),
+      diceString: "4",
+    });
+
+    expect(victim.mTimed[MON_TMD.DISEN]).toBeGreaterThan(0);
+    expect(p.csp).toBe(10); /* the player's mana is not touched */
+    expect(state.decoy).toBeTruthy(); /* nor is the decoy */
+    expect(msgs).toEqual([]);
   });
 
   it("EF_TIMED_INC from a monster destroys the player's decoy (5.2)", () => {
