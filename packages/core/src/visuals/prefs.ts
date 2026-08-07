@@ -28,7 +28,11 @@ import { projNameToIdx } from "../effects/effect.js";
 import { PARSE_ERROR } from "../generated/index.js";
 import { getParserErrorLimit, parserErrorText } from "../parser.js";
 import type { ParserState } from "../parser.js";
-import { tvalFindIdx, tvalFindName } from "../obj/bind.js";
+import {
+  objectShortName,
+  tvalFindIdx,
+  tvalFindName,
+} from "../obj/bind.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { messageLookupByName } from "../sound/engine.js";
 import { lookupTrap } from "../world/trap.js";
@@ -777,17 +781,6 @@ export function dumpObjects(deps: DumpDeps): string {
     }:${charCode(g?.char ?? "")}\n`;
   }
   return out;
-}
-
-/**
- * object_short_name (obj-util.c L233-249): strip a leading `& ` article and
- * every `~` pluralisation marker - the form a pref file's `object:` and
- * `inscribe:` lines name a kind by, and the form parse_prefs_object's
- * lookup_sval matches against.
- */
-export function objectShortName(name: string): string {
-  const body = name.startsWith("& ") ? name.slice(2) : name;
-  return body.replace(/~/g, "");
 }
 
 /** dump_autoinscriptions (ui-prefs.c L218-236): only AWARE notes are dumped. */

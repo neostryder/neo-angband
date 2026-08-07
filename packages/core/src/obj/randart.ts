@@ -67,7 +67,7 @@
 
 import { FileMode, FileType, HostDir, host } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
-import { setRandartLog } from "./randart-log.js";
+import { randartLog, randartLogf, setRandartLog } from "./randart-log.js";
 import { KF, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
 import type { ObjRegistry } from "./bind.js";
@@ -329,6 +329,11 @@ export function designArtifact(
   /* Apply the new name. */
   art.name = newName;
 
+  randartLog(">>>>>>>>>>>>>>>>>>>>>>>>>> CREATING NEW ARTIFACT\n");
+  randartLogf(
+    () => `Artifact ${String(aidx)}: power = ${String(power)}\n`,
+  );
+
   /* Flip the sign on power if it's negative (unlikely) and damage. */
   let hurtMe = false;
   if (power < 0) {
@@ -352,14 +357,23 @@ export function designArtifact(
     kind = reg.lookupKind(art.tval, art.sval);
 
     const basePower = artifactPower(reg, art, "for base item power");
+    randartLogf(() => `Base item power ${String(basePower)}\n`);
 
     /* New base item power too close to target artifact power. */
     if (basePower > Math.trunc((power * 6) / 10) + 1 && power - basePower < 20) {
+      randartLog("Power too high!\n");
       continue;
     }
 
     /* Acceptable. */
     break;
+  }
+
+  /* Failed to get a good base item. */
+  if (tries >= MAX_TRIES) {
+    randartLog(
+      "Warning! Couldn't get appropriate power level on base item.\n",
+    );
   }
 
   /* Generate the cumulative frequency table for this base item type. */
@@ -374,6 +388,7 @@ export function designArtifact(
   if (ap > Math.trunc((power * 23) / 20) + 1) {
     /* Too powerful -- put it back. */
     copyArtifact(aOld, art);
+    randartLog("--- Supercharge is too powerful! Rolling back.\n");
   }
 
   /* Give this artifact a chance to be cursed - note it retains its power. */
@@ -409,11 +424,19 @@ export function designArtifact(
     if (ap > Math.trunc((power * 23) / 20) + 1) {
       /* Too powerful -- put it back. */
       copyArtifact(aOld, art);
+      randartLog("--- Too powerful!  Rolling back.\n");
       continue;
     } else if (ap >= Math.trunc((power * 19) / 20)) {
       /* Just right. */
       break;
     }
+  }
+
+  /* Couldn't generate an artifact with the number of permitted iterations. */
+  if (tries >= MAX_TRIES) {
+    randartLog(
+      "Warning!  Couldn't get appropriate power level on artifact.\n",
+    );
   }
 
   /* Set rarity based on power. kind is the final base item kind. */
@@ -447,6 +470,21 @@ export function designArtifact(
   if (!art.activation && !baseKind.activation && !baseKind.effect) {
     art.level = art.allocMin;
   }
+
+  randartLogf(
+    () =>
+      `New depths are min ${String(art.allocMin)}, max ${String(art.allocMax)}\n`,
+  );
+  randartLogf(
+    () => `Power-based alloc_prob is ${String(art.allocProb)}\n`,
+  );
+
+  /* Success. */
+  randartLog("<<<<<<<<<<<<<<<<<<<<<<<<<< ARTIFACT COMPLETED\n");
+  randartLogf(
+    () =>
+      `Number of tries for artifact ${String(aidx)} was: ${String(tries)}\n`,
+  );
 
   /* Describe it. */
   describeArtifact(art, ap);

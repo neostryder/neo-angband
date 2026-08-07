@@ -96,17 +96,29 @@ function covered(s: Site): boolean {
  * The obj-randart.c sites still to write, counted 2026-08-06. Lower this as the
  * row is finished; it must never rise.
  *
- * What is left, by function (from the same extraction this test performs).
- * The count_* family, parse_frequencies, collect_artifact_data,
- * artifact_power's header pair and the whole add_* family landed 2026-08-07,
- * taking this from 122 to 47.
- * artifact_power's object_desc line is still counted here: it needs a KnownDesc
- * this pure module does not hold. What is left:
+ * Down to ONE: do_randart's randart.txt header, which upstream writes only
+ * under `create_file` by reusing the log_file handle for a second file.
+ *
+ * ONE IS NOT THE WHOLE REMAINDER. This number counts only sites the span
+ * filter can SEE, and a format string with no literal span of four characters
+ * is invisible to it - "%s\n" reduces to nothing at all. The spanless sites
+ * are enumerated and given a status by the test below, so the gap has a name
+ * instead of hiding inside a reassuring 1.
+ *
+ * Everything else - the count_* family, parse_frequencies,
+ * collect_artifact_data, artifact_power's header pair, the whole add_* family,
  * store_base_power, get_base_item, artifact_prep, build_freq_table,
- * try_supercharge, choose_ability, make_bad, design_artifact and do_randart's
- * own randart.txt header.
+ * try_supercharge, choose_ability, make_bad and design_artifact - landed
+ * 2026-08-07, taking this from 122 to 1.
  */
-const EXPECTED_MISSING_RANDART = 47;
+const EXPECTED_MISSING_RANDART = 1;
+
+/**
+ * Spanless sites the port does NOT emit. Only one: artifact_power's
+ * object_desc line. A ratchet rather than an assertion, because no expectation
+ * over the port's text can distinguish "not written" from "written differently".
+ */
+const UNWRITTEN_SPANLESS = 1;
 
 describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
   it("finds the C's log sites at all", () => {
@@ -136,6 +148,40 @@ describe("randart.log coverage of obj-randart.c (PORT_TODO 5.5, in progress)", (
         : "randart.log gained coverage: lower EXPECTED_MISSING_RANDART to " +
           String(missing.length),
     ).toBe(EXPECTED_MISSING_RANDART);
+  });
+
+  /**
+   * A format string of pure conversions ("%s\n") or three spaces has no span
+   * this census can match on, so `sites()` drops it and the ratchet never sees
+   * it. That is a blind spot, and a blind spot with no inventory is a claim
+   * that the number above is the whole truth. So: enumerate them, and state
+   * what the port does with each.
+   */
+  it("names the sites the span filter cannot see, and their status", () => {
+    const spanless = (file: string, pattern: RegExp): string[] =>
+      formatStrings(read(REF, file), pattern).filter(
+        (fmt) => literalSpans(fmt).length === 0,
+      );
+
+    expect(
+      spanless("obj-randart.c", /file_putf\(log_file,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g),
+    ).toEqual(["%s\\n", "   "]);
+    expect(
+      spanless("obj-power.c", /log_obj\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g),
+    ).toEqual(["%sx%d ", "%sx%d "]);
+
+    /* Three of the four ARE written; assert the distinctive shape of each so
+     * this cannot rot into a comment. */
+    expect(PORT).toContain('randartLog("   ")'); // make_bad's indent
+    expect(PORT).toContain("}x${b.multiplier} `"); // obj-power.c brands
+    expect(PORT).toContain("}x${sl.multiplier} `"); // obj-power.c slays
+
+    /* The fourth is artifact_power's object_desc of the fake artifact
+     * (obj-randart.c:205-206), and it is NOT written: object_desc needs a
+     * KnownDesc this pure module does not hold. There is no assertion that
+     * can prove an absence, so it is carried as a number instead - lower this
+     * to 0 when the line lands, and PORT_TODO 5.5 stays open until it does. */
+    expect(UNWRITTEN_SPANLESS).toBe(1);
   });
 
   it("the sites already written stay written", () => {

@@ -52,7 +52,8 @@
 import { ELEM, KF, OBJ_MOD, OF, STAT_ENTRIES, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
-import { randartLogf } from "./randart-log.js";
+import { randartLog, randartLogf } from "./randart-log.js";
+import { objectShortName } from "./bind.js";
 import type { ObjRegistry } from "./bind.js";
 import type { CurseTimedFoil } from "./object.js";
 import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
@@ -329,6 +330,7 @@ export function getBaseItem(
     }
   }
 
+  if (kind) randartLogf(() => `Creating ${objectShortName(kind.name)}\n`);
   return kind;
 }
 
@@ -397,6 +399,10 @@ export function artifactPrep(
     case TV.POLEARM:
       art.toH += Math.trunc(data.hitStartval / 2) + rng.randint0(data.hitStartval);
       art.toD += Math.trunc(data.damStartval / 2) + rng.randint0(data.damStartval);
+      randartLogf(
+        () =>
+          `Assigned basic stats, to_hit: ${String(art.toH)}, to_dam: ${String(art.toD)}\n`,
+      );
       break;
     case TV.BOOTS:
     case TV.GLOVES:
@@ -408,6 +414,9 @@ export function artifactPrep(
     case TV.HARD_ARMOR:
     case TV.DRAG_ARMOR:
       art.toA += Math.trunc(data.acStartval / 2) + rng.randint0(data.acStartval);
+      randartLogf(
+        () => `Assigned basic stats, AC bonus: ${String(art.toA)}\n`,
+      );
       break;
     case TV.LIGHT:
       art.flags.off(OF.TAKES_FUEL);
@@ -513,6 +522,14 @@ export function buildFreqTable(
     }
   }
 
+  /* Print out the frequency table, for verification. */
+  for (let i = 0; i < ART_IDX_TOTAL; i++) {
+    randartLogf(
+      () =>
+        `Cumulative frequency of ability ${String(i)} is: ${String(freq[i])}\n`,
+    );
+  }
+
   return freq;
 }
 
@@ -544,8 +561,15 @@ export function trySupercharge(
   ) {
     if (rng.randint0(aMax) < data.artProbs[ART_IDX.MELEE_DICE_SUPER]!) {
       art.dd += 3 + rng.randint0(4);
+      randartLogf(
+        () => `Supercharging damage dice!  (Now ${String(art.dd)} dice)\n`,
+      );
     } else if (rng.randint0(aMax) < data.artProbs[ART_IDX.MELEE_BLOWS_SUPER]!) {
       art.modifiers[OBJ_MOD.BLOWS] = INHIBIT_BLOWS - 1;
+      randartLogf(
+        () =>
+          `Supercharging melee blows! (${plusD(art.modifiers[OBJ_MOD.BLOWS]!)} blows)\n`,
+      );
     }
   }
 
@@ -553,8 +577,16 @@ export function trySupercharge(
   if (art.tval === TV.BOW) {
     if (rng.randint0(aMax) < data.artProbs[ART_IDX.BOW_SHOTS_SUPER]!) {
       art.modifiers[OBJ_MOD.SHOTS] = INHIBIT_SHOTS - 1;
+      randartLogf(
+        () =>
+          `Supercharging shots! (${plusD(art.modifiers[OBJ_MOD.SHOTS]!)} extra shots)\n`,
+      );
     } else if (rng.randint0(aMax) < data.artProbs[ART_IDX.BOW_MIGHT_SUPER]!) {
       art.modifiers[OBJ_MOD.MIGHT] = INHIBIT_MIGHT - 1;
+      randartLogf(
+        () =>
+          `Supercharging might! (${plusD(art.modifiers[OBJ_MOD.MIGHT]!)} extra might)\n`,
+      );
     }
   }
 
@@ -569,6 +601,10 @@ export function trySupercharge(
     art.modifiers[OBJ_MOD.SPEED] = 5 + rng.randint0(6);
     if (rng.oneIn(2)) art.modifiers[OBJ_MOD.SPEED]! += rng.randint1(3);
     if (rng.oneIn(6)) art.modifiers[OBJ_MOD.SPEED]! += 1 + rng.randint1(6);
+    randartLogf(
+      () =>
+        `Supercharging speed for this item!  (New speed bonus is ${String(art.modifiers[OBJ_MOD.SPEED])})\n`,
+    );
   }
 
   /* Big AC bonus. */
@@ -582,6 +618,9 @@ export function trySupercharge(
       art.toA += 19 + rng.randint1(11);
       if (rng.oneIn(2)) art.toA += rng.randint1(10);
       if (rng.oneIn(6)) art.toA += rng.randint1(20);
+      randartLogf(
+        () => `Supercharging AC! New AC bonus is ${String(art.toA)}\n`,
+      );
     }
   } else if (
     art.tval !== TV.BOW &&
@@ -590,6 +629,9 @@ export function trySupercharge(
     art.toA += 19 + rng.randint1(11);
     if (rng.oneIn(2)) art.toA += rng.randint1(10);
     if (rng.oneIn(6)) art.toA += rng.randint1(20);
+    randartLogf(
+      () => `Supercharging AC! New AC bonus is ${String(art.toA)}\n`,
+    );
   }
 
   /* Aggravation. C short-circuits the && so target_power is only tested when
@@ -606,6 +648,7 @@ export function trySupercharge(
       targetPower > AGGR_POWER
     ) {
       art.flags.on(OF.AGGRAVATE);
+      randartLog("Adding aggravation\n");
     }
   } else {
     if (
@@ -613,6 +656,7 @@ export function trySupercharge(
       targetPower > AGGR_POWER
     ) {
       art.flags.on(OF.AGGRAVATE);
+      randartLog("Adding aggravation\n");
     }
   }
 }
@@ -957,6 +1001,10 @@ export function addBrand(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   for (let count = 0; count < MAX_TRIES; count++) {
     const pick = rng.randint1(reg.brands.length - 1);
     if (!appendBrand(art, pick, reg)) continue;
+    randartLogf(() => {
+      const b = reg.brands[pick]!;
+      return `Adding brand: ${b.name}x${String(b.multiplier)}\n`;
+    });
     brandIdx = pick;
     break;
   }
@@ -989,6 +1037,10 @@ export function addSlay(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   for (let count = 0; count < MAX_TRIES; count++) {
     const pick = rng.randint1(reg.slays.length - 1);
     if (!appendSlay(art, pick, reg)) continue;
+    randartLogf(() => {
+      const sl = reg.slays[pick]!;
+      return `Adding slay: ${sl.name}x${String(sl.multiplier)}\n`;
+    });
     slayIdx = pick;
     break;
   }
@@ -1179,6 +1231,7 @@ export function addActivation(
       Math.trunc((100 * p) / maxEffect) <
         Math.trunc((200 * targetPower) / maxPower)
     ) {
+      randartLogf(() => `Adding activation effect ${String(x)}\n`);
       art.activation = act!;
       art.level = act!.level;
       art.time.base = p * 8;
@@ -1202,6 +1255,8 @@ export function chooseAbility(freqTable: readonly number[], rng: Rng): number {
   const r = rng.randint1(freqTable[ART_IDX_TOTAL - 1]!);
   let ability = 0;
   while (r > freqTable[ability]!) ability++;
+
+  randartLogf(() => `Ability chosen was number: ${String(ability)}\n`);
   return ability;
 }
 
@@ -1825,24 +1880,57 @@ export function makeBad(
 ): void {
   let num = rng.randint1(2);
 
-  if (rng.oneIn(7)) art.flags.on(OF.AGGRAVATE);
-  if (rng.oneIn(4)) art.flags.on(OF.DRAIN_EXP);
-  if (rng.oneIn(7)) art.flags.on(OF.NO_TELEPORT);
+  randartLog("Make it bad:\n");
+  randartLog("   ");
 
+  if (rng.oneIn(7)) {
+    art.flags.on(OF.AGGRAVATE);
+    randartLog(" aggravate,");
+  }
+  if (rng.oneIn(4)) {
+    art.flags.on(OF.DRAIN_EXP);
+    randartLog(" drain xp,");
+  }
+  if (rng.oneIn(7)) {
+    art.flags.on(OF.NO_TELEPORT);
+    randartLog(" no tele,");
+  }
+
+  let count1 = 0;
+  let count2 = 0;
   for (let i = 0; i < OBJ_MOD_MAX; i++) {
     if (art.modifiers[i]! > 0) {
+      ++count1;
       if (rng.oneIn(2) && i !== OBJ_MOD.MIGHT) {
         art.modifiers[i] = -art.modifiers[i]!;
+        ++count2;
       }
     }
   }
+  randartLogf(
+    () => ` flip ${String(count2)} of ${String(count1)} modifiers,`,
+  );
 
-  if (art.toA > 0 && rng.oneIn(2)) art.toA = -art.toA;
-  if (art.toH > 0 && rng.oneIn(2)) art.toH = -art.toH;
-  if (art.toD > 0 && rng.oneIn(4)) art.toD = -art.toD;
+  if (art.toA > 0 && rng.oneIn(2)) {
+    art.toA = -art.toA;
+    randartLog(" flip ac,");
+  }
+  if (art.toH > 0 && rng.oneIn(2)) {
+    art.toH = -art.toH;
+    randartLog(" flip to-hit,");
+  }
+  if (art.toD > 0 && rng.oneIn(4)) {
+    art.toD = -art.toD;
+    randartLog(" flip to-dam,");
+  }
 
+  count1 = num;
+  count2 = 0;
   while (num) {
-    addCurse(reg, art, level, rng, timedFoil);
+    if (addCurse(reg, art, level, rng, timedFoil)) ++count2;
     num--;
   }
+  randartLogf(
+    () => ` ${String(count2)} of ${String(count1)} curses applied\n`,
+  );
 }
