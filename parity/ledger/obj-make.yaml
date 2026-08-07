@@ -41,11 +41,20 @@ notes: >-
   copy_artifact_data draw. Wired live via the makeDeps modRules getter
   (session/game.ts ~L801).
 deferred:
-  - make_object book rejection (obj_kind_can_browse needs the player class
-    spell realm); the reroll loop runs but the guard is inert for now.
-  - make_gold birth_no_selling value inflation (needs player options).
-  - *value* computation and the per-level out-of-depth boost details tied
-    to knowledge/pricing.
+  - CLOSED (2026-08-07). The guard is not inert: deps.canBrowseBook
+    (obj/make.ts:1133) carries obj_kind_can_browse and is supplied. The module's
+    own header records that this row outlived the fix - "'class)' stood here long
+    after deps.canBrowseBook was added and supplied" (:1241).
+  - CLOSED (2026-08-07). deps.noSelling (obj/make.ts:1139) drives the x5
+    inflation at :1336, and it reads the live option store at every supplier:
+    session/game.ts:1137, :2959 and :3339 all pass
+    state.options.get("birth_no_selling"). The player options this waited on
+    landed as PORT_TODO 5.3.
+  - CROSS-REFERENCE, not a second item (2026-08-07). The owed part is
+    object_value pricing the real object rather than obj->known, which is
+    tracked as `real` at obj-value.yaml:37 - the same known-twin work as the
+    auto-ignore and Remove Curse fixes. Recorded here without a second citation
+    so one piece of work is not counted twice.
 notes-chests: >-
   pick_chest_traps (gap #49) is LIVE: apply_magic's chest branch now calls
   obj/chest.ts's pickChestTraps, so generated chests carry a real lock/trap

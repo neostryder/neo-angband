@@ -66,23 +66,10 @@ seams_wired:
     feeds EnterScoreGating.cheated (score/score.ts stays pure; the web shell
     supplies the gate at the death path).
 deferred:
-  - src/ui-options.c (2092 lines): STALE as written, re-read 2026-08-06. It
-    said "no in-engine menu UI is ported" and named three things: the keypress
-    screens, the birth-option editor, and the customized_*_options.txt
-    load/save. All three exist. web/src/options.ts is do_cmd_options
-    (option_actions[]' letters, MN_CASELESS_TAGS) plus option_toggle_menu
-    (option_toggle_display's 45-column layout, option_toggle_handle's y/n/t and
-    s/r/x, the `selections` jump tags, all three of m->prompt, and MN_NO_TAGS
-    for the in-game birth page); runBirthOptionsEditor is
-    do_cmd_options_birth; do_cmd_delay / do_cmd_hp_warn /
-    do_cmd_lazymove_delay are the d/h/m rows; do_cmd_keymaps, do_cmd_colors
-    and do_cmd_visuals are e/c/v (keymap-edit.ts, colors.ts, prefs-ui.ts).
-    The customised-defaults files are the row below.
-    WHAT IS GENUINELY NOT PORTED, and why: (w) subwindow setup, because
-    ANGBAND_TERM_MAX is 8 and this port is one canvas; use_option_context_menu,
-    the MOUSE equivalent of s/r/x, which needs a right-click menu the shell has
-    no general machinery for and duplicates keys that all work; and
-    ui-entry.c's char-screen renderer editor behind (u).
+  - CLOSED (2026-08-07). The row rewrote itself on 2026-08-06 - "STALE as
+    written", all three named things exist - and then stayed open. web/src/
+    options.ts is do_cmd_options and option_toggle_menu, the birth-option editor
+    and the customized_*_options.txt load/save landed as PORT_TODO 5.3.
   - options_save_custom / options_restore_custom / options_restore_maintainer
     (option.c L213-L328): NO LONGER DEFERRED. Ported 2026-08-06 in
     player/options-file.ts (PORT_TODO 5.3), reader and writer, with parser.c's
@@ -95,15 +82,18 @@ deferred:
     session/game.ts startGame runs optionsInitDefaults(host()), and web
     birth.ts seeds its birth-choice map from customPageDefaults("BIRTH").
     The 's' and 'r' keys exist on the two pages upstream gives them to.
-  - The wizard/debug gate (game/wizard.ts WizardDeps.wizard) is NOT an OPT_
-    option (no list-options.h entry): it is the ALLOW_DEBUG + NOSCORE_WIZARD
-    flag, a player/debug concern with no option-table value to read, so it
-    stays a dep-injected boolean. The noscore side of enter_score (p->noscore)
-    likewise remains an injected gate, not an option.
-  - birth_no_selling (store/price.ts, store/transact.ts) and
-    birth_percent_damage (player/calcs.ts) keep their existing dep seams; they
-    were outside this task's seam list and are left overridable (they read the
-    same shipped defaults, so they can adopt state.options in a later pass).
+  - NOT A DEFERRAL (2026-08-07): the row is a finding, and a correct one. There
+    is no list-options.h entry for the wizard gate - it is ALLOW_DEBUG +
+    NOSCORE_WIZARD, a build/debug flag with no option-table value to read - so a
+    dep-injected boolean is the faithful shape, not a reduction. Same for
+    p->noscore behind enter_score.
+  - CLOSED (2026-08-07). "They can adopt state.options in a later pass" already
+    happened. birth_no_selling reads the option store at session/game.ts:1137,
+    :2959 and :3339; birth_percent_damage reads it at game/effect-melee.ts:126,
+    game/object-inspect.ts:136, game/player-turn.ts:338 and
+    game/ranged-cmd.ts:143. The dep seams remain - which is what keeps them
+    overridable for a mod - but they are fed by the option store now, not by a
+    shipped default.
   - EVERY option this row named now has a live reader, and the "..." hid none
     that do not. rogue_like_commands drives the keymap layer; solid_walls
     (web/src/main.ts:6503) and hybrid_walls (:6501) pick the wall glyph;
