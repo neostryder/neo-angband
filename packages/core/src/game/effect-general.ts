@@ -578,7 +578,15 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
   /* The player has no mana. */
   if (!p.csp) {
     say(ctx, "The draining fails.");
-    /* update_smart_learn(PF_NO_MANA) rides lore (#24). */
+    /* effect-handler-general.c:992 calls update_smart_learn(mon, player, 0,
+     * PF_NO_MANA, -1) here, and that call DOES NOTHING in 4.2.6: mon-util.c:794
+     * returns immediately when the flag is 0 and the element is out of range,
+     * which is precisely that argument list. It is the only one of the nine
+     * update_smart_learn call sites that passes a pflag at all, so the pflag arm
+     * (mon-util.c:822-829) is unreachable and known_pstate.pflags is never
+     * written in any game. Not ported, because porting it would reproduce a call
+     * that returns before it reaches its own body. This line used to say the call
+     * "rides lore (#24)", which named a blocker that was never the reason. */
     return true;
   }
 
