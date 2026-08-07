@@ -54,7 +54,11 @@ deferred:
     Stacking/similarity rules that read player knowledge run as if all is
     known; OSTACK_LIST unknown-item checks and equipped-item checks
     stubbed. To land with the knowledge domain.
-  - Curse timed-effect foil check (needs the player-timed fail field).
+  - CLOSED (2026-08-07). The player-timed fail field exists (TimedEffect.fail,
+    which playerIncCheck walks) and the foil check is built on it:
+    CurseTimedFoil / buildCurseTimedFoil, threaded through obj/make.ts as
+    deps.timedFoil (:1074, :1089, :1188) so applyCurse can reject a curse the
+    player's timed-effect resists would foil. Landed as PORT_TODO 5.7.
   - Inscription-driven ignore/pickup behavior (needs player + UI).
 verified-by:
   - unit tests against real pack terrain data (counts + spot checks:

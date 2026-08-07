@@ -47,9 +47,17 @@ notes: >-
   Commands address objects by gear handle (args.handle) or by position in
   the pile underfoot (args.floor).
 deferred:
-  - do_cmd_inscribe / uninscribe / autoinscribe (setters; land with UI).
-  - do_cmd_refill (fuel model), do_cmd_use dispatcher (UI menu),
-    do_cmd_cast / study (player spells, #22).
+  - CLOSED (2026-08-07). All three landed: game/obj-cmd.ts registers "inscribe"
+    at :1965 and "uninscribe" at :1976, and the autoinscription machinery is
+    runeAutoinscribe (:907) plus autoinscribeGround / autoinscribePack
+    (:968/:978). "Land with UI" was true when written and stopped being true
+    when the commands were registered.
+  - CLOSED (2026-08-07). do_cmd_refill is registered at game/obj-cmd.ts:1999
+    over refillLamp (:805) and bound to "F" in the shell
+    (web/src/main.ts:1836, :2509); do_cmd_cast and do_cmd_study landed with the
+    player-spell layer (#22, player-spell.yaml is fully adjudicated). The
+    do_cmd_use DISPATCHER is genuinely the shell's - it is a menu that picks
+    which command to send - and the commands it dispatches to all exist.
   - The glyph-of-warding push_object interaction (traps #21).
   - All three are DONE. Command repetition closed as PORT_TODO 2.12, on the
     live repeat path. The "!t" get_check loop is wieldTakeoffConfirm

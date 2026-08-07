@@ -77,15 +77,28 @@ deferred:
     the pick is already made. The stream is identical either way - nothing
     between the roll and the prompt draws - and showing an approximation would
     print a number the game then does not use.
-  - REMOVE_CURSE's known-twin curse tester (obj->known->curses) is read
-    from the live curses (knowledge is rune-based); show_damage (#30).
+  - REAL, and re-measured 2026-08-07. item_tester_uncursable reads
+    obj->known->curses (effect-handler-general.c:162-165), so upstream offers
+    Remove Curse only on curses the player has LEARNED. game/effect-item.ts:583
+    reads obj.curses - the live ones - so an item whose curse is still unknown
+    is accepted as a target, which both works when it should not and TELLS the
+    player the item is cursed. Same shape as the auto-ignore defect closed on
+    2026-08-07 (obj-ignore.yaml), and now fixable the same way: the per-object
+    known twin exists (objectKnownShadow), and shadow.curses is already gated on
+    p.objKnown.curses[i], so the twin reports exactly the learned curses.
+    uncurse_object itself operates on the real curses in both, correctly - only
+    the TESTER is wrong. show_damage remains an option-layer item (#30).
   - Both are wired. The total_weight upkeep is effect-item.ts:638
     (upkeep.totalWeight += newWeight - oldWeight), and history_lose_artifact is
     :629 - an artifact destroyed by acid or disenchantment fires
     state.onArtifactLost, which wireGame installs.
-  - EVENT_INPUT_FLUSH and the PN_COMBINE / PR_ redraws ride presentation.
-  - Monster casts never reach these handlers (mon-cast deps omit the item
-    env); upstream reaches them only through player commands too.
+  - RATIFIED DIVERGENCE (2026-08-07): EVENT_INPUT_FLUSH is a terminal input-queue
+    concern with no counterpart in an event-driven shell, and the PN_COMBINE /
+    PR_ redraws are the repaint bookkeeping recorded throughout this ledger.
+  - NOT A DEFERRAL (2026-08-07): the row's own second clause settles it -
+    "upstream reaches them only through player commands too". Omitting the item
+    env from the mon-cast deps reproduces upstream's reachability rather than
+    reducing it.
 verified-by:
   - game/effect-identify.test.ts (3 tests) - IDENTIFY learns one unknown
     rune of the chosen item, a cancelled pick leaves the effect unused,
