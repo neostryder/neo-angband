@@ -41,6 +41,7 @@ import type {
   PlayerIncCheckHooks,
   PlayerIncCheckQueries,
   PlayerTimedHooks,
+  TimedNotifyQueries,
 } from "../player/timed.js";
 import {
   playerApplyDamageReduction,
@@ -78,6 +79,12 @@ export interface EffectEnvDeps {
    * threaded for monster-source casts (mon-cast.ts) so update_smart_learn runs
    * on the no-save branch. Absent for player-side effects. */
   incHooks?: PlayerIncCheckHooks;
+  /**
+   * player_set_timed's notify suppression (player-timed.c:828-839): the obj_k
+   * reads that silence a message duplicating known player state. Absent,
+   * nothing is suppressed - which is what production did until 2026-08-07.
+   */
+  notifyQueries?: TimedNotifyQueries;
   /** Extra player-timed hooks (onNotify / onTransition). */
   timedHooks?: PlayerTimedHooks;
   /** take_hit consequences (onDeath, combatRegen, ...). */
@@ -129,6 +136,7 @@ export function buildTimedHost(
   };
 
   const hooks: PlayerTimedHooks = {
+    ...(deps.notifyQueries ? { notifyQueries: deps.notifyQueries } : {}),
     ...(deps.onMessage
       ? { onMessage: (t: string, msgt: string) => deps.onMessage!(t, msgt) }
       : {}),

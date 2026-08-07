@@ -140,8 +140,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 333 of 339 done, 70 of the
-  73 ledger files complete.**
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 335 of 339 done, 72 of the
+  73 ledger files complete - and the last file is entirely blocked on 5.5.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
   from the key and mostly does not repeat the word.
@@ -169,16 +169,14 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  **Three files and six rows are all that is left.** `obj-randart` 4 - two of
-  them **5.5** in flight - plus one row each in `obj-model` and `player-timed`,
-  both deliberately left open rather than guessed: whether `object_similar`
-  reads the known twin for its OSTACK_LIST checks, and whether the
-  `temp_resist` / `oflag_syn` notify suppression is implemented. Each needs a
-  read I have not done.
+  **One file and four rows are all that is left**, and every one of them is
+  `obj-randart` waiting on **5.5**. Nothing else in the ledger is unadjudicated.
+  The two rows held back last pass have been read rather than guessed, and both
+  are below.
 
   The tally, **read from the TSV rather than carried forward**: **161 `ported`,
-  74 `stale-doc`, 35 `divergence`, 20 `note-is-fix`, 18 `not-a-deferral`,
-  12 `n-a`, 8 `partial` against **5** `real`**. **6 remain.**
+  75 `stale-doc`, 35 `divergence`, 21 `note-is-fix`, 18 `not-a-deferral`,
+  12 `n-a`, 8 `partial` against **5** `real`**. **4 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -194,6 +192,22 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A suppression that was written, correct, and supplied by nothing but its
+  own tests.** `player_set_timed`'s "don't mention effects which already match
+  the known player state" (`player-timed.c:828-839`) is implemented in
+  `player/timed.ts`, both branches, matching the C exactly. Production never
+  built the queries it needs, so it never fired - every such effect announced
+  itself. The row blamed missing `obj_k` knowledge, which has existed since 2.9;
+  **the source comment named a supplier, and named the wrong one**, crediting
+  `makeIncCheckQueries` - a different interface for a different function.
+
+  Killing the third mutant needed a real discriminator, and finding it needed
+  the data: **no shipped class carries an `OF_` flag at all**, so `race.flags`
+  and `player_flags` agree for every stock character except through
+  `PF_BRAVERY_30`, which promotes to `OF_PROT_FEAR` at level 30. That promotion
+  is the only case that can tell a race-only read apart. My first attempt
+  guarded the case with `if (classFlag !== undefined)` and skipped in silence.
 
   **The last fifteen unblocked rows: "next increment" fifteen times over.**
   Every one named a subsystem it was waiting for, and every subsystem had

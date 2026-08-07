@@ -50,10 +50,21 @@ notes: >-
   (test-pinned). Divergences by design: FlagSet over C bitfields; held
   objects as numeric handles.
 deferred:
-  - The knowledge/ID system (obj-knowledge.c): no obj->known twin yet.
-    Stacking/similarity rules that read player knowledge run as if all is
-    known; OSTACK_LIST unknown-item checks and equipped-item checks
-    stubbed. To land with the knowledge domain.
+  - CLOSED (2026-08-07). Three claims, all settled.
+    "No obj->known twin yet" stopped being true at PORT_TODO 2.9 -
+    objectKnownShadow synthesises one on demand, and it is what auto-ignore,
+    Remove Curse and object_desc now read.
+    The OSTACK_LIST checks are UNREACHABLE UPSTREAM, measured rather than
+    assumed: obj-pile.h:33 declares the flag, obj-pile.c tests it three times
+    (:409, :410, :485), and nothing in 4.2.6 ever passes it - every OSTACK_*
+    argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR. The note at
+    obj/object.ts:1003 enumerates every call site, and obj/ostack-list.test.ts
+    is the ratchet that turns them owed the moment a caller appears.
+    The equipped-item checks are RELOCATED, not stubbed: upstream iterates all
+    of p->gear and lets object_similar reject the equipped entries; the port
+    builds the view from the non-equipped handles instead (game/gear.ts
+    packTotalView), and the resulting SET is identical - which is all
+    object_pack_total reads.
   - CLOSED (2026-08-07). The player-timed fail field exists (TimedEffect.fail,
     which playerIncCheck walks) and the foil check is built on it:
     CurseTimedFoil / buildCurseTimedFoil, threaded through obj/make.ts as
