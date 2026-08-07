@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, OF, PROJ, RF, RSF, TMD } from "../generated/index.js";
+import { EF, ELEM, MFLAG, OF, PROJ, RF, RSF, TMD } from "../generated/index.js";
 import { FlagSet } from "../bitflag.js";
+import { objectNew } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
+import { TV } from "../generated/index.js";
 import { EffectRegistry } from "../effects/interpreter.js";
 import { registerCoreHandlers } from "../effects/handlers.js";
 import { loc } from "../loc.js";
@@ -13,6 +16,7 @@ import type { PlayerState } from "../player/calcs.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { addMon, makeState, makeRace, monReg, plReg } from "./harness.js";
+import { buildMonsterIncHooks } from "./mon-cast.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
@@ -310,5 +314,52 @@ describe("smart-learn write path (update_smart_learn, player-timed.c L947)", () 
       }),
     );
     expect(captured).toBe(mon.midx);
+  });
+});
+
+describe("buildMonsterIncHooks supplies all four halves (player-timed.c:945-985)", () => {
+  it("carries equipLearnElement, which had no update_smart_learn fallback", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state, loc(5, 7));
+    const hooks = buildMonsterIncHooks(state, mon);
+
+    /* update_smart_learn calls equip_learn_flag internally (mon-util.c:797), so
+     * the OBJECT-flag arm had a fallback. The RESIST and VULN arms
+     * (player-timed.c:967, :985) call equip_learn_element and reach
+     * update_smart_learn never - so a monster spell blocked by an element
+     * resist taught the player nothing at all. */
+    expect(typeof hooks.equipLearnElement).toBe("function");
+    expect(typeof hooks.equipLearnFlag).toBe("function");
+    expect(typeof hooks.updateSmartLearn).toBe("function");
+    expect(typeof hooks.resistMessage).toBe("function");
+    expect(hooks.monsterSource).toBe(true);
+  });
+
+  it("the element hook is the real equip_learn_element", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state, loc(5, 7));
+    const p = state.actor.player;
+
+    /* Equip something that resists fire, so there IS a rune to learn. Built
+     * here rather than taken from whatever the harness happens to wear: an
+     * early return on an empty equipment list would be a test that passes by
+     * proving nothing. */
+    const kind = {
+      kidx: 78,
+      tval: TV.SOFT_ARMOR,
+      name: "Vest",
+      toH: { base: 0, dice: 0, sides: 0, mBonus: 0 },
+      base: { maxStack: 40 },
+    } as unknown as ObjectKind;
+    const obj = objectNew(kind);
+    const el = obj.elInfo[ELEM.FIRE];
+    expect(el, "fixture: the object carries element info").toBeDefined();
+    el!.resLevel = 1;
+    state.gear.store.set(92, obj);
+    p.equipment[0] = 92;
+    expect(p.objKnown.elInfo[ELEM.FIRE]?.resLevel ?? 0).toBe(0);
+
+    buildMonsterIncHooks(state, mon).equipLearnElement!("FIRE");
+    expect(p.objKnown.elInfo[ELEM.FIRE]?.resLevel ?? 0).toBeGreaterThan(0);
   });
 });

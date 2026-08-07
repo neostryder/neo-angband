@@ -193,6 +193,7 @@ export function buildMonsterIncHooks(
   mon: Monster,
 ): PlayerIncCheckHooks {
   const smartEnv = buildSmartLearnEnv(state);
+  const p = state.actor.player;
   return {
     monsterSource: true,
     updateSmartLearn: (name): void => {
@@ -201,6 +202,26 @@ export function buildMonsterIncHooks(
         updateSmartLearn(state.rng, mon, smartEnv, of, 0, -1);
       }
     },
+    /* equip_learn_flag (player-timed.c L945). Upstream calls it here AND again
+     * inside update_smart_learn (mon-util.c L797); the pair is idempotent
+     * because the second call finds the rune already known and prints nothing
+     * (obj/knowledge.ts:781). Supplied explicitly so this hook set does not
+     * depend on which of the two upstream sites happens to run first. */
+    equipLearnFlag: (name): void => {
+      const of = (OF as Record<string, number>)[name];
+      if (of !== undefined) equipLearnFlag(p, state.runeEnv, of);
+    },
+    /* equip_learn_element (player-timed.c L967 / L985). This one had NO
+     * counterpart inside update_smart_learn to fall back on - update_smart_learn
+     * is only reached from the OBJECT-flag arm - so a monster spell blocked by
+     * an element resist taught the player nothing at all. */
+    equipLearnElement: (name): void => {
+      const elem = (ELEM as Record<string, number>)[name];
+      if (elem !== undefined) equipLearnElement(p, state.runeEnv, elem);
+    },
+    /* "You resist the effect!" (player-timed.c L951-952). A monster's BLOW
+     * printed it (game/mon-side.ts) and a monster's SPELL did not. */
+    resistMessage: (): void => state.msg?.("You resist the effect!"),
   };
 }
 

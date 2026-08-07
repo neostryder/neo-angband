@@ -46,7 +46,11 @@ import { playerExpGain, playerKillExp } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
 import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history.js";
 import { artifactHistoryName, historyStamp } from "../game/history.js";
-import { makePlayerSideEffects, makeIncCheckQueries } from "../game/player-side.js";
+import {
+  makePlayerSideEffects,
+  makeIncCheckHooks,
+  makeIncCheckQueries,
+} from "../game/player-side.js";
 import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
 import { makeMonBlowEnv } from "../game/mon-side.js";
 import { adj_dex_safe } from "../player/calcs.js";
@@ -1437,6 +1441,14 @@ function wireGame(
      * are gated. Absent, every increase was allowed. Same shape as
      * buildFailRuneEnv / makePlayerSideEffects. */
     const incQueries: PlayerIncCheckQueries = makeIncCheckQueries(state);
+    /* player_inc_check's equip-learn side effects on the INTERPRETER path -
+     * traps, potions, wands, player spells. Only mon-cast.ts supplied incHooks
+     * before, so a trap you were immune to taught nothing, where upstream's
+     * non-lore branch always calls equip_learn_flag / equip_learn_element
+     * (player-timed.c:945, :967, :985). No monster is passed: these sources are
+     * not cave->mon_current, so update_smart_learn and "You resist the effect!"
+     * correctly stay silent. */
+    const incHooks = makeIncCheckHooks(state);
     const envDeps: EffectEnvDeps = {
       timedTable: players.timed,
       // Effect status/damage messages ("You feel better", "You feel yourself
@@ -1444,6 +1456,7 @@ function wireGame(
       // them; absent, they would drop.
       onMessage: (text: string, msgt?: string): void => state.msg?.(text, msgt),
       incQueries,
+      incHooks,
       /* on_begin_effect / on_end_effect (audit 01 T2): the interpreter timed
        * path (a SCRAMBLE / SPRINT potion or spell) must run the chain too, not
        * just the world clock. The thunk reads runTimedTransition (assigned just

@@ -30,11 +30,14 @@ import { SKILL, STAT_MAX } from "../player/types.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import type { TimedEffect } from "../player/types.js";
 import { playerIncCheck, playerIncTimed } from "../player/timed.js";
-import type { PlayerIncCheckQueries } from "../player/timed.js";
+import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed.js";
+import type { Monster } from "../mon/monster.js";
+import { updateSmartLearn } from "../mon/spell.js";
+import { buildSmartLearnEnv } from "./mon-cast.js";
 import type { Player } from "../player/player.js";
 import { playerExpLose, playerStatDec } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
-import { equipLearnFlag } from "../obj/knowledge.js";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
 import { adjustDam } from "../world/projection.js";
 import { ODESC } from "../obj/desc.js";
 import { minusAc } from "./gear.js";
@@ -81,6 +84,61 @@ export function makeIncCheckQueries(state: GameState): PlayerIncCheckQueries {
       const i = (TMD as Record<string, number>)[name];
       return i !== undefined && (state.actor.player.timed[i] ?? 0) > 0;
     },
+  };
+}
+
+/**
+ * makeIncCheckHooks: player_inc_check's SIDE EFFECTS over the live state
+ * (player-timed.c:945-953 for object flags, :967 and :985 for resists and
+ * vulnerabilities).
+ *
+ * The two equip-learn calls are UNCONDITIONAL in upstream's non-lore branch -
+ * a trap you are immune to, a potion, a monster's breath and a monster's blow
+ * all teach the rune the same way. Only update_smart_learn and the "You resist
+ * the effect!" line are gated on `cave->mon_current > 0`, which is what
+ * `monster` supplies here.
+ *
+ * Everything below is RNG-free: equipLearnFlag / equipLearnElement walk the
+ * worn slots and write knowledge (obj/knowledge.ts:773, :795), and neither they
+ * nor playerLearnFlagRune / objectCursesFindFlags draw. That was measured
+ * rather than assumed, because supplying these on paths that previously had no
+ * hooks would otherwise move the RNG stream under every seeded test.
+ */
+export function makeIncCheckHooks(
+  state: GameState,
+  opts: {
+    /** The message sink for "You resist the effect!" (monster sources only). */
+    msg?: (text: string) => void;
+    /** cave->mon_current: the acting monster, when one is acting. */
+    monster?: Monster | null;
+  } = {},
+): PlayerIncCheckHooks {
+  const p = (): Player => state.actor.player;
+  const mon = opts.monster ?? null;
+  const smartEnv = mon ? buildSmartLearnEnv(state) : null;
+  return {
+    equipLearnFlag: (name: string): void => {
+      const of = (OF as Record<string, number>)[name];
+      if (of !== undefined) equipLearnFlag(p(), state.runeEnv, of);
+    },
+    equipLearnElement: (name: string): void => {
+      const elem = (ELEM as Record<string, number>)[name];
+      if (elem !== undefined) equipLearnElement(p(), state.runeEnv, elem);
+    },
+    ...(mon
+      ? {
+          monsterSource: true,
+          updateSmartLearn: (name: string): void => {
+            const of = (OF as Record<string, number>)[name];
+            if (of !== undefined && smartEnv) {
+              updateSmartLearn(state.rng, mon, smartEnv, of, 0, -1);
+            }
+          },
+          ...(opts.msg
+            ? { resistMessage: (): void => opts.msg!("You resist the effect!") }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -143,6 +201,15 @@ export function makePlayerSideEffects(
       ...(deps.msg
         ? { onMessage: (text: string): void => deps.msg?.(text) }
         : {}),
+      /* player_inc_timed's `check` argument is honoured ONLY through this hook
+       * (player/timed.ts:391). Without it every projection side effect applied
+       * regardless of the player's flags and resists: Free Action did not stop
+       * a paralysing breath, PROT_CONF did not stop confusion, PROT_BLIND did
+       * not stop blindness. The `check` argument was being passed and dropped.
+       *
+       * The draw for `v` happens at the call site before this runs, so gating
+       * the application does not move the RNG stream. */
+      incCheck,
     });
   };
 
@@ -159,9 +226,19 @@ export function makePlayerSideEffects(
    * check ride the timed-effect wiring (gap 2.8).
    */
   const incCheckQueries = makeIncCheckQueries(state);
+  /* The equip-learn half of player_inc_check's side effects. This used to pass
+   * NO hooks, so a monster's light or sound breath that you shrugged off taught
+   * you nothing - upstream's non-lore branch runs equip_learn_flag /
+   * equip_learn_element unconditionally (player-timed.c:945, :967, :985).
+   *
+   * The cave->mon_current half (update_smart_learn and "You resist the
+   * effect!") is NOT supplied here: this closure is built once per game, while
+   * the acting monster is per projection, so it needs the origin threaded down.
+   * Named rather than quietly dropped - see game-project-player.yaml. */
+  const incCheckHooks = makeIncCheckHooks(state);
   const incCheck = (idx: number): boolean => {
     const effect = deps.timed[idx];
-    return effect ? playerIncCheck(effect, incCheckQueries) : true;
+    return effect ? playerIncCheck(effect, incCheckQueries, incCheckHooks) : true;
   };
 
   /**

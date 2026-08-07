@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 273 of 339 done, 48 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 274 of 339 done, 48 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -168,8 +168,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `obj-randart` 4, then thirteen at 3, six at 2 and three at 1.
 
   The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  41 `stale-doc`, 24 `divergence`, 16 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **66 remain.**
+  41 `stale-doc`, 24 `divergence`, 17 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **6** `real`**. **65 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -185,6 +185,24 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **Free Action did not stop a paralysing breath.** `player_inc_timed`'s
+  `check` argument is honoured *only* through its `incCheck` hook
+  (`player/timed.ts:391`), and the projection path passed `check: true` while
+  supplying no such hook - so on every breath and bolt, `PROT_CONF`,
+  `PROT_BLIND`, `PROT_FEAR` and `FREE_ACT` were read, ignored, and the effect
+  applied anyway. An argument passed and dropped.
+
+  Found while wiring the row next to it, which claimed `player_inc_check`'s
+  learning side effects were unported. **They were not** - `player/timed.ts`
+  implements all four halves in upstream's order. What was wrong was the
+  *supply*, and unevenly: monster melee had everything, monster casts had only
+  `update_smart_learn` (which covers object flags via `mon-util.c:797` but never
+  the resist arms), and the projection and interpreter paths had nothing. So a
+  trap you were immune to, a potion you shrugged off and a breath you resisted
+  all taught you nothing, where upstream's non-lore branch learns
+  unconditionally. One shared builder now supplies all three - RNG-free, and
+  that was **measured**, because a draw would have moved every seeded test.
 
   **The three `player-*` files: ten rows, and not one was owed.** Every claim
   in them had shipped and nobody came back. `expGain` on a first successful
