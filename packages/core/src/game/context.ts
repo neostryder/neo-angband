@@ -51,6 +51,7 @@ import {
 } from "../mon/predicate.js";
 import { cmdDisableRepeatFloorItem } from "./repeat.js";
 import { floorExcise, floorPile } from "./floor.js";
+import { liveObjectIsKnownArtifact } from "../obj/artifact-known.js";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -1321,6 +1322,25 @@ export function deleteMonster(state: GameState, midx: number): void {
   if (mon.race.flags.has(RF.MULTIPLY) && (state.numRepro ?? 0) > 0) {
     state.numRepro = (state.numRepro ?? 0) - 1;
   }
+  /* "Preserve unseen artifacts" (mon-make.c:353-364). The held pile dies with
+   * the monster - upstream delists and deletes it, and here the whole Monster
+   * record is dropped a few lines down, which has the same effect - so an
+   * artifact the player never identified would be gone from the game AND still
+   * flagged created, meaning it could never be generated again.
+   *
+   * That is not hypothetical: this is the path banishment (effect-monster.ts),
+   * a despawning teleport (effect-teleport.ts), project_f's monster clear and
+   * level cleanup (world.ts) all take. monster_death handles its own drop, so
+   * only the seventeen non-death removals were losing artifacts.
+   *
+   * Upstream un-marks unconditionally here - birth_lose_arts gates the
+   * DESTRUCTION path (effect-terrain.ts:560) and not this one. */
+  for (const obj of mon.heldObj) {
+    if (obj.artifact && !liveObjectIsKnownArtifact(obj)) {
+      state.artifacts?.markCreated(obj.artifact.aidx, false);
+    }
+  }
+
   /* "Delete mimicked objects" (mon-make.c:385-387). Without this the fake item
    * outlives the monster: a mimic removed by anything that does NOT run
    * monster_death - banishment, a teleport that despawns it, level cleanup -

@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 256 of 339 done, 45 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 262 of 339 done, 45 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -162,14 +162,13 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `session-save`, `store-bind`, `store-maint`, `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `game-mon-ranged` 4,
-  `game-project-monster` 4, `gen-rooms` 4, `obj-flavor` 4, `obj-randart` 4,
-  `player-exp` 4, `player-spell` 4, `player-timed` 4, then thirteen at 3, five
-  at 2 and two at 1.
+  The files still open, largest first: `gen-rooms` 4, `obj-flavor` 4,
+  `obj-randart` 4, `player-exp` 4, `player-spell` 4, `player-timed` 4, then
+  thirteen at 3, five at 2 and four at 1.
 
-  The tally, **read from the TSV rather than carried forward**: **152 `ported`,
-  35 `stale-doc`, 22 `divergence`, 14 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **83 remain.**
+  The tally, **read from the TSV rather than carried forward**: **154 `ported`,
+  37 `stale-doc`, 23 `divergence`, 15 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **6** `real`**. **77 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -185,6 +184,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A monster removed by anything but death took its artifact with it.**
+  `delete_monster_idx` deletes the held pile (mon-make.c:353-382), but first
+  un-marks any artifact the player never identified so it can be generated
+  again. The port dropped the whole Monster record - which deletes the pile - and
+  never un-marked anything, so an artifact carried by a monster that was
+  BANISHED, teleported away, cleared by `project_f` or swept up by level cleanup
+  was gone from the game **and** still flagged created. `monster_death` drops its
+  own pile, so only the seventeen non-death removals lost artifacts. Same shape
+  as the store bug at `fd10a406d`, and found the same way: a row that said the
+  held-object half was "deferred with its subsystem" when the subsystem had
+  shipped. Two mutants, two kills.
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled

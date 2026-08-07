@@ -47,14 +47,33 @@ deferred:
     lore and experience are all built.
   - polymorph needs monster generation (get_mon_num / place_new_monster); a
     hook that no-ops until then.
-  - The teleport and thrustAway hooks are now BACKED in wireGame by
-    teleportMonster (game/effect-teleport.ts) and thrustAway
-    (game/thrust.ts); worldless callers still get the inert defaults.
-  - delete_monster_idx's monster-group, mimicked-object, racial-counter and
-    targeting bookkeeping are PORTED (game/context.ts deleteMonster). The
-    held-object drop and the redraw requests are still deferred with their
-    subsystems.
-  - update_mon / square_light_spot / PR_MONSTER collapse into the onUpdate hook.
+  - CLOSED (2026-08-07). Confirmed at the live supplier: session/game.ts:1359
+    passes teleport -> teleportMonster and :1362 thrustAway -> thrustAway, in
+    the same `monster:` hooks block as timedMessage, learnRaceFlag,
+    learnSpellFlag and revertShape. "Worldless callers still get the inert
+    defaults" is the harness contract, not a gap - see
+    an-unsupplied-optional-is-not-an-unreachable-feature.
+  - CLOSED (2026-08-07), and the held-object half was hiding a LIVE DEFECT.
+    Upstream's delete_monster_idx does not "drop" the held pile - it deletes it
+    (mon-make.c:353-382) - but before deleting it calls
+    mark_artifact_created(art, false) for any artifact the player never
+    identified, so the artifact can be generated again. The port dropped the
+    whole Monster record, which deletes the pile with it, and never un-marked
+    anything: an artifact carried by a monster that was BANISHED
+    (effect-monster.ts:120/153), teleported away (effect-teleport.ts:571),
+    cleared by project_f (project-feat.ts:117) or swept up by level cleanup
+    (world.ts:755) was gone from the game AND still flagged created, so it could
+    never come back. monster_death drops its own pile, so only the seventeen
+    non-death removals lost artifacts. Fixed at game/context.ts deleteMonster,
+    with the obj_is_known_artifact guard (obj-util.c:832) upstream has and
+    WITHOUT birth_lose_arts, which gates the DESTRUCTION path and not this one.
+    Two mutants, two kills (mon-death.test.ts). The redraw requests remain the
+    ratified repaint divergence recorded across this ledger.
+  - RATIFIED DIVERGENCE, not a deferral (2026-08-07). update_mon /
+    square_light_spot / PR_MONSTER are three upstream repaint calls; this port
+    has one immediate-mode renderer and collapses them into the onUpdate hook,
+    the same way every other repaint request in this ledger is handled. Nothing
+    is owed - see the repaint note in ui-display.yaml.
 verified-by:
   - game/project-monster.test.ts (12 tests): misses an empty or impassable grid
     and never affects the projector; damages a monster and reports the hit;
