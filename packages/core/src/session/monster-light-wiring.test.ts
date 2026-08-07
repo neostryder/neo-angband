@@ -91,7 +91,12 @@ const pack: GamePack = {
  * the nearest a tamer at distance 8. Which is the real case this fixes - a
  * lantern-carrying monster coming down a dark corridor.
  */
-const SEED = 2;
+/* Re-pinned 2026-08-06: the build_streamer predicate fix (gen/cave.ts uses
+ * square_isrock now) moves the generation stream, so seed 2 at depth 4 no
+ * longer places a light-bearing monster on an otherwise-unlit grid. Chosen by
+ * scanning for a seed that does, exactly as this file's own failure message
+ * anticipates ("a generation change reads as 'the fixture moved'"). */
+const SEED = 28;
 const DEPTH = 4;
 
 function lightMap(state: GameState): number[] {

@@ -417,39 +417,60 @@ describe("full level generation", () => {
    * the control/fix pair below - the control proves core still has the wart,
    * the fix test proves the mod flag repairs exactly these.
    */
-  const STRANDED: readonly [number, number, string][] = [
-    [1, 501016, "both directions sealed off from the player's region"],
-    [20, 520009, "both"],
-    [20, 520004, "single up stair unreachable"],
+  const STRANDED: readonly [number, number, readonly string[]][] = [
     /*
-     * Every deep example below was re-pinned on 2026-07-26 when
-     * help_greater_vault (gen-room.c L3075) was restored to core - see the
-     * "help_greater_vault" describe block. Before that fix `greater_vault` was
-     * wired straight to build_vault_type, so a greater vault was built as the
-     * first room of virtually every level at depth 35+ (measured 120/120 at
-     * both depth 40 and depth 90), and the eight seeds that used to sit here
-     * all stranded for the same reason: "up stair in a vault". They stopped
-     * stranding because the levels stopped being one enormous vault, which is
-     * the intended upstream shape. This is a deliberate generation-stream
-     * change at depth >= 35, not a stream drift: the four shallow examples
-     * (depths 1 and 20, which never reach a greater vault) are untouched, and
-     * stranding is simply much rarer now, exactly as upstream 4.2.6 has it.
-     * 550019 and 560006 sat here until earlier the same day and went stale in
-     * the parse_random negation fix (obj/bind.ts parseRand), which corrected
-     * three negative `rand` values in object.txt / ego_item.txt -- one of
-     * which, `attack:0d0:0:-3d5` on the ring "Open Wounds", had been parsed
-     * with a dice count of MINUS three, suppressing three RNG draws wherever
-     * that ring's to_d was rolled.
+     * RE-PINNED WHOLESALE on 2026-08-06. All twelve previous seeds stopped
+     * stranding at once, which this test's own note calls a behavioural
+     * regression rather than a stream shift - so here is what actually
+     * happened, measured rather than asserted.
+     *
+     * build_streamer tests square_isrock (gen-cave.c:128), and square_isrock is
+     * NARROWER than it reads: TF_GRANITE && !TF_DOOR_ANY, and in 4.2.6 only
+     * FEAT_GRANITE and FEAT_SECRET carry TF_GRANITE. Upstream streamers
+     * therefore convert plain granite and nothing else. The port tested
+     * isMagma || isQuartz || isGranite - wider at both ends, so it overwrote
+     * existing veins AND destroyed secret doors, and every extra conversion
+     * spent another one_in_(chance) draw. Fixing the predicate to c.isRock
+     * moved the generation stream from the first streamer onward, which is
+     * every classic / modified / moria / lair level in the game.
+     *
+     * Measured over an IDENTICAL 15,000-seed sweep (3,000 each at depths
+     * 1/20/40/50/60), before and after the one-line predicate change:
+     *
+     *     before   137 / 15000   0.91% stranded
+     *     after     22 / 15000   0.15% stranded
+     *
+     * Depth 1 went 24 -> 0. The wart is retained - the 22 seeds below are the
+     * complete list from that sweep - but it is six times rarer, and that
+     * difference is NOT fully explained here. The streamer's own edits are all
+     * wall-to-wall and cannot change reachability by themselves; the change
+     * arrives through the shifted stream, because rubble (passable), stairs,
+     * objects and monsters are all placed after the streamers run. Which of
+     * those dominates has not been isolated, and saying so is better than
+     * inventing a mechanism.
      */
-    [40, 400017, "up stair sealed off"],
-    [40, 400038, "up stair sealed off"],
-    [40, 400121, "both"],
-    [50, 500021, "up stair sealed off"],
-    [50, 500130, "both"],
-    [50, 500131, "both"],
-    [50, 500217, "both"],
-    [60, 600181, "down stair sealed off"],
-    [20, 520037, "both"],
+    [20, 201097, ["up"]],
+    [20, 201980, ["up"]],
+    [20, 202171, ["up"]],
+    [40, 400920, ["up"]],
+    [40, 402135, ["up"]],
+    [40, 402149, ["up"]],
+    [40, 402806, ["up"]],
+    [50, 500079, ["up"]],
+    [50, 500646, ["up"]],
+    [50, 500913, ["up"]],
+    [50, 500936, ["up"]],
+    [50, 501511, ["up"]],
+    [50, 502340, ["up"]],
+    [50, 502454, ["up"]],
+    [60, 600130, ["up"]],
+    [60, 600576, ["up"]],
+    [60, 601448, ["up"]],
+    [60, 601451, ["up"]],
+    [60, 602272, ["up"]],
+    [60, 602403, ["down"]],
+    [60, 602631, ["up"]],
+    [60, 602920, ["up"]],
   ];
 
   /** The directions of `g` that have a stair but no reachable one. */
@@ -477,11 +498,24 @@ describe("full level generation", () => {
      * bare expects hides the rest of the list, which matters here: when the
      * parse_random fix shifted the generation stream on 2026-07-26 the first
      * failure looked like a single stale example, and there were two. */
+    /* The third tuple element is the stranded DIRECTIONS, and it is compared,
+     * not just printed. The 2026-08-06 re-pin nearly shipped 22 hand-written
+     * labels ("both", "up stair sealed off") that were guesses: 21 of the 22
+     * seeds strand upward only and exactly one strands downward, and a label
+     * nothing reads could have said anything at all. Derived and asserted, it
+     * is a second measurement per seed rather than a decoration. */
     const notStranded: string[] = [];
-    for (const [depth, seed, why] of STRANDED) {
+    const wrongDirs: string[] = [];
+    for (const [depth, seed, dirs] of STRANDED) {
       const g = generateLevel(new Rng(seed), depth, makeDeps());
-      if (strandedDirs(g).length === 0) notStranded.push(`d${depth} seed ${seed} (${why})`);
+      const actual = strandedDirs(g);
+      if (actual.length === 0) {
+        notStranded.push(`d${depth} seed ${seed} (${dirs.join("+")})`);
+      } else if (actual.join("+") !== [...dirs].join("+")) {
+        wrongDirs.push(`d${depth} seed ${seed}: pinned ${dirs.join("+")}, got ${actual.join("+")}`);
+      }
     }
+    expect(wrongDirs, `stranded directions moved: ${wrongDirs.join("; ")}`).toEqual([]);
     expect(
       notStranded,
       `these seeds no longer strand under faithful core: ${notStranded.join("; ")}. ` +

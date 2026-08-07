@@ -129,7 +129,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 172 of 331 done, 34 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 173 of 335 done, 38 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -140,8 +140,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-player-path`, `game-mon-cmd`, `game-cave-cmd`, `game-effect-melee`,
   `game-floor`, `game-known`, `game-mon-group`, `combat-melee`, `game-thrust`,
   `obj-power`, `effects-interpreter`, `game-effect-detect`, `game-effect-env`,
-  `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon` and
-  `game-mon-list`.
+  `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon`,
+  `game-mon-list`, and - 2026-08-06, on the back of Tier 4 - `game-arena`,
+  `game-trap`, `gen-cave` and `gen-framework`.
 
   The tally, **read from the TSV rather than carried forward** — the numbers this
   paragraph used to quote had drifted, because they were incremented by hand while
@@ -150,7 +151,47 @@ is reachable in play and a test constructs the case that used to be wrong.**
   against 29 `real`**. So **five rows in six are not owed as written**, and the
   owed ones included the two live defects at **1.2** and **2.17**, both since
   FIXED — 2.17's first verdict was wrong in a way worth reading, because the
-  instrument was a grep. **159 remain.**
+  instrument was a grep. **162 remain.**
+
+  **The 2026-08-06 batch: four files, 17 rows, and one live generation bug.**
+  The four were chosen because Tier 4 had just been read end to end, so the
+  context was already paid for. Fourteen of the 17 came back `stale-doc` or
+  `note-is-fix` - the arena row claiming monster reproduction was unported (it
+  is wired, and `monsterTurnMultiply` carries its own arena gate), the trap row
+  claiming `playerHasFlag` defaults to no flags (the session supplies it), the
+  gen-framework row claiming pits place any depth-appropriate monster
+  (`buildPit` calls `setPitType` then `monPitHook`). Two were wrong about
+  *upstream* rather than about the port: there are no arena banners in 4.2.6 -
+  `EVENT_GEN_LEVEL_START`'s only subscriber is the `wiz-stats.c` statistics
+  collector - and there are no themed levels and no streamer treasure nuances
+  at all.
+
+  That last row is the one that paid. Checking "no nuances beyond the
+  magma/quartz upgrade" meant reading `build_streamer`, and `build_streamer`
+  tests **`square_isrock`**, which is narrower than it reads: `TF_GRANITE &&
+  !TF_DOOR_ANY`, and only `FEAT_GRANITE` and `FEAT_SECRET` carry `TF_GRANITE`.
+  The port tested `isMagma || isQuartz || isGranite` - wider at both ends, so
+  streamers overwrote existing veins **and destroyed secret doors**, on every
+  classic / modified / moria / lair level in the game. Four more sites in
+  `build_staircase_rooms` had the same substitution, where a secret door
+  adjacent to a persistent-level join was being sealed with permanent wall.
+  Upstream uses `square_isgranite` at two OTHER sites in the same file, so the
+  two predicates are not interchangeable and the port was right at those.
+
+  Fixing it moved the generation stream, and all twelve pinned stranded-stair
+  seeds went stale at once - which `gen.test.ts` itself calls a behavioural
+  regression rather than a stream shift, so it was measured instead of
+  asserted. Over an identical 15,000-seed sweep: **137/15000 (0.91%) stranded
+  before, 22/15000 (0.15%) after**, depth 1 going 24 to 0. The wart is retained
+  and re-pinned with all 22, and the note says plainly that the six-fold drop
+  is **not** fully explained - the streamer's own edits are wall-to-wall and
+  cannot change reachability, so it arrives through the shifted stream, and
+  which of rubble / stairs / objects dominates was not isolated.
+
+  The re-pin nearly shipped a second defect of its own: 22 hand-written
+  direction labels ("both", "up stair sealed off") that were guesses. Derived,
+  21 of the 22 strand upward only and exactly one strands downward. The tuple
+  now carries the directions and the test **compares** them.
 
   **Adjudicating a row is how the live defects get found.** `combat-melee.yaml:91`
   claimed arena mode was "not begun". Arena mode is finished — but reading
