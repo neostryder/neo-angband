@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 262 of 339 done, 45 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 263 of 339 done, 46 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -157,18 +157,19 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
   `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
   `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
-  `mon-lore`, `mon-lore-describe`, `mon-predicate`, `mon-take-hit`, `obj-desc`,
+  `game-project-monster`, `mon-lore`, `mon-lore-describe`, `mon-predicate`,
+  `mon-take-hit`, `obj-desc`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
   `session-save`, `store-bind`, `store-maint`, `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
   The files still open, largest first: `gen-rooms` 4, `obj-flavor` 4,
   `obj-randart` 4, `player-exp` 4, `player-spell` 4, `player-timed` 4, then
-  thirteen at 3, five at 2 and four at 1.
+  thirteen at 3, five at 2 and three at 1.
 
   The tally, **read from the TSV rather than carried forward**: **154 `ported`,
-  37 `stale-doc`, 23 `divergence`, 15 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **77 remain.**
+  37 `stale-doc`, 23 `divergence`, 16 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **6** `real`**. **76 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -184,6 +185,20 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A Wand of Polymorph did nothing at all.** `project_m` called
+  `hooks.polymorph` and wireGame's `monster:` block never set it, so the spell
+  rolled its saving throw, spent the charge and reported "maintains its shape"
+  every single time - for two shipped objects and every CHAOS source. The row
+  said polymorph "needs monster generation", and monster generation had shipped;
+  nobody came back. Reading the C to wire it turned up three more divergences in
+  the same block: the source race must be `original_race` (a shapechanged
+  monster polymorphs from what it really is), `MON_MSG_CHANGE` is queued
+  **before** the swap so it names the monster that is about to stop existing,
+  and `MON_MSG_APPEAR` - "note the appearance of the new one if it is visible
+  but the old one wasn't" - was absent entirely. Nine mutants; the two survivors
+  are both written down, one a fixture of two identical `makeRace` calls that
+  could not disagree, one an upstream filter that stock data cannot reach.
 
   **A monster removed by anything but death took its artifact with it.**
   `delete_monster_idx` deletes the held pile (mon-make.c:353-382), but first

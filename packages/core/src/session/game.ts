@@ -66,6 +66,8 @@ import { Chunk } from "../world/chunk.js";
 import { chunkWriteTerrain } from "../gen/cave.js";
 import { FEAT, SQUARE } from "../generated/index.js";
 import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import type { MonsterRace } from "../mon/types.js";
 import { MON_GROUP } from "../mon/types.js";
 import type {
   GameState,
@@ -127,6 +129,7 @@ import { basicPlayerActor } from "../game/project-cast.js";
 import type { CastContext } from "../game/project-cast.js";
 import type { EffectEnvDeps } from "../game/effect-env.js";
 import { installMonsterCasting } from "../game/mon-ranged.js";
+import { polyRace, polymorphMonster } from "../game/poly.js";
 import { buildMonSpellHooks, buildFailRuneEnv } from "../game/mon-cast.js";
 import { installMonCommand } from "../game/mon-cmd.js";
 import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape.js";
@@ -1356,6 +1359,22 @@ function wireGame(
           revertShape: (m): void => {
             monsterRevertShape(state, m);
           },
+          /* poly_race + the delete/place swap (project-mon.c:45, :1225-1229).
+           * Both halves are supplied, and separately, because upstream queues
+           * MON_MSG_CHANGE between them - naming the old monster while it still
+           * exists. Until this was wired the hook had NO supplier at all, so a
+           * Wand of Polymorph rolled its saving throw, spent the charge and then
+           * reported "maintains its shape" every single time.
+           *
+           * ambientPlaceDeps is declared later in this same function; the
+           * forward reference is safe for the same reason state.monsterMultiply
+           * (which uses it too) is - these arrows only run during play. Reusing
+           * it rather than a private table also means the polymorphed monster
+           * gets its held drops, as place_monster does for any origin != 0. */
+          polyRace: (race): MonsterRace =>
+            polyRace(state, race, state.chunk.depth, ambientPlaceDeps),
+          replaceMonster: (m, race): Monster | null =>
+            polymorphMonster(state, m, race, ambientPlaceDeps),
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport ?? {}),
