@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 291 of 339 done, 53 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 300 of 339 done, 56 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -162,17 +162,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `mon-lore-describe`, `mon-predicate`,
   `mon-take-hit`, `mon-timed`, `obj-desc`, `obj-flavor`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
-  `player-exp`, `player-spell`, `player-take-hit`, `session-save`,
+  `player-exp`, `player-spell`, `player-take-hit`, `project-mon`,
+  `project-path`, `projection-data`, `session-save`,
   `store-bind`, `store-maint`,
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-randart` 4, then ten at 3, five at
-  2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
+  The files still open, largest first: `obj-randart` 4, then seven at 3, five
+  at 2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
 
-  The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  51 `stale-doc`, 27 `divergence`, 18 `note-is-fix`, 13 `not-a-deferral`,
-  11 `n-a`, 7 `partial` against **5** `real`**. **48 remain.**
+  The tally, **read from the TSV rather than carried forward**: **160 `ported`,
+  53 `stale-doc`, 30 `divergence`, 19 `note-is-fix`, 15 `not-a-deferral`,
+  11 `n-a`, 7 `partial` against **5** `real`**. **39 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -188,6 +189,15 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A row filed as "a UI redraw" that was not one.** `project-mon.c:929-932`
+  reads `if (health_who == mon) redraw |= PR_HEALTH; else hurt_msg =
+  MON_MSG_HEALTHIER;` - an if/**else**. The redraw half genuinely is the shell's.
+  The message half is not: upstream gives a *tracked* monster, the one you just
+  hit or are targeting, **no "looks healthier" line at all**. The port took the
+  message branch unconditionally and printed one every time. The row said so
+  accurately - "matching an untracked monster" - and its heading buried it. **A
+  note can have the wrong category.**
 
   **A shapechanged player attacks with the normal path upstream too.** The
   `game-shape` row said the "shape unarmed attack itself" rode the combat layer

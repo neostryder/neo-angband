@@ -181,6 +181,10 @@ export function projectMonster(
     r: dist,
     grid,
     charm: origin.charm,
+    /* player->upkeep->health_who == mon (project-mon.c:929). PROJ_MON_HEAL's
+     * redraw and its "looks healthier" message are an if/ELSE, so a tracked
+     * monster - the one you just hit, or your target - is healed silently. */
+    healthTracked: state.healthWho === mon,
     seen,
     obvious: (flg & PROJECT.AWARE) !== 0,
     hooks: {
