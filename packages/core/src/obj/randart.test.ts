@@ -203,7 +203,11 @@ describe("artifact_gen_name (obj-randart.c L2713)", () => {
 describe("collect_artifact_data (obj-randart.c L1059)", () => {
   it("measures the standard set into a sane power profile", () => {
     const reg = makeReg();
-    const data = collectArtifactData(reg, new Rng(1, { quick: true }));
+    const data = collectArtifactData(
+      reg,
+      reg.artifacts,
+      new Rng(1, { quick: true }),
+    );
     /* The standard set spans a real power range. */
     expect(data.maxPower).toBeGreaterThan(data.minPower);
     expect(data.avgPower).toBeGreaterThan(0);
@@ -455,5 +459,67 @@ describe("randart.log names things, on a real run (PORT_TODO 5.5)", () => {
      * produce the latter. */
     expect(log).toMatch(/Adding resistance to (acid|lightning|fire|cold|poison)/);
     expect(log).not.toMatch(/Adding resistance to [A-Z_]+$/m);
+  });
+
+  /*
+   * do_randart measures TWICE (obj-randart.c L3175-L3186): the standard set
+   * before generation, and the finished set after. The second pass has no
+   * return value anyone reads - the log IS its output - so nothing else in this
+   * suite can notice whether it ran.
+   */
+  describe("the second measurement pass", () => {
+    /** store_base_power's summary block: its whole output, in log order. */
+    const statBlocks = (): string[][] => {
+      const lines = log
+        .split("\n")
+        .filter((l) => /^(Max power is|Mean is|Power for tval )/.test(l));
+      const heads = lines.flatMap((l, i) =>
+        l.startsWith("Max power is") ? [i] : [],
+      );
+      return heads.map((h, n) => lines.slice(h, heads[n + 1] ?? lines.length));
+    };
+
+    it("runs parse_frequencies twice, not once", () => {
+      expect(log.split("****** BEGINNING GENERATION OF FREQUENCIES").length - 1).toBe(2);
+    });
+
+    it("runs store_base_power twice, not once", () => {
+      expect(statBlocks().length).toBe(2);
+    });
+
+    it("measures the GENERATED set the second time, not the standard set again", () => {
+      /* The counts above are satisfied by calling the pass with the WRONG array
+       * - reg.artifacts twice over - which is the easy mistake, because
+       * upstream never passes the set at all (create_artifact_set overwrites
+       * the a_info global in place, so "the artifacts" silently means something
+       * different the second time). Two passes over one set emit identical
+       * statistics; two passes over different sets cannot. */
+      const [first = [], second = []] = statBlocks();
+      expect(first.length).toBeGreaterThan(3); /* not two empty blocks */
+      expect(second).not.toEqual(first);
+    });
+  });
+});
+
+describe("the second measurement pass changes nothing (obj-randart.c L3181)", () => {
+  /* It runs AFTER generation, so it cannot alter the returned set by ordinary
+   * means - but only if it neither draws from the RNG (which would desync a
+   * caller sharing the Rng) nor writes to the artifacts it is reading. */
+  it("draws no RNG", () => {
+    const reg = makeReg();
+    const used = new Rng(99, { quick: true });
+    collectArtifactData(reg, reg.artifacts, used);
+    const fresh = new Rng(99, { quick: true });
+    const drawUsed = Array.from({ length: 8 }, () => used.randint0(1_000_000));
+    const drawFresh = Array.from({ length: 8 }, () => fresh.randint0(1_000_000));
+    expect(drawUsed).toEqual(drawFresh);
+  });
+
+  it("does not modify the artifacts it measures", () => {
+    const reg = makeReg();
+    const arts = doRandart(reg, 20260807, false);
+    const before = fingerprint(arts);
+    collectArtifactData(reg, arts, new Rng(1, { quick: true }));
+    expect(fingerprint(arts)).toBe(before);
   });
 });
