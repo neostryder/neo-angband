@@ -6,7 +6,7 @@ import { FlagSet } from "../bitflag.js";
 import { OF_SIZE } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
-import { makeState, plReg } from "./harness.js";
+import { addMon, makeRace, makeState, plReg } from "./harness.js";
 import type { GameState } from "./context.js";
 import type { PlayerProjActor, ProjectPlayerSideContext } from "./project-player.js";
 import { makePlayerSideEffects } from "./player-side.js";
@@ -35,6 +35,36 @@ function sideFx(
   return (ctx) =>
     hook({
       origin: { isPlayer: false, isMonster: true, killer: "a test" },
+      r: 0,
+      grid: loc(1, 1),
+      obvious: true,
+      ...ctx,
+    });
+}
+
+/** sideFx with an explicit cave->mon_current (0 = trap / player source). */
+function sideFxFrom(
+  state: GameState,
+  monster: number,
+  opts: { resists?: Partial<Record<number, number>>; msgs?: string[] } = {},
+): (ctx: Omit<ProjectPlayerSideContext, "origin" | "r" | "grid" | "obvious">) => number {
+  const deps: PlayerSideDeps = {
+    timed: plReg.timed,
+    actor: stubActor(opts.resists),
+    projections: [],
+    expDeps: { rng: state.rng },
+    lifeDrainPercent: 2,
+    ...(opts.msgs ? { msg: (t: string) => opts.msgs!.push(t) } : {}),
+  };
+  const hook = makePlayerSideEffects(state, deps);
+  return (ctx) =>
+    hook({
+      origin: {
+        isPlayer: false,
+        isMonster: monster > 0,
+        monster,
+        killer: "a test",
+      },
       r: 0,
       grid: loc(1, 1),
       obvious: true,
@@ -131,6 +161,49 @@ describe("project-player side effects (project-player.c handlers)", () => {
     sideFx(state)({ dam: 400, typ: PROJ.SOUND, power: 0 });
     expect(state.actor.player.timed[TMD.CONFUSED]!).toBeGreaterThan(0);
     expect(state.actor.player.objKnown.flags.has(OF.PROT_CONF)).toBe(false);
+  });
+
+  /**
+   * The cave->mon_current half (player-timed.c:941, :946-952). The origin's
+   * midx rode CastSource all along and was dropped when project-cast built the
+   * player source, so a resisted breath could learn the rune but never taught
+   * the caster and never said "You resist the effect!" - while the very same
+   * flag resisted in MELEE did both (game/mon-side.ts).
+   */
+  it("a resisted breath says 'You resist the effect!' and names its caster", () => {
+    const state = makeState({ seed: 25 });
+    equipWithFlag(state, OF.PROT_CONF);
+    const flags = new FlagSet(OF_SIZE);
+    flags.on(OF.PROT_CONF);
+    (state as unknown as { playerState: { flags: FlagSet } }).playerState = { flags };
+    const mon = addMon(state, makeRace({ level: 5 }), loc(3, 3), { hp: 40 });
+
+    const msgs: string[] = [];
+    sideFxFrom(state, mon.midx, { msgs })({ dam: 400, typ: PROJ.SOUND, power: 0 });
+
+    expect(msgs).toContain("You resist the effect!");
+    /* project-player.c:328 asks player_inc_check BEFORE printing, so a resisted
+     * player is never told the noise disoriented them. This is the half
+     * player-side.yaml:48 said was "simplified to always announcing". */
+    expect(msgs).not.toContain("The noise disorients you.");
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBe(0);
+  });
+
+  it("a resisted TRAP stays silent - a trap is not cave->mon_current", () => {
+    /* The control. Upstream gates the message and update_smart_learn on a
+     * monster source; the equip-learn half is unconditional either way, so
+     * this must still learn while saying nothing. */
+    const state = makeState({ seed: 25 });
+    equipWithFlag(state, OF.PROT_CONF);
+    const flags = new FlagSet(OF_SIZE);
+    flags.on(OF.PROT_CONF);
+    (state as unknown as { playerState: { flags: FlagSet } }).playerState = { flags };
+
+    const msgs: string[] = [];
+    sideFxFrom(state, 0, { msgs })({ dam: 400, typ: PROJ.SOUND, power: 0 });
+
+    expect(msgs).not.toContain("You resist the effect!");
+    expect(state.actor.player.objKnown.flags.has(OF.PROT_CONF)).toBe(true);
   });
 
   it("DARK_WEAK briefly blinds, or messages when DARK is resisted (6.1)", () => {

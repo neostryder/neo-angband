@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -168,8 +168,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `obj-randart` 4, then thirteen at 3, six at 2 and three at 1.
 
   The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  41 `stale-doc`, 24 `divergence`, 17 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **65 remain.**
+  41 `stale-doc`, 24 `divergence`, 18 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **5** `real`**. **65 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -185,6 +185,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A resisted breath said nothing, while the same flag resisted in melee
+  said everything.** `cave->mon_current` rode `CastSource` the whole way and
+  `project-cast.ts` dropped it when building the player source, so
+  `update_smart_learn` and "You resist the effect!" could not fire on a
+  projection. Closing it took the origin down into the side-effect closure,
+  which is built once per game while the acting monster is per projection. The
+  row that named this said the *message gating* was "simplified to always
+  announcing" - it was not; the gating was correct, and three worse things were
+  hiding behind the same call.
 
   **Free Action did not stop a paralysing breath.** `player_inc_timed`'s
   `check` argument is honoured *only* through its `incCheck` hook
@@ -3248,7 +3258,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 75 citations, 56 `real` + 19
+2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

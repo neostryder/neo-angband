@@ -282,3 +282,62 @@ describe("castProjectLos", () => {
     expect(mon.hp).toBe(50);
   });
 });
+
+describe("the projection carries cave->mon_current to the player handlers", () => {
+  /**
+   * origin.which.monster rides CastSource and was DROPPED when project-cast
+   * built the ProjectPlayerSource, so player_inc_check's monster-gated half -
+   * update_smart_learn and "You resist the effect!" (player-timed.c:941,
+   * :946-952) - could never fire on a breath, while the same flag resisted in
+   * melee did both.
+   *
+   * player-side.test.ts pins what the handlers DO with the midx; this pins that
+   * they are handed it, which a hand-built origin cannot show.
+   */
+  it("each monster bolt arrives as ITS midx, and a trap bolt as 0", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 400;
+    const a = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    const b = addMon(state, plainRace, loc(5, 2), { hp: 50 });
+    /* Two monsters, so a hardcoded 1 - which a truthiness check would accept -
+     * fails on the second. */
+    expect(a.midx).not.toBe(b.midx);
+
+    const seen: (number | undefined)[] = [];
+    const hooks = {
+      player: {
+        onSideEffects: (c: { origin: { monster?: number } }): number => {
+          seen.push(c.origin.monster);
+          return 0;
+        },
+      },
+    } as CastHooks;
+
+    for (const m of [a, b]) {
+      castBolt(state, cctx(state, hooks), monsterCastSource(state, m.midx),
+        state.actor.grid, 20, PROJ.SOUND);
+    }
+    /* A trap is source_trap(): it reaches the player and is NOT
+     * cave->mon_current, which is what keeps the resist message silent. */
+    castBolt(
+      state,
+      cctx(state, hooks),
+      {
+        isPlayer: false,
+        isMonster: false,
+        monster: 0,
+        grid: loc(5, 6),
+        isTrap: true,
+        killer: "a trap",
+      },
+      state.actor.grid,
+      20,
+      PROJ.SOUND,
+    );
+
+    expect(seen, "all three bolts reached the player handler").toHaveLength(3);
+    expect(seen[0]).toBe(a.midx);
+    expect(seen[1]).toBe(b.midx);
+    expect(seen[2]).toBe(0);
+  });
+});
