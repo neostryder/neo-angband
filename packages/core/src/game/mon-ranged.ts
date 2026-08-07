@@ -341,11 +341,18 @@ export function makeRangedAttack(
   if (!monsterIsStupid(mon)) {
     removeBadSpells(state, mon, f, config, deps);
 
-    /* A bolt needs a clear, stopping path to the target. */
+    /* A bolt needs a clear, stopping path to the target. The decoy has to be
+     * passed: upstream's project_path reads cave->decoy off the chunk itself
+     * (project.c:147), so EVERY caller sees it - and PROJECT_STOP is the only
+     * flag whose path can break there, which makes this the one projectable()
+     * call in the port that needs it. */
     const tgrid = targetGrid(state, mon);
     if (
       testSpells(f, RST.BOLT) &&
-      !projectable(state.chunk, mon.grid, tgrid, PROJECT.STOP, maxRange)
+      !projectable(
+        state.chunk, mon.grid, tgrid, PROJECT.STOP, maxRange,
+        undefined, state.decoy ?? null,
+      )
     ) {
       ignoreSpells(f, RST.BOLT);
     }

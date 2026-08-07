@@ -207,6 +207,19 @@ describe("removeBadSpells", () => {
     expect(f.has(RSF.WHIP)).toBe(false); // player too far
     expect(f.has(RSF.BA_FIRE)).toBe(true); // kept
   });
+
+  /*
+   * NOT TESTED, and the reason is worth recording rather than papering over.
+   * removeBadSpells passes state.decoy to its PROJECT_STOP projectable() so the
+   * path can break at the decoy, as project.c:147/218 does. But a monster that
+   * IS decoyed TARGETS the decoy (targetGrid, mon-attack.c L65), so its path
+   * legitimately ends there and projectable succeeds - the decoy only shortens
+   * a path when the caster is NOT decoyed and the decoy merely lies on the line
+   * to the player, which needs a monsterIsDecoyed-false fixture with a decoy
+   * exactly on the ray. The argument is still required: upstream's project_path
+   * reads cave->decoy off the chunk, so EVERY caller sees it, and this is the
+   * port's only PROJECT_STOP projectable().
+   */
 });
 
 describe("chooseAttackSpell", () => {

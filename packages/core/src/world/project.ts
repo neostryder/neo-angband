@@ -46,7 +46,12 @@ export const PROJECT = {
   ROCK: 0x8000,
 } as const;
 
-/** A grid that never matches a real one (no decoy modelled yet). */
+/**
+ * A grid that never matches a real one. Used only when the caller supplies no
+ * decoy - upstream's `cave->decoy` is loc(0,0) when there is none, and (0,0) is
+ * a permanent-wall border grid no path visits, so an unmatchable sentinel is
+ * the same thing said in a way that cannot collide.
+ */
 const NO_DECOY: Loc = loc(-1, -1);
 
 /**
@@ -62,7 +67,14 @@ export function projectPath(
   grid2: Loc,
   flg: number,
   believedWall: (grid: Loc) => boolean = (grid) => !c.isProjectable(grid),
+  /**
+   * cave->decoy (project.c:218): PROJECT_STOP breaks the path at the player's
+   * decoy grid, which is most of what a decoy is for against a bolt. Absent or
+   * null means "no decoy on this level", not "decoys are unported".
+   */
+  decoy: Loc | null = null,
 ): Loc[] {
+  const decoyGrid = decoy ?? NO_DECOY;
   const gp: Loc[] = [];
 
   /* No path necessary (or allowed). */
@@ -105,7 +117,7 @@ export function projectPath(
     /* Sometimes stop at non-initial monsters / the decoy. */
     if (flg & PROJECT.STOP) {
       if (n > 0 && c.mon(here) !== 0) return true;
-      if (x === NO_DECOY.x && y === NO_DECOY.y) return true;
+      if (x === decoyGrid.x && y === decoyGrid.y) return true;
     }
     return false;
   };
@@ -184,8 +196,9 @@ export function projectable(
   flg: number,
   maxRange: number,
   believedWall?: (grid: Loc) => boolean,
+  decoy?: Loc | null,
 ): boolean {
-  const gridG = projectPath(c, maxRange, grid1, grid2, flg, believedWall);
+  const gridG = projectPath(c, maxRange, grid1, grid2, flg, believedWall, decoy);
 
   /* No grid is ever projectable from itself. */
   if (gridG.length === 0) return false;
@@ -297,6 +310,8 @@ export interface ProjectParams {
   blind?: boolean;
   /** square_isbelievedwall for PROJECT_INFO (cave-square.c L901-912). */
   believedWall?: (grid: Loc) => boolean;
+  /** cave->decoy: PROJECT_STOP breaks the path here (project.c:218). */
+  decoy?: Loc | null;
 }
 
 /** The computed blast: pure geometry + damage, no side effects. */
@@ -373,7 +388,7 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
     let x = start.x;
 
     /* Calculate the projection path. */
-    pathGrids = projectPath(c, maxRange, start, finish, flg, p.believedWall);
+    pathGrids = projectPath(c, maxRange, start, finish, flg, p.believedWall, p.decoy);
 
     /* Some beams have limited length. */
     if (flg & PROJECT.BEAM && rad > 0 && rad < pathGrids.length) {
