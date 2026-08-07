@@ -96,14 +96,14 @@ function covered(s: Site): boolean {
  * The obj-randart.c sites still to write, counted 2026-08-06. Lower this as the
  * row is finished; it must never rise.
  *
- * What is left, by function (from the same extraction this test performs):
- * count_modifiers, count_low_resists, count_high_resists, count_abilities,
+ * What is left, by function (from the same extraction this test performs).
+ * The whole count_* family landed 2026-08-07, taking this from 122 to 75:
  * collect_artifact_data, parse_frequencies, store_base_power, artifact_power,
  * get_base_item, artifact_prep, build_freq_table, try_supercharge, the add_*
  * family, choose_ability, make_bad, design_artifact and do_randart's own
  * randart.txt header.
  */
-const EXPECTED_MISSING_RANDART = 122;
+const EXPECTED_MISSING_RANDART = 75;
 
 describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
   it("finds the C's log sites at all", () => {
