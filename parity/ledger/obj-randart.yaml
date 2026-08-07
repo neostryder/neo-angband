@@ -56,27 +56,53 @@ deferred:
     prepends); and session/game.ts:3458-3461 hands doRandart the section-1
     list, so in-game randart names draw faithfully. The local syllable table
     survives only as the fallback for a caller that supplies no corpus.
-  - randart.log: PORTED, bar one line (PORT_TODO 5.5, 2026-08-07). "It never
-    affects an artifact field or an RNG draw" is true and was never the
-    question -- the maintainer's disposition on 2026-08-04 was pursue parity,
-    so the file is a port. do_randart opens and closes it through the host
-    (obj/randart-log.ts is the sink, one module-level static because that is
-    upstream's own shape), and 232 of the 233 emission sites are written: all
-    59 in obj-power.c and 173 of the 174 in obj-randart.c. Ratcheted two-way
-    against the C source by obj/randart-log.census.test.ts, so the count
-    cannot drift in either direction.
-    THE ONE LEFT is invisible to that ratchet, which is why it is named here:
-    artifact_power logs the fake artifact's own object_desc (L205-L206) with
-    the format string "%s\n", and a census matching literal spans of four
-    characters or more has nothing to match. It is carried in the test as
-    UNWRITTEN_SPANLESS = 1 so the reassuring EXPECTED_MISSING_RANDART = 0
-    cannot be read as "nothing left". Blocked on shape, not on knowledge:
-    makeFakeArtifactPower returns the reduced PowerObject that object_power
-    needs, and object_desc wants a whole GameObject, so writing this line
-    means building upstream's full fake object -- a change to the power path.
+  - randart.log: PORTED, all 233 emission sites (PORT_TODO 5.5, CLOSED
+    2026-08-07). "It never affects an artifact field or an RNG draw" is true
+    and was never the question -- the maintainer's disposition on 2026-08-04
+    was pursue parity, so the file is a port. do_randart opens and closes it
+    through the host (obj/randart-log.ts is the sink, one module-level static
+    because that is upstream's own shape); all 59 sites in obj-power.c and all
+    174 in obj-randart.c are written, ratcheted two-way against the C source by
+    obj/randart-log.census.test.ts so the count cannot drift in either
+    direction.
+    THE LAST ONE was invisible to that ratchet and is why this row stayed open:
+    artifact_power logs the fake artifact's own object_desc (L205-L206) with the
+    format string "%s\n", and a census matching literal spans of four characters
+    or more has nothing to match, so it was carried as UNWRITTEN_SPANLESS = 1
+    rather than hidden inside a reassuring EXPECTED_MISSING_RANDART = 0. It is
+    now written, and because no source grep can tell "emitted" from "emitted
+    wrongly", it is also asserted BEHAVIOURALLY: obj/randart.test.ts runs a real
+    generation and requires every "Evaluating" block in the log to carry a
+    non-empty description line. Verified by mutation (return an empty string:
+    the test fails).
+    What unblocked it was deleting a copy rather than adding a dependency. See
+    the make_fake_artifact row below.
     Upstream's exit(1) on a failed open is the one deliberate divergence: the
     message goes to the caller and generation continues, because neither
     front end has a process to kill.
+  - make_fake_artifact (obj-make.c L728) had THREE implementations in this port
+    and now has one (2026-08-07). obj/artifact-fake.ts built a real GameObject;
+    game/spoil.ts kept a local second copy; obj/randart-data.ts kept a third,
+    makeFakeArtifactPower, which flattened the same field mapping into the
+    reduced PowerObject object_power reads. The third was the reason
+    artifact_power could not write its object_desc line -- object_desc needs a
+    whole object -- and it was also the copy that dropped copy_curses' timeout
+    roll, the divergence recorded above. Skipping object_prep is what made
+    skipping the roll look reasonable.
+    artifact_power now calls the shared builder, which made `constants` a
+    required parameter of artifactPower, storeBasePower, collectArtifactData,
+    designArtifact, createArtifactSet and doRandart -- upstream reads z_info as
+    a global, so every caller in the port has to state it. VERIFIED
+    BEHAVIOUR-PRESERVING rather than assumed: the full generated set (name,
+    tval/sval, every combat field, curses, modifiers, activation) was diffed
+    against the pre-change tree at three seeds and is byte-identical.
+    Guarded by obj/randart-fake-agreement.test.ts, which replaces the old
+    run-both-and-compare check with the property that made it unnecessary: no
+    module other than artifact-fake.ts may pair objectPrep on the MAXIMISE
+    aspect with copyArtifactData. MAXIMISE is the discriminator -- three other
+    modules pair those two calls on RANDOMISE and are make_artifact /
+    wiz_create_artifact, a different C function, so a census on the calls alone
+    would need an allowlist and would stop meaning anything.
   - randart.txt (create_file, write_randart_entry L3040-L3215): PORTED
     (2026-08-07). obj/randart-file.ts writes it, datafile.c's write_flags /
     write_mods / write_elements are obj/../datafile.ts with both of their

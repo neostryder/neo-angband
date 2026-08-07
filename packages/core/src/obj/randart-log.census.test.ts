@@ -124,11 +124,14 @@ function covered(s: Site): boolean {
 const EXPECTED_MISSING_RANDART = 0;
 
 /**
- * Spanless sites the port does NOT emit. Only one: artifact_power's
- * object_desc line. A ratchet rather than an assertion, because no expectation
- * over the port's text can distinguish "not written" from "written differently".
+ * Spanless sites the port does NOT emit. ZERO since 2026-08-07, when
+ * artifact_power's object_desc line landed - the last one. It stays here as a
+ * named quantity rather than being deleted, because the span filter cannot see
+ * these sites: if a future upstream bump adds a "%s
+" emitter, this is where
+ * it gets counted, and a deleted constant counts nothing.
  */
-const UNWRITTEN_SPANLESS = 1;
+const UNWRITTEN_SPANLESS = 0;
 
 describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
   it("finds the C's log sites at all", () => {
@@ -202,11 +205,12 @@ describe("randart.log coverage of obj-randart.c (PORT_TODO 5.5)", () => {
     expect(PORT).toContain("}x${sl.multiplier} `"); // obj-power.c slays
 
     /* The fourth is artifact_power's object_desc of the fake artifact
-     * (obj-randart.c:205-206), and it is NOT written: object_desc needs a
-     * KnownDesc this pure module does not hold. There is no assertion that
-     * can prove an absence, so it is carried as a number instead - lower this
-     * to 0 when the line lands, and PORT_TODO 5.5 stays open until it does. */
-    expect(UNWRITTEN_SPANLESS).toBe(1);
+     * (obj-randart.c:205-206). It is now WRITTEN, which - unlike its absence -
+     * is a thing that can be asserted, so it is asserted twice: here on the
+     * shape of the emitter, and behaviourally in randart.test.ts, where a real
+     * generation run's log is required to name the artifacts it evaluates. */
+    expect(UNWRITTEN_SPANLESS).toBe(0);
+    expect(PORT).toContain("ODESC.PREFIX | ODESC.FULL | ODESC.SPOIL");
   });
 
   it("the sites already written stay written", () => {

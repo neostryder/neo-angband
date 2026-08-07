@@ -3565,6 +3565,7 @@ function swapRandartSet(
    * (obj-randart.c L2420); absent, it stays a conservative no-op. */
   const randarts = doRandart(
     reg.objects,
+    reg.constants,
     seed, true,
     reg.nameSections.get(RANDNAME_TOLKIEN),
     timedFoil || activationSummarize

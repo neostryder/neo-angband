@@ -39,9 +39,12 @@ function firstArtifact(): Artifact {
 }
 
 describe("makeFakeArtifact (obj-make.c L728)", () => {
+  /** A throwaway preview stream, as the knowledge browser passes. */
+  const preview = (): Rng => new Rng(FAKE_ARTIFACT_SEED);
+
   it("builds an artifact object stamped with the artifact data", () => {
     const art = firstArtifact();
-    const obj = makeFakeArtifact(reg, constants, art);
+    const obj = makeFakeArtifact(reg, constants, art, preview());
     expect(obj).not.toBeNull();
     // copy_artifact_data copies the artifact's dice/ac/modifiers onto the obj.
     expect(obj!.artifact).toBe(art);
@@ -52,24 +55,28 @@ describe("makeFakeArtifact (obj-make.c L728)", () => {
     expect(obj!.toA).toBe(art.toA);
   });
 
-  it("is deterministic across calls (same throwaway seed)", () => {
+  it("is deterministic across calls at the same seed", () => {
     const art = firstArtifact();
-    const a = makeFakeArtifact(reg, constants, art);
-    const b = makeFakeArtifact(reg, constants, art);
+    const a = makeFakeArtifact(reg, constants, art, preview());
+    const b = makeFakeArtifact(reg, constants, art, preview());
     expect(JSON.stringify(a!.modifiers)).toBe(JSON.stringify(b!.modifiers));
     expect(JSON.stringify(a!.curses)).toBe(JSON.stringify(b!.curses));
   });
 
-  it("does not advance the game Rng (draws only from a throwaway stream)", () => {
-    // A live game RNG stream. The fake build must not consume from it, even
-    // though copy_artifact_data draws the curse timeout - that draw comes from
-    // makeFakeArtifact's own throwaway Rng, never this one.
+  /*
+   * WHICH STREAM IS THE CALLER'S CHOICE, and these two tests bracket the
+   * mechanism from both sides. A preview must leave the game stream alone; the
+   * randart generator must draw from the stream it hands in, because upstream
+   * does. A default parameter here would satisfy the first and silently break
+   * the second - which is exactly what happened before 2026-08-07.
+   */
+  it("does not touch a stream it was not given", () => {
     const gameRng = new Rng(12345);
     const before = gameRng.getState();
 
     // Build every artifact preview - the browser walks the whole list.
     for (const art of reg.artifacts) {
-      if (art) makeFakeArtifact(reg, constants, art);
+      if (art) makeFakeArtifact(reg, constants, art, preview());
     }
 
     const after = gameRng.getState();
@@ -82,10 +89,20 @@ describe("makeFakeArtifact (obj-make.c L728)", () => {
     }
   });
 
-  it("honours an explicit seed override", () => {
-    const art = firstArtifact();
-    const def = makeFakeArtifact(reg, constants, art, FAKE_ARTIFACT_SEED);
-    const same = makeFakeArtifact(reg, constants, art, FAKE_ARTIFACT_SEED);
-    expect(JSON.stringify(def!.curses)).toBe(JSON.stringify(same!.curses));
+  it("DOES draw from the stream it is given, for a cursed artifact", () => {
+    /* copy_curses rolls randcalc(time, 0, RANDOMISE) per non-zero slot
+     * (obj-curse.c L36). Find an artifact that has one; if the pack ever stops
+     * carrying a cursed artifact, the assertion below says so rather than
+     * passing on an empty search. */
+    const cursed = reg.artifacts.find(
+      (a): a is Artifact =>
+        !!a &&
+        !!(a.curses ?? reg.lookupKind(a.tval, a.sval)?.curses),
+    );
+    expect(cursed, "pack supplies a cursed artifact").toBeDefined();
+
+    const rng = new Rng(999);
+    makeFakeArtifact(reg, constants, cursed!, rng);
+    expect(rng.getState()).not.toEqual(new Rng(999).getState());
   });
 });

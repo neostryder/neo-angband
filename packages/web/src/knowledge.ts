@@ -37,6 +37,8 @@ import {
   historyIsArtifactKnown,
   artifactIsKnown as coreArtifactIsKnown,
   makeFakeArtifact,
+  FAKE_ARTIFACT_SEED,
+  Rng,
   makeFakeKind,
   objectInfoEgo,
   makeObjectInfoDeps,
@@ -936,7 +938,10 @@ export function artifactFakeRecall(
 ): { title: string; lines: ScreenLine[] } {
   const { state, reg, constants, player, runeEnv, inspectExtras } = deps;
 
-  const obj = makeFakeArtifact(reg, constants, art);
+  /* A PREVIEW: draw the curse timeouts from a throwaway stream at a fixed
+   * seed, never the game's - browsing must not perturb the game RNG, and the
+   * same artifact must preview identically every time. */
+  const obj = makeFakeArtifact(reg, constants, art, new Rng(FAKE_ARTIFACT_SEED));
   if (!obj) {
     /* No base kind: make_fake_artifact returns false (L737); show the name. */
     const lines: ScreenLine[] = [{ text: art.name, color: RECALL_TITLE }];
