@@ -9,8 +9,10 @@ import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import { IGNORE, IgnoreSettings, ignoreItemOk } from "../obj/ignore.js";
-import { invenCarry } from "./gear.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { gearGet, invenCarry } from "./gear.js";
 import { invenWield } from "./obj-cmd.js";
+import { objectKnownView } from "./describe.js";
 import { makeState } from "./harness.js";
 import type { GameState } from "./context.js";
 import { ignoreDropTargets } from "./ignore-cmd.js";
@@ -56,6 +58,23 @@ function makeSword(rng: Rng, kindName: string, toD: number): GameObject {
   return obj;
 }
 
+/**
+ * Learn everything about `obj`, so ignore_level_of grades it by its combat
+ * bonuses rather than returning IGNORE_MAX (obj-ignore.c:489 - the good / bad /
+ * average tiers are behind object_fully_known).
+ *
+ * This is not decoration: a Dagger carries OF_THROWING, whose id-type is "on
+ * wield" (object_property.txt:740-744), so an un-wielded one is NOT fully known
+ * and upstream will not quality-ignore it at any threshold below IGNORE_ALL.
+ * These tests are about the drop pass, so they identify their fixtures rather
+ * than test the knowledge gate; the gate has its own tests in obj/ignore.test.ts.
+ */
+function identify(state: GameState, obj: GameObject): GameObject {
+  obj.notice |= OBJ_NOTICE.ASSESSED;
+  for (const flag of obj.flags) state.actor.player.objKnown.flags.on(flag);
+  return obj;
+}
+
 function carry(state: GameState, obj: GameObject): number {
   return invenCarry(state.gear, state.actor.player, obj, {
     quiverSlotSize: constants.quiverSlotSize,
@@ -68,16 +87,17 @@ describe("ignoreDropTargets (obj-ignore.c ignore_drop L651, scan half)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     state.ignore = new IgnoreSettings();
     state.ignore.level[ITYPE.SHARP] = IGNORE.BAD;
-    state.isIgnored = (obj) => ignoreItemOk(obj, state.ignore, true);
+    state.isIgnored = (obj) =>
+      ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, true);
 
     const rng = new Rng(9);
-    const bad = carry(state, makeSword(rng, "& Dagger~", -3)); // ignored
-    const good = carry(state, makeSword(rng, "& Tulwar~", 4)); // not ignored (GOOD tier)
-    const badInscribed = makeSword(rng, "& Rapier~", -3);
+    const bad = carry(state, identify(state, makeSword(rng, "& Dagger~", -3))); // ignored
+    const good = carry(state, identify(state, makeSword(rng, "& Tulwar~", 4))); // not ignored (GOOD tier)
+    const badInscribed = identify(state, makeSword(rng, "& Rapier~", -3));
     badInscribed.note = "!d";
     const inscribedHandle = carry(state, badInscribed); // ignored, but !d excludes it
 
-    const wornHandle = carry(state, makeSword(rng, "& Short Sword~", -3));
+    const wornHandle = carry(state, identify(state, makeSword(rng, "& Short Sword~", -3)));
     invenWield(state, wornHandle, constants);
 
     const targets = ignoreDropTargets(state);
@@ -94,11 +114,35 @@ describe("ignoreDropTargets (obj-ignore.c ignore_drop L651, scan half)", () => {
     expect(packTarget?.equipped).toBe(false);
   });
 
+  /**
+   * The gate the drop pass inherits, exercised through the wire session/game.ts
+   * actually installs rather than through obj/ignore.ts directly. Before the
+   * known-twin fix this pair was indistinguishable: ignoreLevelOf read the live
+   * object, so the game auto-dropped an unidentified weapon for a to-dam the
+   * player had no way to see.
+   */
+  it("leaves an UNIDENTIFIED bad weapon alone, and takes its identified twin", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.ignore = new IgnoreSettings();
+    state.ignore.level[ITYPE.SHARP] = IGNORE.BAD;
+    state.isIgnored = (obj) =>
+      ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, true);
+
+    const rng = new Rng(11);
+    const unknown = carry(state, makeSword(rng, "& Dagger~", -3));
+    expect(ignoreDropTargets(state).map((t) => t.handle)).not.toContain(unknown);
+
+    /* Same object, same -3: only the knowledge changes. */
+    identify(state, gearGet(state.gear, unknown)!);
+    expect(ignoreDropTargets(state).map((t) => t.handle)).toContain(unknown);
+  });
+
   it("excludes everything while unignoring is active", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     state.ignore = new IgnoreSettings();
     state.ignore.level[ITYPE.SHARP] = IGNORE.ALL;
-    state.isIgnored = (obj) => ignoreItemOk(obj, state.ignore, true);
+    state.isIgnored = (obj) =>
+      ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, true);
     carry(state, makeSword(new Rng(3), "& Dagger~", -3));
 
     state.ignore.unignoring = true;
@@ -109,9 +153,10 @@ describe("ignoreDropTargets (obj-ignore.c ignore_drop L651, scan half)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     state.ignore = new IgnoreSettings();
     state.ignore.level[ITYPE.SHARP] = IGNORE.BAD;
-    state.isIgnored = (obj) => ignoreItemOk(obj, state.ignore, true);
-    carry(state, makeSword(state.rng, "& Dagger~", -3));
-    carry(state, makeSword(state.rng, "& Tulwar~", 4));
+    state.isIgnored = (obj) =>
+      ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, true);
+    carry(state, identify(state, makeSword(state.rng, "& Dagger~", -3)));
+    carry(state, identify(state, makeSword(state.rng, "& Tulwar~", 4)));
 
     const before = JSON.stringify(state.rng.getState());
     ignoreDropTargets(state);
