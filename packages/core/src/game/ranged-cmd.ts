@@ -141,14 +141,20 @@ function rangedHelper(
      * Chebyshev max, so diagonal shots are penalized faithfully (gap 2.6). */
     const dist = distance(start, grid);
     const percentDamage = state.options?.get("birth_percent_damage") ?? false;
+    /* object_to_hit / object_to_dam / object_weight_one read the curse
+     * templates of the missile's and launcher's active curses (obj-util.c
+     * :296-330), exactly as the melee path does - a cursed bow's penalty has
+     * to reach a shot as well as a swing. */
     const result = throwing
       ? makeRangedThrow(
           state.rng, player, state.actor.combat, missile, mon,
           state.brands, state.slays, dist, monObvious, percentDamage,
+          state.curses,
         )
       : makeRangedShot(
           state.rng, player, state.actor.combat, missile, launcher!, mon,
           state.brands, state.slays, dist, monObvious, percentDamage,
+          state.curses,
         );
 
     if (result.success) {

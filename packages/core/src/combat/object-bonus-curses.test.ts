@@ -45,11 +45,17 @@ const objReg = new ObjRegistry({
 const curses = objReg.curses;
 const kind = objReg.kinds.find((k): k is ObjectKind => !!k) as ObjectKind;
 
-/** The first shipped curse whose template carries a to-hit or to-dam term. */
-const combatCurseIdx = curses.findIndex(
-  (c, i) => i > 0 && c !== null && (c.obj.toH !== 0 || c.obj.toD !== 0),
-);
-const combatCurse = curses[combatCurseIdx] as Curse;
+/*
+ * ONE INDEX PER TERM. A single "first curse with any combat term" index picks
+ * `air swing` (to_h -20, to_d 0), which made the to-dam assertion below read
+ * `expect(4).toBe(4 + 0)` - true, and unable to disagree with anything. Found
+ * on 2026-08-07 by a surviving mutant while wiring the same fix into the ranged
+ * path; the melee assertion had been decorative since this file was written.
+ */
+const hitCurseIdx = curses.findIndex((c, i) => i > 0 && c !== null && c.obj.toH !== 0);
+const damCurseIdx = curses.findIndex((c, i) => i > 0 && c !== null && c.obj.toD !== 0);
+const hitCurse = curses[hitCurseIdx] as Curse;
+const damCurse = curses[damCurseIdx] as Curse;
 
 function cursedWeapon(idx: number, power = 10): GameObject {
   const o = objectNew(kind);
@@ -62,39 +68,41 @@ function cursedWeapon(idx: number, power = 10): GameObject {
 }
 
 describe("object_to_hit / object_to_dam curse terms", () => {
-  it("the shipped data really does have a curse with a combat term", () => {
+  it("the shipped data has a curse for EACH term asserted below", () => {
     /* If this ever fails the pack changed, and the tests below would be vacuous
      * rather than wrong - which is the failure mode worth catching loudly. */
-    expect(combatCurseIdx).toBeGreaterThan(0);
-    expect(combatCurse.obj.toH !== 0 || combatCurse.obj.toD !== 0).toBe(true);
+    expect(hitCurseIdx).toBeGreaterThan(0);
+    expect(hitCurse.obj.toH).not.toBe(0);
+    expect(damCurseIdx).toBeGreaterThan(0);
+    expect(damCurse.obj.toD).not.toBe(0);
   });
 
   it("adds the curse template to_h when the curse is active", () => {
-    const o = cursedWeapon(combatCurseIdx);
-    expect(objectToHit(o, curses)).toBe(3 + combatCurse.obj.toH);
+    const o = cursedWeapon(hitCurseIdx);
+    expect(objectToHit(o, curses)).toBe(3 + hitCurse.obj.toH);
   });
 
   it("adds the curse template to_d when the curse is active", () => {
-    const o = cursedWeapon(combatCurseIdx);
-    expect(objectToDam(o, curses)).toBe(4 + combatCurse.obj.toD);
+    const o = cursedWeapon(damCurseIdx);
+    expect(objectToDam(o, curses)).toBe(4 + damCurse.obj.toD);
   });
 
   it("ignores a curse with zero power (obj->curses[i].power gate)", () => {
-    const o = cursedWeapon(combatCurseIdx, 0);
+    const o = cursedWeapon(damCurseIdx, 0);
     expect(objectToHit(o, curses)).toBe(3);
     expect(objectToDam(o, curses)).toBe(4);
   });
 
   it("returns the object's own bonus when no curse table is supplied", () => {
-    const o = cursedWeapon(combatCurseIdx);
+    const o = cursedWeapon(damCurseIdx);
     expect(objectToHit(o)).toBe(3);
     expect(objectToDam(o)).toBe(4);
   });
 
   it("skips index 0, which upstream leaves null", () => {
-    const o = cursedWeapon(combatCurseIdx);
+    const o = cursedWeapon(hitCurseIdx);
     (o.curses as NonNullable<typeof o.curses>)[0] = { power: 99, timeout: 0 };
-    expect(objectToHit(o, curses)).toBe(3 + combatCurse.obj.toH);
+    expect(objectToHit(o, curses)).toBe(3 + hitCurse.obj.toH);
   });
 
   it("sums every active curse, not just the first", () => {
@@ -128,5 +136,22 @@ describe("the live melee path threads the curse table", () => {
 
   it("the session fills GameState.curses from the bound registry", () => {
     expect(src("../session/game.ts")).toMatch(/curses: reg\.objects\.curses,/u);
+  });
+
+  /*
+   * The RANGED path was left out when melee was fixed on 2026-08-04, and the
+   * seam being an optional trailing argument is exactly why nothing noticed:
+   * every unit test passed while a cursed bow's penalty never reached a shot.
+   * combat/ranged.test.ts asserts the behaviour; this asserts the call site,
+   * because that is the half that was missing.
+   */
+  it("game/ranged-cmd.ts passes state.curses to makeRangedShot / Throw", () => {
+    const body = src("../game/ranged-cmd.ts");
+    expect(body).toMatch(/makeRangedThrow\(/u);
+    expect(body).toMatch(/makeRangedShot\(/u);
+    /* One per call, and no more call sites than supplied arguments. */
+    const calls = (body.match(/makeRanged(Shot|Throw)\(/gu) ?? []).length;
+    const supplied = (body.match(/^\s*state\.curses,$/gmu) ?? []).length;
+    expect(supplied).toBe(calls);
   });
 });

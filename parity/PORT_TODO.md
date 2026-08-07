@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 244 of 339 done, 43 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 249 of 339 done, 44 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -161,14 +161,13 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-price`, `store-transact`, `ui-display`, `ui-entry`, `ui-player`,
   `wizard-debug`.
 
-  The 30 files still open, largest first: `combat-ranged` 5, `obj-ignore` 5,
-  `project-path` 5, `game-mon-ranged` 4, `game-project-monster` 4, `gen-rooms`
+  The files still open, largest first: `obj-ignore` 5, `project-path` 5, `game-mon-ranged` 4, `game-project-monster` 4, `gen-rooms`
   4, `obj-flavor` 4, `obj-randart` 4, `player-exp` 4, `player-spell` 4,
   `player-timed` 4, then twelve at 3, five at 2 and two at 1.
 
-  The tally, **read from the TSV rather than carried forward**: **141 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **146 `ported`,
   35 `stale-doc`, 22 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **95 remain.**
+  10 `n-a`, 7 `partial` against **6** `real`**. **90 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -334,6 +333,29 @@ is reachable in play and a test constructs the case that used to be wrong.**
   is genuinely `real`: `update_topbar` / `SIDEBAR_TOP`, the `prt_*_short`
   handlers and `hp_colour_change` have not landed, and the port has no top bar
   at all.
+
+  **`combat-ranged` closed, and the last of its five rows was a live defect.**
+  `object_to_hit` / `object_to_dam` / `object_weight_one` add every active
+  curse's template bonus (`obj-util.c:296-330`). Melee was fixed on 2026-08-04.
+  **The ranged path was left out, and the curse table is an OPTIONAL TRAILING
+  ARGUMENT — so nothing failed.** A cursed bow or cursed ammo simply never
+  applied its to-hit or to-dam penalty to a shot or a throw, while the same
+  curse on a melee weapon did. This is `optional-seam-with-no-default` in its
+  nastiest form: not an unsupplied seam, a seam supplied to every path but one.
+
+  The mutation run then caught a second thing, and this one is a lesson about
+  the TEST rather than the code. The fixture picked "the first shipped curse
+  carrying any combat term", which is `air swing` — `to_h -20`, **`to_d 0`**. So
+  the to-dam assertion read `expect(0).toBe(0)`: a fixture value that could not
+  disagree. The same index was doing the same thing in the MELEE test written
+  back in August, which means that assertion had been decorative since the day
+  it was written. Both now take one index per term, and both are mutation-checked.
+
+  One mutant is left alive on purpose: `object_weight_one`'s curse term on the
+  thrown-weapon weight scaling. **No shipped curse carries a `weight` field**,
+  so with the game's own data that call cannot produce a different answer and no
+  honest test can kill it. The threading is still correct — it is what upstream
+  does, and a mod may add one — and the test says so instead of faking a curse.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
