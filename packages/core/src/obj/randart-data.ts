@@ -401,8 +401,12 @@ export function artifactPower(
 
   /* obj-randart.c:205-206 also logs the fake artifact's object_desc with
    * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL. Not written yet: object_desc here
-   * needs a KnownDesc this pure module does not hold, so it is one of the 68
-   * the census still counts rather than a line quietly dropped. */
+   * needs a KnownDesc this pure module does not hold.
+   *
+   * Its format string is "%s\n", which has no literal span, so the census in
+   * randart-log.census.test.ts CANNOT see it - it is carried there as
+   * UNWRITTEN_SPANLESS instead, and PORT_TODO 5.5 stays open on it. Left to
+   * the ratchet alone this would be a line quietly dropped. */
 
   return objectPower(reg, obj);
 }
@@ -469,6 +473,23 @@ export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
   for (let i = 0; i < TV_MAX; i++) {
     if (data.tvNum[i]) {
       data.avgTvPower[i] = meanFloored(fakeTvPower[i]!);
+    }
+  }
+
+  randartLogf(
+    () =>
+      `Max power is ${String(data.maxPower)}, min is ${String(data.minPower)}\n`,
+  );
+  randartLogf(
+    () =>
+      `Mean is ${String(data.avgPower)}, variance is ${String(data.varPower)}\n`,
+  );
+  for (let i = 0; i < TV_MAX; i++) {
+    if (data.avgTvPower[i]) {
+      randartLogf(
+        () =>
+          `Power for tval ${tvalFindName(i)}: min ${String(data.minTvPower[i])}, max ${String(data.maxTvPower[i])}, avg ${String(data.avgTvPower[i])}\n`,
+      );
     }
   }
 
@@ -1204,33 +1225,40 @@ export function countAbilities(
   /* ESP - handle helms/crowns separately. */
   if (art.flags.has(OF.TELEPATHY)) {
     if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+      randartLog("Adding 1 for ESP on headgear.\n");
       data.artProbs[ART_IDX.HELM_ESP]!++;
     } else {
+      randartLog("Adding 1 for ESP - general.\n");
       data.artProbs[ART_IDX.GEN_ESP]!++;
     }
   }
 
   /* Slow digestion - generic. */
   if (art.flags.has(OF.SLOW_DIGEST)) {
+    randartLog("Adding 1 for slow digestion - general.\n");
     data.artProbs[ART_IDX.GEN_SDIG]!++;
   }
 
   /* Regeneration - generic. */
   if (art.flags.has(OF.REGEN)) {
+    randartLog("Adding 1 for regeneration - general.\n");
     data.artProbs[ART_IDX.GEN_REGEN]!++;
   }
 
   /* Trap immunity - handle boots separately. */
   if (art.flags.has(OF.TRAP_IMMUNE)) {
     if (art.tval === TV.BOOTS) {
+      randartLog("Adding 1 for trap immunity on boots.\n");
       data.artProbs[ART_IDX.BOOT_TRAP_IMM]!++;
     } else {
+      randartLog("Adding 1 for trap immunity - general.\n");
       data.artProbs[ART_IDX.GEN_TRAP_IMM]!++;
     }
   }
 
   /* Activation. */
   if (art.activation || kind?.activation) {
+    randartLog("Adding 1 for activation.\n");
     data.artProbs[ART_IDX.GEN_ACTIV]!++;
   }
 }

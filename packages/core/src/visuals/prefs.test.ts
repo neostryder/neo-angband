@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { objectShortName } from "../obj/bind.js";
 import { describe, expect, it } from "vitest";
 
 import { COLOUR_RED, colorCharToAttr } from "../color.js";
@@ -15,7 +16,6 @@ import {
   dumpMonsters,
   dumpObjects,
   glyphTableSink,
-  objectShortName,
   parsePrefNum,
   prefErrorMessage,
   prefFooter,
