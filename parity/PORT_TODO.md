@@ -2970,8 +2970,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:3458`,
   `parity/ledger/obj-randart.yaml:51`
 
-- [ ] **5.5 `randart.log` / `randart.txt`. ONE LINE LEFT of 252, and it is a
-  line the census cannot see. The remainder is MEASURED, not estimated.**
+- [ ] **5.5 `randart.log` / `randart.txt`. TWO things left of 252 sites, and
+  NEITHER is visible to the census. The remainder is MEASURED, not estimated.**
+
+  The second is a whole pass, not a line, and completing the log is what
+  exposed it. `do_randart` measures the artifact set **twice**
+  (obj-randart.c:3182-3186): once before generation, and once more on the
+  finished items, whose only purpose is the closing statistics in the log. The
+  port does the first and skips the second, so `randart.log` ends without the
+  block a reader would use to compare the set it just made against the standard
+  one. It draws no RNG, so adding it cannot change an artifact.
+
+  It is not a one-liner: `storeBasePower` and `parseFrequencies` read
+  `reg.artifacts`, and the generated set lives in a fresh array the registry
+  never sees (the port leaves `reg.artifacts` untouched, where upstream
+  overwrites the `a_info` global in place). Measuring the new set means the
+  artifact array becomes a parameter of both, and of `collectArtifactCounts`
+  underneath them.
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
 
