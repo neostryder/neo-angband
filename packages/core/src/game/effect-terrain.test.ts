@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EF, ELEM, FEAT, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
+import { EF, ELEM, FEAT, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
 import { distance, loc, locEq, locSum, DDGRID_DDD } from "../loc.js";
 import {
   EffectRegistry,
@@ -27,6 +27,7 @@ import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { ArtifactState } from "../obj/make.js";
 import type { Artifact, ObjectKind } from "../obj/types.js";
 import { OptionState } from "../player/options.js";
+import { showMonsterMessages } from "./mon-message.js";
 import {
   lightRoom,
   registerTerrainHandlers,
@@ -315,6 +316,7 @@ describe("EF_LIGHT_AREA / EF_DARKEN_AREA (effect-handler-general.c L3026)", () =
     markRoom(state, 14, 14, 18, 18);
     lightRoom(state, loc(16, 16), true);
     const victim = addMon(state, makeRace(), loc(16, 16));
+    victim.mflag.on(MFLAG.VISIBLE);
     const caster = addMon(state, makeRace(), loc(12, 12));
     caster.target.midx = victim.midx;
 
@@ -324,9 +326,33 @@ describe("EF_LIGHT_AREA / EF_DARKEN_AREA (effect-handler-general.c L3026)", () =
     });
     /* The victim's room goes dark, targeting it rather than the player. */
     expect(state.chunk.sqinfoHas(loc(16, 16), SQUARE.GLOW)).toBe(false);
-    expect(msgs.some((m) => m.startsWith("Darkness surrounds the "))).toBe(true);
+    /* MDESC_TARG on a SEEN monster: IND_HID suppresses "a", so "the <name>". */
+    expect(msgs).toContain(`Darkness surrounds the ${victim.race.name}.`);
     expect(msgs).not.toContain("Darkness surrounds you.");
     expect(state.actor.player.timed[TMD.BLIND] ?? 0).toBe(0);
+  });
+
+  it("names an UNSEEN target the way MDESC_TARG does, not by its race", () => {
+    /*
+     * monster_desc(..., t_mon, MDESC_TARG) (L3061). MDESC_TARG is
+     * OBJE|IND_HID|PRO_HID, so an unseen neuter monster is "something" - the
+     * one case where a race-name stand-in and the real thing disagree, and
+     * therefore the only assertion that can tell them apart.
+     */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    markRoom(state, 14, 14, 18, 18);
+    lightRoom(state, loc(16, 16), true);
+    const victim = addMon(state, makeRace(), loc(16, 16));
+    victim.mflag.off(MFLAG.VISIBLE);
+    const caster = addMon(state, makeRace(), loc(12, 12));
+    caster.target.midx = victim.midx;
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DARKEN_AREA, env(state, {}, msgs), {
+      origin: sourceMonster(caster.midx),
+    });
+    expect(msgs).toContain("Darkness surrounds something.");
+    expect(msgs.some((m) => m.includes(victim.race.name))).toBe(false);
   });
 });
 
@@ -689,6 +715,56 @@ describe("EF_EARTHQUAKE (effect-handler-attack.c L1290)", () => {
       if (!live || live.hp < live.maxhp) harmed++;
     }
     expect(harmed).toBeGreaterThan(0);
+  });
+
+  /*
+   * effect-handler-attack.c:1524/1546 calls add_monster_message, not msg() - so
+   * the quake lines stack ("2 kobolds wail out in pain!"), carry the
+   * show_damage suffix, and are gated by add_monster_message's own visibility
+   * rule. A hand-written sentence can do none of that, which is what the two
+   * race-name stand-ins here used to be.
+   */
+  function quake(hp: number, showDamage?: boolean): { msgs: string[]; name: string } | null {
+    for (let seed = 1; seed <= 40; seed++) {
+      const state = makeState({ playerGrid: loc(25, 10), seed, w: 60, h: 40 });
+      state.chunk.depth = 5;
+      const mon = addMon(state, makeRace(), loc(11, 10), { hp });
+      mon.mflag.on(MFLAG.VISIBLE);
+      const msgs: string[] = [];
+      state.msg = (t): void => void msgs.push(t);
+      const ctx = env(state, {}, msgs);
+      if (showDamage !== undefined) ctx.showDamage = showDamage;
+      registry().effectSimple(EF.EARTHQUAKE, ctx, {
+        origin: sourcePlayer(),
+        radius: 15,
+        y: 0,
+        x: 0,
+      });
+      showMonsterMessages(state);
+      if (msgs.length > 1) return { msgs, name: mon.race.name };
+    }
+    return null;
+  }
+
+  it("queues QUAKE_DEATH through the monster-message queue", () => {
+    /* hp 3: 4d8 always kills, and the no-safe-grid arm sets m_dam = hp + 1. */
+    const r = quake(3);
+    expect(r).not.toBeNull();
+    expect(r!.msgs).toContain(`The ${r!.name} is embedded in rock!`);
+  });
+
+  it("queues QUAKE_HURT through the monster-message queue", () => {
+    /* hp 40 outlives 4d8's maximum of 32, so the survivor arm is reachable. */
+    const r = quake(40);
+    expect(r).not.toBeNull();
+    expect(r!.msgs).toContain(`The ${r!.name} wails out in pain!`);
+  });
+
+  it("show_damage puts the quake damage in the queued line", () => {
+    const r = quake(40, true);
+    expect(r).not.toBeNull();
+    const hit = r!.msgs.find((m) => m.includes("wails out in pain!"));
+    expect(hit).toMatch(/ \(\d+\)$/);
   });
 
   it("a KILL_WALL monster shrugs the quake off", () => {

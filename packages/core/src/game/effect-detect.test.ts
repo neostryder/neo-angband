@@ -81,6 +81,15 @@ function trapDeps(): TrapDeps {
   return { kinds: trapKinds };
 }
 
+/* obj-chest.c's pval encoding: 0 empty, 1 locked-untrapped, >1 trapped. */
+function chestWithPval(pval: number): GameObject {
+  return {
+    tval: TV.CHEST,
+    pval,
+    kind: { dChar: "~", dAttr: "w" },
+  } as GameObject;
+}
+
 function env(
   state: GameState,
   msgs?: string[],
@@ -179,6 +188,65 @@ describe("EF_DETECT_TRAPS (L1321)", () => {
     });
     expect(msgs).toContain("You sense no traps.");
     expect(state.chunk.sqinfoHas(loc(11, 10), SQUARE.DTRAP)).toBe(true);
+  });
+
+  /*
+   * "Scan all objects in the grid to look for traps on chests"
+   * (effect-handler-general.c:1354-1376). Unlike `search`, this arm fires on a
+   * chest the player has never seen - `!obj->known` is one of its two entry
+   * conditions - and the "Hack - see the object" is what gives it a memory.
+   */
+  it("identifies the trap on a chest it has never seen, and remembers it", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    const chest = chestWithPval(5);
+    floorCarry(state, grid, chest);
+    expect(knownObject(state, grid)).toBeNull(); /* never seen */
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DETECT_TRAPS, env(state, msgs, trapDeps()), {
+      origin: sourcePlayer(),
+      y: 5,
+      x: 5,
+    });
+
+    expect(chest.knownPval).toBe(5);
+    expect(knownObject(state, grid)).not.toBeNull();
+    expect(msgs).toContain("You sense the presence of traps!");
+  });
+
+  it("re-detecting an already-identified chest finds nothing new", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    const chest = chestWithPval(5);
+    floorCarry(state, grid, chest);
+    const args = { origin: sourcePlayer(), y: 5, x: 5 };
+    registry().effectSimple(EF.DETECT_TRAPS, env(state, [], trapDeps()), args);
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DETECT_TRAPS, env(state, msgs, trapDeps()), args);
+    expect(msgs).toContain("You sense no traps.");
+  });
+
+  it("skips an untrapped chest and an ignored one", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* pval 1 is LOCKED and untrapped; is_trapped_chest is pval > 1. */
+    const locked = chestWithPval(1);
+    floorCarry(state, loc(12, 10), locked);
+    const ignored = chestWithPval(5);
+    floorCarry(state, loc(11, 10), ignored);
+    state.isIgnored = (o) => o === ignored;
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DETECT_TRAPS, env(state, msgs, trapDeps()), {
+      origin: sourcePlayer(),
+      y: 5,
+      x: 5,
+    });
+
+    expect(locked.knownPval).toBeUndefined();
+    expect(ignored.knownPval).toBeUndefined();
+    expect(msgs).toContain("You sense no traps.");
   });
 });
 

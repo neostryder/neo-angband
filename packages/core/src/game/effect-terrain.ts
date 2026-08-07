@@ -18,13 +18,11 @@
  *
  * Simplifications, ledgered in parity/ledger/game-effect-terrain.yaml:
  * - No town or arena (depth 0 short-circuits like the town branch), no
- *   birth_levels_persist / show_damage options (#30).
+ *   birth_levels_persist option (#30).
  * - expose_to_sun on the surface rides the day-night cycle.
- * - MDESC monster names and MON_MSG grammar ride the display layer (#25);
- *   the race name stands in for the quake and DARKEN_AREA target messages.
  */
 
-import { ELEM, FEAT, EF, MON_TMD, RF, SQUARE, TF, TMD } from "../generated/index.js";
+import { ELEM, FEAT, EF, MON_MSG, MON_TMD, RF, SQUARE, TF, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { DDGRID_DDD, distance, loc, locEq, locSum } from "../loc.js";
 import type {
@@ -33,8 +31,13 @@ import type {
   EffectRegistry,
   Source,
 } from "../effects/interpreter.js";
-import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predicate.js";
+import { monsterIsSmart, monsterIsStupid } from "../mon/predicate.js";
 import { monsterWake } from "../mon/take-hit.js";
+import { MDESC_TARG, monsterDesc } from "../mon/desc.js";
+import {
+  addMonsterMessage,
+  addMonsterMessageShowDamage,
+} from "./mon-message.js";
 import { liveObjectIsKnownArtifact } from "../obj/artifact-known.js";
 import { equipLearnElement } from "../obj/knowledge.js";
 import { featIsBright } from "../world/chunk.js";
@@ -426,8 +429,6 @@ const handleLIGHT_AREA: EffectHandler = (ctx) => {
  * caster targeting another monster darkens its room; a decoyed caster darkens
  * the decoy's room (and the effect is unseen if the decoy is out of sight or
  * the player is blind). The player-cast form blinds an unresisting caster.
- * (monster_desc with MDESC_TARG is ported - mon/desc.ts, used at
- * game/mon-cmd.ts:102 - and can replace the race name that stands in here.)
  */
 const handleDARKEN_AREA: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -450,7 +451,8 @@ const handleDARKEN_AREA: EffectHandler = (ctx) => {
   if (tMon) {
     target = tMon.grid;
     if (message) {
-      say(ctx, `Darkness surrounds the ${tMon.race.name}.`);
+      /* monster_desc(m_name, ..., t_mon, MDESC_TARG) (L3061). */
+      say(ctx, `Darkness surrounds ${monsterDesc(tMon, MDESC_TARG)}.`);
       message = false;
     }
   }
@@ -790,16 +792,24 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
       /* Apply damage directly */
       mon.hp -= mDam;
 
+      /* display_dam (effect-handler-attack.c:1524/1546): OPT show_damage
+       * selects the _show_damage form of each message. add_monster_message
+       * does the visibility gating itself, so there is no monsterIsVisible
+       * test around these - which is what let a stand-in `msg` diverge. */
+      const displayDam = ctx.env.showDamage ?? false;
       if (mon.hp < 0) {
-        /* MON_MSG_QUAKE_DEATH; the race name stands in for MDESC (#25). */
-        if (monsterIsVisible(mon)) {
-          say(ctx, `${mon.race.name} is embedded in rock!`);
+        if (displayDam) {
+          addMonsterMessageShowDamage(state, mon, MON_MSG.QUAKE_DEATH, false, mDam);
+        } else {
+          addMonsterMessage(state, mon, MON_MSG.QUAKE_DEATH, false);
         }
         /* Delete (not kill) "dead" monsters. */
         deleteMonster(state, mon.midx);
       } else {
-        if (monsterIsVisible(mon)) {
-          say(ctx, `${mon.race.name} wails out in pain!`);
+        if (displayDam) {
+          addMonsterMessageShowDamage(state, mon, MON_MSG.QUAKE_HURT, false, mDam);
+        } else {
+          addMonsterMessage(state, mon, MON_MSG.QUAKE_HURT, false);
         }
         /* Escape from the rock */
         if (safeGrids) monsterSwap(state, grid, safeGrid);

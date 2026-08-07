@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 87 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 83 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -144,22 +144,56 @@ is reachable in play and a test constructs the case that used to be wrong.**
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
-  from the key and mostly does not repeat the word. Files fully adjudicated:
-  `ui-display`, `ui-player`, `ui-entry`, `wizard-debug`, `game-gear`,
-  `obj-knowledge`, all four `store-*`, `player-history`, `obj-desc`, `mon-lore`,
-  `mon-lore-describe`, `game-effect-terrain`, `game-effect-teleport`,
-  `game-player-path`, `game-mon-cmd`, `game-cave-cmd`, `game-effect-melee`,
-  `game-floor`, `game-known`, `game-mon-group`, `combat-melee`, `game-thrust`,
-  `obj-power`, `effects-interpreter`, `game-effect-detect`, `game-effect-env`,
-  `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon`,
-  `game-mon-list`, and - 2026-08-06, on the back of Tier 4 - `game-arena`,
-  `game-trap`, `gen-cave`, `gen-framework`, `game-effect-monster`,
-  `game-effect-teleport`, `mon-take-hit`, `session-save` and
-  `game-effect-general`.
+  from the key and mostly does not repeat the word.
 
-  The tally, **read from the TSV rather than carried forward**: **88 `ported`,
-  35 `stale-doc`, 21 `partial`, 18 `divergence`, 13 `note-is-fix`, 9 `n-a`,
+  Files fully adjudicated, **listed from the TSV rather than appended to by
+  hand** - the previous prose list named `ui-display` and `obj-power`, and
+  neither is complete (five and three rows open respectively):
+  `combat-melee`, `effects-interpreter`, `game-arena`, `game-cave-cmd`,
+  `game-effect-detect`, `game-effect-env`, `game-effect-general`,
+  `game-effect-melee`, `game-effect-monster`, `game-effect-summon`,
+  `game-effect-teleport`, `game-effect-terrain`, `game-floor`, `game-gear`,
+  `game-known`, `game-mon-cmd`, `game-mon-group`, `game-mon-list`,
+  `game-player-path`, `game-player-side`, `game-thrust`, `game-trap`,
+  `gen-cave`, `gen-framework`, `mon-lore`, `mon-lore-describe`,
+  `mon-predicate`, `mon-take-hit`, `obj-desc`, `obj-knowledge`, `obj-value`,
+  `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
+  `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
+
+  The tally, **read from the TSV rather than carried forward**: **92 `ported`,
+  35 `stale-doc`, 18 `divergence`, 17 `partial`, 13 `note-is-fix`, 9 `n-a`,
   7 `not-a-deferral` against **4** `real`**. **138 remain.**
+
+  **The 2026-08-07 batch: the `partial` pile, and three live defects behind
+  it.** Read as a group, exactly as the `real` pile had been. `partial` fell 21
+  to 17 - a smaller drop, because these rows already carried "LEAD READ"
+  evidence from an earlier pass - but the reason it fell is the same and worth
+  naming: **every blocker these rows cited had since closed.** 1.1, 2.9, 2.14,
+  3.1, 3.2, 3.22 and 3.23 are all `[x]`, and seven rows were still waiting on
+  them. A row that names its blocker inherits that blocker's expiry date.
+
+  Three of the seven were not merely stale, they were hiding work:
+
+  - `DETECT_TRAPS` **never identified chest traps at all**. The whole
+    "scan all objects in the grid to look for traps on chests" loop
+    (`effect-handler-general.c:1354-1376`) was absent, deferred to "object
+    knowledge" - which shipped as 2.9. `obj.knownPval` IS `obj->known->pval`.
+  - `search` tested chest knowledge **per GRID**, a documented reduction from
+    when the port's object memory was one entry per grid. 2.9 made the
+    remembered pile per object, so the exact `!obj->known` test is available and
+    the recorded divergence (a chest dropped onto already-mapped floor had its
+    trap found here but not upstream) is gone.
+  - `DARKEN_AREA` named its target monster by **race name**, and the earthquake
+    wrote its own `msg()` sentences instead of queueing `MON_MSG_QUAKE_DEATH` /
+    `QUAKE_HURT`. Both comments said outright that the real thing was ported and
+    could replace them. An unseen target now reads "something" as `MDESC_TARG`
+    requires, and the quake lines stack, carry `show_damage`, and are gated by
+    `add_monster_message`'s own visibility rule instead of a hand-rolled one.
+    The pre-existing test for the darkness message had been pinning the WRONG
+    behaviour: its victim was never `MFLAG_VISIBLE`, so it passed only because
+    the stand-in named the race regardless.
+
+  Seven mutants, seven kills.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
@@ -2948,7 +2982,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 87 citations, 54 `real` + 33
+2. the counts stated at the top (**68 items, 83 citations, 54 `real` + 29
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

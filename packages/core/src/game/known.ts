@@ -595,6 +595,41 @@ function forgetRememberedObjects(
   else state.known.objects.set(idx, kept);
 }
 
+/**
+ * `obj->known` for a floor object: the player's remembered entry for `obj` at
+ * `grid`, or undefined when the player has no memory of this particular object.
+ *
+ * Upstream tests that pointer per OBJECT, not per grid - `search`
+ * (player-util.c:1701) and `effect_handler_DETECT_TRAPS`
+ * (effect-handler-general.c:1363) both walk the live pile and ask about each
+ * object in turn. Before PORT_TODO 2.9 the port's memory was one entry per
+ * grid, so those two sites approximated it with "is this grid's pile
+ * remembered"; the remembered pile is a list of the same object references now,
+ * so the test is exact.
+ */
+export function knownFloorObject(
+  state: GameState,
+  grid: Loc,
+  obj: GameObject,
+): KnownObject | undefined {
+  return knownEntry(state, grid, obj);
+}
+
+/**
+ * object_see (obj-knowledge.c:903) for a single floor object: record an exact
+ * memory of it, clearing any sensed marker. This is the narrow half of
+ * `squareKnowPile` - `object_see` alone, with none of `object_touch`'s
+ * assessed / artifact-log side effects, which is what DETECT_TRAPS' "Hack - see
+ * the object" (effect-handler-general.c:1367) calls for.
+ */
+export function objectSeeAt(
+  state: GameState,
+  grid: Loc,
+  obj: GameObject,
+): void {
+  rememberObject(state, grid, obj, false);
+}
+
 /** The remembered entry for `obj` at `grid`, if the player remembers it here. */
 function knownEntry(
   state: GameState,
