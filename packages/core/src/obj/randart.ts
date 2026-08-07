@@ -35,22 +35,20 @@
  *   (game.ts:2511-2514) - so the in-game randart names draw faithfully too.
  *   randNameFallback (a local syllable table) is retained only as a defensive
  *   guard for callers that pass no corpus (it never runs on the wired paths).
- * - randart.log (PORT_TODO 5.5, IN PROGRESS - see the tally below). do_randart
- *   now opens and closes it through the host, so it is a real file again rather
- *   than a dropped dump; the maintainer's disposition on 2026-08-04 was pursue
- *   parity, so the "it never affects an artifact field" argument the old note
- *   made here is not a reason to omit it. The emitters are being filled in
- *   against the C site by site, and the exact count of what is and is not
- *   written yet is measured by obj/randart-log.census.test.ts rather than
- *   claimed in prose. See randart-log.ts for the sink and the reason it is a
- *   module-level static.
- * - randart.txt (STILL OUTSTANDING): the optional data file
- *   (create_file / write_randart_entry, obj-randart.c L3040-L3215). do_randart
- *   takes no create_file argument yet.
+ * - randart.log (PORT_TODO 5.5): PORTED bar one line. do_randart opens and
+ *   closes it through the host; the maintainer's disposition on 2026-08-04 was
+ *   pursue parity, so the "it never affects an artifact field" argument the old
+ *   note made here was never a reason to omit it. What is and is not written is
+ *   MEASURED by obj/randart-log.census.test.ts rather than claimed in prose,
+ *   including the one site the census's span filter cannot see. See
+ *   randart-log.ts for the sink and the reason it is a module-level static.
+ * - randart.txt: PORTED. obj/randart-file.ts, gated by do_randart's create_file
+ *   (obj-randart.c L3195-L3215), which is a required parameter here.
  * - The second measurement pass upstream runs after generation
- *   (store_base_power/parse_frequencies on the finished set, L3184-L3187)
- *   exists only to populate the log's closing statistics and consumes no RNG.
- *   It is still dropped; it comes back with the parse_frequencies emitters.
+ *   (store_base_power/parse_frequencies on the finished set, L3181-L3186):
+ *   PORTED. It exists only to populate the log's closing statistics, and the
+ *   set it measures is a parameter here because this port does not overwrite
+ *   the a_info global the way upstream does.
  * - copy_artifact activation/alt_msg quirk (FAITHFUL): upstream copy_artifact
  *   memcpy's the whole struct and then explicitly nulls a_dst->activation and
  *   a_dst->alt_msg (obj-randart.c L2689-L2690). copyArtifact reproduces this:
@@ -357,7 +355,7 @@ export function designArtifact(
     /* Get the kind again in case it's changed. */
     kind = reg.lookupKind(art.tval, art.sval);
 
-    const basePower = artifactPower(reg, art, "for base item power");
+    const basePower = artifactPower(reg, art, "for base item power", rng);
     randartLogf(() => `Base item power ${String(basePower)}\n`);
 
     /* New base item power too close to target artifact power. */
@@ -385,7 +383,7 @@ export function designArtifact(
 
   /* Give this artifact a shot at being supercharged. */
   trySupercharge(reg, art, power, data, rng);
-  ap = artifactPower(reg, art, "result of supercharge");
+  ap = artifactPower(reg, art, "result of supercharge", rng);
   if (ap > Math.trunc((power * 23) / 20) + 1) {
     /* Too powerful -- put it back. */
     copyArtifact(aOld, art);
@@ -407,7 +405,7 @@ export function designArtifact(
     removeContradictory(reg, art, data.timedFoil, data.activationSummarize);
 
     /* Check the power, handle negative power. */
-    ap = artifactPower(reg, art, "artifact attempt");
+    ap = artifactPower(reg, art, "artifact attempt", rng);
     if (ap < 0) {
       ap = -ap;
       break;

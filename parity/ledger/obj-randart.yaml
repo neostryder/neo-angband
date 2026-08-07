@@ -116,6 +116,19 @@ deferred:
     buildActivationSummarizer(pack, reg) into swapRandartSet on both the
     birth and the load call. It stays a no-op only for a caller that supplies
     none, which is the stats harness.
+  - FIXED 2026-08-07, and it was a live defect rather than a deferral:
+    artifact_power's fake object reaches copy_curses twice (object_prep with
+    the kind's curses, copy_artifact_data with the artifact's) and copy_curses
+    rolls randcalc(curses[i].obj->time, 0, RANDOMISE) per non-zero slot
+    (obj-curse.c:36) -- rolls that DRAW. The port skipped them because the
+    timeout never enters object_power and the standard set carries one curse;
+    both true, and beside the point, because design_artifact re-powers an
+    artifact make_bad has just cursed on every loop iteration. The streams
+    parted at the first cursed artifact, so the generated set was
+    self-consistent and not upstream's. rng is now a required parameter of
+    artifactPower. NOTE for a reader chasing a changed character: a randart
+    set is regenerated from its seed on load, so this fix changes an existing
+    birth_randarts character's artifacts -- to what 4.2.6 makes from that seed.
   - add_brand's base-element matching reads a local table (ELEMENT_PROJ_NAMES
     in obj/randart-build.ts) where upstream compares brand->name against
     projections[i].name (L1951). KEPT, and no longer a hand-written guess:

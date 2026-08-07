@@ -141,7 +141,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [x] **0.1 Adjudicate the ledger `deferred:` items. DONE — 342 of 342, all 73
+- [x] **0.1 Adjudicate the ledger `deferred:` items. DONE — 343 of 343, all 73
   ledger files complete (closed 2026-08-07).**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -3004,6 +3004,42 @@ is reachable in play and a test constructs the case that used to be wrong.**
   artifacts it reads.
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
+
+  **A LIVE DEFECT, found by reading the C around the log rather than the log
+  itself — the port's randart sets were not upstream's.** `artifact_power`
+  builds its fake object with `make_fake_artifact`, which reaches `copy_curses`
+  twice (`object_prep` with the kind's curses, `copy_artifact_data` with the
+  artifact's), and `copy_curses` rolls
+  `randcalc(curses[i].obj->time, 0, RANDOMISE)` for every non-zero slot
+  (obj-curse.c:36). **Those rolls draw.** This port skipped them, and left a
+  note explaining why that was safe: the timeout never enters `object_power`,
+  and the standard artifact set carries one curse in the whole file.
+
+  Both halves of that note are true and the conclusion was wrong, because it was
+  measured on the wrong set. `design_artifact` calls `artifact_power` again on
+  **every** iteration after `make_bad` has cursed the artifact
+  (obj-randart.c:2833-2846), so upstream draws here repeatedly *during*
+  generation. From the first cursed artifact onward the port's stream ran ahead
+  of upstream's, and every artifact designed after it differed. Nothing could
+  see this: the set was self-consistent, reproducible from its seed, and passed
+  a determinism test that only ever compared the port against itself.
+
+  Fixed by making `rng` a **required** parameter of `artifactPower` — a default
+  would hand back a private Rng and silently restore the divergence — and
+  rolling the timeouts in upstream's order (kind slots ascending, then artifact
+  slots). `randcalc` draws even for a curse whose `time` has no dice, because
+  `m_bonus_calc(0, …)` still goes through `m_bonus`, so this reproduces the
+  count and not merely the shape. Guarded by a pair in `randart.test.ts`: a
+  cursed artifact advances the stream, an artifact with no curse on it or its
+  kind does not, and the pack is asserted to supply both cases so the pair
+  cannot pass by finding nothing.
+
+  **Consequence, and it is not cosmetic.** A randart set is regenerated from its
+  seed on load, so an existing `birth_randarts` character's artifacts change
+  under this fix. That is the correct direction — they change *to* what Angband
+  4.2.6 makes from that seed — but it is a real change to a live character, and
+  it is the reason this is written down here rather than folded into the log
+  commit.
 
   **The row's own count was low.** "193 `file_putf` sites" is the raw grep of
   obj-randart.c, and 19 of those go to `fff` — that is `write_randart_entry`,

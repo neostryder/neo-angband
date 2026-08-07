@@ -223,7 +223,9 @@ describe("collect_artifact_data (obj-randart.c L1059)", () => {
   it("artifact_power rates a real artifact positively", () => {
     const reg = makeReg();
     const art = reg.artifacts.find((a) => a) as Artifact;
-    expect(artifactPower(reg, art, "test")).toBeGreaterThan(0);
+    expect(
+      artifactPower(reg, art, "test", new Rng(1, { quick: true })),
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -501,25 +503,66 @@ describe("randart.log names things, on a real run (PORT_TODO 5.5)", () => {
   });
 });
 
-describe("the second measurement pass changes nothing (obj-randart.c L3181)", () => {
-  /* It runs AFTER generation, so it cannot alter the returned set by ordinary
-   * means - but only if it neither draws from the RNG (which would desync a
-   * caller sharing the Rng) nor writes to the artifacts it is reading. */
-  it("draws no RNG", () => {
-    const reg = makeReg();
-    const used = new Rng(99, { quick: true });
-    collectArtifactData(reg, reg.artifacts, used);
-    const fresh = new Rng(99, { quick: true });
-    const drawUsed = Array.from({ length: 8 }, () => used.randint0(1_000_000));
-    const drawFresh = Array.from({ length: 8 }, () => fresh.randint0(1_000_000));
-    expect(drawUsed).toEqual(drawFresh);
-  });
-
+describe("the second measurement pass (obj-randart.c L3181)", () => {
   it("does not modify the artifacts it measures", () => {
     const reg = makeReg();
     const arts = doRandart(reg, 20260807, false);
     const before = fingerprint(arts);
     collectArtifactData(reg, arts, new Rng(1, { quick: true }));
     expect(fingerprint(arts)).toBe(before);
+  });
+});
+
+/**
+ * make_fake_artifact (obj-make.c L728) reaches copy_curses twice - once through
+ * object_prep with the KIND's curses, once through copy_artifact_data with the
+ * ARTIFACT's - and copy_curses rolls randcalc(curses[i].obj->time, 0, RANDOMISE)
+ * for every non-zero slot (obj-curse.c L36). Those rolls draw.
+ *
+ * This port used to skip them, on the argument that the timeout never enters
+ * object_power. It does not, and the argument was still wrong: design_artifact
+ * calls artifact_power again on every loop iteration AFTER make_bad has cursed
+ * the artifact, so upstream draws here over and over during generation. Whatever
+ * the port generated after its first cursed artifact was not what upstream would
+ * generate from that seed.
+ */
+describe("artifact_power draws the curse-timeout rolls (obj-curse.c L36)", () => {
+  const reg = makeReg();
+
+  /** How far an Rng advances across one artifactPower call. */
+  const drawsFor = (art: Artifact): number => {
+    const rng = new Rng(4242, { quick: true });
+    artifactPower(reg, art, "test", rng);
+    /* The count is not observable directly, so compare the NEXT value against
+     * a fresh stream: equal means nothing was consumed. */
+    const after = rng.randint0(1_000_000);
+    const untouched = new Rng(4242, { quick: true }).randint0(1_000_000);
+    return after === untouched ? 0 : 1;
+  };
+
+  const cursed = reg.artifacts.find(
+    (a): a is Artifact => !!a?.curses?.some((p) => p > 0),
+  );
+  const plain = reg.artifacts.find(
+    (a): a is Artifact =>
+      !!a &&
+      !a.curses?.some((p) => p > 0) &&
+      !reg.lookupKind(a.tval, a.sval)?.curses,
+  );
+
+  it("the pack supplies both cases", () => {
+    /* Without this the pair below can pass by finding nothing to test. */
+    expect(cursed).toBeDefined();
+    expect(plain).toBeDefined();
+  });
+
+  it("draws for a cursed artifact", () => {
+    expect(drawsFor(cursed as Artifact)).toBe(1);
+  });
+
+  it("draws nothing for an artifact with no curse on it or its kind", () => {
+    /* The other half of the claim: the rolls are per cursed SLOT, so an
+     * uncursed artifact must leave the stream exactly where it found it. */
+    expect(drawsFor(plain as Artifact)).toBe(0);
   });
 });
