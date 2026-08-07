@@ -217,7 +217,7 @@ describe("collect_artifact_data (obj-randart.c L1059)", () => {
   it("artifact_power rates a real artifact positively", () => {
     const reg = makeReg();
     const art = reg.artifacts.find((a) => a) as Artifact;
-    expect(artifactPower(reg, art)).toBeGreaterThan(0);
+    expect(artifactPower(reg, art, "test")).toBeGreaterThan(0);
   });
 });
 
