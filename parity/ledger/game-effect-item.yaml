@@ -67,8 +67,16 @@ deferred:
     :445 with ODESC.BASE, :616 and :730 with ODESC.FULL). obj->known's
     to_h/to_d/to_a "display sync" needs nothing here - the port synthesises the
     known twin on demand from rune knowledge rather than storing a copy to
-    sync. Genuinely shell-owned and still open: the recharge_pow failure-RATE
-    readout (ui-object.c), which is a number no core path computes.
+    sync. The recharge_pow failure-RATE readout (ui-object.c:225) is the one
+    remaining piece, and it is a DIVERGENCE rather than a deferral - the reason
+    is ordering, not presentation. Upstream rolls `strength` and THEN prompts
+    (effect-handler-general.c:2130-2144), so the rate it prints is the rate that
+    will apply; this port pre-resolves the item target before the effect runs
+    (itemTargetRequest, an RNG-free probe, chosen so the effect executes exactly
+    once and the RNG stream stays faithful), so by the time `strength` exists
+    the pick is already made. The stream is identical either way - nothing
+    between the roll and the prompt draws - and showing an approximation would
+    print a number the game then does not use.
   - REMOVE_CURSE's known-twin curse tester (obj->known->curses) is read
     from the live curses (knowledge is rune-based); show_damage (#30).
   - Both are wired. The total_weight upkeep is effect-item.ts:638

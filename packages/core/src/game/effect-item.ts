@@ -521,7 +521,22 @@ const handleRECHARGE: EffectHandler = (ctx) => {
   /* Immediately obvious */
   ctx.ident = true;
 
-  /* The recharge_pow failure-rate display rides presentation (#25). */
+  /*
+   * upkeep->recharge_pow (effect-handler-general.c:2141) exists only to feed
+   * ui-object.c:225's SHOW_RECHARGE column, and this port cannot reproduce that
+   * column - not for a presentation reason, but an ORDERING one. Upstream rolls
+   * `strength` here and THEN prompts (L2130-2144), so the rate it prints is the
+   * rate that will actually apply. This port pre-resolves the item target
+   * before the effect runs (itemTargetRequest, an RNG-free probe over the
+   * chain, so the effect executes exactly once and the RNG stream stays
+   * faithful) - by the time `strength` exists the pick has already been made.
+   *
+   * The RNG stream is unaffected either way: nothing between the roll and the
+   * prompt draws. What is lost is only the ability to show the true rate BEFORE
+   * choosing. Showing an approximation instead would print a number the game
+   * then does not use, which is worse than showing none. Ledgered as a
+   * divergence forced by the pre-resolve design, not as a deferral.
+   */
 
   /* Get an item */
   const obj = env.item?.getItem?.(requestForEffect(EF.RECHARGE, 0, state)!);

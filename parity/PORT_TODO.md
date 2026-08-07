@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -161,8 +161,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
   The tally, **read from the TSV rather than carried forward**: **139 `ported`,
-  35 `stale-doc`, 20 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 8 `partial` against **5** `real`**. **100 remain.**
+  35 `stale-doc`, 21 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
+  9 `n-a`, 7 `partial` against **5** `real`**. **100 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -300,9 +300,22 @@ is reachable in play and a test constructs the case that used to be wrong.**
   command and repeat is a boolean gate, not a replayed argument, so the stale
   case cannot arise.
 
-  **Both `#24` and `#25` are now clear, 40 rows between them, and one was
-  owed.** The one is `recharge_pow`'s failure RATE - a number no core path
-  computes.
+  **Both `#24` and `#25` are now clear, 40 rows between them, and on inspection
+  NONE of them was owed.** The last candidate - `recharge_pow`'s failure RATE -
+  turned out to be a **divergence forced by ordering, not a presentation
+  deferral**, and that is worth the paragraph because the row's stated reason
+  was wrong in a way that would have sent someone to build the wrong thing.
+
+  Upstream rolls `strength`, stores it in `upkeep->recharge_pow`, and THEN
+  prompts (`effect-handler-general.c:2130-2144`), so the rate `ui-object.c:225`
+  prints is the rate that will actually apply. This port **pre-resolves the item
+  target before the effect runs** - `itemTargetRequest` is an RNG-free probe
+  over the effect chain, chosen deliberately so the effect executes exactly once
+  and the RNG stream stays faithful - so by the time `strength` exists, the pick
+  has already been made. The stream is identical either way (nothing between the
+  roll and the prompt draws); what is lost is only the ability to show the true
+  rate *before* choosing, and printing an approximation would show a number the
+  game then does not use.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
@@ -3091,7 +3104,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 75 citations, 55 `real` + 20
+2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
