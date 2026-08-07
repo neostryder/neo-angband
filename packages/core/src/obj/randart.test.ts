@@ -70,29 +70,29 @@ function fingerprint(arts: (Artifact | null)[]): string {
 describe("do_randart (obj-randart.c L3154)", () => {
   it("is deterministic: the same seed yields the same artifact set", () => {
     const reg = makeReg();
-    const a = doRandart(reg, 4242);
-    const b = doRandart(reg, 4242);
+    const a = doRandart(reg, 4242, false);
+    const b = doRandart(reg, 4242, false);
     expect(fingerprint(a)).toBe(fingerprint(b));
   });
 
   it("is seed-sensitive: different seeds yield different sets", () => {
     const reg = makeReg();
-    const a = doRandart(reg, 1);
-    const b = doRandart(reg, 999999);
+    const a = doRandart(reg, 1, false);
+    const b = doRandart(reg, 999999, false);
     expect(fingerprint(a)).not.toBe(fingerprint(b));
   });
 
   it("never mutates the registry's standard artifacts", () => {
     const reg = makeReg();
     const before = reg.artifacts.map((a) => (a ? `${a.name}|${a.toH}|${a.toD}` : "null"));
-    doRandart(reg, 777);
+    doRandart(reg, 777, false);
     const after = reg.artifacts.map((a) => (a ? `${a.name}|${a.toH}|${a.toD}` : "null"));
     expect(after).toEqual(before);
   });
 
   it("returns a full set of valid artifacts on valid base items", () => {
     const reg = makeReg();
-    const arts = doRandart(reg, 55);
+    const arts = doRandart(reg, 55, false);
     expect(arts.length).toBe(reg.artifacts.length);
     expect(arts[0]).toBeNull();
 
@@ -123,7 +123,7 @@ describe("do_randart (obj-randart.c L3154)", () => {
     const reg = makeReg();
     const oneRing = reg.artifacts.find((a) => a?.name.includes("One Ring"));
     if (!oneRing) return; /* pack without it: nothing to assert */
-    const arts = doRandart(reg, 31337);
+    const arts = doRandart(reg, 31337, false);
     expect(arts.some((a) => a?.name.includes("One Ring"))).toBe(true);
   });
 });
@@ -187,14 +187,14 @@ describe("artifact_gen_name (obj-randart.c L2713)", () => {
 
   it("is corpus-driven: passing the corpus changes the generated set", () => {
     const reg = makeReg();
-    const withCorpus = doRandart(reg, 4242, loadTolkienWords());
-    const withoutCorpus = doRandart(reg, 4242);
+    const withCorpus = doRandart(reg, 4242, false, loadTolkienWords());
+    const withoutCorpus = doRandart(reg, 4242, false);
     const names = (arts: (Artifact | null)[]) =>
       arts.filter((a): a is Artifact => !!a).map((a) => a.name);
     /* Faithful names appear only on the corpus path. */
     expect(names(withCorpus)).not.toEqual(names(withoutCorpus));
     /* And the corpus path is itself deterministic. */
-    expect(names(doRandart(reg, 4242, loadTolkienWords()))).toEqual(
+    expect(names(doRandart(reg, 4242, false, loadTolkienWords()))).toEqual(
       names(withCorpus),
     );
   });
@@ -429,7 +429,7 @@ describe("randart.log names things, on a real run (PORT_TODO 5.5)", () => {
         return "ok" as WriteOutcome;
       },
     } as unknown as HostIo;
-    doRandart(makeReg(), seed, undefined, undefined, io);
+    doRandart(makeReg(), seed, false, undefined, undefined, io);
     return files.get(RANDART_LOG) ?? "";
   }
 

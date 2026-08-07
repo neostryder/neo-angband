@@ -67,6 +67,7 @@
 
 import { FileMode, FileType, HostDir, host } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
+import { RANDART_TXT, writeRandartFile } from "./randart-file.js";
 import { randartLog, randartLogf, setRandartLog } from "./randart-log.js";
 import { KF, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
@@ -565,6 +566,15 @@ export const RANDART_LOG = "randart.log";
 export function doRandart(
   reg: ObjRegistry,
   randartSeed: number,
+  /**
+   * do_randart's `create_file` (obj-randart.c:3154). True writes randart.txt
+   * beside randart.log; upstream passes true from birth, from loading a save
+   * and from the spoiler generator, and false from the statistics harnesses.
+   *
+   * REQUIRED, with no default: the two callers that want it differ from the
+   * many that do not, and a default would silently pick one of them.
+   */
+  createFile: boolean,
   tolkienWords?: readonly string[],
   extras?: Pick<ArtifactSetData, "timedFoil" | "activationSummarize">,
   io: HostIo = host(),
@@ -591,6 +601,7 @@ export function doRandart(
   const rng = new Rng(randartSeed, { quick: true });
 
   const lines: string[] = [];
+  let generated: (Artifact | null)[] = [];
   let logging = false;
   if (io.write(HostDir.USER, RANDART_LOG, "", FileMode.WRITE, FileType.TEXT) === "ok") {
     logging = true;
@@ -629,6 +640,7 @@ export function doRandart(
     /* Generate the random artifacts. */
     createArtifactSet(reg, arts, data, rng, nameProbs);
 
+    generated = arts;
     return arts;
   } finally {
     /* CLOSE (L3189-L3193). In a `finally` so a throw mid-generation cannot
@@ -644,6 +656,28 @@ export function doRandart(
         FileType.TEXT,
       );
       if (outcome !== "ok") onLogError?.("Error - can't close randart.log file.");
+    }
+
+    /*
+     * WRITE A DATA FILE IF REQUIRED (L3195-L3215), after the log is closed,
+     * which is upstream's order - it reuses the same handle variable for both.
+     *
+     * Upstream `quit_fmt`s if this file cannot be closed. The port cannot: the
+     * same reasoning as the randart.log open above applies, so the failure goes
+     * to onLogError and the artifact set is returned regardless. Writing the
+     * file is a courtesy; losing the character over it is not.
+     */
+    if (createFile) {
+      const outcome = io.write(
+        HostDir.USER,
+        RANDART_TXT,
+        writeRandartFile(reg, generated, randartSeed),
+        FileMode.WRITE,
+        FileType.TEXT,
+      );
+      if (outcome !== "ok") {
+        onLogError?.(`Error - can't close ${RANDART_TXT}.`);
+      }
     }
   }
 }

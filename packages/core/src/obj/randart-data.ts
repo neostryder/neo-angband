@@ -399,14 +399,25 @@ export function artifactPower(
   const obj = makeFakeArtifactPower(reg, art);
   if (!obj) return 0;
 
-  /* obj-randart.c:205-206 also logs the fake artifact's object_desc with
-   * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL. Not written yet: object_desc here
-   * needs a KnownDesc this pure module does not hold.
+  /*
+   * obj-randart.c:205-206 also logs the fake artifact's object_desc with
+   * ODESC_PREFIX | ODESC_FULL | ODESC_SPOIL. STILL NOT WRITTEN, and the reason
+   * is bigger than the one recorded here before.
+   *
+   * A KnownDesc is not the obstacle: SPOIL describes the object as it truly
+   * is, so aware-and-tried for everything is the only answer consistent with
+   * it, and a RuneEnv over reg.brands/slays/curses/properties with a null
+   * slot_object is buildable right here. Attempted 2026-08-07 and abandoned on
+   * the real blocker: makeFakeArtifactPower returns a PowerObject - the
+   * reduced shape object_power needs - and object_desc wants a whole
+   * GameObject. Writing this line means building the full fake object upstream
+   * builds, which is a change to the power path, not to the log.
    *
    * Its format string is "%s\n", which has no literal span, so the census in
-   * randart-log.census.test.ts CANNOT see it - it is carried there as
+   * randart-log.census.test.ts cannot see it - it is carried there as
    * UNWRITTEN_SPANLESS instead, and PORT_TODO 5.5 stays open on it. Left to
-   * the ratchet alone this would be a line quietly dropped. */
+   * the ratchet alone this would be a line quietly dropped.
+   */
 
   return objectPower(reg, obj);
 }

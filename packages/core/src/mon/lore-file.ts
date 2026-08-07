@@ -39,6 +39,13 @@
  * still loads.
  */
 
+import { writeFlags } from "../datafile.js";
+/**
+ * writeFlags used to be DEFINED here and is on the pinned ctx.core surface
+ * (mod-core-surface.test.ts), so a plugin may be importing it from this
+ * module. Moving the definition to ../datafile.js must not move the export.
+ */
+export { writeFlags };
 import { FlagSet, flagSetall } from "../bitflag.js";
 import { RF, RSF } from "../generated/index.js";
 import { RF_SIZE, RSF_SIZE } from "./types.js";
@@ -70,51 +77,6 @@ export const RSF_FLAG_NAMES = nameTable(RSF);
 const RF_NAMES = RF_FLAG_NAMES;
 const RSF_NAMES = RSF_FLAG_NAMES;
 
-/**
- * write_flags (datafile.c:478-514): the set flag names, ` | `-separated, broken
- * onto a fresh `intro`-prefixed line once the accumulated length reaches 60.
- *
- * Two upstream details reproduced rather than tidied, because this file is read
- * back by a parser that has to cope with what the writer emits:
- *
- *   - the separator is appended BEFORE the name is looked up, so a flag with no
- *     name breaks the loop leaving a trailing " | " in the buffer, and that
- *     buffer is still written;
- *   - `pointer` counts the separator and the name but is compared AFTER the name
- *     is appended, so a line can exceed 60 characters by the last name's length.
- */
-export function writeFlags(
-  intro: string,
-  flags: FlagSet,
-  size: number,
-  names: readonly (string | undefined)[],
-): string {
-  const lines: string[] = [];
-  let buf = "";
-  let pointer = 0;
-
-  for (let flag = flags.next(1); flag > 0 && flag < size * 8; flag = flags.next(flag + 1)) {
-    if (buf.length > 0) {
-      buf += " | ";
-      pointer += 3;
-    }
-    /* "If no name, we're past the real flags" - and the trailing " | " stays. */
-    const name = names[flag];
-    if (name === undefined) break;
-    buf += name;
-    pointer += name.length;
-
-    if (pointer >= 60) {
-      lines.push(`${intro}${buf}\n`);
-      buf = "";
-      pointer = 0;
-    }
-  }
-
-  /* "Print remaining flags if any", gated on pointer rather than on buf. */
-  if (pointer) lines.push(`${intro}${buf}\n`);
-  return lines.join("");
-}
 
 /**
  * write_lore_entries (mon-lore.c:1743-1893): one block per race the player has

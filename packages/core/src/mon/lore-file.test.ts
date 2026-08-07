@@ -16,6 +16,7 @@
  *     which is the whole reason the file exists.
  */
 
+import { writeFlags } from "../datafile.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -32,7 +33,6 @@ import {
   RSF_FLAG_NAMES,
   applyLoreFile,
   parseLoreFile,
-  writeFlags,
   writeLoreEntries,
 } from "./lore-file.js";
 
