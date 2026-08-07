@@ -86,9 +86,10 @@ deferred:
     game/effect-attack.ts:356, summing the full first blow plus half of every
     other, with lash_type off the first blow - and it casts through this
     module's short beam.
-  - The effect-registry wiring (registering these as the EF_* handlers) and the
-    player-timed / EffectPlayer adapters for the general handlers - next
-    increment.
+  - CLOSED (2026-08-07). "Next increment" arrived: the EF_* handlers are
+    registered (effects/handlers.ts plus the game-layer registrars) and the
+    player-timed adapter is game/effect-env.ts buildEffectContext, which
+    session/game.ts wires with the live timed table, incQueries and incHooks.
   - resolveAimedTarget's monster branch and the real target system are ported
     (game/effect-attack.ts, game/target.ts); env.aimed is backed by the live
     target rather than a stand-in.
@@ -96,8 +97,10 @@ deferred:
     game/project-cast.ts:341-344 to projectObject / projectFeature over the live
     floor piles and terrain (whenever a world env exists), and breath_dam is
     mon/spell.ts breathDam, read at game/effect-attack.ts:224.
-  - A real PlayerProjActor from calc_bonuses (resists, damage reduction,
-    minus_ac) replaces basicPlayerActor's zeroes.
+  - CLOSED (2026-08-07). It does: session/game.ts:1295 builds the live actor's
+    resistLevel from derived.elInfo (the calc_bonuses output) and :1304 supplies
+    minusAc for real. basicPlayerActor's zeroes are the WORLDLESS default that
+    keeps harness tests total, not what the game runs on.
 verified-by:
   - game/project-cast.test.ts (23 tests): basicPlayerActor writes take_hit
     mutations back to the live player/state and shares the timed array;

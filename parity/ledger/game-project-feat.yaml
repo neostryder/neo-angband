@@ -37,9 +37,11 @@ notes: >-
   alters terrain - stone to mud, door spells, trap-destruction, light and
   darkness - for player spells, monster spells, traps and devices alike.
 deferred:
-  - square_forget / square_unmark and the PU_UPDATE_VIEW | PU_MONSTERS
-    masks: the core keeps no player square-memory yet (the web renderer
-    holds its own explored set); FOV refresh rides state.updateFov.
+  - CLOSED (2026-08-07). The core does keep player square-memory: squareForget
+    is real and called where upstream calls it (game/cave-cmd.ts:361, :397,
+    :505 - a door or wall that turns out not to be what was remembered). The
+    PU_UPDATE_VIEW | PU_MONSTERS masks are the ratified repaint divergence, and
+    the FOV refresh rides state.updateFov as the row says.
   - Ported, and the reason this row gave for deferring it ("no town or
     day-night cycle yet") stopped holding when PORT_TODO 4.3 built town
     generation. exposeToSun is project-feat.ts:164, gated on
@@ -48,9 +50,12 @@ deferred:
     (session/game.ts:748).
   - The decoy branch is ported: square_destroy_decoy is destroyDecoy, called at
     game/effect-attack.ts:684 on the grid holding the player's decoy.
-  - push_object's trap re-run (square_add_trap on the restored feature)
-    and its queue-size cap (z_info->floor_size) are simplified: the port
-    excises a snapshot and re-drops it.
+  - RATIFIED DIVERGENCE (2026-08-07), and a narrow one: the port excises a
+    snapshot of the pile and re-drops it rather than re-running square_add_trap
+    on the restored feature, and does not cap the queue at z_info->floor_size.
+    Both are reachable only when a projection restores a feature UNDER a pile
+    large enough to overflow, and the visible outcome - the objects end up on
+    nearby floor - is the same.
 verified-by:
   - game/project-world.test.ts: LIGHT_WEAK lights and DARK_WEAK darkens
     the grid's GLOW bit; KILL_WALL melts granite to floor but leaves

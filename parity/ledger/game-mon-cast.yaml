@@ -37,10 +37,11 @@ deferred:
     "(offscreen)" tag and the msgt sound channel), the save message, and
     spell_check_for_fail_rune; session/game.ts:1519 installs them. A cast
     announces itself and, on a save, teaches the runes upstream would.
-  - Summon and shapechange subtypes (S_KIN, SHAPECHANGE, ...) need their name
-    resolvers injected (mon-summon.c summon_name_to_idx, player shapes); absent,
-    the chain cannot build and the cast fizzles via the unresolved hook. The
-    EF_SUMMON handler itself is still a stub until monster generation lands.
+  - CLOSED (2026-08-07). Monster generation landed and took EF_SUMMON with it:
+    game/effect-summon.ts registers the handler with status "implemented"
+    (:157). The name resolvers are injected for real - summonNameToIdx and the
+    shape resolver are built at session/game.ts's EffectBuilderInjections - so a
+    chain with S_KIN or SHAPECHANGE builds rather than fizzling.
   - choose_attack_spell and remove_bad_spells are ported (game/mon-ranged.ts:248
     and :173) and reached from the live monster turn at game/mon-cmd.ts:735;
     doMonSpell is the executor they call.

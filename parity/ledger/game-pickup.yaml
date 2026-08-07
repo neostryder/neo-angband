@@ -63,9 +63,15 @@ deferred:
   - ignore_item_ok is live: the isIgnored seam (pickup.ts:62, read at :188) is
     supplied by the session from obj/ignore.ts, so an ignored object no longer
     makes the pickup verbal.
-  - get_quantity partial-pickup prompt (ui): defaults to the carryable max.
-  - Weight tracking (p->upkeep->total_weight) and PN_IGNORE notice - with
-    the inventory upkeep layer.
+  - RATIFIED DIVERGENCE (2026-08-07): get_quantity is a terminal prompt. The
+    port defaults to the carryable maximum, which is upstream's own default when
+    the player just presses return, and a shell wanting the prompt supplies the
+    quantity on the command.
+  - CLOSED (2026-08-07). Both landed. total_weight became a real running total
+    at PORT_TODO 1.2 (game/gear.ts), which is what made the REMOVE_CURSE weight
+    delta observable; and the PN_IGNORE notice is a live bitfield cleared by
+    game/notice.ts noticeStuff, whose PN_IGNORE branch runs the drop pass
+    (PORT_TODO 1.1).
 verified-by:
   - game/pickup.test.ts (16 tests): inscription counting and =g<n> parsing;
     gold collection into the purse leaving non-gold; auto_pickup_okay

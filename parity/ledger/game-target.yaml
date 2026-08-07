@@ -79,9 +79,10 @@ deferred:
     ('*'). The row's tail is stale twice over - monster names in messages are
     the full monster_desc grammar (mon/desc.ts), not the race name, and the
     module header said so already.
-  - panel_contains in target_sighted and restrict_to_panel in
-    target_get_monsters are injected (panels are UI state; the default
-    accepts everything / scans max_range as the upstream else-branch).
+  - RATIFIED DIVERGENCE (2026-08-07): a panel is a terminal viewport, and this
+    port's shell scrolls rather than paging. The injected defaults are upstream's
+    own else-branch - accept everything, scan max_range - so an unsupplied panel
+    behaves as upstream does when the whole map is on screen.
   - PORTED (2026-08-07). target_accept now scans the remembered pile PER OBJECT
     (target.c:347-353) and applies ignore_known_item_ok through state.isIgnored,
     so a grid holding nothing but ignored junk is no longer an interesting
