@@ -235,10 +235,25 @@ export function makePlayerSideEffects(
    * effect!") is NOT supplied here: this closure is built once per game, while
    * the acting monster is per projection, so it needs the origin threaded down.
    * Named rather than quietly dropped - see game-project-player.yaml. */
-  const incCheckHooks = makeIncCheckHooks(state);
+  /**
+   * cave->mon_current for the projection currently being resolved. The hook
+   * below is built once per game while the acting monster is per projection, so
+   * the returned handler stamps it on entry and the inc-check hooks read it
+   * here. Null for a trap or a player-sourced projection, which is what makes
+   * update_smart_learn and "You resist the effect!" correctly stay silent.
+   */
+  let currentSource: Monster | null = null;
   const incCheck = (idx: number): boolean => {
     const effect = deps.timed[idx];
-    return effect ? playerIncCheck(effect, incCheckQueries, incCheckHooks) : true;
+    if (!effect) return true;
+    return playerIncCheck(
+      effect,
+      incCheckQueries,
+      makeIncCheckHooks(state, {
+        ...(deps.msg ? { msg: deps.msg } : {}),
+        monster: currentSource,
+      }),
+    );
   };
 
   /**
@@ -294,6 +309,14 @@ export function makePlayerSideEffects(
     const rng = state.rng;
     const dam = ctx.dam;
     let xtra = 0;
+
+    /* Stamp cave->mon_current for this projection before any handler runs. */
+    const srcIdx = ctx.origin.monster ?? 0;
+    /* The `> 0` mirrors upstream's `cave->mon_current > 0` and is REDUNDANT
+     * here - index 0 of state.monsters is the null sentinel, so the lookup
+     * returns null either way. Kept for structural fidelity, and recorded
+     * because a mutation that drops it survives the suite on purpose. */
+    currentSource = srcIdx > 0 ? (state.monsters[srcIdx] ?? null) : null;
 
     switch (ctx.typ) {
       case PROJ.ACID: {

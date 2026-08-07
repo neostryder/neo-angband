@@ -289,6 +289,9 @@ export function castProjection(
     origin: {
       isPlayer: source.isPlayer,
       isMonster: source.isMonster,
+      /* cave->mon_current for the side-effect handlers (player_inc_check's
+       * monster-gated half). Carried on CastSource all along and dropped here. */
+      monster: source.monster,
       ...(source.monsterVisible !== undefined
         ? { monsterVisible: source.monsterVisible }
         : {}),

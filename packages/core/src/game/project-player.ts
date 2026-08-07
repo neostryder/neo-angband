@@ -57,6 +57,14 @@ export interface ProjectPlayerSource {
   isPlayer: boolean;
   /** origin.what == SRC_MONSTER. */
   isMonster: boolean;
+  /**
+   * origin.which.monster (midx), 0 when the source is not a monster. This is
+   * `cave->mon_current` for the side-effect handlers: player_inc_check gates
+   * update_smart_learn and "You resist the effect!" on it (player-timed.c:941,
+   * :946-952), so without it a breath could learn a rune but never teach the
+   * caster or say anything.
+   */
+  monster?: number;
   /** Whether the source monster is visible (false hides the source). */
   monsterVisible?: boolean;
   /** The kb_str death cause ("yourself", a monster/trap name, "a bug"). */

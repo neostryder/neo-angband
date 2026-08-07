@@ -45,9 +45,29 @@ notes: >-
   their runes (obj/knowledge.ts). player_of_has is implemented over the
   racial flags plus every equipped item via the state's RuneEnv.
 deferred:
-  - player_inc_check's fail-condition messages before the confusion
-    messages (the timed registry check runs, but the pre-check message
-    gating is simplified to always announcing).
+  - CLOSED (2026-08-07), and the row was half wrong about what was simplified.
+    The message gating was NEVER absent: game/player-side.ts asks incCheck before
+    printing "You are dazzled!" / "The noise disorients you.", exactly as
+    project-player.c:259 and :328 do. What WAS missing sat behind that same call,
+    and was worse than a message.
+    (1) incTimed passed `check` to player_inc_timed while supplying no incCheck
+    hook, and player/timed.ts:391 honours `check` ONLY through that hook - so
+    every resist gate on the projection path was inert. FREE_ACT did not stop a
+    paralysing breath, PROT_CONF did not stop confusion, PROT_BLIND did not stop
+    blindness. An argument passed and dropped.
+    (2) The check ran with no hooks at all, so a resisted breath did no
+    equip_learn_flag / equip_learn_element - upstream learns unconditionally on
+    the non-lore branch (player-timed.c:945, :967, :985).
+    (3) cave->mon_current never reached the handlers: origin.which.monster rode
+    CastSource and project-cast.ts dropped it when building the
+    ProjectPlayerSource, so update_smart_learn and "You resist the effect!" could
+    not fire on a breath while the SAME flag resisted in melee did both.
+    All three are fixed. ProjectPlayerSource carries `monster`, project-cast
+    forwards it, and the side-effect closure stamps it per projection so the
+    inc-check hooks are built with the acting monster. Six mutants; the one
+    survivor is the `srcIdx > 0` guard, redundant because index 0 of
+    state.monsters is the null sentinel - documented at the line rather than
+    pinned by a test that could only ever read the same value twice.
   - update_smart_learn (monster learning the player's resists) rides lore
     (#24); PR_MANA and the other redraw masks are display.
 verified-by:
