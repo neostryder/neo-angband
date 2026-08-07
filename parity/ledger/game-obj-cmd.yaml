@@ -51,8 +51,15 @@ deferred:
   - do_cmd_refill (fuel model), do_cmd_use dispatcher (UI menu),
     do_cmd_cast / study (player spells, #22).
   - The glyph-of-warding push_object interaction (traps #21).
-  - Command repetition (can_use == 0 retry), the !t take-off confirmation
-    and the ring-slot choice (get_check / cmd_get_item, UI #25). The
+  - All three are DONE. Command repetition closed as PORT_TODO 2.12, on the
+    live repeat path. The "!t" get_check loop is wieldTakeoffConfirm
+    (obj-cmd.ts:522), asked once per inscription with any refusal aborting, and
+    the shell runs it at web/src/main.ts:2781. The ring-slot choice is
+    wieldRingChoice (:471), asked only when both hands are full, and the shell
+    runs it FIRST at main.ts:2757 - the order matters, and web/src/
+    wield-prompts.test.ts guards both the calls and their order, because "a
+    correct wieldRingChoice() that nothing calls reads exactly like a finished
+    feature". The
     shapechange gating (player_get_resume_normal_shape) is DONE
     (game-shape.yaml): takeoff/wield/drop and the scroll/staff/wand/rod/
     activate family resume the normal form first (confirm seam, default

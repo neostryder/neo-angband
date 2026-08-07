@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 236 of 339 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 239 of 339 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **137 `ported`,
-  35 `stale-doc`, 19 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 8 `partial` against **5** `real`**. **103 remain.**
+  The tally, **read from the TSV rather than carried forward**: **139 `ported`,
+  35 `stale-doc`, 20 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
+  9 `n-a`, 8 `partial` against **5** `real`**. **100 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -288,10 +288,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `purple_uniques`. Two rows were also mis-scoped: `PN_IGNORE`'s notice pass
   landed with 1.1, and `MON_MSG_SHAPE_FAIL` rides the message table 3.1 built.
 
-  What survives the sweep is a short, honest list: the `recharge_pow` failure
-  RATE (a number no core path computes), `PROJECT_LOS_AWARE`'s notice nuance,
-  the `!t` take-off confirmation and ring-slot choice, and the `cmd_get_target`
-  retry.
+  Checking those four survivors closed three of them and left one. The `!t`
+  take-off confirmation and the ring-slot choice are both wired - and the shell
+  runs the ring question FIRST, which matters, with `wield-prompts.test.ts`
+  guarding the order on the grounds that "a correct `wieldRingChoice()` that
+  nothing calls reads exactly like a finished feature". `PROJECT_LOS_AWARE` and
+  `BOLT_AWARE` both thread `PROJECT_AWARE`, so the two codes no longer apply the
+  same projection. And the `cmd_get_target` retry is a **divergence by
+  construction**: upstream needs it because the target is cached in the command
+  struct and can go stale; this port resolves the aim at prompt time every
+  command and repeat is a boolean gate, not a replayed argument, so the stale
+  case cannot arise.
+
+  **Both `#24` and `#25` are now clear, 40 rows between them, and one was
+  owed.** The one is `recharge_pow`'s failure RATE - a number no core path
+  computes.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
