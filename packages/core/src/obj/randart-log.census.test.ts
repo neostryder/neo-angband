@@ -98,7 +98,8 @@ function covered(s: Site): boolean {
  *
  * What is left, by function (from the same extraction this test performs).
  * The count_* family, parse_frequencies, collect_artifact_data and
- * artifact_power's header pair landed 2026-08-07, taking this from 122 to 66.
+ * artifact_power's header pair and the numeric add_* family landed
+ * 2026-08-07, taking this from 122 to 52.
  * artifact_power's object_desc line is still counted here: it needs a KnownDesc
  * this pure module does not hold. What is left:
  * store_base_power,
@@ -106,7 +107,7 @@ function covered(s: Site): boolean {
  * family, choose_ability, make_bad, design_artifact and do_randart's own
  * randart.txt header.
  */
-const EXPECTED_MISSING_RANDART = 66;
+const EXPECTED_MISSING_RANDART = 52;
 
 describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
   it("finds the C's log sites at all", () => {
