@@ -64,17 +64,17 @@ upstream:
         no MDESC subsystem; a unique's died-from name is just race.name (no
         article), matching main.ts's existing monName helper's behaviour for
         uniques.
-      - obj-knowledge.c:971 (object_touch -> history_find_artifact) -
-        PARTIALLY WIRED: fires from pickup.ts's playerPickupAux via the new
+      - obj-knowledge.c:971 (object_touch -> history_find_artifact) - WIRED,
+        both ways. It fires from pickup.ts's playerPickupAux via the
         GameState.onArtifactFound hook (installed once in session/game.ts's
-        wireGame) whenever a picked-up object has obj.artifact set. NOT
-        wired: object_touch also fires from square_know_pile the instant an
-        artifact's floor pile becomes KNOWN (cave-square.c:1181), i.e. on
-        sight, not only on pickup - the port's square_know_pile equivalent
-        (game/known.ts) is a reduced glyph-only port that does not iterate
-        pile contents (pre-existing #24 gap), so find-on-sight is deferred.
-        historyFindArtifact's per-aidx de-dupe makes stacking the sight path
-        on later safe.
+        wireGame), and from square_know_pile (game/known.ts:688), which now
+        iterates the pile. The earlier note called the second path
+        "find-on-sight" and deferred it; that was a misreading of the C.
+        object_touch there is gated on `loc_eq(grid, player->grid)`
+        (cave-square.c:1176-1182), so upstream touches only the pile the player
+        STANDS on - there is no on-sight discovery at a distance to reproduce,
+        and the port's gate is the same one. historyFindArtifact's per-aidx
+        de-dupe means the two paths cannot double-log.
       - store.c:1928 (buying an artifact from a store calls
         history_find_artifact) - NOT WIRED. Deferred: stores in the port do
         not currently stock/sell artifacts.
@@ -149,8 +149,13 @@ notes: >-
   and the same showTextScreen reuse pattern as Inventory/Equipment/Message
   history.
 deferred:
-  - Find-on-sight (object_touch via square_know_pile, cave-square.c:1181):
-    only the pickup path is wired; see the pickup.ts entry above.
+  - Find-on-sight is CLOSED, and the row named a gap upstream does not have.
+    object_touch inside square_know_pile is gated on
+    `loc_eq(grid, player->grid)` (cave-square.c:1176-1182) - upstream touches
+    only the pile the player STANDS on, never one seen at a distance. The port
+    now does the same: game/known.ts:688 iterates the pile and fires
+    state.onArtifactFound under that same gate. Both paths an artifact can be
+    found by are wired.
   - All six history_lose_artifact call sites are WIRED (2026-08-07); this row's
     "not yet triggered by any live game event" was already stale when written
     and the last two closed here. onArtifactLost is installed by wireGame
