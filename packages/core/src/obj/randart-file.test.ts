@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { HostDir, NULL_HOST } from "../host/io.js";
 import type { HostIo, WriteOutcome } from "../host/io.js";
 import { ObjRegistry } from "./bind.js";
+import { bindConstants } from "../constants.js";
 import { doRandart } from "./randart.js";
 import { RANDART_TXT } from "./randart-file.js";
 import type { ObjPackJson } from "./types.js";
@@ -42,6 +43,9 @@ function makeReg(): ObjRegistry {
   } as ObjPackJson);
 }
 
+/** object_prep's z_info, for the real make_fake_artifact. */
+const constants = bindConstants(loadJson("constants"));
+
 function run(seed: number, createFile: boolean): Map<string, string> {
   const files = new Map<string, string>();
   const io = {
@@ -57,7 +61,7 @@ function run(seed: number, createFile: boolean): Map<string, string> {
       return "ok" as WriteOutcome;
     },
   } as unknown as HostIo;
-  doRandart(makeReg(), seed, createFile, undefined, undefined, io);
+  doRandart(makeReg(), constants, seed, createFile, undefined, undefined, io);
   return files;
 }
 

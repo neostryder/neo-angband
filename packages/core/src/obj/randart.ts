@@ -69,6 +69,7 @@ import { RANDART_TXT, writeRandartFile } from "./randart-file.js";
 import { randartLog, randartLogf, setRandartLog } from "./randart-log.js";
 import { KF, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
+import type { Constants } from "../constants.js";
 import type { ObjRegistry } from "./bind.js";
 import { tvalFindName } from "./bind.js";
 import { buildProb, randnameMake, type NameProbs } from "./randname.js";
@@ -283,6 +284,7 @@ function describeArtifact(art: Artifact, power: number): void {
  */
 export function designArtifact(
   reg: ObjRegistry,
+  constants: Constants,
   arts: (Artifact | null)[],
   data: ArtifactSetData,
   tv: number,
@@ -355,7 +357,7 @@ export function designArtifact(
     /* Get the kind again in case it's changed. */
     kind = reg.lookupKind(art.tval, art.sval);
 
-    const basePower = artifactPower(reg, art, "for base item power", rng);
+    const basePower = artifactPower(reg, constants, art, "for base item power", rng);
     randartLogf(() => `Base item power ${String(basePower)}\n`);
 
     /* New base item power too close to target artifact power. */
@@ -383,7 +385,7 @@ export function designArtifact(
 
   /* Give this artifact a shot at being supercharged. */
   trySupercharge(reg, art, power, data, rng);
-  ap = artifactPower(reg, art, "result of supercharge", rng);
+  ap = artifactPower(reg, constants, art, "result of supercharge", rng);
   if (ap > Math.trunc((power * 23) / 20) + 1) {
     /* Too powerful -- put it back. */
     copyArtifact(aOld, art);
@@ -405,7 +407,7 @@ export function designArtifact(
     removeContradictory(reg, art, data.timedFoil, data.activationSummarize);
 
     /* Check the power, handle negative power. */
-    ap = artifactPower(reg, art, "artifact attempt", rng);
+    ap = artifactPower(reg, constants, art, "artifact attempt", rng);
     if (ap < 0) {
       ap = -ap;
       break;
@@ -505,6 +507,7 @@ export function designArtifact(
  */
 export function createArtifactSet(
   reg: ObjRegistry,
+  constants: Constants,
   arts: (Artifact | null)[],
   data: ArtifactSetData,
   rng: Rng,
@@ -526,7 +529,7 @@ export function createArtifactSet(
     /* Multiple passes through tvals until all have enough artifacts. */
     for (let i = 0; i < TV_MAX; i++) {
       if (tvalTotal[i]! > 0) {
-        aidx = designArtifact(reg, arts, data, i, aidx, rng, nameProbs);
+        aidx = designArtifact(reg, constants, arts, data, i, aidx, rng, nameProbs);
         tvalTotal[i]!--;
         aidx++;
         notDone = true;
@@ -536,7 +539,16 @@ export function createArtifactSet(
 
   /* Allocate remaining artifacts at random. */
   while (aidx < arts.length - 1) {
-    aidx = designArtifact(reg, arts, data, TV.NULL, aidx, rng, nameProbs);
+    aidx = designArtifact(
+      reg,
+      constants,
+      arts,
+      data,
+      TV.NULL,
+      aidx,
+      rng,
+      nameProbs,
+    );
     aidx++;
   }
 }
@@ -564,6 +576,12 @@ export const RANDART_LOG = "randart.log";
 
 export function doRandart(
   reg: ObjRegistry,
+  /**
+   * z_info / the player constants object_prep reads. Upstream reaches them as
+   * globals; the port passes them, and they arrive here because artifact_power
+   * builds a real fake object through make_fake_artifact.
+   */
+  constants: Constants,
   randartSeed: number,
   /**
    * do_randart's `create_file` (obj-randart.c:3154). True writes randart.txt
@@ -625,7 +643,7 @@ export function doRandart(
      * for the STANDARD set (L3175-L3178). `extras` threads the curse TIMED_INC
      * foil tables (gap 3.3) and the activation redundancy summarizer (gap 3.8);
      * absent, both checks are skipped as before. */
-    const data = collectArtifactData(reg, reg.artifacts, rng);
+    const data = collectArtifactData(reg, constants, reg.artifacts, rng);
     if (extras?.timedFoil) data.timedFoil = extras.timedFoil;
     if (extras?.activationSummarize) {
       data.activationSummarize = extras.activationSummarize;
@@ -637,7 +655,7 @@ export function doRandart(
     );
 
     /* Generate the random artifacts. */
-    createArtifactSet(reg, arts, data, rng, nameProbs);
+    createArtifactSet(reg, constants, arts, data, rng, nameProbs);
 
     generated = arts;
 
@@ -656,7 +674,7 @@ export function doRandart(
      * set with a plain artifact_set_data_new, and both extras are generation-
      * time checks that this pass never reaches.
      */
-    collectArtifactData(reg, arts, rng);
+    collectArtifactData(reg, constants, arts, rng);
 
     return arts;
   } finally {

@@ -14,6 +14,7 @@ import { FileMode, HostDir, NULL_HOST } from "../host/io.js";
 import type { HostIo, WriteOutcome } from "../host/io.js";
 import { doRandart, RANDART_LOG } from "./randart.js";
 import type { ObjRegistry } from "./bind.js";
+import type { Constants } from "../constants.js";
 import { randartLog, randartLogOpen, setRandartLog } from "./randart-log.js";
 
 /** A HostIo whose USER directory is a Map, with an optional forced failure. */
@@ -46,6 +47,9 @@ function memHost(
  * to exercise the file lifecycle, which is what this file is about - the
  * content of a real run is the census test's and randart.test.ts's business.
  */
+/** object_prep's constants; never reached, because the registry has no kinds. */
+const NO_CONSTANTS = {} as unknown as Constants;
+
 function emptyRegistry(): ObjRegistry {
   return {
     artifacts: [],
@@ -83,7 +87,7 @@ describe("do_randart's file lifecycle (obj-randart.c L3164-L3193)", () => {
   it("truncates randart.log on open and writes it on close", () => {
     const files = new Map<string, string>([[RANDART_LOG, "stale content"]]);
     const io = memHost(files);
-    doRandart(emptyRegistry(), 1, false, undefined, undefined, io);
+    doRandart(emptyRegistry(), NO_CONSTANTS, 1, false, undefined, undefined, io);
 
     /* Two writes: file_open(MODE_WRITE) truncating, then the close. */
     expect(io.writes.map((w) => w.name)).toEqual([RANDART_LOG, RANDART_LOG]);
@@ -96,7 +100,7 @@ describe("do_randart's file lifecycle (obj-randart.c L3164-L3193)", () => {
   it("leaves the sink CLOSED afterwards, so the next caller starts clean", () => {
     /* log_file is a static upstream. A run that left it installed would
      * narrate the following one into this one's buffer. */
-    doRandart(emptyRegistry(), 1, false, undefined, undefined, memHost(new Map()));
+    doRandart(emptyRegistry(), NO_CONSTANTS, 1, false, undefined, undefined, memHost(new Map()));
     expect(randartLogOpen()).toBe(false);
   });
 
@@ -106,7 +110,7 @@ describe("do_randart's file lifecycle (obj-randart.c L3164-L3193)", () => {
      * divergence in this row. */
     const errors: string[] = [];
     const io = memHost(new Map(), "create-failed");
-    const arts = doRandart(emptyRegistry(), 1, false, undefined, undefined, io, (m) =>
+    const arts = doRandart(emptyRegistry(), NO_CONSTANTS, 1, false, undefined, undefined, io, (m) =>
       errors.push(m),
     );
     expect(errors).toEqual(["Error - can't open randart.log for writing."]);
@@ -128,7 +132,7 @@ describe("do_randart's file lifecycle (obj-randart.c L3164-L3193)", () => {
       write: (dir, name, text, mode, ftype) =>
         ++call === 1 ? base.write(dir, name, text, mode, ftype) : "close-failed",
     };
-    doRandart(emptyRegistry(), 1, false, undefined, undefined, io, (m) => errors.push(m));
+    doRandart(emptyRegistry(), NO_CONSTANTS, 1, false, undefined, undefined, io, (m) => errors.push(m));
     expect(errors).toEqual(["Error - can't close randart.log file."]);
   });
 
@@ -136,7 +140,7 @@ describe("do_randart's file lifecycle (obj-randart.c L3164-L3193)", () => {
     /* NULL_HOST.write returns "create-failed" by design - a missing host is a
      * reported failure, not a silent one (host/io.ts). */
     const errors: string[] = [];
-    doRandart(emptyRegistry(), 1, false, undefined, undefined, NULL_HOST, (m) =>
+    doRandart(emptyRegistry(), NO_CONSTANTS, 1, false, undefined, undefined, NULL_HOST, (m) =>
       errors.push(m),
     );
     expect(errors).toEqual(["Error - can't open randart.log for writing."]);

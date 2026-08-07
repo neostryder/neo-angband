@@ -242,7 +242,13 @@ export function emptyDepth(): DepthMetrics {
  * draw count matches upstream. Kept local (the core helper is not exported).
  */
 function applyRandarts(reg: CoreRegistries, seed: number): void {
-  const set = doRandart(reg.objects, seed, false, reg.nameSections.get(RANDNAME_TOLKIEN));
+  const set = doRandart(
+    reg.objects,
+    reg.constants,
+    seed,
+    false,
+    reg.nameSections.get(RANDNAME_TOLKIEN),
+  );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...set);
 }

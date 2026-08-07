@@ -1,86 +1,97 @@
 /**
- * make_fake_artifact (obj-make.c L728) is implemented THREE times in this port:
+ * make_fake_artifact (obj-make.c L728) must have exactly ONE implementation.
  *
- *   - obj/artifact-fake.ts   makeFakeArtifact      - builds a real GameObject
- *   - game/spoil.ts          makeFakeArtifact      - a local second copy
- *   - obj/randart-data.ts    makeFakeArtifactPower - the SAME field mapping
- *                                                    flattened into a
- *                                                    PowerObject
+ * It used to have three: obj/artifact-fake.ts (a real GameObject),
+ * game/spoil.ts (a local second copy), and obj/randart-data.ts
+ * (makeFakeArtifactPower, the same field mapping flattened into the reduced
+ * PowerObject that object_power reads). They were written by hand from the same
+ * C function at different times, and two hand-written copies of one C function
+ * agree until they do not. The failure mode was silent and expensive:
+ * artifact_power drives the whole randart design loop, so a single field mapped
+ * differently changes every generated artifact while every test that compares
+ * the port against ITSELF still passes.
  *
- * The third exists because object_power needs only a reduced shape, and it was
- * written by hand rather than derived from the first. Two hand-written copies of
- * one C function agree until they do not, and the failure here would be silent
- * and expensive: artifact_power drives the whole randart design loop, so a
- * single field mapped differently changes every generated artifact while every
- * test that compares the port against ITSELF still passes.
+ * That was not hypothetical. The flattened copy skipped copy_curses' timeout
+ * roll -- harmless for object_power, which never reads a timeout, and a live
+ * RNG divergence during generation, where design_artifact re-powers artifacts
+ * make_bad has just cursed. Skipping object_prep is what made skipping the roll
+ * look reasonable.
  *
- * So: run both over the real content pack and require the power they produce to
- * agree, artifact for artifact. This is the check that would have caught the
- * curse-timeout divergence, and it is the check that has to survive any future
- * consolidation of the three.
+ * All three are now one builder, so the old cross-check (run both, require the
+ * same power) has nothing left to compare. What replaces it is the property
+ * that made the cross-check unnecessary: this file fails if a second
+ * implementation appears.
+ *
+ * WHAT IDENTIFIES IT is the MAXIMISE aspect, not object_prep alone. Three other
+ * modules pair object_prep with copy_artifact_data and are NOT copies of this
+ * function -- make_artifact (obj-make.c L797, the real artifact drop),
+ * wiz_create_artifact and obj/make.ts itself -- and every one of them preps
+ * with RANDOMISE, because they build objects that go into the game. MAXIMISE is
+ * what make_fake_artifact does and what nothing else does, so that is the
+ * predicate. A census that just looked for the two calls together would name
+ * those three and have to carry an allowlist, which is a census that stops
+ * meaning anything the first time the allowlist is edited.
+ *
+ * Attribution: neostryder / RPGM Tools.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants.js";
-import { Rng } from "../rng.js";
-import { ObjRegistry } from "./bind.js";
-import { makeFakeArtifact } from "./artifact-fake.js";
-import { artifactPower } from "./randart-data.js";
-import { objectPower } from "./power.js";
-import type { PowerObject } from "./power.js";
-import type { Artifact, ObjPackJson } from "./types.js";
 
-function loadJson<T>(name: string): T {
-  return JSON.parse(
-    readFileSync(
-      new URL(`../../../content/pack/${name}.json`, import.meta.url),
-      "utf8",
-    ),
-  ) as T;
+const SRC = new URL("../", import.meta.url);
+
+/** The one place allowed to do object_prep + copy_artifact_data. */
+const BUILDER = "obj/artifact-fake.ts";
+
+function sourceFiles(dir: URL, prefix = ""): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const child = new URL(`${entry}${entry.includes(".") ? "" : "/"}`, dir);
+    if (statSync(child).isDirectory()) {
+      out.push(...sourceFiles(child, `${prefix}${entry}/`));
+    } else if (entry.endsWith(".ts") && !entry.includes(".test.")) {
+      out.push(`${prefix}${entry}`);
+    }
+  }
+  return out;
 }
 
-const reg = new ObjRegistry({
-  objectBase: loadJson("object_base"),
-  object: loadJson("object"),
-  egoItem: loadJson("ego_item"),
-  artifact: loadJson("artifact"),
-  curse: loadJson("curse"),
-  brand: loadJson("brand"),
-  slay: loadJson("slay"),
-  activation: loadJson("activation"),
-  objectProperty: loadJson("object_property"),
-  flavor: loadJson("flavor"),
-} as ObjPackJson);
-const constants = bindConstants(loadJson("constants"));
+/**
+ * object_prep on the MAXIMISE aspect, followed by copy_artifact_data. That pair
+ * is make_fake_artifact and nothing else - see the module note for the three
+ * modules that pair the two calls on RANDOMISE and are a different C function.
+ */
+function isFakeArtifactBuilder(text: string): boolean {
+  return (
+    /\bobjectPrep\s*\([^)]*"maximise"/s.test(text) &&
+    /\bcopyArtifactData\s*\(/.test(text)
+  );
+}
 
-const artifacts = reg.artifacts.filter((a): a is Artifact => !!a);
+describe("make_fake_artifact has one implementation (obj-make.c L728)", () => {
+  const files = sourceFiles(SRC);
 
-describe("the two make_fake_artifact implementations agree (obj-make.c L728)", () => {
-  it("the pack supplies artifacts to compare", () => {
-    /* Without this the loop below is vacuously true on an empty pack. */
-    expect(artifacts.length).toBeGreaterThan(100);
+  it("the sweep sees the source tree", () => {
+    /* Without this, a broken walk makes every assertion below vacuous. */
+    expect(files.length).toBeGreaterThan(100);
+    expect(files).toContain(BUILDER);
   });
 
-  it("object_power is the same whichever fake object it is handed", () => {
-    const disagree: string[] = [];
-    for (const art of artifacts) {
-      const real = makeFakeArtifact(reg, constants, art);
-      if (!real) continue; /* no base kind: artifactPower returns 0 too */
-      /* GameObject carries every field PowerObject names, plus the ones
-       * object_power never reads. The cast is the assertion under test: if the
-       * shapes ever part, this file is where it shows. */
-      const fromReal = objectPower(reg, real as unknown as PowerObject);
-      const fromFlat = artifactPower(
-        reg,
-        art,
-        "agreement",
-        new Rng(1, { quick: true }),
-      );
-      if (fromReal !== fromFlat) {
-        disagree.push(`${art.name}: real=${fromReal} flat=${fromFlat}`);
+  it("the predicate can fire at all", () => {
+    /* The builder itself must match, or the sweep below is a test that cannot
+     * fail: a typo in either pattern would report a clean tree forever. */
+    const text = readFileSync(new URL(BUILDER, SRC), "utf8");
+    expect(isFakeArtifactBuilder(text)).toBe(true);
+  });
+
+  it("no other module builds a fake artifact", () => {
+    const copies: string[] = [];
+    for (const file of files) {
+      if (file === BUILDER) continue;
+      if (isFakeArtifactBuilder(readFileSync(new URL(file, SRC), "utf8"))) {
+        copies.push(file);
       }
     }
-    expect(disagree.slice(0, 8)).toEqual([]);
+    expect(copies).toEqual([]);
   });
 });
