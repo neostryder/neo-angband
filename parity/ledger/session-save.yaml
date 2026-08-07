@@ -77,15 +77,22 @@ notes-mod-lifecycle: >-
   Borg) add no save-serialized content ids, so the bug was latent, but it is the
   exact add-a-content-mod-mid-game hazard.
 deferred:
-  - Multiple save slots / per-character files and the quit-to-title flow
-    (boot/title UX, decision 21 / #25).
-  - Store stock, mimicked-object and monster held-object contents ride
-    with their subsystems (stores are session-scoped, mimics/monster
-    inventories not yet live in the loop).
-  - The determinism-ratchet mode label (decision 22) joins the save header
-    when the mod loader lands.
-  - Level persistence options (birth_levels_persist) - levels regenerate,
-    as the shipped upstream default.
+  - "NOT deferred: the web host keeps a character ROSTER with one slot per
+    character, migrates legacy single-slot saves into it on first boot, and the
+    title screen switches between them - so the quit-to-title flow exists too.
+    Save SLOTS are a host concern and this ledger covers the format, which is
+    what carries them."
+  - "All three ARE saved now. SavedGame.stores carries every shop's current
+    stock (wr_stores, save.c:744-765); a monster's held pile round-trips as
+    heldObj and its mimicked object as mimickedObj, with the object side
+    carrying heldMIdx / mimickingMIdx so the links restore."
+  - "The mod loader landed and so did this: SavedGame.manifest is the
+    SaveManifest, carrying the pack set, the resolved load order and the
+    core-owned determinism mode the save was written with."
+  - "NOT deferred (PORT_TODO 4.3): birth_levels_persist is honoured and its
+    frozen-level cache is part of the format - SavedGame.levelCache serializes
+    every StoredLevel (wr_chunks, save.c:1001), and a save written with the
+    option off, or before the key existed, loads unchanged."
 verified-by:
   - session/save.test.ts (6 tests) - a mid-game Mage save restores the
     player (hp/sp/gold/spells/equipment), the derived combat state, every

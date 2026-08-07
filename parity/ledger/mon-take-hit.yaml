@@ -28,13 +28,19 @@ notes: >-
   the default group size 1 (monster groups are not tracked yet), matching a lone
   monster exactly.
 deferred:
-  - player_kill_monster (the death routine): supplied via the onKill hook for
-    now; ported with the effect / command layer (experience, drops, messages).
-  - The arena-level branch of mon_take_hit (arena mode is not modelled) and the
-    PR_HEALTH redraw (a UI concern) are omitted; both are unreached here.
-  - Existing melee damage is still applied inline in game/player-turn.ts
-    (pyAttack); routing it through monTakeHit is a follow-up once the death hook
-    is filled in.
+  - "NOT deferred: onKill is supplied by the live session (session/game.ts
+    wires it to state.onPlayerKill) and player_kill_monster's consequences -
+    experience, drops, lore, quest completion - all run from there. The hook is
+    the seam, not a placeholder."
+  - "The arena branch is NOT omitted: MonTakeHitHooks.onArenaDeath is the
+    mon-util.c L1290 behaviour (a lethal blow in single combat signals the
+    level change instead of killing) and game callers pass it while
+    state.arenaLevel is set (PORT_TODO 4.1). PR_HEALTH has no analogue - the
+    renderer is immediate-mode - but state.healthWho is tracked."
+  - "NOT deferred: melee routes through monTakeHit. combat/melee.ts calls it
+    for both the ordinary blow and the shield bash, and game/effect-melee.ts
+    for the melee effects. Nothing applies damage inline in player-turn.ts any
+    more."
 verified-by:
   - mon/take-hit.test.ts: monsterWake clears sleep and sets AWARE; a non-fatal
     blow wakes, clears Hold, and reduces hp; a fatal blow runs onKill and
