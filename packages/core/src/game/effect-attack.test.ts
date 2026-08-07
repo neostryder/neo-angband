@@ -74,6 +74,38 @@ describe("attack effect handlers - dispatch through the registry", () => {
     expect(ident.value).toBe(true);
   });
 
+  /*
+   * project.c:147/218: project_path reads cave->decoy off the chunk and
+   * PROJECT_STOP breaks the path there, so a decoy dropped in a bolt's way
+   * eats it. The port's decoy lives on GameState, so project() has to be
+   * PASSED it - and it was not, which is why world/project.ts compared against
+   * a never-matching (-1,-1) sentinel. This asserts the LIVE call, because the
+   * path-level test cannot tell whether anything supplies the grid.
+   */
+  it("a decoy in the path eats a bolt before it reaches the monster", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 9), { hp: 50 });
+    state.decoy = loc(5, 7);
+    registry().effectSimple(EF.BOLT, env(state, { aimed: mon.grid }), {
+      origin: sourcePlayer(),
+      diceString: "20",
+      subtype: PROJ.FIRE,
+    });
+    expect(mon.hp).toBe(50);
+  });
+
+  it("...and reaches it once the decoy is gone (the control)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 9), { hp: 50 });
+    state.decoy = null;
+    registry().effectSimple(EF.BOLT, env(state, { aimed: mon.grid }), {
+      origin: sourcePlayer(),
+      diceString: "20",
+      subtype: PROJ.FIRE,
+    });
+    expect(mon.hp).toBe(30);
+  });
+
   it("EF_BEAM passes through several monsters in line", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const near = addMon(state, plainRace, loc(5, 7), { hp: 50 });
