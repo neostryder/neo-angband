@@ -859,10 +859,12 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
       (art.modifiers[OBJ_MOD.INT] ?? 0) > 0)
   ) {
     if ((art.modifiers[OBJ_MOD.WIS] ?? 0) > 0) {
+      randartLog("Adding 1 for WIS bonus on headgear.\n");
       data.artProbs[ART_IDX.HELM_WIS]!++;
       num--;
     }
     if ((art.modifiers[OBJ_MOD.INT] ?? 0) > 0) {
+      randartLog("Adding 1 for INT bonus on headgear.\n");
       data.artProbs[ART_IDX.HELM_INT]!++;
       num--;
     }
@@ -872,55 +874,67 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
       art.tval === TV.DRAG_ARMOR) &&
     (art.modifiers[OBJ_MOD.CON] ?? 0) > 0
   ) {
+    randartLog("Adding 1 for CON bonus on body armor.\n");
     data.artProbs[ART_IDX.ARMOR_CON]!++;
     num--;
   } else if (art.tval === TV.GLOVES && (art.modifiers[OBJ_MOD.DEX] ?? 0) > 0) {
+    randartLog("Adding 1 for DEX bonus on gloves.\n");
     data.artProbs[ART_IDX.GLOVE_DEX]!++;
     num--;
   }
 
   /* Now the general case. */
   if (num > 0) {
+    randartLogf(() => `Adding ${num} for stat bonuses - general.\n`);
     data.artProbs[ART_IDX.GEN_STAT]! += num;
   }
 
   /* Handle stealth, including a couple of special cases. */
   if ((art.modifiers[OBJ_MOD.STEALTH] ?? 0) > 0) {
     if (art.tval === TV.BOOTS) {
+      randartLog("Adding 1 for stealth bonus on boots.\n");
       data.artProbs[ART_IDX.BOOT_STEALTH]!++;
     } else if (art.tval === TV.CLOAK) {
+      randartLog("Adding 1 for stealth bonus on cloak.\n");
       data.artProbs[ART_IDX.CLOAK_STEALTH]!++;
     } else if (
       art.tval === TV.SOFT_ARMOR ||
       art.tval === TV.HARD_ARMOR ||
       art.tval === TV.DRAG_ARMOR
     ) {
+      randartLog("Adding 1 for stealth bonus on armor.\n");
       data.artProbs[ART_IDX.ARMOR_STEALTH]!++;
     } else {
+      randartLog("Adding 1 for stealth bonus - general.\n");
       data.artProbs[ART_IDX.GEN_STEALTH]!++;
     }
   }
 
   /* Searching bonus - fully generic. */
   if ((art.modifiers[OBJ_MOD.SEARCH] ?? 0) > 0) {
+    randartLog("Adding 1 for search bonus - general.\n");
     data.artProbs[ART_IDX.GEN_SEARCH]!++;
   }
 
   /* Infravision bonus - fully generic. */
   if ((art.modifiers[OBJ_MOD.INFRA] ?? 0) > 0) {
+    randartLog("Adding 1 for infravision bonus - general.\n");
     data.artProbs[ART_IDX.GEN_INFRA]!++;
   }
 
   /* Damage reduction bonus - fully generic. */
   if ((art.modifiers[OBJ_MOD.DAM_RED] ?? 0) > 0) {
+    randartLog("Adding 1 for damage reduction bonus - general.\n");
     data.artProbs[ART_IDX.GEN_DAM_RED]!++;
   }
 
   /* Moves bonus. */
   if ((art.modifiers[OBJ_MOD.MOVES] ?? 0) > 0) {
     if (art.tval === TV.BOOTS) {
+      randartLog("Adding 1 for moves bonus on boots.\n");
       data.artProbs[ART_IDX.BOOT_MOVES]!++;
     } else {
+      randartLog("Adding 1 for moves bonus - general.\n");
       data.artProbs[ART_IDX.GEN_MOVES]!++;
     }
   }
@@ -929,16 +943,20 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
   const speed = art.modifiers[OBJ_MOD.SPEED] ?? 0;
   if (speed > 0) {
     if (speed > 7) {
+      randartLog("Adding 1 for supercharged speed bonus!\n");
       data.artProbs[ART_IDX.GEN_SPEED_SUPER]!++;
     } else if (art.tval === TV.BOOTS) {
+      randartLog("Adding 1 for normal speed bonus on boots.\n");
       data.artProbs[ART_IDX.BOOT_SPEED]!++;
     } else {
+      randartLog("Adding 1 for normal speed bonus - general.\n");
       data.artProbs[ART_IDX.GEN_SPEED]!++;
     }
   }
 
   /* Permanent light. */
   if ((art.modifiers[OBJ_MOD.LIGHT] ?? 0) > 0) {
+    randartLog("Adding 1 for light radius - general.\n");
     data.artProbs[ART_IDX.GEN_LIGHT]!++;
   }
 }
@@ -955,6 +973,7 @@ export function countLowResists(art: Artifact, data: ArtifactSetData): void {
   if ((art.elInfo[ELEM.FIRE] as ElementInfo).resLevel === 3) num++;
   if ((art.elInfo[ELEM.COLD] as ElementInfo).resLevel === 3) num++;
 
+  randartLogf(() => `Adding ${num} for immunities.\n`);
   data.artProbs[ART_IDX.GEN_IMMUNE]! += num;
 
   /* Count up low resists (not the type, just the number). */
@@ -966,6 +985,7 @@ export function countLowResists(art: Artifact, data: ArtifactSetData): void {
 
   if (num) {
     if (art.tval === TV.SHIELD) {
+      randartLogf(() => `Adding ${num} for low resists on shield.\n`);
       data.artProbs[ART_IDX.SHIELD_LRES]! += num;
     } else if (
       art.tval === TV.SOFT_ARMOR ||
@@ -973,11 +993,14 @@ export function countLowResists(art: Artifact, data: ArtifactSetData): void {
       art.tval === TV.DRAG_ARMOR
     ) {
       if (num === 4) {
+        randartLog("Adding 1 for ALL LOW RESISTS on body armor.\n");
         data.artProbs[ART_IDX.ARMOR_ALLRES]!++;
       } else {
+        randartLogf(() => `Adding ${num} for low resists on body armor.\n`);
         data.artProbs[ART_IDX.ARMOR_LRES]! += num;
       }
     } else {
+      randartLogf(() => `Adding ${num} for low resists - general.\n`);
       data.artProbs[ART_IDX.GEN_LRES]! += num;
     }
   }
@@ -1008,51 +1031,66 @@ export function countHighResists(art: Artifact, data: ArtifactSetData): void {
     if ((art.elInfo[ELEM.CHAOS] as ElementInfo).resLevel === 1) num++;
     if ((art.elInfo[ELEM.DISEN] as ElementInfo).resLevel === 1) num++;
     if (art.flags.has(OF.PROT_STUN)) num++;
+    randartLogf(() => `Adding ${num} for high resists on body armor.\n`);
     data.artProbs[ART_IDX.ARMOR_HRES]! += num;
   }
 
   /* Now do the high resists individually. */
   if ((art.elInfo[ELEM.POIS] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist poison - general.\n");
     data.artProbs[ART_IDX.GEN_RPOIS]!++;
   }
   if (art.flags.has(OF.PROT_FEAR)) {
+    randartLog("Adding 1 for resist fear - general.\n");
     data.artProbs[ART_IDX.GEN_RFEAR]!++;
   }
   if ((art.elInfo[ELEM.LIGHT] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist light - general.\n");
     data.artProbs[ART_IDX.GEN_RLIGHT]!++;
   }
   if ((art.elInfo[ELEM.DARK] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist dark - general.\n");
     data.artProbs[ART_IDX.GEN_RDARK]!++;
   }
   if (art.flags.has(OF.PROT_BLIND)) {
     if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+      randartLog("Adding 1 for resist blindness - headgear.\n");
       data.artProbs[ART_IDX.HELM_RBLIND]!++;
     } else {
+      randartLog("Adding 1 for resist blindness - general.\n");
       data.artProbs[ART_IDX.GEN_RBLIND]!++;
     }
   }
   if (art.flags.has(OF.PROT_CONF)) {
+    randartLog("Adding 1 for resist confusion - general.\n");
     data.artProbs[ART_IDX.GEN_RCONF]!++;
   }
   if ((art.elInfo[ELEM.SOUND] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist sound - general.\n");
     data.artProbs[ART_IDX.GEN_RSOUND]!++;
   }
   if ((art.elInfo[ELEM.SHARD] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist shards - general.\n");
     data.artProbs[ART_IDX.GEN_RSHARD]!++;
   }
   if ((art.elInfo[ELEM.NEXUS] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist nexus - general.\n");
     data.artProbs[ART_IDX.GEN_RNEXUS]!++;
   }
   if ((art.elInfo[ELEM.NETHER] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist nether - general.\n");
     data.artProbs[ART_IDX.GEN_RNETHER]!++;
   }
   if ((art.elInfo[ELEM.CHAOS] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist chaos - general.\n");
     data.artProbs[ART_IDX.GEN_RCHAOS]!++;
   }
   if ((art.elInfo[ELEM.DISEN] as ElementInfo).resLevel === 1) {
+    randartLog("Adding 1 for resist disenchantment - general.\n");
     data.artProbs[ART_IDX.GEN_RDISEN]!++;
   }
   if (art.flags.has(OF.PROT_STUN)) {
+    randartLog("Adding 1 for res_stun - general.\n");
     data.artProbs[ART_IDX.GEN_PSTUN]!++;
   }
 }
@@ -1082,14 +1120,17 @@ export function countAbilities(
     if (art.flags.has(OF.SUST_WIS)) num++;
     if (art.flags.has(OF.SUST_DEX)) num++;
     if (art.flags.has(OF.SUST_CON)) num++;
+    randartLogf(() => `Adding ${num} for stat sustains.\n`);
     data.artProbs[ART_IDX.GEN_SUST]! += num;
   }
 
   /* Free action - handle gloves separately. */
   if (art.flags.has(OF.FREE_ACT)) {
     if (art.tval === TV.GLOVES) {
+      randartLog("Adding 1 for free action on gloves.\n");
       data.artProbs[ART_IDX.GLOVE_FA]!++;
     } else {
+      randartLog("Adding 1 for free action - general.\n");
       data.artProbs[ART_IDX.GEN_FA]!++;
     }
   }
@@ -1101,8 +1142,10 @@ export function countAbilities(
       art.tval === TV.HARD_ARMOR ||
       art.tval === TV.DRAG_ARMOR
     ) {
+      randartLog("Adding 1 for hold life on armor.\n");
       data.artProbs[ART_IDX.ARMOR_HLIFE]!++;
     } else {
+      randartLog("Adding 1 for hold life - general.\n");
       data.artProbs[ART_IDX.GEN_HLIFE]!++;
     }
   }
@@ -1110,8 +1153,10 @@ export function countAbilities(
   /* Feather fall - handle boots separately. */
   if (art.flags.has(OF.FEATHER)) {
     if (art.tval === TV.BOOTS) {
+      randartLog("Adding 1 for feather fall on boots.\n");
       data.artProbs[ART_IDX.BOOT_FEATHER]!++;
     } else {
+      randartLog("Adding 1 for feather fall - general.\n");
       data.artProbs[ART_IDX.GEN_FEATHER]!++;
     }
   }
@@ -1127,9 +1172,11 @@ export function countAbilities(
       )
     ) {
       if (art.tval === TV.HELM || art.tval === TV.CROWN) {
-        data.artProbs[ART_IDX.HELM_SINV]!++;
+        randartLog("Adding 1 for see invisible - headgear.\n");
+      data.artProbs[ART_IDX.HELM_SINV]!++;
       } else {
-        data.artProbs[ART_IDX.GEN_SINV]!++;
+        randartLog("Adding 1 for see invisible - general.\n");
+      data.artProbs[ART_IDX.GEN_SINV]!++;
       }
     }
   }
