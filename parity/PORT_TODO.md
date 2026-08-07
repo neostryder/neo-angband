@@ -2971,7 +2971,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `parity/ledger/obj-randart.yaml:51`
 
 - [ ] **5.5 `randart.log` / `randart.txt`. IN PROGRESS — the file exists and
-  164 of its 233 emission sites are written. The remainder is MEASURED, not
+  181 of its 233 emission sites are written. The remainder is MEASURED, not
   estimated.**
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
@@ -2983,7 +2983,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   | | sites | done |
   |---|---|---|
   | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
-  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 108 |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | 122 |
   | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | 0 |
 
   DONE so far, and each part is load-bearing on its own:
