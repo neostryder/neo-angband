@@ -214,7 +214,7 @@ describe("the levelGenerated seam reaches level generation from startGame", () =
    * changes the outcome can.
    *
    * The staircase repair that used to be tested here is the bug-fixes mod's
-   * (packages/web/mods/bug-fixes/), and its end-to-end proof on these same seeds
+   * (the neo-angband-mod-bug-fixes repo), and its end-to-end proof on these seeds
    * now lives with it. What stays here is the CONTROL - core still strands
    * floors, on purpose - plus the seam itself.
    *

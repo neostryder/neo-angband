@@ -270,8 +270,8 @@ describe("object_list sorting + colour", () => {
 describe("objectListStandardCompare - the objectListTiebreak seam", () => {
   /*
    * Core's side of the seam only. The GEOMETRIC key is the bug-fixes mod's patch
-   * (#4664, "bugfix.objectListOrder"), lives in packages/web/mods/bug-fixes/
-   * hooks.ts, and is proven there; core holds no opinion about how a tie breaks
+   * (#4664, "bugfix.objectListOrder"), lives in the neo-angband-mod-bug-fixes
+   * repo, and is proven there; core holds no opinion about how a tie breaks
    * and no `bugfix.*` string. What core owes is: upstream's keys first, the hook
    * only for a real tie, and the hook's answer honoured as given.
    */
