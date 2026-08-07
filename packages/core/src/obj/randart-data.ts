@@ -55,7 +55,6 @@ import { ODESC, objectDesc } from "./desc.js";
 import type { KnownDesc } from "./known-object.js";
 import { makeRuneEnv } from "./knowledge.js";
 import type { ActivationSummarizer } from "./randart-build.js";
-import { ELEMENT_PROJ_NAMES } from "./randart-build.js";
 import { mean, variance } from "../rational.js";
 import { objectPower } from "./power.js";
 import type { Artifact, ElementInfo } from "./types.js";
@@ -324,7 +323,7 @@ export function artifactPower(
         slays: reg.slays,
         curses: reg.curses,
         properties: reg.properties,
-        elementNames: ELEMENT_PROJ_NAMES,
+        elementNames: (reg.projections ?? []).map((p) => p.name),
       },
     );
     const deps: KnownDesc = { isAware: () => false, isTried: () => false };

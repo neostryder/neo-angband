@@ -41,6 +41,7 @@ import {
   TVAL_ENTRIES,
 } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
+import type { ProjectionInfo } from "../world/projection.js";
 import type {
   Activation,
   ActivationRecordJson,
@@ -425,6 +426,22 @@ export class ObjRegistry {
   readonly properties: (ObjectProperty | null)[] = [null];
   /** Flat flavor list in file order. */
   readonly flavors: Flavor[] = [];
+
+  /**
+   * projections[] (project.h), attached by bindCore after the projection
+   * records are bound. Upstream reaches this table as a global, and
+   * obj-randart.c does exactly that: add_brand (L1951) compares a brand's
+   * name against projections[i].name to pick the matching resist, and
+   * add_resist / add_immunity quote the same name into randart.log.
+   *
+   * It lives on the object registry rather than being threaded through
+   * do_randart's arguments because that is the shape the C has: one table,
+   * reachable from anywhere in the object domain. A caller that builds a
+   * registry without it (a focused unit test) gets a throw from randart's
+   * projName rather than a hand-written substitute, because a substitute is
+   * an assertion about projection.txt that nothing checks.
+   */
+  projections: readonly ProjectionInfo[] | null = null;
 
   /* The generic object kinds resolved by finish_parse_artifact. */
   unknownItemKind: ObjectKind | null = null;
