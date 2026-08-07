@@ -22,6 +22,7 @@
 import { describe, expect, it } from "vitest";
 import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 
+import { ALL_PACKS } from "@rpgm-tools/neo-angband-linoleum";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv } from "./mod-discover";
 
@@ -125,6 +126,43 @@ describe.skipIf(!ON)("the curated registry, live", () => {
        * not the player's, so it fails the run rather than being logged and passed
        * over. A borg with no release yet is exactly this case and should say so. */
       expect(broken).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "the linoleum mod still ships one archive per converter pack",
+    async () => {
+      /* INHERITED FROM tile-catalog.test.ts, which could ask this locally while the
+       * catalogue compiled into the build listed the mod's files. It cannot now: a
+       * mod's payload comes from its own manifest at a tag. The question is the same
+       * one and it is worth keeping - a pack added to the converter and never shipped
+       * is a Graphics screen with a row missing and nothing to say why.
+       *
+       * It is asked of the DECLARED payload rather than a guessed one, because a
+       * guess is a directory listing and would pass on any repository that happens to
+       * contain zips. */
+      const list = await fetchRegistry(DEFAULT_REGISTRY_URL, { fetch: env.fetch });
+      expect(list.ok).toBe(true);
+      if (!list.ok) return;
+      const ref = list.registry.mods.find((m) => m.repo.endsWith("-mod-linoleum"));
+      expect(ref, "the curated list no longer names the linoleum mod").toBeDefined();
+      if (!ref) return;
+
+      const r = await discoverMod(ref, env);
+      expect(r.ok, `linoleum: ${r.ok ? "" : r.problem}`).toBe(true);
+      if (!r.ok) return;
+      expect(r.mod.guessedPayload, "linoleum declares its payload").toBe(false);
+
+      const paths = r.mod.payload.map((p) => p.path);
+      expect(paths).toContain("dist/neo-linoleum-mod.zip");
+      expect(ALL_PACKS.length, "the converter defines packs to check for").toBeGreaterThan(0);
+      for (const key of ALL_PACKS.map((p) => p.key)) {
+        expect(paths, `no archive ships the ${key} pack`).toContain(
+          `dist/neo-linoleum-${key}.zip`,
+        );
+      }
+      expect(paths.length).toBe(ALL_PACKS.length + 1);
     },
     TIMEOUT,
   );

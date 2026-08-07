@@ -59,7 +59,6 @@ import {
   type ModProblem,
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
-import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
 import { showModBrowse, showModUpgrades, type ModUpgradeDeps } from "./mod-browse";
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
@@ -216,7 +215,6 @@ export interface ModManagerDeps {
    * with no IndexedDB, which is the honest way to say "not here" - the row simply
    * does not appear, rather than appearing and failing.
    */
-  modCatalogue?: ModCatalogueDeps;
   /**
    * The three doors (mod-browse.ts): the curated list, a registry address, a
    * repository address.
@@ -1766,7 +1764,11 @@ export async function runModManager(
      * only meaningful once you have several mods, offered to a player who has
      * none. */
     const diskStatus = trouble;
-    if (deps.modCatalogue) {
+    /* Gated on the BROWSE screen, which is the only one there is. It used to be
+     * gated on the compiled-in catalogue's deps, and when that was deleted these
+     * two rows would have vanished from every host - the mod manager with no way
+     * to get a mod. */
+    if (deps.modBrowse) {
       addAction(
         catalog.length === 0 ? "Install a mod...  (start here)" : "Install a mod...",
         "download",
@@ -2027,18 +2029,6 @@ export async function runModManager(
       if (deps.modBrowse) {
         const touched = await showModBrowse(term, {
           ...deps.modBrowse,
-          offerEnable: async (id) => {
-            if (await enableAfterInstall(term, deps, id)) {
-              dirty = true;
-              return true;
-            }
-            return false;
-          },
-        });
-        if (touched) dirty = true;
-      } else if (deps.modCatalogue) {
-        const touched = await showModCatalogue(term, {
-          ...deps.modCatalogue,
           offerEnable: async (id) => {
             if (await enableAfterInstall(term, deps, id)) {
               dirty = true;

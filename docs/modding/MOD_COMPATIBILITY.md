@@ -128,15 +128,15 @@ seam, not to fence the namespace.
 
 ## Who finds out first
 
-The **mod canary** (`.github/workflows/mod-canary.yml`) runs the catalogue's
-promises against this build daily and on catalogue edits: every
-`RECOMMENDED_MODS` entry is fetched at its pinned tag and its manifest is put
-through this build's gates. So an engine release that would strand a catalogued
-mod shows up here rather than in a player's install - the automated equivalent of
-SMAPI's compatibility list, and the reason a release can be held rather than
-apologised for.
+The **mod canary** (`.github/workflows/mod-canary.yml`) runs the curated list
+against this build daily and whenever the list changes: every repository in
+`mods/registry.json` is discovered the way the game discovers it, and its manifest
+is put through this build's gates. So an engine release that would strand a
+curated mod shows up here rather than in a player's install - the automated
+equivalent of SMAPI's compatibility list, and the reason a release can be held
+rather than apologised for.
 
-That covers catalogued mods only. A mod nobody has listed finds out the same way
+That covers curated mods only. A mod nobody has listed finds out the same way
 every mod always has, which is why the gates above are built to degrade rather
 than refuse.
 

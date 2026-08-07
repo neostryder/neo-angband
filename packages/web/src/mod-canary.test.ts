@@ -1,61 +1,78 @@
 /**
- * The catalogue, checked against what its tags actually serve TODAY.
+ * The curated mods, checked against what their repositories actually serve TODAY,
+ * by the route a player's game takes.
  *
- * WHY THIS EXISTS. Everything the catalogue promises is checked at install time,
- * against digests that ship inside the build - so a player finds out a promise
- * has stopped being true by having an install fail. Nothing checked it before
- * that, and on 2026-07-31 two separate breakages went out and were both caught by
- * accident:
+ * WHY THIS EXISTS. Everything here is checked at install time, on the player's
+ * machine, so the way a broken promise is normally discovered is by having an install
+ * fail. Nothing checked it before that, and on 2026-07-31 two separate breakages went
+ * out and were both caught by accident:
  *
- *   - Wiring the `engine` gate (#164) revealed that two shipped manifests
- *     declared `"engine": "4.2.x"` - the upstream Angband release, not the port's
- *     version - at tags the catalogue was pinning. The gate would have refused
- *     both mods on the live site.
- *   - The linoleum tile archives were rebuilt by a renamed converter, so the
- *     bytes at the tag stopped matching the pinned digests. Local verification
- *     agreed with a stale cache and said nothing; CI in the mod's own repository
- *     is what noticed, and only after a tag had been cut.
+ *   - Wiring the `engine` gate (#164) revealed that two shipped manifests declared
+ *     `"engine": "4.2.x"` - the upstream Angband release, not the port's version - at
+ *     tags that were being offered. The gate would have refused both mods on the live
+ *     site.
+ *   - The linoleum tile archives were rebuilt by a renamed converter, so the bytes at
+ *     the tag changed under a pinned digest. Local verification agreed with a stale
+ *     cache and said nothing.
  *
- * Neither belongs to a code change in this repository, which is exactly why no
- * test here could see them: the failure is that the WORLD moved, not that the
- * source did. This runs against the network and says so out loud.
+ * Neither belongs to a code change in this repository, which is exactly why no other
+ * test here can see them: the failure is that the WORLD moved, not that the source
+ * did. This runs against the network and says so out loud.
  *
- * WHAT IT CHECKS, per catalogue row:
- *   1. every payload file is still there at the pinned tag (HTTP 200);
- *   2. its bytes still hash to the pinned SHA-256;
- *   3. the response still carries `Access-Control-Allow-Origin: *`, which is the
- *      one property that makes an install from the static web build possible;
- *   4. the manifest's `engine` range still admits THIS build's ENGINE_VERSION;
- *   5. its `modApi` still matches this host's, when it ships code;
- *   6. its `id` still matches the id the catalogue files it under.
+ * WHAT CHANGED WHEN RECOMMENDED_MODS WENT, because this file lost a check and it
+ * should not be quiet about it. It used to read a catalogue compiled into the build -
+ * repo, tag, and a SHA-256 per file - and could therefore assert that the bytes at a
+ * pinned tag still hashed to the pinned value. **That assertion is gone, because the
+ * value it compared against is gone**; a mod is now discovered from its own
+ * repository, and nothing here knows what its files are supposed to hash to. What
+ * replaces it is not a substitute for it: it is the rest of the promise, checked
+ * through the code a player actually runs.
  *
- * OFF BY DEFAULT, and deliberately not part of `pnpm test`. It needs the network
- * and GitHub, and a PR must not go red because a CDN hiccupped - a check that
- * cries wolf gets ignored, and this one has to be believed. It runs on a schedule
- * in its own workflow (.github/workflows/mod-canary.yml) and on demand:
+ * That is a real trade and it went the other way on purpose - see mod-registry.ts for
+ * why. What this file can still say, and now says through `discoverMod` rather than
+ * through a literal:
+ *
+ *   1. the curated list is readable and CORS-open, so the static build can read it;
+ *   2. every repository it names still describes a mod this game could install;
+ *   3. each manifest's `engine` range still admits THIS build's ENGINE_VERSION;
+ *   4. its `modApi` still matches this host's, when it ships code;
+ *   5. every declared payload file is still served, at the tag, with CORS open;
+ *   6. and the qol plugin, DOWNLOADED, still does what it says.
+ *
+ * OFF BY DEFAULT, and deliberately not part of `pnpm test`. It needs the network and
+ * GitHub, and a PR must not go red because a CDN hiccupped - a check that cries wolf
+ * gets ignored, and this one has to be believed. It runs on a schedule in its own
+ * workflow (.github/workflows/mod-canary.yml) and on demand:
  *
  *   MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts
  */
 
-import { webcrypto } from "node:crypto";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { composeModHooks, ENGINE_VERSION, OptionState } from "@rpgm-tools/neo-angband-core";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { satisfies } from "@rpgm-tools/neo-angband-mod-sdk";
-import { RECOMMENDED_MODS, rawUrl, type RecommendedMod } from "./mod-registry";
-import { sha256Hex } from "./mod-install";
+import { rawUrl } from "./mod-registry";
+import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
+import { discoverMod, type DiscoverEnv, type DiscoveredMod } from "./mod-discover";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { modPluginContext } from "./mod-context";
 import { modPrefs } from "./mod-prefs";
 import { notifyOptionsChanged, optionsFingerprint } from "./options";
 
 const ON = process.env["MOD_CANARY"] === "1";
-const subtle = webcrypto.subtle;
 
 /* Generous, because this is a scheduled job and not a keystroke: a large tile
- * archive is 10.6 MiB and the whole catalogue is ~25 MiB. */
+ * archive is 10.6 MiB and the whole curated set is ~25 MiB. */
 const TIMEOUT = 180_000;
+
+const env: DiscoverEnv = {
+  engineVersion: ENGINE_VERSION,
+  fetch: async (url) => {
+    const res = await fetch(url);
+    return { ok: res.ok, status: res.status, text: () => res.text() };
+  },
+};
 
 interface Fetched {
   readonly bytes: Uint8Array;
@@ -71,120 +88,180 @@ async function get(url: string): Promise<Fetched> {
   };
 }
 
-/** Every (path, sha256) the catalogue pins for this mod, whichever payload shape. */
-function pinned(mod: RecommendedMod): ReadonlyArray<{ path: string; sha256: string }> {
-  return mod.payload.kind === "files" ? mod.payload.files : mod.payload.archives;
-}
+/**
+ * Discover every repository the curated list names, once, for the whole file.
+ *
+ * ONE PASS, not one per assertion. Discovery is three requests per mod against the
+ * public API, and re-running it inside each `it` is how a scheduled job earns a rate
+ * limit - which fails the run for a reason that has nothing to do with the mods.
+ */
+const discovered: Promise<readonly DiscoveredMod[]> = (async () => {
+  if (!ON) return [];
+  const list = await fetchRegistry(DEFAULT_REGISTRY_URL, { fetch: env.fetch });
+  if (!list.ok) throw new Error(`the curated registry: ${list.problem}`);
+  const out: DiscoveredMod[] = [];
+  const failed: string[] = [];
+  for (const ref of list.registry.mods) {
+    const r = await discoverMod(ref, env);
+    if (r.ok) out.push(r.mod);
+    else failed.push(`${ref.repo}: ${r.problem}`);
+  }
+  if (failed.length > 0) {
+    /* A repository in MY curated list that cannot be discovered is my problem, not
+     * the player's, so it fails the run rather than being logged and passed over. */
+    throw new Error(`repositories that could not be discovered:\n  ${failed.join("\n  ")}`);
+  }
+  return out;
+})();
 
 /**
  * The mod's manifest.json as the game would read it after installing.
  *
  * Taken out of the ARCHIVE for an archive payload rather than fetched from the
- * repository root, because the archive is what an install actually unpacks - a
- * root manifest.json that disagreed with the one inside the zip is a difference
- * only this route can see.
+ * repository root, because the archive is what an install actually unpacks - a root
+ * manifest.json that disagreed with the one inside the zip is a difference only this
+ * route can see.
  */
-async function manifestOf(mod: RecommendedMod): Promise<Record<string, unknown>> {
-  if (mod.payload.kind === "files") {
-    const file = mod.payload.files.find((f) => f.path.toLowerCase() === "manifest.json");
-    if (!file) throw new Error(`${mod.id}: the catalogue lists no manifest.json`);
-    const { bytes } = await get(rawUrl(mod.repo, mod.tag, file.path));
+async function manifestOf(mod: DiscoveredMod): Promise<Record<string, unknown>> {
+  const files = mod.payload.filter((p) => p.kind === "file");
+  const plain = files.find((f) => f.path.toLowerCase() === "manifest.json");
+  if (plain) {
+    const { bytes } = await get(rawUrl(mod.repo, mod.tag, plain.path));
     return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
   }
-  for (const archive of mod.payload.archives) {
+  for (const archive of mod.payload.filter((p) => p.kind === "archive")) {
     const { bytes } = await get(rawUrl(mod.repo, mod.tag, archive.path));
     const entries = unzipSync(bytes);
     const key = Object.keys(entries).find((k) => k.toLowerCase() === "manifest.json");
     if (key) return JSON.parse(new TextDecoder().decode(entries[key])) as Record<string, unknown>;
   }
-  throw new Error(`${mod.id}: no archive in this payload contains a manifest.json`);
+  throw new Error(`${mod.id}: nothing in this payload contains a manifest.json`);
 }
 
-describe.skipIf(!ON)("the catalogue still matches what its tags serve", () => {
-  it("has rows to check, so a green run is not an empty one", () => {
-    /* The guard on the guard. An empty catalogue passes every assertion below,
-     * and this canary's whole job is to be believed. */
-    expect(RECOMMENDED_MODS.length).toBeGreaterThan(0);
-    for (const mod of RECOMMENDED_MODS) expect(pinned(mod).length, mod.id).toBeGreaterThan(0);
-  });
+describe.skipIf(!ON)("the curated mods still serve what this build needs", () => {
+  it(
+    "the list is readable, and CORS-open so the static web build can read it too",
+    async () => {
+      const res = await fetch(DEFAULT_REGISTRY_URL);
+      expect(res.ok).toBe(true);
+      /* The one header that decides whether the deployed site can do this at all.
+       * Measured rather than assumed, because it is not ours to guarantee. */
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    },
+    TIMEOUT,
+  );
 
-  for (const mod of RECOMMENDED_MODS) {
-    describe(`${mod.id} @ ${mod.tag}`, () => {
-      it(
-        "serves every pinned file, at the pinned digest, with CORS open",
-        async () => {
-          for (const file of pinned(mod)) {
-            const url = rawUrl(mod.repo, mod.tag, file.path);
+  it(
+    "has mods to check, so a green run is not an empty one",
+    async () => {
+      /* The guard on the guard. An empty list passes every assertion below, and this
+       * canary's whole job is to be believed. */
+      const mods = await discovered;
+      expect(mods.length).toBeGreaterThan(0);
+      for (const m of mods) expect(m.payload.length, m.id).toBeGreaterThan(0);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "every declared payload file is served at the tag, with CORS open",
+    async () => {
+      /* What is left of the digest check, and it is honestly less: this says the
+       * bytes are REACHABLE, not that they are the bytes the author published. The
+       * value that could have said the second thing shipped inside the build and
+       * went with it. A 404 here is still the common real failure - a tag deleted, a
+       * file renamed, a repository made private - and it is the one a player meets
+       * as a broken install. */
+      const problems: string[] = [];
+      for (const mod of await discovered) {
+        for (const entry of mod.payload) {
+          const url = rawUrl(mod.repo, mod.tag, entry.path);
+          try {
             const got = await get(url);
-            const actual = await sha256Hex(got.bytes, subtle);
-            /* The digest first: a mismatch is the alarm this whole scheme exists
-             * to raise, and it means the bytes at a pinned TAG changed - which
-             * should be impossible and is the most important thing this job can
-             * tell anyone. */
-            expect(actual, `${file.path} at ${mod.tag}`).toBe(file.sha256);
-            /* Measured rather than assumed, and re-measured here because it is a
-             * property of GitHub's serving policy, not of this repository: without
-             * it the static web build cannot install anything. */
-            expect(got.cors, `${file.path} CORS`).toBe("*");
+            if (got.bytes.length === 0) problems.push(`${mod.id}: ${entry.path} is empty`);
+            /* Re-measured here because it is a property of GitHub's serving policy,
+             * not of this repository: without it the static build installs nothing. */
+            if (got.cors !== "*") problems.push(`${mod.id}: ${entry.path} CORS ${String(got.cors)}`);
+          } catch (e) {
+            problems.push(`${mod.id}: ${entry.path}: ${String(e)}`);
           }
-        },
-        TIMEOUT,
-      );
+        }
+      }
+      expect(problems).toEqual([]);
+    },
+    TIMEOUT,
+  );
 
-      it(
-        "declares an engine range this build satisfies",
-        async () => {
-          /* The check the #164 gate applies at load time, applied to the bytes at
-           * the tag instead of to the working tree. A manifest fixed here but not
-           * re-tagged, or a tag pinned before the fix, is invisible to every other
-           * test in this repository. */
-          const manifest = await manifestOf(mod);
-          expect(manifest["id"], "manifest id vs catalogue id").toBe(mod.id);
-          const range = manifest["engine"];
-          if (range === undefined) return; // declaring none is allowed
-          expect(typeof range).toBe("string");
-          expect(
-            satisfies(ENGINE_VERSION, range as string),
+  it(
+    "every manifest declares an engine range this build satisfies",
+    async () => {
+      /* The check the #164 gate applies at load time, applied to the bytes at the tag
+       * instead of to the working tree. A manifest fixed but not re-tagged is
+       * invisible to every other test in this repository.
+       *
+       * Asserted on the MANIFEST as well as on discoverMod's `compatible`, because
+       * they are two different claims: `compatible` is the loader's verdict, which a
+       * content-only mod can pass while declaring a range this build sits outside. */
+      const problems: string[] = [];
+      for (const mod of await discovered) {
+        const manifest = await manifestOf(mod);
+        if (manifest["id"] !== mod.id) {
+          problems.push(`${mod.repo}: manifest id ${String(manifest["id"])} vs ${mod.id}`);
+        }
+        const range = manifest["engine"];
+        if (range === undefined) continue; // declaring none is allowed
+        if (typeof range !== "string" || !satisfies(ENGINE_VERSION, range)) {
+          problems.push(
             `${mod.id} declares engine ${String(range)}; this build is ${ENGINE_VERSION}`,
-          ).toBe(true);
-        },
-        TIMEOUT,
-      );
+          );
+        }
+      }
+      expect(problems).toEqual([]);
+    },
+    TIMEOUT,
+  );
 
-      it(
-        "targets this host's mod API if it ships code",
-        async () => {
-          const manifest = await manifestOf(mod);
-          const facets = manifest["facets"];
-          const shipsCode =
-            manifest["shape"] === "plugin" ||
-            (Array.isArray(facets) && facets.includes("plugin"));
-          if (!shipsCode) return;
-          expect(manifest["modApi"], `${mod.id} modApi`).toBe(MOD_API_VERSION);
-        },
-        TIMEOUT,
-      );
-    });
-  }
+  it(
+    "every mod that ships code targets this host's mod API",
+    async () => {
+      const problems: string[] = [];
+      let checked = 0;
+      for (const mod of await discovered) {
+        const manifest = await manifestOf(mod);
+        const facets = manifest["facets"];
+        const shipsCode =
+          manifest["shape"] === "plugin" || (Array.isArray(facets) && facets.includes("plugin"));
+        if (!shipsCode) continue;
+        checked++;
+        if (manifest["modApi"] !== MOD_API_VERSION) {
+          problems.push(`${mod.id} modApi ${String(manifest["modApi"])} vs ${MOD_API_VERSION}`);
+        }
+      }
+      expect(problems).toEqual([]);
+      /* Not a tautology: if every curated mod stopped shipping code this assertion
+       * would pass by checking nothing, and the API-version gate would go unwatched. */
+      expect(checked, "no curated mod ships code any more").toBeGreaterThan(0);
+    },
+    TIMEOUT,
+  );
 });
 
 describe.skipIf(ON)("the canary is off by default", () => {
   it("is opt-in, so a network hiccup cannot fail a PR", () => {
-    /* Not a tautology: it pins that the gate is an environment variable and that
-     * the suite above is genuinely skipped without it, which is the difference
-     * between "off by default" and "nobody has run it". */
+    /* Not a tautology: it pins that the gate is an environment variable and that the
+     * suite above is genuinely skipped without it, which is the difference between
+     * "off by default" and "nobody has run it". */
     expect(ON).toBe(false);
-    expect(RECOMMENDED_MODS.length).toBeGreaterThan(0);
   });
 });
 
 /**
  * The DOWNLOADED qol plugin, driven through the host's own chain.
  *
- * Everything above checks that the catalogue's promises about the bytes are
- * still true. This checks that the bytes still DO something - and it is the only
- * test anywhere that runs the plugin a player actually receives rather than a
- * local build of it or a fixture shaped like one.
+ * Everything above checks that the mods can still be fetched and would still load.
+ * This checks that the bytes still DO something - and it is the only test anywhere
+ * that runs the plugin a player actually receives rather than a local build of it or
+ * a fixture shaped like one.
  *
  * The chain is the host's, function for function, in the host's order:
  *
@@ -197,25 +274,24 @@ describe.skipIf(ON)("the canary is off by default", () => {
  *     -> notifyOptionsChanged(state, before) what the '=' screen calls on close
  *     -> plugin.register(host, ctx)         with newCharacter, as main.ts calls it
  *
- * WHY IT IS WORTH THE NETWORK. Every link in that chain has its own unit test and
- * all of them passed while the capture half was reading `ctx.state.options` - a
- * property the host never puts on a hooks() context. The feature was dead and
- * three green suites said otherwise. Only running the whole chain finds that.
+ * WHY IT IS WORTH THE NETWORK. Every link in that chain has its own unit test and all
+ * of them passed while the capture half was reading `ctx.state.options` - a property
+ * the host never puts on a hooks() context. The feature was dead and three green
+ * suites said otherwise. Only running the whole chain finds that.
  */
 describe.skipIf(!ON)("the qol mod, downloaded and actually run", () => {
-  const mod = RECOMMENDED_MODS.find((m) => m.id === "qol");
-
-  it("is still in the catalogue, so this suite cannot pass by finding nothing", () => {
-    expect(mod).toBeDefined();
-  });
-
   it(
     "remembers a setting, and applies it to a new character",
     async () => {
-      if (!mod || mod.payload.kind !== "files") throw new Error("qol is not a files payload");
-      const file = mod.payload.files.find((f) => f.path === "plugin.js");
-      if (!file) throw new Error("qol pins no plugin.js");
-      const { bytes } = await get(rawUrl(mod.repo, mod.tag, file.path));
+      const mod = (await discovered).find((m) => m.id === "qol");
+      /* So this suite cannot pass by finding nothing. */
+      expect(mod, "qol is not in the curated list any more").toBeDefined();
+      if (!mod) return;
+
+      const entry = mod.payload.find((p) => p.kind === "file" && p.path === "plugin.js");
+      expect(entry, "qol ships no plugin.js").toBeDefined();
+      if (!entry) return;
+      const { bytes } = await get(rawUrl(mod.repo, mod.tag, entry.path));
       const source = new TextDecoder().decode(bytes);
 
       const loaded = (await import(
@@ -233,8 +309,8 @@ describe.skipIf(!ON)("the qol mod, downloaded and actually run", () => {
       expect(flags["qol.rememberSettings"]).toBe(true);
       expect(flags["qol.rememberCheats"]).toBe(false);
 
-      /* One preference store for both halves, exactly as the host gives one mod
-       * one store across a session. In-memory so the run leaves nothing behind. */
+      /* One preference store for both halves, exactly as the host gives one mod one
+       * store across a session. In-memory so the run leaves nothing behind. */
       const store = new Map<string, string>();
       const prefs = modPrefs(mod.id, {
         getItem: (k) => store.get(k) ?? null,

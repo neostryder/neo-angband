@@ -21,13 +21,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { STORE_MODS, STORE_MOD_META } from "./idb";
 import {
-  DigestMismatchError,
   FILE_ORIGIN,
-  fetchVerified,
   installModFromRepo,
   importedOrigin,
   installModFromZip,
-  installRecommendedMod,
   installedModSource,
   installedMods,
   isImported,
@@ -38,7 +35,7 @@ import {
   type InstalledModMeta,
   uninstallMod,
 } from "./mod-install";
-import { type RecommendedMod, badPath, rawUrl, validateRecommendedMod } from "./mod-registry";
+import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
@@ -248,25 +245,6 @@ async function envFor(
   };
 }
 
-async function modFor(
-  files: Record<string, Uint8Array>,
-  tamper: Partial<Record<string, string>> = {},
-): Promise<RecommendedMod> {
-  const list = [];
-  for (const [path, bytes] of Object.entries(files)) {
-    list.push({ path, sha256: tamper[path] ?? (await sha256Hex(bytes, subtle)) });
-  }
-  return {
-    id: "demo",
-    name: "Demo",
-    repo: "neostryder/neo-angband-mod-demo",
-    tag: "v1.0.0",
-    summary: "A demo mod.",
-    preChecked: false,
-    approxBytes: 200,
-    payload: { kind: "files", files: list },
-  };
-}
 
 /* ------------------------------------------------------------------ *
  * Hashing.
@@ -296,52 +274,30 @@ describe("sha256Hex", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Fetching.
+ * The write half, driven through the one install path there is.
+ *
+ * These used to run through installRecommendedMod, which fetched a catalogue
+ * payload with a digest per file. That function and its catalogue are gone; every
+ * assertion below is about storeMod - what lands, what is replaced, what happens
+ * when the browser refuses the write - and storeMod is shared by all three doors.
+ * So they are the same tests through installModFromRepo.
+ *
+ * ONE PAIR DID NOT SURVIVE, and it is worth naming rather than quietly dropping:
+ * "stores nothing when a file's digest is wrong" and "never parses an archive whose
+ * digest is wrong" tested a comparison that no longer exists, because the value it
+ * compared against shipped inside the build. There is nothing left to tamper with.
  * ------------------------------------------------------------------ */
 
-describe("fetchVerified", () => {
-  it("returns the bytes when the digest matches", async () => {
-    const bytes = enc("hello");
-    const { env } = await envFor({ "a.txt": bytes });
-    const got = await fetchVerified(
-      rawUrl("o/r", "v1", "a.txt"),
-      await sha256Hex(bytes, subtle),
-      "a.txt",
-      env,
-    );
-    expect(new TextDecoder().decode(got)).toBe("hello");
-  });
+describe("installing from a repository: what lands", () => {
+  const FILES: readonly PayloadEntry[] = [
+    { kind: "file", path: "manifest.json" },
+    { kind: "file", path: "plugin.js" },
+  ];
 
-  it("refuses bytes whose digest differs, naming BOTH digests", async () => {
-    const { env } = await envFor({ "a.txt": enc("hello") });
-    const wrong = "0".repeat(64);
-    await expect(
-      fetchVerified(rawUrl("o/r", "v1", "a.txt"), wrong, "a.txt", env),
-    ).rejects.toThrow(DigestMismatchError);
-    /* Both values in the text: a player pasting this into a report gives the author
-     * something actionable, and "the download did not match" does not. */
-    await expect(
-      fetchVerified(rawUrl("o/r", "v1", "a.txt"), wrong, "a.txt", env),
-    ).rejects.toThrow(/expected 0{64}, got [0-9a-f]{64}/u);
-  });
-
-  it("says a 404 is a 404, so the catalogue is the suspect", async () => {
-    const { env } = await envFor({}, { missing: ["gone.txt"] });
-    await expect(
-      fetchVerified(rawUrl("o/r", "v1", "gone.txt"), "0".repeat(64), "gone.txt", env),
-    ).rejects.toThrow(/not found at this tag \(HTTP 404\)/u);
-  });
-});
-
-/* ------------------------------------------------------------------ *
- * Installing.
- * ------------------------------------------------------------------ */
-
-describe("installRecommendedMod", () => {
   it("stores every file plus a meta record", async () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    const r = await installRecommendedMod(await modFor(files), env);
+    const r = await installModFromRepo(discovered(FILES), null, env);
 
     expect(r.ok).toBe(true);
     expect([...(stores.get(STORE_MODS)?.keys() ?? [])].sort()).toEqual([
@@ -360,34 +316,20 @@ describe("installRecommendedMod", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env } = await envFor(files);
     const seen: string[] = [];
-    await installRecommendedMod(await modFor(files), env, (p) =>
-      seen.push(`${p.done}/${p.total} ${p.path}`),
+    await installModFromRepo(discovered(FILES), null, env, (p) =>
+      seen.push(`${String(p.done)}/${String(p.total)} ${p.path}`),
     );
     expect(seen).toEqual(["1/2 manifest.json", "2/2 plugin.js"]);
-  });
-
-  it("stores NOTHING when one file's digest is wrong", async () => {
-    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
-    const { env, stores } = await envFor(files);
-    /* The manifest is fine and would be fetched first; the plugin is tampered with.
-     * A version that stored as it went would leave a mod folder holding a valid
-     * manifest and no code - installed, enabled, and silently doing nothing. */
-    const mod = await modFor(files, { "plugin.js": "1".repeat(64) });
-    const r = await installRecommendedMod(mod, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/does not match the expected checksum/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-    expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
   });
 
   it("refuses a download with no manifest.json", async () => {
     const files = { "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    const mod = await modFor(files);
-    /* Bypass the catalogue check to prove the INSTALLER also refuses: the archive path
-     * produces a file list the catalogue never saw. */
-    const r = await installRecommendedMod(mod, env);
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "plugin.js" }]),
+      null,
+      env,
+    );
     expect(r.ok).toBe(false);
     expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
   });
@@ -396,7 +338,11 @@ describe("installRecommendedMod", () => {
     const files = { "manifest.json": enc(MANIFEST) };
     const { factory } = fakeIdb({ putFails: true });
     const { env } = await envFor(files, { idb: factory });
-    const r = await installRecommendedMod(await modFor(files), env);
+    const r = await installModFromRepo(
+      discovered([{ kind: "file", path: "manifest.json" }]),
+      null,
+      env,
+    );
     /* The failure this guards is the one already fixed once in the save path: a
      * reporting layer sitting on top of an IO call that returns void, so every layer
      * claims success while nothing is stored. */
@@ -411,12 +357,26 @@ describe("installRecommendedMod", () => {
 
     const v1 = { "manifest.json": enc(MANIFEST), "old.json": enc("{}") };
     const { env: env1 } = await envFor(v1, { idb: made.factory });
-    await installRecommendedMod(await modFor(v1), env1);
+    await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "old.json" },
+      ]),
+      null,
+      env1,
+    );
     expect(made.stores.get(STORE_MODS)?.has("demo/old.json")).toBe(true);
 
     const v2 = { "manifest.json": enc(MANIFEST), "new.json": enc("{}") };
     const { env: env2 } = await envFor(v2, { idb: made.factory });
-    await installRecommendedMod(await modFor(v2), env2);
+    await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "new.json" },
+      ]),
+      installedAs("neostryder/neo-angband-mod-demo"),
+      env2,
+    );
 
     /* A mod that is half v1 and half v2 is a mod whose bug reports mean nothing. */
     expect(made.stores.get(STORE_MODS)?.has("demo/old.json")).toBe(false);
@@ -425,21 +385,27 @@ describe("installRecommendedMod", () => {
 
   it("overwrites a path both versions ship, rather than keeping the old bytes", async () => {
     const made = fakeIdb();
-    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":1}') };
-    await installRecommendedMod(
-      await modFor(v1),
+    const payload: readonly PayloadEntry[] = [
+      { kind: "file", path: "manifest.json" },
+      { kind: "file", path: "data.json" },
+    ];
+    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc(JSON.stringify({ v: 1 })) };
+    await installModFromRepo(
+      discovered(payload),
+      null,
       (await envFor(v1, { idb: made.factory })).env,
     );
-    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":2}') };
-    await installRecommendedMod(
-      await modFor(v2),
+    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc(JSON.stringify({ v: 2 })) };
+    await installModFromRepo(
+      discovered(payload),
+      installedAs("neostryder/neo-angband-mod-demo"),
       (await envFor(v2, { idb: made.factory })).env,
     );
     expect(
       new TextDecoder().decode(
         made.stores.get(STORE_MODS)?.get("demo/data.json") as Uint8Array,
       ),
-    ).toBe('{"v":2}');
+    ).toBe(JSON.stringify({ v: 2 }));
   });
 
   it("an upgrade that cannot be written leaves the working copy in place", async () => {
@@ -453,18 +419,24 @@ describe("installRecommendedMod", () => {
      * with the writes refused, because "does it delete before it writes" is a claim
      * about ORDER and only a second install can see it. */
     const shared = fakeIdb();
-    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":1}') };
-    const first = await installRecommendedMod(
-      await modFor(v1),
+    const payload: readonly PayloadEntry[] = [
+      { kind: "file", path: "manifest.json" },
+      { kind: "file", path: "data.json" },
+    ];
+    const v1 = { "manifest.json": enc(MANIFEST), "data.json": enc(JSON.stringify({ v: 1 })) };
+    const first = await installModFromRepo(
+      discovered(payload),
+      null,
       (await envFor(v1, { idb: shared.factory })).env,
     );
     expect(first.ok).toBe(true);
 
     /* Same underlying stores, but every write from here on is refused. */
     const refusing = fakeIdb({ putFails: true, stores: shared.stores });
-    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc('{"v":2}') };
-    const second = await installRecommendedMod(
-      await modFor(v2),
+    const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc(JSON.stringify({ v: 2 })) };
+    const second = await installModFromRepo(
+      discovered(payload),
+      installedAs("neostryder/neo-angband-mod-demo"),
       (await envFor(v2, { idb: refusing.factory })).env,
     );
 
@@ -476,33 +448,21 @@ describe("installRecommendedMod", () => {
       new TextDecoder().decode(
         shared.stores.get(STORE_MODS)?.get("demo/data.json") as Uint8Array,
       ),
-    ).toBe('{"v":1}');
+    ).toBe(JSON.stringify({ v: 1 }));
     expect(shared.stores.get(STORE_MOD_META)?.has("demo")).toBe(true);
   });
 });
 
-describe("installRecommendedMod, from an archive", () => {
-  function archiveMod(zip: Uint8Array, sha: string): RecommendedMod {
-    return {
-      id: "demo",
-      name: "Demo",
-      repo: "neostryder/neo-angband-mod-demo",
-      tag: "v1.0.0",
-      summary: "A demo mod.",
-      preChecked: false,
-      approxBytes: zip.byteLength,
-      payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
-    };
-  }
+describe("installing from a repository: an archive payload", () => {
+  const ZIP: readonly PayloadEntry[] = [{ kind: "archive", path: "pack.zip" }];
 
-  it("unpacks a verified archive into the mod's files", async () => {
+  it("unpacks the archive into the mod's files", async () => {
     const zip = zipSync({
       "manifest.json": enc(MANIFEST),
       "tiles/orc.png": enc("not really a png"),
     });
-    const sha = await sha256Hex(zip, subtle);
     const { env, stores } = await envFor({ "pack.zip": zip });
-    const r = await installRecommendedMod(archiveMod(zip, sha), env);
+    const r = await installModFromRepo(discovered(ZIP), null, env);
 
     expect(r.ok).toBe(true);
     expect([...(stores.get(STORE_MODS)?.keys() ?? [])].sort()).toEqual([
@@ -511,28 +471,16 @@ describe("installRecommendedMod, from an archive", () => {
     ]);
   });
 
-  it("never parses an archive whose digest is wrong", async () => {
-    const zip = zipSync({ "manifest.json": enc(MANIFEST) });
-    const { env, stores } = await envFor({ "pack.zip": zip });
-    const r = await installRecommendedMod(archiveMod(zip, "2".repeat(64)), env);
-    /* The unzip is the most hostile thing this code does to untrusted bytes, and the
-     * reason the digest covers the ARCHIVE is so it never runs on unexpected bytes. */
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/does not match the expected checksum/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
   it("refuses an entry that escapes the mod folder", async () => {
-    /* Zip slip. The catalogue validated one path - "pack.zip" - so the paths inside
-     * are attacker-controlled in a way the listed ones are not, and they have to be
-     * checked AFTER the unzip. */
+    /* Zip slip, and it matters MORE than it did. Under the shipped catalogue one
+     * reviewed path - "pack.zip" - was validated and the paths inside were not; now
+     * neither has been read by anyone before the unzip runs. */
     const zip = zipSync({
       "manifest.json": enc(MANIFEST),
       "../../saves/stolen.json": enc("{}"),
     });
-    const sha = await sha256Hex(zip, subtle);
     const { env, stores } = await envFor({ "pack.zip": zip });
-    const r = await installRecommendedMod(archiveMod(zip, sha), env);
+    const r = await installModFromRepo(discovered(ZIP), null, env);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/escapes the mod folder/u);
@@ -555,7 +503,14 @@ describe("installed mods, read back", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const made = fakeIdb();
     const { env } = await envFor(files, { idb: made.factory });
-    await installRecommendedMod(await modFor(files), env);
+    await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+    );
 
     const report = await loadInstalledMods({ indexedDB: made.factory });
     expect(report.available).toBe(true);
@@ -589,7 +544,14 @@ describe("installed mods, read back", () => {
         ),
       };
       const { env } = await envFor(files, { idb: made.factory });
-      await installRecommendedMod({ ...(await modFor(files)), id }, env);
+      await installModFromRepo(
+        discovered([{ kind: "file", path: "manifest.json" }], {
+          id,
+          repo: `neostryder/${id}`,
+        }),
+        null,
+        env,
+      );
     }
     expect((await installedMods({ indexedDB: made.factory })).map((m) => m.id)).toEqual([
       "alpha",
@@ -601,7 +563,14 @@ describe("installed mods, read back", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const made = fakeIdb();
     const { env } = await envFor(files, { idb: made.factory });
-    await installRecommendedMod(await modFor(files), env);
+    await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+    );
 
     expect(await uninstallMod("demo", { indexedDB: made.factory })).toBe(true);
     expect(await installedMods({ indexedDB: made.factory })).toEqual([]);
@@ -673,70 +642,6 @@ describe("badPath", () => {
   });
 });
 
-describe("validateRecommendedMod", () => {
-  const base: RecommendedMod = {
-    id: "qol",
-    name: "Quality of Life",
-    repo: "neostryder/neo-angband-mod-qol",
-    tag: "v1.0.0",
-    summary: "s",
-    preChecked: true,
-    approxBytes: 1,
-    payload: {
-      kind: "files",
-      files: [{ path: "manifest.json", sha256: "a".repeat(64) }],
-    },
-  };
-
-  it("accepts a well-formed entry", () => {
-    expect(validateRecommendedMod(base)).toBeNull();
-  });
-
-  it("refuses a ref path, which is how a branch sneaks in", () => {
-    /* A branch resolves over HTTP exactly like a tag, and makes the pinned digest a
-     * lie the moment anything is pushed. */
-    expect(validateRecommendedMod({ ...base, tag: "refs/heads/master" })).toMatch(
-      /looks like a ref path/u,
-    );
-  });
-
-  it("refuses a digest that is not 64 lower-case hex characters", () => {
-    for (const sha of ["A".repeat(64), "a".repeat(63), "", "z".repeat(64)]) {
-      const bad = validateRecommendedMod({
-        ...base,
-        payload: { kind: "files", files: [{ path: "manifest.json", sha256: sha }] },
-      });
-      expect(bad).toMatch(/is not a lower-case hex SHA-256/u);
-    }
-  });
-
-  it("refuses a file list with no manifest.json", () => {
-    expect(
-      validateRecommendedMod({
-        ...base,
-        payload: {
-          kind: "files",
-          files: [{ path: "plugin.js", sha256: "a".repeat(64) }],
-        },
-      }),
-    ).toMatch(/no manifest\.json/u);
-  });
-});
-
-/* ------------------------------------------------------------------ *
- * The whole chain, for a TILES mod.
- *
- * Every link below is covered on its own elsewhere; this is the one test that runs
- * them in a row, because that is where the bug was. A mod installed from a repository
- * used to be listed, enableable and INERT: tile discovery consulted only the
- * build-time bundle glob, and even had it not, `tilePacks[].path` was a site-root URL
- * base - a form an installed mod cannot produce, since its bytes live in IndexedDB
- * and have no path at all (MOD_REACH gap 8).
- *
- * So: install an archive, read it back, and follow the row all the way to the URL an
- * <img> would be given. Nothing here mocks the resolver.
- * ------------------------------------------------------------------ */
-
 describe("an installed TILES mod registers a Graphics row and draws its own art", () => {
   const TILES_MANIFEST = JSON.stringify({
     id: "demo",
@@ -787,20 +692,11 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
       "my-set/manifest.txt": enc("pack:demo:Demo Set\nformat:png\nresolution:8\n"),
       "my-set/images/8/feat_floor_lit_0.png": PNG,
     });
-    const sha = await sha256Hex(zip, subtle);
     const made = fakeIdb();
     const { env } = await envFor({ "pack.zip": zip }, { idb: made.factory });
-    const installed = await installRecommendedMod(
-      {
-        id: "demo",
-        name: "Demo Tiles",
-        repo: "neostryder/neo-angband-mod-demo",
-        tag: "v1.0.0",
-        summary: "A demo tiles mod.",
-        preChecked: false,
-        approxBytes: zip.byteLength,
-        payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
-      },
+    const installed = await installModFromRepo(
+      discovered([{ kind: "archive", path: "pack.zip" }], { name: "Demo Tiles" }),
+      null,
       env,
     );
     expect(installed.ok).toBe(true);
@@ -834,20 +730,11 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
   it("has no resolver for a file the mod did not install", async () => {
     stubObjectUrls();
     const zip = zipSync({ "manifest.json": enc(TILES_MANIFEST) });
-    const sha = await sha256Hex(zip, subtle);
     const made = fakeIdb();
     const { env } = await envFor({ "pack.zip": zip }, { idb: made.factory });
-    await installRecommendedMod(
-      {
-        id: "demo",
-        name: "Demo Tiles",
-        repo: "neostryder/neo-angband-mod-demo",
-        tag: "v1.0.0",
-        summary: "A demo tiles mod.",
-        preChecked: false,
-        approxBytes: zip.byteLength,
-        payload: { kind: "archive", archives: [{ path: "pack.zip", sha256: sha }] },
-      },
+    await installModFromRepo(
+      discovered([{ kind: "archive", path: "pack.zip" }], { name: "Demo Tiles" }),
+      null,
       env,
     );
     const report = await loadInstalledMods({ indexedDB: made.factory });
@@ -988,7 +875,14 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     const files = { "manifest.json": enc(CODE_MANIFEST), "plugin.js": enc(code) };
     const made = fakeIdb();
     const { env } = await envFor(files, { idb: made.factory });
-    const result = await installRecommendedMod(await modFor(files), env);
+    const result = await installModFromRepo(
+      discovered([
+        { kind: "file", path: "manifest.json" },
+        { kind: "file", path: "plugin.js" },
+      ]),
+      null,
+      env,
+    );
     expect(result.ok, result.ok ? "" : result.problem).toBe(true);
 
     const report = await loadInstalledMods({ indexedDB: made.factory });

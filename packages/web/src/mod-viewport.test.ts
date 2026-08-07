@@ -148,11 +148,14 @@ function openManager(term: FakeTerm, mods: CatalogMod[]): Promise<void> {
     listCatalog: () => mods,
     conflictLines: () => ({ declared: [], contested: [], combined: [] }),
     requestReload: () => {},
-    modCatalogue: {
+    /* The rows under test ("Install a mod", "Update installed mods") are gated on
+     * this being wired, so a manager with no browse deps paints neither and the
+     * assertions below would fail for the wrong reason. Nothing here is called: this
+     * test opens the manager and reads the rows. */
+    modBrowse: {
       installed: () => Promise.resolve(new Map()),
-      install: () => Promise.resolve({ ok: true } as never),
-      uninstall: () => Promise.resolve(true),
-    },
+      refresh: () => Promise.resolve([]),
+    } as never,
   });
 }
 

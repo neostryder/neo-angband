@@ -144,7 +144,7 @@ What is true, each of it checked rather than recalled:
 | Who imports `packages/borg` | **Nobody.** Zero references outside the package. |
 | Who calls `installController` | Core's own tests, and `packages/mcp`. Not the web shell, not desktop. |
 | `neostryder/neo-angband-mod-borg` | `.github`, `LICENSE.md`, `README.md`. No tags, no manifest, no plugin. |
-| `RECOMMENDED_MODS` | Says the Borg is "absent because it has no release", which is correct. |
+| `mods/registry.json` | Names the repository; discovery reports it as having no release, which is correct. |
 
 So the Borg is a library with no caller, in a monorepo that does not ship it,
 with an empty repository waiting for it.
@@ -272,10 +272,10 @@ Steps 1 and 2 are done. Steps 3-7 are the move described in section 6.
    without output and without a timeout. `think.ts` is the decision ladder, so
    the untested part is the part that decides. Fix before the tag, not after: the
    mod's own CI is the only thing that will ever run them again.
-7. **Release it like any other mod** — `npm run verify`, tag, re-fetch every file
-   from `raw.githubusercontent.com` at that tag, hash it, and put the digests in
-   `RECOMMENDED_MODS`. `docs/RELEASING.md` has the procedure and the reason the
-   digest must come from what GitHub serves rather than from the local build.
+7. **Release it like any other mod** — `npm run verify`, tag, push the tag. The
+   game discovers it from its own repository, so there is nothing to pin here;
+   `docs/RELEASING.md` has the procedure and the canary that checks it from
+   outside.
 
 **Acceptance test:** the procedural Borg plays a faithful game - descends,
 fights, flees, shops, and dies or wins - driven entirely through the public agent

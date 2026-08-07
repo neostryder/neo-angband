@@ -66,7 +66,7 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
  * currently nothing the game vouches for that way.
  *
  * IT WENT EMPTY DELIBERATELY. qol and bug-fixes were here; both now live in their own
- * repositories and arrive through RECOMMENDED_MODS like neo-linoleum already did. The
+ * repositories and are fetched from them like neo-linoleum already was. The
  * game bundles no mod at all, so a fresh install is Angband 4.2.6 and nothing else -
  * which is the parity mandate stated in code rather than in a document.
  *
