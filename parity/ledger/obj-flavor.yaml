@@ -48,21 +48,36 @@ notes: >-
   map on CoreRegistries. The RNG is a local quick-mode Rng seeded with
   seed_flavor, so the main game stream is untouched (decision 22 determinism).
 deferred:
-  - The proper RANDNAME_TOLKIEN Markov generator now exists (randname.ts);
-    obj/randart.ts still uses its own simplified syllable stand-in for artifact
-    names and could be migrated onto randnameMake + nameSections section 1 as a
-    follow-on (ledgered in obj-randart).
-  - flavor->d_attr is exposed on AssignedFlavor (FlavorAssignment.attr) for the
-    unaware-glyph colour, but the map renderer / object-list colour is not yet
-    routed through it; object_desc names do not use the attr.
-  - object_flavor_aware's propagation side effects (revealing effects, fixing
-    ignore/autoinscribe, refreshing store stock and floor glyphs on first
-    awareness) stay with the awareness-propagation wiring, as before
-    (obj-knowledge.yaml); flavor_init only does the initial aware-marking.
-  - A pack shipping no names.json leaves nameSections empty; scroll titles are
-    then skipped (unaware scrolls fall back to the plain "& Scroll~" base) since
-    randnameMake cannot satisfy its acceptance test on an empty corpus. The
-    shipped pack always includes names, so this is a test-fixture-only path.
+  - CLOSED (2026-08-07). The "follow-on" this row proposed has HAPPENED:
+    obj/randart.ts:27 records that artifactGenName calls randnameMake(
+    RANDNAME_TOLKIEN, ...) over the corpus the boot passes in
+    (CoreRegistries.nameSections, doRandart's third argument), importing
+    buildProb / randnameMake from randname.ts at :75. The syllable table is
+    still in the file and that is what the row saw, but :210 and :222 say what
+    it is for: "used ONLY as the seam fallback when no corpus" - the defensive
+    path for a pack that ships no names, not the generator.
+  - CLOSED (2026-08-07). The attr IS routed to the draw:
+    game/display.ts objectKindAttrChar reads state.flavorGlyph(kind) and
+    resolves `g.fromFlavor ? colorTextToAttr(g.attr) : colorCharToAttr(g.attr)`,
+    and objectAttrChar is what every draw site calls. The module's own header
+    records the bug this fixed - a worn ring or amulet drew as a BLACK glyph
+    where upstream draws Green / Violet / Light Blue (PORT_TODO 3.14). The
+    pref-file TileMap seam above it is a SHELL override, not a missing read:
+    upstream consults flavor_x_attr, and this is the answer when nothing
+    supplies one.
+  - NOT A DEFERRAL (2026-08-07): a cross-reference, and the file it points at is
+    fully adjudicated. object_flavor_aware's propagation is
+    playerKnowObjectAwareness, wired through state.flavorAwareDeps
+    (game/context.ts:383, read at game/known.ts:742). flavor_init doing only the
+    initial aware-marking is the correct division, not a reduction - this row
+    describes where the work LIVES, which is documentation.
+  - N/A (2026-08-07): a path the shipped game cannot take. randnameMake needs a
+    corpus to satisfy its acceptance test, so an empty nameSections skips scroll
+    titles and unaware scrolls fall back to the plain "& Scroll~" base. The
+    shipped pack always includes names.json, and the pack-completeness guards
+    fail without it, so this is reachable only from a hand-built test fixture.
+    Recorded rather than removed, because a mod shipping a partial pack could
+    reach it - and the fallback is graceful, not a crash.
 verified-by:
   - obj/flavor.test.ts (7 tests) - every flavoured ordinary kind gets a
     flavour with non-empty text; non-flavoured ordinary kinds (torch) are
