@@ -88,11 +88,13 @@ deferred:
     and the four process_world level-change lines. The claim "sound is not
     modelled" was never true of the seam - state.sound has had seventeen other
     callers - only of this family.
-  - The monster "puzzled" line (effect-handler-general.c:2649
-    MON_MSG_BRIEF_PUZZLE) is still not emitted here. The reason is no longer
-    "the message queue is not modelled" - it is (game/mon-message.ts
-    addMonsterMessage, PORT_TODO 3.1) - so this is now an ordinary missing call
-    at one site, not a missing subsystem.
+  - "FIXED 2026-08-06. The monster \"puzzled\" line
+    (effect-handler-general.c:2643-2650, MON_MSG_BRIEF_PUZZLE) is emitted: a
+    failed teleport whose caster is a monster queues it through
+    addMonsterMessage, gated on square_isseen of the caster's grid exactly as
+    upstream gates it. This row is what found it - it had already worked out
+    that the excuse (\"the message queue is not modelled\") had outlived the
+    subsystem, and was one step short of the call."
 verified-by:
   - game/effect-teleport.test.ts (15 tests): through a real EffectRegistry
     (registerCoreHandlers + registerTeleportHandlers), EF_TELEPORT moves the

@@ -129,7 +129,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 173 of 335 done, 38 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 186 of 335 done, 42 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -142,7 +142,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `obj-power`, `effects-interpreter`, `game-effect-detect`, `game-effect-env`,
   `mon-predicate`, `obj-value`, `game-player-side`, `game-effect-summon`,
   `game-mon-list`, and - 2026-08-06, on the back of Tier 4 - `game-arena`,
-  `game-trap`, `gen-cave` and `gen-framework`.
+  `game-trap`, `gen-cave`, `gen-framework`, `game-effect-monster`,
+  `game-effect-teleport`, `mon-take-hit` and `session-save`.
 
   The tally, **read from the TSV rather than carried forward** — the numbers this
   paragraph used to quote had drifted, because they were incremented by hand while
@@ -151,7 +152,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   against 29 `real`**. So **five rows in six are not owed as written**, and the
   owed ones included the two live defects at **1.2** and **2.17**, both since
   FIXED — 2.17's first verdict was wrong in a way worth reading, because the
-  instrument was a grep. **162 remain.**
+  instrument was a grep. **149 remain.**
 
   **The 2026-08-06 batch: four files, 17 rows, and one live generation bug.**
   The four were chosen because Tier 4 had just been read end to end, so the
@@ -192,6 +193,24 @@ is reachable in play and a test constructs the case that used to be wrong.**
   direction labels ("both", "up stair sealed off") that were guesses. Derived,
   21 of the 22 strand upward only and exactly one strands downward. The tuple
   now carries the directions and the test **compares** them.
+
+  **The second batch, same day: four more files, 13 rows, two more live
+  defects — and both were EXCUSES THAT OUTLIVED THEIR SUBSYSTEM.** A failed
+  teleport cast by a monster printed nothing, under a note saying the monster
+  "puzzled" line was lore; the monster message queue landed at 3.1 and the row
+  itself had already worked that out, one step short of making the call. And
+  the monster-heal messages read "kobold looks healthier." with no article,
+  standing in `mon.race.name` and a hardcoded "its" under a comment saying MDESC
+  "rides the display layer" — `mon/desc.ts` has been ported for a long time. An
+  unseen monster was named outright where upstream renders a pronoun, which is
+  the separating case the test now uses. 4 mutations, 4 killed.
+
+  The other eleven were stale: arenas guarded, `onKill` supplied, melee already
+  routed through `monTakeHit`, store stock and monster held piles and the
+  frozen-level cache and the mod manifest all in the save format, a character
+  roster with real slots. Two took `n-a` for the same reason — `PR_MONLIST` /
+  `PR_HEALTH` have no analogue in an immediate-mode renderer that recomputes
+  every frame, though the `health_who` state they gate IS tracked.
 
   **Adjudicating a row is how the live defects get found.** `combat-melee.yaml:91`
   claimed arena mode was "not begun". Arena mode is finished — but reading

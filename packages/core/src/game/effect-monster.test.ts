@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MON_TMD, RF } from "../generated/index.js";
+import { EF, MFLAG, MON_TMD, RF } from "../generated/index.js";
+import { MDESC, MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import {
   EffectRegistry,
   sourceMonster,
@@ -253,6 +254,53 @@ describe("EF_MON_HEAL_HP / EF_MON_HEAL_KIN", () => {
       hpMsgs.some((m) => m.endsWith("sounds healthier.")),
       "MON_HEAL_HP DOES announce an unseen monster -- the asymmetry is upstream's",
     ).toBe(true);
+  });
+
+  it("names the monster through monster_desc, article and possessive included", () => {
+    /*
+     * monster_desc(m_name, MDESC_STANDARD) and monster_desc(m_poss,
+     * MDESC_PRO_VIS | MDESC_POSS) (effect-handler-attack.c:268-271). The port
+     * stood in `mon.race.name` and a hardcoded "its" under a comment saying
+     * MDESC "rides the display layer" - which stopped being true when
+     * mon/desc.ts landed, so the messages read "kobold looks healthier." with
+     * no article at all.
+     *
+     * An UNSEEN monster is the separating case: MDESC_STANDARD renders it as
+     * "It", which the race name can never do, so this cannot pass on a
+     * stand-in.
+     */
+    const seenMsgs: string[] = [];
+    const seenState = makeState({ playerGrid: loc(8, 7), seed: 11 });
+    const healer = addMon(seenState, plainRace, loc(7, 7), { hp: 50 });
+    healer.hp = 15;
+    healer.mflag.on(MFLAG.VISIBLE);
+    healer.mTimed[MON_TMD.FEAR] = 10;
+    registry().effectSimple(EF.MON_HEAL_HP, msgEnv(seenState, seenMsgs), {
+      origin: sourceMonster(healer.midx),
+      diceString: "20",
+    });
+    const name = monsterDesc(healer, MDESC_STANDARD);
+    const poss = monsterDesc(healer, MDESC.PRO_VIS | MDESC.POSS);
+    /* Derived from the producer, not spelled out here. */
+    expect(seenMsgs).toContain(`${name} looks healthier.`);
+    expect(seenMsgs).toContain(`${name} recovers ${poss} courage.`);
+    expect(name).not.toBe(healer.race.name);
+
+    const unseenMsgs: string[] = [];
+    const unseenState = makeState({ playerGrid: loc(20, 5), seed: 12 });
+    const hidden = addMon(unseenState, plainRace, loc(7, 7), { hp: 50 });
+    hidden.hp = 15;
+    hidden.mflag.off(MFLAG.VISIBLE);
+    registry().effectSimple(EF.MON_HEAL_HP, msgEnv(unseenState, unseenMsgs), {
+      origin: sourceMonster(hidden.midx),
+      diceString: "20",
+    });
+    const hiddenName = monsterDesc(hidden, MDESC_STANDARD);
+    expect(unseenMsgs).toContain(`${hiddenName} sounds healthier.`);
+    /* The separating property, derived rather than declared: an unseen monster
+     * is NOT named. (The exact pronoun is monster_desc's business - asserting
+     * a literal here would be pinning the wrong producer.) */
+    expect(hiddenName).not.toContain(hidden.race.name);
   });
 
   it("MON_HEAL_HP rolls before its null guard, MON_HEAL_KIN after (L261/265 vs L317/319)", () => {

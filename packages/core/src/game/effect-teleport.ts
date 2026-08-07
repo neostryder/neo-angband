@@ -29,15 +29,20 @@
  *
  * The sounds ARE ported now (PORT_TODO 3.26): MSG_TELEPORT / MSG_TPOTHER at
  * the two swap sites and MSG_TPLEVEL on the level-change messages, each
- * through state.sound at the point upstream calls sound(). Only the monster
- * "puzzled" message (lore, #19) is still omitted.
+ * through state.sound at the point upstream calls sound(). So is the monster
+ * "puzzled" message, which this header called deferred lore long after the
+ * monster message queue landed (PORT_TODO 3.1): a failed teleport whose caster
+ * is a visible monster now queues MON_MSG_BRIEF_PUZZLE, as
+ * effect-handler-general.c:2643-2650 does.
  *
  * teleportMonster is the concrete backing for the project_m `teleport` hook
  * (game/project-monster.ts) deferred there: a monster teleported a fixed number
  * of grids by an area effect.
  */
 
-import { EF, MSG, SQUARE } from "../generated/index.js";
+import { EF, MON_MSG, MSG, SQUARE } from "../generated/index.js";
+import { addMonsterMessage } from "./mon-message.js";
+import { squareIsSeen } from "../world/view.js";
 import { distance, loc, randLoc } from "../loc.js";
 import type { Loc } from "../loc.js";
 import type {
@@ -280,8 +285,21 @@ const handleTELEPORT: EffectHandler = (ctx) => {
 
   const dest = chooseTeleportDestination(state, start, dis, perc, isPlayer, tp);
   if (!dest) {
-    /* Very unlikely; the monster "puzzled" message is lore (#19), omitted. */
-    if (isPlayer) say(ctx, "Failed to find teleport destination!");
+    /* "Report failure (very unlikely)" (effect-handler-general.c:2636-2652).
+     * BOTH arms, not just the player's. With teleport-self or teleport-other
+     * it is the CASTER that looks puzzled, and only when its grid is seen.
+     * This used to say the message was "lore (#19), omitted" - the monster
+     * message queue landed at PORT_TODO 3.1 and the excuse outlived it, which
+     * is what leaves an ordinary missing call looking like a missing
+     * subsystem. */
+    if (isPlayer) {
+      say(ctx, "Failed to find teleport destination!");
+    } else if (ctx.origin.what === "monster") {
+      const caster = state.monsters[ctx.origin.monster];
+      if (caster && squareIsSeen(state.chunk, caster.grid)) {
+        addMonsterMessage(state, caster, MON_MSG.BRIEF_PUZZLE, true);
+      }
+    }
     return true;
   }
 

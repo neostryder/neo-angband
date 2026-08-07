@@ -12,6 +12,7 @@ import { distance, loc, locEq } from "../loc.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { addMon, makeState, monReg } from "./harness.js";
+import { showMonsterMessages } from "./mon-message.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
@@ -144,6 +145,59 @@ describe("EF_TELEPORT", () => {
     expect(locEq(state.actor.grid, pgrid)).toBe(true);
     expect(movedMidx).toBe(mon.midx);
     expect(state.chunk.mon(mon.grid)).toBe(mon.midx);
+  });
+
+  /*
+   * "Report failure (very unlikely)" (effect-handler-general.c:2636-2652) has
+   * TWO arms, and the port only had the player's. The monster arm was written
+   * off as lore (#19) long after the monster message queue landed, so a
+   * caster whose teleport found nowhere to go said nothing at all.
+   *
+   * isWarded disqualifies every grid for a MONSTER mover
+   * (has_teleport_destination_prereqs), which is how the destination search is
+   * driven to fail without a doctored map.
+   */
+  it("a monster whose teleport fails looks briefly puzzled, if it is seen", () => {
+    const lines: string[] = [];
+    const state = makeState({ playerGrid: loc(20, 12), seed: 3 });
+    state.msg = (t): void => {
+      lines.push(t);
+    };
+    const mon = addMon(state, plainRace, loc(19, 12), { hp: 30 });
+    const from = mon.grid;
+    state.chunk.sqinfoOn(mon.grid, SQUARE.SEEN);
+
+    registry().effectSimple(
+      EF.TELEPORT,
+      env(state, { teleport: { isWarded: () => true } }),
+      { origin: sourceMonster(mon.midx), diceString: "10" },
+    );
+
+    /* It did not move, and it complained. */
+    expect(locEq(mon.grid, from)).toBe(true);
+    showMonsterMessages(state);
+    expect(lines.join(" ")).toContain("looks briefly puzzled");
+  });
+
+  it("...and says nothing when the caster is out of sight", () => {
+    /* square_isseen(cave, mon->grid) is the gate: an unseen monster fumbling a
+     * teleport gives nothing away. Without this the test above would pass on a
+     * handler that ignored the seen check entirely. */
+    const lines: string[] = [];
+    const state = makeState({ playerGrid: loc(20, 12), seed: 3 });
+    state.msg = (t): void => {
+      lines.push(t);
+    };
+    const mon = addMon(state, plainRace, loc(5, 5), { hp: 30 });
+    state.chunk.sqinfoOff(mon.grid, SQUARE.SEEN);
+
+    registry().effectSimple(
+      EF.TELEPORT,
+      env(state, { teleport: { isWarded: () => true } }),
+      { origin: sourceMonster(mon.midx), diceString: "10" },
+    );
+    showMonsterMessages(state);
+    expect(lines.join(" ")).not.toContain("puzzled");
   });
 });
 
