@@ -68,8 +68,10 @@ deferred:
     display (ui-object.c) rides #25.
   - REMOVE_CURSE's known-twin curse tester (obj->known->curses) is read
     from the live curses (knowledge is rune-based); show_damage (#30).
-  - CURSE_ARMOR/WEAPON's total_weight upkeep rides the gear weight
-    bookkeeping; history_lose_artifact rides history (#24).
+  - Both are wired. The total_weight upkeep is effect-item.ts:638
+    (upkeep.totalWeight += newWeight - oldWeight), and history_lose_artifact is
+    :629 - an artifact destroyed by acid or disenchantment fires
+    state.onArtifactLost, which wireGame installs.
   - EVENT_INPUT_FLUSH and the PN_COMBINE / PR_ redraws ride presentation.
   - Monster casts never reach these handlers (mon-cast deps omit the item
     env); upstream reaches them only through player commands too.

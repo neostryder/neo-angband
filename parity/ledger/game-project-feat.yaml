@@ -40,8 +40,12 @@ deferred:
   - square_forget / square_unmark and the PU_UPDATE_VIEW | PU_MONSTERS
     masks: the core keeps no player square-memory yet (the web renderer
     holds its own explored set); FOV refresh rides state.updateFov.
-  - expose_to_sun / is_daytime and square_isbright's surface interplay:
-    no town or day-night cycle yet (#24/#25).
+  - Ported, and the reason this row gave for deferring it ("no town or
+    day-night cycle yet") stopped holding when PORT_TODO 4.3 built town
+    generation. exposeToSun is project-feat.ts:164, gated on
+    `c.depth === 0 && isDaytime(state.turn, state.z.dayLength)` at :218 - the
+    same isDaytime (game/world.ts:108) the session drives the town with
+    (session/game.ts:748).
   - The decoy branch is ported: square_destroy_decoy is destroyDecoy, called at
     game/effect-attack.ts:684 on the grid holding the player's decoy.
   - push_object's trap re-run (square_add_trap on the restored feature)
