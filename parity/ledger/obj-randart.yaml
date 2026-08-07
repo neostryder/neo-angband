@@ -56,33 +56,77 @@ deferred:
     prepends); and session/game.ts:3458-3461 hands doRandart the section-1
     list, so in-game randart names draw faithfully. The local syllable table
     survives only as the fallback for a caller that supplies no corpus.
-  - randart.log: NO LONGER DROPPED (PORT_TODO 5.5, in progress 2026-08-06).
-    "It never affects an artifact field or an RNG draw" is true and was never
-    the question -- the maintainer's disposition on 2026-08-04 was pursue
-    parity, so the file is a port. do_randart now opens and closes it through
-    the host (obj/randart-log.ts is the sink, one module-level static because
-    that is upstream's own shape), and 108 of its 233 emission sites are
-    written: all 59 in obj-power.c plus the three combat counters in
-    obj-randart.c. The remaining 122 distinct format strings are ratcheted
-    two-way by obj/randart-log.census.test.ts, so the number cannot drift in
-    either direction. Upstream's exit(1) on a failed open is the one
-    deliberate divergence: the message goes to the caller and generation
-    continues, because neither front end has a process to kill.
-  - randart.txt (create_file, write_randart_entry L3040-L3215) and the
-    post-generation second measurement pass (L3184-3187) are still to write;
-    the second pass draws no RNG and exists only for the log's closing
-    statistics, so it returns with parse_frequencies' emitters.
-  - Birth integration (the birth_randarts option that swaps the standard
-    set for do_randart's output at game start, and persisting the randart
-    seed in the save) rides the build-option flags (#30); doRandart is the
-    generator, wired into startGame through the birth_randarts option
-    (session/game.ts:599) with the seed persisted in the save (:459).
-  - mean / variance use floored double arithmetic rather than the upstream
-    exact-rational multiprecision (z-util.c); artifact powers are small
-    ints so the floored result is exact. remove_contradictory_activation is
-    a conservative no-op (effect_summarize_properties is unported and it
-    draws no RNG); add_brand base-element matching uses a local
-    projection-name table.
+  - randart.log: PORTED, bar one line (PORT_TODO 5.5, 2026-08-07). "It never
+    affects an artifact field or an RNG draw" is true and was never the
+    question -- the maintainer's disposition on 2026-08-04 was pursue parity,
+    so the file is a port. do_randart opens and closes it through the host
+    (obj/randart-log.ts is the sink, one module-level static because that is
+    upstream's own shape), and 232 of the 233 emission sites are written: all
+    59 in obj-power.c and 173 of the 174 in obj-randart.c. Ratcheted two-way
+    against the C source by obj/randart-log.census.test.ts, so the count
+    cannot drift in either direction.
+    THE ONE LEFT is invisible to that ratchet, which is why it is named here:
+    artifact_power logs the fake artifact's own object_desc (L205-L206) with
+    the format string "%s\n", and a census matching literal spans of four
+    characters or more has nothing to match. It is carried in the test as
+    UNWRITTEN_SPANLESS = 1 so the reassuring EXPECTED_MISSING_RANDART = 0
+    cannot be read as "nothing left". Blocked on shape, not on knowledge:
+    makeFakeArtifactPower returns the reduced PowerObject that object_power
+    needs, and object_desc wants a whole GameObject, so writing this line
+    means building upstream's full fake object -- a change to the power path.
+    Upstream's exit(1) on a failed open is the one deliberate divergence: the
+    message goes to the caller and generation continues, because neither
+    front end has a process to kill.
+  - randart.txt (create_file, write_randart_entry L3040-L3215): PORTED
+    (2026-08-07). obj/randart-file.ts writes it, datafile.c's write_flags /
+    write_mods / write_elements are obj/../datafile.ts with both of their
+    upstream warts, and create_file is a REQUIRED parameter of doRandart so
+    every caller had to state its side (birth and load pass true, matching
+    player-birth.c:1286 and load.c:987; the stats harness passes false,
+    matching main-stats.c:523). All 19 file_putf(fff, ...) sites are written
+    and separately ratcheted by the TXT_SITES census.
+  - The post-generation second measurement pass (L3181-L3186): PORTED
+    (2026-08-07). Upstream measures the artifact set twice and the second
+    pass exists only for the log's closing statistics, so while randart.log
+    was full of holes there was nothing to notice its absence against.
+    Upstream leaves WHICH set implicit because create_artifact_set overwrites
+    the a_info global in place; this port generates into a fresh array, so
+    the set is now a required parameter of storeBasePower, parseFrequencies,
+    collectArtifactCounts and collectArtifactData. Guarded by three tests in
+    obj/randart.test.ts, the load-bearing one being that the second
+    store_base_power block DIFFERS from the first -- passing reg.artifacts
+    twice satisfies a count-only check and is the mistake the upstream shape
+    invites.
+  - Birth integration: PORTED. doRandart is wired into startGame through the
+    birth_randarts option (session/game.ts:2982-2989, via swapRandartSet)
+    with the seed drawn on the main stream before seed_flavor exactly as
+    player-birth.c:1285-1291 does, persisted in the save, and re-run on load
+    (game.ts:3711) as load.c:987 does. This line used to cite the
+    build-option flags (#30) as a blocker; that closed, and the citation
+    outlived it.
+  - mean / variance: PORTED for real. This line used to say they were floored
+    double arithmetic standing in for upstream's exact-rational
+    multiprecision (z-util.c L1389/L1516). They are now ported outright in
+    ../rational.ts, saturation included, and store_base_power calls them
+    through meanFloored / varianceFloored.
+  - remove_contradictory_activation (L2420): PORTED AND WIRED. This line used
+    to say it was a conservative no-op because effect_summarize_properties
+    was unported. The summarizer exists (makeActivationSummarizer) and the
+    live path supplies it -- session/game.ts:2987 passes
+    buildActivationSummarizer(pack, reg) into swapRandartSet on both the
+    birth and the load call. It stays a no-op only for a caller that supplies
+    none, which is the stats harness.
+  - add_brand's base-element matching reads a local table (ELEMENT_PROJ_NAMES
+    in obj/randart-build.ts) where upstream compares brand->name against
+    projections[i].name (L1951). KEPT, and no longer a hand-written guess:
+    the table is the full 25 entries and obj/randart-proj-names.test.ts
+    derives the same list from reference/lib/gamedata/projection.txt and
+    compares entry for entry, so a rename in the data file fails the build
+    rather than silently desyncing. What it still costs: ObjRegistry is bound
+    from the object domain of the pack and has no projections, so a PACK
+    whose projection.txt renames an element would diverge from upstream at
+    runtime -- upstream would stop matching, this port would not. That is a
+    mod-authored data change, not a 4.2.6 one.
 verified-by:
   - obj/randart.test.ts (7 tests) - do_randart is deterministic (same seed
     => identical set), seed-sensitive (different seeds differ), never

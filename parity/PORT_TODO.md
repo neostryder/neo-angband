@@ -1,12 +1,13 @@
 # Every item that still needs porting
 
-**Dated 2026-08-04, last worked 2026-08-05.** The work list derived from
+**Dated 2026-08-04, last worked 2026-08-07.** The work list derived from
 [DEFERRALS.md](DEFERRALS.md), which is the accounting of what was found and how
 each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 76 confirmed-absent citations** — 67 closed, **1 open**,
+and the one is a single log line whose blocker is named (5.5).
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,43 +141,46 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 335 of 339 done, 72 of the
-  73 ledger files complete - and the last file is entirely blocked on 5.5.**
+- [x] **0.1 Adjudicate the ledger `deferred:` items. DONE — 342 of 342, all 73
+  ledger files complete (closed 2026-08-07).**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
   from the key and mostly does not repeat the word.
 
-  Files fully adjudicated, **listed from the TSV rather than appended to by
-  hand** - the previous prose list named `ui-display` and `obj-power` while both
-  still had open rows, and later kept naming `obj-ignore` and `project-path` as
-  open after they had moved:
-  `combat-melee`, `combat-ranged`, `effects-interpreter`, `game-arena`,
-  `game-cave-cmd`, `game-effect-attack`, `game-effect-detect`,
-  `game-effect-env`, `game-effect-general`, `game-effect-melee`,
-  `game-effect-monster`, `game-effect-summon`, `game-effect-teleport`,
-  `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
-  `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
-  `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
-  `game-project-monster`, `game-project-obj`, `game-project-player`,
-  `game-player-side`, `game-shape`, `gen-rooms`,
-  `mon-lore`,
-  `mon-lore-describe`, `mon-predicate`,
-  `mon-take-hit`, `mon-timed`, `obj-desc`, `obj-flavor`, `obj-make`, `options`,
-  `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
-  `player-exp`, `player-spell`, `player-take-hit`, `project-mon`,
-  `project-path`, `projection-data`, `session-save`,
-  `store-bind`, `store-maint`,
-  `store-price`, `store-transact`,
-  `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
+  **All 73 files carrying such an item are adjudicated**, so the enumeration
+  this item used to carry is deleted rather than updated: a hand-appended list
+  of "files that are done" is a claim maintained by memory, and this one was
+  wrong in both directions at different times — it named `ui-display` and
+  `obj-power` while both still had open rows, kept naming `obj-ignore` and
+  `project-path` as open after they had moved, listed `game-player-side` twice,
+  and never mentioned twelve files (`game-effect-item`, `game-mon-cast`,
+  `game-mon-place`, `game-mon-ranged`, `game-obj-cmd`, `game-pickup`,
+  `game-project-cast`, `game-project-feat`, `game-target`, `mon-spell`,
+  `obj-model`, `player-timed`) that were adjudicated all along. The TSV is the
+  list; this prose was only ever a copy of it going stale:
 
-  **One file and four rows are all that is left**, and every one of them is
-  `obj-randart` waiting on **5.5**. Nothing else in the ledger is unadjudicated.
-  The two rows held back last pass have been read rather than guessed, and both
-  are below.
+  ```
+  awk -F'\t' 'NR>1 && $4==""' parity/reports/ledger-deferred-items.tsv
+  ```
 
-  The tally, **read from the TSV rather than carried forward**: **161 `ported`,
-  75 `stale-doc`, 35 `divergence`, 21 `note-is-fix`, 18 `not-a-deferral`,
-  12 `n-a`, 8 `partial` against **5** `real`**. **4 remain.**
+  **`obj-randart` was the last file, and it closed with 5.5** (2026-08-07).
+  Its four remaining rows became **seven**, because one of them bundled three
+  separate claims — floored mean/variance, `remove_contradictory_activation` as
+  a no-op, and `add_brand`'s local projection-name table — and a row bundling N
+  claims can never be closed: any verdict on it is wrong about at least one.
+  Split, two of the three turned out to be **stale** (both are ported and one is
+  wired into the live birth and load paths), and the third is a real, named
+  divergence rather than an unexamined one.
+
+  Two more rows had the same shape in miniature: one cited randart.txt *and* the
+  second measurement pass, and one cited the build-option flags (#30) as its
+  blocker after #30 had closed. **A row that names its blocker expires with the
+  blocker** — the count went UP at the end of this item, which is the honest
+  direction.
+
+  The tally, **read from the TSV rather than carried forward**: **166 `ported`,
+  75 `stale-doc`, 36 `divergence`, 21 `note-is-fix`, 18 `not-a-deferral`,
+  12 `n-a`, 9 `partial` against **5** `real`**. **0 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -3008,7 +3012,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   | | sites | done |
   |---|---|---|
   | `obj-power.c` `log_obj` — how a randart's POWER is worked out | 59 | **59** |
-  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | **174** |
+  | `obj-randart.c` `file_putf(log_file, …)` — the design loop | 174 | **173** |
   | `obj-randart.c` `file_putf(fff, …)` — `randart.txt` | 19 | **19** |
 
   **What is left is one line, and it is worth naming precisely.**
@@ -3423,7 +3427,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 75 citations, 55 `real` + 20
+2. the counts stated at the top (**68 items, 76 citations, 55 `real` + 21
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
