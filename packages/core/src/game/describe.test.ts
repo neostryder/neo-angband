@@ -11,7 +11,7 @@ import type { Artifact } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "./context.js";
 import { makeState } from "./harness.js";
-import { describeObject } from "./describe.js";
+import { describeObject, objectKnownView } from "./describe.js";
 
 function rv(base = 0) {
   return { base, dice: 0, sides: 0, mBonus: 0 };
@@ -163,7 +163,7 @@ describe("the {tried} and {ignore} markers (PORT_TODO 3.27)", () => {
     const obj = makeObj(kind, { number: 1 });
     /* The one binding session/game.ts installs. */
     state.isIgnored = (o) =>
-      ignoreItemOk(o, state.ignore, flavor.isAware(o.kind));
+      ignoreItemOk(o, objectKnownView(state, o), state.ignore, flavor.isAware(o.kind));
 
     expect(describeObject(state, obj)).not.toContain("{ignore}");
 

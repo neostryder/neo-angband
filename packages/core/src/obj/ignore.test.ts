@@ -17,6 +17,7 @@ import {
   ignoreTypeOf,
   objectIsIgnored,
 } from "./ignore.js";
+import type { ObjectKnownView } from "./ignore.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -59,6 +60,18 @@ function neutral(tval: number): GameObject {
   return obj;
 }
 
+/**
+ * obj->known for a fully identified object. object_fully_known is true and the
+ * twin mirrors the object: objectKnownShadow copies obj.notice outright
+ * (known-object.ts:459) and, once fully known, the real flags and element info
+ * too (:589-600). The tests below grade already-identified items, which is the
+ * branch that reads the LIVE object upstream as well - the branch that does not
+ * (an unidentified item) has its own describe block at the end of this file.
+ */
+function known(obj: GameObject): ObjectKnownView {
+  return { known: obj, fullyKnown: true };
+}
+
 describe("ignore_type_of (obj-ignore.c L382)", () => {
   it("maps tvals to ignore types, ITYPE_MAX for the unmappable", () => {
     expect(ignoreTypeOf(neutral(TV.SWORD))).toBe(ITYPE.SHARP);
@@ -73,36 +86,36 @@ describe("ignore_type_of (obj-ignore.c L382)", () => {
 describe("ignore_level_of (obj-ignore.c L464)", () => {
   it("grades a weapon bad / average / good by its combat bonuses", () => {
     const avg = neutral(TV.SWORD);
-    expect(ignoreLevelOf(avg)).toBe(IGNORE.AVERAGE);
+    expect(ignoreLevelOf(avg, known(avg))).toBe(IGNORE.AVERAGE);
 
     const bad = neutral(TV.SWORD);
     bad.toD = -3;
-    expect(ignoreLevelOf(bad)).toBe(IGNORE.BAD);
+    expect(ignoreLevelOf(bad, known(bad))).toBe(IGNORE.BAD);
 
     const good = neutral(TV.SWORD);
     good.toD = 4;
-    expect(ignoreLevelOf(good)).toBe(IGNORE.GOOD);
+    expect(ignoreLevelOf(good, known(good))).toBe(IGNORE.GOOD);
   });
 
   it("treats jewelry as only bad or average", () => {
     const ring = neutral(TV.RING);
-    expect(ignoreLevelOf(ring)).toBe(IGNORE.AVERAGE);
+    expect(ignoreLevelOf(ring, known(ring))).toBe(IGNORE.AVERAGE);
     ring.modifiers[0] = 2; /* a positive modifier is 'not bad' */
-    expect(ignoreLevelOf(ring)).toBe(IGNORE.AVERAGE);
+    expect(ignoreLevelOf(ring, known(ring))).toBe(IGNORE.AVERAGE);
 
     const badRing = neutral(TV.RING);
     badRing.toA = -1;
-    expect(ignoreLevelOf(badRing)).toBe(IGNORE.BAD);
+    expect(ignoreLevelOf(badRing, known(badRing))).toBe(IGNORE.BAD);
   });
 
   it("rates egos as ALL and artifacts as MAX", () => {
     const ego = neutral(TV.SWORD);
     ego.ego = { eidx: 3 } as EgoItem;
-    expect(ignoreLevelOf(ego)).toBe(IGNORE.ALL);
+    expect(ignoreLevelOf(ego, known(ego))).toBe(IGNORE.ALL);
 
     const art = neutral(TV.SWORD);
     art.artifact = {} as GameObject["artifact"];
-    expect(ignoreLevelOf(art)).toBe(IGNORE.MAX);
+    expect(ignoreLevelOf(art, known(art))).toBe(IGNORE.MAX);
   });
 });
 
@@ -111,7 +124,7 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
     const s = new IgnoreSettings();
     const bad = neutral(TV.SWORD);
     bad.toD = -3;
-    expect(objectIsIgnored(bad, s, false)).toBe(false);
+    expect(objectIsIgnored(bad, known(bad), s, false)).toBe(false);
   });
 
   it("ignores by quality threshold for the ignore type", () => {
@@ -121,12 +134,12 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
     const bad = neutral(TV.SWORD);
     bad.toD = -3;
     const avg = neutral(TV.SWORD);
-    expect(objectIsIgnored(bad, s, false)).toBe(true);
-    expect(objectIsIgnored(avg, s, false)).toBe(false);
+    expect(objectIsIgnored(bad, known(bad), s, false)).toBe(true);
+    expect(objectIsIgnored(avg, known(avg), s, false)).toBe(false);
 
     /* Raising the threshold to average catches the average sword too. */
     s.level[ITYPE.SHARP] = IGNORE.AVERAGE;
-    expect(objectIsIgnored(avg, s, false)).toBe(true);
+    expect(objectIsIgnored(avg, known(avg), s, false)).toBe(true);
   });
 
   it("never ignores artifacts or !k / !* inscribed items by rule", () => {
@@ -135,32 +148,32 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
 
     const art = neutral(TV.SWORD);
     art.artifact = {} as GameObject["artifact"];
-    expect(objectIsIgnored(art, s, false)).toBe(false);
+    expect(objectIsIgnored(art, known(art), s, false)).toBe(false);
 
     const keep = neutral(TV.SWORD);
     keep.toD = -3;
     keep.note = "!k";
-    expect(objectIsIgnored(keep, s, false)).toBe(false);
+    expect(objectIsIgnored(keep, known(keep), s, false)).toBe(false);
   });
 
   it("honors the individual ignore bit and the unignoring flag", () => {
     const s = new IgnoreSettings();
     const obj = neutral(TV.SWORD);
     obj.notice |= OBJ_NOTICE.IGNORE;
-    expect(objectIsIgnored(obj, s, false)).toBe(true);
-    expect(ignoreItemOk(obj, s, false)).toBe(true);
+    expect(objectIsIgnored(obj, known(obj), s, false)).toBe(true);
+    expect(ignoreItemOk(obj, known(obj), s, false)).toBe(true);
 
     s.unignoring = true;
-    expect(ignoreItemOk(obj, s, false)).toBe(false);
+    expect(ignoreItemOk(obj, known(obj), s, false)).toBe(false);
   });
 
   it("ignores an ego of an ignored ego+type", () => {
     const s = new IgnoreSettings();
     const obj = neutral(TV.SWORD);
     obj.ego = { eidx: 5 } as EgoItem;
-    expect(objectIsIgnored(obj, s, false)).toBe(false);
+    expect(objectIsIgnored(obj, known(obj), s, false)).toBe(false);
     s.egoToggle(5, ITYPE.SHARP);
-    expect(objectIsIgnored(obj, s, false)).toBe(true);
+    expect(objectIsIgnored(obj, known(obj), s, false)).toBe(true);
   });
 
   it("ignores by kind flavor-awareness, and round-trips the settings", () => {
@@ -168,14 +181,14 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
     const potion = neutral(TV.POTION);
     s.kindIgnoreWhenAware(potion.kind.kidx);
     /* Ignored only when aware of the flavor. */
-    expect(objectIsIgnored(potion, s, true)).toBe(true);
-    expect(objectIsIgnored(potion, s, false)).toBe(false);
+    expect(objectIsIgnored(potion, known(potion), s, true)).toBe(true);
+    expect(objectIsIgnored(potion, known(potion), s, false)).toBe(false);
 
     s.level[ITYPE.SHARP] = IGNORE.GOOD;
     const restored = new IgnoreSettings();
     restored.restore(s.snapshot());
     expect(restored.level[ITYPE.SHARP]).toBe(IGNORE.GOOD);
-    expect(objectIsIgnored(potion, restored, true)).toBe(true);
+    expect(objectIsIgnored(potion, known(potion), restored, true)).toBe(true);
   });
 
   it("round-trips the unignoring flag through snapshot/restore", () => {
@@ -189,6 +202,69 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
     const legacy = new IgnoreSettings();
     legacy.restore({ level: [], ego: [], kindAware: [], kindUnaware: [] });
     expect(legacy.unignoring).toBe(false);
+  });
+});
+
+describe("ignore_level_of's object_fully_known gate (obj-ignore.c L489-511)", () => {
+  /**
+   * A twin that knows nothing but the kind: what objectKnownShadow builds for
+   * an object whose runes the player has not learned. Deliberately a DIFFERENT
+   * GameObject from the one being graded, so a read of the live object cannot
+   * pass by accident.
+   */
+  function unknownTwin(tval: number): ObjectKnownView {
+    return { known: neutral(tval), fullyKnown: false };
+  }
+
+  it("tiers an unassessed object MAX, whatever its hidden combat values say", () => {
+    const bad = neutral(TV.SWORD);
+    bad.toD = -3;
+    /* Fully known it is BAD; unidentified it is undetermined, and upstream
+     * "return[s] the maximum possible value" (obj-ignore.c L461). */
+    expect(ignoreLevelOf(bad, known(bad))).toBe(IGNORE.BAD);
+    expect(ignoreLevelOf(bad, unknownTwin(TV.SWORD))).toBe(IGNORE.MAX);
+  });
+
+  it("tiers an ASSESSED non-artifact ALL, and an assessed artifact MAX", () => {
+    const view = unknownTwin(TV.SWORD);
+    view.known.notice |= OBJ_NOTICE.ASSESSED;
+
+    const plain = neutral(TV.SWORD);
+    expect(ignoreLevelOf(plain, view)).toBe(IGNORE.ALL);
+
+    const art = neutral(TV.SWORD);
+    art.artifact = {} as GameObject["artifact"];
+    expect(ignoreLevelOf(art, view)).toBe(IGNORE.MAX);
+  });
+
+  it("keeps an unidentified bad weapon off a BAD-threshold ignore list", () => {
+    const s = new IgnoreSettings();
+    s.level[ITYPE.SHARP] = IGNORE.BAD;
+    const bad = neutral(TV.SWORD);
+    bad.toD = -3;
+
+    expect(objectIsIgnored(bad, known(bad), s, false)).toBe(true);
+    expect(objectIsIgnored(bad, unknownTwin(TV.SWORD), s, false)).toBe(false);
+  });
+
+  it("grades jewelry off the TWIN's values, not the ring's hidden ones", () => {
+    const badRing = neutral(TV.RING);
+    badRing.toA = -1;
+    /* Known, the penalty makes it BAD; unknown, there is nothing to see and
+     * upstream's jewelry path falls through to AVERAGE (obj-ignore.c L485). */
+    expect(ignoreLevelOf(badRing, known(badRing))).toBe(IGNORE.BAD);
+    expect(ignoreLevelOf(badRing, unknownTwin(TV.RING))).toBe(IGNORE.AVERAGE);
+  });
+
+  it("ignores by ego only once the ego is recognised (obj-ignore.c L602)", () => {
+    const s = new IgnoreSettings();
+    s.egoToggle(5, ITYPE.SHARP);
+    const obj = neutral(TV.SWORD);
+    obj.ego = { eidx: 5 } as EgoItem;
+
+    /* obj->known->ego is NULL until player_knows_ego, so the rule cannot fire. */
+    expect(objectIsIgnored(obj, unknownTwin(TV.SWORD), s, false)).toBe(false);
+    expect(objectIsIgnored(obj, known(obj), s, false)).toBe(true);
   });
 });
 
@@ -219,13 +295,13 @@ describe("IgnoreSettings.kindToggleAware / kindToggleUnaware", () => {
     s.kindToggleAware(kidx);
     expect(s.kindIsIgnoredAware(kidx)).toBe(true);
     expect(s.kindIsIgnoredUnaware(kidx)).toBe(false);
-    expect(objectIsIgnored(potion, s, true)).toBe(true);
-    expect(objectIsIgnored(potion, s, false)).toBe(false);
+    expect(objectIsIgnored(potion, known(potion), s, true)).toBe(true);
+    expect(objectIsIgnored(potion, known(potion), s, false)).toBe(false);
 
     s.kindToggleUnaware(kidx);
     expect(s.kindIsIgnoredAware(kidx)).toBe(true);
     expect(s.kindIsIgnoredUnaware(kidx)).toBe(true);
-    expect(objectIsIgnored(potion, s, false)).toBe(true);
+    expect(objectIsIgnored(potion, known(potion), s, false)).toBe(true);
 
     /* Toggling aware back off leaves the unaware bit untouched. */
     s.kindToggleAware(kidx);
@@ -253,9 +329,9 @@ describe("RNG safety (ignore configuration draws no randomness)", () => {
 
     const bad = neutral(TV.SWORD);
     bad.toD = -3;
-    objectIsIgnored(bad, restored, false);
-    ignoreItemOk(bad, restored, false);
-    ignoreLevelOf(bad);
+    objectIsIgnored(bad, known(bad), restored, false);
+    ignoreItemOk(bad, known(bad), restored, false);
+    ignoreLevelOf(bad, known(bad));
     ignoreTypeOf(bad);
     if (westernesse) egoHasIgnoreType(westernesse, ITYPE.SHARP, reg.kinds);
 

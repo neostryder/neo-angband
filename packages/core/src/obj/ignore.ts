@@ -11,11 +11,24 @@
  * ignored, matching the shipped default), but the machinery is complete so a
  * front end (or a mod) can drive it, and the settings ride the save.
  *
- * KNOWLEDGE: the port carries no per-object `known` twin (obj-knowledge.c),
- * running as if every object were fully known - so ignore_level_of always
- * takes the fully-known branch and reads the object's own fields, and the
- * !obj->known guards never fire. Flavor awareness (task #11) is real and
- * decides the aware-vs-unaware per-kind ignore.
+ * KNOWLEDGE: the port DOES carry a per-object `known` twin as of PORT_TODO 2.9
+ * - objectKnownShadow synthesises it on demand - and both predicates here read
+ * it, through the ObjectKnownView their callers pass in. This module stays free
+ * of GameState, so it does not build the view itself; game/describe.ts
+ * objectKnownView does, and session/game.ts hands it to the one seam everything
+ * reads through (state.isIgnored).
+ *
+ * That matters more than it sounds. Until 2026-08-07 these functions read the
+ * LIVE object, so an item the player had never assessed was quality-classified
+ * by its hidden truth: an unidentified weapon with a to-dam penalty was
+ * auto-ignored - and auto-dropped by ignore_drop - for a number the player had
+ * no way to see. Upstream's rule is the opposite ("when the value is
+ * undetermined given current info, return the maximum possible value",
+ * obj-ignore.c L461).
+ *
+ * The `!obj->known` guards (L469, L581) genuinely never fire here: the shadow is
+ * synthesised for every object and is never absent. Flavor awareness (task #11)
+ * is real and decides the aware-vs-unaware per-kind ignore.
  *
  * MENU PLUMBING: egoHasIgnoreType, QUALITY_VALUE_NAMES and the per-bit kind
  * toggles feed the ignore-configuration UI (web/screens.ts + web/main.ts);
@@ -200,27 +213,71 @@ export function isObjectGood(obj: GameObject): number {
 }
 
 /**
- * ignore_level_of (obj-ignore.c L464): the quality tier of an object. The port
- * treats every object as fully known, so the not-fully-known branch (which
- * returns ALL / MAX from the assessed flag) never applies.
+ * The `obj->known` view that ignore_level_of and object_is_ignored read.
+ * Upstream dereferences a pointer hanging off the object; this port synthesises
+ * the twin on demand (obj/known-object.ts objectKnownShadow), so the two things
+ * those functions take off it are passed in instead. Required, not optional: a
+ * caller that forgets it must fail to compile rather than silently fall back to
+ * judging an object by its hidden truth, which is exactly the defect this type
+ * exists to close.
+ *
+ * `if (!obj->known)` (obj-ignore.c L469, L581) has no counterpart here. The
+ * shadow is synthesised for every object and is never absent - an unseen object
+ * gets the empty KNOWN_STATE shadow rather than a null one - so the guard is
+ * omitted rather than faked. Its consequence is preserved by the branch below:
+ * an unassessed object is not fully known, carries no ASSESSED bit, and so
+ * lands on IGNORE_MAX by the same route upstream's null check reaches.
+ *
+ * Build one with game/describe.ts objectKnownView(state, obj).
  */
-export function ignoreLevelOf(obj: GameObject): number {
-  /* Jewelry is only ever bad or average. */
+export interface ObjectKnownView {
+  /** obj->known, the per-object known twin (objectKnownShadow). */
+  readonly known: GameObject;
+  /** object_fully_known(obj) (obj-knowledge.c L754). */
+  readonly fullyKnown: boolean;
+}
+
+/**
+ * ignore_level_of (obj-ignore.c L464): the quality tier of an object.
+ *
+ * "The main point is when the value is undetermined given current info, return
+ * the maximum possible value" (L461) - so this reads the KNOWN twin throughout,
+ * and an object whose runes are not all learned never reaches the good / bad /
+ * average comparison at all. The port used to read the live object and skip the
+ * object_fully_known gate entirely, which let auto-ignore drop an unassessed
+ * item for stats the player had no way to see.
+ */
+export function ignoreLevelOf(obj: GameObject, view: ObjectKnownView): number {
+  const known = view.known;
+
+  /* Jewelry is only ever bad or average, off the twin's values (L474-486). */
   if (tvalIsJewelry(obj.tval)) {
     for (let i = 0; i < OBJ_MOD_MAX; i++) {
-      if ((obj.modifiers[i] ?? 0) > 0) return IGNORE.AVERAGE;
+      if ((known.modifiers[i] ?? 0) > 0) return IGNORE.AVERAGE;
     }
-    if (obj.toH > 0 || obj.toD > 0 || obj.toA > 0) return IGNORE.AVERAGE;
-    if (obj.toH < 0 || obj.toD < 0 || obj.toA < 0) return IGNORE.BAD;
+    if (known.toH > 0 || known.toD > 0 || known.toA > 0) return IGNORE.AVERAGE;
+    if (known.toH < 0 || known.toD < 0 || known.toA < 0) return IGNORE.BAD;
     return IGNORE.AVERAGE;
   }
 
-  const isgood = isObjectGood(obj);
-  let value: number =
-    isgood > 0 ? IGNORE.GOOD : isgood < 0 ? IGNORE.BAD : IGNORE.AVERAGE;
-  if (obj.ego) value = IGNORE.ALL;
-  else if (obj.artifact) value = IGNORE.MAX;
-  return value;
+  /* Now just do bad, average, good, ego (L489-511). The good/bad/average
+   * comparison and the ego / artifact overrides read the LIVE object upstream
+   * too - they are only reached once everything about it is known. */
+  if (view.fullyKnown) {
+    const isgood = isObjectGood(obj);
+    let value: number =
+      isgood > 0 ? IGNORE.GOOD : isgood < 0 ? IGNORE.BAD : IGNORE.AVERAGE;
+    if (obj.ego) value = IGNORE.ALL;
+    else if (obj.artifact) value = IGNORE.MAX;
+    return value;
+  }
+
+  /* Not fully known (L506-510): assessed non-artifacts are known not to be
+   * artifacts and so tier ALL; everything else is undetermined and tiers MAX,
+   * which no threshold below MAX ignores. */
+  return known.notice & OBJ_NOTICE.ASSESSED && !obj.artifact
+    ? IGNORE.ALL
+    : IGNORE.MAX;
 }
 
 /** check_for_inscrip: the inscription contains the given tag. */
@@ -335,11 +392,12 @@ export interface IgnoreSettingsData {
  */
 export function objectIsIgnored(
   obj: GameObject,
+  view: ObjectKnownView,
   settings: IgnoreSettings,
   aware: boolean,
 ): boolean {
-  /* Individually marked ignore. */
-  if (obj.notice & OBJ_NOTICE.IGNORE) return true;
+  /* Individually marked ignore - obj->known->notice (L582). */
+  if (view.known.notice & OBJ_NOTICE.IGNORE) return true;
 
   /* Never ignore artifacts (or !k / !* inscribed items) by rule. */
   if (obj.artifact || checkForInscrip(obj, "!k") || checkForInscrip(obj, "!*")) {
@@ -358,12 +416,19 @@ export function objectIsIgnored(
   const type = ignoreTypeOf(obj);
   if (type === ITYPE_MAX) return false;
 
-  /* Ignore ego items of an ignored ego+type. */
-  if (obj.ego && settings.egoIsIgnored(obj.ego.eidx, type)) return true;
+  /* Ignore ego items IF KNOWN (L602-603): upstream gates on obj->known->ego
+   * and then indexes obj->ego->eidx. The shadow's ego is the same record by
+   * identity (known-object.ts:563 assigns obj.ego itself), so reading the eidx
+   * off the twin is that pair of dereferences with no extra condition. An ego
+   * the player has not yet recognised no longer trips an ego ignore rule. */
+  if (view.known.ego && settings.egoIsIgnored(view.known.ego.eidx, type)) {
+    return true;
+  }
 
-  /* Ignore anything assessed as a non-artifact when the type ignores ALL. */
+  /* Ignore anything assessed as a non-artifact when the type ignores ALL
+   * (L606-608), off the twin's notice. */
   if (
-    obj.notice & OBJ_NOTICE.ASSESSED &&
+    view.known.notice & OBJ_NOTICE.ASSESSED &&
     !obj.artifact &&
     settings.level[type] === IGNORE.ALL
   ) {
@@ -371,7 +436,7 @@ export function objectIsIgnored(
   }
 
   /* Otherwise compare the object's quality tier to the type's threshold. */
-  return ignoreLevelOf(obj) <= (settings.level[type] as number);
+  return ignoreLevelOf(obj, view) <= (settings.level[type] as number);
 }
 
 /**
@@ -380,9 +445,10 @@ export function objectIsIgnored(
  */
 export function ignoreItemOk(
   obj: GameObject,
+  view: ObjectKnownView,
   settings: IgnoreSettings,
   aware: boolean,
 ): boolean {
   if (settings.unignoring) return false;
-  return objectIsIgnored(obj, settings, aware);
+  return objectIsIgnored(obj, view, settings, aware);
 }

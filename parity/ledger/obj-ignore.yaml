@@ -90,15 +90,31 @@ deferred:
     right and is worth keeping: the port applies settings immediately on read,
     so the deferred flag is belt-and-braces rather than the only trigger. The
     ignore redraw / EVENT signals are the ratified repaint divergence.
-  - THIS STOPPED BEING TRUE AT PORT_TODO 2.9, and it has a behavioural
-    consequence, so it is owed rather than moot. The port HAS a per-object known
-    twin now (objectKnownShadow, synthesised on demand). Upstream's
-    ignore_level_of reads the TWIN throughout - `if (!obj->known) return
-    IGNORE_MAX` first (obj-ignore.c:469), then obj->known->modifiers[i] and
-    obj->known->to_h / to_d / to_a (L475-484). The port's ignoreLevelOf
-    (obj/ignore.ts:207-223) reads the LIVE object, so quality-based auto-ignore
-    classifies an item by its true values rather than by what the player knows:
-    upstream will not quality-ignore an unknown item at all, and this will.
+  - CLOSED (2026-08-07). Both predicates read the known twin now.
+    ignore_level_of and object_is_ignored take an ObjectKnownView
+    {known, fullyKnown} - REQUIRED, not optional, so a caller that forgets fails
+    to compile rather than silently restoring the defect - built by
+    game/describe.ts objectKnownView and supplied at session/game.ts's
+    state.isIgnored, the seam autopickup, the run loop, the item lists and
+    ignore_drop all read through.
+    Three separate divergences closed with it. (1) The object_fully_known gate
+    (obj-ignore.c:489) was ABSENT: the port always took the fully-known branch,
+    so an item the player had never assessed was quality-classified by its
+    hidden truth and ignore_drop threw away an unidentified weapon for a to-dam
+    it could not see. Upstream returns IGNORE_ALL for an assessed non-artifact
+    and IGNORE_MAX otherwise (L506-510). (2) The jewelry arm read the ring's own
+    modifiers and to_h / to_d / to_a rather than the twin's (L475-484). (3)
+    object_is_ignored's ego rule gated on obj->ego rather than obj->known->ego
+    (L602), so an ego the player had not recognised still tripped an ego ignore
+    rule; ui-object.c:1755's menu row had the same bug and is fixed with it.
+    `if (!obj->known)` (L469, L581) has no counterpart: the shadow is
+    synthesised for every object and is never absent, and its consequence is
+    preserved by the not-fully-known branch anyway.
+    Four mutants, four kills - including the one that matters most: replacing
+    the live wire's view with a hand-rolled {known: obj, fullyKnown: true}
+    passes 4516 core tests, which is why session/ignore-known-wiring.test.ts
+    boots a real game and asserts state.isIgnored on an unidentified dagger
+    rather than trusting obj/ignore.test.ts's own views.
   - CLOSED (2026-08-07). The "lightweight seen-set" this row filed as a
     follow-up had already shipped - EverseenKnowledge on GameState
     (game/context.ts:361-368), fed by game/describe.ts:41-46's markKindSeen /

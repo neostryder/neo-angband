@@ -234,7 +234,7 @@ import { noticeNewLevel } from "../game/notice.js";
 import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
-import { describeObject, knownDescOf } from "../game/describe.js";
+import { describeObject, knownDescOf, objectKnownView } from "../game/describe.js";
 import {
   knownBonusView,
   objectFlagIsKnown,
@@ -629,7 +629,12 @@ function wireGame(
   // live flavor awareness. Everything reads it through state.isIgnored so the
   // floor / pickup / running / projection paths need no flavor coupling.
   state.isIgnored = (obj) =>
-    ignoreItemOk(obj, state.ignore, flavor.isAware(obj.kind));
+    ignoreItemOk(
+      obj,
+      objectKnownView(state, obj),
+      state.ignore,
+      flavor.isAware(obj.kind),
+    );
 
   // object_flavor_is_aware (obj-knowledge.c): the presentation view models
   // (obj-list.c, #25) read kind awareness through this seam, keeping them

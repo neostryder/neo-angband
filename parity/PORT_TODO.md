@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 76 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -147,27 +147,44 @@ is reachable in play and a test constructs the case that used to be wrong.**
   from the key and mostly does not repeat the word.
 
   Files fully adjudicated, **listed from the TSV rather than appended to by
-  hand** - the previous prose list named `ui-display` and `obj-power`, and
-  neither is complete (five and three rows open respectively):
-  `combat-melee`, `effects-interpreter`, `game-arena`, `game-cave-cmd`,
-  `game-effect-attack`, `game-effect-detect`, `game-effect-env`,
-  `game-effect-general`, `game-effect-melee`, `game-effect-monster`,
-  `game-effect-summon`, `game-effect-teleport`, `game-effect-terrain`,
-  `game-floor`, `game-gear`, `game-known`, `game-mon-cmd`, `game-mon-group`,
-  `game-mon-list`, `game-player-path`, `game-player-side`, `game-thrust`,
-  `game-trap`, `gen-cave`, `gen-framework`, `mon-lore`, `mon-lore-describe`,
-  `mon-predicate`, `mon-take-hit`, `obj-desc`, `obj-knowledge`, `obj-power`,
-  `obj-value`, `player-history`, `session-save`, `store-bind`, `store-maint`,
-  `store-price`, `store-transact`, `ui-display`, `ui-entry`, `ui-player`,
-  `wizard-debug`.
+  hand** - the previous prose list named `ui-display` and `obj-power` while both
+  still had open rows, and later kept naming `obj-ignore` and `project-path` as
+  open after they had moved:
+  `combat-melee`, `combat-ranged`, `effects-interpreter`, `game-arena`,
+  `game-cave-cmd`, `game-effect-attack`, `game-effect-detect`,
+  `game-effect-env`, `game-effect-general`, `game-effect-melee`,
+  `game-effect-monster`, `game-effect-summon`, `game-effect-teleport`,
+  `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
+  `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
+  `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
+  `mon-lore`, `mon-lore-describe`, `mon-predicate`, `mon-take-hit`, `obj-desc`,
+  `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
+  `session-save`, `store-bind`, `store-maint`, `store-price`, `store-transact`,
+  `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-ignore` 5, `project-path` 5, `game-mon-ranged` 4, `game-project-monster` 4, `gen-rooms`
-  4, `obj-flavor` 4, `obj-randart` 4, `player-exp` 4, `player-spell` 4,
-  `player-timed` 4, then twelve at 3, five at 2 and two at 1.
+  The files still open, largest first: `game-mon-ranged` 4,
+  `game-project-monster` 4, `gen-rooms` 4, `obj-flavor` 4, `obj-randart` 4,
+  `player-exp` 4, `player-spell` 4, `player-timed` 4, then thirteen at 3, five
+  at 2 and two at 1.
 
   The tally, **read from the TSV rather than carried forward**: **152 `ported`,
-  35 `stale-doc`, 22 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **7** `real`**. **83 remain.**
+  35 `stale-doc`, 22 `divergence`, 14 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **6** `real`**. **83 remain.**
+
+  **`obj-ignore` closed, and the last of it was a live defect.**
+  `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
+  reads `obj->known`, and the port had no `object_fully_known` gate at all - so
+  quality auto-ignore classified an item by its hidden truth and `ignore_drop`
+  threw away an unidentified weapon for a to-dam the player could not see.
+  Upstream's rule is the opposite: "when the value is undetermined given current
+  info, return the maximum possible value" (obj-ignore.c L461). Both predicates
+  now take a REQUIRED `ObjectKnownView`, so a caller that forgets it fails to
+  compile. Two smaller reads went with it - the jewelry arm, and the ego rule's
+  `obj->known->ego` gate, which `ui-object.c:1755`'s menu row shared.
+  **The mutant that mattered survived first:** feeding the live wire a
+  hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
+  `session/ignore-known-wiring.test.ts` boots a real game and asserts
+  `state.isIgnored` rather than trusting the unit tests' own views.
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -3176,7 +3193,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 76 citations, 57 `real` + 19
+2. the counts stated at the top (**68 items, 75 citations, 56 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

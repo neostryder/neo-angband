@@ -89,7 +89,7 @@ import { disturb } from "./player-path.js";
 import { buildEffectContext } from "./effect-env.js";
 import type { EffectEnvDeps } from "./effect-env.js";
 import { attachGameEnv } from "./effect-game-env.js";
-import { describeObject } from "./describe.js";
+import { describeObject, objectKnownView } from "./describe.js";
 import { ODESC, objDescNameFormat } from "../obj/desc.js";
 import { substituteTimedMessage } from "../player/timed.js";
 import { squareIsSeen } from "../world/view.js";
@@ -954,7 +954,7 @@ export function applyAutoinscription(
    * gear.store IS that pile. The stricter test was invented, and it was the third
    * copy of this predicate in the tree. */
   if (!objectIsCarried(state.gear, obj)) return 0;
-  if (ignoreItemOk(obj, state.ignore, aware)) return 0;
+  if (ignoreItemOk(obj, objectKnownView(state, obj), state.ignore, aware)) return 0;
 
   obj.note = note.length > 0 ? note : null;
   deps.env?.msg?.(`You autoinscribe ${describeObject(state, obj)}.`);

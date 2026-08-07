@@ -26,6 +26,7 @@ import {
   ObjRegistry,
   objectNew,
   OBJ_NOTICE,
+  playerLearnAllRunes,
   IGNORE,
   ITYPE,
   TV,
@@ -162,6 +163,26 @@ function neutral(tval: number): GameObject {
   obj.toD = 0;
   obj.toA = 0;
   return obj;
+}
+
+/**
+ * Identify `obj`: mark it assessed and learn every rune, which is what
+ * ignore_level_of's good / bad / average tiers are gated on
+ * (object_fully_known, obj-ignore.c L489). Not decoration - a Dagger carries
+ * OF_THROWING (id-type "on wield"), so an un-identified fixture reads
+ * IGNORE_MAX and grows no quality row at all.
+ */
+function identify(state: GameState, obj: GameObject): GameObject {
+  playerLearnAllRunes(state.actor.player, state.runeEnv);
+  obj.notice |= OBJ_NOTICE.ASSESSED;
+  return obj;
+}
+
+/** A real ego record, so player_knows_ego reads the pack rather than a stub. */
+function egoNamed(name: string): GameObject["ego"] {
+  const ego = objReg.egos.find((e) => e?.name === name);
+  if (!ego) throw new Error(`fixture: no ego named ${name}`);
+  return ego;
 }
 
 /** Awareness stub for applyIgnoreItemChoice / ignoreItemMenuCtx. */
@@ -309,7 +330,7 @@ describe("applyIgnoreItemChoice (ui-object.c:1801-1818)", () => {
 
   it("All <quality> <type> sets ignore_level[type] to the object's tier (ui-object.c:1817)", () => {
     const state = makeTestState();
-    const bad = neutral(TV.SWORD);
+    const bad = identify(state, neutral(TV.SWORD));
     bad.toD = -3; /* ignore_level_of -> IGNORE_BAD */
 
     applyIgnoreItemChoice(IGNORE_ACTION.QUALITY, bad, state, awareGame);
@@ -324,7 +345,7 @@ describe("applyIgnoreItemChoice (ui-object.c:1801-1818)", () => {
 describe("ignoreItemMenuCtx (ui-object.c:1724-1784 guards)", () => {
   it("a neutral sword has no flavour row, an average quality row, no ego row", () => {
     const state = makeTestState();
-    const ctx = ignoreItemMenuCtx(neutral(TV.SWORD), state, awareGame);
+    const ctx = ignoreItemMenuCtx(identify(state, neutral(TV.SWORD)), state, awareGame);
     expect(ctx.itemIgnored).toBe(false);
     expect(ctx.flavor).toBeUndefined(); /* SWORD is not an sval-ignore tval */
     expect(ctx.ego).toBeUndefined();
@@ -336,8 +357,10 @@ describe("ignoreItemMenuCtx (ui-object.c:1724-1784 guards)", () => {
 
   it("an ego sword adds the ego row named '<type> <ego name>' (ui-object.c:1763)", () => {
     const state = makeTestState();
-    const obj = neutral(TV.SWORD);
-    obj.ego = { eidx: 3, name: "of Slaying" } as EgoItem;
+    const obj = identify(state, neutral(TV.SWORD));
+    /* A real record: "of Slaying" carries only combat bonuses (ego_item.txt:1009),
+     * so player_knows_ego is satisfied without inventing a rune surface. */
+    obj.ego = egoNamed("of Slaying");
     const ctx = ignoreItemMenuCtx(obj, state, awareGame);
     expect(ctx.ego).toEqual({
       name: "Sharp Melee Weapons of Slaying",
@@ -352,7 +375,7 @@ describe("ignoreItemMenuCtx (ui-object.c:1724-1784 guards)", () => {
 
   it("jewelry special-case: an average ring gets NO quality row (ui-object.c:1776)", () => {
     const state = makeTestState();
-    const ring = neutral(TV.RING); /* ignore_level_of -> AVERAGE (!= BAD) */
+    const ring = identify(state, neutral(TV.RING)); /* ignore_level_of -> AVERAGE (!= BAD) */
     const ctx = ignoreItemMenuCtx(ring, state, awareGame);
     /* RING is an sval-ignore tval, so the flavour row is present... */
     expect(ctx.flavor).toBeDefined();
@@ -362,7 +385,7 @@ describe("ignoreItemMenuCtx (ui-object.c:1724-1784 guards)", () => {
 
   it("jewelry special-case: a bad ring keeps a 'bad Rings' quality row", () => {
     const state = makeTestState();
-    const ring = neutral(TV.RING);
+    const ring = identify(state, neutral(TV.RING));
     ring.toA = -1; /* ignore_level_of -> BAD */
     const ctx = ignoreItemMenuCtx(ring, state, awareGame);
     expect(ctx.quality).toEqual({ tierName: "bad", typeName: "Rings" });
