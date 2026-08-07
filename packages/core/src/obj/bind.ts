@@ -335,6 +335,17 @@ export function tvalFindIdx(name: string): number {
   return -1;
 }
 
+/**
+ * object_short_name (obj-util.c L233-249): strip a leading `& ` article and
+ * every `~` pluralisation marker - the form a pref file's `object:` and
+ * `inscribe:` lines name a kind by, and the form parse_prefs_object's
+ * lookup_sval matches against.
+ */
+export function objectShortName(name: string): string {
+  const body = name.startsWith("& ") ? name.slice(2) : name;
+  return body.replace(/~/g, "");
+}
+
 /** tval_find_name: textual name for a numeric tval. */
 export function tvalFindName(tval: number): string {
   const e = TVAL_ENTRIES[tval];
