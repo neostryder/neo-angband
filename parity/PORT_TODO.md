@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 274 of 339 done, 48 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 278 of 339 done, 49 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -157,19 +157,20 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
   `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
   `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
-  `game-project-monster`, `mon-lore`, `mon-lore-describe`, `mon-predicate`,
+  `game-project-monster`, `game-player-side`, `gen-rooms`, `mon-lore`,
+  `mon-lore-describe`, `mon-predicate`,
   `mon-take-hit`, `obj-desc`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
   `player-exp`, `player-spell`, `session-save`, `store-bind`, `store-maint`,
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `gen-rooms` 4, `obj-flavor` 4,
-  `obj-randart` 4, then thirteen at 3, six at 2 and three at 1.
+  The files still open, largest first: `obj-flavor` 4, `obj-randart` 4, then
+  thirteen at 3, five at 2 and four at 1.
 
   The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  41 `stale-doc`, 24 `divergence`, 18 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **5** `real`**. **65 remain.**
+  44 `stale-doc`, 25 `divergence`, 18 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **5** `real`**. **61 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -185,6 +186,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **`gen-rooms`: four rows describing a dungeon generator that no longer
+  exists.** The nest/pit row said the inner room was "filled with any
+  depth-appropriate monster rather than a themed pit_profile" while its own
+  parenthesis admitted `set_pit_type` and `mon_pit_hook` were ported - and they
+  are called, two lines apart, at the fill. `get_vault_monsters` was said to
+  ignore the base symbol; it preps the table with `monSelect(sym, ...)` first.
+  And `build_moria` / `build_room_of_chambers` / `build_huge` were said to
+  "return false" and have no enabled profile: all three are real builders, and
+  all three appear in the `modified`, `moria` and `lair` cave profiles that
+  `choose()` picks by depth. **Three of the four were written before the code
+  they describe, and nothing brought them forward.**
 
   **A resisted breath said nothing, while the same flag resisted in melee
   said everything.** `cave->mon_current` rode `CastSource` the whole way and
