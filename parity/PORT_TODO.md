@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 217 of 338 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 218 of 338 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **121 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **122 `ported`,
   35 `stale-doc`, 18 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 6 `partial` against **5** `real`**. **121 remain.**
+  9 `n-a`, 6 `partial` against **5** `real`**. **120 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -247,6 +247,15 @@ is reachable in play and a test constructs the case that used to be wrong.**
   carries the lore, and the load path re-derives `maxNum = 0` for every unique
   with `pkills > 0`, exactly as `load.c:532-535` does. The comment at
   `session/game.ts:989` had been repeating the row's claim inside the code.
+
+  The fifth was another live defect. **`target_accept` treated a grid holding
+  nothing but ignored junk as an interesting target** - the look/target scan
+  stopped on it. Upstream walks the remembered pile PER OBJECT and applies
+  `ignore_known_item_ok` (`target.c:347-353`); the port asked "does the player
+  remember ANY object here", which cannot express the difference. Both halves it
+  needed had landed - the per-object pile from 2.9 and `obj/ignore.ts` - and a
+  `sensed` entry accepts unconditionally because it IS `unknown_item_kind`: you
+  cannot have chosen to ignore what you have not identified.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been

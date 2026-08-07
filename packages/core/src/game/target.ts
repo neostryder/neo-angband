@@ -15,10 +15,10 @@
  *
  * Reductions, ledgered in parity/ledger/game-target.yaml: monster names use
  * the full monster_desc grammar (mon/desc.ts), panel restriction is an
- * injected predicate defaulting to "everything" (panels are UI state),
- * ignore_known_item_ok treats no known objects as ignored (ignore is a
- * later #24 slice), and monster_race_track is lore's (healthWho covers
- * health_track).
+ * injected predicate defaulting to "everything" (panels are UI state), and
+ * monster_race_track is lore's (healthWho covers health_track).
+ * ignore_known_item_ok is no longer a reduction - target_accept applies it per
+ * object over the remembered pile, as upstream does.
  */
 
 import { MON_TMD, TMD } from "../generated/index.js";
@@ -36,7 +36,7 @@ import { PROJECT, projectable } from "../world/project.js";
 import { squareIsSeen } from "../world/view.js";
 import type { GameState } from "./context.js";
 import { monsterAt, squareMonster } from "./context.js";
-import { knownObject, squareIsInteresting } from "./known.js";
+import { knownPile, squareIsInteresting } from "./known.js";
 import { squareIsVisibleTrap } from "./trap.js";
 
 /** Bit flags for target_get_monsters / target_set_closest (target.h). */
@@ -291,8 +291,19 @@ export function targetAccept(state: GameState, grid: Loc): boolean {
   /* Traps. */
   if (squareIsVisibleTrap(state, grid)) return true;
 
-  /* Memorized objects (ignore_known_item_ok rides the ignore slice). */
-  if (knownObject(state, grid)) return true;
+  /*
+   * "Scan all objects in the grid" (target.c:347-353), over the REMEMBERED
+   * pile, per object. A sensed marker (upstream's `unknown_item_kind`) always
+   * accepts - you cannot have decided to ignore something you have not
+   * identified - and anything else accepts unless ignore_known_item_ok says so.
+   * This used to ask `knownObject(state, grid)`, i.e. "does the player remember
+   * ANY object here", which made a grid holding nothing but ignored junk an
+   * interesting target. Both halves it needed have since landed: the per-object
+   * remembered pile (PORT_TODO 2.9) and the isIgnored seam (obj/ignore.ts).
+   */
+  for (const entry of knownPile(state, grid)) {
+    if (entry.sensed || !(state.isIgnored?.(entry.obj) ?? false)) return true;
+  }
 
   /* Interesting memorized features. */
   if (squareIsInteresting(state, grid)) return true;
