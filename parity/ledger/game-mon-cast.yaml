@@ -38,9 +38,9 @@ deferred:
     resolvers injected (mon-summon.c summon_name_to_idx, player shapes); absent,
     the chain cannot build and the cast fizzles via the unresolved hook. The
     EF_SUMMON handler itself is still a stub until monster generation lands.
-  - choose_attack_spell / remove_bad_spells / make_attack_spell (mon-attack.c):
-    the spell-selection AI that decides whether and which spell a monster casts
-    on its turn - the next #19 increment; doMonSpell is the executor it calls.
+  - choose_attack_spell and remove_bad_spells are ported (game/mon-ranged.ts:248
+    and :173) and reached from the live monster turn at game/mon-cmd.ts:735;
+    doMonSpell is the executor they call.
 verified-by:
   - game/mon-cast.test.ts (7 tests): through a full registry (core + attack +
     monster + teleport handlers), a breath spell damages the player (breath_dam
