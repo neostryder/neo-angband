@@ -69,20 +69,32 @@ notes: >-
   the killed form while the lore counts land on the reverted race
   (player_kill_monster computes new_exp before monster_death reverts).
 deferred:
-  - The shape blow verbs are bound but the shape unarmed attack itself
-    (py_attack_real's player_is_shapechanged branch over shape->blows)
-    rides the combat layer; a shapechanged player still attacks with the
-    normal unarmed path.
-  - TMD_ATT_VAMP's vampire-bite effect rides that timed effect's
-    consumers; resume just clears the timer.
+  - WRONG ABOUT UPSTREAM (2026-08-07). There is no separate "shape unarmed
+    attack" to port. player-attack.c:830-838 is the WHOLE branch: pick one of
+    p->shape->blows at random and strcpy its name over `verb`. Everything else -
+    the to-hit roll, the damage, the criticals - runs the normal path, for a
+    shapechanged player as for anyone else. So "a shapechanged player still
+    attacks with the normal unarmed path" describes UPSTREAM, not a reduction.
+    The port does exactly the substitution: combat/melee.ts:471-474 draws a
+    shape blow verb and replaces mod.verb, and the draw happens even at zero
+    damage as upstream's does.
+  - CLOSED (2026-08-07). TMD_ATT_VAMP's consumer landed: combat/melee.ts:109
+    reads the armed flag, the drain itself is player-attack.c:877-881 ported in
+    the same module, game/player-turn.ts:204 supplies attVamp from the live
+    timer, and melee-effects.test.ts:234 covers it. "Resume just clears the
+    timer" is still true and still correct - the timer is the arming, and its
+    consumer is the blow.
   - The monster-message table landed as PORT_TODO 3.1 and SHAPE_FAIL rides it:
     mon/timed.ts:205 raises the note and game/monster-turn.ts:1658 resolves it
     through monMessageCodeByName into addMonsterMessage's DELAYED pass, so the
     text ("shimmers for a moment.") comes from the generated table with the
     right grammar. PR_TITLE / PR_MISC / PR_HEALTH are the ratified
     unconditional-repaint divergence, not a deferral.
-  - The commanded-monster / mimic interactions with shapes (mimicked
-    objects) ride monster mimicry.
+  - NOT A DEFERRAL (2026-08-07): a cross-reference, and monster mimicry has
+    shipped. mon.mimickedObj is real and maintained - monster_death spills it
+    and delete_monster_idx deletes it (game/context.ts, mon-make.c:385-387) -
+    and push_object's unrevealed-mimic arm landed as PORT_TODO 2.14. Nothing
+    about shapes is owed here; the row names where the interaction LIVES.
 verified-by:
   - game/shape.test.ts (12 tests) - the fox and Pukel-man bind their
     combat/flags/modifiers/skills/resists/effects; calc_shapechange

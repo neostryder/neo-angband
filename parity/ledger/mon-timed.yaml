@@ -35,13 +35,19 @@ notes: >-
   monster_effect_level here is the consolidation of the copy
   game/monster-turn.ts had defined locally (now imported from this module).
 deferred:
-  - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,
-    mon-util.c): the CHANGED timer is set but the form is not swapped. CHANGED
-    is only set by an unported effect, so this path is currently unreachable.
-  - lore_learn_flag_if_visible on a flag-resist (mon-lore.c): PORTED at
-      mon/lore.ts:150 and called from monster-turn.ts:1294; ledgered with the
-    monster-memory system (see the late/optional task).
-  - the health-bar / monster-list redraw (player->upkeep redraw masks): UI upkeep.
+  - CLOSED (2026-08-07). The form IS swapped now: game/mon-shape.ts is the
+    monster_change_shape / monster_revert_shape port, mon-cast.ts:88 carries the
+    hooks, effect-game-env.ts:69 builds them for the SHAPECHANGE monster spell,
+    and monster-turn.ts:1736-1740 reverts on the timer expiring. shape.test.ts:190
+    covers the timer. "CHANGED is only set by an unported effect" stopped being
+    true when that effect landed, and the row did not follow.
+  - CLOSED (2026-08-07). The row says PORTED in its own text (mon/lore.ts:150,
+    called from monster-turn.ts:1294) and stayed open on a pointer to "the
+    late/optional task". The pointer has no work behind it: the monster-memory
+    system is ported and this call site is one of its consumers.
+  - RATIFIED DIVERGENCE (2026-08-07), not a deferral: the player->upkeep redraw
+    masks are repaint bookkeeping against one immediate-mode renderer, recorded
+    the same way everywhere else in this ledger.
 verified-by:
   - mon/timed.test.ts: a non-resisted effect is set and clamped at its max
     timer; a flag-immune monster resists (timer 0); MON_TMD_FLG_NOFAIL forces
