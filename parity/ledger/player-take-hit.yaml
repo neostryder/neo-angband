@@ -27,16 +27,21 @@ notes: >-
   deterministic). Integer maths (the warning threshold, the percentage cut)
   match upstream.
 deferred:
-  - onDeath supplies the full death routine (died_from, total_winner reset,
-    death_knowledge, score, EVENT_DEATH); take_hit only sets isDead and calls
-    the hook. cheatDeath defaults to absent, so death is final - matching the
-    ratified no-save-scum policy (decision 16); the wizard/cheat_live "Die?"
-    prompt wires in with the wizard layer.
-  - The COMBAT_REGEN reward's PF_COMBAT_REGEN check and mana maths live in the
-    injected combatRegenReward hook (the caller has the player flags + mana);
-    take_hit does the kb_str exclusion filter itself, faithfully.
-  - disturb, the PR_HP redraw, and bell() are UI hooks; message text is emitted
-    verbatim (no substitution needed for these strings).
+  - CLOSED (2026-08-07). The last clause was the only open part and it is wired:
+    game/take-hit-hooks.ts:72 builds cheatDeath and :94 calls wizCheatDeath, so
+    the wizard / cheat_live "Die?" escape exists on the live path. The rest of
+    the row describes the ratified division of labour - take_hit sets isDead and
+    calls the hook; onDeath does died_from, the total_winner reset,
+    death_knowledge, the score and EVENT_DEATH - and death staying final is
+    decision 16, a POLICY, not a gap.
+  - NOT A DEFERRAL (2026-08-07): the row describes the port's shape and says so
+    itself - "take_hit does the kb_str exclusion filter itself, faithfully". The
+    PF_COMBAT_REGEN check and mana maths live with the caller because that is
+    where the player flags and mana are. Nothing is owed.
+  - RATIFIED DIVERGENCE (2026-08-07): disturb, PR_HP and bell() are shell
+    concerns, and the row's own second clause confirms the part that is not -
+    the message text is emitted verbatim, with no substitution needed for these
+    strings.
 verified-by:
   - player/take-hit.test.ts (11 tests): invulnerability zeroes sub-9000 damage
     but not a 9000+ hit; flat-then-percentage reduction; reduction floors at 0;
