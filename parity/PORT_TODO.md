@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 300 of 339 done, 56 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 306 of 339 done, 57 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -168,12 +168,12 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-randart` 4, then seven at 3, five
-  at 2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
+  The files still open, largest first: `obj-randart` 4, then four at 3, six at
+  2 and five at 1. Two of `obj-randart`'s four are **5.5** in flight.
 
   The tally, **read from the TSV rather than carried forward**: **160 `ported`,
-  53 `stale-doc`, 30 `divergence`, 19 `note-is-fix`, 15 `not-a-deferral`,
-  11 `n-a`, 7 `partial` against **5** `real`**. **39 remain.**
+  56 `stale-doc`, 31 `divergence`, 19 `note-is-fix`, 16 `not-a-deferral`,
+  11 `n-a`, 7 `partial` against **6** `real`**. **33 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -189,6 +189,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **Remove Curse can be pointed at a curse you have not learned.**
+  `item_tester_uncursable` reads `obj->known->curses`
+  (`effect-handler-general.c:162-165`), so upstream offers the spell only on
+  curses the player knows about. `effect-item.ts:583` reads the live
+  `obj.curses`, so an item with an unlearned curse is accepted as a target -
+  which both works when it should not and **tells the player the item is
+  cursed**. Exactly the auto-ignore defect's shape, one file over, and fixable
+  the same way: `shadow.curses` is already gated on `p->obj_k->curses[i]`.
+  `real` went 5 -> 6 recording it, which is the sweep doing its job.
 
   **A row filed as "a UI redraw" that was not one.** `project-mon.c:929-932`
   reads `if (health_who == mon) redraw |= PR_HEALTH; else hurt_msg =
@@ -3302,7 +3312,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
+2. the counts stated at the top (**68 items, 75 citations, 56 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
