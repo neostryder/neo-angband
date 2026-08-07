@@ -73,10 +73,12 @@ notes: >-
   the aimed-grid fallback for worldless tests. z.maxRange joined
   GameConstants from constants.txt world:max-range.
 deferred:
-  - The interactive targeting UI (ui-target.c: the * browsing loop,
-    look prompts, panel scrolling, path drawing) rides presentation
-    (#25); target_pick and target_get_monsters are its complete engine
-    half. Monster names in messages are the race name until MDESC.
+  - The interactive half is BUILT, in the layer this row assigned it to:
+    web/src/main.ts:4103 is runTargetLoop, driven by this module's
+    targetGetMonsters and targetPick, and reached from look ('l') and targeting
+    ('*'). The row's tail is stale twice over - monster names in messages are
+    the full monster_desc grammar (mon/desc.ts), not the race name, and the
+    module header said so already.
   - panel_contains in target_sighted and restrict_to_panel in
     target_get_monsters are injected (panels are UI state; the default
     accepts everything / scans max_range as the upstream else-branch).

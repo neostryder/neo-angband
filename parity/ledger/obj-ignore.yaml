@@ -78,11 +78,13 @@ deferred:
     configuration-menu gap; ledgered as follow-ups.
   - object_ignore_flavor_of (L370) - the auto-ignore-on-first-sight hook,
     a separate obj-knowledge.c surface from the menu/ignore_drop pair.
-  - The PN_IGNORE notice pass and the ignore redraw / EVENT signals ride
-    presentation (#25); the port applies settings immediately on read
-    (ignore_drop's own PN_IGNORE trigger is reproduced directly: the shell
-    runs the drop pass right after a menu edit or 'K', with no deferred
-    notice flag to carry).
+  - The PN_IGNORE notice pass EXISTS as of PORT_TODO 1.1: PlayerUpkeep.notice
+    is a real bitfield, game/notice.ts:30 noticeStuff is the only thing that
+    clears a bit, and its PN_IGNORE branch calls game/ignore-cmd.ts's drop pass
+    - the same one the shell runs after a menu edit or 'K'. What this row got
+    right and is worth keeping: the port applies settings immediately on read,
+    so the deferred flag is belt-and-braces rather than the only trigger. The
+    ignore redraw / EVENT signals are the ratified repaint divergence.
   - object_is_ignored's !obj->known / object_fully_known guards are moot
     while the port has no per-object known twin (everything is known), so
     ignore_level_of always takes the fully-known branch.

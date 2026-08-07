@@ -63,9 +63,12 @@ deferred:
   - mon_create_drop / mon_create_mimicked_object ride the
     monster-inventory subsystem (monster_carry / held objects); summoned
     monsters carry no loot yet, and ORIGIN_DROP_SUMMON stamps with it.
-  - add_to_monster_rating and the cheat_hear OOD messages ride level
-    feelings (#25); num_repro counting rides breeders; the PU_UPDATE_VIEW
-    monster-light refresh rides the FOV consumers.
+  - All three have landed. mon_rating accumulates here and gen/generate.ts:392
+    turns it into the level feeling; cheat_hear's OOD messages are
+    mon-place.ts:415-418, reading the live option; num_repro is
+    game/context.ts:428 and decremented at :1321 on a MULTIPLY breed. The
+    PU_UPDATE_VIEW monster-light refresh is the ratified unconditional-repaint
+    divergence (game/known.ts:153), not a deferral.
   - Killed-unique max_num zeroes SURVIVE a reload, and this row (and the
     comment at session/game.ts:989 that echoed it) said otherwise. No
     race-state save section was needed: the save already carries the lore, and

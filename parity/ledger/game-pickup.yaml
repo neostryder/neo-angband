@@ -46,9 +46,10 @@ notes: >-
   first call, which would otherwise silently drop an env-based hook - see
   parity/ledger/player-history.yaml for the full history-log ledger.
 deferred:
-  - The pickup menu (get_item over USE_FLOOR) is the chooseItem seam; the
-    headless default picks the pile head, one object per 'g' press (ui #25
-    supplies the real menu, restoring the recursive menu loop).
+  - The chooseItem seam is SUPPLIED: web/src/main.ts:5756 hands pickup the real
+    "Get which item?" picker, so the recursive menu loop this row was waiting
+    for exists. The pile-head default survives only for headless callers, which
+    is what a seam default is for.
   - The "find-ON-SIGHT" half of this row was WRONG ABOUT UPSTREAM, and is now
     moot either way. square_know_pile does NOT touch a pile the instant it
     becomes known: object_touch is gated on `loc_eq(grid, player->grid)`
