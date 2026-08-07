@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 83 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 73 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 195 of 333 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 200 of 338 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,14 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **92 `ported`,
-  35 `stale-doc`, 18 `divergence`, 17 `partial`, 13 `note-is-fix`, 9 `n-a`,
-  7 `not-a-deferral` against **4** `real`**. **138 remain.**
+  The tally, **read from the TSV rather than carried forward**: **104 `ported`,
+  35 `stale-doc`, 18 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
+  9 `n-a`, 6 `partial` against **5** `real`**. **138 remain.**
+
+  **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
+  88 -> 104, and the row total moved 333 -> 338 because one row that bundled
+  five separate claims was SPLIT: a row naming five things with five different
+  answers can never be closed, and it had been open for that reason alone.
 
   **The 2026-08-07 batch: the `partial` pile, and three live defects behind
   it.** Read as a group, exactly as the `real` pile had been. `partial` fell 21
@@ -193,7 +198,29 @@ is reachable in play and a test constructs the case that used to be wrong.**
     behaviour: its victim was never `MFLAG_VISIBLE`, so it passed only because
     the stand-in named the race regardless.
 
-  Seven mutants, seven kills.
+  A second pass over the same pile closed six more rows and found three more
+  live defects of the same shape - a comment saying the real thing was ported
+  and could replace the stand-in, with nobody doing it:
+
+  - The **recall title** showed a monster's DEFAULT glyph while the map showed
+    the pref-file override, because `monster_x_attr` / `monster_x_char` were
+    filed as "presentation state not modelled" when `visuals/glyph-table.ts`
+    has held them all along. The tile-size gate they were grouped with is
+    unconditionally true here, so it is omitted rather than deferred.
+  - A **store could silently destroy an artifact.** `history_lose_artifact`
+    fires from `store_delete_random` (`store.c:1091`) and the black-market
+    purge (`:1307`), and neither was wired. It matters precisely because store
+    generation never MAKES an artifact - the only one a shop can hold is one
+    the player sold it, and turnover could then eat it with no log entry.
+  - The **kill line** read "Kobold dies." where `mon-util.c:1050-1051` builds it
+    with `monster_desc` under `MDESC_DEFAULT|MDESC_COMMA` and `my_strcap`.
+
+  And one row was a **misreading of the C**: `store.c:1928` was filed as "store
+  purchase of an artifact", but it sits inside `do_cmd_sell` and logs the
+  artifact the PLAYER sold. `do_cmd_buy` has no history call at all, so nothing
+  was ever owed there.
+
+  Thirteen mutants across both passes, thirteen kills.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
@@ -2982,7 +3009,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 83 citations, 54 `real` + 29
+2. the counts stated at the top (**68 items, 73 citations, 55 `real` + 18
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

@@ -10,7 +10,7 @@ import { cheatMonsterLore, newMonsterLore } from "./lore.js";
 import type { MonsterLore } from "./lore.js";
 import { LoreTextBuilder, loreDescription } from "./lore-describe.js";
 import type { LoreDeps, LoreTextRun } from "./lore-describe.js";
-import { COLOUR_VIOLET } from "../color.js";
+import { COLOUR_VIOLET, COLOUR_WHITE } from "../color.js";
 
 function deps(): LoreDeps {
   return {
@@ -239,6 +239,69 @@ describe("lore_title and purple_uniques (ui-mon-lore.c L38-60, PORT_TODO 3.22)",
     const p = loreDescription(pr, newMonsterLore(pr), deps());
     expect(u[0]?.text).not.toBe("The ");
     expect(p[0]?.text).toBe("The ");
+  });
+
+  /*
+   * The optional secondary glyph (ui-mon-lore.c L47/L51/L69-74). The port's
+   * tile_width / tile_height are always 1 (mapview.ts:70), so upstream's gate
+   * is unconditionally true here and the second pair shows whenever it differs.
+   */
+  function titleRuns(race: MonsterRace, extra: Partial<LoreDeps>): LoreTextRun[] {
+    const lore = newMonsterLore(race);
+    return loreDescription(race, lore, { ...deps(), ...extra });
+  }
+
+  it("appends the pref-file override pair when it differs", () => {
+    const race = plainRace as MonsterRace;
+    const other = race.dChar === "@" ? "&" : "@";
+    const runs = titleRuns(race, {
+      monsterGlyph: () => ({ attr: COLOUR_VIOLET, char: other }),
+    });
+    const opens = runs.filter((r) => r.text === " ('");
+    expect(opens).toHaveLength(2);
+    const second = runs[runs.indexOf(opens[1] as LoreTextRun) + 1] as LoreTextRun;
+    expect(second.text).toBe(other);
+    expect(second.color).toBe(COLOUR_VIOLET);
+  });
+
+  it("emits nothing extra when the override equals the race's own pair", () => {
+    const race = plainRace as MonsterRace;
+    const runs = titleRuns(race, {
+      monsterGlyph: () => ({ attr: race.dAttr, char: race.dChar }),
+    });
+    expect(runs.filter((r) => r.text === " ('")).toHaveLength(1);
+  });
+
+  it("no monsterGlyph dep behaves as an unmodified table", () => {
+    const race = plainRace as MonsterRace;
+    expect(titleRuns(race, {}).filter((r) => r.text === " ('")).toHaveLength(1);
+  });
+
+  it("purple_uniques recolours the override too, unless it is a tile code", () => {
+    const race = uniqueRace as MonsterRace;
+    const other = race.dChar === "@" ? "&" : "@";
+
+    /* L58-59: an ordinary attr goes violet with the standard one. */
+    const plain = titleRuns(race, {
+      purpleUniques: true,
+      monsterGlyph: () => ({ attr: COLOUR_WHITE, char: other }),
+    });
+    const plainOpens = plain.filter((r) => r.text === " ('");
+    expect(plainOpens).toHaveLength(2);
+    expect(
+      (plain[plain.indexOf(plainOpens[1] as LoreTextRun) + 1] as LoreTextRun).color,
+    ).toBe(COLOUR_VIOLET);
+
+    /* L58: `if (!(optional_attr & 0x80))` - a tile code is left alone. */
+    const tile = titleRuns(race, {
+      purpleUniques: true,
+      monsterGlyph: () => ({ attr: 0x80 | COLOUR_WHITE, char: other }),
+    });
+    const tileOpens = tile.filter((r) => r.text === " ('");
+    expect(tileOpens).toHaveLength(2);
+    expect(
+      (tile[tile.indexOf(tileOpens[1] as LoreTextRun) + 1] as LoreTextRun).color,
+    ).toBe(0x80 | COLOUR_WHITE);
   });
 });
 

@@ -286,6 +286,27 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
     expect(msgs[1]).toMatch(/ dies!$/);
   });
 
+  it("names the kill with monster_desc, not the bare race name", () => {
+    /*
+     * mon-util.c:1018/1024/1050-1051 - desc_mode is MDESC_DEFAULT plus
+     * MDESC_COMMA when there is a note, my_strcap'd before "%s%s". So a visible
+     * ordinary monster reads "The kobold dies.", where the stand-in this
+     * replaced said "Kobold dies." Asserted against monsterDesc's contract
+     * rather than a hand-written literal: the discriminator is the leading
+     * "The ", which a race-name stand-in cannot produce.
+     */
+    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
+    const doomed = addVisible(state, loc(14, 10), [], 20);
+    const msgs: string[] = [];
+
+    registry().effectSimple(EF.CURSE, env(state, msgs, { aimed: loc(14, 10) }), {
+      origin: sourcePlayer(),
+      diceString: "50",
+    });
+    expect(state.monsters[doomed.midx]).toBeFalsy();
+    expect(msgs).toContain(`The ${doomed.race.name} dies!`);
+  });
+
   it("show_damage puts the number on both the pain line and the death note", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
     addVisible(state, loc(14, 10), [], 500);

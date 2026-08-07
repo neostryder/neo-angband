@@ -151,15 +151,32 @@ notes: >-
 deferred:
   - Find-on-sight (object_touch via square_know_pile, cave-square.c:1181):
     only the pickup path is wired; see the pickup.ts entry above.
-  - All six history_lose_artifact call sites (item destruction, level
-    regeneration abandoning an artifact, store sales) - the ARTIFACT_LOST
-    machinery and "(LOST)" display are implemented and tested but not yet
-    triggered by any live game event.
+  - All six history_lose_artifact call sites are WIRED (2026-08-07); this row's
+    "not yet triggered by any live game event" was already stale when written
+    and the last two closed here. onArtifactLost is installed by wireGame
+    (session/game.ts:1069) and fires from: acid/disenchant destruction
+    (effect-item.ts:629, effect-handler-general.c:222), the quake
+    (effect-terrain.ts:561, effect-handler-attack.c:1226), an artifact
+    abandoned on a regenerated level (session/game.ts:2579, generate.c:1387,
+    with the birth_lose_arts / obj_is_known_artifact gate), a store refusing
+    the artifact it just bought (session/game.ts:3376 and :3421, store.c:1992),
+    and now store TURNOVER - store_delete_random (store.c:1091) and the
+    black-market purge (store.c:1307), through StoreMaintContext.onArtifactLost.
+    Those two mattered because store generation never MAKES an artifact
+    (applyMagic runs with allowArtifacts false), so the only artifact a shop can
+    hold is one the player sold it - and the shop could then quietly destroy it.
+    do_cmd_buy's two store_delete calls (store.c:1754/:1847) log nothing
+    upstream, which is why the hook is on the two maintenance sites rather than
+    inside storeDelete.
   - HIST_USER_INPUT is LIVE: the take-notes command exists in the web shell
     (main.ts, historyAdd(..., HIST.USER_INPUT, ...)) and rest-steal-note.test.ts
     pins it. This row's "no notes command exists in the port yet" is stale.
-  - Store purchase of an artifact calling history_find_artifact
-    (store.c:1928) - stores do not yet stock artifacts.
+  - MISREAD, and closed. store.c:1928 is not a purchase: it sits inside
+    do_cmd_sell (which begins at store.c:1869) and logs the artifact the PLAYER
+    just sold, "previously un-IDed. (Ouch!)". It is wired - session/game.ts:3375
+    and :3420 call state.onArtifactFound on every successful artifact sale.
+    do_cmd_buy (store.c:1650) has no history call at all, so there is nothing
+    owed on the purchase side even once stores can stock artifacts.
   - dump_history (ui-history.c:127-146, character-dump-to-file) - no
     character-dump feature in the port yet.
   - The upstream '~' knowledge-menu entry point itself (ui-knowledge.c) is

@@ -49,13 +49,24 @@ deferred:
     "No Available Target." / "%s is targeted." messages) is now the real
     game/target.ts implementation; the messages flow through state.msg
     (the world-event sink), not the effect context's.
-  - MDESC names, message_pain grammar and MSG_TELEPORT sound ride the
-    display layer (#25) - the race name stands in and pain messages are
-    reduced to the MON_MSG_FLEE_IN_TERROR flee line; show_damage (#30).
-  - MOVE_ATTACK's move_player is reduced to movePlayer + updateFov +
-    onPlayerMoved (no autopickup / disturb on the pass-through grids);
-    the early-death energy refund marked "Should return some energy"
-    upstream is unimplemented there too.
+  - CLOSED (2026-08-07). All four things this row deferred have landed, at
+    different times and with nobody revisiting the row. message_pain including
+    the message_pain_show_damage branch under OPT(player, show_damage) is
+    effect-melee.ts:188-190, and the pain lines go on the mon_msg[] queue with
+    the real grammar rather than the reduced flee line (PORT_TODO 3.1).
+    MSG_TELEPORT is played for the JUMP_AND_BITE jump (effect-melee.ts:374,
+    effect-handler-attack.c:1746, PORT_TODO 3.26). The killer name was fixed as
+    PORT_TODO 3.2. The last piece was the KILL line itself, which said
+    `race name + note` - "Kobold dies." - where mon-util.c:1018/1024/1050-1051
+    builds it with monster_desc under MDESC_DEFAULT|MDESC_COMMA and my_strcap;
+    effect-melee.ts:174 now does the same and reads "The kobold dies.".
+  - EF_MOVE_ATTACK itself is ported (effect-melee.ts:374, move up to four grids
+    then land the melee blows) - the handler is not the gap. What IS reduced is
+    narrow and named: the pass-through grids get movePlayer + updateFov +
+    onPlayerMoved without autopickup or disturb. The second half of this row is
+    NOT owed at all: the early-death energy refund marked "Should return some
+    energy" is left unimplemented UPSTREAM too, so matching it is parity rather
+    than a defect, and core keeps upstream's warts.
 verified-by:
   - game/effect-melee.test.ts (15 tests) - closestTarget targets the
     closest visible predicate match and ignores invisible monsters;
