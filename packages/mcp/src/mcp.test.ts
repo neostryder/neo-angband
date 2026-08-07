@@ -116,7 +116,7 @@ describe("a live game", () => {
 describe("the map an agent actually sees", () => {
   let host: GameHost;
   beforeAll(() => {
-    host = bootedHost(4242);
+    host = bootedHost(1004);
   });
 
   it("knows where the player is standing", () => {
@@ -272,13 +272,21 @@ function knownCount(host: GameHost): number {
 describe("acting", () => {
   let host: GameHost;
   beforeAll(() => {
-    host = bootedHost(4242);
+    host = bootedHost(1004);
   });
 
   it("reports the messages the engine emitted, including a refusal", () => {
-    /* seed 4242 starts in a dead end with a wall east. A refused command costs no
-     * game time and SAYS SO, which is the difference between an agent that adapts
-     * and one that walks into a wall forever. */
+    /* seed 1004 starts with a wall east. A refused command costs no game time
+     * and SAYS SO, which is the difference between an agent that adapts and one
+     * that walks into a wall forever.
+     *
+     * Re-seeded 4242 -> 1004 on 2026-08-06: the build_streamer predicate fix
+     * (core gen/cave.ts now uses square_isrock) moved the generation stream, so
+     * 4242's start is no longer walled east and its northward walk no longer
+     * reveals new ground. This file's header says its assertions are
+     * seed-independent invariants; these two are not, and they are the only two
+     * that are. 1004 was chosen by scanning for a seed that satisfies both at
+     * once. */
     const result = callTool(host, "walk", { direction: "east" });
     expect(result.text).toContain("There is a wall in the way!");
     expect(result.text).toContain("0 game turn(s) passed");

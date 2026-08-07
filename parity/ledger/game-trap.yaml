@@ -51,14 +51,22 @@ notes: >-
   Locked doors resolve through calc_unlocking_chance in the open command.
   The web renders revealed traps under objects/monsters.
 deferred:
-  - player_is_trapsafe and the OF save-flag equip learning ride the
-    playerHasFlag hook (rune knowledge, #13/#24) - default: no flags, no
-    trap immunity.
+  - "NOT deferred: the hook is supplied. session/game.ts wires playerHasFlag
+    to the live player flags, playerIsTrapsafe is ported, and equip learning
+    fires on BOTH upstream paths - OF_TRAP_IMMUNE (trap.ts, trap.c:515-518)
+    and the save_flags loop (trap.ts, trap.c:534-539). \"Default: no flags, no
+    trap immunity\" describes an unwired seam."
   - square_memorize_traps / the player's shadow cave (knowledge #24): the
     VISIBLE instance flag doubles as the render gate.
-  - no_light in the unlock/disarm penalties (light model); monster glyph
-    and web interactions in the monster AI (mon-move); trap-created
-    terrain effects that need unported effect handlers fizzle silently.
+  - "NOT deferred, in all three halves. no_light is ported
+    (game/cave-cmd.ts noLight, cave-view.c:914-917) and applied to the
+    unlock/disarm penalty. Monster glyph and web interactions are ported
+    (game/monster-turn.ts removes TRF_GLYPH on entry and runs the full
+    RF_PASS_WEB / RF_CLEAR_WEB arm). And nothing fizzles: every one of the 15
+    effects any trap.txt kind can run is implemented or partial in a LIVE
+    registry, classified as a whole surface by
+    game/trap-effect-coverage.test.ts - with a control proving the core-only
+    registry really does stub them, so the pass is not vacuous."
   - "NOT deferred: the trapdoor persistent-levels check reads the live
     birth_levels_persist from the option store (trap.ts pickTrap), and so
     does the is_quest check beside it. This row named the option system as
