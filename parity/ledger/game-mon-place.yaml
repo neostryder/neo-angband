@@ -66,8 +66,12 @@ deferred:
   - add_to_monster_rating and the cheat_hear OOD messages ride level
     feelings (#25); num_repro counting rides breeders; the PU_UPDATE_VIEW
     monster-light refresh rides the FOV consumers.
-  - Killed-unique max_num zeroes are session-lifetime only; persisting
-    them rides the save format (a lore/race-state section, #24).
+  - Killed-unique max_num zeroes SURVIVE a reload, and this row (and the
+    comment at session/game.ts:989 that echoed it) said otherwise. No
+    race-state save section was needed: the save already carries the lore, and
+    the load path re-derives maxNum = 0 for every UNIQUE with pkills > 0
+    (session/game.ts:3930-3939), which is exactly what load.c:532-535
+    rd_monster_memory does. Grip does not come back.
   - compact_monsters / monster_index_move ride the level-cap pressure path
     (the port's monster list grows on demand); wipe_mon_list beyond the
     racial-count half is the session's store swap.

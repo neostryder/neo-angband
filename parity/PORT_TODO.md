@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 213 of 338 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 217 of 338 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,9 +160,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `player-history`, `session-save`, `store-bind`, `store-maint`, `store-price`,
   `store-transact`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The tally, **read from the TSV rather than carried forward**: **117 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **121 `ported`,
   35 `stale-doc`, 18 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  9 `n-a`, 6 `partial` against **5** `real`**. **125 remain.**
+  9 `n-a`, 6 `partial` against **5** `real`**. **121 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -235,11 +235,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   DEFAULT rather than an unsupplied hook, and `onObject` / `onFeature` wired to
   the live floor and terrain. 200 -> 213 adjudicated, no feature work behind it.
 
-  **What remains in the open pile is mostly two citations**: 17 rows on `#24`
-  (object knowledge / ignore) and 15 on `#25` (presentation). Both have moved a
-  long way - 2.9 shipped the known-object pile, `obj/ignore.ts` is real, and the
-  unconditional-repaint divergence is ratified - so the same sweep should be run
-  on them next, one citation at a time rather than one file at a time.
+  **What remains in the open pile is mostly two citations**: `#24` (object
+  knowledge / ignore) and `#25` (presentation). Both have moved a long way - 2.9
+  shipped the known-object pile, `obj/ignore.ts` is real, and the
+  unconditional-repaint divergence is ratified - so the sweep continues there,
+  one citation at a time rather than one file at a time. The first four `#24`
+  rows checked all came back ported, and one of them was a **save-correctness
+  claim that was wrong in the reassuring direction**: "killed-unique max_num
+  zeroes are session-lifetime only" said a reloaded character could re-fight
+  Grip. They cannot. No race-state save section was ever needed - the save
+  carries the lore, and the load path re-derives `maxNum = 0` for every unique
+  with `pkills > 0`, exactly as `load.c:532-535` does. The comment at
+  `session/game.ts:989` had been repeating the row's claim inside the code.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
