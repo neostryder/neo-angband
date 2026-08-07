@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -172,8 +172,8 @@ is reachable in play and a test constructs the case that used to be wrong.**
   2 and five at 1. Two of `obj-randart`'s four are **5.5** in flight.
 
   The tally, **read from the TSV rather than carried forward**: **160 `ported`,
-  56 `stale-doc`, 31 `divergence`, 19 `note-is-fix`, 16 `not-a-deferral`,
-  11 `n-a`, 7 `partial` against **6** `real`**. **33 remain.**
+  56 `stale-doc`, 31 `divergence`, 20 `note-is-fix`, 16 `not-a-deferral`,
+  11 `n-a`, 7 `partial` against **5** `real`**. **33 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -190,15 +190,23 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
 
-  **Remove Curse can be pointed at a curse you have not learned.**
-  `item_tester_uncursable` reads `obj->known->curses`
-  (`effect-handler-general.c:162-165`), so upstream offers the spell only on
-  curses the player knows about. `effect-item.ts:583` reads the live
-  `obj.curses`, so an item with an unlearned curse is accepted as a target -
-  which both works when it should not and **tells the player the item is
-  cursed**. Exactly the auto-ignore defect's shape, one file over, and fixable
-  the same way: `shadow.curses` is already gated on `p->obj_k->curses[i]`.
-  `real` went 5 -> 6 recording it, which is the sweep doing its job.
+  **Remove Curse could be pointed at a curse you had not learned** - and the
+  row that named it named only half. `item_tester_uncursable` reads
+  `obj->known->curses` (`effect-handler-general.c:162-165`), so upstream offers
+  the spell only on curses the player knows about; the port read the live
+  `obj.curses`, so an unlearned curse made the item a valid target **and the
+  acceptance told the player it was cursed**. The half the row missed is that
+  `curse_menu` is gated too (`ui-curse.c:104-111`), so even a correctly-offered
+  item listed curses the player had never seen. Reading the twin closes both at
+  once. Exactly the auto-ignore defect's shape, one file over.
+
+  **The first mutant survived**: the effect env's `getItem` stub hands the
+  object over without consulting the tester, so the refusal test exercised only
+  the picker. `requestForEffect`'s predicate is now asserted directly. And three
+  fixture conditions had to be made real before any of it meant anything - the
+  object assessed, the rune learned, and the rune env backed by the actual curse
+  table, because the harness default is `[null]` and `objectKnownShadow`'s loop
+  never ran.
 
   **A row filed as "a UI redraw" that was not one.** `project-mon.c:929-932`
   reads `if (health_who == mon) redraw |= PR_HEALTH; else hurt_msg =
@@ -3312,7 +3320,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 75 citations, 56 `real` + 19
+2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20

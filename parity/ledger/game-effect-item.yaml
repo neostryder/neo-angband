@@ -77,17 +77,30 @@ deferred:
     the pick is already made. The stream is identical either way - nothing
     between the roll and the prompt draws - and showing an approximation would
     print a number the game then does not use.
-  - REAL, and re-measured 2026-08-07. item_tester_uncursable reads
-    obj->known->curses (effect-handler-general.c:162-165), so upstream offers
-    Remove Curse only on curses the player has LEARNED. game/effect-item.ts:583
-    reads obj.curses - the live ones - so an item whose curse is still unknown
-    is accepted as a target, which both works when it should not and TELLS the
-    player the item is cursed. Same shape as the auto-ignore defect closed on
-    2026-08-07 (obj-ignore.yaml), and now fixable the same way: the per-object
-    known twin exists (objectKnownShadow), and shadow.curses is already gated on
-    p.objKnown.curses[i], so the twin reports exactly the learned curses.
-    uncurse_object itself operates on the real curses in both, correctly - only
-    the TESTER is wrong. show_damage remains an option-layer item (#30).
+  - CLOSED (2026-08-07). Remove Curse now reads the known twin in BOTH places
+    upstream does, and the second one was not in the row.
+    (1) item_tester_uncursable (effect-handler-general.c:162-165) reads
+    obj->known->curses. game/effect-item.ts's tester read the live object, so an
+    item whose curse was still unknown was offered as a target - which both
+    worked when it should not and TOLD the player the item was cursed by
+    accepting it.
+    (2) The picker is gated too: curse_menu lists index i only when
+    obj->known->curses[i].power is in (0,100) AND player_knows_curse(p, i)
+    (ui-curse.c:104-111). The port built its candidate list from the live
+    obj.curses, so even a correctly-offered item would list curses the player
+    had never learned. Reading the twin covers both conditions at once, because
+    objectKnownShadow already gates each entry's power on p->obj_k->curses[i] -
+    which IS player_knows_curse.
+    uncurse_object operates on the REAL curse in both implementations, and still
+    does here. Two mutants, two kills, and the first one survived its first
+    test: the effect env's getItem stub hands the object over without consulting
+    the tester, so the refusal case exercised only the picker. requestForEffect's
+    predicate is now asserted directly.
+    Three fixture conditions had to be real for the tests to mean anything, all
+    of them upstream's: the object ASSESSED, the curse rune learned, and the rune
+    env backed by the real curse table - the harness default is [null], length 1,
+    so objectKnownShadow's loop never ran and the twin could not report a curse
+    whatever the player knew. show_damage remains an option-layer item (#30).
   - Both are wired. The total_weight upkeep is effect-item.ts:638
     (upkeep.totalWeight += newWeight - oldWeight), and history_lose_artifact is
     :629 - an artifact destroyed by acid or disenchantment fires
