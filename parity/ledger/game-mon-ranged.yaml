@@ -46,8 +46,14 @@ notes: >-
   (game/monster-turn.ts get_move_find_range); the frequencies and racial spell
   flags come from the bound race.
 deferred:
-  - The birth_ai_learn knowledge filter (unset_spells in remove_bad_spells): the
-    AI's memory of player resists; the option is off by default.
+  - CLOSED (2026-08-07). The birth_ai_learn knowledge filter IS ported and
+    wired. removeBadSpells is real (game/mon-ranged.ts, exercised at
+    mon-ranged.test.ts:36), and the smart-learn memory it filters on rides
+    game/mon-cast.ts:171, which reads the live option
+    (`state.options?.get("birth_ai_learn") ?? false`) rather than a constant.
+    Both sides are tested: mon-cast.test.ts:275 turns the option ON via an
+    OptionState override and :283 asserts nothing is learned with it off - so
+    the default-off case is a measured no-op, not an unimplemented one.
   - find_any_nearby_injured_kin is ported (game/mon-ranged.ts:121) and is the
     default the spell filter uses at :191, so HEAL_KIN is no longer dropped for
     want of a supplier.
@@ -55,13 +61,16 @@ deferred:
     the spell flag and counts cast_innate / cast_spell, and a fatal cast
     counts a death. become_aware for a camouflaged caster is NOW WIRED
     (session/game.ts installs state.becomeAware -> game/known.ts becomeAware
-    into installMonsterCasting's config); the failure / cast messages remain
-    injected hooks.
+    into installMonsterCasting's config, session/game.ts:1529-1535). CLOSED
+    (2026-08-07): the "failure / cast messages remain injected hooks" tail is
+    not a deferral either - it is this module's deps-injection shape, and every
+    hook is supplied at that same live call. Nothing here is owed.
   - The decoy target and the non-player-target witness path (square_isview along
     project_path): decoys and monster-vs-monster targeting are not modelled here.
-  - The session / web layer still needs to call installMonsterCasting during
-    startGame (with the effect registry, cast context and bound spells) to enable
-    casting in the shipped game; the core seam and integration are complete.
+  - CLOSED (2026-08-07). wireGame DOES call it: session/game.ts:1529, with
+    monSpellDeps (the effect registry, cast context and bound spells) and the
+    becomeAware hook. Monsters cast in the shipped game. This row described the
+    state of the tree on the day the seam was written and nobody came back.
 verified-by:
   - game/mon-ranged.test.ts (8 tests): monster_can_cast passes at 100% frequency
     and fails at 0% and when nice; make_ranged_attack casts an innate breath at

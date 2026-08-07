@@ -37,6 +37,8 @@ import {
 import type { MonsterDeathDeps } from "./mon-death.js";
 import { noticeStuff } from "./notice.js";
 import { addMon, makeRace, makeState } from "./harness.js";
+import { deleteMonster } from "./context.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
 
 /**
  * The upstream sequence for a monster whose drops were generated at placement
@@ -573,5 +575,57 @@ describe("monsterTakeTerrainDamage (mon-util.c L1327)", () => {
 
     monsterTakeTerrainDamage(state, mon, deathDeps(state));
     expect(mon.hp).toBe(40);
+  });
+});
+
+describe("delete_monster_idx preserves an unseen held artifact (mon-make.c:353-364)", () => {
+  /**
+   * A monster removed by anything that is NOT monster_death takes its held pile
+   * with it: banishment (effect-monster.ts), a despawning teleport
+   * (effect-teleport.ts), project_f's monster clear, level cleanup (world.ts).
+   * Upstream un-marks an artifact the player never identified so it can be
+   * generated again; without that the item is gone from the game AND flagged
+   * created, which is permanent.
+   */
+  function heldArtifact(state: GameState, mon: Monster, arts: ArtifactState) {
+    const art = objReg.artifacts.find((a): a is NonNullable<typeof a> => {
+      if (!a) return false;
+      return !!objReg.lookupKind(a.tval, a.sval);
+    });
+    expect(art, "fixture: the pack has an artifact").toBeDefined();
+    const kind = objReg.lookupKind(art!.tval, art!.sval)!;
+    const obj = objectPrep(state.rng, objReg, constants, kind, 0, "minimise");
+    obj.artifact = art!;
+    arts.markCreated(art!.aidx, true);
+    monsterCarry(mon.heldObj, obj, mon.midx);
+    return { art: art!, obj };
+  }
+
+  it("un-marks it created, so it can be generated again", () => {
+    const state = makeState({ seed: 606 });
+    state.artifacts = new ArtifactState(objReg.artifacts.length);
+    const mon = addMon(state, makeRace({ level: 10 }), loc(12, 9));
+    const { art, obj } = heldArtifact(state, mon, state.artifacts);
+
+    /* Ground truth: unidentified, and currently marked created. Without both
+     * the assertion below could hold for the wrong reason. */
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(0);
+    expect(state.artifacts.isCreated(art.aidx)).toBe(true);
+
+    deleteMonster(state, mon.midx);
+
+    expect(state.artifacts.isCreated(art.aidx)).toBe(false);
+  });
+
+  it("keeps an IDENTIFIED one marked created, so it is not duplicated", () => {
+    const state = makeState({ seed: 607 });
+    state.artifacts = new ArtifactState(objReg.artifacts.length);
+    const mon = addMon(state, makeRace({ level: 10 }), loc(12, 9));
+    const { art, obj } = heldArtifact(state, mon, state.artifacts);
+    obj.notice |= OBJ_NOTICE.ASSESSED; /* obj_is_known_artifact (obj-util.c:832) */
+
+    deleteMonster(state, mon.midx);
+
+    expect(state.artifacts.isCreated(art.aidx)).toBe(true);
   });
 });
