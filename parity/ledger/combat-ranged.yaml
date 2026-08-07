@@ -23,16 +23,34 @@ notes: >-
   hit.ts (test_hit, critical_shot) and brand-slay.ts (improve_attack_modifier,
   get_monster_brand_multiplier), and shares PlayerCombatState with melee.ts.
 deferred:
-  - The projectile path and command front-ends: ranged_helper, do_cmd_fire,
-    do_cmd_throw, do_cmd_fire_at_nearest (project_path, missile display events,
-    ammo/quiver selection, piercing via TMD_POWERSHOT, drop_near and the actual
-    application of breakage_chance).
-  - O-combat ranged (birth_percent_damage): o_ranged_damage, o_critical_shot,
-    and the o-ranged-critical constants/levels.
-  - Knowledge / learning: missile_learn_on_ranged_attack, equip_learn_on_
-    ranged_attack, learn_brand_slay_from_launch/throw.
-  - Temporary brands/slays (improve_attack_modifier obj == NULL path).
-  - Curse contributions to object_to_hit/to_dam/weight.
+  - PORTED. ranged_helper, do_cmd_fire, do_cmd_throw and do_cmd_fire_at_nearest
+    all live in game/ranged-cmd.ts (rangedHelper at :82, called at :329 and
+    :427), with the quiver in game/gear.ts, project_path in world/project.ts and
+    breakage_chance applied on the live path. This module's own header
+    (combat/ranged.ts:10-12) has said so for some time.
+  - PORTED. oRangedDamage and oCriticalShot exist (combat/ranged.ts:174,
+    combat/hit.ts:409) and are gated in makeRangedShot / makeRangedThrow at the
+    points upstream branches (player-attack.c L1249 / L1286). With
+    birth_percent_damage off the RNG draws are byte-identical to the standard
+    path.
+  - PORTED. missileLearnOnRangedAttack (obj/knowledge.ts:637) and
+    equipLearnOnRangedAttack are called from game/ranged-cmd.ts:164-167, and
+    learnBrandSlayFromLaunch / FromThrow are combat/brand-slay.ts:368.
+  - PORTED. improveAttackModifier takes the temporary brand/slay predicate on
+    its obj === null path (combat/brand-slay.ts:180-232, the `temp` argument);
+    the launcher and throw paths pass allow_temp = false, as upstream does.
+  - FIXED (2026-08-07), and it was a LIVE DEFECT, not a deferral. object_to_hit
+    / object_to_dam / object_weight_one read every active curse's template
+    bonus (obj-util.c:296-330). Melee was fixed on 2026-08-04; the ranged path
+    was left out, and because the curse table is an OPTIONAL TRAILING ARGUMENT
+    nothing failed - a cursed bow's or cursed ammo's to-hit and to-dam penalty
+    simply never reached a shot or a throw, while the same curse on a melee
+    weapon applied. curses is now threaded through chanceOfMissileHitBase,
+    chanceOfMissileHit, rangedDamage, oRangedDamage, makeRangedShot and
+    makeRangedThrow, and game/ranged-cmd.ts supplies state.curses at the live
+    call. combat/ranged.test.ts asserts the behaviour and
+    combat/object-bonus-curses.test.ts asserts the call site, because the call
+    site is the half that was missing.
 verified-by:
   - ranged.test.ts: ranged_damage launcher multiplier and launcher + slay
     multiplier; make_ranged_shot hit (launcher-multiplied damage) and miss

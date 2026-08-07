@@ -24,7 +24,7 @@
  */
 
 import type { Rng } from "../rng.js";
-import type { Brand, Slay } from "../obj/types.js";
+import type { Brand, Curse, Slay } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import type { Monster } from "../mon/monster.js";
 import type { Player } from "../player/player.js";
@@ -82,8 +82,9 @@ export function chanceOfMissileHitBase(
   state: PlayerCombatState,
   missile: GameObject,
   launcher: GameObject | null,
+  curses?: readonly (Curse | null)[] | null,
 ): number {
-  let bonus = objectToHit(missile);
+  let bonus = objectToHit(missile, curses);
   let chance: number;
 
   if (!launcher) {
@@ -96,7 +97,7 @@ export function chanceOfMissileHitBase(
         bonus * BTH_PLUS_ADJ;
     }
   } else {
-    bonus += state.toH + objectToHit(launcher);
+    bonus += state.toH + objectToHit(launcher, curses);
     chance = skill(state, SKILL.TO_HIT_BOW) + bonus * BTH_PLUS_ADJ;
   }
 
@@ -113,8 +114,10 @@ export function chanceOfMissileHit(
   launcher: GameObject | null,
   distance: number,
   monObvious: boolean,
+  curses?: readonly (Curse | null)[] | null,
 ): number {
-  const chance = chanceOfMissileHitBase(state, missile, launcher) - distance;
+  const chance =
+    chanceOfMissileHitBase(state, missile, launcher, curses) - distance;
   return monObvious ? chance : Math.trunc(chance / 2);
 }
 
@@ -132,6 +135,7 @@ export function rangedDamage(
   slay: number,
   brands: readonly (Brand | null)[],
   slays: readonly (Slay | null)[],
+  curses?: readonly (Curse | null)[] | null,
 ): number {
   let mult = launcher ? state.ammoMult : 1;
 
@@ -142,11 +146,11 @@ export function rangedDamage(
   }
 
   let dmg = rng.damroll(missile.dd, missile.ds);
-  dmg += objectToDam(missile);
+  dmg += objectToDam(missile, curses);
   if (launcher) {
-    dmg += objectToDam(launcher);
+    dmg += objectToDam(launcher, curses);
   } else if (missile.flags.has(OF.THROWING)) {
-    dmg *= 2 + Math.trunc(objectWeightOne(missile) / 12);
+    dmg *= 2 + Math.trunc(objectWeightOne(missile, curses) / 12);
   }
   dmg *= mult;
 
@@ -181,6 +185,7 @@ export function oRangedDamage(
   slay: number,
   brands: readonly (Brand | null)[],
   slays: readonly (Slay | null)[],
+  curses?: readonly (Curse | null)[] | null,
 ): RangedDamageOutcome {
   const mult = launcher ? state.ammoMult : 1;
   let dice = missile.dd;
@@ -206,9 +211,9 @@ export function oRangedDamage(
 
   /* Deadliness: missile to-dam always; launcher adds launcher to-dam + to_d;
    * a thrown throwing-weapon adds to_d; a plain thrown object adds neither. */
-  let deadliness = objectToDam(missile);
+  let deadliness = objectToDam(missile, curses);
   if (launcher) {
-    deadliness += objectToDam(launcher) + state.toD;
+    deadliness += objectToDam(launcher, curses) + state.toD;
   } else if (missile.flags.has(OF.THROWING)) {
     deadliness += state.toD;
   }
@@ -241,7 +246,7 @@ export function oRangedDamage(
     );
     dice += crit.addDice;
     msg = crit.msg;
-    dice *= 2 + Math.trunc(objectWeightOne(missile) / 12);
+    dice *= 2 + Math.trunc(objectWeightOne(missile, curses) / 12);
   }
 
   let dmg = rng.damroll(dice, sides);
@@ -266,11 +271,12 @@ export function makeRangedShot(
   distance: number,
   monObvious = true,
   percentDamage = false,
+  curses?: readonly (Curse | null)[] | null,
 ): RangedAttackResult {
   if (
     !testHit(
       rng,
-      chanceOfMissileHit(state, ammo, launcher, distance, monObvious),
+      chanceOfMissileHit(state, ammo, launcher, distance, monObvious, curses),
       mon.race.ac,
     )
   ) {
@@ -287,20 +293,24 @@ export function makeRangedShot(
   let dmg: number;
   let msg: HitType;
   if (!percentDamage) {
-    dmg = rangedDamage(rng, state, mon, ammo, launcher, mod.brand, mod.slay, brands, slays);
+    dmg = rangedDamage(
+      rng, state, mon, ammo, launcher, mod.brand, mod.slay, brands, slays, curses,
+    );
     const crit = criticalShot(
       rng,
       critActor(p, state),
       mon,
-      objectWeightOne(ammo),
-      objectToHit(ammo),
+      objectWeightOne(ammo, curses),
+      objectToHit(ammo, curses),
       dmg,
       true,
     );
     dmg = crit.damage;
     msg = crit.msg;
   } else {
-    const o = oRangedDamage(rng, state, mon, ammo, launcher, mod.brand, mod.slay, brands, slays);
+    const o = oRangedDamage(
+      rng, state, mon, ammo, launcher, mod.brand, mod.slay, brands, slays, curses,
+    );
     dmg = o.damage;
     msg = o.msg;
   }
@@ -330,11 +340,12 @@ export function makeRangedThrow(
   distance: number,
   monObvious = true,
   percentDamage = false,
+  curses?: readonly (Curse | null)[] | null,
 ): RangedAttackResult {
   if (
     !testHit(
       rng,
-      chanceOfMissileHit(state, obj, null, distance, monObvious),
+      chanceOfMissileHit(state, obj, null, distance, monObvious, curses),
       mon.race.ac,
     )
   ) {
@@ -348,20 +359,24 @@ export function makeRangedThrow(
   let dmg: number;
   let msg: HitType;
   if (!percentDamage) {
-    dmg = rangedDamage(rng, state, mon, obj, null, mod.brand, mod.slay, brands, slays);
+    dmg = rangedDamage(
+      rng, state, mon, obj, null, mod.brand, mod.slay, brands, slays, curses,
+    );
     const crit = criticalShot(
       rng,
       critActor(p, state),
       mon,
-      objectWeightOne(obj),
-      objectToHit(obj),
+      objectWeightOne(obj, curses),
+      objectToHit(obj, curses),
       dmg,
       false,
     );
     dmg = crit.damage;
     msg = crit.msg;
   } else {
-    const o = oRangedDamage(rng, state, mon, obj, null, mod.brand, mod.slay, brands, slays);
+    const o = oRangedDamage(
+      rng, state, mon, obj, null, mod.brand, mod.slay, brands, slays, curses,
+    );
     dmg = o.damage;
     msg = o.msg;
   }
