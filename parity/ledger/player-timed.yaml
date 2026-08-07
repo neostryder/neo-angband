@@ -36,16 +36,21 @@ notes: >-
   RESIST=2, VULN=3, PLAYER=4, TIMED_EFFECT=5) match player-timed.h. All duration
   and grade arithmetic matches upstream.
 deferred:
-  - The on_begin_effect / on_end_effect chains (a 0<->positive transition would
-    recurse into the effect interpreter) are surfaced via the onTransition hook;
-    wiring the actual chains waits until the effect layer is threaded in.
+  - CLOSED (2026-08-07). The effect layer was threaded in and the chains are
+    wired: session/game.ts:1452 supplies onTransition and :1469 picks
+    eff.onBeginEffect / eff.onEndEffect by direction, with a second supplier at
+    :1917 for the world clock. The recursion this row worried about is exactly
+    what the hook exists to break, and it does.
   - The temp_resist / oflag_syn "don't mention an effect that duplicates known
     player state" notify suppression needs obj_k element/flag knowledge; it only
     silences a message and never changes the duration; the queries ARE supplied
     on the live path (makeIncCheckQueries, game/player-side.ts).
-  - print_custom_message's weapon-name substitution (messages are emitted
-    verbatim; none of the ported effects substitute) and the disturb + PR_/PU_
-    redraw + handle_stuff bookkeeping (collapsed into the onNotify hook).
+  - CLOSED (2026-08-07). print_custom_message's substitution is ported:
+    player/timed.ts:57 expands {name} / {kind} / {s} / {is}, and :150 carries the
+    equipped weapon it reads them off, so the message names the actual weapon.
+    "None of the ported effects substitute" stopped being true when the timed
+    registry was completed. The disturb + PR_/PU_ + handle_stuff half is the
+    ratified repaint divergence.
   - player_inc_check's learning side effects (equip_learn_flag /
     equip_learn_element / update_smart_learn and the "You resist!" message) are
     part of the lore / knowledge system, which is ported.

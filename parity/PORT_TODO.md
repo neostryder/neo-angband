@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 263 of 339 done, 46 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 273 of 339 done, 48 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -160,16 +160,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-project-monster`, `mon-lore`, `mon-lore-describe`, `mon-predicate`,
   `mon-take-hit`, `obj-desc`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
-  `session-save`, `store-bind`, `store-maint`, `store-price`, `store-transact`,
+  `player-exp`, `player-spell`, `session-save`, `store-bind`, `store-maint`,
+  `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
   The files still open, largest first: `gen-rooms` 4, `obj-flavor` 4,
-  `obj-randart` 4, `player-exp` 4, `player-spell` 4, `player-timed` 4, then
-  thirteen at 3, five at 2 and three at 1.
+  `obj-randart` 4, then thirteen at 3, six at 2 and three at 1.
 
-  The tally, **read from the TSV rather than carried forward**: **154 `ported`,
-  37 `stale-doc`, 23 `divergence`, 16 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **6** `real`**. **76 remain.**
+  The tally, **read from the TSV rather than carried forward**: **159 `ported`,
+  41 `stale-doc`, 24 `divergence`, 16 `note-is-fix`, 10 `not-a-deferral`,
+  10 `n-a`, 7 `partial` against **6** `real`**. **66 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -185,6 +185,17 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **The three `player-*` files: ten rows, and not one was owed.** Every claim
+  in them had shipped and nobody came back. `expGain` on a first successful
+  cast, `overExert` on overcasting, `convert_mana_to_hp`, `TMD_FASTCAST`'s
+  three-quarter turn, the `PF_UNLIGHT` fail penalty's `square_islit` read, the
+  ranged/thrown kill sites' experience, the `on_begin_effect` / `on_end_effect`
+  chains, `print_custom_message`'s `{name}` / `{kind}` substitution - all live,
+  most of them supplied at `session/game.ts` and named in the module headers the
+  rows sat next to. The low-mana "Attempt it anyway?" prompt was filed as
+  "(get_check, UI)" and dismissed; it is real at `web/src/main.ts:3385`. **A
+  UI-layer item is still an item.**
 
   **A Wand of Polymorph did nothing at all.** `project_m` called
   `hooks.polymorph` and wireGame's `monster:` block never set it, so the spell
