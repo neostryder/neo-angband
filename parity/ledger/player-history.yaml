@@ -155,8 +155,9 @@ deferred:
     regeneration abandoning an artifact, store sales) - the ARTIFACT_LOST
     machinery and "(LOST)" display are implemented and tested but not yet
     triggered by any live game event.
-  - HIST_USER_INPUT (the take-notes command, cmd-misc.c:115) - no notes
-    command exists in the port yet.
+  - HIST_USER_INPUT is LIVE: the take-notes command exists in the web shell
+    (main.ts, historyAdd(..., HIST.USER_INPUT, ...)) and rest-steal-note.test.ts
+    pins it. This row's "no notes command exists in the port yet" is stale.
   - Store purchase of an artifact calling history_find_artifact
     (store.c:1928) - stores do not yet stock artifacts.
   - dump_history (ui-history.c:127-146, character-dump-to-file) - no

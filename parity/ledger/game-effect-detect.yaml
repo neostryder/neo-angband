@@ -41,8 +41,15 @@ deferred:
   - Chest-trap identification inside DETECT_TRAPS (obj->known pval) rides
     object knowledge; ignore_item_ok rides ignore (#24); the DTRAP border
     display, item/monster list redraws and detection sounds ride #25/#26.
-  - Invisible-monster lore learning (rf_on lore RF_INVISIBLE) and the
-    monster recall window ride lore (#24).
+  - Invisible-monster lore learning is PORTED (2026-08-06). detectMonsters now
+    does rf_on(lore->flags, RF_INVISIBLE) for every invisible monster it marks,
+    in the shared helper as upstream does - so an Evil-detection that sweeps up
+    a ghost teaches invisibility too, not just DETECT_INVISIBLE. "Rides lore
+    (#24)" had been spent: the lore store is game/known.ts's, and known.ts:932
+    turns the same bit on when the player SEES an invisible monster, so
+    detecting one taught nothing while seeing one taught everything. Still
+    deferred here: the monster recall WINDOW refresh (PR_MONSTER), which is
+    presentation (#25) and has no analogue in an immediate-mode renderer.
 verified-by:
   - game/effect-detect.test.ts (15 tests) - MAP_AREA memorizes a door
     and nearby walls but not plain floor and forgets misremembered

@@ -24,7 +24,7 @@
  * ledgered.
  */
 
-import { EF, FEAT, MFLAG, SQUARE, TF } from "../generated/index.js";
+import { EF, FEAT, MFLAG, RF, SQUARE, TF } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { loc } from "../loc.js";
 import { DDGRID_DDD } from "../loc.js";
@@ -45,6 +45,7 @@ import {
 } from "../mon/predicate.js";
 import { tvalIsMoney } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
+import { getLore } from "../mon/lore.js";
 import { monsterMax } from "./context.js";
 import type { GameState } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
@@ -405,8 +406,14 @@ const handleDETECT_OBJECTS: EffectHandler = (ctx) => {
 
 /**
  * detect_monsters: mark every non-camouflaged monster in the rectangle
- * that satisfies the predicate (MARK + SHOW, displayed until the mark
- * fades). Invisible-monster lore learning rides lore (#24).
+ * that satisfies the predicate (MARK + SHOW, displayed until the mark fades),
+ * and record RF_INVISIBLE in its lore when it is invisible.
+ *
+ * That last part used to say "rides lore (#24)", which had been untrue for a
+ * while: the lore store is game/known.ts's, and known.ts:932 turns the very same
+ * bit on when the player SEES an invisible monster. So detecting one taught the
+ * player nothing while seeing one taught them everything, and a Potion of
+ * Detect Invisible left no trace in the monster recall.
  */
 function detectMonsters(
   state: GameState,
@@ -428,6 +435,15 @@ function detectMonsters(
       mon.mflag.on(MFLAG.MARK);
       mon.mflag.on(MFLAG.SHOW);
       mon.mflag.on(MFLAG.VISIBLE);
+
+      /* Note invisible monsters (effect-handler-general.c: rf_on(lore->flags,
+       * RF_INVISIBLE)). Every detector runs this, not just DETECT_INVISIBLE:
+       * upstream puts it in the shared helper, so an Evil-detection that
+       * happens to catch a ghost teaches invisibility too. */
+      if (monsterIsInvisible(mon)) {
+        getLore(state.lore, mon.race).flags.on(RF.INVISIBLE);
+      }
+
       monsters = true;
     }
   }

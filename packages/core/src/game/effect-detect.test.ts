@@ -19,6 +19,7 @@ import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
+import { getLore } from "../mon/lore.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
@@ -324,7 +325,11 @@ describe("monster detection (detect_monsters L1768)", () => {
   it("DETECT_INVISIBLE_MONSTERS finds only the unseen", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const ghost = addMon(state, makeRace({ flags: [RF.INVISIBLE] }), loc(13, 10));
-    const orc = addMon(state, makeRace(), loc(12, 10));
+    /* A DISTINCT ridx, because getLore keys on it and makeRace spreads one
+     * baseRace - two harness races share an entry, so the "did NOT learn"
+     * assertion below would have been reading the ghost's own lore and passing
+     * on any implementation. */
+    const orc = addMon(state, { ...makeRace(), ridx: 4242 }, loc(12, 10));
     const msgs: string[] = [];
     registry().effectSimple(EF.DETECT_INVISIBLE_MONSTERS, env(state, msgs), {
       origin: sourcePlayer(),
@@ -334,6 +339,34 @@ describe("monster detection (detect_monsters L1768)", () => {
     expect(ghost.mflag.has(MFLAG.MARK)).toBe(true);
     expect(orc.mflag.has(MFLAG.MARK)).toBe(false);
     expect(msgs).toContain("You sense the presence of invisible creatures!");
+    /* rf_on(lore->flags, RF_INVISIBLE) in detect_monsters. The detector used to
+     * mark the ghost and teach nothing, so a Potion of Detect Invisible left no
+     * trace in the monster recall while merely SEEING the same ghost recorded
+     * the flag (known.ts:932). */
+    expect(getLore(state.lore, ghost.race).flags.has(RF.INVISIBLE)).toBe(true);
+    /* And only for the invisible one - the shared helper is inside the
+     * per-monster branch, not applied to the whole sweep. */
+    expect(getLore(state.lore, orc.race).flags.has(RF.INVISIBLE)).toBe(false);
+  });
+
+  it("teaches RF_INVISIBLE from ANY detector that catches a ghost", () => {
+    /* Upstream puts the rf_on inside the shared detect_monsters helper, so an
+     * Evil-detection that happens to sweep up an invisible monster teaches
+     * invisibility too. Putting it in the DETECT_INVISIBLE handler alone would
+     * pass the test above and still be wrong here. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const wraith = addMon(
+      state,
+      makeRace({ flags: [RF.INVISIBLE, RF.EVIL] }),
+      loc(13, 10),
+    );
+    registry().effectSimple(EF.DETECT_EVIL, env(state, []), {
+      origin: sourcePlayer(),
+      y: 10,
+      x: 10,
+    });
+    expect(wraith.mflag.has(MFLAG.MARK)).toBe(true);
+    expect(getLore(state.lore, wraith.race).flags.has(RF.INVISIBLE)).toBe(true);
   });
 
   it("reports the empty result when aware", () => {
