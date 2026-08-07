@@ -99,13 +99,18 @@ deferred:
     (obj/ignore.ts:207-223) reads the LIVE object, so quality-based auto-ignore
     classifies an item by its true values rather than by what the player knows:
     upstream will not quality-ignore an unknown item at all, and this will.
-  - The "lightweight seen-set" this row wanted EXISTS: EverseenKnowledge on
-    GameState (game/context.ts:361-368), fed by game/describe.ts:41-46's
-    markKindSeen / markEgoSeen on every live describe, exactly as obj-desc.c
-    L633-637 does, and persisted with the save. What is left is only to GATE
-    the two menus on it; until that lands they list every ego/kind with a valid
-    ignore type regardless of whether the player has met it, which can spoil
-    ego/flavour existence early.
+  - CLOSED (2026-08-07). The "lightweight seen-set" this row filed as a
+    follow-up had already shipped - EverseenKnowledge on GameState
+    (game/context.ts:361-368), fed by game/describe.ts:41-46's markKindSeen /
+    markEgoSeen on every live describe as obj-desc.c L633-637 does, and carried
+    in the save. What was missing was only the GATE, and both menus have it now:
+    egoIgnoreMenu takes a REQUIRED `seen` predicate (ui-options.c:1427 -
+    required rather than optional, because an unsupplied predicate would
+    silently restore the leak), and svalKindMenu's aware row is
+    `(everseen && !INSTA_ART) || money` exactly as ui-options.c:1801-1802 reads.
+    The UNAWARE row is deliberately NOT gated - "can unaware ignore anything"
+    (L1796) - and a test pins that, because gating it too looks like a tidier
+    rule and is wrong. Three mutants killed, including that over-fix.
 verified-by:
   - obj/ignore.test.ts (23 tests) - ignore_type_of maps tvals (sword ->
     SHARP, hafted -> BLUNT, ring -> RING, potion -> ITYPE_MAX);

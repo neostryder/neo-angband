@@ -1187,18 +1187,16 @@ export interface EgoIgnoreChoice {
  * the ignore type's name + " " + the stripped-prefix + short name, with a
  * leading '*' when already ignored (col+1, inside the brackets).
  *
- * SIMPLIFICATION: upstream also requires `ego->everseen` (only egos the
- * player has met appear in the list). The port tracks no per-ego "seen"
- * flag (obj/ignore.ts's KNOWLEDGE note already runs quality/ego ignoring
- * "fully known"), so every ego with a valid ignore type is listed
- * regardless of whether it has been encountered - this can reveal ego
- * existence early. Ledgered as a follow-up (a lightweight seen-ego set)
- * rather than blocking this gap.
+ * `ego->everseen` (ui-options.c:1427) gates the list: only egos the player has
+ * actually met appear, so the menu cannot reveal that an ego EXISTS before it
+ * has been seen. `seen` is required rather than optional - an unsupplied
+ * predicate would silently restore the leak this closes.
  */
 export function egoIgnoreMenu(
   egos: readonly EgoItem[],
   kinds: readonly ObjectKind[],
   settings: IgnoreSettings,
+  seen: (ego: EgoItem) => boolean,
 ): { items: MenuItem[]; choices: EgoIgnoreChoice[] } {
   interface Row {
     eidx: number;
@@ -1208,7 +1206,8 @@ export function egoIgnoreMenu(
   }
   const rows: Row[] = [];
   for (const ego of egos) {
-    if (!ego.name) continue;
+    /* `if (!ego->name || !ego->everseen) continue;` (ui-options.c:1427). */
+    if (!ego.name || !seen(ego)) continue;
     for (let itype = 1; itype < ITYPE_MAX; itype++) {
       if (!egoHasIgnoreType(ego, itype, kinds)) continue;
       let prefixLen = 0;
@@ -1252,10 +1251,12 @@ export interface SvalIgnoreRow {
  * alphabetical by the row's own name) except for the tvals upstream keeps
  * in sval (kind file) order.
  *
- * SIMPLIFICATION: upstream also gates the aware row on `kind->everseen`
- * (only kinds the player has laid eyes on get one). The port tracks no
- * per-kind "seen" flag independent of flavour awareness, so - as with the
- * ego menu - every ordinary kind of the tval gets an aware row.
+ * The aware row is gated on `kind->everseen` exactly as upstream is:
+ * `(kind->everseen && !KF_INSTA_ART) || tval_is_money_k(kind)`
+ * (ui-options.c:1801-1802). Without it the menu offers an "aware" toggle for
+ * every kind in the game, which tells the player what exists before they have
+ * met it. The UNAWARE row keeps upstream's rule and is NOT gated - "can unaware
+ * ignore anything" (L1796).
  */
 export function svalKindMenu(
   reg: ObjRegistry,
@@ -1277,7 +1278,8 @@ export function svalKindMenu(
       rows.push({ kind, aware: false, name: objectKindName(state, kind, false) });
     }
     const insta = kind.kindFlags.has(KF.INSTA_ART);
-    if (!insta || tvalIsMoney(kind.tval)) {
+    const everseen = state.everseen?.kindSeen(kind) ?? true;
+    if ((everseen && !insta) || tvalIsMoney(kind.tval)) {
       rows.push({ kind, aware: true, name: objectKindName(state, kind, true) });
     }
   }

@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 77 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 76 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 255 of 339 done, 44 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 256 of 339 done, 45 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -165,9 +165,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   4, `obj-flavor` 4, `obj-randart` 4, `player-exp` 4, `player-spell` 4,
   `player-timed` 4, then twelve at 3, five at 2 and two at 1.
 
-  The tally, **read from the TSV rather than carried forward**: **150 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **152 `ported`,
   35 `stale-doc`, 22 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **8** `real`**. **84 remain.**
+  10 `n-a`, 7 `partial` against **7** `real`**. **83 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -379,9 +379,15 @@ is reachable in play and a test constructs the case that used to be wrong.**
     So upstream will not quality-ignore an unidentified item and this will. The
     row called the guards "moot while the port has no per-object known twin" —
     true until 2.9 built one.
-  - **The everseen gate.** The "lightweight seen-set" that row wanted as a
-    follow-up already exists and is persisted; what is owed is only gating the
-    two ignore menus on it, so they stop listing egos the player has never met.
+  - **The everseen gate — fixed the same day.** The "lightweight seen-set" that
+    row filed as a follow-up had already shipped, so what was missing was only
+    the gate. `egoIgnoreMenu` now takes a **required** `seen` predicate
+    (`ui-options.c:1427`) — required rather than optional, because an unsupplied
+    predicate would silently restore the leak — and `svalKindMenu`'s aware row
+    is `(everseen && !INSTA_ART) || money`, exactly as `ui-options.c:1801-1802`
+    reads. The **unaware** row stays ungated: "can unaware ignore anything"
+    (L1796). A test pins that, because gating it too looks like the tidier rule
+    and is wrong — and the mutation run confirms it, killing that over-fix.
 
   `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
   the pile as a group found thirteen rows describing work that had already been
@@ -3170,7 +3176,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 77 citations, 58 `real` + 19
+2. the counts stated at the top (**68 items, 76 citations, 57 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
