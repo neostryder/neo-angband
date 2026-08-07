@@ -36,19 +36,31 @@ notes: >-
   driver performs the thrust. All integer maths (division, the *factor then
   /(randint1(6)+6) breath reduction) match upstream operation-for-operation.
 deferred:
-  - The project_m driver itself (L1328) and its three appliers -
-    project_m_monster_attack (L1034), project_m_player_attack (L1102, routes
-    through mon_take_hit), project_m_apply_side_effects (L1177) - land in the
-    next increment, wiring damage application, polymorph (poly_race +
-    place_new_monster), teleport (effect_simple EF_TELEPORT, ported in
-    game/effect-teleport.ts), and the
-    thrust.
-  - poly_race (L45) and thrust_away (L87): poly_race needs get_mon_num (monster
-    generation) and thrust_away needs monster_swap / feature projectability on a
-    live cave; both are supplied to the driver rather than ported here.
-  - The PR_HEALTH-tracked branch of MON_HEAL (a UI redraw) is dropped; the
-    "looks healthier" message branch is taken unconditionally, matching an
-    untracked monster.
+  - CLOSED (2026-08-07). "The next increment" arrived: game/project-monster.ts
+    is the project_m driver with all three appliers - project_m_monster_attack,
+    project_m_player_attack through monTakeHit, and
+    project_m_apply_side_effects. Damage application, teleport
+    (game/effect-teleport.ts) and the thrust (game/thrust.ts) are wired at
+    session/game.ts:1359-1362, and polymorph landed the same day as this
+    adjudication (game/poly.ts, poly_race + the delete/place swap).
+  - CLOSED (2026-08-07). Both are ported now and both are supplied. poly_race is
+    game/poly.ts polyRace over the live MonAllocTable (get_mon_num shipped long
+    ago); thrust_away is game/thrust.ts. "Supplied to the driver rather than
+    ported here" is still the right architecture - mon/ must not reach for
+    GameState - and is a statement about module boundaries, not a gap.
+  - CLOSED (2026-08-07), and this row was RIGHT in a way its own filing hid. It
+    reads as a redraw note, but project-mon.c:929-932 is an if/ELSE:
+
+        if (player->upkeep->health_who == context->mon)
+                player->upkeep->redraw |= (PR_HEALTH);
+        else context->hurt_msg = MON_MSG_HEALTHIER;
+
+    The redraw half IS a UI concern. The message half is not: upstream gives a
+    TRACKED monster - the one you just hit, or your target - no "looks
+    healthier" line at all. Taking the branch unconditionally printed one every
+    time. MonProjectContext.healthTracked now carries health_who and the driver
+    supplies it from state.healthWho. Two mutants, two kills, one on the
+    handler and one on the supply.
 verified-by:
   - mon/project-mon.test.ts (41 tests): the table has a handler for all 56 PROJ
     types; elemental resist/immunity math (ACID /9, FIRE immune /9 vs vulnerable
