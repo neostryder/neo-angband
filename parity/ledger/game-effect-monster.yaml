@@ -41,10 +41,20 @@ notes: >-
   chooser on the game env (banishSymbol); absent, the effect aborts, mirroring a
   cancelled prompt.
 deferred:
-  - The arena-level guard (player->upkeep->arena_level): arenas are not modelled.
-  - The PR_MONLIST / PR_HEALTH redraws are UI concerns.
-  - MDESC monster names and possessives (monster_desc) ride the display
-    layer (#25); the race name and "its" stand in.
+  - "NOT deferred: arenas are modelled (PORT_TODO 4.1) and the guards are
+    here - game/effect-monster.ts refuses inside single combat at both sites
+    upstream does."
+  - "PR_MONLIST / PR_HEALTH have no analogue by construction: the renderer is
+    immediate-mode and recomputes the panel every frame, so there is no
+    redraw-flag to raise. The state they gate IS tracked - state.healthWho
+    (game/context.ts) is set and cleared exactly where upstream sets and clears
+    health_who."
+  - "NOT deferred any more, and this was a live message defect rather than a
+    display nicety. monster_desc IS ported (mon/desc.ts) and the heal handlers
+    now call it: MDESC_STANDARD for the name and MDESC_PRO_VIS|MDESC_POSS for
+    the possessive, as effect-handler-attack.c:268-271 does. Standing in
+    mon.race.name printed \"kobold looks healthier.\" with no article and named
+    an UNSEEN monster outright where upstream renders a pronoun."
 verified-by:
   - game/effect-monster.test.ts (9 tests): through a real EffectRegistry
     (registerCoreHandlers + registerMonsterHandlers), EF_WAKE wakes a sleeping

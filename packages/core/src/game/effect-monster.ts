@@ -22,6 +22,7 @@
 import { EF, MON_TMD, TMD } from "../generated/index.js";
 import { distance, loc, locEq } from "../loc.js";
 import { monsterIsUnique, monsterIsVisible } from "../mon/predicate.js";
+import { MDESC, MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import { monsterWake } from "../mon/take-hit.js";
 import { MON_TMD_FLG_NOMESSAGE, monClearTimed } from "../mon/timed.js";
 import type { Monster } from "../mon/monster.js";
@@ -159,8 +160,15 @@ const handleMASS_BANISH: EffectHandler = (ctx) => {
 
 /**
  * The heal-and-cancel-fear tail shared by MON_HEAL_HP and MON_HEAL_KIN
- * (effect-handler-attack.c L275-299 / L336-354). The MDESC name rides the
- * display layer, so the race name stands in.
+ * (effect-handler-attack.c L275-299 / L336-354).
+ *
+ * The names are monster_desc, not the bare race name: MDESC_STANDARD for
+ * m_name (L268 / L328) and MDESC_PRO_VIS|MDESC_POSS for m_poss (L271 / L331).
+ * This used to say "the MDESC name rides the display layer" and stand in
+ * `mon.race.name` and a hardcoded "its" - so the messages read "kobold looks
+ * healthier." with no article, and an unseen monster was named outright
+ * instead of becoming "It". mon/desc.ts has been ported for a long time; the
+ * excuse outlived the subsystem.
  *
  * NOT shared: the messages. Upstream's two handlers look near-identical and
  * differ in exactly two places, both of which a shared body loses --
@@ -178,7 +186,8 @@ function healMonster(
   const { state } = env;
   const blind = (env.cast.playerActor.timed[TMD.BLIND] ?? 0) > 0;
   const seen = !blind && monsterIsVisible(mon);
-  const name = mon.race.name;
+  const name = monsterDesc(mon, MDESC_STANDARD);
+  const poss = monsterDesc(mon, MDESC.PRO_VIS | MDESC.POSS);
 
   /* Heal some */
   mon.hp += amount;
@@ -199,7 +208,7 @@ function healMonster(
   /* Cancel fear */
   if ((mon.mTimed[MON_TMD.FEAR] ?? 0) > 0) {
     monClearTimed(state.rng, mon, MON_TMD.FEAR, MON_TMD_FLG_NOMESSAGE);
-    ctx.env.messages?.msg(`${name} recovers its courage.`);
+    ctx.env.messages?.msg(`${name} recovers ${poss} courage.`);
   }
 
   ctx.ident = true;
