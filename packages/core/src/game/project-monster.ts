@@ -26,6 +26,7 @@
 import { MON_MSG, MON_TMD, PROJ } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
+import type { MonsterRace } from "../mon/types.js";
 import {
   monsterIsCamouflaged,
   monsterIsDestroyed,
@@ -88,10 +89,22 @@ export interface ProjectMonsterHooks {
   /** multiply_monster (PROJ_MON_CLONE). */
   multiplyMonster?: (mon: Monster) => boolean;
   /**
-   * poly_race + place_new_monster: replace the monster with a polymorphed one.
-   * Returns the new monster, or null if the polymorph failed / is unmodelled.
+   * poly_race (project-mon.c L45): the race to polymorph into. Returns the race
+   * it was GIVEN when nothing legal turned up, which is upstream's "no change"
+   * signal - so a hook that cannot pick returns its argument, not null.
+   *
+   * Split from the swap below because upstream queues MON_MSG_CHANGE between
+   * the two (L1223-1224), naming the old monster before deleting it. A single
+   * combined hook cannot reproduce that order.
    */
-  polymorph?: (mon: Monster, power: number, directPoly: boolean) => Monster | null;
+  polyRace?: (race: MonsterRace) => MonsterRace;
+  /**
+   * delete_monster_idx + place_new_monster (project-mon.c L1225-1229): swap the
+   * monster for one of `race` on the same grid. Returns whatever now stands
+   * there - null when placement failed, since the old monster is gone by then
+   * either way and the caller must stop using it.
+   */
+  replaceMonster?: (mon: Monster, race: MonsterRace) => Monster | null;
   /** effect_simple EF_TELEPORT: teleport the monster up to `distance` grids. */
   teleport?: (mon: Monster, distance: number) => void;
   /** thrust_away(centre, target, gridsAway): knock a monster back (PROJ_FORCE). */
@@ -215,10 +228,11 @@ export function projectMonster(
     ? monsterAttack(pctx, ctx, mIdx, seen)
     : playerAttack(pctx, ctx, mIdx, seen);
 
-  if (!monDied) applySideEffects(pctx, ctx, typ, flg, seen);
-
-  /* The side-effect appliers can change ctx.mon (polymorph) or remove it. */
-  const finalMon = ctx.mon;
+  /* The side-effect appliers can change the monster (polymorph) or leave the
+   * grid empty when the replacement could not be placed. */
+  const finalMon: Monster | null = monDied
+    ? null
+    : applySideEffects(pctx, ctx, typ, flg, seen);
   if (finalMon && !monDied) hooks.onUpdate?.(finalMon);
 
   return {
@@ -346,7 +360,7 @@ function applySideEffects(
   typ: number,
   _flg: number,
   seen: boolean,
-): void {
+): Monster | null {
   const { state, hooks } = pctx;
   const mon = ctx.mon;
 
@@ -355,7 +369,7 @@ function applySideEffects(
      * (project-mon.c L1197: monster_is_unique(mon) || player->arena_level). PR3. */
     if (monsterIsUnique(mon) || state.arenaLevel) {
       if (seen) hooks.message?.(mon, MON_MSG.UNAFFECTED, false);
-      return;
+      return mon;
     }
 
     if (seen) ctx.obvious = true;
@@ -373,14 +387,35 @@ function applySideEffects(
           false,
         );
       }
-      return;
+      return mon;
     }
 
-    const newMon =
-      hooks.polymorph?.(mon, ctx.doPoly, typ === PROJ.MON_POLY) ?? null;
-    if (newMon && newMon !== mon) {
+    /* `old` is the monster's REAL race: a shapechanged monster polymorphs from
+     * what it is underneath, not from the shape it is wearing (L1215). */
+    const old = mon.originalRace ?? mon.race;
+    const next = hooks.polyRace?.(old) ?? old;
+
+    if (next !== old) {
+      /* "Report the polymorph before changing the monster" (L1222-1224): the
+       * message names the OLD monster, and must be queued while it still
+       * exists so it precedes anything the swap itself queues. */
       if (seen) hooks.message?.(mon, MON_MSG.CHANGE, false);
-      ctx.mon = newMon;
+
+      const newMon = hooks.replaceMonster?.(mon, next) ?? null;
+      /* ctx.mon stays non-null for the handlers that read it; the REPLACEMENT
+       * is returned instead, because upstream's context->mon can be NULL here
+       * (square_monster on a failed placement, L1229) and widening the shared
+       * context to match would make every handler in project-mon.ts nullable
+       * for a case none of them can reach. */
+      if (newMon) ctx.mon = newMon;
+
+      /* "Note the appearance of the new one if it is visible but the old one
+       * wasn't" (L1232-1238). Absent until now, so a polymorph out of an unseen
+       * monster into a visible one said nothing at all. */
+      if (!seen && newMon && monsterIsVisible(newMon)) {
+        hooks.message?.(newMon, MON_MSG.APPEAR, false);
+      }
+      return newMon;
     } else if (seen) {
       hooks.message?.(mon, MON_MSG.MAINTAIN_SHAPE, false);
     }
@@ -403,4 +438,5 @@ function applySideEffects(
       }
     }
   }
+  return ctx.mon;
 }
