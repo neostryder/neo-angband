@@ -45,8 +45,34 @@ deferred:
     dead-uniques-stay-dead, the kill-history entry, treasure drops through
     monsterDeath, and quest completion (PORT_TODO 4.2). Floor-object piles,
     lore and experience are all built.
-  - polymorph needs monster generation (get_mon_num / place_new_monster); a
-    hook that no-ops until then.
+  - CLOSED (2026-08-07), and it had stopped being true long before. Monster
+    generation shipped: get_mon_num is MonAllocTable.getMonNum and
+    place_new_monster is game/mon-place.ts. What remained was that NOTHING
+    SUPPLIED THE HOOK - project_m called hooks.polymorph and wireGame's
+    `monster:` block never set it - so in the shipped game a Wand of Polymorph
+    (two objects in object.txt carry a MON_POLY effect, plus every CHAOS source)
+    rolled its saving throw, spent the charge and reported "maintains its shape"
+    every single time.
+    poly_race (project-mon.c:45) and the delete/place swap (L1225-1229) are now
+    game/poly.ts, supplied at session/game.ts as TWO hooks - polyRace and
+    replaceMonster - because upstream queues MON_MSG_CHANGE between them
+    (L1222-1224), naming the old monster while it still exists.
+    Reading the C to wire it turned up three more divergences in the calling
+    block, all fixed with it: (1) the source race is obj->original_race ?: race
+    (L1215), so a shapechanged monster polymorphs from what it really is - the
+    port read the current race; (2) the CHANGE message was queued AFTER the
+    swap; (3) MON_MSG_APPEAR (L1232-1238), "note the appearance of the new one
+    if it is visible but the old one wasn't", was absent entirely.
+    Nine mutants. Two survived and both were informative: a fixture of two
+    structurally identical makeRace({level: 5}) could not tell originalRace from
+    race under toEqual, and the RF_FORCE_DEPTH filter (L74-75) is unreachable on
+    stock data - all five FORCE_DEPTH races are also RF_UNIQUE and the unique
+    filter returns first - so that one is documented at the line rather than
+    tested with a counter that can only ever read zero.
+    ctx.mon is NOT widened to nullable: upstream's context->mon can be NULL here
+    (square_monster on a failed placement), but making the shared context
+    nullable produced 95 type errors across handlers that all run before this
+    point, so applySideEffects returns the replacement instead.
   - CLOSED (2026-08-07). Confirmed at the live supplier: session/game.ts:1359
     passes teleport -> teleportMonster and :1362 thrustAway -> thrustAway, in
     the same `monster:` hooks block as timedMessage, learnRaceFlag,

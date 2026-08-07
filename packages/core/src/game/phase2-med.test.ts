@@ -17,6 +17,7 @@ import { EF, MFLAG, MON_MSG, PROJ, SQUARE, TMD, TRF } from "../generated/index.j
 import { loc } from "../loc.js";
 import { FlagSet } from "../bitflag.js";
 import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
 import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
 import { registerCoreHandlers } from "../effects/handlers.js";
 import { bindProjections } from "../world/projection.js";
@@ -86,14 +87,129 @@ describe("PR3 polymorph is blocked on an arena level", () => {
     let polyCalls = 0;
     const hooks: ProjectMonsterHooks = {
       message: (_m, msg) => msgs.push(msg),
-      polymorph: () => {
+      polyRace: (race) => {
         polyCalls++;
-        return null;
+        return race;
       },
     };
     projectMonster(polyCtx(gs, hooks), 0, mon.grid, 200, PROJ.MON_POLY, PROJECT.KILL);
     expect(msgs).toContain(MON_MSG.UNAFFECTED);
     expect(polyCalls).toBe(0); // arena short-circuits before any polymorph.
+  });
+});
+
+/* --------- project_m's polymorph block, against project-mon.c:1213-1240 ------ */
+
+describe("project_m polymorph follows upstream's order (project-mon.c:1213-1240)", () => {
+  /** dam 200 makes the saving throw randint1(190) + 10, which a level-5 race
+   *  clears on every possible roll - so these test the block, not the throw. */
+  const DAM = 200;
+
+  it("polymorphs from the ORIGINAL race, not the shape it is wearing (L1215)", () => {
+    const gs = makeState({ seed: 3, playerGrid: loc(5, 5) });
+    /* DIFFERENT levels, not just different objects: two makeRace({level: 5})
+     * are structurally identical, so a toEqual against one of them passes
+     * against the other and the mutant that reads mon.race survives. */
+    const real = makeRace({ level: 5 });
+    const shape = makeRace({ level: 7 });
+    const mon = addMon(gs, shape, loc(5, 7), { hp: 40 });
+    mon.originalRace = real;
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    const asked: MonsterRace[] = [];
+    projectMonster(
+      polyCtx(gs, { polyRace: (race) => { asked.push(race); return race; } }),
+      0, mon.grid, DAM, PROJ.MON_POLY, PROJECT.KILL,
+    );
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toBe(real);
+    expect(asked[0]!.level).toBe(5);
+  });
+
+  it("queues MON_MSG_CHANGE BEFORE the swap (L1222-1227)", () => {
+    const gs = makeState({ seed: 4, playerGrid: loc(5, 5) });
+    const mon = addMon(gs, makeRace({ level: 5 }), loc(5, 7), { hp: 40 });
+    mon.mflag.on(MFLAG.VISIBLE);
+    const next = makeRace({ level: 6 });
+    const replacement = addMon(gs, next, loc(9, 9), { hp: 40 });
+
+    const order: string[] = [];
+    projectMonster(
+      polyCtx(gs, {
+        message: (_m, msg) => order.push(`msg:${msg}`),
+        polyRace: () => next,
+        replaceMonster: () => { order.push("replace"); return replacement; },
+      }),
+      0, mon.grid, DAM, PROJ.MON_POLY, PROJECT.KILL,
+    );
+
+    /* Upstream reports the polymorph while the OLD monster still exists, so the
+     * line names it correctly and precedes anything the swap itself queues. */
+    expect(order).toEqual([`msg:${MON_MSG.CHANGE}`, "replace"]);
+  });
+
+  it("announces a newly VISIBLE replacement of an unseen monster (L1232-1238)", () => {
+    const gs = makeState({ seed: 5, playerGrid: loc(5, 5) });
+    /* The old monster is NOT visible, so `seen` is false and no CHANGE line is
+     * queued - upstream still announces the new one's appearance. */
+    const mon = addMon(gs, makeRace({ level: 5 }), loc(5, 7), { hp: 40 });
+    const next = makeRace({ level: 6 });
+    const replacement = addMon(gs, next, loc(9, 9), { hp: 40 });
+    replacement.mflag.on(MFLAG.VISIBLE);
+
+    const msgs: number[] = [];
+    projectMonster(
+      polyCtx(gs, {
+        message: (_m, msg) => msgs.push(msg),
+        polyRace: () => next,
+        replaceMonster: () => replacement,
+      }),
+      0, mon.grid, DAM, PROJ.MON_POLY, PROJECT.KILL,
+    );
+
+    expect(msgs).toEqual([MON_MSG.APPEAR]);
+  });
+
+  it("stays silent when the replacement is invisible too (L1234)", () => {
+    const gs = makeState({ seed: 6, playerGrid: loc(5, 5) });
+    const mon = addMon(gs, makeRace({ level: 5 }), loc(5, 7), { hp: 40 });
+    const next = makeRace({ level: 6 });
+    const replacement = addMon(gs, next, loc(9, 9), { hp: 40 });
+
+    const msgs: number[] = [];
+    projectMonster(
+      polyCtx(gs, {
+        message: (_m, msg) => msgs.push(msg),
+        polyRace: () => next,
+        replaceMonster: () => replacement,
+      }),
+      0, mon.grid, DAM, PROJ.MON_POLY, PROJECT.KILL,
+    );
+
+    expect(msgs).toEqual([]);
+  });
+
+  it("reports MAINTAIN_SHAPE when poly_race found nothing (L1240)", () => {
+    const gs = makeState({ seed: 7, playerGrid: loc(5, 5) });
+    const mon = addMon(gs, makeRace({ level: 5 }), loc(5, 7), { hp: 40 });
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    const msgs: number[] = [];
+    let replaced = 0;
+    projectMonster(
+      /* poly_race returns its ARGUMENT when it exhausts its thousand tries
+       * (project-mon.c:79-80), which is upstream's "nothing changed". */
+      polyCtx(gs, {
+        message: (_m, msg) => msgs.push(msg),
+        polyRace: (race) => race,
+        replaceMonster: () => { replaced++; return null; },
+      }),
+      0, mon.grid, DAM, PROJ.MON_POLY, PROJECT.KILL,
+    );
+
+    expect(msgs).toContain(MON_MSG.MAINTAIN_SHAPE);
+    expect(replaced).toBe(0);
   });
 });
 
