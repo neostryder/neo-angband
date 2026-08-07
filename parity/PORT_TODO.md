@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 278 of 339 done, 49 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 282 of 339 done, 50 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -159,18 +159,18 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
   `game-project-monster`, `game-player-side`, `gen-rooms`, `mon-lore`,
   `mon-lore-describe`, `mon-predicate`,
-  `mon-take-hit`, `obj-desc`,
+  `mon-take-hit`, `obj-desc`, `obj-flavor`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
   `player-exp`, `player-spell`, `session-save`, `store-bind`, `store-maint`,
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-flavor` 4, `obj-randart` 4, then
-  thirteen at 3, five at 2 and four at 1.
+  The files still open, largest first: `obj-randart` 4, then thirteen at 3,
+  five at 2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
 
   The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  44 `stale-doc`, 25 `divergence`, 18 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **5** `real`**. **61 remain.**
+  46 `stale-doc`, 25 `divergence`, 18 `note-is-fix`, 11 `not-a-deferral`,
+  11 `n-a`, 7 `partial` against **5** `real`**. **57 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -186,6 +186,15 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **`obj-flavor`: a row proposing a follow-on that had already been done.**
+  It suggested migrating artifact names onto `randnameMake` + `nameSections`.
+  `artifactGenName` calls exactly that, and the syllable table the row spotted
+  is labelled two lines from its own definition as the no-corpus fallback. The
+  flavour `d_attr` row was the same shape - the attr is routed, and the module
+  header names the bug that routing fixed (a worn ring drawing BLACK). **A
+  leftover fallback next to a live implementation reads exactly like a
+  stand-in.**
 
   **`gen-rooms`: four rows describing a dungeon generator that no longer
   exists.** The nest/pit row said the inner room was "filled with any
