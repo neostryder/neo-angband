@@ -986,8 +986,11 @@ function wireGame(
     const expRace = mon.race;
     /* Shapechanged monsters revert on death (mon-util.c L1027). */
     monsterRevertShape(state, mon);
-    /* player_kill_monster: dead uniques stay dead (max_num = 0). The flag
-     * is session-lifetime; persisting it rides the save format (ledgered). */
+    /* player_kill_monster: dead uniques stay dead (max_num = 0). This is NOT
+     * session-lifetime, contrary to what this comment used to say: the save
+     * carries the lore, and the load path re-derives maxNum = 0 for every
+     * unique with pkills > 0 (see the SV-01 block below), exactly as
+     * load.c:532-535 does. Nothing about it rides an unbuilt save format. */
     if (mon.race.flags.has(RF.UNIQUE)) {
       /* bug-fixes #4245 ("Unique coming back to life?"): a unique can produce
        * multiple "Killed X" kill-history entries via shape-change / projection
