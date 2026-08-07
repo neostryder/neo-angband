@@ -14,8 +14,9 @@
  * L1332+) is a separate, later port.
  *
  * Faithful notes / approximations:
- * - The upstream file_putf(log_file, ...) logging is dropped throughout; it
- *   never affects any returned value (same convention as power.ts).
+ * - The upstream file_putf(log_file, ...) logging is PORTED (PORT_TODO 5.5),
+ *   through the randartLog sink in ./randart-log.js. It never affects any
+ *   returned value, so a run with no log open behaves identically.
  * - artifact_power (obj-randart.c L186) builds a "fake" object with
  *   make_fake_artifact (obj-make.c L728), which is object_prep(kind, 0,
  *   MAXIMISE) (obj-make.c L817) followed by copy_artifact_data (obj-make.c
@@ -431,8 +432,12 @@ export function artifactPower(
  * ratings as a baseline, and capture the per-set and per-tval power statistics
  * and base-item info.
  */
-export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
-  const aMax = reg.artifacts.length;
+export function storeBasePower(
+  reg: ObjRegistry,
+  arts: readonly (Artifact | null)[],
+  data: ArtifactSetData,
+): void {
+  const aMax = arts.length;
 
   data.maxPower = 0;
   data.minPower = INHIBIT_POWER + 1;
@@ -447,7 +452,7 @@ export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
   }
 
   for (let i = 0; i < aMax; i++) {
-    const art = reg.artifacts[i] ?? null;
+    const art = arts[i] ?? null;
     const power = art ? artifactPower(reg, art, "for original power") : 0;
     data.basePower[i] = power;
 
@@ -506,7 +511,7 @@ export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
 
   /* Store the number of different types, for use later. */
   for (let i = 0; i < aMax; i++) {
-    const art = reg.artifacts[i] ?? null;
+    const art = arts[i] ?? null;
     const tval = art ? art.tval : TV.NULL;
     switch (tval) {
       case TV.SWORD:
@@ -1284,12 +1289,13 @@ export function countAbilities(
  */
 export function collectArtifactCounts(
   reg: ObjRegistry,
+  arts: readonly (Artifact | null)[],
   data: ArtifactSetData,
 ): void {
-  const aMax = reg.artifacts.length;
+  const aMax = arts.length;
 
   for (let i = 0; i < aMax; i++) {
-    const art = reg.artifacts[i] ?? null;
+    const art = arts[i] ?? null;
 
     /* obj-randart.c:1066-1067 logs the index BEFORE any skip, so a cursed,
      * tval-0 or absent entry still prints its line. Upstream reads a_info[i]
@@ -1435,13 +1441,17 @@ export function adjustFreqs(data: ArtifactSetData): void {
  * frequencies of their abilities and base object kinds, building the dynamic
  * generation probabilities.
  */
-export function parseFrequencies(reg: ObjRegistry, data: ArtifactSetData): void {
+export function parseFrequencies(
+  reg: ObjRegistry,
+  arts: readonly (Artifact | null)[],
+  data: ArtifactSetData,
+): void {
   randartLog("\n****** BEGINNING GENERATION OF FREQUENCIES\n\n");
 
   /* Zero the frequencies for artifact attributes. */
   for (let i = 0; i < ART_IDX_TOTAL; i++) data.artProbs[i] = 0;
 
-  collectArtifactCounts(reg, data);
+  collectArtifactCounts(reg, arts, data);
 
   /* Big hack, reduce frequencies of sharp weapons. */
   for (let i = 0; i < TV_MAX; i++) {
@@ -1567,20 +1577,29 @@ export function artifactSetDataNew(reg: ObjRegistry): ArtifactSetData {
 }
 
 /**
- * Allocate an ArtifactSetData and run the measurement pipeline over the
- * registry's standard artifacts: store_base_power, then parse_frequencies
- * (which runs collect_artifact_data, rescale_freqs and adjust_freqs). Returns
- * the populated data. `rng` is threaded through for parity with upstream
- * do_randart (store_base_power's fake-object build consumes no RNG for the
- * standard, curse-free artifact set).
+ * Allocate an ArtifactSetData and run the measurement pipeline over `arts`:
+ * store_base_power, then parse_frequencies (which runs collect_artifact_data,
+ * rescale_freqs and adjust_freqs). Returns the populated data. `rng` is
+ * threaded through for parity with upstream do_randart (store_base_power's
+ * fake-object build consumes no RNG - see the module note on curse timeouts -
+ * so this holds for a generated, cursed set as well as the standard one).
+ *
+ * WHICH SET is a parameter because do_randart measures TWICE (obj-randart.c
+ * L3175-L3186): once over the standard artifacts, and once more over the
+ * finished ones. Upstream can leave it implicit because create_artifact_set
+ * overwrites the a_info global in place, so "the artifacts" means a different
+ * set the second time round without anything being passed. This port generates
+ * into a fresh array and leaves reg.artifacts alone, so the set being measured
+ * has to be handed in.
  */
 export function collectArtifactData(
   reg: ObjRegistry,
+  arts: readonly (Artifact | null)[],
   rng: Rng,
 ): ArtifactSetData {
   void rng;
   const data = artifactSetDataNew(reg);
-  storeBasePower(reg, data);
-  parseFrequencies(reg, data);
+  storeBasePower(reg, arts, data);
+  parseFrequencies(reg, arts, data);
   return data;
 }

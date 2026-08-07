@@ -555,10 +555,11 @@ export function createArtifactSet(
  * Upstream seeds the "quick" LCRNG (Rand_value = seed, Rand_quick = true), so
  * this port creates its Rng in quick mode and draws in upstream order:
  * measure the standard set (store_base_power + parse_frequencies via
- * collectArtifactData), then design every artifact (create_artifact_set). The
- * upstream log file, the post-generation measurement pass, and the optional
- * spoiler file (create_file / write_randart_entry) are all dropped as they
- * never affect an artifact field or an RNG draw (see module note).
+ * collectArtifactData), design every artifact (create_artifact_set), then
+ * measure the finished set the same way. The log file (randart.log), the
+ * post-generation measurement pass and the optional spoiler file (create_file /
+ * write_randart_entry) are all ported (PORT_TODO 5.5); none of them affects an
+ * artifact field or an RNG draw.
  */
 /** path_build(ANGBAND_DIR_USER, "randart.log") (obj-randart.c L3165). */
 export const RANDART_LOG = "randart.log";
@@ -622,11 +623,11 @@ export function doRandart(
     const nameProbs: NameProbs | null =
       tolkienWords && tolkienWords.length > 0 ? buildProb(tolkienWords) : null;
 
-    /* Store the original power ratings and determine generation probabilities.
-     * `extras` threads the curse TIMED_INC foil tables (gap 3.3) and the
-     * activation redundancy summarizer (gap 3.8); absent, both checks are
-     * skipped as before. */
-    const data = collectArtifactData(reg, rng);
+    /* Store the original power ratings and determine generation probabilities
+     * for the STANDARD set (L3175-L3178). `extras` threads the curse TIMED_INC
+     * foil tables (gap 3.3) and the activation redundancy summarizer (gap 3.8);
+     * absent, both checks are skipped as before. */
+    const data = collectArtifactData(reg, reg.artifacts, rng);
     if (extras?.timedFoil) data.timedFoil = extras.timedFoil;
     if (extras?.activationSummarize) {
       data.activationSummarize = extras.activationSummarize;
@@ -641,6 +642,24 @@ export function doRandart(
     createArtifactSet(reg, arts, data, rng, nameProbs);
 
     generated = arts;
+
+    /*
+     * LOOK AT THE FREQUENCIES ON THE FINISHED ITEMS (L3181-L3186).
+     *
+     * A whole second measurement pass over the set just generated, into a
+     * throwaway ArtifactSetData that upstream frees on the next line. Nothing
+     * reads it: its ONLY product is the text both passes write to the log, so
+     * a reader can compare the set the game just made against the standard one
+     * it was derived from. That is why it was invisible while the log was full
+     * of holes, and why it can be added now without changing an artifact - it
+     * runs after generation and draws no RNG (see collectArtifactData).
+     *
+     * `extras` is deliberately NOT applied here: upstream measures the finished
+     * set with a plain artifact_set_data_new, and both extras are generation-
+     * time checks that this pass never reaches.
+     */
+    collectArtifactData(reg, arts, rng);
+
     return arts;
   } finally {
     /* CLOSE (L3189-L3193). In a `finally` so a throw mid-generation cannot
