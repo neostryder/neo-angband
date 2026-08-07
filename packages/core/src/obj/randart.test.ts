@@ -4,7 +4,9 @@ import { ELEM, KF, OF } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
 import type { ObjPackJson } from "./types.js";
 import { buildCurseTimedFoil } from "./object.js";
-import { doRandart, artifactGenName, RANDNAME_TOLKIEN } from "./randart.js";
+import { doRandart, artifactGenName, RANDART_LOG, RANDNAME_TOLKIEN } from "./randart.js";
+import { HostDir, NULL_HOST } from "../host/io.js";
+import type { HostIo, WriteOutcome } from "../host/io.js";
 import {
   EFPROP,
   removeContradictory,
@@ -400,5 +402,58 @@ describe("remove_contradictory_activation (obj-randart.c L2420, gap 3.8)", () =>
       unsummarizedCount: 0,
     }));
     expect(art2.activation).not.toBeNull();
+  });
+});
+
+/**
+ * The log lines the add_* family emits quote names looked up out of
+ * object_property.txt and projection.txt. A lookup that misses degrades to
+ * "(unknown)" rather than crashing, which means a WRONG table produces a
+ * perfectly well-formed log full of nothing. The census test cannot see that -
+ * it reads source text - so run a real generation against the real content
+ * pack and read what came out.
+ */
+describe("randart.log names things, on a real run (PORT_TODO 5.5)", () => {
+  function runAndReadLog(seed: number): string {
+    const files = new Map<string, string>();
+    const io = {
+      ...NULL_HOST,
+      displayPath: (dir: HostDir, name: string) => `${dir}/${name}`,
+      exists: (dir: HostDir, name: string) =>
+        dir === HostDir.USER && files.has(name),
+      read: (dir: HostDir, name: string) =>
+        dir === HostDir.USER ? (files.get(name) ?? null) : null,
+      write: (dir: HostDir, name: string, text: string) => {
+        if (dir !== HostDir.USER) return "create-failed" as WriteOutcome;
+        files.set(name, text);
+        return "ok" as WriteOutcome;
+      },
+    } as unknown as HostIo;
+    doRandart(makeReg(), seed, undefined, undefined, io);
+    return files.get(RANDART_LOG) ?? "";
+  }
+
+  const log = runAndReadLog(0x5eed);
+
+  it("produced a log at all", () => {
+    /* Without this the two assertions below pass for free on an empty string. */
+    expect(log.length).toBeGreaterThan(10_000);
+    expect(log).toContain("Adding ability:");
+  });
+
+  it("never falls back to (unknown) - every lookup resolves", () => {
+    const bad = log
+      .split("\n")
+      .filter((l) => l.includes("(unknown)"))
+      .slice(0, 5);
+    expect(bad).toEqual([]);
+  });
+
+  it("quotes real property and element names, not codes", () => {
+    /* One from object_property.txt and one from projection.txt. Codes would be
+     * "OF_FEATHER_FALL" and "ELEC"; a table copied from list-elements.h would
+     * produce the latter. */
+    expect(log).toMatch(/Adding resistance to (acid|lightning|fire|cold|poison)/);
+    expect(log).not.toMatch(/Adding resistance to [A-Z_]+$/m);
   });
 });
