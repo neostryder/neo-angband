@@ -19,6 +19,8 @@ import type { MakeDeps } from "../obj/make.js";
 import { appendObjectCurse } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import { makeRuneEnv } from "../obj/knowledge.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { requestForEffect } from "./effect-item.js";
 import { makeState } from "./harness.js";
 import type { GameState } from "./context.js";
 import { basicPlayerActor } from "./project-cast.js";
@@ -266,7 +268,16 @@ describe("EF_RECHARGE (effect-handler-general.c L2127)", () => {
 });
 
 describe("EF_REMOVE_CURSE (effect-handler-general.c L1051)", () => {
-  /** A sword with one appendable curse; returns [state, sword, pick]. */
+  /**
+   * A sword with one appendable curse the player has LEARNED; returns
+   * [state, sword, pick].
+   *
+   * The learning is not decoration. item_tester_uncursable reads
+   * obj->known->curses (effect-handler-general.c:162-165) and the picker adds
+   * player_knows_curse (ui-curse.c:105-107), so Remove Curse cannot be aimed
+   * at a curse the player has never seen. An un-learned fixture would exercise
+   * only the refusal.
+   */
   function cursedSword(seed: number): [GameState, GameObject, number] {
     const state = makeState({ seed });
     const sword = makeObj(TV.SWORD);
@@ -275,8 +286,59 @@ describe("EF_REMOVE_CURSE (effect-handler-general.c L1051)", () => {
     expect(appendObjectCurse(state.rng, sword, pick, 30, objReg.curses)).toBe(
       true,
     );
+    /* Two conditions, both upstream's: the object must be ASSESSED (handled -
+     * obj-knowledge.c:1033-1035 returns base properties only before that) AND
+     * the curse rune must be learned (:1131-1153 gates each entry on
+     * p->obj_k->curses[i], which is player_knows_curse). */
+    sword.notice |= OBJ_NOTICE.ASSESSED;
+    state.actor.player.objKnown.curses[pick] = 1;
+    /* And the rune env has to KNOW about curses: objectKnownShadow walks
+     * env.curses to build the twin's list, and the harness default is [null] -
+     * length 1 - so the loop never runs and the twin reports no curse whatever
+     * the player has learned. Back it with the real table. */
+    state.runeEnv = makeRuneEnv(
+      () => null,
+      (v) => state.rng.randcalcVaries(v),
+      { curses: objReg.curses },
+    );
     return [state, sword, pick];
   }
+
+  it("the item TESTER gates on the known twin (effect-handler-general.c:162)", () => {
+    /* The env's getItem stub hands the object over without consulting the
+     * tester, so the refusal test below exercises only the picker. This asks
+     * requestForEffect's predicate directly - the one the real item prompt
+     * uses to decide what may even be offered. */
+    const [state, sword, pick] = cursedSword(5);
+    const tester = requestForEffect(EF.REMOVE_CURSE, 0, state)!.tester!;
+    expect(tester(sword), "a learned curse is offerable").toBe(true);
+
+    state.actor.player.objKnown.curses[pick] = 0;
+    expect(tester(sword), "an unlearned one is not").toBe(false);
+    /* Ground truth: the curse is still on the object either way, so the false
+     * above is the KNOWLEDGE gate and not a vanished curse. */
+    expect(sword.curses![pick]!.power).toBeGreaterThan(0);
+  });
+
+  it("refuses a curse the player has NOT learned (ui-curse.c:105-107)", () => {
+    /* The same sword with the knowledge withheld: upstream neither offers it
+     * nor lets the acceptance reveal that the item is cursed. */
+    const [state, sword, pick] = cursedSword(5);
+    state.actor.player.objKnown.curses[pick] = 0;
+    const msgs: string[] = [];
+
+    const used = registry().effectSimple(
+      EF.REMOVE_CURSE,
+      env(state, sword, msgs),
+      { origin: sourcePlayer(), diceString: "50" },
+    );
+
+    expect(used).toBe(false);
+    /* Ground truth: the curse is still there, so this is a refusal and not a
+     * fixture that never had one. */
+    expect(sword.curses).not.toBeNull();
+    expect(sword.curses![pick]!.power).toBeGreaterThan(0);
+  });
 
   it("removes a curse the spell is strong enough for", () => {
     const [state, sword, pick] = cursedSword(5);

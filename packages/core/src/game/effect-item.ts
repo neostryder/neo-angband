@@ -54,7 +54,7 @@ import {
 } from "../obj/knowledge.js";
 import { PN } from "../player/types.js";
 import { ODESC } from "../obj/desc.js";
-import { describeObject } from "./describe.js";
+import { describeObject, objectKnownView } from "./describe.js";
 import { updatePlayerObjectKnowledge } from "./known.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { egoApplyMagic, makeObject } from "../obj/make.js";
@@ -100,9 +100,17 @@ function enchantRequest(numAc: number): ItemRequest {
   };
 }
 
-/** item_tester_uncursable (obj-util.c): a removable (power in (0,100)) curse. */
-function uncursableTester(o: GameObject): boolean {
-  return !!o.curses?.some((c, i) => i > 0 && c.power > 0 && c.power < 100);
+/**
+ * item_tester_uncursable (effect-handler-general.c:162-174): at least one
+ * removable (power in (0,100)) curse.
+ *
+ * Takes the object's KNOWN twin, because upstream reads obj->known->curses.
+ * Passing the live object offers Remove Curse on a curse the player has not
+ * learned - which both works when it should not, and tells them the item is
+ * cursed by accepting it as a target.
+ */
+function uncursableTester(known: GameObject): boolean {
+  return !!known.curses?.some((c, i) => i > 0 && c.power > 0 && c.power < 100);
 }
 
 /**
@@ -133,7 +141,7 @@ export function requestForEffect(
       return {
         prompt: "Uncurse which item? ",
         reject: "You have no curses to remove.",
-        tester: uncursableTester,
+        tester: (o) => uncursableTester(objectKnownView(state, o).known),
         mode: { equip: true, inven: true, quiver: true, floor: true },
         curses: true,
       };
@@ -582,6 +590,8 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
    * Upstream tests the known twin; knowledge is rune-based here. */
   const obj = env.item?.getItem?.(requestForEffect(EF.REMOVE_CURSE, 0, state)!);
   if (!obj || !obj.curses) return false;
+  /* The twin the tester and the picker both read (ui-curse.c:105-107). */
+  const knownCurses = objectKnownView(state, obj).known.curses;
 
   /* old_weight / new_weight (effect-handler-general.c L182-183). A curse can
    * carry a weight modifier (object_weight_one, obj-util.c L280-288), so
@@ -594,9 +604,13 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
   const oldWeight = obj.number * objectWeightOne(obj, state.gear.curses);
   let newWeight = oldWeight;
 
-  /* get_curse: pick among the object's active curses. */
+  /* get_curse's menu (ui-curse.c:104-111) lists only curses the player KNOWS:
+   * it tests obj->known->curses[i].power AND player_knows_curse(p, i). Reading
+   * the twin covers both, because objectKnownShadow already gates each entry's
+   * power on p->obj_k->curses[i] - which IS player_knows_curse. The removal
+   * below then operates on the REAL curse, as uncurse_object does. */
   const active: number[] = [];
-  obj.curses.forEach((c, i) => {
+  knownCurses?.forEach((c, i) => {
     if (i > 0 && c.power > 0) active.push(i);
   });
   const pick = env.item?.chooseCurse
