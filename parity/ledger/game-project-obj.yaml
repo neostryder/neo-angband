@@ -30,11 +30,18 @@ deferred:
     unlockChest, imported at game/project-obj.ts:33 and applied in the
     PROJ.KILL_TRAP arm (:155-156), which unlocks a locked chest instead of
     destroying it.
-  - Mimic reveal (obj->mimicking_m_idx -> become_aware): mimics are not in
-    the live loop yet.
-  - The protected_obj parameter (the object that created the projection):
-    the engine's onObject hook does not thread it and no live caller
-    projects from an object yet.
+  - CLOSED (2026-08-07). Mimics ARE in the live loop, and this file does the
+    reveal: game/project-obj.ts:191-195 reads obj.mimickingMIdx and calls
+    state.becomeAware on the monster behind the fake item, exactly as upstream's
+    become_aware does when the object is destroyed. push_object's
+    unrevealed-mimic arm landed as PORT_TODO 2.14 and delete_monster_idx cleans
+    the fake item up (game/context.ts).
+  - N/A while nothing projects from an object (2026-08-07). protected_obj exists
+    upstream so a wand's own projection cannot destroy the wand; every projection
+    this port fires originates from a player, a monster or a trap, none of which
+    is an object on the floor. Recorded rather than removed: a mod adding an
+    object-sourced projection would need the parameter, and the seam is one
+    argument wide.
   - Three of the five are wired and two are ratified substitutions, so nothing
     is owed. Wired: ignore_item_ok (state.isIgnored, project-obj.ts:164 and
     :180), gear_to_label lettering (:291), and cmd_disable_repeat_floor_item
@@ -42,8 +49,10 @@ deferred:
     (objectKnownShadow) rather than stored, so there is no copy to update; and
     PU_BONUS / PR_EQUIP fall under the unconditional-repaint divergence at
     game/known.ts:153.
-  - inven_damage call sites in project-player.c (side effects computing
-    cperc from elemental damage) land with the project-player tail.
+  - CLOSED (2026-08-07). The project-player tail landed and brought them:
+    game/player-side.ts calls invenDamage for the elemental branches with the
+    cperc upstream computes, and game/mon-side.ts:232 supplies the same for
+    monster melee. Nothing here waits on a subsystem any more.
 verified-by:
   - game/project-world.test.ts: fire burns a flammable floor object while
     an EL_INFO_IGNORE object and an artifact resist; unrelated projections

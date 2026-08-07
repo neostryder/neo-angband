@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 306 of 339 done, 57 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 318 of 339 done, 61 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -157,10 +157,11 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
   `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
   `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
-  `game-project-monster`, `game-player-side`, `game-shape`, `gen-rooms`,
+  `game-project-monster`, `game-project-obj`, `game-project-player`,
+  `game-player-side`, `game-shape`, `gen-rooms`,
   `mon-lore`,
   `mon-lore-describe`, `mon-predicate`,
-  `mon-take-hit`, `mon-timed`, `obj-desc`, `obj-flavor`,
+  `mon-take-hit`, `mon-timed`, `obj-desc`, `obj-flavor`, `obj-make`, `options`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
   `player-exp`, `player-spell`, `player-take-hit`, `project-mon`,
   `project-path`, `projection-data`, `session-save`,
@@ -168,12 +169,13 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-randart` 4, then four at 3, six at
-  2 and five at 1. Two of `obj-randart`'s four are **5.5** in flight.
+  The files still open, largest first: `obj-randart` 4, then six at 2 and five
+  at 1. Two of `obj-randart`'s four are **5.5** in flight, so **12 files and 21
+  rows** are all that is left.
 
-  The tally, **read from the TSV rather than carried forward**: **160 `ported`,
-  56 `stale-doc`, 31 `divergence`, 20 `note-is-fix`, 16 `not-a-deferral`,
-  11 `n-a`, 7 `partial` against **5** `real`**. **33 remain.**
+  The tally, **read from the TSV rather than carried forward**: **161 `ported`,
+  64 `stale-doc`, 31 `divergence`, 20 `note-is-fix`, 18 `not-a-deferral`,
+  12 `n-a`, 7 `partial` against **5** `real`**. **21 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -189,6 +191,13 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **Twelve rows across four files, and the only interesting one was a comment
+  I nearly took on trust.** `game-project-player` said the decoy-hit branch was
+  "omitted"; the source comment two lines away said it had been *relocated* to
+  the cast layer. Both cannot be right, and the comment was - `project-cast.ts`
+  tests the decoy grid and calls `destroyDecoy`. A claim in a comment is worth
+  exactly what checking it costs, which here was one grep.
 
   **Remove Curse could be pointed at a curse you had not learned** - and the
   row that named it named only half. `item_tester_uncursable` reads
