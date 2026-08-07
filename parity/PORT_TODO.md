@@ -184,10 +184,20 @@ is reachable in play and a test constructs the case that used to be wrong.**
   regression rather than a stream shift, so it was measured instead of
   asserted. Over an identical 15,000-seed sweep: **137/15000 (0.91%) stranded
   before, 22/15000 (0.15%) after**, depth 1 going 24 to 0. The wart is retained
-  and re-pinned with all 22, and the note says plainly that the six-fold drop
-  is **not** fully explained - the streamer's own edits are wall-to-wall and
-  cannot change reachability, so it arrives through the shifted stream, and
-  which of rubble / stairs / objects dominates was not isolated.
+  and re-pinned with all 22.
+
+  **The six-fold drop was left unexplained here, and has since been explained.**
+  Re-running both sweeps and classifying each stranding by mechanism - is the
+  sealed stair `SQUARE_VAULT`, and is the region it is sealed into vault to the
+  last grid, which is the only thing `join_region` refuses to dig - splits them
+  cleanly: **before, 137 = 33 upstream + 104 port defect; after, 22 = 22
+  upstream + 0 port defect.** It was never a stream shift. A secret door is
+  walkable and a magma vein is not, so every room whose only link to the level
+  was a secret door got bricked up with its stairs inside, one of them 2,750
+  grids of a depth-1 level. The 33 -> 22 residual is the stream shift, and it is
+  small. `gen.test.ts`' control now runs that classifier on every seed, so a
+  future stranding that is not upstream's fails the suite instead of being
+  written off as a re-pin.
 
   The re-pin nearly shipped a second defect of its own: 22 hand-written
   direction labels ("both", "up stair sealed off") that were guesses. Derived,

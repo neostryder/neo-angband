@@ -465,8 +465,8 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
   it("the saveNoiseScent seam decides whether the heatmaps ride the save", () => {
     /*
      * Core's side of the seam only. Persisting noise/scent is the bug-fixes mod's
-     * patch (#4605, "bugfix.noiseScentSave"), its code is in
-     * packages/web/mods/bug-fixes/hooks.ts and the flag->hook mapping is proven
+     * patch (#4605, "bugfix.noiseScentSave"), its code is in the
+     * neo-angband-mod-bug-fixes repo and the flag->hook mapping is proven
      * there; core keeps upstream's behaviour, which is to omit them.
      *
      * FAITHFUL (no mod loaded): the heatmaps are transient and a reload starts

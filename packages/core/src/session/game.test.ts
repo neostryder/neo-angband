@@ -474,8 +474,8 @@ describe("startGame (new-game assembly)", () => {
      * Core's side of the seam only: it offers every history entry to the hook and
      * says whether the kill is a re-kill, and it holds no opinion about it.
      * SUPPRESSING the duplicate is the bug-fixes mod's patch (#4245,
-     * "bugfix.uniqueKillHistory"), whose code and proof live in
-     * packages/web/mods/bug-fixes/.
+     * "bugfix.uniqueKillHistory"), whose code and proof live in the
+     * neo-angband-mod-bug-fixes repo.
      */
     const uniqueFlags = new FlagSet(RF_SIZE);
     uniqueFlags.on(RF.UNIQUE);
