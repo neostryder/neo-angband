@@ -65,8 +65,13 @@ deferred:
     (2026-08-07): the "failure / cast messages remain injected hooks" tail is
     not a deferral either - it is this module's deps-injection shape, and every
     hook is supplied at that same live call. Nothing here is owed.
-  - The decoy target and the non-player-target witness path (square_isview along
-    project_path): decoys and monster-vs-monster targeting are not modelled here.
+  - HALF SPENT (2026-08-07). The decoy IS modelled and the AI targets it:
+    game/mon-ranged.ts:66-72 returns the decoy grid from targetDist / targetGrid
+    when monsterIsDecoyed, and :354 passes state.decoy to projectable so a bolt
+    stops there. What remains is narrow and named in the code itself
+    (mon-ranged.ts:268): "the witness path for a non-player target is always the
+    player on this path" - monster-vs-monster casting does not compute
+    square_isview from the real victim. That is the owed part.
   - CLOSED (2026-08-07). wireGame DOES call it: session/game.ts:1529, with
     monSpellDeps (the effect registry, cast context and bound spells) and the
     becomeAware hook. Monsters cast in the shipped game. This row described the

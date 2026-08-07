@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 74 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 75 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 318 of 339 done, 61 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 333 of 339 done, 70 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -169,13 +169,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-randart` 4, then six at 2 and five
-  at 1. Two of `obj-randart`'s four are **5.5** in flight, so **12 files and 21
-  rows** are all that is left.
+  **Three files and six rows are all that is left.** `obj-randart` 4 - two of
+  them **5.5** in flight - plus one row each in `obj-model` and `player-timed`,
+  both deliberately left open rather than guessed: whether `object_similar`
+  reads the known twin for its OSTACK_LIST checks, and whether the
+  `temp_resist` / `oflag_syn` notify suppression is implemented. Each needs a
+  read I have not done.
 
   The tally, **read from the TSV rather than carried forward**: **161 `ported`,
-  64 `stale-doc`, 31 `divergence`, 20 `note-is-fix`, 18 `not-a-deferral`,
-  12 `n-a`, 7 `partial` against **5** `real`**. **21 remain.**
+  74 `stale-doc`, 35 `divergence`, 20 `note-is-fix`, 18 `not-a-deferral`,
+  12 `n-a`, 8 `partial` against **5** `real`**. **6 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -191,6 +194,21 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **The last fifteen unblocked rows: "next increment" fifteen times over.**
+  Every one named a subsystem it was waiting for, and every subsystem had
+  landed - EF_SUMMON with monster generation, `do_mon_spell` and
+  `choose_attack_spell` with the effect stack, `mon_create_drop` with the
+  monster inventory, `square_forget` with square-memory, the real
+  `PlayerProjActor` with `calc_bonuses`, `total_weight` with 1.2, `PN_IGNORE`
+  with 1.1, the glyph's `push_object` with the traps. **A deferral that names
+  its blocker is a claim with an expiry date, and nothing expires it.**
+
+  The one that did not fully close is `game-mon-ranged`, and it is `partial`
+  rather than closed because the code says so itself: `mon-ranged.ts:268` reads
+  "the witness path for a non-player target is always the player on this path".
+  The decoy half is spent; monster-vs-monster casting still does not compute
+  `square_isview` from the real victim.
 
   **Twelve rows across four files, and the only interesting one was a comment
   I nearly took on trust.** `game-project-player` said the decoy-hit branch was
@@ -3329,7 +3347,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 74 citations, 55 `real` + 19
+2. the counts stated at the top (**68 items, 75 citations, 55 `real` + 20
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
