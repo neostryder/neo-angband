@@ -80,9 +80,13 @@ deferred:
   - panel_contains in target_sighted and restrict_to_panel in
     target_get_monsters are injected (panels are UI state; the default
     accepts everything / scans max_range as the upstream else-branch).
-  - ignore_known_item_ok in target_accept (the ignore system is a later
-    #24 slice); every remembered object is interesting for now. The
-    unknown_item_kind marker is the KnownMap's null-glyph memory.
+  - PORTED (2026-08-07). target_accept now scans the remembered pile PER OBJECT
+    (target.c:347-353) and applies ignore_known_item_ok through state.isIgnored,
+    so a grid holding nothing but ignored junk is no longer an interesting
+    target. A `sensed` entry always accepts, because it IS upstream's
+    unknown_item_kind - you cannot have chosen to ignore what you have not
+    identified. Both halves it needed had landed: the per-object remembered pile
+    (PORT_TODO 2.9) and obj/ignore.ts.
   - monster_race_track in target_set_closest rides monster lore (#24);
     healthWho covers health_track. project.c's health_track on a struck
     visible monster (L978) and player-attack.c's ranged-fire targeting
