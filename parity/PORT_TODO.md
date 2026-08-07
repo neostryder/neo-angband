@@ -140,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 282 of 339 done, 50 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 291 of 339 done, 53 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -157,20 +157,22 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-effect-terrain`, `game-floor`, `game-gear`, `game-known`,
   `game-mon-cmd`, `game-mon-group`, `game-mon-list`, `game-player-path`,
   `game-player-side`, `game-thrust`, `game-trap`, `gen-cave`, `gen-framework`,
-  `game-project-monster`, `game-player-side`, `gen-rooms`, `mon-lore`,
+  `game-project-monster`, `game-player-side`, `game-shape`, `gen-rooms`,
+  `mon-lore`,
   `mon-lore-describe`, `mon-predicate`,
-  `mon-take-hit`, `obj-desc`, `obj-flavor`,
+  `mon-take-hit`, `mon-timed`, `obj-desc`, `obj-flavor`,
   `obj-ignore`, `obj-knowledge`, `obj-power`, `obj-value`, `player-history`,
-  `player-exp`, `player-spell`, `session-save`, `store-bind`, `store-maint`,
+  `player-exp`, `player-spell`, `player-take-hit`, `session-save`,
+  `store-bind`, `store-maint`,
   `store-price`, `store-transact`,
   `ui-display`, `ui-entry`, `ui-player`, `wizard-debug`.
 
-  The files still open, largest first: `obj-randart` 4, then thirteen at 3,
-  five at 2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
+  The files still open, largest first: `obj-randart` 4, then ten at 3, five at
+  2 and four at 1. Two of `obj-randart`'s four are **5.5** in flight.
 
   The tally, **read from the TSV rather than carried forward**: **159 `ported`,
-  46 `stale-doc`, 25 `divergence`, 18 `note-is-fix`, 11 `not-a-deferral`,
-  11 `n-a`, 7 `partial` against **5** `real`**. **57 remain.**
+  51 `stale-doc`, 27 `divergence`, 18 `note-is-fix`, 13 `not-a-deferral`,
+  11 `n-a`, 7 `partial` against **5** `real`**. **48 remain.**
 
   **`obj-ignore` closed, and the last of it was a live defect.**
   `ignore_level_of` and `object_is_ignored` read the LIVE object where upstream
@@ -186,6 +188,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   hand-rolled `{known: obj, fullyKnown: true}` passed all 4516 core tests, so
   `session/ignore-known-wiring.test.ts` boots a real game and asserts
   `state.isIgnored` rather than trusting the unit tests' own views.
+
+  **A shapechanged player attacks with the normal path upstream too.** The
+  `game-shape` row said the "shape unarmed attack itself" rode the combat layer
+  and that a shapechanged player "still attacks with the normal unarmed path" -
+  as a defect. `player-attack.c:830-838` is the entire branch: pick one of
+  `p->shape->blows` at random and `strcpy` its name over `verb`. The to-hit
+  roll, the damage and the criticals are the ordinary path, for a shapechanged
+  player as for anyone else. The port does exactly that substitution, draw
+  included at zero damage. **The third row this pass to describe upstream's own
+  behaviour as a gap.**
 
   **`obj-flavor`: a row proposing a follow-on that had already been done.**
   It suggested migrating artifact names onto `randnameMake` + `nameSections`.
