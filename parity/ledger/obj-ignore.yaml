@@ -72,12 +72,17 @@ notes: >-
   computes the base trait's minimise via a shared deterministic Rng (the
   minimise aspect draws no randomness).
 deferred:
-  - Autoinscription (rune_autoinscribe / get_autoinscription /
-    apply_autoinscription / autoinscribe_pack) and the per-item context
-    ignore menu (textui_cmd_ignore_menu) - out of scope for the
-    configuration-menu gap; ledgered as follow-ups.
-  - object_ignore_flavor_of (L370) - the auto-ignore-on-first-sight hook,
-    a separate obj-knowledge.c surface from the menu/ignore_drop pair.
+  - BOTH PORTED. apply_autoinscription is a seam at game/context.ts:259 (runes
+    first), covered by game/obj-cmd.test.ts:737, and get_autoinscription reads
+    the per-game AutoinscriptionRegistry. textui_cmd_ignore_menu is the whole
+    'k' / ^D flow in web/src/ignore-menu.ts - item pick, menu build, and every
+    action arm.
+  - PORTED, and it is not an "auto-ignore-on-first-sight hook" - upstream's only
+    caller is the ignore MENU's IGNORE_THIS_FLAVOR arm (ui-object.c:1806). The
+    port inlines the same two-line body at web/src/ignore-menu.ts:241-247:
+    kindIgnoreWhenAware when the flavour is known, kindIgnoreWhenUnaware when it
+    is not. A grep for the C name finds nothing here, which is part of why this
+    row survived - the port spells it as the branch, not as the function.
   - The PN_IGNORE notice pass EXISTS as of PORT_TODO 1.1: PlayerUpkeep.notice
     is a real bitfield, game/notice.ts:30 noticeStuff is the only thing that
     clears a bit, and its PN_IGNORE branch calls game/ignore-cmd.ts's drop pass
@@ -85,14 +90,22 @@ deferred:
     right and is worth keeping: the port applies settings immediately on read,
     so the deferred flag is belt-and-braces rather than the only trigger. The
     ignore redraw / EVENT signals are the ratified repaint divergence.
-  - object_is_ignored's !obj->known / object_fully_known guards are moot
-    while the port has no per-object known twin (everything is known), so
-    ignore_level_of always takes the fully-known branch.
-  - "everseen" gating on the ego menu and the sval menu's aware rows
-    (ego->everseen / kind->everseen) - the port tracks no per-ego/per-kind
-    "seen" flag, so every ego/kind with a valid ignore type is listed
-    regardless of whether the player has encountered it yet (can spoil
-    ego/flavour existence early). A lightweight seen-set is a follow-up.
+  - THIS STOPPED BEING TRUE AT PORT_TODO 2.9, and it has a behavioural
+    consequence, so it is owed rather than moot. The port HAS a per-object known
+    twin now (objectKnownShadow, synthesised on demand). Upstream's
+    ignore_level_of reads the TWIN throughout - `if (!obj->known) return
+    IGNORE_MAX` first (obj-ignore.c:469), then obj->known->modifiers[i] and
+    obj->known->to_h / to_d / to_a (L475-484). The port's ignoreLevelOf
+    (obj/ignore.ts:207-223) reads the LIVE object, so quality-based auto-ignore
+    classifies an item by its true values rather than by what the player knows:
+    upstream will not quality-ignore an unknown item at all, and this will.
+  - The "lightweight seen-set" this row wanted EXISTS: EverseenKnowledge on
+    GameState (game/context.ts:361-368), fed by game/describe.ts:41-46's
+    markKindSeen / markEgoSeen on every live describe, exactly as obj-desc.c
+    L633-637 does, and persisted with the save. What is left is only to GATE
+    the two menus on it; until that lands they list every ego/kind with a valid
+    ignore type regardless of whether the player has met it, which can spoil
+    ego/flavour existence early.
 verified-by:
   - obj/ignore.test.ts (23 tests) - ignore_type_of maps tvals (sword ->
     SHARP, hafted -> BLUNT, ring -> RING, potion -> ITYPE_MAX);
