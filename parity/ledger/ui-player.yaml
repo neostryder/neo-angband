@@ -85,7 +85,12 @@ deferred:
     the session wires the real player_state values):
     - fullName (default ""): player->full_name; the port Player has no name
       field (only history).
-    - restingTurn (default 0): player->resting_turn (not on the port Player).
+    - restingTurn: DERIVED, and the counter is now INCREMENTED (PORT_TODO
+      3.13). char-sheet.ts:201 reads state.restingTurn; web/main.ts:4845 bumps
+      it per rested turn, which is player_resting_step_turn. Both halves were
+      missing, so the sheet showed 0 forever - and a seam with no supplier and
+      no producer reads exactly like a feature that does not exist. Distinct
+      from resting.turnsRested, which is the x2-regen gate.
     - weightRemaining (default 0): weight_remaining(player); the encumbrance
       formula is ported (weightLimit, player/calcs.ts:493) and Burden reads
     upkeep.totalWeight (game/char-sheet.ts:409); a caller with no derived state
@@ -103,14 +108,18 @@ deferred:
     - statUse (default modify_stat_value(stat_cur, race+class adj)):
       player->state.stat_use; same fallback as display.ts's statUse.
     - effectiveSpeed (default false): OPT(player, effective_speed).
-    - wizard / totalWinner (defaults false): player->wizard /
-      player->total_winner (UI/debug members, not on the port Player); the
-      lev > PY_MAX_LEVEL winner branch of show_title IS live.
+    - wizard / totalWinner: DERIVED (PORT_TODO 3.12), the same pair and the
+      same absent supplier as the sidebar's. char-sheet.ts:212-214 read
+      state.wizard and player.totalWinner. "Not on the port Player" was half
+      wrong when written: totalWinner is on Player. With nothing supplying
+      them, show_title's "***WINNER***" could never appear.
     - meleeWeapon (default state.actor.weapon): equipped_item_by_slot_name(
       player, "weapon").
-    - launcher (default null): equipped_item_by_slot_name(player, "shooting");
-      actor carries no launcher-slot accessor yet, so ranged dam/hit show the
-      base (0 / to_h) by default.
+    - launcher: DERIVED, not defaulted. This was the only `?? null` in
+      resolveDeps with no supplier anywhere in the tree, so the sheet's ranged
+      to-hit / to-dam rows read 0 for every character carrying a bow. It is
+      resolved here rather than added to CharSheetDeps for the reason meleeWeapon
+      is: a seam a caller must remember to fill is a seam that ends up unfilled.
   - Members read directly off the port (NOT seams, listed for clarity):
     player.age / ht / wt / maxDepth / lev / maxLev / exp / maxExp / au / chp /
     mhp / csp / msp, player.upkeep.totalWeight (Burden), state.turn (Game),

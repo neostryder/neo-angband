@@ -117,21 +117,23 @@ deferred:
     reads the object's own combined properties and does not walk obj->curses.
   - UiEntryDeps seams (defaults reproduce a headless character with no active
     timed effects; a session wires the computed player_state):
-    - timedObjectFlags (default empty FlagSet): player_flags_timed(p) (player.c
-      L310, the OF-flag dups of active timed effects). The ported timed registry
-      carries no oflag_dup field, so timed OF-flag contributions default to none;
-      OF_TRAP_IMMUNE IS still added from p.timed[TMD_TRAPSAFE] directly.
-    - timedElementEffect (default () => 0): get_timed_element_effect(p, elem)
-      (ui-entry.c L1357) - 1 if a timed effect grants a temp resist. The ported
-      timed registry carries no temp_resist field, so timed element resists
-      default to none.
-    - playerHas (default reads p.pflags if present, else false): player_has(p,
-      PF_*) (player.h L440, pf_has(p->state.pflags)). The port has no computed
-      state.pflags, so the "player"-type abilities (only FAST_SHOT and BRAVERY_30
-      in the data) contribute nothing by default.
-  - PF_FAST_SHOT (compute L974) needs the equipped launcher and
-    KF_SHOOTS_ARROWS; that launcher-slot reach is deferred, so its contribution
-    is 0 (BRAVERY_30's p.lev >= 30 branch IS live).
+    - ALL FOUR seams are SUPPLIED (PORT_TODO 3.6-3.9), by one builder:
+      liveUiEntryDeps (ui-entry.ts:1472). timedObjectFlags and
+      timedElementEffect come from liveTimedUiDeps over the live timed table,
+      playerHas reads the COMPUTED state.playerState.pflags (the old default
+      read `p.pflags`, which does not exist, so it answered false for
+      everything), and launcher is equippedLauncher(p, state.runeEnv).
+      Both live call sites supply it - web/charsheet.ts:284 passes it to
+      characterGrid, and web/main.ts:2068 puts it in equipCmpDeps for
+      equip-cmp's `opts.entryDeps` - so neither screen falls back any more.
+      ONE builder is the point: wiring the timed pair and forgetting playerHas
+      is exactly how this got missed the first time, and ui-entry.test.ts has
+      a test named for supplying all four rather than a subset.
+  - PF_FAST_SHOT (compute L974) is LIVE. It needs the equipped launcher and
+    KF_SHOOTS_ARROWS, and the launcher-slot reach this row called deferred
+    already existed (player/calcs.ts reads the equipped launcher's kindFlags);
+    ui-entry.ts now pushes p.lev / 3 when the shooting slot fires arrows.
+    (BRAVERY_30's p.lev >= 30 branch was always live.)
   - The show_combined path and the EQUIPCMP_SCREEN (equippable-comparison)
     rendering are not wired: characterGrid drives CHAR_SCREEN1 only (the char
     screen always sets show_combined = false and alternate_color_first = false,

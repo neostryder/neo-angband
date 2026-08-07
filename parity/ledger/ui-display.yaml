@@ -101,20 +101,32 @@ deferred:
       harness and is checked against constants.txt by a test.
     - timedEffects (default []): the timed_effects[] table (player/bind.ts,
       TMD-indexed); [] means prt_tmd names nothing.
-    - statUse (default: modify_stat_value(stat_cur, race+class adj)):
-      player->state.stat_use. No computed player_state is stored on GameState,
-      so the fallback omits equipment and timed-effect stat contributions.
-    - numMoves (default 0): player->state.num_moves; PlayerCombatState omits
-      num_moves, so prt_moves shows nothing by default.
+    - statUse: DERIVED, not defaulted (PORT_TODO 3.5). display.ts:257 reads
+      state.playerState.statUse, so equipment and timed contributions are in.
+      The old note - "no computed player_state is stored on GameState" - had
+      stopped being true, and while it stood the sidebar showed the unequipped
+      number while the character sheet showed the real one: a +STR ring moved
+      one screen and not the other.
+    - numMoves: DERIVED (PORT_TODO 3.10). calc_bonuses computes num_moves
+      (calcs.ts) and display.ts:261 reads state.playerState.numMoves. The old
+      note's "PlayerCombatState omits num_moves" was already wrong when it was
+      written; prt_moves read a hardcoded 0 and the Moves row was blank for a
+      character with +moves.
     - healthWho (default state.healthWho): player->upkeep->health_who.
     - unignoring (default false): player->unignoring (not on the port Player).
     - isResting / restingCount (defaults false / 0): player_is_resting /
       player_resting_count. No resting seam exists in the headless core yet.
-    - nRepeats (default 0): cmd_get_nrepeats (CommandQueue.getNRepeats exists
-      in cmd.ts but is not threaded onto GameState).
-    - wizard / totalWinner (defaults false): player->wizard /
-      player->total_winner (UI/debug members, not on the port Player); the
-      lev > PY_MAX_LEVEL winner branch IS live.
+    - nRepeats: DERIVED (PORT_TODO 3.11), and NOT from where this row pointed.
+      It named CommandQueue.getNRepeats as the available answer; that class is
+      a faithful port nothing drives, so wiring it would have produced a
+      permanent 0 by a longer route. display.ts:273 reads repeatRemaining on
+      the head of state.cmdQueue, which is what cmd_get_nrepeats() returns
+      upstream - the repeats left on the command being executed.
+    - wizard / totalWinner: DERIVED (PORT_TODO 3.12). display.ts:276-277 read
+      state.wizard and player.totalWinner. "Not on the port Player" was half
+      wrong even when written - totalWinner is on Player and is read by
+      char-sheet.ts and agent/perceive.ts - and with no supplier fmt_title's
+      wizard and ***WINNER*** markers could never appear on either screen.
     - bookHasUnlearnedSpells (default true): player_book_has_unlearned_spells
       (needs the spellbook pack, not on GameState).
     - objectAttr / objectChar: object_attr / object_char, now DEFAULTED to the

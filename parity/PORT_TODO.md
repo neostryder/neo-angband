@@ -6,7 +6,18 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 100 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 87 confirmed-absent citations** — 65 closed, 3 open.
+
+The largest single move it has ever made was **downward, on 2026-08-06: 100 to
+87**, and none of it was work. Reading the seventeen `real` rows in the ledger
+census as a group found that **thirteen described work that had already been
+done** — the UI seams of PORT_TODO 3.5 through 3.13, every one of them wired,
+and a take-notes command that exists. **A `real` verdict is dated evidence in
+exactly the way a deferral note is**, and it is worse, because the owed-work
+count is derived from it: the project had been carrying thirteen phantom
+obligations and reporting them as the size of the remaining job. The lesson is
+the cheap one — re-read the `real` pile before believing it, especially after a
+tier closes.
 The count has moved in both directions, and both directions were the process
 working. It **went up** when seven ledger rows moved from unadjudicated to
 `partial`, because a `partial` is a confirmed-absent citation — reading the
@@ -129,7 +140,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
 ## Tier 0 — Make the list trustworthy
 
-- [ ] **0.1 Adjudicate the ledger `deferred:` items. 197 of 335 done, 40 of the
+- [ ] **0.1 Adjudicate the ledger `deferred:` items. 195 of 333 done, 40 of the
   73 ledger files complete.**
   `parity/reports/ledger-deferred-items.tsv` holds items the keyword census
   structurally could not see: an entry under a `deferred:` key inherits meaning
@@ -146,12 +157,17 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `game-effect-teleport`, `mon-take-hit`, `session-save` and
   `game-effect-general`.
 
-  The tally, **read from the TSV rather than carried forward**: **77 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **88 `ported`,
   35 `stale-doc`, 21 `partial`, 18 `divergence`, 13 `note-is-fix`, 9 `n-a`,
-  7 `not-a-deferral` against 17 `real`**. So **five rows in six are not owed as
-  written**, and the owed ones included the two live defects at **1.2** and
-  **2.17**, both since FIXED — 2.17's first verdict was wrong in a way worth
-  reading, because the instrument was a grep. **138 remain.**
+  7 `not-a-deferral` against **4** `real`**. **138 remain.**
+
+  `real` fell from 17 to 4 on 2026-08-06 without a line of feature work: reading
+  the pile as a group found thirteen rows describing work that had already been
+  done. Eleven were the display seams of PORT_TODO 3.5-3.13 — every one supplied,
+  several of them derived rather than defaulted precisely so no caller has to
+  remember — plus a take-notes command that exists. See the header: a `real`
+  verdict expires the same way a deferral note does, and it is the one that
+  matters, because the owed-work count is computed from it.
 
   The complete-file count in the heading is derived the same way, and it has now
   drifted **twice**: it read 42 while the TSV said 34, having been incremented by
@@ -2932,7 +2948,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 100 citations, 67 `real` + 33
+2. the counts stated at the top (**68 items, 87 citations, 54 `real` + 33
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
