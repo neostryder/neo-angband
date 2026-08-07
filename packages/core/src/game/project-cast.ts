@@ -359,6 +359,10 @@ export function castProjection(
     degreesOfArc,
     diameterOfSource,
     believedWall: (grid) => squareIsBelievedWall(state, grid),
+    /* cave->decoy (project.c:218): PROJECT_STOP breaks the path at the
+     * player's decoy, which is the whole point of dropping one in a bolt's
+     * way. state.decoy is written by EF_GLYPH's decoy arm and persisted. */
+    decoy: state.decoy ?? null,
   };
 
   return project(state.chunk, params, projectHooks);

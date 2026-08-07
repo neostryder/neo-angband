@@ -103,6 +103,42 @@ describe("project_path (project.c)", () => {
     // Range 3 truncates a would-be longer horizontal path.
     expect(coords(floorChunk(), 3, [2, 7], [12, 7]).length).toBeLessThanOrEqual(3);
   });
+
+  /*
+   * project.c:147 reads `cave_find_decoy(c)` off the chunk, so upstream's path
+   * ALWAYS knows about the decoy; the port passes it in, because its decoy
+   * lives on GameState rather than the Chunk. Stopping a bolt is most of what
+   * a decoy is for, and the port used to compare against a never-matching
+   * (-1,-1) sentinel, so PROJECT_STOP could not break there at all.
+   */
+  it("stops at the decoy grid, and only with PROJECT_STOP", () => {
+    const c = floorChunk();
+    const decoy = loc(5, 7);
+    const path = (flg: number): [number, number][] =>
+      projectPath(c, 20, loc(2, 7), loc(7, 7), flg, undefined, decoy).map(
+        (g) => [g.x, g.y] as [number, number],
+      );
+    /* Without STOP the decoy is just a floor grid. */
+    expect(path(0).at(-1)).toEqual([7, 7]);
+    /* With STOP the path halts ON the decoy, as it does on a monster. */
+    expect(path(PROJECT.STOP)).toEqual([
+      [3, 7],
+      [4, 7],
+      [5, 7],
+    ]);
+  });
+
+  it("an absent decoy leaves a PROJECT_STOP path unchanged", () => {
+    /* The control: the sentinel must not accidentally match a real grid, and
+     * `null` has to mean "no decoy on this level", not "stop nowhere". */
+    const c = floorChunk();
+    const withNull = projectPath(
+      c, 20, loc(2, 7), loc(7, 7), PROJECT.STOP, undefined, null,
+    );
+    const omitted = projectPath(c, 20, loc(2, 7), loc(7, 7), PROJECT.STOP);
+    expect(withNull.map((g) => [g.x, g.y])).toEqual(omitted.map((g) => [g.x, g.y]));
+    expect(withNull.at(-1)).toEqual(loc(7, 7));
+  });
 });
 
 describe("projectable (project.c)", () => {

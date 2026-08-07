@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 78 confirmed-absent citations** — 65 closed, 3 open.
+**68 items covering all 77 confirmed-absent citations** — 65 closed, 3 open.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -165,9 +165,9 @@ is reachable in play and a test constructs the case that used to be wrong.**
   4, `obj-flavor` 4, `obj-randart` 4, `player-exp` 4, `player-spell` 4,
   `player-timed` 4, then twelve at 3, five at 2 and two at 1.
 
-  The tally, **read from the TSV rather than carried forward**: **149 `ported`,
+  The tally, **read from the TSV rather than carried forward**: **150 `ported`,
   35 `stale-doc`, 22 `divergence`, 13 `note-is-fix`, 10 `not-a-deferral`,
-  10 `n-a`, 7 `partial` against **9** `real`**. **84 remain.**
+  10 `n-a`, 7 `partial` against **8** `real`**. **84 remain.**
 
   **The 2026-08-07 batch: the `partial` pile.** `partial` 21 -> 6, `ported`
   88 -> 104, and the row total moved 333 -> 338 because one row that bundled
@@ -367,8 +367,12 @@ is reachable in play and a test constructs the case that used to be wrong.**
     `const NO_DECOY = loc(-1, -1)` and compares against it, so `projectPath`'s
     `PROJECT_STOP` arm can never stop there. Upstream breaks the path at the
     decoy grid (`project.c:216-219`), which is most of what a decoy is FOR.
-    Threading the grid in beside `believedWall` shifts path lengths, so it wants
-    a deliberate pass rather than a drive-by at the end of a session.
+    **Fixed the same day.** `projectPath` and `projectable` take the decoy grid,
+    `project()` carries it on `ProjectParams`, and both live sites supply it:
+    `game/project-cast.ts` (every cast projection) and `game/mon-ranged.ts` —
+    the port's **only** `PROJECT_STOP` `projectable`, which is why it is the
+    only one that needs the argument at all. Upstream never had to decide this:
+    `project_path` reads `cave->decoy` off the chunk, so every caller sees it.
   - **Quality auto-ignore reads the true item, not the known one.** Upstream's
     `ignore_level_of` reads `obj->known` throughout and returns `IGNORE_MAX`
     outright when there is no twin; `obj/ignore.ts:207` reads the live object.
@@ -3166,7 +3170,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 78 citations, 59 `real` + 19
+2. the counts stated at the top (**68 items, 77 citations, 58 `real` + 19
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
