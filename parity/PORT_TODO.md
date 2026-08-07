@@ -2970,23 +2970,34 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `packages/core/src/session/game.ts:3458`,
   `parity/ledger/obj-randart.yaml:51`
 
-- [ ] **5.5 `randart.log` / `randart.txt`. TWO things left of 252 sites, and
-  NEITHER is visible to the census. The remainder is MEASURED, not estimated.**
+- [ ] **5.5 `randart.log` / `randart.txt`. ONE LINE LEFT of 252 sites, and it is
+  not visible to the census. The remainder is MEASURED, not estimated.**
 
-  The second is a whole pass, not a line, and completing the log is what
-  exposed it. `do_randart` measures the artifact set **twice**
-  (obj-randart.c:3182-3186): once before generation, and once more on the
-  finished items, whose only purpose is the closing statistics in the log. The
-  port does the first and skips the second, so `randart.log` ends without the
-  block a reader would use to compare the set it just made against the standard
-  one. It draws no RNG, so adding it cannot change an artifact.
+  **The second measurement pass — DONE, and finding it was the point.**
+  `do_randart` measures the artifact set **twice** (obj-randart.c:3181-3186):
+  once before generation, and once more on the finished items, whose only
+  purpose is the closing statistics in the log. The port did the first and
+  skipped the second, so `randart.log` ended without the block a reader would
+  use to compare the set the game just made against the standard one it was
+  derived from. Nobody had noticed, because while the log was full of holes
+  there was nothing to notice it against; completing the log is what exposed it.
 
-  It is not a one-liner: `storeBasePower` and `parseFrequencies` read
-  `reg.artifacts`, and the generated set lives in a fresh array the registry
-  never sees (the port leaves `reg.artifacts` untouched, where upstream
-  overwrites the `a_info` global in place). Measuring the new set means the
-  artifact array becomes a parameter of both, and of `collectArtifactCounts`
-  underneath them.
+  It was not a one-liner. `storeBasePower`, `parseFrequencies` and
+  `collectArtifactCounts` all read `reg.artifacts`, and the generated set lives
+  in a fresh array the registry never sees (the port leaves `reg.artifacts`
+  untouched, where upstream overwrites the `a_info` global in place — which is
+  exactly why upstream can leave *which set* implicit). The artifact array is
+  now a required parameter of all three, and of `collectArtifactData` above
+  them, so the caller must say which set it means.
+
+  Guarded by three tests in `randart.test.ts`: `store_base_power` and
+  `parse_frequencies` each appear twice in a real run's log, and the second
+  `store_base_power` block **differs from the first**. That last one is the
+  load-bearing assertion — passing `reg.artifacts` twice satisfies both counts
+  and is the mistake the upstream shape invites. Verified to fail when the
+  second pass is handed the standard set. Two more assert what makes the pass
+  safe to add after generation: it draws no RNG, and it does not modify the
+  artifacts it reads.
   Put to the maintainer on 2026-08-04 as port-it-or-omit-it; the answer was
   **pursue parity**, so it is a port with no asterisk.
 
