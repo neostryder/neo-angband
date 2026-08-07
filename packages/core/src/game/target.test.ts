@@ -174,6 +174,39 @@ describe("target_accept (L325)", () => {
     expect(targetAccept(state, loc(15, 15))).toBe(true);
   });
 
+  /*
+   * "Scan all objects in the grid" (target.c:347-353) is PER OBJECT and applies
+   * ignore_known_item_ok. A grid holding nothing but ignored junk is not an
+   * interesting target - which the old "does the player remember ANY object
+   * here" test could not express.
+   */
+  it("skips a grid whose only remembered objects are ignored", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const junk = { kind: { kidx: 1 }, tval: 80 } as unknown as GameObject;
+    const wanted = { kind: { kidx: 2 }, tval: 80 } as unknown as GameObject;
+    const idx = (g: { x: number; y: number }): number =>
+      g.y * state.chunk.width + g.x;
+
+    state.known.objects.set(idx(loc(13, 13)), [{ obj: junk, sensed: false }]);
+    state.known.objects.set(idx(loc(14, 14)), [
+      { obj: junk, sensed: false },
+      { obj: wanted, sensed: false },
+    ]);
+    /* A SENSED marker is upstream's unknown_item_kind: always interesting,
+     * because you cannot have chosen to ignore what you have not identified. */
+    state.known.objects.set(idx(loc(15, 12)), [{ obj: junk, sensed: true }]);
+
+    state.isIgnored = (o): boolean => o === junk;
+
+    expect(targetAccept(state, loc(13, 13))).toBe(false);
+    expect(targetAccept(state, loc(14, 14))).toBe(true);
+    expect(targetAccept(state, loc(15, 12))).toBe(true);
+
+    /* The control: with nothing ignored, the junk grid is interesting again. */
+    state.isIgnored = (): boolean => false;
+    expect(targetAccept(state, loc(13, 13))).toBe(true);
+  });
+
   it("hallucination blanks everything but the player", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addVisible(state, loc(14, 10));
