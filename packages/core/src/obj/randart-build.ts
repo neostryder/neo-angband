@@ -18,15 +18,15 @@
  * added or dropped.
  *
  * Faithful notes / approximations:
- * - The upstream file_putf(log_file, ...) logging is dropped throughout; it
- *   never affects any returned value or RNG draw (same convention as power.ts
- *   and randart-data.ts). Where a routine's only use of a value was logging
- *   (e.g. lookup_obj_property in add_flag / add_mod), that lookup is dropped.
- * - add_brand adds the resist matching the picked brand by comparing the
- *   brand's name to projections[element].name for the four base elements.
- *   Projections are not bound in ObjRegistry, so the base-element projection
- *   names are held in a small local table (BASE_ELEMENT_PROJ_NAMES) mirroring
- *   projection.txt / projection.json; noted as an approximation.
+ * - The upstream file_putf(log_file, ...) logging is PORTED (PORT_TODO 5.5),
+ *   including the lookup_obj_property calls in add_flag / add_mod whose only
+ *   use is the name they put in the line. Logging never affects a returned
+ *   value or an RNG draw, so the emitters sit outside the decision points.
+ * - Projections are not bound in ObjRegistry, so projections[element].name is
+ *   held in a local table (ELEMENT_PROJ_NAMES) mirroring projection.txt. It is
+ *   read by add_brand, to add the resist matching the brand it just picked, and
+ *   by add_resist / add_immunity's log lines. randart-proj-names.test.ts
+ *   derives the same list from projection.txt, so the mirror cannot drift.
  * - remove_contradictory_activation depends on effect_summarize_properties
  *   (effects-info.c). That summarizer lives in the effects domain, so it is
  *   ported in ./effects-info.ts (makeActivationSummarizer) and injected here as
@@ -56,19 +56,21 @@ import { randartLogf } from "./randart-log.js";
 import type { ObjRegistry } from "./bind.js";
 import type { CurseTimedFoil } from "./object.js";
 import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
-import { INHIBIT_POWER } from "./power.js";
+import { INHIBIT_POWER, lookupObjProperty } from "./power.js";
 import type { ArtifactSetData } from "./randart-data.js";
 import type {
   Artifact,
   EffectRecordJson,
   ElementInfo,
   ObjectKind,
+  ObjectProperty,
 } from "./types.js";
 import {
   EL_INFO_IGNORE,
   ELEM_BASE_MIN,
   ELEM_HIGH_MIN,
   OBJ_MOD_MAX,
+  OBJ_PROPERTY,
 } from "./types.js";
 
 /* ------------------------------------------------------------------ */
@@ -102,17 +104,49 @@ const VERYHIGH_TO_AC = 36;
 const ART_IDX_TOTAL = ART_IDX.TOTAL;
 
 /**
- * projections[element].name for the four base elements (projection.txt), used
- * by add_brand to add the resist that matches the brand it just added.
- * Projections are not bound in ObjRegistry, so the names are held here.
- * Indexed by ELEM value (ACID..COLD).
+ * projections[element].name (projection.txt), for the 25 element-type
+ * projections that PROJ_ lists first. Two callers: add_brand compares the
+ * brand's name against the four base elements to add the matching resist, and
+ * add_resist / add_immunity quote the name into randart.log.
+ *
+ * Projections are not bound in ObjRegistry, so the names are held here rather
+ * than threaded in. A hand-written mirror drifts silently, so
+ * randart-proj-names.test.ts derives this list from
+ * reference/lib/gamedata/projection.txt and fails if the two ever part.
  */
-const BASE_ELEMENT_PROJ_NAMES: readonly string[] = [
+export const ELEMENT_PROJ_NAMES: readonly string[] = [
   "acid", // ELEM_ACID
   "lightning", // ELEM_ELEC
   "fire", // ELEM_FIRE
   "cold", // ELEM_COLD
+  "poison", // ELEM_POIS
+  "light", // ELEM_LIGHT
+  "dark", // ELEM_DARK
+  "sound", // ELEM_SOUND
+  "shards", // ELEM_SHARD
+  "nexus", // ELEM_NEXUS
+  "nether", // ELEM_NETHER
+  "chaos", // ELEM_CHAOS
+  "disenchantment", // ELEM_DISEN
+  "water",
+  "ice",
+  "gravity",
+  "inertia",
+  "force",
+  "time",
+  "plasma",
+  "meteors",
+  "magic missiles",
+  "mana",
+  "holy power",
+  "arrows",
 ];
+
+/** The four base elements add_brand matches against (ACID..COLD). */
+const BASE_ELEMENT_PROJ_NAMES: readonly string[] = ELEMENT_PROJ_NAMES.slice(
+  0,
+  4,
+);
 
 /* ------------------------------------------------------------------ */
 /* Arrays of indices by item type (obj-randart.c L52)                  */
@@ -584,13 +618,33 @@ export function trySupercharge(
 }
 
 /* ------------------------------------------------------------------ */
+/* Log-line helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `prop->name` for randart.log. Upstream dereferences the lookup without a
+ * null check, so a property missing from object_property.txt segfaults there;
+ * here it degrades to the index, because a log line is not worth a crash.
+ */
+function propName(prop: ObjectProperty | null): string {
+  return prop ? prop.name : "(unknown)";
+}
+
+/** `projections[i].name` for randart.log - the in-game name, e.g. "acid". */
+function projName(index: number): string {
+  return ELEMENT_PROJ_NAMES[index] ?? "(unknown)";
+}
+
+/* ------------------------------------------------------------------ */
 /* add_flag (obj-randart.c L1721)                                      */
 /* ------------------------------------------------------------------ */
 
 /** add_flag (obj-randart.c L1721): add a flag; returns true when it changed. */
-export function addFlag(art: Artifact, flag: number): boolean {
+export function addFlag(reg: ObjRegistry, art: Artifact, flag: number): boolean {
+  const prop = lookupObjProperty(reg, OBJ_PROPERTY.FLAG, flag);
   if (art.flags.has(flag)) return false;
   art.flags.on(flag);
+  randartLogf(() => `Adding ability: ${propName(prop)}\n`);
   return true;
 }
 
@@ -599,10 +653,15 @@ export function addFlag(art: Artifact, flag: number): boolean {
 /* ------------------------------------------------------------------ */
 
 /** add_resist (obj-randart.c L1736): add a resist; true when it changed. */
-export function addResist(art: Artifact, element: number): boolean {
+export function addResist(
+  reg: ObjRegistry,
+  art: Artifact,
+  element: number,
+): boolean {
   const info = art.elInfo[element] as ElementInfo;
   if (info.resLevel > 0) return false;
   info.resLevel = 1;
+  randartLogf(() => `Adding resistance to ${projName(element)}\n`);
   return true;
 }
 
@@ -611,9 +670,10 @@ export function addResist(art: Artifact, element: number): boolean {
 /* ------------------------------------------------------------------ */
 
 /** add_immunity (obj-randart.c L1750): grant immunity to a random base element. */
-export function addImmunity(art: Artifact, rng: Rng): void {
+export function addImmunity(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   const r = rng.randint0(4);
   (art.elInfo[r] as ElementInfo).resLevel = 3;
+  randartLogf(() => `Adding immunity to ${projName(r)}\n`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -625,7 +685,13 @@ export function addImmunity(art: Artifact, rng: Rng): void {
  * modifier, favouring a few large bonuses over many small ones. Blows, might
  * and moves are "powerful" and applied sparingly. Returns true when changed.
  */
-export function addMod(art: Artifact, mod: number, rng: Rng): boolean {
+export function addMod(
+  reg: ObjRegistry,
+  art: Artifact,
+  mod: number,
+  rng: Rng,
+): boolean {
+  const prop = lookupObjProperty(reg, OBJ_PROPERTY.MOD, mod);
   const powerful =
     mod === OBJ_MOD.BLOWS || mod === OBJ_MOD.MIGHT || mod === OBJ_MOD.MOVES;
   let success = false;
@@ -634,15 +700,26 @@ export function addMod(art: Artifact, mod: number, rng: Rng): boolean {
     /* Negative mods just get a bit worse. */
     if (rng.oneIn(2)) {
       art.modifiers[mod]!--;
+      randartLogf(
+        () =>
+          `Decreasing ${propName(prop)} by 1, new value is: ${String(art.modifiers[mod])}\n`,
+      );
       success = true;
     }
   } else if (powerful) {
     /* Powerful mods need to be applied sparingly. */
     if (art.modifiers[mod] === 0) {
       art.modifiers[mod] = rng.randint1(2);
+      randartLogf(
+        () => `Adding ability: ${propName(prop)} (${plusD(art.modifiers[mod]!)})\n`,
+      );
       success = true;
     } else if (rng.oneIn(20 * art.modifiers[mod]!)) {
       art.modifiers[mod]!++;
+      randartLogf(
+        () =>
+          `Increasing ${propName(prop)} by 1, new value is: ${String(art.modifiers[mod])}\n`,
+      );
       success = true;
     }
   } else {
@@ -654,9 +731,16 @@ export function addMod(art: Artifact, mod: number, rng: Rng): boolean {
     /* New mods average 3, old ones are incremented by 1 or 2. */
     if (art.modifiers[mod] === 0) {
       art.modifiers[mod] = rng.randint0(3) + rng.randint1(3);
+      randartLogf(
+        () => `Adding ability: ${propName(prop)} (${plusD(art.modifiers[mod]!)})\n`,
+      );
       success = true;
     } else {
       art.modifiers[mod]! += rng.randint1(2);
+      randartLogf(
+        () =>
+          `Increasing ${propName(prop)} by 2, new value is: ${String(art.modifiers[mod])}\n`,
+      );
       success = true;
     }
 
@@ -674,8 +758,8 @@ export function addMod(art: Artifact, mod: number, rng: Rng): boolean {
 /* ------------------------------------------------------------------ */
 
 /** add_stat (obj-randart.c L1823): add or increase a random stat modifier. */
-export function addStat(art: Artifact, rng: Rng): void {
-  addMod(art, OBJ_MOD.STR + rng.randint0(STAT_MAX), rng);
+export function addStat(reg: ObjRegistry, art: Artifact, rng: Rng): void {
+  addMod(reg, art, OBJ_MOD.STR + rng.randint0(STAT_MAX), rng);
 }
 
 /* ------------------------------------------------------------------ */
@@ -683,7 +767,7 @@ export function addStat(art: Artifact, rng: Rng): void {
 /* ------------------------------------------------------------------ */
 
 /** add_sustain (obj-randart.c L1831): add a random sustain, if any are free. */
-export function addSustain(art: Artifact, rng: Rng): void {
+export function addSustain(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   /* Break out if all stats are sustained to avoid an infinite loop. */
   if (
     art.flags.testAll(
@@ -700,11 +784,11 @@ export function addSustain(art: Artifact, rng: Rng): void {
   let success = false;
   while (!success) {
     const r = rng.randint0(5);
-    if (r === 0) success = addFlag(art, OF.SUST_STR);
-    else if (r === 1) success = addFlag(art, OF.SUST_INT);
-    else if (r === 2) success = addFlag(art, OF.SUST_WIS);
-    else if (r === 3) success = addFlag(art, OF.SUST_DEX);
-    else if (r === 4) success = addFlag(art, OF.SUST_CON);
+    if (r === 0) success = addFlag(reg, art, OF.SUST_STR);
+    else if (r === 1) success = addFlag(reg, art, OF.SUST_INT);
+    else if (r === 2) success = addFlag(reg, art, OF.SUST_WIS);
+    else if (r === 3) success = addFlag(reg, art, OF.SUST_DEX);
+    else if (r === 4) success = addFlag(reg, art, OF.SUST_CON);
   }
 }
 
@@ -713,7 +797,7 @@ export function addSustain(art: Artifact, rng: Rng): void {
 /* ------------------------------------------------------------------ */
 
 /** add_low_resist (obj-randart.c L1854): add a random unheld low resist. */
-export function addLowResist(art: Artifact, rng: Rng): void {
+export function addLowResist(reg: ObjRegistry, art: Artifact, rng: Rng): void {
   let count = 0;
   for (let i = ELEM_BASE_MIN; i < ELEM_HIGH_MIN; i++) {
     if ((art.elInfo[i] as ElementInfo).resLevel <= 0) count++;
@@ -727,7 +811,7 @@ export function addLowResist(art: Artifact, rng: Rng): void {
   for (let i = ELEM_BASE_MIN; i < ELEM_HIGH_MIN; i++) {
     if ((art.elInfo[i] as ElementInfo).resLevel > 0) continue;
     if (r === count++) {
-      addResist(art, i);
+      addResist(reg, art, i);
       return;
     }
   }
@@ -744,6 +828,7 @@ export function addLowResist(art: Artifact, rng: Rng): void {
  * a partial-sum state between retry iterations (it is not reset to the total).
  */
 export function addHighResist(
+  reg: ObjRegistry,
   art: Artifact,
   data: ArtifactSetData,
   rng: Rng,
@@ -767,19 +852,19 @@ export function addHighResist(
     }
 
     /* i is the index of the correct high resist. */
-    if (i === 0) success = addResist(art, ELEM.POIS);
-    else if (i === 1) success = addFlag(art, OF.PROT_FEAR);
-    else if (i === 2) success = addResist(art, ELEM.LIGHT);
-    else if (i === 3) success = addResist(art, ELEM.DARK);
-    else if (i === 4) success = addFlag(art, OF.PROT_BLIND);
-    else if (i === 5) success = addFlag(art, OF.PROT_CONF);
-    else if (i === 6) success = addResist(art, ELEM.SOUND);
-    else if (i === 7) success = addResist(art, ELEM.SHARD);
-    else if (i === 8) success = addResist(art, ELEM.NEXUS);
-    else if (i === 9) success = addResist(art, ELEM.NETHER);
-    else if (i === 10) success = addResist(art, ELEM.CHAOS);
-    else if (i === 11) success = addResist(art, ELEM.DISEN);
-    else if (i === 12) success = addFlag(art, OF.PROT_STUN);
+    if (i === 0) success = addResist(reg, art, ELEM.POIS);
+    else if (i === 1) success = addFlag(reg, art, OF.PROT_FEAR);
+    else if (i === 2) success = addResist(reg, art, ELEM.LIGHT);
+    else if (i === 3) success = addResist(reg, art, ELEM.DARK);
+    else if (i === 4) success = addFlag(reg, art, OF.PROT_BLIND);
+    else if (i === 5) success = addFlag(reg, art, OF.PROT_CONF);
+    else if (i === 6) success = addResist(reg, art, ELEM.SOUND);
+    else if (i === 7) success = addResist(reg, art, ELEM.SHARD);
+    else if (i === 8) success = addResist(reg, art, ELEM.NEXUS);
+    else if (i === 9) success = addResist(reg, art, ELEM.NETHER);
+    else if (i === 10) success = addResist(reg, art, ELEM.CHAOS);
+    else if (i === 11) success = addResist(reg, art, ELEM.DISEN);
+    else if (i === 12) success = addFlag(reg, art, OF.PROT_STUN);
 
     count++;
   }
@@ -885,7 +970,7 @@ export function addBrand(reg: ObjRegistry, art: Artifact, rng: Rng): void {
         brand.name === BASE_ELEMENT_PROJ_NAMES[i] &&
         (art.elInfo[i] as ElementInfo).resLevel <= 0
       ) {
-        addResist(art, i);
+        addResist(reg, art, i);
       }
     }
   }
@@ -1142,11 +1227,11 @@ export function addAbilityAux(
   switch (r) {
     case ART_IDX.BOW_SHOTS:
     case ART_IDX.NONWEAPON_SHOTS:
-      addMod(art, OBJ_MOD.SHOTS, rng);
+      addMod(reg, art, OBJ_MOD.SHOTS, rng);
       break;
 
     case ART_IDX.BOW_MIGHT:
-      addMod(art, OBJ_MOD.MIGHT, rng);
+      addMod(reg, art, OBJ_MOD.MIGHT, rng);
       break;
 
     case ART_IDX.WEAPON_HIT:
@@ -1167,11 +1252,11 @@ export function addAbilityAux(
 
     case ART_IDX.WEAPON_AGGR:
     case ART_IDX.NONWEAPON_AGGR:
-      if (targetPower > AGGR_POWER) addFlag(art, OF.AGGRAVATE);
+      if (targetPower > AGGR_POWER) addFlag(reg, art, OF.AGGRAVATE);
       break;
 
     case ART_IDX.MELEE_BLESS:
-      addFlag(art, OF.BLESSED);
+      addFlag(reg, art, OF.BLESSED);
       break;
 
     case ART_IDX.BOW_BRAND:
@@ -1189,12 +1274,12 @@ export function addAbilityAux(
     case ART_IDX.MELEE_SINV:
     case ART_IDX.HELM_SINV:
     case ART_IDX.GEN_SINV:
-      addFlag(art, OF.SEE_INVIS);
+      addFlag(reg, art, OF.SEE_INVIS);
       break;
 
     case ART_IDX.MELEE_BLOWS:
     case ART_IDX.NONWEAPON_BLOWS:
-      addMod(art, OBJ_MOD.BLOWS, rng);
+      addMod(reg, art, OBJ_MOD.BLOWS, rng);
       break;
 
     case ART_IDX.MELEE_AC:
@@ -1219,97 +1304,97 @@ export function addAbilityAux(
 
     case ART_IDX.MELEE_TUNN:
     case ART_IDX.GEN_TUNN:
-      addMod(art, OBJ_MOD.TUNNEL, rng);
+      addMod(reg, art, OBJ_MOD.TUNNEL, rng);
       break;
 
     case ART_IDX.BOOT_FEATHER:
     case ART_IDX.GEN_FEATHER:
-      addFlag(art, OF.FEATHER);
+      addFlag(reg, art, OF.FEATHER);
       break;
 
     case ART_IDX.BOOT_STEALTH:
     case ART_IDX.CLOAK_STEALTH:
     case ART_IDX.ARMOR_STEALTH:
     case ART_IDX.GEN_STEALTH:
-      addMod(art, OBJ_MOD.STEALTH, rng);
+      addMod(reg, art, OBJ_MOD.STEALTH, rng);
       break;
 
     case ART_IDX.BOOT_SPEED:
     case ART_IDX.GEN_SPEED:
-      addMod(art, OBJ_MOD.SPEED, rng);
+      addMod(reg, art, OBJ_MOD.SPEED, rng);
       break;
 
     case ART_IDX.GLOVE_FA:
     case ART_IDX.GEN_FA:
-      addFlag(art, OF.FREE_ACT);
+      addFlag(reg, art, OF.FREE_ACT);
       break;
 
     case ART_IDX.GLOVE_DEX:
-      addMod(art, OBJ_MOD.DEX, rng);
+      addMod(reg, art, OBJ_MOD.DEX, rng);
       break;
 
     case ART_IDX.HELM_RBLIND:
     case ART_IDX.GEN_RBLIND:
-      addFlag(art, OF.PROT_BLIND);
+      addFlag(reg, art, OF.PROT_BLIND);
       break;
 
     case ART_IDX.HELM_ESP:
     case ART_IDX.GEN_ESP:
-      addFlag(art, OF.TELEPATHY);
+      addFlag(reg, art, OF.TELEPATHY);
       break;
 
     case ART_IDX.HELM_WIS:
-      addMod(art, OBJ_MOD.WIS, rng);
+      addMod(reg, art, OBJ_MOD.WIS, rng);
       break;
 
     case ART_IDX.HELM_INT:
-      addMod(art, OBJ_MOD.INT, rng);
+      addMod(reg, art, OBJ_MOD.INT, rng);
       break;
 
     case ART_IDX.SHIELD_LRES:
     case ART_IDX.ARMOR_LRES:
     case ART_IDX.GEN_LRES:
-      addLowResist(art, rng);
+      addLowResist(reg, art, rng);
       break;
 
     case ART_IDX.ARMOR_HLIFE:
     case ART_IDX.GEN_HLIFE:
-      addFlag(art, OF.HOLD_LIFE);
+      addFlag(reg, art, OF.HOLD_LIFE);
       break;
 
     case ART_IDX.ARMOR_CON:
-      addMod(art, OBJ_MOD.CON, rng);
+      addMod(reg, art, OBJ_MOD.CON, rng);
       break;
 
     case ART_IDX.ARMOR_ALLRES:
-      addResist(art, ELEM.ACID);
-      addResist(art, ELEM.ELEC);
-      addResist(art, ELEM.FIRE);
-      addResist(art, ELEM.COLD);
+      addResist(reg, art, ELEM.ACID);
+      addResist(reg, art, ELEM.ELEC);
+      addResist(reg, art, ELEM.FIRE);
+      addResist(reg, art, ELEM.COLD);
       break;
 
     case ART_IDX.ARMOR_HRES:
-      addHighResist(art, data, rng);
+      addHighResist(reg, art, data, rng);
       break;
 
     case ART_IDX.GEN_STAT:
-      addStat(art, rng);
+      addStat(reg, art, rng);
       break;
 
     case ART_IDX.GEN_SUST:
-      addSustain(art, rng);
+      addSustain(reg, art, rng);
       break;
 
     case ART_IDX.GEN_SEARCH:
-      addMod(art, OBJ_MOD.SEARCH, rng);
+      addMod(reg, art, OBJ_MOD.SEARCH, rng);
       break;
 
     case ART_IDX.GEN_INFRA:
-      addMod(art, OBJ_MOD.INFRA, rng);
+      addMod(reg, art, OBJ_MOD.INFRA, rng);
       break;
 
     case ART_IDX.GEN_IMMUNE:
-      addImmunity(art, rng);
+      addImmunity(reg, art, rng);
       break;
 
     case ART_IDX.GEN_LIGHT:
@@ -1317,73 +1402,73 @@ export function addAbilityAux(
       break;
 
     case ART_IDX.GEN_SDIG:
-      addFlag(art, OF.SLOW_DIGEST);
+      addFlag(reg, art, OF.SLOW_DIGEST);
       break;
 
     case ART_IDX.GEN_REGEN:
-      addFlag(art, OF.REGEN);
+      addFlag(reg, art, OF.REGEN);
       break;
 
     case ART_IDX.GEN_RPOIS:
-      addResist(art, ELEM.POIS);
+      addResist(reg, art, ELEM.POIS);
       break;
 
     case ART_IDX.GEN_RFEAR:
-      addFlag(art, OF.PROT_FEAR);
+      addFlag(reg, art, OF.PROT_FEAR);
       break;
 
     case ART_IDX.GEN_RLIGHT:
-      addResist(art, ELEM.LIGHT);
+      addResist(reg, art, ELEM.LIGHT);
       break;
 
     case ART_IDX.GEN_RDARK:
-      addResist(art, ELEM.DARK);
+      addResist(reg, art, ELEM.DARK);
       break;
 
     case ART_IDX.GEN_RCONF:
-      addFlag(art, OF.PROT_CONF);
+      addFlag(reg, art, OF.PROT_CONF);
       break;
 
     case ART_IDX.GEN_RSOUND:
-      addResist(art, ELEM.SOUND);
+      addResist(reg, art, ELEM.SOUND);
       break;
 
     case ART_IDX.GEN_RSHARD:
-      addResist(art, ELEM.SHARD);
+      addResist(reg, art, ELEM.SHARD);
       break;
 
     case ART_IDX.GEN_RNEXUS:
-      addResist(art, ELEM.NEXUS);
+      addResist(reg, art, ELEM.NEXUS);
       break;
 
     case ART_IDX.GEN_RNETHER:
-      addResist(art, ELEM.NETHER);
+      addResist(reg, art, ELEM.NETHER);
       break;
 
     case ART_IDX.GEN_RCHAOS:
-      addResist(art, ELEM.CHAOS);
+      addResist(reg, art, ELEM.CHAOS);
       break;
 
     case ART_IDX.GEN_RDISEN:
-      addResist(art, ELEM.DISEN);
+      addResist(reg, art, ELEM.DISEN);
       break;
 
     case ART_IDX.GEN_PSTUN:
-      addFlag(art, OF.PROT_STUN);
+      addFlag(reg, art, OF.PROT_STUN);
       break;
 
     case ART_IDX.BOOT_TRAP_IMM:
     case ART_IDX.GEN_TRAP_IMM:
-      addFlag(art, OF.TRAP_IMMUNE);
+      addFlag(reg, art, OF.TRAP_IMMUNE);
       break;
 
     case ART_IDX.GEN_DAM_RED:
-      addMod(art, OBJ_MOD.DAM_RED, rng);
+      addMod(reg, art, OBJ_MOD.DAM_RED, rng);
       break;
 
     case ART_IDX.GEN_MOVES:
     case ART_IDX.BOOT_MOVES:
-      addMod(art, OBJ_MOD.MOVES, rng);
+      addMod(reg, art, OBJ_MOD.MOVES, rng);
       break;
 
     case ART_IDX.GEN_ACTIV:
@@ -1684,7 +1769,7 @@ export function addAbility(
     art.modifiers[OBJ_MOD.WIS] &&
     (art.tval === TV.SWORD || art.tval === TV.POLEARM)
   ) {
-    addFlag(art, OF.BLESSED);
+    addFlag(reg, art, OF.BLESSED);
   }
 }
 
