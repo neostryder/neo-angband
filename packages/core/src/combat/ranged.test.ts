@@ -10,7 +10,7 @@ import type { Monster } from "../mon/monster.js";
 import { RF_SIZE } from "../mon/types.js";
 import type { MonsterRace } from "../mon/types.js";
 import { ObjRegistry } from "../obj/bind.js";
-import type { Artifact, ObjPackJson, ObjectKind, Slay } from "../obj/types.js";
+import type { Artifact, Curse, ObjPackJson, ObjectKind, Slay } from "../obj/types.js";
 import { objectNew, tvalIsMeleeWeapon } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import { bindPlayer } from "../player/bind.js";
@@ -18,8 +18,14 @@ import type { PlayerPackRecords } from "../player/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player } from "../player/player.js";
 import { SKILL_MAX } from "../player/types.js";
+import { BTH_PLUS_ADJ } from "./hit.js";
 import type { PlayerCombatState } from "./melee.js";
-import { breakageChance, makeRangedShot, rangedDamage } from "./ranged.js";
+import {
+  breakageChance,
+  chanceOfMissileHitBase,
+  makeRangedShot,
+  rangedDamage,
+} from "./ranged.js";
 
 function load(name: string): unknown {
   return JSON.parse(
@@ -201,6 +207,88 @@ describe("make_ranged_shot", () => {
     );
     expect(res.success).toBe(false);
     expect(res.damage).toBe(0);
+  });
+});
+
+/*
+ * object_to_hit / object_to_dam / object_weight_one read the ACTIVE CURSES'
+ * template bonuses (obj-util.c:296-330). That was fixed for MELEE on
+ * 2026-08-04 (combat/object-bonus-curses.test.ts) and the ranged path was left
+ * out - the seam is an OPTIONAL trailing argument, so every unit test still
+ * passed while a cursed bow's penalty silently never reached a shot.
+ *
+ * Ground truth comes from the pack, not from a curse of my own: the test finds
+ * a shipped curse whose template really carries a to-dam or to-hit term.
+ */
+const curseIdxWith = (pick: (c: Curse) => number): number =>
+  objReg.curses.findIndex((c, i) => i > 0 && c !== null && pick(c) !== 0);
+/* SEPARATE fixtures per term, and this is not fussiness: the first curse
+ * carrying ANY combat term is "air swing" (to_h -20, to_d 0), so a single
+ * shared index made the to-dam assertion `expect(0).toBe(0)` - a fixture value
+ * that could not disagree. A surviving mutant is what surfaced it. */
+const damCurseIdx = curseIdxWith((c) => c.obj.toD);
+const hitCurseIdx = curseIdxWith((c) => c.obj.toH);
+const damCurse = objReg.curses[damCurseIdx] as Curse;
+const hitCurse = objReg.curses[hitCurseIdx] as Curse;
+
+/** `o` with curse `idx` active, and the empty-but-present array C needs. */
+function cursed(o: GameObject, idx: number): GameObject {
+  o.curses = [];
+  for (let i = 0; i < objReg.curses.length; i++) o.curses[i] = { power: 0, timeout: 0 };
+  o.curses[idx] = { power: 10, timeout: 0 };
+  return o;
+}
+
+describe("curse terms reach the ranged path (obj-util.c:296-330)", () => {
+  it("the shipped data has a curse for EACH term the tests below assert", () => {
+    /* Without this the assertions would be vacuous rather than wrong, which is
+     * the failure mode worth catching loudly - and is what happened. */
+    expect(damCurseIdx).toBeGreaterThan(0);
+    expect(damCurse.obj.toD).not.toBe(0);
+    expect(hitCurseIdx).toBeGreaterThan(0);
+    expect(hitCurse.obj.toH).not.toBe(0);
+  });
+
+  it("a cursed missile's to-dam term changes ranged_damage", () => {
+    const shoot = (curses?: readonly (Curse | null)[]): number => {
+      const rng = new Rng(1);
+      rng.randFix(100); // damroll(1,4) -> 4
+      return rangedDamage(
+        rng, state(), undeadMon(), cursed(ammo(), damCurseIdx), launcher(),
+        0, 0, objReg.brands, objReg.slays, curses,
+      );
+    };
+    /* The whole to-dam sum is multiplied by ammoMult (3), so the delta is
+     * the curse's to_d times the multiplier. */
+    expect(shoot(objReg.curses) - shoot()).toBe(damCurse.obj.toD * 3);
+  });
+
+  it("a cursed launcher's to-hit term changes the missile hit chance", () => {
+    const chance = (curses?: readonly (Curse | null)[]): number =>
+      chanceOfMissileHitBase(state(), ammo(), cursed(launcher(), hitCurseIdx), curses);
+    /* chance = skill + bonus * BTH_PLUS_ADJ, and the curse's to_h lands in
+     * `bonus`, so the whole delta is exactly one scaled curse term. */
+    expect(chance(objReg.curses) - chance()).toBe(hitCurse.obj.toH * BTH_PLUS_ADJ);
+  });
+
+  /*
+   * NOT TESTED, and deliberately so rather than faked: object_weight_one's
+   * curse term on the thrown-weapon weight scaling. No shipped curse carries a
+   * `weight` field at all (checked against content/pack/curse.json), so with
+   * the game's own data that call cannot produce a different answer - a mutant
+   * removing it survives, and would survive any honest test. The threading is
+   * still correct (it is what obj-util.c:328 does, and a mod may add one).
+   */
+  it("omitting the curse table still yields the object's own bonus", () => {
+    const o = cursed(ammo(), damCurseIdx);
+    o.toD = 7;
+    const rng = new Rng(1);
+    rng.randFix(100);
+    const plain = rangedDamage(
+      rng, state(), undeadMon(), o, launcher(),
+      0, 0, objReg.brands, objReg.slays,
+    );
+    expect(plain).toBe((4 + 7) * 3);
   });
 });
 
