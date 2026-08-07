@@ -30,12 +30,17 @@ import { SKILL, STAT_MAX } from "../player/types.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import type { TimedEffect } from "../player/types.js";
 import { playerIncCheck, playerIncTimed } from "../player/timed.js";
-import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed.js";
+import type {
+  PlayerIncCheckHooks,
+  PlayerIncCheckQueries,
+  TimedNotifyQueries,
+} from "../player/timed.js";
 import type { Monster } from "../mon/monster.js";
 import { updateSmartLearn } from "../mon/spell.js";
 import { buildSmartLearnEnv } from "./mon-cast.js";
 import type { Player } from "../player/player.js";
 import { playerExpLose, playerStatDec } from "../player/exp.js";
+import { playerFlags } from "../player/calcs.js";
 import type { ExpDeps } from "../player/exp.js";
 import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
 import { adjustDam } from "../world/projection.js";
@@ -83,6 +88,43 @@ export function makeIncCheckQueries(state: GameState): PlayerIncCheckQueries {
     timedActive: (name): boolean => {
       const i = (TMD as Record<string, number>)[name];
       return i !== undefined && (state.actor.player.timed[i] ?? 0) > 0;
+    },
+  };
+}
+
+/**
+ * makeTimedNotifyQueries: the obj_k reads player_set_timed's notify suppression
+ * needs (player-timed.c:828-839).
+ *
+ * "Don't mention effects which already match the known player state" - a
+ * temporary resist you are KNOWN to be immune to, or a flag synonym you are
+ * KNOWN to have from worn gear. It silences a message and never changes the
+ * duration, which is why it went unnoticed: nothing supplied these queries in
+ * production, so every such effect announced itself.
+ *
+ * hasFlagNotTimed is player_of_has_not_timed (player-timed.c:747-763): the
+ * player's own flags UNION every equipped object's, deliberately WITHOUT timed
+ * effects - that exclusion is the whole point of the predicate.
+ */
+export function makeTimedNotifyQueries(state: GameState): TimedNotifyQueries {
+  const p = (): Player => state.actor.player;
+  return {
+    /* p->obj_k->el_info[elem].res_level != 0. */
+    knownResist: (elem): boolean =>
+      (p().objKnown.elInfo[elem]?.resLevel ?? 0) !== 0,
+    /* player_is_immune(p, elem): res_level 3 on the DERIVED state. */
+    isImmune: (elem): boolean =>
+      (state.playerState?.elInfo[elem]?.resLevel ?? 0) === 3,
+    /* of_has(p->obj_k->flags, of). */
+    knownFlag: (of): boolean => p().objKnown.flags.has(of),
+    hasFlagNotTimed: (of): boolean => {
+      /* player_flags(p) is race UNION class plus the BRAVERY_30 promotion
+       * (player.c:290-300); player/calcs.ts playerFlags is that exactly. */
+      if (playerFlags(p()).has(of)) return true;
+      for (let i = 0; i < p().body.count; i++) {
+        if (state.runeEnv.slotObject(i)?.flags.has(of)) return true;
+      }
+      return false;
     },
   };
 }
@@ -201,6 +243,10 @@ export function makePlayerSideEffects(
       ...(deps.msg
         ? { onMessage: (text: string): void => deps.msg?.(text) }
         : {}),
+      /* player_set_timed's "don't mention what already matches known player
+       * state" suppression (player-timed.c:828-839). Unsupplied, it never
+       * fired. */
+      notifyQueries: notifyQueries,
       /* player_inc_timed's `check` argument is honoured ONLY through this hook
        * (player/timed.ts:391). Without it every projection side effect applied
        * regardless of the player's flags and resists: Free Action did not stop
@@ -242,6 +288,7 @@ export function makePlayerSideEffects(
    * here. Null for a trap or a player-sourced projection, which is what makes
    * update_smart_learn and "You resist the effect!" correctly stay silent.
    */
+  const notifyQueries = makeTimedNotifyQueries(state);
   let currentSource: Monster | null = null;
   const incCheck = (idx: number): boolean => {
     const effect = deps.timed[idx];

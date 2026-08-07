@@ -41,10 +41,30 @@ deferred:
     eff.onBeginEffect / eff.onEndEffect by direction, with a second supplier at
     :1917 for the world clock. The recursion this row worried about is exactly
     what the hook exists to break, and it does.
-  - The temp_resist / oflag_syn "don't mention an effect that duplicates known
-    player state" notify suppression needs obj_k element/flag knowledge; it only
-    silences a message and never changes the duration; the queries ARE supplied
-    on the live path (makeIncCheckQueries, game/player-side.ts).
+  - CLOSED (2026-08-07), and the row was wrong about WHY. It said the
+    suppression "needs obj_k element/flag knowledge". The knowledge has existed
+    since PORT_TODO 2.9 and the suppression itself has been implemented all
+    along (player/timed.ts:319-336, both branches, matching
+    player-timed.c:828-839 exactly). What was missing was the SUPPLIER: nothing
+    in production built a TimedNotifyQueries, so the check was skipped and every
+    effect duplicating known player state announced itself.
+    The source comment named a supplier and named the WRONG ONE - it credited
+    makeIncCheckQueries, which builds PlayerIncCheckQueries (objectFlag /
+    resistLevel / playerFlag / timedActive), a different interface for a
+    different function. Corrected in place.
+    game/player-side.ts makeTimedNotifyQueries now builds the four reads and
+    they are supplied on all three paths: the interpreter env
+    (session/game.ts's envDeps), the world clock (state.world.timedHooks) and
+    the projection side effects. hasFlagNotTimed is player_of_has_not_timed
+    (player-timed.c:747-763): playerFlags UNION the worn slots, deliberately
+    without timers.
+    Three mutants, three kills - but the third needed a real discriminator. NO
+    shipped class carries an OF_ flag (class.txt has only player-flags), so
+    race.flags and playerFlags agree for every stock character except through
+    PF_BRAVERY_30, which promotes to OF_PROT_FEAR at level 30. That promotion is
+    the one case that can tell a race-only read apart, and it is what the test
+    asserts. The first version guarded the case with `if (classFlag !==
+    undefined)` and skipped silently.
   - CLOSED (2026-08-07). print_custom_message's substitution is ported:
     player/timed.ts:57 expands {name} / {kind} / {s} / {is}, and :150 carries the
     equipped weapon it reads them off, so the message names the actual weapon.
