@@ -254,6 +254,44 @@ describe("search (player-util.c:1680-1715)", () => {
 
     expect(chest.knownPval).toBe(5);
   });
+
+  it("tests knowledge per OBJECT, not per grid", () => {
+    /*
+     * `if (!obj->known || ...) continue;` (player-util.c:1701) asks about each
+     * object on the pile in turn. Both chests here sit on ONE grid, and that
+     * grid is remembered - but only the first was on it when the pile was
+     * known, so upstream discovers one trap and not the other. A per-grid gate
+     * cannot tell them apart and discovers both.
+     */
+    const state = litState();
+    const grid = loc(16, 10);
+    /* Distinct svals so the two never merge into one pile entry. */
+    const chest = (sval: number, pval: number): GameObject =>
+      ({
+        tval: TV.CHEST,
+        sval,
+        pval,
+        kind: { dChar: "~", dAttr: "w", base: { maxStack: 40 } },
+      }) as GameObject;
+
+    const known = chest(1, 5);
+    floorCarry(state, grid, known);
+    squareKnowPile(state, grid);
+
+    const dropped = chest(2, 7);
+    floorCarry(state, grid, dropped); /* onto an already-mapped grid */
+
+    const msgs: string[] = [];
+    state.msg = (text) => msgs.push(text);
+
+    search(state);
+
+    expect(known.knownPval).toBe(5);
+    expect(dropped.knownPval).toBeUndefined();
+    expect(
+      msgs.filter((m) => m === "You have discovered a trap on the chest!"),
+    ).toHaveLength(1);
+  });
 });
 
 describe("action registry dispatch", () => {

@@ -18,10 +18,10 @@
  *
  * Trap revealing and the secret-door lock roll reach the trap system
  * through the general env's trapDeps; without a trap system those parts
- * no-op. Chest-trap identification (obj->known pval) rides object
- * knowledge, the DTRAP border display and the item/monster list redraws
- * ride presentation (#25), and ignore_item_ok rides ignore (#24) - all
- * ledgered.
+ * no-op. Chest-trap identification (obj->known pval) is ported - it waited
+ * on the per-object remembered pile PORT_TODO 2.9 built, and `obj.knownPval`
+ * is the port's `obj->known->pval`. The DTRAP border display and the
+ * item/monster list redraws ride presentation (#25).
  */
 
 import { EF, FEAT, MFLAG, RF, SQUARE, TF } from "../generated/index.js";
@@ -57,7 +57,11 @@ import {
   squareMemoryBad,
   squareSensePile,
   knownFeat,
+  knownFloorObject,
+  objectSeeAt,
 } from "./known.js";
+import { isTrappedChest } from "../obj/chest.js";
+import { floorPile } from "./floor.js";
 import { squareRevealTrap, squareSetDoorLock } from "./trap.js";
 
 /** The clamped detection rectangle around a centre. */
@@ -192,8 +196,25 @@ const handleDETECT_TRAPS: EffectHandler = (ctx) => {
       const grid = loc(x, y);
       if (!state.chunk.inBoundsFully(grid)) continue;
 
-      /* Reveal traps (chest-trap identification rides obj knowledge). */
+      /* Reveal traps. */
       if (trapDeps && squareRevealTrap(state, grid, true, trapDeps)) {
+        detect = true;
+      }
+
+      /*
+       * "Scan all objects in the grid to look for traps on chests"
+       * (effect-handler-general.c:1354-1376). Unlike `search`, this arm fires
+       * on an object the player has NO memory of yet - `!obj->known` is one of
+       * the two ways in - and upstream's "Hack - see the object" is what gives
+       * it one before writing the trap knowledge.
+       */
+      for (const obj of floorPile(state, grid)) {
+        if (!isTrappedChest(obj) || (state.isIgnored?.(obj) ?? false)) continue;
+        if (knownFloorObject(state, grid, obj) && obj.knownPval === obj.pval) {
+          continue;
+        }
+        objectSeeAt(state, grid, obj);
+        obj.knownPval = obj.pval;
         detect = true;
       }
 
