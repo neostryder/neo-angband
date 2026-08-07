@@ -313,8 +313,15 @@ export function playerSetTimed(
    * (player-timed.c:828-843): a temporary resist the player is known to be
    * immune to, or a flag synonym the player is known to have from worn gear.
    * Only silences a message; never changes the value. Requires the obj_k twin
-   * queries, which the live path supplies (makeIncCheckQueries,
- * game/player-side.ts); with none supplied nothing is suppressed.
+   * queries, built by game/player-side.ts makeTimedNotifyQueries and supplied
+   * on the interpreter, world-clock and projection paths.
+   *
+   * This comment used to name makeIncCheckQueries as the supplier. It is not:
+   * that builds PlayerIncCheckQueries (objectFlag / resistLevel / playerFlag /
+   * timedActive), a different interface for a different function, and nothing
+   * in production supplied THESE - so the suppression never fired and every
+   * such effect announced itself. A comment naming a supplier is worth checking
+   * against the type it claims to satisfy.
    */
   const q = hooks.notifyQueries;
   if (q) {

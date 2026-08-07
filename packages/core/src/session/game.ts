@@ -50,6 +50,7 @@ import {
   makePlayerSideEffects,
   makeIncCheckHooks,
   makeIncCheckQueries,
+  makeTimedNotifyQueries,
 } from "../game/player-side.js";
 import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
 import { makeMonBlowEnv } from "../game/mon-side.js";
@@ -1457,6 +1458,9 @@ function wireGame(
       onMessage: (text: string, msgt?: string): void => state.msg?.(text, msgt),
       incQueries,
       incHooks,
+      /* player_set_timed's notify suppression: the obj_k reads that silence a
+       * message duplicating known player state (player-timed.c:828-839). */
+      notifyQueries: makeTimedNotifyQueries(state),
       /* on_begin_effect / on_end_effect (audit 01 T2): the interpreter timed
        * path (a SCRAMBLE / SPRINT potion or spell) must run the chain too, not
        * just the world clock. The thunk reads runTimedTransition (assigned just
@@ -1920,6 +1924,10 @@ function wireGame(
       onNotify: (_idx: number, canDisturb: boolean): void => {
         if (canDisturb) disturb(state);
       },
+      /* player_set_timed's notify suppression on the WORLD CLOCK path too -
+       * this is where a timed resist most often ticks down (player-timed.c:
+       * 828-839). */
+      notifyQueries: makeTimedNotifyQueries(state),
       incCheck: (idx: number): boolean => {
         const eff = players.timed[idx];
         return eff ? playerIncCheck(eff, worldIncQueries) : true;
