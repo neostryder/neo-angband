@@ -73,9 +73,14 @@ deferred:
   - resolveAimedTarget is ported with BOTH paths complete (used at
     game/effect-attack.ts:117 and :128) - confused direction, target-monster
     and decoy - and the real target system (game/target.ts) supplies env.aimed.
-  - PROJECT_LOS_AWARE's awareness-gated notice difference (a UI/notice nuance);
-    both codes apply the same projection. BOLT_AWARE's PROJECT_AWARE flag is
-    the same notice nuance (#25).
+  - Both are ported, and the two codes do NOT apply the same projection any
+    more. PROJECT.AWARE is modelled (world/project.ts:39);
+    effect_handler_PROJECT_LOS_AWARE is makeProjectLos(true) at
+    game/effect-attack.ts:733, adding PROJECT_AWARE when context->aware
+    (effect-handler-attack.c:1133, threaded at game/project-cast.ts:762); and
+    EF_BOLT_AWARE does the same at effect-attack.ts:159
+    (`ctx.aware ? PROJECT.AWARE : 0`), so the hit registers as obvious and does
+    not try to ID its own source.
   - EF_LASH's monster-vs-monster target and decoy branches are ported
     (game/effect-attack.ts:369-379): monsterTargetMonster first, then
     monsterIsDecoyed / caveFindDecoy, then the player - upstream's exact order.

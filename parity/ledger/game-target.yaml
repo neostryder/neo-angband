@@ -97,8 +97,14 @@ deferred:
     (web/src/main.ts:3713), so there is no tracked race to store and PR_* is
     already ratified as not-owed (game/known.ts:153). healthWho covers
     health_track, including project.c:978 and the ranged-fire sites.
-  - cmd-core.c L959 (the cmd_get_target retry when a stale DIR_TARGET
-    has no okay target) rides the command-prompt layer (#25).
+  - A RATIFIED DIVERGENCE by construction, not a deferral. Upstream needs the
+    retry because cmd_get_arg_target reads a target CACHED in the command
+    struct, which can go stale between queueing and running. This port caches
+    no direction: the shell resolves the aim at prompt time on every command
+    (web/src/main.ts aimDir), and repeat is a boolean gate
+    (upkeep.repeatPrevAllowed) that re-queues rather than replaying a stored
+    argument - so the stale-argument case cannot arise. The target_okay() half
+    of the C condition IS applied, at main.ts:4297 and :4299.
 verified-by:
   - game/target.test.ts (21 tests) - target_able accepts an obvious
     projectable monster and rejects unseen / hallucinated / out-of-range
