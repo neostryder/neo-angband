@@ -213,8 +213,9 @@ happened to be published early — `content` went up at `0.11.0` by hand — sim
 no `0.12.0` gap to fill. Its next release is the next tag, like everything else.
 
 Each mod carries its own version and moves on its own schedule. A mod whose
-released tag is iterated takes a MINOR bump rather than a patch, because a
-published tag is pinned by digest in `RECOMMENDED_MODS` and must never be moved.
+released tag is iterated takes a MINOR bump rather than a patch: a published tag
+is what a player's install is pinned to, and moving it makes an installed copy
+disagree with its own version number.
 
 ## The GitHub Release is always a draft, and that never changes
 
@@ -413,14 +414,20 @@ is not in that path. Releasing one is:
 1. `npm run verify` in the mod repo — typecheck, tests, and a check that the committed
    `plugin.js` is a current build of its source.
 2. Commit, then tag (the mod's own version, e.g. `v0.13.0`) and push the tag.
-3. **Re-fetch every file from `raw.githubusercontent.com` at that tag and hash it**, then
-   put those digests in `RECOMMENDED_MODS` (`packages/web/src/mod-registry.ts`). Never
-   from the local build: the digest has to describe the bytes GitHub actually serves, and
-   the two can differ (line endings, a file that was never committed, a tag pointing
-   somewhere unexpected). The same fetch confirms `Access-Control-Allow-Origin: *`, which
-   is what makes an install from the static web build possible at all.
-4. A published tag is **never moved**. Iterating one takes a MINOR bump and a new row,
-   because the old tag's digest is pinned inside every build already shipped.
+3. **Nothing to do in the game repository.** This step used to be "re-fetch every
+   file at the tag, hash it, and put the digests in `RECOMMENDED_MODS`" - that
+   catalogue shipped inside the build and is gone. The game discovers the mod from
+   its own repository, so a released tag is reachable by every build already out
+   there the moment it is pushed. `mods/registry.json` only needs touching when a
+   NEW mod repository joins the curated list.
+4. **Check it from outside**, because nothing in this repository can:
+   `MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts`
+   fetches the curated list, discovers every mod in it, and confirms the payload is
+   served with `Access-Control-Allow-Origin: *` (which is what makes an install
+   from the static web build possible at all) and that the manifest admits this
+   engine version and this mod API.
+5. A published tag is still **never moved**. Iterating one takes a MINOR bump,
+   because a player's installed copy records the tag it came from.
 
 ## How a mod repository gets the gamedata
 

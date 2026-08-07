@@ -89,10 +89,12 @@ wrong:
   mod's hooks *before* `startGame`, because the composed `ModHooks` is an
   argument to it. Only `register(host, ctx)` runs with a live game. See
   `docs/modding/PLUGINS.md`.
-- Catalogue entries are pinned by digest. Fetch the file from
-  `raw.githubusercontent.com` **at the tag** and hash the bytes on disk —
-  `printf '%s' "$body" | sha256sum` strips the trailing newline and produces a
-  hash that is wrong by one byte.
+- **There is no compiled-in catalogue any more.** `mods/registry.json` names
+  repositories and nothing else; every fact about a mod — id, version, payload,
+  engine range — comes from that repository's own manifest at a tag, and the
+  gate on a replacement is its ORIGIN, not a digest (`installModFromRepo`).
+  A digest of what arrived is still recorded at install, so "has this changed
+  since I installed it" stays answerable.
 
 ## Tests
 
@@ -100,4 +102,6 @@ wrong:
   *assertion about the producer*, and an unchecked one. Where it matters, derive
   the fixture from the real producer or add one test that runs it.
 - `MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts`
-  is the only test that runs the bytes a player downloads.
+  is the only test that runs the bytes a player downloads. It drives the curated
+  registry through `discoverMod`, so it exercises the path the game uses.
+  `src/mod-discover-canary.test.ts` is its sibling and takes the same flag.

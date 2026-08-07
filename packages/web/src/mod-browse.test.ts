@@ -18,6 +18,7 @@ import {
   browseRow,
   importedLines,
   installFailureLines,
+  installOutcomeLines,
   sourceLabel,
   waitingZipRow,
   type BrowseEntry,
@@ -370,5 +371,67 @@ describe("a refusal must not lose its last words", () => {
     const texts = lines.map((l) => l.text);
     expect(texts).toContain("first");
     expect(texts).toContain("second");
+  });
+});
+
+/**
+ * What the player is told after a successful install.
+ *
+ * THE WORDING IS THE FEATURE. There used to be one message for a first install and
+ * for an update, and on an update of a mod the player had already switched on it
+ * said "It is OFF until you turn it on in the mod list." - which is a message that
+ * sends someone to fix something that is not broken. Every assertion here is about a
+ * sentence, because a sentence is what was wrong.
+ */
+describe("what an install says it did", () => {
+  const text = (before: string | null, after: string, enabled = false): string =>
+    installOutcomeLines("Quality of Life", "0.14.0", before, after, enabled)
+      .map((l) => l.text)
+      .join(String.fromCharCode(10));
+
+  it("a FIRST install says installed, and whether it is on", () => {
+    expect(text(null, "v0.14.0", true)).toContain("installed.");
+    expect(text(null, "v0.14.0", true)).toContain("It is enabled.");
+    expect(text(null, "v0.14.0", false)).toContain("It is OFF until you turn it on");
+  });
+
+  it("an UPDATE never says the mod is off", () => {
+    /* The defect, stated as the assertion that would have caught it. */
+    const said = text("v0.13.0", "v0.14.0");
+    expect(said).not.toContain("OFF");
+    expect(said).not.toContain("Nothing is enabled");
+    expect(said).not.toContain(" installed.");
+  });
+
+  it("an UPDATE names both versions, in the right direction", () => {
+    expect(text("v0.13.0", "v0.14.0")).toContain("updated: v0.13.0 -> v0.14.0");
+  });
+
+  it("going BACKWARDS is not called an update", () => {
+    /* A player who deliberately reinstalled an older version is owed the truth about
+     * which way they moved; "updated" there is the same lie the row used to tell. */
+    expect(text("v0.14.0", "v0.13.0")).toContain("rolled back");
+    expect(text("v0.14.0", "v0.13.0")).not.toContain("updated");
+  });
+
+  it("two tags that cannot be ordered are 'replaced', and claim no direction", () => {
+    const said = text("nightly", "v0.14.0");
+    expect(said).toContain("replaced");
+    expect(said).not.toContain("updated");
+    expect(said).not.toContain("rolled back");
+  });
+
+  it("an UPDATE says what became of the two things a player worries about", () => {
+    const said = text("v0.13.0", "v0.14.0");
+    expect(said).toContain("on/off choice");
+    expect(said).toContain("settings");
+    expect(said).toContain("Reload");
+  });
+
+  it("the enabled flag cannot leak into an update's wording", () => {
+    /* installOne only asks on a first install, so `enabled` is meaningless here -
+     * and a message that changed with it would mean the caller had to keep passing
+     * something true. */
+    expect(text("v0.13.0", "v0.14.0", true)).toBe(text("v0.13.0", "v0.14.0", false));
   });
 });

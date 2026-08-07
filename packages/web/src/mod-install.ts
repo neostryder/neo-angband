@@ -51,7 +51,7 @@ import { checkMod, githubRepo } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
-import { type RecommendedMod, type RegistryFile, badPath, rawUrl } from "./mod-registry";
+import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
 import { readModZip } from "./mod-zip";
 import { assetMime, sortPackFiles } from "./pack-files";
@@ -123,55 +123,6 @@ export async function sha256Hex(
     .join("");
 }
 
-/** Raised when bytes arrived but are not the bytes the game expected. */
-export class DigestMismatchError extends Error {
-  constructor(
-    readonly path: string,
-    readonly expected: string,
-    readonly actual: string,
-  ) {
-    /* Both digests, in full, in the message. A player reporting this needs to be able
-     * to paste something the author can act on, and "the download did not match" is
-     * indistinguishable from a bug in the game. */
-    super(
-      `${path}: content does not match the expected checksum ` +
-        `(expected ${expected}, got ${actual})`,
-    );
-    this.name = "DigestMismatchError";
-  }
-}
-
-/**
- * Fetch one file and return its bytes only if they hash to `sha256`.
- *
- * Throws on every other outcome, with the reason, because each needs different advice:
- * a 404 means the tag or path in the catalogue is wrong, a network error means try
- * again, and a digest mismatch means do NOT try again.
- */
-export async function fetchVerified(
-  url: string,
-  sha256: string,
-  path: string,
-  env: InstallEnv,
-): Promise<Uint8Array> {
-  let res: FetchLike;
-  try {
-    res = await env.fetch(url);
-  } catch (e) {
-    throw new Error(`${path}: could not be downloaded (${message(e)})`, { cause: e });
-  }
-  if (!res.ok) {
-    throw new Error(
-      res.status === 404
-        ? `${path}: not found at this tag (HTTP 404)`
-        : `${path}: the server refused it (HTTP ${res.status})`,
-    );
-  }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const actual = await sha256Hex(bytes, env.subtle);
-  if (actual !== sha256) throw new DigestMismatchError(path, sha256, actual);
-  return bytes;
-}
 
 /* ------------------------------------------------------------------ *
  * Installing.
@@ -187,26 +138,6 @@ export interface InstallProgress {
 export type InstallResult =
   | { readonly ok: true; readonly meta: InstalledModMeta }
   | { readonly ok: false; readonly problem: string };
-
-/**
- * Download, verify, and store one catalogue mod.
- *
- * Never throws: a failed install is one line the installer screen can show beside the
- * mod's row, and the other mods in the batch still install. A thrown error here would
- * abandon the whole batch on one bad row.
- */
-export async function installRecommendedMod(
-  mod: RecommendedMod,
-  env: InstallEnv,
-  onProgress?: (p: InstallProgress) => void,
-): Promise<InstallResult> {
-  try {
-    const files = await downloadPayload(mod, env, onProgress);
-    return await storeMod({ id: mod.id, repo: mod.repo, tag: mod.tag }, files, env);
-  } catch (e) {
-    return { ok: false, problem: message(e) };
-  }
-}
 
 /**
  * The write half, shared by every way a mod can arrive.
@@ -582,68 +513,6 @@ async function fetchBytes(
     );
   }
   return new Uint8Array(await res.arrayBuffer());
-}
-
-/** Fetch the payload, verified, as path/bytes pairs. */
-async function downloadPayload(
-  mod: RecommendedMod,
-  env: InstallEnv,
-  onProgress?: (p: InstallProgress) => void,
-): Promise<Array<readonly [string, Uint8Array]>> {
-  if (mod.payload.kind === "archive") {
-    const archives = mod.payload.archives;
-    const out: Array<readonly [string, Uint8Array]> = [];
-    /* Which archive contributed each path, so a collision can name both. Two archives
-     * writing one path is an authoring mistake in the mod (a root file duplicated
-     * across packs, say) and the install would silently keep whichever unzipped last -
-     * a mod that behaves differently depending on catalogue order. */
-    const from = new Map<string, string>();
-
-    for (let i = 0; i < archives.length; i++) {
-      const { path, sha256 } = archives[i] as RegistryFile;
-      onProgress?.({ done: i + 1, total: archives.length, path });
-      const zip = await fetchVerified(rawUrl(mod.repo, mod.tag, path), sha256, path, env);
-      /* Only now, with the digest matched, is the archive parsed. An unzip is the most
-       * hostile thing this module does to untrusted bytes, and the whole point of
-       * hashing the archive rather than its contents is that it never runs on bytes the
-       * game did not expect. */
-      let entries: Record<string, Uint8Array>;
-      try {
-        entries = unzipSync(zip);
-      } catch (e) {
-        throw new Error(`${path}: is not a readable zip (${message(e)})`, { cause: e });
-      }
-      let kept = 0;
-      for (const [name, bytes] of Object.entries(entries)) {
-        /* Directory entries: zero-length and named with a trailing slash. Skipped
-         * rather than stored as empty files. */
-        if (name.endsWith("/")) continue;
-        const owner = from.get(name);
-        if (owner !== undefined) {
-          throw new Error(`${name}: in both ${owner} and ${path}`);
-        }
-        from.set(name, path);
-        out.push([name, bytes]);
-        kept++;
-      }
-      /* Per archive, not just overall: five good packs and one empty one is a broken
-       * install that a total count would call fine. */
-      if (kept === 0) throw new Error(`${path}: the archive is empty`);
-    }
-    return out;
-  }
-
-  const list = mod.payload.files;
-  const out: Array<readonly [string, Uint8Array]> = [];
-  for (let i = 0; i < list.length; i++) {
-    const f = list[i] as (typeof list)[number];
-    onProgress?.({ done: i + 1, total: list.length, path: f.path });
-    out.push([
-      f.path,
-      await fetchVerified(rawUrl(mod.repo, mod.tag, f.path), f.sha256, f.path, env),
-    ]);
-  }
-  return out;
 }
 
 /** Every installed mod's provenance record. */

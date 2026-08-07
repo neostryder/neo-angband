@@ -42,10 +42,10 @@
 import { promptText, selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
-import { formatBytes } from "./mod-catalogue";
 import { authorFor, displayName, standingNote, type AuthorRegister } from "./mod-authors";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, type ModRegistry } from "./mod-curated";
+import { classifyModTag } from "./mod-updates";
 import type { DiscoveredMod } from "./mod-discover";
 import { parseRepoRef, repoPageUrl, type RepoRef } from "./mod-source";
 import type { InstallProgress, InstallResult } from "./mod-install";
@@ -407,7 +407,31 @@ async function askConsent(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean
   return true;
 }
 
-/** Install one mod, with progress, and offer to enable it. */
+/**
+ * Install one mod, with progress, and say what happened.
+ *
+ * AN UPDATE IS NOT AN INSTALL, and this screen used to tell the player otherwise.
+ * There was one message for both, and on an update of a mod the player had already
+ * chosen and already switched on it read:
+ *
+ *     Quality of Life 0.14.0 installed.
+ *     It is OFF until you turn it on in the mod list.
+ *     Nothing is enabled by installing it.
+ *
+ * Every line of that is wrong for an update. The mod was not newly installed, it was
+ * not switched off, and nothing about the player's choices changed - the second line
+ * in particular tells someone whose mod is running that it is not, which is the kind
+ * of message that sends a player to the mod list to fix something that is not broken.
+ * It happened because "did we just turn it on" was the only thing being asked, and an
+ * already-enabled mod answers no to that.
+ *
+ * So the tag the player HAD is read before the install, and the outcome is one of
+ * three sentences rather than a boolean: a first install, an upgrade, or a change to
+ * a different version that is not newer (a deliberate rollback, or a tag nothing can
+ * order). Each one says what became of the two things a player actually worries about
+ * when replacing a mod that works: whether it is still on, and whether their settings
+ * survived.
+ */
 async function installOne(
   term: GlyphTerm,
   entry: Extract<BrowseEntry, { ok: true }>,
@@ -415,10 +439,14 @@ async function installOne(
   deps: ModBrowseDeps,
 ): Promise<boolean> {
   const m = entry.mod;
+  /* BEFORE the install, because afterwards there is nothing left to compare - the
+   * meta record has already been overwritten with the new tag. */
+  const before = (await deps.installed()).get(m.id) ?? null;
+
   const result = await deps.install(m, origin, (p) => {
     const { rows } = term.size();
     term.clear();
-    term.print(0, 1, `Installing ${m.name} ${m.version}`, C_FG);
+    term.print(0, 1, `${before === null ? "Installing" : "Updating"} ${m.name} ${m.version}`, C_FG);
     term.print(0, 3, `${String(p.done)} of ${String(p.total)}: ${p.path}`, C_DIM);
     term.print(0, rows - 1, "[ please wait ]", C_DIM);
     term.flush?.();
@@ -429,23 +457,71 @@ async function installOne(
     return false;
   }
 
-  const enabled = deps.offerEnable ? await deps.offerEnable(m.id) : false;
+  /* Only a FIRST install asks. Re-offering on an update asks the player to re-make a
+   * decision they already made, and answering "no" out of habit would switch off a
+   * mod that was running - an update that can turn something off is an update nobody
+   * should have to think about before accepting. */
+  const enabled = before === null && deps.offerEnable ? await deps.offerEnable(m.id) : false;
+
   await showTextScreen(term, m.name, [
-    { text: `${m.name} ${m.version} installed.`, color: C_GOOD },
+    ...installOutcomeLines(m.name, m.version, before, m.tag, enabled),
     { text: "", color: C_FG },
     {
       text: `${String(result.meta.files.length)} file(s) stored, from ${repoPageUrl(m.repo, m.tag)}.`,
       color: C_DIM,
     },
-    { text: "", color: C_FG },
-    ...(enabled
-      ? [{ text: "It is enabled. Reload to start using it.", color: C_FG }]
-      : [
-          { text: "It is OFF until you turn it on in the mod list.", color: C_FG },
-          { text: "Nothing is enabled by installing it.", color: C_DIM },
-        ]),
   ]);
   return true;
+}
+
+/**
+ * What to say after a successful install. Exported for the test that pins it, because
+ * the wording IS the feature here - the bug this replaces was entirely in the words.
+ *
+ * `before` is the tag on disk beforehand, null for a first install. `enabled` is only
+ * meaningful for a first install, and is ignored otherwise (see installOne).
+ */
+export function installOutcomeLines(
+  name: string,
+  version: string,
+  before: string | null,
+  after: string,
+  enabled: boolean,
+): ScreenLine[] {
+  if (before === null) {
+    return [
+      { text: `${name} ${version} installed.`, color: C_GOOD },
+      { text: "", color: C_FG },
+      ...(enabled
+        ? [{ text: "It is enabled. Reload to start using it.", color: C_FG }]
+        : [
+            { text: "It is OFF until you turn it on in the mod list.", color: C_FG },
+            { text: "Nothing is enabled by installing it.", color: C_DIM },
+          ]),
+    ];
+  }
+
+  /* Which DIRECTION, from the one classifier both this and the update screen use.
+   * "Updated" is a claim about order, and a player who deliberately went back to an
+   * older version should not be told they moved forward. */
+  const standing = classifyModTag(before, after);
+  const headline =
+    standing === "behind"
+      ? `${name} updated: ${before} -> ${after}.`
+      : standing === "ahead"
+        ? `${name} rolled back: ${before} -> ${after}.`
+        : `${name} replaced: ${before} -> ${after}.`;
+
+  return [
+    { text: headline, color: C_GOOD },
+    { text: "", color: C_FG },
+    /* The two things a player worries about when replacing a mod that works. Both
+     * are true by construction rather than by promise: the enabled set lives in the
+     * player's own store keyed on the mod id, and a mod's preferences live in its
+     * own bag - the installer replaces files and nothing else. */
+    { text: "Your on/off choice and this mod's settings are unchanged.", color: C_FG },
+    { text: "Reload to start using the new version.", color: C_FG },
+  ];
 }
 
 /**
@@ -611,6 +687,27 @@ async function openRegistry(
     registry.problems,
     deps,
   );
+}
+
+
+/**
+ * A size in the units a player thinks in.
+ *
+ * Binary units with their real names: 24.6 MiB is what the seven neo-linoleum
+ * archives actually weigh, and rounding that to "25 MB" understates a download
+ * someone may be paying for by the megabyte.
+ *
+ * It lives here because this is the screen that shows sizes. It used to live in
+ * mod-catalogue.ts, which was the front end for the compiled-in catalogue and is
+ * gone; a helper left behind in a deleted module's neighbour is how a file nobody
+ * needs stays alive.
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${String(bytes)} B`;
+  const kib = bytes / 1024;
+  if (kib < 1024) return `${kib.toFixed(kib < 10 ? 1 : 0)} KiB`;
+  const mib = kib / 1024;
+  return `${mib.toFixed(mib < 10 ? 1 : 0)} MiB`;
 }
 
 /* ------------------------------------------------------------------ *
