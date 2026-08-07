@@ -3682,6 +3682,10 @@ function recallDeps(): LoreDeps {
     playerSpeed: state.actor.speed,
     effectiveSpeed: state.options?.get("effective_speed") ?? false,
     purpleUniques: state.options?.get("purple_uniques") ?? false,
+    /* monster_x_attr / monster_x_char[ridx] (ui-mon-lore.c L47/L51): the same
+     * override table the map draw reads, so the recall title cannot disagree
+     * with the glyph on screen. */
+    monsterGlyph: (race) => glyphs.monsterGlyph(race.ridx),
     spells,
     spellColor: (race, spellIndex) => spellColorFor(race, spellIndex, spells, colorState),
     blowColor: (effect) => blowColorFor(effect, colorState),

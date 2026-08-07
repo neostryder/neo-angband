@@ -2749,6 +2749,9 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
       deps: storeDeps,
       maxDepth: state.actor.player.maxDepth,
       stores: state.stores,
+      /* history_lose_artifact (store.c:1091 / :1307): an artifact the player
+       * sold into stock and the store then turned over or purged is gone. */
+      onArtifactLost: (art): void => state.onArtifactLost?.(art),
       /* OPT(cheat_xtra) (store.c:1424, :1444). */
       ...(state.options?.get("cheat_xtra")
         ? { cheatMsg: (text: string): void => state.msg?.(text) }

@@ -74,9 +74,12 @@ deferred:
     side-effect application (EAT_ITEM/EAT_GOLD intents are produced but
     not yet applied); lore_treasure's call site rides monster drops
     (mon_create_drop, ledgered with mon-place).
-  - lore_learn_flag_if_visible in mon/timed.ts (flag-resisted monster
-    timed effects) rides a lore seam through monTimed's callers;
-    cmd-cave.c's TMD_COMMAND cast counts ride EF_COMMAND.
+  - CLOSED, both halves. mon/timed.ts imports loreLearnFlagIfVisible at :32 and
+    learns into the lore store on the flag-resist branch (:21, :92), so a
+    monster resisting a timed effect teaches its flag. And cmd-cave.c's
+    TMD_COMMAND cast counts are game/mon-cmd.ts:746 - loreCountU8(lore,
+    monSpellIsInnate(spellIndex) ? "castInnate" : "castSpell") followed by
+    loreUpdate, matching cmd-cave.c:1836-1850 including the innate/spell split.
   - tkills survives only within one save (upstream's cross-life lore
     file has no analogue); player-birth's pkills/thefts zeroing is
     implicit (each game starts a fresh store).

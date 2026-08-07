@@ -13,7 +13,13 @@ import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { Rng } from "../rng.js";
 import { StoreRegistry } from "./bind.js";
-import { bindStoreRuntime, storeReset, storeUpdate, storeWillBuy } from "./store.js";
+import {
+  bindStoreRuntime,
+  storeMaint,
+  storeReset,
+  storeUpdate,
+  storeWillBuy,
+} from "./store.js";
 import type { Store, StoreMaintContext } from "./store.js";
 import type { ObjectBuy, StoreRecordJson } from "./types.js";
 
@@ -66,6 +72,52 @@ function context(): { ctx: StoreMaintContext; stores: Store[] } {
 }
 
 describe("store maintenance (store.c store_reset/store_maint)", () => {
+  /*
+   * history_lose_artifact (store.c:1091 inside store_delete_random, and :1307
+   * in the black-market purge). Store generation never makes an artifact, so
+   * the only way one reaches a store's stock is the player selling it - and
+   * then the store's own turnover can destroy it. do_cmd_buy's two
+   * store_delete calls (L1754, L1847) deliberately do NOT log a loss, which is
+   * why the hook lives on the two maintenance sites and not inside
+   * storeDelete.
+   */
+  it("logs an artifact the store turns over as LOST", () => {
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL);
+    if (!general) throw new Error("missing store");
+
+    const art = reg.artifacts.find((a) => a) as NonNullable<
+      (typeof reg.artifacts)[number]
+    >;
+    const sold = general.stock[0] as GameObject;
+    sold.artifact = art;
+
+    const lost: unknown[] = [];
+    /* Turn the whole shop over until the planted stack is gone. */
+    const withHook: StoreMaintContext = {
+      ...ctx,
+      onArtifactLost: (a): void => void lost.push(a),
+    };
+    for (let i = 0; i < 40 && general.stock.includes(sold); i++) {
+      storeMaint(withHook, general);
+    }
+    expect(general.stock.includes(sold)).toBe(false);
+    expect(lost).toContain(art);
+  });
+
+  it("does not log a loss for the ordinary stock it turns over", () => {
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL);
+    if (!general) throw new Error("missing store");
+    const lost: unknown[] = [];
+    for (let i = 0; i < 20; i++) {
+      storeMaint({ ...ctx, onArtifactLost: (a): void => void lost.push(a) }, general);
+    }
+    expect(lost).toEqual([]);
+  });
+
   it("stocks the town stores and leaves the home empty", () => {
     const { ctx, stores } = context();
     storeReset(ctx);

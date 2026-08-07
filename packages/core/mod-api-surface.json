@@ -15,6 +15,7 @@
     "ATTR_METAL",
     "ATTR_MISC",
     "ATTR_MONO",
+    "ATTR_TILE_BIT",
     "ATTR_VGA",
     "ActionRegistry",
     "AgentCapabilityError",

@@ -31,7 +31,7 @@ import type { GlyphPair } from "./glyph-table.js";
  * this is only set when a pref file wrote a high-bit attr into the ASCII
  * table; the branches are ported anyway so that case behaves as upstream.
  */
-const ATTR_TILE_BIT = 0x80;
+export const ATTR_TILE_BIT = 0x80;
 
 /** The inputs grid_data_as_text's monster branch reads. */
 export interface MonsterGlyphInput {

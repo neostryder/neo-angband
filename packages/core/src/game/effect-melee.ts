@@ -17,11 +17,11 @@
  * (GameEffectEnv.aimed, now backed by the live target) and falls back to
  * the effect direction.
  *
- * Simplification, ledgered in parity/ledger/game-effect-melee.yaml: the kill
- * line is `race name + note` where upstream builds it with monster_desc, so it
- * reads "Kobold dies." rather than "The kobold dies." The pain and flee lines
- * are no longer a simplification - they go on the mon_msg[] queue with the
- * real grammar (PORT_TODO 3.1).
+ * The message grammar is no longer reduced anywhere here: the pain and flee
+ * lines go on the mon_msg[] queue (PORT_TODO 3.1) and the kill line is built
+ * with monster_desc under mon-util.c's own MDESC_DEFAULT|MDESC_COMMA +
+ * my_strcap, so it reads "The kobold dies." rather than the "Kobold dies."
+ * stand-in this comment used to describe.
  *
  * EF_SINGLE_COMBAT is modelled: the arena level is built in the session layer
  * (session/game.ts, arena_gen at gen-cave.c:3984), the kill gate is
@@ -47,6 +47,7 @@ import {
   monsterIsVisible,
 } from "../mon/predicate.js";
 import { getLore } from "../mon/lore.js";
+import { MDESC, monsterDesc } from "../mon/desc.js";
 import { monTakeHit } from "../mon/take-hit.js";
 import { pyAttackReal } from "../combat/melee.js";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay.js";
@@ -165,7 +166,13 @@ function effectHit(
      * before it. Upstream's player_kill_monster does this itself, and it does
      * it with the whole notice_stuff pass, not just the message drain. */
     noticeStuff(state);
-    if (monsterIsVisible(mon)) say(ctx, `${mon.race.name}${note}`);
+    /* mon-util.c:1018/1024/1050-1051: desc_mode is MDESC_DEFAULT plus
+     * MDESC_COMMA when there is a note, and the result is my_strcap'd before
+     * "%s%s". MDESC.CAPITAL applies strcap on the name branch here, which is
+     * the branch a visible monster takes, so the pair is exact. */
+    if (monsterIsVisible(mon)) {
+      say(ctx, `${monsterDesc(mon, MDESC.CAPITAL | MDESC.COMMA)}${note}`);
+    }
     state.onPlayerKill?.(mon);
     deleteMonster(state, mon.midx);
     return true;
