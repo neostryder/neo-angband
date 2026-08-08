@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.18.0 && git push origin master v0.18.0
+git tag v0.19.0 && git push origin master v0.19.0
 ```
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
@@ -159,7 +159,11 @@ node tools/version.mjs set minor
 
 Fourteen files state the project version — every `packages/*/package.json`, the
 workspace root, `ENGINE_VERSION`, `LINOLEUM_TOOLS_VERSION`, an example output in
-core's README, and the CHANGELOG's Unreleased summary. Editing them by hand is how
+core's README, the CHANGELOG's Unreleased summary, and the example tag on this
+very page. That last one was enforced by `version-sync.test.ts` long before the
+tool maintained it, so every bump broke CI until somebody hand-edited the
+runbook; a check whose subject the tool does not own is a chore wearing a test's
+clothes. Editing them by hand is how
 CHANGELOG.md came to greet every reader with `0.10.0` while every manifest said
 `0.11.0`. Run `node tools/version.mjs` with no arguments to print all fourteen and
 their values; it exits non-zero on any disagreement, and

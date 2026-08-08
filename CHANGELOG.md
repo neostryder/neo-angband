@@ -18,7 +18,7 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Current state of the project at version `0.18.0`. High level, what exists today:
+Current state of the project at version `0.19.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.
