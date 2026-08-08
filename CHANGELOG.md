@@ -46,6 +46,70 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **Authoring shortcuts, measured from core's own data.** `draftRecord("object",
+  {name, type: "sword", level: 20}, core)` now returns a complete record - cost,
+  weight, to-hit, `alloc` and graphics taken from core's own level-20 swords -
+  together with the evidence for every number it chose and a list of what is
+  still wrong with it. A price is not derivable from first principles, but it is
+  derivable from precedent, and precedent is what core's 375 objects are. The
+  shape is MODELLED on the nearest comparable record rather than assembled from
+  file-wide field frequency, which produced a sword carrying an `armor` block
+  because 59% of core's objects have one; a model never lends `flags`, `slay`,
+  `brand`, `effect` or `values`, because a template that quietly grants powers
+  hands an author an item that does things they never asked for. Every step is
+  separately callable: `describeFile`, `requiredFields`, `fieldUsage`,
+  `templateRecord`, `peersFor`, `suggestFields`. See `docs/modding/AUTHORING.md`.
+- **`checkRecords`: every way a new record will silently do nothing, named.**
+  A required field absent (`error`), a reference that names nothing, a field
+  written as the wrong type, a missing `alloc` so the item never generates
+  (`warn`), a misspelled field name with a "did you mean", a monster with
+  nothing to attack with (`hint`). Plus the one nobody thinks of: Angband hands
+  each object of a flavoured type its own flavour, and a mod that pushes a tval
+  past its flavour supply makes some other item indistinguishable when
+  unidentified - counted from the composed data, so a mod that adds flavours as
+  well as objects gets the credit. Nothing here refuses anything; the refusals
+  live where the rules are the engine's own.
+- **A declared, measured reference graph.** `REFERENCE_EDGES` names 37 fields
+  that point at another record - `object.type` into `object_base`,
+  `monster.base` into `monster_base`, `ego_item.slay` into `slay`, and so on -
+  and every edge is run over core's 3,279 records by its own test, so a wrong
+  edge is a test failure rather than a false alarm in somebody's mod. References
+  resolve against core PLUS the mod's own new records. An unresolved reference
+  is a warning and never a refusal, because core's own data contains some:
+  `artifact.txt` writes `soft armour` where `object_base.txt` and `list-tvals.h`
+  write `soft armor`, and fourteen artifact base objects name svals `object.txt`
+  never defines. Both are upstream 4.2.6's, reproduced exactly, and both are
+  pinned by count so the exceptions cannot quietly grow.
+- **`ModProject`: a whole mod assembled, composed and checked before it is
+  written.** `modProject(manifest).declareField(...).add(...).patchFields(...)
+  .build(corePack)` returns the mod folder's bytes, composition's own refusals,
+  and the findings - measured on the COMPOSED result, because a patch that
+  breaks a reference is invisible in the mod's own files. It touches no
+  filesystem, so the same builder works from a CLI, a test, or an in-game
+  editor, and it reports a missing dependency as a finding rather than throwing.
+- **`RECORD_BLUEPRINTS`**, generated from the shipped pack: per record file, per
+  field (nested fields and array elements included), how many of core's records
+  carry it, which JSON shapes it takes, the range its numbers span, and the
+  vocabulary its strings use where there is one. Derived rather than declared,
+  for the same reason `CORE_RECORD_KEYS` is - and asserted to agree with it,
+  file for file, since the day those two generated tables disagree is the day a
+  field is an extension at one end and a core field at the other.
+
+### Fixed
+
+- **Adding a record to `object`, `ego_item` or `vault` silently deleted the base
+  game's copy of that file, and now says so.** Composition merges a file per
+  record only when every record's name slugs to a unique ref, and those three
+  fail it on core's own data because Angband's convention for a greater form
+  reuses the name with marks (`Acquirement` / `*Acquirement*`, `Little
+  eruption` / `Little eruption+`) - and `ego_item` ships 23 names twice. The
+  loader has always reported the whole-file replacement in `problems`;
+  `ModProject.build` now promotes it to an `error`, because a line in a list is
+  not proportionate to discarding all 375 of the game's objects. Patching,
+  replacing and removing records in those files is unaffected and works
+  per-record. Adding one remains blocked pending a change of composition's
+  identity to `recordRefKeys`.
+
 - **A mod's own vocabulary: namespaced, declared, and enforced.** A field a mod
   introduces is now written `"gore:bleed"` and declared in that mod's manifest
   under `fields`, with the record files it may appear on and an optional type.

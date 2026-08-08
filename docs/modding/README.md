@@ -30,6 +30,11 @@ before you build around an answer you guessed.
   (`packages/mod-sdk/src/standards.ts`), and a test fails if the two ever
   disagree. Run those same rules against your own folder before publishing:
   `npx neo-angband-mod-check path/to/your-mod`. Start here.
+- `AUTHORING.md`: the SHORTCUTS - `draftRecord` fills a new record from core's
+  own comparable records (including its price), `checkRecords` names every way
+  it will silently not work, and `ModProject` assembles a whole mod and composes
+  it through the real pipeline before saying anything. Read this before writing
+  a record by hand.
 - `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX

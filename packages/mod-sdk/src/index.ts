@@ -124,3 +124,38 @@ export type {
   RequirementLevel,
 } from "./standards.js";
 export * from "./fields.js";
+export { RECORD_BLUEPRINTS } from "./blueprints.js";
+export type { FieldShape, RecordBlueprint } from "./blueprints.js";
+export {
+  danglingReferences,
+  normalizeRef,
+  REFERENCE_EDGES,
+  valuesAtPath,
+} from "./references.js";
+export type { DanglingReference, ReferenceEdge, RefNormalize } from "./references.js";
+export {
+  BLUEPRINT_FILES,
+  blueprintFor,
+  checkRecords,
+  COMPANION_RULES,
+  describeFile,
+  draftRecord,
+  fieldUsage,
+  peersFor,
+  requiredFields,
+  suggestFields,
+  templateRecord,
+} from "./authoring.js";
+export type {
+  AuthoringFinding,
+  CheckOptions,
+  CompanionRule,
+  DraftedRecord,
+  FieldUsage,
+  FindingLevel,
+  PeerSet,
+  Suggestion,
+  TemplateScope,
+} from "./authoring.js";
+export { ModProject, modProject } from "./project.js";
+export type { EmittedFile, ProjectBuild } from "./project.js";
