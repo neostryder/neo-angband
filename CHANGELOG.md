@@ -46,6 +46,25 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can add a field core has never heard of, and read it at runtime.**
+  Asked directly whether a mod could make a dagger `1d5` instead of `1d4` and
+  give it a `bleed` key, the answer turned out to be two-thirds yes. Patching a
+  value works end to end - the dagger really rolls 1d5 - and so does removing a
+  key, which really takes THROWING off it. Adding one did not: it composed
+  cleanly, reported no problem, landed in the composed record, and was then
+  dropped by the binder. No error, no effect, which is the worst shape a gap
+  can take. `ObjectKind.ext` and `MonsterRace.ext` now carry the keys core does
+  not bind. `ext` is frozen, so one mod cannot rewrite what another reads, and
+  absent entirely when nothing was added, so its presence means something. It
+  holds ONLY the mod's keys - copying core's own fields in would invite a mod
+  to read a pre-bind value that can disagree with the bound one forever without
+  either being wrong. Which keys are core's is derived from core's own gamedata
+  rather than declared, and re-derived by its test in both directions, so the
+  boundary cannot drift as the pack grows. Core never reads `ext`: this is the
+  DATA half of extending the game, and the behaviour half is already there in
+  `registry:effect` and `registry:blow`. Objects and monsters are done and
+  proven from disk; the remaining binders still drop an added key.
+
 - **Every record of every gamedata file is now nameable by a mod.** Declaring a
   per-file key on 2026-07-29 stopped per-record patches being silently dropped,
   but a key per FILE is not every RECORD being addressable, and the difference

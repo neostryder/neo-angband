@@ -202,6 +202,41 @@ identity is the record's `name`, so `core:kobold` is a monster and
 The `*` and `+` in an Angband name are part of it: `*Healing*` is
 `core:potion--star-healing-star`, distinct from `Healing`.
 
+#### Adding your own fields to a core record
+
+A patch is not limited to the fields core defines. A key core has never heard
+of survives composition AND binding, and arrives on the bound record under
+`ext`:
+
+```json
+{
+  "fieldPatches": {
+    "core:sword--dagger": [
+      { "op": "set", "path": "attack.hd", "value": "1d5" },
+      { "op": "set", "path": "bleed", "value": { "dice": "1d3", "turns": 5 } }
+    ]
+  }
+}
+```
+
+The first op retunes a field core owns - the dagger now really rolls 1d5. The
+second adds one core does not, and a plugin reads it back as
+`kind.ext.bleed`. `ext` is absent entirely on an unmodded record, so its
+presence means a mod put something there, and it holds ONLY your keys - core's
+own fields are never copied into it, because a mod reading a pre-bind copy of
+a field it did not add would be reading a value that can disagree with the
+bound one forever without either being wrong.
+
+Core never reads `ext`. Data alone changes nothing: the game does not know
+what "bleed" means, so a mod that adds the field also supplies the behaviour -
+a `registry:effect` handler for what bleeding does, or a `registry:blow`
+handler for a monster attack that applies it. Adding the field is what makes
+the data half possible; the plugin is what makes it happen.
+
+Which keys count as core's is measured from core's own gamedata rather than
+declared (`packages/core/src/mod/record-keys.ts`, generated and re-derived by
+its test in both directions), so the boundary cannot drift as the pack grows.
+
 > **The old limitation here is gone, and this note replaces it.** Until
 > 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files
 > was silently dropped, and until 2026-08-08 a further 73 individual

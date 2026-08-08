@@ -29,6 +29,7 @@
  */
 
 import { FlagSet } from "../bitflag.js";
+import { extensionData } from "../mod/record-keys.js";
 import { Dice } from "../dice.js";
 import {
   ELEMENT_ENTRIES,
@@ -880,6 +881,12 @@ export class ObjRegistry {
         kind.allocMin = amin;
         kind.allocMax = amax;
       }
+      /* Keys core does not read ride along instead of being dropped. This is
+       * the ONLY thing that makes an added key survive: composition always
+       * carried it, and this binder always discarded it, so a mod could write
+       * a new field, get no error, and find nothing at runtime. */
+      const ext = extensionData("object", rec);
+      if (ext) kind.ext = ext;
       this.kinds.push(kind);
     }
     this.ordinaryKindCount = this.kinds.length;

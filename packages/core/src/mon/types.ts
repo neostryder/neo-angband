@@ -200,6 +200,12 @@ export interface MonsterAltMsg {
 
 /** struct monster_race (monster.h), bound from monster.json. */
 export interface MonsterRace {
+  /**
+   * Keys this race's record carried that core does not bind
+   * (mod/record-keys.ts). Absent unless a mod added one; core never reads it.
+   * See ObjectKind.ext.
+   */
+  ext?: Readonly<Record<string, unknown>>;
   /** Index in the race array; record order mirrors monster.txt. */
   ridx: number;
   name: string;

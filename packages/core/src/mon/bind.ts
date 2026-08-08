@@ -35,6 +35,7 @@
 
 import { FlagSet } from "../bitflag.js";
 import { colorCharToAttr, colorTextToAttr } from "../color.js";
+import { extensionData } from "../mod/record-keys.js";
 import { Dice } from "../dice.js";
 import { myStristr } from "../guard.js";
 import { MFLAG_SIZE, monSpellsOfTypes, MON_GROUP, RF_SIZE, RSF_SIZE } from "./types.js";
@@ -646,6 +647,10 @@ export class MonsterRegistry {
     this.racesByName = new Map();
     for (const rec of pack.monsters) {
       const race = this.bindRace(rec, maxSight, innate, breathOrInnate);
+      /* Keys core does not read ride along instead of being dropped - the same
+       * seam as ObjectKind.ext, for the same reason. */
+      const ext = extensionData("monster", rec);
+      if (ext) race.ext = ext;
       this.races.push(race);
       this.racesByName.set(race.name.toLowerCase(), race);
     }

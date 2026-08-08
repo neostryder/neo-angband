@@ -117,6 +117,7 @@ export * from "./mod/save-blocks.js";
 export * from "./mod/ids.js";
 export * from "./mod/registry-host.js";
 export * from "./mod/vocabulary.js";
+export * from "./mod/record-keys.js";
 export * from "./agent/index.js";
 export * from "./game/energy.js";
 export * from "./game/context.js";
