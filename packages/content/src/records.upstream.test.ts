@@ -556,7 +556,8 @@ const HEADER_CASES: readonly HeaderCase[] = [
     dependents: [
       "mcat-include-base:bat",
       "mcat-include-flag:UNIQUE",
-      "mcat-include-other:fully-known",
+      /* No "mcat-include-other": 4.2.6's ui-knowledge.c does not register it
+       * (it is post-tag upstream work), so there is no directive here to pin. */
     ],
   },
 ];

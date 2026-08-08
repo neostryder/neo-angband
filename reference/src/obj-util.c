@@ -158,7 +158,7 @@ void flavor_init(void)
 	/* Use the "simple" RNG */
 	Rand_quick = true;
 
-	/* Induce consistent flavors */
+	/* Induce consistant flavors */
 	Rand_value = seed_flavor;
 
 	/* Scrub all flavors and re-parse for new players */
@@ -172,9 +172,7 @@ void flavor_init(void)
 			f->sval = SV_UNKNOWN;
 		}
 		cleanup_parser(&flavor_parser);
-		if (run_parser(&flavor_parser)) {
-			quit("Could not parse flavor.txt.");
-		}
+		run_parser(&flavor_parser);
 	}
 
 	if (OPT(player, birth_randarts))
@@ -470,7 +468,7 @@ unsigned check_for_inscrip_with_int(const struct object *obj, const char *inscri
 	do {
 		s = strstr(s, inscrip);
 		if (!s) break;
-		if (isdigit((unsigned char)s[inlen])) {
+		if (isdigit(s[inlen])) {
 			if (i == 0) {
 				long inarg = strtol(s + inlen, 0, 10);
 

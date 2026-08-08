@@ -7,6 +7,7 @@
 #define INCLUDED_SDL2_SDLPUI_CONTROL_H
 
 #include "SDL.h" /* SDL_*Event, SDL_Rect, SDL_Renderer, Sint32 */
+#include <stdbool.h>
 
 struct sdlpui_control;
 struct sdlpui_dialog;
@@ -73,105 +74,82 @@ enum sdlpui_child_menu_placement {
 /** Holds a function table to be used for a class of controls. */
 struct sdlpui_control_funcs {
 	/*
-	 * Respond to events.  Return SDL_TRUE if the event was handled and
-	 * should not be passed on to another handler.  Otherwise, return
-	 * SDL_FALSE.  Any can be NULL if the control does not do anything
-	 * with that type of event and wants the dialog or window to handle
-	 * the event.
+	 * Respond to events.  Return true if the event was handled and
+	 * shouldn't be passed on to another handler.  Otherwise, return false.
+	 * Any can be NULL if the control doesn't do anything with that type
+	 * of event and wants the dialog or window to handle the event.
 	 */
 	/**
-	 * Respond to a key event.  Return SDL_TRUE if the event was handled
-	 * and should not be passed on to another handler.  Otherwise, return
-	 * SDL_FALSE.  Can be NULL if the control does not do anything with a
-	 * key event and wants the dialog or window to handle the event.
+	 * Respond to a key event.  Return true if the event was handled and
+	 * should not be passed on to another handler.  Otherwise, return false.
+	 * Can be NULL if the control does not do anything with a key event
+	 * and wants the dialog or window to handle the event.
 	 */
-	SDL_bool (*handle_key)(struct sdlpui_control *c,
-		struct sdlpui_dialog *d, struct sdlpui_window *w,
-		const SDL_KeyboardEvent *e);
+	bool (*handle_key)(struct sdlpui_control *c, struct sdlpui_dialog *d,
+		struct sdlpui_window *w, const SDL_KeyboardEvent *e);
 	/**
-	 * Respond to a text input event.  Return SDL_TRUE if the event was
+	 * Respond to a text input event.  Return true if the event was
 	 * handled and should not be passed on to another handler.  Otherwise,
-	 * return SDL_FALSE.  Can be NULL if the control does not do anything
-	 * with a text input event and wants the dialog or window to handle
-	 * the event.
-	 */
-	SDL_bool (*handle_textin)(struct sdlpui_control *c,
-		struct sdlpui_dialog *d, struct sdlpui_window *w,
-		const SDL_TextInputEvent *e);
-	/**
-	 * Respond to a text edit event.  Return SDL_TRUE if the event was
-	 * handled and should not be passed on to another handler.  Otherwise,
-	 * return SDL_FALSE.  Can be NULL if the control does not do anything
-	 * with a text edit event and wants the dialog or window to handle the
+	 * return false.  Can be NULL if the control does not do anything with
+	 * a text input event and wants the dialog or window to handle the
 	 * event.
 	 */
-	SDL_bool (*handle_textedit)(struct sdlpui_control *c,
+	bool (*handle_textin)(struct sdlpui_control *c, struct sdlpui_dialog *d,
+		struct sdlpui_window *w, const SDL_TextInputEvent *e);
+	/**
+	 * Respond to a text edit event.  Return true if the event was
+	 * handled and should not be passed on to another handler.  Otherwise,
+	 * return false.  Can be NULL if the control does not do anything with
+	 * a text edit event and wants the dialog or window to handle the
+	 * event.
+	 */
+	bool (*handle_textedit)(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const SDL_TextEditingEvent *e);
 	/**
-	 * Respond to a mouse button event.  Return SDL_TRUE if the event was
+	 * Respond to a mouse button event.  Return true if the event was
 	 * handled and should not be passed on to another handler.  Otherwise,
-	 * return SDL_FALSE.  Can be NULL if the control does not do anything
-	 * with a mouse button event and wants the dialog or window to handle
-	 * the event.
+	 * return false.  Can be NULL if the control does not do anything with
+	 * a mouse button event and wants the dialog or window to handle the
+	 * event.
 	 */
-	SDL_bool (*handle_mouseclick)(struct sdlpui_control *c,
+	bool (*handle_mouseclick)(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const SDL_MouseButtonEvent *e);
 	/**
-	 * Respond to a mouse motion event.  Return SDL_TRUE if the event was
+	 * Respond to a mouse motion event.  Return true if the event was
 	 * handled and should not be passed on to another handler.  Otherwise,
-	 * return SDL_FALSE.  Can be NULL if the control does not do anything
-	 * with a mouse motion event and wants the dialog or window to handle
-	 * the event.
+	 * return false.  Can be NULL if the control does not do anything with
+	 * a mouse motion event and wants the dialog or window to handle the
+	 * event.
 	 */
-	SDL_bool (*handle_mousemove)(struct sdlpui_control *c,
+	bool (*handle_mousemove)(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const SDL_MouseMotionEvent *e);
 	/**
-	 * Respond to a mouse wheel event.  Return SDL_TRUE if the event was
+	 * Respond to a mouse wheel event.  Return true if the event was
 	 * handled and should not be passed on to another handler.  Otherwise,
-	 * return SDL_FALSE.  Can be NULL if the control does not do anything
-	 * with a mouse wheel event and wants the dialog or window to handle
-	 * the event.
+	 * return false.  Can be NULL if the control does not do anything with
+	 * a mouse wheel event and wants the dialog or window to handle the
+	 * event.
 	 */
-	SDL_bool (*handle_mousewheel)(struct sdlpui_control *c,
+	bool (*handle_mousewheel)(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const SDL_MouseWheelEvent *e);
-	/**
-	 * Return the name for the type of a specific control.  May not be
-	 * NULL.
-	 */
-	const char *(*get_type_name)(const struct sdlpui_control *c);
-	/**
-	 * Return the caption for the control.  May be NULL.  In that case,
-	 * tracing statements use "(none)" when displaying the caption.
-	 */
-	const char *(*get_caption)(const struct sdlpui_control *c);
 	/**
 	 * Change the caption for the control.  May be NULL if the control
 	 * does not have a caption or otherwise does not want
 	 * sdlpui_change_caption() to work with the control.  Does resize
-	 * the internals of the control for the new caption but does not
-	 * change its external dimensions.
+         * the internals of the control for the new caption but does not
+         * change its external dimensions.
 	 */
 	void (*change_caption)(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const char *new_caption);
 	/**
 	 * Render the control.  Can be NULL, but then the control will be
-	 * invisible.  Must not affect parts of the screen outside the
-	 * bounds of c->rect.  Can assume the renderer's target has been set
-	 * to d->texture.  If it modifies the renderer's target, it must
-	 * restore it to d->texture before returning.  Can not assume
-	 * anything about the drawing color in the renderer and does not
-	 * need to restore the prior drawing color before returning.  Can
-	 * assume that the blending mode in the renderer is SDL_BLENDMODE_NONE.
-	 * Must restore the blending mode to SDL_BLENDMODE_NONE before
-	 * returning.  If changes the clipping rectangle, scale, integer
-	 * scale, logical size, or viewport in the renderer, must restore
-	 * the prior state before returning.  Must not alter the VSync of the
-	 * renderer.
+	 * invisible.  Assumes the renderer's target has been set to
+	 * d->texture.
 	 */
 	void (*render)(struct sdlpui_control *c, struct sdlpui_dialog *d,
 		struct sdlpui_window *w, SDL_Renderer *r);
@@ -220,7 +198,7 @@ struct sdlpui_control_funcs {
 		struct sdlpui_dialog *new_d);
 	/**
 	 * Signal that the child dialog for a control has been removed.  Can
-	 * be NULL if the control does not create a dialog, set the created
+	 * be NULL if the control doesn't create a dialog, set the created
 	 * dialog's parent control to the control, or record the pointer
 	 * to the dialog.
 	 */
@@ -239,30 +217,28 @@ struct sdlpui_control_funcs {
 	void (*disarm)(struct sdlpui_control *c, struct sdlpui_dialog *d,
 		struct sdlpui_window *w, enum sdlpui_action_hint hint);
 	/**
-	 * For simple controls, either returns zero (the control does not
+	 * For simple controls, either returns zero (the control doesn't
 	 * accept focus) or one (it does).  For compound controls it returns:
 	 *     a) Zero if none of the components accepts focus.
-	 *     b) If first is not SDL_FALSE, returns the one-based index of
-	 *        the first component that can accept focus.
-	 *     c) If first is SDL_FALSE, returns the one-based index of the last
+	 *     b) If first is true, returns the one-based index of the first
+	 *        component that can accept focus.
+	 *     c) If first is false, returns the one-based index of the last
 	 *        component that can accept focus.
 	 * May be NULL:  callers will then assume the control can't accept
 	 * focus.
 	 */
-	int (*get_interactable_component)(struct sdlpui_control *c,
-		SDL_bool first);
+	int (*get_interactable_component)(struct sdlpui_control *c, bool first);
 	/**
-	 * Step (forward if forward is not SDL_FALSE; backward otherwise;
-	 * never wrap around) between the interactable components within the
-	 * given control, assumed to already have key focus, and transfer the
-	 * key focus to the result of the step.  Return SDL_FALSE if stepping
-	 * was not possible; otherwise return SDL_TRUE.  May be NULL:  callers
-	 * will then assume that any attempt to step within the control will
-	 * be ineffective.
+	 * Step (forward if forward is true; backward otherwise; never wrap
+	 * around) between the interactable components within the given
+	 * control, assumed to already have key focus, and transfer the key
+	 * focus to the result of the step.  Return true if stepping was
+	 * possible or false otherwise.  May be NULL:  callers will then assume
+	 * that any attempt to step within the control will be ineffective.
 	 */
-	SDL_bool (*step_within)(struct sdlpui_control *c, SDL_bool forward);
+	bool (*step_within)(struct sdlpui_control *c, bool forward);
 	/**
-	 * For a simple control, either returns zero (the control does not
+	 * For a simple control, either returns zero (the control doesn't
 	 * accept focus or contain the given coordinates, relative to the
 	 * dialog) or one (the control accepts focus and the given coordinates
 	 * are in the control).  For a compound control return zero if there's
@@ -290,25 +266,24 @@ struct sdlpui_control_funcs {
 		int *height);
 	/**
 	 * Get whether the control is disabled.  May be NULL:  the control
-	 * does not support enabling/disabling.
+	 * doesn't support enabling/disabling.
 	 */
-	SDL_bool (*is_disabled)(const struct sdlpui_control *c);
+	bool (*is_disabled)(const struct sdlpui_control *c);
 	/**
 	 * Change whether the control is disabled and return whether or not
-	 * its prior state was disabled.  May be NULL:  the control does not
+	 * its prior state was disabled.  May be NULL:  the control doesn't
 	 * support enabling/disabling.
 	 */
-	SDL_bool (*set_disabled)(struct sdlpui_control *c,
-		struct sdlpui_dialog *d, struct sdlpui_window *w,
-		SDL_bool disabled);
+	bool (*set_disabled)(struct sdlpui_control *c, struct sdlpui_dialog *d,
+		struct sdlpui_window *w, bool disabled);
 	/**
 	 * Get the application-assigned tag for a control.  May be NULL:  the
-	 * control does not support application-assigned tags.
+	 * control doesn't support application-assigned tags.
 	 */
 	int (*get_tag)(const struct sdlpui_control *c);
 	/**
 	 * Change the application-assigned tag for a control and return its
-	 * prior tag.  May be NULL:  the control does not support
+	 * prior tag.  May be NULL:  the control doesn't support
 	 * application-assigned tags.
 	 */
 	int (*set_tag)(struct sdlpui_control *c, int new_tag);
@@ -329,10 +304,6 @@ struct sdlpui_control {
 	 * upper left corner, and size of the control.
 	 */
 	SDL_Rect rect;
-	/**
-	 * Holds a number from sdlpui_reserve_id() to use in identity checks.
-	 */
-	Uint32 id;
 	/** Allow for a check before casting priv to another type. */
 	Uint32 type_code;
 };
@@ -388,15 +359,11 @@ struct sdlpui_menu_button {
 				ranged_int button, left side depressed), 2 =
 				ranged_int button right side depressed,
 				3 = ranged_int button both sides depressed */
-	SDL_bool disabled;
-			/**< if not SDL_FALSE, no response to events and
-				different look */
+	bool disabled;	/**< if true, no response to events and different
+				look */
 	enum sdlpui_menu_button_type subtype_code;
 	union {
-		struct {
-			char *expanded_caption;
-			int min, max, curr, old;
-		} ranged_int;
+		struct { int min, max, curr, old; } ranged_int;
 		struct {
 			struct sdlpui_dialog *(*creator)(
 				struct sdlpui_control*,
@@ -407,7 +374,7 @@ struct sdlpui_menu_button {
 			struct sdlpui_dialog *child;
 			enum sdlpui_child_menu_placement placement;
 		} submenu;
-		SDL_bool toggled; /**< subtype_code is SDLPUI_MB_INDICATOR or
+		bool toggled; /**< subtype_code is SDLPUI_MB_INDICATOR or
 					SDLPUI_MB_TOGGLE */
 	} v;
 };
@@ -429,32 +396,32 @@ struct sdlpui_push_button {
 	 * with the same callback.
 	 */
 	int tag;
-	SDL_bool disabled;	/**< if not SDL_FALSE, no response to events and
-					different look */
-	SDL_bool has_key;	/**< if not SDL_FALSE, has key focus */
-	SDL_bool has_mouse;	/**< if not SDL_FALSE, has mouse focus */
-	SDL_bool armed;		/**< if not SDL_FALSE, button is depressed */
+	bool disabled;	/**< if true, no response to events and different
+				look */
+	bool has_key;	/**< if true, has key focus */
+	bool has_mouse;	/**< if true, has mouse focus */
+	bool armed;	/**< if true, button is depressed */
 };
 
 
-SDL_bool sdlpui_is_in_control(const struct sdlpui_control *c,
+bool sdlpui_is_in_control(const struct sdlpui_control *c,
 		const struct sdlpui_dialog *d, Sint32 x, Sint32 y);
-SDL_bool sdlpui_is_disabled(const struct sdlpui_control *c);
-SDL_bool sdlpui_set_disabled(struct sdlpui_control *c, struct sdlpui_dialog *d,
-		struct sdlpui_window *w, SDL_bool disabled);
+bool sdlpui_is_disabled(const struct sdlpui_control *c);
+bool sdlpui_set_disabled(struct sdlpui_control *c, struct sdlpui_dialog *d,
+		struct sdlpui_window *w, bool disabled);
 int sdlpui_get_tag(const struct sdlpui_control *c);
 int sdlpui_set_tag(struct sdlpui_control *c, int new_tag);
 void sdlpui_change_caption(struct sdlpui_control *c, struct sdlpui_dialog *d,
 		struct sdlpui_window *w, const char *new_caption);
 
 /* Standard event handlers for simple controls */
-SDL_bool sdlpui_control_handle_key(struct sdlpui_control *c,
+bool sdlpui_control_handle_key(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const struct SDL_KeyboardEvent *e);
-SDL_bool sdlpui_control_handle_mouseclick(struct sdlpui_control *c,
+bool sdlpui_control_handle_mouseclick(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const struct SDL_MouseButtonEvent *e);
-SDL_bool sdlpui_control_handle_mousemove(struct sdlpui_control *c,
+bool sdlpui_control_handle_mousemove(struct sdlpui_control *c,
 		struct sdlpui_dialog *d, struct sdlpui_window *w,
 		const struct SDL_MouseMotionEvent *e);
 
@@ -471,30 +438,30 @@ void sdlpui_create_label(struct sdlpui_control *c, const char *caption,
 void sdlpui_create_push_button(struct sdlpui_control *c, const char *caption,
 		enum sdlpui_hor_align halign, void (*callback)(
 		struct sdlpui_control*, struct sdlpui_dialog*,
-		struct sdlpui_window*), int tag, SDL_bool disabled);
+		struct sdlpui_window*), int tag, bool disabled);
 
 /* Constructors for controls in menus */
 void sdlpui_create_menu_button(struct sdlpui_control *c, const char *caption,
 		enum sdlpui_hor_align halign, void (*callback)(
 		struct sdlpui_control*, struct sdlpui_dialog*,
-		struct sdlpui_window*), int tag, SDL_bool disabled);
+		struct sdlpui_window*), int tag, bool disabled);
 void sdlpui_create_menu_indicator(struct sdlpui_control *c, const char *caption,
-		enum sdlpui_hor_align halign, int tag, SDL_bool curr_value);
+		enum sdlpui_hor_align halign, int tag, bool curr_value);
 void sdlpui_create_menu_ranged_int(struct sdlpui_control *c,
 		const char *caption, enum sdlpui_hor_align halign,
 		void (*callback)(struct sdlpui_control*, struct sdlpui_dialog*,
-		struct sdlpui_window*), int tag, SDL_bool disabled,
-		int curr_value, int min_value, int max_value);
+		struct sdlpui_window*), int tag, bool disabled, int curr_value,
+		int min_value, int max_value);
 void sdlpui_create_menu_toggle(struct sdlpui_control *c, const char *caption,
 		enum sdlpui_hor_align halign, void (*callback)(
 		struct sdlpui_control*, struct sdlpui_dialog*,
-		struct sdlpui_window*), int tag, SDL_bool disabled,
-		SDL_bool curr_value);
+		struct sdlpui_window*), int tag, bool disabled,
+		bool curr_value);
 void sdlpui_create_submenu_button(struct sdlpui_control *c, const char *caption,
 		enum sdlpui_hor_align halign, struct sdlpui_dialog *(*creator)(
 		struct sdlpui_control*, struct sdlpui_dialog*, struct
 		sdlpui_window*, int ul_x_win, int ul_y_win),
 		enum sdlpui_child_menu_placement placement, int tag,
-		SDL_bool disabled);
+		bool disabled);
 
 #endif /* INCLUDED_SDL2_SDLPUI_CONTROL_H */

@@ -442,71 +442,90 @@ describe("full level generation", () => {
    */
   const STRANDED: readonly [number, number, readonly string[]][] = [
     /*
-     * RE-PINNED WHOLESALE on 2026-08-06. All twelve previous seeds stopped
-     * stranding at once, which this test's own note calls a behavioural
-     * regression rather than a stream shift - so here is what actually
-     * happened, measured rather than asserted.
+     * RE-PINNED WHOLESALE on 2026-08-07, and the cause is an INPUT change, not
+     * a code change: #143 moved reference/ from upstream master back to the
+     * 4.2.6 tag, which is the baseline every doc already claimed. 4.2.6 ships
+     * 1,631 more lines of room_template.txt than master and a different
+     * vault.txt, so the room the generator reaches for at each draw differs
+     * from the first template onward.
      *
-     * build_streamer tests square_isrock (gen-cave.c:128), and square_isrock is
-     * NARROWER than it reads: TF_GRANITE && !TF_DOOR_ANY, and in 4.2.6 only
-     * FEAT_GRANITE and FEAT_SECRET carry TF_GRANITE. Upstream streamers
-     * therefore convert plain granite and nothing else. The port tested
-     * isMagma || isQuartz || isGranite - wider at both ends, so it overwrote
-     * existing veins AND destroyed secret doors, and every extra conversion
-     * spent another one_in_(chance) draw. Fixing the predicate to c.isRock
-     * moved the generation stream from the first streamer onward, which is
-     * every classic / modified / moria / lair level in the game.
+     * 14 of the 22 previously pinned seeds stopped stranding. This test's own
+     * note calls "most of them going stale" a behavioural regression rather
+     * than a stream shift, and that rule is right - it is just not what
+     * happened here, and the evidence is that the RATE held:
      *
-     * Measured over an IDENTICAL 15,000-seed sweep (3,000 each at depths
-     * 1/20/40/50/60), before and after the one-line predicate change:
+     *     master gamedata   22 / 15000   0.15% stranded
+     *     4.2.6 gamedata    31 / 12000   0.26% stranded
      *
-     *     before   137 / 15000   0.91% stranded
-     *     after     22 / 15000   0.15% stranded
+     * Same sweep shape (3,000 seeds each at depths 20/40/50/60; depth 1 is
+     * dropped because it produced zero after the 2026-08-06 predicate fix and
+     * 3,000 wasted generations with it). Every one of the 31 below carries
+     * upstream's signature - the CONTROL test re-measures that on every run,
+     * and notUpstreamStranding would name any that did not.
      *
-     * Depth 1 went 24 -> 0. The 22 seeds below are the complete list from that
-     * sweep.
+     * The previous re-pin's finding still stands and is not repeated here: see
+     * git history for the 2026-08-06 build_streamer / square_isrock note, which
+     * separated 104 genuine port defects from a stream shift.
      *
-     * WHERE THE OTHER 115 WENT, measured 2026-08-06 by re-running both sweeps
-     * through notUpstreamStranding (below), which separates upstream's
-     * vault-swallowed stair from an ordinary sealed region:
-     *
-     *     before   137 stranded =  33 upstream-signature + 104 PORT DEFECT
-     *     after     22 stranded =  22 upstream-signature +   0 port defect
-     *
-     * So the six-fold drop was not a stream shift at all: 104 of the 137 were
-     * the port's own damage, and the mechanism is the obvious one in hindsight.
-     * A secret door is WALKABLE. The old predicate converted FEAT_SECRET into a
-     * magma or quartz vein, which is not - so any room whose only link to the
-     * level was a secret door was bricked up, stairs and all. The offender list
-     * is full of ordinary sealed regions, one of them 2,750 grids of a depth-1
-     * level (seed 10485). The residual 33 -> 22 IS a stream shift, and small.
-     *
-     * The earlier claim in this file that the drop was "NOT fully explained" is
-     * withdrawn: it was true when written and stopped being true the moment
-     * anyone asked which KIND of stranding each one was.
+     * Every direction is DERIVED from strandedDirs, never hand-written.
      */
+    [20, 200435, ["up"]],
+    [20, 200563, ["up"]],
     [20, 201097, ["up"]],
-    [20, 201980, ["up"]],
-    [20, 202171, ["up"]],
-    [40, 400920, ["up"]],
-    [40, 402135, ["up"]],
+    [20, 201258, ["up"]],
+    [40, 402102, ["up"]],
     [40, 402149, ["up"]],
+    [40, 402342, ["up"]],
+    [40, 402698, ["up"]],
     [40, 402806, ["up"]],
-    [50, 500079, ["up"]],
-    [50, 500646, ["up"]],
-    [50, 500913, ["up"]],
-    [50, 500936, ["up"]],
+    [40, 402944, ["up"]],
+    [50, 500152, ["up"]],
+    [50, 500255, ["up"]],
+    [50, 500314, ["up"]],
+    [50, 501002, ["up"]],
+    [50, 501368, ["up"]],
     [50, 501511, ["up"]],
-    [50, 502340, ["up"]],
-    [50, 502454, ["up"]],
-    [60, 600130, ["up"]],
-    [60, 600576, ["up"]],
-    [60, 601448, ["up"]],
+    [50, 502233, ["up"]],
+    [50, 502276, ["up"]],
+    [60, 600148, ["up"]],
+    [60, 600399, ["up"]],
+    [60, 600567, ["up"]],
+    [60, 600759, ["up"]],
+    [60, 601057, ["up"]],
+    [60, 601175, ["up"]],
     [60, 601451, ["up"]],
+    [60, 601566, ["up"]],
+    [60, 602100, ["up"]],
     [60, 602272, ["up"]],
     [60, 602403, ["down"]],
-    [60, 602631, ["up"]],
     [60, 602920, ["up"]],
+  ];
+
+  /**
+   * ONE SEED FROM THE 2026-08-07 SWEEP DOES NOT CARRY UPSTREAM'S SIGNATURE, and
+   * it is held here rather than in STRANDED above so that the control test can
+   * stay honest without the finding evaporating.
+   *
+   * d40 seed 400792 seals THREE down staircases, at (166,14), (96,39) and
+   * (114,46), and not one of them is SQUARE_VAULT. In 15,000 levels under the
+   * previous gamedata and 12,000 under 4.2.6's, this is the first stranding of
+   * that shape. notUpstreamStranding's own note names the two candidates and
+   * says which is likelier:
+   *
+   *   - the port failing to connect the dungeon (a CORE defect, to be fixed
+   *     here and un-fixed in the bug-fixes mod), or
+   *   - upstream's own second route: join_region plans a path THROUGH a vault
+   *     and then refuses to dig the vault grids on it, so a crossing that only
+   *     ever went through a vault WALL leaves the corridor holed and an
+   *     ordinary region sealed with no vault grid in it.
+   *
+   * Not yet adjudicated. The test below pins the finding as it stands - the
+   * seed strands, and its stranding is NOT upstream's signature - so that a
+   * change which quietly makes either half stop being true has to come back
+   * here and say why.
+   */
+  const STRANDED_UNCLASSIFIED: readonly [number, number, readonly string[]][] = [
+    [40, 400792, ["down", "up"]],
   ];
 
   /**
@@ -634,6 +653,22 @@ describe("full level generation", () => {
         `many of the ${STRANDED.length} still strand: a handful going stale is a stream ` +
         `shift, most of them going stale is a behavioural regression.`,
     ).toEqual([]);
+  });
+
+  it("pins the ONE stranding that does not carry upstream's signature", () => {
+    /* A finding with no check on it is a note, and notes go stale silently.
+     * Both halves are asserted: it still strands, and it still fails the
+     * classifier. If either flips, this test fails and the flip gets read. */
+    for (const [depth, seed, dirs] of STRANDED_UNCLASSIFIED) {
+      const g = generateLevel(new Rng(seed), depth, makeDeps());
+      expect(strandedDirs(g), `d${depth} seed ${seed} stopped stranding`).toEqual([...dirs]);
+      expect(
+        notUpstreamStranding(g).length,
+        `d${depth} seed ${seed} now carries upstream's vault signature. If a ` +
+          `generator change made that true, this seed belongs in STRANDED and ` +
+          `the open lead is closed - say so.`,
+      ).toBeGreaterThan(0);
+    }
   });
 
   /**
@@ -1253,8 +1288,23 @@ describe("moria / lair / gauntlet / hard_centre generators", () => {
   });
 
   it("lair_gen is deterministic run-to-run for a fixed seed", () => {
-    const a = lairGen(builderCtxNamed(25, 24680, "lair")).gen as Gen;
-    const b = lairGen(builderCtxNamed(25, 24680, "lair")).gen as Gen;
+    /* RE-PINNED 2026-08-07 (#143, reference/ moved to the 4.2.6 tag). The old
+     * seed 24680 now aborts with "cavern chunk could not be created", which is
+     * upstream behaviour and not a defect: cavern_chunk returns NULL when its
+     * flood fill does not connect, lair_gen passes the NULL up, and cave_gen
+     * simply re-rolls (gen-cave.c). Measured at 1 abort in 100 consecutive
+     * seeds, so it is the ordinary rate and this seed was unlucky.
+     *
+     * The `error` assertions are new and are the point of the re-pin: the old
+     * test cast `.gen as Gen` with no check, so an abort surfaced as
+     * "Cannot read properties of null" from a helper three frames away instead
+     * of naming what happened. */
+    const ra = lairGen(builderCtxNamed(25, 24681, "lair"));
+    const rb = lairGen(builderCtxNamed(25, 24681, "lair"));
+    expect(ra.error, "the pinned seed must BUILD before it can be compared").toBeNull();
+    expect(rb.error).toBeNull();
+    const a = ra.gen as Gen;
+    const b = rb.gen as Gen;
     expect(serialize(a)).toBe(serialize(b));
     expect(a.monsters.length).toBe(b.monsters.length);
     expect(a.objects.length).toBe(b.objects.length);

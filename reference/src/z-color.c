@@ -166,10 +166,8 @@ int color_char_to_attr(char c)
 {
 	int a;
 
-#if CHAR_MIN < 0
 	/* Is negative -- spit it right back out */
 	if (c < 0) return (c);
-#endif
 
 	/* Is a space or '\0' -- return black */
 	if (c == '\0' || c == ' ') return (COLOUR_DARK);
@@ -177,11 +175,15 @@ int color_char_to_attr(char c)
 	/* Search the color table */
 	for (a = 0; a < BASIC_COLORS; a++)
 	{
-		if (color_table[a].index_char == c) return a;
+		/* Look for the index */
+		if (color_table[a].index_char == c) break;
 	}
 
 	/* If we don't find the color, we assume white */
-	return COLOUR_WHITE;
+	if (a == BASIC_COLORS) return (COLOUR_WHITE);
+
+	/* Return the color */
+	return (a);
 }
 
 

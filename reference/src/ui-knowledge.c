@@ -338,41 +338,14 @@ static bool tile_picker_command(ui_event ke, bool *tile_picker_ptr,
 			*cur_char_ptr = c = *char_left_ptr + mx;
 
 			/* Move the frame */
-			if (c > (wchar_t)frame_left) {
-				if (*char_left_ptr > c - frame_left) {
-					(*char_left_ptr)--;
-				}
-			} else if (*char_left_ptr > 0) {
+			if (*char_left_ptr > MAX(0, (int)c - frame_left))
 				(*char_left_ptr)--;
-			}
-			if (frame_right <= 255
-					&& c <= (wchar_t)(255 - frame_right)) {
-				if (c + frame_right >= (wchar_t)eff_width
-						&& *char_left_ptr <= c
-						+ frame_right - eff_width) {
-					(*char_left_ptr)++;
-				}
-			} else if (eff_width <= 255 && *char_left_ptr <=
-					(wchar_t)(255 - eff_width)) {
+			if (*char_left_ptr + eff_width <= MIN(255, (int)c + frame_right))
 				(*char_left_ptr)++;
-			}
-			if (a > frame_top) {
-				if (*attr_top_ptr > a - frame_top) {
-					(*attr_top_ptr)--;
-				}
-			} else if (*attr_top_ptr > 0) {
+			if (*attr_top_ptr > MAX(0, (int)a - frame_top))
 				(*attr_top_ptr)--;
-			}
-			if (frame_bottom <= 255 && a <= 255 - frame_bottom) {
-				if (a + frame_bottom >= eff_height
-						&& *attr_top_ptr <= a
-						+ frame_bottom - eff_height) {
-					(*attr_top_ptr)++;
-				}
-			} else if (eff_height <= 255 && *attr_top_ptr <=
-					255 - eff_height) {
+			if (*attr_top_ptr + eff_height <= MIN(255, (int)a + frame_bottom))
 				(*attr_top_ptr)++;
-			}
 
 			/* Delay */
 			*delay = 100;
@@ -505,56 +478,21 @@ static bool tile_picker_command(ui_event ke, bool *tile_picker_ptr,
 			*cur_char_ptr = c;
 
 			/* Move the frame */
-			if (ddx[d] < 0) {
-				if (c > (wchar_t)frame_left) {
-					if (*char_left_ptr > c - frame_left) {
-						(*char_left_ptr)--;
-					}
-				} else if (*char_left_ptr > 0) {
-					(*char_left_ptr)--;
-				}
-			} else if (ddx[d] > 0) {
-				if (frame_right <= 255
-						&& c <= (wchar_t)(255
-						- frame_right)) {
-					if (c + frame_right >= (wchar_t)(width
-							/ tile_width)
-							&& *char_left_ptr <=
-							c + frame_right
-							- (width / tile_width)) {
-						(*char_left_ptr)++;
-					}
-				} else if (width / tile_width <= 255
-						&& *char_left_ptr <=
-						(wchar_t)(255 - (width
-						/ tile_width))) {
-					(*char_left_ptr)++;
-				}
-			}
-			if (ddy[d] < 0) {
-				if (a > frame_top) {
-					if (*attr_top_ptr > a - frame_top) {
-						(*attr_top_ptr)--;
-					}
-				} else if (*attr_top_ptr > 0) {
-					(*attr_top_ptr)--;
-				}
-			} else if (ddy[d] > 0) {
-				if (frame_bottom <= 255 && a <= 255
-						- frame_bottom) {
-					if (a + frame_bottom >= height
-							/ tile_height
-							&& *attr_top_ptr
-							<= a + frame_bottom
-							- (height / tile_height)) {
-						(*attr_top_ptr)++;
-					}
-				} else if (height / tile_height <= 255
-						&& *attr_top_ptr <=
-						255 - (height / tile_height)) {
-					(*attr_top_ptr)++;
-				}
-			}
+			if (ddx[d] < 0 &&
+					*char_left_ptr > MAX(0, (int)c - frame_left))
+				(*char_left_ptr)--;
+			if ((ddx[d] > 0) &&
+					*char_left_ptr + (width / tile_width) <=
+							MIN(255, (int)c + frame_right))
+			(*char_left_ptr)++;
+
+			if (ddy[d] < 0 &&
+					*attr_top_ptr > MAX(0, (int)a - frame_top))
+				(*attr_top_ptr)--;
+			if (ddy[d] > 0 &&
+					*attr_top_ptr + (height / tile_height) <=
+							MIN(255, (int)a + frame_bottom))
+				(*attr_top_ptr)++;
 
 			/* We need to always eat the input even if it is clipped,
 			 * otherwise it will be interpreted as a change object
@@ -802,7 +740,6 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 	/* This could (should?) be (void **) */
 	int *g_list, *g_offset;
 
-	void *g_names_mem;
 	const char **g_names;
 
 	int g_name_len = 8;  /* group name length, minumum is 8 */
@@ -877,8 +814,7 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 
 
 	/* The compact set of group names, in display order */
-	g_names_mem = mem_zalloc(grp_cnt * sizeof(char*));
-	g_names = g_names_mem;
+	g_names = mem_zalloc(grp_cnt * sizeof(char*));
 
 	for (i = 0; i < grp_cnt; i++) {
 		int len;
@@ -900,7 +836,7 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 
 	/* Set up the two menus */
 	menu_init(&group_menu, MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
-	menu_setpriv(&group_menu, grp_cnt, g_names_mem);
+	menu_setpriv(&group_menu, grp_cnt, g_names);
 	menu_layout(&group_menu, &group_region);
 	group_menu.flags |= MN_DBL_TAP;
 
@@ -1038,11 +974,10 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 		if (!tile_picker && !glyph_picker) {
 			ui_event ke0 = EVENT_EMPTY;
 
-			if (ke.type == EVT_MOUSE) {
+			if (ke.type == EVT_MOUSE)
 				menu_handle_mouse(active_menu, &ke, &ke0);
-			} else if (ke.type == EVT_KBRD) {
+			else if (ke.type == EVT_KBRD)
 				menu_handle_keypress(active_menu, &ke, &ke0);
-			}
 
 			if (ke0.type != EVT_NONE)
 				ke = ke0;
@@ -1094,7 +1029,6 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 			}
 
 			case EVT_ESCAPE:
-			case EVT_DISCONNECT:
 			{
 				if (panel == 1)
 					do_swap = true;
@@ -1138,7 +1072,7 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
 	if (!grp_cnt)
 		prt(format("No %s known.", title), 15, 0);
 
-	mem_free(g_names_mem);
+	mem_free(g_names);
 	mem_free(g_offset);
 	mem_free(g_list);
 
@@ -1197,20 +1131,17 @@ static void display_monster(int col, int row, bool cursor, int oid)
 	c_prt(attr, race->name, row, col);
 
 	/* Display symbol */
-	big_pad(64, row, a, c);
+	big_pad(66, row, a, c);
 
 	/* Display kills */
 	if (!race->rarity) {
-		put_str(format("%s", "shape"), row, 68);
+		put_str(format("%s", "shape"), row, 70);
 	} else if (rf_has(race->flags, RF_UNIQUE)) {
 		put_str(format("%s", (race->max_num == 0)?  " dead" : "alive"),
-				row, 68);
+				row, 70);
 	} else {
-		put_str(format("%5d", lore->pkills), row, 68);
+		put_str(format("%5d", lore->pkills), row, 70);
 	}
-
-	/* Display if fully known */
-	put_str((lore->all_known) ? "yes" : "no", row, 75);
 }
 
 static int m_cmp_race(const void *a, const void *b)
@@ -1357,12 +1288,8 @@ static int count_known_monsters(void)
 					}
 				}
 			}
-			if (!has_base && (rf_is_inter(race->flags,
-					monster_group[j].inc_flags)
-					|| (monster_group[j].include_fully_known
-					&& l_list[i].all_known)
-					|| (monster_group[j].include_not_fully_known
-					&& !l_list[i].all_known))) {
+			if (!has_base && rf_is_inter(race->flags,
+					monster_group[j].inc_flags)) {
 				++m_count;
 				classified = true;
 			}
@@ -1424,12 +1351,8 @@ static void do_cmd_knowledge_monsters(const char *name, int row)
 					}
 				}
 			}
-			if (!has_base && (rf_is_inter(race->flags,
-					monster_group[j].inc_flags)
-					|| (monster_group[j].include_fully_known
-					&& l_list[i].all_known)
-					|| (monster_group[j].include_not_fully_known
-					&& !l_list[i].all_known))) {
+			if (!has_base && rf_is_inter(race->flags,
+					monster_group[j].inc_flags)) {
 				assert(ind < m_count);
 				monsters[ind] = ind;
 				default_join[ind].oid = i;
@@ -1449,7 +1372,7 @@ static void do_cmd_knowledge_monsters(const char *name, int row)
 	}
 
 	display_knowledge("monsters", monsters, m_count, r_funcs, m_funcs,
-			"                 Sym  Kills  Full");
+			"                   Sym  Kills");
 	mem_free(default_join);
 	mem_free(monsters);
 }
@@ -2711,7 +2634,7 @@ static void shape_lore_helper_append_to_list(const char* item,
 			assert(*p_nmax > 0);
 			*p_nmax *= 2;
 		}
-		*list = mem_realloc((char**)*list, *p_nmax * sizeof(**list));
+		*list = mem_realloc(*list, *p_nmax * sizeof(**list));
 	}
 	(*list)[*p_n] = string_make(item);
 	++*p_n;
@@ -2840,7 +2763,7 @@ static void shape_lore_append_skills(textblock *tb,
 		}
 	}
 
-	mem_free((char**)msgs);
+	mem_free(msgs);
 }
 
 
@@ -2870,7 +2793,7 @@ static void shape_lore_append_non_stat_modifiers(textblock *tb,
 		}
 	}
 
-	mem_free((char**)msgs);
+	mem_free(msgs);
 }
 
 
@@ -2900,7 +2823,7 @@ static void shape_lore_append_stat_modifiers(textblock *tb,
 		}
 	}
 
-	mem_free((char**)msgs);
+	mem_free(msgs);
 }
 
 
@@ -2973,7 +2896,7 @@ static void shape_lore_append_protection_flags(textblock *tb,
 		}
 	}
 
-	mem_free((char**)msgs);
+	mem_free(msgs);
 }
 
 
@@ -3003,7 +2926,7 @@ static void shape_lore_append_sustains(textblock *tb,
 		}
 	}
 
-	mem_free((char**)msgs);
+	mem_free(msgs);
 }
 
 
@@ -3144,7 +3067,6 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
 	int count = count_interesting_shapes();
 	struct menu* m;
 	struct player_shape **sarray;
-	void *narray_mem;
 	const char **narray;
 	int h, mark, mark_old;
 	bool displaying, redraw;
@@ -3172,13 +3094,12 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
 	 * names.
 	 */
 	sort(sarray, count, sizeof(sarray[0]), compare_shape_names);
-	narray_mem = mem_alloc(count * sizeof(*narray));
-	narray = narray_mem;
+	narray = mem_alloc(count * sizeof(*narray));
 	for (i = 0; i < count; ++i) {
 		narray[i] = sarray[i]->name;
 	}
 
-	menu_setpriv(m, count, narray_mem);
+	menu_setpriv(m, count, narray);
 	menu_layout(m, &list_region);
 	m->flags |= MN_DBL_TAP;
 
@@ -3240,7 +3161,6 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
 				break;
 
 			case EVT_ESCAPE:
-			case EVT_DISCONNECT:
 				displaying = false;
 				break;
 
@@ -3266,7 +3186,7 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
 
 	screen_load();
 
-	mem_free(narray_mem);
+	mem_free(narray);
 	mem_free(sarray);
 	menu_free(m);
 }
@@ -3315,7 +3235,7 @@ static enum parser_error parse_mcat_include_base(struct parser *p)
 		s->categories->max_inc_bases = (s->categories->max_inc_bases)
 			? 2 * s->categories->max_inc_bases : 2;
 		s->categories->inc_bases = mem_realloc(
-			(struct monster_base**)s->categories->inc_bases,
+			s->categories->inc_bases,
 			s->categories->max_inc_bases
 			* sizeof(struct monster_base*));
 	}
@@ -3354,29 +3274,6 @@ static enum parser_error parse_mcat_include_flag(struct parser *p)
 	return PARSE_ERROR_NONE;
 }
 
-static enum parser_error parse_mcat_include_other(struct parser *p)
-{
-	struct ui_knowledge_parse_state *s =
-		(struct ui_knowledge_parse_state*) parser_priv(p);
-	const char *name;
-
-	assert(s);
-	if (!s->categories) {
-		return PARSE_ERROR_MISSING_RECORD_HEADER;
-	}
-
-	name = parser_getstr(p, "name");
-	if (streq(name, "fully-known")) {
-		s->categories->include_fully_known = true;
-	} else if (streq(name, "not-fully-known")) {
-		s->categories->include_not_fully_known = true;
-	} else {
-		return PARSE_ERROR_UNRECOGNISED_PARAMETER;
-	}
-
-	return PARSE_ERROR_NONE;
-}
-
 static struct parser *init_ui_knowledge_parser(void)
 {
 	struct ui_knowledge_parse_state *s = mem_zalloc(sizeof(*s));
@@ -3386,7 +3283,6 @@ static struct parser *init_ui_knowledge_parser(void)
 	parser_reg(p, "monster-category str name", parse_monster_category);
 	parser_reg(p, "mcat-include-base str name", parse_mcat_include_base);
 	parser_reg(p, "mcat-include-flag ?str flags", parse_mcat_include_flag);
-	parser_reg(p, "mcat-include-other str name", parse_mcat_include_other);
 
 	return p;
 }
@@ -3421,7 +3317,7 @@ static errr finish_ui_knowledge_parser(struct parser *p)
 
 			cursor = cursor->next;
 			string_free((char*) tgt->name);
-			mem_free((struct monster_base**)tgt->inc_bases);
+			mem_free(tgt->inc_bases);
 			mem_free(tgt);
 		}
 		mem_free(s);
@@ -3441,8 +3337,6 @@ static errr finish_ui_knowledge_parser(struct parser *p)
 	rf_wipe(monster_group[count].inc_flags);
 	monster_group[count].n_inc_bases = 0;
 	monster_group[count].max_inc_bases = 0;
-	monster_group[count].include_fully_known = false;
-	monster_group[count].include_not_fully_known = false;
 
 	/*
 	 * Set the others, restoring the order they had in the data file.
@@ -3461,10 +3355,6 @@ static errr finish_ui_knowledge_parser(struct parser *p)
 		rf_copy(monster_group[count].inc_flags, src->inc_flags);
 		monster_group[count].n_inc_bases = src->n_inc_bases;
 		monster_group[count].max_inc_bases = src->max_inc_bases;
-		monster_group[count].include_fully_known =
-			src->include_fully_known;
-		monster_group[count].include_not_fully_known =
-			src->include_not_fully_known;
 		mem_free(src);
 	}
 
@@ -3479,7 +3369,7 @@ static void cleanup_ui_knowledge_parsed_data(void)
 
 	for (i = 0; i < n_monster_group; ++i) {
 		string_free((char*) monster_group[i].name);
-		mem_free((struct monster_base**)monster_group[i].inc_bases);
+		mem_free(monster_group[i].inc_bases);
 	}
 	mem_free(monster_group);
 	monster_group = NULL;
@@ -3988,8 +3878,6 @@ void do_cmd_messages(void)
 					i = (i >= 20) ? (i - 20) : 0;
 					break;
 			}
-		} else if (ke.type == EVT_ESCAPE || ke.type == EVT_DISCONNECT) {
-			more = false;
 		}
 
 		/* Find the next item */
@@ -4181,7 +4069,7 @@ void do_cmd_look(void)
  */
 void do_cmd_locate(void)
 {
-	int panel_hgt, panel_wid, top, bottom, left, right;
+	int panel_hgt, panel_wid;
 	int y1, x1;
 
 	/* Use dimensions that match those in ui-output.c. */
@@ -4199,18 +4087,6 @@ void do_cmd_locate(void)
 	/* Start at current panel */
 	y1 = Term->offset_y;
 	x1 = Term->offset_x;
-
-	/* With mouse input, shift the panel if the click is near to an edge */
-	if (Term == term_screen) {
-		top = ROW_MAP + MAX(1, panel_hgt / 20);
-		bottom = ROW_BOTTOM_MAP - MAX(1, panel_hgt / 20);
-		left = COL_MAP + MAX(1, panel_wid / 20);
-	} else {
-		top = MAX(1, panel_hgt / 20);
-		bottom = Term->hgt - 1 - MAX(1, panel_hgt / 20);
-		left = MAX(1, panel_wid / 20);
-	}
-	right = Term->wid - 1 - MAX(1, panel_wid / 20);
 
 	/* Show panels until done */
 	while (1) {
@@ -4248,44 +4124,13 @@ void do_cmd_locate(void)
 
 		/* Get a direction */
 		while (!dir) {
-			ui_event command;
+			struct keypress command = KEYPRESS_NULL;
 
-			/* Get the player's input */
-			if (!get_com_ex(out_val, &command)) break;
+			/* Get a command (or Cancel) */
+			if (!get_com(out_val, (char *)&command.code)) break;
 
 			/* Extract direction */
-			if (command.type == EVT_KBRD) {
-				dir = target_dir(command.key);
-			} else if (command.type == EVT_MOUSE) {
-				if (command.mouse.button == 2) {
-					break;
-				}
-				if (command.mouse.button == 1) {
-					if (command.mouse.y < top) {
-						if (command.mouse.x < left) {
-							dir = 7;
-						} else if (command.mouse.x
-								> right) {
-							dir = 9;
-						} else {
-							dir = 8;
-						}
-					} else if (command.mouse.y > bottom) {
-						if (command.mouse.x < left) {
-							dir = 1;
-						} else if (command.mouse.x
-								> right) {
-							dir = 3;
-						} else {
-							dir = 2;
-						}
-					} else if (command.mouse.x < left) {
-						dir = 4;
-					} else if (command.mouse.x > right) {
-						dir = 6;
-					}
-				}
-			}
+			dir = target_dir(command);
 
 			/* Error */
 			if (!dir) bell();
@@ -4387,37 +4232,8 @@ static void lookup_symbol(keycode_t key, char *buf, size_t max)
 	 * associate a display character with each tval. */
 	for (i = 0; i < z_info->k_max; i++) {
 		if (char_matches_key(k_info[i].d_char, key)) {
-			const char *tval_name = tval_find_name(k_info[i].tval);
-
-			if (!streq(tval_name, "none") || !k_info[i].name) {
-				strnfmt(buf, max, "%s - %s.", key_utf8,
-					tval_name);
-			} else {
-				/*
-				 * The tval's name is not informative.  Use
-				 * the kind's name instead.  The names for
-				 * kinds with tvals of zero are, by convention,
-				 * enclosed in angle brackets.  Strip those
-				 * off if present.
-				 */
-				size_t len = strlen(k_info[i].name);
-
-				if (len > 2 && k_info[i].name[0] == '<'
-						&& k_info[i].name[len - 1]
-						== '>') {
-					char *extract = mem_alloc(len);
-
-					(void)my_strcpy(extract,
-						k_info[i].name + 1, len);
-					extract[len - 2] = '\0';
-					strnfmt(buf, max, "%s - %s.", key_utf8,
-						extract);
-					mem_free(extract);
-				} else {
-					strnfmt(buf, max, "%s - %s.", key_utf8,
-						k_info[i].name);
-				}
-			}
+			strnfmt(buf, max, "%s - %s.", key_utf8,
+				tval_find_name(k_info[i].tval));
 			return;
 		}
 	}

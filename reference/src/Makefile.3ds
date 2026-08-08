@@ -58,7 +58,7 @@ ICON		:=	nds/att-48.png
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
-CFLAGS	+=	-g -Wall -mword-relocations -ffunction-sections \
+CFLAGS	:=	-g -Wall -mword-relocations -ffunction-sections \
 			$(ARCH)
 
 # Omit some flags for easier debugging
@@ -183,18 +183,11 @@ ifneq ($(ROMFS),)
 	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: all clean print-project-name print-executable-name
+.PHONY: all clean
 
 #---------------------------------------------------------------------------------
 all: $(BUILD) $(BUILD)/borg $(GFXBUILD) $(DEPSDIR) $(DEPSDIR)/borg $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds $(PROGNAME).3dsx
-
-# These two mimic rules from src/Makefile.
-print-project-name:
-	@echo our-project-name=${NAME}
-
-print-executable-name:
-	@echo our-executable-name=${PROGNAME}
 
 $(BUILD) $(BUILD)/borg:
 	@mkdir -p $@

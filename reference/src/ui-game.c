@@ -309,7 +309,7 @@ struct cmd_info cmd_debug_query[] =
 	{ "Feature", { 'F' }, CMD_WIZ_QUERY_FEATURE, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
 	{ "Square flag", { 'q' }, CMD_WIZ_QUERY_SQUARE_FLAG, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
 	{ "Noise and scent", { '_' }, CMD_WIZ_PEEK_NOISE_SCENT, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
-	{ "Keystroke log", { 'L' }, CMD_NULL, wiz_display_keylog, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
+	{ "Keystroke log", { 'L' }, CMD_WIZ_DISPLAY_KEYLOG, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
 };
 
 struct cmd_info cmd_debug_misc[] =
@@ -515,31 +515,13 @@ size_t cmd_list_lookup_by_name(const char *name)
 void textui_process_command(void)
 {
 	int count = 0;
-	bool done = true, saved;
+	bool done = true;
 	ui_event e = textui_get_command(&count);
 	struct cmd_info *cmd = NULL;
 	unsigned char key = '\0';
 	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
 
 	switch (e.type) {
-		case EVT_DISCONNECT:
-			/*
-			 * Try to save before exiting.  If the front end
-			 * provides a way to confirm with the player, check
-			 * with the player whether to proceed with the exit
-			 * when the save fails or to proceed with the game and
-			 * cancel disconnecting the UI.
-			 */
-			signals_protect(true);
-			saved = save_game_checked();
-			signals_protect(false);
-			if (!saved && disconnect_denier_hook
-					&& (*disconnect_denier_hook)()) {
-				terms_disconnecting = 0;
-				return;
-			}
-			textui_quit();
-			return;
 		case EVT_RESIZE: do_cmd_redraw(); return;
 		case EVT_MOUSE: textui_process_click(e); return;
 		case EVT_BUTTON:
@@ -1033,9 +1015,7 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  */
 void save_game(void)
 {
-	signals_protect(true);
-	(void)save_game_checked();
-	signals_protect(false);
+	(void) save_game_checked();
 }
 
 /**
@@ -1066,6 +1046,9 @@ bool save_game_checked(void)
 	/* The player is not dead */
 	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
 
+	/* Forbid suspend */
+	signals_ignore_tstp();
+
 	/* Save the player */
 	if (savefile_save(savefile)) {
 		prt("Saving game... done.", 0, 0);
@@ -1077,6 +1060,9 @@ bool save_game_checked(void)
 
 	/* Refresh */
 	Term_fresh();
+
+	/* Allow suspend again */
+	signals_handle_tstp();
 
 	/* Save the window prefs */
 	path_build(path, sizeof(path), ANGBAND_DIR_USER, "window.prf");
@@ -1129,11 +1115,11 @@ void close_game(bool prompt_failed_save)
 	/* Flush the input */
 	event_signal(EVENT_INPUT_FLUSH);
 
+	/* No suspending now */
+	signals_ignore_tstp();
+
 	/* Increase "icky" depth */
 	screen_save_depth++;
-
-	/* No suspending or user-initiated interruption now */
-	signals_protect(true);
 
 	/* Deal with the randarts file */
 	if (OPT(player, birth_randarts)) {
@@ -1143,13 +1129,11 @@ void close_game(bool prompt_failed_save)
 	/* Handle death or life */
 	if (player->is_dead) {
 		death_knowledge(player);
-		if (Term->mapped_flag && !terms_disconnecting) {
-			death_screen();
-		}
+		death_screen();
 
 		/* Save dead player */
 		while (prompting && !savefile_save(savefile)) {
-			if (!prompt_failed_save || terms_disconnecting
+			if (!prompt_failed_save
 					|| !get_check("Saving failed.  Try again? ")) {
 				prompting = false;
 				msg("death save failed!");
@@ -1159,13 +1143,13 @@ void close_game(bool prompt_failed_save)
 	} else {
 		/* Save the game */
 		while (prompting && !save_game_checked()) {
-			if (!prompt_failed_save || terms_disconnecting
+			if (!prompt_failed_save
 					|| !get_check("Saving failed.  Try again? ")) {
 				prompting = false;
 			}
 		}
 
-		if (Term->mapped_flag && !terms_disconnecting) {
+		if (Term->mapped_flag) {
 			struct keypress ch;
 
 			prt("Press Return (or Escape).", 0, 40);
@@ -1175,9 +1159,6 @@ void close_game(bool prompt_failed_save)
 		}
 	}
 
-	/* Allow suspending or user-initiated interruptions now */
-	signals_protect(false);
-
 	/* Wipe the monster list */
 	wipe_mon_list(cave, player);
 
@@ -1186,6 +1167,9 @@ void close_game(bool prompt_failed_save)
 
 	/* Tell the UI we're done with the game state */
 	event_signal(EVENT_LEAVE_GAME);
+
+	/* Allow suspending now */
+	signals_handle_tstp();
 }
 
 

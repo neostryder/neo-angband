@@ -443,54 +443,12 @@ static int cmp_desc_prio(const void *left, const void *right)
  * which the given predicate returns true.
  *
  * \param predicate is the function to test the user interface element.  It
- * takes two arguments, a const pointer to the element to test, and a const
- * void pointer whose value is equal to closure.  When predicate returns true,
- * the user interface element will be included in the iterator's enumeration.
- * \param closure is the value to pass as the second argument to predicate.
- * \param sortcategory points to the name of the category whose priority
- * ordering will set the order of the enumeration.
- * \return the pointer to the iterator.  When that iterator is no longer
- * needed, release it with release_ui_entry_iterator().
- *
- * The iterator will present those elements in descending order of priority
- * where the priority is that configured for the element in the category named
- * sortcategory.
- */
-struct ui_entry_iterator *initialize_ui_entry_iterator_const(
-		ui_entry_const_predicate predicate, const void *closure,
-		const char *sortcategory)
-{
-	struct ui_entry_iterator *result = mem_alloc(sizeof(*result));
-	int i;
-
-	result->entries = mem_alloc(n_entry * sizeof(*result->entries));
-	result->n = 0;
-	result->i = 0;
-	for (i = 0; i < n_entry; ++i) {
-		if (!(entries[i]->flags & ENTRY_FLAG_TEMPLATE_ONLY)
-				&& (*predicate)(entries[i], closure)) {
-			result->entries[result->n] = entries[i];
-			++result->n;
-		}
-	}
-	category_for_cmp_desc_prio = sortcategory;
-	sort(result->entries, result->n, sizeof(*result->entries),
-		cmp_desc_prio);
-	return result;
-}
-
-
-/**
- * Constructs an iterator to enumerate all the user interface elements for
- * which the given predicate returns true.
- *
- * \param predicate is the function to test the user interface element.  It
  * takes two arguments, a const pointer to the element to test, and a void
  * pointer whose value is equal to closure.  When predicate returns true,
  * the user interface element will be included in the iterator's enumeration.
  * \param closure is the value to pass as the second argument to predicate.
  * \param sortcategory points to the name of the category whose priority
- * ordering will set the order of the enumeration.
+ * ordering will set the order of the enumberation.
  * \return the pointer to the iterator.  When that iterator is no longer
  * needed, release it with release_ui_entry_iterator().
  *
@@ -508,8 +466,8 @@ struct ui_entry_iterator *initialize_ui_entry_iterator(
 	result->n = 0;
 	result->i = 0;
 	for (i = 0; i < n_entry; ++i) {
-		if (!(entries[i]->flags & ENTRY_FLAG_TEMPLATE_ONLY)
-				&& (*predicate)(entries[i], closure)) {
+		if (! (entries[i]->flags & ENTRY_FLAG_TEMPLATE_ONLY) &&
+			(*predicate)(entries[i], closure)) {
 			result->entries[result->n] = entries[i];
 			++result->n;
 		}
@@ -1209,7 +1167,7 @@ static int ui_entry_search(const char *name, int *ind)
 			*ind = ilow;
 			return 0;
 		}
-		imid = ilow + (ihigh - ilow) / 2;
+		imid = (ilow + ihigh) / 2;
 		cmp = strcmp(entries[imid]->name, name);
 		if (cmp == 0) {
 			*ind = imid;
@@ -1299,7 +1257,7 @@ static int ui_entry_search_categories(const struct ui_entry *entry,
 			*ind = ilow;
 			return 0;
 		}
-		imid = ilow + (ihigh - ilow) / 2;
+		imid = (ilow + ihigh) / 2;
 		cmp = strcmp(entry->categories[imid].name, name);
 		if (cmp == 0) {
 			*ind = imid;
@@ -1432,7 +1390,7 @@ static int search_embryo_categories(const struct embryonic_ui_entry *embryo,
 			*ind = ilow;
 			return 0;
 		}
-		imid = ilow + (ihigh - ilow) / 2;
+		imid = (ilow + ihigh) / 2;
 		cmp = strcmp(embryo->categories[imid].name, name);
 		if (cmp == 0) {
 			*ind = imid;
@@ -1799,8 +1757,6 @@ static int hatch_embryo(struct embryonic_ui_entry *embryo)
 
 		/* Check that required fields are valid. */
 		if (embryo->entry->combiner_index == 0) {
-			plog_fmt("No combine directive specified for %s",
-				embryo->entry->name);
 			string_free(embryo->entry->name);
 			mem_free(embryo->entry->label);
 			mem_free(embryo->entry);
@@ -2307,7 +2263,7 @@ static errr run_parse_ui_entry(struct parser *p)
 		return result;
 	}
 	if (hatch_last_embryo(p)) {
-		return PARSE_ERROR_INVALID_VALUE;
+		return 1;
 	}
 	/*
 	 * Mark those as templates only so they'll never be directly displayed.
@@ -2321,13 +2277,11 @@ static errr run_parse_ui_entry(struct parser *p)
 
 static errr finish_parse_ui_entry(struct parser *p)
 {
-	errr result = PARSE_ERROR_NONE;
-	int maxe = get_parser_error_limit(), counte = 0;
+	errr result = 0;
 	int i;
 
 	if (hatch_last_embryo(p)) {
-		result = PARSE_ERROR_INVALID_VALUE;
-		counte = 1;
+		result = -1;
 	}
 	for (i = 0; i < n_entry; ++i) {
 		int j;
@@ -2348,39 +2302,10 @@ static errr finish_parse_ui_entry(struct parser *p)
 				if (n2 != (size_t)-1) {
 					entries[i]->nlabel = n;
 				} else {
-					entries[i]->label[0] = 0;
-					entries[i]->nlabel = 0;
-					if (result == PARSE_ERROR_NONE) {
-						result = PARSE_ERROR_INTERNAL;
-					}
-					plog_fmt("Internal error:  "
-						"text_mbstowcs() could not "
-						"convert an empty string "
-						"while transferring name to "
-						"label for '%s'",
-						entries[i]->name);
-					if (maxe) {
-						if (counte >= maxe - 1) {
-							break;
-						}
-						++counte;
-					}
+					result = -1;
 				}
 			} else {
-				entries[i]->label[0] = 0;
-				entries[i]->nlabel = 0;
-				if (result == PARSE_ERROR_NONE) {
-					result = PARSE_ERROR_INVALID_VALUE;
-				}
-				plog_fmt("Invalid text encoding detected "
-					"while transferring name to label "
-					"for '%s'", entries[i]->name);
-				if (maxe) {
-					if (counte >= maxe - 1) {
-						break;
-					}
-					++counte;
-				}
+				result = -1;
 			}
 		}
 		fill_out_shortened(entries[i]);

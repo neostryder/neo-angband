@@ -324,13 +324,14 @@ static ui_event object_skin_process_direction(struct menu *m, int dir)
 
 	/* Prepare to switch menus */
 	else if (ddx[dir]) {
-		out = (ui_event){ .key = { .type = EVT_SWITCH, .code = ddx[dir] < 0 ? ARROW_LEFT : ARROW_RIGHT, .mods = 0 } };
+		out.type = EVT_SWITCH;
+		out.key.code = ddx[dir] < 0 ? ARROW_LEFT : ARROW_RIGHT;
 	}
 
 	/* Move up or down to the next valid & visible row */
 	else if (ddy[dir]) {
 		m->cursor += ddy[dir];
-		out = (ui_event){ .type = EVT_MOVE };
+		out.type = EVT_MOVE;
 	}
 
 	return out;
@@ -810,8 +811,6 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
 			menu_calc_size(menu);
 			if (menu->row_funcs->resize)
 				menu->row_funcs->resize(menu);
-		} else if (in.type == EVT_DISCONNECT) {
-			in.type = EVT_ESCAPE;
 		}
 
 		/* Redraw menu here if cursor has moved */

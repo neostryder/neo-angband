@@ -131,9 +131,9 @@ extern struct borg_save_init borg_init_save;
 extern struct keypress (*inkey_hack)(int flush_first);
 
 /*
- * Set the hook for the game.
+ * Entry point for borg commands.
  */
-extern void borg_update_entrypoint(bool start);
+extern void do_cmd_borg(void);
 
 #endif
 #endif

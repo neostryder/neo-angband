@@ -36,9 +36,7 @@ typedef enum
 	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
 	EVT_MOVE	= 0x0020,	/* Menu movement */
 	EVT_SELECT	= 0x0040,	/* Menu selection */
-	EVT_SWITCH	= 0x0080,	/* Menu switch */
-
-	EVT_DISCONNECT	= 0x0100,	/* UI is disconnecting */
+	EVT_SWITCH	= 0x0080	/* Menu switch */
 } ui_event_type;
 
 
@@ -230,7 +228,7 @@ typedef union {
 /**
  * Easy way to initialise a ui_event without seeing the gory bits.
  */
-static const ui_event EVENT_EMPTY = { .type = EVT_NONE };
+#define EVENT_EMPTY		{ 0 }
 
 
 /*** Functions ***/

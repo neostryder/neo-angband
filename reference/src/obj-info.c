@@ -178,7 +178,7 @@ static bool describe_stats(textblock *tb, const struct object *obj,
 			textblock_append_c(tb, attr, "%+i %s.\n", val, desc);
 		} else if (known_effect)
 			/* Ego type or jewellery description */
-			textblock_append(tb, "Affects your %s.\n", desc);
+			textblock_append(tb, "Affects your %s\n", desc);
 	}
 
 	return true;
@@ -2082,14 +2082,10 @@ static bool describe_effect(textblock *tb, const struct object *obj,
 			textblock_append(tb, "It can be drunk.\n");
 		} else if (tval_is_scroll(obj)) {
 			textblock_append(tb, "It can be read.\n");
-		} else if (tval_is_wand(obj)) {
-			textblock_append(tb,
-				"It requires a target. It can be used.");
-		} else if (tval_is_staff(obj)) {
-			textblock_append(tb, "It can be used.");
+		} else if (aimed) {
+			textblock_append(tb, "It can be aimed.\n");
 		} else {
-			textblock_append(tb,
-				"It may require a target. It can be used.");
+			textblock_append(tb, "It can be activated.\n");
 		}
 
 		return true;
@@ -2097,10 +2093,7 @@ static bool describe_effect(textblock *tb, const struct object *obj,
 
 	/* Activations get a special message */
 	if (obj->activation && obj->activation->desc) {
-		if (aimed) {
-			textblock_append(tb, "It requires a target. ");
-		}
-		textblock_append(tb, "When used, it ");
+		textblock_append(tb, "When activated, it ");
 		textblock_append(tb, "%s", obj->activation->desc);
 	} else {
 		int level = obj->artifact ?
@@ -2110,23 +2103,18 @@ static bool describe_effect(textblock *tb, const struct object *obj,
 		const char *prefix;
 		textblock *tbe;
 
-		if (tval_is_edible(obj)) {
-			prefix = (aimed)
-				? "It requires a target. When eaten, it "
-				: "When eaten, it ";
-		} else if (tval_is_potion(obj)) {
-			prefix = (aimed)
-				? "It requires a target. When quaffed, it "
-				: "When quaffed, it ";
-		} else if (tval_is_scroll(obj)) {
-			prefix = (aimed)
-				? "It requires a target. When read, it "
-				: "When read, it ";
-		} else {
-			prefix = (aimed)
-				? "It requires a target. When used, it "
-				: "When used, it ";
-		}
+		if (obj->activation)
+			prefix = "When activated, it ";
+		else if (aimed)
+			prefix = "When aimed, it ";
+		else if (tval_is_edible(obj))
+			prefix = "When eaten, it ";
+		else if (tval_is_potion(obj))
+			prefix = "When quaffed, it ";
+		else if (tval_is_scroll(obj))
+			prefix = "When read, it ";
+		else
+			prefix = "When activated, it ";
 
 		tbe = effect_describe(effect, prefix, boost, false);
 		if (! tbe) {

@@ -356,7 +356,6 @@ struct goals {
     bool fleeing_to_town; /* Fleeing the level to town */
     bool ignoring; /* ignoring monsters */
     bool less; /* return to, but don't use, the next up stairs */
-    bool waiting; /* waiting for an approaching monster */
 
     int recalling; /* waiting for recall, guessing turns left */
     int descending; /* waiting for deep descent */
