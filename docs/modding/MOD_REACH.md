@@ -26,9 +26,9 @@ is not a capability - it is called out as such.
 | --- | --- |
 | `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:83`) |
 | Named behaviour-dispatch points enumerated (tables/switches where the game looks up what to DO by key or index) | **25** |
-| ...of those, a mod's CODE can add to or override | **8** (`profile` and `blow` added 2026-08-08; `blow` closes two of the 25) |
-| ...of those 8, reachable by a mod that is NOT compiled into the web bundle | **8** — every one, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
-| `registry:*` capabilities with real, wired, tested code | **7** (`blow`, `command`, `effect`, `monster`, `profile`, `room`, `vocab`) — `profile` and `blow` added 2026-08-08 |
+| ...of those, a mod's CODE can add to or override | **9** (`profile`, `blow` and `store` added 2026-08-08; `blow` closes two of the 25) |
+| ...of those 9, reachable by a mod that is NOT compiled into the web bundle | **9** — every one, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
+| `registry:*` capabilities with real, wired, tested code | **8** (`blow`, `command`, `effect`, `monster`, `profile`, `room`, `store`, `vocab`) — `profile`, `blow` and `store` added 2026-08-08 |
 | Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **24** |
@@ -94,7 +94,7 @@ replace an entry in a lookup table. Below is every behaviour-dispatch point I
 found, with what a mod can do to it. "Reachable" means a NON-bundled mod; where
 only a bundled mod can reach it, that is stated.
 
-#### Real registries with a `register()` method — 6
+#### Real registries with a `register()` method — 7
 
 | Registry | File | Entries | ADD | OVERRIDE | WRAP |
 | --- | --- | --- | --- | --- | --- |
@@ -104,6 +104,7 @@ only a bundled mod can reach it, that is stated.
 | `DungeonProfiles` (cave builders + profiles) | `packages/core/src/gen/cave.ts:2758` | **9** builders (`:2839-2847`), **9** profiles (`:2854`) | `registerBuilder` `:2762` / `addProfile` `:2776` exist | yes, in principle | yes |
 | `VocabularyRegistry` | `packages/core/src/mod/vocabulary.ts` | mod-owned, starts empty | yes | n/a | n/a |
 | `BlowEffectRegistry` | `packages/core/src/combat/mon-melee.ts` | **30** RBE_ effects | yes (`define` from one spec) | yes (`register` replaces) | yes (`handlerFor(name)` returns the installed handler) |
+| `StoreBehaviourRegistry` | `packages/core/src/store/store.ts` | **27** tvals + the buy rule | yes | yes (per store feat, or the `*` wildcard) | yes (`willBuyFor(ANY_STORE)`) |
 
 The `ActionRegistry` count was measured as 34 distinct literal
 `register("<code>")` calls across `packages/core/src` (none in
@@ -253,7 +254,7 @@ mod would reach through records, not code.
 | 10 | monster blow effects, live path (30) | **yes** — the SAME registry entry, which is the point |
 | 11 | projection -> feature switch (37) | no |
 | 12 | projection -> object switch (11) | no |
-| 13 | store `storeWillBuy` / `massProduce` switches (27 cases) | no |
+| 13 | store buy rule + `massProduce` (27 tvals) | **yes** (`registry:store`, 2026-08-08) |
 | 14 | randart property switch (111) | no |
 | 15 | object naming / desc switches (74 + 34) | no |
 | 16 | object knowledge switch (43) | no |
@@ -267,7 +268,7 @@ mod would reach through records, not code.
 | 24 | web context-menu `switch (action)` routing (6 sites) | no |
 | 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
 
-**8 yes, 2 accidental, 15 no** (re-measured 2026-08-08). And every "yes" is
+**9 yes, 2 accidental, 14 no** (re-measured 2026-08-08). And every "yes" is
 now reachable FROM DISK, so the non-bundled figure is 8/8 of the reachable
 seams rather than 0. Rows 9 and 10 are counted as one capability delivered
 twice on purpose: they are two bodies of one dispatch, and a registry only one
@@ -285,6 +286,7 @@ and the host constructs it for real:
 | `registry:room` | `RoomFacade` | `RoomRegistry.register` | `:207-212` |
 | `registry:profile` | `ProfileFacade` | `DungeonProfiles` (`gen/cave.ts:2952`) | — |
 | `registry:blow` | `BlowFacade` | `BlowEffectRegistry` (`GameState.blowEffects`, built per game in `wireGame`) | — |
+| `registry:store` | `StoreFacade` | `StoreBehaviourRegistry` (`GameState.storeBehaviour`, built per game in `wireGame`) | — |
 | `registry:command` | `CommandFacade` | `ActionRegistry.register` / `.has` | `:213-222` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
@@ -292,7 +294,7 @@ and the host constructs it for real:
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
   `requireTarget` throws when the host did not wire that registry (`:177`).
 - The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|command|monster|vocab)$/`
+  `REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|store|command|monster|vocab)$/`
   (`packages/mod-sdk/src/capabilities.ts:67`); an unrecognised capability is a hard
   error at parse, not a silent no-op.
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
@@ -717,7 +719,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 2 | **Per-record patching of the other 20 gamedata files** | **no** (silently dropped, `loader.ts:119`) | A stable per-record KEY that does not depend on a unique string `name` - a composite key for `object_base`/`trap`, and a synthetic index or `(tval, sval)` key for the 6 files whose names collide in core's own data (`object` 45 dups, `ego_item` 28, `vault` 3, `brand`, `slay`, `chest_trap`). Plus a loud error when an op targets a passthrough file, so it can never be silent again. |
 | 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks + 7 registries** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in `switch` statements; converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. Blow effects went first and are done (row 4), which also established the method: record golden vectors from the code BEFORE the refactor, then replay them against it. Remaining: 37-case project-feat, 27-case store, 11-case project-obj, and the rest of the denominator above. |
 | 4 | **Monster combat is moddable** | **CLOSED 2026-08-08** | `blow_effects.json` accepts a 31st record but its behaviour is a 26-case switch in `resolveBlowEffect` and again in `resolveBlowEffectLive` (`combat/mon-melee.ts`). **These are not duplicates.** Same 26 case labels, but 171 lines against 219, and they do different jobs: the first records side-effect *intents* for the worldless path, the second applies HP, messages and elemental reduction for real through `MonBlowEnv`. So "collapse the duplicated switch to one body first" - which this row used to say - describes a large, parity-sensitive refactor that would buy no modding capability. What was actually needed - and is now built - is ONE registry keyed by blow-effect name that BOTH bodies consult. `BlowEffectRegistry` (`combat/mon-melee.ts`) holds a `{record, live}` handler per effect; core seeds it with its 30 at boot (`registerCoreBlowEffects`, called from `wireGame`), and a mod reaches it through `registry:blow`. A mod normally writes ONE description and `blowEffect()` derives both halves, so the two paths cannot drift; `handlerFor(name)` hands back the installed handler, so wrapping core is possible instead of only replacing it. The 26-case switches were lifted case by case with nothing rewritten - including the places where the two paths disagree about RNG ORDER, which is a port wart core keeps. What proves it: `blow-vectors.json`, 480 scenarios recorded from the code BEFORE the registry existed and replayed against it, covering 30 effects x both paths x two envs that flip every branch, with a probe draw that catches a change in the NUMBER of random values even when nothing else moves. Reach is proven from disk (`mod-code.node.test.ts`), by a real `monMeleeAttack` on both paths. |
-| 5 | **Store behaviour is moddable** | **no** | There is no table to register into: `storeWillBuy` (`store/store.ts:235`) and `massProduce` (`:281`) are switches, and `StoreRegistry` is a `BoundStore[]` with linear scans (`store/bind.ts:129`). |
+| 5 | **Store behaviour is moddable** | **CLOSED 2026-08-08** | `StoreBehaviourRegistry` (`store/store.ts`) replaces both switches, keyed the way each decision is actually made: stack size by TVAL, the buy rule by store FEAT with an `ANY_STORE` wildcard, because upstream has one body every shop shares. Core registers its own rule under the wildcard, so `willBuyFor(ANY_STORE)` hands it back and a mod layers on top instead of reimplementing the worthless-item and buy-list logic. Two refusals are deliberate: an empty registry REFUSES rather than becoming permissive ("nobody decides" must not read as "every shop buys anything"), and the `maxStack` clamp stays in core, so a mod's stack rule cannot break a pile. Reached on both paths that ask - store maintenance and the sell command - because a seam supplied to every path but one is how a mod comes to work in town and not in the shop. Proof: 1,167 `mass_produce` golden vectors recorded before the refactor (the function had NO test at all), plus behavioural tests against the real pack and a from-disk mod that changes what a shop buys. `StoreRegistry`'s linear `byFeat`/`byName` scans remain, and are lookup rather than behaviour. |
 | 6 | **Level generation architecture is moddable** | **CLOSED 2026-08-08** | `registry:profile` now exists: `ProfileFacade` (`mod/registry-host.ts`) over the live `DungeonProfiles` (`gen/cave.ts:2952`), so a mod registers its own whole-cave builder and adds the profile that selects it. `builder(key)` hands back a core builder, so a mod can WRAP core generation instead of reimplementing it. Two refusals are deliberate: a profile naming an unregistered builder is rejected at `addProfile` rather than exploding inside generation a level later, and `addProfile` only appends, because `choose_profile`'s running-total `randint0` walks the list in order and inserting would change which profile CORE picks from the same seed. Proven by a mod written to a real folder and imported for real (`packages/web/src/mod-code.node.test.ts`), asserting on the registry rather than on the mod's own report. |
 | 7 | **Resources: sounds / fonts / splash / help** | **no** | Manifest fields (`soundPacks`, `fontPacks`, …) plus discovery, and - on the desktop side only - nothing else, because the loopback server already serves images and audio from the mods folder (`packages/desktop/src/main.ts:145-152`, `:312-314`). |
 | 8 | **A disk tile pack registers a Graphics row** | **YES** (closed 2026-07-30) | Done. `mergeModSources` merges `diskPacks()` into the glob; `tilePacks[].path` became MOD-relative and both engines take a `PackFileResolver`, so a pack in a picked folder or installed from a repository reaches its own bytes; `tilePacks` joined the validated schema as `PackTilePack`. See section (c) above. |

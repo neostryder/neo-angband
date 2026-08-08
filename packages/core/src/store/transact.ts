@@ -469,6 +469,7 @@ function sellObject(
       know.noSelling,
       know.runesKnown ?? false,
       know.flagKnown,
+      ctx.behaviour,
     )
   ) {
     return { ok: false, failure: "refused" };

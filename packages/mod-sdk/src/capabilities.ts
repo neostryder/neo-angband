@@ -31,7 +31,8 @@
  *                             in-process plugin (W2.2, core/mod/registry-host.ts):
  *                             "registry:effect" | "registry:room" |
  *                             "registry:profile" | "registry:blow" |
- *                             "registry:command" | "registry:monster" |
+ *                             "registry:store" | "registry:command" |
+ *                             "registry:monster" |
  *                             "registry:vocab"; or the wildcard "registry:*"
  *                             for all of them. "registry:vocab" (W2.3) declares
  *                             NEW vocabulary (flags/stats/any kind). Distinct
@@ -65,7 +66,7 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
-const REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|command|monster|vocab)$/;
+const REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|store|command|monster|vocab)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

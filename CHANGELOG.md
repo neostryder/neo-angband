@@ -46,6 +46,20 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **`registry:store` — a mod can change what shops buy and what they stock.**
+  A mod could already add a store record and its own object types; it could not
+  make the shop deal in them, because "what will this shop buy" and "how many
+  does it stock" were `switch` statements. Both are a registry now, keyed the
+  way each decision is actually made — stack size by object type, the buy rule
+  per shop with a wildcard for "every shop". Core's own rule is registered under
+  that wildcard, so a mod layers a rule on top of 4.2.6's instead of rewriting
+  it. Two refusals are deliberate: an emptied registry refuses rather than
+  letting every shop buy anything, and the stack limit stays core's so a mod
+  cannot break a pile. `mass_produce` had no test at all before this; it now has
+  1,167 golden vectors recorded from the old switch. Along the way that turned up
+  a measurement worth keeping — no book in the 4.2.6 data is cheap enough to
+  reach the mass-production rule for books, so that rule is faithful and dead
+  until a mod adds a cheap book.
 - **`registry:blow` — a mod can change what monster attacks do, and add its own
   kinds of attack.** `blow_effects.json` has always accepted a 31st record, but
   until now that record was data with no behaviour: the behaviour lived in two

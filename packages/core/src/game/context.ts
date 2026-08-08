@@ -790,6 +790,12 @@ export interface GameState {
    */
   blowEffects?: import("../combat/mon-melee.js").BlowEffectRegistry;
   /**
+   * Store behaviour (store/store.ts): what a shop will buy, and how many of a
+   * thing it stocks. wireGame seeds one per game with core's rules; a mod adds
+   * to it through ModRegistryHost.stores ("registry:store").
+   */
+  storeBehaviour?: import("../store/store.js").StoreBehaviourRegistry;
+  /**
    * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
    * the HOST from each enabled mod's manifest `rules` against their saved Fixes
    * & tweaks selections.

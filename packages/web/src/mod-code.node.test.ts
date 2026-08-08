@@ -36,6 +36,10 @@ import {
   createModRegistryHost,
   BlowEffectRegistry,
   registerCoreBlowEffects,
+  StoreBehaviourRegistry,
+  registerCoreStoreBehaviour,
+  storeWillBuy,
+  FEAT,
   monMeleeAttack,
   blankMonster,
   blankPlayer,
@@ -750,6 +754,134 @@ describe("a mod folder on disk reaches the monster blow registry", () => {
       /registry:blow/,
     );
     expect(blows.has("sneaky:bite")).toBe(false);
+  });
+});
+
+/**
+ * The store-behaviour registry, from disk.
+ *
+ * A mod could already add a store record and its own object kinds; it could not
+ * make the shop deal in them, because "what will this shop buy" and "how many
+ * does it stock" were switches. The assertions run the real `storeWillBuy`
+ * against the registry the mod wrote into, so a handler that was installed but
+ * never consulted would fail here.
+ */
+describe("a mod folder on disk reaches the store registry", () => {
+  it("changes what a shop buys, and wraps core's rule rather than replacing it", async () => {
+    writeMod(
+      "haggler",
+      { capabilities: ["registry:store"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* One shop stops buying entirely. */
+           host.stores.setWillBuy(${String(FEAT.STORE_GENERAL)}, () => false);
+           /* And every OTHER shop keeps core's rule, with one exception layered
+            * on top - taken by calling through, not reimplemented. */
+           const core = host.stores.willBuyFor("*");
+           host.stores.setWillBuy("*", (ctx) => ctx.obj.tval === 999 ? true : core(ctx));
+           /* A stack rule for a tval core has none for. */
+           host.stores.setMassProduce(999, () => 12);
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "haggler", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:store"],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+
+    const stores = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(stores);
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { stores },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("haggler"));
+
+    /* The registry combat and town actually read. objectValue is never reached
+     * on these paths - the mod's handler decides first, and for tval 999 the
+     * wrapper answers before delegating - so no ObjRegistry is needed. */
+    const reg = {} as never;
+    const flagKnown = (): boolean => false;
+    const modItem = { tval: 999 } as never;
+
+    /* The named shop refuses outright. */
+    expect(
+      storeWillBuy(
+        reg,
+        { feat: FEAT.STORE_GENERAL, buy: null },
+        modItem,
+        true,
+        false,
+        false,
+        flagKnown,
+        stores,
+      ),
+    ).toBe(false);
+
+    /* Any other shop takes the mod's own item, through the wildcard wrapper. */
+    expect(
+      storeWillBuy(
+        reg,
+        { feat: FEAT.STORE_ALCHEMY, buy: null },
+        modItem,
+        true,
+        false,
+        false,
+        flagKnown,
+        stores,
+      ),
+    ).toBe(true);
+
+    /* And the stack rule is the mod's, on the live registry. */
+    expect(stores.massProduceFor(999)).not.toBeNull();
+    expect(
+      stores.massProduceFor(999)?.({
+        rng: new Rng(1),
+        obj: modItem,
+        cost: 0,
+        massRoll: () => 0,
+      }),
+    ).toBe(12);
+  });
+
+  it("without the capability the store registry refuses at the call", async () => {
+    writeMod(
+      "cheapskate",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) { host.stores.setWillBuy("*", () => true); },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "cheapskate", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const stores = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(stores);
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { stores },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("cheapskate"))).toThrow(
+      /registry:store/,
+    );
   });
 });
 

@@ -140,6 +140,22 @@ export default defineTrustedPlugin({
         ` (${host.blows.names().length} blow effects now)`,
     );
 
-    ctx.log("all six registry facades exercised under their capability gates");
+    // Shop behaviour. Every store keeps core's buy rule - taken by calling
+    // through it, not reimplemented - with one exception layered on top, and
+    // the General Store gets its own stack rule for flasks.
+    const coreWillBuy = host.stores.willBuyFor("*");
+    if (coreWillBuy) {
+      host.stores.setWillBuy("*", (sctx) => {
+        (globalThis as { __trustedWillBuyAsked?: number }).__trustedWillBuyAsked =
+          ((globalThis as { __trustedWillBuyAsked?: number }).__trustedWillBuyAsked ?? 0) + 1;
+        return coreWillBuy(sctx);
+      });
+    }
+    ctx.log(
+      `store buy rule wrapped=${String(coreWillBuy !== null)}` +
+        ` (${host.stores.massProduceTvals().length} tvals have stack rules)`,
+    );
+
+    ctx.log("all seven registry facades exercised under their capability gates");
   },
 });
