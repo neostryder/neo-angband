@@ -702,49 +702,60 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 
 ---
 
-## Is "hooks or connectors for every conceivable mod" achievable?
+## The goal: every dispatch point in this document becomes moddable
 
-**No, and it should not be the goal.** The honest engineering reasons:
+**A correction, recorded 2026-08-08.** An earlier revision of this page argued
+that "hooks or connectors for every conceivable mod" was not achievable and
+should not be the goal, and proposed three metrics *instead of* it. The owner's
+ruling is that this was never the project's decision:
 
-1. **"Every conceivable" is unfalsifiable.** There is no test that passes when it
-   is met, so it can never be reported as done, and on this project a goal that
-   cannot be measured has historically been reported as done anyway. That is the
-   exact failure mode `docs/PARITY.md`'s census machinery was built to stop.
-2. **A hook is not free.** Each one is a permanent public contract, a fold rule,
-   a determinism obligation, and a line of core that must keep working while the
-   port tracks upstream by tag. Seven of them already needed a per-hook fold
-   spec. Hundreds would make core's behaviour a function of its extension points
-   rather than of `reference/src`, which contradicts the parity mandate.
-3. **The port's own structure sets the ceiling.** Faithful C is `switch`-shaped.
-   Converting a switch into a registry is a real, reviewable change to core's
-   shape - a deliberate, faithful-preserving refactor of ~20 sites, each of which
-   must be proven behaviour-identical. That is finite work. "Every conceivable
-   hook" is not.
-4. **The thing actually blocking every mod today is not a missing hook.** It is
-   that no mod outside `packages/web/mods/` can supply code at all. A hundred new
-   hooks would change nothing for a third-party mod until gap #1 is closed.
+> "That whole decision of limiting modding was something you had previously
+> fabricated and imposed on me. I don't want to release a game that can only be
+> modded in ways that it has been modded."
 
-### Proposed measurable replacement goal
+The ratified position is PORT_PLAN decisions 13-15, the **total moddability
+guarantee**, and it stands. Every gap in the list above is work to be done, not
+a boundary to be documented. This section used to be the boundary; it is now the
+plan.
 
-Three numbers, each gated in CI so it cannot silently regress:
+### How "everything is moddable" is made falsifiable
+
+The one sound point in the old argument was that an unmeasurable goal gets
+reported as done without being done. The answer is not to shrink the goal. It is
+to make the goal testable, and the owner supplied the mechanism:
+
+> "If you feel compelled to only do what CI can test, then create sample mods
+> that use all of the seams and build your tests with them."
+
+That works because **a sample mod that exercises a seam is a test that fails when
+the seam does not exist.** It cannot pass vacuously, it cannot pass from inside
+the bundle if it is installed from disk, and it is the same artifact a
+third-party author would write - so it proves reach rather than asserting it.
+
+So each seam lands with a sample mod that uses it, and the sample mods are run
+from disk in CI. `MOD_CANARY=1` already runs bundled mods through `discoverMod`;
+this extends that pattern to every seam rather than the content path alone.
+
+### The three numbers, as progress measures
+
+These are how progress is reported. They are **not** a replacement for the goal:
 
 1. **Non-bundled reach = 1.0.** Every seam a bundled mod can reach, a mod
-   installed from the mods folder can also reach. Measured as
-   `seams reachable from disk / seams reachable from the bundle` - today 24
-   record types and 0 code seams, so the ratio is far below 1. This is a
-   ratchet the call-site census can carry.
-2. **Dispatch coverage = a stated fraction of enumerated dispatch points.** The
-   denominator is the 25 points in this document (kept current by a census
-   script, so a new switch cannot be added without appearing). The numerator is
-   the ones a mod can add to, override, or wrap. Today: 5/25, and 0/25 from
-   disk. Pick a target, publish the fraction, and make the census a test.
+   installed from the mods folder can also reach. `seams reachable from disk /
+   seams reachable from the bundle`.
+2. **Dispatch coverage.** Denominator is the enumerated dispatch points in this
+   document, kept current by a census script so a new `switch` cannot be added
+   without appearing. Numerator is the ones a mod can add to, override or wrap.
+   **The target is the whole denominator.**
 3. **Zero silent no-ops.** Every mod-facing operation either takes effect or
-   produces a named error the player can see. Today's worst offenders are the
-   20 passthrough files (`loader.ts:119`), the inert disk tile pack
-   (`main.ts:1044-1047`), and the `core:*` namespace on mod content
-   (`mod/ids.ts:183`). This is the cheapest of the three to make true, and it is
-   the one that protects a mod AUTHOR from spending a day on something the engine
-   quietly ignored.
+   produces a named error the author can see. A seam that quietly ignores a mod
+   costs an author a day and teaches them the engine is not worth their time.
 
-A goal of that shape can be reported honestly. "Hooks for every conceivable mod"
-cannot.
+### What this costs, stated honestly
+
+Each seam is a permanent public contract with a fold rule and a determinism
+obligation, and converting a faithful `switch` into a registry is a real refactor
+that must be proven behaviour-identical. That is the price of the guarantee, and
+it is finite: the denominator above is a list, not an abstraction. Core keeps
+every 4.2.6 wart - a registry changes *who can register*, never what the
+unmodded game does, and the parity harness is what proves it.
