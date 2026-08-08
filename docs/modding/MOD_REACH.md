@@ -28,7 +28,7 @@ is not a capability - it is called out as such.
 | Named behaviour-dispatch points enumerated (tables/switches where the game looks up what to DO by key or index) | **25** |
 | ...of those, a mod's CODE can add to or override | **5** |
 | ...of those 5, reachable by a mod that is NOT compiled into the web bundle | **0** |
-| `registry:*` capabilities with real, wired, tested code | **6** (`command`, `effect`, `monster`, `player`, `room`, `vocab`) |
+| `registry:*` capabilities with real, wired, tested code | **6** (`command`, `effect`, `monster`, `profile`, `room`, `vocab`) — `profile` added 2026-08-08 |
 | Non-test callers of that registry host in a RELEASE build | **0** |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **24** |
@@ -36,20 +36,29 @@ is not a capability - it is called out as such.
 | Resource categories a non-bundled mod can supply or override | **0** of 7 |
 
 > **The numbers in this table predate 2026-08-08 and are being re-derived row by
-> row, not edited.** Three rows of the gap list have already been re-measured and
-> two of them had gone stale in the direction that matters - reporting a
-> capability as missing after it shipped. Treat any figure here as a lead until
+> row, not edited.** Five rows of the gap list have now been re-measured; **three
+> had gone stale in the direction that matters** - reporting a capability as
+> missing after it shipped - and one (gap 6) has since been built and closed.
+> That ratio is the finding: this page has been under-reporting reach, which is
+> exactly how a plan quietly narrows. Treat any figure here as a lead until
 > its row below carries a re-measured date. The counting method is what needs
 > rebuilding: a census script, so that a new `switch` cannot be added without
 > appearing in the denominator.
 
 What a mod installed from disk can do today, in a release build: **contribute
 gamedata JSON records** (24 record types per record, 20 more only as a whole
-file), **supply a tile pack** that registers its own Graphics row, and - since
-the code-loading path landed - **run its own code** through `plugin.js` with the
-engine passed in. What it still cannot do is reach most of the game's behaviour,
-because that behaviour lives in ~20 `switch` statements with nothing to register
-into. That, not the loading path, is now the whole of the problem.
+file), **supply a tile pack** that registers its own Graphics row, **run its own
+code** through `plugin.js` with the engine passed in, and reach the six
+capability-gated registries - including, since 2026-08-08, **its own kind of
+dungeon level** (`registry:profile`). What it still cannot do is reach most of
+the game's behaviour, because that behaviour lives in ~20 `switch` statements
+with nothing to register into. That, not the loading path, is the problem that
+remains.
+
+> A correction to this table's own history: the row above previously named
+> `player` as one of the six registry capabilities. There is no `registry:player`
+> - the only occurrence of that string in the tree is a test asserting it is
+> REJECTED. The count of six is right today only because `profile` was added.
 
 ---
 
@@ -233,7 +242,7 @@ mod would reach through records, not code.
 | 3 | `ActionRegistry` (43) | **yes** (bundled only) |
 | 4 | `GameState.monsterTurnHook` (1, all-or-nothing) | **yes** (bundled only) |
 | 5 | `VocabularyRegistry` (mod-owned) | **yes** (bundled only) |
-| 6 | `DungeonProfiles` builders (9) + profiles (9) | no - registry exists, no facade |
+| 6 | `DungeonProfiles` builders (9) + profiles (9) | **yes** (`registry:profile`, 2026-08-08) |
 | 7 | `MONSTER_HANDLERS` (56) | accidental only - exported mutable array |
 | 8 | prefs `HANDLERS` (12) | no - module-private |
 | 9 | monster blow effects switch (26) | no |
@@ -259,14 +268,15 @@ non-bundled figure is 0/25.
 
 ### The capability-gated registry host: real code, and who can reach it
 
-`packages/core/src/mod/registry-host.ts` (258 lines) is not a design note. All
-five facades delegate to live objects, the gating throws, the capability grammar
-validates, and the host constructs it for real:
+`packages/core/src/mod/registry-host.ts` is not a design note. All six facades
+delegate to live objects, the gating throws, the capability grammar validates,
+and the host constructs it for real:
 
 | Capability | Facade | Delegates to | Line |
 | --- | --- | --- | --- |
 | `registry:effect` | `EffectFacade` | `EffectRegistry.register` / `.isRegistered` | `:197-206` |
 | `registry:room` | `RoomFacade` | `RoomRegistry.register` | `:207-212` |
+| `registry:profile` | `ProfileFacade` | `DungeonProfiles` (`gen/cave.ts:2952`) | — |
 | `registry:command` | `CommandFacade` | `ActionRegistry.register` / `.has` | `:213-222` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
@@ -274,7 +284,7 @@ validates, and the host constructs it for real:
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
   `requireTarget` throws when the host did not wire that registry (`:177`).
 - The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab)$/`
+  `REGISTRY_RE = /^registry:(\*|effect|room|profile|command|monster|vocab)$/`
   (`packages/mod-sdk/src/capabilities.ts:67`); an unrecognised capability is a hard
   error at parse, not a silent no-op.
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
@@ -700,12 +710,12 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in ~20 `switch` statements (26-case blow effects ×2, 37-case project-feat, 27-case store, 11-case project-obj, …). Converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. |
 | 4 | **Monster combat is moddable** | **no** | `blow_effects.json` accepts a 31st record but its behaviour is `combat/mon-melee.ts:460` (and again `:750`). Needs a blow-effect registry, and needs the duplicated switch collapsed to one body first. |
 | 5 | **Store behaviour is moddable** | **no** | There is no table to register into: `storeWillBuy` (`store/store.ts:235`) and `massProduce` (`:281`) are switches, and `StoreRegistry` is a `BoundStore[]` with linear scans (`store/bind.ts:129`). |
-| 6 | **Level generation architecture is moddable** | **partial** (re-measured 2026-08-08, still open) | `DungeonProfiles` (`gen/cave.ts:2952`) already has `registerBuilder` / `addProfile`, and `dungeon_profile.json` is one of the 24 patchable files - but there is still no `registry:profile` among the six capabilities that exist (`command`, `effect`, `monster`, `player`, `room`, `vocab`), so a mod cannot reach the builders. Confirmed the cheapest real win on the list: the registry exists; only the facade and capability are missing. |
+| 6 | **Level generation architecture is moddable** | **CLOSED 2026-08-08** | `registry:profile` now exists: `ProfileFacade` (`mod/registry-host.ts`) over the live `DungeonProfiles` (`gen/cave.ts:2952`), so a mod registers its own whole-cave builder and adds the profile that selects it. `builder(key)` hands back a core builder, so a mod can WRAP core generation instead of reimplementing it. Two refusals are deliberate: a profile naming an unregistered builder is rejected at `addProfile` rather than exploding inside generation a level later, and `addProfile` only appends, because `choose_profile`'s running-total `randint0` walks the list in order and inserting would change which profile CORE picks from the same seed. Proven by a mod written to a real folder and imported for real (`packages/web/src/mod-code.node.test.ts`), asserting on the registry rather than on the mod's own report. |
 | 7 | **Resources: sounds / fonts / splash / help** | **no** | Manifest fields (`soundPacks`, `fontPacks`, …) plus discovery, and - on the desktop side only - nothing else, because the loopback server already serves images and audio from the mods folder (`packages/desktop/src/main.ts:145-152`, `:312-314`). |
 | 8 | **A disk tile pack registers a Graphics row** | **YES** (closed 2026-07-30) | Done. `mergeModSources` merges `diskPacks()` into the glob; `tilePacks[].path` became MOD-relative and both engines take a `PackFileResolver`, so a pack in a picked folder or installed from a repository reaches its own bytes; `tilePacks` joined the validated schema as `PackTilePack`. See section (c) above. |
 | 9 | **UI is moddable** | **no** | Menus are row-building FUNCTIONS (`game-menu.ts:56`, `:166`) and the 62-entry keypress table is declared inside a keydown closure (`main.ts:7337`, inside the handler opened at `:7149`), so there is nothing to register into even from inside the bundle. |
 | 10 | **Provenance survives into the running game and the save** | **no** | `loader.ts:126-129` drops `owner`/`modifiedBy`; every `ContentIdResolver` uses `CORE_NS` (`mod/ids.ts:183`), so mod content is saved as `core:*`. Until this is fixed, a save cannot honestly say which content produced it, and `-2` localid suffixes make ids order-dependent (`ids.ts:142-146`). |
-| 11 | **Load order means what the UI says it means** | **no** | `orderPacks` discards the given order (`loader.ts:80-84`); ties resolve lexicographically (`resolve.ts:128-131`). The conflict report already promises reordering works (`conflicts.ts:208-212`). |
+| 11 | **Load order means what the UI says it means** | **YES** (closed; re-measured 2026-08-08) | Stale in the direction that matters. `resolveLoadOrder` (`packages/mod-sdk/src/resolve.ts:73`) now keeps a per-id map of the caller's input position and breaks every Kahn tie on it - frontier seeded in input order, and re-insertion placed by the same key - with the comment stating the intent outright: deterministic "without the resolver imposing an order the player did not choose". `orderPacks` (`loader.ts:207`) hands its packs straight through. Both ends of the chain supply the player's order: the installed order is kept by `mod-store.ts`, and an external manager's `load-order.json` is read and filtered to ids that resolved (`disk-packs.ts:113`). Two tests assert the tie-break by name (`resolve.test.ts:33`, `compose.test.ts:124`). |
 | 12 | **Record schemas are validated** | **no** | `packages/mod-sdk/src/index.ts:5` claims it; no such code exists. The compile-time `FileSpec` machinery (`packages/content/src/records.ts`) is the obvious source to reuse at load time. |
 | 13 | **A boot-time compose error is survivable** | **not determined** | `pack.ts:339` composes at module scope with no `try`. Determining the real behaviour needs a run with a deliberately bad patch ref and the console read. |
 | 14 | **Localization** | **no** | No i18n layer at all; all UI text is inline literals. |
