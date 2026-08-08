@@ -37,6 +37,8 @@ is not a capability - it is called out as such.
 | A mod can ADD a field core has never heard of, and read it at runtime | **YES** (2026-08-08) — on **15** bound record types, not 2; was silently dropped by every binder before |
 | ...bound record types that carry a mod's own fields | **15** of the 44 files — the other 29 have no bound counterpart a plugin can hold, or bind into a structure keyed by something other than the record; `mod/extension.test.ts` lists them by name |
 | A mod's added field is NAMESPACED and DECLARED, so two mods cannot collide | **YES** (2026-08-08) — `"gore:bleed"`, declared in the manifest under `fields`; undeclared is stripped and reported |
+| Gamedata record files a mod can ADD a record to without replacing the file | **41** of 44 — `object` (375 records), `ego_item` (107) and `vault` (162) merge whole-file only, because core's own names collide under `slugify` (`Acquirement` / `*Acquirement*`; `ego_item` ships 23 names twice). Patch / replace / remove work per record on all three; only ADD is blocked. `ModProject.build` raises it as an `error` rather than a line in a list |
+| An author is TOLD what a new record needs, and what core's comparable records do | **YES** (2026-08-08) — `draftRecord` / `checkRecords` / `ModProject`, measured from core's 3,279 records; **37** declared reference edges, each run over the shipped pack (`docs/modding/AUTHORING.md`) |
 | Resource categories a non-bundled mod can supply or override | **0** of 7 |
 
 > **The numbers in this table predate 2026-08-08 and are being re-derived row by
