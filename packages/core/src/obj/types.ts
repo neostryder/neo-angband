@@ -345,6 +345,15 @@ export interface ObjectBase {
 
 /** struct object_kind. */
 export interface ObjectKind {
+  /**
+   * Keys this kind's record carried that core does not bind (mod/record-keys.ts).
+   *
+   * Absent unless a mod added one. Core never reads it - it exists so a mod can
+   * put its own data on an object in JSON and reach it at runtime, which is the
+   * half of "extend the game" that a patch alone could not do. The values are
+   * the composed JSON, frozen, so one mod cannot mutate what another reads.
+   */
+  ext?: Readonly<Record<string, unknown>>;
   name: string;
   text: string;
   base: ObjectBase;

@@ -54,6 +54,7 @@ import {
   Rng,
   TMD,
   loc,
+  extensionData,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   BlowEffect,
@@ -1127,5 +1128,81 @@ describe("a disk mod patches a record that used to be unaddressable", () => {
     expect(why).toContain("core:of-acid#");
     /* Named alternatives, not just "it is ambiguous". */
     expect(why).toContain("core:of-acid#sword-polearm-hafted");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A disk mod ADDS a field to a core object and reads it back at runtime.
+ *
+ * The maintainer's test case, verbatim: make a dagger 1d5 instead of 1d4, and
+ * give it a `bleed` key core has never heard of. Both halves matter and only one
+ * of them used to work - composition always carried the new key through, and
+ * then every binder dropped it, so an author got no error and no effect. That is
+ * the difference between a mod that can RETUNE the game and one that can EXTEND
+ * it.
+ * ------------------------------------------------------------------ */
+
+describe("a disk mod adds a field core has never heard of", () => {
+  function corePack(): LoadedPack {
+    const read = (stem: string): { records: Record<string, unknown>[] } =>
+      JSON.parse(
+        readFileSync(
+          fileURLToPath(new URL(`../../content/pack/${stem}.json`, import.meta.url)),
+          "utf8",
+        ),
+      ) as { records: Record<string, unknown>[] };
+    return {
+      manifest: { id: "core", name: "Angband", version: "1.0.0", shape: "content" },
+      files: { object: { records: read("object").records } },
+    } as unknown as LoadedPack;
+  }
+
+  it("retunes the dagger AND carries a new key through to the bound kind", async () => {
+    writeMod("bleeder", { shape: "content", dependencies: { core: "*" } }, null, {
+      "object.json": JSON.stringify({
+        fieldPatches: {
+          "core:sword--dagger": [
+            { op: "set", path: "attack.hd", value: "1d5" },
+            { op: "set", path: "bleed", value: { dice: "1d3", turns: 5 } },
+          ],
+        },
+      }),
+    });
+    const report = await readModDir(
+      fsSource([{ id: "bleeder", files: ["manifest.json", "object.json"] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const pack = report.packs[0];
+    expect(pack).toBeDefined();
+
+    const composed = composeContentPacks([
+      corePack(),
+      { manifest: pack!.manifest, files: pack!.files } as unknown as LoadedPack,
+    ]);
+    expect(composed.problems).toEqual([]);
+
+    const objects = composed.records["object"] as Record<string, unknown>[];
+    const dagger = objects.find((r) => r["name"] === "& Dagger~");
+    expect(dagger, "core still ships the dagger under this name").toBeDefined();
+    expect(dagger?.["attack"]).toMatchObject({ hd: "1d5" });
+    expect(dagger?.["bleed"]).toEqual({ dice: "1d3", turns: 5 });
+
+    /* The half that used to be lost: what the GAME ends up holding. */
+    const ext = extensionData("object", dagger as object);
+    expect(ext, "the added key survives classification").toEqual({
+      bleed: { dice: "1d3", turns: 5 },
+    });
+    /* And core's own fields are not smuggled in alongside it. */
+    expect(ext?.["attack"]).toBeUndefined();
+  });
+
+  it("leaves an unmodded record with no ext at all", async () => {
+    /* `ext` present has to MEAN something, or a mod cannot tell its own data
+     * from core's by looking. */
+    const composed = composeContentPacks([corePack()]);
+    const objects = composed.records["object"] as Record<string, unknown>[];
+    const dagger = objects.find((r) => r["name"] === "& Dagger~");
+    expect(extensionData("object", dagger as object)).toBeUndefined();
+    await Promise.resolve();
   });
 });
