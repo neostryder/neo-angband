@@ -135,7 +135,11 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
      * checked stayed wrong for weeks. */
     expect(
       git("cat-file", "-t", BASELINE_COMMIT).trim(),
-      `${BASELINE_COMMIT} is not a commit in this clone`,
+      `${BASELINE_COMMIT} is not a commit in this clone. A SHALLOW clone does ` +
+        `not have it - actions/checkout is shallow by default, and this is ` +
+        `precisely how the check first failed. Fetch the one object rather than ` +
+        `the whole history (this repo descends from Angband's):\n` +
+        `    git fetch --no-tags --depth=1 origin ${BASELINE_COMMIT}`,
     ).toBe("commit");
     /* And it is 4.2.6 because upstream's own configure.ac says so at this
      * commit - not because a constant in this file is named that. */
