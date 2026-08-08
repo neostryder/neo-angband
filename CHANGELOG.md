@@ -46,6 +46,27 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can ADD an object, an ego item or a vault.** Those three files - 375,
+  107 and 162 of the base game's records - merged whole-file only, so a mod that
+  added one new weapon replaced every object in the game. The cause was one
+  condition: composition keyed records by `slugify(name)`, and core's own names
+  collide under it, because Angband's convention for a greater form is the same
+  name with a mark (`Acquirement` / `*Acquirement*`) and `ego_item` ships 23
+  names twice. Composition now keys by `recordRefKeys` - the per-file identity
+  `record-key.ts` already declared, already spelled the marks out for, and
+  already proved unique across the shipped pack. **41 of the 44 record files now
+  merge per record, up from 24**, which also means a mod can add a store, a
+  flavour, a brand, a slay, an object base, a trap or a random-name section.
+  Measured against the real pack, not a fixture: `object` 375 -> 376. And
+  measured through CORE's binder as well as composition's merge, because
+  upstream's `sval` is a counter over file order rather than a field in the
+  data: `mod-added-record.test.ts` binds the pack with and without one added
+  object and asserts every one of core's kinds keeps its index, name, tval and
+  sval, with the new one taking the next free sval of its own base.
+- **`ProjectBuild.composed`** - the game as it comes out of composition, so an
+  author can answer "did my record land, and did the base game survive it"
+  without reading their own input back.
+
 - **Authoring shortcuts, measured from core's own data.** `draftRecord("object",
   {name, type: "sword", level: 20}, core)` now returns a complete record - cost,
   weight, to-hit, `alloc` and graphics taken from core's own level-20 swords -
@@ -95,20 +116,31 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   file for file, since the day those two generated tables disagree is the day a
   field is an extension at one end and a core field at the other.
 
+### Changed
+
+- **The three record files that still take a whole file, and why.** `constants`
+  and `visuals` are config singletons: the file IS the identity, the host binds
+  one, and shipping the file means "use mine". `history` has no per-record
+  identity at all - a history record is `{chart:{chart,next,roll}, phrase}` and
+  every part of it is a value a mod would legitimately change.
+- **No ref that resolved stopped resolving.** The 19 files that moved out of
+  whole-file merging keep the refs per-record ops already used
+  (`core:sword--dagger`, `core:of-acid#shot-arrow`, `core:store-general`); for
+  the 24 that already merged per record the key differs from the old
+  `slugify(name)` only where a `*` or `+` appears in a name, and the old form is
+  registered as an alias - dropped only where it would shadow a different
+  record's real name, which is `*Healing*`'s legacy ref against plain `Healing`.
+
 ### Fixed
 
 - **Adding a record to `object`, `ego_item` or `vault` silently deleted the base
-  game's copy of that file, and now says so.** Composition merges a file per
-  record only when every record's name slugs to a unique ref, and those three
-  fail it on core's own data because Angband's convention for a greater form
-  reuses the name with marks (`Acquirement` / `*Acquirement*`, `Little
-  eruption` / `Little eruption+`) - and `ego_item` ships 23 names twice. The
-  loader has always reported the whole-file replacement in `problems`;
-  `ModProject.build` now promotes it to an `error`, because a line in a list is
-  not proportionate to discarding all 375 of the game's objects. Patching,
-  replacing and removing records in those files is unaffected and works
-  per-record. Adding one remains blocked pending a change of composition's
-  identity to `recordRefKeys`.
+  game's copy of that file.** See the first entry under **Added**: composition
+  now keys by `recordRefKeys` and all three merge per record. Two things remain
+  from the first pass at this, and both are still the right behaviour for the
+  three files that genuinely can only be contributed whole (`constants`,
+  `visuals`, `history`): the loader reports the whole-file replacement in
+  `problems`, and `ModProject.build` promotes it to an `error`, because a line
+  in a list is not proportionate to discarding the base game's copy of a file.
 
 - **A mod's own vocabulary: namespaced, declared, and enforced.** A field a mod
   introduces is now written `"gore:bleed"` and declared in that mod's manifest

@@ -16,19 +16,27 @@
  *
  * TWO MERGE PHASES, AND WHY
  *
- * composePacks needs a unique string `name` on every added record, because that
- * is the identity it builds refs from. Measured over the shipped core pack, 24
- * of the 44 record files satisfy that and 20 do not (14 carry no string `name`
- * at all; 6 carry names that slug to the same ref). So:
+ * composePacks needs every added record to have a ref no sibling claims, because
+ * that is the identity it builds the composed table from. Measured over the
+ * shipped core pack, 41 of the 44 record files satisfy that and 3 do not. So:
  *
- *  1. COMPOSED FILES (24) go through composePacks, which merges records
+ *  1. COMPOSED FILES (41) go through composePacks, which merges records
  *     per-record and appends a later pack's additions after an earlier pack's.
- *  2. PASSTHROUGH FILES (20) keep whole-file semantics for `records` - the last
+ *  2. PASSTHROUGH FILES (3) keep whole-file semantics for `records` - the last
  *     provider in load order wins the file - because a mod that ships
  *     `constants.json` means "use mine", not "add a second constants record",
  *     and the host binds one. Per-record ops are then applied on top, in load
  *     order, against the winning array (applyPassthroughOps below), using the
  *     per-file identity declared in record-key.ts.
+ *
+ * IT WAS 24 AND 20 UNTIL 2026-08-08, and the line that decided it asked for a
+ * unique `name`. `object`, `ego_item` and `vault` all have names and core's own
+ * data repeats them, so all three sat in phase 2 - which meant a mod could patch
+ * any object but could not ADD one without discarding every object in the game.
+ * The identity those files really use was already declared in record-key.ts and
+ * already proved unique over the shipped pack; recordsComposable now asks it.
+ * What is left in phase 2 is `constants` and `visuals` (config singletons, where
+ * whole-file IS the meaning) and `history` (no per-record identity at all).
  *
  * NOTHING IS DROPPED IN SILENCE. This is the invariant the whole file exists to
  * hold. Until 2026-07-29 phase 2 did not exist: a `patches` / `replaces` /
@@ -76,7 +84,6 @@
  */
 
 import type { PackManifest } from "./manifest.js";
-import { slugify } from "./manifest.js";
 import { resolveLoadOrder } from "./resolve.js";
 import { expandSections } from "./sections.js";
 import { composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
@@ -174,19 +181,40 @@ function isNamedRecord(r: unknown): r is JsonRecord {
 }
 
 /**
- * A pack's added records for one file are per-record composable only if they
- * are all name-keyed and their refs (pack:slug(name)) do not collide - exactly
- * the two conditions composePacks would otherwise throw on.
+ * A pack's added records for one file are per-record composable only if every
+ * one of them has a ref no sibling claims - exactly the condition composePacks
+ * needs to give each record a primary key.
+ *
+ * IT USED TO ASK FOR A UNIQUE `name` (changed 2026-08-08), and that single line
+ * is what made `object`, `ego_item` and `vault` unmergeable. All three carry a
+ * `name`, but core's own data repeats it - Angband's convention for a greater
+ * form is the same name with a mark ("Acquirement" / "*Acquirement*"), and
+ * `ego_item` ships 23 names twice - so all three failed the test, were
+ * classified whole-file, and a mod adding ONE object replaced all 375 of core's.
+ * Those were exactly the three files most worth adding to. record-key.ts already
+ * declared the real per-file identity; this now asks it instead of guessing.
+ *
+ * A record answers to SEVERAL refs, so the test is "has at least one ref no
+ * sibling claims" rather than "its first ref is unique": an ego whose name core
+ * ships twice is addressed by its discriminated form.
+ *
+ * A CONFIG SINGLETON IS STILL PASSTHROUGH, and that is not an oversight. Its key
+ * is the FILE, so keying it per record would be legal and wrong: two packs
+ * shipping `constants.json` would compose to two constants records under two
+ * refs, and the host binds one. "Use mine" is what shipping a singleton means.
  */
-function recordsComposable(records: readonly unknown[]): boolean {
-  const slugs = new Set<string>();
+function recordsComposable(file: string, records: readonly unknown[]): boolean {
+  const spec = keySpecFor(file);
+  if (spec.kind === "singleton") return false;
+  const claimants = new Map<string, number>();
+  const keysOf: (readonly string[])[] = [];
   for (const r of records) {
-    if (!isNamedRecord(r)) return false;
-    const slug = slugify(r["name"] as string);
-    if (slugs.has(slug)) return false;
-    slugs.add(slug);
+    const keys = recordRefKeys(file, r, spec);
+    if (keys.length === 0) return false;
+    keysOf.push(keys);
+    for (const key of keys) claimants.set(key, (claimants.get(key) ?? 0) + 1);
   }
-  return true;
+  return keysOf.every((keys) => keys.some((k) => claimants.get(k) === 1));
 }
 
 /**
@@ -470,7 +498,7 @@ export function composeContentPacks(
     let ok = true;
     for (const p of ordered) {
       const contrib = p.files[f];
-      if (contrib?.records && !recordsComposable(contrib.records)) {
+      if (contrib?.records && !recordsComposable(f, contrib.records)) {
         ok = false;
         break;
       }
@@ -510,7 +538,7 @@ export function composeContentPacks(
          * previous provider's records simply vanished. Say so. */
         refused.refuse(
           p.manifest.id,
-          `${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records are not name-keyed, so a whole file is the only thing that can be added to it`,
+          `${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records have no ref of their own, so a whole file is the only thing that can be added to it`,
         );
       }
       out[f] = [...contrib.records];

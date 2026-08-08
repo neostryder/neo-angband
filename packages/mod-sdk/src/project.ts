@@ -59,6 +59,17 @@ export interface ProjectBuild {
   /** Composition's own refusals: a patch that hit nothing, a field undeclared. */
   readonly problems: readonly string[];
   /**
+   * The game as it comes OUT of composition: every file, every record, this
+   * mod's contribution folded into the base game's.
+   *
+   * Undefined only when composition could not run at all (see
+   * `project/unloadable`). Returned because "did my record land, and did the
+   * base game survive it" is a question about the composed result and nothing
+   * else can answer it - an author reading their own emitted JSON is reading
+   * the input, not the outcome.
+   */
+  readonly composed?: Readonly<Record<string, readonly unknown[]>>;
+  /**
    * Whether anything at the `error` level survived.
    *
    * A convenience with a deliberate rule behind it: WARNINGS DO NOT BLOCK. Every
@@ -276,15 +287,21 @@ export class ModProject {
 
     const findings: AuthoringFinding[] = checkRecords(subject, all);
 
-    /* THE ONE THAT COSTS THE WHOLE GAME, PROMOTED TO AN ERROR. Three record
-     * files - object, ego_item and vault - ship names that slug to the same ref
-     * ("Acquirement" and "*Acquirement*"), so composition classifies them as
-     * whole-file and a mod that ADDS one record to them replaces core's entire
-     * file. The loader already says so in `problems`, but a line in a list is
-     * not proportionate to deleting all 375 of the game's objects, and a
-     * builder whose `ok` is true for that is lying. Detected off the loader's
-     * own report rather than by re-deriving the classification here, so the two
-     * cannot disagree about which files are affected. */
+    /* THE ONE THAT COSTS THE WHOLE GAME, PROMOTED TO AN ERROR. A file whose
+     * records have no ref of their own can only be contributed WHOLE, so a mod
+     * that ships one discards whatever the previous provider put there. The
+     * loader already says so in `problems`, but a line in a list is not
+     * proportionate to replacing the base game's copy of a file, and a builder
+     * whose `ok` is true for that is lying. Detected off the loader's own report
+     * rather than by re-deriving the classification here, so the two cannot
+     * disagree about which files are affected.
+     *
+     * IT USED TO CATCH object, ego_item AND vault, and those were the three
+     * files most worth adding to (375, 107 and 162 records went for adding one).
+     * Since 2026-08-08 composition keys by recordRefKeys and all three merge per
+     * record, so what is left here is `constants` and `visuals` - config
+     * singletons, where "use mine" is what shipping the file MEANS - and
+     * `history`, which has no per-record identity to key on. */
     const mineId = this.#manifest.id;
     for (const problem of composed.problems) {
       if (!problem.startsWith(`${mineId}: `) || !problem.includes("replaces the whole file")) {
@@ -296,10 +313,9 @@ export class ModProject {
         record: mineId,
         rule: "file/whole-file-replacement",
         message:
-          `${problem}. Adding a record to this file is not possible today ` +
-          "without shipping the whole file: use `patchFields` to change existing " +
-          "records, and track the gap rather than shipping a mod that deletes " +
-          "the base game's data.",
+          `${problem}. Records in this file have no ref of their own, so there is ` +
+          "nothing to add one to: use `patchFields` or `replace` to change what is " +
+          "already there, rather than shipping a mod that deletes the base game's copy.",
       });
     }
 
@@ -320,6 +336,7 @@ export class ModProject {
       files: this.emit(),
       findings,
       problems: composed.problems,
+      composed: composed.records,
       ok: !findings.some((f) => f.level === "error"),
     };
   }

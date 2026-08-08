@@ -40,7 +40,7 @@ function modWriting(id: string, key: string, value: unknown, decl?: FieldDecl[])
   return {
     manifest: { ...manifest(id, decl), dependencies: { core: "*" } },
     files: {
-      object: { fieldPatches: { "core:dagger": [{ op: "set", path: key, value }] } },
+      object: { fieldPatches: { "core:sword--dagger": [{ op: "set", path: key, value }] } },
     },
   } as unknown as LoadedPack;
 }
@@ -131,7 +131,7 @@ describe("an undeclared field", () => {
       files: {
         object: {
           fieldPatches: {
-            "core:dagger": [
+            "core:sword--dagger": [
               { op: "set", path: "gore:bleed", value: 1 },
               { op: "set", path: "attack.hd", value: "1d9" },
             ],
@@ -153,8 +153,8 @@ describe("an undeclared field", () => {
       files: {
         object: {
           fieldPatches: {
-            "core:dagger": [{ op: "set", path: "gore:bleed", value: 1 }],
-            "core:main-gauche": [{ op: "set", path: "gore:bleed", value: 2 }],
+            "core:sword--dagger": [{ op: "set", path: "gore:bleed", value: 1 }],
+            "core:sword--main-gauche": [{ op: "set", path: "gore:bleed", value: 2 }],
           },
         },
       },

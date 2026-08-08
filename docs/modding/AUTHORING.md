@@ -207,35 +207,72 @@ would refuse to build Angband.
 
 ---
 
-## The one that is currently an error: adding to `object`, `ego_item` or `vault`
+## What a mod can add a record to: 41 of 44 files
 
-**Measured, and it is a live limitation.** Composition merges a file per record
-only when every record's name slugs to a unique ref. Three files fail that on
+**Measured over the shipped pack**, and it used to be 24. Composition merges a
+file per record when every record has a ref no sibling claims, and it asks
+`packages/mod-sdk/src/record-key.ts` what a ref is — which is `name` for most
+files and something else where upstream's identity is something else.
+
+Until 2026-08-08 the test was "a unique `name`", and three files failed it on
 core's own data, because Angband's convention for a greater form is to reuse the
 name with marks — `Acquirement` and `*Acquirement*`, `Little eruption` and
-`Little eruption+`, and `ego_item` ships 23 names twice over:
+`Little eruption+` — and `ego_item` ships 23 names twice over. So a mod adding
+one object replaced all 375 of core's, one ego replaced all 107, one vault all
+162. Those were the three files most worth adding to. They now merge per record:
 
 | File | Records | A mod adding one record… |
 |---|---|---|
-| `object` | 375 | **replaces all 375** |
-| `ego_item` | 107 | **replaces all 107** |
-| `vault` | 162 | **replaces all 162** |
-| `monster`, `artifact`, `curse`, `terrain`, `room_template`, … | — | adds one record, as expected |
+| `object` | 375 | adds one — 376 |
+| `ego_item` | 107 | adds one — 108 |
+| `vault` | 162 | adds one — 163 |
+| `store`, `flavor`, `brand`, `slay`, `object_base`, `trap`, `names`, … | — | adds one, keyed by whatever upstream keys it by |
 
-The loader has always reported this in `problems`. `ModProject.build` promotes
-it to an `error` finding, because a line in a list is not proportionate to
-deleting every object in the game.
+**The three that still take a whole file, and why.** `constants` and `visuals`
+are config singletons: their identity *is* the file, the host binds exactly one,
+and "I shipped `constants.json`" means "use mine". `history` has no per-record
+identity at all — a history record is `{chart:{chart,next,roll}, phrase}` and
+every part of that is a value a mod would legitimately change. For those three,
+`ModProject.build` still raises `file/whole-file-replacement` as an `error`,
+because replacing the base game's copy of a file is not something to discover
+from a line in a list.
 
-**Until that is fixed**, `patchFields` / `replace` / `remove` work normally on
-all three — per-record identity for them is declared in
-`packages/mod-sdk/src/record-key.ts` (`object` is `type + name`, so the Dagger is
-`core:sword--dagger`) — so a mod can change any existing object, ego or vault.
-Only *adding* one is blocked.
+### What a record is called
 
-The fix is to key composition by `recordRefKeys` (which already exists, already
-proves 0 unaddressable records across the shipped pack, and already carries the
-pre-2026-08-08 refs as aliases) instead of by `slugify(name)`. Tracked
-separately.
+Refs did not move. The per-record identity was already what
+`patchFields` / `replace` / `remove` used, so every ref that resolved before
+still resolves:
+
+- `object` is `type + name` — the Dagger is `core:sword--dagger`;
+- `ego_item` is `name`, plus a `#` discriminator where core ships the name twice
+  — `core:of-acid#shot-arrow`;
+- `store` is its `STORE_*` code, `brand` and `slay` their `code`, `flavor` its
+  base tval, and so on.
+
+A record answers to **several** refs — its base key, its discriminated form, and
+the pre-2026-08-08 lossy slug as an alias — so nothing an author wrote against an
+older engine stops working. The one case where an alias is dropped is where it
+would shadow a *different* record's real name: `*Healing*`'s old ref is plain
+`Healing`'s current one, and a record's own history must not cost another record
+its name.
+
+### Where a new record lands, and why it matters
+
+At the **end**, after core's. That is not cosmetic. Upstream's `sval` is not a
+field in the data — it is a counter, bumped per object base in file order
+(`parse_object_type`, `reference/src/obj-init.c`), and `kidx` is the position in
+the file. Appended, every one of core's 375 objects keeps its index, name, tval
+and sval, and the new one takes the next free sval of its own base. Prepended,
+every sword in the game would shift by one.
+
+Composition appends because core is pack zero and a mod that declares `core` as
+a dependency loads after it. `packages/web/src/mod-added-record.test.ts` binds
+core's pack with and without one added object and asserts the whole table, not a
+sample. The one thing that does move is the tail of dummy kinds `bindCore`
+creates for special artifacts whose base sval `object.txt` never defines (the
+Phial, the Star, the rings of power); their array index shifts by one and
+nothing depends on it, because a savefile stores a namespaced string `kindId`
+rather than a `kidx`.
 
 ---
 

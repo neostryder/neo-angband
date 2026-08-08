@@ -37,6 +37,9 @@ const CORE_FILES = [
   "brand",
   "flavor",
   "pain",
+  /* A config singleton, so the whole-file-replacement promotion still has a
+   * file it can fire on now that object / ego_item / vault merge per record. */
+  "constants",
 ] as const;
 
 const coreRecords: Record<string, JsonRecord[]> = {};
@@ -160,24 +163,28 @@ describe("building against the base game", () => {
   });
 });
 
-describe("adding to a file composition cannot merge", () => {
-  it("is an error, because it would delete the base game's records", () => {
-    /* MEASURED, NOT ASSUMED. `object`, `ego_item` and `vault` ship names that
-     * slug to the same ref ("Acquirement" and "*Acquirement*"), so the loader
-     * classifies them whole-file and a mod adding ONE object replaces all 375.
-     * The loader already reports it; a builder whose `ok` is true for that is
-     * lying, so this promotes it. */
-    const build = modProject(MANIFEST)
-      .add("object", {
-        name: "& Sludge Dagger~",
-        type: "sword",
-        graphics: { glyph: "|", color: "w" },
-      })
-      .build(corePack());
-    const fatal = build.findings.find((f) => f.rule === "file/whole-file-replacement");
-    expect(fatal?.level).toBe("error");
-    expect(fatal?.message).toContain("discarding 375 record(s)");
-    expect(build.ok).toBe(false);
+describe("adding to object, the file that used to be unaddable", () => {
+  it("adds one object to the base game's 375, and keeps all 375", () => {
+    /* MEASURED, AND IT USED TO BE AN ERROR. Until 2026-08-08 composition keyed
+     * records by slugify(name); `object` ships names that collide under it
+     * ("Acquirement" / "*Acquirement*"), so the whole file was classified
+     * whole-file and this exact call replaced all 375 of core's objects.
+     * ModProject promoted that to an `error` because a builder whose `ok` is
+     * true for deleting the base game is lying. Composition now keys by
+     * recordRefKeys and the record simply lands. */
+    const drafted = draftRecord(
+      "object",
+      { name: "& Sludge Dagger~", type: "sword", level: 20 },
+      coreRecords,
+    );
+    const build = modProject(MANIFEST).add("object", drafted.record).build(corePack());
+    expect(build.problems).toEqual([]);
+    expect(build.findings.map((f) => f.rule)).not.toContain("file/whole-file-replacement");
+    expect(build.ok).toBe(true);
+
+    const objects = build.composed?.["object"] as { name: string }[];
+    expect(objects).toHaveLength(packRecords("object").length + 1);
+    expect(objects.at(-1)?.name).toBe("& Sludge Dagger~");
   });
 
   it("does not fire when the mod only PATCHES that file", () => {
@@ -189,5 +196,20 @@ describe("adding to a file composition cannot merge", () => {
     expect(build.problems).toEqual([]);
     expect(build.findings.map((f) => f.rule)).not.toContain("file/whole-file-replacement");
     expect(build.ok).toBe(true);
+  });
+
+  it("still calls a whole-file replacement an error where one is still possible", () => {
+    /* `constants` is a config SINGLETON: its identity is the file and the host
+     * binds one, so shipping it means "use mine" and the previous provider's
+     * record goes. That is a real thing a mod can do by accident, so the
+     * promotion this describe used to test for `object` is still live - it just
+     * no longer fires for the three files people actually want to add to. */
+    const build = modProject(MANIFEST)
+      .add("constants", { "level-max": [{ label: "monsters", value: 4096 }] })
+      .build(corePack());
+    const fatal = build.findings.find((f) => f.rule === "file/whole-file-replacement");
+    expect(fatal?.level).toBe("error");
+    expect(fatal?.message).toContain("discarding 1 record(s)");
+    expect(build.ok).toBe(false);
   });
 });
