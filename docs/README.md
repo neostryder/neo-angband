@@ -25,10 +25,10 @@ install, and how to mod the game. Start with the top-level
 - [PARITY.md](./PARITY.md) - what "feature parity with Angband 4.2.6,
   statistically verified (with no mods)" means, the numbers it currently holds
   at, and the one metric that is measured and deliberately not gated.
-- [PARITY_CLOSURE.md](./PARITY_CLOSURE.md) - the closed worklist that took the
-  port to 4.2.6 parity: 16 items, all done, kept for provenance.
-- [REBASE_RUNBOOK.md](./REBASE_RUNBOOK.md) - how to advance the port from its
-  pinned baseline onto a future upstream release using the parity ledger.
+- [WORKING_RECORD.md](./WORKING_RECORD.md) - why some comments cite documents
+  that are not in this tree: the audit runs, briefs and build plans that built
+  the port are kept privately, and this says what they concluded and where the
+  conclusions live.
 - [RELEASING.md](./RELEASING.md) - the release runbook: how a tag becomes npm
   packages and downloadable builds, and the save-migration obligation that comes
   with any change to the save format.
@@ -78,15 +78,9 @@ install, and how to mod the game. Start with the top-level
 - [modding/MOD_REACH.md](./modding/MOD_REACH.md) - measured mod reach: hook
   count, the dispatch-table census, what data layering really supports, what
   resources are overridable, and the ranked gap list.
-- [modding/MOD_INTEGRATION_PLAN.md](./modding/MOD_INTEGRATION_PLAN.md) - wiring
-  the mod substrate into the running game.
 - [modding/BORG.md](./modding/BORG.md) - the Borg autoplayer mod and how to run
   it.
 - [modding/QOL.md](./modding/QOL.md) - the first-party quality-of-life mod
   (`qol`): design of record and changelog.
 - [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - the first-party bug-fix mod
   (`bug-fixes`): design of record and changelog.
-- [modding/P7_BUILD_PLAN.md](./modding/P7_BUILD_PLAN.md) - build plan for the
-  mod substrate and agent API.
-- [modding/P8_BUILD_PLAN.md](./modding/P8_BUILD_PLAN.md) - build plan for the
-  Borg as a mod.

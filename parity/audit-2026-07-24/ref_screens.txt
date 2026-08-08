@@ -1,4 +1,0 @@
-reference/lib/screens/crown.txt
-reference/lib/screens/dead.txt
-reference/lib/screens/news.txt
-reference/lib/screens/retire.txt

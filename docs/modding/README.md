@@ -48,12 +48,14 @@ before you build around an answer you guessed.
   trusting a capability claim on any other page: this directory contains
   both design-of-record pages and built-today pages, and the two are not
   the same thing.
-- `FRONTEND_PLAN.md`: **a PLAN, not a shipped API.** How a mod will replace the
-  ENTIRE interface — an 8/16-bit menu shell, isometric, full 3D, first-person,
-  controller-driven. Written down early because the seams do not exist yet and
-  the design is worth arguing with before it is built. It states what is already
-  true (core is headless and needs no change) and what is in the way, measured
-  rather than guessed.
+- **Replacing the whole front end** — an 8/16-bit menu shell, isometric, full 3D,
+  first-person, controller-driven — is a design that has been written down and
+  measured, but **the seams for it do not exist yet**. Two facts from that work
+  are worth knowing here: core is already headless and needs no change for any
+  of it, and what stands in the way is `GlyphTerm`, which is both the surface
+  and the input door. The plan itself is in the private working record (see
+  [../WORKING_RECORD.md](../WORKING_RECORD.md)) because it is a proposal under
+  argument rather than an API anyone can build against.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
 - `BUG_FIXES.md`: the `bug-fixes` mod - its design of record and
   referenced changelog for upstream crash/corruption/save/determinism fixes

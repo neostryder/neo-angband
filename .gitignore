@@ -60,6 +60,16 @@ packages/web/mods/**/*.d.ts
 packages/web/mods/**/*.js.map
 packages/web/mods/**/*.d.ts.map
 
+# The assistant's working rules for this repository. Not published: they are how
+# WE work here, not something a reader of the port needs, and several of them
+# name local paths on a particular machine. The file is NOT moved, because it
+# only takes effect at the repository root - it is loaded from disk, and being
+# untracked changes nothing about that.
+#
+# A snapshot is kept in the private working record (working-instructions/), since
+# the squash in #147 removes the history that is currently its only backup.
+CLAUDE.md
+
 # Local-only parity remediation breadcrumb: points at the private planning
 # workspace, so it must never be committed to this public repo. The authoritative
 # public methodology lives in docs/PARITY.md; the per-module provenance map is
