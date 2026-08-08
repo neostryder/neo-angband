@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { composeContentPacks } from "./loader.js";
 import type { LoadedPack } from "./loader.js";
@@ -9,7 +10,7 @@ function manifest(id: string, deps?: Record<string, string>): PackManifest {
   return m;
 }
 
-/** A minimal core pack: named monster records + a nameless config file. */
+/** A minimal core pack: named monster records, an index-keyed file, a singleton. */
 function corePack(): LoadedPack {
   return {
     manifest: manifest("core"),
@@ -20,8 +21,12 @@ function corePack(): LoadedPack {
           { name: "Grip, Farmer Maggot's Dog", hp: 5 },
         ],
       },
-      // nameless / index-keyed: not per-record addressable -> passthrough
+      /* No `name`, but record-key.ts declares `section` as its identity, so
+       * every record has a ref of its own and the file merges per record. */
       names: { records: [{ section: 2, word: ["foo", "bar"] }] },
+      /* A config singleton: the FILE is the identity, the host binds one, so
+       * "ships constants.json" means "use mine" - whole-file passthrough. */
+      constants: { records: [{ "level-max": [{ label: "monsters", value: 1024 }] }] },
     },
   };
 }
@@ -40,7 +45,7 @@ describe("composeContentPacks", () => {
       core.files["monster"]?.records?.[1],
     );
     expect(composed.composedFiles).toContain("monster");
-    expect(composed.passthroughFiles).toContain("names");
+    expect(composed.passthroughFiles).toContain("constants");
   });
 
   it("adds a mod's new records after core's, in load order", () => {
@@ -95,14 +100,34 @@ describe("composeContentPacks", () => {
     expect(names).toEqual(["Kobold"]);
   });
 
-  it("passes nameless files through last-in-load-order-wins", () => {
+  it("passes a config singleton through last-in-load-order-wins", () => {
     const mod: LoadedPack = {
-      manifest: manifest("renamer", { core: "*" }),
-      files: { names: { records: [{ section: 2, word: ["zap"] }] } },
+      manifest: manifest("deeper", { core: "*" }),
+      files: {
+        constants: { records: [{ "level-max": [{ label: "monsters", value: 2048 }] }] },
+      },
     };
     const composed = composeContentPacks([corePack(), mod]);
-    expect(composed.records["names"]).toEqual([{ section: 2, word: ["zap"] }]);
-    expect(composed.passthroughFiles).toContain("names");
+    expect(composed.records["constants"]).toEqual([
+      { "level-max": [{ label: "monsters", value: 2048 }] },
+    ]);
+    expect(composed.passthroughFiles).toContain("constants");
+  });
+
+  it("adds to a file whose identity is not `name` at all", () => {
+    /* THE CHANGE OF 2026-08-08, at its smallest. `names` records carry no
+     * `name`; their identity is the section index, declared in record-key.ts.
+     * Under the old rule that made the whole file whole-file, so a mod shipping
+     * one random-name section discarded core's. Now it adds one. */
+    const mod: LoadedPack = {
+      manifest: manifest("renamer", { core: "*" }),
+      files: { names: { records: [{ section: 7, word: ["zap"] }] } },
+    };
+    const composed = composeContentPacks([corePack(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(composed.composedFiles).toContain("names");
+    expect((composed.records["names"] as { section: number }[]).map((r) => r.section))
+      .toEqual([2, 7]);
   });
 
   it("falls back to passthrough (no throw) when record names collide", () => {
@@ -190,17 +215,74 @@ function recordsOf(
   return composed.records[file] as Record<string, unknown>[];
 }
 
+/* ------------------------------------------------------------------ *
+ * The classification, over the pack the game actually ships. Every
+ * fixture above is a shape someone chose; this one is the data.
+ * ------------------------------------------------------------------ */
+
+describe("the shipped pack", () => {
+  const packDir = new URL("../../content/pack/", import.meta.url);
+
+  function shippedCore(): LoadedPack {
+    const files: Record<string, { records: unknown[] }> = {};
+    for (const f of readdirSync(packDir)) {
+      if (!f.endsWith(".json")) continue;
+      const raw: unknown = JSON.parse(readFileSync(new URL(f, packDir), "utf8"));
+      const records = Array.isArray(raw) ? raw : (raw as { records?: unknown[] }).records;
+      if (!Array.isArray(records) || records.length === 0) continue;
+      files[f.replace(/\.json$/, "")] = { records };
+    }
+    return { manifest: manifest("core"), files } as unknown as LoadedPack;
+  }
+
+  it("merges 41 of its 44 record files per record, and composes cleanly alone", () => {
+    const composed = composeContentPacks([shippedCore()]);
+    expect(composed.composedFiles.length + composed.passthroughFiles.length).toBe(44);
+    /* Named rather than counted: a count would still pass if a DIFFERENT file
+     * fell out of phase 1, and the three left are left for three different
+     * reasons - two config singletons and one file with no identity at all. */
+    expect(composed.passthroughFiles).toEqual(["constants", "history", "visuals"]);
+    expect(composed.problems).toEqual([]);
+  });
+
+  it("takes a new object, ego and vault WITHOUT discarding the base game's", () => {
+    /* THE MEASUREMENT THIS CHANGE EXISTS FOR. Before 2026-08-08 each of these
+     * three lines replaced its whole file: 375, 107 and 162 records gone for
+     * adding one. Asserted against the real pack because the collisions that
+     * caused it are core's own data, not a fixture's. */
+    const core = shippedCore();
+    const mod = {
+      manifest: manifest("sludge", { core: "*" }),
+      files: {
+        object: {
+          records: [
+            { name: "& Sludge Dagger~", type: "sword", graphics: { glyph: "|", color: "W" } },
+          ],
+        },
+        ego_item: { records: [{ name: "of Sludge", type: ["sword"], cost: 400 }] },
+        vault: { records: [{ name: "Sludge pit", type: "Lesser vault", rows: 1, columns: 1 }] },
+      },
+    } as unknown as LoadedPack;
+    const composed = composeContentPacks([core, mod]);
+    expect(composed.problems).toEqual([]);
+    for (const file of ["object", "ego_item", "vault"]) {
+      const before = (core.files[file]?.records ?? []).length;
+      expect(composed.records[file], file).toHaveLength(before + 1);
+    }
+  });
+});
+
 describe("composeContentPacks: per-record ops on passthrough files", () => {
-  it("still classifies all five as passthrough (whole-file `records` semantics kept)", () => {
+  it("classifies each of the five by whether its records have refs of their own", () => {
+    /* THE SPLIT MOVED ON 2026-08-08 and this is where it is visible. `store` is
+     * keyed by its STORE_* code and `ego_item` by name + discriminator, so both
+     * now merge per record. What is left whole-file is `constants` (a config
+     * singleton - the host binds one), `history` (no identity at all) and
+     * `object` ONLY in this fixture, which deliberately ships "Deep Descent"
+     * twice with the same type; core's real object.txt does not. */
     const composed = composeContentPacks([passthroughCore()]);
-    expect(composed.passthroughFiles).toEqual([
-      "constants",
-      "ego_item",
-      "history",
-      "object",
-      "store",
-    ]);
-    expect(composed.composedFiles).toEqual([]);
+    expect(composed.passthroughFiles).toEqual(["constants", "history", "object"]);
+    expect(composed.composedFiles).toEqual(["ego_item", "store"]);
     expect(composed.problems).toEqual([]);
   });
 
@@ -413,12 +495,18 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     ]);
   });
 
-  /* THE ASYMMETRY THAT WAS NEVER CHOSEN. `store` is a passthrough file and `trap`
-   * a composable one, purely because of how core's own records are shaped - and
-   * until 2026-08-02 the identical author mistake was one reported line in the
-   * first case and the loss of the entire pack in the second. Asserted as an
-   * equality between the two paths rather than as two expected strings, because
-   * two strings drift back apart the next time one of them is reworded. */
+  /* THE ASYMMETRY THAT WAS NEVER CHOSEN. `object` is a passthrough file in this
+   * fixture and `trap` a composable one, purely because of how the records are
+   * shaped - and until 2026-08-02 the identical author mistake was one reported
+   * line in the first case and the loss of the entire pack in the second.
+   * Asserted as an equality between the two paths rather than as two expected
+   * strings, because two strings drift back apart the next time one of them is
+   * reworded.
+   *
+   * `store` used to be the passthrough half here. It stopped being passthrough
+   * on 2026-08-08, which would have left this comparing one phase to itself -
+   * an equality that cannot fail. The fixture's `object` still is, because it
+   * deliberately ships one name twice. */
   it("refuses an unaddressable ref the same way in both merge phases", () => {
     const shape = (file: string, ref: string): LoadedPack => ({
       manifest: manifest("twin", { core: "*" }),
@@ -426,19 +514,23 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     });
     const passthrough = composeContentPacks([
       passthroughCore(),
-      shape("store", "core:store-nowhere"),
+      shape("object", "core:nowhere"),
     ]);
     const composable = composeContentPacks([
       passthroughCore(),
-      shape("trap", "core:trap-nowhere"),
+      shape("trap", "core:nowhere"),
     ]);
-    /* The identity clause is deliberately per-phase - a passthrough file's key
-     * is declared in record-key.ts, a composable one's is always the record's
-     * `name` - so it is normalised away and everything else has to match. */
+    /* The control on the comparison: it is only worth anything while the two
+     * files really are in different phases. */
+    expect(passthrough.passthroughFiles).toContain("object");
+    expect(composable.composedFiles).toContain("trap");
+    /* The identity clause is deliberately per-file - each file's key is declared
+     * in record-key.ts - so it is normalised away and everything else has to
+     * match. */
     const shapeOf = (s: string): string =>
       s
         .replace(/core:[a-z-]+/u, "REF")
-        .replace(/store|trap/gu, "FILE")
+        .replace(/object|trap/gu, "FILE")
         .replace(/\(identity is [^)]*\)/u, "(ID)");
     expect(passthrough.problems.map(shapeOf)).toEqual(composable.problems.map(shapeOf));
     expect(passthrough.faults.map((f) => f.packId)).toEqual(composable.faults.map((f) => f.packId));
@@ -447,14 +539,46 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
   it("reports a whole-file replacement that discards another pack's records", () => {
     const mod: LoadedPack = {
       manifest: manifest("total", { core: "*" }),
-      files: { store: { records: [{ store: "STORE_GENERAL", turnover: 1 }] } },
+      files: { constants: { records: [{ "level-max": [{ label: "monsters", value: 1 }] }] } },
     };
     const composed = composeContentPacks([passthroughCore(), mod]);
     expect(composed.problems).toHaveLength(1);
     expect(composed.problems[0]).toContain(
-      "total: store replaces the whole file, discarding 2 record(s) from core",
+      "total: constants replaces the whole file, discarding 1 record(s) from core",
     );
-    expect(recordsOf(composed, "store")).toHaveLength(1);
+    expect(recordsOf(composed, "constants")).toHaveLength(1);
+  });
+
+  it("ADDS a record to a file whose names core repeats, instead of replacing it", () => {
+    /* The whole point of keying by recordRefKeys. `ego_item` ships "of Acid"
+     * twice, so under the old `name`-must-be-unique rule this contribution
+     * discarded both of core's egos and left the game with one. The same is
+     * true of `object` and `vault` against the real pack: 375 and 162 records
+     * gone for adding one. */
+    const mod: LoadedPack = {
+      manifest: manifest("sludge", { core: "*" }),
+      files: {
+        ego_item: { records: [{ name: "of Sludge", type: ["sword"], cost: 400 }] },
+      },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "ego_item").map((r) => r["name"])).toEqual([
+      "of Acid",
+      "of Acid",
+      "of Sludge",
+    ]);
+    /* And it is addressable under the mod's own ref, not core's. */
+    const patched = composeContentPacks([
+      passthroughCore(),
+      mod,
+      {
+        manifest: manifest("tweak", { sludge: "*" }),
+        files: { ego_item: { patches: { "sludge:of-sludge": { cost: 9 } } } },
+      },
+    ]);
+    expect(patched.problems).toEqual([]);
+    expect(recordsOf(patched, "ego_item")[2]?.["cost"]).toBe(9);
   });
 
   /**

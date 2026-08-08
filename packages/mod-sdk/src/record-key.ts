@@ -47,10 +47,17 @@
  *
  * WHY THIS EXISTS
  *
- * composePacks (compose.ts) keys every record by `packRef(pack, slugify(name))`.
- * That is the right identity for the 24 upstream record files whose records
- * carry a unique `name` - monster, object_property, terrain and so on - and it
- * is what makes `patches` / `replaces` / `fieldPatches` / `removes` work there.
+ * composePacks (compose.ts) USED TO key every record by
+ * `packRef(pack, slugify(name))`. That is the right identity for the 24 upstream
+ * record files whose records carry a unique `name` - monster, object_property,
+ * terrain and so on - and it is what made `patches` / `replaces` /
+ * `fieldPatches` / `removes` work there.
+ *
+ * As of 2026-08-08 composePacks keys by `recordRefKeys` from this file instead,
+ * so the other 20 fit it too and 41 of the 44 files merge per record. What that
+ * bought is the thing a name key could not do at all: ADDING a record to
+ * `object`, `ego_item` or `vault`, which before was a whole-file replacement
+ * that discarded every one of core's.
  *
  * The other 20 files did not fit it, for two measured reasons (counts taken over
  * packages/content/pack on 2026-07-29). This is the problem statement, not the

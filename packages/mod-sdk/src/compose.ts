@@ -18,9 +18,14 @@
  */
 
 import type { PackManifest, PackRef } from "./manifest.js";
-import { packRef } from "./manifest.js";
 import { applyFieldPatch } from "./patch.js";
 import type { FieldPatch } from "./patch.js";
+import {
+  keyDescription,
+  keySpecFor,
+  legacyRecordKey,
+  recordRefKeys,
+} from "./record-key.js";
 
 export type JsonValue =
   | null
@@ -33,7 +38,11 @@ export type JsonRecord = { [key: string]: JsonValue };
 
 /** One pack's contribution to one record file (e.g. "monster"). */
 export interface FileContribution {
-  /** New records; this pack becomes their owner. Each needs a name. */
+  /**
+   * New records; this pack becomes their owner. Each needs a derivable
+   * identity - the per-file key declared in record-key.ts, which is the
+   * record's `name` for the files that do not declare one.
+   */
   records?: JsonRecord[];
   /** Deep-merge patches onto records owned by declared dependencies. */
   patches?: Record<string, JsonRecord>;
@@ -180,6 +189,18 @@ export function composePacks(
   options: ComposePacksOptions = {},
 ): Map<string, Map<PackRef, ComposedRecord>> {
   const game = new Map<string, Map<PackRef, ComposedRecord>>();
+  /**
+   * Per file, the EXTRA refs a record answers to: its discriminated form where
+   * the file declares a discriminator, and the pre-2026-08-08 lossy slug. Value
+   * is every primary ref claiming that alias, so "nothing there" and "two
+   * records there" are one lookup with two outcomes and an ambiguous ref can
+   * name the alternatives instead of only saying it is ambiguous.
+   *
+   * KEPT OUT OF `table` DELIBERATELY. Registering a record under two keys in the
+   * table itself would put it in the composed output twice, because the output
+   * is the table's values.
+   */
+  const aliases = new Map<string, Map<PackRef, PackRef[]>>();
   const onRefuse = options.onRefuse;
 
   for (const pack of packs) {
@@ -198,57 +219,126 @@ export function composePacks(
         table = new Map();
         game.set(file, table);
       }
+      let alias = aliases.get(file);
+      if (!alias) {
+        alias = new Map();
+        aliases.set(file, alias);
+      }
+      const spec = keySpecFor(file);
 
       /**
-       * Can `pid` touch `ref`, and does it exist? Reports the same two reasons
-       * the passthrough path reports, in the same words, so one mod's row does
-       * not read differently depending on which of the two merge phases its file
-       * happened to land in.
+       * Resolve `ref` to the record it names, or report why it cannot be
+       * touched. Reports the same reasons the passthrough path reports, in the
+       * same words, so one mod's row does not read differently depending on
+       * which of the two merge phases its file happened to land in.
        */
-      const addressable = (kind: keyof typeof REF_VERB, ref: PackRef): boolean => {
+      const addressable = (
+        kind: keyof typeof REF_VERB,
+        ref: PackRef,
+      ): PackRef | null => {
         const verb = REF_VERB[kind];
-        if (!table.has(ref)) {
-          const noun = kind === "removes" ? "remove" : kind === "replaces" ? "replace" : kind === "patches" ? "patch" : "fieldPatch";
-          return refuse(
-            `${file} ${verb} "${ref}", but no such record exists in ${file} (identity is the record's name)${RENAMED_HINT}`,
+        const noun = kind === "removes" ? "remove" : kind === "replaces" ? "replace" : kind === "patches" ? "patch" : "fieldPatch";
+        let target: PackRef | undefined = table.has(ref) ? ref : undefined;
+        if (target === undefined) {
+          /* An alias whose record has since been removed resolves to nothing,
+           * which is the same answer as never having existed. */
+          const live = (alias.get(ref) ?? []).filter((r) => table.has(r));
+          if (live.length > 1) {
+            refuse(
+              `${file} ${verb} "${ref}", but ${live.length} ${file} records share that identity (${keyDescription(file)}) - name one of them instead: ${live.join(", ")}`,
+              `${file}: ${noun} target ${ref} is claimed by ${live.length} records`,
+            );
+            return null;
+          }
+          target = live[0];
+        }
+        if (target === undefined) {
+          refuse(
+            `${file} ${verb} "${ref}", but no such record exists in ${file} (identity is ${keyDescription(file)})${RENAMED_HINT}`,
             `${file}: ${noun} target ${ref} does not exist`,
           );
+          return null;
         }
         if (!mayModify(pack.manifest, ownerOf(ref))) {
           const act = kind === "removes" ? "remove" : "modify";
-          return refuse(
+          refuse(
             `${file} ${verb} "${ref}", but ${pid} does not declare ${ownerOf(ref)} as a dependency`,
             `${file}: cannot ${act} ${ref} without declaring ${ownerOf(ref)} as a dependency`,
           );
+          return null;
         }
-        return true;
+        return target;
       };
 
-      for (const rec of contrib.records ?? []) {
-        const name = rec["name"];
-        if (typeof name !== "string" || name.length === 0) {
+      /* IDENTITY IS THE FILE'S, NOT ALWAYS `name` (changed 2026-08-08). Keying
+       * every record by slugify(name) is what made `object`, `ego_item` and
+       * `vault` unmergeable: core's own names collide there ("Acquirement" and
+       * "*Acquirement*"), so the loader classified all three whole-file and a
+       * mod adding ONE object replaced all 375. record-key.ts already knew the
+       * per-file identity, already spelled the marks out, and already proved 0
+       * unaddressable records over the shipped pack - it was simply not the key
+       * this table was built from. Now it is.
+       *
+       * A record answers to several refs in preference order, so the PRIMARY is
+       * its first ref no sibling in the same contribution claims. That is what
+       * makes an ego whose name core ships twice addressable at all: its base
+       * ref is ambiguous and its discriminated one is not. */
+      const contributed = contrib.records ?? [];
+      const keysOf = contributed.map((rec) => recordRefKeys(file, rec, spec));
+      const claimants = new Map<string, number>();
+      for (const keys of keysOf) {
+        for (const key of keys) claimants.set(key, (claimants.get(key) ?? 0) + 1);
+      }
+      /* Falling back to keys[0] when nothing is unique keeps the pre-existing
+       * answer for a contribution that genuinely repeats a record: the first
+       * wins the ref and the rest are refused, rather than all of them going. */
+      const chosen = keysOf.map((keys) => keys.find((k) => claimants.get(k) === 1) ?? keys[0]);
+      const primary = new Set(chosen.filter((k): k is string => k !== undefined));
+
+      contributed.forEach((rec, i) => {
+        const key = chosen[i];
+        if (key === undefined) {
           refuse(
-            `${file} contributes a record with no "name", so nothing can address it and it was left out`,
+            `${file} contributes a record with no derivable identity (identity is ${keyDescription(file)}), so nothing can address it and it was left out`,
             `${file}: record without a name`,
           );
-          continue;
+          return;
         }
-        const ref = packRef(pid, name);
+        const ref = `${pid}:${key}` as PackRef;
         if (table.has(ref)) {
           refuse(
             `${file} adds two records that both resolve to "${ref}", so the second was left out`,
             `${file}: duplicate record ${ref}`,
           );
-          continue;
+          return;
         }
         table.set(ref, { ref, owner: pid, modifiedBy: [], value: rec });
-      }
+
+        /* Every other ref this record answers to becomes an alias - EXCEPT one
+         * that is some record's real name. "*Healing*"'s legacy ref is plain
+         * "Healing"'s primary, and a record's own history must not cost a
+         * different record its name. */
+        const extra = (keysOf[i] ?? []).filter((k) => k !== key);
+        const legacy = legacyRecordKey(file, rec, spec);
+        if (legacy !== null) extra.push(legacy);
+        for (const k of extra) {
+          if (primary.has(k)) continue;
+          const at = `${pid}:${k}` as PackRef;
+          if (table.has(at)) continue;
+          const list = alias.get(at);
+          if (list) {
+            if (!list.includes(ref)) list.push(ref);
+          } else {
+            alias.set(at, [ref]);
+          }
+        }
+      });
 
       for (const kind of ["patches", "replaces"] as const) {
         for (const [refStr, body] of Object.entries(contrib[kind] ?? {})) {
-          const ref = refStr as PackRef;
-          if (!addressable(kind, ref)) continue;
-          const existing = table.get(ref) as ComposedRecord;
+          const at = addressable(kind, refStr as PackRef);
+          if (at === null) continue;
+          const existing = table.get(at) as ComposedRecord;
           existing.value =
             kind === "patches" ? mergePatch(existing.value, body) : body;
           existing.modifiedBy.push(pid);
@@ -256,17 +346,17 @@ export function composePacks(
       }
 
       for (const [refStr, ops] of Object.entries(contrib.fieldPatches ?? {})) {
-        const ref = refStr as PackRef;
-        if (!addressable("fieldPatches", ref)) continue;
-        const existing = table.get(ref) as ComposedRecord;
+        const at = addressable("fieldPatches", refStr as PackRef);
+        if (at === null) continue;
+        const existing = table.get(at) as ComposedRecord;
         existing.value = applyFieldPatch(existing.value, ops);
         existing.modifiedBy.push(pid);
       }
 
       for (const refStr of contrib.removes ?? []) {
-        const ref = refStr as PackRef;
-        if (!addressable("removes", ref)) continue;
-        table.delete(ref);
+        const at = addressable("removes", refStr as PackRef);
+        if (at === null) continue;
+        table.delete(at);
       }
     }
   }

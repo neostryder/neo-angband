@@ -31,13 +31,13 @@ is not a capability - it is called out as such.
 | `registry:*` capabilities with real, wired, tested code | **8** (`blow`, `command`, `effect`, `monster`, `profile`, `room`, `store`, `vocab`) — `profile`, `blow` and `store` added 2026-08-08 |
 | Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
-| ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`) |
+| ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`); since 2026-08-08 the same key also decides what a record ADDED to those files is called |
 | ...whole-file-replacement only | **1** (`history`, whose records hold no field that is not a value a mod would change; an op against it is REPORTED) |
 | Individual records of the shipped pack that NO ref can name | **0** — was 73 before 2026-08-08, 61 of them in `ego_item` |
 | A mod can ADD a field core has never heard of, and read it at runtime | **YES** (2026-08-08) — on **15** bound record types, not 2; was silently dropped by every binder before |
 | ...bound record types that carry a mod's own fields | **15** of the 44 files — the other 29 have no bound counterpart a plugin can hold, or bind into a structure keyed by something other than the record; `mod/extension.test.ts` lists them by name |
 | A mod's added field is NAMESPACED and DECLARED, so two mods cannot collide | **YES** (2026-08-08) — `"gore:bleed"`, declared in the manifest under `fields`; undeclared is stripped and reported |
-| Gamedata record files a mod can ADD a record to without replacing the file | **41** of 44 — `object` (375 records), `ego_item` (107) and `vault` (162) merge whole-file only, because core's own names collide under `slugify` (`Acquirement` / `*Acquirement*`; `ego_item` ships 23 names twice). Patch / replace / remove work per record on all three; only ADD is blocked. `ModProject.build` raises it as an `error` rather than a line in a list |
+| Gamedata record files a mod can ADD a record to without replacing the file | **41** of 44 (2026-08-08) — was 24. `object` (375 records), `ego_item` (107) and `vault` (162) joined the other 38 when composition stopped keying on `slugify(name)` and started keying on `recordRefKeys`. The 3 left are `constants` and `visuals` (config singletons, where whole-file IS the meaning) and `history` (no per-record identity). `ModProject.build` raises a whole-file replacement as an `error` rather than a line in a list |
 | An author is TOLD what a new record needs, and what core's comparable records do | **YES** (2026-08-08) — `draftRecord` / `checkRecords` / `ModProject`, measured from core's 3,279 records; **37** declared reference edges, each run over the shipped pack (`docs/modding/AUTHORING.md`) |
 | Resource categories a non-bundled mod can supply or override | **0** of 7 |
 
@@ -425,33 +425,43 @@ not special-cased anywhere, and `compose.ts:13-17` says so. So a mod declaring
 `"dependencies": { "core": "*" }` can patch, replace, or remove any core record.
 Without the dependency, compose throws (`compose.ts:142-146`).
 
-### The 20-file hole (the important measured finding)
+### The 20-file hole (closed 2026-08-08; it is now a 3-file floor)
 
 Composition happens in two phases. Per-record COMPOSITION requires that every
-contributing pack's `records` be name-keyed with unique string slugs
-(`recordsComposable`, `packages/mod-sdk/src/loader.ts`); files that fail that test
-are classified passthrough and keep whole-file `records` semantics. Per-record
-ADDRESSING is a separate question and now covers both phases - see the note below
-the lists.
+contributing pack's `records` have a ref no sibling claims (`recordsComposable`,
+`packages/mod-sdk/src/loader.ts`, asking `recordRefKeys` from `record-key.ts`);
+files that fail that test are classified passthrough and keep whole-file
+`records` semantics.
 
-Measured over the shipped core pack: **24 composable, 20 passthrough** - a
-statement about which merge phase a file takes, no longer about whether a mod can
-patch one record of it.
+Measured over the shipped core pack: **41 composable, 3 passthrough**
+(`loader.test.ts`, "the shipped pack", which reads
+`packages/content/pack` and asserts the split by name).
 
-- **Composable (24)**: `activation`, `artifact`, `blow_effects`, `blow_methods`,
-  `class`, `curse`, `dungeon_profile`, `monster`, `monster_base`,
-  `monster_spell`, `object_property`, `p_race`, `pit`, `player_property`,
-  `player_timed`, `quest`, `realm`, `room_template`, `shape`, `summon`,
-  `terrain`, `ui_entry`, `ui_entry_base`, `ui_entry_renderer`.
-- **Passthrough / whole-file only (20)**, for two different reasons:
-  - `name` is not a string: `body`, `constants`, `flavor`, `hints`, `history`,
-    `names`, `object_base` (`name` is `{tval,name}`), `pain`, `projection`,
-    `store`, `trap` (`name` is `{name,desc}`), `ui_knowledge`, `visuals`,
-    `world`.
-  - core's own data has duplicate slugs: `brand` (`acid`), `chest_trap`
-    (`poison-needle`), `ego_item` (28 duplicates), `object` (45 duplicates, e.g.
-    `Searching`, `Light`, `Teleportation`), `slay` (`demons`), `vault` (3
-    duplicates).
+- **Composable (41)**: every record file except the three below.
+- **Passthrough / whole-file only (3)**, for two different reasons:
+  - a config SINGLETON, where the file is the identity and the host binds one,
+    so "I shipped this file" means "use mine": `constants`, `visuals`.
+  - no per-record identity at all: `history` - a history record is
+    `{chart:{chart,next,roll}, phrase}` and every part of it is a value a mod
+    would legitimately change. An op against it is REPORTED, not dropped.
+
+**IT WAS 24 AND 20, AND THE LINE THAT DECIDED IT ASKED FOR A UNIQUE `name`.**
+That single condition is what made `object` (375 records), `ego_item` (107) and
+`vault` (162) unmergeable: all three carry a `name` and core's own data repeats
+it, because Angband's convention for a greater form is the same name with a mark
+(`Acquirement` / `*Acquirement*`) and `ego_item` ships 23 names twice. So a mod
+adding ONE object replaced all 375 - the three files most worth adding to were
+the three a mod could only take over wholesale. Composition now keys by
+`recordRefKeys`, the identity `record-key.ts` already declared and already proved
+unique over the shipped pack, and all three merge per record.
+
+**No ref that resolved stopped resolving.** For the 19 files that moved out of
+passthrough the refs are the ones `applyPassthroughOps` already used
+(`core:sword--dagger`, `core:of-acid#shot-arrow`, `core:store-general`); for the
+24 that were already composable the key differs from the old `slugify(name)` only
+where a `*` or `+` appears in a name, and the old form is registered as an alias.
+An alias is dropped in exactly one case - where it would shadow a DIFFERENT
+record's primary key, which is `*Healing*`'s legacy ref against plain `Healing`.
 
 **That was the failure mode, and it is closed.** The paragraph here used to read
 "a `patches` entry aimed at a passthrough file is dropped with no error, no
@@ -459,12 +469,14 @@ conflict-report line, and no visible effect", and it stayed on the page after it
 stopped being true - which is how two reviewers came to file the same
 non-existent P1. What is true now:
 
-- **Whole-file `records` semantics are unchanged**, and deliberately: a mod that
-  ships `constants.json` means "use mine", and the host binds one.
-- **Per-record ops apply on top**, in load order, against the winning array
-  (`applyPassthroughOps`, `loader.ts`), keyed by the declared per-file identity
-  in `record-key.ts` - `store` by its `STORE_*` code, `object_base` by tval,
-  `trap` by the `{name,desc}` pair, `constants` by the file.
+- **Whole-file `records` semantics are unchanged for a config singleton**, and
+  deliberately: a mod that ships `constants.json` means "use mine", and the host
+  binds one. `ModProject.build` raises that as an `error`, because replacing the
+  base game's copy of a file is not something to discover from a line in a list.
+- **Per-record ops apply on top**, in load order, keyed by the declared per-file
+  identity in `record-key.ts` - `store` by its `STORE_*` code, `object_base` by
+  tval, `trap` by the `{name,desc}` pair, `constants` by the file - through
+  `composePacks` for the 41, and `applyPassthroughOps` (`loader.ts`) for the 3.
 - **The duplicate-slug half** - the part the old note correctly said nothing
   addressed - is closed too, in two pieces: `keySlug` keeps the `*` and `+` that
   `slugify` dropped (which was the whole of `object`'s and `vault`'s problem, and
