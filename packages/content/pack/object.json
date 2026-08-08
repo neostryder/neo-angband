@@ -1670,8 +1670,8 @@
         "to-a": "0"
       },
       "desc": [
-        "Two great bars of wood connected by a massive chain, built",
-        " to deliver crushing blows."
+        "Two great bars of wood connected by a massive chain, needing two hands",
+        " to properly wield."
       ]
     },
     {
@@ -2039,7 +2039,8 @@
         "to-a": "0"
       },
       "desc": [
-        "A fifteen foot spear, principally used in infantry formations."
+        "A fifteen foot spear, requiring two hands to wield, principally used in",
+        " infantry formations."
       ]
     },
     {
