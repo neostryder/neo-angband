@@ -54,6 +54,10 @@ import {
 } from "../game/player-side.js";
 import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
 import { makeMonBlowEnv } from "../game/mon-side.js";
+import {
+  BlowEffectRegistry,
+  registerCoreBlowEffects,
+} from "../combat/mon-melee.js";
 import { adj_dex_safe } from "../player/calcs.js";
 import { processCurseTimeouts } from "../game/curse-tick.js";
 import { buildEffectContext } from "../game/effect-env.js";
@@ -1590,6 +1594,13 @@ function wireGame(
      * applies its full elemental / status / stat / theft / terrain
      * consequences in upstream RNG order. EF_EARTHQUAKE (SHATTER) routes
      * through the effect interpreter so its internal draws are shared. */
+    /* The blow-effect handler table (combat/mon-melee.ts). Built here, per game,
+     * and seeded with core's 30: a module-level singleton would carry one
+     * character's mod-registered blow into the next character's game. */
+    const blowEffects = new BlowEffectRegistry();
+    registerCoreBlowEffects(blowEffects);
+    state.blowEffects = blowEffects;
+
     state.monBlowEnv = makeMonBlowEnv(state, {
       timed: players.timed,
       actor: playerActor,

@@ -288,6 +288,7 @@ declare **and** the player must consent to:
 | `registry:effect` | add a new effect code, or replace a core one — combat, healing, teleport, detection |
 | `registry:room` | room and level builders, referenced from a dungeon profile |
 | `registry:profile` | whole-cave builders and dungeon profiles — a new *kind* of level, and which kind you get at a depth |
+| `registry:blow` | what a monster's attacks do to you, and new kinds of attack — `define()` takes one description and the engine derives both of the handlers it needs |
 | `registry:command` | what a player command *does* |
 | `registry:monster` | a hook at the top of every monster's turn; return true to take the turn over |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |

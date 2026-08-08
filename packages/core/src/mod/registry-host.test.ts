@@ -13,6 +13,106 @@ import type { GameState } from "../game/context.js";
 import type { RoomRegistry } from "../gen/room.js";
 import { DungeonProfiles } from "../gen/cave.js";
 import type { DunProfile } from "../gen/cave.js";
+import {
+  BlowEffectRegistry,
+  monMeleeAttack,
+  registerCoreBlowEffects,
+  RESOLVED_BLOW_EFFECTS,
+} from "../combat/mon-melee.js";
+import type { BlowEffectContext, MonBlowEnv } from "../combat/mon-melee.js";
+import { Dice } from "../dice.js";
+import { FlagSet } from "../bitflag.js";
+import { TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { BlowEffect, BlowMethod, MonsterRace } from "../mon/types.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+
+/**
+ * A monster whose one blow carries an effect NAME core has no handler for.
+ * Hand-built rather than bound from the pack: the point of these tests is a
+ * blow_effects record that does not exist in core, which by definition cannot
+ * come from core's pack.
+ */
+function monsterWithBlow(effectName: string): Monster {
+  const method = {
+    name: "HIT",
+    messages: [],
+    msgt: "MON_HIT",
+    phys: true,
+  } as unknown as BlowMethod;
+  const effect = { name: effectName, power: 40 } as unknown as BlowEffect;
+  const dice = new Dice();
+  dice.parseString("10");
+  const race = {
+    name: "test-fiend",
+    level: 10,
+    flags: new FlagSet(RF_SIZE),
+    blows: [{ method, effect, dice, diceRaw: "10" }],
+  } as unknown as MonsterRace;
+  const mon = blankMonster(race);
+  mon.hp = 100;
+  mon.maxhp = 100;
+  return mon;
+}
+
+/** A player object with enough filled in to take a blow. */
+function blankTestPlayer(): Player {
+  const p = blankPlayer(
+    {} as never,
+    {} as never,
+    { slots: [] } as unknown as never,
+  );
+  p.lev = 1;
+  p.chp = 100;
+  p.mhp = 100;
+  return p;
+}
+
+/** A MonBlowEnv that logs what was applied to the world. */
+function recordingBlowEnv(player: Player, applied: string[]): MonBlowEnv {
+  let died = false;
+  return {
+    playerGrid: () => loc(0, 0),
+    applyReduction: (dam) => dam,
+    takeHit: (dam) => {
+      player.chp -= dam;
+      died = player.chp < 0;
+      applied.push(`takeHit(${String(dam)})`);
+    },
+    get playerDied() {
+      return died;
+    },
+    msg: () => {},
+    monName: "The test-fiend",
+    showDamage: false,
+    monVisible: true,
+    elementalDam: (_proj, dam) => dam,
+    invenDamage: () => {},
+    resists: () => false,
+    incTimed: (tmd, amount) => {
+      applied.push(`incTimed(${String(tmd)},${String(amount)})`);
+      return true;
+    },
+    saveVsSkill: () => false,
+    drainStat: () => {},
+    hasHoldLife: () => false,
+    drainExp: () => {},
+    drainCharges: () => {},
+    eatGold: () => false,
+    eatItem: () => ({ blinked: false, obvious: true }),
+    eatFood: () => {},
+    eatLight: () => {},
+    disenchant: () => {},
+    earthquake: () => {},
+    thrust: () => {},
+    blinkAway: () => {},
+  };
+}
 import { createModRegistryHost } from "./registry-host.js";
 import { VocabularyRegistry } from "./vocabulary.js";
 
@@ -49,15 +149,19 @@ function targets() {
   const vocab = new VocabularyRegistry();
   const profiles = new DungeonProfiles();
   profiles.registerBuilder("classic", () => ({ ok: true }) as never);
+  const blows = new BlowEffectRegistry();
+  registerCoreBlowEffects(blows);
   return {
     effects: new EffectRegistry(),
     rooms,
     profiles,
+    blows,
     commands: new ActionRegistry(),
     state,
     vocab,
     _rooms: rooms,
     _profiles: profiles,
+    _blows: blows,
     _state: state,
     _vocab: vocab,
   };
@@ -110,6 +214,7 @@ describe("createModRegistryHost - capability gating", () => {
       host.vocab.define({ kind: "flag", term: "mod:cursed" }),
     ).toThrow(/registry:vocab/);
     expect(() => host.profiles.list()).toThrow(/registry:profile/);
+    expect(() => host.blows.names()).toThrow(/registry:blow/);
   });
 
   it("gates each domain independently and only at call time", () => {
@@ -199,5 +304,134 @@ describe("createModRegistryHost - the dungeon-profile facade", () => {
   it("says which registry was missing when the host did not wire profiles", () => {
     const host = createModRegistryHost({ profiles: null });
     expect(() => host.profiles.list()).toThrow(/"profile" registry is not available/);
+  });
+});
+
+/**
+ * The blow-effect facade. These tests do not stop at "the registry holds what
+ * the mod put in it" - the last two run a real `monMeleeAttack` down BOTH paths,
+ * because a registry the combat code does not consult is exactly the failure
+ * this seam was built to close.
+ */
+describe("createModRegistryHost - the monster blow facade", () => {
+  /** The blow context a handler is called with, filled in enough to resolve. */
+  function blowCtx(rng: Rng, baseDamage = 20): BlowEffectContext {
+    return {
+      rng,
+      baseDamage,
+      ac: 0,
+      rlev: 10,
+      phys: true,
+      method: { messages: [], msgt: "MON_HIT" } as unknown as BlowMethod,
+    };
+  }
+
+  it("adds a blow effect core has never heard of, from one description", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:blow"));
+    expect(host.blows.has("mod:soulburn")).toBe(false);
+    host.blows.define("mod:soulburn", {
+      after: () => [{ kind: "timed", effect: "AFRAID", amount: 4 }],
+    });
+    expect(t._blows.has("mod:soulburn")).toBe(true);
+    const handler = t._blows.handlerFor("mod:soulburn");
+    expect(handler).not.toBeNull();
+    const result = handler?.record(blowCtx(new Rng(1)));
+    expect(result?.hpDamage).toBe(20);
+    expect(result?.sideEffects).toEqual([
+      { kind: "timed", effect: "AFRAID", amount: 4 },
+    ]);
+  });
+
+  it("hands back a core handler so a mod can wrap rather than replace it", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:blow"));
+    const core = host.blows.handlerFor("POISON");
+    expect(core).not.toBeNull();
+    let wrapped = 0;
+    host.blows.register("POISON", {
+      record: (ctx) => {
+        wrapped += 1;
+        return core!.record(ctx);
+      },
+      live: (ctx, env) => core!.live(ctx, env),
+    });
+    const out = t._blows.handlerFor("POISON")?.record(blowCtx(new Rng(1)));
+    expect(wrapped).toBe(1);
+    /* Still core's POISON underneath: the elemental intent is core's, not the
+     * wrapper's, so this proves the wrapper called THROUGH rather than around. */
+    expect(out?.sideEffects.some((s) => s.kind === "elemental")).toBe(true);
+  });
+
+  /**
+   * The table and the list that documents it have to be the same 30 names.
+   * RESOLVED_BLOW_EFFECTS exists so a test can prove the mapping total against
+   * the pack; if a handler were added without joining the list, or listed
+   * without being registered, everything else would still pass.
+   */
+  it("holds exactly the 30 effects RESOLVED_BLOW_EFFECTS names", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:blow"));
+    expect([...host.blows.names()].sort()).toEqual([...RESOLVED_BLOW_EFFECTS].sort());
+  });
+
+  it("says which registry was missing when the host did not wire blows", () => {
+    const host = createModRegistryHost({ blows: null });
+    expect(() => host.blows.names()).toThrow(/"blow" registry is not available/);
+  });
+
+  /**
+   * The two that matter. A mod-registered effect has to reach the combat code,
+   * on both of the paths that resolve a blow - a seam only one of them consults
+   * would give a modded monster one behaviour in the harness and another in the
+   * game, with nothing to say so.
+   */
+  it("a mod's blow effect reaches the worldless combat path", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:blow"));
+    host.blows.define("mod:soulburn", {
+      damage: (ctx) => ctx.baseDamage * 2,
+      after: () => [{ kind: "timed", effect: "AFRAID", amount: 4 }],
+    });
+
+    const player = blankTestPlayer();
+    const result = monMeleeAttack(
+      new Rng(5),
+      monsterWithBlow("mod:soulburn"),
+      player,
+      { ac: 0, toA: 0 },
+      { blowEffects: t._blows },
+    );
+    expect(result.blows[0]?.effect).toBe("mod:soulburn");
+    expect(result.sideEffects).toEqual([
+      { kind: "timed", effect: "AFRAID", amount: 4 },
+    ]);
+    /* damage doubled by the mod's own damage function, not by core. */
+    expect(result.totalDamage).toBe(20);
+  });
+
+  it("a mod's blow effect reaches the LIVE combat path, applying for real", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:blow"));
+    host.blows.define("mod:soulburn", {
+      damage: (ctx) => ctx.baseDamage * 2,
+      after: () => [{ kind: "timed", effect: "AFRAID", amount: 4 }],
+    });
+
+    const player = blankTestPlayer();
+    const applied: string[] = [];
+    const env = recordingBlowEnv(player, applied);
+    const result = monMeleeAttack(
+      new Rng(5),
+      monsterWithBlow("mod:soulburn"),
+      player,
+      { ac: 0, toA: 0 },
+      { env, blowEffects: t._blows },
+    );
+    expect(result.blows[0]?.effect).toBe("mod:soulburn");
+    /* The SAME description that was recorded as an intent above is applied here
+     * through the env - TMD.AFRAID is 4 turns of fear, for real. */
+    expect(applied).toContain(`incTimed(${String(TMD.AFRAID)},4)`);
+    expect(applied).toContain("takeHit(20)");
   });
 });

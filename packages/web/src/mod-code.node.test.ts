@@ -34,6 +34,25 @@ import {
   ActionRegistry,
   VocabularyRegistry,
   createModRegistryHost,
+  BlowEffectRegistry,
+  registerCoreBlowEffects,
+  monMeleeAttack,
+  blankMonster,
+  blankPlayer,
+  Dice,
+  FlagSet,
+  RF_SIZE,
+  Rng,
+  TMD,
+  loc,
+} from "@rpgm-tools/neo-angband-core";
+import type {
+  BlowEffect,
+  BlowMethod,
+  MonBlowEnv,
+  Monster,
+  MonsterRace,
+  Player,
 } from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
@@ -534,6 +553,203 @@ describe("a mod folder on disk reaches the dungeon-profile registry", () => {
       /registry:profile/,
     );
     expect(profiles.hasBuilder("greedy:cave")).toBe(false);
+  });
+});
+
+/**
+ * The monster blow-effect registry, from disk.
+ *
+ * This is the one seam where a mod's code has to reach LIVE COMBAT, and where
+ * the same description has to work on both of the paths that resolve a blow.
+ * So the assertions are not "the registry holds the handler" - they are a real
+ * `monMeleeAttack` run twice, once worldless and once with an environment,
+ * against a monster whose blow effect core has never heard of.
+ */
+/** A monster whose one blow carries an effect name core has no handler for. */
+function monsterWithBlow(effectName: string): Monster {
+  const method = {
+    name: "HIT",
+    messages: [],
+    msgt: "MON_HIT",
+    phys: true,
+  } as unknown as BlowMethod;
+  const dice = new Dice();
+  dice.parseString("10");
+  const race = {
+    name: "test-fiend",
+    level: 10,
+    flags: new FlagSet(RF_SIZE),
+    blows: [
+      {
+        method,
+        effect: { name: effectName, power: 40 } as unknown as BlowEffect,
+        dice,
+        diceRaw: "10",
+      },
+    ],
+  } as unknown as MonsterRace;
+  const mon = blankMonster(race);
+  mon.hp = 100;
+  mon.maxhp = 100;
+  return mon;
+}
+
+function testPlayer(): Player {
+  const p = blankPlayer({} as never, {} as never, { slots: [] } as unknown as never);
+  p.lev = 1;
+  p.chp = 100;
+  p.mhp = 100;
+  return p;
+}
+
+/** A blow environment that records what actually reached the world. */
+function loggingBlowEnv(player: Player, applied: string[]): MonBlowEnv {
+  let died = false;
+  return {
+    playerGrid: () => loc(0, 0),
+    applyReduction: (dam) => dam,
+    takeHit: (dam) => {
+      player.chp -= dam;
+      died = player.chp < 0;
+      applied.push(`takeHit(${String(dam)})`);
+    },
+    get playerDied() {
+      return died;
+    },
+    msg: () => {},
+    monName: "The test-fiend",
+    showDamage: false,
+    monVisible: true,
+    elementalDam: (_proj, dam) => dam,
+    invenDamage: () => {},
+    resists: () => false,
+    incTimed: (tmd, amount) => {
+      applied.push(`incTimed(${String(tmd)},${String(amount)})`);
+      return true;
+    },
+    saveVsSkill: () => false,
+    drainStat: () => {},
+    hasHoldLife: () => false,
+    drainExp: () => {},
+    drainCharges: () => {},
+    eatGold: () => false,
+    eatItem: () => ({ blinked: false, obvious: true }),
+    eatFood: () => {},
+    eatLight: () => {},
+    disenchant: () => {},
+    earthquake: () => {},
+    thrust: () => {},
+    blinkAway: () => {},
+  };
+}
+
+describe("a mod folder on disk reaches the monster blow registry", () => {
+  it("adds a blow effect that lands on both combat paths", async () => {
+    writeMod(
+      "soulburn",
+      { capabilities: ["registry:blow"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* One description; the engine derives both handlers from it. */
+           host.blows.define("soulburn:sear", {
+             damage: (ctx) => ctx.baseDamage + 7,
+             after: () => [{ kind: "timed", effect: "AFRAID", amount: 4 }],
+           });
+           /* And wrap a core effect, calling through rather than around it. */
+           const core = host.blows.handlerFor("HURT");
+           host.blows.register("HURT", {
+             record: (ctx) => core.record(ctx),
+             live: (ctx, env) => core.live(ctx, env),
+           });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "soulburn", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:blow"],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+
+    /* The REAL table combat consults, seeded exactly as wireGame seeds it. */
+    const blows = new BlowEffectRegistry();
+    registerCoreBlowEffects(blows);
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { blows },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("soulburn"));
+
+    expect(blows.has("soulburn:sear")).toBe(true);
+
+    /* Worldless: the blow lands, damage comes from the MOD's function, and the
+     * consequence is recorded as an intent. */
+    const worldless = monMeleeAttack(
+      new Rng(5),
+      monsterWithBlow("soulburn:sear"),
+      testPlayer(),
+      { ac: 0, toA: 0 },
+      { blowEffects: blows },
+    );
+    expect(worldless.blows[0]?.effect).toBe("soulburn:sear");
+    expect(worldless.sideEffects).toEqual([
+      { kind: "timed", effect: "AFRAID", amount: 4 },
+    ]);
+    /* dice "10" + the mod's +7. Core alone would have dealt 10. */
+    expect(worldless.totalDamage).toBe(17);
+
+    /* Live: the same description, applied for real through the environment. */
+    const player = testPlayer();
+    const applied: string[] = [];
+    const live = monMeleeAttack(
+      new Rng(5),
+      monsterWithBlow("soulburn:sear"),
+      player,
+      { ac: 0, toA: 0 },
+      { env: loggingBlowEnv(player, applied), blowEffects: blows },
+    );
+    expect(live.blows[0]?.effect).toBe("soulburn:sear");
+    expect(applied).toEqual(["takeHit(17)", `incTimed(${String(TMD.AFRAID)},4)`]);
+    expect(player.chp).toBe(83);
+  });
+
+  it("without the capability the blow registry refuses at the call", async () => {
+    writeMod(
+      "sneaky",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) { host.blows.define("sneaky:bite", {}); },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "sneaky", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const blows = new BlowEffectRegistry();
+    registerCoreBlowEffects(blows);
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { blows },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("sneaky"))).toThrow(
+      /registry:blow/,
+    );
+    expect(blows.has("sneaky:bite")).toBe(false);
   });
 });
 

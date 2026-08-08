@@ -107,6 +107,39 @@ export default defineTrustedPlugin({
         ` (${host.profiles.list().length} profiles now)`,
     );
 
-    ctx.log("all five registry facades exercised under their capability gates");
+    // A brand-new kind of monster attack. blow_effects.json has always accepted
+    // a 31st record; until registry:blow existed that record was data with no
+    // behaviour, because the behaviour lived in a switch. One description here
+    // becomes both of the handlers the engine needs - the worldless recording
+    // path and the live one - so the two cannot drift apart.
+    host.blows.define("demo:soulburn", {
+      damage: (bctx) => bctx.baseDamage + 5,
+      after: () => [{ kind: "timed", effect: "AFRAID", amount: 4 }],
+    });
+    // And WRAP a core blow rather than replacing it: HURT keeps doing exactly
+    // what core's HURT does, with the mod merely counting it. handlerFor is what
+    // makes wrapping possible at all - without it the only option is to
+    // reimplement 4.2.6's handler and hope it stays correct.
+    const coreHurt = host.blows.handlerFor("HURT");
+    if (coreHurt) {
+      host.blows.register("HURT", {
+        record: (bctx) => {
+          (globalThis as { __trustedHurtSeen?: number }).__trustedHurtSeen =
+            ((globalThis as { __trustedHurtSeen?: number }).__trustedHurtSeen ?? 0) + 1;
+          return coreHurt.record(bctx);
+        },
+        live: (bctx, env) => {
+          (globalThis as { __trustedHurtSeen?: number }).__trustedHurtSeen =
+            ((globalThis as { __trustedHurtSeen?: number }).__trustedHurtSeen ?? 0) + 1;
+          return coreHurt.live(bctx, env);
+        },
+      });
+    }
+    ctx.log(
+      `blow effect "demo:soulburn" added=${host.blows.has("demo:soulburn")}` +
+        ` (${host.blows.names().length} blow effects now)`,
+    );
+
+    ctx.log("all six registry facades exercised under their capability gates");
   },
 });
