@@ -18,6 +18,8 @@ import {
   startGame,
   playerLearnAllRunes,
   blankObjKnowledge,
+  makeFakeArtifact,
+  Rng,
   type GamePack,
   type GameState,
   type ObjectKind,
@@ -27,8 +29,10 @@ import {
 import {
   objectFakeRecall,
   egoFakeRecall,
+  artifactFakeRecall,
   type FakeRecallDeps,
   type ObjectRecallDeps,
+  type ArtifactKnowledgeDeps,
 } from "./knowledge";
 
 function loadJson<T>(name: string): T {
@@ -230,5 +234,50 @@ describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1789)", () => {
     state.rng.setState(snapshot);
     for (const e of reg.egos) egoFakeRecall(recallDeps(), e, "Sword");
     expect(state.rng.randint0(1_000_000)).toBe(expected);
+  });
+});
+
+describe("artifactFakeRecall (desc_art_fake, ui-knowledge.c L1610)", () => {
+  /**
+   * Browsing an artifact ADVANCES the game RNG, because upstream's does.
+   *
+   * desc_art_fake calls make_fake_artifact with no stream of its own (L1629),
+   * so copy_artifact_data's copy_curses step rolls the curse timeout
+   * (obj-curse.c:67) off Angband's global RNG. The port used to hand it a
+   * throwaway Rng at a fixed seed, which meant browsing was free and an
+   * artifact previewed identically every time. Both are nicer than Angband and
+   * neither is Angband, so both went.
+   *
+   * The assertion is deliberately the opposite of the two RNG-stability tests
+   * above: object_prep draws nothing, so desc_obj_fake and desc_ego_fake really
+   * do leave the stream alone upstream, and those tests are parity claims.
+   * This one would pass trivially if written the same way, so it is written the
+   * only way a restored private stream fails it.
+   */
+  const artifactDeps = (): ArtifactKnowledgeDeps => ({
+    ...recallDeps(),
+    artState: { isFound: () => false } as unknown as ArtifactKnowledgeDeps["artState"],
+  });
+
+  it("advances the game RNG, as desc_art_fake does", () => {
+    /* Only a CURSED artifact draws - copy_curses is the sole caller of the RNG
+     * in this path - so find one rather than trusting the set to contain any. */
+    const cursed = reg.artifacts.find((a) => a && (a.curses?.length ?? 0) > 0);
+    expect(cursed, "the pack must ship a cursed artifact").toBeTruthy();
+
+    const before = JSON.stringify(state.rng.getState());
+    artifactFakeRecall(artifactDeps(), cursed!);
+    expect(JSON.stringify(state.rng.getState())).not.toBe(before);
+  });
+
+  it("is the stream that moves it, not the call", () => {
+    /* The control, so the assertion above cannot pass for a reason other than
+     * the one it names. This is the code that USED to run: the identical build
+     * against a private stream. If it also moved the game RNG, the test above
+     * would be measuring something else and would stay green through a revert. */
+    const cursed = reg.artifacts.find((a) => a && (a.curses?.length ?? 0) > 0)!;
+    const before = JSON.stringify(state.rng.getState());
+    makeFakeArtifact(reg, booted.registries.constants, cursed, new Rng(1));
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
   });
 });
