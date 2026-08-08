@@ -9,10 +9,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
-    "dev": "vite",
-    "bundle": "vite build",
-    "gen-icons": "node scripts/gen-icons.mjs"
+    "build": "node scripts/sync-tiles.mjs && tsc",
+    "dev": "node scripts/sync-tiles.mjs && vite",
+    "bundle": "node scripts/sync-tiles.mjs && vite build",
+    "gen-icons": "node scripts/gen-icons.mjs",
+    "sync-tiles": "node scripts/sync-tiles.mjs"
   },
   "dependencies": {
     "@rpgm-tools/neo-angband-content": "workspace:*",
