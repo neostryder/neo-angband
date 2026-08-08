@@ -30,12 +30,23 @@ reference/build*/
 # any chance of being committed.
 packages/web/public/mods/
 
-# The Shockbolt tileset used to be excluded here. It is now DISTRIBUTED, with
-# the author's permission - Raymond Gaustadnes granted this project free use of
-# the tiles both as the Angband tilesheet and converted to separate tiles, on the
-# condition that the project does not profit from sales or other income. See
-# packages/web/public/tiles/CREDITS.md for the grant and its conditions, which
-# ride along with the art: a commercial release needs a licence from the author.
+# The tilesets Vite serves, COPIED from reference/lib/tiles at build time by
+# packages/web/scripts/sync-tiles.mjs. Vite serves public/ and cannot reach
+# outside its own package, so the tiles have to live here - but committing them
+# meant 20 MB stored twice, and the two copies drifted apart (the graf-*.prf
+# files went to upstream master while the PNGs stayed at 4.2.6). One copy in the
+# repository, derived on every build, makes that impossible instead of merely
+# detectable.
+#
+# Note the trailing /* rather than /: git does not descend into an excluded
+# DIRECTORY, so the negation below would never be consulted.
+packages/web/public/tiles/*
+# ...except CREDITS.md, which is OURS and not upstream's. It carries Raymond
+# Gaustadnes' grant of free use for the Shockbolt tiles - as the Angband
+# tilesheet and converted to separate tiles - on the condition that this project
+# does not profit from sales or other income. The condition rides along with the
+# art: a commercial release needs a licence from the author.
+!packages/web/public/tiles/CREDITS.md
 
 # The bundled mods built to the plugin.js their OWN repositories ship
 # (packages/web/scripts/build-mod-plugins.mjs). Derived from mods/<id>/plugin.ts and

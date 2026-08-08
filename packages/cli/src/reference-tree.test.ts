@@ -26,7 +26,15 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+/** The repository root, as a path git and node both accept on Windows. */
+const ROOT = new URL("../../../", import.meta.url).pathname.replace(
+  /^\/([A-Za-z]:)/u,
+  "$1",
+);
 
 /** The official upstream release this port reproduces. */
 const BASELINE_VERSION = "4.2.6";
@@ -103,7 +111,7 @@ const NOT_SERVED: readonly { what: string; why: string; match: (p: string) => bo
 
 function git(...args: string[]): string {
   return execFileSync("git", args, {
-    cwd: new URL("../../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"),
+    cwd: ROOT,
     encoding: "utf8",
     maxBuffer: 1 << 28,
   });
@@ -185,11 +193,8 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
      * has not been staged would be invisible to it, which is exactly the state
      * a hand-edit of a vendored file arrives in. */
     expect(
-      splitLines(
-        git("diff", "--name-only", "--", "reference", "packages/web/public/tiles"),
-      ),
-      "reference/ or the served tile copy differs between the working tree " +
-        "and the index",
+      splitLines(git("diff", "--name-only", "--", "reference")),
+      "reference/ differs between the working tree and the index",
     ).toEqual([]);
   });
 
@@ -246,33 +251,53 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
    * They belong to the bug-fixes mod, which is where they now live.
    */
   it("serves the vendored tiles, byte for byte", () => {
-    const served = indexBlobs("packages/web/public/tiles");
-    const wrong = [...served.entries()]
-      .filter(([p]) => p !== "CREDITS.md")
-      .filter(([p, sha]) => ref.get(`lib/tiles/${p}`) !== sha)
-      .map(([p]) => p);
+    /* This RUNS sync-tiles.mjs rather than inspecting what it produced last
+     * time. The distinction matters and it nearly went wrong here: the served
+     * tree is no longer committed, so a check that read the git index would
+     * have found one file (CREDITS.md), filtered it out, compared an empty set
+     * and passed forever. --check reports every difference and exits non-zero,
+     * so execFileSync throws with the generator's own message attached. */
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        ["packages/web/scripts/sync-tiles.mjs", "--check"],
+        { cwd: ROOT, encoding: "utf8", stdio: "pipe" },
+      ),
+    ).not.toThrow();
+  });
+
+  it("regenerates the served tiles on every build, so they cannot go stale", () => {
+    /* The generator is only a guarantee if the build actually calls it. Without
+     * this, someone drops the prefix from one script and the served tree
+     * silently freezes at whatever was on disk. */
+    const pkg = JSON.parse(
+      readFileSync(join(ROOT, "packages", "web", "package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+    const missing = ["build", "dev", "bundle"].filter(
+      (s) => !pkg.scripts[s]?.includes("sync-tiles.mjs"),
+    );
     expect(
-      wrong,
-      `${wrong.length} file(s) under packages/web/public/tiles differ from ` +
-        `reference/lib/tiles: ${wrong.join(", ")}. The game serves upstream's ` +
-        `tiles unchanged; a post-4.2.6 tile assignment belongs in the bug-fixes ` +
-        `mod, not in core's copy.`,
+      missing,
+      `packages/web script(s) ${missing.join(", ")} no longer run ` +
+        `sync-tiles.mjs. The served tiles are generated, not committed - a ` +
+        `build that skips the sync serves whatever happens to be on disk.`,
     ).toEqual([]);
   });
 
-  it("serves every vendored tile, so the copy cannot fall behind", () => {
-    const served = indexBlobs("packages/web/public/tiles");
-    const absent = [...ref.keys()]
+  it("serves every vendored tile, so no tileset goes missing", () => {
+    const wanted = [...ref.keys()]
       .filter((p) => p.startsWith("lib/tiles/"))
       .map((p) => p.slice("lib/tiles/".length))
-      .filter((p) => !NOT_SERVED.some((e) => e.match(p)))
-      .filter((p) => !served.has(p));
+      .filter((p) => !NOT_SERVED.some((e) => e.match(p)));
+    const absent = wanted.filter(
+      (p) => !existsSync(join(ROOT, "packages", "web", "public", "tiles", p)),
+    );
     expect(
       absent,
       `${absent.length} vendored tile file(s) are not served by the game: ` +
         `${absent.join(", ")}. Every upstream tileset ships with Neo Angband, ` +
-        `so either copy the file into packages/web/public/tiles or add it to ` +
-        `NOT_SERVED with the reason the game does not need it at runtime.`,
+        `so either the generator should copy it or it belongs in NOT_SERVED ` +
+        `with the reason the game does not need it at runtime.`,
     ).toEqual([]);
   });
 
