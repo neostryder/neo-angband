@@ -82,6 +82,31 @@ export default defineTrustedPlugin({
     });
     ctx.log(`command "demo-wave" registered=${host.commands.has("demo-wave")}`);
 
-    ctx.log("all four registry facades exercised under their capability gates");
+    // A whole new KIND of dungeon level. The room builder above makes a room;
+    // this decides which cave builder runs at a depth, which is what "my mod
+    // adds its own dungeon" actually needs. The profile is derived from classic
+    // rather than written out, so the demo does not hard-code parameters that
+    // are gamedata's to choose - and alloc 0 keeps it out of the weighted draw,
+    // so installing the demo cannot change which level a seed generates. It is
+    // still selectable by name (the wizard's "Choose cave profile?").
+    // WRAPS the core builder rather than replacing it - the common modding case,
+    // and the one that proves a mod can reach core generation without
+    // reimplementing it. What it adds is only a marker; a real mod would carve.
+    const classicBuilder = host.profiles.builder("classic");
+    host.profiles.registerBuilder("demo:hollow", (cctx) => {
+      (globalThis as { __trustedProfileBuilt?: number }).__trustedProfileBuilt =
+        ((globalThis as { __trustedProfileBuilt?: number }).__trustedProfileBuilt ?? 0) + 1;
+      return classicBuilder(cctx);
+    });
+    const classic = host.profiles.find("classic");
+    if (classic) {
+      host.profiles.addProfile({ ...classic, name: "demo:hollow", builder: "demo:hollow", alloc: 0 });
+    }
+    ctx.log(
+      `dungeon profile "demo:hollow" added=${host.profiles.find("demo:hollow") !== null}` +
+        ` (${host.profiles.list().length} profiles now)`,
+    );
+
+    ctx.log("all five registry facades exercised under their capability gates");
   },
 });

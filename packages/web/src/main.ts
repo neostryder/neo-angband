@@ -10056,6 +10056,7 @@ function installTrusted(trustedId: string): void {
         {
           effects: effectRegistry,
           rooms: booted.registries.rooms,
+          profiles: booted.registries.profiles,
           commands: registry,
           state,
           vocab: trustedVocab,
@@ -10257,6 +10258,7 @@ for (const loaded of activeModCode().plugins) {
       {
         effects: effectRegistry,
         rooms: booted.registries.rooms,
+        profiles: booted.registries.profiles,
         commands: registry,
         state,
         vocab: new VocabularyRegistry(),

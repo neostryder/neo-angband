@@ -122,6 +122,13 @@ describe("parseCapability: rejects garbage", () => {
     expect(() => parseCapability("party.read")).toThrow(CapabilityError);
   });
 
+  it("accepts registry:profile, the dungeon-profile override domain", () => {
+    expect(parseCapability("registry:profile")).toEqual({
+      kind: "registry",
+      domain: "profile",
+    });
+  });
+
   it("rejects an unknown registry domain", () => {
     expect(() => parseCapability("registry:player")).toThrow(CapabilityError);
     expect(() => parseCapability("registry:")).toThrow(CapabilityError);
@@ -223,6 +230,7 @@ describe("CapabilitySet: has / check", () => {
     );
     expect(set.has("registry:effect")).toBe(true);
     expect(set.has("registry:room")).toBe(true);
+    expect(set.has("registry:profile")).toBe(true);
     expect(set.has("registry:command")).toBe(true);
     expect(set.has("registry:monster")).toBe(true);
     expect(set.has("registry:vocab")).toBe(true);

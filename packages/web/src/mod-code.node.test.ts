@@ -26,7 +26,8 @@ import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { validateManifest, CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import { DungeonProfiles, createModRegistryHost } from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
@@ -402,3 +403,129 @@ function ctx(id: string): Parameters<NonNullable<ModPlugin["hooks"]>>[0] {
     log: () => undefined,
   };
 }
+
+/**
+ * The sample-mod rule: a seam only a BUNDLED mod or a test double can reach is
+ * not a capability. So each registry seam gets a mod written to a real folder,
+ * imported for real, and handed a host over the REAL core registry - and the
+ * assertion is made on the registry, not on the mod's own report of itself.
+ *
+ * This one covers registry:profile (the dungeon-profile seam). It fails if the
+ * facade is removed, if the capability stops parsing, or if the host stops
+ * delegating to the live DungeonProfiles - none of which a mock could tell us.
+ */
+describe("a mod folder on disk reaches the dungeon-profile registry", () => {
+  it("registers a cave builder and a profile through the capability gate", async () => {
+    writeMod(
+      "hollow",
+      { capabilities: ["registry:profile"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* Wrap the core builder rather than replace it: prove a mod can
+            * reach core generation, not merely shadow it. */
+           const classic = host.profiles.builder("classic");
+           host.profiles.registerBuilder("hollow:cave", (c) => classic(c));
+           const base = host.profiles.find("classic");
+           host.profiles.addProfile({ ...base, name: "hollow", builder: "hollow:cave", alloc: 0 });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "hollow", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      /* The player consented to exactly what the manifest asks for. Without
+       * this the mod does not load at all - asserted below - so consent is a
+       * gate ahead of the capability gate, not a duplicate of it. */
+      consented: () => ["registry:profile"],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+
+    /* The REAL registry the generator reads, with a real core builder in it. */
+    const profiles = new DungeonProfiles();
+    const classicCalls: string[] = [];
+    profiles.registerBuilder("classic", (() => {
+      classicCalls.push("classic");
+      return { ok: true };
+    }) as never);
+    profiles.addProfile({
+      name: "classic",
+      builder: "classic",
+      blockSize: 11,
+      dunRooms: 50,
+      dunUnusual: 200,
+      maxRarity: 2,
+      tun: { rnd: 10, chg: 30, con: 15, pen: 25, jct: 90 },
+      str: { den: 5, rng: 40, mag: 3, mc: 90, qua: 2, qc: 40 },
+      roomProfiles: [],
+      minLevel: 0,
+      alloc: 10,
+    });
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { profiles },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("hollow"));
+
+    /* Asserted on the registry, not on the mod. */
+    expect(profiles.hasBuilder("hollow:cave")).toBe(true);
+    expect(profiles.find("hollow")?.builder).toBe("hollow:cave");
+    expect(profiles.list().map((p) => p.name)).toEqual(["classic", "hollow"]);
+
+    /* And the mod's builder is the one generation would call, with core's
+     * builder reachable from inside it. */
+    profiles.builder("hollow:cave")({} as never);
+    expect(classicCalls).toEqual(["classic"]);
+  });
+
+  it("without consent the mod never loads, capability or not", async () => {
+    const report = await readModDir(
+      fsSource([{ id: "hollow", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    expect(code.plugins).toEqual([]);
+  });
+
+  it("a mod that did not declare the capability is refused at the call", async () => {
+    writeMod(
+      "greedy",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) { host.profiles.registerBuilder("greedy:cave", () => ({ ok: true })); },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "greedy", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const profiles = new DungeonProfiles();
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { profiles },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("greedy"))).toThrow(
+      /registry:profile/,
+    );
+    expect(profiles.hasBuilder("greedy:cave")).toBe(false);
+  });
+});
