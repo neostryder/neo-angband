@@ -81,6 +81,26 @@ const EXCLUDED: readonly { path: string; why: string }[] = [
   },
 ];
 
+/**
+ * Vendored tile files the game does NOT serve at runtime, each with the reason.
+ *
+ * "Not served" has to be earned the same way "not vendored" is. A tile file the
+ * game silently fails to ship is a tileset that renders wrong for a player, and
+ * the whole point of the check below is that nobody has to remember.
+ */
+const NOT_SERVED: readonly { what: string; why: string; match: (p: string) => boolean }[] = [
+  {
+    what: "Makefile",
+    why: "upstream's per-tileset build glue, run only by its C build to install the tiles. Nothing here builds a C program.",
+    match: (p) => p.endsWith("Makefile"),
+  },
+  {
+    what: "list.txt",
+    why: "the graphics-mode catalogue, and it IS read - but at BUILD time. packages/core/scripts/gen-grafmode.mjs parses reference/lib/tiles/list.txt into grafmode-data.ts, so the modes are compiled in and the game never fetches the file. Serving a second copy would be a second thing to keep in step with the generated table.",
+    match: (p) => p === "list.txt",
+  },
+];
+
 function git(...args: string[]): string {
   return execFileSync("git", args, {
     cwd: new URL("../../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"),
@@ -165,8 +185,11 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
      * has not been staged would be invisible to it, which is exactly the state
      * a hand-edit of a vendored file arrives in. */
     expect(
-      splitLines(git("diff", "--name-only", "--", "reference")),
-      "reference/ differs between the working tree and the index",
+      splitLines(
+        git("diff", "--name-only", "--", "reference", "packages/web/public/tiles"),
+      ),
+      "reference/ or the served tile copy differs between the working tree " +
+        "and the index",
     ).toEqual([]);
   });
 
@@ -204,6 +227,65 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
         `${edited.join(", ")}. reference/ is upstream's tree, not ours - a fix ` +
         `belongs in the bug-fixes mod, and a change to gamedata here silently ` +
         `changes the compiled content pack.`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The tiles the GAME serves are upstream's tiles, byte for byte.
+   *
+   * `packages/web/public/tiles/` is a second copy of `reference/lib/tiles/`,
+   * because Vite serves `public/` and cannot reach outside the package. A second
+   * copy is a second thing to keep right, and it was not right: the five
+   * `graf-*.prf` files were upstream MASTER's while every PNG beside them was
+   * 4.2.6's, so the game shipped post-tag tile assignments (Beorn's bear form,
+   * the Knight's Shield, Sip of Miruvor, Draught of the Ents, and eight
+   * previously-unused Adam Bolt tiles) under a 4.2.6 banner. Nothing noticed,
+   * because nothing compared the two copies.
+   *
+   * Post-tag tile assignments are not forbidden - they are simply not CORE.
+   * They belong to the bug-fixes mod, which is where they now live.
+   */
+  it("serves the vendored tiles, byte for byte", () => {
+    const served = indexBlobs("packages/web/public/tiles");
+    const wrong = [...served.entries()]
+      .filter(([p]) => p !== "CREDITS.md")
+      .filter(([p, sha]) => ref.get(`lib/tiles/${p}`) !== sha)
+      .map(([p]) => p);
+    expect(
+      wrong,
+      `${wrong.length} file(s) under packages/web/public/tiles differ from ` +
+        `reference/lib/tiles: ${wrong.join(", ")}. The game serves upstream's ` +
+        `tiles unchanged; a post-4.2.6 tile assignment belongs in the bug-fixes ` +
+        `mod, not in core's copy.`,
+    ).toEqual([]);
+  });
+
+  it("serves every vendored tile, so the copy cannot fall behind", () => {
+    const served = indexBlobs("packages/web/public/tiles");
+    const absent = [...ref.keys()]
+      .filter((p) => p.startsWith("lib/tiles/"))
+      .map((p) => p.slice("lib/tiles/".length))
+      .filter((p) => !NOT_SERVED.some((e) => e.match(p)))
+      .filter((p) => !served.has(p));
+    expect(
+      absent,
+      `${absent.length} vendored tile file(s) are not served by the game: ` +
+        `${absent.join(", ")}. Every upstream tileset ships with Neo Angband, ` +
+        `so either copy the file into packages/web/public/tiles or add it to ` +
+        `NOT_SERVED with the reason the game does not need it at runtime.`,
+    ).toEqual([]);
+  });
+
+  it("has no stale NOT_SERVED entry", () => {
+    /* Same rule as EXCLUDED: an entry that matches nothing is hiding nothing
+     * today and would silently cover a future file of the same shape. */
+    const vendored = [...ref.keys()]
+      .filter((p) => p.startsWith("lib/tiles/"))
+      .map((p) => p.slice("lib/tiles/".length));
+    const unused = NOT_SERVED.filter((e) => !vendored.some((p) => e.match(p)));
+    expect(
+      unused.map((e) => e.what),
+      `these NOT_SERVED entries match no vendored tile file`,
     ).toEqual([]);
   });
 
