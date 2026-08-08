@@ -27,7 +27,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { validateManifest, CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import { DungeonProfiles, createModRegistryHost } from "@rpgm-tools/neo-angband-core";
+import {
+  DungeonProfiles,
+  EffectRegistry,
+  RoomRegistry,
+  ActionRegistry,
+  VocabularyRegistry,
+  createModRegistryHost,
+} from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
@@ -527,5 +534,133 @@ describe("a mod folder on disk reaches the dungeon-profile registry", () => {
       /registry:profile/,
     );
     expect(profiles.hasBuilder("greedy:cave")).toBe(false);
+  });
+});
+
+/**
+ * The other five registry domains, from disk.
+ *
+ * They already had a sample mod - `packages/web/mods/demo-trusted` - but that mod
+ * is BUNDLED, and this page's own rule is that a seam only a bundled mod can
+ * reach is not a capability. A bundled demo is compiled into the app: it proves
+ * the facade works, not that a mod a player installs can get to it. So the same
+ * five overrides are done again here by a folder written to disk and imported for
+ * real, and every assertion is made on the live registry.
+ *
+ * One mod exercises all five, which is also the realistic case - a mod that
+ * changes the game usually reaches more than one system, and the composed
+ * capability set has to carry all of them.
+ */
+describe("a mod folder on disk reaches every other registry domain", () => {
+  it("overrides effects, rooms, commands, monster AI and vocabulary", async () => {
+    writeMod(
+      "overhaul",
+      {
+        capabilities: [
+          "registry:effect",
+          "registry:room",
+          "registry:command",
+          "registry:monster",
+          "registry:vocab",
+        ],
+      },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           host.effects.register("overhaul:pulse", { handler: () => true, desc: "a mod effect" });
+           host.rooms.register("overhaul:hall", () => true);
+           host.commands.register("overhaul:dance", () => 3);
+           host.monsters.setTurnHook(() => true);
+           host.vocab.define({ kind: "stat", term: "overhaul:grit", label: "Grit" });
+           host.vocab.setValue("player", "overhaul:grit", 4);
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "overhaul", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [
+        "registry:effect",
+        "registry:room",
+        "registry:command",
+        "registry:monster",
+        "registry:vocab",
+      ],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+
+    const effects = new EffectRegistry();
+    const rooms = new RoomRegistry({ vaults: [], rooms: [] } as never);
+    const commands = new ActionRegistry();
+    const vocab = new VocabularyRegistry();
+    const state = {} as { monsterTurnHook?: unknown };
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { effects, rooms, commands, state: state as never, vocab },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("overhaul"));
+
+    /* Every assertion is on the live object the GAME reads, not on the host. */
+    expect(effects.isRegistered("overhaul:pulse")).toBe(true);
+    expect(rooms.get("overhaul:hall")).toBeTypeOf("function");
+    expect(commands.get("overhaul:dance")).toBeTypeOf("function");
+    expect(state.monsterTurnHook).toBeTypeOf("function");
+    expect(vocab.has("stat", "overhaul:grit")).toBe(true);
+    expect(vocab.getValue("player", "overhaul:grit")).toBe(4);
+  });
+
+  it("one missing capability costs that domain and nothing else", async () => {
+    /* The composed set is not all-or-nothing: the mod above minus registry:vocab
+     * still gets its effect through, and only the vocab call throws. A gate that
+     * failed whole-mod would make partial consent useless. */
+    const report = await readModDir(
+      fsSource([{ id: "overhaul", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [
+        "registry:effect",
+        "registry:room",
+        "registry:command",
+        "registry:monster",
+        "registry:vocab",
+      ],
+    });
+    const effects = new EffectRegistry();
+    const host = createModRegistryHost(
+      {
+        effects,
+        rooms: new RoomRegistry({ vaults: [], rooms: [] } as never),
+        commands: new ActionRegistry(),
+        state: {} as never,
+        vocab: new VocabularyRegistry(),
+      },
+      /* Manifest minus vocab: what the mod ASKED for is the gate, and it did not
+       * ask for this one. */
+      CapabilitySet.fromManifest({
+        ...code.plugins[0]!.manifest,
+        capabilities: [
+          "registry:effect",
+          "registry:room",
+          "registry:command",
+          "registry:monster",
+        ],
+      }),
+    );
+    expect(() => code.plugins[0]!.plugin.register?.(host, ctx("overhaul"))).toThrow(
+      /registry:vocab/,
+    );
+    /* The calls BEFORE the throw landed - the gate is per call, not per mod. */
+    expect(effects.isRegistered("overhaul:pulse")).toBe(true);
   });
 });

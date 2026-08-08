@@ -26,10 +26,10 @@ is not a capability - it is called out as such.
 | --- | --- |
 | `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:83`) |
 | Named behaviour-dispatch points enumerated (tables/switches where the game looks up what to DO by key or index) | **25** |
-| ...of those, a mod's CODE can add to or override | **5** |
-| ...of those 5, reachable by a mod that is NOT compiled into the web bundle | **0** |
+| ...of those, a mod's CODE can add to or override | **6** (`profile` added 2026-08-08) |
+| ...of those 6, reachable by a mod that is NOT compiled into the web bundle | **6** — every one, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
 | `registry:*` capabilities with real, wired, tested code | **6** (`command`, `effect`, `monster`, `profile`, `room`, `vocab`) — `profile` added 2026-08-08 |
-| Non-test callers of that registry host in a RELEASE build | **0** |
+| Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **24** |
 | ...whole-file-replacement only, where a per-record patch is SILENTLY dropped | **20** |
@@ -237,11 +237,11 @@ mod would reach through records, not code.
 
 | # | Dispatch point | Mod's code can add / override / wrap? |
 | --- | --- | --- |
-| 1 | `EffectRegistry` (112) | **yes** (bundled only) |
-| 2 | `RoomRegistry` (19) | **yes** (bundled only) |
-| 3 | `ActionRegistry` (43) | **yes** (bundled only) |
-| 4 | `GameState.monsterTurnHook` (1, all-or-nothing) | **yes** (bundled only) |
-| 5 | `VocabularyRegistry` (mod-owned) | **yes** (bundled only) |
+| 1 | `EffectRegistry` (112) | **yes**, from disk (re-measured 2026-08-08) |
+| 2 | `RoomRegistry` (19) | **yes**, from disk (re-measured 2026-08-08) |
+| 3 | `ActionRegistry` (43) | **yes**, from disk (re-measured 2026-08-08) |
+| 4 | `GameState.monsterTurnHook` (1, all-or-nothing) | **yes**, from disk (re-measured 2026-08-08) |
+| 5 | `VocabularyRegistry` (mod-owned) | **yes**, from disk (re-measured 2026-08-08) |
 | 6 | `DungeonProfiles` builders (9) + profiles (9) | **yes** (`registry:profile`, 2026-08-08) |
 | 7 | `MONSTER_HANDLERS` (56) | accidental only - exported mutable array |
 | 8 | prefs `HANDLERS` (12) | no - module-private |
