@@ -11,22 +11,31 @@
  * hand-written copies, which agreed until they did not - see the note on
  * randart-fake-agreement.test.ts, which now guards the singleness instead.
  *
- * WHICH RNG IS THE CALLER'S DECISION, and it is a real decision rather than a
- * detail: object_prep with the "maximise" aspect draws no entropy, but
- * copy_artifact_data's copy_curses step ALWAYS rolls the curse timeout on the
- * "randomise" aspect regardless of the caller's aspect (obj-curse.c L67, ported
- * faithfully in copyCurses). So
+ * WHICH RNG IS THE CALLER'S DECISION, and it stays an explicit parameter with
+ * no default even though every caller now answers the same way. It matters
+ * because copy_artifact_data's copy_curses step ALWAYS rolls the curse timeout
+ * on the "randomise" aspect regardless of the caller's aspect (obj-curse.c L67,
+ * ported faithfully in copyCurses), while object_prep(maximise) draws nothing.
+ * So this function's draw count is not zero, and where those draws land is a
+ * parity claim rather than a detail.
  *
- *   - a browsing preview must NOT perturb the shared game stream, and passes a
- *     throwaway `new Rng(FAKE_ARTIFACT_SEED)`; the fixed seed also makes the
- *     same artifact preview identically every time it is browsed;
- *   - artifact_power during randart generation MUST draw from the game stream,
- *     because upstream does and design_artifact re-powers artifacts that
- *     make_bad has just cursed. Handing it a private Rng silently forks the
- *     port's artifact sets away from Angband's.
+ * Every caller passes the GAME stream, because upstream has no other:
  *
- * Hence the parameter, with no default: the two answers are opposite, and a
- * default would quietly pick the one that is wrong for the caller that matters.
+ *   - artifact_power during randart generation, where design_artifact re-powers
+ *     artifacts make_bad has just cursed. Handing it a private Rng silently
+ *     forked the port's artifact sets away from Angband's, and did (fixed
+ *     2026-08-07).
+ *   - desc_art_fake, the knowledge browser's artifact recall (ui-knowledge.c
+ *     L1629). This used to take a throwaway Rng at a fixed seed so that
+ *     browsing could not perturb a run and an artifact previewed identically
+ *     every time. Both are true of that design and neither is Angband's:
+ *     browsing an artifact DOES advance upstream's stream. It was an
+ *     improvement, and improvements go in a mod, not in the port.
+ *   - the spoiler generator, which boots its own headless game at a fixed seed
+ *     and draws from that game's stream (game/spoil.ts).
+ *
+ * A default would quietly answer for a caller that had not thought about it,
+ * which is how the browser acquired its private stream in the first place.
  *
  * Attribution: neostryder / RPGM Tools.
  */
@@ -37,13 +46,6 @@ import type { ObjRegistry } from "./bind.js";
 import { copyArtifactData, objectPrep } from "./make.js";
 import type { GameObject } from "./object.js";
 import type { Artifact } from "./types.js";
-
-/**
- * The fixed seed for a PREVIEW's throwaway prep Rng. object_prep(maximise)
- * consumes no entropy and copy_artifact_data draws only the curse timeout, so a
- * constant seed yields a stable, game-RNG-independent preview.
- */
-export const FAKE_ARTIFACT_SEED = 1;
 
 /**
  * make_fake_artifact(obj, artifact) (obj-make.c L728): look up the base kind,

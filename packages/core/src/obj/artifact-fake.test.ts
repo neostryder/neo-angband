@@ -4,7 +4,7 @@ import { bindConstants } from "../constants.js";
 import { Rng } from "../rng.js";
 import { ObjRegistry } from "./bind.js";
 import type { Artifact, ObjPackJson } from "./types.js";
-import { FAKE_ARTIFACT_SEED, makeFakeArtifact } from "./artifact-fake.js";
+import { makeFakeArtifact } from "./artifact-fake.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -39,8 +39,9 @@ function firstArtifact(): Artifact {
 }
 
 describe("makeFakeArtifact (obj-make.c L728)", () => {
-  /** A throwaway preview stream, as the knowledge browser passes. */
-  const preview = (): Rng => new Rng(FAKE_ARTIFACT_SEED);
+  /* A stream at a known seed, so a call is repeatable inside this file. Every
+   * production caller passes the GAME stream now; there is no preview seed. */
+  const preview = (): Rng => new Rng(1);
 
   it("builds an artifact object stamped with the artifact data", () => {
     const art = firstArtifact();

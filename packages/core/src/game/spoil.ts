@@ -56,8 +56,6 @@ const BUILDID = `Angband ${PARITY_BASELINE}`;
 
 /** Fixed seed for the headless boot (registries + player shadow only). */
 const SPOIL_SEED = 1;
-/** Fixed seed for the throwaway object-prep Rng (maximise draws nothing). */
-const SPOIL_PREP_SEED = 1;
 
 /**
  * A booted headless context shared by a single generator call: the bound
@@ -275,7 +273,12 @@ function kindInfo(ctx: SpoilCtx, rng: Rng, kind: ObjectKind): KindRow {
 export function spoilObjDesc(pack: GamePack): string {
   const ctx = boot(pack);
   const objs = ctx.reg.objects;
-  const rng = new Rng(SPOIL_PREP_SEED);
+/* Upstream's spoiler runs inside a live game and make_fake_artifact /
+   * object_prep draw from the global RNG (wiz-spoil.c:438). This generator
+   * boots its own headless game at SPOIL_SEED, so that game's stream IS the
+   * global one here - no private Rng, and the dump stays reproducible because
+   * the boot seed is fixed. */
+  const rng = ctx.game.state.rng;
   let out = "";
 
   /* Header (L228-233). The header row's title column is "%-51s  " (title padded
@@ -363,7 +366,12 @@ function spoilFakeArtifact(
 export function spoilArtifact(pack: GamePack): string {
   const ctx = boot(pack);
   const objs = ctx.reg.objects;
-  const rng = new Rng(SPOIL_PREP_SEED);
+/* Upstream's spoiler runs inside a live game and make_fake_artifact /
+   * object_prep draw from the global RNG (wiz-spoil.c:438). This generator
+   * boots its own headless game at SPOIL_SEED, so that game's stream IS the
+   * global one here - no private Rng, and the dump stays reproducible because
+   * the boot seed is fixed. */
+  const rng = ctx.game.state.rng;
   let out = "";
 
   /* Header (L401-403). */

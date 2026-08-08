@@ -149,18 +149,37 @@ stream. **Class B and deliberate**: upstream's animation runs inside a game loop
 this port does not have, and a shimmering monster advancing the RNG would make a
 replay depend on how long you looked at the screen.
 
-## B7. Preview builders draw from a throwaway stream
+## Closed: preview builders drew from a throwaway stream
 
-`make_fake_artifact` rolls a curse timeout through `copy_curses`, and that roll draws.
-When the knowledge browser previews an artifact it passes a fresh `Rng` at a fixed
-seed instead of the game stream, so browsing cannot perturb a run and the same
-artifact previews identically every time.
+A `B` row stood here. `make_fake_artifact` rolls a curse timeout through
+`copy_curses`, and that roll draws; the knowledge browser passed a fresh `Rng` at a
+fixed seed instead of the game stream, so browsing could not perturb a run and an
+artifact previewed identically every time. Both of those are nicer than Angband and
+neither is Angband — `desc_art_fake` (ui-knowledge.c:1629) hands
+`make_fake_artifact` no stream of its own, so browsing an artifact **does** advance
+upstream's RNG.
 
-**Class B, and note the asymmetry, because it is the one that bit.** `artifact_power`
-during randart generation must draw from the GAME stream, because upstream does — and
-until 2026-08-07 it did not, which meant the port's randart sets were not Angband's.
-The `rng` parameter of `makeFakeArtifact` is required with no default for that reason:
-the two callers want opposite answers.
+**Closed 2026-08-07.** Every caller of `makeFakeArtifact` now passes the game stream,
+and `FAKE_ARTIFACT_SEED` is deleted. The `rng` parameter stays required with no
+default even though the answer is now uniform, because a default is how the browser
+acquired a private stream in the first place. Measured before changing it: the recall
+fires once per explicit selection (`runGroupedBrowser` resolves only when a member is
+chosen), matching upstream's `if (recall)` gate at ui-knowledge.c:1129 — an
+immediate-mode renderer calling it per repaint would have made the game stream far
+worse than the private one.
+
+Two neighbours went with it. The wizard item browser was calling `makeFakeArtifact`
+where upstream calls `get_art_name` (ui-wizard.c:154) — a **different function** that
+does `object_prep(RANDOMISE)` with no `copy_artifact_data`, so it draws the base
+item's plusses and never rolls a curse. It is now ported rather than substituted. And
+the spoiler generator drew from its own `SPOIL_PREP_SEED`; it boots a headless game at
+a fixed seed, so it now draws from that game's stream, which is the direct analogue of
+upstream's spoiler running inside a live game.
+
+`artifact_power` during randart generation was the third caller and the one that bit:
+it must draw from the game stream because `design_artifact` re-powers artifacts
+`make_bad` has just cursed, and until 2026-08-07 it did not, which meant the port's
+randart sets were not Angband's.
 
 ## B8. Dead upstream branches are not ported
 
