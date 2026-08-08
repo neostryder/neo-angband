@@ -98,6 +98,17 @@ wrong:
 
 ## Tests
 
+- **`pnpm test` on its own can measure a world that does not exist.** `packages/web`
+  imports `@rpgm-tools/neo-angband-core` through its `exports` map, which points at
+  `dist/`, not `src/`. CI runs `pnpm build` before `pnpm test`; a local run that
+  skips the build measures whatever was last compiled. This is not theoretical:
+  deleting a core export passed locally against a stale `dist` and failed in CI on
+  `mod-core-surface.test.ts`, the ABI ratchet, which is precisely the check that
+  cannot afford to be wrong. **Run `pnpm build` first, or believe nothing about a
+  cross-package change.**
+- Removing anything from core's export surface is a break for every mod, because
+  `ctx.core` is the live namespace. `MOD_COMPATIBILITY.md` gives two options and
+  neither is silence: keep the old name, or record the break there knowingly.
 - A test that constructs the object production code will receive is an
   *assertion about the producer*, and an unchecked one. Where it matters, derive
   the fixture from the real producer or add one test that runs it.

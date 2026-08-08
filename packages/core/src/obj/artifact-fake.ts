@@ -48,6 +48,21 @@ import type { GameObject } from "./object.js";
 import type { Artifact } from "./types.js";
 
 /**
+ * @deprecated Nothing in this port reads it. It was the seed of the knowledge
+ * browser's private preview stream, which was a divergence and is gone (see the
+ * module note); every caller of makeFakeArtifact now passes the game stream.
+ *
+ * It is still exported because it is on the `ctx.core` surface a mod's plugin
+ * code can reach, and `MOD_COMPATIBILITY.md` says a removal from that surface
+ * either keeps the old name or is recorded as a knowing break. A mod could have
+ * used this to reproduce a preview, and breaking it at runtime in a player's
+ * browser to save one constant is a bad trade. Scheduled for deletion in the
+ * release after the one that deprecates it, which is the same two-release rule
+ * an ABI bump follows.
+ */
+export const FAKE_ARTIFACT_SEED = 1;
+
+/**
  * make_fake_artifact(obj, artifact) (obj-make.c L728): look up the base kind,
  * object_prep it with the MAXIMISE aspect, stamp on the artifact, then
  * copy_artifact_data. Returns null when the artifact has no tval or its base
