@@ -82,6 +82,8 @@ import { expandSections } from "./sections.js";
 import { composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
+import { applyFieldPolicy, declaredFields } from "./fields.js";
+import type { ResolvedField } from "./fields.js";
 import {
   keyDescription,
   keySpecFor,
@@ -131,6 +133,14 @@ export interface ComposedContent {
    * wrong without parsing a sentence.
    */
   faults: ComposeFault[];
+  /**
+   * Every field the loaded packs declared, resolved to its qualified name.
+   *
+   * Returned rather than kept private so a host can show a mod manager what
+   * vocabulary is in play, and so a plugin author can assert their own field
+   * survived composition instead of inferring it from a record.
+   */
+  declaredFields: ResolvedField[];
 }
 
 /** How a refusal is recorded: one call, both channels, no chance to disagree. */
@@ -534,12 +544,27 @@ export function composeContentPacks(
     out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, refused);
   }
 
+  /* THE FIELD POLICY RUNS LAST, over the composed result, because that is the
+   * only point at which every pack's contribution to a record is present: a
+   * field declared by mod A and written by a patch from mod B is legal, and
+   * checking either pack in isolation would refuse it. */
+  const declared = declaredFields(ordered.map((p) => p.manifest));
+  for (const [file, records] of Object.entries(out)) {
+    const objects = records.filter(
+      (r): r is Record<string, unknown> => r !== null && typeof r === "object" && !Array.isArray(r),
+    );
+    for (const fault of applyFieldPolicy(file, objects, declared)) {
+      refused.refuse(fault.packId, fault.message);
+    }
+  }
+
   return {
     records: out,
     composedFiles: [...composable].sort(),
     passthroughFiles: [...fileNames].filter((f) => !composable.has(f)).sort(),
     problems: refused.problems,
     faults: refused.faults,
+    declaredFields: [...declared.values()],
   };
 }
 
@@ -624,7 +649,14 @@ export function composeDroppingBroken(
   /* Unreachable: the base alone always composes. Returning an empty composition
    * rather than throwing keeps the promise this function exists to make. */
   return {
-    composed: { records: {}, composedFiles: [], passthroughFiles: [], problems: [], faults: [] },
+    composed: {
+      records: {},
+      composedFiles: [],
+      passthroughFiles: [],
+      problems: [],
+      faults: [],
+      declaredFields: [],
+    },
     dropped,
   };
 }

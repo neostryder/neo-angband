@@ -64,9 +64,9 @@ describe("extensionData", () => {
       name: "Dagger",
       type: "sword",
       attack: { hd: "1d5" },
-      bleed: { dice: "1d3", turns: 5 },
+      "gore:bleed": { dice: "1d3", turns: 5 },
     });
-    expect(ext).toEqual({ bleed: { dice: "1d3", turns: 5 } });
+    expect(ext).toEqual({ "gore:bleed": { dice: "1d3", turns: 5 } });
     /* Core's own fields must NOT be duplicated in here: a mod reading
      * ext.attack would be reading the pre-bind value and could disagree with
      * the bound one forever without either being wrong. */
@@ -75,11 +75,19 @@ describe("extensionData", () => {
   });
 
   it("freezes what it returns, so one mod cannot rewrite what another reads", () => {
-    const ext = extensionData("object", { name: "x", type: "sword", bleed: 1 }) as Record<
+    const ext = extensionData("object", { name: "x", type: "sword", "gore:bleed": 1 }) as Record<
       string,
       unknown
     >;
     expect(Object.isFrozen(ext)).toBe(true);
+  });
+
+  it("ignores an unqualified key core does not know, which is a typo not a field", () => {
+    /* `atack` is not an extension - it is a misspelling of `attack`, and
+     * treating it as one would show the author their field in `ext` and let
+     * them believe the patch worked. Only a namespaced key qualifies; the
+     * misspelling is reported by the host, which has the key table to see it. */
+    expect(extensionData("object", { name: "Dagger", atack: 1 })).toBeUndefined();
   });
 
   it("refuses to guess about a file core ships no data for", () => {
