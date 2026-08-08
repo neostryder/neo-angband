@@ -2089,3 +2089,99 @@ describe("registered command: zap-rod (cmd-obj.c do_cmd_zap_rod)", () => {
     expect(msgs).toContain("That rod is still charging.");
   });
 });
+
+/**
+ * obj->known->effect / obj->known->activation: the two PER-OBJECT knowledge
+ * fields (#126 / DIVERGENCES C1).
+ *
+ * The port synthesises the known twin on demand from what the player knows
+ * about the KIND (known-object.ts objectKnownShadow). That reproduces every
+ * awareness-driven write upstream makes - but upstream also writes the twin per
+ * OBJECT, and the loudest of those is check_devices' "Notice activations"
+ * (cmd-obj.c L97-103): activating an item teaches THAT item's effect without
+ * making its kind aware.
+ *
+ * The one thing that reads it back is use_aux's known_aim (cmd-obj.c L424-429),
+ * whose last two disjuncts the port did not have. Without them an item whose
+ * kind is still unaware is aimed with DDD[randint0(8)] every single time, no
+ * matter how often it has been used - so a Ring of Flames you have fired twenty
+ * times still throws its ball in a random direction. WHICH items: flavor_init
+ * (obj-util.c L243-245) leaves every flavoured kind unaware, and also the 14
+ * special-artifact kinds, which it skips by kidx.
+ */
+describe("per-object effect knowledge (cmd-obj.c L97-103, L424-429)", () => {
+  /** A real FlavorKnowledge, which starts with nothing aware. */
+  function unawareFlavor(): FlavorKnowledge {
+    return new FlavorKnowledge(reg.ordinaryKindCount);
+  }
+
+  it("a first activation teaches this object, and the SECOND one aims", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    /* Flames' kind effect is a FIRE ball, so obj_needs_aim is true and the
+     * known_aim branch is live. Its kind is flavoured, so it is unaware. */
+    const ring = makeNamed("Flames", TV.RING);
+    expect(objNeedsAim(ring, { flavor: unawareFlavor() })).toBe(true);
+    const h = carry(state, ring);
+
+    let asked = 0;
+    const deps = makeDeps(state, {
+      flavor: unawareFlavor(),
+      env: { msg: () => {}, chooseDir: () => { asked++; return 4; } },
+    });
+
+    /* First use: nothing known about this object, so use_aux rolls a direction
+     * instead of asking (cmd-obj.c L430-433). */
+    useAux(state, ring, USE.TIMEOUT, deps, { handle: h });
+    expect(asked, "an unaware item must not ask for a direction").toBe(0);
+
+    /* ...but check_devices recorded what it just did (cmd-obj.c L98-101). */
+    expect(ring.knownEffect).toBe(ring.effect);
+
+    /* Second use: the kind is STILL unaware - nothing about the player's
+     * knowledge changed - yet known_aim is now true off the per-object bit. */
+    ring.timeout = 0;
+    useAux(state, ring, USE.TIMEOUT, deps, { handle: h });
+    expect(asked, "a previously-used item aims where the player says").toBe(1);
+  });
+
+  it("an activation with no kind effect records the ACTIVATION instead", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    /* cmd-obj.c L99-102 is an if/else: obj->effect wins, and only an item with
+     * no effect of its own falls through to obj->activation. A Phial has no
+     * kind effect; give it the activation an artifact would carry. */
+    const light = makeNamed("& Wooden Torch~", TV.LIGHT);
+    light.effect = null;
+    const activation = { effect: makeNamed("Cure Light Wounds", TV.POTION).effect };
+    light.activation = activation as never;
+    const h = carry(state, light);
+    useAux(state, light, USE.TIMEOUT, makeDeps(state, { flavor: unawareFlavor() }), {
+      handle: h,
+    });
+    expect(light.knownActivation).toBe(activation);
+    expect(light.knownEffect).toBeUndefined();
+  });
+
+  it("a wand aims without any of this, as it always did", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    /* tval_is_wand short-circuits known_aim before the new disjuncts are
+     * reached, so an unaware wand has always asked for a direction - and no
+     * "Notice activations" bit is written, because a wand is not an
+     * activation (cmd-obj.c L67-78 leaves `activated` false). */
+    const wand = makeNamed("Magic Missile", TV.WAND);
+    wand.pval = 5;
+    const h = carry(state, wand);
+    let asked = 0;
+    const deps = makeDeps(state, {
+      flavor: unawareFlavor(),
+      env: { msg: () => {}, chooseDir: () => { asked++; return 4; } },
+    });
+    expect(objNeedsAim(wand, deps)).toBe(true);
+    useAux(state, wand, USE.CHARGE, deps, { handle: h });
+    expect(asked).toBe(1);
+    expect(wand.knownEffect, "a wand is not an activation").toBeUndefined();
+    expect(wand.knownActivation).toBeUndefined();
+  });
+});

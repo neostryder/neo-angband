@@ -77,6 +77,7 @@ export * from "./player/take-hit.js";
 export * from "./player/spell.js";
 export * from "./player/birth.js";
 export * from "./player/history.js";
+export * from "./player/death.js";
 export * from "./player/abilities.js";
 export * from "./player/shape-lore.js";
 export * from "./save/buffer.js";
