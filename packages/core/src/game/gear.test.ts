@@ -236,6 +236,63 @@ describe("wieldAll (player-birth.c wield_all split)", () => {
     expect(gear.pack.length).toBe(1);
     expect(gearGet(gear, gear.pack[0]!)!.number).toBe(2);
   });
+
+  it("appends two remainders in REVERSE order of creation", () => {
+    /*
+     * pile_insert_end, which the port had no counterpart for on this path.
+     *
+     * Upstream does not add a remainder to the gear as it splits. It collects
+     * each one into a local `new_pile` with pile_insert (player-birth.c:489),
+     * which PREPENDS, then appends that whole pile to the gear once after the
+     * loop (L503). So the tail reads [last split, ..., first split]. Pushing
+     * each remainder as it is made - the port's old shape - reads the other way.
+     *
+     * 4.2.6's own data cannot show this: wield_slot returns -1 for ammo, and the
+     * only stacked wieldable in any starting kit is the Wooden Torch, so exactly
+     * one remainder exists and one element reversed is itself. A MOD whose
+     * starting kit stacks two wieldables sees it, which is why the fixture below
+     * has to build a kit no class ships.
+     */
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(1);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+
+    /* Two DIFFERENT wieldable slots, each holding a stack: light and body
+     * armour. Same slot twice would leave the second unwielded (wield_all skips
+     * an occupied slot) and no second remainder would exist at all. */
+    const stacked = (tval: number, n: number): GameObject => {
+      const o = objectPrep(
+        rng,
+        reg,
+        constants,
+        firstOrdinaryKind(reg, tval),
+        0,
+        "minimise",
+      );
+      o.number = n;
+      return o;
+    };
+    const light = stacked(TV.LIGHT, 3);
+    const armour = stacked(TV.SOFT_ARMOR, 4);
+    invenCarry(gear, carrier, light, limits);
+    invenCarry(gear, carrier, armour, limits);
+    /* The pack order the loop will walk, so "order of creation" is not a guess. */
+    const packOrder = gear.pack.map((h) => gearGet(gear, h)!.tval);
+
+    wieldAll(gear, player);
+
+    expect(gear.pack.length).toBe(2);
+    const tail = gear.pack.map((h) => gearGet(gear, h)!.tval);
+    expect(tail).toEqual([...packOrder].reverse());
+    /* And the counts, so this cannot pass on two empty stacks in any order. */
+    const byTval = new Map(
+      gear.pack.map((h) => [gearGet(gear, h)!.tval, gearGet(gear, h)!.number]),
+    );
+    expect(byTval.get(TV.LIGHT)).toBe(2);
+    expect(byTval.get(TV.SOFT_ARMOR)).toBe(3);
+  });
 });
 
 describe("outfitPlayer (player-birth.c player_outfit)", () => {
