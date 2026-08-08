@@ -1,5 +1,0 @@
-reference/lib/help/commands.txt
-reference/lib/help/index.txt
-reference/lib/help/r_comm.txt
-reference/lib/help/r_index.txt
-reference/lib/help/symbols.txt

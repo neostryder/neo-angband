@@ -1,2 +1,0 @@
-reference/src/store.c
-reference/src/store.h

@@ -9,7 +9,8 @@
 > twice over: no mod ships inside the build, and a package with no importer does
 > not ship at all. For how the Borg works see
 > [docs/modding/BORG.md](modding/BORG.md); for the framework it rides, see
-> [docs/modding/MOD_INTEGRATION_PLAN.md](modding/MOD_INTEGRATION_PLAN.md).
+> [docs/modding/PLUGINS.md](modding/PLUGINS.md) and
+> [docs/modding/MOD_SEAMS.md](modding/MOD_SEAMS.md).
 
 ## 1. The decision
 
