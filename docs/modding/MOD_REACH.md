@@ -28,17 +28,28 @@ is not a capability - it is called out as such.
 | Named behaviour-dispatch points enumerated (tables/switches where the game looks up what to DO by key or index) | **25** |
 | ...of those, a mod's CODE can add to or override | **5** |
 | ...of those 5, reachable by a mod that is NOT compiled into the web bundle | **0** |
-| `registry:*` capabilities with real, wired, tested code | **5** of 5 |
+| `registry:*` capabilities with real, wired, tested code | **6** (`command`, `effect`, `monster`, `player`, `room`, `vocab`) |
 | Non-test callers of that registry host in a RELEASE build | **0** |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **24** |
 | ...whole-file-replacement only, where a per-record patch is SILENTLY dropped | **20** |
 | Resource categories a non-bundled mod can supply or override | **0** of 7 |
 
-The one thing a mod installed from disk can do today, in a release build, is
-**contribute gamedata JSON records**. That is real, it is layered properly, and
-it reaches 24 record types per record and 20 more only as a whole file. Every
-code and resource seam is closed to it.
+> **The numbers in this table predate 2026-08-08 and are being re-derived row by
+> row, not edited.** Three rows of the gap list have already been re-measured and
+> two of them had gone stale in the direction that matters - reporting a
+> capability as missing after it shipped. Treat any figure here as a lead until
+> its row below carries a re-measured date. The counting method is what needs
+> rebuilding: a census script, so that a new `switch` cannot be added without
+> appearing in the denominator.
+
+What a mod installed from disk can do today, in a release build: **contribute
+gamedata JSON records** (24 record types per record, 20 more only as a whole
+file), **supply a tile pack** that registers its own Graphics row, and - since
+the code-loading path landed - **run its own code** through `plugin.js` with the
+engine passed in. What it still cannot do is reach most of the game's behaviour,
+because that behaviour lives in ~20 `switch` statements with nothing to register
+into. That, not the loading path, is now the whole of the problem.
 
 ---
 
@@ -684,12 +695,12 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 
 | # | Capability | Today | What would have to exist |
 | --- | --- | --- | --- |
-| 1 | **A mod can supply CODE without being compiled into the app** | **no** | A runtime module-loading path (desktop: load a mod's JS from the mods folder; web: dynamic `import()` of a served URL, or an accepted "web is reduced" split). Everything below is blocked on this: 100% of the code seams that DO exist are behind two build-time `import.meta.glob`s (`mod-hooks.ts:71`, `agents/trusted/discover.ts:19`) plus `isShippedMod`. |
+| 1 | **A mod can supply CODE without being compiled into the app** | **YES** (closed; re-measured 2026-08-08) | Done, and nothing below is blocked on it any more. `packages/web/src/mod-plugin.ts` loads a `plugin.js` sitting beside a mod's `manifest.json`, with the engine **passed in** rather than imported, so a mod installed from disk runs real code. The `import.meta.glob` in `mod-hooks.ts` remains, but it is now the path for the *bundled demo* mods only, not the only door. This row read "**no**" with "everything below is blocked on this" for long enough to misdirect planning - the rest of this table is re-derived, not edited. |
 | 2 | **Per-record patching of the other 20 gamedata files** | **no** (silently dropped, `loader.ts:119`) | A stable per-record KEY that does not depend on a unique string `name` - a composite key for `object_base`/`trap`, and a synthetic index or `(tval, sval)` key for the 6 files whose names collide in core's own data (`object` 45 dups, `ego_item` 28, `vault` 3, `brand`, `slay`, `chest_trap`). Plus a loud error when an op targets a passthrough file, so it can never be silent again. |
 | 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in ~20 `switch` statements (26-case blow effects ×2, 37-case project-feat, 27-case store, 11-case project-obj, …). Converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. |
 | 4 | **Monster combat is moddable** | **no** | `blow_effects.json` accepts a 31st record but its behaviour is `combat/mon-melee.ts:460` (and again `:750`). Needs a blow-effect registry, and needs the duplicated switch collapsed to one body first. |
 | 5 | **Store behaviour is moddable** | **no** | There is no table to register into: `storeWillBuy` (`store/store.ts:235`) and `massProduce` (`:281`) are switches, and `StoreRegistry` is a `BoundStore[]` with linear scans (`store/bind.ts:129`). |
-| 6 | **Level generation architecture is moddable** | **partial** | `DungeonProfiles` (`gen/cave.ts:2758`) already has `registerBuilder` / `addProfile`, and `dungeon_profile.json` is one of the 24 patchable files - but there is no `registry:profile` facade, so a mod cannot reach the builders. This is the cheapest real win on the list: the registry exists; only the facade and capability are missing. |
+| 6 | **Level generation architecture is moddable** | **partial** (re-measured 2026-08-08, still open) | `DungeonProfiles` (`gen/cave.ts:2952`) already has `registerBuilder` / `addProfile`, and `dungeon_profile.json` is one of the 24 patchable files - but there is still no `registry:profile` among the six capabilities that exist (`command`, `effect`, `monster`, `player`, `room`, `vocab`), so a mod cannot reach the builders. Confirmed the cheapest real win on the list: the registry exists; only the facade and capability are missing. |
 | 7 | **Resources: sounds / fonts / splash / help** | **no** | Manifest fields (`soundPacks`, `fontPacks`, …) plus discovery, and - on the desktop side only - nothing else, because the loopback server already serves images and audio from the mods folder (`packages/desktop/src/main.ts:145-152`, `:312-314`). |
 | 8 | **A disk tile pack registers a Graphics row** | **YES** (closed 2026-07-30) | Done. `mergeModSources` merges `diskPacks()` into the glob; `tilePacks[].path` became MOD-relative and both engines take a `PackFileResolver`, so a pack in a picked folder or installed from a repository reaches its own bytes; `tilePacks` joined the validated schema as `PackTilePack`. See section (c) above. |
 | 9 | **UI is moddable** | **no** | Menus are row-building FUNCTIONS (`game-menu.ts:56`, `:166`) and the 62-entry keypress table is declared inside a keydown closure (`main.ts:7337`, inside the handler opened at `:7149`), so there is nothing to register into even from inside the bundle. |
@@ -698,7 +709,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 12 | **Record schemas are validated** | **no** | `packages/mod-sdk/src/index.ts:5` claims it; no such code exists. The compile-time `FileSpec` machinery (`packages/content/src/records.ts`) is the obvious source to reuse at load time. |
 | 13 | **A boot-time compose error is survivable** | **not determined** | `pack.ts:339` composes at module scope with no `try`. Determining the real behaviour needs a run with a deliberately bad patch ref and the console read. |
 | 14 | **Localization** | **no** | No i18n layer at all; all UI text is inline literals. |
-| 15 | **Accidental seams closed** | n/a | `MONSTER_HANDLERS` (`mon/project-mon.ts:770`) and `DEBUG_MENU` (`packages/web/src/wizard.ts:463`) are exported and mutable. They are ungated, unordered, and invisible to the conflict report - defects to close, not capabilities to document. |
+| 15 | **Accidental seams closed** | **YES** (closed; re-measured 2026-08-08) | Done. `MONSTER_HANDLERS` (`mon/project-mon.ts:801`) is now `readonly` and built by an IIFE, and `DEBUG_MENU` (`packages/web/src/wizard.ts:514`) is `readonly` and passed through `deepFreezeMenu`. Neither is a silent, unordered back door any more. Note the distinction this row exists to make: these were closed *as defects*. Reaching either one is a capability that must arrive as a gated, ordered, conflict-visible registry - see rows 3 and 9 - never by unfreezing these. |
 
 ---
 
