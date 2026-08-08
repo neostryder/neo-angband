@@ -29,7 +29,6 @@
  */
 
 import { FlagSet } from "../bitflag.js";
-import { extensionData } from "../mod/record-keys.js";
 import { Dice } from "../dice.js";
 import {
   ELEMENT_ENTRIES,
@@ -43,6 +42,7 @@ import {
 } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
+import { attachExt } from "../mod/extension.js";
 import type {
   Activation,
   ActivationRecordJson,
@@ -661,6 +661,7 @@ export class ObjRegistry {
           grabElementFlag(base.elInfo, tok);
         if (!found) throw new Error(`object_base: invalid flag ${tok}`);
       }
+      attachExt("object_base", rec, base);
     }
   }
 
@@ -777,7 +778,7 @@ export class ObjRegistry {
       for (const name of rec.conflict ?? []) {
         conflict = (conflict ?? "") + "|" + name + "|";
       }
-      this.curses.push({
+      this.curses.push(attachExt<Curse>("curse", rec, {
         index: this.curses.length,
         name: rec.name,
         poss,
@@ -796,7 +797,7 @@ export class ObjRegistry {
         conflict,
         conflictFlags,
         desc: joinLines(rec.desc),
-      });
+      }));
     }
   }
 
@@ -883,11 +884,9 @@ export class ObjRegistry {
       }
       /* Keys core does not read ride along instead of being dropped. This is
        * the ONLY thing that makes an added key survive: composition always
-       * carried it, and this binder always discarded it, so a mod could write
+       * carried it, and every binder used to discard it, so a mod could write
        * a new field, get no error, and find nothing at runtime. */
-      const ext = extensionData("object", rec);
-      if (ext) kind.ext = ext;
-      this.kinds.push(kind);
+      this.kinds.push(attachExt("object", rec, kind));
     }
     this.ordinaryKindCount = this.kinds.length;
   }
@@ -1061,7 +1060,7 @@ export class ObjRegistry {
         ego.allocMin = amin;
         ego.allocMax = amax;
       }
-      this.egos.push(ego);
+      this.egos.push(attachExt("ego_item", rec, ego));
     }
   }
 
@@ -1223,7 +1222,7 @@ export class ObjRegistry {
         art.allocMin = amin;
         art.allocMax = amax;
       }
-      this.artifacts.push(art);
+      this.artifacts.push(attachExt("artifact", rec, art));
     }
   }
 

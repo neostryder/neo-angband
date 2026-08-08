@@ -16,12 +16,14 @@ import { OF, TRAP_FLAG_ENTRIES, TRF } from "../generated/index.js";
 import { myStristr } from "../guard.js";
 import type { RandomValue } from "../rng.js";
 import type { EffectRecordJson } from "../obj/types.js";
+import type { ModExtensible } from "../mod/extension.js";
+import { attachExt } from "../mod/extension.js";
 
 /** TRF_SIZE = FLAG_SIZE(TRF_MAX): byte size of a trap FlagSet. */
 export const TRF_SIZE = flagSize(TRAP_FLAG_ENTRIES.length);
 
 /** struct trap_kind. */
-export interface TrapKind {
+export interface TrapKind extends ModExtensible {
   /** Index in the bound table (t_idx). */
   tidx: number;
   /** Short name ("pit"); lookup_trap matches on desc. */
@@ -116,26 +118,28 @@ const joined = (lines: string[] | undefined): string =>
 
 /** Bind trap.json records into the trap_kind table (index = t_idx). */
 export function bindTraps(records: readonly TrapRecordJson[]): TrapKind[] {
-  return records.map((rec, tidx) => ({
-    tidx,
-    name: rec.name.name,
-    desc: rec.name.desc,
-    text: joined(rec.desc),
-    glyph: rec.graphics.glyph,
-    color: rec.graphics.color,
-    rarity: rec.appear?.rarity ?? 0,
-    minDepth: rec.appear?.mindepth ?? 0,
-    maxNum: rec.appear?.maxnum ?? 0,
-    power: parsePower(rec.visibility),
-    flags: parseTrapFlags(rec.flags),
-    effect: rec.effect ?? [],
-    effectXtra: rec["effect-xtra"] ?? [],
-    saveFlags: parseSaveFlags(rec.save),
-    msg: joined(rec.msg),
-    msgGood: joined(rec["msg-good"]),
-    msgBad: joined(rec["msg-bad"]),
-    msgXtra: joined(rec["msg-xtra"]),
-  }));
+  return records.map((rec, tidx) =>
+    attachExt<TrapKind>("trap", rec, {
+      tidx,
+      name: rec.name.name,
+      desc: rec.name.desc,
+      text: joined(rec.desc),
+      glyph: rec.graphics.glyph,
+      color: rec.graphics.color,
+      rarity: rec.appear?.rarity ?? 0,
+      minDepth: rec.appear?.mindepth ?? 0,
+      maxNum: rec.appear?.maxnum ?? 0,
+      power: parsePower(rec.visibility),
+      flags: parseTrapFlags(rec.flags),
+      effect: rec.effect ?? [],
+      effectXtra: rec["effect-xtra"] ?? [],
+      saveFlags: parseSaveFlags(rec.save),
+      msg: joined(rec.msg),
+      msgGood: joined(rec["msg-good"]),
+      msgBad: joined(rec["msg-bad"]),
+      msgXtra: joined(rec["msg-xtra"]),
+    }),
+  );
 }
 
 /**

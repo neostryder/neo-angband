@@ -15,6 +15,7 @@ import { FEAT, OF } from "../generated/index.js";
 import { tvalFindIdx } from "../obj/bind.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { ObjectKind } from "../obj/types.js";
+import { attachExt } from "../mod/extension.js";
 import type {
   BoundStore,
   ObjectBuy,
@@ -130,7 +131,7 @@ export class StoreRegistry {
   readonly stores: BoundStore[];
 
   constructor(records: StoreRecordJson[], reg: ObjRegistry) {
-    this.stores = records.map((rec) => bindStore(rec, reg));
+    this.stores = records.map((rec) => attachExt("store", rec, bindStore(rec, reg)));
   }
 
   /** store_at: the store whose entrance feature matches, or null. */

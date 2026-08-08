@@ -35,7 +35,6 @@
 
 import { FlagSet } from "../bitflag.js";
 import { colorCharToAttr, colorTextToAttr } from "../color.js";
-import { extensionData } from "../mod/record-keys.js";
 import { Dice } from "../dice.js";
 import { myStristr } from "../guard.js";
 import { MFLAG_SIZE, monSpellsOfTypes, MON_GROUP, RF_SIZE, RSF_SIZE } from "./types.js";
@@ -61,6 +60,7 @@ import type {
 } from "./types.js";
 import { RF, RSF } from "../generated/index.js";
 import { messageLookupByName } from "../sound/engine.js";
+import { attachExt } from "../mod/extension.js";
 
 /* re-export for consumers that reach the domain through bind */
 export { MFLAG_SIZE, RF_SIZE, RSF_SIZE };
@@ -474,13 +474,16 @@ function bindBases(
     }
     const flags = new FlagSet(RF_SIZE);
     raceFlagsOn(flags, rec.flags);
-    map.set(rec.name, {
-      name: rec.name,
-      text: joinLines(rec.desc),
-      flags,
-      glyph: rec.glyph,
-      pain,
-    });
+    map.set(
+      rec.name,
+      attachExt<MonsterBase>("monster_base", rec, {
+        name: rec.name,
+        text: joinLines(rec.desc),
+        flags,
+        glyph: rec.glyph,
+        pain,
+      }),
+    );
   }
   return map;
 }
@@ -649,9 +652,7 @@ export class MonsterRegistry {
       const race = this.bindRace(rec, maxSight, innate, breathOrInnate);
       /* Keys core does not read ride along instead of being dropped - the same
        * seam as ObjectKind.ext, for the same reason. */
-      const ext = extensionData("monster", rec);
-      if (ext) race.ext = ext;
-      this.races.push(race);
+      this.races.push(attachExt("monster", rec, race));
       this.racesByName.set(race.name.toLowerCase(), race);
     }
 

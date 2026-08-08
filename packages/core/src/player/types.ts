@@ -14,6 +14,7 @@
 import type { FlagSet } from "../bitflag.js";
 import { flagSize } from "../bitflag.js";
 import { OF, PLAYER_FLAG_ENTRIES, PLAYER_TIMED_ENTRIES } from "../generated/index.js";
+import type { ModExtensible } from "../mod/extension.js";
 
 /** Number of timed effects (player-timed.h TMD_MAX); no MAX in the enum. */
 export const TMD_MAX = PLAYER_TIMED_ENTRIES.length;
@@ -97,7 +98,7 @@ export interface PlayerElementInfo {
  * struct player_race (player.h), bound from p_race.json.
  * `historyChart` is the starting chart index; `body` is a body registry index.
  */
-export interface PlayerRace {
+export interface PlayerRace extends ModExtensible {
   /** Index in the race array; record order mirrors p_race.txt. */
   ridx: number;
   name: string;
@@ -233,7 +234,7 @@ export interface StartItem {
 }
 
 /** struct player_class (player.h), bound from class.json. */
-export interface PlayerClass {
+export interface PlayerClass extends ModExtensible {
   /** Index in the class array; record order mirrors class.txt. */
   cidx: number;
   name: string;
