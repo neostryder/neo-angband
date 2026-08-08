@@ -491,7 +491,6 @@ object:shield:Wicker Shield:0x80:0x9C
 object:shield:Small Metal Shield:0x80:0x9E
 object:shield:Leather Shield:0x80:0x9D
 object:shield:Large Metal Shield:0x80:0x9F
-object:shield:Knight's Shield:0x80:0xD4
 object:shield:Mithril Shield:0x80:0xA0
 
 ##### Rings #####
@@ -696,6 +695,8 @@ object:hafted:Mighty Hammer:0x8A:0xE4
 object:crown:Massive Iron Crown:0x80:0x92
 
 ##### "Special Artifacts" #####
+
+# These artifacts use numeric SVALs to ensure unique matches
 
 # The Phial of Galadriel
 object:light:Phial:0x87:0xB3
