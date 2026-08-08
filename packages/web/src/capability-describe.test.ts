@@ -15,6 +15,7 @@ describe("describeCapability", () => {
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:room")).toMatchObject({ elevated: true });
+    expect(describeCapability("registry:profile")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:command")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:monster")).toMatchObject({ elevated: true });
     // vocabulary is additive, not an override of core logic -> not elevated.

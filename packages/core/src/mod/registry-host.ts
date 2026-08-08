@@ -9,6 +9,12 @@
  * - rooms    (RoomRegistry, gen/room.ts): register a room/level builder under
  *   any key, referenced from a (modded) dungeon profile - overriding level
  *   generation. Gated by "registry:room".
+ * - profiles (DungeonProfiles, gen/cave.ts): register a whole-cave builder and
+ *   add dungeon profiles, so a mod decides what KIND of level gets generated at
+ *   a depth - not just what a room inside it looks like. Gated by
+ *   "registry:profile". Without this, "registry:room" was a builder a mod could
+ *   register and nothing could ever select: dun_profile records name a builder,
+ *   and the profile list was fixed at boot from the gamedata pack.
  * - commands (ActionRegistry, game/player-turn.ts): register or replace the
  *   action a player command code runs - overriding what "walk", "cast", ... do.
  *   Gated by "registry:command". (This is the live player-command seam; the
@@ -48,6 +54,7 @@ import type { AgentCapabilities } from "../agent/types.js";
 import type { EffectCode } from "../effects/effect.js";
 import type { EffectDefinition, EffectRegistry } from "../effects/interpreter.js";
 import type { RoomBuilder, RoomRegistry } from "../gen/room.js";
+import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
 import type { GameState } from "../game/context.js";
 import type { Monster } from "../mon/monster.js";
@@ -58,6 +65,7 @@ import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 export const REGISTRY_CAPABILITIES = {
   effect: "registry:effect",
   room: "registry:room",
+  profile: "registry:profile",
   command: "registry:command",
   monster: "registry:monster",
   vocab: "registry:vocab",
@@ -79,6 +87,8 @@ export interface RegistryTargets {
   effects?: EffectRegistry | null;
   /** The room/level builder registry (CoreRegistries.rooms). */
   rooms?: RoomRegistry | null;
+  /** The dungeon-profile registry (CoreRegistries.profiles). */
+  profiles?: DungeonProfiles | null;
   /** The live player action registry (the decision-13 command seam). */
   commands?: ActionRegistry | null;
   /** The game state, for installing the monster-AI turn hook. */
@@ -103,6 +113,41 @@ export interface EffectFacade {
 export interface RoomFacade {
   /** Register (or replace) a room/level builder under a key. */
   register(name: string, builder: RoomBuilder): void;
+}
+
+/**
+ * The dungeon-profile facade (gated by registry:profile). A room builder makes a
+ * ROOM; a profile decides which whole-cave builder runs at a depth and with what
+ * parameters, so this is the seam for "my mod adds a new kind of level".
+ *
+ * `addProfile` appends, because choose_profile's weighted pass walks the list in
+ * order and its running-total randint0 depends on that order (gen/cave.ts) - a
+ * mod inserting into the middle would change which profile core itself picks
+ * from the same seed, which is a parity break, not a mod.
+ */
+export interface ProfileFacade {
+  /** Register (or replace) a whole-cave builder under a key. */
+  registerBuilder(key: string, builder: CaveBuilder): void;
+  /** Whether a cave-builder key is registered. */
+  hasBuilder(key: string): boolean;
+  /**
+   * The builder registered under a key; throws when there is none. Exposed so a
+   * mod can WRAP a core builder (generate the classic cave, then add its own
+   * feature to it) instead of only replacing it wholesale - decorating is the
+   * common case, and without this the only way to reach core's generation from
+   * a mod builder would be to reimplement it.
+   */
+  builder(key: string): CaveBuilder;
+  /**
+   * Append a dungeon profile. Its `builder` must already be registered - a
+   * profile naming an unknown builder would throw from inside generation, one
+   * level change after the mistake, so it is refused here instead.
+   */
+  addProfile(profile: DunProfile): void;
+  /** Look a profile up by name, or null. */
+  find(name: string): DunProfile | null;
+  /** Every profile, in selection order. */
+  list(): readonly DunProfile[];
 }
 
 /** The player-command facade (gated by registry:command). */
@@ -152,6 +197,7 @@ export interface VocabFacade {
 export interface ModRegistryHost {
   readonly effects: EffectFacade;
   readonly rooms: RoomFacade;
+  readonly profiles: ProfileFacade;
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly vocab: VocabFacade;
@@ -208,6 +254,39 @@ export function createModRegistryHost(
       register(name, builder): void {
         requireCap(capabilities, "room");
         requireTarget(targets.rooms, "room").register(name, builder);
+      },
+    },
+    profiles: {
+      registerBuilder(key, builder): void {
+        requireCap(capabilities, "profile");
+        requireTarget(targets.profiles, "profile").registerBuilder(key, builder);
+      },
+      hasBuilder(key): boolean {
+        requireCap(capabilities, "profile");
+        return requireTarget(targets.profiles, "profile").hasBuilder(key);
+      },
+      builder(key): CaveBuilder {
+        requireCap(capabilities, "profile");
+        return requireTarget(targets.profiles, "profile").builder(key);
+      },
+      addProfile(profile): void {
+        requireCap(capabilities, "profile");
+        const reg = requireTarget(targets.profiles, "profile");
+        if (!reg.hasBuilder(profile.builder)) {
+          throw new Error(
+            `mod registry: profile "${profile.name}" names cave builder ` +
+              `"${profile.builder}", which is not registered - register the builder first`,
+          );
+        }
+        reg.addProfile(profile);
+      },
+      find(name): DunProfile | null {
+        requireCap(capabilities, "profile");
+        return requireTarget(targets.profiles, "profile").find(name);
+      },
+      list(): readonly DunProfile[] {
+        requireCap(capabilities, "profile");
+        return requireTarget(targets.profiles, "profile").list();
       },
     },
     commands: {

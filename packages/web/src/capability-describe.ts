@@ -31,13 +31,18 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
   switch (domain) {
     case "*":
       return {
-        text: "Override ANY game system - effects, level generation, commands, monster AI, and vocabulary (full trusted, in-process access)",
+        text: "Override ANY game system - effects, level and dungeon generation, commands, monster AI, and vocabulary (full trusted, in-process access)",
         elevated: true,
       };
     case "effect":
       return { text: "Override effect, combat, and magic logic", elevated: true };
     case "room":
       return { text: "Override dungeon / level generation", elevated: true };
+    case "profile":
+      return {
+        text: "Add new kinds of dungeon level, and change which kind you get at a depth",
+        elevated: true,
+      };
     case "command":
       return { text: "Change what player commands do (and add commands)", elevated: true };
     case "monster":
