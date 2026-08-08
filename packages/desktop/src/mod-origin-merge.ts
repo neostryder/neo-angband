@@ -35,8 +35,9 @@
  * a hidden window and cannot import from the web package. Opening with the wrong
  * version is not a soft failure: too low and the open is refused, too high and the
  * game's own open stops triggering its upgrade. So the copy is pinned by a test that
- * reads idb.ts and fails when the two part (CLAUDE.md: if two places must agree, write
- * the test that fails when they part).
+ * reads idb.ts and fails when the two part - because a comment asking the next reader
+ * to keep two places in step is not a mechanism, and this is one of the places where
+ * drifting apart is silent until a player's mods are gone.
  */
 export const MOD_DB_NAME = "neo-angband";
 export const MOD_DB_VERSION = 2;

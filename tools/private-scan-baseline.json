@@ -49,12 +49,6 @@
       "why": "Two comments naming the same 'GandalfBob' defect the code above them prevents."
     },
     {
-      "rule": "codename-gandalf",
-      "path": "parity/phase3-2026-07-25/findings/W1-CITED.md",
-      "count": 1,
-      "why": "The parity finding that reported the 'GandalfBob' defect."
-    },
-    {
       "rule": "user-home-path",
       "path": "packages/core/src/host/args.test.ts",
       "count": 2,
