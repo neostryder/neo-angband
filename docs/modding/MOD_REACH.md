@@ -31,14 +31,16 @@ is not a capability - it is called out as such.
 | `registry:*` capabilities with real, wired, tested code | **8** (`blow`, `command`, `effect`, `monster`, `profile`, `room`, `store`, `vocab`) — `profile`, `blow` and `store` added 2026-08-08 |
 | Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
-| ...of those, addressable PER RECORD (patch / replace / remove) | **24** |
-| ...whole-file-replacement only, where a per-record patch is SILENTLY dropped | **20** |
+| ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`) |
+| ...whole-file-replacement only | **1** (`history`, whose records hold no field that is not a value a mod would change; an op against it is REPORTED) |
+| Individual records of the shipped pack that NO ref can name | **0** — was 73 before 2026-08-08, 61 of them in `ego_item` |
 | Resource categories a non-bundled mod can supply or override | **0** of 7 |
 
 > **The numbers in this table predate 2026-08-08 and are being re-derived row by
-> row, not edited.** Six rows of the gap list have now been re-measured; **three
+> row, not edited.** Seven rows of the gap list have now been re-measured; **four
 > had gone stale in the direction that matters** - reporting a capability as
-> missing after it shipped - and one (gap 6) has since been built and closed.
+> missing after it shipped, gap 2 for nine days after phase 2 landed - and one
+> (gap 6) has since been built and closed.
 > That ratio is the finding: this page has been under-reporting reach, which is
 > exactly how a plan quietly narrows. Treat any figure here as a lead until
 > its row below carries a re-measured date. The counting method is what needs
@@ -46,8 +48,8 @@ is not a capability - it is called out as such.
 > appearing in the denominator.
 
 What a mod installed from disk can do today, in a release build: **contribute
-gamedata JSON records** (24 record types per record, 20 more only as a whole
-file), **supply a tile pack** that registers its own Graphics row, **run its own
+gamedata JSON records** (43 of 44 files per record, and every individual record
+of the shipped pack is nameable by some ref), **supply a tile pack** that registers its own Graphics row, **run its own
 code** through `plugin.js` with the engine passed in, and reach the seven
 capability-gated registries - including, since 2026-08-08, **its own kind of
 dungeon level** (`registry:profile`) and **its own kind of monster attack**
@@ -356,8 +358,11 @@ counted toward code override:
 
 ## (b) Data
 
-This is the strongest area, and the numbers are good - with one measured hole
-that is large and silent.
+This is the strongest area, and as of 2026-08-08 the numbers carry no asterisk:
+every record of every shipped file is nameable by some ref, and every op either
+takes effect or is reported. The hole this section used to describe - "large and
+silent" - closed in two steps, per-file keys on 2026-07-29 and the 73-record
+residue on 2026-08-08. See gap 2.
 
 ### What a pack may contribute
 
@@ -417,13 +422,16 @@ Without the dependency, compose throws (`compose.ts:142-146`).
 
 ### The 20-file hole (the important measured finding)
 
-Per-record addressing requires that EVERY contributing pack's `records` be
-name-keyed with unique string slugs (`recordsComposable`,
-`packages/mod-sdk/src/loader.ts:68-77`). Files that fail that test are classified
-as passthrough (`loader.ts:103-114`) and their per-record ops are **stripped from
-the contribution before compose ever sees them** (`loader.ts:116-122`).
+Composition happens in two phases. Per-record COMPOSITION requires that every
+contributing pack's `records` be name-keyed with unique string slugs
+(`recordsComposable`, `packages/mod-sdk/src/loader.ts`); files that fail that test
+are classified passthrough and keep whole-file `records` semantics. Per-record
+ADDRESSING is a separate question and now covers both phases - see the note below
+the lists.
 
-Measured over the shipped core pack: **24 composable, 20 passthrough.**
+Measured over the shipped core pack: **24 composable, 20 passthrough** - a
+statement about which merge phase a file takes, no longer about whether a mod can
+patch one record of it.
 
 - **Composable (24)**: `activation`, `artifact`, `blow_effects`, `blow_methods`,
   `class`, `curse`, `dungeon_profile`, `monster`, `monster_base`,
@@ -440,14 +448,31 @@ Measured over the shipped core pack: **24 composable, 20 passthrough.**
     `Searching`, `Light`, `Teleportation`), `slay` (`demons`), `vault` (3
     duplicates).
 
-**The failure mode is silence.** A `patches` entry aimed at a passthrough file is
-dropped with no error, no conflict-report line, and no visible effect
-(`loader.ts:119`). The same is true of `removes`. So today a mod **cannot** patch
-a single object, ego item, vault, trap, store, brand, slay, object base,
-projection, or constant - it can only replace the whole file, destroying anything
-another mod put there. `loader.ts:22-24` calls refining passthrough "W1.2" and
-treats it as open, but says nothing about the duplicate-slug half, which is what
-disqualifies `object` / `ego_item` / `vault`.
+**That was the failure mode, and it is closed.** The paragraph here used to read
+"a `patches` entry aimed at a passthrough file is dropped with no error, no
+conflict-report line, and no visible effect", and it stayed on the page after it
+stopped being true - which is how two reviewers came to file the same
+non-existent P1. What is true now:
+
+- **Whole-file `records` semantics are unchanged**, and deliberately: a mod that
+  ships `constants.json` means "use mine", and the host binds one.
+- **Per-record ops apply on top**, in load order, against the winning array
+  (`applyPassthroughOps`, `loader.ts`), keyed by the declared per-file identity
+  in `record-key.ts` - `store` by its `STORE_*` code, `object_base` by tval,
+  `trap` by the `{name,desc}` pair, `constants` by the file.
+- **The duplicate-slug half** - the part the old note correctly said nothing
+  addressed - is closed too, in two pieces: `keySlug` keeps the `*` and `+` that
+  `slugify` dropped (which was the whole of `object`'s and `vault`'s problem, and
+  16 of `ego_item`'s), and a declared DISCRIMINATOR separates the names core
+  genuinely repeats (`core:of-acid#shot-arrow-bolt`). Measured over the shipped
+  pack: **0 records that no ref can name**, down from 73.
+- **`history` is the one file with no per-record identity**, on purpose: a
+  history record is `{chart:{chart,next,roll}, phrase}` and every part of that is
+  a value a mod would change. An op against it is REPORTED, not dropped.
+
+So a mod can now patch a single object, ego item, vault, trap, store, brand,
+slay, object base, projection or constant - and where a ref is genuinely
+ambiguous, the refusal names the refs that are not.
 
 ### Data-bound registries a record patch reaches
 
@@ -716,7 +741,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | # | Capability | Today | What would have to exist |
 | --- | --- | --- | --- |
 | 1 | **A mod can supply CODE without being compiled into the app** | **YES** (closed; re-measured 2026-08-08) | Done, and nothing below is blocked on it any more. `packages/web/src/mod-plugin.ts` loads a `plugin.js` sitting beside a mod's `manifest.json`, with the engine **passed in** rather than imported, so a mod installed from disk runs real code. The `import.meta.glob` in `mod-hooks.ts` remains, but it is now the path for the *bundled demo* mods only, not the only door. This row read "**no**" with "everything below is blocked on this" for long enough to misdirect planning - the rest of this table is re-derived, not edited. |
-| 2 | **Per-record patching of the other 20 gamedata files** | **no** (silently dropped, `loader.ts:119`) | A stable per-record KEY that does not depend on a unique string `name` - a composite key for `object_base`/`trap`, and a synthetic index or `(tval, sval)` key for the 6 files whose names collide in core's own data (`object` 45 dups, `ego_item` 28, `vault` 3, `brand`, `slay`, `chest_trap`). Plus a loud error when an op targets a passthrough file, so it can never be silent again. |
+| 2 | **Per-record patching of the other 20 gamedata files** | **CLOSED 2026-08-08** (phase 1 2026-07-29, residue 2026-08-08) | This row said "silently dropped, `loader.ts:119`" for nine days after that stopped being true, and the stale wording cost two reviewers a duplicate P1 each - see the header of `record-key.ts`. What is actually built: `loader.ts` applies per-record ops to passthrough files in a second phase against the winning array, keyed by the explicit per-file table in `packages/mod-sdk/src/record-key.ts` (19 files declared, 24 keyed by `name`), and an op that cannot be honoured produces a named line in `ComposedContent.problems` plus an attributed `faults` entry. **But a key declared per FILE is not every RECORD being addressable**, and the difference was 73 records: 61 of `ego_item`'s 107 - so "of Acid" could not be patched at all - plus 10 in `object` and 2 in `vault`. Two different causes, separated rather than papered over. (a) INFORMATION THE SLUG THREW AWAY: `slugify` drops `*` and `+`, so `*Healing*` and `Healing` arrived as one key; `keySlug` now spells the marks out, which alone fixes every `object` and `vault` collision and 16 of `ego_item`'s. (b) GENUINELY REPEATED NAMES: `ego_item` ships "of Acid" twice, so a declared DISCRIMINATOR appends the item types it applies to - `core:of-acid#shot-arrow-bolt` - which is not a guess but upstream's own `lookup_ego_item(name, tval, sval)`. A record answers to SEVERAL refs, and the pre-2026-08-08 slug is kept as an alias except where it would shadow another record's primary key, so nothing that resolved before stopped resolving. Result, asserted over the real pack: **0 unaddressable records** in every keyed file. `history` remains keyed by nothing on purpose - `{chart, phrase}` is all values a mod would change - and an op against it is reported. An ambiguous ref now REPLIES WITH THE REFS THAT WORK, because "ambiguous" with no alternative is where an author gives up. Proof: `record-key.test.ts` asserts zero-unaddressable in both directions and both controls were run (dropping `item.tval` from the discriminator, and reverting `keySlug`, each fail exactly their own tests); reach is proven from disk in `mod-code.node.test.ts` by a real mod folder patching one "of Acid" out of the REAL `ego_item.json` and leaving the others alone. |
 | 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks + 7 registries** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in `switch` statements; converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. Blow effects went first and are done (row 4), which also established the method: record golden vectors from the code BEFORE the refactor, then replay them against it. Remaining: 37-case project-feat, 27-case store, 11-case project-obj, and the rest of the denominator above. |
 | 4 | **Monster combat is moddable** | **CLOSED 2026-08-08** | `blow_effects.json` accepts a 31st record but its behaviour is a 26-case switch in `resolveBlowEffect` and again in `resolveBlowEffectLive` (`combat/mon-melee.ts`). **These are not duplicates.** Same 26 case labels, but 171 lines against 219, and they do different jobs: the first records side-effect *intents* for the worldless path, the second applies HP, messages and elemental reduction for real through `MonBlowEnv`. So "collapse the duplicated switch to one body first" - which this row used to say - describes a large, parity-sensitive refactor that would buy no modding capability. What was actually needed - and is now built - is ONE registry keyed by blow-effect name that BOTH bodies consult. `BlowEffectRegistry` (`combat/mon-melee.ts`) holds a `{record, live}` handler per effect; core seeds it with its 30 at boot (`registerCoreBlowEffects`, called from `wireGame`), and a mod reaches it through `registry:blow`. A mod normally writes ONE description and `blowEffect()` derives both halves, so the two paths cannot drift; `handlerFor(name)` hands back the installed handler, so wrapping core is possible instead of only replacing it. The 26-case switches were lifted case by case with nothing rewritten - including the places where the two paths disagree about RNG ORDER, which is a port wart core keeps. What proves it: `blow-vectors.json`, 480 scenarios recorded from the code BEFORE the registry existed and replayed against it, covering 30 effects x both paths x two envs that flip every branch, with a probe draw that catches a change in the NUMBER of random values even when nothing else moves. Reach is proven from disk (`mod-code.node.test.ts`), by a real `monMeleeAttack` on both paths. |
 | 5 | **Store behaviour is moddable** | **CLOSED 2026-08-08** | `StoreBehaviourRegistry` (`store/store.ts`) replaces both switches, keyed the way each decision is actually made: stack size by TVAL, the buy rule by store FEAT with an `ANY_STORE` wildcard, because upstream has one body every shop shares. Core registers its own rule under the wildcard, so `willBuyFor(ANY_STORE)` hands it back and a mod layers on top instead of reimplementing the worthless-item and buy-list logic. Two refusals are deliberate: an empty registry REFUSES rather than becoming permissive ("nobody decides" must not read as "every shop buys anything"), and the `maxStack` clamp stays in core, so a mod's stack rule cannot break a pile. Reached on both paths that ask - store maintenance and the sell command - because a seam supplied to every path but one is how a mod comes to work in town and not in the shop. Proof: 1,167 `mass_produce` golden vectors recorded before the refactor (the function had NO test at all), plus behavioural tests against the real pack and a from-disk mod that changes what a shop buys. `StoreRegistry`'s linear `byFeat`/`byName` scans remain, and are lookup rather than behaviour. |

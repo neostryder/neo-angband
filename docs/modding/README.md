@@ -180,20 +180,40 @@ Each content file may add, patch, replace, and remove records:
 - Modifying a record you do not own requires declaring its owner in
   `dependencies`; compose throws otherwise.
 
-> **Measured limitation, read this before designing around the above.**
-> Per-record addressing (`patches` / `replaces` / `removes` /
-> `fieldPatches`) works on **24 of the 44 record files**. The other 20 -
-> including `object`, `ego_item`, `vault`, `store`, `trap`, `brand`,
-> `slay`, `object_base`, `projection` and `constants` - are whole-file
-> passthrough only, because they either have no unique string `name` per
-> record or core's own data contains duplicate names. A `patches` entry
-> aimed at one of them is **silently dropped**: no error, no conflict-report
-> line, the mod simply does nothing. `MOD_REACH.md` carries the full
-> per-file list and the measurement.
+#### What a ref looks like when core ships the name twice
+
+A ref is `<pack>:<slug of the record's identity>`. For most files that
+identity is the record's `name`, so `core:kobold` is a monster and
+`mypack:frost-wyrm` is yours. Two cases need more:
+
+- **Files keyed by something other than `name`.** `store` is keyed by its
+  `STORE_*` code, `brand` and `slay` by `code`, `object_base` by tval,
+  `constants` by the file itself (`core:constants`, which is what a
+  `fieldPatch` against a game constant targets). The full table is
+  `packages/mod-sdk/src/record-key.ts`; the loader names the identity in
+  every error it reports, so you rarely have to look it up.
+- **Names core genuinely repeats.** `ego_item` ships "of Acid" more than
+  once - one for melee weapons, one for ammunition - so `core:of-acid`
+  names neither. Add a `#` and the item types it applies to:
+  `core:of-acid#shot-arrow-bolt`. Write the plain ref and the loader
+  refuses it *and lists the ones that work*, so the error tells you what
+  to type.
+
+The `*` and `+` in an Angband name are part of it: `*Healing*` is
+`core:potion--star-healing-star`, distinct from `Healing`.
+
+> **The old limitation here is gone, and this note replaces it.** Until
+> 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files
+> was silently dropped, and until 2026-08-08 a further 73 individual
+> records - 61 of `ego_item`'s 107 among them - were addressable by no
+> ref at all. Both are closed and measured: **every record of every
+> shipped file is now reachable**, except `history`, whose records are
+> `{chart, phrase}` with nothing in them that is not a value a mod would
+> change. An op against `history` is reported, never dropped.
+> `MOD_REACH.md` carries the measurement.
 
 Total conversions are the same mechanism at full throttle: depend on
-`core`, replace or remove what you do not want, add your own world - within
-the 24-file limit above.
+`core`, replace or remove what you do not want, add your own world.
 
 ### Adding things that do not exist in the base game
 

@@ -46,6 +46,32 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **Every record of every gamedata file is now nameable by a mod.** Declaring a
+  per-file key on 2026-07-29 stopped per-record patches being silently dropped,
+  but a key per FILE is not every RECORD being addressable, and the difference
+  was **73 records that no ref could name** - 61 of `ego_item`'s 107 among them,
+  so a mod could not patch "of Acid" at all. Two unrelated causes, separated
+  rather than papered over. The first was information the slug threw away:
+  `slugify` collapses `*` and `+`, so `*Healing*` and `Healing` arrived as one
+  key even though nothing about the data was ambiguous - the key now spells the
+  marks out (`core:potion--star-healing-star`), which alone accounts for every
+  collision in `object` and `vault` and 16 of `ego_item`'s. The second was names
+  core genuinely repeats, which no care with the name can separate, so a file may
+  now declare a DISCRIMINATOR: `ego_item` uses the item types an ego applies to,
+  giving `core:of-acid#shot-arrow-bolt`. That is not an invented identity - it is
+  upstream's own `lookup_ego_item(name, tval, sval)`.
+  Nothing that resolved before stopped resolving: a record answers to several
+  refs and the older slug is kept as an alias, dropped only where it would shadow
+  another record's primary key - which is not hypothetical, since `*Healing*`'s
+  legacy key is plain `Healing`'s real one. An ambiguous ref is refused with the
+  refs that DO work listed, because "ambiguous" with no alternative is where an
+  author gives up. Measured over the shipped pack: **0 unaddressable records**,
+  asserted in both directions, with both controls run. Proven from disk by a real
+  mod folder patching one "of Acid" out of the real `ego_item.json` and leaving
+  the others untouched. `history` stays keyed by nothing on purpose - a history
+  record is `{chart, phrase}` and every part of it is a value a mod would change
+  - and an op against it is reported, never dropped.
+
 - **`registry:store` — a mod can change what shops buy and what they stock.**
   A mod could already add a store record and its own object types; it could not
   make the shop deal in them, because "what will this shop buy" and "how many
