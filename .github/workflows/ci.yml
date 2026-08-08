@@ -24,6 +24,15 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7
+      # reference-tree.test.ts compares reference/ against the Angband 4.2.6
+      # commit, and actions/checkout is shallow, so that object is not here.
+      # Fetch the one commit rather than fetch-depth: 0 - this history descends
+      # from Angband's, so a full clone is enormous and paid on every run.
+      # The test FAILS rather than skips when the object is missing, on purpose:
+      # a baseline nobody can check is a baseline nobody is keeping, which is
+      # the exact failure that test was written for.
+      - name: Fetch the 4.2.6 baseline commit
+        run: git fetch --no-tags --depth=1 origin f3082213b73f3e463e3d0d60bff4b00462beae6e
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
