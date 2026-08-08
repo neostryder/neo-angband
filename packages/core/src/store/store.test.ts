@@ -14,7 +14,11 @@ import type { ObjPackJson } from "../obj/types.js";
 import { Rng } from "../rng.js";
 import { StoreRegistry } from "./bind.js";
 import {
+  ANY_STORE,
   bindStoreRuntime,
+  massProduce,
+  registerCoreStoreBehaviour,
+  StoreBehaviourRegistry,
   storeMaint,
   storeReset,
   storeUpdate,
@@ -394,5 +398,115 @@ describe("store_update: the days spent in the dungeon (store.c:1422)", () => {
     storeUpdate(one.ctx, 1);
     storeUpdate(many.ctx, 6);
     expect(stockOf(one.stores)).not.toBe(stockOf(many.stores));
+  });
+});
+
+/**
+ * The store-behaviour registry, against the real pack.
+ *
+ * Reach is proven from disk in `packages/web/src/mod-code.node.test.ts`; these
+ * are the tests that a registered handler actually DECIDES - that overriding it
+ * changes what a shop buys and what it stocks, rather than merely sitting in a
+ * map nothing consults.
+ */
+describe("store behaviour registry (store_will_buy / mass_produce)", () => {
+  function seeded(): StoreBehaviourRegistry {
+    const b = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(b);
+    return b;
+  }
+
+  it("core's rules are in the registry, not hardcoded around it", () => {
+    const b = seeded();
+    expect(b.willBuyFor(ANY_STORE)).not.toBeNull();
+    /* Every tval the switch used to name, and no more. */
+    expect(b.massProduceTvals().length).toBe(27);
+    expect(b.massProduceFor(TV.POTION)).not.toBeNull();
+    expect(b.massProduceFor(TV.RING)).toBeNull();
+  });
+
+  it("a per-store override decides the sale, and only for that store", () => {
+    const b = seeded();
+    const general = { feat: FEAT.STORE_GENERAL, buy: null };
+    const alchemy = { feat: FEAT.STORE_ALCHEMY, buy: null };
+    const sword = makeKind(TV.SWORD);
+
+    /* Core: a general store with no buy list buys anything of value. */
+    expect(
+      storeWillBuy(reg, general, sword, false, false, false, NO_FLAGS_KNOWN, b),
+    ).toBe(true);
+
+    b.registerWillBuy(FEAT.STORE_GENERAL, () => false);
+    expect(
+      storeWillBuy(reg, general, sword, false, false, false, NO_FLAGS_KNOWN, b),
+    ).toBe(false);
+    /* The other shop is untouched: the key really is per store. */
+    expect(
+      storeWillBuy(reg, alchemy, sword, false, false, false, NO_FLAGS_KNOWN, b),
+    ).toBe(true);
+  });
+
+  it("wraps core's buy rule instead of reimplementing it", () => {
+    const b = seeded();
+    const core = b.willBuyFor(ANY_STORE);
+    expect(core).not.toBeNull();
+    let asked = 0;
+    b.registerWillBuy(ANY_STORE, (ctx) => {
+      asked += 1;
+      /* Refuse swords, defer everything else to 4.2.6's own rule. */
+      return ctx.obj.tval === TV.SWORD ? false : core!(ctx);
+    });
+    const store = { feat: FEAT.STORE_GENERAL, buy: null };
+    expect(
+      storeWillBuy(reg, store, makeKind(TV.SWORD), false, false, false, NO_FLAGS_KNOWN, b),
+    ).toBe(false);
+    expect(
+      storeWillBuy(reg, store, makeKind(TV.POTION), true, false, false, NO_FLAGS_KNOWN, b),
+    ).toBe(true);
+    expect(asked).toBe(2);
+  });
+
+  it("a stack rule a mod installs sizes the object for real", () => {
+    const b = seeded();
+    const potion = makeKind(TV.POTION);
+    b.registerMassProduce(TV.POTION, () => 7);
+    massProduce(reg, new Rng(1), potion, b);
+    expect(potion.number).toBe(7);
+  });
+
+  it("the maxStack clamp stays core's, so a mod cannot break a pile", () => {
+    const b = seeded();
+    const potion = makeKind(TV.POTION);
+    b.registerMassProduce(TV.POTION, () => 99999);
+    massProduce(reg, new Rng(1), potion, b);
+    expect(potion.number).toBe(potion.kind.base.maxStack);
+  });
+
+  it("an unregistered tval leaves the stack at 1, as the switch default did", () => {
+    const b = seeded();
+    const ring = makeKind(TV.RING);
+    massProduce(reg, new Rng(1), ring, b);
+    expect(ring.number).toBe(1);
+  });
+
+  /**
+   * "Nobody decides" must not read as "every shop buys anything". An emptied
+   * registry is a broken host, and a permissive default would turn that into a
+   * silent economy change rather than an obvious refusal.
+   */
+  it("refuses rather than becoming permissive when no rule is installed", () => {
+    const empty = new StoreBehaviourRegistry();
+    expect(
+      storeWillBuy(
+        reg,
+        { feat: FEAT.HOME, buy: null },
+        makeKind(TV.POTION),
+        true,
+        false,
+        false,
+        NO_FLAGS_KNOWN,
+        empty,
+      ),
+    ).toBe(false);
   });
 });

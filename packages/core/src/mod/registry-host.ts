@@ -64,6 +64,12 @@ import type {
   BlowEffectRegistry,
 } from "../combat/mon-melee.js";
 import { blowEffect } from "../combat/mon-melee.js";
+import type {
+  MassProduceHandler,
+  StoreBehaviourRegistry,
+  WillBuyHandler,
+} from "../store/store.js";
+import { ANY_STORE } from "../store/store.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 
@@ -73,6 +79,7 @@ export const REGISTRY_CAPABILITIES = {
   room: "registry:room",
   profile: "registry:profile",
   blow: "registry:blow",
+  store: "registry:store",
   command: "registry:command",
   monster: "registry:monster",
   vocab: "registry:vocab",
@@ -98,6 +105,8 @@ export interface RegistryTargets {
   profiles?: DungeonProfiles | null;
   /** The monster blow-effect handler table (GameState.blowEffects). */
   blows?: BlowEffectRegistry | null;
+  /** Store behaviour: what a shop buys, and how it stocks (GameState.storeBehaviour). */
+  stores?: StoreBehaviourRegistry | null;
   /** The live player action registry (the decision-13 command seam). */
   commands?: ActionRegistry | null;
   /** The game state, for installing the monster-AI turn hook. */
@@ -192,6 +201,32 @@ export interface BlowFacade {
   names(): readonly string[];
 }
 
+/**
+ * The store-behaviour facade (gated by registry:store).
+ *
+ * Two decisions used to be switches with nothing to register into: what a shop
+ * will BUY, and how many of a thing it stocks. A mod could already add a store
+ * record and its own object types; it could not make the shop deal in them.
+ *
+ * The keys follow how each decision is actually made upstream - stack size by
+ * TVAL, the buy decision by store FEAT with a wildcard for "every store", which
+ * is the single body upstream shares. `willBuyFor(ANY_STORE)` hands back core's
+ * own rule so a mod can wrap it rather than reimplement the worthless-item and
+ * buy-list logic.
+ */
+export interface StoreFacade {
+  /** Install (or replace) the stack rule for a tval (mass_produce). */
+  setMassProduce(tval: number, handler: MassProduceHandler): void;
+  /** The stack rule currently installed for a tval, or null. */
+  massProduceFor(tval: number): MassProduceHandler | null;
+  /** Every tval that has a stack rule. */
+  massProduceTvals(): readonly number[];
+  /** Install the buy decision for one store feat, or for every store. */
+  setWillBuy(feat: number | typeof ANY_STORE, handler: WillBuyHandler): void;
+  /** The buy decision installed for that key, or null. Wrap by re-registering. */
+  willBuyFor(feat: number | typeof ANY_STORE): WillBuyHandler | null;
+}
+
 /** The player-command facade (gated by registry:command). */
 export interface CommandFacade {
   /** Register (or replace) the action a player command code runs. */
@@ -241,6 +276,7 @@ export interface ModRegistryHost {
   readonly rooms: RoomFacade;
   readonly profiles: ProfileFacade;
   readonly blows: BlowFacade;
+  readonly stores: StoreFacade;
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly vocab: VocabFacade;
@@ -352,6 +388,28 @@ export function createModRegistryHost(
       names(): readonly string[] {
         requireCap(capabilities, "blow");
         return requireTarget(targets.blows, "blow").names();
+      },
+    },
+    stores: {
+      setMassProduce(tval, handler): void {
+        requireCap(capabilities, "store");
+        requireTarget(targets.stores, "store").registerMassProduce(tval, handler);
+      },
+      massProduceFor(tval): MassProduceHandler | null {
+        requireCap(capabilities, "store");
+        return requireTarget(targets.stores, "store").massProduceFor(tval);
+      },
+      massProduceTvals(): readonly number[] {
+        requireCap(capabilities, "store");
+        return requireTarget(targets.stores, "store").massProduceTvals();
+      },
+      setWillBuy(feat, handler): void {
+        requireCap(capabilities, "store");
+        requireTarget(targets.stores, "store").registerWillBuy(feat, handler);
+      },
+      willBuyFor(feat): WillBuyHandler | null {
+        requireCap(capabilities, "store");
+        return requireTarget(targets.stores, "store").willBuyFor(feat);
       },
     },
     commands: {

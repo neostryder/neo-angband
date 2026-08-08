@@ -94,6 +94,12 @@ export interface StoreMaintContext {
    * allowArtifacts false). Absent for worldless callers.
    */
   onArtifactLost?: (art: Artifact) => void;
+  /**
+   * Store behaviour a mod may have added to (StoreBehaviourRegistry). wireGame
+   * builds one per game and seeds it with core's; absent means the core-only
+   * fallback, which is what the worldless harnesses want.
+   */
+  behaviour?: StoreBehaviourRegistry;
 }
 
 /** OSTACK_STORE/PACK never read the quiver limits, so these go unused here. */
@@ -262,7 +268,23 @@ export function storeWillBuy(
   noSelling: boolean,
   runesKnown: boolean,
   flagKnown: (flag: number) => boolean,
+  behaviour: StoreBehaviourRegistry = fallbackStoreBehaviour(),
 ): boolean {
+  const handler =
+    behaviour.willBuyFor(store.feat) ?? behaviour.willBuyFor(ANY_STORE);
+  /* An emptied registry refuses rather than becoming permissive: "nobody
+   * decides" must not read as "every store buys anything". */
+  if (handler === null) return false;
+  return handler({ reg, store, obj, aware, noSelling, runesKnown, flagKnown });
+}
+
+/**
+ * store_will_buy's faithful 4.2.6 body, registered under ANY_STORE so that it
+ * is both the default AND something a mod can take hold of and wrap.
+ */
+function coreWillBuy(ctx: StoreWillBuyContext): boolean {
+  const { reg, store, obj, aware, noSelling, runesKnown, flagKnown } = ctx;
+
   /* Home accepts anything. */
   if (store.feat === FEAT.HOME) return true;
 
@@ -300,62 +322,209 @@ function massRoll(rng: Rng, times: number, max: number): number {
   return t;
 }
 
-/** mass_produce (L696): set a stack size for cheap store items. */
-export function massProduce(reg: ObjRegistry, rng: Rng, obj: GameObject): void {
-  let size = 1;
+/**
+ * mass_produce (L696): set a stack size for cheap store items.
+ *
+ * The 27-case tval switch is a registry now, so a mod can give its own object
+ * type a stack rule or change one of core's. The maxStack clamp stays here
+ * rather than in the handlers: it is the object base's limit, not the store's
+ * decision, and a mod should not have to remember it to avoid breaking piles.
+ */
+export function massProduce(
+  reg: ObjRegistry,
+  rng: Rng,
+  obj: GameObject,
+  behaviour: StoreBehaviourRegistry = fallbackStoreBehaviour(),
+): void {
   const cost = objectValueReal(reg, obj, 1);
+  const handler = behaviour.massProduceFor(obj.tval);
+  /* No handler is upstream's `default: break` - the stack stays 1. */
+  const size =
+    handler === null
+      ? 1
+      : handler({
+          rng,
+          obj,
+          cost,
+          massRoll: (times, max) => massRoll(rng, times, max),
+        });
+  obj.number = Math.min(size, obj.kind.base.maxStack);
+}
 
-  switch (obj.tval) {
-    case TV.FOOD:
-    case TV.MUSHROOM:
-    case TV.FLASK:
-    case TV.LIGHT:
-      if (cost <= 5) size += massRoll(rng, 3, 5);
-      if (cost <= 20) size += massRoll(rng, 3, 5);
-      break;
-    case TV.POTION:
-    case TV.SCROLL:
-      if (cost <= 60) size += massRoll(rng, 3, 5);
-      if (cost <= 240) size += massRoll(rng, 1, 5);
-      break;
-    case TV.MAGIC_BOOK:
-    case TV.PRAYER_BOOK:
-    case TV.NATURE_BOOK:
-    case TV.SHADOW_BOOK:
-    case TV.OTHER_BOOK:
-      if (cost <= 50) size += massRoll(rng, 2, 3);
-      if (cost <= 500) size += massRoll(rng, 1, 3);
-      break;
-    case TV.SOFT_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.SHIELD:
-    case TV.GLOVES:
-    case TV.BOOTS:
-    case TV.CLOAK:
-    case TV.HELM:
-    case TV.CROWN:
-    case TV.SWORD:
-    case TV.POLEARM:
-    case TV.HAFTED:
-    case TV.DIGGING:
-    case TV.BOW:
-      if (obj.ego) break;
-      if (cost <= 10) size += massRoll(rng, 3, 5);
-      if (cost <= 100) size += massRoll(rng, 3, 5);
-      break;
-    case TV.SHOT:
-    case TV.ARROW:
-    case TV.BOLT:
-      if (cost <= 5) size = rng.randint1(2) * 20;
-      else if (cost > 5 && cost <= 50) size = rng.randint1(4) * 10;
-      else if (cost > 50 && cost <= 500) size = rng.randint1(4) * 5;
-      else size = 1;
-      break;
-    default:
-      break;
+/* ------------------------------------------------------------------ *
+ * The store-behaviour registry
+ * ------------------------------------------------------------------ *
+ *
+ * Two dispatch points lived here as switches: what a store WILL BUY, and how
+ * many of a thing it stocks. Neither could be reached from outside its
+ * function, so "my mod adds a shop that deals in X" was a data record with no
+ * behaviour behind it - the same gap the blow-effect registry closed for
+ * monsters, in the other half of the game.
+ */
+
+/** The wildcard key: the buy decision every store falls back to. */
+export const ANY_STORE = "*" as const;
+
+/** What `mass_produce` is deciding, handed to one tval's handler. */
+export interface MassProduceContext {
+  rng: Rng;
+  obj: GameObject;
+  /** object_value_real(obj, 1) - the cost band every core arm keys on. */
+  cost: number;
+  /** mass_roll(times, max): the sum of `times` rolls of randint0(max). */
+  massRoll: (times: number, max: number) => number;
+}
+
+/** Returns the stack size, BEFORE the object base's maxStack clamp. */
+export type MassProduceHandler = (ctx: MassProduceContext) => number;
+
+/** What `store_will_buy` is deciding, handed to one store's handler. */
+export interface StoreWillBuyContext {
+  reg: ObjRegistry;
+  store: { feat: number; buy: ObjectBuy[] | null };
+  obj: GameObject;
+  /** Feeds object_value. */
+  aware: boolean;
+  /** birth_no_selling. */
+  noSelling: boolean;
+  /** object_runes_known(obj), for the no-selling worthless exception. */
+  runesKnown: boolean;
+  /** object_flag_is_known(player, obj, flag), bound to this object. */
+  flagKnown: (flag: number) => boolean;
+}
+
+export type WillBuyHandler = (ctx: StoreWillBuyContext) => boolean;
+
+/**
+ * Store behaviour a mod can add to, override or wrap.
+ *
+ * Keyed the way each decision is actually made: stack size by TVAL, because
+ * that is what upstream's switch keys on, and the buy decision by store FEAT
+ * with a wildcard, because upstream has one body that every store shares.
+ * Registering core's body under the wildcard is what makes wrapping possible -
+ * a mod takes `willBuyFor(ANY_STORE)` and calls through it, instead of
+ * reimplementing the worthless-item and buy-list rules and hoping they stay
+ * correct.
+ */
+export class StoreBehaviourRegistry {
+  private readonly mass = new Map<number, MassProduceHandler>();
+  private readonly buy = new Map<number | typeof ANY_STORE, WillBuyHandler>();
+
+  /** Install (or replace) the stack rule for a tval. */
+  registerMassProduce(tval: number, handler: MassProduceHandler): void {
+    this.mass.set(tval, handler);
   }
 
-  obj.number = Math.min(size, obj.kind.base.maxStack);
+  /** The stack rule currently installed for a tval, or null. */
+  massProduceFor(tval: number): MassProduceHandler | null {
+    return this.mass.get(tval) ?? null;
+  }
+
+  /** Every tval that has a stack rule. */
+  massProduceTvals(): readonly number[] {
+    return [...this.mass.keys()];
+  }
+
+  /** Install the buy decision for one store feat, or for ANY_STORE. */
+  registerWillBuy(feat: number | typeof ANY_STORE, handler: WillBuyHandler): void {
+    this.buy.set(feat, handler);
+  }
+
+  /** The buy decision installed for that key, or null. Wrap by re-registering. */
+  willBuyFor(feat: number | typeof ANY_STORE): WillBuyHandler | null {
+    return this.buy.get(feat) ?? null;
+  }
+}
+
+/**
+ * The registry used when a caller supplied none: the worldless harnesses and
+ * the direct-call tests. `wireGame` builds a fresh one per game, so one
+ * character's mod cannot leak into the next, and a mod never reaches this one
+ * because the facade refuses to register when the host wired no registry.
+ */
+let storeFallback: StoreBehaviourRegistry | null = null;
+function fallbackStoreBehaviour(): StoreBehaviourRegistry {
+  if (storeFallback === null) {
+    storeFallback = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(storeFallback);
+  }
+  return storeFallback;
+}
+
+/**
+ * Seed a registry with 4.2.6's own behaviour: the buy decision, and the five
+ * arms of the mass_produce switch, lifted arm by arm with nothing rewritten.
+ * `mass-produce-vectors.json` is what proves none of them moved.
+ */
+export function registerCoreStoreBehaviour(reg: StoreBehaviourRegistry): void {
+  reg.registerWillBuy(ANY_STORE, coreWillBuy);
+
+  const arm = (tvals: readonly number[], handler: MassProduceHandler): void => {
+    for (const tval of tvals) reg.registerMassProduce(tval, handler);
+  };
+
+  arm([TV.FOOD, TV.MUSHROOM, TV.FLASK, TV.LIGHT], ({ cost, massRoll: roll }) => {
+    let size = 1;
+    if (cost <= 5) size += roll(3, 5);
+    if (cost <= 20) size += roll(3, 5);
+    return size;
+  });
+
+  arm([TV.POTION, TV.SCROLL], ({ cost, massRoll: roll }) => {
+    let size = 1;
+    if (cost <= 60) size += roll(3, 5);
+    if (cost <= 240) size += roll(1, 5);
+    return size;
+  });
+
+  /* Unreachable with 4.2.6 data - every shipped book costs more than the 500
+   * ceiling - and kept faithful regardless. A mod adding a cheap book reaches
+   * it; mass-produce-vectors.test.ts asserts the absence so that the day a
+   * pack change makes books stack, somebody finds out. */
+  arm(
+    [TV.MAGIC_BOOK, TV.PRAYER_BOOK, TV.NATURE_BOOK, TV.SHADOW_BOOK, TV.OTHER_BOOK],
+    ({ cost, massRoll: roll }) => {
+      let size = 1;
+      if (cost <= 50) size += roll(2, 3);
+      if (cost <= 500) size += roll(1, 3);
+      return size;
+    },
+  );
+
+  arm(
+    [
+      TV.SOFT_ARMOR,
+      TV.HARD_ARMOR,
+      TV.SHIELD,
+      TV.GLOVES,
+      TV.BOOTS,
+      TV.CLOAK,
+      TV.HELM,
+      TV.CROWN,
+      TV.SWORD,
+      TV.POLEARM,
+      TV.HAFTED,
+      TV.DIGGING,
+      TV.BOW,
+    ],
+    ({ obj, cost, massRoll: roll }) => {
+      /* An ego item is never mass-produced: upstream breaks out of the case
+       * BEFORE either roll, so no RNG is drawn either. */
+      if (obj.ego) return 1;
+      let size = 1;
+      if (cost <= 10) size += roll(3, 5);
+      if (cost <= 100) size += roll(3, 5);
+      return size;
+    },
+  );
+
+  /* Ammo ASSIGNS rather than adds, which is why it cannot share the arm above. */
+  arm([TV.SHOT, TV.ARROW, TV.BOLT], ({ rng, cost }) => {
+    if (cost <= 5) return rng.randint1(2) * 20;
+    if (cost > 5 && cost <= 50) return rng.randint1(4) * 10;
+    if (cost > 50 && cost <= 500) return rng.randint1(4) * 5;
+    return 1;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -596,7 +765,7 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
     /* No worthless items. */
     if (objectValueReal(reg, obj, 1) < 1) continue;
 
-    massProduce(reg, rng, obj);
+    massProduce(reg, rng, obj, ctx.behaviour);
 
     if (!storeCarry(rng, reg, constants, store, obj, true)) continue;
 
