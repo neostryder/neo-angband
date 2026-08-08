@@ -662,6 +662,7 @@ export function checkDevices(
 ): number {
   let action: string;
   let what: string | null = null;
+  let activated = false;
   if (tvalIsRod(obj.tval)) {
     action = "zap the rod";
   } else if (tvalIsWand(obj.tval)) {
@@ -672,6 +673,7 @@ export function checkDevices(
     what = "staff";
   } else {
     action = "activate it";
+    activated = true;
   }
 
   /* Notice empty staffs / wands. */
@@ -685,6 +687,17 @@ export function checkDevices(
     env.msg?.(`You failed to ${action} properly.`);
     return fail < 1001 ? 0 : -1;
   }
+
+  /* Notice activations (cmd-obj.c L97-103). This is the one knowledge write
+   * the awareness rule cannot express: activating an item teaches THAT
+   * object's effect or activation without making its kind aware, which is how
+   * a special-artifact kind (flavor_init leaves the 14 of them unaware,
+   * obj-util.c L243-245) ever comes to aim itself properly on the next use. */
+  if (activated) {
+    if (obj.effect) obj.knownEffect = obj.effect;
+    else if (obj.activation) obj.knownActivation = obj.activation;
+  }
+
   return 1;
 }
 
@@ -1281,9 +1294,16 @@ export function useAux(
   const fromFloor = opts.fromFloor ?? false;
   const wasAware = deps.flavor ? deps.flavor.isAware(obj.kind) : true;
 
-  /* Determine whether we know an item needs to be aimed. */
+  /* Determine whether we know an item needs to be aimed (cmd-obj.c L424-429).
+   * The last two disjuncts are the per-object knowledge check_devices wrote on
+   * a previous activation: an item whose KIND is still unaware can already be
+   * known to aim because THIS one was used before. */
   const knownAim =
-    tvalIsWand(obj.tval) || tvalIsRod(obj.tval) || wasAware;
+    tvalIsWand(obj.tval) ||
+    tvalIsRod(obj.tval) ||
+    wasAware ||
+    (!!obj.effect && obj.knownEffect === obj.effect) ||
+    (!!obj.activation && obj.knownActivation === obj.activation);
 
   let dir = 5;
   if (objNeedsAim(obj, deps)) {

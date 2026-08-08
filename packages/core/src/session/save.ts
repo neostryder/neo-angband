@@ -188,6 +188,16 @@ export interface SavedObject {
   effectPresent?: boolean;
   /** C wr_item's saved activation index (save.c:184-188). */
   activationIndex?: number;
+  /**
+   * obj->known->effect, which upstream only ever holds as NULL or the object's
+   * own effect pointer - so one bit says it all. Absent in a save written
+   * before the per-object knowledge fields existed, which loads as "whatever
+   * the awareness rule gives", i.e. exactly the old behaviour: no
+   * SAVE_VERSION bump, and an existing character reads as itself.
+   */
+  knownEffectPresent?: boolean;
+  /** obj->known->activation, same NULL-or-own-pointer encoding. */
+  knownActivationPresent?: boolean;
 }
 
 export function serializeObject(
@@ -228,6 +238,12 @@ export function serializeObject(
     note: obj.note,
     effectPresent: obj.effect !== null,
     activationIndex: obj.activation?.index ?? 0,
+    ...(obj.knownEffect !== undefined
+      ? { knownEffectPresent: obj.knownEffect !== null }
+      : {}),
+    ...(obj.knownActivation !== undefined
+      ? { knownActivationPresent: obj.knownActivation !== null }
+      : {}),
   };
 }
 
@@ -328,6 +344,17 @@ export function deserializeObject(
     effect: effectPresent ? kind.effect : null,
     effectMsg: effectPresent ? kind.effectMsg : "",
     activation,
+    /* Re-point at the SAME references the two lines above just restored, so
+     * objectEffectIsKnown's identity test still holds after a round trip. */
+    ...(data.knownEffectPresent !== undefined
+      ? {
+          knownEffect:
+            data.knownEffectPresent && effectPresent ? kind.effect : null,
+        }
+      : {}),
+    ...(data.knownActivationPresent !== undefined
+      ? { knownActivation: data.knownActivationPresent ? activation : null }
+      : {}),
     time: { ...data.time },
     timeout: data.timeout,
     number: data.number,

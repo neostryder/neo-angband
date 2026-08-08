@@ -650,6 +650,7 @@
     "cycleStoreInclusion",
     "damageEffectApplyToPlayer",
     "damageEffectKiller",
+    "deathKnowledge",
     "debugEnabled",
     "decodeSavedGame",
     "decreaseTimeouts",
