@@ -46,6 +46,43 @@ Current state of the project at version `0.18.0`. High level, what exists today:
 
 ### Added
 
+- **The last three systems the port was missing: quests, arena mode, and
+  persistent levels.** Quests now exist as a system rather than as two hard-coded
+  monsters - the quest list, its save block, the level feeling it changes, and
+  the five holes that were still open when the row was written. Arena mode
+  arrives through `prepare_next_level`'s own branch, not through the dungeon
+  profile list, which is why it is deliberately *not* selectable as a profile.
+  Persistent levels keep the dungeon you left, and bring full town store
+  generation with them.
+
+- **`lore.txt`: monster memory that outlives the character.** What you learned
+  about a monster is written out and read back, so a new character in the same
+  install starts with the knowledge you earned - as upstream does.
+
+- **Monsters emit light and darkness.** No monster in the game had ever lit a
+  corridor or darkened one; the light-source field existed on the record and
+  nothing read it. It is now on the mod API surface too, so a mod can give a
+  monster its own glow.
+
+- **The monster message queue.** Upstream collects a turn's monster messages and
+  prints them together - "you have slain 3 kobolds" rather than three separate
+  lines. The port printed each one as it happened, which is the single biggest
+  reason the message log did not *read* like Angband. It now goes on the same
+  queue upstream uses.
+
+- **`randart.log` and `randart.txt`.** The randart generator narrates its own
+  design loop again: every `count_*`, `add_*`, and the whole power calculation,
+  from 122 missing lines down to none. If you want to know why a random artifact
+  came out the way it did, the answer is in the file.
+
+- **Custom option sets that survive into your next character.**
+  `options_save_custom` / `restore_custom` / `restore_maintainer` had nowhere to
+  write; the options a player sets for their *next* character now persist.
+
+- **The ENTER command browser**, the `purple_uniques` lore recolour, temporary
+  brands and slays in object info, the launcher's contribution to the character
+  sheet, and the timed-effect columns that had no supplier.
+
 - **`registry:profile`: a mod can add its own kind of dungeon level.** A room
   builder makes a room; a dungeon *profile* decides which whole-cave builder runs
   at a depth. `ProfileFacade` opens the live `DungeonProfiles` registry to a
@@ -57,6 +94,15 @@ Current state of the project at version `0.18.0`. High level, what exists today:
   change which profile the *base game* picks from the same seed. Proven by a
   sample mod written to a real folder and imported for real, asserting on the
   registry rather than on the mod's own report.
+
+- **All six registry domains are now proven reachable from disk.** Effects,
+  rooms, commands, monster AI, vocabulary and profiles each have a sample mod
+  written to a folder and imported for real, asserting on the live registry.
+  They had a bundled demo before, which proves the facade works but not that a
+  mod a player installs can get to it.
+
+- **`parity/DIVERGENCES.md`**: what this port deliberately does not match in
+  4.2.6, and why - separate from what it has not got to yet.
 
 - **"Where your characters live": the screen that says what would destroy a
   roster.** Everything this game saves is in browser storage - the roster in
@@ -143,6 +189,23 @@ Current state of the project at version `0.18.0`. High level, what exists today:
   every logged Windows path actually arrives in.
 
 ### Changed
+
+- **The working record left the public tree.** 218 files of construction notes,
+  audit ledgers and planning material moved into a private repository. What
+  public code *cites* stayed - the parity ledger behind the parity claim, the
+  accounting those citations resolve to, and the machinery guards actually
+  execute - because a comment citing a document the reader has is provenance,
+  and the same comment citing nothing is an excuse. `docs/WORKING_RECORD.md`
+  says which citations lead where and what they concluded.
+
+- **`reference/` is the 4.2.6 tag, and something checks that it is.** The vendored
+  upstream tree had drifted onto master; it is back on the official baseline with
+  a guard, and four unowned Windows binaries are gone from the public tree.
+
+- **The tiles the game serves are 4.2.6's, and are stored once.** The served tree
+  had been built from upstream master, and twenty megabytes of tiles were
+  committed twice; the served copy is now generated.
+
 
 - **An imported mod zip is moved aside, not deleted.** It used to be unlinked once
   the mod was in storage, which is tidy and wrong: the zip is the player's copy of
@@ -248,6 +311,65 @@ Everything below came out of one play session on the 0.15.3 build.
   against all three places that carry it.
 
 ### Fixed
+
+Six days of parity work against the 4.2.6 golden master turned up defects a
+player could feel. The ones worth naming:
+
+- **Free Action did not stop a paralysing breath.** The flag was checked on the
+  melee path and not on the breath path.
+
+- **A resisted breath said nothing, while the same flag resisted in melee said
+  everything.** Two paths, one rule, and only one of them told you.
+
+- **A Wand of Polymorph did nothing at all.**
+
+- **Banishing a monster destroyed the artifact it was carrying**, and **a store
+  could quietly destroy the artifact you sold it.** Both are unrecoverable in a
+  permadeath game.
+
+- **A decoy did not stop a bolt**, which is the one thing a decoy is for.
+
+- **A cursed bow's to-hit penalty never reached the shot.**
+
+- **A monster draining another monster drained the player instead.**
+
+- **Streamers were destroying secret doors on every classic level.**
+
+- **Word of Recall could send you to level 1 by accident.**
+
+- **Phase Door worked inside single combat** - the one place it must not.
+
+- **Persistent levels crashed roughly one descent in eight.**
+
+- **Auto-ignore judged an item by stats the player could not see**, and the
+  ignore menus listed every ego and kind in the game rather than the ones you
+  had met.
+
+- **Remove Curse read the curses you *had*, not the ones you knew about**, and a
+  **store bought on runes the player had never learned.** Both leaked knowledge
+  the character has not earned.
+
+- **The look scan stopped on a grid holding nothing but ignored junk.**
+
+- **The targeting preview drew walls the player had never seen.**
+
+- **A mimic keeps its object now, and loses it when it dies.**
+
+- **Eight things you could watch a monster do and learn nothing from**, and a
+  bear that never taught you it hits harder: monster lore was not being recorded
+  from what happened in front of you.
+
+- **Every blow in the monster spoiler claimed a 0% chance to land**, and the
+  spoiler files were generated with no player at all - so "how many have you
+  killed" was always zero.
+
+- **A short screen dropped the depth and kept the class**, and the birth screens
+  advertised a help key they then ate.
+
+- **"Killed by a kobold", not "Killed by kobold."**
+
+- **A monster told to drop something had nothing to drop.**
+
 
 - **A ghost of the previous screen survived every full-screen change.** Cell
   metrics are whole CSS pixels and the canvas carries `setTransform(dpr, ...)`,
