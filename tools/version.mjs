@@ -79,6 +79,26 @@ export function versionSites() {
       what: "the Unreleased summary",
       pattern: /(Current state of the project at version `)([^`]+)(`)/u,
     },
+    /* version-sync.test.ts already REQUIRED the runbook's example tag to equal
+     * the project version, but nothing maintained it - so every bump broke CI
+     * until somebody remembered to hand-edit the runbook. A check whose subject
+     * the tool does not own is a chore wearing a test's clothes.
+     *
+     * TWO sites, not one, because the example is `git tag vX && git push origin
+     * master vX` and the replacement rewrites a single capture group. Covering
+     * only the first would leave the push half naming the previous version -
+     * which is worse than not covering it at all, since the line would then be
+     * self-contradicting while the test went green. */
+    {
+      file: "docs/RELEASING.md",
+      what: "the example tag in the runbook",
+      pattern: /(git tag v)(\d+\.\d+\.\d+)( &&)/u,
+    },
+    {
+      file: "docs/RELEASING.md",
+      what: "the example push in the runbook",
+      pattern: /(git push origin master v)(\d+\.\d+\.\d+)/u,
+    },
   );
   return sites;
 }
@@ -233,7 +253,13 @@ function set(requested, { release }) {
 
   writeEverywhere(target);
   console.log(`[version] ${current} -> ${target} (${kind}) across ${versionSites().length} sites`);
-  console.log(`[version] next: update CHANGELOG.md, then \`git tag v${target} && git push --tags\``);
+  /* NEVER --tags or --follow-tags here. This history descends from Angband's,
+   * so ~1,442 upstream tags are genuine ancestors of master and either flag
+   * pushes all of them. The tag goes by NAME, alongside the branch. */
+  console.log(
+    `[version] next: update CHANGELOG.md, then \`git tag v${target} && git push origin master v${target}\``,
+  );
+  console.log("[version] never `git push --tags` here - it would push ~1,442 inherited upstream tags");
 }
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("version.mjs")) {
