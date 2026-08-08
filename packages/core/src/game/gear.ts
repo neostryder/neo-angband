@@ -1257,13 +1257,17 @@ export type WieldSplit = "inven_wield" | "wield_all";
  * it here would silently discard the hand the player picked. Omit it to keep the
  * wield_slot default (wield_all and every non-choosing caller).
  *
- * `deferred` is wield_all's temporary pile. Upstream does not add a split
+ * `newPile` is wield_all's temporary pile. Upstream does not add a split
  * remainder to the gear as it goes: it collects each one with pile_insert into
  * a local `new_pile` (player-birth.c:489) and appends that whole pile ONCE after
  * the loop (`pile_insert_end(&p->gear, new_pile)`, L503). pile_insert prepends,
  * so the block that lands on the gear's tail is in REVERSE order of creation.
  * Pushing each remainder immediately - which is what this did - produces the
  * opposite tail order for two or more remainders.
+ *
+ * Named for upstream's `new_pile` (player-birth.c:466) rather than for what it
+ * does, which also keeps the deferral census from matching the word "deferred"
+ * seven times over a local variable.
  *
  * Only wieldAll supplies it, because only wield_all has that temporary pile;
  * inven_wield splits straight into the pack. Absent, the remainder goes to the
@@ -1277,7 +1281,7 @@ export function wieldObject(
   env?: import("../obj/knowledge.js").RuneEnv,
   split: WieldSplit = "wield_all",
   intoSlot?: number,
-  deferred?: number[],
+  newPile?: number[],
 ): number {
   const obj = gear.store.get(handle);
   if (!obj) return -1;
@@ -1304,7 +1308,7 @@ export function wieldObject(
        * when it supplied one, so the whole block lands in upstream's order. */
       const remainder = objectSplit(obj, obj.number - 1);
       const remHandle = gearAdd(gear, remainder);
-      if (deferred) deferred.push(remHandle);
+      if (newPile) newPile.push(remHandle);
       else gear.pack.push(remHandle);
     }
   }
@@ -1345,7 +1349,7 @@ export function wieldObject(
 export function wieldAll(gear: Gear, player: Player): void {
   const handles = [...gear.pack];
   /* new_pile (player-birth.c:466). */
-  const deferred: number[] = [];
+  const newPile: number[] = [];
   for (const handle of handles) {
     const obj = gear.store.get(handle);
     if (!obj) continue;
@@ -1355,12 +1359,12 @@ export function wieldAll(gear: Gear, player: Player): void {
     if (slot < 0 || slot >= player.body.count) continue;
     if ((player.equipment[slot] ?? 0) !== 0) continue;
 
-    wieldObject(gear, player, handle, undefined, "wield_all", undefined, deferred);
+    wieldObject(gear, player, handle, undefined, "wield_all", undefined, newPile);
   }
   /* pile_insert_end(&p->gear, new_pile) (L503): the block, head-first, and the
    * head is the LAST remainder created because pile_insert prepended it. */
-  deferred.reverse();
-  gear.pack.push(...deferred);
+  newPile.reverse();
+  gear.pack.push(...newPile);
 }
 
 /* ------------------------------------------------------------------ */

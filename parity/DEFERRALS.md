@@ -127,6 +127,35 @@ census row went too: `pile.upstream.test.ts` said "pile_insert_end has NO port
 counterpart: nothing in the live port appends", which was true of the **floor**
 and false of the port. **A claim scoped to one pile must say which pile.**
 
+### And the other owed row was not owed: a grep for a name the port never uses
+
+The second of the two survivors said `cmd_disable_repeat_floor_item` had **"no
+port equivalent (0 references)"**. It has eight: `game/repeat.ts`'s
+`cmdDisableRepeatFloorItem`, called from `game/context.ts:1276` and `:1282`,
+`game/project-obj.ts:206`, and `session/game.ts:2307`, `:2358`, `:2487`, `:2677`,
+with the flag it reads set by `repeatBeginCommand` at `game/player-turn.ts:1003`.
+
+The reference count was produced by searching for `cmd_disable_repeat_floor_item`
+— the C's `snake_case` name — in a `camelCase` codebase. It finds nothing whatever
+exists. **A count is only evidence if the thing counted is spelled the way the
+code spells it.**
+
+The ledger note that carried the claim was pre-game-loop prose ending "tracked for
+the game-loop phase". That phase happened — PORT_TODO 2.12 wired every site — and
+nobody came back to the line. It also **bundled a second, unrelated claim** (the
+interactive `cmd_get_*` prompting helpers), which is why it could not be closed:
+a row asserting two things is closable only when both resolve the same way. Split,
+and the second half classified: the port resolves every command argument in the
+shell *before* dispatch rather than lazily inside the getter, so the item picker,
+the targeting overlay and `getQuantity` are the same prompts at a different moment.
+That is a divergence with a stated cost — a command cannot decide mid-execution to
+ask for something it did not know it needed — not an absence.
+
+**With both survivors resolved, this census holds no `real` rows.** Which is worth
+one sentence of suspicion rather than a celebration: one of the two was closed by
+fixing code and the other by discovering the claim was never true, and only the
+second kind is free.
+
 ### Live defects this found
 
 Both by re-reading a note that had handed its work to somebody else, and they
@@ -494,19 +523,14 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 1 |
 | `partial` | Part ported; the note must say which part is not | 7 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
-| `n-a` | Not applicable to this port, with the mechanism named | 52 |
-| `ported` | Done; the note was stale and has been rewritten | 28 |
+| `n-a` | Not applicable to this port, with the mechanism named | 53 |
+| `ported` | Done; the note was stale and has been rewritten | 27 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 79 |
-| `not-a-deferral` | Ordinary English, not a parity claim | 28 |
+| `not-a-deferral` | Ordinary English, not a parity claim | 29 |
 | | **total** | **232** |
-
-### `real` - Confirmed absent and owed (1)
-
-- `parity/ledger/cmd-core.yaml:25` - cmd_disable_repeat_floor_item has no port equivalent (0 references)
 
 ### `partial` - Part ported; the note must say which part is not (7)
 
@@ -535,7 +559,7 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/game/monster-turn.ts:1361` - The player-cave placeholder copy rides the knowledge subsystem, which the port models as synthesised knowledge rather than a second grid array
 - `packages/core/src/game/shape-inspect.ts:108` - Class spell effects are held as raw pack records (ClassSpell.effectsRaw, player/types.ts:151) rather than compiled into an Effect chain at parse time; game/spell-cmd.ts casts and aims off the same records. A representation difference, not a missing feature
 - `packages/core/src/gen/generate.ts:11` - The known-level ("player cave") duplicate, ratified at game/known.ts:153 - the same decision as the per-object twin, applied to terrain. Related to work item #126
-- `packages/core/src/obj/bind.ts:1344` - The known-object side is synthesised on demand (obj/known-object.ts) rather than bound as a second object
+- `packages/core/src/obj/bind.ts:1361` - The known-object side is synthesised on demand (obj/known-object.ts) rather than bound as a second object
 - `packages/core/src/obj/desc.ts:15` - The header's inline DEFERRED notes are all known-twin reads, which desc.ts now takes from objectKnownShadow
 - `packages/core/src/obj/knowledge.ts:22` - Per-object twin replaced by on-demand synthesis (obj/known-object.ts objectKnownShadow)
 - `packages/core/src/obj/knowledge.ts:786` - A known-twin display marking, subsumed by the shadow
@@ -553,10 +577,11 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/ui-entry.yaml:107` - Synthesised on demand (obj/known-object.ts)
 - `parity/ledger/ui-entry.yaml:114` - The port folds merged curse data into the object's own flags, which the note states is equivalent
 
-### `n-a` - Not applicable to this port, with the mechanism named (52)
+### `n-a` - Not applicable to this port, with the mechanism named (53)
 
 - `packages/core/src/game/cave-square.ts:58` - Adjacent-decoy destruction on floors; no RNG, and the decoy itself is modelled
 - `packages/core/src/game/cave-square.ts:68` - Same adjacent-decoy note, no RNG
+- `packages/core/src/game/effect-general.ts:587` - The drain-mana update_smart_learn note from #125, re-matched on a different line of the same comment after that pass rewrote it. Same adjudication: upstream's call (effect-handler-general.c:992) returns at mon-util.c:794 before reaching its own body, so known_pstate.pflags is never written in any game of Angband and there is nothing to port.
 - `packages/core/src/game/known.ts:250` - The note names its own mechanism: the front end runs updateView + noteSpots after every state-changing action, so there is no dirty-flag pipeline for a PU_/PR_ bit to set
 - `packages/core/src/game/loop.ts:339` - A message on a seen trap re-arming; the port has no PR_ dirty-flag pipeline and the front end repaints unconditionally
 - `packages/core/src/game/mon-death.ts:342` - PR_MONLIST is a redraw bit with no port equivalent (the front end repaints unconditionally); the note itself records quest_check as wired
@@ -573,7 +598,7 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/game/project-monster.ts:48` - The seam's suppliers are live (session/game.ts:1223)
 - `packages/core/src/game/project-player.ts:16` - Same seam discipline; supplied at session/game.ts:1289. The killer-name half is tracked separately as the MDESC_DIED_FROM gap
 - `packages/core/src/game/project-player.ts:93` - Supplied at session/game.ts:1289
-- `packages/core/src/game/spoil.ts:371` - seed_randart only matters under birth_randarts and this is a dev tool; the note states the condition
+- `packages/core/src/game/spoil.ts:379` - seed_randart only matters under birth_randarts and this is a dev tool; the note states the condition
 - `packages/core/src/mon/project-mon.ts:45` - The seam's suppliers are live (session/game.ts:1223)
 - `packages/core/src/mon/take-hit.ts:24` - The PR_HEALTH redraw, which is the ratified repaint divergence (DIVERGENCES.md B1): the renderer is immediate-mode and has no dirty-flag to raise. The state it gates, state.healthWho, IS tracked
 - `packages/core/src/mon/timed.ts:223` - Health-bar / monster-list redraw; the front end repaints unconditionally
@@ -608,10 +633,9 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (28)
+### `ported` - Done; the note was stale and has been rewritten (27)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
-- `packages/core/src/game/gear.ts:1315` - CLOSED 2026-08-07 (#131). pile_insert_end has five upstream call sites and the port matches all five: gear.pack.push for the three gear ones (inven_carry via gear_insert_end, and both calc_inventory splits), the saved array order in deserializeFloor for load.c:1419, known.ts:657 pile.push for the known cave, and wieldAll deferred block for wield_all. The FIFTH was the only real one and it was accepted on a docblock by the earlier retraction: upstream collects remainders with pile_insert (prepend) into new_pile and appends the block once (player-birth.c:489/503), so the tail is reverse creation order; the port pushed each as it made it. Fixed, and pinned by a test whose fixture is a two-stacked-wieldable kit no class ships -- unreachable in 4.2.6 data (wield_slot returns -1 for ammo; only the Wooden Torch is a stacked wieldable in any of the 52 equip lines), reachable by a mod.
 - `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
 - `packages/core/src/gen/gen-monster.ts:350` - LEAD READ, and CORRECTED from real. The note says spreadMonsters is "not wired to a builder yet (room_of_chambers/cavern callers are deferred)". It is wired, twice: gen/cave.ts:1721 (the lair, after setPitType/monRestrict) and gen/cave.ts:1865. room_of_chambers is built too, and its builder asserts true in gen/gen.test.ts:2175
 - `packages/core/src/mon/lore-describe.ts:862` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
@@ -729,11 +753,12 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/store-maint.yaml:37` - Records that both conjuncts of the buy check are ported and that the object_flag_is_known half landed with PORT_TODO 2.10
 - `parity/ledger/ui-entry.yaml:133` - Records that PF_FAST_SHOT is live and that the launcher-slot reach the row called deferred already existed in player/calcs.ts
 
-### `not-a-deferral` - Ordinary English, not a parity claim (28)
+### `not-a-deferral` - Ordinary English, not a parity claim (29)
 
 - `packages/core/src/game/cave-cmd.ts:954` - Describes the fallback when the traps module is absent, not a missing feature; trap.ts registers the real disarm and session/game.ts:1698 supplies trapDeps
 - `packages/core/src/game/context.ts:349` - Prose about why the options store is optional, and it states the fallback is exact; no feature is claimed absent
 - `packages/core/src/game/context.ts:820` - Policy prose about an optional seam, not a parity claim, and the policy is honoured: state.combinePack IS supplied by the live session at session/game.ts:899, so only a worldless harness leaves the bit owed
+- `packages/core/src/game/gear.ts:1269` - A sentence ABOUT the census, not a parity claim: the docblock explains that the local is named newPile after upstream rather than "deferred", and in saying so it matched the census itself. Left as-is rather than reworded, because the clearer sentence is worth one classified row.
 - `packages/core/src/game/notice.ts:16` - Ordinary English ("would defer it by a turn") in prose explaining why ignore must run before combine; no feature is claimed absent
 - `packages/core/src/game/notice.ts:50` - Policy prose, and the policy is honoured: state.combinePack is supplied at session/game.ts:899, so leaving PN_COMBINE set describes only an unwired harness. notice.test.ts asserts both halves
 - `packages/core/src/game/pickup.ts:16` - Describes the behaviour when the module is not installed; installPickup replaces the stub and is called in the live composition
