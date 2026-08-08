@@ -22,9 +22,32 @@ notes: >-
   replaces the compiled function-pointer column; args are a name-keyed
   tagged map instead of a fixed 4-slot union; player-coupled coercion
   (bloodlust, TMD_COMMAND redirect) is an injected hook wired by the game
-  loop later. Not yet ported: cmd_disable_repeat_floor_item and the
-  interactive cmd_get_* "try harder" prompting helpers (need objects and
-  the UI prompt layer; tracked for the game-loop phase).
+  loop later.
+
+  cmd_disable_repeat_floor_item: PORTED, and the claim that it was not
+  outlived the code by a long way. It is game/repeat.ts's
+  cmdDisableRepeatFloorItem, wired at all four upstream sites plus four
+  more the port needs - game/context.ts:1276 and :1282, game/project-obj
+  .ts:206, and session/game.ts:2307, :2358, :2487, :2677 - and the flag it
+  reads is set by repeatBeginCommand at game/player-turn.ts:1003. The
+  sentence here said "tracked for the game-loop phase"; that phase
+  happened (PORT_TODO 2.12) and nobody came back to this line. The 2026
+  census then re-derived "0 references" by grepping the C's snake_case
+  name in a camelCase codebase, which finds nothing whatever exists.
+
+  The interactive cmd_get_* helpers (cmd_get_item / _direction / _target /
+  _quantity / _spell, cmd-core.h:394-409) are a DIVERGENCE, not a gap.
+  Upstream resolves a missing argument lazily: the handler asks the getter,
+  the getter prompts the UI, and the answer is stored back into the queued
+  command. Here the shell resolves every argument BEFORE dispatch and hands
+  the command a complete arg map - the item picker, the targeting overlay
+  and getQuantity (packages/web/src/*) are the same prompts at a different
+  moment. That is the same decision as the runtime handler registry
+  replacing the compiled function-pointer column, and it is why only
+  cmdGetArg exists: there is no "try harder" for an argument that cannot be
+  absent. The visible cost is that a command cannot decide mid-execution to
+  ask for something it did not know it needed, which upstream can and no
+  4.2.6 command does.
 verified-by:
   - unit tests (table diffed 112/112 against game_cmds via script, FIFO,
     capacity CMD_QUEUE_SIZE-1, repeat duplication, auto-repeat 99,
