@@ -75,9 +75,7 @@ import {
   wizPlayItemReject,
   wizPlayItemAccept,
   describeObject,
-  makeFakeArtifact,
-  FAKE_ARTIFACT_SEED,
-  Rng,
+  objectPrep,
   objDescNameFormat,
   colorTextToAttr,
   lookupTrap,
@@ -1018,6 +1016,31 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
   const reg = make.reg;
   const artifacts = deps.artifacts ?? [];
 
+  /**
+   * get_art_name (ui-wizard.c:154-187): the label for one artifact row.
+   *
+   * This is NOT make_fake_artifact, and the difference is not cosmetic. Upstream
+   * builds the object here by hand -- object_prep(obj, kind, 0, RANDOMISE) and
+   * an artifact pointer, with no copy_artifact_data -- so it rolls the base
+   * item's random plusses off the GAME stream and never rolls a curse timeout.
+   * The port used to call makeFakeArtifact against a throwaway Rng at a fixed
+   * seed, which is a different function drawing a different number of values
+   * from a different stream; substituting a widget for an upstream function is
+   * how a divergence hides behind a plausible name.
+   *
+   * Upstream's known twin is a full object_copy marked OBJ_NOTICE_IMAGINED
+   * (L176-179); ODESC_SPOIL makes object_desc treat the object as its own known
+   * twin, so the twin is not built separately here.
+   */
+  function getArtName(art: Artifact): string {
+    const kind = reg.lookupKind(art.tval, art.sval);
+    /* No base kind: upstream returns with buf untouched (L167). */
+    if (!kind) return "";
+    const obj = objectPrep(state.rng, reg, make.constants, kind, 0, "randomise");
+    obj.artifact = art;
+    return describeObject(state, obj, ODESC.SINGULAR | ODESC.SPOIL);
+  }
+
   /* The tval filter (L423-451). */
   const tvals: number[] = [];
   for (let tval = 0; tval < reg.bases.length; tval++) {
@@ -1068,16 +1091,7 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
       /* get_art_name (ui-wizard.c:150): a fake artifact described with
        * ODESC_SINGULAR | ODESC_SPOIL. */
       const a = artifacts[idx];
-      /* A preview, as in the knowledge browser: a throwaway stream at a fixed
-       * seed so listing the artifacts does not move the game's RNG. */
-      const fake = a
-        ? makeFakeArtifact(reg, make.constants, a, new Rng(FAKE_ARTIFACT_SEED))
-        : null;
-      return {
-        label: fake
-          ? describeObject(state, fake, ODESC.SINGULAR | ODESC.SPOIL)
-          : a?.name ?? "",
-      };
+      return { label: a ? getArtName(a) : "" };
     });
     subRows.push({ label: art ? `All artifact ${baseName}` : `All ${baseName}` });
 
