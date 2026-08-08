@@ -183,7 +183,13 @@ import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { installRangedCommands } from "../game/ranged-cmd.js";
 import { markNoscore, NOSCORE } from "../game/wizard.js";
 import type { WizardDeps } from "../game/wizard.js";
-import { createTownStores, storeUpdate, storeWillBuy } from "../store/store.js";
+import {
+  createTownStores,
+  registerCoreStoreBehaviour,
+  StoreBehaviourRegistry,
+  storeUpdate,
+  storeWillBuy,
+} from "../store/store.js";
 import type { Store, StoreMaintContext } from "../store/store.js";
 import {
   homeCarry,
@@ -1601,6 +1607,12 @@ function wireGame(
     registerCoreBlowEffects(blowEffects);
     state.blowEffects = blowEffects;
 
+    /* Store behaviour (store/store.ts): what a shop will buy, and how many of a
+     * thing it stocks. Per game for the same reason as the blow table. */
+    const storeBehaviour = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(storeBehaviour);
+    state.storeBehaviour = storeBehaviour;
+
     state.monBlowEnv = makeMonBlowEnv(state, {
       timed: players.timed,
       actor: playerActor,
@@ -2811,6 +2823,8 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
       /* history_lose_artifact (store.c:1091 / :1307): an artifact the player
        * sold into stock and the store then turned over or purged is gone. */
       onArtifactLost: (art): void => state.onArtifactLost?.(art),
+      /* Store behaviour a mod may have added to (StoreBehaviourRegistry). */
+      ...(state.storeBehaviour ? { behaviour: state.storeBehaviour } : {}),
       /* OPT(cheat_xtra) (store.c:1424, :1444). */
       ...(state.options?.get("cheat_xtra")
         ? { cheatMsg: (text: string): void => state.msg?.(text) }
@@ -3304,12 +3318,7 @@ function makeStoreApi(
   flavor: FlavorKnowledge,
   options: OptionState,
 ): Pick<StartedGame, "buy" | "sell" | "sellFloor" | "price" | "willBuy"> {
-  const storeCtx = (): {
-    rng: typeof state.rng;
-    deps: MakeDeps;
-    maxDepth: number;
-    stores: Store[];
-  } => ({
+  const storeCtx = (): StoreMaintContext => ({
     rng: state.rng,
     deps: {
       reg: reg.objects,
@@ -3323,6 +3332,10 @@ function makeStoreApi(
     },
     maxDepth: state.actor.player.maxDepth,
     stores: state.stores ?? [],
+    /* The sell path decides through storeWillBuy too, so it reads the same
+     * registry the maintenance path does - a seam supplied to every path but
+     * one is the shape that lets a mod work in town and not in the shop. */
+    ...(state.storeBehaviour ? { behaviour: state.storeBehaviour } : {}),
   });
   const noSelling = (): boolean => options.get("birth_no_selling") ?? false;
   /* update_stuff's PU_INVEN after a gear change (obj-gear.c: inven_carry /
@@ -3515,6 +3528,7 @@ function makeStoreApi(
         noSelling(),
         false,
         flagKnownFor(obj),
+        state.storeBehaviour,
       ),
   };
 }

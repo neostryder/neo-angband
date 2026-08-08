@@ -14,6 +14,10 @@ import type { RoomRegistry } from "../gen/room.js";
 import { DungeonProfiles } from "../gen/cave.js";
 import type { DunProfile } from "../gen/cave.js";
 import {
+  StoreBehaviourRegistry,
+  registerCoreStoreBehaviour,
+} from "../store/store.js";
+import {
   BlowEffectRegistry,
   monMeleeAttack,
   registerCoreBlowEffects,
@@ -151,17 +155,21 @@ function targets() {
   profiles.registerBuilder("classic", () => ({ ok: true }) as never);
   const blows = new BlowEffectRegistry();
   registerCoreBlowEffects(blows);
+  const stores = new StoreBehaviourRegistry();
+  registerCoreStoreBehaviour(stores);
   return {
     effects: new EffectRegistry(),
     rooms,
     profiles,
     blows,
+    stores,
     commands: new ActionRegistry(),
     state,
     vocab,
     _rooms: rooms,
     _profiles: profiles,
     _blows: blows,
+    _stores: stores,
     _state: state,
     _vocab: vocab,
   };
@@ -215,6 +223,7 @@ describe("createModRegistryHost - capability gating", () => {
     ).toThrow(/registry:vocab/);
     expect(() => host.profiles.list()).toThrow(/registry:profile/);
     expect(() => host.blows.names()).toThrow(/registry:blow/);
+    expect(() => host.stores.massProduceTvals()).toThrow(/registry:store/);
   });
 
   it("gates each domain independently and only at call time", () => {
@@ -433,5 +442,23 @@ describe("createModRegistryHost - the monster blow facade", () => {
      * through the env - TMD.AFRAID is 4 turns of fear, for real. */
     expect(applied).toContain(`incTimed(${String(TMD.AFRAID)},4)`);
     expect(applied).toContain("takeHit(20)");
+  });
+});
+
+describe("createModRegistryHost - the store facade", () => {
+  it("says which registry was missing when the host did not wire stores", () => {
+    const host = createModRegistryHost({ stores: null });
+    expect(() => host.stores.massProduceTvals()).toThrow(
+      /"store" registry is not available/,
+    );
+  });
+
+  it("delegates to the live registry, not to a copy of it", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:store"));
+    host.stores.setMassProduce(999, () => 3);
+    expect(t._stores.massProduceFor(999)).not.toBeNull();
+    host.stores.setWillBuy(42, () => true);
+    expect(t._stores.willBuyFor(42)).not.toBeNull();
   });
 });
