@@ -511,8 +511,6 @@ static void do_cmd_options_win(const char *name, int row)
 				x = (x + ddx[d] + 8) % ANGBAND_TERM_MAX;
 				y = (y + ddy[d] + 16) % PW_MAX_FLAGS;
 			}
-		} else if (ke.type == EVT_ESCAPE || ke.type == EVT_DISCONNECT) {
-			break;
 		}
 	}
 
@@ -653,8 +651,7 @@ static void ui_keymap_create(const char *title, int row)
 
 		kp = inkey();
 
-		if (kp.code == '=' || (kp.code == ESCAPE
-				&& terms_disconnecting)) {
+		if (kp.code == '=') {
 			done = true;
 			continue;
 		}
@@ -1745,8 +1742,7 @@ static bool ignore_sval_menu_action(struct menu *m, const ui_event *event,
 	const ignore_choice *choice = menu_priv(m);
 
 	if (event->type == EVT_SELECT ||
-			(event->type == EVT_KBRD
-			&& tolower((unsigned char)event->key.code) == 't')) {
+			(event->type == EVT_KBRD && tolower(event->key.code) == 't')) {
 		struct object_kind *kind = choice[oid].kind;
 
 		/* Toggle the appropriate flag */

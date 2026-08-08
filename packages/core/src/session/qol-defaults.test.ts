@@ -226,25 +226,24 @@ describe("the levelGenerated seam reaches level generation from startGame", () =
    */
   const STRANDED: readonly [number, number, string][] = [
     /*
-     * RE-PINNED 2026-08-06 with the build_streamer predicate fix (gen/cave.ts:
-     * square_isrock, not isMagma || isQuartz || isGranite - the old test
-     * overwrote existing veins and destroyed secret doors). That moves the
-     * generation stream from the first streamer onward, so every previously
-     * pinned seed stopped stranding. See the long note on gen/gen.test.ts'
-     * STRANDED list for the before/after measurement (137/15000 -> 22/15000
-     * over an identical sweep) and for what is and is not explained by it.
+     * RE-PINNED 2026-08-07 for #143, which moved reference/ from upstream
+     * master back to the 4.2.6 tag. 4.2.6 ships 1,631 more lines of
+     * room_template.txt and a different vault.txt, so the generation stream
+     * differs from the first room draw onward and three of the six previous
+     * seeds went stale. Rate held: 28 stranded in a 7,500-seed birth sweep
+     * (2,500 each at depths 40/50/60). See the long note on gen/gen.test.ts'
+     * STRANDED list for the equivalent measurement on the raw generator.
      *
-     * Found by scanning, and every direction here is DERIVED from
-     * strandedDirs, never hand-written: the gen.test.ts re-pin nearly shipped
-     * 22 guessed labels.
+     * Every direction is DERIVED from strandedDirs, never hand-written: the
+     * 2026-08-06 re-pin nearly shipped 22 guessed labels.
      */
     [40, 800126, "up"],
-    [40, 800733, "up"],
+    [40, 801221, "up"],
     [50, 1000004, "up"],
     [50, 1000369, "up"],
-    /* The down+up case: the direction that actually blocks descent. */
-    [60, 1200060, "down+up"],
-    [60, 1200312, "up"],
+    /* The two down-only cases: the direction that actually blocks descent. */
+    [60, 1201183, "down"],
+    [60, 1201610, "down"],
   ];
 
   /** The directions of this level that have a stair but no walk-reachable one. */

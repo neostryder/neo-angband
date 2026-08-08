@@ -45,7 +45,6 @@ extern bool (*get_check_hook)(const char *prompt);
 extern bool (*get_com_hook)(const char *prompt, char *command);
 extern bool (*get_rep_dir_hook)(int *dir, bool allow_none);
 extern bool (*get_aim_dir_hook)(int *dir);
-extern bool (*get_point_hook)(struct loc *grid);
 extern int (*get_spell_from_book_hook)(struct player *p, const char *verb,
 	struct object *book, const char *error,
 	bool (*spell_filter)(const struct player *p, int spell));
@@ -66,7 +65,6 @@ extern bool (*panel_contains_hook)(unsigned int y, unsigned int x);
 extern bool (*map_is_visible_hook)(void);
 extern void (*view_abilities_hook)(struct player_ability *ability_list,
 								   int num_abilities);
-extern bool (*check_break_hook)(bool user_event, int messaging);
 
 bool get_string(const char *prompt, char *buf, size_t len);
 int get_quantity(const char *prompt, int max);
@@ -74,7 +72,6 @@ bool get_check(const char *prompt);
 bool get_com(const char *prompt, char *command);
 bool get_rep_dir(int *dir, bool allow_none);
 bool get_aim_dir(int *dir);
-bool get_point(struct loc *grid);
 int get_spell_from_book(struct player *p, const char *verb,
 	struct object *book, const char *error,
 	bool (*spell_filter)(const struct player *p, int spell));
@@ -93,6 +90,5 @@ bool panel_contains(unsigned int y, unsigned int x);
 bool map_is_visible(void);
 void view_ability_menu(struct player_ability *ability_list,
 						 int num_abilities);
-bool check_break(bool user_event, int messaging);
 
 #endif /* INCLUDED_GAME_INPUT_H */

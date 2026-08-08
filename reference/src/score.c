@@ -153,42 +153,20 @@ static void highscore_write(const struct high_score scores[], size_t sz)
 		return;
 	}
 
-	if (!file_write(scorefile, (const char *)scores,
-			sizeof(struct high_score)*n)) {
-		msg("Failed to write new scores.");
-		(void)file_close(scorefile);
-		(void)file_close(lok);
-		safe_setuid_grab();
-		file_delete(lok_name);
-		file_delete(new_name);
-		safe_setuid_drop();
-		return;
-	}
-
-	if (!file_close(scorefile)) {
-		msg("Failed to close new scores.");
-		(void)file_close(lok);
-		safe_setuid_grab();
-		(void)file_delete(lok_name);
-		(void)file_delete(new_name);
-		safe_setuid_drop();
-		return;
-	}
+	file_write(scorefile, (const char *)scores, sizeof(struct high_score)*n);
+	file_close(scorefile);
 
 	/* Now move things around */
 	safe_setuid_grab();
 
-	if (file_exists(old_name) && !file_delete(old_name)) {
+	if (file_exists(old_name) && !file_delete(old_name))
 		msg("Couldn't delete old scorefile");
-		(void)file_delete(new_name);
-	} else if (file_exists(cur_name) && !file_move(cur_name, old_name)) {
+
+	if (file_exists(cur_name) && !file_move(cur_name, old_name))
 		msg("Couldn't move old scores.raw out of the way");
-		(void)file_delete(new_name);
-	} else if (!file_move(new_name, cur_name)) {
+
+	if (!file_move(new_name, cur_name))
 		msg("Couldn't rename new scorefile to scores.raw");
-		(void)file_move(old_name, cur_name);
-		(void)file_delete(new_name);
-	}
 
 	/* Remove the lock */
 	file_close(lok);
@@ -263,11 +241,7 @@ void build_score(struct high_score *entry, const struct player *p,
  * \param p is the player to enter
  * \param death_time points to the time at which the player died; may be NULL
  * for a player that's not dead yet
- *
- * To reduce opportunities for corruption of the high score file or leaving a
- * lock file in place, this function should only be called if user-requested
- * suspends or interruptions have been disabled.  With the textui interface,
- * that can be done by calling signals_protect(true).
+ * Assumes "signals_ignore_tstp()" has been called.
  */
 void enter_score(const struct player *p, const time_t *death_time)
 {

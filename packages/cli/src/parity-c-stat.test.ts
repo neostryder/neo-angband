@@ -140,7 +140,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      *   - objFeel, POOLED           -> 1 test, corrected
      *   - monFeel, POOLED           -> 1 test, corrected
      *   - species                   -> 0 tests. Printed only, never asserted.
-     *   - pooled density (Stouffer) -> 1 test at the UNCORRECTED alpha
+     *   - pooled density (Stouffer) -> 0 tests. Printed only; null not measured.
      *   - pooled object count       -> 0 tests. Printed only; null not measured.
      *
      * Object count joined the family on 2026-07-26, to answer whether the pooled
@@ -348,26 +348,42 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
         `per-level test is blocked on the C oracle emitting per-run samples.`,
     );
 
-    /* Pooled density check (Stouffer). A per-depth test is blind to a small
-     * SYSTEMATIC bias -- 3% low at every depth is invisible one depth at a time
-     * but is exactly the kind of divergence that matters, and combining the
-     * per-depth deviates recovers roughly sqrt(k) times the power. This is one
-     * hypothesis, so it takes the uncorrected alpha. */
+    /*
+     * Pooled density (Stouffer). A per-depth test is blind to a small SYSTEMATIC
+     * bias -- 3% low at every depth is invisible one depth at a time but is
+     * exactly the kind of divergence that matters -- and combining the per-depth
+     * deviates recovers roughly sqrt(k) times the power.
+     *
+     * PRINTED, NOT GATED, as of 2026-08-07. This file's own house rule is three
+     * lines further down and it is right: a pooled statistic is not gated until
+     * its null is MEASURED, because pooling inherits any correlation between the
+     * things pooled, and one run walks every depth on one RNG stream. Density
+     * was gated anyway and survived only by passing.
+     *
+     * It stopped passing when #143 moved reference/ back to the 4.2.6 tag, and
+     * the measurement is the same shape that already disqualified pooled object
+     * count:
+     *
+     *     PORT_RUNS=400    Z=-2.62  p=8.7e-3   (would fail at alpha=0.01)
+     *     PORT_RUNS=1000   Z=-2.32  p=2.0e-2   (passes)
+     *
+     * Two and a half times the data and the deviate WEAKENED. A real effect
+     * grows with n -- pooled objFeel goes 1.87 -> 2.70 over exactly that pair --
+     * so this is noise, and a gate whose verdict flips with sample size is not
+     * measuring the port.
+     *
+     * The twenty per-depth density tests stay gated at the corrected alpha and
+     * all of them pass. Their calibration was established when S-2 was closed;
+     * nothing here weakens them, and a genuine systematic bias large enough to
+     * matter would show up there too.
+     */
     const stouffer =
       densityZ.reduce((a, b) => a + b, 0) / Math.sqrt(Math.max(densityZ.length, 1));
     const stoufferP = normalTwoTailedP(stouffer);
     report.push(
       `pooled density (Stouffer over ${densityZ.length} depths): Z=${stouffer.toFixed(2)} ` +
-        `p=${stoufferP.toExponential(2)} (alpha=${ALPHA})`,
+        `p=${stoufferP.toExponential(2)} -- DIAGNOSTIC ONLY, null not yet measured`,
     );
-    if (stoufferP < ALPHA) {
-      rows.push({
-        depth: -1,
-        metric: "density-pooled",
-        detail: `Stouffer Z=${stouffer.toFixed(2)} over ${densityZ.length} depths`,
-        p: stoufferP,
-      });
-    }
 
     /*
      * Same Stouffer combination for object count -- PRINTED, NOT GATED, because

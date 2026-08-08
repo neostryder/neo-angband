@@ -144,9 +144,21 @@ describe("the map an agent actually sees", () => {
   });
 
   it("remembers where it has been", () => {
+    /* Walk EVERY direction rather than one. The property under test is that
+     * exploring adds to the remembered map; which compass direction happens to
+     * be open at seed 1004's birth spot is not part of it, and pinning "north"
+     * made this test fail on 2026-08-07 for the one reason that says nothing
+     * about the map - #143 changed the gamedata, so the level changed, and the
+     * agent walked into a wall twelve times. */
     const before = knownCount(host);
-    for (let i = 0; i < 12; i++) callTool(host, "walk", { direction: "north" });
-    expect(knownCount(host)).toBeGreaterThan(before);
+    for (const direction of ["north", "east", "south", "west"]) {
+      for (let i = 0; i < 6; i++) callTool(host, "walk", { direction });
+    }
+    expect(
+      knownCount(host),
+      "walking in all four directions revealed nothing: either the agent cannot " +
+        "move at all, or the remembered map is not being updated",
+    ).toBeGreaterThan(before);
   });
 
   it("shows the whole level on request, and a window by default", () => {

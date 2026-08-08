@@ -299,8 +299,6 @@ char angband_term_name[ANGBAND_TERM_MAX][16] =
 };
 
 uint32_t window_flag[ANGBAND_TERM_MAX];
-volatile sig_atomic_t terms_disconnecting = 0;
-volatile sig_atomic_t terms_suspending = 0;
 
 int row_top_map[SIDEBAR_MAX] = {1, 4, 1};
 int row_bottom_map[SIDEBAR_MAX] = {1, 0, 0};
@@ -2123,43 +2121,34 @@ errr Term_addch(int a, wchar_t c)
  */
 errr Term_addstr(int n, int a, const char *buf)
 {
-	int w = Term->wid, k;
-	errr res = 0;
-	wchar_t s[1024];
-	size_t nc;
+	int k;
 
-	assert(w > 0);
+	int w = Term->wid;
+
+	errr res = 0;
+
+	wchar_t s[1024];
+
+	/* Copy to a rewriteable string */
+ 	text_mbstowcs(s, buf, 1024);
 
 	/* Handle "unusable" cursor */
 	if (Term->scr->cu) return (-1);
 
-	/* Convert to wide characters */
-	nc = text_mbstowcs(s, buf, 1024);
-	if (nc == (size_t)-1) {
-		return -1;
-	}
-	if (nc == 0) {
-		return 0;
-	}
-	k = (int)nc;
-
 	/* Obtain maximal length */
-	if (n < 0) {
-		if (k > w) {
-			k = w + 1;
-		}
-	} else if (k > n) {
-		k = n;
-	}
+	k = (n < 0) ? (w + 1) : n;
+
+	/* Obtain the usable string length */
+	for (n = 0; (n < k) && s[n]; n++) /* loop */;
 
 	/* React to reaching the edge of the screen */
-	if (Term->scr->cx + k >= w) res = k = w - Term->scr->cx;
+	if (Term->scr->cx + n >= w) res = n = w - Term->scr->cx;
 
-	/* Queue the first "k" characters for display */
-	Term_queue_chars(Term->scr->cx, Term->scr->cy, k, a, s);
+	/* Queue the first "n" characters for display */
+	Term_queue_chars(Term->scr->cx, Term->scr->cy, n, a, s);
 
 	/* Advance the cursor */
-	Term->scr->cx += k;
+	Term->scr->cx += n;
 
 	/* Notice "Useless" cursor */
 	if (res) Term->scr->cu = 1;
@@ -2579,13 +2568,9 @@ errr Term_keypress(keycode_t k, uint8_t mods)
 	}
 
 	/* Store the char, advance the queue */
-	Term->key_queue[Term->key_head] = (ui_event){
-		.key = {
-			.type = EVT_KBRD,
-			.code = k,
-			.mods = mods
-		}
-	};
+	Term->key_queue[Term->key_head].type = EVT_KBRD;
+	Term->key_queue[Term->key_head].key.code = k;
+	Term->key_queue[Term->key_head].key.mods = mods;
 	Term->key_head++;
 
 	/* Circular queue, handle wrap */
@@ -2603,22 +2588,18 @@ errr Term_keypress(keycode_t k, uint8_t mods)
  */
 errr Term_mousepress(int x, int y, char button)/*, uint8_t mods);*/
 {
-	/* Store the press, advance the queue */
-	Term->key_queue[Term->key_head] = (ui_event){
-		.mouse = {
-			.type   = EVT_MOUSE,
-			.x      = x,
-			.y      = y,
-			/* XXX for now I encode the mods into the button number, so I would
-			* not have to worry about the other platforms, when all platforms set
-			* mods, this code should be replaced with :
-			* .button = button,
-			* .mods = mods
-			*/
-			.button = (button & 0x0F),
-			.mods   = (button & 0xF0) >> 4
-		}
-	};
+	/* Store the char, advance the queue */
+	Term->key_queue[Term->key_head].type = EVT_MOUSE;
+	Term->key_queue[Term->key_head].mouse.x = x;
+	Term->key_queue[Term->key_head].mouse.y = y;
+	/* XXX for now I encode the mods into the button number, so I would
+	 * not have to worry about the other platforms, when all platforms set
+	 * mods, this code should be replaced with :
+	 * Term->key_queue[Term->key_head].mouse.button = button;
+	 * Term->key_queue[Term->key_head].mouse.mods = mods;
+	 */
+	Term->key_queue[Term->key_head].mouse.button = (button & 0x0F);
+	Term->key_queue[Term->key_head].mouse.mods = ((button & 0xF0)>>4);
 
 	Term->key_head++;
 
@@ -2636,13 +2617,17 @@ errr Term_mousepress(int x, int y, char button)/*, uint8_t mods);*/
 /**
  * Add a keypress to the FRONT of the "queue"
  */
-errr Term_key_push(keycode_t k, uint8_t mods)
+errr Term_key_push(int k)
 {
-	if (!k) return -1;
+	ui_event ke;
 
-	return Term_event_push(&(ui_event){
-		.key = { .type = EVT_KBRD, .code = k, .mods = mods }
-	});
+	if (!k) return (-1);
+
+	ke.type = EVT_KBRD;
+	ke.key.code = k;
+	ke.key.mods = 0;
+
+	return Term_event_push(&ke);
 }
 
 errr Term_event_push(const ui_event *ke)
@@ -2665,23 +2650,18 @@ errr Term_event_push(const ui_event *ke)
 }
 
 
+
+
+
 /**
- * Check for a pending event on the active terminal's input queue.
+ * Check for a pending keypress on the key queue.
  *
- * Store the event, if any, in "ch", and return "0".
+ * Store the keypress, if any, in "ch", and return "0".
  * Otherwise store "zero" in "ch", and return "1".
  *
- * If terms_disconnecting is nonzero, the returned value is "0".  This
- * function will never wait in that case or request more input events
- * from the underlying terminal driver.  When disconnecting, ch->type will be
- * set to EVT_DISCONNECT if there is no pending input in the terminal's queue.
+ * Wait for a keypress if "wait" is true.
  *
- * If "wait" is true, terms_disconnecting is zero, and the terminal has no
- * queued input events, more input events will be requested from the
- * underlying terminal driver and this function will wait until there is
- * something in the terminal's input queue.
- *
- * Remove the input event if "take" is true.
+ * Remove the keypress if "take" is true.
  */
 errr Term_inkey(ui_event *ch, bool wait, bool take)
 {
@@ -2689,47 +2669,36 @@ errr Term_inkey(ui_event *ch, bool wait, bool take)
 	memset(ch, 0, sizeof *ch);
 
 	/* Get bored */
-	if (!Term->never_bored && !terms_disconnecting) {
+	if (!Term->never_bored)
 		/* Process random events */
 		Term_xtra(TERM_XTRA_BORED, 0);
-	}
 
-	if (Term->key_head == Term->key_tail) {
-		if (wait) {
-			do {
-				if (terms_disconnecting) {
-					ch->type = EVT_DISCONNECT;
-					return 0;
-				}
-
-				/* Process events (wait for one) */
-				Term_xtra(TERM_XTRA_EVENT, true);
-			} while (Term->key_head == Term->key_tail);
-		} else {
-			if (terms_disconnecting) {
-				ch->type = EVT_DISCONNECT;
-				return 0;
-			}
-
+	/* Wait or not */
+	if (wait)
+		/* Process pending events while necessary */
+		while (Term->key_head == Term->key_tail)
+			/* Process events (wait for one) */
+			Term_xtra(TERM_XTRA_EVENT, true);
+	else
+		/* Process pending events if necessary */
+		if (Term->key_head == Term->key_tail)
 			/* Process events (do not wait) */
 			Term_xtra(TERM_XTRA_EVENT, false);
 
-			/* No keys are ready */
-			if (Term->key_head == Term->key_tail) return 1;
-		}
-	}
+	/* No keys are ready */
+	if (Term->key_head == Term->key_tail) return (1);
 
 	/* Extract the next keypress */
 	(*ch) = Term->key_queue[Term->key_tail];
 
-	/* sketchy key logging */
+	/* sketchy key loggin */
 	log_keypress(*ch);
 
 	/* If requested, advance the queue, wrap around if necessary */
 	if (take && (++Term->key_tail == Term->key_size)) Term->key_tail = 0;
 
 	/* Success */
-	return 0;
+	return (0);
 }
 
 

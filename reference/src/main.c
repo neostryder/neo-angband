@@ -64,50 +64,44 @@
 static const struct module modules[] =
 {
 #ifdef USE_X11
-	{ "x11", help_x11, init_x11, false, true },
+	{ "x11", help_x11, init_x11 },
 #endif /* USE_X11 */
 
 #ifdef USE_SDL
-	{ "sdl", help_sdl, init_sdl, false, false },
+	{ "sdl", help_sdl, init_sdl },
 #endif /* USE_SDL */
 
 #ifdef USE_SDL2
-	{ "sdl2", help_sdl2, init_sdl2, false, false },
+	{ "sdl2", help_sdl2, init_sdl2 },
 #endif /* USE_SDL2 */
 
 #ifdef USE_GCU
-	{ "gcu", help_gcu, init_gcu, true, false },
+	{ "gcu", help_gcu, init_gcu },
 #endif /* USE_GCU */
 
 #ifdef USE_TEST
-	{ "test", help_test, init_test, false, true },
+	{ "test", help_test, init_test },
 #endif /* !USE_TEST */
 
 #ifdef USE_STATS
-	{ "stats", help_stats, init_stats, false, true },
+	{ "stats", help_stats, init_stats },
 #endif /* USE_STATS */
 
 #ifdef USE_SPOIL
-	{ "spoil", help_spoil, init_spoil, false, true },
+	{ "spoil", help_spoil, init_spoil },
 #endif
 
 #ifdef USE_IBM
-	{ "ibm", help_ibm, init_ibm, false, true },
+	{ "ibm", help_ibm, init_ibm },
 #endif /* USE_IBM */
 };
-
-/**
- * Remember the previously registered quit hook so extended_quit_hook can
- * call it.
- */
-static void (*quit_nested)(const char *) = NULL;
 
 /**
  * A hook for "quit()".
  *
  * Close down, then fall back into "quit()".
  */
-static void basic_quit_hook(const char *s)
+static void quit_hook(const char *s)
 {
 	int j;
 
@@ -121,24 +115,6 @@ static void basic_quit_hook(const char *s)
 
 		/* Nuke it */
 		term_nuke(angband_term[j]);
-	}
-}
-
-/**
- * Another hook for "quit".
- *
- * Clean up what main() did before invoking play_game().  Then perform
- * whatever cleanup the front end requested.  Fall back into quit() when done.
- */
-static void extended_quit_hook(const char *s)
-{
-	textui_cleanup();
-	cleanup_angband();
-#ifdef SOUND
-	close_sound();
-#endif
-	if (quit_nested) {
-		(*quit_nested)(s);
 	}
 }
 
@@ -497,11 +473,8 @@ int main(int argc, char *argv[])
 		argv[1] = NULL;
 	}
 
-	/*
-	 * Install baseline behavior when quiting.  Many of the front ends
-	 * override this.
-	 */
-	quit_aux = basic_quit_hook;
+	/* Install "quit" hook */
+	quit_aux = quit_hook;
 
 	/* If we were told which mode to use, then use it */
 	if (mstr)
@@ -545,7 +518,7 @@ int main(int argc, char *argv[])
 	if (!done) quit("Unable to prepare any 'display module'!");
 
 	/* Catch nasty signals */
-	signals_init(modules[i].hup_disconnects, modules[i].tstp_default);
+	signals_init();
 
 	/* Set up the command hook */
 	cmd_get_hook = textui_get_cmd;
@@ -566,21 +539,19 @@ int main(int argc, char *argv[])
 	init_angband();
 	textui_init();
 
-	/*
-	 * Install a quit hook that will clean up those things.  Have it call
-	 * the previously registered quit hook so whatever other cleaning up
-	 * a front end needs is also done.
-	 */
-	quit_nested = quit_aux;
-	quit_aux = extended_quit_hook;
-
 	/* Wait for response */
 	pause_line(Term);
-	if (!terms_disconnecting) {
-		/* Play the game */
-		play_game((select_game) ?
-			GAME_SELECT : ((new_game) ? GAME_NEW : GAME_LOAD));
-	}
+
+	/* Play the game */
+	play_game((select_game) ?
+		GAME_SELECT : ((new_game) ? GAME_NEW : GAME_LOAD));
+
+	/* Free resources */
+	textui_cleanup();
+	cleanup_angband();
+#ifdef SOUND
+	close_sound();
+#endif
 
 	/* Quit */
 	quit(NULL);

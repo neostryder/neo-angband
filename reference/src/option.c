@@ -18,7 +18,6 @@
 #include "angband.h"
 #include "init.h"
 #include "option.h"
-#include "parser.h"
 #include "z-util.h"
 
 /**
@@ -36,47 +35,6 @@ static struct option_entry {
 	#include "list-options.h"
 	#undef OP
 };
-
-struct option_parser_context {
-	struct player_options *opts;
-	int page;
-};
-
-static enum parser_error parse_option(struct parser *p)
-{
-	struct option_parser_context *ctx = parser_priv(p);
-	const char *name, *yno;
-	int opt;
-
-	if (!ctx) {
-		return PARSE_ERROR_INTERNAL;
-	}
-
-	name = parser_getsym(p, "name");
-	opt = 0;
-	while (1) {
-		if (opt >= OPT_MAX) {
-			return PARSE_ERROR_INVALID_OPTION;
-		}
-		if (options[opt].type == ctx->page && options[opt].name
-				&& streq(name, options[opt].name)) {
-			break;
-		}
-		++opt;
-	}
-
-	yno = parser_getstr(p, "yno");
-	if (strncmp("yes", yno, 3) == 0 && contains_only_spaces(yno + 3)) {
-		ctx->opts->opt[opt] = true;
-		return PARSE_ERROR_NONE;
-	}
-	if (strncmp("no", yno, 2) == 0 && contains_only_spaces(yno + 2)) {
-		ctx->opts->opt[opt] = false;
-		return PARSE_ERROR_NONE;
-	}
-
-	return PARSE_ERROR_INVALID_VALUE;
-}
 
 /**
  * Given the option type, return a short name in all lower case.
@@ -266,51 +224,110 @@ bool options_save_custom(struct player_options *opts, int page)
  */
 bool options_restore_custom(struct player_options *opts, int page)
 {
+	const char *page_name = option_type_name(page);
 	char path[1024], buf[1024], file_name[80];
 	ang_file *f;
-	struct parser *p;
-	struct option_parser_context ctx;
-	int maxe, counte;
+	int linenum;
 
 	strnfmt(file_name, sizeof(file_name), "customized_%s_options.txt",
-		option_type_name(page));
+		page_name);
 	path_build(path, sizeof(path), ANGBAND_DIR_USER, file_name);
 	if (!file_exists(path)) {
 		options_restore_maintainer(opts, page);
 		return true;
 	}
 
+	/*
+	 * Could use run_parser(), but that exits the application if
+	 * there are syntax errors.  Therefore, use our own parsing.
+	 */
 	f = file_open(path, MODE_READ, FTYPE_TEXT);
 	if (!f) {
 		return false;
 	}
-	p = parser_new();
-	ctx.opts = opts;
-	ctx.page = page;
-	parser_setpriv(p, &ctx);
-	parser_reg(p, "option sym name str yno", parse_option);
-	maxe = get_parser_error_limit();
-	counte = 0;
+	linenum = 1;
 	while (file_getl(f, buf, sizeof(buf))) {
-		errr r = parser_parse(p, buf);
+		char *sub = strstr(buf, "option:"), *com;
+		int opt;
 
-		if (r) {
-			struct parser_state s;
+		if (!sub) {
+			/*
+			 * If it isn't an option, it should be a comment or
+			 * whitespace.
+			 */
+			sub = strchr(buf, '#');
 
-			parser_getstate(p, &s);
-			plog_fmt("Parse error in %s line %d column %d: %s: %s",
-				path, s.line, s.col, s.msg,
-				parser_error_str[s.error]);
-			if (maxe) {
-				if (counte >= maxe - 1) {
-					break;
-				}
-				++counte;
+			if (sub) {
+				*sub = '\0';
 			}
+			if (!contains_only_spaces(buf)) {
+				msg("Line %d of the customized %s options is "
+					"not parseable.", linenum, page_name);
+			}
+			++linenum;
+			continue;
 		}
+
+		*sub = '\0';
+		/* Ignore if the "option:" is embedded in a comment. */
+		com = strchr(buf, '#');
+		if (com) {
+			*com = '\0';
+			if (!contains_only_spaces(buf)) {
+				msg("Line %d of the customized %s options is "
+					"not parseable.", linenum, page_name);
+			}
+			++linenum;
+			continue;
+		}
+		if (!contains_only_spaces(buf)) {
+			msg("Line %d of the customized %s options is not "
+					"parseable.", linenum, page_name);
+			++linenum;
+			continue;
+		}
+
+		/* Try to find the option. */
+		sub += 7;
+		opt = 0;
+		while (1) {
+			size_t lname;
+
+			if (opt >= OPT_MAX) {
+				msg("Unrecognized option at line %d of the "
+					"customized %s options.", linenum,
+					page_name);
+				break;
+			}
+			if (options[opt].type != page || !options[opt].name) {
+				++opt;
+				continue;
+			}
+			lname = strlen(options[opt].name);
+			if (strncmp(options[opt].name, sub, lname) == 0
+					&& sub[lname] == ':') {
+				if (strncmp("yes", sub + lname + 1, 3) == 0
+						&& contains_only_spaces(sub + lname + 4)) {
+					(*opts).opt[opt] = true;
+				} else if (strncmp("no", sub + lname + 1, 2) == 0
+						&& contains_only_spaces(sub + lname + 3)) {
+					(*opts).opt[opt] = false;
+				} else {
+					msg("Value at line %d of the "
+						"customized %s options is not "
+						"yes or no.", linenum,
+						page_name);
+				}
+				break;
+			}
+			++opt;
+		}
+		++linenum;
 	}
-	parser_destroy(p);
-	(void)file_close(f);
+
+	if (!file_close(f)) {
+		return false;
+	}
 
 	return true;
 }

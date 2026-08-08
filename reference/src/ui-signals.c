@@ -36,57 +36,62 @@ int16_t signal_count;	/* Count interrupts ("I'm going to count to five") */
 
 typedef void (*Signal_Handler_t)(int);
 
-#ifdef SIGTSTP
-static Signal_Handler_t tstp_handler = SIG_DFL;
-#endif
-
-static int install_handler(int sig, Signal_Handler_t handler)
-{
-#ifdef HAVE_SIGACTION
-	struct sigaction a;
-
-	a.sa_handler = handler;
-	(void)sigemptyset(&a.sa_mask);
-#ifdef SA_RESTART
-	a.sa_flags = SA_RESTART;
-#else
-	a.sa_flags = 0;
-#endif
-	return sigaction(sig, &a, NULL);
-#else
-	return (signal(sig, handler) == SIG_ERR) ? -1 : 0;
-#endif
-}
-
-
-#if defined(SIGHUP) || defined(SIGPWR) || defined(SIGDANGER)
 /**
- * Handle signals -- disconnect in an orderly fashion
+ * Wrapper around signal() which it is safe to take the address
+ * of, in case signal itself is hidden by some some macro magic.
  */
-static void handle_signal_disconnect(int sig)
+static Signal_Handler_t wrap_signal(int sig, Signal_Handler_t handler)
 {
-	terms_disconnecting = 1;
+	return signal(sig, handler);
 }
-#endif
+
+/* Call this instead of calling signal() directly. */  
+static Signal_Handler_t (*signal_aux)(int, Signal_Handler_t) = wrap_signal;
 
 
 #ifdef SIGTSTP
 /**
- * Handle signals -- request suspend
+ * Handle signals -- suspend
+ *
+ * Actually suspend the game, and then resume cleanly
  */
 static void handle_signal_suspend(int sig)
 {
-	terms_suspending = 1;
+	/* Protect errno from library calls in signal handler */
+	int save_errno = errno;
+
+	/* Disable handler */
+	(void)(*signal_aux)(sig, SIG_IGN);
+
+#ifdef SIGSTOP
+
+	/* Flush output */
+	Term_fresh();
+
+	/* Suspend the "Term" */
+	Term_xtra(TERM_XTRA_ALIVE, 0);
+
+	/* Suspend ourself */
+	(void)kill(0, SIGSTOP);
+
+	/* Resume the "Term" */
+	Term_xtra(TERM_XTRA_ALIVE, 1);
+
+	/* Redraw the term */
+	Term_redraw();
+
+	/* Flush the term */
+	Term_fresh();
+
+#endif
+
+	/* Restore handler */
+	(void)(*signal_aux)(sig, handle_signal_suspend);
+
+	/* Restore errno */
+	errno = save_errno;
 }
 #endif /* ifdef SIGTSTP */
-
-
-static void exit_on_signal(int sig, const char *msg)
-{
-	plog(msg);
-	(void)install_handler(sig, SIG_DFL);
-	raise(sig);
-}
 
 
 /**
@@ -106,40 +111,24 @@ static void exit_on_signal(int sig, const char *msg)
 static void handle_signal_simple(int sig)
 {
 	/* Protect errno from library calls in signal handler */
-	int save_errno;
+	int save_errno = errno;
 	/*
 	 * Use own buffer to avoid interactions with the static variables
-	 * used to implement vformat() (and thus format()).
+	 * used to implement vformat() (and thus quit_fmt() and format()).
 	 */
 	char msg[48];
 
-	/* Make an attempt at a normal exit. */
-	terms_disconnecting = 1;
-
-	/*
-	 * Escalate the response if the player is impatient or the game is
-	 * genuinely stuck and has received multiple signals.
-	 */
-	++signal_count;
-	if (signal_count < 4) {
-		return;
-	}
-
-	save_errno = errno;
-
-#ifndef HAVE_SIGACTION
 	/* Disable handler */
-	(void)install_handler(sig, SIG_IGN);
-#endif
+	(void)(*signal_aux)(sig, SIG_IGN);
 
 	/* Construct the exit message in case it is needed */
 	(void)strnfmt(msg, sizeof(msg), "Exiting on signal %d!", sig);
 
-	/* Nothing to save; exit on the given signal */
-	if (!character_generated || character_saved) {
-		exit_on_signal(sig, msg);
-		return;
-	}
+	/* Nothing to save, just quit */
+	if (!character_generated || character_saved) quit(msg);
+
+	/* Count the signals */
+	signal_count++;
 
 	/*
 	 * Terminate dead characters; quit without saving (non-setgid
@@ -152,10 +141,9 @@ static void handle_signal_simple(int sig)
 
 		close_game(false);
 
-		exit_on_signal(sig, msg);
-		return;
-	}
-	if (signal_count >= 5) {
+		/* Quit */
+		quit(msg);
+	} else if (signal_count >= 5) {
 #ifdef SETGID
 		/* Cause of "death" */
 		my_strcpy(player->died_from, "Interrupting", sizeof(player->died_from));
@@ -170,10 +158,9 @@ static void handle_signal_simple(int sig)
 		close_game(false);
 #endif
 
-		exit_on_signal(sig, msg);
-		return;
-	}
-	if (signal_count >= 4) {
+		/* Quit */
+		quit(msg);
+	} else if (signal_count >= 4) {
 		/*
 		 * Remember where the cursor was so it can be restored after
 		 * the message is displayed.
@@ -201,12 +188,13 @@ static void handle_signal_simple(int sig)
 
 		/* Flush */
 		Term_fresh();
+	} else if (signal_count >= 2) {
+		/* Make a noise */
+		Term_xtra(TERM_XTRA_NOISE, 0);
 	}
 
-#ifndef HAVE_SIGACTION
 	/* Restore handler */
-	(void)install_handler(sig, handle_signal_simple);
-#endif
+	(void)(*signal_aux)(sig, handle_signal_simple);
 
 	/* Restore errno */
 	errno = save_errno;
@@ -220,23 +208,18 @@ static void handle_signal_abort(int sig)
 {
 	/*
 	 * Use own buffer to avoid interactions with the static variables
-	 * used to implement vformat() (and thus format()).
+	 * used to implement vformat() (and thus quit_fmt() and format()).
 	 */
 	char msg[48];
 
-#ifndef HAVE_SIGACTION
 	/* Disable handler */
-	(void)install_handler(sig, SIG_IGN);
-#endif
+	(void)(*signal_aux)(sig, SIG_IGN);
 
 	/* Construct the exit message */
 	(void)strnfmt(msg, sizeof(msg), "Exiting on signal %d!", sig);
 
-	/* Nothing to save, exit on the signal */
-	if (!character_generated || character_saved) {
-		exit_on_signal(sig, msg);
-		return;
-	}
+	/* Nothing to save, just quit */
+	if (!character_generated || character_saved) quit(msg);
 
 	/* Clear the bottom line */
 	Term_erase(0, 23, 255);
@@ -256,7 +239,7 @@ static void handle_signal_abort(int sig)
 	savefile_get_panic_name(panicfile, sizeof(panicfile), savefile);
 
 	/* Forbid suspend */
-	signals_protect(true);
+	signals_ignore_tstp();
 
 	/* Attempt to save */
 	if (panicfile[0] && savefile_save(panicfile))
@@ -267,72 +250,34 @@ static void handle_signal_abort(int sig)
 	/* Flush output */
 	Term_fresh();
 
-	exit_on_signal(sig, msg);
+	/* Quit */
+	quit(msg);
 }
 
 
+
+
 /**
- * Temporarily modify whether certain signals have an effect.
- *
- * \param on will, if true, disable certain signals' effects.  If false, those
- * signals' effects are restored.
- *
- * The signals affected are those that are typically user-initiated, could
- * lead to denial of service (lock file left in place) or partially written
- * important data, and, if blocked or ignored still allow for normal execution
- * to proceed:  SIGINT, SIGQUIT, SIGTERM, and SIGTSTP.  Whether the signals
- * are only blocked from delivery or ignored depends on what the platform
- * allows.
+ * Ignore SIGTSTP signals (keyboard suspend)
  */
-void signals_protect(bool on)
+void signals_ignore_tstp(void)
 {
-#ifdef HAVE_SIGPROCMASK
-	sigset_t s;
 
-	(void)sigemptyset(&s);
-#ifdef SIGINT
-	(void)sigaddset(&s, SIGINT);
-#endif
-#ifdef SIGQUIT
-	(void)sigaddset(&s, SIGQUIT);
-#endif
-#ifdef SIGTERM
-	(void)sigaddset(&s, SIGTERM);
-#endif
 #ifdef SIGTSTP
-	(void)sigaddset(&s, SIGTSTP);
+	(void)(*signal_aux)(SIGTSTP, SIG_IGN);
 #endif
-	(void)sigprocmask((on) ? SIG_BLOCK : SIG_UNBLOCK, &s, NULL);
 
-#else
-	if (on) {
-#ifdef SIGINT
-		(void)install_handler(SIGINT, SIG_IGN);
-#endif
-#ifdef SIGQUIT
-		(void)install_handler(SIGQUIT, SIG_IGN);
-#endif
-#ifdef SIGTERM
-		(void)install_handler(SIGTERM, SIG_IGN);
-#endif
+}
+
+/**
+ * Handle SIGTSTP signals (keyboard suspend)
+ */
+void signals_handle_tstp(void)
+{
+
 #ifdef SIGTSTP
-		(void)install_handler(SIGTSTP, SIG_IGN);
+	(void)(*signal_aux)(SIGTSTP, handle_signal_suspend);
 #endif
-	} else {
-#ifdef SIGINT
-		(void)install_handler(SIGINT, handle_signal_simple);
-#endif
-#ifdef SIGQUIT
-		(void)install_handler(SIGQUIT, handle_signal_abort);
-#endif
-#ifdef SIGTERM
-		(void)install_handler(SIGTERM, handle_signal_simple);
-#endif
-#ifdef SIGTSTP
-		(void)install_handler(SIGTSTP, tstp_handler);
-#endif
-	}
-#endif /* else HAVE_SIGPROCMASK */
 
 }
 
@@ -340,71 +285,65 @@ void signals_protect(bool on)
 /**
  * Prepare to handle the relevant signals
  */
-void signals_init(bool hup_disconnects, bool tstp_default)
+void signals_init(void)
 {
 
 #ifdef SIGHUP
-	(void)install_handler(SIGHUP,
-		(hup_disconnects) ? handle_signal_disconnect : SIG_IGN);
-#else
-	(void)hup_disconnects;
+	(void)(*signal_aux)(SIGHUP, SIG_IGN);
 #endif
 
 
 #ifdef SIGTSTP
-	tstp_handler = (tstp_default) ? SIG_DFL : handle_signal_suspend;
-	(void)install_handler(SIGTSTP, tstp_handler);
-#else
-	(void)tstp_default;
+	(void)(*signal_aux)(SIGTSTP, handle_signal_suspend);
 #endif
 
 
 #ifdef SIGINT
-	(void)install_handler(SIGINT, handle_signal_simple);
+	(void)(*signal_aux)(SIGINT, handle_signal_simple);
 #endif
 
 #ifdef SIGQUIT
-	(void)install_handler(SIGQUIT, handle_signal_simple);
+	(void)(*signal_aux)(SIGQUIT, handle_signal_simple);
 #endif
 
 
 #ifdef SIGFPE
-	(void)install_handler(SIGFPE, handle_signal_abort);
+	(void)(*signal_aux)(SIGFPE, handle_signal_abort);
 #endif
 
 #ifdef SIGILL
-	(void)install_handler(SIGILL, handle_signal_abort);
+	(void)(*signal_aux)(SIGILL, handle_signal_abort);
 #endif
 
 #ifdef SIGTRAP
-	(void)install_handler(SIGTRAP, handle_signal_abort);
+	(void)(*signal_aux)(SIGTRAP, handle_signal_abort);
 #endif
 
 #ifdef SIGIOT
-	(void)install_handler(SIGIOT, handle_signal_abort);
+	(void)(*signal_aux)(SIGIOT, handle_signal_abort);
 #endif
 
 /* Set to 0 to suppress signal handlers when debugging */
 #if 1
 # ifdef SIGBUS
-	(void)install_handler(SIGBUS, handle_signal_abort);
+	(void)(*signal_aux)(SIGBUS, handle_signal_abort);
 # endif
 
 # ifdef SIGSEGV
-	(void)install_handler(SIGSEGV, handle_signal_abort);
+	(void)(*signal_aux)(SIGSEGV, handle_signal_abort);
 # endif
 #endif
 
 #ifdef SIGTERM
-	(void)install_handler(SIGTERM, handle_signal_abort);
+	(void)(*signal_aux)(SIGTERM, handle_signal_abort);
 #endif
 
 #ifdef SIGPIPE
-	(void)install_handler(SIGPIPE, handle_signal_abort);
+	(void)(*signal_aux)(SIGPIPE, handle_signal_abort);
 #endif
 
 #ifdef SIGEMT
-	(void)install_handler(SIGEMT, handle_signal_abort);
+	(void)(*signal_aux)(SIGEMT, handle_signal_abort);
 #endif
 
 /**
@@ -413,19 +352,19 @@ void signals_init(bool hup_disconnects, bool tstp_default)
  * signal that the system will soon be out of memory.
  */
 #ifdef SIGDANGER
-	(void)install_handler(SIGDANGER, handle_signal_disconnect);
+	(void)(*signal_aux)(SIGDANGER, handle_signal_abort);
 #endif
 
 #ifdef SIGSYS
-	(void)install_handler(SIGSYS, handle_signal_abort);
+	(void)(*signal_aux)(SIGSYS, handle_signal_abort);
 #endif
 
 #ifdef SIGXCPU
-	(void)install_handler(SIGXCPU, handle_signal_abort);
+	(void)(*signal_aux)(SIGXCPU, handle_signal_abort);
 #endif
 
 #ifdef SIGPWR
-	(void)install_handler(SIGPWR, handle_signal_disconnect);
+	(void)(*signal_aux)(SIGPWR, handle_signal_abort);
 #endif
 
 }
@@ -433,55 +372,27 @@ void signals_init(bool hup_disconnects, bool tstp_default)
 
 #else	/* !WINDOWS */
 
+
 /**
  * Do nothing
  */
-void signals_protect(bool on)
+void signals_ignore_tstp(void)
 {
-	(void)on;
 }
 
+/**
+ * Do nothing
+ */
+void signals_handle_tstp(void)
+{
+}
 
 /**
  * Do nothing
  */
-void signals_init(bool hup_disconnects, bool tstp_default)
+void signals_init(void)
 {
-	(void)hup_disconnects;
-	(void)tstp_default;
 }
 
 #endif	/* !WINDOWS */
 
-
-/**
- * Suspend the user interface and then resume upon receiving SIGCONT.
- */
-void signals_perform_deferred_suspend(void)
-{
-#ifdef SIGSTOP
-	/* Flush output */
-	Term_fresh();
-
-	/* Suspend the "Term" */
-	Term_xtra(TERM_XTRA_ALIVE, 0);
-
-	/* Suspend ourself */
-	(void)kill(0, SIGSTOP);
-
-	/* Clear the indicator. */
-	terms_suspending = 0;
-
-	/* Resume the "Term" */
-	Term_xtra(TERM_XTRA_ALIVE, 1);
-
-	/* Redraw the term */
-	Term_redraw();
-
-	/* Flush the term */
-	Term_fresh();
-#else
-	/* Clear the indicator. */
-	terms_suspending = 0;
-#endif
-}

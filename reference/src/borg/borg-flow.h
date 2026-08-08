@@ -28,11 +28,9 @@
 #include "borg-cave.h"
 
 /*
- * Threshold where the borg will attempt to dig things; related to the
- * thresholds implied in player-calcs.c's calc_digging_chances()
+ * Threshold where the borg will attempt to dig things
  */
-#define BORG_DIG      10
-#define BORG_DIG_MOD  20
+#define BORG_DIG      13
 #define BORG_DIG_HARD 40
 
 /*

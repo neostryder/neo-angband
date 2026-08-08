@@ -334,6 +334,7 @@ void equip_cmp_display(void)
 	}
 
 	while (istate != EQUIP_CMP_MENU_DONE) {
+		ui_event in;
 		int wid, hgt;
 
 		assert(istate >= 0 && istate < (int)N_ELEMENTS(states));
@@ -366,8 +367,28 @@ void equip_cmp_display(void)
 		Term_get_size(&wid, &hgt);
 		prt(states[istate].prompt, hgt - 1, 0);
 
-		istate = (*states[istate].inputfunc)(inkey_m(), istate,
-			the_summary, player);
+		/*
+		 * Emulate what inkey() would do without coercing mouse events
+		 * into keystrokes.
+		 */
+		while (1) {
+			in = inkey_ex();
+			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
+				break;
+			}
+			if (in.type == EVT_BUTTON) {
+				in.type = EVT_KBRD;
+				break;
+			}
+			if (in.type == EVT_ESCAPE) {
+				in.type = EVT_KBRD;
+				in.key.code = ESCAPE;
+				in.key.mods = 0;
+				break;
+			}
+		}
+		istate = (*states[istate].inputfunc)(in, istate, the_summary,
+			player);
 	}
 
 	screen_load();
@@ -1247,9 +1268,6 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 			s->easy_filt.v[s->easy_filt.nv - 1] =
 				s->easy_filt.v[s->easy_filt.nv];
 			--s->easy_filt.nv;
-			if (!s->easy_filt.nv) {
-				s->easy_filt.simple = EQUIP_EXPR_TERMINATOR;
-			}
 			filter_items(s);
 			sort_items(s);
 		}
@@ -1272,11 +1290,11 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 		}
 		switch (itry) {
 		case 0:
-			ctry[0] = toupper((unsigned char)c[0]);
+			ctry[0] = toupper(c[0]);
 			if (c[1] != '\0') {
-				ctry[1] = tolower((unsigned char)c[1]);
+				ctry[1] = tolower(c[1]);
 				if (c[2] != '\0') {
-					ctry[2] = tolower((unsigned char)c[2]);
+					ctry[2] = tolower(c[2]);
 					ctry[3] = '\0';
 					threec = true;
 				} else {
@@ -1288,11 +1306,11 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 			break;
 
 		case 1:
-			ctry[0] = toupper((unsigned char)c[0]);
+			ctry[0] = toupper(c[0]);
 			if (c[1] != '\0') {
-				ctry[1] = toupper((unsigned char)c[1]);
+				ctry[1] = toupper(c[1]);
 				if (c[2] != '\0') {
-					ctry[2] = toupper((unsigned char)c[2]);
+					ctry[2] = toupper(c[2]);
 					ctry[3] = '\0';
 					threec = true;
 				} else {
@@ -1304,11 +1322,11 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 			break;
 
 		case 2:
-			ctry[0] = tolower((unsigned char)c[0]);
+			ctry[0] = tolower(c[0]);
 			if (c[1] != '\0') {
-				ctry[1] = tolower((unsigned char)c[1]);
+				ctry[1] = tolower(c[1]);
 				if (c[2] != '\0') {
-					ctry[2] = tolower((unsigned char)c[2]);
+					ctry[2] = tolower(c[2]);
 					ctry[3] = '\0';
 					threec = true;
 				} else {
@@ -1320,9 +1338,9 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 			break;
 
 		case 3:
-			ctry[0] = tolower((unsigned char)c[0]);
+			ctry[0] = tolower(c[0]);
 			if (c[1] != '\0') {
-				ctry[1] = toupper((unsigned char)c[1]);
+				ctry[1] = toupper(c[1]);
 				ctry[2] = '\0';
 			} else {
 				ctry[1] = '\0';
@@ -1373,10 +1391,6 @@ static int prompt_for_easy_filter(struct equippable_summary *s, bool apply_not)
 					s->easy_filt.v[s->easy_filt.nv].c =
 						EQUIP_EXPR_SELECTOR;
 					++s->easy_filt.nv;
-					if (s->easy_filt.nv == 1) {
-						s->easy_filt.simple =
-							EQUIP_EXPR_AND;
-					}
 				}
 				ind = s->easy_filt.nv - 1;
 				s->easy_filt.v[ind].s.ex.propind =
@@ -2374,9 +2388,9 @@ static void compute_player_and_equipment_values(struct player *p,
 
 
 static bool check_for_two_categories(const struct ui_entry *entry,
-		const void *closure)
+	void *closure)
 {
-	const char * const *categories = closure;
+	const char **categories = closure;
 
 	return ui_entry_has_category(entry, categories[0]) &&
 		ui_entry_has_category(entry, categories[1]);
@@ -2437,7 +2451,7 @@ static int initialize_summary(struct player *p,
 			int n, j;
 
 			test_categories[1] = categories[i];
-			ui_iter = initialize_ui_entry_iterator_const(
+			ui_iter = initialize_ui_entry_iterator(
 				check_for_two_categories, test_categories,
 				test_categories[1]);
 			n = count_ui_entry_iterator(ui_iter);

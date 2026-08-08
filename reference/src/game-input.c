@@ -27,7 +27,6 @@ bool (*get_check_hook)(const char *prompt);
 bool (*get_com_hook)(const char *prompt, char *command);
 bool (*get_rep_dir_hook)(int *dir, bool allow_none);
 bool (*get_aim_dir_hook)(int *dir);
-bool (*get_point_hook)(struct loc *grid);
 int (*get_spell_from_book_hook)(struct player *p, const char *verb,
 	struct object *book, const char *error,
 	bool (*spell_filter)(const struct player *p, int spell));
@@ -40,7 +39,6 @@ bool (*get_item_hook)(struct object **choice, const char *pmt, const char *str,
 bool (*get_curse_hook)(int *choice, struct object *obj, char *dice_string);
 int (*get_effect_from_list_hook)(const char* prompt,
 	struct effect *effect, int count, bool allow_random);
-bool (*check_break_hook)(bool user_event, int messaging);
 bool (*confirm_debug_hook)(void);
 void (*get_panel_hook)(int *min_y, int *min_x, int *max_y, int *max_x);
 bool (*panel_contains_hook)(unsigned int y, unsigned int x);
@@ -143,21 +141,6 @@ bool get_aim_dir(int *dir)
 	/* Ask the UI for it */
 	if (get_aim_dir_hook)
 		return get_aim_dir_hook(dir);
-	else
-		return false;
-}
-
-/**
- * Get a location from the user.
- *
- * \param grid is dereferenced and set to the location selected.
- * \return true if a location was chosen, otherwise return false.
- */
-bool get_point(struct loc *grid)
-{
-	/* Ask the UI for it */
-	if (get_point_hook)
-		return get_point_hook(grid);
 	else
 		return false;
 }
@@ -337,31 +320,4 @@ void view_ability_menu(struct player_ability *ability_list,
 	/* Ask the UI for it */
 	if (view_abilities_hook)
 		view_abilities_hook(ability_list, num_abilities);
-}
-
-/**
- * Keep the user interface responsive during extended calculations.
- *
- * \param user_event will, if true, allow some input events to signal a break
- * while discarding all other input events.  Which input events signal a break
- * is at the discretion of the UI layer.  When false, pending input events are
- * transferred to the UI layer's event queue.
- * \param messaging will, if one and user_event is true, cause a message to
- * be displayed about how the player can request a break for the calculations.
- * If two, clears the message displayed with check_break(true, 1) and
- * immediately returns false without checking for a break.
- * \return true if a break was requested (either user_event is true and the
- * player generated a necessary event or another mechanism, like an asynchronous
- * signal, window manager, or a front end's interface around the game, requested
- * a break.
- *
- * The default implementation does nothing and returns false.  A UI layer's
- * implementation, via check_break_hook, should do the minimum possible to keep
- * the UI responsive to events and asynchronous signals that have deferred
- * processing without waiting for an event or signal.
- */
-bool check_break(bool user_event, int messaging)
-{
-	return (check_break_hook)
-		? check_break_hook(user_event, messaging) : false;
 }

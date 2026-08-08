@@ -30,26 +30,33 @@ function race(
   } as unknown as MonsterRace;
 }
 
-/** The real ui_knowledge.txt shape: Uniques (flag), Not Fully Known (other),
- *  then two base categories. */
+/** The real 4.2.6 ui_knowledge.txt shape: Uniques (flag), then base categories.
+ *  4.2.6 has no `mcat-include-other` - that directive is post-tag upstream work
+ *  and left core with #143; see the note on matchesFlagOrOther. */
 const RECORDS: UiKnowledgeRecordJson[] = [
   { "monster-category": "Uniques", "mcat-include-flag": ["UNIQUE"] },
-  { "monster-category": "Not Fully Known", "mcat-include-other": ["not-fully-known"] },
   { "monster-category": "Dragons", "mcat-include-base": ["dragon", "ancient dragon"] },
   { "monster-category": "Ants", "mcat-include-base": ["ant"] },
 ];
 
 describe("bindMonsterCategories (ui-knowledge.c parser)", () => {
-  it("parses names, bases, flag lists and the fully/not-fully-known others", () => {
+  it("parses names, bases and flag lists", () => {
     const cats = bindMonsterCategories([
       { "monster-category": "X", "mcat-include-flag": ["UNIQUE | MALE"] },
-      { "monster-category": "Y", "mcat-include-other": ["fully-known", "not-fully-known"] },
       { "monster-category": "Z", "mcat-include-base": ["dragon"] },
     ]);
     expect(cats[0]!.incFlags).toEqual([RF.UNIQUE, RF.MALE]);
-    expect(cats[1]!.includeFullyKnown).toBe(true);
-    expect(cats[1]!.includeNotFullyKnown).toBe(true);
-    expect(cats[2]!.incBases).toEqual(["dragon"]);
+    expect(cats[1]!.incBases).toEqual(["dragon"]);
+  });
+
+  it("registers only the two directives 4.2.6's ui-knowledge.c does", () => {
+    /* The guard on the removal. MonsterCategory used to carry
+     * includeFullyKnown / includeNotFullyKnown from `mcat-include-other`, a
+     * directive 4.2.6 does not register - so core was shipping an upstream
+     * feature newer than its own baseline. If it comes back, it comes back
+     * deliberately: this asserts the shape of what the binder produces. */
+    const cat = bindMonsterCategories([{ "monster-category": "X" }])[0]!;
+    expect(Object.keys(cat).sort()).toEqual(["incBases", "incFlags", "name"]);
   });
 });
 
@@ -91,12 +98,18 @@ describe("monsterKnowledgeGroups (do_cmd_knowledge_monsters)", () => {
     expect(groups.map((g) => g.name)).toEqual([UNCLASSIFIED_CATEGORY]);
   });
 
-  it("routes a not-fully-known non-unique into Not Fully Known", () => {
+  it("does not sort by how much lore is known: 4.2.6 has no such category", () => {
+    /* This asserted that an unlearned ant ALSO appeared under "Not Fully
+     * Known". That category is driven by mcat-include-other, which 4.2.6's
+     * ui-knowledge.c does not register and its ui_knowledge.txt does not use;
+     * it arrived in core from upstream master and left again with #143.
+     *
+     * The check is kept, inverted: an ant is an ant whether or not its lore is
+     * complete, and `allKnown` must not change which groups it lands in. */
     const ant = race("giant ant", "ant", 3, [], 6);
-    const groups = monsterKnowledgeGroups(cats, [{ race: ant, allKnown: false }]);
-    const names = groups.map((g) => g.name);
-    /* An unlearned ant appears under both Not Fully Known and Ants. */
-    expect(names).toContain("Not Fully Known");
-    expect(names).toContain("Ants");
+    const unlearned = monsterKnowledgeGroups(cats, [{ race: ant, allKnown: false }]);
+    const learned = monsterKnowledgeGroups(cats, [{ race: ant, allKnown: true }]);
+    expect(unlearned.map((g) => g.name)).toEqual(["Ants"]);
+    expect(learned.map((g) => g.name)).toEqual(unlearned.map((g) => g.name));
   });
 });

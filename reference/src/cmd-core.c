@@ -143,6 +143,7 @@ static const struct command_info game_cmds[] =
 	{ CMD_WIZ_CURSE_ITEM, "change a curse on an item", do_cmd_wiz_curse_item, false, false, 0 },
 	{ CMD_WIZ_DETECT_ALL_LOCAL, "detect everything nearby", do_cmd_wiz_detect_all_local, false, false, 0 },
 	{ CMD_WIZ_DETECT_ALL_MONSTERS, "detect all monsters", do_cmd_wiz_detect_all_monsters, false, false, 0 },
+	{ CMD_WIZ_DISPLAY_KEYLOG, "display keystroke log", do_cmd_wiz_display_keylog, false, false, 0 },
 	{ CMD_WIZ_DUMP_LEVEL_MAP, "write map of level", do_cmd_wiz_dump_level_map, false, false, 0 },
 	{ CMD_WIZ_EDIT_PLAYER_EXP, "change the player's experience", do_cmd_wiz_edit_player_exp, false, false, 0 },
 	{ CMD_WIZ_EDIT_PLAYER_GOLD, "change the player's gold", do_cmd_wiz_edit_player_gold, false, false, 0 },
@@ -996,29 +997,6 @@ int cmd_get_arg_point(struct command *cmd, const char *arg, struct loc *grid)
 	}
 
 	return err;
-}
-
-/**
- * Get a point, first from command or prompt otherwise.
- *
- * It would likely be useful to have a function pointer argument to select
- * allowable locations.  For the text UI, that would require some reworking
- * of the targeting interface - likely to allow the caller to set what an
- * "interesting" grid is and to allow the caller to restrict the targeting
- * system from using free targeting.
- */
-int cmd_get_point(struct command *cmd, const char *arg, struct loc *grid)
-{
-	if (cmd_get_arg_point(cmd, arg, grid) == CMD_OK) {
-		return CMD_OK;
-	}
-
-	if (get_point(grid)) {
-		cmd_set_arg_point(cmd, arg, *grid);
-		return CMD_OK;
-	}
-
-	return CMD_ARG_ABORTED;
 }
 
 /**

@@ -460,9 +460,6 @@ void reincarnate_borg(void)
     /* Assume not ignoring monsters */
     borg.goal.ignoring = false;
 
-    /* and not waiting */
-    borg.goal.waiting = false;
-
     flavor_init();
 
     /** Roll up a new character **/

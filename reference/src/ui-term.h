@@ -352,17 +352,6 @@ extern bool smlcurs;
 extern term *angband_term[ANGBAND_TERM_MAX];
 extern char angband_term_name[ANGBAND_TERM_MAX][16];
 extern uint32_t window_flag[ANGBAND_TERM_MAX];
-/**
- * Flags whether the terminals are in a "disconnecting" state.  Modifies the
- * behavior of Term_inkey().
- */
-extern volatile sig_atomic_t terms_disconnecting;
-/**
- * Flags whether there's been a request to suspend the terminals.  Used by
- * front ends that do not use the default response to SIGTSTP.  See main.h's
- * struct module for more details about how to implement such front ends.
- */
-extern volatile sig_atomic_t terms_suspending;
 
 /**
  * The main "screen"
@@ -407,7 +396,7 @@ extern errr Term_what(int x, int y, int *a, wchar_t *c);
 extern errr Term_flush(void);
 extern errr Term_mousepress(int x, int y, char button);
 extern errr Term_keypress(keycode_t k, uint8_t mods);
-extern errr Term_key_push(keycode_t k, uint8_t mods);
+extern errr Term_key_push(int k);
 extern errr Term_event_push(const ui_event *ke);
 extern errr Term_inkey(ui_event *ch, bool wait, bool take);
 

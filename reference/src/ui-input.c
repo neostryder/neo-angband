@@ -53,8 +53,6 @@ static bool inkey_xtra;
 uint32_t inkey_scan;		/* See the "inkey()" function */
 bool inkey_flag;		/* See the "inkey()" function */
 
-bool (*disconnect_denier_hook)(void) = NULL;
-
 /**
  * Flush all pending input.
  *
@@ -159,6 +157,9 @@ struct keypress(*inkey_hack)(int flush_first) = NULL;
  * If "angband_term[0]" is not active, we will make it active during this
  * function, so that the various "main-xxx.c" files can assume that input
  * is only requested (via "Term_inkey()") when "angband_term[0]" is active.
+ *
+ * Mega-Hack -- This function is used as the entry point for clearing the
+ * "signal_count" variable, and of the "character_saved" variable.
  *
  * Mega-Hack -- Note the use of "inkey_hack" to allow the "Borg" to steal
  * control of the keyboard from the user.
@@ -273,6 +274,9 @@ ui_event inkey_ex(void)
 			/* Mega-Hack -- reset saved flag */
 			character_saved = false;
 
+			/* Mega-Hack -- reset signal counter */
+			signal_count = 0;
+
 			/* Only once */
 			done = true;
 		}
@@ -312,11 +316,9 @@ void anykey(void)
 {
 	ui_event ke = EVENT_EMPTY;
   
-	/* Only accept a keypress, mouse click, or disconnect */
-	while (ke.type != EVT_MOUSE && ke.type != EVT_KBRD
-			&& ke.type != EVT_DISCONNECT) {
+	/* Only accept a keypress or mouse click */
+	while (ke.type != EVT_MOUSE && ke.type != EVT_KBRD)
 		ke = inkey_ex();
-	}
 }
 
 /**
@@ -324,27 +326,29 @@ void anykey(void)
  */
 struct keypress inkey(void)
 {
-	ui_event ke = { .key = KEYPRESS_NULL };
+	ui_event ke = EVENT_EMPTY;
 
-	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD
-			&& ke.type != EVT_MOUSE && ke.type != EVT_BUTTON
-			&& ke.type != EVT_DISCONNECT) {
+	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD &&
+		   ke.type != EVT_MOUSE && ke.type != EVT_BUTTON)
 		ke = inkey_ex();
-	}
 
 	/* Make the event a keypress */
-	if (ke.type == EVT_ESCAPE || ke.type == EVT_DISCONNECT) {
-		ke = (ui_event){ .key = {
-			.type = EVT_KBRD,
-			.code = ESCAPE,
-			.mods = 0 } };
+	if (ke.type == EVT_ESCAPE) {
+		ke.type = EVT_KBRD;
+		ke.key.code = ESCAPE;
+		ke.key.mods = 0;
 	} else if (ke.type == EVT_MOUSE) {
-		ke = (ui_event){ .key = {
-			.type = EVT_KBRD,
-			.code = (ke.mouse.button == 1 ? '\n' : ESCAPE),
-			.mods = 0 } };
+		if (ke.mouse.button == 1) {
+			ke.type = EVT_KBRD;
+			ke.key.code = '\n';
+			ke.key.mods = 0;
+		} else {
+			ke.type = EVT_KBRD;
+			ke.key.code = ESCAPE;
+			ke.key.mods = 0;
+		}
 	} else if (ke.type == EVT_BUTTON) {
-		ke.key.type = EVT_KBRD;
+		ke.type = EVT_KBRD;
 	}
 
 	return ke.key;
@@ -356,28 +360,21 @@ struct keypress inkey(void)
  */
 ui_event inkey_m(void)
 {
-	ui_event ke = { .key = KEYPRESS_NULL };
+	ui_event ke = EVENT_EMPTY;
 
-	/*
-	 * Only accept something that can be converted to a key or mouse press
-	 */
-	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD
-			&& ke.type != EVT_MOUSE && ke.type != EVT_BUTTON
-			&& ke.type != EVT_DISCONNECT) {
+	/* Only accept a keypress */
+	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD	&&
+		   ke.type != EVT_MOUSE  && ke.type != EVT_BUTTON)
 		ke = inkey_ex();
-	}
-
-	if (ke.type == EVT_ESCAPE || ke.type == EVT_DISCONNECT) {
-		ke = (ui_event){ .key = {
-			.type = EVT_KBRD,
-			.code = ESCAPE,
-			.mods = 0 }
-		};
+	if (ke.type == EVT_ESCAPE) {
+		ke.type = EVT_KBRD;
+		ke.key.code = ESCAPE;
+		ke.key.mods = 0;
 	} else if (ke.type == EVT_BUTTON) {
-		ke.key.type = EVT_KBRD;
+		ke.type = EVT_KBRD;
 	}
 
-	return ke;
+  return ke;
 }
 
 
@@ -990,8 +987,26 @@ bool askfor_aux_ext(char *buf, size_t len,
 		/* Place cursor */
 		Term_gotoxy(x + k, y);
 
-		/* Get input. */
-		in = inkey_m();
+		/*
+		 * Get input.  Emulate what inkey() does without the coercing
+		 * mouse events to look like keystrokes.
+		 */
+		while (1) {
+			in = inkey_ex();
+			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
+				break;
+			}
+			if (in.type == EVT_BUTTON) {
+				in.type = EVT_KBRD;
+				break;
+			}
+			if (in.type == EVT_ESCAPE) {
+				in.type = EVT_KBRD;
+				in.key.code = ESCAPE;
+				in.key.mods = 0;
+				break;
+			}
+		}
 
 		/* Pass on to the appropriate handler. */
 		if (in.type == EVT_KBRD) {
@@ -1513,13 +1528,6 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
 			ke = inkey_ex();
 		}
 
-		if (ke.type == EVT_ESCAPE || ke.type == EVT_DISCONNECT) {
-			/* Clear the prompt */
-			prt("", 0, 0);
-
-			return false;
-		}
-
 		/* Check mouse coordinates, or get keypresses until a dir is chosen */
 		if (ke.type == EVT_MOUSE) {
 			if (ke.mouse.button == 1) {
@@ -1713,77 +1721,6 @@ static bool textui_get_aim_dir(int *dp)
 }
 
 /**
- * Get a location from the user.
- *
- * \param grid is dereferenced and set to location selected by the user.
- * \return true if the user selected a location; otherwise, return false.
- *
- * Because of the use of target_set_interactive(), this function has the
- * side effect of always clearing the previously set target and, if the
- * user selects a location, setting the target to that location.
- *
- * As currently set up, the player likely will have to switch to free
- * targeting to select the desired location.  That was also present in
- * the previous implementation (debugging commands calling
- * target_set_interactive() directly) so it has been left as is for now.
- */
-static bool textui_get_point(struct loc *grid)
-{
-	if (!target_set_interactive(TARGET_LOOK, -1, -1, false)) return false;
-	target_get(grid);
-	return true;
-}
-
-/**
- * Keep the textui responsive during extended calculations.
- *
- * \param user_event will, if true, allow ESCAPE or a click with the second
- * mouse button to request a break.  When user_event is true, any pending
- * events, up to the first ESCAPE or click with the second mouse button will
- * be discarded.  When user_event is false, input events are simply added to
- * the input event queue.
- * \param messaging will, if one and user_event is true, display a message that
- * ESCAPE or a click with the second mouse button will request a break.  If two,
- * clears the message displayed with textui_check_break(true, 1) and immediately
- * returns false, without checking for a break.
- * \return true if user_event is true and an ESCAPE or click with the second
- * mouse button was received or if something happened such that Term_inkey()
- * produces EVT_DISCONNECT events.
- */
-static bool textui_check_break(bool user_event, int messaging)
-{
-	ui_event ch;
-	bool result;
-
-	if (messaging == 2) {
-		prt("", 0, 0);
-		return false;
-	}
-	if (user_event && messaging == 1) {
-		prt("To break out, press Escape or click the second mouse "
-			"button.", 0, 0);
-		Term_fresh();
-	}
-	result = false;
-	while (!Term_inkey(&ch, false, user_event)) {
-		if (ch.type == EVT_DISCONNECT) {
-			result = true;
-			break;
-		}
-		if (!user_event) {
-			break;
-		}
-		if ((ch.type == EVT_KBRD && ch.key.code == ESCAPE)
-				|| (ch.type == EVT_MOUSE
-				&& ch.mouse.button == 2)) {
-			result = true;
-			break;
-		}
-	}
-	return result;
-}
-
-/**
  * Initialise the UI hooks to give input asked for by the game
  */
 void textui_input_init(void)
@@ -1794,7 +1731,6 @@ void textui_input_init(void)
 	get_com_hook = textui_get_com;
 	get_rep_dir_hook = textui_get_rep_dir;
 	get_aim_dir_hook = textui_get_aim_dir;
-	get_point_hook = textui_get_point;
 	get_spell_from_book_hook = textui_get_spell_from_book;
 	get_spell_hook = textui_get_spell;
 	get_effect_from_list_hook = textui_get_effect_from_list;
@@ -1804,7 +1740,6 @@ void textui_input_init(void)
 	panel_contains_hook = textui_panel_contains;
 	map_is_visible_hook = textui_map_is_visible;
 	view_abilities_hook = textui_view_ability_menu;
-	check_break_hook = textui_check_break;
 }
 
 
@@ -1881,14 +1816,10 @@ ui_event textui_get_command(int *count)
 
 	const struct keypress *act = NULL;
 
+
+
 	/* Get command */
 	while (1) {
-		/*
-		 * Reset the signal count.  Since we are prompting for a
-		 * command, the game has the opportunity to exit normally.
-		 */
-		signal_count = 0;
-
 		/* No flush needed */
 		msg_flag = false;
 
@@ -1909,9 +1840,6 @@ ui_event textui_get_command(int *count)
 			Term_set_cursor(false);
 		}
 
-		if (ke.type == EVT_DISCONNECT) {
-			break;
-		}
 		if (ke.type == EVT_KBRD) {
 			bool keymap_ok = true;
 			switch (ke.key.code) {

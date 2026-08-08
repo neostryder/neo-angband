@@ -322,7 +322,6 @@ add_library(OurCoreLib OBJECT
         src/borg/borg-cave-util.c
         src/borg/borg-cave-view.c
         src/borg/borg-cave.c
-        src/borg/borg-commands.c
         src/borg/borg-danger.c
         src/borg/borg-escape.c
         src/borg/borg-fight-attack.c
@@ -503,11 +502,9 @@ endif()
 if(SUPPORT_STATS_BACKEND)
     include(src/cmake/macros/STATS_Backend.cmake)
     if(SUPPORT_STATS_FRONTEND)
-        configure_stats_backend(OurExecutable NO)
-    else()
-        configure_stats_backend(OurExecutable YES)
+        configure_stats_backend(OurExecutable)
     endif()
-    configure_stats_backend(OurCoreLib NO)
+    configure_stats_backend(OurCoreLib)
 endif()
 
 if(SUPPORT_TEST_FRONTEND)
@@ -608,25 +605,23 @@ if(BUILD_DOC)
         if(NOT (_DOC MATCHES "/$"))
             set(_DOC "${_DOC}/")
         endif()
+        set(_OUTDIR "${CMAKE_CURRENT_BINARY_DIR}/docs")
         unset(_COMMANDS)
         foreach(_X ${_FORMATS})
             # Strip out the format-specific subdirectory when transferring
             # so there's less nesting.  Works okay with only HTML output;
             # will there be name conflicts if multiple formats are used?
-            # Escape the generator expression to extract the executable's
-            # directory so it will not be expanded here but will be expanded
-            # in the add_custom_target() call below.
             list(
                 APPEND
                 _COMMANDS
                 "COMMAND" "${CMAKE_COMMAND}" "-E" "copy_directory"
                 "${_DOC}${_X}/"
-                "\$<TARGET_FILE_DIR:OurExecutable>/docs"
+                "${_OUTDIR}"
             )
         endforeach()
         add_custom_target(
             OurManualTransfer ALL
-            "${CMAKE_COMMAND}" "-E" "make_directory" "$<TARGET_FILE_DIR:OurExecutable>/docs"
+            "${CMAKE_COMMAND}" "-E" "make_directory" "${_OUTDIR}"
             ${_COMMANDS}
             VERBATIM
         )
@@ -817,9 +812,6 @@ if(SC_INSTALL)
         COMMENT "Copying needed files"
         VERBATIM
     )
-    if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15.0")
-        set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "$<TARGET_FILE_DIR:OurExecutable>/lib")
-    endif()
 
     if(SUPPORT_WINDOWS_FRONTEND AND PNG_DLLS)
         # Transfer the packaged DLLs so there in the same directory as the
@@ -833,9 +825,6 @@ if(SC_INSTALL)
                     "$<TARGET_FILE_DIR:OurExecutable>"
                 COMMENT "Copying ${dll} to executable directory"
             )
-            if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15.0")
-                set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "$<TARGET_FILE_DIR:OurExecutable>/${dll}")
-            endif()
         endforeach()
     endif()
 endif()
@@ -939,20 +928,17 @@ if(SUPPORT_TEST_FRONTEND)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests"
             "$<TARGET_FILE_DIR:OurExecutable>/tests"
     )
-    add_custom_command(TARGET OurExecutable POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_CURRENT_SOURCE_DIR}/run-tests"
-            "$<TARGET_FILE_DIR:OurExecutable>/run-tests"
-    )
-    add_custom_command(TARGET OurExecutable POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/run-test"
-            "$<TARGET_FILE_DIR:OurExecutable>/tests/run-test"
-    )
-    if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15.0")
-        set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "$<TARGET_FILE_DIR:OurExecutable>/run-tests;$<TARGET_FILE_DIR:OurExecutable>/tests")
-    endif()
 endif()
+add_custom_command(TARGET OurExecutable POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_SOURCE_DIR}/run-tests"
+        "$<TARGET_FILE_DIR:OurExecutable>/run-tests"
+)
+add_custom_command(TARGET OurExecutable POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/run-test"
+        "$<TARGET_FILE_DIR:OurExecutable>/tests/run-test"
+)
 
 # Set up target for running all tests.  Those (from tests in the source tree)
 # using the test front end will be run directly.  The unit tests will be
@@ -1044,7 +1030,7 @@ foreach(ANGBAND_TEST_CASE_SOURCE ${ANGBAND_TEST_CASE_SOURCES})
         ${ANGBAND_CORE_LINK_LIBRARIES}
     )
     if(SUPPORT_STATS_BACKEND)
-        configure_stats_backend(${ANGBAND_TEST_CASE_NAME} NO)
+        configure_stats_backend(${ANGBAND_TEST_CASE_NAME})
     endif()
     if(SUPPORT_SDL_SOUND)
         configure_sdl_sound(${ANGBAND_TEST_CASE_NAME} NO)

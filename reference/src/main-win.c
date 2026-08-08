@@ -72,22 +72,18 @@
 #include "ui-prefs.h"
 #include "win/win-menu.h"
 
-/* Set the minimum version of Windows to accept:
- * - ShellExecuteA() requires Windows XP (_WIN32_WINNT >= 0x0501)
- * - AlphaBlend() requires Windows 2000 (_WIN32_WINNT >= 0x0500)
- */
+/* Set the minimum version of Windows to accept so AlphaBlend() is available */
 #ifndef WINVER
-#define WINVER 0x0501
-#elif WINVER < 0x0501
+#define WINVER 0x0500
+#elif WINVER < 0x0500
 #undef WINVER
-#define WINVER 0x0501
+#define WINVER 0x0500
 #endif
-
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501
-#elif _WIN32_WINNT < 0x0501
+#define _WIN32_WINNT 0x0500
+#elif _WIN32_WINNT < 0x0500
 #undef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501
+#define _WIN32_WINNT 0x0500
 #endif
 
 #include <locale.h>
@@ -159,7 +155,6 @@
  */
 #include <windows.h>
 #include <windowsx.h>
-#include <shellapi.h>
 
 #ifndef GetWindowLongPtr
 #define GetWindowLongPtr GetWindowLong
@@ -3430,58 +3425,15 @@ static void start_screensaver(void)
 
 #endif /* USE_SAVER */
 
-static bool open_url(const char *url)
-{
-	HINSTANCE res = ShellExecuteA(
-		NULL,
-		"open",
-		url,
-		NULL,
-		NULL,
-		SW_SHOWNORMAL
-	);
-	return ((INT_PTR)res > 32);
-}
-
-static bool open_local_docs(void)
-{
-	char exe_path[MAX_PATH];
-	char *slash;
-	char doc_path[MAX_PATH + 16];
-	char url[MAX_PATH + 24];
-	DWORD attrs;
-
-	if (!GetModuleFileNameA(NULL, exe_path, sizeof(exe_path)))
-		return false;
-	slash = strrchr(exe_path, '\\');
-	if (!slash || (slash - exe_path) >= MAX_PATH - 16)
-		return false;
-	*slash = '\0';
-	snprintf(doc_path, sizeof(doc_path),
-	         "%s\\docs\\index.html", exe_path);
-	attrs = GetFileAttributesA(doc_path);
-	if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY))
-		return false;
-	snprintf(url, sizeof(url), "file:///%s", doc_path);
-
-	return open_url(url);
-}
 
 /**
- * Display help
+ * Display a help file
  */
 static void display_help(void)
 {
-	if (open_local_docs())
-		return;
-
-	if (open_url("https://angband.readthedocs.io/en/latest/"))
-		return;
-
-	if (inkey_flag) {
-    	Term_keypress('?', 0);
-	}
+	Term_keypress('?',0);
 }
+
 
 /**
  * Process a menu command
@@ -3644,7 +3596,7 @@ static void process_menus(WORD wCmd)
 
 			if (use_graphics_nice) {
 			        /* Force redraw */
-			        Term_key_push(KTRL('R'), 0);
+			        Term_key_push(KTRL('R'));
 			}
 
 			break;
@@ -3849,7 +3801,7 @@ static void process_menus(WORD wCmd)
 				Term_xtra_win_react();
 
 				/* Force redraw */
-				Term_key_push(KTRL('R'), 0);
+				Term_key_push(KTRL('R'));			
 			}
 
 			break;
@@ -3869,7 +3821,7 @@ static void process_menus(WORD wCmd)
 			Term_xtra_win_react();
 
 			/* Force redraw */
-			Term_key_push(KTRL('R'), 0);
+			Term_key_push(KTRL('R'));
 			
 			break;
 		}
@@ -3982,7 +3934,7 @@ static void process_menus(WORD wCmd)
 			Term_xtra_win_react();
 
 			/* Force redraw */
-			Term_key_push(KTRL('R'), 0);
+			Term_key_push(KTRL('R'));
 
 			break;
 		}
@@ -4223,7 +4175,7 @@ static void process_menus(WORD wCmd)
 					Term_xtra_win_react();
 
 					/* Force redraw */
-					Term_key_push(KTRL('R'), 0);
+					Term_key_push(KTRL('R'));
 				}
 			}
 			break;

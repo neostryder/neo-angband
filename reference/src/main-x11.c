@@ -21,7 +21,6 @@
 #include "init.h"
 #include "ui-display.h"
 #include "ui-game.h"
-#include "ui-input.h"
 
 /**
  * This file helps Angband work with UNIX/X11 computers.
@@ -220,9 +219,8 @@ typedef struct infofnt infofnt;
  *	- The default Screen for the display
  *	- The virtual root (usually just the root)
  *	- The default colormap (from a macro)
- *	- The atom corresponding to WM_DELETE_WINDOW
- *	- The Alt key modifier mask
- *	- The Super key modifier mask
+ *  - The Alt key modifier mask
+ *  - The Super key modifier mask
  *
  *	- The "name" of the display
  *
@@ -249,7 +247,6 @@ struct metadpy
 	Screen *screen;
 	Window root;
 	Colormap cmap;
-	Atom wm_delete_msg;
 	unsigned int alt_mask;
 	unsigned int super_mask;
 
@@ -413,6 +410,10 @@ struct term_data
 	int tile_wid;
 	int tile_wid2; /* Tile-width with bigscreen */
 	int tile_hgt;
+
+	/* Pointers to allocated data, needed to clear up memory */
+	XClassHint *classh;
+	XSizeHints *sizeh;
 };
 
 
@@ -668,8 +669,6 @@ static errr Metadpy_init_2(Display *dpy, const char *name)
 	/* Get the default colormap */
 	m->cmap = DefaultColormapOfScreen(m->screen);
 
-	m->wm_delete_msg = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
-
 	/* Extract the true name of the display */
 	m->name = DisplayString(dpy);
 
@@ -768,10 +767,8 @@ static errr Infowin_set_name(const char *name)
 	char *bp = buf;
 	my_strcpy(buf, name, sizeof(buf));
 	st = XStringListToTextProperty(&bp, 1, &tp);
-	if (st) {
-		XSetWMName(Metadpy->dpy, Infowin->win, &tp);
-		XFree(tp.value);
-	}
+	if (st) XSetWMName(Metadpy->dpy, Infowin->win, &tp);
+	XFree(tp.value);
 	return (0);
 }
 
@@ -1627,41 +1624,6 @@ static int term_windows_open;
 
 
 /**
- * Remove a window and all the associated data.
- *
- * \param ind is the index of the window to remove.
- */
-static void nuke_window(int ind)
-{
-	term_data *td = &data[ind];
-	term *t = &td->t;
-
-	/* Free fonts */
-	if (td->fnt) {
-		Infofnt_set(td->fnt);
-		(void)Infofnt_nuke();
-		mem_free(td->fnt);
-		td->fnt = NULL;
-	}
-
-	/* Free window */
-	if (td->win) {
-		Infowin_set(td->win);
-		(void)Infowin_nuke();
-		mem_free(td->win);
-		td->win = NULL;
-	}
-
-	/* Free term */
-	if (t->key_queue) {
-		(void)term_nuke(t);
-		t->key_queue = NULL;
-	}
-}
-
-
-
-/**
  * Process a keypress event
  */
 static void react_keypress(XKeyEvent *ev)
@@ -1811,7 +1773,6 @@ static errr CheckEvent(bool wait)
 	/* Wait in 0.02s increments while updating animations every 0.2s */
 	i = 0;
 	while (!XPending(Metadpy->dpy)) {
-		if (terms_disconnecting) return 1;
 		if (i == 0) idle_update();
 		usleep(20000);
 		i = (i + 1) % 10;
@@ -1829,8 +1790,8 @@ static errr CheckEvent(bool wait)
 
 
 	/* Scan the windows */
-	for (i = 0; i < term_windows_open; i++) {
-		if (data[i].win && xev->xany.window == data[i].win->win) {
+	for (i = 0; i < MAX_TERM_DATA; i++) {
+		if (xev->xany.window == data[i].win->win) {
 			td = &data[i];
 			iwin = td->win;
 			window = i;
@@ -1980,18 +1941,6 @@ static errr CheckEvent(bool wait)
 
 			break;
 		}
-
-		case ClientMessage:
-			if ((unsigned long)xev->xclient.data.l[0]
-					== Metadpy->wm_delete_msg) {
-				/* Requested close for window */
-				if (window == 0) {
-					terms_disconnecting = 1;
-				} else {
-					nuke_window(window);
-				}
-			}
-			break;
 	}
 
 	/* Activate the old term */
@@ -2508,12 +2457,7 @@ static errr term_data_init(term_data *td, int i)
 	td->fnt = mem_zalloc(sizeof(infofnt));
 	Infofnt_set(td->fnt);
 	if (Infofnt_init_data(font))
-		quit_fmt(
-			"Couldn't load the requested X11 font (%s).\n"
-			"X11 requires legacy bitmap fonts, which may not be installed by default.\n"
-			"See https://angband.readthedocs.io/en/latest/faq.html#x11-fonts",
-			font
-		);
+		quit_fmt("Couldn't load the requested font. (%s)", font);
 
 	/* Use proper tile size */
 	if (td->tile_wid <= 0) td->tile_wid = td->fnt->twid;
@@ -2558,7 +2502,6 @@ static errr term_data_init(term_data *td, int i)
 	ch->res_class = res_class;
 
 	XSetClassHint(Metadpy->dpy, Infowin->win, ch);
-	XFree(ch);
 
 	/* Make Size Hints */
 	sh = XAllocSizeHints();
@@ -2600,7 +2543,6 @@ static errr term_data_init(term_data *td, int i)
 
 	/* Use the size hints */
 	XSetWMNormalHints(Metadpy->dpy, Infowin->win, sh);
-	XFree(sh);
 
 	/* WMHints */
 	wmh = XAllocWMHints();
@@ -2610,22 +2552,21 @@ static errr term_data_init(term_data *td, int i)
 	wmh->flags |= WindowGroupHint;
 
 	if(i == 0) {
-		/* root points to itself */
+		// root points to itself
 		wmh->window_group = td->win->win;
 	} else {
-		/* others point to root */
+		// others point to root
 		wmh->window_group = data[0].win->win;
 	}
 	XSetWMHints(Metadpy->dpy, Infowin->win, wmh);
 	XFree(wmh);
 
-	/*
-	 * Have attempts to close the window be mapped to a ClientMessage event.
-	 */
-	XSetWMProtocols(Metadpy->dpy, Infowin->win, &Metadpy->wm_delete_msg, 1);
-
 	/* Map the window */
 	Infowin_map();
+
+	/* Set pointers to allocated data */
+	td->sizeh = sh;
+	td->classh = ch;
 
 	/* Move the window to requested location */
 	if ((x >= 0) && (y >= 0)) Infowin_impell(x, y);
@@ -2671,7 +2612,27 @@ static void hook_quit(const char *str)
 
 	/* Free allocated data */
 	for (i = 0; i < term_windows_open; i++) {
-		nuke_window(i);
+		term_data *td = &data[i];
+		term *t = &td->t;
+
+		/* Free size hints */
+		XFree(td->sizeh);
+
+		/* Free class hints */
+		XFree(td->classh);
+
+		/* Free fonts */
+		Infofnt_set(td->fnt);
+		(void)Infofnt_nuke();
+		mem_free(td->fnt);
+
+		/* Free window */
+		Infowin_set(td->win);
+		(void)Infowin_nuke();
+		mem_free(td->win);
+
+		/* Free term */
+		(void)term_nuke(t);
 	}
 
 	/* Free colors */

@@ -3298,10 +3298,8 @@
                 }
               ],
               "desc": [
-                "Teleports you to the nearest living monster and drains its hitpoints",
-                " to heal and nourish you.  The number of hitpoints drained is twice your",
-                " level or one more than the monster's current hitpoints, whichever is",
-                " smaller."
+                "Teleports you to the nearest living monster and drains a level-dependent",
+                " number of hitpoints, healing and nourishing the player."
               ]
             },
             {

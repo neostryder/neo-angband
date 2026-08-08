@@ -9,12 +9,6 @@
       ]
     },
     {
-      "monster-category": "Not Fully Known",
-      "mcat-include-other": [
-        "not-fully-known"
-      ]
-    },
-    {
       "monster-category": "Ainur",
       "mcat-include-base": [
         "ainu"

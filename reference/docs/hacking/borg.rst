@@ -50,83 +50,66 @@ Main Commands
 -------------
 
 ====== ========================================
-``?``  Display Help
-``c``  Toggle cheat death flag
-``C``  List count of 'nasties'
+``a``  Display avoidances
+``c``  Toggle cheat flags
+``C``  List nasties
+``d``  Dump spell info
 ``f``  Toggle flags
-``F``  Fear levels of current location
-``G``  Display selected grid Features
+``g``  Display grid feature
 ``h``  Borg_Has function
-``I``  Display selected grid Information
-``D``  Display selected grid Danger
+``i``  Display grid info
+``k``  Display monster info
 ``l``  Create a snapshot log file
-``m``  Map information
-``o``  Object Information
+``m``  Money Scum
+``o``  Object Flags
 ``p``  Borg Power
-``P``  Level preparation information
+``q``  Auto stop on level
+``r``  Restock Stores
 ``R``  Respawn Borg
 ``s``  Search mode
-``S``  Dump spell info
-``t``  Display targeting 
-``u``  Update the Borg's variables (as if taking zero steps)
+``t``  Display object info
+``u``  Update the Borg
 ``v``  Version stamp
-``w``  My Swap Weapon/Armor
+``w``  My Swap Weapon
 ``x``  Step the Borg
 ``y``  Last 75 steps
 ``z``  Activate the Borg
+``?``  List Borg commands
 ``!``  Time
+``#``  Display danger grid
+``%``  Display targeting flow
 ``$``  Reload borg.txt
 ``@``  Borg LOS
 ``^``  Flow Pathway
-``0``  Borg stats (str/int etc)
-====== ========================================
-
-Map Information
----------------
-
-After pressing ``m`` from the main borg interface you enter map information 
-display mode. This is map information as the borg understands it. The 
-following selections can be made.
-
-====== ========================================
-``a``  Avoidances - dangerous areas with level of danger.
-``f``  Features with subselection of which feature to show.
-``g``  Glyph locations
-``m``  Monsters
-``o``  Objects
+``_``  Regional Fear info
+``;``  Display glyphs
+``1``  Change max depth
+``2``  Level prep info
+``3``  Feature of grid
 ====== ========================================
 
 Flag Commands
 -------------
 
 After pressing ``f`` from the main borg interface you enter flag toggle mode.
-You will be able to select any borg configuration and change its runtime value.
-
-
-Borg_has Commands
------------------
-
-After pressing ``h`` from the main borg interface you enter "has"
-display mode. These are things the borg has. The list is put in the games
-messages.
 
 ====== ========================================
-``a``  Any
-``i``  Inventory
-``w``  Worn items
-``r``  Artifacts 
-``s``  Skills
+``b``  Stop when alert bell rings
+``c``  Self scum
+``k``  Stop when the borg wins
+``l``  Lunal mode
+``s``  Dump savefile at each level (autosave)
+``v``  Verbose mode
 ====== ========================================
 
+Cheat Commands
+--------------
 
-Search Mode
--------------
+After pressing ``c`` from the main borg interface you enter cheat toggle mode.
 
-After pressing ``s`` from the main borg interface you enter a search string.
-If the borg sees that string in the messages it will stop.  Default is 
-"plain gold ring" for The One Ring.
-
-
+====== ========================================
+``d``  Toggle cheat death
+====== ========================================
 
 Customizing The Borg
 ====================
@@ -278,7 +261,7 @@ Via Flag Command
 
 1. Press ``^z`` to access the Borg command interface
 2. Press ``f`` to enter flag toggle mode
-3. Select ``borg_verbose`` to toggle verbose mode on/off
+3. Press ``v`` to toggle verbose mode on/off
 
 Via Configuration
 *****************

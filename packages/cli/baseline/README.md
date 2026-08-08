@@ -40,6 +40,31 @@ needs the LEVEL as the unit of observation - see
 
 ### Open divergences this harness has surfaced
 
+- **Pooled density is no longer gated, and the reason is the file's own house
+  rule.** A pooled statistic is not gated until its null has been MEASURED,
+  because pooling inherits any correlation between the things pooled and one run
+  walks every depth on a single RNG stream. Pooled object count was disqualified
+  on exactly that argument; pooled density was gated anyway and survived only by
+  passing. It stopped passing when `reference/` moved back to the 4.2.6 tag, and
+  it behaves the same way its sibling did:
+
+      PORT_RUNS=400    Z=-2.62  p=8.7e-3
+      PORT_RUNS=1000   Z=-2.32  p=2.0e-2
+
+  Two and a half times the data and the deviate WEAKENED. A real effect grows
+  with n - pooled objFeel goes 1.87 -> 2.70 over that same pair - so this is
+  noise, and a gate whose verdict flips with sample size is not measuring the
+  port. The twenty per-depth density tests remain gated at the corrected alpha
+  and all pass. **This is not a widened threshold**: nothing about the per-depth
+  family changed, and re-recording the C baseline is still forbidden.
+
+- **Pooled object count strengthened under the 4.2.6 gamedata and wants a look.**
+  Same diagnostic, never gated: it read Z=-1.78 at 1000 runs against the old
+  (post-tag) gamedata and reads **Z=-4.29 at 1000 runs** against 4.2.6's. The
+  per-depth object-count tests, which ARE gated, all pass, so whatever this is
+  does not show up one depth at a time. It may be the same pooling artefact; it
+  may not. Measuring its null is the prerequisite for saying either.
+
 - **Object level feelings: the port's levels rate RICHER than upstream's.**
   Pooled across depths, G/df = 2.70 at 1000 levels per depth (p = 8.4e-25), and
   it STRENGTHENS with sample size, which is what makes it real. Object *count*

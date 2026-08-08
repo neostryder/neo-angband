@@ -55,17 +55,10 @@
 # endif
 
 /**
- * May need to be tightened:  without autoconf.h assume all Unixes have mkdir(),
- * sigaction(), and sigprocmask().
+ * May need to be tightened:  without autoconf.h assume all Unixes have mkdir().
  */
 # if !defined(HAVE_MKDIR) && !defined(HAVE_CONFIG_H)
 #   define HAVE_MKDIR
-# endif
-# if !defined(HAVE_SIGACTION) && !defined(HAVE_CONFIG_H)
-#   define HAVE_SIGACTION 1
-# endif
-# if !defined(HAVE_SIGPROCMASK) && !defined(HAVE_CONFIG_H)
-#   define HAVE_SIGPROCMASK 1
 # endif
 
 #endif
@@ -110,7 +103,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <assert.h>
-#include <signal.h>
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
