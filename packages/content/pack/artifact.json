@@ -1994,8 +1994,9 @@
         "STR[2] | DEX[2] | RES_LIGHT[1] | RES_DARK[1]"
       ],
       "desc": [
-        "A massive triple-pronged spear, evoking the spirit of Osse who with it",
-        " pierced legions of evil and undead."
+        "A massive triple-pronged spear, so great it normally requires two hands",
+        " to wield, evoking the spirit of Osse who with it pierced legions of",
+        " evil and undead."
       ],
       "slay": [
         "EVIL_2",
@@ -2349,8 +2350,9 @@
         "RES_ACID[1] | RES_ELEC[1] | RES_FIRE[1] | RES_COLD[1]"
       ],
       "desc": [
-        "A massive axe with twin razor-sharp heads, its surface intricately",
-        " engraved in filleted gold with spells to ward off the elements."
+        "A massive axe with twin razor-sharp heads, so large that it usually",
+        " requires two hands to wield, with spells to ward off the elements",
+        " intricately engraved upon its surface in filleted gold."
       ],
       "slay": [
         "EVIL_2",
