@@ -82,7 +82,13 @@ import { expandSections } from "./sections.js";
 import { composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
-import { keyDescription, keySpecFor, recordKey, RECORD_KEY_SPECS } from "./record-key.js";
+import {
+  keyDescription,
+  keySpecFor,
+  legacyRecordKey,
+  recordRefKeys,
+  RECORD_KEY_SPECS,
+} from "./record-key.js";
 
 /**
  * One pack as the host loaded it: its manifest plus its per-file contributions.
@@ -290,18 +296,41 @@ function applyPassthroughOps(
   /* ref -> EVERY position claiming it. Kept as a list rather than resolved to a
    * winner on insert, so "not found" and "claimed twice" are one lookup with two
    * outcomes: there is nowhere for a first-claim-wins fallback to hide. A ref two
-   * records claim is unaddressable and reported; both records stay in the game. */
+   * records claim is unaddressable and reported; both records stay in the game.
+   *
+   * A record claims SEVERAL refs (record-key.ts): its base key, its discriminated
+   * form where the file declares one, and - unless it would shadow another
+   * record's primary - the pre-2026-08-08 lossy slug, so refs written against an
+   * older engine keep resolving. Registering all of them here is what took the
+   * shipped pack from 73 records no ref could name to zero. */
   const claims = new Map<string, number[]>();
-  records.forEach((record, i) => {
-    const key = recordKey(file, record, spec);
-    if (key === null) return; // unkeyable record: stays in the game, not addressable
-    const ref = `${providerId}:${key}`;
+  const claim = (ref: string, i: number): void => {
     const at = claims.get(ref);
     if (at) at.push(i);
     else claims.set(ref, [i]);
+  };
+  const primary = new Set<string>();
+  records.forEach((record) => {
+    for (const key of recordRefKeys(file, record, spec)) primary.add(key);
+  });
+  records.forEach((record, i) => {
+    // An unkeyable record stays in the game; it is simply not addressable.
+    for (const key of recordRefKeys(file, record, spec)) {
+      claim(`${providerId}:${key}`, i);
+    }
+    const legacy = legacyRecordKey(file, record, spec);
+    if (legacy !== null && !primary.has(legacy)) claim(`${providerId}:${legacy}`, i);
   });
 
   const removed = new Set<number>();
+
+  /** The refs that resolve to exactly record `i` - what to suggest on ambiguity. */
+  const unambiguousRefs = (i: number): string[] => {
+    const record = records[i];
+    return recordRefKeys(file, record, spec)
+      .map((key) => `${providerId}:${key}`)
+      .filter((r) => (claims.get(r) ?? []).length === 1);
+  };
 
   const reject = (pid: string, kind: OpKind, ref: string, why: string): void => {
     refused.refuse(pid, `${file} ${OP_VERB[kind]} "${ref}", but ${why}`);
@@ -316,11 +345,21 @@ function applyPassthroughOps(
     const pid = pack.manifest.id;
     const claimants = claims.get(ref) ?? [];
     if (claimants.length > 1) {
+      /* Hand back the refs that DO resolve to these records rather than only
+       * saying the ref is ambiguous. An author who wrote "core:of-acid" cannot
+       * derive "core:of-acid#sword-polearm-hafted" from a description of the key
+       * spec - they would have to read record-key.ts - and a message that leaves
+       * them nowhere to go is how a seam gets a reputation for not working. */
+      const alternatives = claimants
+        .flatMap((i) => unambiguousRefs(i))
+        .filter((r) => r !== ref);
       reject(
         pid,
         kind,
         ref,
-        `${claimants.length} ${file} records share that identity (${keyDescription(file)}), so it cannot be addressed - patch a record with a unique identity instead`,
+        alternatives.length > 0
+          ? `${claimants.length} ${file} records share that identity (${keyDescription(file)}) - name one of them instead: ${alternatives.join(", ")}`
+          : `${claimants.length} ${file} records share that identity (${keyDescription(file)}), so it cannot be addressed - patch a record with a unique identity instead`,
       );
       return null;
     }

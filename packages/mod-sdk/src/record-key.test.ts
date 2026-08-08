@@ -16,8 +16,10 @@ import { describe, expect, it } from "vitest";
 import {
   KEYED_RECORD_FILES,
   keySpecFor,
+  legacyRecordKey,
   RECORD_KEY_SPECS,
   recordKey,
+  recordRefKeys,
 } from "./record-key.js";
 
 /**
@@ -92,11 +94,16 @@ describe("RECORD_KEY_SPECS", () => {
     expect(unkeyed).toEqual([]);
   });
 
-  it("reports the exact per-file ambiguity in core's own data", () => {
-    /* Where core ships two records that claim one key, the ref is unaddressable
-     * and the loader says so. Pinning the numbers keeps that honest: if a key
-     * change reduced them to zero the table would be strictly better, and this
-     * test tells us instead of the improvement passing unnoticed. */
+  it("reports the exact per-file BASE-key ambiguity in core's own data", () => {
+    /* Where core ships two records that claim one BASE key, that ref alone
+     * cannot address either of them - the loader refuses it and names the
+     * discriminated alternatives. Pinning the numbers keeps the shape of the
+     * problem visible; the test that matters is the next one, which asserts
+     * every record is reachable by SOME ref.
+     *
+     * These counts moved on 2026-08-08 when keySlug stopped dropping "*" and
+     * "+": object 5 -> 0 and vault 1 -> 0 were pure slug loss, and ego_item
+     * 25 -> 23 lost the two "*Slay X*" pairs the same way. */
     const ambiguous: Record<string, number> = {};
     for (const stem of EXPECTED_KEYED_FILES) {
       const seen = new Set<string>();
@@ -109,14 +116,93 @@ describe("RECORD_KEY_SPECS", () => {
       if (dup.size > 0) ambiguous[stem] = dup.size;
     }
     expect(ambiguous).toEqual({
-      /* "Acquirement" / "*Acquirement*" and four more pairs: slugify drops "*". */
-      object: 5,
-      /* "Little eruption" / "Little eruption+": slugify drops "+". */
-      vault: 1,
-      /* Genuine: "of Acid" applies to two disjoint item-type sets, and those
-       * sets are fields a mod would patch, so they cannot be its identity. */
-      ego_item: 25,
+      /* Genuine repeats: "of Acid" applies to two disjoint item-type sets. Each
+       * is addressable through its discriminator - see the next test. */
+      ego_item: 23,
     });
+  });
+
+  it("leaves NO record of the shipped pack unaddressable", () => {
+    /* THE ONE THAT MATTERS. A key declared per FILE is not the same as every
+     * RECORD being reachable, and the difference used to be 73 records - 61 of
+     * ego_item's 107 among them, so "of Acid" could not be patched at all.
+     *
+     * Reachable means: some ref resolves to this record ALONE. That is exactly
+     * what the loader requires, so this measures the property a mod author
+     * experiences rather than a property of the key table. */
+    const unreachable: Record<string, string[]> = {};
+    for (const stem of EXPECTED_KEYED_FILES) {
+      const records = corePackFile(stem);
+      const claims = new Map<string, number[]>();
+      const claim = (key: string, i: number): void => {
+        const at = claims.get(key);
+        if (at) at.push(i);
+        else claims.set(key, [i]);
+      };
+      const primary = new Set(
+        records.flatMap((r) => [...recordRefKeys(stem, r)]),
+      );
+      records.forEach((r, i) => {
+        for (const key of recordRefKeys(stem, r)) claim(key, i);
+        const legacy = legacyRecordKey(stem, r);
+        if (legacy !== null && !primary.has(legacy)) claim(legacy, i);
+      });
+      const reachable = new Set<number>();
+      for (const [, at] of claims) if (at.length === 1) reachable.add(at[0] as number);
+      const missing = records
+        .map((r, i) => [r, i] as const)
+        .filter(([, i]) => !reachable.has(i))
+        .map(([r]) => String((r as { name?: unknown }).name ?? "?"));
+      if (missing.length > 0) unreachable[stem] = missing;
+    }
+    expect(unreachable).toEqual({});
+  });
+
+  it("spells out the marks slugify drops, so *Healing* is not Healing", () => {
+    /* The five object pairs and the vault pair were never ambiguous DATA - the
+     * key was lossy. "*" and "+" are Angband's mark for the greater form. */
+    const key = (name: string): string | null =>
+      recordKey("object", { type: "potion", name });
+    expect(key("*Healing*")).toBe("potion--star-healing-star");
+    expect(key("Healing")).toBe("potion--healing");
+    expect(key("*Healing*")).not.toBe(key("Healing"));
+    expect(recordKey("vault", { type: "interesting room", name: "Little eruption+" })).toBe(
+      "interesting-room--little-eruption-plus",
+    );
+  });
+
+  it("keeps the pre-mark ref as an alias, so an older mod's patch still resolves", () => {
+    /* Widening what resolves must not move what already did. The legacy key is
+     * offered for exactly the records whose slug changed, and for nobody else. */
+    expect(legacyRecordKey("object", { type: "potion", name: "*Healing*" })).toBe(
+      "potion--healing",
+    );
+    expect(legacyRecordKey("object", { type: "potion", name: "Healing" })).toBeNull();
+    expect(legacyRecordKey("monster", { name: "Grip, Farmer Maggot's dog" })).toBeNull();
+  });
+
+  it("discriminates same-named egos by the item types they apply to", () => {
+    /* Upstream's own identity for an ego is lookup_ego_item(name, tval, sval).
+     * `type` names tvals directly and `item` pins (tval, sval) pairs; a record
+     * uses one or the other, so both are read. */
+    const acid = (corePackFile("ego_item") as Array<{ name: string }>).filter(
+      (r) => r.name === "of Acid",
+    );
+    expect(acid.length).toBeGreaterThan(1);
+    const refs = acid.map((r) => [...recordRefKeys("ego_item", r)]);
+    for (const r of refs) expect(r[0]).toBe("of-acid");
+    const discriminated = refs.map((r) => r[1]);
+    expect(new Set(discriminated).size).toBe(acid.length);
+    expect(discriminated).toContain("of-acid#sword-polearm-hafted");
+  });
+
+  it("offers only the base ref when a file declares no discriminator", () => {
+    /* A discriminator is per-file and opt-in: declaring one for ego_item must
+     * not start appending "#" to every other file's refs. */
+    expect([...recordRefKeys("brand", { code: "ACID_3", name: "acid" })]).toEqual([
+      "acid-3",
+    ]);
+    expect([...recordRefKeys("monster", { name: "Fang" })]).toEqual(["fang"]);
   });
 
   it("keys a config singleton by its file, so a fieldPatch can reach it", () => {

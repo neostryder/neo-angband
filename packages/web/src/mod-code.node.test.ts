@@ -19,14 +19,19 @@
  * gate fires on enable. Those are separate claims and they were checked separately.
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { validateManifest, CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  validateManifest,
+  CapabilitySet,
+  composeContentPacks,
+} from "@rpgm-tools/neo-angband-mod-sdk";
+import type { LoadedPack } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   DungeonProfiles,
   EffectRegistry,
@@ -1010,5 +1015,117 @@ describe("a mod folder on disk reaches every other registry domain", () => {
     );
     /* The calls BEFORE the throw landed - the gate is per call, not per mod. */
     expect(effects.isRegistered("overhaul:pulse")).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A mod folder on disk patching a record that NO ref could name before.
+ *
+ * Gap 2's residue, proven closed the way this project requires: not against a
+ * fixture, but against the REAL shipped ego_item.json, by a mod written to a
+ * real folder and read back through the real disk reader. Before 2026-08-08,
+ * 61 of that file's 107 records - "of Acid" among them - shared a key with
+ * another record and were addressable by nothing at all.
+ * ------------------------------------------------------------------ */
+
+describe("a disk mod patches a record that used to be unaddressable", () => {
+  /** The real core pack's ego_item records, as the game binds them. */
+  function coreEgoItems(): LoadedPack {
+    const path = fileURLToPath(
+      new URL("../../content/pack/ego_item.json", import.meta.url),
+    );
+    const raw = JSON.parse(readFileSync(path, "utf8")) as {
+      records: Record<string, unknown>[];
+    };
+    return {
+      manifest: { id: "core", name: "Angband", version: "1.0.0", shape: "content" },
+      files: { ego_item: { records: raw.records } },
+    } as unknown as LoadedPack;
+  }
+
+  /** Every shipped "of Acid" ego, in file order. */
+  function acidEgos(records: readonly unknown[]): Array<Record<string, unknown>> {
+    return (records as Array<Record<string, unknown>>).filter(
+      (r) => r["name"] === "of Acid",
+    );
+  }
+
+  it("changes exactly the ammo brand, leaving the melee one alone", async () => {
+    writeMod(
+      "sharper-acid",
+      { shape: "content", dependencies: { core: "*" } },
+      null,
+      {
+        "ego_item.json": JSON.stringify({
+          patches: { "core:of-acid#shot-arrow-bolt": { info: { cost: 999, rating: 42 } } },
+        }),
+      },
+    );
+    const report = await readModDir(
+      fsSource([{ id: "sharper-acid", files: ["manifest.json", "ego_item.json"] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const pack = report.packs[0];
+    expect(pack).toBeDefined();
+
+    const core = coreEgoItems();
+    const before = acidEgos(core.files["ego_item"]?.records ?? []);
+    /* The premise: core really does ship this name more than once. If a future
+     * pack stops doing that, this test should say so rather than pass on a
+     * file where nothing was ever ambiguous. */
+    expect(before.length).toBeGreaterThan(1);
+
+    const composed = composeContentPacks([
+      core,
+      { manifest: pack!.manifest, files: pack!.files } as unknown as LoadedPack,
+    ]);
+    expect(composed.problems).toEqual([]);
+
+    const after = acidEgos(composed.records["ego_item"] ?? []);
+    expect(after).toHaveLength(before.length);
+
+    /* The one whose item types the ref named took the patch... */
+    const ammo = after.filter((r) => {
+      const types = r["type"];
+      return Array.isArray(types) && types.includes("shot");
+    });
+    expect(ammo).toHaveLength(1);
+    expect(ammo[0]?.["info"]).toEqual({ cost: 999, rating: 42 });
+
+    /* ...and every other "of Acid" is untouched, which is the half a
+     * name-only key could never express. */
+    const others = after.filter((r) => {
+      const types = r["type"];
+      return !(Array.isArray(types) && types.includes("shot"));
+    });
+    expect(others.length).toBeGreaterThan(0);
+    for (const r of others) {
+      expect(r["info"]).not.toEqual({ cost: 999, rating: 42 });
+    }
+  });
+
+  it("refuses the ambiguous base ref and hands back the refs that work", async () => {
+    /* The other half of "zero silent no-ops": an author who writes the obvious
+     * ref gets told what to write instead, from the running data. */
+    writeMod(
+      "vague-acid",
+      { shape: "content", dependencies: { core: "*" } },
+      null,
+      { "ego_item.json": JSON.stringify({ patches: { "core:of-acid": { info: {} } } }) },
+    );
+    const report = await readModDir(
+      fsSource([{ id: "vague-acid", files: ["manifest.json", "ego_item.json"] }]),
+    );
+    const pack = report.packs[0];
+    const composed = composeContentPacks([
+      coreEgoItems(),
+      { manifest: pack!.manifest, files: pack!.files } as unknown as LoadedPack,
+    ]);
+    expect(composed.problems).toHaveLength(1);
+    const why = composed.problems[0] as string;
+    expect(why).toContain("vague-acid");
+    expect(why).toContain("core:of-acid#");
+    /* Named alternatives, not just "it is ambiguous". */
+    expect(why).toContain("core:of-acid#sword-polearm-hafted");
   });
 });

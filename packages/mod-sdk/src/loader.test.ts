@@ -136,7 +136,9 @@ describe("composeContentPacks", () => {
  * A core pack made only of passthrough-shaped files, one per bucket:
  *  - `store`  keyed by the STORE_* code (a declared non-name key)
  *  - `constants` a config singleton, keyed by the file
- *  - `object` name-keyed but with a slug collision core really ships
+ *  - `object` name-keyed, holding both a "*starred*" pair (addressable since the
+ *    key stopped dropping the mark) and a genuinely duplicated name (not)
+ *  - `ego_item` repeated names separated by a declared discriminator
  *  - `history` no per-record identity at all
  */
 function passthroughCore(): LoadedPack {
@@ -152,9 +154,26 @@ function passthroughCore(): LoadedPack {
       constants: { records: [{ "level-max": [{ label: "monsters", value: 1024 }] }] },
       object: {
         records: [
+          /* The "*" pair used to be one ambiguous ref; as of 2026-08-08 the key
+           * spells the mark out, so both are addressable and the pair is now a
+           * regression test for that rather than an ambiguity fixture. */
           { type: "scroll", name: "Acquirement", cost: 900 },
           { type: "scroll", name: "*Acquirement*", cost: 5000 },
           { type: "scroll", name: "Word of Recall", cost: 150 },
+          /* Genuinely indistinguishable: same type, same name, and `object`
+           * declares no discriminator. Nothing can address either one, which is
+           * the case the loader must still report rather than guess at. */
+          { type: "scroll", name: "Deep Descent", cost: 150 },
+          { type: "scroll", name: "Deep Descent", cost: 200 },
+        ],
+      },
+      /* Same name, different item types - the shape core really ships (23 ego
+       * names cover 51 records). The base ref is ambiguous and the
+       * discriminated refs are not. */
+      ego_item: {
+        records: [
+          { name: "of Acid", type: ["sword", "polearm"], cost: 5000 },
+          { name: "of Acid", type: ["shot", "arrow"], cost: 50 },
         ],
       },
       history: {
@@ -172,10 +191,11 @@ function recordsOf(
 }
 
 describe("composeContentPacks: per-record ops on passthrough files", () => {
-  it("still classifies all four as passthrough (whole-file `records` semantics kept)", () => {
+  it("still classifies all five as passthrough (whole-file `records` semantics kept)", () => {
     const composed = composeContentPacks([passthroughCore()]);
     expect(composed.passthroughFiles).toEqual([
       "constants",
+      "ego_item",
       "history",
       "object",
       "store",
@@ -291,13 +311,63 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
   it("reports an op against a ref two records claim, and changes neither", () => {
     const mod: LoadedPack = {
       manifest: manifest("cheap", { core: "*" }),
-      files: { object: { patches: { "core:scroll--acquirement": { cost: 1 } } } },
+      files: { object: { patches: { "core:scroll--deep-descent": { cost: 1 } } } },
     };
     const composed = composeContentPacks([passthroughCore(), mod]);
     expect(composed.problems).toHaveLength(1);
-    expect(composed.problems[0]).toContain('object patches "core:scroll--acquirement"');
+    expect(composed.problems[0]).toContain('object patches "core:scroll--deep-descent"');
     expect(composed.problems[0]).toContain("2 object records share that identity");
-    expect(recordsOf(composed, "object").map((r) => r["cost"])).toEqual([900, 5000, 150]);
+    expect(recordsOf(composed, "object").map((r) => r["cost"])).toEqual([
+      900, 5000, 150, 150, 200,
+    ]);
+  });
+
+  it("addresses both halves of a *starred* pair, which used to be one ref", () => {
+    /* The regression this exists to hold: `slugify` dropped "*", so
+     * "*Acquirement*" and "Acquirement" arrived as one key and NEITHER could be
+     * patched. Nothing about the data was ambiguous - the key was lossy. */
+    const mod: LoadedPack = {
+      manifest: manifest("both", { core: "*" }),
+      files: {
+        object: {
+          patches: {
+            "core:scroll--acquirement": { cost: 1 },
+            "core:scroll--star-acquirement-star": { cost: 2 },
+          },
+        },
+      },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "object").map((r) => r["cost"])).toEqual([
+      1, 2, 150, 150, 200,
+    ]);
+  });
+
+  it("names the discriminated refs when a base ref is ambiguous", () => {
+    /* A message that only says "ambiguous" leaves the author nowhere to go: the
+     * discriminated form is not derivable without reading record-key.ts. */
+    const mod: LoadedPack = {
+      manifest: manifest("acidic", { core: "*" }),
+      files: { ego_item: { patches: { "core:of-acid": { cost: 1 } } } },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toHaveLength(1);
+    expect(composed.problems[0]).toContain("core:of-acid#sword-polearm");
+    expect(composed.problems[0]).toContain("core:of-acid#shot-arrow");
+    expect(recordsOf(composed, "ego_item").map((r) => r["cost"])).toEqual([5000, 50]);
+  });
+
+  it("patches one of two same-named egos through its discriminator", () => {
+    /* 51 of core's 107 ego records are in this position. Before the
+     * discriminator existed, none of them could be patched at all. */
+    const mod: LoadedPack = {
+      manifest: manifest("ammo", { core: "*" }),
+      files: { ego_item: { patches: { "core:of-acid#shot-arrow": { cost: 7 } } } },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "ego_item").map((r) => r["cost"])).toEqual([5000, 7]);
   });
 
   it("reports an op against a ref that does not exist", () => {
@@ -398,7 +468,9 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
       { file: "store", ref: "core:store-general", reachable: true },
       { file: "constants", ref: "core:constants", reachable: true },
       { file: "object", ref: "core:scroll--word-of-recall", reachable: true },
-      { file: "object", ref: "core:scroll--acquirement", reachable: false }, // ambiguous
+      { file: "object", ref: "core:scroll--deep-descent", reachable: false }, // ambiguous
+      { file: "ego_item", ref: "core:of-acid", reachable: false }, // ambiguous base
+      { file: "ego_item", ref: "core:of-acid#shot-arrow", reachable: true }, // discriminated
       { file: "history", ref: "core:1", reachable: false }, // no identity
       { file: "store", ref: "core:nope", reachable: false }, // missing
     ];

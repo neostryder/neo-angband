@@ -12,6 +12,39 @@
  * brand, slay, projection, constants"). Those nine are precisely the files this
  * table fixes. If you are about to report that bug, run record-key.test.ts.
  *
+ * AND "ADDRESSABLE PER FILE" IS NOT "EVERY RECORD ADDRESSABLE" (measured
+ * 2026-08-08). Declaring a key per file left 73 individual records that NO ref
+ * could name, because two or more of them claimed the same key: 61 of
+ * `ego_item`'s 107 - more than half the file - plus 10 in `object` and 2 in
+ * `vault`. A mod could not patch "of Acid" at all. That residue had two
+ * completely different causes, and separating them is what let both be fixed
+ * without inventing an identity:
+ *
+ *  - INFORMATION THE SLUG THREW AWAY. `slugify` drops `*` and `+`, so
+ *    "*Healing*" and "Healing" - two genuinely different objects, upstream's
+ *    convention for the greater form - arrived as one key. Nothing was
+ *    ambiguous about the data; the KEY was lossy. `keySlug` below spells the
+ *    marks out ("star", "plus") instead of dropping them. That alone accounts
+ *    for every collision in `object` and `vault` and for 16 of `ego_item`'s.
+ *  - GENUINELY REPEATED NAMES. `ego_item` ships "of Acid" twice, distinguished
+ *    only by which item types it applies to. No amount of care with the name
+ *    separates them, so a DISCRIMINATOR is declared: extra paths appended after
+ *    a "#", used only to tell same-named records apart. For `ego_item` that is
+ *    the item types it applies to, which is not a guess - it is upstream's own
+ *    identity for an ego, `lookup_ego_item(name, tval, sval)` in obj-util.c.
+ *
+ * Result: 0 unaddressable records in the shipped pack, asserted in both
+ * directions by record-key.test.ts.
+ *
+ * NOTHING THAT USED TO RESOLVE STOPPED RESOLVING. A record answers to SEVERAL
+ * refs, not one (`recordRefKeys` plus `legacyRecordKey`), and the old lossy slug
+ * is kept as an alias. The alias is dropped in exactly one case: when it would
+ * shadow another record's primary key. That case is not hypothetical and it is
+ * the whole reason the rule exists - "*Healing*"'s legacy alias IS "healing",
+ * which is plain "Healing"'s primary, so keeping it would have left the plain
+ * potion unaddressable while fixing the starred one. A record's own history
+ * must not cost a different record its name.
+ *
  * WHY THIS EXISTS
  *
  * composePacks (compose.ts) keys every record by `packRef(pack, slugify(name))`.
@@ -72,7 +105,23 @@ import type { JsonRecord, JsonValue } from "./compose.js";
  *   host binds one.
  */
 export type RecordKeySpec =
-  | { readonly kind: "fields"; readonly paths: readonly string[] }
+  | {
+      readonly kind: "fields";
+      readonly paths: readonly string[];
+      /**
+       * Extra paths that tell SAME-KEYED records apart, appended after a "#".
+       *
+       * Only for files that ship genuinely repeated names. A discriminated ref
+       * is offered ALONGSIDE the plain one, never instead of it: a record whose
+       * plain key is already unique keeps it, so declaring a discriminator can
+       * only add refs. A path may resolve to an array, or to an array of
+       * objects when it is dotted (`item.tval` takes `.tval` of each element),
+       * because the thing that separates two records is often a LIST - which
+       * item types an ego applies to. Non-scalar leaves are skipped rather than
+       * stringified: a JSON blob in a ref is not something an author can type.
+       */
+      readonly discriminator?: readonly string[];
+    }
   | { readonly kind: "singleton" };
 
 /**
@@ -114,12 +163,22 @@ export const RECORD_KEY_SPECS: Readonly<Record<string, RecordKeySpec>> = {
   /* Config singletons: one record for the whole file. */
   constants: { kind: "singleton" },
   visuals: { kind: "singleton" },
-  /* Files that DO have `name` but need more of the record to be unique. Each is
-   * still not fully unique (see the header) - the residual collisions are
-   * reported, never guessed. */
+  /* Files that DO have `name` but need more of the record to be unique. `object`
+   * and `vault` are fully unique once the slug stops dropping "*" and "+"
+   * (keySlug); `ego_item` genuinely repeats names and needs a discriminator. */
   object: { kind: "fields", paths: ["type", "name"] },
   vault: { kind: "fields", paths: ["type", "name"] },
-  ego_item: { kind: "fields", paths: ["name"] },
+  /* 23 ego names repeat, covering 51 of the 107 records. What separates them is
+   * the item types the ego can appear on - `type` names tvals directly, `item`
+   * pins specific (tval, sval) pairs, and a record uses one or the other. Both
+   * are read, so "of Elvenkind" on boots and "of Elvenkind" on shields are two
+   * addressable records. This mirrors lookup_ego_item(name, tval, sval), which
+   * is how upstream itself tells two same-named egos apart. */
+  ego_item: {
+    kind: "fields",
+    paths: ["name"],
+    discriminator: ["type", "item.tval"],
+  },
 };
 
 /**
@@ -147,6 +206,53 @@ function atPath(record: JsonRecord, path: string): JsonValue | undefined {
 }
 
 /**
+ * As atPath, but a path step over an ARRAY maps across it: `item.tval` on
+ * `item: [{tval:"boots"}, {tval:"shield"}]` yields `["boots", "shield"]`.
+ *
+ * Discriminator-only, because the thing that separates two same-named records is
+ * routinely a list rather than a scalar. atPath deliberately keeps its
+ * scalar-or-nothing rule for the KEY itself: a key that silently spans an array
+ * would change whenever the array is reordered.
+ */
+function atPathThroughArrays(
+  record: JsonRecord,
+  path: string,
+): readonly JsonValue[] {
+  let cur: JsonValue[] = [record];
+  for (const part of path.split(".")) {
+    const next: JsonValue[] = [];
+    for (const node of cur) {
+      if (typeof node !== "object" || node === null || Array.isArray(node)) {
+        continue;
+      }
+      const value = (node as JsonRecord)[part];
+      if (value === undefined) continue;
+      if (Array.isArray(value)) next.push(...value);
+      else next.push(value);
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * The slug used for a record's identity, distinct from `slugify` and
+ * deliberately so.
+ *
+ * `slugify` builds the refs mods already write and is the ABI for the 24
+ * name-composed files; it is not changed here. But it collapses every
+ * non-alphanumeric run to a "-", which erases the two marks Angband uses to mean
+ * "the greater form of this": "*Healing*" and "Little eruption+" arrived
+ * indistinguishable from "Healing" and "Little eruption". Spelling the marks out
+ * keeps the distinction inside an author-typeable ref. The old form is still
+ * accepted as an alias (legacyRecordKey), so this widens what resolves rather
+ * than moving it.
+ */
+function keySlug(value: string): string {
+  return slugify(value.replace(/\*/g, " star ").replace(/\+/g, " plus "));
+}
+
+/**
  * The slug half of a record's ref within `file`, or null when this record has no
  * derivable identity (a missing key field, or a key field that is not a scalar).
  * Null means "not addressable"; it never means "drop the record".
@@ -156,25 +262,103 @@ export function recordKey(
   record: unknown,
   spec: RecordKeySpec = keySpecFor(file),
 ): string | null {
+  return baseKey(file, record, spec, keySlug);
+}
+
+/** The base key under one slug function; the two callers differ only in that. */
+function baseKey(
+  file: string,
+  record: unknown,
+  spec: RecordKeySpec,
+  slug: (value: string) => string,
+): string | null {
   if (typeof record !== "object" || record === null || Array.isArray(record)) {
     return null;
   }
-  if (spec.kind === "singleton") return slugify(file);
+  if (spec.kind === "singleton") return slug(file);
   const parts: string[] = [];
   for (const path of spec.paths) {
     const value = atPath(record as JsonRecord, path);
     if (typeof value !== "string" && typeof value !== "number") return null;
-    const slug = slugify(String(value));
-    if (slug.length === 0) return null;
-    parts.push(slug);
+    const part = slug(String(value));
+    if (part.length === 0) return null;
+    parts.push(part);
   }
   return parts.join("--");
+}
+
+/**
+ * The discriminating half of a ref: the declared discriminator paths, flattened
+ * through arrays and joined. Empty string when the file declares none or the
+ * record carries nothing at those paths - which is normal, since a
+ * discriminator only has to separate the records that need separating.
+ */
+function discriminatorOf(record: JsonRecord, spec: RecordKeySpec): string {
+  if (spec.kind !== "fields" || spec.discriminator === undefined) return "";
+  const parts: string[] = [];
+  for (const path of spec.discriminator) {
+    const values = atPathThroughArrays(record, path)
+      .filter((v): v is string | number => typeof v === "string" || typeof v === "number")
+      .map((v) => keySlug(String(v)))
+      .filter((s) => s.length > 0);
+    if (values.length > 0) parts.push(values.join("-"));
+  }
+  return parts.join("--");
+}
+
+/**
+ * EVERY ref a record answers to, in preference order: the base key first, then
+ * the discriminated form when the file declares a discriminator and this record
+ * carries one.
+ *
+ * A list rather than a single key because addressing is a lookup, not a naming
+ * ceremony. The base key is what an author writes when it is unambiguous; the
+ * discriminated form is what they fall back to when core ships the name twice,
+ * and the loader's refusal message hands them the exact string. Offering both
+ * means declaring a discriminator can never take a working ref away.
+ *
+ * Empty when the record has no derivable identity at all.
+ */
+export function recordRefKeys(
+  file: string,
+  record: unknown,
+  spec: RecordKeySpec = keySpecFor(file),
+): readonly string[] {
+  const base = recordKey(file, record, spec);
+  if (base === null) return [];
+  const disc = discriminatorOf(record as JsonRecord, spec);
+  return disc === "" ? [base] : [base, `${base}#${disc}`];
+}
+
+/**
+ * The pre-2026-08-08 key for this record - the one built with plain `slugify`,
+ * before the "*"/"+" marks were preserved - or null when it is identical to the
+ * current base key, which is the case for all but 17 records in the shipped
+ * pack.
+ *
+ * Kept so a ref written against an older engine still resolves. It is an ALIAS:
+ * the loader registers it only where it does not shadow another record's primary
+ * key (see the header), because "*Healing*"'s legacy key is plain "Healing"'s
+ * real one.
+ */
+export function legacyRecordKey(
+  file: string,
+  record: unknown,
+  spec: RecordKeySpec = keySpecFor(file),
+): string | null {
+  const legacy = baseKey(file, record, spec, slugify);
+  if (legacy === null) return null;
+  return legacy === recordKey(file, record, spec) ? null : legacy;
 }
 
 /** A human phrase for what a file's identity is, for problem messages. */
 export function keyDescription(file: string): string {
   const spec = keySpecFor(file);
-  return spec.kind === "singleton"
-    ? `the whole file (one config record, ref "<pack>:${slugify(file)}")`
-    : spec.paths.join(" + ");
+  if (spec.kind === "singleton") {
+    return `the whole file (one config record, ref "<pack>:${slugify(file)}")`;
+  }
+  const base = spec.paths.join(" + ");
+  return spec.discriminator === undefined
+    ? base
+    : `${base}, or ${base} + "#" + ${spec.discriminator.join(" + ")} where core ships the name twice`;
 }

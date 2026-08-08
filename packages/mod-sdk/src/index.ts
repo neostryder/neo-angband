@@ -73,8 +73,10 @@ export {
   KEYED_RECORD_FILES,
   keyDescription,
   keySpecFor,
+  legacyRecordKey,
   RECORD_KEY_SPECS,
   recordKey,
+  recordRefKeys,
 } from "./record-key.js";
 export type { RecordKeySpec } from "./record-key.js";
 export type {
