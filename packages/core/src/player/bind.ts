@@ -38,6 +38,7 @@ import {
   TMD,
 } from "../generated/index.js";
 import { effectSubtype } from "../effects/effect.js";
+import { attachExt } from "../mod/extension.js";
 import {
   OF_SIZE,
   PF_SIZE,
@@ -537,9 +538,11 @@ export class PlayerRegistry {
     this.timed = bindTimed(pack.timed);
     this.shapes = pack.shapes.map((rec, sidx) => bindShape(rec, sidx));
 
-    this.races = pack.races.map((rec, ridx) => bindRace(rec, ridx));
+    this.races = pack.races.map((rec, ridx) =>
+      attachExt("p_race", rec, bindRace(rec, ridx)),
+    );
     this.classes = pack.classes.map((rec, cidx) =>
-      bindClass(rec, cidx, this.realms),
+      attachExt("class", rec, bindClass(rec, cidx, this.realms)),
     );
 
     this.racesByName = new Map();

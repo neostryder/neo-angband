@@ -9,11 +9,13 @@
 
 import { FlagSet } from "../bitflag.js";
 import { FEAT, RF, TERRAIN_FLAG_ENTRIES, TF } from "../generated/index.js";
+import type { ModExtensible } from "../mod/extension.js";
+import { attachExt } from "../mod/extension.js";
 
 /** Byte size of a terrain FlagSet (upstream TF_SIZE). */
 export const TF_SIZE = Math.ceil(TERRAIN_FLAG_ENTRIES.length / 8);
 
-export interface Feature {
+export interface Feature extends ModExtensible {
   /** FEAT_* index (position in list-terrain.h). */
   fidx: number;
   /** The list-terrain.h code, e.g. "FLOOR", "GRANITE". */
@@ -157,6 +159,7 @@ export class FeatureRegistry {
         lookInPreposition: joinLines(rec["look-in-preposition"]),
         resistFlag: resolveResistFlag(rec["resist-flag"]?.[0]),
       };
+      attachExt("terrain", rec, feature);
       this.byIdx[fidx] = feature;
       this.byCode.set(rec.code, feature);
       this.byName.set(rec.name, feature);

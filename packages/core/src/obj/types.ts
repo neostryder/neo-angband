@@ -19,6 +19,7 @@
 import { flagSize, FlagSet } from "../bitflag.js";
 import { ELEM, ELEMENT_ENTRIES, KF, OBJ_MOD, OF, TVAL_ENTRIES } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
+import type { ModExtensible } from "../mod/extension.js";
 
 /** TV_MAX: number of tvals (list-tvals.h). */
 export const TV_MAX = TVAL_ENTRIES.length;
@@ -330,7 +331,7 @@ export interface ObjPackJson {
 /* ------------------------------------------------------------------ */
 
 /** struct object_base. */
-export interface ObjectBase {
+export interface ObjectBase extends ModExtensible {
   name: string;
   tval: number;
   /** Color name/char as compiled (upstream converts to an attr byte). */
@@ -344,16 +345,7 @@ export interface ObjectBase {
 }
 
 /** struct object_kind. */
-export interface ObjectKind {
-  /**
-   * Keys this kind's record carried that core does not bind (mod/record-keys.ts).
-   *
-   * Absent unless a mod added one. Core never reads it - it exists so a mod can
-   * put its own data on an object in JSON and reach it at runtime, which is the
-   * half of "extend the game" that a patch alone could not do. The values are
-   * the composed JSON, frozen, so one mod cannot mutate what another reads.
-   */
-  ext?: Readonly<Record<string, unknown>>;
+export interface ObjectKind extends ModExtensible {
   name: string;
   text: string;
   base: ObjectBase;
@@ -397,7 +389,7 @@ export interface ObjectKind {
 }
 
 /** struct ego_item. */
-export interface EgoItem {
+export interface EgoItem extends ModExtensible {
   name: string;
   text: string;
   eidx: number;
@@ -438,7 +430,7 @@ export interface EgoItem {
 }
 
 /** struct artifact. */
-export interface Artifact {
+export interface Artifact extends ModExtensible {
   name: string;
   text: string;
   aidx: number;
@@ -488,7 +480,7 @@ export interface CurseObject {
 }
 
 /** struct curse. */
-export interface Curse {
+export interface Curse extends ModExtensible {
   /** 1-based index in the curses array (matches upstream ordering). */
   index: number;
   name: string;

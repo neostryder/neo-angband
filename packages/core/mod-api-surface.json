@@ -472,6 +472,7 @@
     "artifactIsKnown",
     "ascendAction",
     "assertCodecId",
+    "attachExt",
     "attachGameEnv",
     "attackMonster",
     "attrToText",

@@ -64,6 +64,8 @@ import { getChamberMonsters, getVaultMonsters, monPitHook, setPitType } from "./
 import type { MonsterGroupInfo } from "../mon/monster.js";
 import type { MonsterRace } from "../mon/types.js";
 import { MON_GROUP } from "../mon/types.js";
+import type { ModExtensible } from "../mod/extension.js";
+import { attachExt } from "../mod/extension.js";
 
 /* ------------------------------------------------------------------ *
  * Room and vault template data.
@@ -95,7 +97,7 @@ export interface VaultRecordJson {
   flags?: string[];
 }
 
-export interface RoomTemplate {
+export interface RoomTemplate extends ModExtensible {
   name: string;
   typ: number;
   rat: number;
@@ -107,7 +109,7 @@ export interface RoomTemplate {
   fewEntrances: boolean;
 }
 
-export interface Vault {
+export interface Vault extends ModExtensible {
   name: string;
   typ: string;
   rat: number;
@@ -125,17 +127,19 @@ function hasFewEntrances(flags: string[] | undefined): boolean {
 
 /** Load room templates from parsed room_template.json records. */
 export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTemplate[] {
-  return [...records].reverse().map((r) => ({
-    name: r.name,
-    typ: r.type,
-    rat: r.rating,
-    hgt: r.rows,
-    wid: r.columns,
-    dor: r.doors,
-    tval: r.tval === "0" ? 0 : tvalFindIdx(r.tval),
-    rows: [...r.D],
-    fewEntrances: hasFewEntrances(r.flags),
-  }));
+  return [...records].reverse().map((r) =>
+    attachExt<RoomTemplate>("room_template", r, {
+      name: r.name,
+      typ: r.type,
+      rat: r.rating,
+      hgt: r.rows,
+      wid: r.columns,
+      dor: r.doors,
+      tval: r.tval === "0" ? 0 : tvalFindIdx(r.tval),
+      rows: [...r.D],
+      fewEntrances: hasFewEntrances(r.flags),
+    }),
+  );
 }
 
 /**
@@ -151,17 +155,19 @@ export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTempla
  * (128 of 161) from the dungeon.
  */
 export function loadVaults(records: VaultRecordJson[], maxDepth: number): Vault[] {
-  return [...records].reverse().map((r) => ({
-    name: r.name,
-    typ: r.type,
-    rat: r.rating,
-    hgt: r.rows,
-    wid: r.columns,
-    minLev: r["min-depth"] ?? 0,
-    maxLev: r["max-depth"] ? r["max-depth"] : maxDepth,
-    rows: [...r.D],
-    fewEntrances: hasFewEntrances(r.flags),
-  }));
+  return [...records].reverse().map((r) =>
+    attachExt<Vault>("vault", r, {
+      name: r.name,
+      typ: r.type,
+      rat: r.rating,
+      hgt: r.rows,
+      wid: r.columns,
+      minLev: r["min-depth"] ?? 0,
+      maxLev: r["max-depth"] ? r["max-depth"] : maxDepth,
+      rows: [...r.D],
+      fewEntrances: hasFewEntrances(r.flags),
+    }),
+  );
 }
 
 /** The template/vault data a room registry closes over. */

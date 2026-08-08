@@ -27,9 +27,11 @@ import { Dice } from "../dice.js";
 import type { Aspect, Rng } from "../rng.js";
 import { ELEMENT_ENTRIES, PROJ, PROJECTION_ENTRIES } from "../generated/index.js";
 import { messageLookupByName } from "../sound/engine.js";
+import type { ModExtensible } from "../mod/extension.js";
+import { attachExt } from "../mod/extension.js";
 
 /** struct projection: the behavioural data for one PROJ_ type. */
-export interface ProjectionInfo {
+export interface ProjectionInfo extends ModExtensible {
   /** PROJ_ value (index into the table). */
   index: number;
   /** Upstream code, e.g. "ACID". */
@@ -146,7 +148,7 @@ export function bindProjections(
       denominator = new Dice();
       denominator.parseString(rec.denominator);
     }
-    out[index] = {
+    out[index] = attachExt<ProjectionInfo>("projection", rec, {
       index,
       code: rec.code,
       name: rec.name ?? rec.code,
@@ -163,7 +165,7 @@ export function bindProjections(
       desc: rec.desc ?? "",
       playerDesc: rec["player-desc"] ?? null,
       lashDesc: rec["lash-desc"] ?? null,
-    };
+    });
   }
 
   for (let i = 0; i < total; i++) {

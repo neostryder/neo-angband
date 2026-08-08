@@ -12,6 +12,7 @@
  */
 
 import type { ObjectKind } from "../obj/types.js";
+import type { ModExtensible } from "../mod/extension.js";
 
 /* ------------------------------------------------------------------ */
 /* Parsed JSON shape (packages/content/pack/store.json)                 */
@@ -75,7 +76,7 @@ export interface ObjectBuy {
 }
 
 /** struct store: a fully bound store definition. */
-export interface BoundStore {
+export interface BoundStore extends ModExtensible {
   /** FEAT_* index of the entrance terrain. */
   feat: number;
   /** The FEAT_* name this store binds to (for diagnostics/lookup). */

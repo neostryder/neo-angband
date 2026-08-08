@@ -19,6 +19,7 @@ import {
 } from "../generated/index.js";
 import { flagSize } from "../bitflag.js";
 import { RSF } from "../generated/index.js";
+import type { ModExtensible } from "../mod/extension.js";
 
 /** Byte size of a race FlagSet (upstream RF_SIZE = FLAG_SIZE(RF_MAX)). */
 export const RF_SIZE = flagSize(MON_RACE_FLAG_ENTRIES.length);
@@ -123,7 +124,7 @@ export interface MonsterSpell {
 }
 
 /** struct monster_base: race template bound from monster_base.json. */
-export interface MonsterBase {
+export interface MonsterBase extends ModExtensible {
   name: string;
   /** In-game name (desc line). */
   text: string;
@@ -199,13 +200,7 @@ export interface MonsterAltMsg {
 }
 
 /** struct monster_race (monster.h), bound from monster.json. */
-export interface MonsterRace {
-  /**
-   * Keys this race's record carried that core does not bind
-   * (mod/record-keys.ts). Absent unless a mod added one; core never reads it.
-   * See ObjectKind.ext.
-   */
-  ext?: Readonly<Record<string, unknown>>;
+export interface MonsterRace extends ModExtensible {
   /** Index in the race array; record order mirrors monster.txt. */
   ridx: number;
   name: string;
