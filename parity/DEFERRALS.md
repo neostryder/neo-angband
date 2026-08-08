@@ -95,6 +95,38 @@ port's comment gave — "rides lore (#24)" — named a blocker that was never th
 reason, which is why this took a reading of the C to settle rather than a reading
 of the note.
 
+### The third thing: a retraction that read one of its five sites
+
+**Prose is not behaviour, and that includes a comment written by the person
+checking.** One of the two rows the second pass left owed was `pile_insert_end`,
+and it had already been retracted once: an earlier pass censused all five upstream
+call sites, tested four of them, and closed the fifth by quoting the port's own
+docblock — *"`wieldAll`'s docblock already records the deferred-append
+behaviour."*
+
+It recorded something else. Upstream's `wield_all` collects each split remainder
+into a local `new_pile` with `pile_insert`, which **prepends**, and appends that
+block to the gear exactly once after the loop, so the tail reads `[last split …
+first split]`. The port pushed each remainder as it made it. What the docblock
+actually described was the deferred **scan** — the loop walks a snapshot, so a
+remainder is not re-wielded — and the sentence was read as the deferred
+**insert**. A retraction that tests four sites and reads the fifth has tested four
+sites.
+
+The consequence is bounded, and that was measured rather than assumed:
+`wield_slot` returns `-1` for ammo (obj-gear.c:341-367) and the only stacked
+WIELDABLE item in any of `class.txt`'s 52 `equip:` lines is the Wooden Torch, so
+4.2.6 creates exactly one remainder and one element reversed is itself. **A mod
+whose starting kit stacks two wieldables sees it** — the same shape as the
+element-name mirror in `add_brand`, where a guard proved the port matched 4.2.6
+and could not see the case that mattered.
+
+Fixed, and pinned by a test whose fixture is a two-stacked-wieldable kit no class
+ships, mutation-verified by dropping the `reverse()`. The sentence that fed the
+census row went too: `pile.upstream.test.ts` said "pile_insert_end has NO port
+counterpart: nothing in the live port appends", which was true of the **floor**
+and false of the port. **A claim scoped to one pile must say which pile.**
+
 ### Live defects this found
 
 Both by re-reading a note that had handed its work to somebody else, and they
@@ -462,19 +494,18 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `real` | Confirmed absent and owed | 2 |
+| `real` | Confirmed absent and owed | 1 |
 | `partial` | Part ported; the note must say which part is not | 7 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 52 |
-| `ported` | Done; the note was stale and has been rewritten | 27 |
+| `ported` | Done; the note was stale and has been rewritten | 28 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 79 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 28 |
 | | **total** | **232** |
 
-### `real` - Confirmed absent and owed (2)
+### `real` - Confirmed absent and owed (1)
 
-- `packages/core/src/game/gear.ts:1315` - LEAD READ. Still real, and a dedicated instrument says so: game/pile.upstream.test.ts:28 states "pile_insert_end has NO port counterpart: nothing in the live port appends", and gear.ts:1094 cites it for the equip path only
 - `parity/ledger/cmd-core.yaml:25` - cmd_disable_repeat_floor_item has no port equivalent (0 references)
 
 ### `partial` - Part ported; the note must say which part is not (7)
@@ -577,9 +608,10 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (27)
+### `ported` - Done; the note was stale and has been rewritten (28)
 
 - `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
+- `packages/core/src/game/gear.ts:1315` - CLOSED 2026-08-07 (#131). pile_insert_end has five upstream call sites and the port matches all five: gear.pack.push for the three gear ones (inven_carry via gear_insert_end, and both calc_inventory splits), the saved array order in deserializeFloor for load.c:1419, known.ts:657 pile.push for the known cave, and wieldAll deferred block for wield_all. The FIFTH was the only real one and it was accepted on a docblock by the earlier retraction: upstream collects remainders with pile_insert (prepend) into new_pile and appends the block once (player-birth.c:489/503), so the tail is reverse creation order; the port pushed each as it made it. Fixed, and pinned by a test whose fixture is a two-stacked-wieldable kit no class ships -- unreachable in 4.2.6 data (wield_slot returns -1 for ammo; only the Wooden Torch is a stacked wieldable in any of the 52 equip lines), reachable by a mod.
 - `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
 - `packages/core/src/gen/gen-monster.ts:350` - LEAD READ, and CORRECTED from real. The note says spreadMonsters is "not wired to a builder yet (room_of_chambers/cavern callers are deferred)". It is wired, twice: gen/cave.ts:1721 (the lair, after setPitType/monRestrict) and gen/cave.ts:1865. room_of_chambers is built too, and its builder asserts true in gen/gen.test.ts:2175
 - `packages/core/src/mon/lore-describe.ts:862` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518

@@ -6,7 +6,7 @@ each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 22 confirmed-absent citations** — **all 68 closed**, as
+**68 items covering all 21 confirmed-absent citations** — **all 68 closed**, as
 of 2026-08-07, when 5.5's last log line landed. That is a statement about this
 list and nothing wider: see [What "zero open" does and does not
 mean](#what-zero-open-does-and-does-not-mean) at the foot of this file, which
@@ -14,7 +14,7 @@ names what is still deliberately divergent and what has never been measured.
 
 **That citation count used to read 76, and the drop is the closure, not a
 narrowing.** The two censuses held 55 `real` + 21 `partial` when these 68 items
-were written; re-adjudicating after the closure work left 7 `real` + 15
+were written; re-adjudicating after the closure work left 6 `real` + 15
 `partial`, because most of those rows now describe code that exists. The number
 is checked against the censuses by `packages/cli/src/port-todo.test.ts`, which
 is the only reason it is current — the closure commit moved the censuses and
@@ -25,15 +25,18 @@ rewrote the notes they were written on, so the census retired 71 rows and return
 76 to be adjudicated again ([DEFERRALS.md](DEFERRALS.md), "The second pass"). Of
 the `real` rows that survived that, four proved stale — PN_IGNORE is consumed,
 both TOUCH branches are ported, the notes command exists, the killer reaches the
-score entry — and **two are genuinely owed and are not on the list above**:
+score entry — and **two were genuinely owed and not on the list above**. One of
+those two has since closed, and closing it found that its own earlier retraction
+had accepted a docblock in place of the code (2.7 below), which is why it is
+struck through rather than deleted:
 
 | Owed | Where |
 |---|---|
-| `pile_insert_end` has no port counterpart; nothing appends to a pile tail, so pile ORDER can differ | `game/gear.ts:1315`, `game/pile.upstream.test.ts:28` |
+| ~~`pile_insert_end` has no port counterpart~~ — **closed 2026-08-07**, see 2.7 below | `game/gear.ts`, `game/pile.upstream.test.ts` |
 | `cmd_disable_repeat_floor_item` (0 references), where the sibling `cmd_disable_repeat` is ported | `parity/ledger/cmd-core.yaml:25` |
 
-Two is the honest number for this list today, not zero. It will move again, in
-both directions, for exactly the reason the paragraph below gives.
+One is the honest number for this list today. It will move again, in both
+directions, for exactly the reason the paragraph below gives.
 
 The largest single move it has ever made was **downward, on 2026-08-06: 100 to
 87**, and none of it was work. Reading the seventeen `real` rows in the ledger
@@ -1192,7 +1195,40 @@ is reachable in play and a test constructs the case that used to be wrong.**
   `deserializeFloor` kills 1. **My first draft of that last assertion compared
   `pile.map(...)` to `pile.map(...)` — a tautology that could not fail whatever
   the loader did.** It is now compared against the re-saved projection.
-  Sites: `packages/core/src/game/gear.ts:1315`
+
+  **Reopened and re-closed on 2026-08-07, and the reason it reopened is the
+  lesson.** The retraction above tested four of the five call sites and accepted
+  the fifth — `wield_all` — on the strength of a docblock: *"`wieldAll`'s
+  docblock already records the deferred-append behaviour."* It recorded it and
+  the code did not do it. What the comment described was the deferred SCAN (the
+  loop iterates a snapshot so a remainder is not re-wielded); what it was read as
+  saying was the deferred INSERT. Upstream collects each remainder into a local
+  `new_pile` with `pile_insert`, which **prepends**, and appends that whole block
+  once after the loop, so the gear tail reads `[last split … first split]`. The
+  port pushed each remainder as it made it, which is the other order.
+
+  **Prose is not behaviour**, and a retraction that tests four sites and reads
+  the fifth has tested four sites.
+
+  Invisible in 4.2.6's own data, and that was measured rather than assumed:
+  `wield_slot` returns -1 for ammo (obj-gear.c:341-367), and the only stacked
+  WIELDABLE item in any of the 52 `equip:` lines in `class.txt` is the Wooden
+  Torch, so exactly one remainder is ever created and one element reversed is
+  itself. A **mod** whose starting kit stacks two wieldables sees it — the same
+  reason C2's element names had to come from the pack rather than a mirror of it.
+
+  Fixed by giving `wieldAll` upstream's temporary pile, and pinned by a test that
+  builds the two-stacked-wieldable kit no class ships and asserts the tail is the
+  reverse of the walk order. Mutation-verified: dropping the `reverse()` fails it
+  with `expected [19, 16] to deeply equal [16, 19]`.
+
+  The over-claiming sentence that fed the census row is gone too:
+  `pile.upstream.test.ts` said "pile_insert_end has NO port counterpart: nothing
+  in the live port appends", which was true of the **floor** and false of the
+  port, and a later census reader carried it forward at face value as an owed
+  gap. **A claim scoped to one pile must say which pile.**
+
+  Sites: `packages/core/src/game/gear.ts`, `packages/core/src/game/pile.upstream.test.ts`
 
 - [x] **2.8 `path_analyse` is absent.** DONE — and this one's description was
   accurate, which after 2.3, 2.12 and 2.15 is worth saying.
@@ -3512,7 +3548,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 22 citations, 7 `real` + 15
+2. the counts stated at the top (**68 items, 21 citations, 6 `real` + 15
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
