@@ -131,6 +131,7 @@ describe("modManifest copies every PackManifest field", () => {
     loadBefore: ["mist"],
     saveSchema: 2,
     capabilities: ["command:add"],
+    fields: [{ name: "bleed", files: ["object"], type: "object" }],
     modApi: 1,
     rules: [{ flag: "f", title: "t", description: "d", default: true }],
     sections: [{ id: "s", title: "S" }],

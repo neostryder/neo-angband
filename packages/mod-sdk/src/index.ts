@@ -123,3 +123,4 @@ export type {
   Requirement,
   RequirementLevel,
 } from "./standards.js";
+export * from "./fields.js";

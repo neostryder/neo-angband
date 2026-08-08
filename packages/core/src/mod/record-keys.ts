@@ -74,6 +74,17 @@ export const CORE_RECORD_KEYS: Readonly<Record<string, readonly string[]>> = {
  * extension: a file core ships no data for is one this table cannot speak
  * about, and guessing there would hand a mod an `ext` full of core's own
  * fields.
+ *
+ * ONLY NAMESPACED KEYS QUALIFY. `bleed` on a dagger is not an extension field;
+ * `gore:bleed` is. Without that rule "unknown to core" would be the whole
+ * test, and a misspelling of one of core's own keys (`atack`) would arrive here
+ * looking exactly like a deliberate new field - so the author would see it in
+ * `ext`, believe the patch worked, and never learn the real field went
+ * untouched. The namespace is also what stops two mods coining the same word
+ * from silently overwriting each other. The rule is enforced at composition
+ * (mod-sdk fields.ts), which additionally requires the owning mod to have
+ * DECLARED the field; this is the same rule at the other end, so a record that
+ * reached core by some other route cannot bypass it.
  */
 export function extensionData(
   file: string,
@@ -83,7 +94,7 @@ export function extensionData(
   if (known === undefined) return undefined;
   let out: Record<string, unknown> | undefined;
   for (const [key, value] of Object.entries(record)) {
-    if (known.includes(key)) continue;
+    if (!key.includes(":") || known.includes(key)) continue;
     out ??= {};
     out[key] = value;
   }

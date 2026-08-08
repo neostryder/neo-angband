@@ -30,6 +30,7 @@ import {
   validateManifest,
   CapabilitySet,
   composeContentPacks,
+  checkUnqualified,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -55,6 +56,7 @@ import {
   TMD,
   loc,
   extensionData,
+  CORE_RECORD_KEYS,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   BlowEffect,
@@ -1157,17 +1159,28 @@ describe("a disk mod adds a field core has never heard of", () => {
     } as unknown as LoadedPack;
   }
 
-  it("retunes the dagger AND carries a new key through to the bound kind", async () => {
-    writeMod("bleeder", { shape: "content", dependencies: { core: "*" } }, null, {
-      "object.json": JSON.stringify({
-        fieldPatches: {
-          "core:sword--dagger": [
-            { op: "set", path: "attack.hd", value: "1d5" },
-            { op: "set", path: "bleed", value: { dice: "1d3", turns: 5 } },
-          ],
-        },
-      }),
-    });
+  it("retunes the dagger AND carries its own declared field to the bound kind", async () => {
+    /* The maintainer's test case, verbatim: a dagger retuned to 1d5, plus a
+     * `bleed` field core has never heard of, whose meaning the mod supplies. */
+    writeMod(
+      "bleeder",
+      {
+        shape: "content",
+        dependencies: { core: "*" },
+        fields: [{ name: "bleed", files: ["object"], type: "object", label: "Bleed" }],
+      },
+      null,
+      {
+        "object.json": JSON.stringify({
+          fieldPatches: {
+            "core:sword--dagger": [
+              { op: "set", path: "attack.hd", value: "1d5" },
+              { op: "set", path: "bleeder:bleed", value: { dice: "1d3", turns: 5 } },
+            ],
+          },
+        }),
+      },
+    );
     const report = await readModDir(
       fsSource([{ id: "bleeder", files: ["manifest.json", "object.json"] }]),
     );
@@ -1185,15 +1198,71 @@ describe("a disk mod adds a field core has never heard of", () => {
     const dagger = objects.find((r) => r["name"] === "& Dagger~");
     expect(dagger, "core still ships the dagger under this name").toBeDefined();
     expect(dagger?.["attack"]).toMatchObject({ hd: "1d5" });
-    expect(dagger?.["bleed"]).toEqual({ dice: "1d3", turns: 5 });
+    expect(dagger?.["bleeder:bleed"]).toEqual({ dice: "1d3", turns: 5 });
 
     /* The half that used to be lost: what the GAME ends up holding. */
     const ext = extensionData("object", dagger as object);
     expect(ext, "the added key survives classification").toEqual({
-      bleed: { dice: "1d3", turns: 5 },
+      "bleeder:bleed": { dice: "1d3", turns: 5 },
     });
     /* And core's own fields are not smuggled in alongside it. */
     expect(ext?.["attack"]).toBeUndefined();
+  });
+
+  it("strips the same field from a mod that did NOT declare it, and says so", async () => {
+    /* The declaration is the difference, and this is the only test that shows
+     * it: identical bytes on the record side, one manifest line apart. */
+    writeMod("sloppy", { shape: "content", dependencies: { core: "*" } }, null, {
+      "object.json": JSON.stringify({
+        fieldPatches: {
+          "core:sword--dagger": [
+            { op: "set", path: "sloppy:bleed", value: { dice: "1d3" } },
+          ],
+        },
+      }),
+    });
+    const report = await readModDir(
+      fsSource([{ id: "sloppy", files: ["manifest.json", "object.json"] }]),
+    );
+    const pack = report.packs[0];
+    const composed = composeContentPacks([
+      corePack(),
+      { manifest: pack!.manifest, files: pack!.files } as unknown as LoadedPack,
+    ]);
+    const objects = composed.records["object"] as Record<string, unknown>[];
+    const dagger = objects.find((r) => r["name"] === "& Dagger~");
+    expect(dagger?.["sloppy:bleed"]).toBeUndefined();
+    expect(composed.problems.join(" | ")).toContain('dropped "sloppy:bleed"');
+  });
+
+  it("does not mistake a misspelling of one of core's fields for a new one", async () => {
+    /* `atack` reaches core looking exactly like a deliberate field. Before the
+     * namespace rule it would have appeared in `ext`, and the author would have
+     * seen their data arrive and concluded the patch worked - while the real
+     * `attack` went untouched. */
+    writeMod("typo", { shape: "content", dependencies: { core: "*" } }, null, {
+      "object.json": JSON.stringify({
+        fieldPatches: {
+          "core:sword--dagger": [{ op: "set", path: "atack", value: { hd: "1d9" } }],
+        },
+      }),
+    });
+    const report = await readModDir(
+      fsSource([{ id: "typo", files: ["manifest.json", "object.json"] }]),
+    );
+    const pack = report.packs[0];
+    const composed = composeContentPacks([
+      corePack(),
+      { manifest: pack!.manifest, files: pack!.files } as unknown as LoadedPack,
+    ]);
+    const objects = composed.records["object"] as Record<string, unknown>[];
+    const dagger = objects.find((r) => r["name"] === "& Dagger~");
+    expect(extensionData("object", dagger as object)).toBeUndefined();
+
+    /* And the host, which HAS core's key table, names it. */
+    const faults = checkUnqualified("object", objects, CORE_RECORD_KEYS["object"] ?? []);
+    expect(faults.map((f) => f.key)).toEqual(["atack"]);
+    expect(faults[0]?.message).toContain('did you mean "attack"');
   });
 
   it("leaves an unmodded record with no ext at all", async () => {

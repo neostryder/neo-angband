@@ -5,6 +5,9 @@
  * record composition, and savefile provenance all key off it.
  */
 
+import { FIELD_TYPES } from "./fields.js";
+import type { FieldDecl, FieldType } from "./fields.js";
+
 /** Pack identifiers are namespaced: "<pack>:<id>", e.g. "core:kobold". */
 export type PackRef = `${string}:${string}`;
 
@@ -408,6 +411,16 @@ export interface PackManifest {
   /** Capabilities a `shape: plugin` pack requests (see Capability). */
   capabilities?: Capability[];
   /**
+   * Fields this pack introduces onto core's records - its own vocabulary.
+   *
+   * Declared BARE and written NAMESPACED: a pack `mymod` declaring `bleed` owns
+   * the key `"mymod:bleed"`, and that is what appears in a patch and on the
+   * bound record's `ext`. Anything namespaced that nothing declares is stripped
+   * at composition and reported by name; see fields.ts for why the namespace is
+   * the rule rather than a convention.
+   */
+  fields?: FieldDecl[];
+  /**
    * The mod-plugin ABI version this pack's `plugin.js` was written against, and
    * REQUIRED of any pack that ships one. Separate from `engine` on purpose: the
    * engine version and the ABI a mod's code compiles against diverge immediately
@@ -547,6 +560,56 @@ export function validateManifest(value: unknown): PackManifest {
       m["capabilities"].some((c) => typeof c !== "string")
     ) {
       throw new ManifestError(`manifest ${id}: capabilities must be strings`);
+    }
+  }
+  if (m["fields"] !== undefined) {
+    if (!Array.isArray(m["fields"])) {
+      throw new ManifestError(`manifest ${id}: fields must be an array`);
+    }
+    const seen = new Set<string>();
+    for (const raw of m["fields"] as unknown[]) {
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new ManifestError(`manifest ${id}: each field must be an object`);
+      }
+      const f = raw as Record<string, unknown>;
+      const name = f["name"];
+      /* A COLON IN THE DECLARED NAME would produce "mymod:other:thing" and put
+       * the field in a namespace the declaring pack does not own. Refused here
+       * rather than silently accepted, because the resulting key would then
+       * never resolve and the author would have no way to see why. */
+      if (typeof name !== "string" || name === "" || name.includes(":")) {
+        throw new ManifestError(
+          `manifest ${id}: field name must be a non-empty string with no ":" ` +
+            `(the namespace is added for you: "${id}:<name>")`,
+        );
+      }
+      if (seen.has(name)) {
+        throw new ManifestError(`manifest ${id}: field "${name}" declared twice`);
+      }
+      seen.add(name);
+      const files = f["files"];
+      if (
+        !Array.isArray(files) ||
+        files.length === 0 ||
+        files.some((x) => typeof x !== "string" || x === "")
+      ) {
+        throw new ManifestError(
+          `manifest ${id}: field "${name}" must list the record files it may ` +
+            `appear on, e.g. "files": ["object", "ego_item"]`,
+        );
+      }
+      const type = f["type"];
+      if (type !== undefined && !FIELD_TYPES.includes(type as FieldType)) {
+        throw new ManifestError(
+          `manifest ${id}: field "${name}" has type "${String(type)}"; ` +
+            `expected one of ${FIELD_TYPES.join(", ")}`,
+        );
+      }
+      for (const key of ["label", "desc"] as const) {
+        if (f[key] !== undefined && typeof f[key] !== "string") {
+          throw new ManifestError(`manifest ${id}: field "${name}" ${key} must be a string`);
+        }
+      }
     }
   }
   if (m["modApi"] !== undefined) {

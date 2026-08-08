@@ -13,9 +13,11 @@
  * mod-sdk-agnostic - this host module owns the glue.
  */
 
+import { CORE_RECORD_KEYS } from "@rpgm-tools/neo-angband-core";
 import type { GamePack, UiEntryPackRecords } from "@rpgm-tools/neo-angband-core";
 import { log } from "./logging";
 import {
+  checkUnqualified,
   composeDroppingBroken,
   computeConflictReport,
   hasFacet,
@@ -338,6 +340,11 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.saveSchema !== undefined ? { saveSchema: m.saveSchema } : {}),
     ...(m.modApi !== undefined ? { modApi: m.modApi } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+    /* The pack's DECLARED FIELDS. Forgetting this one is not inert like the
+     * ordering hints were - it inverts the feature: every field the mod
+     * declared would arrive undeclared, so composition would strip the very
+     * keys the manifest exists to authorise, and the mod would look broken. */
+    ...(m.fields ? { fields: m.fields } : {}),
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
@@ -558,6 +565,25 @@ function composition(): Composition {
    * and overridden. */
   const sections = sectionChoiceTable(packs.map((p) => p.manifest));
   const { composed, dropped } = composeDroppingBroken(packs, { sections });
+  /* THE OTHER HALF OF THE FIELD RULE, and it can only run here. The composer
+   * enforces "a namespaced key must be declared" with nothing but the
+   * manifests; telling a MISSPELLED core key from a legitimate one needs core's
+   * own key table, which the SDK deliberately cannot import (it has no
+   * dependencies). So the host, which has both, runs it - and appends to the
+   * same problems list the mod manager already shows, rather than inventing a
+   * second channel that something would have to remember to read. */
+  for (const [file, records] of Object.entries(composed.records)) {
+    const known = CORE_RECORD_KEYS[file];
+    if (known === undefined) continue;
+    const objects = records.filter(
+      (r): r is Record<string, unknown> =>
+        r !== null && typeof r === "object" && !Array.isArray(r),
+    );
+    for (const fault of checkUnqualified(file, objects, known)) {
+      composed.problems.push(fault.message);
+      composed.faults.push({ packId: fault.packId, why: fault.message });
+    }
+  }
   memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key };
   return memo;
 }

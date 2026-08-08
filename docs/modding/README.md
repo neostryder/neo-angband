@@ -204,16 +204,23 @@ The `*` and `+` in an Angband name are part of it: `*Healing*` is
 
 #### Adding your own fields to a core record
 
-A patch is not limited to the fields core defines. A key core has never heard
-of survives composition AND binding, and arrives on the bound record under
-`ext`:
+A patch is not limited to the fields core defines. You can introduce your own -
+declare them in your manifest, and write them namespaced with your mod id.
+
+```json
+"fields": [
+  { "name": "bleed", "files": ["object", "ego_item"], "type": "object",
+    "label": "Bleed" }
+]
+```
 
 ```json
 {
   "fieldPatches": {
     "core:sword--dagger": [
       { "op": "set", "path": "attack.hd", "value": "1d5" },
-      { "op": "set", "path": "bleed", "value": { "dice": "1d3", "turns": 5 } }
+      { "op": "set", "path": "gore:bleed",
+        "value": { "dice": "1d3", "turns": 5 } }
     ]
   }
 }
@@ -221,11 +228,43 @@ of survives composition AND binding, and arrives on the bound record under
 
 The first op retunes a field core owns - the dagger now really rolls 1d5. The
 second adds one core does not, and a plugin reads it back as
-`kind.ext.bleed`. `ext` is absent entirely on an unmodded record, so its
-presence means a mod put something there, and it holds ONLY your keys - core's
-own fields are never copied into it, because a mod reading a pre-bind copy of
-a field it did not add would be reading a value that can disagree with the
-bound one forever without either being wrong.
+`kind.ext["gore:bleed"]`.
+
+**Why namespaced.** Whoever ships first would otherwise take `bleed`, and every
+later mod either collides with it or works around it. Qualifying by your mod id
+makes the collision impossible, and makes deliberate interop possible in the
+same stroke - writing `gore:bleed` from a different mod is unambiguously an
+attempt to extend *gore's* field. It is the same rule the vocabulary registry
+already uses for terms (`gore:luck`), so there is one rule, not two.
+
+**Why declared.** A namespaced key that no loaded mod declares is stripped at
+composition and reported by name, and so is one written onto a file the
+declaration does not list, or one whose shape does not match its `type`. The
+declaration costs one manifest line and buys the error message: without it, a
+typo looks exactly like a deliberate new field, so you would see your data
+arrive and conclude the patch worked.
+
+An *unqualified* key core does not know is not treated as a field at all -
+`atack` is a misspelling of `attack`, not a new attribute - and the game reports
+it with core's nearest real field named.
+
+A dropped field costs the field, not the mod: everything else that patch did
+still applies.
+
+`ext` is absent entirely on an unmodded record, so its presence means a mod put
+something there, and it holds ONLY your keys - core's own fields are never
+copied into it, because a mod reading a pre-bind copy of a field it did not add
+would be reading a value that can disagree with the bound one forever without
+either being wrong. It is frozen, so one mod cannot rewrite what another reads.
+
+`fields` entries take:
+
+| key | required | meaning |
+|---|---|---|
+| `name` | yes | bare name, no colon - the namespace is added for you |
+| `files` | yes | the record files it may appear on; a misplacement is an error |
+| `type` | no | `string`, `number`, `boolean`, `object`, `array`, or `any` |
+| `label`, `desc` | no | for a mod manager or a character sheet |
 
 Core never reads `ext`. Data alone changes nothing: the game does not know
 what "bleed" means, so a mod that adds the field also supplies the behaviour -

@@ -46,6 +46,37 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod's own vocabulary: namespaced, declared, and enforced.** A field a mod
+  introduces is now written `"gore:bleed"` and declared in that mod's manifest
+  under `fields`, with the record files it may appear on and an optional type.
+  Namespaced because the alternative is a land grab - whoever ships first takes
+  `bleed`, and every later mod either collides with it or works around it -
+  and because qualifying by the declaring mod makes deliberate interop
+  expressible in the same stroke. It is the rule the vocabulary registry
+  already used for terms, so there is one rule rather than two. Declared
+  because the declaration is what buys the error message: a namespaced key
+  nothing declares, one written onto a file its declaration does not list, and
+  one whose shape does not match its type are each stripped and reported by
+  name. An *unqualified* key core does not know is no longer treated as a field
+  at all - `atack` is a misspelling of `attack`, not a new attribute - and is
+  reported with core's nearest real field named. That arm needs core's key
+  table and so runs in the host; the namespace rule needs only the manifests
+  and runs in the SDK. A dropped field costs the field, not the mod. The host's
+  manifest allowlist was, as ever, the thing that would have quietly inverted
+  the feature, and a test caught it.
+
+- **A mod's added field survives on fifteen bound record types, not two.** Ego
+  items, artifacts, terrain, traps, vaults, room templates, projections,
+  stores, curses, object bases, monster bases, player races and player classes
+  joined objects and monsters. One helper (`attachExt`) rather than the same
+  three lines fifteen times, because `grep attachExt` is then a census of which
+  record types carry mod fields - a type nobody wired up is visible as an
+  absence instead of being indistinguishable from one with nothing to carry,
+  which is precisely how the gap survived its first pass. The census is a test:
+  it injects a sentinel into every record of each covered file and counts the
+  survivors, since bound order is not record order and "record i becomes bound
+  record i" would be a claim it was asserting by accident.
+
 - **A mod can add a field core has never heard of, and read it at runtime.**
   Asked directly whether a mod could make a dagger `1d5` instead of `1d4` and
   give it a `bleed` key, the answer turned out to be two-thirds yes. Patching a
