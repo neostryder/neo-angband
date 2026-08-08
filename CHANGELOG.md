@@ -46,6 +46,20 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **`registry:blow` — a mod can change what monster attacks do, and add its own
+  kinds of attack.** `blow_effects.json` has always accepted a 31st record, but
+  until now that record was data with no behaviour: the behaviour lived in two
+  26-case `switch` statements. They are now one `BlowEffectRegistry` that both
+  of the paths resolving a blow consult, so a modded attack cannot behave one
+  way in the engine's recording path and another in the live game. A mod writes
+  ONE description and the engine derives both handlers from it, or takes the
+  handler currently installed and wraps it — so core's poison can be extended
+  rather than reimplemented. Core keeps every 4.2.6 behaviour exactly, including
+  the places where the two paths disagree about the order they roll dice in;
+  what proves that is a set of 480 golden vectors recorded from the code before
+  the registry existed and replayed against it, covering all 30 effects on both
+  paths under two environments, with a probe that catches a change in the number
+  of random values drawn even when nothing else moves.
 - **The last three systems the port was missing: quests, arena mode, and
   persistent levels.** Quests now exist as a system rather than as two hard-coded
   monsters - the quest list, its save block, the level feeling it changes, and

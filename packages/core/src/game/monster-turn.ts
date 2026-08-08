@@ -1543,7 +1543,10 @@ export function monsterTurn(mon: Monster, state: GameState): void {
         mon,
         state.actor.player,
         state.actor.defense,
-        state.monBlowEnv ? { env: state.monBlowEnv(mon) } : {},
+        {
+          ...(state.monBlowEnv ? { env: state.monBlowEnv(mon) } : {}),
+          ...(state.blowEffects ? { blowEffects: state.blowEffects } : {}),
+        },
       );
       /* Being attacked teaches the to-armor rune (mon-attack.c L530). Its
        * player_learn_rune tail-calls update_player_object_knowledge (L1373), so

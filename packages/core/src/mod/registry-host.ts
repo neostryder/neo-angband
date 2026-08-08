@@ -58,6 +58,12 @@ import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
 import type { GameState } from "../game/context.js";
 import type { Monster } from "../mon/monster.js";
+import type {
+  BlowEffectHandler,
+  BlowEffectSpec,
+  BlowEffectRegistry,
+} from "../combat/mon-melee.js";
+import { blowEffect } from "../combat/mon-melee.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 
@@ -66,6 +72,7 @@ export const REGISTRY_CAPABILITIES = {
   effect: "registry:effect",
   room: "registry:room",
   profile: "registry:profile",
+  blow: "registry:blow",
   command: "registry:command",
   monster: "registry:monster",
   vocab: "registry:vocab",
@@ -89,6 +96,8 @@ export interface RegistryTargets {
   rooms?: RoomRegistry | null;
   /** The dungeon-profile registry (CoreRegistries.profiles). */
   profiles?: DungeonProfiles | null;
+  /** The monster blow-effect handler table (GameState.blowEffects). */
+  blows?: BlowEffectRegistry | null;
   /** The live player action registry (the decision-13 command seam). */
   commands?: ActionRegistry | null;
   /** The game state, for installing the monster-AI turn hook. */
@@ -150,6 +159,39 @@ export interface ProfileFacade {
   list(): readonly DunProfile[];
 }
 
+/**
+ * The monster blow-effect facade (gated by registry:blow).
+ *
+ * `blow_effects.json` has always accepted a 31st record; until this facade
+ * existed that record was data with no behaviour, because the behaviour lived in
+ * a switch. This is the seam that makes a new blow effect actually hit.
+ *
+ * `define` is the one to reach for: it takes a single description and derives
+ * both of the handlers the engine needs - the worldless recording path and the
+ * live one. `register` is the escape hatch for an effect that genuinely differs
+ * between the two, and `handlerFor` is what a wrapper calls through to.
+ */
+export interface BlowFacade {
+  /**
+   * Add or replace a blow effect from ONE description. The spec's side effects
+   * are recorded as intents by the worldless path and applied through the blow
+   * environment by the live one, from the same value - so the two cannot drift.
+   */
+  define(name: string, spec: BlowEffectSpec): void;
+  /** Add or replace a blow effect by supplying both handlers explicitly. */
+  register(name: string, handler: BlowEffectHandler): void;
+  /**
+   * The handler currently installed for an effect name, or null. This is how a
+   * mod WRAPS core's behaviour - take POISON's handler, register one that calls
+   * it and then does something extra - rather than reimplementing it.
+   */
+  handlerFor(name: string): BlowEffectHandler | null;
+  /** Whether anything answers for this effect name. */
+  has(name: string): boolean;
+  /** Every registered effect name, in registration order. */
+  names(): readonly string[];
+}
+
 /** The player-command facade (gated by registry:command). */
 export interface CommandFacade {
   /** Register (or replace) the action a player command code runs. */
@@ -198,6 +240,7 @@ export interface ModRegistryHost {
   readonly effects: EffectFacade;
   readonly rooms: RoomFacade;
   readonly profiles: ProfileFacade;
+  readonly blows: BlowFacade;
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly vocab: VocabFacade;
@@ -287,6 +330,28 @@ export function createModRegistryHost(
       list(): readonly DunProfile[] {
         requireCap(capabilities, "profile");
         return requireTarget(targets.profiles, "profile").list();
+      },
+    },
+    blows: {
+      define(name, spec): void {
+        requireCap(capabilities, "blow");
+        requireTarget(targets.blows, "blow").register(name, blowEffect(spec));
+      },
+      register(name, handler): void {
+        requireCap(capabilities, "blow");
+        requireTarget(targets.blows, "blow").register(name, handler);
+      },
+      handlerFor(name): BlowEffectHandler | null {
+        requireCap(capabilities, "blow");
+        return requireTarget(targets.blows, "blow").handlerFor(name);
+      },
+      has(name): boolean {
+        requireCap(capabilities, "blow");
+        return requireTarget(targets.blows, "blow").has(name);
+      },
+      names(): readonly string[] {
+        requireCap(capabilities, "blow");
+        return requireTarget(targets.blows, "blow").names();
       },
     },
     commands: {

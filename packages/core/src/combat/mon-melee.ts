@@ -185,6 +185,13 @@ export interface MonMeleeOptions {
    * ...) draw from it and interleave with this driver's own rolls.
    */
   env?: MonBlowEnv;
+  /**
+   * The blow-effect handler table (BlowEffectRegistry). A real game passes
+   * `state.blowEffects`, which wireGame seeds with core's 30 and a mod can add
+   * to; omitting it falls back to a lazily-built core-only registry, which is
+   * what the worldless harnesses and the direct-call tests use.
+   */
+  blowEffects?: BlowEffectRegistry;
 }
 
 /* ------------------------------------------------------------------ *
@@ -314,7 +321,7 @@ function stunAmount(rng: Rng, tier: number): number {
  * Blow-effect resolution (mon-blows.c handlers)
  * ------------------------------------------------------------------ */
 
-interface BlowEffectContext {
+export interface BlowEffectContext {
   rng: Rng;
   /** damage = randcalc(dice, rlev, RANDOMISE), after stun reduction. */
   baseDamage: number;
@@ -328,7 +335,7 @@ interface BlowEffectContext {
   willPlayerDie?: (damage: number) => boolean;
 }
 
-interface BlowEffectResult {
+export interface BlowEffectResult {
   /** context->damage after the handler (HP dealt, and used by cut/stun crit). */
   hpDamage: number;
   obvious: boolean;
@@ -444,181 +451,112 @@ function drawBlowMessage(ctx: BlowEffectContext): void {
   displayBlowMessageVsPlayer(ctx.rng, ctx.method, 0, "", false, null);
 }
 
+/* ------------------------------------------------------------------ *
+ * The blow-effect registry (melee_handler_for_blow_effect, as a table)
+ * ------------------------------------------------------------------ */
+
+/**
+ * One RBE_ blow effect's behaviour, on BOTH paths.
+ *
+ * Upstream's `melee_effect_handler_f` is one function per effect; the port needs
+ * two, because it resolves a blow twice over. `record` is the worldless path,
+ * which computes HP damage and logs the rest as intents; `live` is the real one,
+ * which applies HP and every consequence through a MonBlowEnv in upstream's RNG
+ * order.
+ *
+ * BOTH must come from the same registry entry. A registry only one path consults
+ * is the failure this project keeps re-earning: a modded blow would behave one
+ * way in the recording harness and another in the game, and nothing would say so.
+ *
+ * Mods do not normally implement this interface by hand - see `blowEffect()`,
+ * which derives both methods from one declarative description. The interface is
+ * the seam so that a mod CAN write both when it needs to, and so that
+ * `handlerFor()` hands back something wrappable.
+ */
+export interface BlowEffectHandler {
+  /** Worldless: HP damage plus recorded side-effect intents. */
+  record(ctx: BlowEffectContext): BlowEffectResult;
+  /** Live: apply the blow for real through the env, in upstream RNG order. */
+  live(ctx: BlowEffectContext, env: MonBlowEnv): LiveBlowResult;
+}
+
+/**
+ * `melee_handler_for_blow_effect` (mon-blows.c:1191) as a real table.
+ *
+ * Core seeds this with its 30 handlers at boot (`registerCoreBlowEffects`), so a
+ * mod can ADD a 31st effect and have `blow_effects.json`'s new record actually
+ * do something, OVERRIDE one of the 30, or WRAP one - `handlerFor` returns the
+ * handler currently installed, which is what a wrapper needs to call through to.
+ *
+ * Same shape as `EffectRegistry` deliberately: a mod author who has learned one
+ * registry in this engine has learned them all.
+ */
+export class BlowEffectRegistry {
+  private readonly handlers = new Map<string, BlowEffectHandler>();
+
+  /** Install (or replace) the handler for an RBE_ effect name. */
+  register(name: string, handler: BlowEffectHandler): void {
+    this.handlers.set(name, handler);
+  }
+
+  /** The handler currently installed, or null. Wrap by re-registering around it. */
+  handlerFor(name: string): BlowEffectHandler | null {
+    return this.handlers.get(name) ?? null;
+  }
+
+  /** Whether anything answers for this effect name. */
+  has(name: string): boolean {
+    return this.handlers.has(name);
+  }
+
+  /** Every registered effect name, in registration order. */
+  names(): readonly string[] {
+    return [...this.handlers.keys()];
+  }
+}
+
+/**
+ * The registry used when a caller supplied none.
+ *
+ * This exists for the worldless harnesses and the direct-call tests, NOT as the
+ * game's registry: `wireGame` builds a fresh one per game and puts it on
+ * `GameState.blowEffects`, because a module-level singleton shared across games
+ * would let one game's mod leak into the next. A mod never reaches this one -
+ * the registry facade refuses to register when the host wired no registry, which
+ * is what stops "the mod registered and nothing read it".
+ */
+let coreFallback: BlowEffectRegistry | null = null;
+function fallbackRegistry(): BlowEffectRegistry {
+  if (coreFallback === null) {
+    coreFallback = new BlowEffectRegistry();
+    registerCoreBlowEffects(coreFallback);
+  }
+  return coreFallback;
+}
+
 /**
  * Resolve one RBE_ blow effect: compute the HP damage the effect deals to the
  * player (context->damage after the handler runs) and record any timed /
  * stat / inventory / elemental side-effect intents.
+ *
+ * The message draw stays HERE rather than inside the handlers.
+ * `display_blow_message_vs_player` draws `randint0(num_messages)` before
+ * take_hit in every upstream handler, so hoisting it is what keeps the stream
+ * aligned - and it means a mod's handler cannot forget it and silently shift
+ * every subsequent roll.
  */
 function resolveBlowEffect(
   name: string,
   ctx: BlowEffectContext,
+  registry: BlowEffectRegistry = fallbackRegistry(),
 ): BlowEffectResult {
-  const { rng, baseDamage, ac, rlev, phys } = ctx;
-  const side: BlowSideEffect[] = [];
-
-  /* display_blow_message_vs_player draws randint0(num_messages) before take_hit
-   * in every handler; hoisted here for the worldless path (no-op for the single-
-   * message methods, first RNG event for the INSULT / MOAN effects). */
   drawBlowMessage(ctx);
-
-  /* Elemental blows on the WORLDLESS RECORDING PATH: the physical component
-   * becomes HP damage and the elemental component is recorded as an intent for
-   * the caller to inspect. The LIVE path does not come through here - it applies
-   * adjust_dam, inven_damage and the resist check in full at L710 below. */
-  if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
-    const physical = phys ? adjustDamArmor(baseDamage, ac + 50) : 0;
-    side.push({
-      kind: "elemental",
-      element: ELEMENT_OF_EFFECT[name] as string,
-      damage: baseDamage,
-    });
-    return { hpDamage: physical, obvious: true, sideEffects: side };
-  }
-
-  switch (name) {
-    case "NONE":
-      return { hpDamage: 0, obvious: true, sideEffects: side };
-
-    case "HURT":
-      return {
-        hpDamage: adjustDamArmor(baseDamage, ac),
-        obvious: true,
-        sideEffects: side,
-      };
-
-    case "POISON": {
-      const physical = phys ? adjustDamArmor(baseDamage, ac + 50) : 0;
-      side.push({ kind: "elemental", element: "POIS", damage: baseDamage });
-      side.push({
-        kind: "timed",
-        effect: "POISONED",
-        amount: 5 + rng.randint1(rlev),
-      });
-      return { hpDamage: physical, obvious: true, sideEffects: side };
-    }
-
-    case "DISENCHANT":
-      side.push({ kind: "disenchant" });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "DRAIN_CHARGES":
-      side.push({ kind: "drainCharges" });
-      return { hpDamage: baseDamage, obvious: false, sideEffects: side };
-
-    case "EAT_GOLD":
-      side.push({ kind: "eatGold" });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "EAT_ITEM":
-      side.push({ kind: "eatItem" });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "EAT_FOOD":
-      side.push({ kind: "eatFood" });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "EAT_LIGHT":
-      side.push({ kind: "eatLight" });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "BLIND":
-      side.push({
-        kind: "timed",
-        effect: "BLIND",
-        amount: 10 + rng.randint1(rlev),
-      });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "CONFUSE":
-      side.push({
-        kind: "timed",
-        effect: "CONFUSED",
-        amount: 3 + rng.randint1(rlev),
-      });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "TERRIFY":
-      side.push({
-        kind: "timed",
-        effect: "AFRAID",
-        amount: 3 + rng.randint1(rlev),
-      });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "PARALYZE":
-      side.push({
-        kind: "timed",
-        effect: "PARALYZED",
-        amount: 3 + rng.randint1(rlev),
-      });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "LOSE_STR":
-    case "LOSE_INT":
-    case "LOSE_WIS":
-    case "LOSE_DEX":
-    case "LOSE_CON":
-      side.push({ kind: "drainStat", stat: STAT_OF_EFFECT[name] as string });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "LOSE_ALL":
-      for (const stat of ["STR", "DEX", "CON", "INT", "WIS"]) {
-        side.push({ kind: "drainStat", stat });
-      }
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "SHATTER": {
-      const hp = adjustDamArmor(baseDamage, ac);
-      /* monster_damage_target() returns immediately on death (mon-blows.c
-       * L1095), before either SHATTER side-effect gate or its RNG draw. */
-      if (ctx.willPlayerDie?.(hp)) {
-        return { hpDamage: hp, obvious: true, sideEffects: side };
-      }
-      if (hp > 23) {
-        side.push({ kind: "earthquake", radius: Math.trunc(hp / 12) });
-      }
-      if (hp > 100) {
-        const value = hp - 100;
-        if (rng.randint1(value) > 40) {
-          side.push({ kind: "knockback", distance: 1 + Math.trunc(value / 40) });
-        }
-      }
-      return { hpDamage: hp, obvious: true, sideEffects: side };
-    }
-
-    case "EXP_10":
-    case "EXP_20":
-    case "EXP_40":
-    case "EXP_80": {
-      const spec = EXP_DRAIN[name] as { holdChance: number; dice: number };
-      /* damroll(N, 6) is evaluated as the handler's argument. */
-      const amount = rng.damroll(spec.dice, 6);
-      side.push({ kind: "loseExp", holdChance: spec.holdChance, amount });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-    }
-
-    case "HALLU":
-      side.push({
-        kind: "timed",
-        effect: "IMAGE",
-        amount: 3 + rng.randint1(Math.trunc(rlev / 2)),
-      });
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    case "BLACK_BREATH":
-      if (rng.oneIn(5)) {
-        side.push({
-          kind: "timed",
-          effect: "BLACKBREATH",
-          amount: Math.trunc(baseDamage / 10),
-        });
-      }
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-
-    default:
-      /* Unknown effect: deal the base damage, as the fallthrough would. */
-      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
-  }
+  const handler = registry.handlerFor(name);
+  if (handler !== null) return handler.record(ctx);
+  /* Unknown effect: deal the base damage, as the fallthrough would. Upstream
+   * reports "ERROR: Effect handler not found" here (mon-attack.c:650); a
+   * mod-added blow_effects record with no registered handler lands on this. */
+  return { hpDamage: ctx.baseDamage, obvious: true, sideEffects: [] };
 }
 
 /**
@@ -698,7 +636,7 @@ const STAT_OF_LIVE_EFFECT: Readonly<Record<string, number>> = {
 };
 
 /** The outcome of a live blow effect (context->damage, HP taken, blinked). */
-interface LiveBlowResult {
+export interface LiveBlowResult {
   /** context->damage after the handler (unreduced; feeds the cut/stun crit). */
   contextDamage: number;
   /** The HP actually subtracted (post player_apply_damage_reduction). */
@@ -751,219 +689,498 @@ function resolveBlowEffectLive(
   name: string,
   ctx: BlowEffectContext,
   env: MonBlowEnv,
+  registry: BlowEffectRegistry = fallbackRegistry(),
 ): LiveBlowResult {
-  const { rng, baseDamage, ac, rlev } = ctx;
-  const done = (
-    contextDamage: number,
-    reducedDamage: number,
-    blinked = false,
-  ): LiveBlowResult => ({ contextDamage, reducedDamage, obvious: true, blinked });
+  const handler = registry.handlerFor(name);
+  if (handler !== null) return handler.live(ctx, env);
+  /* Unknown effect: deal the base damage, as the fallthrough would. */
+  const reduced = env.applyReduction(ctx.baseDamage);
+  emitBlowMessageLive(env, ctx, reduced);
+  env.takeHit(reduced);
+  return {
+    contextDamage: ctx.baseDamage,
+    reducedDamage: reduced,
+    obvious: true,
+    blinked: false,
+  };
+}
 
-  /* Elemental blows (pure). */
-  if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
-    const r = applyElemental(env, name, ctx, true);
-    return done(r.contextDamage, r.reducedDamage);
+/* ------------------------------------------------------------------ *
+ * Core's 30 handlers
+ * ------------------------------------------------------------------ */
+
+/** The shape every live handler returns; `blinked` defaults false. */
+function live(
+  contextDamage: number,
+  reducedDamage: number,
+  blinked = false,
+): LiveBlowResult {
+  return { contextDamage, reducedDamage, obvious: true, blinked };
+}
+
+/**
+ * The damage-then-consequence sequence almost every mon-blows.c handler runs:
+ * reduce, show the message, take the hit, and do the rest only if the player
+ * survived. Factored out because it was written 20 times in the old switch and
+ * a divergence in any copy would have been invisible.
+ *
+ * `damage` is context->damage BEFORE player_apply_damage_reduction, which is
+ * what the cut/stun critical is computed from - not the HP actually lost.
+ */
+function hitThen(
+  ctx: BlowEffectContext,
+  env: MonBlowEnv,
+  damage: number,
+  after?: (contextDamage: number) => boolean | void,
+): LiveBlowResult {
+  const reduced = env.applyReduction(damage);
+  emitBlowMessageLive(env, ctx, reduced);
+  env.takeHit(reduced);
+  if (env.playerDied) return live(damage, reduced);
+  return live(damage, reduced, after?.(damage) === true);
+}
+
+/**
+ * Seed a registry with the 30 handlers upstream ships
+ * (`melee_handler_for_blow_effect`, mon-blows.c:1197-1226).
+ *
+ * These bodies are the two switch statements this registry replaced, lifted
+ * case by case with nothing rewritten - the RNG draws sit exactly where they
+ * sat, including the places where the two paths disagree about ORDER. BLIND is
+ * the clearest: the recording path draws the message first and the duration
+ * second, the live path draws the duration first. That is a port wart, it is
+ * observable through a multi-message method like INSULT, and core keeps its
+ * warts. `blow-vectors.json` is what proves none of them moved.
+ */
+export function registerCoreBlowEffects(registry: BlowEffectRegistry): void {
+  const r = (name: string, handler: BlowEffectHandler): void =>
+    registry.register(name, handler);
+
+  r("NONE", {
+    record: () => ({ hpDamage: 0, obvious: true, sideEffects: [] }),
+    /* melee_effect_handler_NONE (mon-blows.c L638): show the message (with its
+     * randint0(num_messages) draw) for a no-damage hit; no take_hit. */
+    live: (ctx, env) => {
+      emitBlowMessageLive(env, ctx, 0);
+      return live(0, 0);
+    },
+  });
+
+  r("HURT", {
+    record: (ctx) => ({
+      hpDamage: adjustDamArmor(ctx.baseDamage, ctx.ac),
+      obvious: true,
+      sideEffects: [],
+    }),
+    live: (ctx, env) => hitThen(ctx, env, adjustDamArmor(ctx.baseDamage, ctx.ac)),
+  });
+
+  /* The four pure elementals. On the WORLDLESS path the physical component
+   * becomes HP damage and the elemental component is recorded as an intent; the
+   * LIVE path applies adjust_dam, inven_damage and the resist check in full
+   * through applyElemental. */
+  for (const name of ["ACID", "ELEC", "FIRE", "COLD"]) {
+    r(name, {
+      record: (ctx) => ({
+        hpDamage: ctx.phys ? adjustDamArmor(ctx.baseDamage, ctx.ac + 50) : 0,
+        obvious: true,
+        sideEffects: [
+          {
+            kind: "elemental",
+            element: ELEMENT_OF_EFFECT[name] as string,
+            damage: ctx.baseDamage,
+          },
+        ],
+      }),
+      live: (ctx, env) => {
+        const res = applyElemental(env, name, ctx, true);
+        return live(res.contextDamage, res.reducedDamage);
+      },
+    });
   }
 
-  switch (name) {
-    case "NONE":
-      /* melee_effect_handler_NONE (mon-blows.c L638): show the message (with
-       * its randint0(num_messages) draw) for a no-damage hit; no take_hit. */
-      emitBlowMessageLive(env, ctx, 0);
-      return done(0, 0);
-
-    case "HURT": {
-      const cd = adjustDamArmor(baseDamage, ac);
-      const reduced = env.applyReduction(cd);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      return done(cd, reduced);
-    }
-
-    case "POISON": {
-      const r = applyElemental(env, name, ctx, false);
+  r("POISON", {
+    record: (ctx) => ({
+      hpDamage: ctx.phys ? adjustDamArmor(ctx.baseDamage, ctx.ac + 50) : 0,
+      obvious: true,
+      sideEffects: [
+        { kind: "elemental", element: "POIS", damage: ctx.baseDamage },
+        {
+          kind: "timed",
+          effect: "POISONED",
+          amount: 5 + ctx.rng.randint1(ctx.rlev),
+        },
+      ],
+    }),
+    live: (ctx, env) => {
+      const res = applyElemental(env, "POISON", ctx, false);
       if (!env.playerDied) {
         /* player_inc_timed(TMD_POISONED, 5 + randint1(rlev)). */
-        env.incTimed(TMD.POISONED, 5 + rng.randint1(rlev), true);
+        env.incTimed(TMD.POISONED, 5 + ctx.rng.randint1(ctx.rlev), true);
       }
-      return done(r.contextDamage, r.reducedDamage);
-    }
+      return live(res.contextDamage, res.reducedDamage);
+    },
+  });
 
-    case "DISENCHANT": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied && !env.resists(ELEM.DISEN)) env.disenchant();
-      return done(baseDamage, reduced);
-    }
+  r("DISENCHANT", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [{ kind: "disenchant" }],
+    }),
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => {
+        if (!env.resists(ELEM.DISEN)) env.disenchant();
+      }),
+  });
 
-    case "DRAIN_CHARGES": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.drainCharges(rlev);
-      return done(baseDamage, reduced);
-    }
+  r("DRAIN_CHARGES", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: false,
+      sideEffects: [{ kind: "drainCharges" }],
+    }),
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => env.drainCharges(ctx.rlev)),
+  });
 
-    case "EAT_GOLD": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (env.playerDied) return done(baseDamage, reduced);
-      const blinked = env.eatGold();
-      return done(baseDamage, reduced, blinked);
-    }
+  r("EAT_GOLD", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [{ kind: "eatGold" }],
+    }),
+    live: (ctx, env) => hitThen(ctx, env, ctx.baseDamage, () => env.eatGold()),
+  });
 
-    case "EAT_ITEM": {
-      /* monster_damage_target(context, false): returns only on death. */
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (env.playerDied) return done(baseDamage, reduced);
-      const r = env.eatItem();
-      return done(baseDamage, reduced, r.blinked);
-    }
+  r("EAT_ITEM", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [{ kind: "eatItem" }],
+    }),
+    /* monster_damage_target(context, false): returns only on death. */
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => env.eatItem().blinked),
+  });
 
-    case "EAT_FOOD": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.eatFood();
-      return done(baseDamage, reduced);
-    }
+  r("EAT_FOOD", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [{ kind: "eatFood" }],
+    }),
+    live: (ctx, env) => hitThen(ctx, env, ctx.baseDamage, () => env.eatFood()),
+  });
 
-    case "EAT_LIGHT": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.eatLight();
-      return done(baseDamage, reduced);
-    }
+  r("EAT_LIGHT", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [{ kind: "eatLight" }],
+    }),
+    live: (ctx, env) => hitThen(ctx, env, ctx.baseDamage, () => env.eatLight()),
+  });
 
-    case "BLIND": {
-      /* melee_effect_timed: duration arg drawn first, then damage, no save. */
-      const amount = 10 + rng.randint1(rlev);
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.incTimed(TMD.BLIND, amount, true);
-      return done(baseDamage, reduced);
-    }
+  /* melee_effect_timed: the duration argument is drawn BEFORE the damage on the
+   * live path, and AFTER the message on the recording path. Two of these take a
+   * saving throw first; the other two do not. */
+  const timed = (
+    name: string,
+    intent: string,
+    tmd: number,
+    amount: (ctx: BlowEffectContext) => number,
+    save?: string,
+  ): void =>
+    r(name, {
+      record: (ctx) => ({
+        hpDamage: ctx.baseDamage,
+        obvious: true,
+        sideEffects: [{ kind: "timed", effect: intent, amount: amount(ctx) }],
+      }),
+      live: (ctx, env) => {
+        const dur = amount(ctx);
+        return hitThen(ctx, env, ctx.baseDamage, () => {
+          if (save !== undefined && env.saveVsSkill()) env.msg(save);
+          else env.incTimed(tmd, dur, true);
+        });
+      },
+    });
 
-    case "CONFUSE": {
-      const amount = 3 + rng.randint1(rlev);
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.incTimed(TMD.CONFUSED, amount, true);
-      return done(baseDamage, reduced);
-    }
+  timed("BLIND", "BLIND", TMD.BLIND, (ctx) => 10 + ctx.rng.randint1(ctx.rlev));
+  timed("CONFUSE", "CONFUSED", TMD.CONFUSED, (ctx) => 3 + ctx.rng.randint1(ctx.rlev));
+  timed(
+    "TERRIFY",
+    "AFRAID",
+    TMD.AFRAID,
+    (ctx) => 3 + ctx.rng.randint1(ctx.rlev),
+    "You stand your ground!",
+  );
+  timed(
+    "PARALYZE",
+    "PARALYZED",
+    TMD.PARALYZED,
+    (ctx) => 3 + ctx.rng.randint1(ctx.rlev),
+    "You resist the effects!",
+  );
 
-    case "TERRIFY": {
-      const amount = 3 + rng.randint1(rlev);
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) {
-        if (env.saveVsSkill()) env.msg("You stand your ground!");
-        else env.incTimed(TMD.AFRAID, amount, true);
-      }
-      return done(baseDamage, reduced);
-    }
+  for (const name of ["LOSE_STR", "LOSE_INT", "LOSE_WIS", "LOSE_DEX", "LOSE_CON"]) {
+    r(name, {
+      record: (ctx) => ({
+        hpDamage: ctx.baseDamage,
+        obvious: true,
+        sideEffects: [{ kind: "drainStat", stat: STAT_OF_EFFECT[name] as string }],
+      }),
+      live: (ctx, env) =>
+        hitThen(ctx, env, ctx.baseDamage, () =>
+          env.drainStat(STAT_OF_LIVE_EFFECT[name]!),
+        ),
+    });
+  }
 
-    case "PARALYZE": {
-      const amount = 3 + rng.randint1(rlev);
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) {
-        if (env.saveVsSkill()) env.msg("You resist the effects!");
-        else env.incTimed(TMD.PARALYZED, amount, true);
-      }
-      return done(baseDamage, reduced);
-    }
-
-    case "LOSE_STR":
-    case "LOSE_INT":
-    case "LOSE_WIS":
-    case "LOSE_DEX":
-    case "LOSE_CON": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.drainStat(STAT_OF_LIVE_EFFECT[name]!);
-      return done(baseDamage, reduced);
-    }
-
-    case "LOSE_ALL": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) {
+  r("LOSE_ALL", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      /* Upstream's order here is STR, DEX, CON, INT, WIS - not the STAT order. */
+      sideEffects: ["STR", "DEX", "CON", "INT", "WIS"].map((stat) => ({
+        kind: "drainStat" as const,
+        stat,
+      })),
+    }),
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => {
         env.drainStat(STAT.STR);
         env.drainStat(STAT.DEX);
         env.drainStat(STAT.CON);
         env.drainStat(STAT.INT);
         env.drainStat(STAT.WIS);
+      }),
+  });
+
+  r("SHATTER", {
+    record: (ctx) => {
+      const hp = adjustDamArmor(ctx.baseDamage, ctx.ac);
+      const side: BlowSideEffect[] = [];
+      /* monster_damage_target() returns immediately on death (mon-blows.c
+       * L1095), before either SHATTER side-effect gate or its RNG draw. */
+      if (ctx.willPlayerDie?.(hp)) {
+        return { hpDamage: hp, obvious: true, sideEffects: side };
       }
-      return done(baseDamage, reduced);
-    }
-
-    case "SHATTER": {
-      const cd = adjustDamArmor(baseDamage, ac);
-      const reduced = env.applyReduction(cd);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (env.playerDied) return done(cd, reduced);
-      if (cd > 23) env.earthquake(Math.trunc(cd / 12));
-      if (cd > 100) {
-        const value = cd - 100;
-        if (rng.randint1(value) > 40) env.thrust(1 + Math.trunc(value / 40));
+      if (hp > 23) side.push({ kind: "earthquake", radius: Math.trunc(hp / 12) });
+      if (hp > 100) {
+        const value = hp - 100;
+        if (ctx.rng.randint1(value) > 40) {
+          side.push({ kind: "knockback", distance: 1 + Math.trunc(value / 40) });
+        }
       }
-      return done(cd, reduced);
-    }
+      return { hpDamage: hp, obvious: true, sideEffects: side };
+    },
+    live: (ctx, env) =>
+      hitThen(ctx, env, adjustDamArmor(ctx.baseDamage, ctx.ac), (cd) => {
+        if (cd > 23) env.earthquake(Math.trunc(cd / 12));
+        if (cd > 100) {
+          const value = cd - 100;
+          if (ctx.rng.randint1(value) > 40) env.thrust(1 + Math.trunc(value / 40));
+        }
+      }),
+  });
 
-    case "EXP_10":
-    case "EXP_20":
-    case "EXP_40":
-    case "EXP_80": {
-      const spec = EXP_DRAIN[name]!;
-      /* damroll(N, 6) is evaluated as the handler's argument, before take_hit. */
-      const drainAmount = rng.damroll(spec.dice, 6);
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) env.drainExp(spec.holdChance, drainAmount);
-      return done(baseDamage, reduced);
-    }
+  for (const name of ["EXP_10", "EXP_20", "EXP_40", "EXP_80"]) {
+    const spec = EXP_DRAIN[name] as { holdChance: number; dice: number };
+    r(name, {
+      record: (ctx) => ({
+        hpDamage: ctx.baseDamage,
+        obvious: true,
+        /* damroll(N, 6) is evaluated as the handler's argument. */
+        sideEffects: [
+          {
+            kind: "loseExp",
+            holdChance: spec.holdChance,
+            amount: ctx.rng.damroll(spec.dice, 6),
+          },
+        ],
+      }),
+      live: (ctx, env) => {
+        /* ...which on the live path means BEFORE take_hit. */
+        const drainAmount = ctx.rng.damroll(spec.dice, 6);
+        return hitThen(ctx, env, ctx.baseDamage, () =>
+          env.drainExp(spec.holdChance, drainAmount),
+        );
+      },
+    });
+  }
 
-    case "HALLU": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied) {
-        env.incTimed(TMD.IMAGE, 3 + rng.randint1(Math.trunc(rlev / 2)), true);
+  r("HALLU", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: [
+        {
+          kind: "timed",
+          effect: "IMAGE",
+          amount: 3 + ctx.rng.randint1(Math.trunc(ctx.rlev / 2)),
+        },
+      ],
+    }),
+    /* Unlike the other timed blows, HALLU draws its duration AFTER take_hit. */
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => {
+        env.incTimed(TMD.IMAGE, 3 + ctx.rng.randint1(Math.trunc(ctx.rlev / 2)), true);
+      }),
+  });
+
+  r("BLACK_BREATH", {
+    record: (ctx) => ({
+      hpDamage: ctx.baseDamage,
+      obvious: true,
+      sideEffects: ctx.rng.oneIn(5)
+        ? [
+            {
+              kind: "timed",
+              effect: "BLACKBREATH",
+              amount: Math.trunc(ctx.baseDamage / 10),
+            },
+          ]
+        : [],
+    }),
+    live: (ctx, env) =>
+      hitThen(ctx, env, ctx.baseDamage, () => {
+        if (ctx.rng.oneIn(5)) {
+          env.incTimed(TMD.BLACKBREATH, Math.trunc(ctx.baseDamage / 10), false);
+        }
+      }),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Authoring a blow effect from one description
+ * ------------------------------------------------------------------ */
+
+/**
+ * What a mod says its blow effect does, once, for both paths.
+ *
+ * Writing a `BlowEffectHandler` by hand means writing the same effect twice and
+ * keeping the two in step forever - the exact trap this registry exists to close
+ * at the CORE level, and it would be perverse to hand it straight to mods. So
+ * this is the shape a mod normally uses: describe the damage and the
+ * consequences, and let `blowEffect()` derive the recording and live handlers.
+ *
+ * The split between `before` and `after` is about WHEN THE DICE ARE ROLLED, not
+ * when the effect applies. Upstream's timed blows roll their duration before the
+ * blow lands and apply it afterwards; the knockback roll happens after. Both
+ * lists are applied only if the player survived the blow, exactly as
+ * `monster_damage_target` does.
+ */
+export interface BlowEffectSpec {
+  /**
+   * context->damage: what the blow deals before player damage reduction.
+   * Defaults to the blow's rolled damage. Call `adjustDamArmor` here if the
+   * effect is meant to be reduced by armour, as HURT and SHATTER are.
+   */
+  damage?: (ctx: BlowEffectContext) => number;
+  /** Consequences whose dice are rolled BEFORE the blow lands. */
+  before?: (ctx: BlowEffectContext) => readonly BlowSideEffect[];
+  /** Consequences whose dice are rolled AFTER it lands, if the player lived. */
+  after?: (ctx: BlowEffectContext) => readonly BlowSideEffect[];
+  /** Whether the blow is obvious to the player (context->obvious). */
+  obvious?: boolean;
+}
+
+/**
+ * Build a handler from a spec, so a mod writes its effect once.
+ *
+ * The live half applies each described side effect through the env with
+ * `applyBlowSideEffect`, which is the same vocabulary the worldless path
+ * records. A mod that describes "poison the player for 2d6 turns" therefore
+ * gets a recorded intent in the harness and a real `player_inc_timed` in the
+ * game, from one line, with no chance of the two disagreeing.
+ */
+export function blowEffect(spec: BlowEffectSpec): BlowEffectHandler {
+  const damageOf = (ctx: BlowEffectContext): number =>
+    spec.damage ? spec.damage(ctx) : ctx.baseDamage;
+  const obvious = spec.obvious ?? true;
+  return {
+    record: (ctx) => {
+      const damage = damageOf(ctx);
+      const before = spec.before ? [...spec.before(ctx)] : [];
+      /* The worldless path has no HP model of its own, so "did the player
+       * survive" is the caller's willPlayerDie, the same gate SHATTER uses. */
+      const died = ctx.willPlayerDie?.(damage) === true;
+      const after = died || !spec.after ? [] : [...spec.after(ctx)];
+      return { hpDamage: damage, obvious, sideEffects: [...before, ...after] };
+    },
+    live: (ctx, env) => {
+      const damage = damageOf(ctx);
+      const before = spec.before ? [...spec.before(ctx)] : [];
+      const result = hitThen(ctx, env, damage, () => {
+        let blinked = false;
+        for (const effect of [...before, ...(spec.after?.(ctx) ?? [])]) {
+          if (applyBlowSideEffect(env, effect)) blinked = true;
+          if (env.playerDied) break;
+        }
+        return blinked;
+      });
+      return { ...result, obvious };
+    },
+  };
+}
+
+/**
+ * Apply one recorded side-effect intent to the world. Returns whether it blinked
+ * the monster away (context->blinked), which only the two thefts do.
+ *
+ * This is what makes `BlowSideEffect` a shared VOCABULARY rather than a
+ * worldless-only log: the same value that gets recorded in the harness is the
+ * one that gets applied in the game.
+ */
+export function applyBlowSideEffect(
+  env: MonBlowEnv,
+  effect: BlowSideEffect,
+): boolean {
+  switch (effect.kind) {
+    case "timed": {
+      const tmd = (TMD as Record<string, number | undefined>)[effect.effect];
+      if (tmd !== undefined) env.incTimed(tmd, effect.amount, true);
+      return false;
+    }
+    case "drainStat": {
+      const stat = (STAT as Record<string, number | undefined>)[effect.stat];
+      if (stat !== undefined) env.drainStat(stat);
+      return false;
+    }
+    case "loseExp":
+      env.drainExp(effect.holdChance, effect.amount);
+      return false;
+    case "drainCharges":
+      env.drainCharges(0);
+      return false;
+    case "eatGold":
+      return env.eatGold();
+    case "eatItem":
+      return env.eatItem().blinked;
+    case "eatFood":
+      env.eatFood();
+      return false;
+    case "eatLight":
+      env.eatLight();
+      return false;
+    case "disenchant":
+      env.disenchant();
+      return false;
+    case "elemental": {
+      const elem = (ELEM as Record<string, number | undefined>)[effect.element];
+      if (elem !== undefined) {
+        env.invenDamage(elem, Math.min(effect.damage * 5, 300));
       }
-      return done(baseDamage, reduced);
+      return false;
     }
-
-    case "BLACK_BREATH": {
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      if (!env.playerDied && rng.oneIn(5)) {
-        env.incTimed(TMD.BLACKBREATH, Math.trunc(baseDamage / 10), false);
-      }
-      return done(baseDamage, reduced);
-    }
-
-    default: {
-      /* Unknown effect: deal the base damage, as the fallthrough would. */
-      const reduced = env.applyReduction(baseDamage);
-      emitBlowMessageLive(env, ctx, reduced);
-      env.takeHit(reduced);
-      return done(baseDamage, reduced);
-    }
+    case "earthquake":
+      env.earthquake(effect.radius);
+      return false;
+    case "knockback":
+      env.thrust(effect.distance);
+      return false;
   }
 }
 
@@ -1106,7 +1323,7 @@ export function monMeleeAttack(
     const blowSide: BlowSideEffect[] = [];
 
     if (env) {
-      const res = resolveBlowEffectLive(effectName, blowCtx, env);
+      const res = resolveBlowEffectLive(effectName, blowCtx, env, opts.blowEffects);
       contextDamage = res.contextDamage;
       dealtDamage = res.reducedDamage;
       obvious = res.obvious;
@@ -1114,7 +1331,7 @@ export function monMeleeAttack(
       if (dealtDamage > 0) totalDamage += dealtDamage;
       if (env.playerDied) playerDied = true;
     } else {
-      const res = resolveBlowEffect(effectName, blowCtx);
+      const res = resolveBlowEffect(effectName, blowCtx, opts.blowEffects);
       contextDamage = res.hpDamage;
       dealtDamage = res.hpDamage;
       obvious = res.obvious;
