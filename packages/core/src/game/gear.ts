@@ -1256,6 +1256,19 @@ export type WieldSplit = "inven_wield" | "wield_all";
  * `equipped_item_slot(player->body, equip_obj)` (cmd-obj.c:309), so re-deriving
  * it here would silently discard the hand the player picked. Omit it to keep the
  * wield_slot default (wield_all and every non-choosing caller).
+ *
+ * `deferred` is wield_all's temporary pile. Upstream does not add a split
+ * remainder to the gear as it goes: it collects each one with pile_insert into
+ * a local `new_pile` (player-birth.c:489) and appends that whole pile ONCE after
+ * the loop (`pile_insert_end(&p->gear, new_pile)`, L503). pile_insert prepends,
+ * so the block that lands on the gear's tail is in REVERSE order of creation.
+ * Pushing each remainder immediately - which is what this did - produces the
+ * opposite tail order for two or more remainders.
+ *
+ * Only wieldAll supplies it, because only wield_all has that temporary pile;
+ * inven_wield splits straight into the pack. Absent, the remainder goes to the
+ * pack immediately, which is correct for one remainder and is what every other
+ * caller wants.
  */
 export function wieldObject(
   gear: Gear,
@@ -1264,6 +1277,7 @@ export function wieldObject(
   env?: import("../obj/knowledge.js").RuneEnv,
   split: WieldSplit = "wield_all",
   intoSlot?: number,
+  deferred?: number[],
 ): number {
   const obj = gear.store.get(handle);
   if (!obj) return -1;
@@ -1286,9 +1300,12 @@ export function wieldObject(
       wieldedHandle = gearAdd(gear, wielded);
     } else {
       /* All but one go back to the pack as a new stack at the END
-       * (player-birth.c L484-491 + L502-505). */
+       * (player-birth.c L484-491 + L502-505) - into wield_all's temporary pile
+       * when it supplied one, so the whole block lands in upstream's order. */
       const remainder = objectSplit(obj, obj.number - 1);
-      gear.pack.push(gearAdd(gear, remainder));
+      const remHandle = gearAdd(gear, remainder);
+      if (deferred) deferred.push(remHandle);
+      else gear.pack.push(remHandle);
     }
   }
 
@@ -1310,12 +1327,25 @@ export function wieldObject(
 
 /**
  * wield_all (player-birth.c L462-507): try to wield everything wieldable in
- * the pack. Scans a snapshot of the current pack handles (so the split-off
- * remainders added during the pass are not re-scanned, matching upstream's
- * deferred pile_insert_end), wielding each object whose liked slot is empty.
+ * the pack, wielding each object whose liked slot is empty.
+ *
+ * The split remainders do not join the gear during the loop. Upstream collects
+ * each one into a local `new_pile` with pile_insert (L489), which PREPENDS, and
+ * appends that whole pile to the gear exactly once afterwards (L503). So the
+ * remainders land on the gear's tail in reverse order of creation, and the loop
+ * never re-scans one - which is why the snapshot below is a faithful stand-in
+ * for iterating the C's list while it grows at the far end.
+ *
+ * This is invisible in 4.2.6's own data: wield_slot returns -1 for ammo, and the
+ * only stacked WIELDABLE item in any starting kit is the Wooden Torch, so exactly
+ * one remainder is ever created and one element reversed is itself. It is visible
+ * to a mod whose starting kit stacks two wieldables, which is the same reason the
+ * projection names had to come from the pack rather than a mirror of it.
  */
 export function wieldAll(gear: Gear, player: Player): void {
   const handles = [...gear.pack];
+  /* new_pile (player-birth.c:466). */
+  const deferred: number[] = [];
   for (const handle of handles) {
     const obj = gear.store.get(handle);
     if (!obj) continue;
@@ -1325,8 +1355,12 @@ export function wieldAll(gear: Gear, player: Player): void {
     if (slot < 0 || slot >= player.body.count) continue;
     if ((player.equipment[slot] ?? 0) !== 0) continue;
 
-    wieldObject(gear, player, handle);
+    wieldObject(gear, player, handle, undefined, "wield_all", undefined, deferred);
   }
+  /* pile_insert_end(&p->gear, new_pile) (L503): the block, head-first, and the
+   * head is the LAST remainder created because pile_insert prepended it. */
+  deferred.reverse();
+  gear.pack.push(...deferred);
 }
 
 /* ------------------------------------------------------------------ */

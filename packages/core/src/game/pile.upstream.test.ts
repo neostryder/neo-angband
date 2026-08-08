@@ -25,12 +25,21 @@
  *
  * Two honest differences from the C test, both recorded rather than papered
  * over:
- *  - pile_insert_end has NO port counterpart: nothing in the live port appends
- *    to a floor pile (floor_carry always prepends). The upstream append cases
- *    are therefore reproduced by inserting in reverse, which reaches the same
- *    pile states, and the per-step "last item is the one just appended"
- *    assertions are replaced by the equivalent head/last/order assertions on
- *    the prepend path.
+ *  - Nothing appends to a FLOOR pile, because upstream does not either:
+ *    floor_carry's insert step is pile_insert, which prepends. The upstream
+ *    append cases in the C's own pile test are therefore reproduced here by
+ *    inserting in reverse, which reaches the same pile states, and the per-step
+ *    "last item is the one just appended" assertions become the equivalent
+ *    head/last/order assertions on the prepend path.
+ *
+ *    This line used to read "pile_insert_end has NO port counterpart: nothing
+ *    in the live port appends", which was true of the floor and false of the
+ *    port, and a census reader took it at face value and carried it forward as
+ *    an owed gap. pile_insert_end has five upstream call sites and the port
+ *    matches all of them: gear.pack.push for the three gear ones, the saved
+ *    array order in deserializeFloor for load.c:1419, known.ts's pile.push for
+ *    the known cave, and wieldAll's deferred block for wield_all. A claim
+ *    scoped to one pile must say which pile.
  *  - floorCarry is floor_carry, not bare pile_insert, so it merges a mergeable
  *    drop (obj-pile.c:925-935). The objects below therefore use DISTINCT kinds
  *    so objectSimilar's `obj1.kind !== obj2.kind` gate (object.ts) keeps them
