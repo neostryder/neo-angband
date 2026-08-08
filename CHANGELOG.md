@@ -46,6 +46,18 @@ Current state of the project at version `0.18.0`. High level, what exists today:
 
 ### Added
 
+- **`registry:profile`: a mod can add its own kind of dungeon level.** A room
+  builder makes a room; a dungeon *profile* decides which whole-cave builder runs
+  at a depth. `ProfileFacade` opens the live `DungeonProfiles` registry to a
+  trusted plugin, and `builder(key)` hands a core builder back so a mod can wrap
+  core generation rather than reimplement it. Two refusals are deliberate: a
+  profile naming an unregistered builder is rejected where the mistake is, not
+  inside generation a level later; and profiles only append, because
+  `choose_profile`'s weighted pass walks the list in order and inserting would
+  change which profile the *base game* picks from the same seed. Proven by a
+  sample mod written to a real folder and imported for real, asserting on the
+  registry rather than on the mod's own report.
+
 - **"Where your characters live": the screen that says what would destroy a
   roster.** Everything this game saves is in browser storage - the roster in
   `localStorage`, the installed mods in IndexedDB - and on the desktop build that
