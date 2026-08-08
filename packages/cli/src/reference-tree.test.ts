@@ -71,6 +71,14 @@ const EXCLUDED: readonly { path: string; why: string }[] = [
     path: ".travis.yml",
     why: "a Travis CI config for the C build, dead upstream too.",
   },
+  {
+    path: "src/win/dll/",
+    why: "prebuilt third-party Windows DLLs (libpng12, zlib1) that only upstream's MSVC build links. libpng 1.2.x is long EOL with a substantial CVE history; nothing in this repository builds, loads or reads them, and a public repo should not carry unowned binaries a scanner will rightly flag. The C that would link them (src/Makefile.nmake, the vs2019 project, PNG_Detection.cmake) is still vendored and still says so.",
+  },
+  {
+    path: "src/win/lib/",
+    why: "the import libraries for the same two DLLs, absent for the same reason.",
+  },
 ];
 
 function git(...args: string[]): string {
