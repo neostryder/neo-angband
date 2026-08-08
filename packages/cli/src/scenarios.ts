@@ -180,8 +180,16 @@ const EXPECTED = {
    * onward, so the descended level is again a different level. This is a
    * self-captured pin, not a C-derived expectation: the cross-implementation
    * check that IS C-derived, parity-c-stat.test.ts, was re-run against this
-   * change and still passes. */
-  descend: { monsterCount: 28 },
+   * change and still passes.
+   *
+   * 28 -> 27: re-pinned 2026-08-07 for #143, which moved reference/ from
+   * upstream master back to the 4.2.6 tag. The gamedata itself changed -
+   * 4.2.6 ships 1,631 more lines of room_template.txt and a different
+   * vault.txt - so the generator reaches for different rooms from the first
+   * draw and the descended level is, once more, a different level. Same
+   * reasoning as the two pins above and the same check applied:
+   * parity-c-stat.test.ts, the only C-derived instrument here, still passes. */
+  descend: { monsterCount: 27 },
 } as const;
 
 /** Run every golden scenario and return their results. */

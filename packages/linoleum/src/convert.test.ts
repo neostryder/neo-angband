@@ -229,9 +229,13 @@ describe("nomad (8x16, non-square) pack", () => {
 
   it("produces the expected asset volume", () => {
     const result = summary.results.find((r) => r.key === "nomad");
-    expect(result?.assetCount).toBe(1465);
+    /* 1465 -> 1463 on 2026-08-07 (#143): reference/ moved from upstream master
+     * back to the 4.2.6 tag, and 4.2.6's nomad prf files name two fewer tiles.
+     * The count is read from the pack AND from the directory on disk, so a
+     * converter that under-emits cannot satisfy both. */
+    expect(result?.assetCount).toBe(1463);
     const files = readdirSync(join(packRoot(), "images", "16"));
-    expect(files.length).toBe(1465);
+    expect(files.length).toBe(1463);
   });
 
   it("mirrors the pref files byte-for-byte", () => {
@@ -289,10 +293,10 @@ describe("inventory reports", () => {
 
     const nomad = inventory.packs.find((p) => p.key === "nomad");
     expect(nomad?.resolution).toBe(16);
-    expect(nomad?.assetCount).toBe(1465);
-    expect(nomad?.exactSelectorCount).toBe(1465);
+    expect(nomad?.assetCount).toBe(1463);
+    expect(nomad?.exactSelectorCount).toBe(1463);
     expect(nomad?.compatibilityAliasCount).toBe(59);
-    expect(nomad?.totalTargetRuleCount).toBe(1524);
+    expect(nomad?.totalTargetRuleCount).toBe(1522);
     expect(nomad?.statefulSelectorCount).toBe(156);
     expect(nomad?.conditionalSelectorCount).toBe(66);
     expect(nomad?.invalidSourceSelectorCount).toBe(2);
@@ -305,14 +309,14 @@ describe("inventory reports", () => {
       "| Original Tiles (Linoleum) | Original Tiles | 8 | 1499 | 1499 | 59 | 204 | 66 | 1558 |",
     );
     expect(text).toContain(
-      "| Nomad's tiles (Linoleum) | Nomad's tiles | 16 | 1465 | 1465 | 59 | 156 | 66 | 1524 |",
+      "| Nomad's tiles (Linoleum) | Nomad's tiles | 16 | 1463 | 1463 | 59 | 156 | 66 | 1522 |",
     );
   });
 
   it("counts target lines in targets.txt consistently with the inventory", () => {
     for (const [key, expected] of [
       ["original-tiles", 1558],
-      ["nomad", 1524],
+      ["nomad", 1522],
     ] as const) {
       const lines = readLines(join(outputRoot, key, "maps", "targets.txt"));
       const targetLines = lines.filter((line) => line.startsWith("target:"));

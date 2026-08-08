@@ -42,6 +42,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Literal -> why it is absent. Keys are the C literal, verbatim. */
 const KNOWN_ABSENT: Record<string, readonly string[]> = {
+  "divergence (measured 2026-08-07, #143 + #149): all four belong to parsers the port implements in upstream MASTER's shape rather than 4.2.6's, which is what #143 exposed by moving reference/ back to the 4.2.6 tag. 4.2.6's options_restore_custom (option.c:239-330) is a hand-rolled read loop that msg()s per bad line; master replaced it with a `struct parser` grammar, and player/options-file.ts is a careful port of THAT - PARSE_ERROR codes, colno bookkeeping and the errmsg-buffer wart included. datafile.c:67's finish-error is the same story one layer down. So these are not messages the port declined to write: they are messages whose whole surrounding function core has in a newer form than its own baseline. Recorded here rather than silently ported because rewriting the option-file reader is a behaviour change that deserves its own commit - #149": [
+    "Parser finish error in %s: %s",
+    "Line %d of the customized %s options is not parseable.",
+    "Unrecognized option at line %d of the customized %s options.",
+    "Value at line %d of the customized %s options is not yes or no.",
+  ],
+
   "not-in-this-port (measured 2026-08-01): do_cmd_try_borg's consent gate (cmd-misc.c:125-140). Upstream the borg is compiled into the game and reached by a debug command, so the game itself has to warn you before handing it your character. Here the Borg is a MOD in its own repository, installed through the mod manager and switched on by its own \"Let the Borg play\" toggle, so there is no engine command to gate and no engine-side prompt to port - the consent is the install, and the toggle says what it does. The sibling debug-command gate IS ported, verbatim, in packages/web/src/wizard.ts. These two were counted present until 2026-08-01 only because packages/borg lived in this repository and quoted them":
     [
       "You are about to use the dangerous, unsupported, borg commands!",

@@ -148,6 +148,5 @@ export const uiKnowledgeSpec: FileSpec = {
     { fmt: "monster-category str name" },
     { fmt: "mcat-include-base str name", repeat: true },
     { fmt: "mcat-include-flag ?str flags", repeat: true },
-    { fmt: "mcat-include-other str name", repeat: true },
   ],
 };

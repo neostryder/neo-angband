@@ -106,12 +106,8 @@ enum
 - (void)setRestorable:(BOOL)flag;
 @end
 
-/**
- * Remember that we are quitting so that when a window closes, it is treated
- * as a result of quitting rather than something that has to be remembered
- * in the preferences.
- */
-static int quitting = 0;
+/** Delay handling of pre-emptive "quit" event */
+static BOOL quit_when_ready = NO;
 
 /** Set to indicate the game is over and we can quit without delay */
 static BOOL game_is_finished = NO;
@@ -2088,7 +2084,7 @@ static BOOL initialized = NO;
 
 - (void)requestRedraw
 {
-    if (!self->terminal || !self->terminal->mapped_flag) return;
+    if (! self->terminal) return;
     
     term *old = Term;
     
@@ -3794,7 +3790,7 @@ static int compare_nsrect_yorigin_greater(const void *ap, const void *bp)
      * If closing only because the application is terminating, don't update
      * the visible state for when the application is relaunched.
      */
-    if (!quitting) {
+    if (! quit_when_ready) {
 	[self saveWindowVisibleToDefaults: NO];
     }
 }
@@ -4226,6 +4222,12 @@ static void Term_init_cocoa(term *t)
 	if (autosaveName) [window setFrameAutosaveName:autosaveName];
 
 	/*
+	 * Tell it about its term. Do this after we've sized it so that the
+	 * sizing doesn't trigger redrawing and such.
+	 */
+	[context setTerm:t];
+
+	/*
 	 * Only order front if it's the first term. Other terms will be ordered
 	 * front from AngbandUpdateWindowVisibility(). This is to work around a
 	 * problem where Angband aggressively tells us to initialize terms that
@@ -4236,11 +4238,8 @@ static void Term_init_cocoa(term *t)
 
 	NSEnableScreenUpdates();
 
-	/*
-	 * Tell it about its term. Do this after we've sized it so that the
-	 * sizing doesn't trigger redrawing and such.
-	 */
-	[context setTerm:t];
+	/* Set "mapped" flag */
+	t->mapped_flag = true;
     }
 }
 
@@ -4543,8 +4542,8 @@ static errr Term_xtra_cocoa(int n, int v)
 				       inMode:NSDefaultRunLoopMode
 				       dequeue:YES];
 			if (event) send_event(event);
-		    } while (event && !quitting);
-		} while ([date timeIntervalSinceNow] >= 0 && !quitting);
+		    } while (event);
+		} while ([date timeIntervalSinceNow] >= 0);
 	    }
 	    break;
 
@@ -4955,20 +4954,33 @@ static void wakeup_event_loop(void)
 }
 
 
-static bool cocoa_deny_disconnect(void)
+/**
+ * Handle quit_when_ready, by Peter Ammon,
+ * slightly modified to check inkey_flag.
+ */
+static void quit_calmly(void)
 {
-    NSAlert *alert = [[NSAlert alloc] init];
+    /* Quit immediately if game's not started */
+    if (!game_in_progress || !character_generated) quit(NULL);
 
-    alert.messageText = @"Confirm Quitting";
-    alert.informativeText = @"Saving failed.  Really quit?";
-    [alert addButtonWithTitle:@"No"];
-    [alert addButtonWithTitle:@"Yes"];
-    if ([alert runModal] != NSAlertSecondButtonReturn) {
-        quitting = 0;
-        return true;
+    /* Save the game and Quit (if it's safe) */
+    if (inkey_flag)
+    {
+        /* Forget messages and term */
+        msg_flag = false;
+        Term->mapped_flag = false;
+
+        /* Save the game */
+        record_current_savefile();
+        close_game(true);
+
+        /* Quit */
+        quit(NULL);
     }
-    return false;
+
+    /* Wait until inkey_flag is set */
 }
+
 
 
 /**
@@ -5227,23 +5239,31 @@ static BOOL check_events(int wait)
     BOOL result = YES;
 
     @autoreleasepool {
-	NSDate* endDate = (wait == CHECK_EVENTS_WAIT)
-            ? [NSDate distantFuture] : [NSDate distantPast];
-	NSEvent* event;
+	/* Handles the quit_when_ready flag */
+	if (quit_when_ready) quit_calmly();
 
+	NSDate* endDate;
+	if (wait == CHECK_EVENTS_WAIT) endDate = [NSDate distantFuture];
+	else endDate = [NSDate distantPast];
+
+	NSEvent* event;
 	for (;;) {
-	    event = [NSApp nextEventMatchingMask:-1 untilDate:endDate
+	    if (quit_when_ready)
+	    {
+		/* send escape events until we quit */
+		Term_keypress(0x1B, 0);
+		result = NO;
+		break;
+	    }
+	    else {
+		event = [NSApp nextEventMatchingMask:-1 untilDate:endDate
 			       inMode:NSDefaultRunLoopMode dequeue:YES];
-	    if (!event) {
-		result = NO;
-		break;
-	    }
-	    if (send_event(event)) {
-		break;
-	    }
-	    if (quitting) {
-		result = NO;
-		break;
+
+		if (! event) {
+		    result = NO;
+		    break;
+		}
+		if (send_event(event)) break;
 	    }
 	}
     }
@@ -5834,12 +5854,6 @@ static void cocoa_reinit(void)
 	/* Hook into file saving dialogue routine */
 	get_file = cocoa_get_file;
 
-	/*
-	 * Allow for player intervention if saving the game fails while the
-	 * UI is disconnecting from the game.
-	 */
-	disconnect_denier_hook = cocoa_deny_disconnect;
-
 	/* Initialize file paths */
 	prepare_paths_and_directories();
 
@@ -6248,22 +6262,33 @@ static void cocoa_reinit(void)
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
 {
-    quitting = 1;
     if (!player->upkeep->playing || game_is_finished)
     {
+        quit_when_ready = YES;
         return NSTerminateNow;
     }
-    terms_disconnecting = 1;
-    /*
-     * Post an escape event so that we can return from our get-key-event
-     * function
-     */
-    wakeup_event_loop();
-    /*
-     * Must return Cancel, not Later, because we need to get out of the
-     * run loop and back to Angband's loop
-     */
-    return NSTerminateCancel;
+    else if (! inkey_flag)
+    {
+        /* For compatibility with other ports, do not quit in this case */
+        return NSTerminateCancel;
+    }
+    else
+    {
+        /* Stop playing */
+        player->upkeep->playing = false;
+
+        /*
+         * Post an escape event so that we can return from our get-key-event
+         * function
+         */
+        wakeup_event_loop();
+        quit_when_ready = YES;
+        /*
+         * Must return Cancel, not Later, because we need to get out of the
+         * run loop and back to Angband's loop
+         */
+        return NSTerminateCancel;
+    }
 }
 
 /**

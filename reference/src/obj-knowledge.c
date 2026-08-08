@@ -98,10 +98,8 @@ static void init_rune(void)
 		bool counted = false;
 		if (brands[i].name) {
 			for (j = 1; j < i; j++) {
-				if (brands[j].name && streq(brands[i].name,
-						brands[j].name)) {
+				if (streq(brands[i].name, brands[j].name)) {
 					counted = true;
-					break;
 				}
 			}
 			if (!counted) {
@@ -147,10 +145,8 @@ static void init_rune(void)
 		bool counted = false;
 		if (brands[i].name) {
 			for (j = 1; j < i; j++) {
-				if (brands[j].name && streq(brands[i].name,
-						brands[j].name)) {
+				if (streq(brands[i].name, brands[j].name)) {
 					counted = true;
-					break;
 				}
 			}
 			if (!counted) {

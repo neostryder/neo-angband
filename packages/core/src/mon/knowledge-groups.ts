@@ -27,10 +27,6 @@ export interface MonsterCategory {
   readonly incBases: readonly string[];
   /** mcat-include-flag flag indices (RF_*). */
   readonly incFlags: readonly number[];
-  /** mcat-include-other:fully-known */
-  readonly includeFullyKnown: boolean;
-  /** mcat-include-other:not-fully-known */
-  readonly includeNotFullyKnown: boolean;
 }
 
 /** A compiled pack/ui_knowledge.json record. */
@@ -39,8 +35,6 @@ export interface UiKnowledgeRecordJson {
   "mcat-include-base"?: string[];
   /** Each entry is a " | "-separated flag list (may hold several flags). */
   "mcat-include-flag"?: string[];
-  /** "fully-known" / "not-fully-known". */
-  "mcat-include-other"?: string[];
 }
 
 /** The reserved catch-all category name (finish_ui_knowledge_parser L3439). */
@@ -60,13 +54,10 @@ export function bindMonsterCategories(
         if (idx !== undefined) incFlags.push(idx);
       }
     }
-    const other = (r["mcat-include-other"] ?? []).map(String);
     return {
       name: r["monster-category"],
       incBases: (r["mcat-include-base"] ?? []).map(String),
       incFlags,
-      includeFullyKnown: other.includes("fully-known"),
-      includeNotFullyKnown: other.includes("not-fully-known"),
     };
   });
 }
@@ -104,17 +95,26 @@ function compareInGroup(
   return strcmp(a.name, b.name);
 }
 
-/** Does a race match a category by flag or by the fully-/not-fully-known other? */
+/**
+ * Does a race match a category by flag? (ui-knowledge.c parse_mcat_include_flag.)
+ *
+ * There is no `mcat-include-other` arm here any more. That directive, and the
+ * fully-known / not-fully-known categories it drives, are POST-4.2.6 upstream
+ * work; #143 moved reference/ back to the 4.2.6 tag, whose ui-knowledge.c
+ * registers only mcat-include-base and mcat-include-flag, and whose
+ * ui_knowledge.txt uses neither of the "other" values. Core reproduces a
+ * released Angband, so an upstream feature newer than the baseline is an
+ * extension and belongs in a mod (#146).
+ */
 function matchesFlagOrOther(
   category: MonsterCategory,
   race: MonsterRace,
   allKnown: boolean,
 ): boolean {
+  void allKnown;
   for (const flag of category.incFlags) {
     if (race.flags.has(flag)) return true;
   }
-  if (category.includeFullyKnown && allKnown) return true;
-  if (category.includeNotFullyKnown && !allKnown) return true;
   return false;
 }
 

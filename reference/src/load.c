@@ -399,10 +399,10 @@ int rd_randomizer(void)
 	/* for safety, make sure state_i < RAND_DEG */
 	state_i = state_i % RAND_DEG;
     
-	/* NULL padding for compatibility with previous versions */
-	rd_u32b(&noop);
-	rd_u32b(&noop);
-	rd_u32b(&noop);
+	/* RNG variables */
+	rd_u32b(&z0);
+	rd_u32b(&z1);
+	rd_u32b(&z2);
     
 	/* RNG state */
 	for (i = 0; i < RAND_DEG; i++)
@@ -980,9 +980,7 @@ int rd_misc(void)
 		if (randart_file_exists()) {
 			cleanup_parser(&artifact_parser);
 			activate_randart_file();
-			if (run_parser(&randart_parser)) {
-				quit("Could not parse random artifacts.");
-			}
+			run_parser(&randart_parser);
 		} else {
 			do_randart(seed_randart, true);
 		}
@@ -1242,12 +1240,8 @@ static int rd_stores_aux(rd_item_t rd_item_version)
 					&& obj->kind) {
 				if (store->feat == FEAT_HOME) {
 					home_carry(obj);
-				} else if (!store_carry(store, obj, false)) {
-					if (obj->known) {
-						object_delete(NULL, NULL,
-							&obj->known);
-					}
-					object_delete(NULL, NULL, &obj);
+				} else {
+					store_carry(store, obj);
 				}
 			} else {
 				if (obj->known) {

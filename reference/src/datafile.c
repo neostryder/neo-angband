@@ -42,6 +42,15 @@ const char *parser_error_str[PARSE_ERROR_MAX] = {
  * Angband datafile parsing routines
  * ------------------------------------------------------------------------ */
 
+static void print_error(struct file_parser *fp, struct parser *p) {
+	struct parser_state s;
+	parser_getstate(p, &s);
+	msg("Parse error in %s line %d column %d: %s: %s", fp->name,
+	           s.line, s.col, s.msg, parser_error_str[s.error]);
+	event_signal(EVENT_MESSAGE_FLUSH);
+	quit_fmt("Parse error in %s line %d column %d.", fp->name, s.line, s.col);
+}
+
 errr run_parser(struct file_parser *fp) {
 	struct parser *p = fp->init();
 	errr r;
@@ -49,13 +58,17 @@ errr run_parser(struct file_parser *fp) {
 		return PARSE_ERROR_GENERIC;
 	}
 	r = fp->run(p);
-	if (!r) {
-		r = fp->finish(p);
-		if (r) {
-			plog_fmt("Parser finish error in %s: %s", fp->name,
-				(r > 0 && r < PARSE_ERROR_MAX) ?
-				parser_error_str[r] : "unspecified error");
-		}
+	if (r) {
+		print_error(fp, p);
+		return r;
+	}
+	r = fp->finish(p);
+	if (r) {
+		msg("Parser finish error in %s: %s", fp->name,
+			(r > 0 && r < PARSE_ERROR_MAX) ?
+			parser_error_str[r] : "unspecified error");
+		event_signal(EVENT_MESSAGE_FLUSH);
+		quit_fmt("Parser finish error in %s.", fp->name);
 	}
 	return r;
 }
@@ -63,10 +76,6 @@ errr run_parser(struct file_parser *fp) {
 /**
  * The basic file parsing function.  Attempt to load filename through
  * parser and perform a quit if the file is not found.
- *
- * \return PARSE_ERROR_NONE if no errors occurred.  Otherwise, return the
- * PARSE_ERROR_* constant for the first error detected.  In that case,
- * calling parser_getstate() will return the context of that error.
  */
 errr parse_file_quit_not_found(struct parser *p, const char *filename) {
 	errr parse_err = parse_file(p, filename);
@@ -79,19 +88,12 @@ errr parse_file_quit_not_found(struct parser *p, const char *filename) {
 
 /**
  * The basic file parsing function.
- *
- * \return PARSE_ERROR_NONE if no errors occurred.  Otherwise, return the
- * PARSE_ERROR_* constant for the first error detected.  In that case,
- * calling parser_getstate() will return the context of that error.
  */
 errr parse_file(struct parser *p, const char *filename) {
 	char path[1024];
 	char buf[1024];
-	char firstmsg[1024] = "";
 	ang_file *fh;
-	errr firste = 0;
-	unsigned int firstl = 0, firstc = 0;
-	int maxe = get_parser_error_limit(), counte = 0;
+	errr r = 0;
 
 	/* The player can put a customised file in the user directory */
 	path_build(path, sizeof(path), ANGBAND_DIR_USER, format("%s.txt",
@@ -111,34 +113,12 @@ errr parse_file(struct parser *p, const char *filename) {
 
 	/* Parse it */
 	while (file_getl(fh, buf, sizeof(buf))) {
-		errr r = parser_parse(p, buf);
-
-		if (r) {
-			struct parser_state s;
-
-			parser_getstate(p, &s);
-			if (!firste) {
-				firste = r;
-				firstl = s.line;
-				firstc = s.col;
-				my_strcpy(firstmsg, s.msg, sizeof(firstmsg));
-			}
-			plog_fmt("Parse error in %s line %d column %d: %s: %s",
-				path, s.line, s.col, s.msg,
-				parser_error_str[s.error]);
-			if (maxe) {
-				if (counte >= maxe - 1) {
-					break;
-				}
-				++counte;
-			}
-		}
+		r = parser_parse(p, buf);
+		if (r)
+			break;
 	}
 	file_close(fh);
-	if (firste) {
-		parser_setstate(p, firste, firstl, firstc, firstmsg);
-	}
-	return firste;
+	return r;
 }
 
 void cleanup_parser(struct file_parser *fp)
@@ -329,7 +309,7 @@ errr grab_int_range(int *lo, int *hi, const char *range, const char *sep)
 	 * Reject INT_MIN and INT_MAX as well so don't have to check errno in
 	 * order to recognize overflow when sizeof(int) == sizeof(long).
 	 */
-	if (pe == range || !isspace((unsigned char)*pe) || lv1 <= INT_MIN || lv1 >= INT_MAX) {
+	if (pe == range || !isspace(*pe) || lv1 <= INT_MIN || lv1 >= INT_MAX) {
 		return PARSE_ERROR_INVALID_VALUE;
 	}
 	range = pe;
@@ -345,7 +325,7 @@ errr grab_int_range(int *lo, int *hi, const char *range, const char *sep)
 			return PARSE_ERROR_INVALID_VALUE;
 		}
 		range = pe + strlen(sep);
-		if (!isspace((unsigned char)*range)) {
+		if (!isspace(*range)) {
 			return PARSE_ERROR_INVALID_VALUE;
 		}
 	}

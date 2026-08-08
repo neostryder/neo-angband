@@ -1276,9 +1276,7 @@ void do_cmd_accept_character(struct command *cmd)
 	/* Restore the standard artifacts (randarts may have been loaded) */
 	cleanup_parser(&randart_parser);
 	deactivate_randart_file();
-	if (run_parser(&artifact_parser)) {
-		quit("Could not parse artifact.txt.");
-	}
+	run_parser(&artifact_parser);
 
 	/* Now only randomize the artifacts if required */
 	if (OPT(player, birth_randarts)) {

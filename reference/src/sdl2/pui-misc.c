@@ -29,18 +29,12 @@ struct sdlpui_code {
 struct sdlpui_code_registry {
 	SDL_mutex* lock;
 	struct sdlpui_code *entries;
-	size_t alloc;
-	Uint32 count;
+	size_t count, alloc;
+	Uint32 serial;
 };
 
-struct sdlpui_id_registry {
-	SDL_mutex *lock;
-	struct sdlpui_dialog *d_head;
-	Uint32 count;
-};
+static struct sdlpui_code_registry my_registry = { NULL, NULL, 0, 0, 0 };
 
-static struct sdlpui_code_registry my_codes = { NULL, NULL, 0, 0 };
-static struct sdlpui_id_registry my_ids = { NULL, NULL, 0 };
 
 /**
  * Initialize the resources needed by the sdlpui_*() calls.
@@ -57,14 +51,8 @@ int sdlpui_init(void)
 		SDL_LOG_PRIORITY_VERBOSE);
 #endif
 
-	if (!my_codes.lock) {
-		my_codes.lock = SDL_CreateMutex();
-		if (!my_codes.lock) {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-				"Could not create code mutex in "
-				"sdlpui_init(): %s", SDL_GetError());
-			return 1;
-		}
+	if (!my_registry.lock) {
+		my_registry.lock = SDL_CreateMutex();
 
 		/* Initialize predefined type codes from pui-dlg.h. */
 		SDLPUI_DIALOG_SIMPLE_MENU =
@@ -72,7 +60,7 @@ int sdlpui_init(void)
 		SDLPUI_DIALOG_SIMPLE_INFO =
 			sdlpui_register_code("SDLPUI_DIALOG_SIMPLE_INFO");
 		if (!SDLPUI_DIALOG_SIMPLE_MENU || !SDLPUI_DIALOG_SIMPLE_INFO) {
-			sdlpui_quit();
+			sdlpui_force_quit();
 			return 1;
 		}
 
@@ -86,18 +74,7 @@ int sdlpui_init(void)
 		if (!SDLPUI_CTRL_IMAGE || !SDLPUI_CTRL_LABEL
 				|| !SDLPUI_CTRL_MENU_BUTTON
 				|| !SDLPUI_CTRL_PUSH_BUTTON) {
-			sdlpui_quit();
-			return 1;
-		}
-	}
-
-	if (!my_ids.lock) {
-		my_ids.lock = SDL_CreateMutex();
-		if (!my_ids.lock) {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-				"Could not create id mutex in "
-				"sdlpui_init(): %s", SDL_GetError());
-			sdlpui_quit();
+			sdlpui_force_quit();
 			return 1;
 		}
 	}
@@ -118,116 +95,34 @@ int sdlpui_init(void)
  */
 void sdlpui_quit(void)
 {
-	SDL_mutex *lock = my_codes.lock;
+	SDL_mutex *lock = my_registry.lock;
 
 	if (lock) {
-		if (!SDL_LockMutex(lock)) {
-			struct sdlpui_code *entries = my_codes.entries;
-			Uint32 i, n = my_codes.count;
+		struct sdlpui_code *entries;
+		Uint32 i, n;
+		int retn;
 
-			my_codes.lock = NULL;
-			my_codes.entries = NULL;
-			my_codes.alloc = 0;
-			my_codes.count = 0;
-			if (SDL_UnlockMutex(lock)) {
-				SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-					"Could not release code mutex in "
-					"sdlpui_quit()");
-			}
-			for (i = 0; i < n; ++i) {
-				SDL_free(entries[i].name);
-			}
-			SDL_free(entries);
-			SDL_DestroyMutex(lock);
-		} else {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-				"Could not acquire code mutex in "
-				"sdlpui_quit()");
+		retn = SDL_LockMutex(lock);
+		SDL_assert(!retn);
+		entries = my_registry.entries;
+		n = my_registry.count;
+		my_registry.entries = 0;
+		my_registry.count = 0;
+		my_registry.alloc = 0;
+		my_registry.serial = 0;
+		my_registry.lock = 0;
+		retn = SDL_UnlockMutex(lock);
+		SDL_assert(!retn);
+		for (i = 0; i < n; ++i) {
+			SDL_free(entries[i].name);
 		}
-	}
-
-	lock = my_ids.lock;
-	if (lock) {
-		if (!SDL_LockMutex(lock)) {
-			my_ids.lock = NULL;
-			my_ids.d_head = NULL;
-			my_ids.count = 0;
-			if (SDL_UnlockMutex(lock)) {
-				SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-					"Could not release id mutex in "
-					"sdlpui_quit()");
-			}
-			SDL_DestroyMutex(lock);
-		} else {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-				"Could not acquire id mutex in sdlpui_quit()");
-		}
-	}
-}
-
-
-/**
- * Remember a dialog so that its ID and the IDs of the controls it contains
- * can be reassigned, as necessary.
- *
- * \param d points to the dialog to forget.  It may not be NULL.
- */
-void sdlpui_register_dialog(struct sdlpui_dialog *d)
-{
-	if (SDL_LockMutex(my_ids.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not acquire mutex in sdlpui_register_dialog()");
-		sdlpui_force_quit();
-	}
-	/* Only register if not already registered. */
-	if (!d->next_r && !d->prev_r && (!my_ids.d_head
-			|| my_ids.d_head->id != d->id)) {
-		d->next_r = my_ids.d_head;
-		if (my_ids.d_head) {
-			my_ids.d_head->prev_r = d;
-		}
-		my_ids.d_head = d;
-	}
-	if (SDL_UnlockMutex(my_ids.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not release mutex in sdlpui_register_dialog()");
-		sdlpui_force_quit();
-	}
-}
-
-
-/**
- * Forget a dialog so that it is no longer considered when reassigning IDs.
- *
- * \param d points to the dialog to forget.  It may not be NULL.
- */
-void sdlpui_unregister_dialog(struct sdlpui_dialog *d)
-{
-	if (SDL_LockMutex(my_ids.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not acquire mutex in "
-			"sdlpui_unregister_dialog()");
-		sdlpui_force_quit();
-	}
-	/* Only unregister if already registered. */
-	if (d->next_r || d->prev_r || (my_ids.d_head
-			&& my_ids.d_head->id == d->id)) {
-		if (d->next_r) {
-			d->next_r->prev_r = d->prev_r;
-		}
-		if (d->prev_r) {
-			d->prev_r->next_r = d->next_r;
-		} else {
-			my_ids.d_head = d->next_r;
-		}
-		d->next_r = NULL;
-		d->prev_r = NULL;
-	}
-	if (SDL_UnlockMutex(my_ids.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not release mutex in "
-			"sdlpui_unregister_dialog()");
-		sdlpui_force_quit();
+		SDL_free(entries);
+		SDL_DestroyMutex(lock);
+	} else {
+		SDL_assert(!my_registry.entries);
+		SDL_assert(!my_registry.count);
+		SDL_assert(!my_registry.alloc);
+		SDL_assert(!my_registry.serial);
 	}
 }
 
@@ -235,20 +130,16 @@ void sdlpui_unregister_dialog(struct sdlpui_dialog *d)
 Uint32 sdlpui_register_code(const char *name)
 {
 	Uint32 code = 0, ilo, ihi;
+	int unlocked;
 
-	if (!name) {
-		return code;
-	}
-	if (SDL_LockMutex(my_codes.lock)) {
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not acquire mutex in sdlpui_register_code()");
+	if (!name || !my_registry.lock || SDL_LockMutex(my_registry.lock)) {
 		return code;
 	}
 
 	/* Sorted alphabetically by name so use a binary search. */
-	SDL_assert(my_codes.count <= my_codes.alloc);
+	SDL_assert(my_registry.count <= my_registry.alloc);
 	ilo = 0;
-	ihi = my_codes.count;
+	ihi = my_registry.count;
 	while (1) {
 		Uint32 imid;
 		int cmp;
@@ -258,59 +149,62 @@ Uint32 sdlpui_register_code(const char *name)
 			 * It is not present.  Shift entries starting with ilo
 			 * up by one to create space for a new entry.
 			 */
-			char *name_copy;
+			Uint32 i;
 
-			name_copy = SDL_strdup(name);
-			if (!name_copy) {
+			if (my_registry.serial == SDL_MAX_UINT32) {
+				/*
+				 * Exhausted all the serial numbers.  Give up.
+				 */
 				break;
 			}
-			if (my_codes.count == my_codes.alloc) {
+			if (my_registry.count == my_registry.alloc) {
 				size_t new_alloc;
 				struct sdlpui_code *new_entries;
 
-				if (my_codes.alloc == 0) {
+				if (my_registry.alloc == 0) {
 					new_alloc = 8;
-				} else if (my_codes.alloc < SDL_MAX_UINT32
-						&& my_codes.alloc
+				} else if (my_registry.alloc <
+						(size_t)-1 / 2
+						&& my_registry.alloc
 						< (size_t)-1
-						/ sizeof(*new_entries)) {
-					new_alloc = (my_codes.alloc
-						< SDL_MAX_UINT32 / 2)
-						? my_codes.alloc +
-						my_codes.alloc : SDL_MAX_UINT32;
+						/ sizeof(struct sdlpui_code)) {
+					new_alloc = my_registry.alloc +
+						my_registry.alloc;
 				} else {
 					/*
-					 * Will exceed the range of an Uint32
-					 * or size_t.  Give up.
+					 * Will exceed the range of a size_t.
+					 * Give up.
 					 */
-					SDL_free(name_copy);
 					break;
 				}
-				new_entries = SDL_realloc(my_codes.entries,
-					new_alloc * sizeof(*new_entries));
+				new_entries = SDL_realloc(my_registry.entries,
+					new_alloc * sizeof(struct sdlpui_code));
 				if (!new_entries) {
-					SDL_free(name_copy);
 					break;
 				}
-				my_codes.entries = new_entries;
-				my_codes.alloc = new_alloc;
+				my_registry.entries = new_entries;
+				my_registry.alloc = new_alloc;
 			}
-			if (ilo < my_codes.count) {
-				SDL_memmove(my_codes.entries + ilo + 1,
-					my_codes.entries + ilo,
-					(my_codes.count - ilo)
-					* sizeof(*my_codes.entries));
+			for (i = my_registry.count; i > ilo; --i) {
+				my_registry.entries[i].name =
+					my_registry.entries[i - 1].name;
+				my_registry.entries[i].code =
+					my_registry.entries[i - 1].code;
 			}
-			code = ++my_codes.count;
-			my_codes.entries[ilo].name = name_copy;
-			my_codes.entries[ilo].code = code;
+			my_registry.entries[ilo].name = SDL_strdup(name);
+			if (!my_registry.entries[ilo].name) {
+				break;
+			}
+			code = ++my_registry.serial;
+			my_registry.entries[ilo].code = code;
+			++my_registry.count;
 			break;
 		}
 
-		imid = ilo + (ihi - ilo) / 2;
-		cmp = SDL_strcmp(my_codes.entries[imid].name, name);
+		imid = (ilo + ihi) / 2;
+		cmp = strcmp(my_registry.entries[imid].name, name);
 		if (cmp == 0) {
-			code = my_codes.entries[imid].code;
+			code = my_registry.entries[imid].code;
 			break;
 		}
 		if (cmp < 0) {
@@ -320,56 +214,10 @@ Uint32 sdlpui_register_code(const char *name)
 		}
 	}
 
-	if (SDL_UnlockMutex(my_codes.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not release mutex in sdlpui_register_code()");
-		sdlpui_force_quit();
-	}
+	unlocked = !SDL_UnlockMutex(my_registry.lock);
+	SDL_assert(unlocked);
 
 	return code;
-}
-
-
-Uint32 sdlpui_reserve_id(void)
-{
-	Uint32 result = 0;
-
-	if (SDL_LockMutex(my_ids.lock)) {
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not acquire mutex in sdlpui_reserve_id()");
-		return result;
-	}
-
-	if (my_ids.count == SDL_MAX_UINT32) {
-		struct sdlpui_dialog *d = my_ids.d_head;
-		Uint32 start = 1;
-
-		while (1) {
-			Uint32 count;
-
-			if (!d) {
-				result = start;
-				my_ids.count = start;
-				break;
-			}
-			count = (d->ftb->reassign_ids)(d, start);
-			if (!count || start > SDL_MAX_UINT32 - count) {
-				break;
-			}
-			start += count;
-			d = d->next_r;
-		}
-	} else {
-		result = ++my_ids.count;
-	}
-
-	if (SDL_UnlockMutex(my_ids.lock)) {
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION,
-			"Could not release mutex in sdlpui_reserve_id()");
-		sdlpui_force_quit();
-	}
-
-	return result;
 }
 
 
@@ -436,9 +284,6 @@ struct sdlpui_stipple sdlpui_compute_stipple(SDL_Renderer *r)
 
 	SDL_assert(!(width & 1) && !(height & 1));
 	pixels = SDL_malloc(width * height * sizeof(*pixels));
-	if (!pixels) {
-		return result;
-	}
 	for (y = 0; y < height; y += 2) {
 		uint32_t *row = pixels + y * width;
 		int x;

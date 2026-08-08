@@ -44,6 +44,7 @@
 #include "ui-input.h"
 #include "ui-map.h"
 #include "ui-output.h"
+#include "ui-target.h"
 #include "wizard.h"
 
 
@@ -1098,6 +1099,55 @@ void do_cmd_wiz_detect_all_monsters(struct command *cmd)
 
 
 /**
+ * Display the keycodes the user has been generating (CMD_WIZ_DISPLAY_KEYLOG).
+ * Takes no arguments from cmd.
+ */
+void do_cmd_wiz_display_keylog(struct command *cmd)
+{
+	int i;
+	char buf[50];
+	char buf2[12];
+	struct keypress keys[2] = {KEYPRESS_NULL, KEYPRESS_NULL};
+
+	screen_save();
+
+	prt("Previous keypresses (top most recent):", 0, 0);
+
+	for (i = 0; i < KEYLOG_SIZE; i++) {
+		if (i < log_size) {
+			/*
+			 * Find the keypress from the log; log_i is one past
+			 * the most recent.
+			 */
+			int j = (log_i > i) ?
+				log_i - i - 1 : log_i - i - 1 + KEYLOG_SIZE;
+			struct keypress k = keylog[j];
+
+			/*
+			 * ugh. it would be nice if there was a version of
+			 * keypress_to_text which took only one keypress.
+			 */
+			keys[0] = k;
+			keypress_to_text(buf2, sizeof(buf2), keys, true);
+
+			/* format this line of output */
+			strnfmt(buf, sizeof(buf), "    %-12s (code=%lu mods=%u)",
+				buf2, (unsigned long)k.code, k.mods);
+		} else {
+			/* create a blank line of output */
+			strnfmt(buf, sizeof(buf), "%40s", "");
+		}
+
+		prt(buf, i + 1, 0);
+	}
+
+	prt("Press any key to continue.", KEYLOG_SIZE + 1, 0);
+	anykey();
+	screen_load();
+}
+
+
+/**
  * Dump a map of the current level as an HTML file (CMD_WIZ_DUMP_LEVEL_MAP).
  * Takes no arguments from cmd.
  *
@@ -1872,8 +1922,10 @@ void do_cmd_wiz_push_object(struct command *cmd)
 {
 	struct loc grid;
 
-	if (cmd_get_point(cmd, "point", &grid) != CMD_OK) {
-		return;
+	if (cmd_get_arg_point(cmd, "point", &grid) != CMD_OK) {
+		if (!target_set_interactive(TARGET_KILL, -1, -1, false)) return;
+		target_get(&grid);
+		cmd_set_arg_point(cmd, "point", grid);
 	}
 	push_object(grid);
 }
@@ -2674,8 +2726,15 @@ void do_cmd_wiz_teleport_to(struct command *cmd)
 {
 	struct loc grid;
 
-	if (cmd_get_point(cmd, "point", &grid) != CMD_OK) {
-		return;
+	if (cmd_get_arg_point(cmd, "point", &grid) != CMD_OK) {
+		/* Use the targeting function. */
+		if (!target_set_interactive(TARGET_LOOK, -1, -1, false)) return;
+
+		/* Grab the target coordinates. */
+		target_get(&grid);
+
+		/* Record in the command to facilitate repetition. */
+		cmd_set_arg_point(cmd, "point", grid);
 	}
 
 	/* Test for passable terrain. */

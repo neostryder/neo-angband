@@ -277,7 +277,7 @@ static struct loc choose_random_entrance(struct chunk *c, int ridx,
 					mem_free(accum);
 					return dun->ent[ridx][low];
 				}
-				mid = low + (high - low) / 2;
+				mid = (low + high) / 2;
 				if (accum[mid] <= chosen) {
 					low = mid;
 				} else {
@@ -1253,14 +1253,6 @@ struct chunk *classic_gen(struct player *p, int min_height, int min_width,
 	}
 	mem_free(blocks_tried);
 	mem_free(dun->room_map);
-
-	if (built < 2) {
-		uncreate_artifacts(c);
-		wipe_mon_list(c, p);
-		cave_free(c);
-		*p_error = "less than two rooms created";
-		return NULL;
-	}
 
 	/* Generate permanent walls around the edge of the generated area */
 	draw_rectangle(c, 0, 0, c->height - 1, c->width - 1, 
