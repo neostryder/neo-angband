@@ -294,6 +294,10 @@ export function storeBuy(
   if (know.flavor) {
     know.flavor.objectFlavorAware(bought.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
   }
+  /* obj->known->effect = obj->effect (L1738). Redundant behind the
+   * objectFlavorAware above for everything a store actually stocks, but it is
+   * the C's own line and the field now exists to hold it. */
+  bought.knownEffect = bought.effect;
   if (know.learnRunes) {
     const { env, runes } = know.learnRunes;
     while (!objectRunesKnown(player, env, bought, runes)) {
@@ -490,17 +494,15 @@ function sellObject(
     know.flavor.objectFlavorAware(obj.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
   }
 
+  /* obj->known->effect = obj->effect (L1949), the effect half of
+   * object_fully_known, set unconditionally on the line above upstream's loop. */
+  obj.knownEffect = obj.effect;
+
   /* ...then the runes (do_cmd_sell L1946-1951), BEFORE the detach below, so the
    * sold copy is the fully-known object upstream describes at L1961 and values
-   * at L1956. object_fully_known is "all runes known AND the effect known", and
-   * upstream makes the effect half true unconditionally on the line above the
-   * loop (obj->known->effect = obj->effect); the port's known shadow derives the
-   * effect from awareness instead of storing it, which objectFlavorAware has just
-   * granted for a flavoured or non-wearable kind and for a wearable with a KIND
-   * effect (known-object.ts L226-239). An ego- or artifact-only activation is
-   * therefore not covered here - the port has no per-object effect-known bit to
-   * set, and adding one is a save-format change. So the loop condition below is
-   * the rune half alone, which is what terminates it upstream too. */
+   * at L1956. object_fully_known is "all runes known AND the effect known"; the
+   * line above has just made the effect half true, so the loop condition here
+   * is the rune half alone - which is what terminates it upstream too. */
   if (know.learnRunes) {
     const { env, runes } = know.learnRunes;
     while (!objectRunesKnown(player, env, obj, runes)) {

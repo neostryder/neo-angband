@@ -317,6 +317,22 @@ export interface GameObject {
   effect: EffectRecordJson[] | null;
   effectMsg: string;
   activation: Activation | null;
+  /**
+   * obj->known->effect, for the routes AWARENESS cannot express. The shadow
+   * derives known->effect from object_set_base_known's awareness rule
+   * (obj-knowledge.c L1178-1182), which is a property of the KIND; upstream
+   * also writes it per OBJECT, most importantly on activating an item whose
+   * kind is still unaware (cmd-obj.c L98-101). Undefined = "nothing the
+   * awareness rule does not already give".
+   */
+  knownEffect?: EffectRecordJson[] | null;
+  /**
+   * obj->known->activation. Upstream has NO awareness route for this at all -
+   * every write is per-object (cmd-obj.c L102, player-util.c L300/L306) - so
+   * without this field the port can never satisfy use_aux's last known_aim
+   * disjunct (cmd-obj.c L428).
+   */
+  knownActivation?: Activation | null;
   time: RandomValue;
   timeout: number;
   number: number;
@@ -415,6 +431,10 @@ export function objectCopy(src: GameObject): GameObject {
     effect: src.effect,
     effectMsg: src.effectMsg,
     activation: src.activation,
+    ...(src.knownEffect !== undefined ? { knownEffect: src.knownEffect } : {}),
+    ...(src.knownActivation !== undefined
+      ? { knownActivation: src.knownActivation }
+      : {}),
     time: { ...src.time },
     timeout: src.timeout,
     number: src.number,
@@ -1246,8 +1266,9 @@ export function objectOriginCombine(
 }
 
 /**
- * object_absorb_merge, minus the known-object bookkeeping (knowledge
- * system deferred).
+ * object_absorb_merge (obj-pile.c L580). The known-twin half is the per-object
+ * effect bit; the rest of upstream's player_know_object() call here is the
+ * on-demand shadow's job (known-object.ts).
  */
 function objectAbsorbMerge(
   obj1: GameObject,
@@ -1255,6 +1276,12 @@ function objectAbsorbMerge(
   originMixed: number,
   combineChargesTimeouts: boolean,
 ): void {
+  /* First object gains any extra knowledge from second (obj-pile.c L585-590).
+   * The player_know_object() that follows it upstream re-derives the twin from
+   * knowledge the port already reads on demand; the one thing it cannot
+   * re-derive is the PER-OBJECT effect bit, so that is what carries here. */
+  if (obj2.knownEffect) obj1.knownEffect = obj1.effect;
+
   /* Merge inscriptions */
   if (obj2.note) obj1.note = obj2.note;
 

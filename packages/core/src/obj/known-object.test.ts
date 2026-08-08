@@ -29,7 +29,12 @@ import {
 } from "./known-object.js";
 import type { KnownDesc, KnownFloorDeps, KnownState } from "./known-object.js";
 import { ELEM, OF, TV } from "../generated/index.js";
-import { deserializePlayer, serializePlayer } from "../session/save.js";
+import {
+  deserializeObject,
+  deserializePlayer,
+  serializeObject,
+  serializePlayer,
+} from "../session/save.js";
 import type { SavedPlayer } from "../session/save.js";
 import { ContentIdResolver } from "../mod/ids.js";
 
@@ -574,5 +579,86 @@ describe("objectFlagsKnown / knownBonusView (obj-util.c:364)", () => {
 
     obj.notice |= OBJ_NOTICE.ASSESSED;
     expect(knownBonusView(obj, p, env, knownDescOf(flavor)).toA).toBe(5);
+  });
+});
+
+/**
+ * The two per-object knowledge fields the awareness rule cannot express
+ * (#126 / DIVERGENCES C1). object_set_base_known's effect rule (L1178-1182) is
+ * a statement about the KIND; upstream also writes obj->known->effect and
+ * obj->known->activation per OBJECT, chiefly on activating an item whose kind
+ * is still unaware (cmd-obj.c L98-101). The shadow reads those back here.
+ */
+describe("per-object known effect / activation (obj-knowledge.c L1178-1182)", () => {
+  /** A flavoured kind carrying an effect, i.e. one the awareness rule gates. */
+  function flavouredEffectKind(): ObjectKind {
+    const k = reg.kinds.find(
+      (kk) =>
+        kk.kidx < reg.ordinaryKindCount &&
+        !!kk.effect &&
+        tvalIsJewelry(kk.tval),
+    );
+    if (!k) throw new Error("no flavoured jewelry kind with an effect");
+    return k;
+  }
+
+  it("an unaware kind hides its effect, and the per-object bit reveals it", () => {
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const kind = flavouredEffectKind();
+    const obj = mkObj(kind);
+    obj.effect = kind.effect;
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    const deps = { ...knownDescOf(flavor), hasFlavor: () => true };
+
+    /* Unaware: none of the three awareness disjuncts fire, so the twin's
+     * effect stays null and object_effect_is_known is false. */
+    expect(objectKnownShadow(obj, p, env, deps).effect).toBeNull();
+
+    /* check_devices wrote the per-object bit. The kind is STILL unaware. */
+    obj.knownEffect = obj.effect;
+    expect(flavor.isAware(kind), "the KIND must not have learned").toBe(false);
+    expect(objectKnownShadow(obj, p, env, deps).effect).toBe(obj.effect);
+  });
+
+  it("the twin's activation comes from the object alone", () => {
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const obj = mkObj(flavouredEffectKind());
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    const activation = { index: 1 } as never;
+    obj.activation = activation;
+    const deps = { ...knownDescOf(flavor), hasFlavor: () => true };
+
+    /* No awareness route exists for known->activation upstream at all. */
+    expect(objectKnownShadow(obj, p, env, deps).activation).toBeNull();
+    obj.knownActivation = activation;
+    expect(objectKnownShadow(obj, p, env, deps).activation).toBe(activation);
+  });
+
+  it("survives a save round trip, and an OLD save loads as it always did", () => {
+    const kind = flavouredEffectKind();
+    const obj = mkObj(kind);
+    obj.effect = kind.effect;
+    obj.knownEffect = obj.effect;
+
+    const saved = serializeObject(obj, ids);
+    expect(saved.knownEffectPresent).toBe(true);
+    const back = deserializeObject(saved, reg, ids);
+    /* Reference identity, not deep equality: objectEffectIsKnown is a pointer
+     * test, so a structurally-equal-but-distinct array would silently break it. */
+    expect(back.knownEffect).toBe(back.effect);
+
+    /* A save written before these fields existed carries neither key. It must
+     * load as undefined - "whatever the awareness rule gives" - because that is
+     * the behaviour the character was played under. No SAVE_VERSION bump. */
+    const old = { ...saved };
+    delete old.knownEffectPresent;
+    delete old.knownActivationPresent;
+    const legacy = deserializeObject(old, reg, ids);
+    expect(legacy.knownEffect).toBeUndefined();
+    expect(legacy.knownActivation).toBeUndefined();
   });
 });

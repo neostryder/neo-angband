@@ -3171,6 +3171,14 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     wired.flavor.objectFlavorAware(kind, NOOP_FLAVOR_AWARE_DEPS);
   }
 
+  // obj->known->effect = obj->effect per start item (player-birth.c:650). The
+  // objectFlavorAware pass above already covers every kind the outfit can
+  // contain, so this is the C's line rather than a behaviour change - but it is
+  // the line, and the field now exists to hold it.
+  for (const obj of state.gear.store.values()) {
+    obj.knownEffect = obj.effect;
+  }
+
   // birth_know_runes (player-birth.c L1261-1262): a birth_know_runes character
   // knows every rune for ID-on-walkover (gap 1.5). No RNG. Before
   // player_learn_innate, matching the C acceptance order.

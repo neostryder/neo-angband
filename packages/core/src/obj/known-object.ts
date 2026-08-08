@@ -578,7 +578,20 @@ export function objectKnownShadow(
     (tvalIsWearable(obj.tval) && obj.kind.effect && deps.isAware(obj.kind))
   ) {
     shadow.effect = obj.effect;
+  } else if (obj.knownEffect !== undefined) {
+    /* The awareness rule above is a property of the KIND, so it cannot express
+     * upstream's per-OBJECT writes to obj->known->effect - chiefly activating
+     * an item whose kind is still unaware (cmd-obj.c L98-101), which teaches
+     * that object's effect without teaching the kind. Same concession shape as
+     * knownPval at L465. */
+    shadow.effect = obj.knownEffect;
   }
+
+  /* obj->known->activation has no awareness route upstream at all: every write
+   * is per-object (cmd-obj.c L102, player-util.c L300/L306), so the shadow's
+   * only source is the object itself. Its one reader is use_aux's known_aim
+   * (cmd-obj.c L428). */
+  shadow.activation = obj.knownActivation ?? null;
 
   /* known->artifact (object_touch L963): the artifact is automatically
    * noticed when the object is ASSESSED (touched / picked up), NOT when its

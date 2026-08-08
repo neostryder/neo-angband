@@ -144,7 +144,7 @@ import {
   stepTargetLoop,
   describeLookGrid,
   computePathColours,
-  historyUnmaskUnknown,
+  deathKnowledge,
   playerAbilities,
   chestCheck,
   countChests,
@@ -7598,11 +7598,24 @@ function advance(): void {
     // failed metadata write loses the memorial and gets upstream's message.
     if (activeId && !markDead(activeId)) say("death save failed!");
     setActiveId(null);
-    // death_knowledge (player-util.c L309): reveal every ARTIFACT_UNKNOWN
-    // history entry before the memorial/score screen, so a "Missed X" find
-    // the player never identified shows its real name. 4.2.6 writes no
-    // HIST_PLAYER_DEATH entry (verified: zero uses in reference/src).
-    historyUnmaskUnknown(state.actor.player);
+    // death_knowledge (player-util.c L278-317), in full: retire a winner in a
+    // good state, reveal the gear and the home's stock, then unmask the
+    // ARTIFACT_UNKNOWN history entries so a "Missed X" find the player never
+    // identified shows its real name. Runs before the memorial and before
+    // enterScore below, exactly as the C orders it (enter_score is L315, and
+    // the shell owns the store). 4.2.6 writes no HIST_PLAYER_DEATH entry
+    // (verified: zero uses in reference/src).
+    deathKnowledge(state.actor.player, {
+      runeEnv: state.runeEnv,
+      flavor: game.flavor!,
+      flavorDeps: state.flavorAwareDeps!,
+      gear: state.gear.store.values(),
+      homeStock:
+        state.stores?.find((s) => s.feat === FEAT.HOME)?.stock ?? [],
+      setDepth: (d) => {
+        state.chunk.depth = d;
+      },
+    });
     message = "You have died. (Press 'N' or refresh to start a new game.)";
     // Enter the character on the high-score table (enter_score). died_from is
     // the real killer recorded on the player at take-hit (12.5/WP-10); it falls

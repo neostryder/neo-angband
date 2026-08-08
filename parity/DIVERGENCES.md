@@ -50,9 +50,33 @@ something the shadow cannot re-derive would differ. The census rows are the audi
 exactly that — each one names a write site and says what re-derives it (e.g.
 `game/gear.ts`: `objKnown.toA` is set at birth by `player_outfit`, so the shadow at
 `known-object.ts:446` yields the true `toA` and the twin write has no observable
-consumer). No row found a write whose value could not be re-derived. That is an
-argument, not a proof, and it is the single most valuable thing for a future reviewer
-to attack.
+consumer). That is an argument, not a proof, and it is the single most valuable thing
+for a future reviewer to attack.
+
+**Attacked, 2026-08-07, and it gave up two fields.** The census had been taken over
+the WRITE sites; a re-census over the four **reads** found one the shadow genuinely
+could not re-derive. `object_set_base_known`'s effect rule (obj-knowledge.c
+L1178-1182) is a statement about the **kind**, but upstream also writes the twin per
+**object** — `check_devices`' "Notice activations" (cmd-obj.c L98-101) teaches an
+item's own effect or activation *without* making its kind aware. `obj->known->
+activation` has no awareness route at all: all three of its writes are per-object, and
+the port had zero of them.
+
+What that cost, measured rather than assumed: `flavor_init` (obj-util.c L243-245)
+leaves every flavoured kind unaware, and skips the 14 special-artifact kinds by
+`kidx`. For any such item `use_aux`'s `known_aim` (cmd-obj.c L424-429) stayed false
+forever, so a Ring of Flames fired twenty times still threw its ball in a **random
+direction**. `object_effect_is_known` was NOT affected the way an earlier draft of
+this row claimed — `copy_artifact_data` never sets `obj->effect`, so an artifact's
+`obj->effect` is its kind's (usually `NULL`) and the identity test already held.
+
+Fixed by adding exactly two optional per-object fields, `GameObject.knownEffect` and
+`.knownActivation` (`obj/object.ts`), in the same shape as the existing `knownPval`
+concession: the shadow consults them when the awareness rule does not fire, and they
+persist as one bit each — so **no `SAVE_VERSION` bump**, and a save written without
+them loads as "whatever the awareness rule gives", which is the behaviour that
+character was played under. The rest of the twin is unchanged and the argument above
+still stands for it.
 
 ## Closed: `add_brand` matched element names from a local table
 
