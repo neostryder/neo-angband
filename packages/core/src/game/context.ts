@@ -778,6 +778,18 @@ export interface GameState {
    */
   monsterTurnHook?: (mon: Monster, state: GameState) => boolean;
   /**
+   * The monster blow-effect handler table (combat/mon-melee.ts). wireGame seeds
+   * one per game with core's 30 handlers; a mod adds, overrides or wraps one
+   * through ModRegistryHost.blows (mod/registry-host.ts, "registry:blow").
+   *
+   * Per game, not per module, so one character's mods cannot leak into the next.
+   * Optional only because the headless harnesses build a GameState without one -
+   * monMeleeAttack then falls back to a core-only registry, which is stock
+   * behaviour, and a mod can never reach that fallback because the facade
+   * refuses to register when the host wired no registry.
+   */
+  blowEffects?: import("../combat/mon-melee.js").BlowEffectRegistry;
+  /**
    * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
    * the HOST from each enabled mod's manifest `rules` against their saved Fixes
    * & tweaks selections.
