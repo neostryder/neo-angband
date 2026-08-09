@@ -49,7 +49,7 @@ import {
 import type { TrapDeps } from "./trap.js";
 import { makeObject, makeGold } from "../obj/make.js";
 import type { ProjectWorldEnv } from "./project-obj.js";
-import type { ProjectionInfo } from "../world/projection.js";
+import { projectionCodeFor } from "../world/projection.js";
 
 /** The seams the terrain handlers need beyond the GameState. */
 export interface ProjectFeatEnv extends ProjectWorldEnv {
@@ -57,13 +57,6 @@ export interface ProjectFeatEnv extends ProjectWorldEnv {
   makeDeps?: MakeDeps;
   /** Trap system access for MAKE_TRAP / KILL_TRAP / webs / door locks. */
   trapDeps?: TrapDeps;
-  /**
-   * The bound projection table, so a `typ` can be resolved to the CODE the
-   * handler registry is keyed by. Without it only the compiled-in 56 resolve,
-   * which is every projection core ships; a mod's projection needs this to
-   * reach its own handler. `castProjection` supplies it.
-   */
-  projections?: readonly ProjectionInfo[];
   /**
    * The handler table to dispatch through, defaulting to
    * PROJECT_FEAT_HANDLERS. A whole table rather than an overlay: a mod that
@@ -533,24 +526,6 @@ export const PROJECT_FEAT_HANDLERS: ReadonlyMap<string, ProjectFeatHandler> =
   ]);
 
 /**
- * PROJ value -> code, for the 56 the enum compiles in. Built once from the
- * generated table so it cannot disagree with it.
- */
-const CODE_BY_PROJ: readonly (string | undefined)[] = (() => {
-  const out: (string | undefined)[] = [];
-  for (const [code, index] of Object.entries(PROJ)) out[index] = code;
-  return out;
-})();
-
-/**
- * The code for a PROJ value: the bound table first, because only it knows a
- * mod's projection, then the compiled-in reverse map.
- */
-function projectionCode(typ: number, env: ProjectFeatEnv): string | undefined {
-  return env.projections?.[typ]?.code ?? CODE_BY_PROJ[typ];
-}
-
-/**
  * project_f: affect the terrain at `grid` (PROJECT_GRID). Returns whether
  * anything the player can see happened.
  *
@@ -567,7 +542,7 @@ export function projectFeature(
   typ: number,
   env: ProjectFeatEnv = {},
 ): boolean {
-  const code = projectionCode(typ, env);
+  const code = projectionCodeFor(typ, env.projections);
   const table = env.featHandlers ?? PROJECT_FEAT_HANDLERS;
   const handler = (code === undefined ? undefined : table.get(code)) ?? observeOnly;
   return handler({ state, grid, dam, typ, env });

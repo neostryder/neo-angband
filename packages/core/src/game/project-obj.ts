@@ -33,6 +33,8 @@ import { tvalIsAmmo, tvalIsArmor, tvalIsRod, tvalIsWeapon } from "../obj/object.
 import { isLockedChest, unlockChest } from "../obj/chest.js";
 import { ODESC } from "../obj/desc.js";
 import { squareIsSeen } from "../world/view.js";
+import { projectionCodeFor } from "../world/projection.js";
+import type { ProjectionInfo } from "../world/projection.js";
 import type { GameState } from "./context.js";
 import { describeObject } from "./describe.js";
 import { floorExcise, floorPile } from "./floor.js";
@@ -49,6 +51,19 @@ export { gearToLabel };
 /** The world seams project_o/project_f need beyond the GameState. */
 export interface ProjectWorldEnv {
   msg?(text: string): void;
+  /**
+   * The bound projection table, so a `typ` can be resolved to the CODE both
+   * handler registries are keyed by. Without it only the compiled-in 56
+   * resolve - which is every projection core ships; a mod's projection needs
+   * this to reach its own handler. `castProjection` supplies it.
+   */
+  projections?: readonly ProjectionInfo[];
+  /**
+   * The object-handler table to dispatch through, defaulting to
+   * PROJECT_OBJ_HANDLERS. A whole table rather than an overlay, for the same
+   * reason as `featHandlers`: composing several mods' tables is the host's job.
+   */
+  objHandlers?: ReadonlyMap<string, ProjectObjHandler>;
   /**
    * protected_obj (project-obj.c L537): the object that created the
    * projection, which must not destroy itself. Absent when the projection has
@@ -86,53 +101,97 @@ function elemental(
   }
 }
 
-/** The object handler for one projection type (null = no object effect). */
-function runObjectHandler(typ: number, obj: GameObject): ObjHandlerResult {
+/** What an object handler is handed. Mirrors project_object_handler_context_t. */
+export interface ProjectObjCtx {
+  /** The object being affected. */
+  readonly obj: GameObject;
+  /** The PROJ_ value, for a handler that wants it. */
+  readonly typ: number;
+  /** The out fields, written in place exactly as upstream's context is. */
+  readonly out: ObjHandlerResult;
+}
+
+/** One projection's effect on an object. Writes `ctx.out`; returns nothing. */
+export type ProjectObjHandler = (ctx: ProjectObjCtx) => void;
+
+/** An elemental arm: destruction gated by that element's HATES/IGNORE bits. */
+const hates =
+  (element: number, singular: string, plural: string): ProjectObjHandler =>
+  ({ obj, out }) => {
+    elemental(obj, out, element, singular, plural);
+  };
+
+/**
+ * project_o's switch, as a table keyed by projection CODE.
+ *
+ * Same rule as PROJECT_FEAT_HANDLERS and for the same reason: a PROJ_ number is
+ * an index into a compiled-in enum and a mod's projection is appended past the
+ * end of it, so only the `code` is a stable name. See project-feat.ts.
+ *
+ * Only the 11 codes with an object effect are here. Every other projection has
+ * an empty stub upstream, so absence IS the faithful answer rather than an
+ * omission - and `project-obj-vectors.json` records the outcome for all 56
+ * codes, so a code that quietly gained or lost an effect fails there.
+ *
+ * PLASMA and METEOR call two elements IN ORDER, and the order is load-bearing:
+ * the second `elemental` overwrites `noteKill` when it also hits, so PLASMA on
+ * an object that hates both fire and electricity reports "is destroyed", not
+ * "burns up".
+ */
+export const PROJECT_OBJ_HANDLERS: ReadonlyMap<string, ProjectObjHandler> =
+  new Map<string, ProjectObjHandler>([
+    ["ACID", hates(ELEM.ACID, "melts", "melt")],
+    ["ELEC", hates(ELEM.ELEC, "is destroyed", "are destroyed")],
+    ["FIRE", hates(ELEM.FIRE, "burns up", "burn up")],
+    ["COLD", hates(ELEM.COLD, "shatters", "shatter")],
+    ["SOUND", hates(ELEM.SOUND, "shatters", "shatter")],
+    ["SHARD", hates(ELEM.SHARD, "shatters", "shatter")],
+    ["ICE", hates(ELEM.ICE, "shatters", "shatter")],
+    ["FORCE", hates(ELEM.FORCE, "shatters", "shatter")],
+    [
+      "PLASMA",
+      ({ obj, out }): void => {
+        elemental(obj, out, ELEM.FIRE, "burns up", "burn up");
+        elemental(obj, out, ELEM.ELEC, "is destroyed", "are destroyed");
+      },
+    ],
+    [
+      "METEOR",
+      ({ obj, out }): void => {
+        elemental(obj, out, ELEM.FIRE, "burns up", "burn up");
+        elemental(obj, out, ELEM.COLD, "shatters", "shatter");
+      },
+    ],
+    [
+      "MANA",
+      ({ obj, out }): void => {
+        /* Mana -- destroys everything. */
+        out.doKill = true;
+        out.noteKill = verbAgree(obj.number, "is destroyed", "are destroyed");
+      },
+    ],
+  ]);
+
+/**
+ * Run the object handler for one projection type.
+ *
+ * This was an 11-case switch until 2026-08-08. KILL_TRAP's chest unlock is NOT
+ * here and never was: it mutates the object and messages instead of destroying
+ * it, so projectObject handles it ahead of this dispatch. That exception is
+ * asserted rather than left implicit - see project-obj-vectors.test.ts.
+ *
+ * Exported because it is the entry point the recorded vectors replay through,
+ * and because a caller with its own table needs somewhere to pass it.
+ */
+export function runObjectHandler(
+  typ: number,
+  obj: GameObject,
+  env: ProjectWorldEnv = {},
+): ObjHandlerResult {
   const out: ObjHandlerResult = { doKill: false, ignore: false, noteKill: null };
-  switch (typ) {
-    case PROJ.ACID:
-      elemental(obj, out, ELEM.ACID, "melts", "melt");
-      break;
-    case PROJ.ELEC:
-      elemental(obj, out, ELEM.ELEC, "is destroyed", "are destroyed");
-      break;
-    case PROJ.FIRE:
-      elemental(obj, out, ELEM.FIRE, "burns up", "burn up");
-      break;
-    case PROJ.COLD:
-      elemental(obj, out, ELEM.COLD, "shatters", "shatter");
-      break;
-    case PROJ.SOUND:
-      elemental(obj, out, ELEM.SOUND, "shatters", "shatter");
-      break;
-    case PROJ.SHARD:
-      elemental(obj, out, ELEM.SHARD, "shatters", "shatter");
-      break;
-    case PROJ.ICE:
-      elemental(obj, out, ELEM.ICE, "shatters", "shatter");
-      break;
-    case PROJ.FORCE:
-      elemental(obj, out, ELEM.FORCE, "shatters", "shatter");
-      break;
-    case PROJ.PLASMA:
-      elemental(obj, out, ELEM.FIRE, "burns up", "burn up");
-      elemental(obj, out, ELEM.ELEC, "is destroyed", "are destroyed");
-      break;
-    case PROJ.METEOR:
-      elemental(obj, out, ELEM.FIRE, "burns up", "burn up");
-      elemental(obj, out, ELEM.COLD, "shatters", "shatter");
-      break;
-    case PROJ.MANA:
-      /* Mana -- destroys everything. */
-      out.doKill = true;
-      out.noteKill = verbAgree(obj.number, "is destroyed", "are destroyed");
-      break;
-    /* KILL_TRAP's chest unlock is handled in projectObject (it mutates the
-     * object and messages instead of destroying it). Every other projection
-     * has no object effect, exactly as the upstream stubs. */
-    default:
-      break;
-  }
+  const code = projectionCodeFor(typ, env.projections);
+  const handler = code === undefined ? undefined : (env.objHandlers ?? PROJECT_OBJ_HANDLERS).get(code);
+  handler?.({ obj, typ, out });
   return out;
 }
 
@@ -170,7 +229,7 @@ export function projectObject(
       continue;
     }
 
-    const { doKill: rawKill, ignore, noteKill } = runObjectHandler(typ, obj);
+    const { doKill: rawKill, ignore, noteKill } = runObjectHandler(typ, obj, env);
     /* protected_obj never destroys itself. */
     const doKill = rawKill && obj !== env.protectedObj;
     if (!doKill) continue;

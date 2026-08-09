@@ -216,6 +216,33 @@ export function bindProjections(
   return out as ProjectionInfo[];
 }
 
+/**
+ * PROJ value -> code, for the 56 the enum compiles in. Built once from the
+ * generated table so it cannot disagree with it.
+ */
+const CODE_BY_PROJ: readonly (string | undefined)[] = (() => {
+  const out: (string | undefined)[] = [];
+  for (const [code, index] of Object.entries(PROJ)) out[index] = code;
+  return out;
+})();
+
+/**
+ * The CODE for a PROJ value: the bound table first, because only it knows a
+ * projection a mod appended past the compiled-in 56, then the generated reverse
+ * map. `undefined` when neither has it, which callers treat as "no handler",
+ * never as "some other projection's handler".
+ *
+ * ONE COPY, because there are two dispatchers - project_f's terrain handlers
+ * and project_o's object handlers - and two copies of this would be two things
+ * to keep in step, only one of which would get fixed.
+ */
+export function projectionCodeFor(
+  typ: number,
+  projections?: readonly ProjectionInfo[],
+): string | undefined {
+  return projections?.[typ]?.code ?? CODE_BY_PROJ[typ];
+}
+
 /** RES_LEVEL that means full immunity (el_info res_level 3). */
 const RESIST_IMMUNE = 3;
 /** RES_LEVEL that means vulnerability. */

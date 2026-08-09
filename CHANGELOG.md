@@ -46,6 +46,19 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **`project_o`'s 11-case switch is a registry too** (`PROJECT_OBJ_HANDLERS`,
+  `ProjectWorldEnv.objHandlers`), so a mod's projection can destroy objects the
+  way `FIRE` does. Proven by an **exhaustive** recording rather than a sampled
+  one: `project_object_handler` is pure - `(typ, obj)` in, `{doKill, ignore,
+  noteKill}` out, no rng - so every projection against every element/flag
+  combination is a finite table. 56 codes x 208 objects = **11,648 rows**,
+  recorded from the switch before it was touched and replayed after. Control
+  run: swapping PLASMA's two `elemental` calls fails it. `KILL_TRAP` stays out
+  of the table because `projectObject` handles the chest unlock ahead of the
+  dispatch, and that exception is now asserted rather than implicit. The
+  PROJ-value-to-code resolver is shared with `project_f` rather than copied,
+  because two copies would be two things to keep in step and only one would get
+  fixed.
 - **`project_f`'s 37-case switch is a registry keyed by projection `code`.**
   `PROJECT_FEAT_HANDLERS` maps a code to a `ProjectFeatHandler`, and a caller
   passes its own table through `ProjectFeatEnv.featHandlers` - so a mod can give
