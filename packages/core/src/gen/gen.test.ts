@@ -356,16 +356,20 @@ describe("full level generation", () => {
    * diagonally and caverns connect diagonally. Walls are excluded on purpose -
    * granite is tunnellable, but counting it would make the guarantee vacuous.
    */
+  const D8: readonly Loc[] = [
+    loc(0, 1), loc(0, -1), loc(1, 0), loc(-1, 0),
+    loc(1, 1), loc(1, -1), loc(-1, 1), loc(-1, -1),
+  ];
+
   const walkFrom = (g: Gen, start: Loc): Uint8Array => {
     const c = g.c;
     const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
     const seen = new Uint8Array(c.width * c.height);
     const stack: Loc[] = [start];
     seen[start.y * c.width + start.x] = 1;
-    const d8 = [loc(0,1),loc(0,-1),loc(1,0),loc(-1,0),loc(1,1),loc(1,-1),loc(-1,1),loc(-1,-1)];
     while (stack.length) {
       const cur = stack.pop() as Loc;
-      for (const d of d8) {
+      for (const d of D8) {
         const n = loc(cur.x + d.x, cur.y + d.y);
         if (!c.inBounds(n)) continue;
         const idx = n.y * c.width + n.x;
@@ -499,32 +503,9 @@ describe("full level generation", () => {
     [60, 602272, ["up"]],
     [60, 602403, ["down"]],
     [60, 602920, ["up"]],
-  ];
-
-  /**
-   * ONE SEED FROM THE 2026-08-07 SWEEP DOES NOT CARRY UPSTREAM'S SIGNATURE, and
-   * it is held here rather than in STRANDED above so that the control test can
-   * stay honest without the finding evaporating.
-   *
-   * d40 seed 400792 seals THREE down staircases, at (166,14), (96,39) and
-   * (114,46), and not one of them is SQUARE_VAULT. In 15,000 levels under the
-   * previous gamedata and 12,000 under 4.2.6's, this is the first stranding of
-   * that shape. notUpstreamStranding's own note names the two candidates and
-   * says which is likelier:
-   *
-   *   - the port failing to connect the dungeon (a CORE defect, to be fixed
-   *     here and un-fixed in the bug-fixes mod), or
-   *   - upstream's own second route: join_region plans a path THROUGH a vault
-   *     and then refuses to dig the vault grids on it, so a crossing that only
-   *     ever went through a vault WALL leaves the corridor holed and an
-   *     ordinary region sealed with no vault grid in it.
-   *
-   * Not yet adjudicated. The test below pins the finding as it stands - the
-   * seed strands, and its stranding is NOT upstream's signature - so that a
-   * change which quietly makes either half stop being true has to come back
-   * here and say why.
-   */
-  const STRANDED_UNCLASSIFIED: readonly [number, number, readonly string[]][] = [
+    /* Held apart in STRANDED_UNCLASSIFIED until 2026-08-09; see the test below
+     * for the adjudication. Upstream's route 2, and the only seed of the 32
+     * that strands in BOTH directions. */
     [40, 400792, ["down", "up"]],
   ];
 
@@ -539,12 +520,10 @@ describe("full level generation", () => {
    *
    * A violation is a LEAD, not a verdict. The likely cause is the port failing
    * to connect the dungeon - core's bug to fix, and the bug-fixes mod's repair
-   * to withdraw. But upstream has one other route to the same shape: join_region
-   * plans a path THROUGH a vault and then refuses to dig the vault grids on it,
-   * so if the only crossing was through a vault WALL the corridor is left with a
-   * hole and an ordinary region stays sealed with no vault grid in it. That has
-   * not been observed in 15,000 levels; if it ever fires, rule it out before
-   * touching the generator.
+   * to withdraw. Upstream has a SECOND route to the same shape, and as of
+   * 2026-08-09 it is no longer hypothetical: see ROUTE 2 below and the seed
+   * 400792 test. Both are checked here, so a violation now means neither
+   * mechanism explains it.
    *
    * Returns one string per violation, empty when every stranding is upstream's.
    */
@@ -558,10 +537,6 @@ describe("full level generation", () => {
           const stair = loc(x, y);
           if (c.feat(stair) !== feat) continue;
           if (reachable[y * c.width + x]) continue;
-          if (!c.sqinfoHas(stair, SQUARE.VAULT)) {
-            out.push(`sealed ${name} stair at (${x},${y}) is not SQUARE_VAULT`);
-            continue;
-          }
           /* The region it is sealed into, by the same walk rule. */
           const sealed = walkFrom(g, stair);
           let size = 0;
@@ -571,12 +546,54 @@ describe("full level generation", () => {
             size++;
             if (!c.sqinfoHas(loc(i % c.width, Math.trunc(i / c.width)), SQUARE.VAULT)) outside++;
           }
-          if (outside > 0) {
-            out.push(
-              `${name} stair at (${x},${y}) is sealed into a ${size}-grid region ` +
-                `with ${outside} non-vault grids`,
-            );
+          /* ROUTE 1: the stair is itself a vault grid and its region is vault to
+           * the last square - join_region never entered, because every way in
+           * was a grid it declines to dig. */
+          if (c.sqinfoHas(stair, SQUARE.VAULT) && outside === 0) continue;
+          /* ROUTE 2, adjudicated 2026-08-09 on d40 seed 400792 (task #148).
+           *
+           * join_region's two halves treat vault grids DIFFERENTLY, in the port
+           * and in 4.2.6 alike (cave.ts joinRegion / gen-cave.c:1925): the BFS
+           * may traverse a vault grid when allow_vault_disconnect is set, but
+           * the walk-back that turns the planned path into floor refuses to dig
+           * one. So a crossing whose only route was through a vault WALL is
+           * recoloured as joined and left physically holed, and an ORDINARY
+           * region stays sealed with no vault grid in it.
+           *
+           * The observable signature is a non-permanent SQUARE_VAULT wall on the
+           * sealed region's boundary: that is the only grid class join_region
+           * can plan through and then decline to dig. Permanent walls are
+           * excluded because upstream never digs those on any path, so they say
+           * nothing about which mechanism fired.
+           *
+           * MEASURED, not inferred. Instrumenting the else-branch of that dig
+           * loop to record every refused vault grid named exactly one on this
+           * region's boundary: (94,38). The evidence is reproducible by adding
+           * that recorder back; the check here is written against the finished
+           * level so it needs no hook in the generator. */
+          let undiggableVaultWall = false;
+          for (let i = 0; i < sealed.length && !undiggableVaultWall; i++) {
+            if (!sealed[i]) continue;
+            const gy = Math.trunc(i / c.width);
+            const gx = i % c.width;
+            for (const d of D8) {
+              const n = loc(gx + d.x, gy + d.y);
+              if (!c.inBounds(n) || sealed[n.y * c.width + n.x]) continue;
+              if (c.sqinfoHas(n, SQUARE.VAULT) && !c.isPerm(n)) {
+                undiggableVaultWall = true;
+                break;
+              }
+            }
           }
+          if (undiggableVaultWall) continue;
+          if (!c.sqinfoHas(stair, SQUARE.VAULT)) {
+            out.push(`sealed ${name} stair at (${x},${y}) is not SQUARE_VAULT`);
+            continue;
+          }
+          out.push(
+            `${name} stair at (${x},${y}) is sealed into a ${size}-grid region ` +
+              `with ${outside} non-vault grids`,
+          );
         }
       }
     }
@@ -655,19 +672,59 @@ describe("full level generation", () => {
     ).toEqual([]);
   });
 
-  it("pins the ONE stranding that does not carry upstream's signature", () => {
-    /* A finding with no check on it is a note, and notes go stale silently.
-     * Both halves are asserted: it still strands, and it still fails the
-     * classifier. If either flips, this test fails and the flip gets read. */
-    for (const [depth, seed, dirs] of STRANDED_UNCLASSIFIED) {
-      const g = generateLevel(new Rng(seed), depth, makeDeps());
-      expect(strandedDirs(g), `d${depth} seed ${seed} stopped stranding`).toEqual([...dirs]);
-      expect(
-        notUpstreamStranding(g).length,
-        `d${depth} seed ${seed} now carries upstream's vault signature. If a ` +
-          `generator change made that true, this seed belongs in STRANDED and ` +
-          `the open lead is closed - say so.`,
-      ).toBeGreaterThan(0);
+  it("d40 seed 400792 is upstream's SECOND route, and stays measurable", () => {
+    /*
+     * Task #148, adjudicated 2026-08-09. This seed was held apart for two days
+     * as the one stranding that did not carry upstream's signature, and the
+     * verdict is that it carries upstream's OTHER one - the route
+     * notUpstreamStranding's note predicted and had never observed in 27,000
+     * levels.
+     *
+     * The seed's own numbers, and they are what a regression would move:
+     * three down staircases at (166,14), (96,39) and (114,46), all in ONE
+     * 385-grid region that is 60 vault grids and 325 ordinary ones, plus a
+     * separate 17-grid all-vault pocket holding the level's only up stair.
+     * The first is route 2, the second is route 1 - one level, both mechanisms.
+     *
+     * Asserted here rather than left to the CONTROL test above, because the
+     * control only checks that nothing is UNexplained: if this seed stopped
+     * stranding entirely the control would go quiet and the finding would
+     * vanish with it.
+     */
+    const g = generateLevel(new Rng(400792), 40, makeDeps());
+    expect(strandedDirs(g)).toEqual(["down", "up"]);
+    expect(notUpstreamStranding(g)).toEqual([]);
+
+    const c = g.c;
+    const downRegion = walkFrom(g, loc(166, 14));
+    let size = 0;
+    let vaultIn = 0;
+    let diggableVaultWalls = 0;
+    for (let i = 0; i < downRegion.length; i++) {
+      if (!downRegion[i]) continue;
+      size++;
+      const gy = Math.trunc(i / c.width);
+      const gx = i % c.width;
+      if (c.sqinfoHas(loc(gx, gy), SQUARE.VAULT)) vaultIn++;
+      for (const d of D8) {
+        const n = loc(gx + d.x, gy + d.y);
+        if (!c.inBounds(n) || downRegion[n.y * c.width + n.x]) continue;
+        if (c.sqinfoHas(n, SQUARE.VAULT) && !c.isPerm(n)) diggableVaultWalls++;
+      }
+    }
+    /* The region really is ORDINARY - that is what made it look like a port
+     * connectivity defect - and it really is walled by grids upstream would
+     * have dug had they not been flagged vault. Both halves, or the route-2
+     * verdict is resting on one of them alone. */
+    expect(size).toBe(385);
+    expect(vaultIn).toBe(60);
+    expect(size - vaultIn).toBeGreaterThan(0);
+    expect(diggableVaultWalls).toBeGreaterThan(0);
+    /* All three down stairs share the one region: a single refused dig sealed
+     * every way off this level except tunnelling. */
+    for (const stair of [loc(166, 14), loc(96, 39), loc(114, 46)]) {
+      expect(c.feat(stair)).toBe(FEAT.MORE);
+      expect(downRegion[stair.y * c.width + stair.x]).toBe(1);
     }
   });
 
@@ -694,7 +751,7 @@ describe("full level generation", () => {
      * stair passes the SQUARE_VAULT test and the region it is sealed into does
      * not.
      */
-    const sealedPocket = (mark: "none" | "all" | "stair"): Gen => {
+    const sealedPocket = (mark: "none" | "all" | "stair" | "wall"): Gen => {
       const markVault = mark === "all";
       const g = bareGen(40, 25, 10);
       const c = g.c;
@@ -715,7 +772,13 @@ describe("full level generation", () => {
       }
       const stair = loc(21, 19);
       c.setFeat(stair, FEAT.LESS);
-      if (mark !== "none") c.sqinfoOn(stair, SQUARE.VAULT);
+      if (mark === "all" || mark === "stair") c.sqinfoOn(stair, SQUARE.VAULT);
+      /* ROUTE 2's synthetic: an ORDINARY pocket walled by ordinary granite,
+       * with one boundary grid flagged vault - the grid join_region would have
+       * dug had build_vault not claimed it. Nothing inside the pocket is vault,
+       * which is exactly what makes it indistinguishable from a port
+       * connectivity defect by route 1's test alone. */
+      if (mark === "wall") c.sqinfoOn(loc(21, 17), SQUARE.VAULT);
       g.playerSpot = loc(6, 6);
       return g;
     };
@@ -725,9 +788,11 @@ describe("full level generation", () => {
     const plain = sealedPocket("none");
     const vaulted = sealedPocket("all");
     const stairOnly = sealedPocket("stair");
+    const wallOnly = sealedPocket("wall");
     expect(strandedDirs(plain)).toEqual(["up"]);
     expect(strandedDirs(vaulted)).toEqual(["up"]);
     expect(strandedDirs(stairOnly)).toEqual(["up"]);
+    expect(strandedDirs(wallOnly)).toEqual(["up"]);
 
     /* Ordinary floor: a port connectivity defect, and named as one. */
     expect(notUpstreamStranding(plain)).toEqual([
@@ -740,6 +805,13 @@ describe("full level generation", () => {
     expect(notUpstreamStranding(stairOnly)).toEqual([
       "up stair at (21,19) is sealed into a 9-grid region with 8 non-vault grids",
     ]);
+    /* ROUTE 2, and the pair that keeps the arm from being a blanket pardon:
+     * `wallOnly` and `plain` are the SAME level but for one boundary grid's
+     * vault flag, and they must be classified differently. If the route-2 arm
+     * ever accepts `plain` it has stopped discriminating and would forgive a
+     * real port connectivity defect. */
+    expect(notUpstreamStranding(wallOnly)).toEqual([]);
+    expect(notUpstreamStranding(plain)).not.toEqual([]);
   });
 
   /* ------------------------------------------------------------------ *
