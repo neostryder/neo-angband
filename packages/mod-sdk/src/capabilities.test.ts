@@ -129,6 +129,18 @@ describe("parseCapability: rejects garbage", () => {
     });
   });
 
+  it("accepts registry:projection, the projection-handler domain", () => {
+    /* The grammar is an ALLOWLIST, so a domain the registry host gates but the
+     * regex has never heard of is refused at install with a typo error - the
+     * capability would look declared and never be granted. Added when the
+     * projection registries got a producer; asserted so the next domain cannot
+     * be half-added the same way. */
+    expect(parseCapability("registry:projection")).toEqual({
+      kind: "registry",
+      domain: "projection",
+    });
+  });
+
   it("rejects an unknown registry domain", () => {
     expect(() => parseCapability("registry:player")).toThrow(CapabilityError);
     expect(() => parseCapability("registry:")).toThrow(CapabilityError);

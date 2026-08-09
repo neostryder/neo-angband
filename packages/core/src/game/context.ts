@@ -796,6 +796,16 @@ export interface GameState {
    */
   storeBehaviour?: import("../store/store.js").StoreBehaviourRegistry;
   /**
+   * The three projection handler tables - project_f (terrain), project_o
+   * (objects), project_p (the player) - seeded per game with core's 69 and
+   * reached by a mod through ModRegistryHost.projections ("registry:projection").
+   *
+   * wireGame hands each table to the engine BY IDENTITY (worldEnv.featHandlers,
+   * worldEnv.objHandlers, the playerHandlers dep), so a handler installed later,
+   * from a mod's register(), is dispatched to on the next projection.
+   */
+  projectionHandlers?: import("./projection-handlers.js").ProjectionHandlerRegistry;
+  /**
    * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
    * the HOST from each enabled mod's manifest `rules` against their saved Fixes
    * & tweaks selections.

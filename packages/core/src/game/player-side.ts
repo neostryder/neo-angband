@@ -27,8 +27,10 @@
  * the last of the three - project_f's 37 and project_o's 11 were converted the
  * day before, so a mod's projection reached terrain and objects but not the
  * player, which is the half that matters. PLAYER_SIDE_HANDLERS is keyed by
- * projection CODE exactly as the other two are, and `deps.playerHandlers`
- * replaces it wholesale.
+ * projection CODE exactly as the other two are, and `deps.playerHandlers` is
+ * the table the game actually dispatches through - supplied by wireGame from
+ * the per-game ProjectionHandlerRegistry (game/projection-handlers.ts), which a
+ * mod writes one code at a time through "registry:projection".
  *
  * What made this one a real refactor rather than a mechanical lift: the arms
  * read ten helpers built per game, and `incCheck` reads a `currentSource`
@@ -268,9 +270,9 @@ export interface PlayerSideDeps {
   teleport?: TeleportEnv;
   /**
    * The player-handler table to dispatch through, defaulting to
-   * PLAYER_SIDE_HANDLERS. A whole table rather than an overlay, for the same
-   * reason as `featHandlers` and `objHandlers`: composing several mods' tables
-   * is the host's job, not this module's.
+   * PLAYER_SIDE_HANDLERS. Supplied by wireGame from
+   * `GameState.projectionHandlers`, by identity, exactly as `featHandlers` and
+   * `objHandlers` are - see game/projection-handlers.ts.
    */
   playerHandlers?: ReadonlyMap<string, PlayerSideHandler>;
   msg?(text: string): void;

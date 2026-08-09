@@ -195,6 +195,12 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 10,
+      "hasDefault": true,
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed."
+    },
+    {
       "file": "packages/core/src/effects/effect.ts",
       "cases": 9,
       "hasDefault": true,
@@ -229,12 +235,6 @@
       "cases": 9,
       "hasDefault": false,
       "verdict": "CONTROL FLOW - the birth flow's stage machine. Replacing the birth screens is MOD_REACH gap 9 (whole-screen), which does not route through this switch."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 9,
-      "hasDefault": true,
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition."
     },
     {
       "file": "packages/web/src/charsheet.ts",

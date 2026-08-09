@@ -59,11 +59,15 @@ export interface ProjectFeatEnv extends ProjectWorldEnv {
   trapDeps?: TrapDeps;
   /**
    * The handler table to dispatch through, defaulting to
-   * PROJECT_FEAT_HANDLERS. A whole table rather than an overlay: a mod that
-   * wants core's behaviour for everything else passes
-   * `new Map(PROJECT_FEAT_HANDLERS).set("SLUDGE", mine)`, and one that wants to
-   * REPLACE a core handler does the same with a core code. Composition of
-   * several mods' tables is the host's job, not this module's.
+   * PROJECT_FEAT_HANDLERS.
+   *
+   * SUPPLIED BY wireGame, by identity, from `GameState.projectionHandlers`
+   * (game/projection-handlers.ts) - so a mod that installs a handler through
+   * `registry:projection` after the game is wired is dispatched to on the next
+   * projection. Composition is per CODE, in that registry: a whole table handed
+   * over here cannot compose, because the second mod to do it would discard the
+   * first. Absent only in the harnesses and the direct-call tests, which get
+   * core's compiled-in table.
    */
   featHandlers?: ReadonlyMap<string, ProjectFeatHandler>;
 }
@@ -530,7 +534,8 @@ export const PROJECT_FEAT_HANDLERS: ReadonlyMap<string, ProjectFeatHandler> =
  * anything the player can see happened.
  *
  * This was a 37-case switch until 2026-08-08; it is now a lookup in
- * PROJECT_FEAT_HANDLERS, which a mod can replace through `env.featHandlers`.
+ * PROJECT_FEAT_HANDLERS, and a mod reaches it through the per-game
+ * ProjectionHandlerRegistry that wireGame supplies as `env.featHandlers`.
  * The signature, the arms and every rng draw are unchanged - the 6,552 vectors
  * in project-feat-vectors.json are replayed against it for exactly that reason.
  */

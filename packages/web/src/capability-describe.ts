@@ -31,7 +31,7 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
   switch (domain) {
     case "*":
       return {
-        text: "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, and vocabulary (full trusted, in-process access)",
+        text: "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, and vocabulary (full trusted, in-process access)",
         elevated: true,
       };
     case "effect":
@@ -57,6 +57,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
       return { text: "Change what player commands do (and add commands)", elevated: true };
     case "monster":
       return { text: "Override monster AI (take over monster turns)", elevated: true };
+    case "projection":
+      return {
+        text: "Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you",
+        elevated: true,
+      };
     case "vocab":
       return {
         text: "Add new vocabulary - flags, stats, and other terms",

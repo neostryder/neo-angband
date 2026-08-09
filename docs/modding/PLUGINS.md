@@ -280,7 +280,7 @@ becomes one line the mod manager shows, and the other mods carry on.
 
 ## Capabilities
 
-`register` reaches six registries, each gated by a capability your manifest must
+`register` reaches nine registries, each gated by a capability your manifest must
 declare **and** the player must consent to:
 
 | Capability | What it opens |
@@ -292,11 +292,44 @@ declare **and** the player must consent to:
 | `registry:store` | what a shop will buy, and how many of a thing it stocks |
 | `registry:command` | what a player command *does* |
 | `registry:monster` | a hook at the top of every monster's turn; return true to take the turn over |
+| `registry:projection` | what a projection does to terrain, floor items and the player — `projections.feat` / `.obj` / `.player`, one projection `code` at a time. This is the behaviour half of adding your own element: the `projection.json` record makes it exist, these three make it *do* something |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
 
 A facade you did not declare throws when you touch it, even if the player
 consented to something else. Consent says the player allowed these domains; the
 manifest says you asked for them; both must hold.
+
+### Overwriting and extending — yours, core's, or somebody else's
+
+Every registry here is keyed, and you write **one key at a time**. That is what
+makes two mods able to touch the same system: the last one to write a key wins
+that key, and every other key either mod wrote survives. Handing over a whole
+table instead would mean the second mod loaded silently erased the first.
+
+Each facade also hands back what is installed *right now*, so extending is the
+same move as replacing:
+
+```js
+register(host) {
+  // Your own element, given a body.
+  host.projections.player.set("frost:rime", (ctx) => {
+    ctx.msg("The rime bites deeper than cold.");
+    ctx.incTimed(TMD_SLOW, 5, true);
+  });
+
+  // Core's FIRE, extended. `previous` is core's handler — or, if a mod loaded
+  // before yours already replaced it, THEIRS. You do not need to know which.
+  const previous = host.projections.player.handlerFor("FIRE");
+  host.projections.player.set("FIRE", (ctx) => {
+    previous(ctx);
+    ctx.msg("Your cloak smoulders.");
+  });
+}
+```
+
+`handlerFor` is on every facade in the table above (`blows.handlerFor`,
+`stores.willBuyFor`, `profiles.builder`, …). Reach for it before reimplementing
+anything: a wrapper survives a core change that a copy does not.
 
 Plugin code runs **in process, synchronously**, with the same access to the rng,
 the chunk, the player and the monster that core has — because a deep override

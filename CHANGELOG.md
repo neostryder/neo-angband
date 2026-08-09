@@ -87,16 +87,43 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   reads neither `dam` nor `power` - so the rest of the grid collapsed onto two
   rng streams. Six seeds, not two. Each of those arms now has an assertion that
   fails when the fixture stops reaching it.
-- **Corrected: the projection registries are converted and still unreachable.**
-  `MOD_REACH.md` recorded rows 11 and 12 as reachable via `env.featHandlers` /
-  `env.objHandlers`. They are not: `session/game.ts` builds its env as
-  `{ makeDeps }` and nothing anywhere writes either field, there is no
-  `registry:projection` capability, and no facade in `mod/registry-host.ts` -
-  unlike `registry:blow` and `registry:store`, which is what makes the genuine
-  yeses genuine. All three rows now read **no**, because a field a mod cannot
-  set is not a seam a mod can use. The tally is also now stated as a count of
-  the rows, which is the only form of it anyone can check by reading the column;
-  the previous figures mixed rows with merged capabilities and had drifted.
+- **The projection registries have a producer: `registry:projection`.** For a
+  day, `project_f`, `project_o` and `project_p` were keyed registries whose
+  override field - `env.featHandlers`, `env.objHandlers`, `deps.playerHandlers`
+  - was READ by the engine and WRITTEN by nothing, and `MOD_REACH.md` recorded
+  two of the three as reachable on the strength of the field existing. Now
+  `wireGame` builds one `ProjectionHandlerRegistry` per game
+  (`game/projection-handlers.ts`), seeds it with core's 69 handlers, publishes it
+  on `GameState.projectionHandlers`, and hands the engine the LIVE Maps - so a
+  handler installed by a plugin's `register()`, which runs after the wiring, is
+  dispatched to on the next projection. Per game, never module-level, for the
+  same reason as the blow and store registries.
+- **Composition is per projection CODE, so one mod can extend another's.**
+  `host.projections.feat` / `.obj` / `.player` each take one code at a time, and
+  `handlerFor(code)` hands back whatever is installed at that moment - core's
+  handler, or an earlier mod's - so mod B wraps mod A's WATER exactly as mod A
+  wraps core's. A whole-table override cannot do that: the second mod to hand
+  one over would discard the first, along with its brand-new projection, with no
+  error anywhere. Proven twice, because "installed" and "consulted" are
+  different claims - a mod folder on disk writes the table and the real
+  `projectFeature` runs over it (`mod-code.node.test.ts`), and a real game fires
+  a real projection through `wireGame`'s own `CastContext`, with a control run
+  first that watches core's handler do core's job
+  (`session/projection-registry-wiring.test.ts`).
+- **Fixed: every `project_p` message was dropped in the live game.**
+  `PlayerSideDeps.msg` is optional, and `wireGame` never supplied it - so "You
+  resist the effect!", "The intense heat saps you.", "Your eyes fill with
+  smoke!", all thirty-odd lines the 21 arms print, and every timed effect's own
+  message with them, went nowhere. The outer "You are hit by fire!" comes from a
+  different hook and arrived, which is what made the seam look wired. Every
+  harness that exercised the arms supplied `msg`; the one caller that matters
+  did not. Found by a mod handler calling `ctx.msg` into silence, and now
+  guarded by a test that was watched to fail without the fix.
+- **Fixed: `project_o` was dispatched without the bound projection table.**
+  `castProjection` merged `cctx.projections` into the env it gave the terrain
+  hook and handed the object hook the raw one, so a mod's own projection - whose
+  code only the bound table can resolve - burned terrain and left floor items
+  alone, silently. Both hooks now take the same env.
 - **All 50 censused switches are adjudicated, and only 21 are moddability
   gaps.** The backlog started at 36 rows nobody had looked at. Each was read -
   discriminant and case labels - rather than guessed at, and classified into a
