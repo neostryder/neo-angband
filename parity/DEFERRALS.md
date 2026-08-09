@@ -59,9 +59,55 @@ real command, the observable outcome — with the control run recorded:
 `session/banish-symbol-wiring.test.ts` and `session/teleport-env-wiring.test.ts`.
 Removing a supply makes them fail; that was checked, not assumed.
 
-The rest of the 21 are triaged on #160 and are not yet closed. The lesson for
-this document: **"is the note still true" and "does the seam have a producer" are
-two different questions, and only the first one has ever been asked here.**
+A second batch, same sweep:
+
+- **`FloorEnv.onBreak` / `onDrop`.** An item that broke on a throw, or vanished
+  because `floor_carry` had no room for it, disappeared in **silence** —
+  upstream's `floor_carry_fail` says "The Potion of Death breaks." A *third*
+  defect fell out of testing it: `installRangedCommands` passed a bare `{}` as
+  its `FloorEnv` at both `dropNear` sites, so the fired-arrow and thrown-flask
+  paths could not see the new messages, the ignore rule, *or* the trap rule.
+  Every other `dropNear` call site in the port already threaded it — a seam
+  supplied to every path but one.
+- **`SpellChanceEnv.hasPf`.** `player_has(p, pf)` reads `p->state.pflags` — race
+  ∪ class ∪ shape. With no producer, every live `spell_chance` and
+  `beam_chance` read the **class** flags alone. Identical on the shipped 4.2.6
+  data (nothing but a class grants ZERO_FAIL / UNLIGHT / BEAM) and wrong the
+  moment a mod ships a race or shape that does.
+- **`ObjectInfoDeps.inStore`.** `object_is_in_store`: a shop shows a useable
+  item's real effect even when its flavour is unknown, which is the entire point
+  of being able to read the shelf. Nothing ever set it.
+- **`ProjectMonsterHooks.onUpdate`.** `update_mon` on a monster that *survived* a
+  projection (`project-mon.c:1262`), so one that was polymorphed, knocked back,
+  woken or revealed kept its pre-projection visibility.
+
+Guarded by `session/seam-producer-wiring.test.ts`; the control strips the four
+supplies and four of its six tests fail.
+
+**Adjudicated and correctly benign** — each has a real default that reads the
+live game, so the optional is an override and not a hole:
+`PickupEnv.pickupAlways` / `pickupInven` and `FloorEnv.birthStacking` (all three
+fall through to `state.options`), `ObjCmdEnv.chooseDir` / `SpellCmdEnv.chooseDir`
+(the shell asks and rides the answer on `args.dir`, gated by the same
+`objNeedsAim` / `spellNeedsAim` predicate core reads),
+`GeneralEffectEnv.chooseDepth`, `MeleeSideDeps.healHp`,
+`LoreDeps.spellLoreDamage`, and `TakeHitHooks.onRedrawHp` (a `PR_HP` redraw flag
+has no analogue: the renderer is immediate-mode and recomputes every frame).
+Host and platform config — `SoundHooks`, `UpdateCheckDeps`, `FileSinkDeps`,
+`FreshnessDeps`, `TitleDeps`, `DesktopRefreshDeps`, `BuildScoreDeps` — is not
+game behaviour and is out of scope for this document.
+
+**Still open, and the one item here that is a real change rather than a wiring
+fix:** `ProjectWorldEnv.protectedObj`, upstream's "the object that created this
+projection must not be destroyed by it" (`project.c:921` passes `obj` to every
+`project_o`). The port's `CastSource` does not carry the source object at all, so
+threading it is an API change across `castProjection` and its handlers rather
+than a line in `wireGame`. Reachable in play by aiming a wand or zapping a rod
+that is lying on the floor at your own feet. Recorded on #160.
+
+The lesson for this document: **"is the note still true" and "does the seam have
+a producer" are two different questions, and only the first one has ever been
+asked here.**
 
 ## The headline
 

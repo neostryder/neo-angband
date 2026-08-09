@@ -89,9 +89,22 @@ export interface SpellCmdDeps {
   env?: SpellCmdEnv;
 }
 
-/** beam_chance (player-spell.c L486): plev for PF_BEAM classes, else half. */
-export function playerBeamChance(player: Player): number {
-  return player.cls.pflags.has(PF.BEAM) ? player.lev : Math.trunc(player.lev / 2);
+/**
+ * beam_chance (player-spell.c L486): plev for PF_BEAM, else half.
+ *
+ * `hasPf` is player_has(p, PF_BEAM), i.e. `p->state.pflags` - the DERIVED set,
+ * race + class + shape (player-calcs.c:1916-1919, :1818). Omitted, it falls
+ * back to the class flags alone, which is what the whole port used to read.
+ * That is observationally identical on the shipped 4.2.6 data (no race or shape
+ * grants BEAM) and wrong for a mod that adds one, which is exactly the kind of
+ * difference a faithful port is supposed to keep invisible.
+ */
+export function playerBeamChance(
+  player: Player,
+  hasPf?: (pf: number) => boolean,
+): number {
+  const has = hasPf ?? ((pf: number): boolean => player.cls.pflags.has(pf));
+  return has(PF.BEAM) ? player.lev : Math.trunc(player.lev / 2);
 }
 
 /** spell_needs_aim over the spell's raw effect records. */
@@ -171,7 +184,8 @@ export function playerCanCast(state: GameState, env: SpellCmdEnv = {}): boolean 
 }
 
 /**
- * makeSpellChanceEnv: the SpellChanceEnv (fear + lit-square inputs) shared by
+ * makeSpellChanceEnv: the SpellChanceEnv (derived pflags + fear + lit-square
+ * inputs) shared by
  * the cast path (spell_cast) and the fail-chance DISPLAY path (get_spell_info,
  * ui-spell.c), so a shown fail rate always equals the cast fail rate. C uses
  * the SAME spell_chance for both; when the display path omits these the shown
@@ -182,6 +196,14 @@ export function playerCanCast(state: GameState, env: SpellCmdEnv = {}): boolean 
  */
 export function makeSpellChanceEnv(state: GameState): SpellChanceEnv {
   return {
+    /* player_has(p, pf) is `pf_has(p->state.pflags, pf)` - the DERIVED set,
+     * race + class + shape. This had no producer at all, so every live
+     * spell_chance and beam_chance read the CLASS flags alone. Identical on the
+     * shipped data (nothing but a class grants ZERO_FAIL / UNLIGHT / BEAM) and
+     * wrong the moment a mod ships a race or shape that does. Read at call time
+     * off the live derived state, because a shapechange changes the answer. */
+    hasPf: (pf: number): boolean =>
+      state.playerState?.pflags.has(pf) ?? state.actor.player.cls.pflags.has(pf),
     afraid: (): boolean =>
       playerOfHasWorld(state, OF.AFRAID) ||
       (state.actor.player.timed[TMD.AFRAID] ?? 0) > 0,
@@ -206,7 +228,7 @@ export function spellCast(
   const spell = spellByIndex(player.cls, spellIndex);
   if (!spell) return false;
 
-  const beam = playerBeamChance(player);
+  const beam = playerBeamChance(player, env.hasPf);
   const chance = spellChance(player, deps.statInd, spellIndex, env);
 
   if (state.rng.randint0(100) < chance) {

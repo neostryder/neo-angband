@@ -53,6 +53,15 @@ export interface ObjectInfoExtras {
   timedDesc?(tmdIndex: number): string;
   /** summon_desc(idx), for EFINFO_SUMM effect text. */
   summonDesc?(summonIndex: number): string;
+  /**
+   * object_is_in_store(obj) (obj-info.c): inspecting a STORE's stock. A store
+   * shows a useable item's real effect even when its flavour is unknown -
+   * otherwise the shop screen tells you nothing you could shop on. Only the
+   * store's own examine path sets this; ObjectInfoDeps.inStore is the reader
+   * and it had no writer at all, so every store inspection read as an ordinary
+   * one.
+   */
+  inStore?: boolean;
 }
 
 function statName(state: GameState, statIndex: number): string {
@@ -151,6 +160,7 @@ export function makeObjectInfoDeps(
         describeEffectChain(chain, prefix, boost, onlyFirst, effectDeps),
     },
     ...(extras.raceOrigin ? { raceOrigin: extras.raceOrigin } : {}),
+    ...(extras.inStore !== undefined ? { inStore: extras.inStore } : {}),
   };
   return deps;
 }

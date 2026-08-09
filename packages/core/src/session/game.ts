@@ -22,7 +22,7 @@ import { DDGRID, loc, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { MessageLog } from "../msg.js";
 import { PN, SKILL, STAT_MAX } from "../player/types.js";
-import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated/index.js";
+import { EF, ELEM, HIST, MSG, OF, PF, RF, STAT, TMD } from "../generated/index.js";
 import { bindPlayer } from "../player/bind.js";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind.js";
 import {
@@ -88,6 +88,7 @@ import type {
 } from "../game/context.js";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group.js";
 import { floorCarry, floorObjectForUse, floorPile } from "../game/floor.js";
+import type { FloorEnv } from "../game/floor.js";
 import { installPickup } from "../game/pickup.js";
 import { IgnoreSettings, ignoreItemOk } from "../obj/ignore.js";
 import { EffectRegistry } from "../effects/interpreter.js";
@@ -111,6 +112,7 @@ import {
   newKnownMap,
   noteSpots,
   monsterLightSources,
+  updateMon,
   viewerStateOf,
 } from "../game/known.js";
 import { updateView } from "../world/view.js";
@@ -1218,9 +1220,29 @@ function wireGame(
     // The shared floor drop environment (drop_near's ignore / trap rules),
     // used by both the object commands and monster-death loot so a kill's
     // drops land under the same placement rules as any other floor drop.
-    const floorEnv = {
+    const floorEnv: FloorEnv = {
       isIgnored: (obj: GameObject): boolean => state.isIgnored!(obj),
       ...(preds ? { isTrap: preds.isTrap } : {}),
+      /* floor_carry_fail's message (obj-pile.c:992-1011). Neither of these two
+       * had a producer, so an item that broke on a throw, or vanished because
+       * the floor had no room for it, disappeared in total silence - the player
+       * was simply short an item with no line to explain it. object_desc's mode
+       * is ODESC_BASE (:1002), the bare name. */
+      onBreak: (obj: GameObject, broke: boolean): void => {
+        const name = describeObject(state, obj, ODESC.BASE);
+        const verb = broke
+          ? obj.number > 1
+            ? "break"
+            : "breaks"
+          : obj.number > 1
+            ? "disappear"
+            : "disappears";
+        state.msg?.(`The ${name} ${verb}.`);
+      },
+      /* sound(MSG_DROP) (obj-pile.c:1150), the moment an object lands. */
+      onDrop: (): void => {
+        state.sound?.(MSG.DROP);
+      },
     };
     // Monster-death loot deps: makeDeps builds the objects, reg.objects looks
     // up specified drops, floorEnv places them, state.lore feeds the theft
@@ -1497,6 +1519,15 @@ function wireGame(
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport),
+          /* update_mon(mon, cave, false) on a monster that SURVIVED the
+           * projection (project-mon.c:1262). Unsupplied, so a monster that was
+           * polymorphed, knocked back, woken or revealed by a spell kept its
+           * pre-projection visibility until something else happened to move it.
+           * updateMon has been ported since the FOV work; this hook was simply
+           * never given a producer. */
+          onUpdate: (mon): void => {
+            updateMon(state, mon, false);
+          },
           /* project-mon.c:183-185 / 208-212 + player thrust landing. */
           thrustAway: (centre, target, gridsAway): void =>
             thrustAway(state, centre, target, gridsAway, {
@@ -1854,7 +1885,7 @@ function wireGame(
     // Player ranged attacks (fire launcher + ammo, throw an object). The hit
     // math is combat/ranged.ts; the front-end walks the missile's path and
     // routes hit / death messages through state.msg like the other commands.
-    installRangedCommands(registry);
+    installRangedCommands(registry, floorEnv);
 
     // Traps: disarm + the step-onto-trap hook; a trapdoor drops a level.
     if (reg.traps) {
