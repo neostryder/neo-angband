@@ -47,6 +47,14 @@ import {
   storeWillBuy,
   ProjectionHandlerRegistry,
   PLAYER_SIDE_HANDLERS,
+  Chunk,
+  Dun,
+  FeatureRegistry,
+  Gen,
+  SQUARE,
+  bindConstants,
+  buildVault,
+  fillRectangle,
   projectFeature,
   FEAT,
   monMeleeAttack,
@@ -62,6 +70,7 @@ import {
   CORE_RECORD_KEYS,
 } from "@rpgm-tools/neo-angband-core";
 import type {
+  TerrainRecordJson,
   BlowEffect,
   BlowMethod,
   MonBlowEnv,
@@ -73,6 +82,17 @@ import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { buildModuleGraph } from "./mod-modules";
+
+/* The shipped pack, read from disk: the glyph seam is only meaningful over a
+ * real terrain table and real constants. */
+function loadPackJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8"),
+  ) as T;
+}
+function loadPackRecords<T>(name: string): T[] {
+  return loadPackJson<{ records: T[] }>(name).records;
+}
 
 const root = mkdtempSync(join(tmpdir(), "neo-mods-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -893,6 +913,162 @@ describe("a mod folder on disk reaches the store registry", () => {
     expect(() => loaded!.plugin.register?.(host, ctx("cheapskate"))).toThrow(
       /registry:store/,
     );
+  });
+});
+
+/**
+ * The room-template / vault glyph registry, from disk.
+ *
+ * WHAT THIS EXISTS TO CATCH. `vault.json` has always accepted a new record, so
+ * a mod could always ship a vault - but only one drawn with the symbols the
+ * decoder already knew. A symbol it did not know became plain floor: no error,
+ * no effect, and no way for an author to find out except by staring at the
+ * level. This drives the REAL `buildVault` over a vault the mod ships, and
+ * asserts on the CHUNK - what the level actually looks like - rather than on
+ * the registry or on the mod's report of itself.
+ *
+ * The control: drop `glyphs` from the host's targets and the register call
+ * throws "did not wire"; drop the capability and it throws at the gate; leave
+ * the glyph unregistered and the `Q` grids come out FLOOR, which is exactly the
+ * silent failure this seam removes. All three were run.
+ */
+describe("a mod folder on disk reaches the vault glyph registry", () => {
+  /* A 5x5 vault whose middle row is a symbol core has never heard of. */
+  const MOD_VAULT = {
+    name: "sigil vault",
+    typ: "Lesser vault",
+    rat: 0,
+    hgt: 5,
+    wid: 5,
+    minLev: 1,
+    maxLev: 127,
+    fewEntrances: false,
+    rows: ["%%%%%", "%...%", "%QQQ%", "%...%", "%%%%%"],
+  };
+
+  /** A blank granite chunk big enough that find_space never runs. */
+  function genOver(rooms: RoomRegistry): Gen {
+    const reg = new FeatureRegistry(
+      loadPackRecords<TerrainRecordJson>("terrain"),
+    );
+    const constants = bindConstants(loadPackJson("constants"));
+    const c = new Chunk(reg, 25, 40);
+    c.depth = 10;
+    fillRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE);
+    const g = new Gen(c, new Rng(7), reg, constants, new Dun(constants), null, null);
+    /* What makeGen does on a real level: the level's glyph table, so the mod's
+     * registration is in scope for this build. */
+    g.glyphs = rooms.glyphs;
+    return g;
+  }
+
+  it("teaches the game a symbol its vault uses, and the level shows it", async () => {
+    writeMod(
+      "sigil",
+      { capabilities: ["registry:glyph"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* Wrap core's '%' rather than replace it: the outer wall also
+            * records an entrance, and a mod that reimplemented it would
+            * disagree with the level around it. */
+           const outer = host.glyphs.handlerFor("vault", "%");
+           host.glyphs.set("vault", "%", {
+             terrain(ctx) {
+               ctx.g.dun.modOuterWalls = (ctx.g.dun.modOuterWalls ?? 0) + 1;
+               return outer.terrain(ctx);
+             },
+           });
+           /* And a symbol core has never heard of. The feature index is
+            * interpolated from core's own FEAT table rather than hard-coded,
+            * so the test cannot pass against a number that has drifted. */
+           host.glyphs.set("vault", "Q", {
+             terrain(ctx) {
+               ctx.g.c.setFeat(ctx.grid, ${String(FEAT.LAVA)});
+             },
+           });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "sigil", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:glyph"],
+    });
+    expect(code.problems).toEqual([]);
+
+    /* The REAL registry generation reads, seeded with core's own glyphs. */
+    const rooms = new RoomRegistry({ templates: [], vaults: [MOD_VAULT] });
+    expect(rooms.glyphs.has("vault", "Q")).toBe(false);
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { glyphs: rooms.glyphs },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("sigil"));
+    expect(rooms.glyphs.has("vault", "Q")).toBe(true);
+
+    /* Now build it for real and read the level, not the registry. */
+    const g = genOver(rooms);
+    expect(buildVault(g, loc(20, 12), MOD_VAULT)).toBe(true);
+
+    /* The vault is 5x5 centred on (20,12): top-left (18,10). Row 2 is QQQ. */
+    for (const x of [19, 20, 21]) {
+      expect(g.c.feat(loc(x, 12))).toBe(FEAT.LAVA);
+    }
+    /* The rows either side are ordinary floor, so the mod changed its own
+     * symbol and nothing else. */
+    expect(g.c.feat(loc(20, 11))).toBe(FEAT.FLOOR);
+    expect(g.c.feat(loc(20, 13))).toBe(FEAT.FLOOR);
+    /* Core's '%' still ran - the wrapper called through rather than shadowing. */
+    expect(g.c.isGranite(loc(18, 10))).toBe(true);
+    expect((g.dun as unknown as { modOuterWalls?: number }).modOuterWalls).toBe(16);
+  });
+
+  it("without the capability the glyph registry refuses at the call", async () => {
+    writeMod(
+      "trespasser",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) { host.glyphs.set("vault", "Q", { terrain() {} }); },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "trespasser", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const rooms = new RoomRegistry({ templates: [], vaults: [] });
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { glyphs: rooms.glyphs },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("trespasser"))).toThrow(
+      /registry:glyph/,
+    );
+    expect(rooms.glyphs.has("vault", "Q")).toBe(false);
+  });
+
+  it("an unknown symbol without a mod is silently plain floor - the failure this removes", () => {
+    /* The BEFORE picture, kept as a test so the seam's value is measured
+     * rather than asserted: with nothing registered for 'Q' the grids come out
+     * FLOOR and the build still returns true. */
+    const rooms = new RoomRegistry({ templates: [], vaults: [MOD_VAULT] });
+    const g = genOver(rooms);
+    expect(buildVault(g, loc(20, 12), MOD_VAULT)).toBe(true);
+    expect(g.c.feat(loc(20, 12))).toBe(FEAT.FLOOR);
   });
 });
 

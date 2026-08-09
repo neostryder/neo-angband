@@ -46,13 +46,48 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod's vault can use a symbol core has never heard of: `registry:glyph`.**
+  `vault.json` and `room_template.json` have always accepted a new record, so a
+  mod could always ship a vault - but only one drawn with the symbols the two
+  decoders already knew, because those were three closed switches
+  (`gen-room.c` L1195, L1445, L1523; 16 + 13 + 23 cases). A symbol they did not
+  know became plain floor: no error, no effect, and no way for an author to find
+  out except by staring at the level. `GlyphRegistry` (`gen/glyph.ts`) is keyed
+  by decoder and character, with the two passes upstream actually runs -
+  `terrain`, then `populate` once the room's walls exist - and `handlerFor`
+  hands back what is installed right now, so a mod WRAPS core's `%` (which also
+  records an entrance) instead of reimplementing it. The two alphabets stay
+  separate because upstream's are: `+` is a closed door in a room template and a
+  SECRET door in a vault. The glyphs upstream accepts and ignores (`9` in a
+  template's first pass, `/` and `;` in a vault) are registered as explicit
+  no-ops, so listing the alphabet reports the real one.
+
+  What proves it: **5,994 golden vectors** recorded from the code BEFORE the
+  registry existed - every room template and every vault of the shipped pack,
+  plus four synthetic ones spelling out the glyphs the pack does not use, at
+  three seeds and three depths - replaying the whole chunk, every object,
+  monster and trap placed, and a probe draw that catches a changed *number* of
+  random values even when the level looks identical. The depth list carries a
+  127 because the first control run broke a vault's `>` and PASSED: with only 5
+  and 60 in the grid, the dungeon-bottom arm was never reached, so the control
+  was measuring nothing. A separate assertion now fails if any glyph core
+  registers is missing from every scenario. Reach is proven from disk
+  (`mod-code.node.test.ts`) by a real mod folder shipping a vault with a `Q` in
+  it, asserted on the chunk rather than on the registry - and the BEFORE picture
+  is kept as a test beside it, so the seam's value is measured rather than
+  claimed.
+
 - **The moddability gap list has a denominator nobody maintains by hand.**
   `tools/switch-census.mjs` counts every `switch` of 8 or more cases in the
-  source tree - **51 switches, 794 case labels** - and records them in
-  `tools/switch-census.json` with a hand-written verdict saying what a mod can
-  do about each. `packages/web/src/switch-census.test.ts` fails when the tree
-  and the manifest disagree, so a switch that is *added* can no longer slip past
-  a list that only ever gets smaller as things are converted. It is deliberately
+  source tree - **51 switches, 794 case labels** when it was written, **47 and
+  723** now that the projection family and the glyph decoders have become
+  registries - and records them in `tools/switch-census.json` with a
+  hand-written verdict saying what a mod can do about each.
+  `packages/web/src/switch-census.test.ts` fails when the tree and the manifest
+  disagree, so a switch that is *added* can no longer slip past a list that only
+  ever gets smaller as things are converted - and, since the glyph conversion,
+  a switch that is *removed* is named too, so a conversion cannot be claimed
+  without being made. It is deliberately
   syntactic and does not know what a switch dispatches on, because a tool clever
   enough to decide which switches "matter" is a tool that could decide a new one
   does not. Control run: dropping a new 8-case switch into the tree fails the

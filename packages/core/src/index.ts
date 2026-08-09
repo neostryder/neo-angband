@@ -85,6 +85,7 @@ export * from "./save/compress.js";
 export * from "./save/description.js";
 export * from "./save/integrity.js";
 export * from "./gen/util.js";
+export * from "./gen/glyph.js";
 export * from "./gen/room.js";
 export * from "./gen/cave.js";
 export * from "./gen/generate.js";

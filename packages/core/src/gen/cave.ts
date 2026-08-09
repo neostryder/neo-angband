@@ -2906,6 +2906,9 @@ function makeGen(ctx: CaveBuildContext, c: Chunk): Gen {
   g.profileTun = ctx.profile.tun;
   /* new_player_spot's placement-failure message (gen-util.c:422). */
   if (ctx.msg) g.msg = ctx.msg;
+  /* The level's glyph decoders, so a mod's registered glyph is in scope for
+   * every template and vault laid on this level. */
+  g.glyphs = ctx.rooms.glyphs;
   g.profileStr = ctx.profile.str;
   /* dun->profile = choose_profile(p) (generate.c L1157): help_greater_vault
    * (gen-room.c L3099) compares dun->profile->name against "classic". */

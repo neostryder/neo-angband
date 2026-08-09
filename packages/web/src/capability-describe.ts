@@ -31,7 +31,7 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
   switch (domain) {
     case "*":
       return {
-        text: "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, and vocabulary (full trusted, in-process access)",
+        text: "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access)",
         elevated: true,
       };
     case "effect":
@@ -60,6 +60,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
     case "projection":
       return {
         text: "Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you",
+        elevated: true,
+      };
+    case "glyph":
+      return {
+        text: "Change what the symbols in a room or vault layout mean when a level is drawn",
         elevated: true,
       };
     case "vocab":

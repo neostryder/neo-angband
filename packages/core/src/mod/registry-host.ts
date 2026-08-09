@@ -27,6 +27,10 @@
  *   (project_f), floor objects (project_o) or the player (project_p) - so a
  *   mod's own projection actually DOES something, and a core projection can be
  *   changed or wrapped. Gated by "registry:projection".
+ * - glyphs   (GlyphRegistry, gen/glyph.ts): what one character of a room
+ *   template or a vault means when the level is drawn. A mod can ship a vault
+ *   with a glyph core never heard of and say what it does. Gated by
+ *   "registry:glyph".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -59,6 +63,7 @@ import type { AgentCapabilities } from "../agent/types.js";
 import type { EffectCode } from "../effects/effect.js";
 import type { EffectDefinition, EffectRegistry } from "../effects/interpreter.js";
 import type { RoomBuilder, RoomRegistry } from "../gen/room.js";
+import type { GlyphHandler, GlyphKind, GlyphRegistry } from "../gen/glyph.js";
 import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
 import type { GameState } from "../game/context.js";
@@ -95,6 +100,7 @@ export const REGISTRY_CAPABILITIES = {
   command: "registry:command",
   monster: "registry:monster",
   projection: "registry:projection",
+  glyph: "registry:glyph",
   vocab: "registry:vocab",
 } as const;
 
@@ -126,6 +132,8 @@ export interface RegistryTargets {
   state?: GameState | null;
   /** The three projection handler tables (GameState.projectionHandlers). */
   projections?: ProjectionHandlerRegistry | null;
+  /** The room-template / vault glyph decoders (RoomRegistry.glyphs). */
+  glyphs?: GlyphRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -302,6 +310,34 @@ export interface ProjectionFacade {
 }
 
 /**
+ * The room-template / vault glyph facade (gated by registry:glyph).
+ *
+ * `room_template.json` and `vault.json` have always accepted a new record, so a
+ * mod could always ship a vault - but only one drawn with the glyphs the two
+ * decoders already knew, because they were closed switches. A glyph they do not
+ * know is silently plain floor: no error, no effect. This is the seam that makes
+ * a new glyph mean something.
+ *
+ * The two alphabets are separate on purpose, because upstream's are: `+` is a
+ * closed door in a room template and a SECRET door in a vault.
+ */
+export interface GlyphFacade {
+  /** Install (or replace) the handler for one glyph of one decoder. */
+  set(kind: GlyphKind, glyph: string, handler: GlyphHandler): void;
+  /**
+   * The handler installed for a glyph right now, or null. Wrap core by keeping
+   * this, installing your own, and calling through - `%` places the outer wall
+   * AND records an entrance, and reimplementing that from scratch to add one
+   * effect is how a mod comes to disagree with the level around it.
+   */
+  handlerFor(kind: GlyphKind, glyph: string): GlyphHandler | null;
+  /** Whether anything decodes this glyph. */
+  has(kind: GlyphKind, glyph: string): boolean;
+  /** Every glyph a decoder knows, core's first. */
+  glyphs(kind: GlyphKind): readonly string[];
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -337,6 +373,7 @@ export interface ModRegistryHost {
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly projections: ProjectionFacade;
+  readonly glyphs: GlyphFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -529,6 +566,24 @@ export function createModRegistryHost(
       feat: projectionSide(capabilities, targets, (r) => r.feat),
       obj: projectionSide(capabilities, targets, (r) => r.obj),
       player: projectionSide(capabilities, targets, (r) => r.player),
+    },
+    glyphs: {
+      set(kind, glyph, handler): void {
+        requireCap(capabilities, "glyph");
+        requireTarget(targets.glyphs, "glyph").set(kind, glyph, handler);
+      },
+      handlerFor(kind, glyph): GlyphHandler | null {
+        requireCap(capabilities, "glyph");
+        return requireTarget(targets.glyphs, "glyph").handlerFor(kind, glyph);
+      },
+      has(kind, glyph): boolean {
+        requireCap(capabilities, "glyph");
+        return requireTarget(targets.glyphs, "glyph").has(kind, glyph);
+      },
+      glyphs(kind): readonly string[] {
+        requireCap(capabilities, "glyph");
+        return requireTarget(targets.glyphs, "glyph").glyphs(kind);
+      },
     },
     vocab: {
       define(term): void {
