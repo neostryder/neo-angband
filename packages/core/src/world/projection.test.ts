@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PROJ } from "../generated/index.js";
 import { Rng } from "../rng.js";
-import { adjustDam, bindProjections } from "./projection.js";
+import { adjustDam, bindProjections, CORE_PROJECTION_COUNT } from "./projection.js";
 import type { ProjectionRecordJson } from "./projection.js";
 
 function packJson<T>(name: string): T[] {
@@ -39,6 +39,78 @@ describe("bindProjections", () => {
     expect(lightWeak.type).toBe("environs");
     expect(lightWeak.denominator).toBeNull();
     expect(lightWeak.wake).toBe(false);
+  });
+});
+
+describe("a projection a mod added", () => {
+  /* Until 2026-08-08 this threw `projection: unknown code SLUDGE` - the one
+   * content change that took the game DOWN rather than being ignored, and it
+   * reached the bind intact because composition merges projection.json per
+   * record (keyed by `code`). */
+  const core = (): ProjectionRecordJson[] =>
+    packJson<ProjectionRecordJson>("projection");
+  const sludge: ProjectionRecordJson = {
+    code: "SLUDGE",
+    name: "sludge",
+    type: "environs",
+    desc: "sludge",
+    color: "Green",
+  };
+
+  it("binds after the compiled-in ones, moving none of them", () => {
+    const before = bindProjections(core());
+    const after = bindProjections([...core(), sludge]);
+
+    expect(after).toHaveLength(before.length + 1);
+    /* THE PARITY CLAIM, over the whole table rather than a sample: a spot check
+     * would pass while a run of slots had shifted by one, and every PROJ_ value
+     * upstream compiled in is a number this port hard-codes. */
+    expect(after.slice(0, before.length).map((p) => `${String(p.index)}:${p.code}`))
+      .toEqual(before.map((p) => `${String(p.index)}:${p.code}`));
+
+    const added = after[CORE_PROJECTION_COUNT];
+    expect(added?.code).toBe("SLUDGE");
+    expect(added?.index).toBe(CORE_PROJECTION_COUNT);
+    expect(added?.name).toBe("sludge");
+  });
+
+  it("takes a second new projection at the next slot, and a repeat is a duplicate", () => {
+    const grime: ProjectionRecordJson = { code: "GRIME", type: "monster" };
+    const two = bindProjections([...core(), sludge, grime]);
+    expect(two[CORE_PROJECTION_COUNT + 1]?.code).toBe("GRIME");
+
+    expect(() => bindProjections([...core(), sludge, { ...sludge }])).toThrow(
+      /duplicate code SLUDGE/,
+    );
+  });
+
+  it("refuses a new ELEMENT, because el_info has no slot for one", () => {
+    /* The line between extending core and breaking it. The first 25 slots are
+     * list-elements.h and el_info[] is indexed by ELEM value, so an element in
+     * slot 56 is one the player could never resist. Refused by name rather than
+     * bound into something that silently does not work. */
+    expect(() =>
+      bindProjections([...core(), { ...sludge, type: "element" }]),
+    ).toThrow(/type "element"/);
+  });
+
+  it("does not resolve a code through Object.prototype", () => {
+    /* `PROJ["constructor"]` is a FUNCTION, not undefined, so the old bare
+     * lookup would have bound this record at index `function Object()`.
+     * Unreachable while every code came from core's own file; a mod-supplied
+     * code is what makes it reachable. */
+    const odd = bindProjections([
+      ...core(),
+      { ...sludge, code: "constructor" },
+    ]);
+    expect(odd[CORE_PROJECTION_COUNT]?.code).toBe("constructor");
+    expect(odd[CORE_PROJECTION_COUNT]?.index).toBe(CORE_PROJECTION_COUNT);
+  });
+
+  it("still refuses a pack that is missing a compiled-in projection", () => {
+    /* Control: widening what binds must not widen this. Dropping ACID is pack
+     * drift, not a mod, and it still fails. */
+    expect(() => bindProjections(core().slice(1))).toThrow(/PARSE_ERROR|no record/);
   });
 });
 

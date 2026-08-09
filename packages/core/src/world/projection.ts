@@ -85,21 +85,49 @@ export interface ProjectionRecordJson {
   "blind-desc"?: string;
 }
 
+/** The number of PROJ slots the compiled-in enum accounts for. */
+export const CORE_PROJECTION_COUNT =
+  PROJECTION_ENTRIES.length + ELEMENT_ENTRIES.length;
+
 /**
  * Bind projection.json into a ProjectionInfo table indexed by PROJ value. The
  * projection.txt / .json record order does NOT match the PROJ enum (upstream
  * matches records to slots by code at load), so each record is placed at its
- * resolved PROJ[code] slot. An unknown code, or an unfilled or duplicated slot,
- * throws so pack / codegen drift is caught at load.
+ * resolved PROJ[code] slot. An unfilled or duplicated slot throws so pack /
+ * codegen drift is caught at load.
+ *
+ * A CODE THE ENUM HAS NEVER HEARD OF IS A MOD'S, AND IT IS BOUND (2026-08-08).
+ * This used to throw `projection: unknown code X`, which made adding a
+ * projection the one content change that took the game down rather than being
+ * ignored - and composition merges projection.json per record (keyed by `code`,
+ * see mod-sdk/src/record-key.ts), so the record reached here intact and then
+ * killed the bind. Unknown codes are now appended after the compiled-in ones,
+ * in record order, which is the same rule objects get: core is pack zero, so
+ * every index below CORE_PROJECTION_COUNT is exactly where the enum says it is
+ * and nothing upstream indexes can move.
+ *
+ * TWO THINGS ARE STILL REFUSED, because they would break core rather than
+ * extend it:
+ *  - `type: "element"`. The first 25 slots are list-elements.h and el_info[] is
+ *    indexed by ELEM value; an element in slot 56 has no resistance entry to
+ *    read, so it would be an element the player can never resist.
+ *  - a code that is not a plain own property of the enum table. `code:
+ *    "constructor"` used to resolve through Object.prototype and bind at
+ *    index `function Object()`. Unreachable while codes came only from core's
+ *    own file; a mod-supplied code is what makes it reachable.
  */
 export function bindProjections(
   records: ProjectionRecordJson[],
 ): ProjectionInfo[] {
   /* 25 elements (list-elements.h) precede the list-projections.h entries. */
-  const total = PROJECTION_ENTRIES.length + ELEMENT_ENTRIES.length;
+  const total = CORE_PROJECTION_COUNT;
   const out: Array<ProjectionInfo | null> = new Array<ProjectionInfo | null>(
     total,
   ).fill(null);
+  /* Codes the enum does not carry, and the slot each was appended at, so a
+   * second record with the same new code is a duplicate rather than a second
+   * slot. */
+  const added = new Map<string, number>();
 
   /*
    * parse_projection_code (obj-init.c) numbers records sequentially and
@@ -128,9 +156,23 @@ export function bindProjections(
   }
 
   for (const rec of records) {
-    const index = (PROJ as Record<string, number>)[rec.code];
+    /* Object.hasOwn, not a bare lookup: `code: "constructor"` would otherwise
+     * resolve through Object.prototype to a function. */
+    let index = Object.hasOwn(PROJ, rec.code)
+      ? (PROJ as Record<string, number>)[rec.code]
+      : added.get(rec.code);
     if (index === undefined) {
-      throw new Error(`projection: unknown code ${rec.code}`);
+      if (rec.type === "element") {
+        throw new Error(
+          `projection: ${rec.code} is a new projection with type "element", ` +
+            `but the ${String(ELEMENT_ENTRIES.length)} elements are fixed ` +
+            `(el_info is indexed by ELEM value, so a new one has no ` +
+            `resistance entry) - use "environs" or "monster"`,
+        );
+      }
+      index = out.length;
+      added.set(rec.code, index);
+      out.push(null);
     }
     if (out[index]) {
       throw new Error(`projection: duplicate code ${rec.code}`);
