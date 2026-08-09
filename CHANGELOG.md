@@ -297,6 +297,25 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Changed
 
+- **"Genuinely not ported" said 36 things were missing; 3 were.** The section of
+  `parity/DEFERRALS.md` that answers "so what does upstream do that we don't" was
+  dated 2026-08-04 and had not been touched since tasks #114-#121, #131 and #132
+  closed. Re-read against the code, item by item: **33 of 36 claims were already
+  false.** Two were inverted rather than merely stale — the section's most
+  alarming play-affecting row said `square_isempty` was weaker than upstream's at
+  48 call sites and therefore moved RNG draws, and in fact the weak predicate had
+  been *deleted* (`game/context.ts:1257`), the faithful `squareIsEmptyLive` in
+  `game/mon-place.ts` had replaced it, and the generation-time pair in
+  `gen/util.ts` was faithful all along, so the RNG claim was never true either.
+  Another said `monSpellLoreDamage` returns 0 and omits upstream's `(N)` at every
+  monster spell, where `mon/lore-describe.ts:440` computes the real
+  `mon_spell_dam` by default: an unsupplied optional with a working default is
+  not an unreachable feature. What survives is three items and one undecided
+  question, now the whole of the section. The closed rows are struck through
+  rather than deleted, each naming the call site or test that closed it, because
+  a correction that leaves no trace invites the same claim to be re-derived — and
+  the appendix below the section has NOT had this treatment yet, which the
+  document now says in its own header.
 - **The one stranded level that did not look like upstream's is upstream's, by
   a second mechanism.** d40 seed 400792 had been held apart since 2026-08-07 as
   the only stranding in 27,000 generated levels whose sealed staircases were not

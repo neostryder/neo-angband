@@ -1,6 +1,10 @@
 # What is not ported, and what was judged unnecessary
 
 **Dated 2026-08-04. Every deferral note in this repository has a verdict.**
+**"Genuinely not ported" re-verified against the code 2026-08-09 (task #162):
+36 claims, 3 survived.** The rest had been closed and never struck through. The
+appendix below is still dated 2026-08-04 and has NOT had the same treatment
+(task #226); the three survivors are tracked as task #227.
 
 > **Owner ruling, 2026-08-09: a verdict is not a finish line.** "All 'deferrals'
 > must be either marked as not part of the port or as ported. I don't want
@@ -388,149 +392,156 @@ matters, and they include both live defects above. 196 remain.
 
 ## Genuinely not ported
 
-Grouped by what a player would notice, worst first. Every line is backed by a row
-in the appendix with the file, the C reference and the evidence.
+**Re-verified line by line 2026-08-09 (task #162), and it was mostly wrong.** Of
+the 36 claims this section carried, **three** survived reading the code. The
+rest had been closed by tasks #114-#121, #131, #132 and the PORT_TODO waves and
+never struck through here. A verdict is dated evidence; this section is what
+that costs when the date passes.
+
+Two rules for anyone editing below. **A comment saying "IS ported" is prose, not
+behaviour** - every surviving claim cites a call site, and the closed ones cite a
+call site or a test, because that is the difference between a lead and a verdict.
+And **a failed grep for a camelCase transliteration is not evidence of absence**,
+which is the mistake that produced half of this section's original contents; grep
+the C name, which this codebase cites beside its port.
+
+### Still owed (3)
+
+- **The store PURCHASE history entry** (`store/transact.ts`). Upstream writes a
+  history line when the player buys an artifact; `historyAdd` has no call site in
+  `transact.ts`. `history_find_artifact` / `history_lose_artifact` themselves ARE
+  wired (`game/context.ts:687`, `:695`, installed by `wireGame`), so this is one
+  missing call, not a missing subsystem. Find-on-sight entries remain blocked on
+  remembered floor-pile contents.
+- **There is no player notes command.** No `do_cmd_note` counterpart anywhere in
+  the port.
+- **The last two sections of the shape-lore textblock chain**
+  (`player/shape-lore.ts:258`, PORT_TODO 3.21). The chain itself is ported -
+  `shape-lore.ts` is 17 sites and `game/shape-inspect.ts` consumes it - so this
+  is a tail, not the feature.
+
+### Needs a verdict, not work (1)
+
+- **`spoil.ts`'s `timedDesc` / `summonDesc`** (`game/spoil.ts:94`) are
+  "deliberately NOT supplied". PORT_TODO 5.6's other half closed
+  (`monsterHitPercent` is supplied, `:553`; the fourth argument is real, `:599`).
+  Whether the two remaining describers are a deliberate divergence or an
+  unfinished supply has never been decided. Decide it; do not leave it here.
+
+## Not part of the port, with the mechanism
+
+- **The three `OSTACK_LIST` checks** (`obj-pile.c:409`, `:410`, `:485`). Absent
+  on purpose, and the reason is a measurement rather than a judgement: **nothing
+  in Angband 4.2.6 ever passes `OSTACK_LIST`.** It is declared at
+  `obj-pile.h:33`, tested three times and supplied never; every `OSTACK_*`
+  argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR, and no
+  arithmetic anywhere sets `0x04`. `obj/ostack-list.test.ts` is the ratchet: it
+  fails the moment any port code passes the bit, which is the point at which the
+  three checks become owed. Unreachability is a property of the CALLERS, so the
+  guard sits on the thing that can change.
+
+## Closed since this document was dated (2026-08-04)
+
+Kept rather than deleted, because a correction that leaves no trace invites the
+same claim to be re-derived. Each line names the evidence that closed it.
 
 ### It changes what happens in play
 
-- **Nothing sums the player's carried weight** (`game-gear.yaml:77`,
-  `store-transact.yaml:54`). `player.upkeep.totalWeight` is written in exactly two
-  places — set to 0 at birth, and adjusted by the wizard — so the speed penalty for
-  being overloaded (`player/calcs.ts:1216`) can never fire. See above.
-- **`square_isempty` is weaker than upstream's** (`game/context.ts:1088`).
-  `cave-square.c:604` rejects a player trap, a web, and any object; the port
-  checks only passable / no monster / not the player, at 48 call sites. Placement
-  loops can accept grids upstream rejects, which also moves RNG draws.
-- **The `PN_IGNORE` notice pass is never run** (`game/context.ts:297`,
-  `session/game.ts:542`, `obj/knowledge.ts:1366`). Becoming aware of an item kind
-  sets the flag and nothing consumes it, so newly-ignored items are not dropped.
-  The menu / `K` trigger of the same pass *is* reproduced.
-- **Monster-vs-monster theft ignores `react_to_slay`** (`mon/steal.ts:234`,
-  `mon-util.c:1548`). The player's own pack is protected correctly.
-- **`alter` (`+`) has no chest or floor-trap branch** (`game/cave-cmd.ts:1045`).
-  The note excused this because "alter is not wired to a shell key yet"; the
-  shell has bound it since, which is what makes the gap reachable.
-- **The chest `OF_TRAP_IMMUNE` rune is never learned** (`game/chest.ts:268`,
-  `:346`) — the branch upstream learns in is empty in the port.
-- ~~**`known_only` does not exist**~~ (`player-calcs-bonuses.yaml:78`) - CLOSED
-  by PORT_TODO 2.6. `CalcBonusesOptions.knownOnly` is the flag, the session
-  derives `p->known_state` beside `p->state`, and `prt_ac`, the character
-  sheet's combat panel and the monster-recall colouring read it. The row's
-  scoping was wrong in an instructive way: all three combat runes are granted
-  at birth (`player-birth.c:1264-1267`), so the `to_a` / `to_h` / `to_d` gates
-  never close and the two screens barely move. What `known_state` withholds is
-  RESISTS and OBJECT FLAGS, and the reader that cares is
-  `player_inc_check(..., lore = true)`.
-- **`pile_insert_end` is absent** (`game/gear.ts:1173`), so ordering inside a
-  floor pile can differ from upstream's append-at-end.
-- **`path_analyse`** (`game/known.ts:750`) and the **known-object shadow cave**
-  (`game/floor.ts:18`). ~~`list_object` / `oidx` bookkeeping~~ - re-adjudicated as
-  a DIVERGENCE (`game/mon-place.ts:267`, `:328`): the port replaced upstream's
-  `cave->objects[]` registry with a grid-keyed pile map plus `obj.mimickingMIdx`,
-  and nothing observable depends on an oidx.
-- **`object_flag_is_known` at the three store sites** (`store/store.ts:232`,
-  `:262`, `store-maint.yaml:34`). `store_init`'s runtime owner selection turned
-  out to be PORTED (`storeChooseOwner`, `store/store.ts:100`).
-- **The `OSTACK_LIST` stacking checks** (`obj/object.ts:923`, `:1000`): two
-  objects the player cannot tell apart must not merge in a list context.
-- **`cmd_disable_repeat_floor_item`** (`cmd-core.yaml:25`).
-- The **monster-source decoy / target-monster branches of `EF_TOUCH`**
-  (`game/project-cast.ts:685`).
+- ~~Nothing sums the player's carried weight~~ - `session/game.ts:3948` sets
+  `player.upkeep.totalWeight = gearTotalWeight(gear)`; `game/gear-weight.test.ts`
+  is the test. The overload speed penalty (`player/calcs.ts:1216`) can fire.
+- ~~`square_isempty` is weaker than upstream's, at 48 call sites, and moves RNG
+  draws~~ - **wrong twice over.** The weak predicate was deleted, not repaired
+  (`game/context.ts:1257-1273`); `squareIsEmptyLive` in `game/mon-place.ts` is
+  the faithful port; and the generation-time `squareIsEmpty` in `gen/util.ts` was
+  faithful all along, "which is why the claim that this could shift level
+  generation was wrong."
+- ~~The `PN_IGNORE` notice pass is never run~~ - `game/notice.ts:37-38` tests the
+  bit and clears it. It has a consumer.
+- ~~Monster-vs-monster theft ignores `react_to_slay`~~ - `mon/steal.ts:49`
+  imports `reactToSlay` and `:263` calls it at upstream's `mon-util.c:1548`.
+- ~~`alter` (`+`) has no chest or floor-trap branch~~ - `game/cave-cmd.ts` opens
+  with both: the chest branch via `chestDeps` (`chestCheck`, `doCmdOpenChest`,
+  `doCmdDisarmChest`, imported `:53`) and the sibling floor-trap disarm action.
+- ~~The chest `OF_TRAP_IMMUNE` rune is never learned~~ - `game/chest.ts:277` and
+  `:362` both call `equipLearnFlag(..., OF.TRAP_IMMUNE)`. The branch is not empty.
+- ~~`pile_insert_end` is absent~~ - closed by #131.
+  `game/pile.upstream.test.ts:35` says the old line was wrong in as many words;
+  five upstream call sites have port counterparts (`game/gear.ts:1364`,
+  `game/known.ts:642`).
+- ~~`path_analyse`~~ - `game/known.ts` ports it, with `known.test.ts` covering it.
+- ~~The known-object shadow cave~~ - `game/floor.ts:18` states it: `state.known.objects`
+  is a remembered pile per grid and `knownObject` is `map_info`'s loop over it
+  (PORT_TODO 2.9).
+- ~~`object_flag_is_known` at the three store sites~~ - `store/store.ts:250`,
+  `:392`: `flagKnown` is `object_flag_is_known` bound to the object.
+- ~~`cmd_disable_repeat_floor_item`~~ - closed by #132; all four upstream sites
+  are ported (`game/repeat.ts:18`, `session/game.ts:2472`, `:2523`, `:2652`,
+  `:2847`).
+- ~~The monster-source decoy / target-monster branches of `EF_TOUCH`~~ -
+  `game/effect-attack.test.ts:337` is a describe block over exactly those branches.
 
 ### It changes what the player is told
 
-- ~~**`add_monster_message` has no queue**~~ (`game/mon-message.ts:15`) - CLOSED
-  by PORT_TODO 3.1. This was called "the one architectural item on the list", and
-  it was: the grammar was verbatim and every emit site printed its own sentence,
-  so repeats never combined into "3 kobolds die.", a monster caught twice by one
-  splash was described twice, and a death could be reported before the pain that
-  caused it. `mon_msg[]`, `stack_message`, `redundant_monster_message`,
-  `what_delay` and `show_monster_messages` are now ported whole, `PN_MON_MESSAGE`
-  is the third `PN` bit, and `noticeStuff` drains it. What reading the C then
-  turned up, and the item did not say: `player_kill_monster` calls `notice_stuff`
-  ITSELF before the kill line (`mon-util.c:1046`, `:1055`) — two of upstream's
-  fifteen `notice_stuff` sites, both unwired until now.
-- **The killer's name is a race name, not `monster_desc(MDESC_DIED_FROM)`**
-  (`effects/handlers.ts:78`, `game/effect-attack.ts:687`). Both halves exist —
-  `MDESC_DIED_FROM` is defined at `mon/desc.ts:61` — and are not joined.
-- ~~Monster recall has no computed percentages~~ - PORTED and wired:
-  `meleeHitPercent` and `monsterHitPercent` at `web/main.ts:3650` and `:3652`,
-  `breathProjection` at `:3659`, with `web/screens.test.ts:929` asserting the real
-  melee percentage reaches the recall screen. Four interface comments still said
-  `DEFERRED`, which is the whole reason this line was here.
-- **Object and ego recall show no computed lines** (`web/knowledge.ts:1095`,
-  `:1185`). `desc_obj_fake` and `desc_ego_fake` print a name and the record's lore
-  text where upstream prints `object_info(OINFO_FAKE)` / `object_info_ego`'s flag
-  and combat lines. The producer exists (`obj/object-info.ts`).
-- **Monster spell and breath damage are not bound to the casting race**
-  (`mon-lore-describe.yaml:55`). `deps.spellLoreDamage`
-  (`mon/lore-describe.ts:149`) is a full override with no supplier anywhere, so
-  `monSpellLoreDamage` returns 0 and upstream's `(N)` is omitted at every spell.
-  Distinct from the two above: a `mon/spell.ts` binding, not a display call.
-- ~~`show_floor` for multiple objects~~ - PORTED: `showFloorList`
-  (`web/src/overlay.ts:301`), called at `web/main.ts:5967`.
-- **The knowledge browser's thematic grouping columns** (`web/screens.ts:872`,
-  `gamedata.yaml:478` — this is `ui_knowledge.txt`). The browser is ported; the
-  grouping the datafile defines is not.
-- **The high-score entry cannot name the real killer** (`high-scores.yaml:96`).
-- **The character sheet's launcher contribution is 0** (`game/ui-entry.ts:1392`,
-  `ui-entry.yaml:133`) — and the reach it calls deferred exists, at
-  `player/calcs.ts:1246`. ~~`show_combined` / `EQUIPCMP_SCREEN` never iterated~~ -
-  PORTED: `equipCmpCategories` (`game/ui-entry.ts:1965`) is iterated by
-  `equipCmpSummary` (`game/equip-cmp.ts:391`), with the combined row asserted the
-  same length as the columns (`game/equip-cmp.test.ts:116`).
-- **`update_sidebar`'s priority culling and from-bottom placement**
-  (`ui-display.yaml:124`). The sidebar itself is drawn.
-- **The birth screens answer help with a no-op** (`web/birth.ts:1051`).
-- **Temporary brands/slays are not shown in object info**
-  (`obj/object-info.ts:962`). The combat half is ported.
-- **The shape-lore textblock chain** (`web/main.ts:3697`, `:3701`).
-- **The lore title does not recolour a unique with `purple_uniques`**
-  (`mon/lore-describe.ts:1348`). Of that row's three claims only this one survived
-  reading: the secondary glyph and the tile gating are the shell's, but
-  `purple_uniques` is a live option (`generated/options.ts:25`) honoured by the map
-  text layer and ignored by `loreTitle`.
-- **Rune-learning messages still use the `ODESC_BASE` stand-in**
-  (`obj/known-object.ts:160`). The real `object_desc` DID land - `describeObject`,
-  `game/describe.ts:48` - but `objBaseName` (`obj/knowledge.ts:220`) is still "the
-  kind's plain name" with `~` and `&` stripped, used by every rune message. The
-  layering reason is real, so the fix is a seam rather than an import.
-- **`equip_learn_flag` has no shape branch** (`obj-knowledge.yaml:98`), so gear
-  merged into a shape is still learned from while shapechanged.
-- ~~`object_list_format_name`'s own decoration~~ - PORTED:
-  `objectListEntryName` (`game/obj-list.ts:289`) passes the summed count through
-  `ODESC.ALTNUM` as upstream does. Only the shell-side "%3.3s" padding differs.
+- ~~The killer's name is a race name, not `monster_desc(MDESC_DIED_FROM)`~~ -
+  `game/effect-attack.ts:703` calls `monsterDesc(mon, MDESC_DIED_FROM)`, and the
+  comment records that it used to be the bare race name.
+- ~~Object and ego recall show no computed lines~~ - `objectFakeRecall`
+  (`web/knowledge.ts:1139`) calls `objectInfo(obj, OINFO.FAKE | OINFO.SUBJ, ...)`,
+  which is `desc_obj_fake`'s own flags (`obj-info.c:2394`), and `egoFakeRecall`
+  (`:1345`) calls `objectInfoEgo`. `artifactFakeRecall` (`:933`) is the third.
+  `web/knowledge-recall.test.ts` covers them.
+- ~~Monster spell and breath damage are not bound to the casting race, so
+  `monSpellLoreDamage` returns 0 and `(N)` is omitted at every spell~~ -
+  `mon/lore-describe.ts:440` computes the real `mon_spell_dam` by default and
+  `:390` calls it. `deps.spellLoreDamage` is a full override *only*; an
+  unsupplied optional with a working default is not an unreachable feature.
+- ~~The knowledge browser's thematic grouping columns~~ - and it is REACHABLE,
+  which is the half worth checking: `session/boot.ts:180` binds the compiled
+  `ui_knowledge.txt` categories via `bindMonsterCategories`, and
+  `web/main.ts:4060` passes `registries.monsterCategories` into
+  `monsterKnowledgeGroupViews`. `web/knowledge.ts:1431` is
+  `do_cmd_knowledge_monsters`' browser (`ui-knowledge.c:1382-1454`).
+- ~~The high-score entry cannot name the real killer~~ - `score/types.ts:60`
+  carries `died_from` as `how[32]` and `score/score.ts:266` gates it as upstream does.
+- ~~The character sheet's launcher contribution is 0~~ - `game/ui-entry.ts:1482`
+  supplies `launcher: equippedLauncher(p, state.runeEnv)`. Only the PORT_TODO
+  comment at `:1481` was stale.
+- ~~`update_sidebar`'s priority culling and from-bottom placement~~ -
+  `game/display.ts:571` is `side_handlers[]` verbatim, "all 22 rows in table
+  order with the priority update_sidebar culls on, INCLUDING the four entries
+  whose hook is NULL"; `:583` is the negative-priority print-from-bottom rule
+  (`ui-display.c:871-875`) and `:646` uses it. `display.test.ts` covers it.
+- ~~The birth screens answer help with a no-op~~ - `web/birth.ts:56` imports
+  `runHelp`, and the race/class help blocks are registry data (`:196`).
+- ~~Temporary brands/slays are not shown in object info~~ -
+  `obj/object-info.ts:265-270`: the reader is REQUIRED and reads
+  `GameState.tempBrandSlay`. The comment records that this note outlived its gap.
+- ~~The lore title does not recolour a unique with `purple_uniques`~~ -
+  `mon/lore-describe.ts:1388` is the `else if (deps.purpleUniques)` arm.
+- ~~`equip_learn_flag` has no shape branch~~ - `obj/knowledge.ts:693`, `:740`,
+  `:761` port the shape's own `to_a` / `to_h` / `to_d`
+  (`obj-knowledge.c:1992-1998`, `:2026-2032`, `:2066-2078`).
+- ~~Rune-learning messages still use the `ODESC_BASE` stand-in~~ - the seam
+  landed: `obj/knowledge.ts:252` is `env.describeBase?.(obj) ?? objBaseName(obj)`,
+  wired in `session/describe-wiring.test.ts`. `objBaseName` is now the
+  worldless-caller fallback, which is what it should be.
 
-### Whole modes that were never begun
+### Whole modes that were never begun - all three are begun
 
-- **Arena mode** (`mon/take-hit.ts:17`, `gen/cave.ts:31`, `gen/generate.ts:11`,
-  `gen-cave.yaml:49`, `game-mon-ranged.yaml:31`). `hard_centre_gen` is PORTED
-  (`hardCentreGen`, `gen/cave.ts:1914`); only `arena_gen` remains.
-- **The quest system** (`gen/cave.ts:2833`, `gen/generate.ts:11`).
-- **Persistent levels and the town builder's full store generation**
-  (`gen/cave.ts:30`).
-- ~~`room_of_chambers` needs a caller~~ - CLOSED. The builder works
-  (`gen.test.ts:2175` builds it, asserts true, and checks the chambers are
-  connected and themed) AND `spreadMonsters`, whose note claimed no builder
-  reached it, is called twice: `gen/cave.ts:1721` and `:1865`.
+- ~~Arena mode~~ - closed by #119; `arenaGen` is in `gen/generate.ts`.
+- ~~The quest system~~ - closed by #120; `game/quest.ts` with `quest.test.ts`.
+- ~~Persistent levels and the town builder's full store generation~~ - closed by #121.
 
 ### History, notes and files
 
-- **`history_find_artifact` / `history_lose_artifact`** ARE wired
-  (`game/context.ts:687`, `:695`, installed by `wireGame`) - only the store
-  PURCHASE site is missing (`store/transact.ts:26`); find-on-sight entries are blocked on remembered
-  floor-pile contents (`:75`); there is **no player notes command** (`:91`).
-- **`randart.log` / `randart.txt`** (`obj/randart.ts:38`). Upstream's `do_randart`
-  writes it whenever randarts generate and `exit(1)`s if it cannot open it: 193
-  `file_putf` sites. The largest single item here, and a debug log no player
-  reads.
-- **`options_save_custom` / `restore_custom` / `restore_maintainer`**
-  (`options.yaml:76`) — per-user customised defaults in `ANGBAND_DIR_USER`. Now
-  buildable: the host seam and the pref-file writer both exist.
-- **`RANDNAME_TOLKIEN`** is not loaded (`obj-randart.yaml:51`), so randart names
-  come from the port's own generator.
-- The **spoiler files' missing lines** (`game/spoil.ts:93`, `:518`, `:519`,
-  `:550`) and **`randart-build.ts:38`**'s timed-effects failure tables.
+- ~~`randart.log` / `randart.txt`, the largest single item here~~ - closed by
+  #118; `obj/randart-log.ts`, with `obj/randart-log.census.test.ts`.
+- ~~`options_save_custom` / `restore_custom` / `restore_maintainer`~~ - closed by
+  #117; `player/options-file.ts` with `session/options-custom-wiring.test.ts`.
+- ~~`RANDNAME_TOLKIEN` is not loaded, so randart names come from the port's own
+  generator~~ - `obj/randart.ts:34` passes
+  `reg.nameSections.get(RANDNAME_TOLKIEN)` into `doRandart`. The corpus is supplied.
 
 ### Wizard mode: nothing owed. This section was wrong.
 
@@ -558,9 +569,9 @@ decision.
 
 ### Dead, and a decision rather than a task
 
-- **`project-path.yaml:58`**: a ported function whose only caller would be an
-  absent UI branch. Wire it or cordon it — leaving it is the
-  shipped-is-not-reachable trap.
+- ~~`project-path.yaml:58`: a ported function whose only caller would be an absent
+  UI branch~~ - `projectPath` has live callers at `world/project.ts:201` and
+  `:391`. Not shipped-and-unreachable.
 
 ## Judged unnecessary, with the mechanism
 
