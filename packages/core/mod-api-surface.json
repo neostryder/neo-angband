@@ -1394,6 +1394,7 @@
     "projectPath",
     "projectPlayer",
     "projectable",
+    "projectionCodeFor",
     "prtSpeedAux",
     "purchaseAnalyze",
     "pyAttack",
