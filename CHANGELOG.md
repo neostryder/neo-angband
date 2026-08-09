@@ -46,6 +46,18 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **The moddability gap list has a denominator nobody maintains by hand.**
+  `tools/switch-census.mjs` counts every `switch` of 8 or more cases in the
+  source tree - **51 switches, 794 case labels** - and records them in
+  `tools/switch-census.json` with a hand-written verdict saying what a mod can
+  do about each. `packages/web/src/switch-census.test.ts` fails when the tree
+  and the manifest disagree, so a switch that is *added* can no longer slip past
+  a list that only ever gets smaller as things are converted. It is deliberately
+  syntactic and does not know what a switch dispatches on, because a tool clever
+  enough to decide which switches "matter" is a tool that could decide a new one
+  does not. The backlog is honest: 15 rows adjudicated, **36 never looked at**,
+  and that count is a ratchet that may only go down. Control run: dropping a new
+  8-case switch into the tree fails the census.
 - **`project_o`'s 11-case switch is a registry too** (`PROJECT_OBJ_HANDLERS`,
   `ProjectWorldEnv.objHandlers`), so a mod's projection can destroy objects the
   way `FIRE` does. Proven by an **exhaustive** recording rather than a sampled

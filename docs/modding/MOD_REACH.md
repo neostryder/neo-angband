@@ -157,6 +157,17 @@ report.
 #### Switch-based dispatch — not overridable by anything, at any tier
 
 A `switch` cannot be extended, replaced, or wrapped from outside the function.
+**The list below is no longer the census; `tools/switch-census.json` is.** A
+hand-written inventory of switches only ever gets smaller - converting one to a
+registry gets its row updated, ADDING one gets no row at all, and the list
+quietly stops being a census while still reading like one. Several rows here
+have already gone stale that way. `node tools/switch-census.mjs` counts every
+switch of >= 8 cases in the tree (**51 switches, 794 case labels** as of
+2026-08-08) and `packages/web/src/switch-census.test.ts` fails when the tree and
+the manifest disagree, so a new dispatch cannot arrive unnoticed. 15 rows carry
+a verdict; **36 have never been adjudicated**, and that number is a ratchet that
+may only go down.
+
 These are the significant ones:
 
 | What it dispatches | File | `case` labels |
