@@ -24,6 +24,18 @@ every row. Three classes:
   was chosen. These are the ones worth arguing about, and they are marked so they can
   be.
 
+> **Owner ruling, 2026-08-09 — the bar for a class C row moved.** The standard is
+> gameplay parity, not code parity: "please relax the ruling on exact code parity
+> in favor of gameplay parity. Slightly different RNG streams are not forbidden,
+> as long as play will feel the same." So a class C row is only a **divergence
+> worth arguing about** if a player could notice it. A different data structure,
+> a merged function, a changed draw order — those stopped needing a defence, and
+> future rows of that kind do not belong on this page at all. What still belongs:
+> anything that changes the rules, the odds, or what the player sees. See
+> [docs/PARITY.md](../docs/PARITY.md#the-standard-is-gameplay-parity-not-code-parity-ruled-2026-08-09),
+> including the two seams a stream change is *not* free on (`randartSeed`,
+> `seedFlavor`).
+
 ---
 
 ## C1. The knowledge twin: `obj->known` is synthesised, not stored
