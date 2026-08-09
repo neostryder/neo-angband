@@ -125,6 +125,33 @@ export * from "./game/context.js";
 export * from "./game/monster-turn.js";
 export * from "./game/scheduler.js";
 export * from "./game/player-turn.js";
+/* The projection seam a mod writes handlers against: the per-game registry
+ * (reached through ModRegistryHost.projections, "registry:projection"), the
+ * handler and context types for all three sides, and core's own tables so an
+ * author can read what they are replacing, and the two dispatch entry points so
+ * a mod - or the canary that proves a mod reached the table - can run one.
+ * Named explicitly rather than `export *` because these modules also re-export
+ * helpers owned elsewhere (project-obj re-exports gearToLabel) that would
+ * collide here. See game/projection-handlers.ts. */
+export * from "./game/projection-handlers.js";
+export { PROJECT_FEAT_HANDLERS, projectFeature } from "./game/project-feat.js";
+export type {
+  ProjectFeatCtx,
+  ProjectFeatEnv,
+  ProjectFeatHandler,
+} from "./game/project-feat.js";
+export { PROJECT_OBJ_HANDLERS, projectObject } from "./game/project-obj.js";
+export type {
+  ProjectObjCtx,
+  ProjectObjHandler,
+  ProjectWorldEnv,
+} from "./game/project-obj.js";
+export { PLAYER_SIDE_HANDLERS } from "./game/player-side.js";
+export type {
+  PlayerSideCtx,
+  PlayerSideDeps,
+  PlayerSideHandler,
+} from "./game/player-side.js";
 export * from "./game/project-monster.js";
 export * from "./game/project-player.js";
 export * from "./game/project-cast.js";

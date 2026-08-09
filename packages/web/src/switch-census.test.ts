@@ -19,7 +19,10 @@
  * exactly the sort of claim that is true on the day it is written.
  *
  * It was 51 and 22 until project_p became a registry, and the count moving on
- * its own is the point of a census: the row left because the switch did.
+ * its own is the point of a census: the row left because the switch did. It
+ * moved again when registry:projection added a tenth arm to the consent-prompt
+ * switch, which is the same mechanism running in the other direction - the row
+ * came back UNADJUDICATED and had to be re-verdicted before this file was green.
  *
  * Lives in packages/web because that is where the other repo-wide ratchets run
  * (mod-core-surface.test.ts); it reads the source tree, not this package.
@@ -125,7 +128,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("gap 14");
   });
 
-  it("is measuring something: 50 switches, 773 case labels", () => {
+  it("is measuring something: 50 switches, 774 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */

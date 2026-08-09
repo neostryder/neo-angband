@@ -22,6 +22,11 @@
  * - monsters (GameState.monsterTurnHook, game/monster-turn.ts): install a hook
  *   consulted at the top of every monster's turn; returning true takes the turn
  *   over entirely - overriding monster AI. Gated by "registry:monster".
+ * - projections (ProjectionHandlerRegistry, game/projection-handlers.ts): install
+ *   the handler for one projection CODE on any of the three sides - terrain
+ *   (project_f), floor objects (project_o) or the player (project_p) - so a
+ *   mod's own projection actually DOES something, and a core projection can be
+ *   changed or wrapped. Gated by "registry:projection".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -70,6 +75,13 @@ import type {
   WillBuyHandler,
 } from "../store/store.js";
 import { ANY_STORE } from "../store/store.js";
+import type {
+  ProjectionHandlerRegistry,
+  ProjectionHandlerTable,
+} from "../game/projection-handlers.js";
+import type { ProjectFeatHandler } from "../game/project-feat.js";
+import type { ProjectObjHandler } from "../game/project-obj.js";
+import type { PlayerSideHandler } from "../game/player-side.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 
@@ -82,6 +94,7 @@ export const REGISTRY_CAPABILITIES = {
   store: "registry:store",
   command: "registry:command",
   monster: "registry:monster",
+  projection: "registry:projection",
   vocab: "registry:vocab",
 } as const;
 
@@ -111,6 +124,8 @@ export interface RegistryTargets {
   commands?: ActionRegistry | null;
   /** The game state, for installing the monster-AI turn hook. */
   state?: GameState | null;
+  /** The three projection handler tables (GameState.projectionHandlers). */
+  projections?: ProjectionHandlerRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -245,6 +260,48 @@ export interface MonsterFacade {
 }
 
 /**
+ * One side of the projection family: terrain, floor objects or the player.
+ *
+ * ONE CODE AT A TIME, deliberately. The engine's override fields are whole
+ * tables, and a whole table is not composable - two mods each handing over a
+ * complete map means the second discards the first, along with its brand-new
+ * projection. Writing per code makes the load order do what it says: the last
+ * mod to set a code wins that code, and every other mod's codes survive.
+ *
+ * `handlerFor` is what makes EXTENDING possible as well as replacing. It hands
+ * back whatever is installed at that moment - core's handler, or an earlier
+ * mod's - so wrapping another mod's WATER works exactly as wrapping core's does.
+ */
+export interface ProjectionSideFacade<H> {
+  /** Install (or replace) the handler for one projection code. */
+  set(code: string, handler: H): void;
+  /** The handler installed for a code right now, or null. Wrap by re-setting. */
+  handlerFor(code: string): H | null;
+  /** Whether anything answers for this code. */
+  has(code: string): boolean;
+  /** Every code with a handler, core's first. */
+  codes(): readonly string[];
+}
+
+/**
+ * The projection facade (gated by registry:projection).
+ *
+ * `projection.json` has always accepted a new record, and `registry:effect`
+ * could already fire one. What none of that could do was say what the new
+ * projection DOES when it reaches a wall, a floor pile or the player - those
+ * three were switches, and then registries with no producer. This is the
+ * producer.
+ */
+export interface ProjectionFacade {
+  /** project_f: what a projection does to terrain. */
+  readonly feat: ProjectionSideFacade<ProjectFeatHandler>;
+  /** project_o: what a projection does to objects on the floor. */
+  readonly obj: ProjectionSideFacade<ProjectObjHandler>;
+  /** project_p: what a projection does to the player. */
+  readonly player: ProjectionSideFacade<PlayerSideHandler>;
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -279,6 +336,7 @@ export interface ModRegistryHost {
   readonly stores: StoreFacade;
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
+  readonly projections: ProjectionFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -306,6 +364,43 @@ function requireTarget<T>(target: T | null | undefined, domain: RegistryDomain):
     );
   }
   return target;
+}
+
+/**
+ * One side of the projection facade. Written once and applied three times
+ * because terrain, objects and the player differ only in their handler type -
+ * three hand-copied blocks would be three places for the capability check to go
+ * missing from, and a facade that forgot its gate is a capability that does not
+ * exist.
+ *
+ * The target is resolved per call, like every other facade here, so a host that
+ * wired no registry fails at the call the mod made rather than at construction.
+ */
+function projectionSide<H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: ProjectionHandlerRegistry) => ProjectionHandlerTable<H>,
+): ProjectionSideFacade<H> {
+  const table = (): ProjectionHandlerTable<H> =>
+    pick(requireTarget(targets.projections, "projection"));
+  return {
+    set(code, handler): void {
+      requireCap(capabilities, "projection");
+      table().set(code, handler);
+    },
+    handlerFor(code): H | null {
+      requireCap(capabilities, "projection");
+      return table().handlerFor(code);
+    },
+    has(code): boolean {
+      requireCap(capabilities, "projection");
+      return table().has(code);
+    },
+    codes(): readonly string[] {
+      requireCap(capabilities, "projection");
+      return table().codes();
+    },
+  };
 }
 
 /**
@@ -429,6 +524,11 @@ export function createModRegistryHost(
         if (hook) state.monsterTurnHook = hook;
         else delete state.monsterTurnHook;
       },
+    },
+    projections: {
+      feat: projectionSide(capabilities, targets, (r) => r.feat),
+      obj: projectionSide(capabilities, targets, (r) => r.obj),
+      player: projectionSide(capabilities, targets, (r) => r.player),
     },
     vocab: {
       define(term): void {

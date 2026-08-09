@@ -52,6 +52,7 @@ import {
   makeIncCheckQueries,
   makeTimedNotifyQueries,
 } from "../game/player-side.js";
+import { ProjectionHandlerRegistry } from "../game/projection-handlers.js";
 import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
 import { makeMonBlowEnv } from "../game/mon-side.js";
 import {
@@ -1297,9 +1298,23 @@ function wireGame(
      * a caller that omitted them could not resolve `SUMMON:ANY` - it threw
      * mid-turn. See GameState.effectInject. */
     state.effectInject = inject;
+    /* The three projection handler tables (game/projection-handlers.ts), seeded
+     * with core's 69. Built here, per game, for the same reason as the blow and
+     * store registries: a module-level table would carry one character's mod
+     * into the next character's game.
+     *
+     * Handed to the engine BY IDENTITY below - `worldEnv` and the playerHandlers
+     * dep hold these very Maps. A mod's register() runs after this wiring, so a
+     * snapshot would be a seam that ignored every mod. */
+    const projectionHandlers = new ProjectionHandlerRegistry();
+    state.projectionHandlers = projectionHandlers;
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
-    const worldEnv: ProjectFeatEnv = { makeDeps };
+    const worldEnv: ProjectFeatEnv = {
+      makeDeps,
+      featHandlers: projectionHandlers.feat.table,
+      objHandlers: projectionHandlers.obj.table,
+    };
     /* The projection view reads the LIVE derived state, so worn resistance
      * gear reduces projection damage and equipment swaps take effect. */
     const playerActor = basicPlayerActor(state, {
@@ -1418,6 +1433,20 @@ function wireGame(
             projections: reg.projections,
             expDeps,
             lifeDrainPercent: reg.constants.lifeDrainPercent,
+            playerHandlers: projectionHandlers.player.table,
+            /* project_p's OWN messages (project-player.c): "You resist the
+             * effect!", "The intense heat saps you.", "Your eyes fill with
+             * smoke!" - thirty-odd lines across the 21 arms, plus every timed
+             * effect's onMessage, which makePlayerSideEffects gates on this
+             * same optional.
+             *
+             * UNSUPPLIED UNTIL 2026-08-09, so all of them were dropped in the
+             * live game and only the outer "You are hit by fire!" survived.
+             * The seam was optional, every harness that exercised the arms
+             * supplied it, and the one caller that matters did not - found by
+             * a mod handler calling ctx.msg and getting silence
+             * (session/projection-registry-wiring.test.ts). */
+            msg: (text: string): void => state.msg?.(text),
             ...(teleport ? { teleport } : {}),
           }),
           /* adjust_dam(actual=true) equip_learn_element (project-player.c

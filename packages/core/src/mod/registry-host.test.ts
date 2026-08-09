@@ -118,6 +118,7 @@ function recordingBlowEnv(player: Player, applied: string[]): MonBlowEnv {
   };
 }
 import { createModRegistryHost } from "./registry-host.js";
+import { ProjectionHandlerRegistry } from "../game/projection-handlers.js";
 import { VocabularyRegistry } from "./vocabulary.js";
 
 /** An exact-match capability set (mirrors CapabilitySet's has()). */
@@ -157,6 +158,7 @@ function targets() {
   registerCoreBlowEffects(blows);
   const stores = new StoreBehaviourRegistry();
   registerCoreStoreBehaviour(stores);
+  const projections = new ProjectionHandlerRegistry();
   return {
     effects: new EffectRegistry(),
     rooms,
@@ -165,11 +167,13 @@ function targets() {
     stores,
     commands: new ActionRegistry(),
     state,
+    projections,
     vocab,
     _rooms: rooms,
     _profiles: profiles,
     _blows: blows,
     _stores: stores,
+    _projections: projections,
     _state: state,
     _vocab: vocab,
   };
@@ -191,6 +195,15 @@ describe("createModRegistryHost - trusted host (no capabilities)", () => {
     expect(host.commands.has("mod:dance")).toBe(true);
     expect(() => host.monsters.setTurnHook(() => true)).not.toThrow();
     expect(t._state.monsterTurnHook).toBeTypeOf("function");
+    /* The projection domain, on all three sides. Asserted here because this
+     * test claims EVERY domain is granted, and a domain it never touches is a
+     * claim wider than the check. */
+    expect(() => {
+      host.projections.feat.set("mod:sludge", () => true);
+    }).not.toThrow();
+    expect(t._projections.feat.has("mod:sludge")).toBe(true);
+    expect(host.projections.obj.has("FIRE")).toBe(true);
+    expect(host.projections.player.handlerFor("FIRE")).toBeTypeOf("function");
     // W2.3 vocab domain is granted too.
     expect(() =>
       host.vocab.define({ kind: "stat", term: "demo:luck" }),

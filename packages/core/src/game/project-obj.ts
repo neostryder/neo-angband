@@ -60,8 +60,9 @@ export interface ProjectWorldEnv {
   projections?: readonly ProjectionInfo[];
   /**
    * The object-handler table to dispatch through, defaulting to
-   * PROJECT_OBJ_HANDLERS. A whole table rather than an overlay, for the same
-   * reason as `featHandlers`: composing several mods' tables is the host's job.
+   * PROJECT_OBJ_HANDLERS. Supplied by wireGame from
+   * `GameState.projectionHandlers`, by identity, exactly as `featHandlers` is -
+   * see that field and game/projection-handlers.ts.
    */
   objHandlers?: ReadonlyMap<string, ProjectObjHandler>;
   /**

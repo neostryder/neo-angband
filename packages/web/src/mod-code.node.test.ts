@@ -45,6 +45,9 @@ import {
   StoreBehaviourRegistry,
   registerCoreStoreBehaviour,
   storeWillBuy,
+  ProjectionHandlerRegistry,
+  PLAYER_SIDE_HANDLERS,
+  projectFeature,
   FEAT,
   monMeleeAttack,
   blankMonster,
@@ -1273,5 +1276,129 @@ describe("a disk mod adds a field core has never heard of", () => {
     const dagger = objects.find((r) => r["name"] === "& Dagger~");
     expect(extensionData("object", dagger as object)).toBeUndefined();
     await Promise.resolve();
+  });
+});
+
+/**
+ * The projection registries, from disk.
+ *
+ * project_f / project_o / project_p stopped being switches and became keyed
+ * registries - and for a day they were registries with NO PRODUCER: the
+ * override field existed, was typed and was consumed, and nothing anywhere
+ * wrote it. This runs the real dispatch function against the table a mod
+ * folder on disk wrote into, so "installed" and "consulted" are one assertion
+ * rather than two hopes.
+ *
+ * The live-game half - that wireGame hands these tables to the engine by
+ * identity, so a register() that runs after wiring is still seen - is proven by
+ * firing a real projection in core's session/projection-registry-wiring.test.ts.
+ */
+describe("a mod folder on disk reaches the projection registries", () => {
+  it("gives its own projection a terrain arm, and wraps a core one", async () => {
+    writeMod(
+      "sludge",
+      { capabilities: ["registry:projection"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* A brand-new projection's terrain behaviour: the thing a mod could
+            * not do at all while this was a switch. */
+           host.projections.feat.set("sludge:ooze", (ctx) => {
+             ctx.state.seen.push("ooze@" + String(ctx.dam));
+             return true;
+           });
+           /* And a core code, wrapped rather than replaced - the mod's line
+            * runs, then core's own handler does, and core's answer is what
+            * comes back. MON_HEAL is one of the 24 codes whose upstream
+            * terrain arm is deliberately empty, which is what lets this
+            * assertion be about the CALL-THROUGH and not about a chunk. */
+           const core = host.projections.feat.handlerFor("MON_HEAL");
+           host.projections.feat.set("MON_HEAL", (ctx) => {
+             ctx.state.seen.push("wrapped-core");
+             return core(ctx);
+           });
+           /* The other two sides answer too. */
+           host.projections.player.set("sludge:ooze", () => {});
+           host.projections.obj.set("sludge:ooze", () => {});
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "sludge", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:projection"],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+
+    /* The registry wireGame builds, seeded exactly as wireGame seeds it. */
+    const projections = new ProjectionHandlerRegistry();
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { projections },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("sludge"));
+
+    expect(projections.feat.has("sludge:ooze")).toBe(true);
+    expect(projections.obj.has("sludge:ooze")).toBe(true);
+    expect(projections.player.has("sludge:ooze")).toBe(true);
+
+    /* Now RUN project_f, the real one, over the table the mod wrote into.
+     * The bound projection table is what turns a PROJ number into a code, and
+     * a mod's projection is appended past core's - so slot 0 here stands for
+     * "wherever this pack's own projection landed". Neither handler touches
+     * the state, so a recorder is all project_f needs to be given. */
+    const state = { seen: [] as string[] } as never;
+    const bound = [{ code: "sludge:ooze" }, { code: "MON_HEAL" }] as never;
+    const env = { featHandlers: projections.feat.table, projections: bound };
+
+    /* The mod's own projection, at the slot its record landed in. */
+    expect(projectFeature(state, 0, loc(3, 4), 40, 0, env)).toBe(true);
+    /* And core's, through the wrapper: core's `false` is what surfaces, so the
+     * inner handler was really called rather than merely held. */
+    expect(projectFeature(state, 0, loc(3, 4), 10, 1, env)).toBe(false);
+
+    expect((state as unknown as { seen: string[] }).seen).toEqual([
+      "ooze@40",
+      "wrapped-core",
+    ]);
+  });
+
+  it("without the capability the projection registry refuses at the call", async () => {
+    writeMod(
+      "meddler",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) { host.projections.player.set("FIRE", () => {}); },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "meddler", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const projections = new ProjectionHandlerRegistry();
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { projections },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("meddler"))).toThrow(
+      /registry:projection/,
+    );
+    expect(projections.player.handlerFor("FIRE")).toBe(
+      PLAYER_SIDE_HANDLERS.get("FIRE"),
+    );
   });
 });

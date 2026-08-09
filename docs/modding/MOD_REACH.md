@@ -55,19 +55,20 @@ is not a capability - it is called out as such.
 What a mod installed from disk can do today, in a release build: **contribute
 gamedata JSON records** (43 of 44 files per record, and every individual record
 of the shipped pack is nameable by some ref), **supply a tile pack** that registers its own Graphics row, **run its own
-code** through `plugin.js` with the engine passed in, and reach the seven
+code** through `plugin.js` with the engine passed in, and reach the eight
 capability-gated registries - including, since 2026-08-08, **its own kind of
 dungeon level** (`registry:profile`) and **its own kind of monster attack**
-(`registry:blow`). What it still cannot do is reach the rest of the game's
-behaviour, because that behaviour lives in the remaining `switch` statements
-with nothing to register into. That, not the loading path, is the problem that
-remains.
+(`registry:blow`), and since 2026-08-09 **what its own projection does** to
+terrain, floor items and the player (`registry:projection`). What it still
+cannot do is reach the rest of the game's behaviour, because that behaviour
+lives in the remaining `switch` statements with nothing to register into. That,
+not the loading path, is the problem that remains.
 
 > A correction to this table's own history: the row above previously named
 > `player` as one of the six registry capabilities. There is no `registry:player`
 > - the only occurrence of that string in the tree is a test asserting it is
-> REJECTED. The count reached six only when `profile` was added, and seven with
-> `blow`.
+> REJECTED. The count reached six only when `profile` was added, seven with
+> `blow`, and eight with `projection`.
 
 ---
 
@@ -132,10 +133,11 @@ plumbing for override genuinely exists.
 
 **Both gaps this paragraph used to name are closed.** `REGISTRY_CAPABILITIES`
 (`packages/core/src/mod/registry-host.ts`) now covers `effect`, `room`,
-`profile`, `blow`, `command`, `monster` and `vocab`: the level-generation
-ARCHITECTURE (which builder runs, which profile is chosen) arrived with
-`registry:profile`, and monster blow effects - which had no registry at all,
-only two switches - arrived with `registry:blow`.
+`profile`, `blow`, `store`, `command`, `monster`, `projection` and `vocab`: the
+level-generation ARCHITECTURE (which builder runs, which profile is chosen)
+arrived with `registry:profile`, monster blow effects - which had no registry at
+all, only two switches - arrived with `registry:blow`, and the three projection
+sides arrived with `registry:projection`.
 
 #### Index-keyed handler arrays — 2
 
@@ -192,9 +194,9 @@ These are the significant ones:
 | --- | --- | --- |
 | **monster blow effects** (`mon-blows.c` `melee_effect_handler_f`) | `packages/core/src/combat/mon-melee.ts:460` | 26 |
 | the SAME dispatch, a second time (`resolveBlowEffectLive`) | `packages/core/src/combat/mon-melee.ts:750` | 26 |
-| ~~projection -> feature (`project-feat.c`)~~ **now a registry** (`PROJECT_FEAT_HANDLERS`, keyed by projection `code`) | `packages/core/src/game/project-feat.ts` | was 37 |
-| ~~projection -> object (`project-obj.c`)~~ **now a registry** (`PROJECT_OBJ_HANDLERS`, keyed by projection `code`) | `packages/core/src/game/project-obj.ts` | was 11 |
-| ~~projection -> player (`project-player.c`)~~ **now a registry** (`PLAYER_SIDE_HANDLERS`, keyed by projection `code`) | `packages/core/src/game/player-side.ts` | was 21 |
+| ~~projection -> feature (`project-feat.c`)~~ **now a registry a mod can write** (`PROJECT_FEAT_HANDLERS`, keyed by projection `code`, `registry:projection`) | `packages/core/src/game/project-feat.ts` | was 37 |
+| ~~projection -> object (`project-obj.c`)~~ **now a registry a mod can write** (`PROJECT_OBJ_HANDLERS`, keyed by projection `code`, `registry:projection`) | `packages/core/src/game/project-obj.ts` | was 11 |
+| ~~projection -> player (`project-player.c`)~~ **now a registry a mod can write** (`PLAYER_SIDE_HANDLERS`, keyed by projection `code`, `registry:projection`) | `packages/core/src/game/player-side.ts` | was 21 |
 | **store behaviour** | `packages/core/src/store/store.ts` (`storeWillBuy:235`, `massProduce:281` whose switch is at `:285`) | 27 |
 | randart property construction | `packages/core/src/obj/randart-build.ts` | 111 |
 | object naming / description | `packages/core/src/obj/object.ts`, `obj/desc.ts` | 74, 34 |
@@ -308,8 +310,8 @@ mod would reach through records, not code.
 | 8 | prefs `HANDLERS` (12) | no - module-private |
 | 9 | monster blow effects, recording path (30) | **yes** (`registry:blow`, 2026-08-08) |
 | 10 | monster blow effects, live path (30) | **yes** — the SAME registry entry, which is the point |
-| 11 | `PROJECT_FEAT_HANDLERS` (37, keyed by `code`) | no - `env.featHandlers` is READ and never SUPPLIED (see below) |
-| 12 | `PROJECT_OBJ_HANDLERS` (11, keyed by `code`) | no - `env.objHandlers` is READ and never SUPPLIED (see below) |
+| 11 | `PROJECT_FEAT_HANDLERS` (37, keyed by `code`) | **yes** (`registry:projection`, 2026-08-09) |
+| 12 | `PROJECT_OBJ_HANDLERS` (11, keyed by `code`) | **yes** — the SAME registry, second side |
 | 13 | store buy rule + `massProduce` (27 tvals) | **yes** (`registry:store`, 2026-08-08) |
 | 14 | randart property switch (111) | no |
 | 15 | object naming / desc switches (74 + 34) | no |
@@ -324,39 +326,65 @@ mod would reach through records, not code.
 | 24 | web context-menu `switch (action)` routing (6 sites) | no |
 | 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | no |
-| 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | no - `deps.playerHandlers` is READ and never SUPPLIED (see below) |
+| 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
 | 28 | `tval` dispatch in object generation + pricing (16 + 9) | no |
 
-**9 yes, 2 accidental, 17 no** (re-measured 2026-08-09, when `project_p`
-became row 27's registry). This is a count of the ROWS above, which is the only
+**12 yes, 2 accidental, 14 no** (re-measured 2026-08-09, when the projection
+family got its producer). This is a count of the ROWS above, which is the only
 form of the tally anyone can check by reading the column; earlier versions mixed
 rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
-reachable FROM DISK, so the non-bundled figure is 8/8 of the reachable seams
+reachable FROM DISK, so the non-bundled figure is 11/11 of the reachable seams
 rather than 0 - rows 9 and 10 are one capability delivered twice on purpose, two
 bodies of one dispatch, and a registry only one of them consulted would be worse
-than none.
+than none, and rows 11/12/27 are one capability delivered three times for the
+same reason.
 
-#### The projection family is converted, and still unreachable
+#### The projection family, and the day it spent converted but unreachable
 
 Rows 11, 12 and 27 are the three `project_f` / `project_o` / `project_p` handler
-tables. All three are keyed registries now, each with a documented override
-field - and **all three read that field from an object nothing ever writes.**
-`session/game.ts` builds its `ProjectFeatEnv` as `{ makeDeps }`, and
-`makePlayerSideEffects` is called without `playerHandlers`, so the compiled-in
-table wins every time. There is no `registry:projection` capability and no
-facade in `mod/registry-host.ts`, unlike `registry:blow` and `registry:store` -
-which is exactly what makes rows 9/10 and 13 genuine yeses.
+tables. They became keyed registries on 2026-08-08/09, each with a documented
+override field - and for a day **all three read that field from an object
+nothing ever wrote.** `session/game.ts` built its `ProjectFeatEnv` as
+`{ makeDeps }` and called `makePlayerSideEffects` without `playerHandlers`, so
+the compiled-in table won every time. This document recorded two of the three as
+**yes** on the strength of the field existing, which is the whole failure in one
+sentence: a field a mod cannot set is not a seam a mod can use.
 
-The conversions were worth doing and are not finished. Replacing the switch was
-the hard, parity-sensitive half (6,912 golden vectors for `project_p` alone);
-supplying the table is a mod-ABI decision - one capability, one composition rule,
-one `ctx.core` export - and it is tracked separately. Until then these rows are
-**no**, because a field a mod cannot set is not a seam a mod can use, and
-recording it as "yes" is how a gap list stops being a measurement.
+The producer landed 2026-08-09 as `registry:projection`
+(`game/projection-handlers.ts`): one `ProjectionHandlerRegistry` per game,
+seeded with core's 69 handlers, published on `GameState.projectionHandlers`, and
+handed to the engine BY IDENTITY - `wireGame` passes the live Maps, so a handler
+installed by a plugin's `register()`, which runs after the wiring, is dispatched
+to on the next projection.
+
+**Composition is per CODE, not per table.** A mod calls
+`host.projections.player.set("FIRE", h)`, and `handlerFor(code)` returns whatever
+is installed at that moment - core's, or an earlier mod's - so mod B wraps mod
+A's handler exactly as mod A wraps core's. The override fields are typed as whole
+tables and a whole table cannot compose: the second mod to hand one over would
+discard the first, along with its brand-new projection, silently.
+
+Proven twice, because "installed" and "consulted" are different claims:
+`mod-code.node.test.ts` loads a mod folder from disk and runs the real
+`projectFeature` over the table it wrote into; `packages/core/src/session/
+projection-registry-wiring.test.ts` starts a real game and fires a real
+projection through `wireGame`'s own `CastContext`, with a control run first that
+watches core's handler do core's job.
+
+Two live defects surfaced from actually using the seam, both of them the same
+shape as the one above - an optional nobody supplied:
+
+- `castProjection` handed `project_o` the env WITHOUT the bound projection
+  table, so a mod's own projection could burn terrain and not objects. The
+  terrain hook had been given it; the object hook had not.
+- `PlayerSideDeps.msg` was never supplied by `wireGame`, so **every** message
+  `project_p` prints - thirty-odd lines, plus every timed effect's own message -
+  was dropped in the live game. Every harness that exercised the arms supplied
+  it, and the one caller that matters did not.
 
 ### The capability-gated registry host: real code, and who can reach it
 
-`packages/core/src/mod/registry-host.ts` is not a design note. All six facades
+`packages/core/src/mod/registry-host.ts` is not a design note. All nine facades
 delegate to live objects, the gating throws, the capability grammar validates,
 and the host constructs it for real:
 
@@ -369,12 +397,13 @@ and the host constructs it for real:
 | `registry:store` | `StoreFacade` | `StoreBehaviourRegistry` (`GameState.storeBehaviour`, built per game in `wireGame`) | — |
 | `registry:command` | `CommandFacade` | `ActionRegistry.register` / `.has` | `:213-222` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
+| `registry:projection` | `ProjectionFacade` (three sides) | `ProjectionHandlerRegistry` (`GameState.projectionHandlers`, built per game in `wireGame`) | — |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
 
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
   `requireTarget` throws when the host did not wire that registry (`:177`).
 - The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|store|command|monster|vocab)$/`
+  `REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|store|command|monster|projection|vocab)$/`
   (`packages/mod-sdk/src/capabilities.ts:67`); an unrecognised capability is a hard
   error at parse, not a silent no-op.
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
