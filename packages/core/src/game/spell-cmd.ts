@@ -334,9 +334,19 @@ export function installSpellCommands(
         : null;
     state.curseTarget =
       typeof args["tgtcurse"] === "number" ? args["tgtcurse"] : null;
+    /* get_com "tgtsymbol": the Banishment spell's monster glyph, same scope. */
+    state.banishTarget =
+      typeof args["tgtsymbol"] === "string" ? args["tgtsymbol"] : null;
+    /* get_aim_dir "tgtdir": Dimension Door's own aim prompt, asked INSIDE
+     * effect_handler_TELEPORT_TO rather than by the command, because
+     * TELEPORT_TO is not an `aim` effect in list-effects.h. */
+    state.effectAimDir =
+      typeof args["tgtdir"] === "number" ? args["tgtdir"] : null;
     const cast = spellCast(state, spellIndex, dir, deps);
     state.itemTarget = null;
     state.curseTarget = null;
+    state.banishTarget = null;
+    state.effectAimDir = null;
     targetRelease(state);
     if (!cast) return 0;
     /* cmd-obj.c:1164-1168: FASTCAST consumes exactly three quarters of a

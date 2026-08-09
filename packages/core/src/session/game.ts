@@ -18,7 +18,7 @@
  * then prepare_next_level generation.
  */
 
-import { loc } from "../loc.js";
+import { DDGRID, loc, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { MessageLog } from "../msg.js";
 import { PN, SKILL, STAT_MAX } from "../player/types.js";
@@ -63,12 +63,14 @@ import { adj_dex_safe } from "../player/calcs.js";
 import { processCurseTimeouts } from "../game/curse-tick.js";
 import { buildEffectContext } from "../game/effect-env.js";
 import { attachGameEnv } from "../game/effect-game-env.js";
+import type { TeleportEnv } from "../game/effect-teleport.js";
 import { sourceMonster, sourceNone, sourcePlayer } from "../effects/interpreter.js";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
   deleteMonster,
   placePlayer,
+  playerOfHas,
   squareMonster,
   updateMonsterDistances,
 } from "../game/context.js";
@@ -114,7 +116,12 @@ import {
 import { updateView } from "../world/view.js";
 import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world.js";
 import { restoreMonsters } from "../game/scheduler.js";
-import { newTargetState, targetSetMonster } from "../game/target.js";
+import {
+  newTargetState,
+  targetGet,
+  targetOkay,
+  targetSetMonster,
+} from "../game/target.js";
 import {
   getLore,
   loreCountU16,
@@ -218,6 +225,7 @@ import {
   FlavorKnowledge,
   EverseenKnowledge,
   equipLearnElement,
+  equipLearnFlag,
   makeRuneEnv,
   NOOP_FLAVOR_AWARE_DEPS,
   OBJ_NOTICE,
@@ -356,6 +364,27 @@ export function resolveTargetItem(
   }
   state.itemRequest = req;
   return null;
+}
+
+/**
+ * The getAimTarget seam body: effect_handler_TELEPORT_TO's own get_aim_dir
+ * (effect-handler-general.c:2770-2778), resolved from the direction the shell
+ * pre-asked and rode on the command.
+ *
+ *   do { if (!get_aim_dir(&dir)) return false; } while (dir == DIR_TARGET && !target_okay());
+ *   if (dir == DIR_TARGET) target_get(&aim);
+ *   else aim = loc_offset(start, ddx[dir], ddy[dir]);
+ *
+ * The C loop re-asks until the answer is usable; a port that cannot block
+ * instead treats an unusable answer as the cancel the loop's ESC produces. No
+ * RNG either way.
+ */
+export function resolveEffectAim(state: GameState): Loc | null {
+  const dir = state.effectAimDir;
+  if (dir === null || dir === undefined || dir < 1 || dir > 9) return null;
+  /* DIR_TARGET: the while() means a target that is gone is not a direction. */
+  if (dir === 5) return targetOkay(state) ? targetGet(state) : null;
+  return locSum(state.actor.grid, DDGRID[dir] ?? loc(0, 0));
 }
 
 /**
@@ -1202,33 +1231,93 @@ function wireGame(
       floorEnv,
       lore: state.lore,
     };
-    const teleport = preds
-      ? {
-          isPlayerTrap: preds.isPlayerTrap,
-          isWarded: preds.isWarded,
-          isWebbed: preds.isWebbed,
-          /* is_quest (player-quest.c L140): the real implementation behind the
-           * force_descend / teleport-level guards (effect-general.ts,
-           * effect-teleport.ts, effect-terrain.ts) - a quest level cannot be
-           * skipped or recalled away from. */
-          isQuest: (depth: number): boolean => isQuest(state.actor.player, depth),
-          /* dungeon_get_next_level (player-util.c:1147). This seam existed but
-           * nothing ever wired it, so every consumer silently degraded to a
-           * bare `depth + dir` - no stair_skip, no max_depth clamp and, worst,
-           * no quest scan. */
-          getNextLevel: (from: number, dir: 1 | -1): number =>
-            dungeonGetNextLevel(state.actor.player, from, dir, state.z),
-          changeLevel: (targetDepth: number): void => {
-            state.targetDepth = targetDepth;
-            state.generateLevel = true;
-          },
-          /* player_handle_post_move eval_trap half (player-util.c:1627-1629):
-           * immediate traps at the landing grid after teleport / thrust. */
-          onPlayerPostMove: (_byMonster: boolean): void => {
-            state.onPlayerMoved?.(state, state.actor.grid);
-          },
-        }
-      : undefined;
+    /* The teleport-family environment (game/effect-teleport.ts TeleportEnv).
+     *
+     * This used to be `preds ? {...seven fields} : undefined` - so a game
+     * without the trap registry had NO teleport env at all, and nine of the
+     * sixteen fields had no producer anywhere even when it did. Each of those
+     * nine is a live upstream read whose subsystem has since been built, so the
+     * "inert default" they fell back on was a silently missing feature: the
+     * OF_NO_TELEPORT curse never blocked a teleport and its rune was never
+     * learned, a teleport could land the player in lava, nexus resistance did
+     * not foil a hostile teleport-level, and Dimension Door aborted every time.
+     * Only the trap predicates are conditional now.
+     *
+     * The three player reads are GETTERS, not values: this object is built once
+     * per game and every consumer holds the same reference, so a captured
+     * boolean would freeze the answer at wiring time - before the player ever
+     * picked up the cursed ring. */
+    const teleport: TeleportEnv = {
+      ...(preds
+        ? {
+            isPlayerTrap: preds.isPlayerTrap,
+            isWarded: preds.isWarded,
+            isWebbed: preds.isWebbed,
+          }
+        : {}),
+      /* square_isdamaging (cave-square.c): fiery terrain. Nothing supplied it,
+       * so has_teleport_destination_prereqs happily landed the player in lava. */
+      isDamaging: (grid: Loc): boolean => state.chunk.isDamaging(grid),
+      /* is_quest (player-quest.c L140): the real implementation behind the
+       * force_descend / teleport-level guards (effect-general.ts,
+       * effect-teleport.ts, effect-terrain.ts) - a quest level cannot be
+       * skipped or recalled away from. */
+      isQuest: (depth: number): boolean => isQuest(state.actor.player, depth),
+      /* dungeon_get_next_level (player-util.c:1147). This seam existed but
+       * nothing ever wired it, so every consumer silently degraded to a
+       * bare `depth + dir` - no stair_skip, no max_depth clamp and, worst,
+       * no quest scan. */
+      getNextLevel: (from: number, dir: 1 | -1): number =>
+        dungeonGetNextLevel(state.actor.player, from, dir, state.z),
+      changeLevel: (targetDepth: number): void => {
+        state.targetDepth = targetDepth;
+        state.generateLevel = true;
+      },
+      /* player_handle_post_move eval_trap half (player-util.c:1627-1629):
+       * immediate traps at the landing grid after teleport / thrust. */
+      onPlayerPostMove: (_byMonster: boolean): void => {
+        state.onPlayerMoved?.(state, state.actor.grid);
+      },
+      /* handle_stuff(player) after a monster teleports (PU_UPDATE_VIEW): the
+       * monster's own visibility and lighting are monsterSwap's, but the
+       * player's field of view is not, and a light-carrying monster arriving
+       * next door has to change what the player can see. */
+      onMonsterPostMove: (_midx: number): void => {
+        state.updateFov?.(state);
+      },
+      /* player_of_has(OF_NO_TELEPORT) and its equip_learn_flag, the pair that
+       * makes a Teleportation-forbidding curse do anything at all. */
+      get hasNoTeleport(): boolean {
+        return playerOfHas(state, OF.NO_TELEPORT);
+      },
+      onLearnNoTeleport: (): void => {
+        equipLearnFlag(state.actor.player, state.runeEnv, OF.NO_TELEPORT);
+      },
+      /* player_resists(player, ELEM_NEXUS) (player-util.c): res_level > 0, off
+       * the LIVE derived state, so a swapped-in resist ring counts. */
+      get resistsNexus(): boolean {
+        return (state.playerState?.elInfo[ELEM.NEXUS]?.resLevel ?? 0) > 0;
+      },
+      /* player->max_depth: EF_TELEPORT_LEVEL's force_descend target is the
+       * deepest level REACHED, not the current one. Defaulting to the current
+       * depth made "deep descent"-style descent one level, every time. */
+      get maxPlayerDepth(): number {
+        return state.actor.player.maxDepth;
+      },
+      /* z_info->max_depth, from the bound constants rather than the hardcoded
+       * 128 the default assumed - a mod may ship a different dungeon bottom. */
+      maxDepth: reg.constants.maxDepth,
+      /* OPT(player, birth_force_descend) off the live option store. */
+      get forceDescend(): boolean {
+        return state.options?.get("birth_force_descend") ?? false;
+      },
+      /* get_aim_dir inside effect_handler_TELEPORT_TO (Dimension Door,
+       * effect-handler-general.c:2770-2778). The port cannot block mid-turn, so
+       * the shell asks first and rides the direction on the command; core does
+       * the resolution because `start` is the player's grid and the offset
+       * arithmetic belongs next to the handler, not in a front end. */
+      getAimTarget: (): Loc | null => resolveEffectAim(state),
+    };
     // Glyph / web creation needs the trap system; trapDeps joins below
     // once it is built (the mutual reference is deliberate). The stat
     // adjectives (desc_stat) come from the bound object properties, and
@@ -1407,7 +1496,7 @@ function wireGame(
             polymorphMonster(state, m, race, ambientPlaceDeps),
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
-            teleportMonster(state, m.midx, dist, teleport ?? {}),
+            teleportMonster(state, m.midx, dist, teleport),
           /* project-mon.c:183-185 / 208-212 + player thrust landing. */
           thrustAway: (centre, target, gridsAway): void =>
             thrustAway(state, centre, target, gridsAway, {
@@ -1447,7 +1536,7 @@ function wireGame(
              * a mod handler calling ctx.msg and getting silence
              * (session/projection-registry-wiring.test.ts). */
             msg: (text: string): void => state.msg?.(text),
-            ...(teleport ? { teleport } : {}),
+            teleport,
           }),
           /* adjust_dam(actual=true) equip_learn_element (project-player.c
            * L60-62, audit 01 P5): being hit by an element teaches the resist
@@ -1533,7 +1622,7 @@ function wireGame(
           state,
           cast,
           takeHitHooks: sharedTakeHitHooks,
-          ...(teleport ? { teleport } : {}),
+          teleport,
           general,
           item,
           summon,
@@ -1555,7 +1644,7 @@ function wireGame(
       cast,
       envDeps,
       inject,
-      ...(teleport ? { teleport } : {}),
+      teleport,
       general,
       item,
       summon,
@@ -1571,7 +1660,7 @@ function wireGame(
         monsterChangeShape(state, m, {
           summon,
           spells: reg.monsters.spells,
-          ...(teleport ? { teleport } : {}),
+          teleport,
         }),
       revert: (m) => monsterRevertShape(state, m),
     };
@@ -1588,7 +1677,7 @@ function wireGame(
       envDeps,
       saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
       inject,
-      ...(teleport ? { teleport } : {}),
+      teleport,
       general,
       summon,
       monShape,
@@ -1651,7 +1740,7 @@ function wireGame(
       adjDexSafe: adj_dex_safe,
       packSize: reg.constants.packSize,
       makeDeps,
-      ...(teleport ? { teleport } : {}),
+      teleport,
       earthquake: (mon, radius): void => {
         effects.effectSimple(EF.EARTHQUAKE, buildEffectContext(state, envDeps), {
           origin: sourceMonster(mon.midx),
@@ -1675,7 +1764,7 @@ function wireGame(
       autoNote: (kind, aware): string | null =>
         state.autoinscribe?.get(kind.kidx, aware) ?? null,
       inject,
-      ...(teleport ? { teleport } : {}),
+      teleport,
       general,
       item,
       summon,
@@ -1739,7 +1828,7 @@ function wireGame(
         cast,
         envDeps,
         inject,
-        ...(teleport ? { teleport } : {}),
+        teleport,
         general,
         item,
         summon,
@@ -1776,7 +1865,7 @@ function wireGame(
           cast,
           envDeps,
           inject,
-          ...(teleport ? { teleport } : {}),
+          teleport,
           general,
           item,
           summon,
@@ -1829,7 +1918,7 @@ function wireGame(
           cast,
           envDeps,
           inject,
-          ...(teleport ? { teleport } : {}),
+          teleport,
           general,
           item,
           summon,
@@ -1850,7 +1939,7 @@ function wireGame(
         cast,
         envDeps,
         inject,
-        ...(teleport ? { teleport } : {}),
+        teleport,
         general,
         item,
         summon,

@@ -17,15 +17,25 @@
  * jitter (one_in_(2)) and the final pick (randint0) draw from the state RNG in
  * upstream order, so a seeded run reproduces the destination exactly.
  *
- * The subsystems these handlers touch that are not modelled yet are reached
- * through the injected TeleportEnv (env.teleport) with inert defaults, so the
- * ported logic is exact where the substrate exists and simply skips what does
- * not: player_handle_post_move / handle_stuff (FOV refresh), the OF_NO_TELEPORT
- * curse and its learning, monster_target_monster (monster-vs-monster spells,
- * #19), the Dimension Door aim prompt (targeting, #24), the trap / glyph / web /
- * damaging-terrain destination predicates (traps #21, terrain), and
- * dungeon_get_next_level / dungeon_change_level (level change, #23). Arena,
- * decoy, and target state use their live GameState counterparts.
+ * The surrounding subsystems are reached through the injected TeleportEnv
+ * (env.teleport), which session/game.ts wireGame now supplies IN FULL:
+ * player_handle_post_move and handle_stuff, the OF_NO_TELEPORT curse and its
+ * equip_learn_flag, the trap / glyph / web / damaging-terrain destination
+ * predicates, player_resists(ELEM_NEXUS), player->max_depth, z_info->max_depth,
+ * birth_force_descend, dungeon_get_next_level / dungeon_change_level, and the
+ * Dimension Door aim prompt. Arena, decoy and target state use their live
+ * GameState counterparts, and monster_target_monster is called directly
+ * (teleportTargetMonster below).
+ *
+ * THAT LIST USED TO READ "the subsystems ... that are not modelled yet ...
+ * with inert defaults", naming #19 / #21 / #23 / #24 as the blockers. Every one
+ * of those had landed. Nine members had no producer anywhere, so their "inert
+ * default" was a shipped feature that did nothing: the curse never blocked a
+ * teleport, a teleport could land the player in lava, nexus resistance never
+ * foiled a hostile teleport-level, force_descend targeted the current depth,
+ * and Dimension Door returned false every single time. Wired 2026-08-09;
+ * session/teleport-env-wiring.test.ts drives the real handlers through the real
+ * env and is what stops it happening again.
  *
  * The sounds ARE ported now (PORT_TODO 3.26): MSG_TELEPORT / MSG_TPOTHER at
  * the two swap sites and MSG_TPLEVEL on the level-change messages, each
@@ -45,6 +55,7 @@ import { addMonsterMessage } from "./mon-message.js";
 import { squareIsSeen } from "../world/view.js";
 import { distance, loc, randLoc } from "../loc.js";
 import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
@@ -57,30 +68,41 @@ import {
   caveFindDecoy,
   destroyDecoy,
   monsterIsDecoyed,
+  monsterTargetMonster,
 } from "./effect-mon-origin.js";
 import { targetSetLocation } from "./target.js";
 
 /**
- * The teleport-family hooks and unmodelled-subsystem seams, grouped on the
- * game effect environment (effect-game-env.ts GameEffectEnv.teleport). Every
- * field is optional; an absent field takes the inert default noted on it.
+ * The teleport-family seams, grouped on the game effect environment
+ * (effect-game-env.ts GameEffectEnv.teleport).
+ *
+ * Every field is optional and every one carries a documented default, so a
+ * worldless harness can run a handler with `{}`. THE LIVE GAME SUPPLIES ALL OF
+ * THEM (session/game.ts); the defaults below describe what a test that omits
+ * one gets, not what the shipped game does. Reading them as "the port has not
+ * built this yet" is what let nine of them ship unsupplied - see the module
+ * header.
  */
 export interface TeleportEnv {
   /** player_of_has(OF_NO_TELEPORT): a teleport-forbidding curse. Default off. */
   hasNoTeleport?: boolean;
   /** equip_learn_flag(OF_NO_TELEPORT) when the curse blocks a teleport. */
   onLearnNoTeleport?: () => void;
-  /** monster_target_monster: a monster spell aimed at another monster (#19). */
+  /**
+   * An explicit override for monster_target_monster. Default (and the live
+   * game's answer) is the real thing: teleportTargetMonster reads the caster's
+   * own mon->target.midx.
+   */
   targetMonster?: number;
   /** player_handle_post_move + handle_stuff after the player teleports. */
   onPlayerPostMove?: (byMonster: boolean) => void;
   /** handle_stuff after a monster teleports (FOV / target refresh). */
   onMonsterPostMove?: (midx: number) => void;
-  /** get_aim_dir / target_get for EF_TELEPORT_TO's Dimension Door (#24). */
+  /** get_aim_dir / target_get for EF_TELEPORT_TO's Dimension Door. */
   getAimTarget?: () => Loc | null;
-  /** square_isplayertrap (traps, #21). Default: no player trap. */
+  /** square_isplayertrap. Default: no player trap. */
   isPlayerTrap?: (grid: Loc) => boolean;
-  /** square_iswarded (glyph of warding, #21). Default: not warded. */
+  /** square_iswarded (glyph of warding). Default: not warded. */
   isWarded?: (grid: Loc) => boolean;
   /** square_isdamaging (lava and the like). Default: not damaging. */
   isDamaging?: (grid: Loc) => boolean;
@@ -95,12 +117,64 @@ export interface TeleportEnv {
   forceDescend?: boolean;
   /** dungeon_get_next_level(from, dir): the connected level. Default from+dir. */
   getNextLevel?: (fromDepth: number, dir: 1 | -1) => number;
-  /** dungeon_change_level(target): commit a level change (#23). */
+  /** dungeon_change_level(target): commit a level change. */
   changeLevel?: (targetDepth: number) => void;
   /** player->max_depth (deepest reached). Default: the current depth. */
   maxPlayerDepth?: number;
   /** z_info->max_depth. Default 128 (the shipped constants.txt value). */
   maxDepth?: number;
+}
+
+/**
+ * effectAimDirRequest (the RNG-free shell probe, the sibling of
+ * effect-item.ts itemTargetRequest and effect-monster.ts banishSymbolRequest):
+ * does this chain contain a handler that will ask get_aim_dir ITSELF?
+ *
+ * Today that is exactly one branch: EF_TELEPORT_TO with no supplied
+ * coordinates, cast by the player - Dimension Door. TELEPORT_TO is not an
+ * `aim` effect in list-effects.h, so the command's own get_aim_dir never runs
+ * and the shell would otherwise never ask. Returns false on an arena level,
+ * where the handler returns before the prompt.
+ */
+export function effectAimDirRequest(
+  chain: import("../effects/effect.js").Effect | null,
+  state: GameState,
+): boolean {
+  if (state.arenaLevel) return false;
+  for (let e = chain; e; e = e.next) {
+    /* The player-choice arm is `!context->y || !context->x` with a player
+     * source (effect-handler-general.c:2756-2770); a monster source takes the
+     * `else if (mon)` arm and never prompts. */
+    if (e.index === EF.TELEPORT_TO && e.subtype === 0 && (e.x === 0 || e.y === 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * monster_target_monster (effect-handler-general.c:96) for the three teleport
+ * handlers that branch on it.
+ *
+ * This used to be `tp.targetMonster !== undefined ? ... : null` and NOTHING
+ * supplied tp.targetMonster, so a monster teleporting the monster it was aiming
+ * at instead teleported itself, and EF_TELEPORT_LEVEL's "the target is simply
+ * gone" arm was unreachable. The excuse on the seam - "monster-vs-monster
+ * spells (#19)" - outlived its subsystem: effect-mon-origin.ts has exported
+ * monsterTargetMonster for a long time and effect-attack, effect-general and
+ * effect-terrain all call it directly. The dep stays as an explicit override so
+ * a test or a mod can still pin the target.
+ */
+function teleportTargetMonster(
+  state: GameState,
+  ctx: EffectHandlerContext,
+  tp: TeleportEnv,
+): Monster | null {
+  if (tp.targetMonster !== undefined) {
+    return state.monsters[tp.targetMonster] ?? null;
+  }
+  if (ctx.origin.what !== "monster") return null;
+  return monsterTargetMonster(state, ctx.origin.monster);
 }
 
 /**
@@ -249,8 +323,7 @@ const handleTELEPORT: EffectHandler = (ctx) => {
 
   /* is_player: not a monster source, or a monster spell that moves the player. */
   const isPlayer = ctx.origin.what !== "monster" || ctx.subtype !== 0;
-  const tMon =
-    tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
+  const tMon = teleportTargetMonster(state, ctx, tp);
 
   let start: Loc;
   if (ctx.x !== 0 && ctx.y !== 0) {
@@ -362,8 +435,7 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
   const isMonsterOrigin = ctx.origin.what === "monster";
   const mon =
     ctx.origin.what === "monster" ? state.monsters[ctx.origin.monster] : null;
-  const tMon =
-    tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
+  const tMon = teleportTargetMonster(state, ctx, tp);
 
   /* No teleporting in arena levels (effect-handler-general.c:2714-2715). */
   if (state.arenaLevel) return true;
@@ -560,15 +632,14 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
 
   const { state } = env;
   const tp = env.teleport ?? {};
-  const tMon =
-    tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
+  const tMon = teleportTargetMonster(state, ctx, tp);
 
   /* No teleporting in arena levels (effect-handler-general.c:2844-2845). */
   if (state.arenaLevel) return true;
 
   /* A monster targeting another monster: it is simply gone. */
   if (tMon) {
-    deleteMonster(state, tp.targetMonster!);
+    deleteMonster(state, tMon.midx);
     return true;
   }
 

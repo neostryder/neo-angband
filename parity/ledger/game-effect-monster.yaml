@@ -37,9 +37,21 @@ notes: >-
   no-op when it is absent. All primitives are already ported: monster iteration
   and removal (game/context.ts), waking (mon/take-hit.ts monsterWake), the
   uniqueness test (mon/predicate.ts) and the shared player-damage primitive
-  (player/take-hit.ts). The EF_BANISH symbol prompt (get_com) is an injected
-  chooser on the game env (banishSymbol); absent, the effect aborts, mirroring a
-  cancelled prompt.
+  (player/take-hit.ts). The EF_BANISH symbol prompt (get_com) is the port's
+  standard prompt seam: the shell probes the built chain with
+  banishSymbolRequest (RNG-free), asks "Choose a monster race (by symbol) to
+  banish: " verbatim, and rides the answer on the command as args.tgtsymbol;
+  the object / spell command sets state.banishTarget for the run and clears it
+  after, and the handler reads it through the still-injectable banishSymbol
+  seam. Neither present is the upstream cancel path.
+
+  THE NOTE ABOVE USED TO STOP AT "absent, the effect aborts, mirroring a
+  cancelled prompt", and nothing anywhere supplied banishSymbol - so EF_BANISH
+  returned false on every real cast and the Banishment spell, the Scroll and
+  Staff of Banishment and the artifact activation all silently did nothing.
+  An excuse that ships a dead spell. Wired 2026-08-09, guarded by
+  session/banish-symbol-wiring.test.ts, which drives the real read command and
+  counts the monsters.
 deferred:
   - "NOT deferred: arenas are modelled (PORT_TODO 4.1) and the guards are
     here - game/effect-monster.ts refuses inside single combat at both sites

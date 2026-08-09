@@ -71,6 +71,8 @@ import {
   invenCarryNum,
   buildObjectEffectChain,
   itemTargetRequest,
+  banishSymbolRequest,
+  effectAimDirRequest,
   spellByIndex,
   objNeedsAim,
   playerKnowsCurse,
@@ -2805,11 +2807,8 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
     if (dir === null) return;
     args["dir"] = dir;
   }
-  if (obj && !(await applyItemTarget(obj, args))) return;
-  if (obj) {
-    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
-    if (!(await choosePlayerEffect(chain))) return;
-  }
+  if (obj && !(await applyEffectPrompts(obj, args))) return;
+  if (obj && !(await choosePlayerEffect(usedEffectChain(obj)))) return;
   if (code === "wield" && !(await wieldPrompts(obj, args))) return;
   commandBuffer.push({ code, args });
   advance();
@@ -2832,11 +2831,8 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
     if (dir === null) return;
     args["dir"] = dir;
   }
-  if (obj && !(await applyItemTarget(obj, args))) return;
-  if (obj) {
-    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
-    if (!(await choosePlayerEffect(chain))) return;
-  }
+  if (obj && !(await applyEffectPrompts(obj, args))) return;
+  if (obj && !(await choosePlayerEffect(usedEffectChain(obj)))) return;
   if (code === "wield" && !(await wieldPrompts(obj, args))) return;
   commandBuffer.push({ code, args });
   advance();
@@ -2883,25 +2879,72 @@ async function useItem(
 }
 
 /**
- * Resolve an object's item-target effect (Enchant / Recharge / ... ) into the
- * command args before it is queued. Returns whether the command should be
- * queued. On a cancelled picker the command is queued ONLY for an unaware
+ * Pre-resolve EF_BANISH's get_com glyph, if the chain will ask for one. Returns
+ * "none" when it will not, "cancel" on ESC (upstream's `if (!get_com(...))
+ * return false`), or the extra command arg. The probe is RNG-free, so asking
+ * here and running the effect once keeps the draw order upstream's.
+ */
+async function prepareBanishSymbol(
+  chain: Effect | null,
+): Promise<"none" | "cancel" | { tgtsymbol: string }> {
+  const prompt = banishSymbolRequest(chain, state);
+  if (!prompt) return "none";
+  const key = await getKeyInline(term, prompt);
+  /* get_com returns false on ESCAPE (ui-input.c:1443); every other key is the
+   * chosen char, and a non-printing one simply matches no monster glyph. */
+  if (key === "Escape" || key.length !== 1) return "cancel";
+  return { tgtsymbol: key };
+}
+
+/**
+ * Pre-resolve the get_aim_dir a HANDLER asks for itself - Dimension Door
+ * (EF_TELEPORT_TO with no coordinates, effect-handler-general.c:2770-2778).
+ * The command's own aim prompt never covers it, because TELEPORT_TO is not an
+ * `aim` effect. Returns "none" when the chain has no such handler, "cancel" on
+ * ESC (upstream's `if (!get_aim_dir(&dir)) return false`), or the extra arg.
+ */
+async function prepareEffectAimDir(
+  chain: Effect | null,
+): Promise<"none" | "cancel" | { tgtdir: number }> {
+  if (!effectAimDirRequest(chain, state)) return "none";
+  const dir = await aimDir();
+  if (dir === null) return "cancel";
+  return { tgtdir: dir };
+}
+
+/**
+ * The chain a USE will actually run. use_aux takes it from object_effect(obj)
+ * (cmd-obj.c:410), so an artifact's activation REPLACES its kind's effect -
+ * reading obj.effect here made every activation-only prompt (Banishment on
+ * activation.txt:628) invisible to the shell's probes.
+ */
+function usedEffectChain(obj: GameObject): Effect | null {
+  return buildObjectEffectChain((objectEffect(obj) ?? []) as EffectRecordJson[], state);
+}
+
+/**
+ * Pre-resolve the prompts an object's effect chain will ask for - the
+ * item-target pick (Enchant / Recharge / ... ) and EF_BANISH's monster glyph -
+ * into the command args before it is queued. Returns whether the command should
+ * be queued. On a cancelled prompt the command is queued ONLY for an unaware
  * consumable (upstream still runs it: the flavour is learned and the turn is
  * spent, but nothing is consumed); an aware carrier aborts with no turn, so we
  * return false and the caller drops the command.
  */
-async function applyItemTarget(
+async function applyEffectPrompts(
   obj: GameObject,
   args: Record<string, unknown>,
 ): Promise<boolean> {
-  const chain = buildObjectEffectChain(
-    (obj.effect ?? []) as EffectRecordJson[],
-    state,
-  );
+  const chain = usedEffectChain(obj);
   const prep = await prepareItemTarget(chain);
-  if (prep === "none") return true;
   if (prep === "cancel") return !objectIsAware(obj);
-  Object.assign(args, prep);
+  if (prep !== "none") Object.assign(args, prep);
+  const banish = await prepareBanishSymbol(chain);
+  if (banish === "cancel") return !objectIsAware(obj);
+  if (banish !== "none") Object.assign(args, banish);
+  const aim = await prepareEffectAimDir(chain);
+  if (aim === "cancel") return !objectIsAware(obj);
+  if (aim !== "none") Object.assign(args, aim);
   return true;
 }
 
@@ -2944,11 +2987,8 @@ async function activateItem(): Promise<void> {
     if (dir === null) return;
     args["dir"] = dir;
   }
-  if (obj && !(await applyItemTarget(obj, args))) return;
-  if (obj) {
-    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
-    if (!(await choosePlayerEffect(chain))) return;
-  }
+  if (obj && !(await applyEffectPrompts(obj, args))) return;
+  if (obj && !(await choosePlayerEffect(usedEffectChain(obj)))) return;
   commandBuffer.push({ code: "activate", args });
   advance();
   pendingEffectChoice = null;
@@ -3400,6 +3440,17 @@ async function castSpell(): Promise<void> {
     const prep = await prepareItemTarget(chain);
     if (prep === "cancel") return;
     if (prep !== "none") Object.assign(args, prep);
+    /* Banishment (class.txt:429) asks get_com for a monster glyph. Cancelling
+     * aborts the cast for the same reason: effect_do returns false before any
+     * mana is spent. */
+    const banish = await prepareBanishSymbol(chain);
+    if (banish === "cancel") return;
+    if (banish !== "none") Object.assign(args, banish);
+    /* Dimension Door (class.txt:396) asks get_aim_dir from inside the handler,
+     * so the command's own aim prompt never fires for it. */
+    const aim = await prepareEffectAimDir(chain);
+    if (aim === "cancel") return;
+    if (aim !== "none") Object.assign(args, aim);
     if (!(await choosePlayerEffect(chain))) return;
   }
   commandBuffer.push({ code: "cast", args });
