@@ -163,7 +163,7 @@ These are the significant ones:
 | --- | --- | --- |
 | **monster blow effects** (`mon-blows.c` `melee_effect_handler_f`) | `packages/core/src/combat/mon-melee.ts:460` | 26 |
 | the SAME dispatch, a second time (`resolveBlowEffectLive`) | `packages/core/src/combat/mon-melee.ts:750` | 26 |
-| projection -> feature (`project-feat.c`) | `packages/core/src/game/project-feat.ts:132` | 37 |
+| ~~projection -> feature (`project-feat.c`)~~ **now a registry** (`PROJECT_FEAT_HANDLERS`, keyed by projection `code`) | `packages/core/src/game/project-feat.ts` | was 37 |
 | projection -> object (`project-obj.c`) | `packages/core/src/game/project-obj.ts:88` | 11 |
 | **store behaviour** | `packages/core/src/store/store.ts` (`storeWillBuy:235`, `massProduce:281` whose switch is at `:285`) | 27 |
 | randart property construction | `packages/core/src/obj/randart-build.ts` | 111 |
@@ -278,7 +278,7 @@ mod would reach through records, not code.
 | 8 | prefs `HANDLERS` (12) | no - module-private |
 | 9 | monster blow effects, recording path (30) | **yes** (`registry:blow`, 2026-08-08) |
 | 10 | monster blow effects, live path (30) | **yes** — the SAME registry entry, which is the point |
-| 11 | projection -> feature switch (37) | no |
+| 11 | `PROJECT_FEAT_HANDLERS` (37, keyed by `code`) | **yes** (`env.featHandlers`, 2026-08-08) |
 | 12 | projection -> object switch (11) | no |
 | 13 | store buy rule + `massProduce` (27 tvals) | **yes** (`registry:store`, 2026-08-08) |
 | 14 | randart property switch (111) | no |

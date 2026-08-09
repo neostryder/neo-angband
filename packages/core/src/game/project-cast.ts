@@ -269,6 +269,15 @@ export function castProjection(
 ): boolean {
   const hooks = cctx.hooks ?? {};
 
+  /* project_f dispatches by projection CODE, and only the bound table knows the
+   * code of a projection a mod appended past the compiled-in 56. Merged once
+   * per cast rather than per grid: project() calls onFeature for every grid in
+   * the blast. A caller that already supplied its own table keeps it. */
+  const featEnv =
+    cctx.worldEnv && cctx.worldEnv.projections === undefined
+      ? { ...cctx.worldEnv, projections: cctx.projections }
+      : cctx.worldEnv;
+
   const monCtx = {
     state,
     projections: cctx.projections,
@@ -344,7 +353,7 @@ export function castProjection(
           onObject: (dist: number, g: Loc, d: number, t: number): boolean =>
             projectObject(state, dist, g, d, t, cctx.worldEnv),
           onFeature: (dist: number, g: Loc, d: number, t: number): boolean =>
-            projectFeature(state, dist, g, d, t, cctx.worldEnv),
+            projectFeature(state, dist, g, d, t, featEnv),
         }
       : {}),
   };

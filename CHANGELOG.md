@@ -46,6 +46,22 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **`project_f`'s 37-case switch is a registry keyed by projection `code`.**
+  `PROJECT_FEAT_HANDLERS` maps a code to a `ProjectFeatHandler`, and a caller
+  passes its own table through `ProjectFeatEnv.featHandlers` - so a mod can give
+  its projection a terrain effect, or replace `KILL_WALL`'s. **Keyed by code,
+  not by the `PROJ` number**, which is the point: a `PROJ_` value is an index
+  into a compiled-in enum and a mod's projection is appended past the end of it,
+  so its number depends on what else is installed. Its `code` is the identity
+  the record declares, and the same string composition keys `projection.json`
+  by. `castProjection` now threads the bound table into the env once per cast so
+  a new code resolves. Every code core ships is registered, **including the 24
+  whose upstream arm is empty**, so the table states the whole switch rather
+  than leaving arms to a catch-all - `project-feat-registry.test.ts` asserts
+  that in both directions against the bound projection table, and asserts the 19
+  that are deliberately absent. Proven unchanged by replaying the 6,552
+  committed vectors in `project-feat-vectors.json`; control run, dropping
+  `PLASMA` from the table fails both the vectors and the registry test.
 - **A mod can ADD a projection, and adding one no longer takes the game down.**
   `bindProjections` resolved every record's `code` through the compiled-in `PROJ`
   enum and threw `projection: unknown code X` for anything else. Composition
