@@ -317,7 +317,19 @@ export function composePacks(
         /* Every other ref this record answers to becomes an alias - EXCEPT one
          * that is some record's real name. "*Healing*"'s legacy ref is plain
          * "Healing"'s primary, and a record's own history must not cost a
-         * different record its name. */
+         * different record its name. 8 of the shipped pack's 19 legacy aliases
+         * are dropped here; *Destruction* keeps both of its, because core ships
+         * no plain "Destruction" for it to shadow (record-key.test.ts censuses
+         * the lot).
+         *
+         * The `primary` check is NOT redundant with the `table.has` below, and
+         * the difference is one arrangement: a pack that declares the starred
+         * form BEFORE the plain one, whose plain record a later pack then
+         * removes. Without this line the old ref goes live on the starred
+         * record and a patch silently lands on the wrong item. Core's own
+         * object.json happens to declare the plain form first, so `table.has`
+         * covers it there - which is exactly why the case has to be tested with
+         * a fixture rather than the shipped pack. */
         const extra = (keysOf[i] ?? []).filter((k) => k !== key);
         const legacy = legacyRecordKey(file, rec, spec);
         if (legacy !== null) extra.push(legacy);

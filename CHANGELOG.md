@@ -130,6 +130,13 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   `slugify(name)` only where a `*` or `+` appears in a name, and the old form is
   registered as an alias - dropped only where it would shadow a different
   record's real name, which is `*Healing*`'s legacy ref against plain `Healing`.
+  That is **8 of the pack's 19 legacy aliases**, and it turns on core's data
+  rather than on the mark: `*Acquirement*` loses its alias because a plain
+  `Acquirement` exists, `*Destruction*` keeps both of its because no plain
+  `Destruction` does. The census is asserted row by row over the shipped pack,
+  and the shadow rule's own reachable case - a pack declaring the starred form
+  first whose plain record is later removed - is tested with a fixture, its
+  control run.
 
 ### Fixed
 

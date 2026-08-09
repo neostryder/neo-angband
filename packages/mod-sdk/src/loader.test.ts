@@ -270,6 +270,100 @@ describe("the shipped pack", () => {
       expect(composed.records[file], file).toHaveLength(before + 1);
     }
   });
+
+  it("resolves a legacy ref to the record that owns the name, starred or not", () => {
+    /* The rule is CONDITIONAL on core's data, which is easy to state wrongly:
+     * core ships no plain "Destruction", so *Destruction* keeps its pre-mark
+     * alias and an old ref still lands on it; core DOES ship a plain
+     * "Acquirement", so the same-looking ref reaches the plain scroll instead.
+     *
+     * What this test PROVES is the lookup order - the table before the alias
+     * map - which holds whether or not the shadow rule exists. The rule's own
+     * discriminating case is the next test. */
+    const core = shippedCore();
+    const mod = {
+      manifest: {
+        ...manifest("sludge", { core: "*" }),
+        fields: [{ name: "mark", files: ["object"], type: "string" }],
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:scroll--destruction": [{ op: "set", path: "sludge:mark", value: "legacy" }],
+            "core:scroll--acquirement": [{ op: "set", path: "sludge:mark", value: "plain" }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+    const composed = composeContentPacks([core, mod]);
+    expect(composed.problems).toEqual([]);
+
+    const hit = (mark: string): { name?: string } | undefined =>
+      (composed.records["object"] as { name?: string; "sludge:mark"?: string }[]).find(
+        (r) => r["sludge:mark"] === mark,
+      );
+    expect(hit("legacy")?.name).toBe("*Destruction*");
+    expect(hit("plain")?.name).toBe("Acquirement");
+  });
+
+  it("does not hand a removed record's name to the starred record behind it", () => {
+    /* THE SHADOW RULE'S OWN CASE - the ONE arrangement where dropping the alias
+     * changes an answer, and it took two failed attempts to find it.
+     *
+     * Lookup order (table before aliases) already means a live record wins its
+     * own name, and `table.has` already blocks the alias when the plain record
+     * is DECLARED FIRST - which is how core's object.json happens to be
+     * written, so the shipped pack never reaches this. What reaches it is a pack
+     * that declares the starred form first AND a later pack that removes the
+     * plain one: without `primary.has(k)`, "scroll--acquirement" would then be
+     * live on *Acquirement* and the patch would silently land on the wrong
+     * scroll. Registering the alias is what must not happen; refusing the ref
+     * afterwards would be too late, because there would be nothing to refuse.
+     *
+     * Control RUN, not assumed: commenting out `primary.has(k)` in compose.ts
+     * makes this fail and nothing else. */
+    const starredFirst = {
+      manifest: manifest("core"),
+      files: {
+        object: {
+          records: [
+            { type: "scroll", name: "*Acquirement*", cost: 5000 },
+            { type: "scroll", name: "Acquirement", cost: 900 },
+          ],
+        },
+      },
+    } as unknown as LoadedPack;
+    const strip = {
+      manifest: manifest("strip", { core: "*" }),
+      files: { object: { removes: ["core:scroll--acquirement"] } },
+    } as unknown as LoadedPack;
+    const patch = {
+      manifest: {
+        ...manifest("sludge", { core: "*", strip: "*" }),
+        fields: [{ name: "mark", files: ["object"], type: "string" }],
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:scroll--acquirement": [{ op: "set", path: "sludge:mark", value: "x" }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([starredFirst, strip, patch]);
+    const records = composed.records["object"] as {
+      name: string;
+      "sludge:mark"?: string;
+    }[];
+    /* The starred scroll survived the removal, untouched, and the ref that used
+     * to name the plain one now names nothing rather than naming it. */
+    expect(records.map((r) => r.name)).toEqual(["*Acquirement*"]);
+    expect(records[0]?.["sludge:mark"]).toBeUndefined();
+    expect(composed.problems.join(" | ")).toContain(
+      'object fieldPatches "core:scroll--acquirement", but no such record exists',
+    );
+  });
 });
 
 describe("composeContentPacks: per-record ops on passthrough files", () => {

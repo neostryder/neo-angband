@@ -251,10 +251,20 @@ still resolves:
 
 A record answers to **several** refs — its base key, its discriminated form, and
 the pre-2026-08-08 lossy slug as an alias — so nothing an author wrote against an
-older engine stops working. The one case where an alias is dropped is where it
-would shadow a *different* record's real name: `*Healing*`'s old ref is plain
-`Healing`'s current one, and a record's own history must not cost another record
-its name.
+older engine stops working. An alias is dropped where it would shadow a
+*different* record's real name: `*Healing*`'s old ref is plain `Healing`'s
+current one, and a record's own history must not cost another record its name.
+
+That is **8 of the pack's 19 legacy aliases**, and it depends on core's data
+rather than on the mark. `*Acquirement*` loses its alias, because core ships a
+plain `Acquirement` scroll. `*Destruction*` keeps both of its — as a scroll and
+as a staff — because core ships no plain `Destruction` at all, so there is
+nothing for it to shadow. `of *Slay Orc*` loses its and `of *Slay Animal*` keeps
+its, for the same reason. The full census is asserted row by row in
+`record-key.test.ts`, so the count cannot drift back into prose.
+
+None of the 8 cost anybody a working ref: every file carrying a legacy alias is
+one that had *no* per-record addressing before the key table existed.
 
 ### Where a new record lands, and why it matters
 

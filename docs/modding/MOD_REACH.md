@@ -460,8 +460,29 @@ passthrough the refs are the ones `applyPassthroughOps` already used
 (`core:sword--dagger`, `core:of-acid#shot-arrow`, `core:store-general`); for the
 24 that were already composable the key differs from the old `slugify(name)` only
 where a `*` or `+` appears in a name, and the old form is registered as an alias.
-An alias is dropped in exactly one case - where it would shadow a DIFFERENT
-record's primary key, which is `*Healing*`'s legacy ref against plain `Healing`.
+An alias is dropped where it would shadow a DIFFERENT record's primary key -
+`*Healing*`'s legacy ref is plain `Healing`'s.
+
+**Which is 8 of the pack's 19 legacy aliases, not one** (corrected 2026-08-08:
+this line said "in exactly one case" and the number had never been counted). The
+rule turns on core's data, not on the mark: `*Acquirement*` loses its alias
+because a plain `Acquirement` scroll exists, `*Destruction*` keeps both of its
+because no plain `Destruction` does, `of *Slay Orc*` loses its and
+`of *Slay Animal*` keeps its. The 8 are `*Enchant Armour*`, `*Remove Curse*`,
+`*Acquirement*`, `*Healing*`, `*Enlightenment*`, `of *Slay Orc*`,
+`of *Slay Troll*` and `Little eruption+`, censused row by row in
+`record-key.test.ts`. None of them cost a working ref: every file carrying a
+legacy alias is one that had no per-record addressing at all before the key
+table existed.
+
+The rule's own reachable case is narrower still, and worth naming because the
+first two tests written for it could not fail: lookup consults the table before
+the alias map, and the alias is skipped anyway when the plain record is declared
+first — which is how core's `object.json` is written. What the rule actually
+prevents is a pack declaring the starred form first whose plain record a later
+pack removes; without it the old ref goes live on the starred record and a patch
+lands on the wrong item. `loader.test.ts` tests that arrangement with a fixture,
+and the control was run.
 
 **That was the failure mode, and it is closed.** The paragraph here used to read
 "a `patches` entry aimed at a passthrough file is dropped with no error, no
