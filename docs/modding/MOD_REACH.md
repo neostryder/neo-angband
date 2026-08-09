@@ -202,10 +202,29 @@ every one**. The largest:
 | `OPTION_ENTRIES` / `OPT` (birth + all options) | `generated/options.ts:7` | **46** |
 | `OBJECT_FLAG_ENTRIES` / `OF` | `generated/object-flags.ts:11` | **39** |
 | `TVAL_ENTRIES` / `TV` | `generated/tvals.ts:7` | **36** |
-| `PROJECTION_ENTRIES` / `PROJ` | `generated/projections.ts:11` | **31** |
+| `PROJECTION_ENTRIES` / `PROJ` | `generated/projections.ts:11` | **31** (closed as a TABLE, open as a BIND - see below) |
 | `ELEMENT_ENTRIES` / `ELEM` | `generated/elements.ts:7` | **25** |
 | `ROOM_ENTRIES` / `ROOM` | `generated/rooms.ts:7` | **19** |
 | `DUN_PROFILE_ENTRIES` / `DUN` | `generated/dun-profiles.ts:7` | **9** |
+
+**`PROJ` is the exception, as of 2026-08-08.** The generated table is still
+closed - it is upstream's enum and every value in it is a number the port hard
+codes - but `bindProjections` no longer requires a record's `code` to be in it.
+A code the enum has never heard of is appended after the 56 compiled-in slots,
+in record order, so a mod can add a projection. This was not a missing feature
+but a **crash**: the bind threw `projection: unknown code X`, and composition
+merges `projection.json` per record (keyed by `code`), so the record arrived
+intact and took the game down - the one content change that did.
+
+Two things are still refused, because they would break core rather than extend
+it: a new projection may not be `type: "element"` (the first 25 slots are
+`list-elements.h` and `el_info[]` is indexed by ELEM value, so a new element
+would be one the player could never resist), and a `code` that is not a plain own
+property of the enum object - `code: "constructor"` previously resolved through
+`Object.prototype` and bound at index `function Object()`, which a mod-supplied
+code is what makes reachable. `world/projection.test.ts` asserts the whole
+compiled-in table is byte-identical with and without an added projection, and
+both refusals, and the control (a pack MISSING a projection still fails).
 
 Plus two more closed tables outside `generated/`:
 

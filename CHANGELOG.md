@@ -46,6 +46,23 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can ADD a projection, and adding one no longer takes the game down.**
+  `bindProjections` resolved every record's `code` through the compiled-in `PROJ`
+  enum and threw `projection: unknown code X` for anything else. Composition
+  merges `projection.json` per record (keyed by `code`), so a mod's projection
+  reached the bind intact and then killed it - the one content change that
+  crashed rather than being ignored. Unknown codes are now appended after the 56
+  compiled-in slots, in record order, which is the rule objects already get:
+  core is pack zero, so every index below `CORE_PROJECTION_COUNT` is exactly
+  where upstream's enum says it is. Asserted over the WHOLE table, not a sample -
+  binding core with and without an added projection leaves all 56 slots
+  identical by index and code. Two things are still refused because they would
+  break core rather than extend it: a new `type: "element"` (the first 25 slots
+  are `list-elements.h` and `el_info[]` is indexed by ELEM value, so a new
+  element would be one the player could never resist), and a `code` that is not
+  a plain own property of the enum - `code: "constructor"` used to resolve
+  through `Object.prototype` and bind at index `function Object()`, which was
+  unreachable until a mod could supply the code.
 - **A mod can ADD an object, an ego item or a vault.** Those three files - 375,
   107 and 162 of the base game's records - merged whole-file only, so a mod that
   added one new weapon replaced every object in the game. The cause was one

@@ -70,6 +70,7 @@
     "CONF_HIT_REDUCTION",
     "CORE_NS",
     "CORE_PACK_VERSION",
+    "CORE_PROJECTION_COUNT",
     "CORE_RECORD_KEYS",
     "CaveFinder",
     "Chunk",
