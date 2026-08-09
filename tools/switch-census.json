@@ -12,7 +12,7 @@
       "file": "packages/web/src/wizard.ts",
       "cases": 40,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "DEBUG - wizard/debug menu action routing. Not player-facing content; a mod extends the debug menu through the command seam, not here."
     },
     {
       "file": "packages/core/src/obj/desc.ts",
@@ -24,25 +24,25 @@
       "file": "packages/core/src/mon/desc.ts",
       "cases": 24,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "LOCALIZATION - the pronoun table (msex x mode), not a dispatch table. Belongs to MOD_REACH gap 14 (localization), which replaces the strings wholesale rather than the switch."
     },
     {
       "file": "packages/core/src/gen/room.ts",
       "cases": 23,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). A mod can already ship a vault, but only using glyphs this decoder knows; a new glyph is unreachable. Not converted."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",
       "cases": 22,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - keypress routing in the equipment-compare overlay (MOD_REACH gap 23). Reachable once the keypress table is data."
     },
     {
       "file": "packages/core/src/game/player-side.ts",
       "cases": 21,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - project_p, the per-projection PLAYER side effects (new gap 27). Third member of the project_f / project_o family and the only one still a switch, so a mod's projection reaches terrain and objects but not the player. Not converted."
     },
     {
       "file": "packages/core/src/effects/effect-info.ts",
@@ -66,31 +66,31 @@
       "file": "packages/web/src/main.ts",
       "cases": 20,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24). A mod adding a menu row has no arm to land in."
     },
     {
       "file": "packages/web/src/main.ts",
       "cases": 19,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/web/src/main.ts",
       "cases": 19,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/cli/src/main-stats.ts",
       "cases": 18,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "HOST - argument parsing for the stats tool. Not shipped to players."
     },
     {
       "file": "packages/core/src/game/char-sheet.ts",
       "cases": 18,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "LOCALIZATION - likert() buckets a ratio into a rating string. The bucket boundaries are upstream behaviour; only the strings are mod-facing, via gap 14."
     },
     {
       "file": "packages/core/src/obj/object.ts",
@@ -102,19 +102,19 @@
       "file": "packages/core/src/gen/room.ts",
       "cases": 16,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). Second of three decode loops. Not converted."
     },
     {
       "file": "packages/core/src/obj/make.ts",
       "cases": 16,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - tval dispatch in object generation (new gap 28). A mod adding a tval gets no allocation behaviour. Not converted."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",
       "cases": 16,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - keypress routing (nav-normalised) in the equipment-compare overlay (MOD_REACH gap 23)."
     },
     {
       "file": "packages/core/src/obj/randart-build.ts",
@@ -126,7 +126,7 @@
       "file": "packages/web/src/options.ts",
       "cases": 15,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - options menu tag routing (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/core/src/obj/randart-data.ts",
@@ -138,13 +138,13 @@
       "file": "packages/web/src/wizard.ts",
       "cases": 14,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "DEBUG - wizard birth-option keypresses. Same as above."
     },
     {
       "file": "packages/core/src/gen/room.ts",
       "cases": 13,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). Third of three decode loops. Not converted."
     },
     {
       "file": "packages/core/src/combat/mon-melee.ts",
@@ -162,13 +162,13 @@
       "file": "packages/core/src/mod/save-blocks.ts",
       "cases": 11,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
     },
     {
       "file": "packages/core/src/mon/lore-file.ts",
       "cases": 11,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "PARSER - lore.txt directive grammar. Monster records reach mods as JSON through the content pack; the text format is an import path, not a mod surface."
     },
     {
       "file": "packages/core/src/obj/knowledge.ts",
@@ -180,31 +180,31 @@
       "file": "packages/core/src/visuals/map-text.ts",
       "cases": 11,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CONTROL FLOW - health decile to colour. A numeric bucket, not a dispatch table."
     },
     {
       "file": "packages/web/src/main.ts",
       "cases": 11,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/web/src/main.ts",
       "cases": 11,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/core/src/host/args.ts",
       "cases": 10,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
       "file": "packages/core/src/effects/effect.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - per-effect subtype name decoding (MOD_REACH gap 17). A mod's effect can take no named subtype. Not converted."
     },
     {
       "file": "packages/core/src/obj/object.ts",
@@ -222,67 +222,67 @@
       "file": "packages/core/src/obj/value.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - tval dispatch in object pricing (new gap 28). Same tval blind spot, pricing side. Not converted."
     },
     {
       "file": "packages/core/src/player/shape-lore.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "LOCALIZATION - skill_index_to_name. Index to display string; gap 14 owns the strings."
     },
     {
       "file": "packages/web/src/birth.ts",
       "cases": 9,
       "hasDefault": false,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CONTROL FLOW - the birth flow's stage machine. Replacing the birth screens is MOD_REACH gap 9 (whole-screen), which does not route through this switch."
     },
     {
       "file": "packages/web/src/capability-describe.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition."
     },
     {
       "file": "packages/web/src/charsheet.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - keypress routing in the character sheet (MOD_REACH gap 23)."
     },
     {
       "file": "packages/web/src/main.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/core/src/dice.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "PARSER - the dice-expression grammar (character lexer and its INPUT_* transition table, two switches). A mod changing dice syntax would invalidate every record in every pack; deliberately closed."
     },
     {
       "file": "packages/core/src/dice.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "PARSER - the dice-expression grammar (character lexer and its INPUT_* transition table, two switches). A mod changing dice syntax would invalidate every record in every pack; deliberately closed."
     },
     {
       "file": "packages/core/src/game/effect-item.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CANDIDATE - which item an effect prompts for (MOD_REACH gap 17). A mod's item-consuming effect cannot ask for an item. Not converted."
     },
     {
       "file": "packages/core/src/game/thrust.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "CONTROL FLOW - per-direction angle windows in thrust_away. Geometry, fixed by the 8 DDD directions."
     },
     {
       "file": "packages/core/src/host/bridge.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "HOST - the host file-operation RPC protocol. Adding an op is a core+host change by construction."
     },
     {
       "file": "packages/core/src/obj/object.ts",
@@ -300,14 +300,14 @@
       "file": "packages/web/src/birth.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
     },
     {
       "file": "packages/web/src/birth.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "UNADJUDICATED"
+      "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
     }
   ],
-  "unadjudicated": 36
+  "unadjudicated": 0
 }
