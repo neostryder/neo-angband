@@ -435,6 +435,21 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
     reachable. A separate minority of cases is the player's own region being cut
     off entirely, which `classic_gen` permits because it never calls
     `ensure_connectedness` at all.
+  - **A third route, and the rarest: a corridor upstream planned and then
+    refused to dig.** `join_region`'s two halves treat vault grids differently
+    (`gen-cave.c:1925`, and the port's `joinRegion` line for line). The search
+    that finds a crossing may *traverse* a vault grid when
+    `allow_vault_disconnect` is set; the walk-back that turns the found path
+    into floor refuses to break one. So a crossing whose only route was through
+    a vault WALL gets recoloured as joined and left physically holed, and an
+    **ordinary** region stays sealed with no vault grid anywhere in it. Observed
+    once in 27,000 generated levels (d40 seed 400792, adjudicated 2026-08-09 for
+    task #148): one refused dig at (94,38) sealed a 385-grid region holding all
+    three of the level's down staircases. This matters to a reader of this
+    document because it is the one stranding shape that does **not** look like
+    upstream's when you inspect the finished level - which is why
+    `notUpstreamStranding` now tests for both routes, and why a stranded region
+    without a vault in it is still not automatically a port defect.
 - Port relevance: none of this is a port defect - `allocStairs` in
   `packages/core/src/gen/util.ts` is a line-for-line match including the
   `walls = 3 -> 0` ladder and the absence of a vault test. Faithful core
@@ -481,7 +496,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   - `packages/core/src/gen/gen.test.ts` keeps the CONTROL that faithful core
     (no hook) really does strand the measured seeds, so moving the repair back
     into core fails the suite and says why (the failure message names the mod -
-    `gen.test.ts:489`).
+    `gen.test.ts:668`).
   - `neo-angband-mod-bug-fixes/stairs.test.ts` carries the repair's own tests:
     the invariant across depths, the measured pre-fix failures as named
     regressions, and mechanical unit tests on a synthetic sealed-pocket level

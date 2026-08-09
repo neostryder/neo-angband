@@ -297,6 +297,21 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Changed
 
+- **The one stranded level that did not look like upstream's is upstream's, by
+  a second mechanism.** d40 seed 400792 had been held apart since 2026-08-07 as
+  the only stranding in 27,000 generated levels whose sealed staircases were not
+  vault grids - the shape that would have meant the port, not Angband, failing
+  to connect a dungeon. It is neither. `join_region` may *search* through a
+  vault grid but refuses to *dig* one (`gen-cave.c:1925`, and the port's
+  `joinRegion` line for line), so a crossing whose only route was through a
+  vault wall is recorded as joined and left physically holed. Instrumenting the
+  dig loop named the single refused grid, (94,38), on the boundary of the
+  385-grid region that holds all three of that level's down staircases.
+  `notUpstreamStranding` now recognises both routes from the finished level with
+  no hook in the generator, the seed has moved into the pinned `STRANDED` set,
+  and the classifier's new arm is held to a pair of synthetic levels identical
+  but for one boundary grid's vault flag - so an arm that stopped
+  discriminating, and started forgiving real connectivity defects, fails.
 - **The three record files that still take a whole file, and why.** `constants`
   and `visuals` are config singletons: the file IS the identity, the host binds
   one, and shipping the file means "use mine". `history` has no per-record
