@@ -57,10 +57,50 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   enough to decide which switches "matter" is a tool that could decide a new one
   does not. Control run: dropping a new 8-case switch into the tree fails the
   census.
-- **All 51 censused switches are adjudicated, and only 22 are moddability
+- **`project_p` is a registry, and the projection family is complete.** The
+  21-case `switch (ctx.typ)` in `game/player-side.ts` was the last of the three
+  - `project_f` (37) and `project_o` (11) went the day before - so a mod's
+  projection reached terrain and objects but not the player, which is the half
+  that matters. `PLAYER_SIDE_HANDLERS` is keyed by projection `code` exactly as
+  the other two are. This one was a real refactor rather than a lift: the arms
+  read ten helpers built per game and one, `incCheck`, reads a source monster
+  stamped per projection, so `PlayerSideCtx` makes that toolkit explicit and the
+  arms become ordinary top-level functions. **6,912 golden vectors** were
+  recorded from the switch first and replay identically against the table -
+  every message, both stat arrays, exp/mana/energy, where the player ended up,
+  the pack, the worn gear, and one rng draw taken afterwards. That last field is
+  not decoration: the control run added a single discarded `randint0(2)` to
+  INERTIA, which changed no visible value at all, and only `rngProbe` caught it.
+  A second control swapped FIRE and COLD in the table and failed four groups by
+  name.
+- **The vectors were unable to fail, twice, before they could.** The first
+  recording ran 2,304 scenarios in which the pack was never damaged, worn gear
+  never disenchanted, `minus_ac` never bit and every teleport reported failure -
+  four whole handler arms captured as dead code. All four causes were in the
+  fixture: `object_prep` ORs the object BASE's `el_info` in, so selecting kinds
+  by the kind's own flags found nothing that hates acid; `minus_ac` and
+  `disenchant_equipment` pick a slot BY TYPE, so a suit of armour in slot 0
+  (WEAPON) was invisible to both; a 40x25 harness field has nowhere to put a
+  200-grid teleport; and the harness builds at depth 0, the town, where
+  `teleport_player_level` has no UP to choose. The second recording still had
+  NEXUS's 1-in-4 teleport-level arm empty in all 96 of its rows, because NEXUS
+  reads neither `dam` nor `power` - so the rest of the grid collapsed onto two
+  rng streams. Six seeds, not two. Each of those arms now has an assertion that
+  fails when the fixture stops reaching it.
+- **Corrected: the projection registries are converted and still unreachable.**
+  `MOD_REACH.md` recorded rows 11 and 12 as reachable via `env.featHandlers` /
+  `env.objHandlers`. They are not: `session/game.ts` builds its env as
+  `{ makeDeps }` and nothing anywhere writes either field, there is no
+  `registry:projection` capability, and no facade in `mod/registry-host.ts` -
+  unlike `registry:blow` and `registry:store`, which is what makes the genuine
+  yeses genuine. All three rows now read **no**, because a field a mod cannot
+  set is not a seam a mod can use. The tally is also now stated as a count of
+  the rows, which is the only form of it anyone can check by reading the column;
+  the previous figures mixed rows with merged capabilities and had drifted.
+- **All 50 censused switches are adjudicated, and only 21 are moddability
   gaps.** The backlog started at 36 rows nobody had looked at. Each was read -
   discriminant and case labels - rather than guessed at, and classified into a
-  **closed vocabulary**: 22 `CANDIDATE` (content dispatch a mod would want), 12
+  **closed vocabulary**: 21 `CANDIDATE` (content dispatch a mod would want), 12
   `UI` (menu and keypress routing), 6 `PARSER`/`HOST` (the dice grammar, the
   `lore.txt` directives, CLI flags, the host RPC - deliberately closed, since a
   mod changing dice syntax would invalidate every record in every pack), 3

@@ -13,10 +13,13 @@
  * regenerating stamps it UNADJUDICATED, which breaks the verdict gate; the
  * only way to green is to write a verdict.
  *
- * All 51 now carry one, and the distribution is the finding: 22 are content
+ * All 50 now carry one, and the distribution is the finding: 21 are content
  * dispatch a mod would want, and 29 are not. That number is asserted here
  * rather than described in a document, because "we looked at all of them" is
  * exactly the sort of claim that is true on the day it is written.
+ *
+ * It was 51 and 22 until project_p became a registry, and the count moving on
+ * its own is the point of a census: the row left because the switch did.
  *
  * Lives in packages/web because that is where the other repo-wide ratchets run
  * (mod-core-surface.test.ts); it reads the source tree, not this package.
@@ -38,7 +41,6 @@ interface Row {
 }
 interface Manifest {
   threshold: number;
-  unadjudicated: number;
   switches: Row[];
 }
 
@@ -81,14 +83,17 @@ describe("the switch census", () => {
       (r) => r.verdict === "UNADJUDICATED",
     );
     expect(unadjudicated.map((r) => r.file)).toEqual([]);
-    expect(manifest.unadjudicated).toBe(0);
+    /* DERIVED FROM THE ROWS, not from a count beside them. The manifest used to
+     * carry an `unadjudicated:` field as well, and regenerating dropped it -
+     * leaving an assertion reading `undefined === 0` had the check been written
+     * against the declared copy instead of the rows it summarises. */
     /* And a verdict has to say something. "n/a" would pass the check above. */
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 51 into a CLOSED vocabulary", () => {
+  it("classifies all 50 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 51 switches only 22 are content dispatch a mod
+     * than written in prose: of 50 switches only 21 are content dispatch a mod
      * would want. The other 29 are UI routing, parsers, host wiring, the mod
      * system's own vocabulary, localization strings, or plain control flow -
      * and saying so is a claim that can be checked against the file.
@@ -102,7 +107,7 @@ describe("the switch census", () => {
       byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
     }
     expect(Object.fromEntries([...byClass].sort())).toEqual({
-      CANDIDATE: 22,
+      CANDIDATE: 21,
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 3,
@@ -120,7 +125,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("gap 14");
   });
 
-  it("is measuring something: 51 switches, 794 case labels", () => {
+  it("is measuring something: 50 switches, 773 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
@@ -133,12 +138,18 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.file).toBe("packages/core/src/obj/randart-build.ts");
   });
 
-  it("no longer lists the two switches that became registries", () => {
-    /* project-feat.ts and project-obj.ts are the two converted so far. Their
-     * absence is the census agreeing with MOD_REACH rows 11 and 12 - and it is
-     * derived rather than declared, which is the whole point of this file. */
+  it("no longer lists the three switches that became registries", () => {
+    /* The whole project_f / project_o / project_p family. Their absence is the
+     * census agreeing with MOD_REACH rows 11, 12 and 27 - and it is derived
+     * rather than declared, which is the whole point of this file: nobody
+     * edited a row to say project_p was done, the row left when the switch did.
+     *
+     * player-side.ts is named as a FILE, not as a row that shrank. Its handlers
+     * are top-level functions now, so there is no smaller switch left behind to
+     * mistake for progress. */
     const files = new Set(manifest.switches.map((r) => r.file));
     expect(files.has("packages/core/src/game/project-feat.ts")).toBe(false);
     expect(files.has("packages/core/src/game/project-obj.ts")).toBe(false);
+    expect(files.has("packages/core/src/game/player-side.ts")).toBe(false);
   });
 });

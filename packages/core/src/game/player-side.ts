@@ -22,6 +22,23 @@
  * distinct: drainStat is effect_simple(EF_DRAIN_STAT) (sustain saves with the
  * "You feel very %s..." messages), drainStatsRandom is
  * project_player_drain_stats (no sustain, always "You're not as %s...").
+ *
+ * THE DISPATCH IS A REGISTRY, as of 2026-08-09. It was a 21-case switch, and
+ * the last of the three - project_f's 37 and project_o's 11 were converted the
+ * day before, so a mod's projection reached terrain and objects but not the
+ * player, which is the half that matters. PLAYER_SIDE_HANDLERS is keyed by
+ * projection CODE exactly as the other two are, and `deps.playerHandlers`
+ * replaces it wholesale.
+ *
+ * What made this one a real refactor rather than a mechanical lift: the arms
+ * read ten helpers built per game, and `incCheck` reads a `currentSource`
+ * stamped per PROJECTION. `PlayerSideCtx` is those helpers made explicit, which
+ * is what lets the arms be ordinary top-level functions.
+ *
+ * The 6,912 vectors in player-side-vectors.json were recorded from the SWITCH
+ * and are replayed against the table, because the conversion bought moddability
+ * and was required to change nothing else - including the number of rng draws,
+ * which no visible value would have shown.
  */
 
 import { ELEM, OF, PF, PROJ, STAT, TMD } from "../generated/index.js";
@@ -43,7 +60,8 @@ import { playerExpLose, playerStatDec } from "../player/exp.js";
 import { playerFlags } from "../player/calcs.js";
 import type { ExpDeps } from "../player/exp.js";
 import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
-import { adjustDam } from "../world/projection.js";
+import { adjustDam, projectionCodeFor } from "../world/projection.js";
+import type { Rng } from "../rng.js";
 import { ODESC } from "../obj/desc.js";
 import { minusAc } from "./gear.js";
 import { describeObject } from "./describe.js";
@@ -184,6 +202,56 @@ export function makeIncCheckHooks(
   };
 }
 
+/**
+ * What one per-projection player handler is handed: the projection being
+ * resolved, and the toolkit the arms used to close over.
+ *
+ * THE TOOLKIT IS THE WHOLE REASON THIS TYPE EXISTS. project_f's and project_o's
+ * handlers took (state, grid, dam) and a bag of env, so lifting them to module
+ * level was mechanical. project_p's arms read ten helpers built per game -
+ * player_inc_timed bound to the timed registry, player_inc_check bound to the
+ * live derived state, the two distinct stat drains, the HOLD_LIFE life drain -
+ * and one of them, `incCheck`, reads a `currentSource` that is stamped per
+ * PROJECTION. Passing those in explicitly is what lets the arms below be
+ * ordinary top-level functions, and lets a mod supply its own.
+ */
+export interface PlayerSideCtx {
+  readonly state: GameState;
+  readonly deps: PlayerSideDeps;
+  /** The upstream handler context: origin, grid, typ, power, obvious. */
+  readonly proj: ProjectPlayerSideContext;
+  /** context->dam, which nine arms scale their effects off. */
+  readonly dam: number;
+  /** Monster spell power: the >= 60 / 70 / 80 gates on the bonus arms. */
+  readonly power: number;
+  readonly rng: Rng;
+  /** The player, so an arm does not spell out state.actor.player every line. */
+  p(): Player;
+  msg(text: string): void;
+  /** player_inc_timed through the bound registry. */
+  incTimed(idx: number, v: number, check: boolean): boolean;
+  /** player_inc_check as a pure predicate, for the pre-message resist test. */
+  incCheck(idx: number): boolean;
+  /** el_info[elem].res_level === 3. */
+  isImmune(elem: number): boolean;
+  /** el_info[elem].res_level > 0. */
+  resists(elem: number): boolean;
+  /** effect_simple(EF_DRAIN_STAT): the sustain saves it. */
+  drainStat(stat: number): void;
+  /** project_player_drain_stats(num): no sustain, always the message. */
+  drainStatsRandom(num: number): void;
+  /** Experience drain with the HOLD_LIFE gate. */
+  drainLife(amount: number, text: string): void;
+  /**
+   * Extra damage applied after damage reduction. Mutable and written in place,
+   * exactly as `ProjectObjCtx.out` is - POIS's acid sting is the only writer.
+   */
+  xtra: number;
+}
+
+/** One projection's side effects on the player. Writes `ctx.xtra` if any. */
+export type PlayerSideHandler = (ctx: PlayerSideCtx) => void;
+
 /** Everything the side-effect handlers need beyond the GameState. */
 export interface PlayerSideDeps {
   /** The bound timed-effect registry (players.timed), TMD-indexed. */
@@ -198,6 +266,13 @@ export interface PlayerSideDeps {
   lifeDrainPercent: number;
   /** The teleport seams (no-teleport curse, post-move) for GRAVITY's blink. */
   teleport?: TeleportEnv;
+  /**
+   * The player-handler table to dispatch through, defaulting to
+   * PLAYER_SIDE_HANDLERS. A whole table rather than an overlay, for the same
+   * reason as `featHandlers` and `objHandlers`: composing several mods' tables
+   * is the host's job, not this module's.
+   */
+  playerHandlers?: ReadonlyMap<string, PlayerSideHandler>;
   msg?(text: string): void;
 }
 
@@ -227,6 +302,368 @@ const STAT_NEG_ADJECTIVE: readonly string[] = [
 function sustained(state: GameState, stat: number): boolean {
   return playerOfHas(state, OF.SUST_STR + stat);
 }
+
+/* ------------------------------------------------------------------ */
+/* project_player_handler_* (project-player.c L133-L500)                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The elemental arm shared by ACID and ELEC: immunity spares the pack, and
+ * nothing else happens. FIRE and COLD start the same way and then add their
+ * powerful-attack bonuses, so they are written out in full rather than wrapping
+ * this - the shared prefix is two lines and the difference is the whole arm.
+ */
+const packOnly =
+  (element: number): PlayerSideHandler =>
+  (c) => {
+    if (c.isImmune(element)) return;
+    invenDamage(c.state, element, Math.min(c.dam * 5, 300), { msg: c.msg });
+  };
+
+const fire: PlayerSideHandler = (c) => {
+  if (c.isImmune(ELEM.FIRE)) return;
+  invenDamage(c.state, ELEM.FIRE, Math.min(c.dam * 5, 300), { msg: c.msg });
+  /* Occasional side-effects for powerful fire attacks. */
+  if (c.power >= 80) {
+    if (c.rng.randint0(c.dam) > 500) {
+      c.msg("The intense heat saps you.");
+      c.drainStat(STAT.STR);
+    }
+    if (c.rng.randint0(c.dam) > 500) {
+      if (c.incTimed(TMD.BLIND, c.rng.randint1(Math.trunc(c.dam / 100)), true)) {
+        c.msg("Your eyes fill with smoke!");
+      }
+    }
+    if (c.rng.randint0(c.dam) > 500) {
+      if (c.incTimed(TMD.POISONED, c.rng.randint1(Math.trunc(c.dam / 10)), true)) {
+        c.msg("You are assailed by poisonous fumes!");
+      }
+    }
+  }
+};
+
+const cold: PlayerSideHandler = (c) => {
+  if (c.isImmune(ELEM.COLD)) return;
+  invenDamage(c.state, ELEM.COLD, Math.min(c.dam * 5, 300), { msg: c.msg });
+  /* Occasional side-effects for powerful cold attacks. */
+  if (c.power >= 80) {
+    if (c.rng.randint0(c.dam) > 500) {
+      c.msg("The cold seeps into your bones.");
+      c.drainStat(STAT.DEX);
+    }
+    if (c.rng.randint0(c.dam) > 500) {
+      c.drainLife(c.dam, "The cold withers your life force!");
+    }
+  }
+};
+
+const pois: PlayerSideHandler = (c) => {
+  if (!c.incTimed(TMD.POISONED, 10 + c.rng.randint1(c.dam), true)) {
+    c.msg("You resist the effect!");
+  }
+  /* Occasional side-effects for powerful poison attacks. */
+  if (c.power >= 60) {
+    if (c.rng.randint0(c.dam) > 200) {
+      if (!c.isImmune(ELEM.ACID)) {
+        const acidDam = Math.trunc(c.dam / 5);
+        c.msg("The venom stings your skin!");
+        invenDamage(c.state, ELEM.ACID, acidDam, { msg: c.msg });
+        /* adjust_dam(PROJ_ACID) calls minus_ac(p): a real armour-damage
+         * roll (message + to_a-- + PU_BONUS) that also halves the sting
+         * (project-player.c L232 -> adjust_dam L69). P2. */
+        const hitAc = minusAc(c.p(), c.state.gear, c.state.rng, {
+          msg: c.msg,
+          describe: (o) => describeObject(c.state, o, ODESC.BASE),
+          updateBonuses: () => c.state.updateBonuses?.(),
+        });
+        c.xtra += adjustDam(
+          c.state.rng,
+          c.deps.projections,
+          PROJ.ACID,
+          acidDam,
+          "randomise",
+          c.deps.actor.resistLevel(ELEM.ACID),
+          hitAc,
+        );
+      }
+    }
+    if (c.rng.randint0(c.dam) > 200) {
+      c.msg("The stench sickens you.");
+      c.drainStat(STAT.CON);
+    }
+  }
+};
+
+const light: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.LIGHT)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  c.incTimed(TMD.BLIND, 2 + c.rng.randint1(5), true);
+  if (c.dam > 300) {
+    /* Check for resistance before issuing the message. */
+    if (c.incCheck(TMD.CONFUSED)) c.msg("You are dazzled!");
+    c.incTimed(TMD.CONFUSED, 2 + c.rng.randint1(Math.trunc(c.dam / 100)), true);
+  }
+};
+
+/** project_player_handler_DARK (project-player.c:268). */
+const dark: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.DARK)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  c.incTimed(TMD.BLIND, 2 + c.rng.randint1(5), true);
+  /* Unresisted dark from powerful monsters is bad news. */
+  if (c.power >= 70) {
+    if (c.rng.randint0(c.dam) > 100) {
+      c.drainLife(c.dam, "The darkness steals your life force!");
+    }
+    if (c.rng.randint0(c.dam) > 200) {
+      c.msg("You feel unsure of yourself in the darkness.");
+      c.incTimed(TMD.SLOW, Math.trunc(c.dam / 100), false);
+    }
+    if (c.rng.randint0(c.dam) > 300) {
+      c.msg("Darkness penetrates your mind!");
+      c.incTimed(TMD.AMNESIA, Math.trunc(c.dam / 100), false);
+    }
+  }
+};
+
+const darkWeak: PlayerSideHandler = (c) => {
+  /* project-player.c project_player_handler_DARK_WEAK: unlit races resist
+   * silently; everyone else who resists gets the message; the rest are
+   * briefly blinded. */
+  if (c.resists(ELEM.DARK)) {
+    if (!(c.state.playerState?.pflags.has(PF.UNLIGHT) ?? false)) {
+      c.msg("You resist the effect!");
+    }
+    return;
+  }
+  c.incTimed(TMD.BLIND, 3 + c.rng.randint1(5), true);
+};
+
+const sound: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.SOUND)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  if (!playerOfHas(c.state, OF.PROT_STUN)) {
+    c.incTimed(TMD.STUN, Math.min(5 + c.rng.randint1(Math.trunc(c.dam / 3)), 35), true);
+  } else {
+    equipLearnFlag(c.p(), c.state.runeEnv, OF.PROT_STUN);
+  }
+  if (c.dam > 300) {
+    /* Check for resistance before issuing the message. */
+    if (c.incCheck(TMD.CONFUSED)) c.msg("The noise disorients you.");
+    c.incTimed(TMD.CONFUSED, 2 + c.rng.randint1(Math.trunc(c.dam / 100)), true);
+  }
+};
+
+const shard: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.SHARD)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  c.incTimed(TMD.CUT, c.rng.randint1(c.dam), false);
+};
+
+const nexus: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.NEXUS)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  /* Stat scramble unless saved. */
+  if (c.rng.randint0(100) < (c.state.actor.combat.skills[SKILL.SAVE] ?? 0)) {
+    c.msg("You avoid the effect!");
+  } else {
+    c.incTimed(TMD.SCRAMBLE, c.rng.randint0(20) + 20, true);
+  }
+  const tp = c.deps.teleport ?? {};
+  if (c.rng.oneIn(3) && c.proj.origin.isMonster && c.proj.origin.grid) {
+    /* Teleport to the caster. */
+    teleportPlayerTo(c.state, c.proj.origin.grid, tp, c.msg);
+  } else if (c.rng.oneIn(4)) {
+    /* Teleport level. */
+    if (c.rng.randint0(100) < (c.state.actor.combat.skills[SKILL.SAVE] ?? 0)) {
+      c.msg("You avoid the effect!");
+      return;
+    }
+    teleportPlayerLevel(c.state, tp, c.msg, c.proj.origin.isMonster);
+  } else {
+    /* Teleport 200 grids. */
+    teleportPlayer(c.state, 200, tp, c.msg);
+  }
+};
+
+const nether: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.NETHER) || playerOfHas(c.state, OF.HOLD_LIFE)) {
+    c.msg("You resist the effect!");
+    equipLearnFlag(c.p(), c.state.runeEnv, OF.HOLD_LIFE);
+    return;
+  }
+  const drain =
+    200 + Math.trunc(c.p().exp / 100) * c.deps.lifeDrainPercent;
+  c.msg("You feel your life force draining away!");
+  playerExpLose(c.p(), drain, false, c.deps.expDeps);
+  if (c.power >= 80) {
+    if (c.rng.randint0(c.dam) > 100 && c.p().msp) {
+      c.msg("Your mind is dulled.");
+      c.p().csp -= Math.min(c.p().csp, Math.trunc(c.dam / 10));
+    }
+    if (c.rng.randint0(c.dam) > 200) {
+      c.msg("Your energy is sapped!");
+      c.state.actor.energy = 0;
+    }
+  }
+};
+
+const chaos: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.CHAOS)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  c.incTimed(TMD.IMAGE, c.rng.randint1(10), false);
+  c.incTimed(TMD.CONFUSED, 10 + c.rng.randint0(20), true);
+  if (!playerOfHas(c.state, OF.HOLD_LIFE)) {
+    const drain =
+      Math.trunc((c.p().exp * 3) / 200) * c.deps.lifeDrainPercent;
+    c.msg("You feel your life force draining away!");
+    playerExpLose(c.p(), drain, false, c.deps.expDeps);
+  } else {
+    equipLearnFlag(c.p(), c.state.runeEnv, OF.HOLD_LIFE);
+  }
+};
+
+const disen: PlayerSideHandler = (c) => {
+  if (c.resists(ELEM.DISEN)) {
+    c.msg("You resist the effect!");
+    return;
+  }
+  /* Disenchant gear (effect_simple(EF_DISENCHANT)). */
+  disenchantEquipment(c.state, { msg: c.msg });
+};
+
+const water: PlayerSideHandler = (c) => {
+  c.incTimed(TMD.CONFUSED, 5 + c.rng.randint1(5), true);
+  c.incTimed(TMD.STUN, c.rng.randint1(40), true);
+};
+
+const ice: PlayerSideHandler = (c) => {
+  if (!c.isImmune(ELEM.COLD)) {
+    invenDamage(c.state, ELEM.COLD, Math.min(c.dam * 5, 300), { msg: c.msg });
+  }
+  if (!c.resists(ELEM.SHARD)) {
+    c.incTimed(TMD.CUT, c.rng.damroll(5, 8), false);
+  } else {
+    c.msg("You resist the effect!");
+  }
+  c.incTimed(TMD.STUN, c.rng.randint1(15), true);
+};
+
+const gravity: PlayerSideHandler = (c) => {
+  c.msg("Gravity warps around you.");
+  /* Blink (effect_simple(EF_TELEPORT, "5")). */
+  if (c.rng.randint1(127) > c.p().lev) {
+    teleportPlayer(c.state, 5, c.deps.teleport ?? {}, c.msg);
+  }
+  c.incTimed(TMD.SLOW, 4 + c.rng.randint0(4), false);
+  if (!playerOfHas(c.state, OF.PROT_STUN)) {
+    c.incTimed(TMD.STUN, Math.min(5 + c.rng.randint1(Math.trunc(c.dam / 3)), 35), true);
+  } else {
+    equipLearnFlag(c.p(), c.state.runeEnv, OF.PROT_STUN);
+  }
+};
+
+const inertia: PlayerSideHandler = (c) => {
+  c.incTimed(TMD.SLOW, 4 + c.rng.randint0(4), false);
+};
+
+const force: PlayerSideHandler = (c) => {
+  let centre = c.proj.origin.grid ?? c.proj.grid;
+
+  /* Player gets pushed in a random direction if on the trap. */
+  if (c.proj.origin.isTrap && locEq(c.state.actor.grid, centre)) {
+    centre = locSum(centre, DDGRID_DDD[c.rng.randint0(8)]!);
+  }
+
+  c.incTimed(TMD.STUN, c.rng.randint1(20), true);
+
+  /* Thrust player away. */
+  thrustAway(c.state, centre, c.proj.grid, 3 + Math.trunc(c.dam / 20), {
+    msg: c.msg,
+    ...(c.deps.teleport?.onPlayerPostMove
+      ? {
+          onPlayerPostMove: (): void =>
+            c.deps.teleport!.onPlayerPostMove!(true),
+        }
+      : {}),
+  });
+};
+
+const time: PlayerSideHandler = (c) => {
+  if (c.rng.oneIn(2)) {
+    const drain =
+      100 + Math.trunc(c.p().exp / 100) * c.deps.lifeDrainPercent;
+    c.msg("You feel your life force draining away!");
+    playerExpLose(c.p(), drain, false, c.deps.expDeps);
+  } else if (!c.rng.oneIn(5)) {
+    /* Drain two random stats (project_player_drain_stats(2): no sustain). */
+    c.drainStatsRandom(2);
+  } else {
+    c.msg("You're not as powerful as you used to be...");
+    for (let i = 0; i < STAT_MAX; i++) playerStatDec(c.p(), i, false);
+  }
+};
+
+const plasma: PlayerSideHandler = (c) => {
+  if (!playerOfHas(c.state, OF.PROT_STUN)) {
+    c.incTimed(
+      TMD.STUN,
+      Math.min(5 + c.rng.randint1(Math.trunc((c.dam * 3) / 4)), 35),
+      true,
+    );
+  } else {
+    equipLearnFlag(c.p(), c.state.runeEnv, OF.PROT_STUN);
+  }
+};
+
+/**
+ * project_player_handler_f[]: the per-projection player side effects, keyed by
+ * projection CODE.
+ *
+ * KEYED BY CODE, NOT BY PROJ VALUE, and the same way project_f's and
+ * project_o's tables are. A mod's own projection is appended to the bound
+ * projection table at a slot core never compiled in, so a numeric key would put
+ * its handler somewhere nothing looks; the code is the identity that survives.
+ *
+ * A projection with NO entry does nothing to the player, which is upstream's
+ * empty handler and is why there is no default arm here to write.
+ */
+export const PLAYER_SIDE_HANDLERS: ReadonlyMap<string, PlayerSideHandler> =
+  new Map<string, PlayerSideHandler>([
+    ["ACID", packOnly(ELEM.ACID)],
+    ["ELEC", packOnly(ELEM.ELEC)],
+    ["FIRE", fire],
+    ["COLD", cold],
+    ["POIS", pois],
+    ["LIGHT", light],
+    ["DARK", dark],
+    ["DARK_WEAK", darkWeak],
+    ["SOUND", sound],
+    ["SHARD", shard],
+    ["NEXUS", nexus],
+    ["NETHER", nether],
+    ["CHAOS", chaos],
+    ["DISEN", disen],
+    ["WATER", water],
+    ["ICE", ice],
+    ["GRAVITY", gravity],
+    ["INERTIA", inertia],
+    ["FORCE", force],
+    ["TIME", time],
+    ["PLASMA", plasma],
+  ]);
 
 export function makePlayerSideEffects(
   state: GameState,
@@ -353,10 +790,6 @@ export function makePlayerSideEffects(
   };
 
   return (ctx: ProjectPlayerSideContext): number => {
-    const rng = state.rng;
-    const dam = ctx.dam;
-    let xtra = 0;
-
     /* Stamp cave->mon_current for this projection before any handler runs. */
     const srcIdx = ctx.origin.monster ?? 0;
     /* The `> 0` mirrors upstream's `cave->mon_current > 0` and is REDUNDANT
@@ -365,330 +798,38 @@ export function makePlayerSideEffects(
      * because a mutation that drops it survives the suite on purpose. */
     currentSource = srcIdx > 0 ? (state.monsters[srcIdx] ?? null) : null;
 
-    switch (ctx.typ) {
-      case PROJ.ACID: {
-        if (isImmune(ELEM.ACID)) break;
-        invenDamage(state, ELEM.ACID, Math.min(dam * 5, 300), { msg });
-        break;
-      }
-      case PROJ.ELEC: {
-        if (isImmune(ELEM.ELEC)) break;
-        invenDamage(state, ELEM.ELEC, Math.min(dam * 5, 300), { msg });
-        break;
-      }
-      case PROJ.FIRE: {
-        if (isImmune(ELEM.FIRE)) break;
-        invenDamage(state, ELEM.FIRE, Math.min(dam * 5, 300), { msg });
-        /* Occasional side-effects for powerful fire attacks. */
-        if (ctx.power >= 80) {
-          if (rng.randint0(dam) > 500) {
-            msg("The intense heat saps you.");
-            drainStat(STAT.STR);
-          }
-          if (rng.randint0(dam) > 500) {
-            if (incTimed(TMD.BLIND, rng.randint1(Math.trunc(dam / 100)), true)) {
-              msg("Your eyes fill with smoke!");
-            }
-          }
-          if (rng.randint0(dam) > 500) {
-            if (incTimed(TMD.POISONED, rng.randint1(Math.trunc(dam / 10)), true)) {
-              msg("You are assailed by poisonous fumes!");
-            }
-          }
-        }
-        break;
-      }
-      case PROJ.COLD: {
-        if (isImmune(ELEM.COLD)) break;
-        invenDamage(state, ELEM.COLD, Math.min(dam * 5, 300), { msg });
-        /* Occasional side-effects for powerful cold attacks. */
-        if (ctx.power >= 80) {
-          if (rng.randint0(dam) > 500) {
-            msg("The cold seeps into your bones.");
-            drainStat(STAT.DEX);
-          }
-          if (rng.randint0(dam) > 500) {
-            drainLife(dam, "The cold withers your life force!");
-          }
-        }
-        break;
-      }
-      case PROJ.POIS: {
-        if (!incTimed(TMD.POISONED, 10 + rng.randint1(dam), true)) {
-          msg("You resist the effect!");
-        }
-        /* Occasional side-effects for powerful poison attacks. */
-        if (ctx.power >= 60) {
-          if (rng.randint0(dam) > 200) {
-            if (!isImmune(ELEM.ACID)) {
-              const acidDam = Math.trunc(dam / 5);
-              msg("The venom stings your skin!");
-              invenDamage(state, ELEM.ACID, acidDam, { msg });
-              /* adjust_dam(PROJ_ACID) calls minus_ac(p): a real armour-damage
-               * roll (message + to_a-- + PU_BONUS) that also halves the sting
-               * (project-player.c L232 -> adjust_dam L69). P2. */
-              const hitAc = minusAc(p(), state.gear, state.rng, {
-                msg,
-                describe: (o) => describeObject(state, o, ODESC.BASE),
-                updateBonuses: () => state.updateBonuses?.(),
-              });
-              xtra += adjustDam(
-                state.rng,
-                deps.projections,
-                PROJ.ACID,
-                acidDam,
-                "randomise",
-                deps.actor.resistLevel(ELEM.ACID),
-                hitAc,
-              );
-            }
-          }
-          if (rng.randint0(dam) > 200) {
-            msg("The stench sickens you.");
-            drainStat(STAT.CON);
-          }
-        }
-        break;
-      }
-      case PROJ.LIGHT: {
-        if (resists(ELEM.LIGHT)) {
-          msg("You resist the effect!");
-          break;
-        }
-        incTimed(TMD.BLIND, 2 + rng.randint1(5), true);
-        if (dam > 300) {
-          /* Check for resistance before issuing the message. */
-          if (incCheck(TMD.CONFUSED)) msg("You are dazzled!");
-          incTimed(TMD.CONFUSED, 2 + rng.randint1(Math.trunc(dam / 100)), true);
-        }
-        break;
-      }
-      /* project_player_handler_DARK (project-player.c:268). */
-      case PROJ.DARK: {
-        if (resists(ELEM.DARK)) {
-          msg("You resist the effect!");
-          break;
-        }
-        incTimed(TMD.BLIND, 2 + rng.randint1(5), true);
-        /* Unresisted dark from powerful monsters is bad news. */
-        if (ctx.power >= 70) {
-          if (rng.randint0(dam) > 100) {
-            drainLife(dam, "The darkness steals your life force!");
-          }
-          if (rng.randint0(dam) > 200) {
-            msg("You feel unsure of yourself in the darkness.");
-            incTimed(TMD.SLOW, Math.trunc(dam / 100), false);
-          }
-          if (rng.randint0(dam) > 300) {
-            msg("Darkness penetrates your mind!");
-            incTimed(TMD.AMNESIA, Math.trunc(dam / 100), false);
-          }
-        }
-        break;
-      }
-      case PROJ.DARK_WEAK: {
-        /* project-player.c project_player_handler_DARK_WEAK: unlit races
-         * resist silently; everyone else who resists gets the message; the
-         * rest are briefly blinded. */
-        if (resists(ELEM.DARK)) {
-          if (!(state.playerState?.pflags.has(PF.UNLIGHT) ?? false)) {
-            msg("You resist the effect!");
-          }
-          break;
-        }
-        incTimed(TMD.BLIND, 3 + rng.randint1(5), true);
-        break;
-      }
-      case PROJ.SOUND: {
-        if (resists(ELEM.SOUND)) {
-          msg("You resist the effect!");
-          break;
-        }
-        if (!playerOfHas(state, OF.PROT_STUN)) {
-          incTimed(TMD.STUN, Math.min(5 + rng.randint1(Math.trunc(dam / 3)), 35), true);
-        } else {
-          equipLearnFlag(p(), state.runeEnv, OF.PROT_STUN);
-        }
-        if (dam > 300) {
-          /* Check for resistance before issuing the message. */
-          if (incCheck(TMD.CONFUSED)) msg("The noise disorients you.");
-          incTimed(TMD.CONFUSED, 2 + rng.randint1(Math.trunc(dam / 100)), true);
-        }
-        break;
-      }
-      case PROJ.SHARD: {
-        if (resists(ELEM.SHARD)) {
-          msg("You resist the effect!");
-          break;
-        }
-        incTimed(TMD.CUT, rng.randint1(dam), false);
-        break;
-      }
-      case PROJ.NEXUS: {
-        if (resists(ELEM.NEXUS)) {
-          msg("You resist the effect!");
-          break;
-        }
-        /* Stat scramble unless saved. */
-        if (rng.randint0(100) < (state.actor.combat.skills[SKILL.SAVE] ?? 0)) {
-          msg("You avoid the effect!");
-        } else {
-          incTimed(TMD.SCRAMBLE, rng.randint0(20) + 20, true);
-        }
-        const tp = deps.teleport ?? {};
-        if (rng.oneIn(3) && ctx.origin.isMonster && ctx.origin.grid) {
-          /* Teleport to the caster. */
-          teleportPlayerTo(state, ctx.origin.grid, tp, msg);
-        } else if (rng.oneIn(4)) {
-          /* Teleport level. */
-          if (
-            rng.randint0(100) < (state.actor.combat.skills[SKILL.SAVE] ?? 0)
-          ) {
-            msg("You avoid the effect!");
-            break;
-          }
-          teleportPlayerLevel(state, tp, msg, ctx.origin.isMonster);
-        } else {
-          /* Teleport 200 grids. */
-          teleportPlayer(state, 200, tp, msg);
-        }
-        break;
-      }
-      case PROJ.NETHER: {
-        if (resists(ELEM.NETHER) || playerOfHas(state, OF.HOLD_LIFE)) {
-          msg("You resist the effect!");
-          equipLearnFlag(p(), state.runeEnv, OF.HOLD_LIFE);
-          break;
-        }
-        const drain =
-          200 + Math.trunc(p().exp / 100) * deps.lifeDrainPercent;
-        msg("You feel your life force draining away!");
-        playerExpLose(p(), drain, false, deps.expDeps);
-        if (ctx.power >= 80) {
-          if (rng.randint0(dam) > 100 && p().msp) {
-            msg("Your mind is dulled.");
-            p().csp -= Math.min(p().csp, Math.trunc(dam / 10));
-          }
-          if (rng.randint0(dam) > 200) {
-            msg("Your energy is sapped!");
-            state.actor.energy = 0;
-          }
-        }
-        break;
-      }
-      case PROJ.CHAOS: {
-        if (resists(ELEM.CHAOS)) {
-          msg("You resist the effect!");
-          break;
-        }
-        incTimed(TMD.IMAGE, rng.randint1(10), false);
-        incTimed(TMD.CONFUSED, 10 + rng.randint0(20), true);
-        if (!playerOfHas(state, OF.HOLD_LIFE)) {
-          const drain =
-            Math.trunc((p().exp * 3) / 200) * deps.lifeDrainPercent;
-          msg("You feel your life force draining away!");
-          playerExpLose(p(), drain, false, deps.expDeps);
-        } else {
-          equipLearnFlag(p(), state.runeEnv, OF.HOLD_LIFE);
-        }
-        break;
-      }
-      case PROJ.DISEN: {
-        if (resists(ELEM.DISEN)) {
-          msg("You resist the effect!");
-          break;
-        }
-        /* Disenchant gear (effect_simple(EF_DISENCHANT)). */
-        disenchantEquipment(state, { msg });
-        break;
-      }
-      case PROJ.WATER: {
-        incTimed(TMD.CONFUSED, 5 + rng.randint1(5), true);
-        incTimed(TMD.STUN, rng.randint1(40), true);
-        break;
-      }
-      case PROJ.ICE: {
-        if (!isImmune(ELEM.COLD)) {
-          invenDamage(state, ELEM.COLD, Math.min(dam * 5, 300), { msg });
-        }
-        if (!resists(ELEM.SHARD)) {
-          incTimed(TMD.CUT, rng.damroll(5, 8), false);
-        } else {
-          msg("You resist the effect!");
-        }
-        incTimed(TMD.STUN, rng.randint1(15), true);
-        break;
-      }
-      case PROJ.GRAVITY: {
-        msg("Gravity warps around you.");
-        /* Blink (effect_simple(EF_TELEPORT, "5")). */
-        if (rng.randint1(127) > p().lev) {
-          teleportPlayer(state, 5, deps.teleport ?? {}, msg);
-        }
-        incTimed(TMD.SLOW, 4 + rng.randint0(4), false);
-        if (!playerOfHas(state, OF.PROT_STUN)) {
-          incTimed(TMD.STUN, Math.min(5 + rng.randint1(Math.trunc(dam / 3)), 35), true);
-        } else {
-          equipLearnFlag(p(), state.runeEnv, OF.PROT_STUN);
-        }
-        break;
-      }
-      case PROJ.INERTIA: {
-        incTimed(TMD.SLOW, 4 + rng.randint0(4), false);
-        break;
-      }
-      case PROJ.FORCE: {
-        let centre = ctx.origin.grid ?? ctx.grid;
+    /* This was a 21-case switch until 2026-08-09; it is now a lookup in
+     * PLAYER_SIDE_HANDLERS, which a mod can replace through
+     * `deps.playerHandlers`. Every arm, every message and every rng draw is
+     * unchanged - the 6,912 vectors in player-side-vectors.json are replayed
+     * against it for exactly that reason. */
+    const code = projectionCodeFor(ctx.typ, deps.projections);
+    const table = deps.playerHandlers ?? PLAYER_SIDE_HANDLERS;
+    const handler = code === undefined ? undefined : table.get(code);
+    /* A projection with no handler does nothing to the player: upstream's
+     * empty project_player_handler_ entries, and the default arm the switch
+     * used to spell out. */
+    if (!handler) return 0;
 
-        /* Player gets pushed in a random direction if on the trap. */
-        if (ctx.origin.isTrap && locEq(state.actor.grid, centre)) {
-          centre = locSum(centre, DDGRID_DDD[rng.randint0(8)]!);
-        }
-
-        incTimed(TMD.STUN, rng.randint1(20), true);
-
-        /* Thrust player away. */
-        thrustAway(state, centre, ctx.grid, 3 + Math.trunc(dam / 20), {
-          msg,
-          ...(deps.teleport?.onPlayerPostMove
-            ? {
-                onPlayerPostMove: (): void =>
-                  deps.teleport!.onPlayerPostMove!(true),
-              }
-            : {}),
-        });
-        break;
-      }
-      case PROJ.TIME: {
-        if (rng.oneIn(2)) {
-          const drain =
-            100 + Math.trunc(p().exp / 100) * deps.lifeDrainPercent;
-          msg("You feel your life force draining away!");
-          playerExpLose(p(), drain, false, deps.expDeps);
-        } else if (!rng.oneIn(5)) {
-          /* Drain two random stats (project_player_drain_stats(2): no sustain). */
-          drainStatsRandom(2);
-        } else {
-          msg("You're not as powerful as you used to be...");
-          for (let i = 0; i < STAT_MAX; i++) playerStatDec(p(), i, false);
-        }
-        break;
-      }
-      case PROJ.PLASMA: {
-        if (!playerOfHas(state, OF.PROT_STUN)) {
-          incTimed(
-            TMD.STUN,
-            Math.min(5 + rng.randint1(Math.trunc((dam * 3) / 4)), 35),
-            true,
-          );
-        } else {
-          equipLearnFlag(p(), state.runeEnv, OF.PROT_STUN);
-        }
-        break;
-      }
-      default:
-        break;
-    }
-    return xtra;
+    const c: PlayerSideCtx = {
+      state,
+      deps,
+      proj: ctx,
+      dam: ctx.dam,
+      power: ctx.power,
+      rng: state.rng,
+      p,
+      msg,
+      incTimed,
+      incCheck,
+      isImmune,
+      resists,
+      drainStat,
+      drainStatsRandom,
+      drainLife,
+      xtra: 0,
+    };
+    handler(c);
+    return c.xtra;
   };
 }
