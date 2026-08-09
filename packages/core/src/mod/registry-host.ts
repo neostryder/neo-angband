@@ -31,6 +31,12 @@
  *   template or a vault means when the level is drawn. A mod can ship a vault
  *   with a glyph core never heard of and say what it does. Gated by
  *   "registry:glyph".
+ * - effectInfo (EffectInfoRegistry, effects/effect-info-registry.ts): what the
+ *   game SAYS about an effect - the menu row, the recall sentence, the object
+ *   properties an activation summarises, the named subtypes it accepts, and
+ *   which item it prompts for. "registry:effect" could always make a mod's
+ *   effect DO something; this is what lets the game describe it instead of
+ *   printing a blank row. Gated by "registry:effect-info".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -89,6 +95,14 @@ import type { ProjectObjHandler } from "../game/project-obj.js";
 import type { PlayerSideHandler } from "../game/player-side.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
+import type {
+  ActivationSummaryHandler,
+  EffectInfoRegistry,
+  EffectInfoTable,
+  EffectRequestHandler,
+  EffectSubtypeHandler,
+  EffectTextHandler,
+} from "../effects/effect-info-registry.js";
 
 /** The capability each registry facade requires (registry:<domain>). */
 export const REGISTRY_CAPABILITIES = {
@@ -101,6 +115,7 @@ export const REGISTRY_CAPABILITIES = {
   monster: "registry:monster",
   projection: "registry:projection",
   glyph: "registry:glyph",
+  effectInfo: "registry:effect-info",
   vocab: "registry:vocab",
 } as const;
 
@@ -134,6 +149,8 @@ export interface RegistryTargets {
   projections?: ProjectionHandlerRegistry | null;
   /** The room-template / vault glyph decoders (RoomRegistry.glyphs). */
   glyphs?: GlyphRegistry | null;
+  /** Everything the game says about an effect (the module-level registry). */
+  effectInfo?: EffectInfoRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -338,6 +355,55 @@ export interface GlyphFacade {
 }
 
 /**
+ * One table of the effect-info facade. Written once and applied four times
+ * because the four differ only in their key and handler types - four
+ * hand-copied blocks would be four places for the capability check to go
+ * missing.
+ */
+export interface EffectInfoTableFacade<K, H> {
+  /** Install (or replace) the handler for one key. */
+  set(key: K, handler: H): void;
+  /**
+   * The handler installed for a key right now, or null. Wrap core by keeping
+   * this, installing your own, and calling through - EFINFO_BREATH's
+   * description is a projection name, a radius, a dice string AND a
+   * device-skill damage tail, and reimplementing that from scratch to change
+   * one word is how a mod comes to disagree with the rest of the recall.
+   */
+  handlerFor(key: K): H | null;
+  /** Whether anything handles this key. */
+  has(key: K): boolean;
+  /** Every key handled, core's first. */
+  keys(): readonly K[];
+}
+
+/**
+ * The effect-info facade (gated by registry:effect-info).
+ *
+ * `registry:effect` has always let a mod register a handler for a new effect
+ * code and have it DO something. What it could not do was let the game describe
+ * it: four closed switches meant a mod's effect showed a blank menu row, said
+ * nothing in object recall, could never be summarised as granting an object
+ * property, and accepted no NAMED subtype. This is the seam that gives a mod's
+ * effect a voice.
+ *
+ * Four tables under three keys, kept separate because upstream's keys are:
+ * `text` is keyed on the EFINFO_* flag (twenty flags cover a hundred and twelve
+ * effects), `summary` on the effect CODE, `subtype` and `request` on the effect
+ * INDEX or a mod's string code.
+ */
+export interface EffectInfoFacade {
+  /** The menu row and the object-recall sentence, keyed on the EFINFO_* flag. */
+  readonly text: EffectInfoTableFacade<string, EffectTextHandler>;
+  /** effect_summarize_properties' arms, keyed on the effect code. */
+  readonly summary: EffectInfoTableFacade<string, ActivationSummaryHandler>;
+  /** effect_subtype's arms, keyed on the effect index or a mod code. */
+  readonly subtype: EffectInfoTableFacade<EffectCode, EffectSubtypeHandler>;
+  /** Which item an effect prompts for, keyed on the effect index or a mod code. */
+  readonly request: EffectInfoTableFacade<EffectCode, EffectRequestHandler>;
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -374,6 +440,7 @@ export interface ModRegistryHost {
   readonly monsters: MonsterFacade;
   readonly projections: ProjectionFacade;
   readonly glyphs: GlyphFacade;
+  readonly effectInfo: EffectInfoFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -436,6 +503,38 @@ function projectionSide<H>(
     codes(): readonly string[] {
       requireCap(capabilities, "projection");
       return table().codes();
+    },
+  };
+}
+
+/**
+ * One table of the effect-info facade, gated. Same shape as projectionSide and
+ * for the same reason: four hand-copied blocks would be four places for the
+ * capability check to go missing.
+ */
+function effectInfoTable<K, H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: EffectInfoRegistry) => EffectInfoTable<K, H>,
+): EffectInfoTableFacade<K, H> {
+  const table = (): EffectInfoTable<K, H> =>
+    pick(requireTarget(targets.effectInfo, "effectInfo"));
+  return {
+    set(key, handler): void {
+      requireCap(capabilities, "effectInfo");
+      table().set(key, handler);
+    },
+    handlerFor(key): H | null {
+      requireCap(capabilities, "effectInfo");
+      return table().handlerFor(key);
+    },
+    has(key): boolean {
+      requireCap(capabilities, "effectInfo");
+      return table().has(key);
+    },
+    keys(): readonly K[] {
+      requireCap(capabilities, "effectInfo");
+      return table().keys();
     },
   };
 }
@@ -584,6 +683,12 @@ export function createModRegistryHost(
         requireCap(capabilities, "glyph");
         return requireTarget(targets.glyphs, "glyph").glyphs(kind);
       },
+    },
+    effectInfo: {
+      text: effectInfoTable(capabilities, targets, (r) => r.text),
+      summary: effectInfoTable(capabilities, targets, (r) => r.summary),
+      subtype: effectInfoTable(capabilities, targets, (r) => r.subtype),
+      request: effectInfoTable(capabilities, targets, (r) => r.request),
     },
     vocab: {
       define(term): void {

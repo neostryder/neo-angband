@@ -41,6 +41,13 @@ import { MAX_RAND_DEPTH, type RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import type { Effect, EffectCode } from "./effect.js";
 import { effectValidUpstream } from "./effect.js";
+import { effectInfoRegistry, seedEffectInfo } from "./effect-info-registry.js";
+import type {
+  EffectDescContext,
+  EffectMenuContext,
+  EffectProjectionText,
+  ProjectionTextSource,
+} from "./effect-info-registry.js";
 
 /* ------------------------------------------------------------------ *
  * Generated-table access (base_descs[] in effects-info.c).
@@ -70,72 +77,57 @@ function effectEntryFor(index: number): EffectEntryShape {
   return EFFECT_ENTRIES[index - 1] as EffectEntryShape;
 }
 
-/** effect_get_menu_name (effects-info.c L583-714), including subtype formatting. */
-export function effectMenuName(effect: Effect | null, deps: EffectMenuNameDeps = {}): string {
-  if (!effectValidUpstream(effect) || !effect) return "";
-  const entry = effectEntryFor(effect.index as number);
-  const fmt = entry.menuName;
-  const format = (...args: Array<string | number>): string => sprintf(fmt, ...args);
+/** projections[subtype] with "" for an absent table or an out-of-range index. */
+function projText(
+  projections: ProjectionTextSource | undefined,
+  subtype: number,
+): EffectProjectionText {
+  const p = projections?.[subtype];
+  return {
+    desc: p?.desc ?? "",
+    playerDesc: p?.playerDesc ?? "",
+    lashDesc: p?.lashDesc ?? "",
+  };
+}
 
-  switch (entry.infoFlags) {
-    case "EFINFO_FOOD": {
-      let action: string | null = null;
-      let target: string | null = null;
-      if (effect.subtype === 0) {
-        action = "feed";
-        target = "yourself";
-      } else if (effect.subtype === 1) {
-        action = "increase";
-        target = "hunger";
-      } else if (effect.subtype === 2 || effect.subtype === 3) {
-        const avg = effect.dice ? diceAverage(effect.dice, 1) : 0;
-        const full = deps.foodFull ?? 90 * 100;
-        const hungry = deps.foodHungry ?? 10 * 100;
-        action = effect.subtype === 2 ? "become" : "leave";
-        target =
-          avg > full
-            ? "bloated"
-            : avg > hungry
-              ? effect.subtype === 3
-                ? "nourished"
-                : "satisfied"
-              : "hungry";
-      }
-      return action && target ? format(action, target) : "";
-    }
-    case "EFINFO_CURE":
-    case "EFINFO_TIMED":
-      return format(deps.timedDesc?.(effect.subtype) ?? "");
-    case "EFINFO_STAT":
-      return format(deps.statName?.(effect.subtype) ?? "");
-    case "EFINFO_SEEN":
-    case "EFINFO_BOLT":
-    case "EFINFO_BOLTD":
-    case "EFINFO_TOUCH":
-      return format(deps.projections?.[effect.subtype]?.desc ?? "");
-    case "EFINFO_SUMM":
-      return format(deps.summonDesc?.(effect.subtype) ?? "");
-    case "EFINFO_TELE": {
-      const value = effect.dice ? effect.dice.randomValue() : ZERO_RV;
-      const avg = effect.dice ? rvAverage(value, 1) : 0;
-      return format(effect.subtype ? "other" : "you", value.mBonus ? "some distance" : `${avg} grids`);
-    }
-    case "EFINFO_BALL":
-    case "EFINFO_SPOT":
-    case "EFINFO_BREATH":
-    case "EFINFO_SHORT":
-      return format(deps.projections?.[effect.subtype]?.playerDesc ?? "");
-    case "EFINFO_LASH":
-      return format(deps.projections?.[effect.subtype]?.lashDesc ?? "");
-    case "EFINFO_DICE":
-    case "EFINFO_HEAL":
-    case "EFINFO_CONST":
-    case "EFINFO_QUAKE":
-    case "EFINFO_NONE":
-      return fmt;
-    default:
-      return "";
-  }
+/** The context one EFINFO_* menu-name handler is given. */
+function menuContext(
+  effect: Effect,
+  fmt: string,
+  deps: EffectMenuNameDeps,
+): EffectMenuContext {
+  const value = effect.dice ? effect.dice.randomValue() : ZERO_RV;
+  return {
+    effect,
+    fmt,
+    format: (...args) => sprintf(fmt, ...args),
+    value,
+    average: (level = 0) => (effect.dice ? rvAverage(value, level) : 0),
+    proj: projText(deps.projections, effect.subtype),
+    timedDesc: () => deps.timedDesc?.(effect.subtype) ?? "",
+    statName: () => deps.statName?.(effect.subtype) ?? "",
+    summonDesc: () => deps.summonDesc?.(effect.subtype) ?? "",
+    foodFull: deps.foodFull ?? 90 * 100,
+    foodHungry: deps.foodHungry ?? 10 * 100,
+  };
+}
+
+/**
+ * effect_get_menu_name (effects-info.c L583-714), including subtype formatting.
+ * The upstream switch on `efinfo_flag` is now the registry's `text` table, so a
+ * mod's effect can name itself instead of showing a blank menu row.
+ */
+export function effectMenuName(effect: Effect | null, deps: EffectMenuNameDeps = {}): string {
+  if (!effect) return "";
+  /* A mod's string-coded effect has no EFFECT_ENTRIES row, so no menu_name
+   * format string: its handler builds the whole row itself. Upstream's
+   * validity check stays for numeric codes. */
+  if (typeof effect.index !== "string" && !effectValidUpstream(effect)) return "";
+  const fmt =
+    typeof effect.index === "string" ? "" : effectEntryFor(effect.index).menuName;
+  const handler = effectInfoRegistry().text.handlerFor(textKeyFor(effect.index));
+  if (!handler?.menuName) return "";
+  return handler.menuName(menuContext(effect, fmt, deps));
 }
 
 /** effect_info (effects.c L103): the short info-type string ("dam", "heal", ...). */
@@ -156,6 +148,33 @@ function infoFlagFor(index: EffectCode): string {
     return "EFINFO_NONE";
   }
   return effectEntryFor(index).infoFlags;
+}
+
+/**
+ * The text-table key: the EFINFO_* flag for an upstream effect, and a MOD's own
+ * string code for one core has never heard of. Two key spaces in one table is
+ * deliberate - they cannot collide, because every upstream flag starts
+ * "EFINFO_" and a mod code is its own effect name.
+ */
+function textKeyFor(index: EffectCode): string {
+  return typeof index === "string" ? index : infoFlagFor(index);
+}
+
+/**
+ * effect_desc, extended for a mod's effect. A string-coded effect has no
+ * EFFECT_ENTRIES row and therefore no format string, but if it registered a
+ * `describe` handler it IS describable - with an empty format string, since
+ * such a handler builds the whole sentence itself rather than filling one in.
+ *
+ * Without this, describeEffect skips a mod's effect on the `edesc === null`
+ * branch BEFORE the registry is ever consulted, and the seam would be a
+ * decoration: registered, gated, documented, and unreachable.
+ */
+function describableDesc(effect: Effect | null): string | null {
+  const d = effectDesc(effect);
+  if (d !== null) return d;
+  if (!effect || typeof effect.index !== "string") return null;
+  return effectInfoRegistry().text.handlerFor(effect.index)?.describe ? "" : null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -348,7 +367,44 @@ export interface EffectDescribeDeps {
   foodValue?: number;
 }
 
-/** The big EFINFO_* description switch (effect_describe's inner body, L384-548). */
+/** The context one EFINFO_* description handler is given. */
+function descContext(
+  e: Effect,
+  edesc: string,
+  value: RandomValue,
+  diceString: string,
+  devSkillBoost: number,
+  deps: EffectDescribeDeps,
+): EffectDescContext {
+  return {
+    effect: e,
+    desc: edesc,
+    format: (...args) => sprintf(edesc, ...args),
+    value,
+    diceString,
+    diceStringTimes: (multiplier) => formatDiceString(value, multiplier),
+    devSkillBoost,
+    appendDamage: (boost = devSkillBoost) => appendDamage(value, boost),
+    average: (level = 0) => rvAverage(value, level),
+    proj: projText(deps.projections, e.subtype),
+    timedDesc: () => (deps.timedDesc ? deps.timedDesc(e.subtype) : ""),
+    statName: () => (deps.statName ? deps.statName(e.subtype) : ""),
+    summonDesc: () => (deps.summonDesc ? deps.summonDesc(e.subtype) : ""),
+    playerLevel: deps.playerLevel ?? 0,
+    foodValue: deps.foodValue ?? 100,
+  };
+}
+
+/**
+ * effect_describe's inner body (L384-548). The upstream switch on `efinfo_flag`
+ * is now the registry's `text` table, so a mod's effect can describe itself
+ * instead of contributing nothing to object recall.
+ *
+ * Note the key: `infoFlagFor` rather than the entry, because upstream reaches
+ * `base_descs[e->index].efinfo_flag` here without the validity check
+ * effect_get_menu_name makes first, and defaults an out-of-range index to
+ * EFINFO_NONE. That difference is upstream's and is kept.
+ */
 function formatEffectDesc(
   e: Effect,
   edesc: string,
@@ -357,101 +413,11 @@ function formatEffectDesc(
   devSkillBoost: number,
   deps: EffectDescribeDeps,
 ): string {
-  const proj = deps.projections[e.subtype];
-  const rawDesc = proj?.desc ?? "";
-  const playerDesc = proj?.playerDesc ?? "";
-  const lashDesc = proj?.lashDesc ?? "";
-
-  switch (infoFlagFor(e.index)) {
-    case "EFINFO_DICE":
-      return sprintf(edesc, diceString);
-
-    case "EFINFO_HEAL": {
-      const minString = value.mBonus
-        ? ` (or ${value.mBonus}%, whichever is greater)`
-        : "";
-      return sprintf(edesc, diceString, minString);
-    }
-
-    case "EFINFO_CONST":
-      return sprintf(edesc, Math.trunc(value.base / 2));
-
-    case "EFINFO_FOOD": {
-      const fed = e.subtype
-        ? e.subtype === 1
-          ? "uses enough food value"
-          : "leaves you nourished"
-        : "feeds you";
-      const turnDiceString = formatDiceString(value, deps.foodValue ?? 100);
-      return sprintf(edesc, fed, turnDiceString, diceString);
-    }
-
-    case "EFINFO_CURE":
-      return sprintf(edesc, deps.timedDesc ? deps.timedDesc(e.subtype) : "");
-
-    case "EFINFO_TIMED":
-      return sprintf(edesc, deps.timedDesc ? deps.timedDesc(e.subtype) : "", diceString);
-
-    case "EFINFO_STAT":
-      return sprintf(edesc, deps.statName ? deps.statName(e.subtype) : "");
-
-    case "EFINFO_SEEN":
-      return sprintf(edesc, rawDesc);
-
-    case "EFINFO_SUMM":
-      return sprintf(edesc, deps.summonDesc ? deps.summonDesc(e.subtype) : "");
-
-    case "EFINFO_TELE": {
-      const dist = value.mBonus ? "a level-dependent distance" : `${value.base} grids`;
-      return sprintf(edesc, e.subtype ? "a monster" : "you", dist);
-    }
-
-    case "EFINFO_QUAKE":
-      return sprintf(edesc, e.radius);
-
-    case "EFINFO_BALL":
-      return sprintf(edesc, playerDesc, e.radius, diceString) + appendDamage(value, devSkillBoost);
-
-    case "EFINFO_SPOT": {
-      const iRadius = e.other ? e.other : e.radius;
-      return (
-        sprintf(edesc, playerDesc, e.radius, iRadius, diceString) +
-        appendDamage(value, devSkillBoost)
-      );
-    }
-
-    case "EFINFO_BREATH":
-      return (
-        sprintf(edesc, playerDesc, e.other, diceString) +
-        appendDamage(value, e.index === EF.BREATH ? 0 : devSkillBoost)
-      );
-
-    case "EFINFO_SHORT": {
-      const playerLevel = deps.playerLevel ?? 0;
-      const radius = e.radius + (e.other ? Math.trunc(playerLevel / e.other) : 0);
-      return sprintf(edesc, playerDesc, radius, diceString);
-    }
-
-    case "EFINFO_LASH":
-      return sprintf(edesc, lashDesc, e.subtype);
-
-    case "EFINFO_BOLT":
-      return sprintf(edesc, rawDesc);
-
-    case "EFINFO_BOLTD":
-      return sprintf(edesc, rawDesc, diceString) + appendDamage(value, devSkillBoost);
-
-    case "EFINFO_TOUCH":
-      return sprintf(edesc, rawDesc);
-
-    case "EFINFO_NONE":
-      return edesc;
-
-    default:
-      /* Unreachable: infoFlags only ever holds one of the cases above
-       * (upstream's fallback here reports a bug and returns ""). */
-      return "";
-  }
+  const handler = effectInfoRegistry().text.handlerFor(textKeyFor(e.index));
+  if (!handler?.describe) return "";
+  return handler.describe(
+    descContext(e, edesc, value, diceString, devSkillBoost, deps),
+  );
 }
 
 interface NestedResult {
@@ -480,7 +446,7 @@ function createNestedEffectDescription(
     if (!e || irand >= count) {
       return { text: null, next: e };
     }
-    if (effectDesc(e) !== null && e.index !== EF.RANDOM && e.index !== EF.SELECT) {
+    if (describableDesc(e) !== null && e.index !== EF.RANDOM && e.index !== EF.SELECT) {
       break;
     }
     e = e.next;
@@ -500,7 +466,7 @@ function createNestedEffectDescription(
   let jrand = irand + 1;
   let cursor: Effect | null = efirst.next;
   for (; cursor && jrand < count; cursor = cursor.next, jrand++) {
-    if (effectDesc(cursor) === null || cursor.index === EF.RANDOM || cursor.index === EF.SELECT) {
+    if (describableDesc(cursor) === null || cursor.index === EF.RANDOM || cursor.index === EF.SELECT) {
       continue;
     }
     nvalid++;
@@ -532,7 +498,7 @@ function createNestedEffectDescription(
     let bc: Effect | null = efirst.next;
     let bj = irand + 1;
     for (; bc && bj < count; bc = bc.next, bj++) {
-      if (effectDesc(bc) === null || bc.index === EF.RANDOM || bc.index === EF.SELECT) {
+      if (describableDesc(bc) === null || bc.index === EF.RANDOM || bc.index === EF.SELECT) {
         continue;
       }
       breaths += ivalid === nvalid - 1 ? (nvalid > 2 ? ", or " : " or ") : ", ";
@@ -542,7 +508,7 @@ function createNestedEffectDescription(
 
     const diceString = formatDiceString(firstRv);
     const desc =
-      sprintf(effectDesc(efirst) ?? "", breaths, firstOther, diceString) +
+      sprintf(describableDesc(efirst) ?? "", breaths, firstOther, diceString) +
       appendDamage(firstRv, firstInd === EF.BREATH ? 0 : devSkillBoost);
 
     return { text: (prefix ?? "") + (typePrefix ?? "") + desc, next: nexte };
@@ -562,7 +528,7 @@ function createNestedEffectDescription(
   let dc: Effect | null = efirst.next;
   let dj = irand + 1;
   for (; dc && dj < count; dc = dc.next, dj++) {
-    if (effectDesc(dc) === null || dc.index === EF.RANDOM || dc.index === EF.SELECT) {
+    if (describableDesc(dc) === null || dc.index === EF.RANDOM || dc.index === EF.SELECT) {
       continue;
     }
     const tbi = describeEffect(dc, ivalid === 0 ? typePrefix : null, devSkillBoost, true, deps);
@@ -650,7 +616,7 @@ export function describeEffect(
       continue;
     }
 
-    const edesc = effectDesc(e);
+    const edesc = describableDesc(e);
     if (edesc === null) {
       e = onlyFirst ? null : e.next;
       continue;
@@ -857,3 +823,183 @@ export function spellDamageSummary(
   }
   return `Inflicts an average of${out} damage.`;
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's EFINFO_* arms.
+ *
+ * The two upstream switches lifted case by case, in upstream's order. A flag
+ * that upstream handles in a shared `case` block (EFINFO_CURE and _TIMED share
+ * a menu name; four projection flags share theirs) registers the same closure
+ * under each name rather than being merged, because the flags are separate keys
+ * and a mod replacing one must not silently replace the others.
+ * ------------------------------------------------------------------ */
+
+seedEffectInfo((reg) => {
+  const t = reg.text;
+
+  /** menu: the format string alone, no arguments (EFINFO_DICE and friends). */
+  const bareMenu = (c: EffectMenuContext): string => c.fmt;
+  /** menu: one projection field. */
+  const projMenu =
+    (field: keyof EffectProjectionText) =>
+    (c: EffectMenuContext): string =>
+      c.format(c.proj[field]);
+
+  t.set("EFINFO_NONE", {
+    menuName: bareMenu,
+    describe: (c) => c.desc,
+  });
+
+  t.set("EFINFO_DICE", {
+    menuName: bareMenu,
+    describe: (c) => c.format(c.diceString),
+  });
+
+  t.set("EFINFO_HEAL", {
+    menuName: bareMenu,
+    describe: (c) =>
+      c.format(
+        c.diceString,
+        c.value.mBonus ? ` (or ${c.value.mBonus}%, whichever is greater)` : "",
+      ),
+  });
+
+  t.set("EFINFO_CONST", {
+    menuName: bareMenu,
+    describe: (c) => c.format(Math.trunc(c.value.base / 2)),
+  });
+
+  t.set("EFINFO_QUAKE", {
+    menuName: bareMenu,
+    describe: (c) => c.format(c.effect.radius),
+  });
+
+  t.set("EFINFO_FOOD", {
+    menuName: (c) => {
+      let action: string | null = null;
+      let target: string | null = null;
+      if (c.effect.subtype === 0) {
+        action = "feed";
+        target = "yourself";
+      } else if (c.effect.subtype === 1) {
+        action = "increase";
+        target = "hunger";
+      } else if (c.effect.subtype === 2 || c.effect.subtype === 3) {
+        const avg = c.average(1);
+        action = c.effect.subtype === 2 ? "become" : "leave";
+        target =
+          avg > c.foodFull
+            ? "bloated"
+            : avg > c.foodHungry
+              ? c.effect.subtype === 3
+                ? "nourished"
+                : "satisfied"
+              : "hungry";
+      }
+      return action && target ? c.format(action, target) : "";
+    },
+    describe: (c) => {
+      const fed = c.effect.subtype
+        ? c.effect.subtype === 1
+          ? "uses enough food value"
+          : "leaves you nourished"
+        : "feeds you";
+      return c.format(fed, c.diceStringTimes(c.foodValue), c.diceString);
+    },
+  });
+
+  t.set("EFINFO_CURE", {
+    menuName: (c) => c.format(c.timedDesc()),
+    describe: (c) => c.format(c.timedDesc()),
+  });
+
+  t.set("EFINFO_TIMED", {
+    menuName: (c) => c.format(c.timedDesc()),
+    describe: (c) => c.format(c.timedDesc(), c.diceString),
+  });
+
+  t.set("EFINFO_STAT", {
+    menuName: (c) => c.format(c.statName()),
+    describe: (c) => c.format(c.statName()),
+  });
+
+  t.set("EFINFO_SUMM", {
+    menuName: (c) => c.format(c.summonDesc()),
+    describe: (c) => c.format(c.summonDesc()),
+  });
+
+  t.set("EFINFO_TELE", {
+    menuName: (c) =>
+      c.format(
+        c.effect.subtype ? "other" : "you",
+        c.value.mBonus ? "some distance" : `${c.average(1)} grids`,
+      ),
+    describe: (c) =>
+      c.format(
+        c.effect.subtype ? "a monster" : "you",
+        c.value.mBonus ? "a level-dependent distance" : `${c.value.base} grids`,
+      ),
+  });
+
+  t.set("EFINFO_SEEN", {
+    menuName: projMenu("desc"),
+    describe: (c) => c.format(c.proj.desc),
+  });
+
+  t.set("EFINFO_BOLT", {
+    menuName: projMenu("desc"),
+    describe: (c) => c.format(c.proj.desc),
+  });
+
+  t.set("EFINFO_TOUCH", {
+    menuName: projMenu("desc"),
+    describe: (c) => c.format(c.proj.desc),
+  });
+
+  t.set("EFINFO_BOLTD", {
+    menuName: projMenu("desc"),
+    describe: (c) => c.format(c.proj.desc, c.diceString) + c.appendDamage(),
+  });
+
+  t.set("EFINFO_BALL", {
+    menuName: projMenu("playerDesc"),
+    describe: (c) =>
+      c.format(c.proj.playerDesc, c.effect.radius, c.diceString) + c.appendDamage(),
+  });
+
+  t.set("EFINFO_SPOT", {
+    menuName: projMenu("playerDesc"),
+    describe: (c) => {
+      const iRadius = c.effect.other ? c.effect.other : c.effect.radius;
+      return (
+        c.format(c.proj.playerDesc, c.effect.radius, iRadius, c.diceString) +
+        c.appendDamage()
+      );
+    },
+  });
+
+  t.set("EFINFO_BREATH", {
+    menuName: projMenu("playerDesc"),
+    describe: (c) =>
+      c.format(c.proj.playerDesc, c.effect.other, c.diceString) +
+      /* EF_BREATH itself never gets the device-skill boost: a monster's breath
+       * is not a device (effects-info.c L500). */
+      c.appendDamage(c.effect.index === EF.BREATH ? 0 : c.devSkillBoost),
+  });
+
+  t.set("EFINFO_SHORT", {
+    menuName: projMenu("playerDesc"),
+    describe: (c) =>
+      c.format(
+        c.proj.playerDesc,
+        c.effect.radius +
+          (c.effect.other ? Math.trunc(c.playerLevel / c.effect.other) : 0),
+        c.diceString,
+      ),
+  });
+
+  t.set("EFINFO_LASH", {
+    menuName: projMenu("lashDesc"),
+    describe: (c) => c.format(c.proj.lashDesc, c.effect.subtype),
+  });
+});

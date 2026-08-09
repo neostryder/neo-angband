@@ -27,6 +27,7 @@ import {
   ENCH_TODAM,
   ENCH_TOHIT,
 } from "../effects/effect.js";
+import type { EffectCode } from "../effects/effect.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
@@ -60,6 +61,10 @@ import type { ObjRegistry } from "../obj/bind.js";
 import { egoApplyMagic, makeObject } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import type { GameState } from "./context.js";
+import {
+  effectInfoRegistry,
+  seedEffectInfo,
+} from "../effects/effect-info-registry.js";
 import { gearObjectForUse, objectIsCarried } from "./gear.js";
 import { dropNear, floorExcise } from "./floor.js";
 import { gameEnv } from "./effect-game-env.js";
@@ -121,73 +126,86 @@ function uncursableTester(known: GameObject): boolean {
  * auto-target ones (BRAND_WEAPON / CURSE_ARMOR / CURSE_WEAPON / ACQUIRE).
  */
 export function requestForEffect(
-  code: number,
+  code: EffectCode,
   subtype: number,
   state: GameState,
 ): ItemRequest | null {
-  switch (code) {
-    case EF.ENCHANT:
-      /* enchant_spell L383: filter = num_ac ? armour : weapon. The first
-       * getItem targets a weapon unless the effect is AC-only. */
-      return enchantRequest((subtype & (ENCH_TOHIT | ENCH_TODAM)) === 0 ? 1 : 0);
-    case EF.RECHARGE:
-      return {
-        prompt: "Recharge which item? ",
-        reject: "You have nothing to recharge.",
-        tester: (o) => tvalCanHaveCharges(o.tval),
-        mode: { inven: true, floor: true },
-      };
-    case EF.REMOVE_CURSE:
-      return {
-        prompt: "Uncurse which item? ",
-        reject: "You have no curses to remove.",
-        tester: (o) => uncursableTester(objectKnownView(state, o).known),
-        mode: { equip: true, inven: true, quiver: true, floor: true },
-        curses: true,
-      };
-    case EF.BRAND_AMMO:
-      return {
-        prompt: "Brand which kind of ammunition? ",
-        reject: "You have nothing to brand.",
-        tester: (o) => tvalIsAmmo(o.tval),
-        mode: { inven: true, quiver: true, floor: true },
-      };
-    case EF.BRAND_BOLTS:
-      return {
-        prompt: "Brand which bolts? ",
-        reject: "You have no bolts to brand.",
-        tester: (o) => tvalIsBolt(o.tval),
-        mode: { inven: true, quiver: true, floor: true },
-      };
-    case EF.CREATE_ARROWS:
-      return {
-        prompt: "Make arrows from which staff? ",
-        reject: "You have no staff to use.",
-        tester: (o) => tvalIsStaff(o.tval),
-        mode: { inven: true, floor: true },
-      };
-    case EF.TAP_DEVICE:
-      return {
-        prompt: "Drain charges from which item? ",
-        reject: "You have nothing to drain charges from.",
-        tester: (o) => tvalCanHaveCharges(o.tval),
-        mode: { inven: true, floor: true },
-      };
-    case EF.IDENTIFY: {
-      /* item_tester_unknown (L247): not all runes known. */
-      const runes = buildRuneList(state.runeEnv);
-      const player = state.actor.player;
-      return {
-        prompt: "Identify which item? ",
-        reject: "You have nothing to identify.",
-        tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
-        mode: { equip: true, inven: true, quiver: true, floor: true },
-      };
-    }
-    default:
-      return null;
-  }
+  /* The upstream switch is now the effect-info registry's `request` table, so
+   * a mod's item-consuming effect can ask for an item - which it previously
+   * could not do at all, in either direction: the switch had no arm for a
+   * string code, and itemTargetRequest below skipped one before it got here. */
+  const handler = effectInfoRegistry().request.handlerFor(code);
+  return handler ? handler(subtype, state) : null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's item prompts, lifted arm by arm.
+ * ------------------------------------------------------------------ */
+
+seedEffectInfo((reg) => {
+  const r = reg.request;
+
+  /* enchant_spell L383: filter = num_ac ? armour : weapon. The first getItem
+   * targets a weapon unless the effect is AC-only. */
+  r.set(EF.ENCHANT, (subtype) =>
+    enchantRequest((subtype & (ENCH_TOHIT | ENCH_TODAM)) === 0 ? 1 : 0),
+  );
+
+  r.set(EF.RECHARGE, () => ({
+    prompt: "Recharge which item? ",
+    reject: "You have nothing to recharge.",
+    tester: (o) => tvalCanHaveCharges(o.tval),
+    mode: { inven: true, floor: true },
+  }));
+
+  r.set(EF.REMOVE_CURSE, (_subtype, state) => ({
+    prompt: "Uncurse which item? ",
+    reject: "You have no curses to remove.",
+    tester: (o) => uncursableTester(objectKnownView(state, o).known),
+    mode: { equip: true, inven: true, quiver: true, floor: true },
+    curses: true,
+  }));
+
+  r.set(EF.BRAND_AMMO, () => ({
+    prompt: "Brand which kind of ammunition? ",
+    reject: "You have nothing to brand.",
+    tester: (o) => tvalIsAmmo(o.tval),
+    mode: { inven: true, quiver: true, floor: true },
+  }));
+
+  r.set(EF.BRAND_BOLTS, () => ({
+    prompt: "Brand which bolts? ",
+    reject: "You have no bolts to brand.",
+    tester: (o) => tvalIsBolt(o.tval),
+    mode: { inven: true, quiver: true, floor: true },
+  }));
+
+  r.set(EF.CREATE_ARROWS, () => ({
+    prompt: "Make arrows from which staff? ",
+    reject: "You have no staff to use.",
+    tester: (o) => tvalIsStaff(o.tval),
+    mode: { inven: true, floor: true },
+  }));
+
+  r.set(EF.TAP_DEVICE, () => ({
+    prompt: "Drain charges from which item? ",
+    reject: "You have nothing to drain charges from.",
+    tester: (o) => tvalCanHaveCharges(o.tval),
+    mode: { inven: true, floor: true },
+  }));
+
+  r.set(EF.IDENTIFY, (_subtype, state) => {
+    /* item_tester_unknown (L247): not all runes known. */
+    const runes = buildRuneList(state.runeEnv);
+    const player = state.actor.player;
+    return {
+      prompt: "Identify which item? ",
+      reject: "You have nothing to identify.",
+      tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
+      mode: { equip: true, inven: true, quiver: true, floor: true },
+    };
+  });
+});
 
 /**
  * itemTargetRequest (the RNG-free shell probe): walk a built effect chain and
@@ -202,7 +220,9 @@ export function itemTargetRequest(
   state: GameState,
 ): ItemRequest | null {
   for (let e = chain; e; e = e.next) {
-    if (typeof e.index !== "number") continue;
+    /* No `typeof e.index === "number"` guard: a mod's string effect code is a
+     * legitimate key in the request table now, and skipping it here would have
+     * made the registry entry unreachable from the only caller that matters. */
     const req = requestForEffect(e.index, e.subtype, state);
     if (req) return req;
   }

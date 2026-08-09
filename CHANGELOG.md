@@ -46,6 +46,38 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod's effect can finally SAY what it does: `registry:effect-info`.**
+  `registry:effect` has always let a mod register a handler for a brand-new
+  effect code and have it work. What no mod could do was let the game describe
+  it, because five closed switches stood between an effect and every word the
+  player reads about it - the menu-row builder and `effect_describe`'s body
+  (both keyed on the `EFINFO_*` flag, 20 cases each), the activation-property
+  summary walker (12), `effect_subtype`'s named-subtype decoding (9), and
+  `requestForEffect`, which decides which item an effect prompts for (8). Sixty
+  nine cases, and the failure was silent in all five directions: a **blank row**
+  in the activate and cast menus, **nothing at all** in object recall, an
+  activation that could never be recognised as duplicating an intrinsic
+  property, an effect that accepted no named subtype (only a bare integer), and
+  an item-consuming effect that could not ask for an item.
+  `EffectInfoRegistry` (`effects/effect-info-registry.ts`) is four tables under
+  three keys - the `EFINFO_*` flag, the effect code, the effect index - and
+  `handlerFor` hands back what is installed right now, so a mod WRAPS core's
+  description instead of reimplementing a sentence that is a projection name, a
+  radius, a dice string and a device-skill damage tail. Two changes beyond the
+  switches were needed to make any of it reachable: `describeEffect` used to
+  skip a mod's effect on its `edesc === null` branch before the registry was
+  ever consulted, and `itemTargetRequest` skipped a string effect code outright.
+  A seam its own callers walk past is not a seam. **11,530 golden vectors**
+  recorded from the code BEFORE the registry existed - every one of the 112
+  effects across five subtypes, three dice shapes, two radius/other shapes and
+  two device-skill boosts, every TMD name through six activation arms, and every
+  effect index against 25 subtype names - all replay the exact same strings.
+  There is no RNG probe here and that is measured, not forgotten: this path
+  substitutes `Dice.randomValue()` for upstream's `dice_roll` at every site
+  precisely so that rendering a menu row cannot perturb the stream, so there is
+  no Rng to probe and the text is what is at risk. The switch census fell from
+  47 rows to 42, and `switch-census.test.ts` now fails if any of the four files
+  comes back.
 - **A mod's vault can use a symbol core has never heard of: `registry:glyph`.**
   `vault.json` and `room_template.json` have always accepted a new record, so a
   mod could always ship a vault - but only one drawn with the symbols the two

@@ -26,6 +26,7 @@ import type { ProjectionRecordJson } from "../world/projection.js";
 import { basicPlayerActor } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
 import { registerItemHandlers, itemTargetRequest, requestForEffect } from "./effect-item.js";
+import { effectInfoRegistry } from "../effects/effect-info-registry.js";
 import type { ItemEffectEnv } from "./effect-item.js";
 import { useAux, USE } from "./obj-cmd.js";
 import type { ObjCmdDeps } from "./obj-cmd.js";
@@ -149,6 +150,42 @@ describe("requestForEffect / itemTargetRequest (the probe)", () => {
   it("CREATE_ARROWS accepts a staff only; REMOVE_CURSE flags the curse step", () => {
     expect(requestForEffect(EF.CREATE_ARROWS, 0, state)!.tester(makeNamed("Light", TV.STAFF))).toBe(true);
     expect(requestForEffect(EF.REMOVE_CURSE, 0, state)!.curses).toBe(true);
+  });
+
+  it("BRAND_AMMO accepts any ammunition; TAP_DEVICE accepts a charged item", () => {
+    const ammo = requestForEffect(EF.BRAND_AMMO, 0, state)!;
+    expect(ammo.tester(makeNamed("& Arrow~", TV.ARROW))).toBe(true);
+    expect(ammo.tester(makeNamed("& Dagger~", TV.SWORD))).toBe(false);
+
+    const tap = requestForEffect(EF.TAP_DEVICE, 0, state)!;
+    expect(tap.tester(makeNamed("Light", TV.STAFF))).toBe(true);
+    expect(tap.tester(makeNamed("Cure Light Wounds", TV.POTION))).toBe(false);
+  });
+
+  it("exercises every arm core registers, so none can rot unmeasured", () => {
+    /* The five effect-info tables are keyed registries now; the other four are
+     * covered exhaustively by effect-info-vectors.test.ts, which cannot reach
+     * this one because an ItemRequest needs a live GameState. So the coverage
+     * assertion for `request` lives here: every key must produce a request,
+     * and the key set itself is pinned, so an arm cannot be dropped or added
+     * without this test saying so. */
+    const keys = effectInfoRegistry().request.keys();
+    expect([...keys].sort((a, b) => Number(a) - Number(b))).toEqual(
+      [
+        EF.ENCHANT,
+        EF.RECHARGE,
+        EF.REMOVE_CURSE,
+        EF.BRAND_AMMO,
+        EF.BRAND_BOLTS,
+        EF.CREATE_ARROWS,
+        EF.TAP_DEVICE,
+        EF.IDENTIFY,
+      ].sort((a, b) => a - b),
+    );
+    for (const key of keys) {
+      const req = requestForEffect(key, 0, state);
+      expect({ key, ok: !!req?.prompt && !!req.reject }).toEqual({ key, ok: true });
+    }
   });
 
   it("returns null for a non-item effect and for the auto-target effects", () => {
