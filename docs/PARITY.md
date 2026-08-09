@@ -10,6 +10,51 @@ With no mod loaded, every rule, formula, table, message, screen layout, key, and
 content record behaves as it does in Angband 4.2.6, including upstream quirks and
 bugs. Odds and per-level distributions match.
 
+### The standard is GAMEPLAY parity, not code parity (ruled 2026-08-09)
+
+The bar is what a player can observe in play. It is not the shape of the C, and
+it never was `bit-for-bit` - that was already false in this document before the
+ruling, but the working practice had drifted stricter than the claim. Written
+down so it stops drifting back:
+
+- **Refactoring is allowed.** A ported routine may be restructured, simplified,
+  merged, split, or made faster, provided the observable behaviour is the same.
+  A cited `file:line` provenance is still required; identical control flow is
+  not.
+- **A different RNG stream is not a defect.** The port already keeps its own
+  draw order by design (see below). A change that moves *which* specific values
+  a seed produces, while leaving the rules and the distributions alone, is
+  accepted. Random is random; the player cannot tell that an extra tick moved
+  their seed. What still fails is a change to the *odds* or the *rules*, and
+  lane 2 is what measures that.
+- **Orphaned upstream code and data may be left out.** Something that no path in
+  upstream's own C can reach, and that therefore no player can ever observe, is
+  **not part of the port**. That is a finished state, not a deferral - see
+  DEFERRALS.md. It must be recorded with the evidence that it is unreachable,
+  never merely assumed.
+- **The port adds NOTHING.** No content, no features, no conveniences, no
+  fixes - those are mods, and that rule is unchanged and absolute. Relaxing code
+  parity relaxes *how* the same game is built, never *what* game it is.
+
+#### The two seams a stream change is NOT free on
+
+An RNG change is invisible to a new character and destructive to an existing
+one wherever the save stores a **seed** and the game re-derives the world from
+it at load. There are exactly two, both verified in `session/game.ts`:
+
+| Seed | Re-derived at load | What a stream change does to a saved character |
+| --- | --- | --- |
+| `randartSeed` | `doRandart` (`game.ts:3892`) | every random artifact in the game becomes a different item - including ones the character has already found, identified and equipped |
+| `seedFlavor` | `flavorInit` (`game.ts:4210`) | every flavour reassigns; the potion the character learned was Cure Light Wounds is now something else |
+
+So: changes to the randart generator and to flavour assignment are stream-locked
+across released versions, not because upstream says so but because a player's
+character is on the other side of them. Everything else is free. The 834
+`randart-vectors.json` rows and the effect-info vectors exist to catch an
+*accidental* change on those paths; under this ruling they are a change
+detector, not a prohibition, and a deliberate change updates the vectors in the
+same commit that makes it.
+
 ### What that is worth today, measured
 
 Last run 2026-08-01, engine `0.14.0`, at full power:

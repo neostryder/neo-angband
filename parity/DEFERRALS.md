@@ -16,6 +16,29 @@ appendix below is still dated 2026-08-04 and has NOT had the same treatment
 > front end, with the mechanism named. When reporting status, lead with what a
 > player would notice — never with the adjudication count.
 
+> **Owner ruling, 2026-08-09 (later the same day): a THIRD finished state.**
+> "I also think we can leave out orphaned code and data that will simply never
+> be used." So an item is finished when it is **ported**, when it is a deliberate
+> **divergence / n-a**, *or* when it is **unreachable in upstream's own C** —
+> no path in 4.2.6 can execute it, so no player can observe its absence. This is
+> the ruling on the long-open `OSTACK_LIST` question, answered **A**, and it
+> generalises: duplicated C functions with no caller, dead generators, data
+> records nothing reads.
+>
+> Two conditions, because this state is the easy one to abuse:
+>
+> 1. **Unreachability is evidence, not an impression.** Name the C `file:line`
+>    and say what makes it unreachable — no caller, a constant-false guard, a
+>    `#define` that is never set. "I could not find a caller" is a lead.
+> 2. **It is unreachable in UPSTREAM, not merely unreached by the port.** The
+>    port skipping a call site is a port defect wearing this state's clothes.
+>
+> The same ruling relaxed code parity to **gameplay parity** — refactors and a
+> different RNG stream are allowed where play feels the same. See
+> [docs/PARITY.md](../docs/PARITY.md#the-standard-is-gameplay-parity-not-code-parity-ruled-2026-08-09)
+> for the standard and for the two seams a stream change is *not* free on. What
+> did not change: the port adds no content and no features, ever.
+
 **Working the list?** [PORT_TODO.md](PORT_TODO.md) is the checklist derived from
 this document — the same citations, tiered, with the two items that unlock a
 dozen others first. This document is the *accounting*: why each verdict was
@@ -439,6 +462,10 @@ the C name, which this codebase cites beside its port.
   fails the moment any port code passes the bit, which is the point at which the
   three checks become owed. Unreachability is a property of the CALLERS, so the
   guard sits on the thing that can change.
+  **Ratified by the owner 2026-08-09 (option A):** "unreachable in upstream's
+  own C" is a finished state, not an open question. This entry is the template
+  the third finished state above is judged against - a `file:line`, an
+  enumeration of every call site, and a ratchet on the callers.
 
 ## Closed since this document was dated (2026-08-04)
 
