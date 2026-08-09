@@ -17,18 +17,32 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { computeTvalVectors } from "../dist/obj/tval-vectors.js";
-
-const vectors = computeTvalVectors();
-const out = new URL("../src/obj/tval-vectors.json", import.meta.url);
+import {
+  computeTvalKindVectors,
+  computeTvalVectors,
+} from "../dist/obj/tval-vectors.js";
+import { tvalVectorRegistry } from "../dist/obj/tval-vectors.fixtures.js";
 
 /* One vector per line, so a diff names the item class that moved instead of
  * reflowing the whole file. */
-const body = vectors.map((v) => `  ${JSON.stringify(v)}`).join(",\n");
-writeFileSync(out, `[\n${body}\n]\n`, "utf8");
+function write(name, vectors) {
+  const out = new URL(`../src/obj/${name}.json`, import.meta.url);
+  const body = vectors.map((v) => `  ${JSON.stringify(v)}`).join(",\n");
+  writeFileSync(out, `[\n${body}\n]\n`, "utf8");
+  return out;
+}
 
+const vectors = computeTvalVectors();
+const out = write("tval-vectors", vectors);
 const predicates = Object.keys(vectors[0]?.answers ?? {}).length;
 console.log(
   `[tval-vectors] wrote ${vectors.length} tvals x ${predicates} predicates ` +
     `(${vectors.length * predicates} answers) to ${out.pathname}`,
+);
+
+const kinds = computeTvalKindVectors(tvalVectorRegistry());
+const kindOut = write("tval-kind-vectors", kinds);
+console.log(
+  `[tval-vectors] wrote ${kinds.length} object kinds through kindIsGood and ` +
+    `objectValueBase to ${kindOut.pathname}`,
 );
