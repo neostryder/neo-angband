@@ -322,7 +322,7 @@ mod would reach through records, not code.
 | 14 | randart property switch (111) | no |
 | 15 | object naming / desc switches (74 + 34) | no |
 | 16 | object knowledge switch (43) | no |
-| 17 | effect info switch (52) | no |
+| 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
 | 18 | UI entry type switch (32) | no |
 | 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap` |
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | no |
@@ -331,19 +331,28 @@ mod would reach through records, not code.
 | 23 | web keypress `COMMANDS` (62) | no - inside a closure |
 | 24 | web context-menu `switch (action)` routing (6 sites) | no |
 | 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
-| 26 | room/vault template GLYPH decoders (23 + 16 + 13) | no |
+| 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
 | 28 | `tval` dispatch in object generation + pricing (16 + 9) | no |
 
-**12 yes, 2 accidental, 14 no** (re-measured 2026-08-09, when the projection
-family got its producer). This is a count of the ROWS above, which is the only
+**14 yes, 2 accidental, 12 no** (re-measured 2026-08-09, when the effect-info
+family got its registry). This is a count of the ROWS above, which is the only
 form of the tally anyone can check by reading the column; earlier versions mixed
 rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
-reachable FROM DISK, so the non-bundled figure is 11/11 of the reachable seams
+reachable FROM DISK, so the non-bundled figure is 13/13 of the reachable seams
 rather than 0 - rows 9 and 10 are one capability delivered twice on purpose, two
 bodies of one dispatch, and a registry only one of them consulted would be worse
 than none, and rows 11/12/27 are one capability delivered three times for the
 same reason.
+
+**Row 26 was stale for a day, and this is what that looks like.** The glyph
+decoders became a registry on 2026-08-09 and gap row 17 below said so, while
+this row still read "no" - the same document disagreeing with itself, in the
+direction that under-reports the work. It is corrected here rather than quietly:
+`tools/switch-census.json` is the derived denominator precisely because this
+table is maintained by hand, and `switch-census.test.ts` now asserts that
+`gen/room.ts` and the four effect-info files are ABSENT from the census, so a
+conversion cannot be claimed here without having been made in the code.
 
 #### The projection family, and the day it spent converted but unreachable
 
@@ -390,7 +399,7 @@ shape as the one above - an optional nobody supplied:
 
 ### The capability-gated registry host: real code, and who can reach it
 
-`packages/core/src/mod/registry-host.ts` is not a design note. All nine facades
+`packages/core/src/mod/registry-host.ts` is not a design note. All eleven facades
 delegate to live objects, the gating throws, the capability grammar validates,
 and the host constructs it for real:
 
@@ -404,12 +413,14 @@ and the host constructs it for real:
 | `registry:command` | `CommandFacade` | `ActionRegistry.register` / `.has` | `:213-222` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
 | `registry:projection` | `ProjectionFacade` (three sides) | `ProjectionHandlerRegistry` (`GameState.projectionHandlers`, built per game in `wireGame`) | — |
+| `registry:glyph` | `GlyphFacade` | `GlyphRegistry` (`RoomRegistry.glyphs`, `gen/glyph.ts`) | — |
+| `registry:effect-info` | `EffectInfoFacade` (four tables) | `EffectInfoRegistry` (`effects/effect-info-registry.ts`, module-level) | — |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
 
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
   `requireTarget` throws when the host did not wire that registry (`:177`).
 - The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect|room|profile|blow|store|command|monster|projection|vocab)$/`
+  `REGISTRY_RE = /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|vocab)$/`
   (`packages/mod-sdk/src/capabilities.ts:67`); an unrecognised capability is a hard
   error at parse, not a silent no-op.
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
@@ -903,6 +914,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 16 | **A mod can EXTEND a record, not only retune it** | **YES** (2026-08-08; namespacing and declaration added the same day) | Measured on request: of the three operations an author expects - patch a value, remove a key, add a key - the first two worked end to end (a dagger patched to `1d5` really rolls it; dropping `flags` really removes THROWING) and the third did not. A new key composed cleanly, reported no problem, landed in the composed record, and was then dropped by the binder, so an author got no error and no effect. Fifteen bound record types now carry the keys core does not bind (`attachExt`, `mod/extension.ts`), frozen, absent entirely when a mod added none. Which keys are core's is DERIVED from core's own gamedata (`mod/record-keys.ts`, generated) rather than hand-listed, and its test re-derives it from the pack in both directions. `mod/extension.test.ts` is a CENSUS - it injects a sentinel into every record of each covered file and counts the survivors, because the failure this guards against is an absence, and per-type tests cannot see one. THE FIELD IS NAMESPACED AND DECLARED: `"gore:bleed"`, declared in the mod's manifest under `fields` with the files it may appear on and an optional type. Undeclared, misfiled or misshapen is stripped and reported by name (`mod-sdk/src/fields.ts`); an unqualified key core does not know is reported as a probable misspelling with core's nearest real field named, which needs core's key table and therefore runs in the host (`packages/web/src/pack.ts`). Core never reads `ext`: it is the data half of extending the game, and the behaviour half is `registry:effect` / `registry:blow`. Proven from disk, declared and undeclared, in the same test file. REMAINING: the namespace is a boundary against collision, not yet against trespass - a pack writing into another pack's namespace is not gated on depending on it, because a composed record no longer records which pack contributed each key. |
 | 15 | **Accidental seams closed** | **YES** (closed; re-measured 2026-08-08) | Done. `MONSTER_HANDLERS` (`mon/project-mon.ts:801`) is now `readonly` and built by an IIFE, and `DEBUG_MENU` (`packages/web/src/wizard.ts:514`) is `readonly` and passed through `deepFreezeMenu`. Neither is a silent, unordered back door any more. Note the distinction this row exists to make: these were closed *as defects*. Reaching either one is a capability that must arrive as a gated, ordered, conflict-visible registry - see rows 3 and 9 - never by unfreezing these. |
 | 17 | **A vault or room template can use a symbol core has never heard of** | **CLOSED 2026-08-09** | `vault.json` and `room_template.json` have always accepted a new record, so a mod could always ship a vault - but only one drawn with the symbols `build_room_template` and `build_vault` already decoded, because those were three closed switches (gen-room.c L1195, L1445, L1523; 16 + 13 + 23 cases). A symbol they did not know became plain floor: **no error, no effect**, and no way for an author to find out except by staring at the level. `GlyphRegistry` (`gen/glyph.ts`) is keyed by decoder and character, with the two passes upstream actually runs - `terrain`, then `populate` once the room's walls exist - and a mod reaches it through `registry:glyph`. Two things are deliberate. The two alphabets stay SEPARATE, because upstream's are: `+` is a closed door in a room template and a SECRET door in a vault, and unifying them would be a parity change wearing a tidiness costume. And the glyphs upstream accepts and does nothing with (`9` in a template's first pass, `/` and `;` in a vault) are registered as explicit no-ops, so `glyphs(kind)` reports the true alphabet - an authoring tool listing what a vault may contain would otherwise be missing them. What proves it: **5,994 golden vectors** recorded from the code BEFORE the registry existed - every room template and every vault of the shipped pack, plus four synthetic ones spelling out the glyphs the pack does not use, at three seeds x three depths - replaying the whole chunk, every placement, and a probe draw that catches a changed DRAW COUNT. The depth list carries a 127 because the first control run broke a vault's `>` and PASSED: with only 5 and 60 in the grid, the dungeon-bottom arm was never reached. Reach is proven from disk (`mod-code.node.test.ts`) by a real mod folder shipping a vault with a `Q` in it, asserted on the CHUNK; the same file keeps the BEFORE picture as a test, so the seam's value is measured rather than asserted. |
+| 18 | **A mod's effect can SAY what it does** | **CLOSED 2026-08-09** | `registry:effect` has always let a mod register a handler for a brand-new effect code and have it DO something. What no mod could do was let the game describe it, because five closed switches stood between an effect and every word the player reads about it: `effectMenuName` and `effect_describe`'s body (both keyed on the EFINFO_* flag, 20 cases each), the activation-property summary walker (keyed on the effect code, 12), `effect_subtype`'s named-subtype decoding (keyed on the effect index, 9) and `requestForEffect` (which item an effect prompts for, 8). **69 cases.** The failure was silent in all five directions: a blank row in the activate/cast menu, nothing at all in object recall, an activation that could never be recognised as duplicating an intrinsic property, an effect that accepted no named subtype (only a bare integer), and an item-consuming effect that could not ask for an item. `EffectInfoRegistry` (`effects/effect-info-registry.ts`) is four tables under three keys - the EFINFO_* flag, the effect code, the effect index - reached through `registry:effect-info`. Two things are deliberate. The tables stay SEPARATE, because upstream's keys are: twenty flags describe a hundred and twelve effects, and collapsing them would force a mod to register the same behaviour three times under three spellings. And the registry is MODULE-LEVEL, which is legitimate only because of the 2026-08-09 ruling that a mod toggle takes effect on the next reload - the table a disabled mod registered into is gone because the module instance is. What proves it: **11,530 golden vectors** recorded from the code BEFORE the registry existed - every one of the 112 effects at five subtypes x three dice shapes x two radius/other shapes x two device-skill boosts, every TMD name through six activation arms, and every effect index against 25 subtype names - replaying the exact strings. No RNG probe, and that is measured rather than forgotten: this path substitutes `Dice.randomValue()` for upstream's `dice_roll` at every site precisely so rendering cannot perturb the stream, so there is no Rng to probe. Reach is proven from disk (`mod-code.node.test.ts`) by a real mod folder giving its own `SOULFIRE` effect a menu row and a recall sentence, asserted on the STRINGS a player would read; the same file wraps a core flag to show composition, and keeps the BEFORE picture - both strings empty, nothing complaining - as a test. Making that reachable took two changes beyond the switches: `describeEffect` used to skip a mod's effect on its `edesc === null` branch before the registry was ever consulted, and `itemTargetRequest` skipped a string effect code outright. A seam its own callers walk past is not a seam. |
 
 ---
 

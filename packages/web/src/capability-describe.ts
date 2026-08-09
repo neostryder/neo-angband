@@ -67,6 +67,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Change what the symbols in a room or vault layout mean when a level is drawn",
         elevated: true,
       };
+    case "effect-info":
+      return {
+        text: "Change what the game tells you about a spell, potion or wand effect",
+        elevated: true,
+      };
     case "vocab":
       return {
         text: "Add new vocabulary - flags, stats, and other terms",

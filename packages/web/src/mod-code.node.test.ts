@@ -23,7 +23,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -68,6 +68,12 @@ import {
   loc,
   extensionData,
   CORE_RECORD_KEYS,
+  EF,
+  describeEffect,
+  effectMenuName,
+  effectNew,
+  effectInfoRegistry,
+  resetEffectInfoRegistry,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   TerrainRecordJson,
@@ -1576,5 +1582,150 @@ describe("a mod folder on disk reaches the projection registries", () => {
     expect(projections.player.handlerFor("FIRE")).toBe(
       PLAYER_SIDE_HANDLERS.get("FIRE"),
     );
+  });
+});
+
+/**
+ * The effect-info registry, from disk.
+ *
+ * WHAT THIS EXISTS TO CATCH. `registry:effect` has always let a mod register a
+ * handler for a brand-new effect code and have it DO something. What no mod
+ * could do was let the game SAY anything about it: `effectMenuName` and
+ * `effect_describe` were closed switches on the EFINFO_* flag, and a mod's
+ * effect has no flag - so it showed a blank row in the activate/cast menu and
+ * contributed nothing at all to object recall. No error, no effect, and no way
+ * for an author to find out except by looking at the menu.
+ *
+ * This drives the REAL `effectMenuName` and `describeEffect` over an effect
+ * chain built from a mod's own string code, and asserts on the STRINGS a player
+ * would read - not on the registry, and not on the mod's report of itself.
+ *
+ * The controls, all run: drop `effectInfo` from the host's targets and the
+ * register call throws "did not wire"; drop the capability and it throws at the
+ * gate; leave the handler unregistered and both strings come out empty, which
+ * is the silent failure this seam removes.
+ */
+describe("a mod folder on disk reaches the effect-info registry", () => {
+  /* Module-level table: restore core's arms so one test cannot leak into the
+   * next. This is also the assertion that `resetEffectInfoRegistry` works,
+   * since the "before" test below runs after a registration. */
+  afterEach(() => {
+    resetEffectInfoRegistry();
+  });
+
+  /** An effect chain of one node carrying a mod's own string code. */
+  function modEffect(): ReturnType<typeof effectNew> {
+    const e = effectNew("SOULFIRE");
+    e.subtype = 2;
+    const d = new Dice();
+    d.parseString("4d6");
+    e.dice = d;
+    e.diceString = "4d6";
+    return e;
+  }
+
+  it("gives a mod's own effect a menu row and a recall sentence", async () => {
+    writeMod(
+      "soulfire",
+      { capabilities: ["registry:effect-info"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           host.effectInfo.text.set("SOULFIRE", {
+             menuName: (c) => "burn a soul for " + c.average() + " damage",
+             describe: (c) =>
+               "sears the target for " + c.diceString + " soul damage" +
+               c.appendDamage(),
+           });
+           /* Wrap a CORE flag too, rather than only adding: keeping the
+            * previous handler and calling through is the difference between
+            * extending the recall and replacing it with your own guess. */
+           const inner = host.effectInfo.text.handlerFor("EFINFO_QUAKE");
+           host.effectInfo.text.set("EFINFO_QUAKE", {
+             menuName: inner.menuName,
+             describe: (c) => inner.describe(c) + ", and the air screams",
+           });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "soulfire", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:effect-info"],
+    });
+    expect(code.problems).toEqual([]);
+
+    const reg = effectInfoRegistry();
+    expect(reg.text.has("SOULFIRE")).toBe(false);
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { effectInfo: reg },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("soulfire"));
+    expect(reg.text.has("SOULFIRE")).toBe(true);
+
+    /* What the player reads. The menu row and the recall sentence, from the
+     * real functions the UI calls. */
+    const e = modEffect();
+    expect(effectMenuName(e)).toBe("burn a soul for 14 damage");
+    expect(describeEffect(e, null, 0, true, { projections: [] })).toBe(
+      "sears the target for 4d6 soul damage for an average of 14.0 damage",
+    );
+
+    /* And the wrapped core flag still says everything it said before, plus the
+     * mod's tail - so wrapping composed rather than shadowed. */
+    const quake = effectNew(EF.EARTHQUAKE);
+    quake.radius = 10;
+    const said = describeEffect(quake, null, 0, true, { projections: [] });
+    expect(said).toContain("10");
+    expect(said?.endsWith(", and the air screams")).toBe(true);
+  });
+
+  it("without the capability the effect-info registry refuses at the call", async () => {
+    writeMod(
+      "mute",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           host.effectInfo.text.set("SOULFIRE", { menuName: () => "x" });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "mute", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const reg = effectInfoRegistry();
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { effectInfo: reg },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("mute"))).toThrow(
+      /registry:effect-info/,
+    );
+    expect(reg.text.has("SOULFIRE")).toBe(false);
+  });
+
+  it("a mod effect with no handler is silently blank - the failure this removes", () => {
+    /* The BEFORE picture, kept as a test so the seam's value is measured
+     * rather than asserted. Both strings are empty and nothing complains. */
+    expect(effectInfoRegistry().text.has("SOULFIRE")).toBe(false);
+    const e = modEffect();
+    expect(effectMenuName(e)).toBe("");
+    expect(describeEffect(e, null, 0, true, { projections: [] })).toBeNull();
   });
 });

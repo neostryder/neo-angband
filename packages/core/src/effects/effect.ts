@@ -23,6 +23,8 @@ import {
   STAT_ENTRIES,
 } from "../generated/index.js";
 import { monTimedNameToIdx } from "../mon/timed.js";
+import { effectInfoRegistry, seedEffectInfo } from "./effect-info-registry.js";
+import type { EffectSubtypeHandler } from "./effect-info-registry.js";
 
 /**
  * An effect code: an upstream EF_* numeric index, or a string code for a
@@ -296,71 +298,100 @@ export function effectSubtype(
   }
 
   /* If not a numerical value, assign according to effect index. */
-  if (PROJECTION_SUBTYPE_EFFECTS.has(index)) return projNameToIdx(type);
-  if (TIMED_SUBTYPE_EFFECTS.has(index)) return timedNameToIdx(type);
-  if (STAT_SUBTYPE_EFFECTS.has(index)) return statNameToIdx(type);
-
-  switch (index) {
-    /* Nourishment types */
-    case EF.NOURISH:
-      if (type === "INC_BY") return 0;
-      if (type === "DEC_BY") return 1;
-      if (type === "SET_TO") return 2;
-      if (type === "INC_TO") return 3;
-      break;
-
-    /* Monster timed effect name */
-    case EF.MON_TIMED_INC:
-      return monTimedNameToIdx(type);
-
-    /* Summon name: resolved through the injection point, supplied by the
-     * session from the bound summon registry (session/game.ts:1168). */
-    case EF.SUMMON:
-      return inject.summonNameToIdx ? inject.summonNameToIdx(type) : -1;
-
-    /* Enchant type name - not worth a separate function */
-    case EF.ENCHANT:
-      if (type === "TOBOTH") return ENCH_TOBOTH;
-      if (type === "TOHIT") return ENCH_TOHIT;
-      if (type === "TODAM") return ENCH_TODAM;
-      if (type === "TOAC") return ENCH_TOAC;
-      break;
-
-    /* Player shape name: injection point, supplied by the session from the
-     * bound shape registry (session/game.ts:1178). */
-    case EF.SHAPECHANGE:
-      return inject.shapeNameToIdx ? inject.shapeNameToIdx(type) : -1;
-
-    /* Targeted earthquake */
-    case EF.EARTHQUAKE:
-      if (type === "TARGETED") return 1;
-      if (type === "NONE") return 0;
-      break;
-
-    /* Inscribe a glyph */
-    case EF.GLYPH:
-      if (type === "WARDING") return GLYPH_WARDING;
-      if (type === "DECOY") return GLYPH_DECOY;
-      break;
-
-    /* Allow teleport away */
-    case EF.TELEPORT:
-      if (type === "AWAY") return 1;
-      break;
-
-    /* Allow monster teleport toward */
-    case EF.TELEPORT_TO:
-      if (type === "SELF") return 1;
-      break;
-
-    /* Some effects only want a radius, so this is a dummy */
-    default:
-      if (type === "NONE") return 0;
-      break;
+  /* Upstream's three name-family tests and the switch after them are now one
+   * lookup in the effect-info registry's `subtype` table, so a mod's effect can
+   * take a NAMED subtype instead of only a bare integer - and can reuse a core
+   * family (projection names, timed names, stat names) by registering the same
+   * resolver rather than reimplementing it. */
+  const handler = effectInfoRegistry().subtype.handlerFor(index);
+  if (handler) {
+    /* null is "this name means nothing to me", which upstream spells by
+     * falling out of its case with `break` - and that is NOT the same as the
+     * default arm below: EF_NOURISH does not accept "NONE". */
+    return handler(type, inject) ?? -1;
   }
+
+  /* Some effects only want a radius, so this is a dummy */
+  if (type === "NONE") return 0;
 
   return -1;
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's subtype resolvers, lifted arm by arm.
+ * ------------------------------------------------------------------ */
+
+seedEffectInfo((reg) => {
+  const s = reg.subtype;
+
+  /** Register one resolver under every effect of a name family. */
+  const family = (
+    indices: ReadonlySet<number>,
+    resolve: EffectSubtypeHandler,
+  ): void => {
+    for (const index of indices) s.set(index, resolve);
+  };
+
+  /* The three name families upstream tests before its switch. Registered per
+   * effect rather than as a set membership test, so a mod can replace or wrap
+   * the resolver for ONE of them without touching the rest. */
+  family(PROJECTION_SUBTYPE_EFFECTS, (type) => projNameToIdx(type));
+  family(TIMED_SUBTYPE_EFFECTS, (type) => timedNameToIdx(type));
+  family(STAT_SUBTYPE_EFFECTS, (type) => statNameToIdx(type));
+
+  /* Nourishment types */
+  s.set(EF.NOURISH, (type) => {
+    if (type === "INC_BY") return 0;
+    if (type === "DEC_BY") return 1;
+    if (type === "SET_TO") return 2;
+    if (type === "INC_TO") return 3;
+    return null;
+  });
+
+  /* Monster timed effect name */
+  s.set(EF.MON_TIMED_INC, (type) => monTimedNameToIdx(type));
+
+  /* Summon name: resolved through the injection point, supplied by the
+   * session from the bound summon registry (session/game.ts:1168). */
+  s.set(EF.SUMMON, (type, inject) =>
+    inject.summonNameToIdx ? inject.summonNameToIdx(type) : -1,
+  );
+
+  /* Enchant type name - not worth a separate function */
+  s.set(EF.ENCHANT, (type) => {
+    if (type === "TOBOTH") return ENCH_TOBOTH;
+    if (type === "TOHIT") return ENCH_TOHIT;
+    if (type === "TODAM") return ENCH_TODAM;
+    if (type === "TOAC") return ENCH_TOAC;
+    return null;
+  });
+
+  /* Player shape name: injection point, supplied by the session from the
+   * bound shape registry (session/game.ts:1178). */
+  s.set(EF.SHAPECHANGE, (type, inject) =>
+    inject.shapeNameToIdx ? inject.shapeNameToIdx(type) : -1,
+  );
+
+  /* Targeted earthquake */
+  s.set(EF.EARTHQUAKE, (type) => {
+    if (type === "TARGETED") return 1;
+    if (type === "NONE") return 0;
+    return null;
+  });
+
+  /* Inscribe a glyph */
+  s.set(EF.GLYPH, (type) => {
+    if (type === "WARDING") return GLYPH_WARDING;
+    if (type === "DECOY") return GLYPH_DECOY;
+    return null;
+  });
+
+  /* Allow teleport away */
+  s.set(EF.TELEPORT, (type) => (type === "AWAY" ? 1 : null));
+
+  /* Allow monster teleport toward */
+  s.set(EF.TELEPORT_TO, (type) => (type === "SELF" ? 1 : null));
+});
 
 /* ------------------------------------------------------------------ *
  * Expression base values (effect_value_base_by_name).

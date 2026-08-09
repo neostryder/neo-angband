@@ -26,6 +26,11 @@ import type {
 } from "./randart-build.js";
 import { EFPROP } from "./randart-build.js";
 import type { EffectRecordJson } from "./types.js";
+import {
+  effectInfoRegistry,
+  seedEffectInfo,
+} from "../effects/effect-info-registry.js";
+import type { ActivationSummaryHandler } from "../effects/effect-info-registry.js";
 
 /**
  * TMD failure-condition codes (player-timed.h enum, mirrored in player/timed.ts
@@ -278,72 +283,98 @@ export function makeActivationSummarizer(
     };
 
     for (const ef of effect) {
-      switch (ef.eff) {
-        case "RANDOM":
-        case "SELECT":
-          /* Summarize all sub-effects (any is possible); that is the same as
-           * stepping over the random/select effect. */
-          break;
-
-        case "SET_VALUE":
-          rememberedDice = ef.dice;
-          break;
-
-        case "CLEAR_VALUE":
-          rememberedDice = undefined;
-          break;
-
-        case "CURE":
-          if (ef.type !== undefined) summarizeCure(byName.get(ef.type));
-          break;
-
-        case "TIMED_SET": {
-          const value = timedValue(ef);
-          if (value <= 0 && ef.type !== undefined && byName.has(ef.type)) {
-            /* It's equivalent to a cure. */
-            summarizeCure(byName.get(ef.type));
-            break;
-          }
-          /* Fall through to the TIMED_INC handling. */
-          if (value > 0 && ef.type !== undefined) {
-            const td = byName.get(ef.type);
-            if (td) summarizeTimedInc(td);
-          }
-          break;
-        }
-
-        case "TIMED_INC":
-        case "TIMED_INC_NO_RES": {
-          const value = timedValue(ef);
-          if (value > 0 && ef.type !== undefined) {
-            const td = byName.get(ef.type);
-            if (td) summarizeTimedInc(td);
-          }
-          break;
-        }
-
-        case "TIMED_DEC": {
-          const value = timedValue(ef);
-          /* If it decreases the duration, it's a partial cure. */
-          if (value > 0 && ef.type !== undefined) {
-            summarizeCure(byName.get(ef.type));
-          }
-          break;
-        }
-
-        case "TELEPORT":
-        case "TELEPORT_TO":
-        case "TELEPORT_LEVEL":
-          add(ofNoTeleport, 0, 0, EFPROP.CONFLICT_FLAG);
-          break;
-
-        default:
-          /* Everything else isn't related to an object property. */
-          ++unsummarized;
-          break;
+      /* The upstream switch on the effect code is now the effect-info
+       * registry's `summary` table, so an activation built from a MOD's effect
+       * can be recognised as granting an object property instead of being
+       * counted "unsummarized" and therefore never redundant. An unregistered
+       * code takes upstream's default arm, which is the same behaviour a mod
+       * effect had before this seam existed. */
+      const handler = effectInfoRegistry().summary.handlerFor(ef.eff);
+      if (!handler) {
+        /* Everything else isn't related to an object property. */
+        ++unsummarized;
+        continue;
       }
+      handler({
+        record: ef,
+        add,
+        summarizeCure: (name) => {
+          if (name !== undefined) summarizeCure(byName.get(name));
+        },
+        summarizeTimedInc: (name) => {
+          if (name === undefined) return;
+          const td = byName.get(name);
+          if (td) summarizeTimedInc(td);
+        },
+        timedValue: () => timedValue(ef),
+        knownTimed: (name) => name !== undefined && byName.has(name),
+        ofNoTeleport,
+        setRememberedDice: (dice) => {
+          rememberedDice = dice;
+        },
+        markUnsummarized: () => {
+          ++unsummarized;
+        },
+      });
     }
 
     return { props, unsummarizedCount: unsummarized };
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's arms of effect_summarize_properties, lifted case by case.
+ * ------------------------------------------------------------------ */
+
+seedEffectInfo((reg) => {
+  const s = reg.summary;
+
+  /* Summarize all sub-effects (any is possible); that is the same as stepping
+   * over the random/select effect - and notably NOT the default arm, which
+   * would count it unsummarized. */
+  const step: ActivationSummaryHandler = () => {
+    /* deliberately nothing */
+  };
+  s.set("RANDOM", step);
+  s.set("SELECT", step);
+
+  s.set("SET_VALUE", (c) => {
+    c.setRememberedDice(c.record.dice);
+  });
+  s.set("CLEAR_VALUE", (c) => {
+    c.setRememberedDice(undefined);
+  });
+
+  s.set("CURE", (c) => {
+    c.summarizeCure(c.record.type);
+  });
+
+  s.set("TIMED_SET", (c) => {
+    const value = c.timedValue();
+    if (value <= 0 && c.knownTimed(c.record.type)) {
+      /* It's equivalent to a cure. */
+      c.summarizeCure(c.record.type);
+      return;
+    }
+    /* Fall through to the TIMED_INC handling. */
+    if (value > 0) c.summarizeTimedInc(c.record.type);
+  });
+
+  const timedInc: ActivationSummaryHandler = (c) => {
+    if (c.timedValue() > 0) c.summarizeTimedInc(c.record.type);
+  };
+  s.set("TIMED_INC", timedInc);
+  s.set("TIMED_INC_NO_RES", timedInc);
+
+  s.set("TIMED_DEC", (c) => {
+    /* If it decreases the duration, it's a partial cure. */
+    if (c.timedValue() > 0) c.summarizeCure(c.record.type);
+  });
+
+  const noTeleport: ActivationSummaryHandler = (c) => {
+    c.add(c.ofNoTeleport, 0, 0, EFPROP.CONFLICT_FLAG);
+  };
+  s.set("TELEPORT", noTeleport);
+  s.set("TELEPORT_TO", noTeleport);
+  s.set("TELEPORT_LEVEL", noTeleport);
+});

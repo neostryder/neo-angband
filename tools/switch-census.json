@@ -33,18 +33,6 @@
       "verdict": "UI - keypress routing in the equipment-compare overlay (MOD_REACH gap 23). Reachable once the keypress table is data."
     },
     {
-      "file": "packages/core/src/effects/effect-info.ts",
-      "cases": 20,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - effect info strings (MOD_REACH gap 17). Not converted."
-    },
-    {
-      "file": "packages/core/src/effects/effect-info.ts",
-      "cases": 20,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - effect info strings (MOD_REACH gap 17). Not converted."
-    },
-    {
       "file": "packages/core/src/obj/object.ts",
       "cases": 20,
       "hasDefault": true,
@@ -129,10 +117,10 @@
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
     },
     {
-      "file": "packages/core/src/obj/effects-info.ts",
+      "file": "packages/web/src/capability-describe.ts",
       "cases": 12,
       "hasDefault": true,
-      "verdict": "CANDIDATE - effect info strings (MOD_REACH gap 17). Not converted."
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed, by one again for registry:glyph, and by one again for registry:effect-info."
     },
     {
       "file": "packages/core/src/mod/save-blocks.ts",
@@ -159,12 +147,6 @@
       "verdict": "CONTROL FLOW - health decile to colour. A numeric bucket, not a dispatch table."
     },
     {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 11,
-      "hasDefault": true,
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed and by one again for registry:glyph."
-    },
-    {
       "file": "packages/web/src/main.ts",
       "cases": 11,
       "hasDefault": true,
@@ -181,12 +163,6 @@
       "cases": 10,
       "hasDefault": true,
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
-    },
-    {
-      "file": "packages/core/src/effects/effect.ts",
-      "cases": 9,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - per-effect subtype name decoding (MOD_REACH gap 17). A mod's effect can take no named subtype. Not converted."
     },
     {
       "file": "packages/core/src/obj/object.ts",
@@ -241,12 +217,6 @@
       "cases": 8,
       "hasDefault": true,
       "verdict": "PARSER - the dice-expression grammar (character lexer and its INPUT_* transition table, two switches). A mod changing dice syntax would invalidate every record in every pack; deliberately closed."
-    },
-    {
-      "file": "packages/core/src/game/effect-item.ts",
-      "cases": 8,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - which item an effect prompts for (MOD_REACH gap 17). A mod's item-consuming effect cannot ask for an item. Not converted."
     },
     {
       "file": "packages/core/src/game/thrust.ts",

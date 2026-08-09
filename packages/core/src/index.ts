@@ -33,6 +33,7 @@ export * from "./world/projection.js";
 export * from "./world/trap.js";
 export * from "./effects/effect.js";
 export * from "./effects/effect-info.js";
+export * from "./effects/effect-info-registry.js";
 export * from "./effects/effect-choice.js";
 export * from "./effects/interpreter.js";
 export * from "./effects/handlers.js";

@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { REGISTRY_CAPABILITIES } from "@rpgm-tools/neo-angband-core";
+import { parseCapability } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   describeCapability,
   describeCapabilities,
@@ -22,6 +24,31 @@ describe("describeCapability", () => {
     expect(describeCapability("registry:vocab").elevated).toBe(false);
     expect(describeCapability("registry:*").elevated).toBe(true);
     expect(describeCapability("registry:*").text).toMatch(/ANY game system/i);
+  });
+
+  it("covers EVERY domain the registry host gates, derived rather than listed", () => {
+    /* THE HALF-ADDED DOMAIN. A new registry:<domain> has to land in three
+     * places that do not import each other: core's REGISTRY_CAPABILITIES (the
+     * gate), mod-sdk's REGISTRY_RE (the grammar, an ALLOWLIST - a domain it has
+     * never heard of is refused at install, so the capability looks declared
+     * and is never granted), and this module (the consent copy, whose default
+     * arm produces "Override the "x" game system" and reads like a bug).
+     *
+     * registry:glyph got all three and this TEST's hand-written list still did
+     * not grow - the check drifting rather than the code. That is why the list
+     * is gone: both assertions below are DERIVED from core's own table, so
+     * neither a half-added domain nor a half-updated test is possible. */
+    for (const cap of Object.values(REGISTRY_CAPABILITIES)) {
+      expect({ cap, parsed: parseCapability(cap).kind }).toEqual({
+        cap,
+        parsed: "registry",
+      });
+      const d = describeCapability(cap);
+      expect({ cap, generic: /^Override the "/.test(d.text) }).toEqual({
+        cap,
+        generic: false,
+      });
+    }
   });
 
   it("describes non-registry capabilities with the right power flags", () => {
