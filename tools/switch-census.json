@@ -27,12 +27,6 @@
       "verdict": "LOCALIZATION - the pronoun table (msex x mode), not a dispatch table. Belongs to MOD_REACH gap 14 (localization), which replaces the strings wholesale rather than the switch."
     },
     {
-      "file": "packages/core/src/gen/room.ts",
-      "cases": 23,
-      "hasDefault": false,
-      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). A mod can already ship a vault, but only using glyphs this decoder knows; a new glyph is unreachable. Not converted."
-    },
-    {
       "file": "packages/web/src/equip-cmp.ts",
       "cases": 22,
       "hasDefault": true,
@@ -93,12 +87,6 @@
       "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
     },
     {
-      "file": "packages/core/src/gen/room.ts",
-      "cases": 16,
-      "hasDefault": false,
-      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). Second of three decode loops. Not converted."
-    },
-    {
       "file": "packages/core/src/obj/make.ts",
       "cases": 16,
       "hasDefault": true,
@@ -133,12 +121,6 @@
       "cases": 14,
       "hasDefault": true,
       "verdict": "DEBUG - wizard birth-option keypresses. Same as above."
-    },
-    {
-      "file": "packages/core/src/gen/room.ts",
-      "cases": 13,
-      "hasDefault": false,
-      "verdict": "CANDIDATE - room/vault TEMPLATE GLYPH decoder (new gap 26). Third of three decode loops. Not converted."
     },
     {
       "file": "packages/core/src/combat/mon-melee.ts",
@@ -177,6 +159,12 @@
       "verdict": "CONTROL FLOW - health decile to colour. A numeric bucket, not a dispatch table."
     },
     {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 11,
+      "hasDefault": true,
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed and by one again for registry:glyph."
+    },
+    {
       "file": "packages/web/src/main.ts",
       "cases": 11,
       "hasDefault": true,
@@ -193,12 +181,6 @@
       "cases": 10,
       "hasDefault": true,
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 10,
-      "hasDefault": true,
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed."
     },
     {
       "file": "packages/core/src/effects/effect.ts",

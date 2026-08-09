@@ -20,7 +20,7 @@ exist.
 | 1 | `engine` | a semver range over `ENGINE_VERSION` | **warns** for data, **refuses** code |
 | 2 | `modApi` | the plugin ABI, an integer | refuses outside the accepted window |
 | 3 | a patch target | one `patches` / `fieldPatches` / `removes` ref | **skips that op**, keeps the mod |
-| 4 | `ctx.core` | any of ~1700 engine exports | nothing. See below. |
+| 4 | `ctx.core` | any of ~1800 engine exports | nothing. See below. |
 
 ### 1. `engine` is a label on data and a gate on code
 
@@ -90,7 +90,7 @@ it fell out of the shape of core's own records.
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
-about 1700 runtime exports, deliberately not a curated slice (decision 18, and
+about 1800 runtime exports (1,813 as of 2026-08-09), deliberately not a curated slice (decision 18, and
 because a curated list is the thing that drifts).
 
 `MOD_API_VERSION` does not version it. It versions the *shape of the plugin

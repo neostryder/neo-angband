@@ -94,9 +94,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 50 into a CLOSED vocabulary", () => {
+  it("classifies all 47 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 50 switches only 21 are content dispatch a mod
+     * than written in prose: of 47 switches only 18 are content dispatch a mod
      * would want. The other 29 are UI routing, parsers, host wiring, the mod
      * system's own vocabulary, localization strings, or plain control flow -
      * and saying so is a claim that can be checked against the file.
@@ -110,7 +110,7 @@ describe("the switch census", () => {
       byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
     }
     expect(Object.fromEntries([...byClass].sort())).toEqual({
-      CANDIDATE: 21,
+      CANDIDATE: 18,
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 3,
@@ -128,7 +128,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("gap 14");
   });
 
-  it("is measuring something: 50 switches, 774 case labels", () => {
+  it("is measuring something: 47 switches, 723 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
@@ -141,18 +141,25 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.file).toBe("packages/core/src/obj/randart-build.ts");
   });
 
-  it("no longer lists the three switches that became registries", () => {
-    /* The whole project_f / project_o / project_p family. Their absence is the
-     * census agreeing with MOD_REACH rows 11, 12 and 27 - and it is derived
+  it("no longer lists the six switches that became registries", () => {
+    /* The whole project_f / project_o / project_p family, and the three
+     * room-template / vault glyph decoders. Their absence is the census
+     * agreeing with MOD_REACH rows 11, 12, 17 and 27 - and it is derived
      * rather than declared, which is the whole point of this file: nobody
      * edited a row to say project_p was done, the row left when the switch did.
      *
      * player-side.ts is named as a FILE, not as a row that shrank. Its handlers
      * are top-level functions now, so there is no smaller switch left behind to
-     * mistake for progress. */
+     * mistake for progress. gen/room.ts is the same: all three of its decode
+     * loops are now one `handlerFor(...)?.terrain?.(...)` call each.
+     *
+     * This assertion is what makes the denominator honest in BOTH directions.
+     * A census that only notices switches APPEARING would let a conversion be
+     * claimed without being made; this fails if a glyph switch comes back. */
     const files = new Set(manifest.switches.map((r) => r.file));
     expect(files.has("packages/core/src/game/project-feat.ts")).toBe(false);
     expect(files.has("packages/core/src/game/project-obj.ts")).toBe(false);
     expect(files.has("packages/core/src/game/player-side.ts")).toBe(false);
+    expect(files.has("packages/core/src/gen/room.ts")).toBe(false);
   });
 });

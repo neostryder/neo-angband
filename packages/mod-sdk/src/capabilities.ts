@@ -33,11 +33,16 @@
  *                             "registry:profile" | "registry:blow" |
  *                             "registry:store" | "registry:command" |
  *                             "registry:monster" | "registry:projection" |
- *                             "registry:vocab"; or the wildcard "registry:*"
+ *                             "registry:glyph" | "registry:vocab"; or the
+ *                             wildcard "registry:*"
  *                             for all of them. "registry:projection" says what a
  *                             projection DOES to terrain, floor objects and the
  *                             player - the behaviour half of adding a new
- *                             element. "registry:vocab" (W2.3) declares
+ *                             element. "registry:glyph" says what one character
+ *                             of a room-template or vault layout means when the
+ *                             level is drawn - the behaviour half of shipping a
+ *                             vault with a symbol core never heard of.
+ *                             "registry:vocab" (W2.3) declares
  *                             NEW vocabulary (flags/stats/any kind). Distinct
  *                             from "command:add": that adds a command via the
  *                             act facade, this replaces what a command DOES (and
@@ -70,7 +75,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect|room|profile|blow|store|command|monster|projection|vocab)$/;
+  /^registry:(\*|effect|room|profile|blow|store|command|monster|projection|glyph|vocab)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

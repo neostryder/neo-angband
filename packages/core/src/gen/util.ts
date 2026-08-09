@@ -48,6 +48,7 @@ import {
   featIsTrapHolding,
 } from "../world/chunk.js";
 import type { TrapKind } from "../world/trap.js";
+import type { GlyphRegistry } from "./glyph.js";
 import { pickTrapKind } from "../game/trap.js";
 import { GET_ANGLE_TO_GRID } from "../world/project.js";
 import type { FeatureRegistry } from "../world/feature.js";
@@ -335,6 +336,13 @@ export class Gen {
    * contexts, which then generate silently.
    */
   msg?: (text: string) => void;
+  /**
+   * The room-template / vault glyph decoders for this build, handed down from
+   * the level's RoomRegistry by makeGen (gen/cave.ts) so a mod's registered
+   * glyphs are in scope. Absent in bare unit-test Gen contexts, where the
+   * builders fall back to core's own table - see glyphsFor (gen/room.ts).
+   */
+  glyphs?: GlyphRegistry;
   /** Current tunnel/streamer parameters (set by the cave builder). */
   profileTun: TunnelParams = ZERO_TUNNEL;
   profileStr: StreamerParams = ZERO_STREAMER;

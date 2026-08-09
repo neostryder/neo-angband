@@ -30,6 +30,8 @@ import type { Rng } from "../rng.js";
 import { tvalFindIdx } from "../obj/bind.js";
 import type { Chunk } from "../world/chunk.js";
 import type { Gen } from "./util.js";
+import { GlyphRegistry } from "./glyph.js";
+import type { GlyphContext } from "./glyph.js";
 import {
   countNeighbors,
   drawRectangle,
@@ -399,6 +401,22 @@ function appendEntrance(g: Gen, grid: Loc): void {
  * build_room_template / build_vault.
  * ------------------------------------------------------------------ */
 
+/**
+ * The glyph table a build uses: the level's own (so a mod's glyphs are in
+ * scope), or core's shared one for a bare Gen built by a unit test.
+ *
+ * Lazy and module-level rather than a default on `Gen`, because `Gen` lives in
+ * util.ts and seeding the table needs every placement helper in this file -
+ * a default there would be an import cycle.
+ */
+let CORE_GLYPHS: GlyphRegistry | null = null;
+
+function glyphsFor(g: Gen): GlyphRegistry {
+  if (g.glyphs) return g.glyphs;
+  CORE_GLYPHS ??= createGlyphRegistry();
+  return CORE_GLYPHS;
+}
+
 export function buildRoomTemplate(
   g: Gen,
   centreIn: Loc,
@@ -444,6 +462,17 @@ export function buildRoomTemplate(
 
   centre = loc(centre.x - Math.trunc(txmax / 2), centre.y - Math.trunc(tymax / 2));
 
+  const glyphs = glyphsFor(g);
+  const ctxFor = (grid: Loc, glyph: string): GlyphContext => ({
+    g,
+    grid,
+    glyph,
+    fewEntrances,
+    rndDoors: rnddoors,
+    rndWalls: rndwalls,
+    tval,
+  });
+
   /* First pass: features. */
   for (let dy = 0; dy < ymax; dy++) {
     for (let dx = 0; dx < xmax; dx++) {
@@ -451,56 +480,7 @@ export function buildRoomTemplate(
       const grid = symmetryTransform(loc(dx, dy), centre.y, centre.x, ymax, xmax, rotate, reflect);
       if (t === " ") continue;
       c.setFeat(grid, FEAT.FLOOR);
-      switch (t) {
-        case "%":
-          setMarkedGranite(c, grid, SQUARE.WALL_OUTER);
-          if (fewEntrances) appendEntrance(g, grid);
-          break;
-        case "#":
-          setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
-          break;
-        case "+":
-          placeClosedDoor(g, grid);
-          break;
-        case "^":
-          if (g.rng.oneIn(4)) placeTrap(g, grid);
-          break;
-        case "x":
-          if (rndwalls) setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
-          break;
-        case "(":
-          if (rndwalls) placeSecretDoor(c, grid);
-          break;
-        case ")":
-          if (!rndwalls) placeSecretDoor(c, grid);
-          else setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
-          break;
-        case "8":
-          if (g.rng.randint0(100) < 80 || g.dun.persist) {
-            /* build_room_template '8' (gen-room.c L1211): ORIGIN_SPECIAL. */
-            placeObject(g, grid, c.depth, false, false, 0, ORIGIN.SPECIAL);
-          } else {
-            placeRandomStairs(g, grid, g.dun.quest);
-          }
-          break;
-        case "9":
-          break;
-        case "[":
-          /* build_room_template '[' (gen-room.c L1226): ORIGIN_SPECIAL. */
-          placeObject(g, grid, c.depth, false, false, tval, ORIGIN.SPECIAL);
-          break;
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5":
-        case "6": {
-          const doorpos = t.charCodeAt(0) - "0".charCodeAt(0);
-          if (doorpos === rnddoors) placeSecretDoor(c, grid);
-          else setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
-          break;
-        }
-      }
+      glyphs.handlerFor("template", t)?.terrain?.(ctxFor(grid, t));
       c.sqinfoOn(grid, SQUARE.ROOM);
       if (light) c.sqinfoOn(grid, SQUARE.GLOW);
     }
@@ -511,28 +491,7 @@ export function buildRoomTemplate(
     for (let dx = 0; dx < xmax; dx++) {
       const t = glyphAt(rows, dy, dx);
       const grid = symmetryTransform(loc(dx, dy), centre.y, centre.x, ymax, xmax, rotate, reflect);
-      switch (t) {
-        case "#":
-          if (countNeighbors(c, grid, squareIsRoom, false) === 8) {
-            c.sqinfoOff(grid, SQUARE.WALL_SOLID);
-            c.sqinfoOn(grid, SQUARE.WALL_INNER);
-          }
-          break;
-        case "8":
-          vaultMonsters(g, grid, c.depth + 2, g.rng.randint0(2) + 3);
-          break;
-        case "9": {
-          const off2 = loc(2, -2);
-          const off3 = loc(3, 3);
-          vaultMonsters(g, locDiff(grid, off3), c.depth + g.rng.randint0(2), g.rng.randint1(2));
-          vaultMonsters(g, locSum(grid, off3), c.depth + g.rng.randint0(2), g.rng.randint1(2));
-          if (g.rng.oneIn(2)) vaultObjects(g, locSum(grid, off2), c.depth, 1 + g.rng.randint0(2));
-          if (g.rng.oneIn(2)) vaultObjects(g, locDiff(grid, off2), c.depth, 1 + g.rng.randint0(2));
-          break;
-        }
-        default:
-          break;
-      }
+      glyphs.handlerFor("template", t)?.populate?.(ctxFor(grid, t));
     }
   }
   return true;
@@ -630,6 +589,19 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
   /* Racial monster symbols, collected in first-appearance order (max 30). */
   const racialSymbol: string[] = [];
 
+  const glyphs = glyphsFor(g);
+  const ctxFor = (grid: Loc, glyph: string): GlyphContext => ({
+    g,
+    grid,
+    glyph,
+    fewEntrances: v.fewEntrances,
+    /* A vault has no door-position roll and no optional walls, and its objects
+     * are placed by glyph rather than from a template tval. */
+    rndDoors: 0,
+    rndWalls: false,
+    tval: 0,
+  });
+
   /* First pass: features. */
   for (let y = 0; y < v.hgt; y++) {
     for (let x = 0; x < v.wid; x++) {
@@ -637,52 +609,8 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
       const grid = symmetryTransform(loc(x, y), centre.y, centre.x, v.hgt, v.wid, rotate, reflect);
       if (t === " ") continue;
       c.setFeat(grid, FEAT.FLOOR);
-      let icky = true;
-      switch (t) {
-        case "%":
-          setMarkedGranite(c, grid, SQUARE.WALL_OUTER);
-          if (v.fewEntrances) appendEntrance(g, grid);
-          icky = false;
-          break;
-        case "#":
-          setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
-          break;
-        case "@":
-          c.setFeat(grid, FEAT.PERM);
-          break;
-        case "*":
-          c.setFeat(grid, g.rng.oneIn(2) ? FEAT.MAGMA_K : FEAT.QUARTZ_K);
-          break;
-        case ":":
-          c.setFeat(grid, g.rng.oneIn(2) ? FEAT.PASS_RUBBLE : FEAT.RUBBLE);
-          break;
-        case "+":
-          placeSecretDoor(c, grid);
-          break;
-        case "^":
-          if (g.rng.oneIn(4)) placeTrap(g, grid);
-          break;
-        case "&":
-          /* build_vault '&' (gen-room.c L1474): ORIGIN_VAULT. */
-          if (g.rng.randint0(100) < 75) placeObject(g, grid, c.depth, false, false, 0, ORIGIN.VAULT);
-          else if (g.rng.oneIn(4)) placeTrap(g, grid);
-          break;
-        case "<":
-          if (!g.dun.persist) c.setFeat(grid, FEAT.LESS);
-          break;
-        case ">":
-          if (!g.dun.persist) {
-            if (g.dun.quest || c.depth >= g.constants.maxDepth - 1) c.setFeat(grid, FEAT.LESS);
-            else c.setFeat(grid, FEAT.MORE);
-          }
-          break;
-        case "`":
-          c.setFeat(grid, FEAT.LAVA);
-          break;
-        case "/":
-        case ";":
-          break;
-      }
+      /* Upstream's `icky`: every glyph but the outer wall stays in the vault. */
+      const icky = glyphs.handlerFor("vault", t)?.terrain?.(ctxFor(grid, t)) !== false;
       c.sqinfoOn(grid, SQUARE.ROOM);
       if (icky) c.sqinfoOn(grid, SQUARE.VAULT);
     }
@@ -702,129 +630,7 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
         }
         continue;
       }
-      switch (t) {
-        case "1":
-          if (g.rng.oneIn(2)) {
-            /* build_vault '1' (gen-room.c L1540-1541): ORIGIN_DROP_VAULT. */
-            pickAndPlaceMonster(g, grid, c.depth, true, true, ORIGIN.DROP_VAULT);
-          } else if (g.rng.oneIn(2)) {
-            /* build_vault '1' (gen-room.c L1543): ORIGIN_VAULT. */
-            placeObject(g, grid, c.depth, g.rng.oneIn(8), false, 0, ORIGIN.VAULT);
-          } else if (g.rng.oneIn(4)) {
-            placeTrap(g, grid);
-          }
-          break;
-        case "2":
-          pickAndPlaceMonster(g, grid, c.depth + 5, true, true, ORIGIN.DROP_VAULT);
-          break;
-        case "3":
-          /* build_vault '3' (gen-room.c L1556): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, false, false, 0, ORIGIN.VAULT);
-          break;
-        case "4":
-          if (g.rng.oneIn(2)) {
-            pickAndPlaceMonster(g, grid, c.depth + 3, true, true, ORIGIN.DROP_VAULT);
-          }
-          /* build_vault '4' (gen-room.c L1564): ORIGIN_VAULT. */
-          if (g.rng.oneIn(2)) placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
-          break;
-        case "5":
-          /* build_vault '5' (gen-room.c L1569): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
-          break;
-        case "6":
-          pickAndPlaceMonster(g, grid, c.depth + 11, true, true, ORIGIN.DROP_VAULT);
-          break;
-        case "7":
-          /* build_vault '7' (gen-room.c L1576): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 15, false, false, 0, ORIGIN.VAULT);
-          break;
-        case "0":
-          pickAndPlaceMonster(g, grid, c.depth + 20, true, true, ORIGIN.DROP_VAULT);
-          break;
-        case "9":
-          pickAndPlaceMonster(g, grid, c.depth + 9, true, true, ORIGIN.DROP_VAULT);
-          /* build_vault '9' (gen-room.c L1586): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 7, true, false, 0, ORIGIN.VAULT);
-          break;
-        case "8":
-          pickAndPlaceMonster(g, grid, c.depth + 40, true, true, ORIGIN.DROP_VAULT);
-          /* build_vault '8' (gen-room.c L1594): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 20, true, true, 0, ORIGIN.VAULT);
-          break;
-        case "~":
-          /* build_vault '~' (gen-room.c L1599): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 5, false, false, TV_CHEST, ORIGIN.VAULT);
-          break;
-        case "$":
-          /* build_vault '$' (gen-room.c L1602): ORIGIN_VAULT. */
-          placeGold(g, grid, c.depth, ORIGIN.VAULT);
-          break;
-        case "]": {
-          const temp = g.rng.oneIn(3) ? g.rng.randint1(9) : g.rng.randint1(8);
-          const tval = [
-            0,
-            TV_BOOTS,
-            TV_GLOVES,
-            TV_HELM,
-            TV_CROWN,
-            TV_SHIELD,
-            TV_CLOAK,
-            TV_SOFT_ARMOR,
-            TV_HARD_ARMOR,
-            TV_DRAG_ARMOR,
-          ][temp] as number;
-          /* build_vault ']' (gen-room.c L1617): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, true, false, tval, ORIGIN.VAULT);
-          break;
-        }
-        case "|": {
-          const temp = g.rng.randint1(4);
-          const tval = [0, TV_SWORD, TV_POLEARM, TV_HAFTED, TV_BOW][temp] as number;
-          /* build_vault '|' (gen-room.c L1630): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, true, false, tval, ORIGIN.VAULT);
-          break;
-        }
-        case "=":
-          /* build_vault '=' (gen-room.c L1635): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_RING, ORIGIN.VAULT);
-          break;
-        case '"':
-          /* build_vault '"' (gen-room.c L1638): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_AMULET, ORIGIN.VAULT);
-          break;
-        case "!":
-          /* build_vault '!' (gen-room.c L1641): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_POTION, ORIGIN.VAULT);
-          break;
-        case "?":
-          /* build_vault '?' (gen-room.c L1644): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_SCROLL, ORIGIN.VAULT);
-          break;
-        case "_":
-          /* build_vault '_' (gen-room.c L1647): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_STAFF, ORIGIN.VAULT);
-          break;
-        case "-":
-          /* build_vault '-' (gen-room.c L1650): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, g.rng.oneIn(2) ? TV_WAND : TV_ROD, ORIGIN.VAULT);
-          break;
-        case ",":
-          /* build_vault ',' (gen-room.c L1655): ORIGIN_VAULT. */
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_FOOD, ORIGIN.VAULT);
-          break;
-        case "#":
-          if (countNeighbors(c, grid, squareIsRoom, false) === 8) {
-            c.sqinfoOff(grid, SQUARE.WALL_SOLID);
-            c.sqinfoOn(grid, SQUARE.WALL_INNER);
-          }
-          break;
-        case "@":
-          if (countNeighbors(c, grid, squareIsRoom, false) === 8) {
-            c.sqinfoOn(grid, SQUARE.WALL_INNER);
-          }
-          break;
-      }
+      glyphs.handlerFor("vault", t)?.populate?.(ctxFor(grid, t));
     }
   }
 
@@ -843,6 +649,367 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
   );
 
   return true;
+}
+
+/* ------------------------------------------------------------------ *
+ * Core's glyph table.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every glyph `build_room_template` and `build_vault` decode upstream, as
+ * handlers. These are the case bodies of the three switches this file used to
+ * carry, lifted one at a time with nothing rewritten - including the places
+ * where the two decoders disagree (`+` is a closed door in a template and a
+ * SECRET door in a vault) and the places where upstream accepts a glyph and
+ * does nothing with it (`9` in a template's first pass; `/` and `;` in a
+ * vault). Those no-ops are registered explicitly rather than left to fall
+ * through, so `glyphs(kind)` reports the true upstream alphabet - an authoring
+ * tool that lists what a vault may contain would otherwise be missing them.
+ *
+ * A fresh registry per call: `RoomRegistry` owns one so a mod's registrations
+ * belong to the level's own table, not to a process-wide singleton.
+ */
+export function createGlyphRegistry(): GlyphRegistry {
+  const r = new GlyphRegistry();
+
+  /* ---- Room templates: first pass (build_room_template, gen-room.c L1195). */
+
+  r.set("template", "%", {
+    terrain({ g, grid, fewEntrances }) {
+      setMarkedGranite(g.c, grid, SQUARE.WALL_OUTER);
+      if (fewEntrances) appendEntrance(g, grid);
+    },
+  });
+  r.set("template", "+", {
+    terrain({ g, grid }) {
+      placeClosedDoor(g, grid);
+    },
+  });
+  r.set("template", "^", {
+    terrain({ g, grid }) {
+      if (g.rng.oneIn(4)) placeTrap(g, grid);
+    },
+  });
+  r.set("template", "x", {
+    terrain({ g, grid, rndWalls }) {
+      if (rndWalls) setMarkedGranite(g.c, grid, SQUARE.WALL_SOLID);
+    },
+  });
+  r.set("template", "(", {
+    terrain({ g, grid, rndWalls }) {
+      if (rndWalls) placeSecretDoor(g.c, grid);
+    },
+  });
+  r.set("template", ")", {
+    terrain({ g, grid, rndWalls }) {
+      if (!rndWalls) placeSecretDoor(g.c, grid);
+      else setMarkedGranite(g.c, grid, SQUARE.WALL_SOLID);
+    },
+  });
+  r.set("template", "[", {
+    terrain({ g, grid, tval }) {
+      /* build_room_template '[' (gen-room.c L1226): ORIGIN_SPECIAL. */
+      placeObject(g, grid, g.c.depth, false, false, tval, ORIGIN.SPECIAL);
+    },
+  });
+  /* '1'-'6': the door positions, one of which was rolled for this build. */
+  for (const digit of ["1", "2", "3", "4", "5", "6"]) {
+    r.set("template", digit, {
+      terrain({ g, grid, glyph, rndDoors }) {
+        const doorpos = glyph.charCodeAt(0) - "0".charCodeAt(0);
+        if (doorpos === rndDoors) placeSecretDoor(g.c, grid);
+        else setMarkedGranite(g.c, grid, SQUARE.WALL_SOLID);
+      },
+    });
+  }
+
+  /* ---- Room templates: both passes. */
+
+  r.set("template", "#", {
+    terrain({ g, grid }) {
+      setMarkedGranite(g.c, grid, SQUARE.WALL_SOLID);
+    },
+    populate({ g, grid }) {
+      if (countNeighbors(g.c, grid, squareIsRoom, false) === 8) {
+        g.c.sqinfoOff(grid, SQUARE.WALL_SOLID);
+        g.c.sqinfoOn(grid, SQUARE.WALL_INNER);
+      }
+    },
+  });
+  r.set("template", "8", {
+    terrain({ g, grid }) {
+      if (g.rng.randint0(100) < 80 || g.dun.persist) {
+        /* build_room_template '8' (gen-room.c L1211): ORIGIN_SPECIAL. */
+        placeObject(g, grid, g.c.depth, false, false, 0, ORIGIN.SPECIAL);
+      } else {
+        placeRandomStairs(g, grid, g.dun.quest);
+      }
+    },
+    populate({ g, grid }) {
+      vaultMonsters(g, grid, g.c.depth + 2, g.rng.randint0(2) + 3);
+    },
+  });
+  r.set("template", "9", {
+    /* Upstream's first pass names '9' and does nothing: the grid is floor, and
+     * the monsters and objects arrive in the second pass. */
+    terrain() {},
+    populate({ g, grid }) {
+      const off2 = loc(2, -2);
+      const off3 = loc(3, 3);
+      vaultMonsters(g, locDiff(grid, off3), g.c.depth + g.rng.randint0(2), g.rng.randint1(2));
+      vaultMonsters(g, locSum(grid, off3), g.c.depth + g.rng.randint0(2), g.rng.randint1(2));
+      if (g.rng.oneIn(2)) vaultObjects(g, locSum(grid, off2), g.c.depth, 1 + g.rng.randint0(2));
+      if (g.rng.oneIn(2)) vaultObjects(g, locDiff(grid, off2), g.c.depth, 1 + g.rng.randint0(2));
+    },
+  });
+
+  /* ---- Vaults: first pass (build_vault, gen-room.c L1445). */
+
+  r.set("vault", "%", {
+    terrain({ g, grid, fewEntrances }) {
+      setMarkedGranite(g.c, grid, SQUARE.WALL_OUTER);
+      if (fewEntrances) appendEntrance(g, grid);
+      /* The one glyph outside the vault proper: no SQUARE_VAULT. */
+      return false;
+    },
+  });
+  r.set("vault", "*", {
+    terrain({ g, grid }) {
+      g.c.setFeat(grid, g.rng.oneIn(2) ? FEAT.MAGMA_K : FEAT.QUARTZ_K);
+    },
+  });
+  r.set("vault", ":", {
+    terrain({ g, grid }) {
+      g.c.setFeat(grid, g.rng.oneIn(2) ? FEAT.PASS_RUBBLE : FEAT.RUBBLE);
+    },
+  });
+  r.set("vault", "+", {
+    terrain({ g, grid }) {
+      placeSecretDoor(g.c, grid);
+    },
+  });
+  r.set("vault", "^", {
+    terrain({ g, grid }) {
+      if (g.rng.oneIn(4)) placeTrap(g, grid);
+    },
+  });
+  r.set("vault", "&", {
+    terrain({ g, grid }) {
+      /* build_vault '&' (gen-room.c L1474): ORIGIN_VAULT. */
+      if (g.rng.randint0(100) < 75) {
+        placeObject(g, grid, g.c.depth, false, false, 0, ORIGIN.VAULT);
+      } else if (g.rng.oneIn(4)) {
+        placeTrap(g, grid);
+      }
+    },
+  });
+  r.set("vault", "<", {
+    terrain({ g, grid }) {
+      if (!g.dun.persist) g.c.setFeat(grid, FEAT.LESS);
+    },
+  });
+  r.set("vault", ">", {
+    terrain({ g, grid }) {
+      if (g.dun.persist) return;
+      if (g.dun.quest || g.c.depth >= g.constants.maxDepth - 1) g.c.setFeat(grid, FEAT.LESS);
+      else g.c.setFeat(grid, FEAT.MORE);
+    },
+  });
+  r.set("vault", "`", {
+    terrain({ g, grid }) {
+      g.c.setFeat(grid, FEAT.LAVA);
+    },
+  });
+  /* '/' and ';' are accepted and do nothing but floor + SQUARE_VAULT. */
+  r.set("vault", "/", { terrain() {} });
+  r.set("vault", ";", { terrain() {} });
+
+  /* ---- Vaults: both passes. */
+
+  r.set("vault", "#", {
+    terrain({ g, grid }) {
+      setMarkedGranite(g.c, grid, SQUARE.WALL_SOLID);
+    },
+    populate({ g, grid }) {
+      if (countNeighbors(g.c, grid, squareIsRoom, false) === 8) {
+        g.c.sqinfoOff(grid, SQUARE.WALL_SOLID);
+        g.c.sqinfoOn(grid, SQUARE.WALL_INNER);
+      }
+    },
+  });
+  r.set("vault", "@", {
+    terrain({ g, grid }) {
+      g.c.setFeat(grid, FEAT.PERM);
+    },
+    populate({ g, grid }) {
+      if (countNeighbors(g.c, grid, squareIsRoom, false) === 8) {
+        g.c.sqinfoOn(grid, SQUARE.WALL_INNER);
+      }
+    },
+  });
+
+  /* ---- Vaults: second pass (build_vault, gen-room.c L1523). */
+
+  r.set("vault", "1", {
+    populate({ g, grid }) {
+      if (g.rng.oneIn(2)) {
+        /* build_vault '1' (gen-room.c L1540-1541): ORIGIN_DROP_VAULT. */
+        pickAndPlaceMonster(g, grid, g.c.depth, true, true, ORIGIN.DROP_VAULT);
+      } else if (g.rng.oneIn(2)) {
+        /* build_vault '1' (gen-room.c L1543): ORIGIN_VAULT. */
+        placeObject(g, grid, g.c.depth, g.rng.oneIn(8), false, 0, ORIGIN.VAULT);
+      } else if (g.rng.oneIn(4)) {
+        placeTrap(g, grid);
+      }
+    },
+  });
+  r.set("vault", "2", {
+    populate({ g, grid }) {
+      pickAndPlaceMonster(g, grid, g.c.depth + 5, true, true, ORIGIN.DROP_VAULT);
+    },
+  });
+  r.set("vault", "3", {
+    populate({ g, grid }) {
+      /* build_vault '3' (gen-room.c L1556): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, false, false, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "4", {
+    populate({ g, grid }) {
+      if (g.rng.oneIn(2)) {
+        pickAndPlaceMonster(g, grid, g.c.depth + 3, true, true, ORIGIN.DROP_VAULT);
+      }
+      /* build_vault '4' (gen-room.c L1564): ORIGIN_VAULT. */
+      if (g.rng.oneIn(2)) placeObject(g, grid, g.c.depth + 7, false, false, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "5", {
+    populate({ g, grid }) {
+      /* build_vault '5' (gen-room.c L1569): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 7, false, false, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "6", {
+    populate({ g, grid }) {
+      pickAndPlaceMonster(g, grid, g.c.depth + 11, true, true, ORIGIN.DROP_VAULT);
+    },
+  });
+  r.set("vault", "7", {
+    populate({ g, grid }) {
+      /* build_vault '7' (gen-room.c L1576): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 15, false, false, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "8", {
+    populate({ g, grid }) {
+      pickAndPlaceMonster(g, grid, g.c.depth + 40, true, true, ORIGIN.DROP_VAULT);
+      /* build_vault '8' (gen-room.c L1594): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 20, true, true, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "9", {
+    populate({ g, grid }) {
+      pickAndPlaceMonster(g, grid, g.c.depth + 9, true, true, ORIGIN.DROP_VAULT);
+      /* build_vault '9' (gen-room.c L1586): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 7, true, false, 0, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "0", {
+    populate({ g, grid }) {
+      pickAndPlaceMonster(g, grid, g.c.depth + 20, true, true, ORIGIN.DROP_VAULT);
+    },
+  });
+  r.set("vault", "~", {
+    populate({ g, grid }) {
+      /* build_vault '~' (gen-room.c L1599): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 5, false, false, TV_CHEST, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "$", {
+    populate({ g, grid }) {
+      /* build_vault '$' (gen-room.c L1602): ORIGIN_VAULT. */
+      placeGold(g, grid, g.c.depth, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "]", {
+    populate({ g, grid }) {
+      const temp = g.rng.oneIn(3) ? g.rng.randint1(9) : g.rng.randint1(8);
+      const tval = [
+        0,
+        TV_BOOTS,
+        TV_GLOVES,
+        TV_HELM,
+        TV_CROWN,
+        TV_SHIELD,
+        TV_CLOAK,
+        TV_SOFT_ARMOR,
+        TV_HARD_ARMOR,
+        TV_DRAG_ARMOR,
+      ][temp] as number;
+      /* build_vault ']' (gen-room.c L1617): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, true, false, tval, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "|", {
+    populate({ g, grid }) {
+      const temp = g.rng.randint1(4);
+      const tval = [0, TV_SWORD, TV_POLEARM, TV_HAFTED, TV_BOW][temp] as number;
+      /* build_vault '|' (gen-room.c L1630): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, true, false, tval, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "=", {
+    populate({ g, grid }) {
+      /* build_vault '=' (gen-room.c L1635): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_RING, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", '"', {
+    populate({ g, grid }) {
+      /* build_vault '"' (gen-room.c L1638): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_AMULET, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "!", {
+    populate({ g, grid }) {
+      /* build_vault '!' (gen-room.c L1641): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_POTION, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "?", {
+    populate({ g, grid }) {
+      /* build_vault '?' (gen-room.c L1644): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_SCROLL, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "_", {
+    populate({ g, grid }) {
+      /* build_vault '_' (gen-room.c L1647): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_STAFF, ORIGIN.VAULT);
+    },
+  });
+  r.set("vault", "-", {
+    populate({ g, grid }) {
+      /* build_vault '-' (gen-room.c L1650): ORIGIN_VAULT. */
+      placeObject(
+        g,
+        grid,
+        g.c.depth + 3,
+        g.rng.oneIn(4),
+        false,
+        g.rng.oneIn(2) ? TV_WAND : TV_ROD,
+        ORIGIN.VAULT,
+      );
+    },
+  });
+  r.set("vault", ",", {
+    populate({ g, grid }) {
+      /* build_vault ',' (gen-room.c L1655): ORIGIN_VAULT. */
+      placeObject(g, grid, g.c.depth + 3, g.rng.oneIn(4), false, TV_FOOD, ORIGIN.VAULT);
+    },
+  });
+
+  return r;
 }
 
 /**
@@ -2108,6 +2275,14 @@ export type RoomBuilder = (g: Gen, centre: Loc, rating: number) => boolean;
 /** The runtime-registrable, string-keyed room builder registry. */
 export class RoomRegistry {
   private readonly map = new Map<string, RoomBuilder>();
+
+  /**
+   * The glyph table every build on this level decodes against, seeded with
+   * core's. It lives here rather than on `Gen` because a `Gen` is built per
+   * level and a mod registers once at boot: the registry outlives the level,
+   * and `makeGen` hands it down.
+   */
+  readonly glyphs: GlyphRegistry = createGlyphRegistry();
 
   constructor(private readonly data: RoomData) {}
 
