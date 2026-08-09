@@ -46,6 +46,36 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can teach the game a whole new KIND of item: `registry:tval`.**
+  `object.json` has always accepted a new record, so a mod could always ship a
+  new *item*. Making core recognise a new item **class** - a tval - was a
+  different thing, and **the switch census could see almost none of it**. The
+  census counts `switch` statements; `obj/object.ts` exports **34 class
+  predicates** ported from `obj-tval.c`, and the 29 written as
+  `tval === TV.STAFF` are exactly as closed to a mod as the 5 written as
+  switches. **408 call sites** ask these questions and a mod-coined tval
+  answered **no to all of them**: its items were not weapons, could not be worn,
+  could not be flavoured, could not be browsed as a book, had no charges and no
+  timeout. Two dispatches beyond the predicates: `kindIsGood`, so a new class
+  could never be good on the strength of its own plusses, and `objectValueBase`,
+  whose `default: return 0` means a shop shows an unidentified item of an
+  unknown class as **worthless**. `TvalRegistry` (`obj/tval-registry.ts`) is
+  three tables, and the class table is **keyed on the exported predicate's own
+  name** - `handlerFor("tvalIsWeapon")` hands back core's arm so a mod ORs one
+  tval into it rather than reimplementing the whole base game's answer.
+  `tval-registry.test.ts` derives its expectations from the module's own
+  exports, so a predicate added later and forgotten fails instead of silently
+  answering `false` forever, which is exactly the failure this removes. **1,224
+  golden answers** (36 tvals x 34 predicates - the complete cross product, not a
+  sample, because these are pure functions of one small integer) and **389 real
+  object kinds** through both dispatches, all recorded before the registry
+  existed, replay identically. There is no RNG probe and that is measured:
+  nothing on these paths draws. Also corrected here: those five census rows had
+  been filed under "object naming / description" through four re-measurements -
+  a verdict can have the right *class* and the wrong *subject*, which is why the
+  census test stayed green over the whole error. The census is now **36
+  switches, 507 case labels, 2 candidates** - down from 47 / 723 / 18 at the
+  start of the day.
 - **A mod can build a random artifact power core has never heard of:
   `registry:randart`.** `artifact.json` has always accepted a new record, so a
   mod could always ship a *fixed* artifact. The RANDOM artifact generator was

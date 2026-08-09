@@ -98,10 +98,11 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 38 into a CLOSED vocabulary", () => {
+  it("classifies all 36 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 38 switches only 9 are content dispatch a mod
-     * would want. The other 29 are UI routing, parsers, host wiring, the mod
+     * than written in prose: of 36 switches only TWO are content dispatch a
+     * mod would want - object naming (obj/desc.ts) and object knowledge. The
+     * other 34 are UI routing, parsers, host wiring, the mod
      * system's own vocabulary, localization strings, or plain control flow -
      * and saying so is a claim that can be checked against the file.
      *
@@ -114,14 +115,14 @@ describe("the switch census", () => {
       byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
     }
     expect(Object.fromEntries([...byClass].sort())).toEqual({
-      CANDIDATE: 9,
+      CANDIDATE: 2,
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 3,
       INTERNAL: 2,
       LOCALIZATION: 3,
       PARSER: 3,
-      REACHABLE: 1,
+      REACHABLE: 6,
       UI: 12,
     });
     /* The counts have to add up to the census, or a class went missing. */
@@ -133,15 +134,15 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 38 switches, 531 case labels", () => {
+  it("is measuring something: 36 switches, 507 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
     expect(manifest.threshold).toBe(8);
-    expect(manifest.switches.length).toBeGreaterThanOrEqual(35);
+    expect(manifest.switches.length).toBeGreaterThanOrEqual(33);
     expect(
       manifest.switches.reduce((sum, r) => sum + r.cases, 0),
-    ).toBeGreaterThanOrEqual(520);
+    ).toBeGreaterThanOrEqual(495);
     /* And it finds the biggest one we know about by name. */
     expect(manifest.switches[0]?.file).toBe("packages/web/src/wizard.ts");
   });

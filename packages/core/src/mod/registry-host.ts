@@ -42,6 +42,10 @@
  *   census bucket it counts toward, and whether an activation is redundant.
  *   artifact.json always accepted a new FIXED artifact; this is the GENERATOR.
  *   Gated by "registry:randart".
+ * - tval     (TvalRegistry, obj/tval-registry.ts): every question core asks
+ *   about an item CLASS - is it a weapon, can it be worn, can it be flavoured,
+ *   is it good, what is it worth unidentified. object.json always accepted a new
+ *   ITEM; this is the CLASS. Gated by "registry:tval".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -109,6 +113,13 @@ import type {
   RandartTable,
 } from "../obj/randart-registry.js";
 import type {
+  TvalClassPredicate,
+  TvalGoodHandler,
+  TvalRegistry,
+  TvalTable,
+  TvalValueBaseHandler,
+} from "../obj/tval-registry.js";
+import type {
   ActivationSummaryHandler,
   EffectInfoRegistry,
   EffectInfoTable,
@@ -130,6 +141,7 @@ export const REGISTRY_CAPABILITIES = {
   glyph: "registry:glyph",
   effectInfo: "registry:effect-info",
   randart: "registry:randart",
+  tval: "registry:tval",
   vocab: "registry:vocab",
 } as const;
 
@@ -167,6 +179,8 @@ export interface RegistryTargets {
   effectInfo?: EffectInfoRegistry | null;
   /** Random artifact construction (the module-level registry). */
   randart?: RandartRegistry | null;
+  /** Everything core asks about an item CLASS (the module-level registry). */
+  tval?: TvalRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -462,6 +476,50 @@ export interface RandartFacade {
 }
 
 /**
+ * One table of the tval facade. Same shape as the effect-info and randart
+ * tables and for the same reason: three hand-copied blocks would be three
+ * places for the capability check to go missing.
+ */
+export interface TvalTableFacade<K, H> {
+  /** Install (or replace) the handler for one key. */
+  set(key: K, handler: H): void;
+  /**
+   * The handler installed for a key right now, or null. WRAPPING is the normal
+   * case here rather than the advanced one: a mod almost never wants to replace
+   * "is this a weapon", it wants to add one tval to the answer.
+   */
+  handlerFor(key: K): H | null;
+  /** Whether anything handles this key. */
+  has(key: K): boolean;
+  /** Every key handled, core's first. */
+  keys(): readonly K[];
+}
+
+/**
+ * The item-CLASS facade (gated by registry:tval).
+ *
+ * `object.json` has always accepted a new record, so a mod could always ship a
+ * new ITEM. Making core recognise a new item CLASS was a different thing: 34
+ * predicates and two dispatches decided every property a class has, all closed,
+ * all failing by answering no. A mod-coined tval was not a weapon, could not be
+ * worn, could not be flavoured, was never "good", and was worth nothing
+ * unidentified - across 408 call sites, silently.
+ */
+export interface TvalFacade {
+  /**
+   * Class membership, keyed on the EXPORTED PREDICATE'S OWN NAME -
+   * `"tvalIsWeapon"`, `"tvalCanHaveFlavor"` - so there is no translation table
+   * between what a mod writes and what core calls. A mod may also coin a class
+   * name core has never heard of and ask about it from its own code.
+   */
+  readonly classes: TvalTableFacade<string, TvalClassPredicate>;
+  /** Whether a template is "good" for its class, keyed on tval. */
+  readonly good: TvalTableFacade<number, TvalGoodHandler>;
+  /** What an UNIDENTIFIED item of this class is worth, keyed on tval. */
+  readonly valueBase: TvalTableFacade<number, TvalValueBaseHandler>;
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -500,6 +558,7 @@ export interface ModRegistryHost {
   readonly glyphs: GlyphFacade;
   readonly effectInfo: EffectInfoFacade;
   readonly randart: RandartFacade;
+  readonly tval: TvalFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -621,6 +680,35 @@ function randartTable<K, H>(
     },
     keys(): readonly K[] {
       requireCap(capabilities, "randart");
+      return table().keys();
+    },
+  };
+}
+
+/**
+ * One table of the tval facade, gated.
+ */
+function tvalTable<K, H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: TvalRegistry) => TvalTable<K, H>,
+): TvalTableFacade<K, H> {
+  const table = (): TvalTable<K, H> => pick(requireTarget(targets.tval, "tval"));
+  return {
+    set(key, handler): void {
+      requireCap(capabilities, "tval");
+      table().set(key, handler);
+    },
+    handlerFor(key): H | null {
+      requireCap(capabilities, "tval");
+      return table().handlerFor(key);
+    },
+    has(key): boolean {
+      requireCap(capabilities, "tval");
+      return table().has(key);
+    },
+    keys(): readonly K[] {
+      requireCap(capabilities, "tval");
       return table().keys();
     },
   };
@@ -782,6 +870,11 @@ export function createModRegistryHost(
       prep: randartTable(capabilities, targets, (r) => r.prep),
       census: randartTable(capabilities, targets, (r) => r.census),
       redundancy: randartTable(capabilities, targets, (r) => r.redundancy),
+    },
+    tval: {
+      classes: tvalTable(capabilities, targets, (r) => r.classes),
+      good: tvalTable(capabilities, targets, (r) => r.good),
+      valueBase: tvalTable(capabilities, targets, (r) => r.valueBase),
     },
     vocab: {
       define(term): void {
