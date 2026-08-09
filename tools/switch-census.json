@@ -30,7 +30,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 20,
       "hasDefault": true,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
+      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
     },
     {
       "file": "packages/web/src/main.ts",
@@ -66,7 +66,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 17,
       "hasDefault": true,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
+      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
     },
     {
       "file": "packages/core/src/obj/make.ts",
@@ -150,7 +150,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
+      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
     },
     {
       "file": "packages/core/src/obj/value.ts",
@@ -210,13 +210,13 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
+      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
     },
     {
       "file": "packages/core/src/obj/object.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
+      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
     },
     {
       "file": "packages/web/src/birth.ts",

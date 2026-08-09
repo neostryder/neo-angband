@@ -205,11 +205,25 @@ These are the significant ones:
 | ~~projection -> player (`project-player.c`)~~ **now a registry a mod can write** (`PLAYER_SIDE_HANDLERS`, keyed by projection `code`, `registry:projection`) | `packages/core/src/game/player-side.ts` | was 21 |
 | **store behaviour** | `packages/core/src/store/store.ts` (`storeWillBuy:235`, `massProduce:281` whose switch is at `:285`) | 27 |
 | randart property construction | `packages/core/src/obj/randart-build.ts` | 111 |
-| object naming / description | `packages/core/src/obj/object.ts`, `obj/desc.ts` | 74, 34 |
+| object naming / description (`obj/desc.ts` only - see the correction below) | `packages/core/src/obj/desc.ts` | 34 |
+| tval CLASS MEMBERSHIP, miscounted as naming until 2026-08-09 | `packages/core/src/obj/object.ts` | 74 |
 | object knowledge | `packages/core/src/obj/knowledge.ts` | 43 |
 | effect info strings | `packages/core/src/effects/effect-info.ts` | 52 |
 | UI entry types | `packages/core/src/game/ui-entry.ts` | 32 |
 | web UI context-menu routing | `packages/web/src/main.ts` (6 `switch (items[idx]?.action)` sites) | - |
+
+**Correction, 2026-08-09: `obj/object.ts`'s 74 cases are not naming.** They were
+filed under "object naming / description" from the first census and carried that
+label through four re-measurements. They are `obj-tval.c`'s class predicates -
+`tvalIsUseable`, `tvalHasVariablePower`, `tvalIsWeapon`, `tvalIsArmor`,
+`tvalIsWearable`, `tvalCanHaveFlavor`, `tvalIsBook` - and the failure they cause
+is not a missing word, it is a mod-coined tval answering **false to every question
+core asks about an item class**: its items are not weapons, cannot be worn, cannot
+be flavoured, cannot be browsed as a book, and are priced by the flat-cost path.
+That is the same blind spot as `obj/make.ts` and `obj/value.ts`, so it belongs to
+gap 28 and the three are **one seam**, not two. Only `obj/desc.ts` (34) is
+genuinely naming. Mis-shelving it made the naming gap look twice its size and hid
+the tval gap at a third of its.
 
 Two things stand out. **Monster blows are the clearest gap**: `blow_effects.json`
 has 30 records and a mod can add a 31st, but the behaviour of each is a hardcoded
@@ -333,7 +347,7 @@ mod would reach through records, not code.
 | 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
-| 28 | `tval` dispatch in object generation + pricing (16 + 9) | no |
+| 28 | `tval` dispatch: object generation + pricing + **class membership** (16 + 9 + 74) | no |
 
 **15 yes, 2 accidental, 11 no** (re-measured 2026-08-09, when the random
 artifact generator got its registry). This is a count of the ROWS above, which is the only
