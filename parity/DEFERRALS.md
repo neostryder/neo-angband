@@ -616,17 +616,17 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 | verdict | meaning | rows |
 | --- | --- | --- |
 | `partial` | Part ported; the note must say which part is not | 7 |
-| `divergence` | Deliberately different, with the mechanism named | 32 |
+| `divergence` | Deliberately different, with the mechanism named | 31 |
 | `n-a` | Not applicable to this port, with the mechanism named | 53 |
 | `ported` | Done; the note was stale and has been rewritten | 27 |
 | `stale-doc` | The note described a state of the code that no longer holds | 5 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 79 |
-| `not-a-deferral` | Ordinary English, not a parity claim | 29 |
+| `not-a-deferral` | Ordinary English, not a parity claim | 30 |
 | | **total** | **232** |
 
 ### `partial` - Part ported; the note must say which part is not (7)
 
-- `packages/core/src/game/context.ts:1292` - delete_monster_idx's group removal, mimicked-object deletion, square clear and slot free are all here; the caller runs monster_death for drops beforehand, so only the redraw bookkeeping (the ratified repaint divergence) is outstanding
+- `packages/core/src/game/context.ts:1345` - delete_monster_idx's group removal, mimicked-object deletion, square clear and slot free are all here; the caller runs monster_death for drops beforehand, so only the redraw bookkeeping (the ratified repaint divergence) is outstanding
 - `packages/core/src/game/ui-entry.ts:26` - The gameplay half of player_flags_timed IS ported - calcs.ts:1094-1104 folds each active timed effect's oflagDup into state.flags. What is missing is ui-entry.c:928's separate timed cache, which lets the sheet mark a flag as temporary
 - `packages/core/src/store/transact.ts:26` - Of the four named: the known twin is a divergence and total_weight IS maintained (gear.ts:1283, shown as Burden at char-sheet.ts:409). Autoinscription (the registry exists at game/context.ts:254) and history_find/lose_artifact are genuinely absent here
 - `parity/ledger/game-mon-ranged.yaml:31` - The glyph-of-warding exclusion is available (TRF.GLYPH is handled at monster-turn.ts:1536); the arena exclusion goes with arena mode
@@ -634,7 +634,7 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/project-path.yaml:83` - The targeting display is ported (game/target-loop.ts) and draw_path now reads memory rather than the live chunk, which is what this row records; it names the object half (square_object(player->cave, ...)) as still approximate, and that is the outstanding part
 - `parity/ledger/world-kernel.yaml:36` - The row's own headline records a fixed live defect (monster light defaulted to [] so 107 races lit nothing). What it still defers splits three ways: the square predicates needing knowledge ride the C1 twin (#126), the render-layer items (grid_data / map_info, feeling display) are the ratified repaint divergence, and square_set_feat's in-game side effects are the part genuinely outstanding
 
-### `divergence` - Deliberately different, with the mechanism named (32)
+### `divergence` - Deliberately different, with the mechanism named (31)
 
 - `packages/core/src/game/curse-tick.ts:98` - known-twin write; obj/known-object.ts synthesises the shadow on demand, so the object-info display reads the same value
 - `packages/core/src/game/gear.ts:205` - Same: the known twin is synthesised, not stored (obj/known-object.ts objectKnownShadow)
@@ -651,7 +651,7 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/game/monster-turn.ts:1361` - The player-cave placeholder copy rides the knowledge subsystem, which the port models as synthesised knowledge rather than a second grid array
 - `packages/core/src/game/shape-inspect.ts:108` - Class spell effects are held as raw pack records (ClassSpell.effectsRaw, player/types.ts:151) rather than compiled into an Effect chain at parse time; game/spell-cmd.ts casts and aims off the same records. A representation difference, not a missing feature
 - `packages/core/src/gen/generate.ts:11` - The known-level ("player cave") duplicate, ratified at game/known.ts:153 - the same decision as the per-object twin, applied to terrain. Related to work item #126
-- `packages/core/src/obj/bind.ts:1361` - The known-object side is synthesised on demand (obj/known-object.ts) rather than bound as a second object
+- `packages/core/src/obj/bind.ts:1367` - The known-object side is synthesised on demand (obj/known-object.ts) rather than bound as a second object
 - `packages/core/src/obj/desc.ts:15` - The header's inline DEFERRED notes are all known-twin reads, which desc.ts now takes from objectKnownShadow
 - `packages/core/src/obj/knowledge.ts:22` - Per-object twin replaced by on-demand synthesis (obj/known-object.ts objectKnownShadow)
 - `packages/core/src/obj/knowledge.ts:786` - A known-twin display marking, subsumed by the shadow
@@ -660,10 +660,9 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/obj/known-object.ts:9` - This module IS the divergence: the twin is synthesised on demand and desc.ts reads the shadow wherever upstream reads obj->known
 - `packages/core/src/obj/object.ts:7` - Header points at obj-model.yaml; the model's absent twin is the synthesised shadow
 - `packages/core/src/obj/object.ts:290` - Known-twin field
-- `packages/core/src/obj/object.ts:388` - The explicit statement of the divergence: no persistent twin, synthesis instead (obj/known-object.ts)
-- `packages/core/src/obj/object.ts:988` - object_similar's two object_is_equipped guards (obj-pile.c:400-403) read the global player->body. The port's Gear keeps pack, quiver and equipment as separate lists, so no caller can reach the guard: combinePack walks gear.pack only, and gear.ts:614/696 and pickup.ts:164 are pack/quiver/floor. Upstream's own combine_pack walks player->upkeep->inven, where the guard is likewise belt-and-braces
-- `packages/core/src/obj/object.ts:1250` - Knowledge system read, answered by the shadow
-- `packages/core/src/store/store.ts:391` - The obj->known pile is synthesised on demand (obj/known-object.ts)
+- `packages/core/src/obj/object.ts:404` - The explicit statement of the divergence: no persistent twin, synthesis instead (obj/known-object.ts)
+- `packages/core/src/obj/object.ts:1008` - object_similar's two object_is_equipped guards (obj-pile.c:400-403) read the global player->body. The port's Gear keeps pack, quiver and equipment as separate lists, so no caller can reach the guard: combinePack walks gear.pack only, and gear.ts:614/696 and pickup.ts:164 are pack/quiver/floor. Upstream's own combine_pack walks player->upkeep->inven, where the guard is likewise belt-and-braces
+- `packages/core/src/store/store.ts:560` - The obj->known pile is synthesised on demand (obj/known-object.ts)
 - `parity/ledger/game-gear.yaml:73` - The known twin is synthesised on demand; the line's own "NOT deferred" clause lists what is live
 - `parity/ledger/rng.yaml:40` - Rand_init's time/pid seeding is deliberately replaced: the port seeds from crypto/Math.random at the host and stores the seed in the save, which is what makes a run reproducible
 - `parity/ledger/ui-entry.yaml:107` - Synthesised on demand (obj/known-object.ts)
@@ -678,15 +677,15 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/game/loop.ts:339` - A message on a seen trap re-arming; the port has no PR_ dirty-flag pipeline and the front end repaints unconditionally
 - `packages/core/src/game/mon-death.ts:342` - PR_MONLIST is a redraw bit with no port equivalent (the front end repaints unconditionally); the note itself records quest_check as wired
 - `packages/core/src/game/monster-turn.ts:1303` - Presentation only, no RNG; the port routes messages through the shell sink
-- `packages/core/src/game/monster-turn.ts:1677` - Lore note on OF_AGGRAVATE, no RNG; monster lore is otherwise wired
-- `packages/core/src/game/monster-turn.ts:1710` - Message plumbing and lore; the messages route through the shell sink
+- `packages/core/src/game/monster-turn.ts:1680` - Lore note on OF_AGGRAVATE, no RNG; monster lore is otherwise wired
+- `packages/core/src/game/monster-turn.ts:1713` - Message plumbing and lore; the messages route through the shell sink
 - `packages/core/src/game/player-path.ts:95` - Sound and redraw halves; no RNG, and the port has no PR_ pipeline
 - `packages/core/src/game/player-turn.ts:825` - Two of the 20 are correctly never replaced: upstream's "look" is a UI function with CMD_NULL (ui-knowledge.c:4169, bound by the shell to l/x at web main.ts:8039), and 4.2.6 has no search command at all - no do_cmd_search, no CMD_SEARCH
 - `packages/core/src/game/project-cast.ts:10` - Layer boundary with live suppliers: session/game.ts:1223 supplies the monster hooks and :1289 the player hooks, so the "deferred consequences" all run in play
 - `packages/core/src/game/project-cast.ts:31` - basicPlayerActor is the worldless view; the live path supplies the real actor (session/game.ts:1289)
-- `packages/core/src/game/project-cast.ts:141` - CastHooks is the seam, supplied at session/game.ts:1223/:1289
-- `packages/core/src/game/project-cast.ts:143` - ProjectMonsterHooks supplied at session/game.ts:1223
-- `packages/core/src/game/project-cast.ts:145` - ProjectPlayerHooks supplied at session/game.ts:1289, onSideEffects via makePlayerSideEffects (game/player-side.ts:139)
+- `packages/core/src/game/project-cast.ts:152` - CastHooks is the seam, supplied at session/game.ts:1223/:1289
+- `packages/core/src/game/project-cast.ts:154` - ProjectMonsterHooks supplied at session/game.ts:1223
+- `packages/core/src/game/project-cast.ts:156` - ProjectPlayerHooks supplied at session/game.ts:1289, onSideEffects via makePlayerSideEffects (game/player-side.ts:139)
 - `packages/core/src/game/project-monster.ts:48` - The seam's suppliers are live (session/game.ts:1223)
 - `packages/core/src/game/project-player.ts:16` - Same seam discipline; supplied at session/game.ts:1289. The killer-name half is tracked separately as the MDESC_DIED_FROM gap
 - `packages/core/src/game/project-player.ts:93` - Supplied at session/game.ts:1289
@@ -695,18 +694,18 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/mon/take-hit.ts:24` - The PR_HEALTH redraw, which is the ratified repaint divergence (DIVERGENCES.md B1): the renderer is immediate-mode and has no dirty-flag to raise. The state it gates, state.healthWho, IS tracked
 - `packages/core/src/mon/timed.ts:223` - Health-bar / monster-list redraw; the front end repaints unconditionally
 - `packages/core/src/obj/desc.ts:625` - is_unknown's placeholder path belongs to the object-list screen, which the web layer draws (game/obj-list.ts + web screens)
-- `packages/core/src/obj/object.ts:1004` - The two OSTACK_LIST checks are unreachable in 4.2.6 - every OSTACK_* argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR, measured call site by call site - and obj/ostack-list.test.ts is the ratchet that reopens this if a caller ever appears
+- `packages/core/src/obj/object.ts:1024` - The two OSTACK_LIST checks are unreachable in 4.2.6 - every OSTACK_* argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR, measured call site by call site - and obj/ostack-list.test.ts is the ratchet that reopens this if a caller ever appears
 - `packages/core/src/obj/randart-log.ts:72` - object_value_real's pricing.log is guarded by #ifdef PRICE_DEBUG, which no shipped configuration defines, so its seven file_putf sites are dead in every build a player can obtain
 - `packages/core/src/player/bind.ts:15` - Layer boundary: the raw effect chain is compiled by the effects domain, which is ported (effects/effect.ts) and wired at session boot
 - `packages/core/src/player/birth.ts:395` - Kind-name refs are resolved by the session (outfitPlayer + tvalFindIdx at gear.ts:1300); the binding layer holding names is the design
 - `packages/core/src/player/birth.ts:443` - Same: "deferred references" names the binding boundary
 - `packages/core/src/player/birth.ts:446` - Same
 - `packages/core/src/player/exp.ts:17` - PU_/PR_ update flags have no port equivalent; the front end repaints unconditionally
-- `packages/core/src/player/types.ts:152` - Binding boundary: the raw record is compiled by the effects domain at boot
-- `packages/core/src/player/types.ts:170` - Same binding boundary
-- `packages/core/src/player/types.ts:203` - Same, handed to the obj domain
-- `packages/core/src/player/types.ts:205` - Same
-- `packages/core/src/player/types.ts:224` - Same: tval/sval names resolved by the obj domain
+- `packages/core/src/player/types.ts:153` - Binding boundary: the raw record is compiled by the effects domain at boot
+- `packages/core/src/player/types.ts:171` - Same binding boundary
+- `packages/core/src/player/types.ts:204` - Same, handed to the obj domain
+- `packages/core/src/player/types.ts:206` - Same
+- `packages/core/src/player/types.ts:225` - Same: tval/sval names resolved by the obj domain
 - `packages/core/src/world/chunk.ts:10` - square_light_spot is a lighting refresh with no port equivalent; the front end recomputes and repaints every frame
 - `packages/web/src/mapview.ts:71` - The rounding branches are dead code upstream; not porting dead code is the documented policy
 - `parity/ledger/bitflag.yaml:54` - flag_has_dbg / flag_on_dbg are the C's debug-build assert wrappers around flag_has / flag_on. TypeScript's FlagSet asserts unconditionally (assertValidFlag), so the debug twin has nothing to add. Ratified N/A, not deferred.
@@ -733,9 +732,9 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/mon/lore-describe.ts:862` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
 - `packages/core/src/mon/lore-describe.ts:1315` - LEAD READ, and CORRECTED from real. Same: monsterHitPercent is wired at web/src/main.ts:3652 as getHitChance(max(race.level,1)*3 + effect.power, defense.ac + defense.toA), which is chance_of_monster_hit_base (combat/mon-melee.ts:191) against the player's live defensive state
 - `packages/core/src/obj/knowledge.ts:1423` - STALE. PN_IGNORE is consumed: game/notice.ts:37-38 tests the bit, clears it and runs the ignore-drop pass, and session/game.ts:581 raises it. PORT_TODO 1.1 built the notice pipeline after this verdict was recorded and never touched this note
-- `packages/core/src/obj/object.ts:998` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
-- `packages/web/src/main.ts:5818` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
-- `packages/web/src/main.ts:5839` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
+- `packages/core/src/obj/object.ts:1018` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
+- `packages/web/src/main.ts:5869` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
+- `packages/web/src/main.ts:5890` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
 - `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic
 - `parity/ledger/game-project-cast.yaml:53` - STALE. BOTH branches of effect_handler_TOUCH are ported at game/effect-attack.ts handleTOUCH: the decoy arm at :433-443 (caveFindDecoy, ball sourced at the decoy) and the target-monster arm at :445 (monsterTargetMonster, ball sourced at mon->target.midx). game/project-cast.ts:705 says so too - the branches belong one level up, not here
 - `parity/ledger/high-scores.yaml:96` - STALE. The killer IS wired: monsterDesc(mon, MDESC_DIED_FROM) feeds it at game/effect-attack.ts:694 and game/project-cast.ts:136, project_p's takeHit hooks record it (session/game.ts:1394-1404), player.diedFrom round-trips through the save, and both the tombstone and the score entry read it (web/src/main.ts:4900 scoreBuildDeps, web/src/charsheet.ts:482)
@@ -771,21 +770,21 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/game/cave-cmd.ts:33` - Records that count_feats is NOW PORTED and that deferring it had been wrong; easy_open does not exist in 4.2.6.
 - `packages/core/src/game/context.ts:312` - Records the REMOVAL of a stand-in (noticeIgnore) that nothing read. PlayerUpkeep.notice is the real mask now, raised where upstream raises it and drained by game/notice.ts (PORT_TODO 2.5)
 - `packages/core/src/game/context.ts:492` - Records why tempBrandSlay is a required peer rather than an optional seam - the note it replaces (PORT_TODO 3.20) had claimed a predicate was missing that existed
-- `packages/core/src/game/context.ts:908` - "exactly as when it was deferred" records that the curse tick is now installed by the session
-- `packages/core/src/game/context.ts:1209` - Records the DELETION of a wrong predicate. squareIsEmpty was not square_isempty; the faithful port squareIsEmptyLive in game/mon-place.ts is now the only one
+- `packages/core/src/game/context.ts:961` - "exactly as when it was deferred" records that the curse tick is now installed by the session
+- `packages/core/src/game/context.ts:1262` - Records the DELETION of a wrong predicate. squareIsEmpty was not square_isempty; the faithful port squareIsEmptyLive in game/mon-place.ts is now the only one
 - `packages/core/src/game/effect-general.ts:295` - Records that the gear_to_label letter IS printed: GEAR_LABELS is indexed by body slot exactly as known.ts:775 does, and the row that called it a display concern was wrong
 - `packages/core/src/game/effect-general.ts:546` - Records that the monster-vs-monster disenchant branch is ported and ordered first, and that "rides monster-spell targeting (#19)" stopped being true when monsterTargetMonster landed
-- `packages/core/src/game/effect-teleport.ts:33` - Records two closures: the three teleport sounds (PORT_TODO 3.26) and the MON_MSG_BRIEF_PUZZLE queue entry (PORT_TODO 3.1)
-- `packages/core/src/game/effect-teleport.ts:39` - The sentence says teleportMonster IS the backing that project-monster deferred - a record of the wiring, not a gap
+- `packages/core/src/game/effect-teleport.ts:43` - Records two closures: the three teleport sounds (PORT_TODO 3.26) and the MON_MSG_BRIEF_PUZZLE queue entry (PORT_TODO 3.1)
+- `packages/core/src/game/effect-teleport.ts:49` - The sentence says teleportMonster IS the backing that project-monster deferred - a record of the wiring, not a gap
 - `packages/core/src/game/effect-terrain.ts:253` - Records a fixed crash (arena entry, out-of-bounds) and states that deferring to the caller's refresh is what upstream's flag does
 - `packages/core/src/game/mon-group.ts:28` - The sentence records a CORRECTION to an earlier wrong claim about monster_can_see, not a deferral
 - `packages/core/src/game/monster-turn.ts:24` - "NOW WIRED (was deferred)" is a record of the fix
 - `packages/core/src/game/monster-turn.ts:1387` - Records that the "rune of protection is broken!" message IS printed below, and that the line calling it deferred sat beside the code doing it
 - `packages/core/src/game/monster-turn.ts:1411` - Records that item pickup, group behaviour and lore are all ported (PORT_TODO 7.2) and that two of the three were already ported when the note was written
 - `packages/core/src/game/monster-turn.ts:1525` - Records a fixed live defect: destroyDecoy had printed the message for its five other callers all along, and this site - the commonest way a decoy dies - was one of the two that went around the function
-- `packages/core/src/game/obj-cmd.ts:1762` - Records that the port routes this through combine_pack, which is what happens - a design record, not a gap
+- `packages/core/src/game/obj-cmd.ts:1796` - Records that the port routes this through combine_pack, which is what happens - a design record, not a gap
 - `packages/core/src/game/player-path.ts:28` - "are wired (W2-003 navigate-up/down, explore, pathfind)" records the fix
-- `packages/core/src/game/project-cast.ts:705` - Records that the decoy / target-monster branches are ported one level up in game/effect-attack.ts handleTOUCH, and that the stale note manufactured PORT_TODO 2.13
+- `packages/core/src/game/project-cast.ts:739` - Records that the decoy / target-monster branches are ported one level up in game/effect-attack.ts handleTOUCH, and that the stale note manufactured PORT_TODO 2.13
 - `packages/core/src/game/ranged-cmd.ts:24` - The sentence explicitly says the item "had been listed here as deferred, which is" wrong - a correction
 - `packages/core/src/game/take-hit-hooks.ts:23` - Records that the port deliberately mirrors upstream's close_game ordering, and names where it happens
 - `packages/core/src/game/ui-entry.ts:1408` - Records that PORT_TODO 3.8's stated cause was wrong - player_flags_timed is ported at player/calcs.ts:1097 - and that the DEFERRED comment on the seams had outlived it
@@ -800,23 +799,23 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/core/src/obj/make.ts:1235` - Explains why the current behaviour matches upstream at a site that was once a stub
 - `packages/core/src/obj/make.ts:1240` - Records that book rejection is live and that the stale note is what manufactured PORT_TODO 2.15; the real defect was the wiring, and it is named
 - `packages/core/src/obj/object-info.ts:270` - Records why the temp brand/slay dep is required rather than optional - an optional field would have reproduced the bug it fixes (PORT_TODO 3.20)
-- `packages/core/src/session/game.ts:3128` - Records the single binding of tempBrandSlay that closed PORT_TODO 3.20; the melee hooks used to build a private copy nothing else could reach
-- `packages/core/src/session/game.ts:3947` - The load path's copy of the same fix record
-- `packages/core/src/store/store.ts:167` - This line IS the expansion the other notes call deferred
+- `packages/core/src/session/game.ts:3302` - Records the single binding of tempBrandSlay that closed PORT_TODO 3.20; the melee hooks used to build a private copy nothing else could reach
+- `packages/core/src/session/game.ts:4129` - The load path's copy of the same fix record
+- `packages/core/src/store/store.ts:173` - This line IS the expansion the other notes call deferred
 - `packages/core/src/store/transact.ts:13` - The header's LIVE list records that both sides of the rune learn loop are now wired, and says the DEFERRED label is what made the asymmetry read as intentional
 - `packages/core/src/store/transact.ts:24` - The sentence records the fix and why the stale label was harmful
-- `packages/web/src/main.ts:3749` - Records that all three greyed-browser claims were wrong: everseen is modelled and wired, and shapeLoreLines is a full port of shape_lore
-- `packages/web/src/main.ts:8484` - Records why the first FOV after birth/load clears only_partial, and that it is thrown rather than skipped so a missing updateFov cannot hide behind a black screen
+- `packages/web/src/main.ts:3800` - Records that all three greyed-browser claims were wrong: everseen is modelled and wired, and shapeLoreLines is a full port of shape_lore
+- `packages/web/src/main.ts:8551` - Records why the first FOV after birth/load clears only_partial, and that it is thrown rather than skipped so a missing updateFov cannot hide behind a black screen
 - `parity/ledger/combat-melee.yaml:91` - The comment recording that this list was adjudicated and that ten of its eleven entries had stopped being true
 - `parity/ledger/game-arena.yaml:64` - Records that monster reproduction is ported and wired (multiplyMonster supplied at session/game.ts:1855) and that the row was wrong in both halves
 - `parity/ledger/game-arena.yaml:71` - Records that ALTER_REALITY is ported and that its arena guard was simply missing rather than blocked - a live defect, now closed (PORT_TODO 4.1)
 - `parity/ledger/game-arena.yaml:87` - Records that EVENT_GEN_LEVEL_START("arena") has nothing to defer: its only 4.2.6 subscriber is wiz-stats.c:2635, a debug statistics collector
 - `parity/ledger/game-effect-melee.yaml:44` - "Every formerly-deferred handler is now DONE"
 - `parity/ledger/game-effect-melee.yaml:52` - Records the closure of all four items (2026-08-07): message_pain with its show_damage branch, the mon_msg queue grammar, MSG_TELEPORT for the JUMP_AND_BITE jump
-- `parity/ledger/game-effect-monster.yaml:44` - Records that the arena guards are present at both sites upstream has them (PORT_TODO 4.1)
-- `parity/ledger/game-effect-monster.yaml:52` - Records a fixed live message defect: the heal handlers now call monsterDesc with MDESC_STANDARD and MDESC_PRO_VIS|MDESC_POSS as effect-handler-attack.c:268-271 does
+- `parity/ledger/game-effect-monster.yaml:56` - Records that the arena guards are present at both sites upstream has them (PORT_TODO 4.1)
+- `parity/ledger/game-effect-monster.yaml:64` - Records a fixed live message defect: the heal handlers now call monsterDesc with MDESC_STANDARD and MDESC_PRO_VIS|MDESC_POSS as effect-handler-attack.c:268-271 does
 - `parity/ledger/game-effect-teleport.yaml:37` - Records that teleportMonster is the backing for the hook
-- `parity/ledger/game-effect-teleport.yaml:83` - Records that MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL now go through state.sound at every site upstream calls sound() (PORT_TODO 3.26)
+- `parity/ledger/game-effect-teleport.yaml:115` - Records that MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL now go through state.sound at every site upstream calls sound() (PORT_TODO 3.26)
 - `parity/ledger/game-effect-terrain.yaml:53` - Records that squareMemorize, squareKnowPile and squareSensePile are all ported and called, and that square_light_spot falls under the ratified repaint divergence
 - `parity/ledger/game-monster-ai.yaml:40` - "NOW WIRED (were deferred)"
 - `parity/ledger/game-project-feat.yaml:45` - Records that exposeToSun is ported and that the reason for deferring it ("no town or day-night cycle yet") expired when PORT_TODO 4.3 built town generation
@@ -845,21 +844,21 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `parity/ledger/store-maint.yaml:37` - Records that both conjuncts of the buy check are ported and that the object_flag_is_known half landed with PORT_TODO 2.10
 - `parity/ledger/ui-entry.yaml:133` - Records that PF_FAST_SHOT is live and that the launcher-slot reach the row called deferred already existed in player/calcs.ts
 
-### `not-a-deferral` - Ordinary English, not a parity claim (29)
+### `not-a-deferral` - Ordinary English, not a parity claim (30)
 
 - `packages/core/src/game/cave-cmd.ts:954` - Describes the fallback when the traps module is absent, not a missing feature; trap.ts registers the real disarm and session/game.ts:1698 supplies trapDeps
 - `packages/core/src/game/context.ts:349` - Prose about why the options store is optional, and it states the fallback is exact; no feature is claimed absent
-- `packages/core/src/game/context.ts:820` - Policy prose about an optional seam, not a parity claim, and the policy is honoured: state.combinePack IS supplied by the live session at session/game.ts:899, so only a worldless harness leaves the bit owed
+- `packages/core/src/game/context.ts:848` - Policy prose about an optional seam, not a parity claim, and the policy is honoured: state.combinePack IS supplied by the live session at session/game.ts:899, so only a worldless harness leaves the bit owed
 - `packages/core/src/game/gear.ts:1269` - A sentence ABOUT the census, not a parity claim: the docblock explains that the local is named newPile after upstream rather than "deferred", and in saying so it matched the census itself. Left as-is rather than reworded, because the clearer sentence is worth one classified row.
 - `packages/core/src/game/notice.ts:16` - Ordinary English ("would defer it by a turn") in prose explaining why ignore must run before combine; no feature is claimed absent
 - `packages/core/src/game/notice.ts:50` - Policy prose, and the policy is honoured: state.combinePack is supplied at session/game.ts:899, so leaving PN_COMBINE set describes only an unwired harness. notice.test.ts asserts both halves
 - `packages/core/src/game/pickup.ts:16` - Describes the behaviour when the module is not installed; installPickup replaces the stub and is called in the live composition
 - `packages/core/src/player/options.ts:28` - Describes how seams read the store, and states the fallback is exact
-- `packages/core/src/session/game.ts:989` - A note about JavaScript declaration order, not a parity claim
-- `packages/core/src/session/game.ts:3234` - A note about the mod event flood, not a parity claim
+- `packages/core/src/session/game.ts:1031` - A note about JavaScript declaration order, not a parity claim
+- `packages/core/src/session/game.ts:3416` - A note about the mod event flood, not a parity claim
 - `packages/web/src/charselect.ts:130` - Describes the shell's own command hook, not a parity claim
-- `packages/web/src/main.ts:3648` - Records that a utility is deliberately unbound; nothing upstream is missing
-- `packages/web/src/main.ts:8411` - A setTimeout, chosen because the fault surfaces inside core
+- `packages/web/src/main.ts:3699` - Records that a utility is deliberately unbound; nothing upstream is missing
+- `packages/web/src/main.ts:8478` - A setTimeout, chosen because the fault surfaces inside core
 - `packages/web/src/mod-browse.ts:1154` - A variable named `todo`
 - `packages/web/src/mod-browse.ts:1156` - A variable named `todo`
 - `packages/web/src/mod-code.ts:207` - "rather than deferring to it" is about which layer reports a mod error
@@ -875,6 +874,7 @@ Generated from `parity/reports/deferral-census.tsv` (232 rows).
 - `packages/desktop/src/main.ts:1146` - Same variable
 - `packages/desktop/src/main.ts:1191` - Same variable
 - `packages/mod-sdk/src/sort.ts:216` - A mod-conflict reason string: one mod "defers to" another
+- `parity/ledger/game-effect-teleport.yaml:67` - A closure record under the ledger's deferred: key - the line's own text says NOT deferred any more, and the five rows it replaces were retired by 027de3e6a
 - `parity/ledger/gamedata.yaml:5` - A structural comment about the document layout
 
 <!-- END GENERATED -->
