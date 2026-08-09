@@ -38,12 +38,24 @@
  *
  * NOTHING THAT USED TO RESOLVE STOPPED RESOLVING. A record answers to SEVERAL
  * refs, not one (`recordRefKeys` plus `legacyRecordKey`), and the old lossy slug
- * is kept as an alias. The alias is dropped in exactly one case: when it would
- * shadow another record's primary key. That case is not hypothetical and it is
- * the whole reason the rule exists - "*Healing*"'s legacy alias IS "healing",
- * which is plain "Healing"'s primary, so keeping it would have left the plain
- * potion unaddressable while fixing the starred one. A record's own history
- * must not cost a different record its name.
+ * is kept as an alias. The alias is dropped where it would shadow another
+ * record's primary key: "*Healing*"'s legacy alias IS "healing", which is plain
+ * "Healing"'s primary, and a record's own history must not cost a different
+ * record its name.
+ *
+ * THAT IS 8 RECORDS, NOT ONE, AND THE RULE IS CONDITIONAL ON CORE'S DATA. This
+ * comment said "exactly one case" for a day, naming *Healing*, because nobody
+ * counted. Measured over the shipped pack: 19 records carry a legacy alias, 8
+ * lose it - 5 in `object` (*Enchant Armour*, *Remove Curse*, *Acquirement*,
+ * *Healing*, *Enlightenment*), 2 in `ego_item` (of *Slay Orc*, of *Slay Troll*)
+ * and 1 in `vault` (Little eruption+). It is NOT "a starred record loses its
+ * alias": *Destruction* keeps both of its, as scroll and as staff, because core
+ * ships no plain "Destruction" for it to shadow; *Slay Animal* keeps its for the
+ * same reason but *Slay Orc* does not. The census is asserted row by row in
+ * record-key.test.ts so the number cannot drift back into prose.
+ *
+ * And the 8 cost nothing: all 19 aliases live in files THIS TABLE made
+ * addressable, so none of them was ever a ref an author could have written.
  *
  * WHY THIS EXISTS
  *
@@ -340,8 +352,8 @@ export function recordRefKeys(
 /**
  * The pre-2026-08-08 key for this record - the one built with plain `slugify`,
  * before the "*"/"+" marks were preserved - or null when it is identical to the
- * current base key, which is the case for all but 17 records in the shipped
- * pack.
+ * current base key, which is the case for all but 19 records in the shipped
+ * pack (8 in `object`, 8 in `ego_item`, 2 in `hints`, 1 in `vault`).
  *
  * Kept so a ref written against an older engine still resolves. It is an ALIAS:
  * the loader registers it only where it does not shadow another record's primary

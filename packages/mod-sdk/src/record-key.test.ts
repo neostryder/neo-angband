@@ -50,8 +50,14 @@ const EXPECTED_KEYED_FILES = [
   "world",
 ].sort();
 
-/** The 20 upstream files that are whole-file passthrough (24 are composable). */
-const PASSTHROUGH_FILES = [...EXPECTED_KEYED_FILES, "history"].sort();
+/**
+ * The files this table made addressable at all. Before it existed, a per-record
+ * op against any of them was silently dropped, so NOTHING in these files ever
+ * had a working ref. That matters below: every legacy alias in the shipped pack
+ * lives in one of these files, which is why dropping a shadowing alias costs no
+ * ref anybody could have written.
+ */
+const ONCE_UNADDRESSABLE = EXPECTED_KEYED_FILES;
 
 function corePackFile(stem: string): unknown[] {
   const path = fileURLToPath(
@@ -79,7 +85,12 @@ describe("RECORD_KEY_SPECS", () => {
 
   it("does not claim history, which has no per-record identity", () => {
     expect(RECORD_KEY_SPECS["history"]).toBeUndefined();
-    expect(PASSTHROUGH_FILES).toContain("history");
+    /* And it has none to claim. Asserting that against the REAL file, rather
+     * than against a list this file also builds: the previous version of this
+     * checked `[...EXPECTED_KEYED_FILES, "history"]` contained "history", which
+     * is true by construction and could never have failed. */
+    const keys = corePackFile("history").map((r) => recordKey("history", r));
+    expect(keys.every((k) => k === null)).toBe(true);
   });
 
   it("keys every record of every declared file in the shipped core pack", () => {
@@ -179,6 +190,62 @@ describe("RECORD_KEY_SPECS", () => {
     );
     expect(legacyRecordKey("object", { type: "potion", name: "Healing" })).toBeNull();
     expect(legacyRecordKey("monster", { name: "Grip, Farmer Maggot's dog" })).toBeNull();
+  });
+
+  it("censuses every alias the shadow rule drops, and every one it keeps", () => {
+    /* THIS TEST EXISTS BECAUSE THE PROSE WAS WRONG. The docs said the alias was
+     * dropped "in exactly one case", naming *Healing*, and nobody had counted.
+     * It is 8 records across 3 files, and the rule is CONDITIONAL, not a rule
+     * about starred names: *Destruction* keeps its legacy alias because core
+     * ships no plain "Destruction", while *Acquirement* loses its because core
+     * ships a plain "Acquirement" scroll. A count asserted from the real pack
+     * cannot drift the way a sentence can.
+     *
+     * The primary set mirrors composePacks exactly - the ref each record
+     * actually lands under, which is its first UNCONTESTED ref, not every ref it
+     * answers to. Anything looser would over-report drops. */
+    const drops: string[] = [];
+    const keeps: string[] = [];
+    for (const stem of EXPECTED_KEYED_FILES) {
+      const records = corePackFile(stem);
+      const keysOf = records.map((r) => recordRefKeys(stem, r));
+      const claimants = new Map<string, number>();
+      for (const keys of keysOf) {
+        for (const k of keys) claimants.set(k, (claimants.get(k) ?? 0) + 1);
+      }
+      const chosen = keysOf.map((ks) => ks.find((k) => claimants.get(k) === 1) ?? ks[0]);
+      const primary = new Set(chosen.filter((k): k is string => k !== undefined));
+      records.forEach((r, i) => {
+        const legacy = legacyRecordKey(stem, r);
+        if (legacy === null) return;
+        const owner = String((r as { name?: unknown }).name ?? chosen[i]);
+        (primary.has(legacy) ? drops : keeps).push(`${stem}: ${owner} -> ${legacy}`);
+      });
+    }
+
+    expect(drops).toEqual([
+      "ego_item: of *Slay Orc* -> of-slay-orc",
+      "ego_item: of *Slay Troll* -> of-slay-troll",
+      "object: *Enchant Armour* -> scroll--enchant-armour",
+      "object: *Remove Curse* -> scroll--remove-curse",
+      "object: *Acquirement* -> scroll--acquirement",
+      "object: *Healing* -> potion--healing",
+      "object: *Enlightenment* -> potion--enlightenment",
+      "vault: Little eruption+ -> interesting-room--little-eruption",
+    ]);
+    /* The control. If the rule were "a starred record loses its alias" these
+     * would be in the list above, and the two lists together are the whole set
+     * of 19 legacy aliases in the pack - so neither can shrink unnoticed. */
+    expect(keeps).toContain("object: *Destruction* -> scroll--destruction");
+    expect(keeps).toContain("object: *Destruction* -> staff--destruction");
+    expect(keeps).toContain("ego_item: of *Slay Animal* -> of-slay-animal");
+    expect(keeps).toHaveLength(11);
+
+    /* AND THE DROPS COST NOTHING. Every file carrying a legacy alias is one this
+     * key table made addressable in the first place, so no ref an author could
+     * have written against an older engine is among them. */
+    const files = new Set([...drops, ...keeps].map((row) => row.split(":")[0] as string));
+    expect([...files].filter((f) => !ONCE_UNADDRESSABLE.includes(f))).toEqual([]);
   });
 
   it("discriminates same-named egos by the item types they apply to", () => {
