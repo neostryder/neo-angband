@@ -2,6 +2,16 @@
 
 **Dated 2026-08-04. Every deferral note in this repository has a verdict.**
 
+> **Owner ruling, 2026-08-09: a verdict is not a finish line.** "All 'deferrals'
+> must be either marked as not part of the port or as ported. I don't want
+> anything deferred." So the tallies in the appendix are bookkeeping, not
+> progress: `n-a` and a deliberate `divergence` are finished states, and
+> **everything else on this page is work**, including every line under
+> [Genuinely not ported](#genuinely-not-ported) and every `partial`. The only
+> acceptable reason for an absence is that it does not fit this platform or
+> front end, with the mechanism named. When reporting status, lead with what a
+> player would notice — never with the adjudication count.
+
 **Working the list?** [PORT_TODO.md](PORT_TODO.md) is the checklist derived from
 this document — the same citations, tiered, with the two items that unlock a
 dozen others first. This document is the *accounting*: why each verdict was
