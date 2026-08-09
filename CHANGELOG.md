@@ -55,9 +55,28 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   a list that only ever gets smaller as things are converted. It is deliberately
   syntactic and does not know what a switch dispatches on, because a tool clever
   enough to decide which switches "matter" is a tool that could decide a new one
-  does not. The backlog is honest: 15 rows adjudicated, **36 never looked at**,
-  and that count is a ratchet that may only go down. Control run: dropping a new
-  8-case switch into the tree fails the census.
+  does not. Control run: dropping a new 8-case switch into the tree fails the
+  census.
+- **All 51 censused switches are adjudicated, and only 22 are moddability
+  gaps.** The backlog started at 36 rows nobody had looked at. Each was read -
+  discriminant and case labels - rather than guessed at, and classified into a
+  **closed vocabulary**: 22 `CANDIDATE` (content dispatch a mod would want), 12
+  `UI` (menu and keypress routing), 6 `PARSER`/`HOST` (the dice grammar, the
+  `lore.txt` directives, CLI flags, the host RPC - deliberately closed, since a
+  mod changing dice syntax would invalidate every record in every pack), 3
+  `LOCALIZATION`, 3 `CONTROL FLOW`, 2 `INTERNAL`, 2 `DEBUG`, 1 already
+  `REACHABLE`. The class counts are asserted in the test, not described in a
+  document, because a typo'd class (`CANDIDTE - `) would otherwise drop a row
+  out of the candidate count without failing anything - which is exactly what
+  the control demonstrates. Reading them surfaced **three dispatch points
+  `MOD_REACH.md` had never listed**, now rows 26-28: the three room/vault
+  template glyph decoders (a mod can ship a vault, but only using glyphs core's
+  decoder already knows), `project_p`'s 21-case player side effects (the one
+  member of the `project_f`/`project_o`/`project_p` family still a switch, so a
+  mod's projection reaches terrain and objects but not the player), and `tval`
+  dispatch in object generation and pricing. The verdict gate is no longer a
+  ratchet with slack in it - the backlog reached zero, so a new switch now has
+  to be adjudicated before the build is green.
 - **`project_o`'s 11-case switch is a registry too** (`PROJECT_OBJ_HANDLERS`,
   `ProjectWorldEnv.objHandlers`), so a mod's projection can destroy objects the
   way `FIRE` does. Proven by an **exhaustive** recording rather than a sampled

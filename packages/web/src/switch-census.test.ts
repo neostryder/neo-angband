@@ -10,13 +10,13 @@
  * So `tools/switch-census.json` records every switch of >= 8 cases with a
  * hand-written verdict, and this test fails when the tree and the manifest
  * disagree. A new switch, or one that grew or shrank, breaks the list compare;
- * regenerating stamps it UNADJUDICATED, which breaks the backlog ratchet; the
+ * regenerating stamps it UNADJUDICATED, which breaks the verdict gate; the
  * only way to green is to write a verdict.
  *
- * The backlog is 36 of 51 and that is the honest number, not a target. 15 rows
- * carry a verdict because MOD_REACH already covers them; the rest have never
- * been looked at, and a test that asserted zero would be a red build nobody
- * could clear rather than a ratchet anybody could turn.
+ * All 51 now carry one, and the distribution is the finding: 22 are content
+ * dispatch a mod would want, and 29 are not. That number is asserted here
+ * rather than described in a document, because "we looked at all of them" is
+ * exactly the sort of claim that is true on the day it is written.
  *
  * Lives in packages/web because that is where the other repo-wide ratchets run
  * (mod-core-surface.test.ts); it reads the source tree, not this package.
@@ -70,32 +70,53 @@ describe("the switch census", () => {
     expect(now).toEqual(was);
   });
 
-  it("never has MORE unadjudicated rows than the recorded backlog", () => {
-    /* A RATCHET, NOT A WALL, and the difference is deliberate. 36 of the 51
-     * rows have no verdict yet - that is the honest state of the codebase, and
-     * a test asserting zero would just be a red build nobody could go green.
-     * What must not happen is the number going UP.
-     *
-     * A new switch cannot sneak past this by being unadjudicated, because the
-     * test above already fails on the file/case list: the author has to run
-     * --update, which stamps the new row UNADJUDICATED, which trips this. The
-     * only way through is to write a verdict. */
+  it("has a verdict on every row", () => {
+    /* The backlog started at 36 of 51 and this test was a RATCHET, because a
+     * wall nobody could clear is just a red build. It reached zero, so it is a
+     * gate now - and a gate is only reasonable because clearing it costs one
+     * line. A new switch fails the list compare above, the author runs
+     * --update, the new row arrives UNADJUDICATED, and this fails until
+     * somebody writes down what a mod can do about it. */
     const unadjudicated = manifest.switches.filter(
       (r) => r.verdict === "UNADJUDICATED",
-    ).length;
-    expect(unadjudicated).toBe(manifest.unadjudicated);
-    expect(unadjudicated).toBeLessThanOrEqual(36);
+    );
+    expect(unadjudicated.map((r) => r.file)).toEqual([]);
+    expect(manifest.unadjudicated).toBe(0);
+    /* And a verdict has to say something. "n/a" would pass the check above. */
+    expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("has adjudicated the rows MOD_REACH already covers", () => {
-    /* Control for the backlog: "36 remaining" is only meaningful if the other
-     * 15 carry a real verdict rather than a placeholder. */
-    const adjudicated = manifest.switches.filter(
-      (r) => r.verdict !== "UNADJUDICATED",
+  it("classifies all 51 into a CLOSED vocabulary", () => {
+    /* The class distribution is the actual finding, so it is measured rather
+     * than written in prose: of 51 switches only 22 are content dispatch a mod
+     * would want. The other 29 are UI routing, parsers, host wiring, the mod
+     * system's own vocabulary, localization strings, or plain control flow -
+     * and saying so is a claim that can be checked against the file.
+     *
+     * The vocabulary is closed on purpose. Without this, a typo ("CANDIDTE - ")
+     * silently opens a new bucket and quietly drops a row out of the candidate
+     * count without failing anything. */
+    const byClass = new Map<string, number>();
+    for (const r of manifest.switches) {
+      const cls = r.verdict.split(" - ")[0] as string;
+      byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
+    }
+    expect(Object.fromEntries([...byClass].sort())).toEqual({
+      CANDIDATE: 22,
+      "CONTROL FLOW": 3,
+      DEBUG: 2,
+      HOST: 3,
+      INTERNAL: 2,
+      LOCALIZATION: 3,
+      PARSER: 3,
+      REACHABLE: 1,
+      UI: 12,
+    });
+    /* The counts have to add up to the census, or a class went missing. */
+    expect([...byClass.values()].reduce((a, b) => a + b, 0)).toBe(
+      manifest.switches.length,
     );
-    expect(adjudicated).toHaveLength(15);
-    expect(adjudicated.every((r) => r.verdict.length > 20)).toBe(true);
-    /* The biggest switch in the tree is one of them. */
+    /* The biggest switch in the tree is one of the candidates. */
     expect(manifest.switches[0]?.verdict).toContain("gap 14");
   });
 
