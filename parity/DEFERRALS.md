@@ -97,13 +97,17 @@ Host and platform config — `SoundHooks`, `UpdateCheckDeps`, `FileSinkDeps`,
 `FreshnessDeps`, `TitleDeps`, `DesktopRefreshDeps`, `BuildScoreDeps` — is not
 game behaviour and is out of scope for this document.
 
-**Still open, and the one item here that is a real change rather than a wiring
-fix:** `ProjectWorldEnv.protectedObj`, upstream's "the object that created this
+**`ProjectWorldEnv.protectedObj`** — upstream's "the object that created this
 projection must not be destroyed by it" (`project.c:921` passes `obj` to every
-`project_o`). The port's `CastSource` does not carry the source object at all, so
-threading it is an API change across `castProjection` and its handlers rather
-than a line in `wireGame`. Reachable in play by aiming a wand or zapping a rod
-that is lying on the floor at your own feet. Recorded on #160.
+`project_o`, and every effect handler passes `context->obj`). The port's
+`CastSource` carried no source object at all, so the exemption could never fire:
+a wand or rod lying on the floor inside its own blast burned itself. `CastSource`
+now carries `obj`, `sourceFor` reads it off the effect context, and
+`castProjection` installs it on the world env. Guarded by two identical scrolls
+on one grid, one handed to `effect_do` as `obj` — a run without the fix destroys
+both.
+
+Nothing from the sweep is left open.
 
 The lesson for this document: **"is the note still true" and "does the seam have
 a producer" are two different questions, and only the first one has ever been

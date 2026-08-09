@@ -328,6 +328,11 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 - **A monster that survived a spell kept its old visibility** until something
   else moved it, because the refresh that follows a projection had no supplier.
 
+- **An item could be destroyed by its own blast.** Aim a wand of fire while it is
+  lying on the floor at your feet and the wand was inside the explosion. The rule
+  that exempts the source of a projection from that projection was written down
+  but never connected.
+
 - **Adding a record to `object`, `ego_item` or `vault` silently deleted the base
   game's copy of that file.** See the first entry under **Added**: composition
   now keys by `recordRefKeys` and all three merge per record. Two things remain
