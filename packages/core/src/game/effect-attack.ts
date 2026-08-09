@@ -32,9 +32,10 @@ import { breathDam } from "../mon/spell.js";
 import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter.js";
 import type {
   EffectHandler,
+  EffectHandlerContext,
   EffectRegistry,
-  Source,
 } from "../effects/interpreter.js";
+import type { GameObject } from "../obj/object.js";
 import {
   damageEffectApplyToPlayer,
   handleDAMAGE as baseHandleDAMAGE,
@@ -75,23 +76,31 @@ import type { CastSource } from "./project-cast.js";
 import { PROJECT, projectable } from "../world/project.js";
 
 /** Build a CastSource from the effect origin. */
-function sourceFor(env: GameEffectEnv, origin: Source): CastSource {
+function sourceFor(env: GameEffectEnv, ctx: EffectHandlerContext): CastSource {
+  const origin = ctx.origin;
+  /* project()'s `obj` argument is context->obj at every upstream call site
+   * (effect-handler-attack.c passes it verbatim), and project_o exempts it. */
+  const obj = (ctx.obj as GameObject | undefined) ?? undefined;
+  const withObj = <T extends CastSource>(src: T): T =>
+    obj ? { ...src, obj } : src;
   switch (origin.what) {
     case "player":
-      return playerCastSource(env.state, env.charm !== undefined ? { charm: env.charm } : {});
+      return withObj(
+        playerCastSource(env.state, env.charm !== undefined ? { charm: env.charm } : {}),
+      );
     case "monster":
-      return monsterCastSource(env.state, origin.monster);
+      return withObj(monsterCastSource(env.state, origin.monster));
     default:
       /* Trap / object / chest / none: a bare player-grid source (PLAY added by
        * the shape helper for a non-player source). */
-      return {
+      return withObj({
         isPlayer: false,
         isMonster: false,
         monster: 0,
         grid: env.state.actor.grid,
         killer: origin.what === "trap" ? "a trap" : "a bug",
         isTrap: origin.what === "trap",
-      };
+      });
   }
 }
 
@@ -113,7 +122,7 @@ const handleBOLT: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
   castBolt(env.state, env.cast, source, grid, dam, ctx.subtype);
   if (!playerBlind(env)) ctx.ident = true;
@@ -124,7 +133,7 @@ const handleBEAM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
   castBeam(env.state, env.cast, source, grid, dam, ctx.subtype);
   if (!playerBlind(env)) ctx.ident = true;
@@ -142,7 +151,7 @@ const handleBoltStatusFlagged =
     const env = gameEnv(ctx);
     if (!env) return true;
     const dam = effectCalculateValue(ctx, true);
-    const source = sourceFor(env, ctx.origin);
+    const source = sourceFor(env, ctx);
     const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
     if (castBolt(env.state, env.cast, source, grid, dam, ctx.subtype, extraFlg))
       ctx.ident = true;
@@ -170,7 +179,7 @@ const handleLINE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
   if (castLine(env.state, env.cast, source, grid, dam, ctx.subtype)) ctx.ident = true;
   return true;
@@ -179,7 +188,7 @@ const handleLINE: EffectHandler = (ctx) => {
 const handleALTER: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
   if (castAlter(env.state, env.cast, source, grid, ctx.subtype)) ctx.ident = true;
   return true;
@@ -189,7 +198,7 @@ const handleBALL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
 
   let rad = ctx.radius ? ctx.radius : 2;
@@ -212,7 +221,7 @@ const handleBREATH: EffectHandler = (ctx) => {
   /* A player breath uses the dice value; a monster breath scales with the
    * breather's current hitpoints (breath_dam, mon/spell.ts). */
   let dam = effectCalculateValue(ctx, false);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
 
   let powerful = false;
@@ -245,7 +254,7 @@ const handleARC: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   /* A1 (effect-handler-attack.c:811-814): a monster ARC targets the player's
    * grid directly with NO random draw - unlike BREATH/BOLT/BALL it has no
    * confused-dir / target-monster branch. Routing it through resolveAimedTarget
@@ -263,7 +272,7 @@ const handleSHORT_BEAM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   /* A2 (effect-handler-attack.c:868-870): as with ARC, a monster SHORT_BEAM
    * targets the player's grid directly with no random draw. */
   const grid = source.isMonster
@@ -280,7 +289,7 @@ const handleSPOT: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   let rad = ctx.radius ? ctx.radius : 0;
   if (ctx.other && source.isPlayer) rad += Math.trunc(playerLevel(env) / ctx.other);
   if (castSpot(env.state, env.cast, source, dam, ctx.subtype, rad)) ctx.ident = true;
@@ -291,7 +300,7 @@ const handleSPHERE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const rad = ctx.radius ? ctx.radius : 0;
   const diameter = ctx.other ? ctx.other : 0;
   if (castSphere(env.state, env.cast, source, dam, ctx.subtype, rad, diameter))
@@ -303,7 +312,7 @@ const handleSTRIKE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   /* STRIKE targets the acquired grid, but reverts to the player if that grid is
    * not projectable from the player (effect-handler-attack.c L1012-1016). A5. */
   let target = env.state.actor.grid;
@@ -330,7 +339,7 @@ const handleSTAR: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   if (castStar(env.state, env.cast, source, dam, ctx.subtype)) ctx.ident = true;
   return true;
 };
@@ -339,7 +348,7 @@ const handleSTAR_BALL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   if (castStarBall(env.state, env.cast, source, dam, ctx.subtype, ctx.radius))
     ctx.ident = true;
   return true;
@@ -364,7 +373,7 @@ const handleLASH: EffectHandler = (ctx) => {
   const mon = state.monsters[ctx.origin.monster];
   if (!mon) return false;
 
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
 
   /* Target player or monster? (project-cast marks the non-player source so
    * PROJECT_PLAY is set, matching the upstream flg |= PROJECT_PLAY.) */
@@ -408,7 +417,7 @@ const handleSWARM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
   const num = ctx.value.mBonus;
   if (castSwarm(env.state, env.cast, source, grid, dam, ctx.subtype, ctx.radius, num))
@@ -451,7 +460,7 @@ const handleTOUCH: EffectHandler = (ctx) => {
     }
   }
 
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   if (castTouch(env.state, env.cast, source, dam, ctx.subtype, rad, false))
     ctx.ident = true;
   return true;
@@ -461,7 +470,7 @@ const handleTOUCH_AWARE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
+  const source = sourceFor(env, ctx);
   if (castTouch(env.state, env.cast, source, dam, ctx.subtype, ctx.radius, ctx.aware))
     ctx.ident = true;
   return true;
@@ -483,7 +492,7 @@ const makeProjectLos = (aware: boolean): EffectHandler => (ctx) => {
     aware?: boolean;
   } = aware
     ? { useView: true, aware: ctx.aware }
-    : { originGrid: sourceFor(env, ctx.origin).grid };
+    : { originGrid: sourceFor(env, ctx).grid };
   if (env.monCurrent !== undefined) opts.excludeMonster = env.monCurrent;
   castProjectLos(env.state, env.cast, playerCastSource(env.state), dam, ctx.subtype, opts);
   ctx.ident = true;

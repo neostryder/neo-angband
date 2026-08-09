@@ -30,9 +30,14 @@ import { describe, expect, it } from "vitest";
 import { MFLAG, PF, TV } from "../generated/index.js";
 import { startGame } from "./game.js";
 import type { GamePack, StartedGame } from "./game.js";
-import { floorPile } from "../game/floor.js";
+import { floorCarry, floorPile } from "../game/floor.js";
 import { gearGet, invenCarry } from "../game/gear.js";
 import { objectPrep } from "../obj/make.js";
+import type { EffectRecordJson } from "../obj/types.js";
+import { buildObjectEffectChain } from "../game/obj-cmd.js";
+import { buildEffectContext } from "../game/effect-env.js";
+import { attachGameEnv } from "../game/effect-game-env.js";
+import { sourcePlayer } from "../effects/interpreter.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import type { ObjectInfoExtras } from "../game/object-inspect.js";
 import { spellChance } from "../player/spell.js";
@@ -267,5 +272,65 @@ describe("a monster that survives a projection is updated", () => {
       mon!.mflag.has(MFLAG.VISIBLE),
       "onUpdate must be update_mon, not a stub",
     ).toBe(false);
+  });
+});
+
+describe("a projection does not destroy the object that created it", () => {
+  /**
+   * project(..., obj) -> project_o(..., protected_obj) (project.c:576-579,
+   * :921). ProjectWorldEnv.protectedObj was the reader and CastSource carried
+   * no source object at all, so the exemption could never fire: a wand or rod
+   * lying on the floor inside its own blast burned itself.
+   *
+   * The twin is the control that lives inside the test: two identical scrolls
+   * on one grid, one handed to effect_do as `obj`. Fire destroys scrolls, so
+   * "one survived and one did not" is a statement only the exemption can make
+   * true - and a run before this was wired destroyed both.
+   */
+  it("a wand inside its own fire ball survives while its twin burns", () => {
+    const { game } = started(6501);
+    const state = game.state;
+    const reg = game.booted.registries;
+    const eff = game.wizardBundles.effect;
+    expect(eff, "a depth game must have the effect bundle").toBeTruthy();
+
+    const grid = state.actor.grid;
+    const a = makeOne(game, TV.SCROLL, 6502);
+    const b = makeOne(game, TV.SCROLL, 6503);
+    expect(floorCarry(state, grid, a, {}, { value: false })).toBe(true);
+    expect(floorCarry(state, grid, b, {}, { value: false })).toBe(true);
+
+    /* The Ring of Flames' own chain: BALL:FIRE:2 (object.txt:2098-2110). Taken
+     * from the pack rather than hand-built, so the test cannot drift from the
+     * data. */
+    const ring = reg.objects.kinds.find(
+      (k) => k.name === "Flames" && (k.effect?.length ?? 0) > 0,
+    );
+    expect(ring, "the pack must ship the Ring of Flames").toBeDefined();
+    const chain = buildObjectEffectChain(
+      (ring!.effect ?? []) as EffectRecordJson[],
+      state,
+      eff!.inject,
+    );
+
+    const player = state.actor.player;
+    player.chp = player.mhp;
+    const ctx = attachGameEnv(buildEffectContext(state, eff!.envDeps!), {
+      state,
+      cast: eff!.cast!,
+      teleport: eff!.teleport!,
+    });
+    /* dir 5 with no target aims at the player's own grid, so the blast covers
+     * the pile both scrolls are sitting in. `obj: a` is what use_aux passes. */
+    eff!.registry!.effectDo(chain, ctx, {
+      origin: sourcePlayer(),
+      obj: a,
+      ident: { value: false },
+      dir: 5,
+    });
+
+    const pile = floorPile(state, grid);
+    expect(pile.includes(a), "the source object must survive its own blast").toBe(true);
+    expect(pile.includes(b), "its unprotected twin must not").toBe(false);
   });
 });

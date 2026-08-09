@@ -51,6 +51,7 @@ import type { ProjectionInfo } from "../world/projection.js";
 import type { DamageReduction } from "../player/take-hit.js";
 import { monsterMax } from "./context.js";
 import type { GameState } from "./context.js";
+import type { GameObject } from "../obj/object.js";
 import { destroyDecoy, monsterGetTarget } from "./effect-mon-origin.js";
 import { projectMonster } from "./project-monster.js";
 import type { ProjectMonsterHooks } from "./project-monster.js";
@@ -89,6 +90,16 @@ export interface CastSource {
   power?: number;
   /** origin.what == SRC_TRAP (FORCE's on-the-trap centre jitter). */
   isTrap?: boolean;
+  /**
+   * project()'s `obj` argument (project.c:576-579, passed on to every project_o
+   * at :921): the object that CREATED this projection, which the projection must
+   * not destroy. Every effect handler upstream passes context->obj.
+   *
+   * ProjectWorldEnv.protectedObj is the reader, and it had no producer at all -
+   * so a wand or rod aimed while lying on the floor at the player's own feet
+   * could be burned or melted by its own blast.
+   */
+  obj?: GameObject;
 }
 
 /** source_player(): a player-origin cast from the live player grid. */
@@ -281,10 +292,16 @@ export function castProjection(
    * the identical terrain arm worked. Found by the first end-to-end test that
    * fired a projection through the wired game (session/projection-registry-
    * wiring.test.ts) - which is the point of testing a seam by using it. */
-  const worldEnv =
+  const baseWorldEnv =
     cctx.worldEnv && cctx.worldEnv.projections === undefined
       ? { ...cctx.worldEnv, projections: cctx.projections }
       : cctx.worldEnv;
+  /* project(..., obj) -> project_o(..., protected_obj): the source object is
+   * exempt from its own projection (project.c:921). */
+  const worldEnv =
+    baseWorldEnv && source.obj
+      ? { ...baseWorldEnv, protectedObj: source.obj }
+      : baseWorldEnv;
 
   const monCtx = {
     state,
