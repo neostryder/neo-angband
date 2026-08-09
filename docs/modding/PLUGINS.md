@@ -295,6 +295,7 @@ declare **and** the player must consent to:
 | `registry:projection` | what a projection does to terrain, floor items and the player — `projections.feat` / `.obj` / `.player`, one projection `code` at a time. This is the behaviour half of adding your own element: the `projection.json` record makes it exist, these three make it *do* something |
 | `registry:glyph` | what one character of a room-template or vault layout means when the level is drawn — `glyphs.set("vault", "Q", ...)`. The behaviour half of shipping a vault with a symbol core has never seen |
 | `registry:effect-info` | what the game *says* about an effect — `effectInfo.text` (the menu row and the recall sentence), `.summary` (the object properties an activation grants), `.subtype` (the named subtypes it accepts) and `.request` (which item it prompts for). This is the description half of `registry:effect`: without it your new effect works and the game has nothing to say about it |
+| `registry:randart` | how RANDOM artifacts are built — `randart.abilities` (what a power does), `.prep` (what an item class starts with), `.census` (which frequency bucket it feeds) and `.redundancy` (whether an activation duplicates something the artifact already has). Shipping a *fixed* artifact needs no capability; this is the generator |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
 
 A facade you did not declare throws when you touch it, even if the player

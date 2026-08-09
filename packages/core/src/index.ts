@@ -67,6 +67,15 @@ export * from "./obj/object-info.js";
 export * from "./obj/randname.js";
 export * from "./obj/flavor.js";
 export * from "./obj/randart.js";
+export * from "./obj/randart-registry.js";
+/* The randart BUILD primitives (addFlag / addMod / addResist / addBrand /
+ * addToHit / ... ) and the set profile. A mod's registry:randart handler is
+ * written exactly the way core's arms are written - by calling these - so a
+ * seam whose primitives are not in `ctx.core` is a seam a mod cannot use.
+ * Exporting the modules is what makes the randart registry reachable rather
+ * than merely registered. */
+export * from "./obj/randart-build.js";
+export * from "./obj/randart-data.js";
 export * from "./player/types.js";
 export * from "./player/options.js";
 export * from "./player/options-file.js";

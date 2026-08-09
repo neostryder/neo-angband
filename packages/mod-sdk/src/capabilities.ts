@@ -34,7 +34,7 @@
  *                             "registry:store" | "registry:command" |
  *                             "registry:monster" | "registry:projection" |
  *                             "registry:glyph" | "registry:effect-info" |
- *                             "registry:vocab"; or the
+ *                             "registry:randart" | "registry:vocab"; or the
  *                             wildcard "registry:*"
  *                             for all of them. "registry:projection" says what a
  *                             projection DOES to terrain, floor objects and the
@@ -49,6 +49,11 @@
  *                             summarises, the named subtypes it accepts and
  *                             which item it prompts for - the description half
  *                             of "registry:effect".
+ *                             "registry:randart" reaches the random ARTIFACT
+ *                             generator: what an ability does, what an item
+ *                             class starts with, and whether an activation
+ *                             is redundant. Distinct from shipping a FIXED
+ *                             artifact, which needs no capability at all.
  *                             "registry:vocab" (W2.3) declares
  *                             NEW vocabulary (flags/stats/any kind). Distinct
  *                             from "command:add": that adds a command via the
@@ -82,7 +87,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|vocab)$/;
+  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|vocab)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

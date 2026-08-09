@@ -16,7 +16,8 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ART_IDX } from "../generated/index.js";
+import { ART_IDX, TV } from "../generated/index.js";
+import { randartRegistry } from "./randart-registry.js";
 import {
   computeRandartVectors,
   RANDART_ARM_SEEDS,
@@ -25,6 +26,14 @@ import {
 } from "./randart-vectors.js";
 import type { RandartVector } from "./randart-vectors.js";
 import { randartVectorFixtures } from "./randart-vectors.fixtures.js";
+
+/** TV index -> the name the prep family records, so the compare is by name. */
+function tvalName(tval: number): string {
+  for (const [name, value] of Object.entries(TV as unknown as Record<string, number>)) {
+    if (value === tval) return name;
+  }
+  return String(tval);
+}
 
 const recorded = JSON.parse(
   readFileSync(new URL("./randart-vectors.json", import.meta.url), "utf8"),
@@ -94,6 +103,47 @@ describe("random artifact construction", () => {
         .join("\n"),
     );
     expect(new Set(bySeed).size).toBe(RANDART_VECTOR_SEEDS.length);
+  });
+
+  it("runs every key core registers through at least one scenario", () => {
+    /* A handler no scenario reaches is a handler no vector can defend. Derived
+     * from the registry rather than from a list written here, so a new arm
+     * cannot be added without the grid growing to cover it. */
+    const registry = randartRegistry();
+
+    /* The ability family iterates 0..ART_IDX.TOTAL, so a key inside that range
+     * is reached and one outside it never would be. */
+    expect({
+      table: "abilities",
+      unreached: registry.abilities
+        .keys()
+        .filter((k) => k < 0 || k > ART_IDX.TOTAL),
+    }).toEqual({ table: "abilities", unreached: [] });
+
+    /* The prep family names its tvals; every registered one must be among
+     * them, or that item class's starting stats are recorded by nothing. */
+    const prepTvals = new Set(
+      fresh
+        .filter((v) => v.kind === "prep")
+        .map((v) => v.scenario.replace(/^tval=/, "").split(" ")[0]),
+    );
+    expect({
+      table: "prep",
+      unreached: registry.prep
+        .keys()
+        .filter((k) => !prepTvals.has(tvalName(k))),
+    }).toEqual({ table: "prep", unreached: [] });
+
+    /* The census family runs over the standard set, so a bucket core
+     * registers has to actually receive artifacts - except TV.NULL, whose
+     * whole job is to count nothing. */
+    const totals = JSON.parse(
+      fresh.find((v) => v.subject === "totals")?.out ?? "{}",
+    ) as Record<string, number>;
+    const empty = Object.entries(totals).filter(
+      ([name, n]) => n === 0 && name !== "negPower",
+    );
+    expect({ table: "census", empty }).toEqual({ table: "census", empty: [] });
   });
 
   it("builds exactly the artifacts recorded before the registries existed", () => {
