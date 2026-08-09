@@ -307,6 +307,27 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   hardcoded 128 rather than the value the content pack ships; and a monster
   teleporting the monster it was aiming at teleported itself instead.
 
+- **A broken item said nothing.** Throw a flask and it shatters; drop something
+  where there is no room for it and it is gone. Upstream tells you — *"The Potion
+  of Death breaks."* — and this port did not, because the message hook had no
+  supplier. Neither did the sound an item makes when it lands. Fixing it turned
+  up a second gap on the same path: the fire and throw commands passed no drop
+  environment at all, so a landing missile also skipped the ignore rules and the
+  trap rules every other drop obeys.
+
+- **A shop now tells you what its stock does.** Inspecting an unidentified
+  potion or scroll on a shelf described nothing, because the "you are looking at
+  this in a store" flag was never set. Upstream reveals a useable item's effect
+  there, which is how you decide what to buy.
+
+- **Spell failure rates and beam chances read only the class.** The real rule
+  looks at race, class and current shape together. Nothing in the base game
+  grants those particular abilities outside a class, so play is unchanged — but a
+  mod that adds one would have been ignored.
+
+- **A monster that survived a spell kept its old visibility** until something
+  else moved it, because the refresh that follows a projection had no supplier.
+
 - **Adding a record to `object`, `ego_item` or `vault` silently deleted the base
   game's copy of that file.** See the first entry under **Added**: composition
   now keys by `recordRefKeys` and all three merge per record. Two things remain

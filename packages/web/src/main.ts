@@ -7483,7 +7483,10 @@ function enterStoreModal(store: Store): Promise<void> {
       examine: async (obj) => {
         const name = objectName(state, obj);
         const header = name.charAt(0).toUpperCase() + name.slice(1);
-        const tb = objectInfoTextblock(state, obj, inspectExtras);
+        /* object_is_in_store (obj-info.c): a store's stock shows a useable
+         * item's real effect even when its flavour is unknown, which is the
+         * whole point of being able to read the shelf. */
+        const tb = objectInfoTextblock(state, obj, { ...inspectExtras, inStore: true });
         await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
       },
       sellPick: storeSellPick,

@@ -50,6 +50,7 @@ import { monTakeHit } from "../mon/take-hit.js";
 import { playerClearTimed } from "../player/timed.js";
 import { gearGet, gearObjectForUse } from "./gear.js";
 import { dropNear, floorPile, floorObjectForUse, itemIsAvailable } from "./floor.js";
+import type { FloorEnv } from "./floor.js";
 import { invenTakeoff, playerConfuseDir } from "./obj-cmd.js";
 import {
   squareMonster,
@@ -280,7 +281,19 @@ function rangedHelper(
 }
 
 /** Install the fire and throw commands over the live action registry. */
-export function installRangedCommands(registry: ActionRegistry): void {
+export function installRangedCommands(
+  registry: ActionRegistry,
+  /**
+   * The shared drop_near environment (session/game.ts floorEnv). BOTH drop
+   * sites below passed a bare `{}` until 2026-08-09, so a fired arrow or a
+   * thrown flask landed with no ignore rule, no trap rule, no
+   * sound(MSG_DROP) - and, worse, floor_carry_fail's "The %s breaks." was
+   * dropped, which is the line that tells a player their potion of Death was
+   * the one that shattered. Every other dropNear call site in the port already
+   * threaded this.
+   */
+  floorEnv: FloorEnv = {},
+): void {
   registry.register("fire", (state, cmd: PlayerCommand) => {
     const player = state.actor.player;
     const args = cmd.args ?? {};
@@ -335,7 +348,7 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const { hit, landing } = rangedHelper(state, missile, launcher, dir, range, false);
 
     /* Drop the (surviving) missile where it landed. */
-    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, {});
+    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, floorEnv);
 
     const shots = Math.max(10, state.actor.combat.numShots);
     return Math.trunc((state.z.moveEnergy * 10) / shots);
@@ -431,7 +444,7 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const range = Math.min(Math.trunc(((str + 20) * 10) / weight), 10);
 
     const { hit, landing } = rangedHelper(state, missile, null, dir, range, true);
-    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, {});
+    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, floorEnv);
 
     return state.z.moveEnergy;
   });
