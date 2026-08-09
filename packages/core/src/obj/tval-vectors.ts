@@ -34,7 +34,11 @@
  */
 
 import { TVAL_ENTRIES } from "../generated/tvals.js";
+import type { ObjRegistry } from "./bind.js";
+import { kindIsGood } from "./make.js";
+import type { GameObject } from "./object.js";
 import * as tvalPredicates from "./object.js";
+import { objectValueBase } from "./value.js";
 
 /**
  * One row: every predicate's answer for one tval, plus the tval's own name so a
@@ -66,6 +70,45 @@ export function tvalPredicateNames(): readonly string[] {
         typeof (tvalPredicates as Record<string, unknown>)[k] === "function",
     )
     .sort();
+}
+
+/**
+ * The other half of gap 28: the two tval dispatches that decide BEHAVIOUR
+ * rather than membership.
+ *
+ *   - `kindIsGood` (`make.ts`, `kind_is_good`) - whether a template counts as
+ *     "good" for the good/great allocation path. Its three arms read different
+ *     fields (armour reads `toA`, weapons read `toH`/`toD`, ammo is
+ *     unconditional) and everything else falls through to the `KF_GOOD` flag,
+ *     so this is recorded against the REAL object kinds rather than synthetic
+ *     ones: a hand-built kind would be an assertion about the producer, and an
+ *     unchecked one.
+ *   - `objectValueBase` (`value.ts`, `object_value_base`) - the flat per-tval
+ *     guess at an unaware item's worth. `aware` is false here on purpose; that
+ *     is the branch the switch is on.
+ */
+export interface TvalKindVector {
+  /** The kind's own name, so a diff names the item rather than an index. */
+  readonly name: string;
+  /** Its `TV_*` code name. */
+  readonly tval: string;
+  readonly kindIsGood: boolean;
+  readonly valueBase: number;
+}
+
+/** Run both tval dispatches over every object kind in the shipped pack. */
+export function computeTvalKindVectors(reg: ObjRegistry): TvalKindVector[] {
+  return reg.kinds.map((kind) => ({
+    name: kind.name,
+    tval: TVAL_ENTRIES[kind.tval]?.name ?? `TVAL_${String(kind.tval)}`,
+    kindIsGood: kindIsGood(kind),
+    /* object_value_base reads only tval and kind.cost, and takes the switch
+     * arm precisely when the flavour is NOT known. */
+    valueBase: objectValueBase(
+      { tval: kind.tval, kind } as unknown as GameObject,
+      false,
+    ),
+  }));
 }
 
 /** Record every predicate's answer for every tval in `TVAL_ENTRIES`. */

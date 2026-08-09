@@ -1,20 +1,35 @@
 /**
- * Replay the tval class-predicate table recorded on disk. MOD_REACH gap 28.
+ * Replay the tval tables recorded on disk. MOD_REACH gap 28.
  *
  * These vectors were recorded BEFORE any tval registry existed. Their whole
  * value is that the fixture is older than the refactor - a test that computes
  * the answer twice in one process cannot fail across one, because agreement is
- * symmetric. See the header of `tval-vectors.ts` for why the table is the
- * complete cross product rather than a sample.
+ * symmetric. See the header of `tval-vectors.ts` for why the predicate table is
+ * the complete cross product rather than a sample, and why the kind table runs
+ * over the real shipped pack rather than synthetic kinds.
  */
+
+import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import golden from "./tval-vectors.json" with { type: "json" };
-import { computeTvalVectors, tvalPredicateNames } from "./tval-vectors.js";
 import { TVAL_ENTRIES } from "../generated/tvals.js";
+import { tvalVectorRegistry } from "./tval-vectors.fixtures.js";
+import {
+  computeTvalKindVectors,
+  computeTvalVectors,
+  tvalPredicateNames,
+} from "./tval-vectors.js";
+import type { TvalKindVector, TvalVector } from "./tval-vectors.js";
+
+function load<T>(name: string): T[] {
+  return JSON.parse(
+    readFileSync(new URL(`./${name}.json`, import.meta.url), "utf8"),
+  ) as T[];
+}
 
 describe("tval class predicates replay their recorded answers", () => {
+  const golden = load<TvalVector>("tval-vectors");
   const fresh = computeTvalVectors();
 
   it("records every predicate and every tval", () => {
@@ -41,15 +56,43 @@ describe("tval class predicates replay their recorded answers", () => {
      * friends) and the table would notice that one flipping. */
     for (const name of tvalPredicateNames()) {
       const trues = fresh.filter((v) => v.answers[name]).length;
-      expect({ name, trues: trues > 0 && trues < fresh.length }).toEqual({
-        name,
-        trues: true,
-      });
+      expect({ name, discriminates: trues > 0 && trues < fresh.length }).toEqual(
+        { name, discriminates: true },
+      );
     }
   });
 
   it("answers the same for every tval", () => {
     /* Compared row by row so a failure names the item class. */
+    for (let i = 0; i < golden.length; i++) {
+      expect(fresh[i]).toEqual(golden[i]);
+    }
+  });
+});
+
+describe("the two tval dispatches replay over the real object kinds", () => {
+  const golden = load<TvalKindVector>("tval-kind-vectors");
+  const fresh = computeTvalKindVectors(tvalVectorRegistry());
+
+  it("covers every kind in the shipped pack", () => {
+    expect(fresh.length).toBe(golden.length);
+    expect(fresh.length).toBeGreaterThan(300);
+  });
+
+  it("reaches every arm of both dispatches", () => {
+    /* `kindIsGood` has three arms plus a flag fallthrough and
+     * `objectValueBase` has seven, and a table that only ever exercised one of
+     * them would replay identically no matter what happened to the others.
+     * These are the counts as recorded; they are asserted so a pack that
+     * stopped shipping, say, any rod could not silently shrink the coverage. */
+    expect(new Set(fresh.map((v) => v.valueBase)).size).toBeGreaterThanOrEqual(
+      7,
+    );
+    const good = fresh.filter((v) => v.kindIsGood).length;
+    expect({ good: good > 0 && good < fresh.length }).toEqual({ good: true });
+  });
+
+  it("decides the same for every kind", () => {
     for (let i = 0; i < golden.length; i++) {
       expect(fresh[i]).toEqual(golden[i]);
     }
