@@ -1,0 +1,148 @@
+/**
+ * Count every large `switch` in the source tree, so the moddability gap list
+ * has a DENOMINATOR nobody maintains by hand.
+ *
+ * MOD_REACH.md's inventory of dispatch switches was written by reading the
+ * code, and a hand-written inventory only ever gets smaller: a switch converted
+ * to a registry gets its row updated, a switch ADDED gets no row at all and the
+ * list silently stops being a census. This makes the list checkable - every
+ * switch of >= THRESHOLD cases must appear in switch-census.json with a verdict,
+ * and a new or resized one fails the test until somebody adjudicates it.
+ *
+ * Deliberately syntactic and deliberately crude: it counts `case` labels
+ * between braces, and it does not know what a switch dispatches ON. That is the
+ * point - a tool that tried to be clever about which switches "matter" would be
+ * a tool that could decide a new one does not.
+ *
+ *   node tools/switch-census.mjs           # report, exit 1 on drift
+ *   node tools/switch-census.mjs --update  # rewrite the manifest
+ */
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Switches smaller than this are control flow, not a dispatch table. */
+const THRESHOLD = 8;
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const manifestPath = join(root, "tools", "switch-census.json");
+
+/** Every .ts under packages/<pkg>/src, excluding tests and generated output. */
+function sources() {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        if (entry === "node_modules" || entry === "dist" || entry === "generated") continue;
+        walk(full);
+        continue;
+      }
+      if (!entry.endsWith(".ts") || entry.endsWith(".d.ts")) continue;
+      if (entry.includes(".test.") || entry.includes(".fixtures.")) continue;
+      out.push(full);
+    }
+  };
+  const packages = join(root, "packages");
+  for (const pkg of readdirSync(packages)) {
+    const src = join(packages, pkg, "src");
+    try {
+      if (statSync(src).isDirectory()) walk(src);
+    } catch {
+      /* a package with no src/ (content) */
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * Find `switch (...) {` and count the `case` labels in its block, tracking
+ * brace depth so a nested switch is counted separately rather than folded into
+ * its parent. Strings and comments are skipped first, crudely but adequately -
+ * a `case` inside a string literal would otherwise inflate a count.
+ */
+function switchesIn(text) {
+  const stripped = text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/\/\/[^\n]*/g, (m) => " ".repeat(m.length))
+    .replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, (m) => m.replace(/[^\n]/g, " "));
+
+  const found = [];
+  const re = /\bswitch\s*\(/g;
+  let m;
+  while ((m = re.exec(stripped)) !== null) {
+    /* Walk to the opening brace of the block. */
+    let i = m.index + m[0].length;
+    let paren = 1;
+    while (i < stripped.length && paren > 0) {
+      if (stripped[i] === "(") paren++;
+      else if (stripped[i] === ")") paren--;
+      i++;
+    }
+    while (i < stripped.length && stripped[i] !== "{") i++;
+    if (i >= stripped.length) continue;
+
+    let depth = 0;
+    let cases = 0;
+    let hasDefault = false;
+    const start = i;
+    for (; i < stripped.length; i++) {
+      const ch = stripped[i];
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) break;
+      } else if (depth === 1 && stripped.startsWith("case ", i)) cases++;
+      else if (depth === 1 && stripped.startsWith("default:", i)) hasDefault = true;
+    }
+    const line = stripped.slice(0, start).split("\n").length;
+    found.push({ line, cases, hasDefault });
+  }
+  return found;
+}
+
+function census() {
+  const rows = [];
+  for (const file of sources()) {
+    const text = readFileSync(file, "utf8");
+    for (const s of switchesIn(text)) {
+      if (s.cases < THRESHOLD) continue;
+      rows.push({
+        file: relative(root, file).split(sep).join("/"),
+        cases: s.cases,
+        hasDefault: s.hasDefault,
+      });
+    }
+  }
+  /* Line numbers are deliberately NOT recorded: they churn on every edit and a
+   * manifest that churns is a manifest nobody reads. File + case count is
+   * enough to notice a switch appearing, growing or shrinking. */
+  return rows.sort((a, b) => b.cases - a.cases || a.file.localeCompare(b.file));
+}
+
+const rows = census();
+
+if (process.argv.includes("--update")) {
+  let existing = {};
+  try {
+    const prior = JSON.parse(readFileSync(manifestPath, "utf8"));
+    for (const r of prior.switches ?? []) existing[`${r.file}|${String(r.cases)}`] = r.verdict;
+  } catch {
+    /* first run */
+  }
+  const out = {
+    threshold: THRESHOLD,
+    note: "Generated by tools/switch-census.mjs. `verdict` is written by hand: what a mod can do about this switch. A new or resized row arrives as UNADJUDICATED.",
+    switches: rows.map((r) => ({
+      ...r,
+      verdict: existing[`${r.file}|${String(r.cases)}`] ?? "UNADJUDICATED",
+    })),
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(out, null, 2)}\n`);
+  console.log(`switch-census: recorded ${String(rows.length)} switches of >= ${String(THRESHOLD)} cases`);
+} else {
+  console.log(`switch-census: ${String(rows.length)} switches of >= ${String(THRESHOLD)} cases`);
+  for (const r of rows) console.log(`  ${String(r.cases).padStart(4)}  ${r.file}`);
+}
