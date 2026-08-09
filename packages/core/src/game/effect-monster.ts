@@ -13,10 +13,16 @@
  * All the primitives they need are already ported: monster iteration and
  * removal (game/context.ts monsterMax / deleteMonster), waking (mon/take-hit.ts
  * monsterWake), the uniqueness test (mon/predicate.ts monsterIsUnique) and the
- * shared player-damage primitive (player/take-hit.ts). The banish symbol prompt
- * (get_com) is an injected chooser on the game env; absent, EF_BANISH aborts,
- * mirroring a cancelled prompt. The arena-level guard is omitted (arenas are
- * not modelled).
+ * shared player-damage primitive (player/take-hit.ts).
+ *
+ * The banish symbol prompt (get_com) is the port's standard prompt seam: the
+ * shell probes the built chain with banishSymbolRequest (below, no RNG), asks
+ * for the glyph, and rides the answer on the command as args.tgtsymbol; the
+ * command sets state.banishTarget for the run and clears it after. The
+ * injectable env.banishSymbol still wins when a mod supplies one. Until
+ * 2026-08-09 the seam had NO producer anywhere, so EF_BANISH returned false
+ * every time and the Banishment spell, both Banishment scrolls and the artifact
+ * activation all silently did nothing.
  */
 
 import { EF, MON_TMD, TMD } from "../generated/index.js";
@@ -104,7 +110,12 @@ const handleBANISH: EffectHandler = (ctx) => {
     return true;
   }
 
-  const typ = env.banishSymbol ? env.banishSymbol() : null;
+  /* get_com (effect-handler-general.c:2352). The seam stays injectable so a
+   * mod can answer the prompt its own way; core's default reads the glyph the
+   * shell pre-resolved onto the command (state.banishTarget), which is how a
+   * blocking prompt is spelled in a port that cannot block mid-turn. Neither
+   * present means nothing was chosen - the upstream cancel path. */
+  const typ = env.banishSymbol ? env.banishSymbol() : (env.state.banishTarget ?? null);
   if (typ === null) return false;
 
   const { state } = env;
@@ -317,3 +328,29 @@ export function registerMonsterHandlers(registry: EffectRegistry): void {
 export const MONSTER_HANDLER_CODES: readonly number[] = [
   ...MONSTER_HANDLERS.keys(),
 ];
+
+/** get_com's prompt for EF_BANISH (effect-handler-general.c:2352), verbatim. */
+export const BANISH_PROMPT = "Choose a monster race (by symbol) to banish: ";
+
+/**
+ * banishSymbolRequest (the RNG-free shell probe, the sibling of
+ * effect-item.ts itemTargetRequest): walk a built effect chain and return
+ * EF_BANISH's get_com prompt when the chain will ask for a monster glyph, else
+ * null. The shell asks BEFORE running the effect and rides the answer on the
+ * command as args.tgtsymbol, so the effect runs EXACTLY ONCE and the RNG draw
+ * order is upstream's; the banishSymbol seam then just reads the preset.
+ *
+ * Returns null on an arena level, because upstream's arena guard precedes the
+ * prompt (L2345-2349) - there the effect says "Nothing happens." and succeeds,
+ * so asking would be a prompt upstream never shows.
+ */
+export function banishSymbolRequest(
+  chain: import("../effects/effect.js").Effect | null,
+  state: GameState,
+): string | null {
+  if (state.arenaLevel) return null;
+  for (let e = chain; e; e = e.next) {
+    if (e.index === EF.BANISH) return BANISH_PROMPT;
+  }
+  return null;
+}

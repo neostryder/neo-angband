@@ -21,6 +21,48 @@ node parity/tools/deferral-report.mjs             # regenerate the appendix belo
 node parity/tools/ledger-deferred-items.mjs       # the second tranche (see below)
 ```
 
+## Addendum, 2026-08-09: a class of gap this census cannot see
+
+Every row below starts from a **note** — a comment, a ledger `deferred:` entry —
+and asks whether it is still true. That finds stale excuses. It cannot find a
+seam that was declared, documented, consumed by the engine and **never written
+by the production wiring**, because such a seam has no note: it reads as
+finished from every angle except running it.
+
+Measured with a producer-form sweep over all non-test TypeScript in
+`core` / `web` / `cli` / `mcp` (both scripts are on task #160): for each optional
+member of every `*Deps` / `*Env` / `*Hooks` / `*Callbacks` / `*Ports` interface —
+85 of them — does *any* producer form exist anywhere? A literal entry, a
+mutation, a shorthand. **21 interfaces carry an optional that nothing in the
+shipped game supplies.** Closed so far:
+
+- **`GameEffectEnv.banishSymbol`.** `EF_BANISH` returned `false` on every real
+  cast, so the Banishment spell (`class.txt:429`), the Scroll (`object.txt:2776`)
+  and Staff (`object.txt:4364`) of Banishment and the artifact activation all
+  silently did nothing. The ledger called the absent seam "mirroring a cancelled
+  prompt" — an excuse that ships a dead spell.
+- **Nine of `TeleportEnv`'s sixteen members.** Dimension Door returned `false`
+  every time; the OF_NO_TELEPORT curse never blocked a teleport and its rune was
+  never learned; a teleport could land the player in lava; nexus resistance never
+  foiled a hostile teleport-level; `force_descend` targeted the current depth
+  instead of the deepest reached; the dungeon bottom was hardcoded to 128. Each
+  of these was deferred on a subsystem — `#19` monster spells, `#21` traps, `#23`
+  level change, `#24` targeting — that had **already shipped**.
+- **`TeleportEnv.targetMonster`** is no longer a dep. `monsterTargetMonster` has
+  been exported from `game/effect-mon-origin.ts` for a long time and three other
+  effect modules call it directly; the teleport handlers were the ones left
+  behind, so a monster teleporting the monster it was aiming at teleported
+  *itself*.
+
+Both fixes are guarded by tests written as the **consumer** — a real game, the
+real command, the observable outcome — with the control run recorded:
+`session/banish-symbol-wiring.test.ts` and `session/teleport-env-wiring.test.ts`.
+Removing a supply makes them fail; that was checked, not assumed.
+
+The rest of the 21 are triaged on #160 and are not yet closed. The lesson for
+this document: **"is the note still true" and "does the seam have a producer" are
+two different questions, and only the first one has ever been asked here.**
+
 ## The headline
 
 **141 of the 367 notes were describing a state of the code that no longer held,

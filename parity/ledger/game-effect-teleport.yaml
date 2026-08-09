@@ -52,8 +52,10 @@ notes: >-
   The current_score seed uses the chunk's own dimensions in place of
   z_info->dungeon_wid / _hgt: it only needs to exceed any achievable score, which
   both bounds satisfy identically, so the vault-avoidance reset behaves the same.
-  Everything that touches an unported subsystem is reached through the injected
-  TeleportEnv (env.teleport) with inert defaults.
+  Everything outside this module is reached through the injected TeleportEnv
+  (env.teleport), and session/game.ts wireGame supplies EVERY member of it.
+  The per-field "default" in the interface describes what a worldless harness
+  gets when it omits one, not what the shipped game does.
 
   The player slices are exported for callers that dispatch through
   effect_simple (project-player.c's GRAVITY and NEXUS handlers):
@@ -62,22 +64,52 @@ notes: >-
   teleportPlayerLevel (the up/down decision, shared with
   handleTELEPORT_LEVEL).
 deferred:
-  - player_handle_post_move / handle_stuff: the FOV / light / target refresh
-    after a teleport is the injected onPlayerPostMove / onMonsterPostMove hook
-    (the game-loop layer wires update_view, as it already does for movement).
-  - The OF_NO_TELEPORT curse and its equip_learn_flag: injected as
-    hasNoTeleport / onLearnNoTeleport (object flags on the player are
-    calc_bonuses / gear state, #13 rune learning).
-  - monster_target_monster (the monster-vs-monster targetMonster) and the
-    Dimension Door aim prompt (getAimTarget): monster spells (#19) and targeting
-    (#24); target_able / target_set_monster / target_set_location clears are the
-    same targeting subsystem.
-  - dungeon_get_next_level / dungeon_change_level and is_quest / birth_force_descend
-    for TELEPORT_LEVEL: level change and quests (#23); injected as getNextLevel /
-    changeLevel / isQuest / forceDescend / maxPlayerDepth / maxDepth.
-  - The trap / glyph-ward / damaging-terrain / web destination predicates
-    (square_isplayertrap / _iswarded / _isdamaging / _iswebbed): traps (#21) and
-    damaging terrain; injected predicates that default to absent.
+  - "NOT deferred any more, and the five rows this replaces were the worst kind
+    of excuse: each named a blocker (#19 monster spells, #21 traps, #23 level
+    change, #24 targeting) that had SHIPPED, and behind each one sat a
+    TeleportEnv field with no producer anywhere in the live game. Measured
+    2026-08-09 by a producer-form sweep over all production TypeScript: NINE of
+    the sixteen members were never written. Every one is now supplied by
+    session/game.ts wireGame, and session/teleport-env-wiring.test.ts drives the
+    real handlers through the real env to keep it that way. What was actually
+    broken in the shipped game, not in theory:
+
+      hasNoTeleport / onLearnNoTeleport - the OF_NO_TELEPORT curse
+        (curse.txt:326 anti-teleportation) never blocked a teleport, and its
+        rune was never learned. Now playerOfHas + equipLearnFlag.
+      isDamaging - square_isdamaging was undefined, so
+        has_teleport_destination_prereqs accepted lava as a landing grid. Now
+        state.chunk.isDamaging.
+      resistsNexus - a hostile EF_TELEPORT_LEVEL was never resisted. Now the
+        live derived elInfo[ELEM_NEXUS].resLevel.
+      maxPlayerDepth - defaulted to the CURRENT depth, so birth_force_descend
+        aimed at the level the player was standing on instead of the deepest
+        reached. Now player->max_depth.
+      maxDepth - hardcoded 128 rather than z_info->max_depth, which a mod may
+        change. Now reg.constants.maxDepth.
+      forceDescend - now the live option store (a birth option, so read, not
+        captured).
+      getAimTarget - Dimension Door (class.txt:396) returned false EVERY time.
+        Now resolveEffectAim over the direction the shell pre-asks and rides on
+        the command as args.tgtdir, which is how a port that cannot block
+        mid-turn spells get_aim_dir.
+      onMonsterPostMove - no handle_stuff after a monster hop. Now updateFov.
+
+    The three player reads are getters, not values: the env is built once per
+    game and shared by reference, so a captured boolean would answer for the
+    character as they were at wiring time."
+  - "monster_target_monster is no longer a dep at all. teleportTargetMonster
+    calls game/effect-mon-origin.ts monsterTargetMonster directly, as
+    effect-attack.ts, effect-general.ts and effect-terrain.ts already did;
+    TeleportEnv.targetMonster survives only as an explicit override. Until then
+    a monster teleporting the monster it was aiming at teleported ITSELF, and
+    EF_TELEPORT_LEVEL's \"the target is simply gone\" arm was unreachable."
+  - is_quest / dungeon_get_next_level / dungeon_change_level for TELEPORT_LEVEL
+    are supplied (getNextLevel / changeLevel / isQuest) - the quest system (#23)
+    landed and these are its real implementations.
+  - The trap / glyph-ward / web destination predicates (square_isplayertrap /
+    _iswarded / _iswebbed) come from trapPredicates and are supplied whenever
+    the trap registry is bound, which is every real game.
   - Arena levels and decoys (cave_find_decoy / square_destroy_decoy) use their
     live GameState counterparts.
   - The SOUND is no longer deferred. MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL

@@ -905,6 +905,31 @@ export interface GameState {
    */
   curseTarget?: number | null;
   /**
+   * The preset monster glyph for EF_BANISH's get_com prompt ("Choose a monster
+   * race (by symbol) to banish: ", effect-handler-general.c:2352). Set by the
+   * object / spell command from cmd.args.tgtsymbol just before effect_do, read
+   * by the banishSymbol seam, and cleared after the run. Absent means the shell
+   * did not pre-resolve a pick, so the handler aborts - the upstream cancel
+   * path. The shell learns to ask by probing the chain with banishSymbolRequest
+   * (game/effect-monster.ts), which draws no RNG.
+   */
+  banishTarget?: string | null;
+  /**
+   * The preset keypad direction for a get_aim_dir asked from INSIDE an effect
+   * handler, rather than by the command before it - today that is
+   * EF_TELEPORT_TO's Dimension Door branch
+   * (effect-handler-general.c:2770-2778). Set from cmd.args.tgtdir just before
+   * effect_do, resolved by the getAimTarget seam (session/game.ts
+   * resolveEffectAim: 5 means "the current target", anything else means the
+   * adjacent grid in that direction), and cleared after the run. Absent, the
+   * handler aborts - upstream's `if (!get_aim_dir(&dir)) return false`.
+   *
+   * Distinct from cmd.args.dir, which is the command's OWN get_aim_dir and is
+   * asked for every effect flagged `aim` in list-effects.h. TELEPORT_TO is not
+   * one of those, which is exactly why it needs its own preset.
+   */
+  effectAimDir?: number | null;
+  /**
    * The world-event message sink (the recall yank, the deep-descent floor
    * opening). Presentation (#25) installs it; absent, the messages drop.
    */

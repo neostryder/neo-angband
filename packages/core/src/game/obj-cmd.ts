@@ -1288,6 +1288,10 @@ export function useAux(
     tgtItem?: ItemTargetRef;
     /** cmd_get_arg_choice "tgtcurse": the REMOVE_CURSE curse index. */
     tgtCurse?: number;
+    /** cmd_get_arg_choice "tgtsymbol": the EF_BANISH get_com monster glyph. */
+    tgtSymbol?: string;
+    /** cmd_get_arg_direction "tgtdir": a get_aim_dir asked by a HANDLER. */
+    tgtDir?: number;
   } = {},
 ): UseResult {
   const env = deps.env ?? {};
@@ -1423,6 +1427,10 @@ export function useAux(
     state.itemRequest = null;
     state.itemTarget = opts.tgtItem ?? null;
     state.curseTarget = opts.tgtCurse ?? null;
+    /* get_com "tgtsymbol": EF_BANISH's monster glyph, same scope. */
+    state.banishTarget = opts.tgtSymbol ?? null;
+    /* get_aim_dir "tgtdir": a handler's own aim prompt, same scope. */
+    state.effectAimDir = opts.tgtDir ?? null;
     const used = deps.registry.effectDo(chain, ctx, {
       origin: sourcePlayer(),
       obj,
@@ -1434,6 +1442,8 @@ export function useAux(
     });
     state.itemTarget = null;
     state.curseTarget = null;
+    state.banishTarget = null;
+    state.effectAimDir = null;
     targetRelease(state);
 
     if (!used && deductBefore) {
@@ -1600,12 +1610,16 @@ function useCommand(
     const dir = commandDir(cmd);
     const tgtItem = commandTargetItem(cmd);
     const tgtCurse = cmd.args?.["tgtcurse"];
+    const tgtSymbol = cmd.args?.["tgtsymbol"];
+    const tgtDir = cmd.args?.["tgtdir"];
     const result = useAux(state, found.obj, use, deps, {
       fromFloor: found.fromFloor,
       ...(found.handle !== undefined ? { handle: found.handle } : {}),
       ...(dir !== undefined ? { dir } : {}),
       ...(tgtItem ? { tgtItem } : {}),
       ...(typeof tgtCurse === "number" ? { tgtCurse } : {}),
+      ...(typeof tgtSymbol === "string" ? { tgtSymbol } : {}),
+      ...(typeof tgtDir === "number" ? { tgtDir } : {}),
     });
     /* "Autoinscribe if we are guaranteed to still have any"
      * (cmd-obj.c:717-719): `if (!none_left && !from_floor)`. none_left is

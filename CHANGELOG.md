@@ -284,6 +284,29 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Fixed
 
+- **Banishment did nothing.** `EF_BANISH` reads a chooser for the monster glyph
+  to banish, and nothing in the shipped game ever supplied it, so the handler
+  returned "cancelled" on every cast: the Banishment spell, the Scroll and Staff
+  of Banishment, and the artifact activation all consumed nothing, killed
+  nothing, and said nothing. The shell now asks upstream's own prompt - *Choose a
+  monster race (by symbol) to banish:* - before the effect runs, so the effect
+  still executes exactly once and the random-number order stays faithful.
+
+- **Dimension Door did nothing**, for the same reason: the spell asks for a
+  direction from inside the effect rather than from the command, and that prompt
+  had no producer. It now asks, and teleports you where you point.
+
+- **Eight more teleport behaviours that were silently switched off.** The
+  teleport code reaches the rest of the game through one environment object, and
+  nine of its sixteen members were never filled in - each one deferred, in a
+  comment, on a subsystem that had since been built. As a result: a
+  Teleportation-forbidding curse never blocked a teleport and its rune was never
+  learned; a teleport could drop you into lava; nexus resistance never foiled a
+  hostile teleport-level; *force descend* aimed at the level you were standing on
+  instead of the deepest you had reached; the bottom of the dungeon was a
+  hardcoded 128 rather than the value the content pack ships; and a monster
+  teleporting the monster it was aiming at teleported itself instead.
+
 - **Adding a record to `object`, `ego_item` or `vault` silently deleted the base
   game's copy of that file.** See the first entry under **Added**: composition
   now keys by `recordRefKeys` and all three merge per record. Two things remain
