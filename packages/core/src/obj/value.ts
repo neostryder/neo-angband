@@ -33,6 +33,8 @@ import {
 } from "./object.js";
 import type { GameObject } from "./object.js";
 import { objectPower } from "./power.js";
+import { seedTval, tvalRegistry } from "./tval-registry.js";
+import type { TvalValueBaseHandler } from "./tval-registry.js";
 
 /**
  * AMMO_RESCALER (obj-power.h): a stack of this many pieces of ammo (or plain
@@ -49,27 +51,31 @@ export function objectValueBase(obj: GameObject, aware: boolean): number {
   /* Use template cost for aware objects. */
   if (aware) return obj.kind.cost;
 
-  /* Analyze the type. */
-  switch (obj.tval) {
-    case TV.FOOD:
-    case TV.MUSHROOM:
-      return 5;
-    case TV.POTION:
-    case TV.SCROLL:
-      return 20;
-    case TV.RING:
-    case TV.AMULET:
-      return 45;
-    case TV.WAND:
-      return 50;
-    case TV.STAFF:
-      return 70;
-    case TV.ROD:
-      return 90;
-    default:
-      return 0;
-  }
+  /* Analyze the type. MOD_REACH gap 28: one lookup in
+   * `TvalRegistry.valueBase`. Upstream's default is 0, which is why an item
+   * class with no arm is shown as WORTHLESS before its flavour is known -
+   * registering one is how a mod's unidentified potion stops looking like
+   * litter. */
+  return tvalRegistry().valueBase.handlerFor(obj.tval)?.(obj.kind) ?? 0;
 }
+
+/*
+ * Core's own arms, lifted unchanged. Registered from this module because this
+ * module is also the only one that reads the table.
+ */
+seedTval((reg) => {
+  const flat =
+    (n: number): TvalValueBaseHandler =>
+    () =>
+      n;
+
+  for (const tval of [TV.FOOD, TV.MUSHROOM]) reg.valueBase.set(tval, flat(5));
+  for (const tval of [TV.POTION, TV.SCROLL]) reg.valueBase.set(tval, flat(20));
+  for (const tval of [TV.RING, TV.AMULET]) reg.valueBase.set(tval, flat(45));
+  reg.valueBase.set(TV.WAND, flat(50));
+  reg.valueBase.set(TV.STAFF, flat(70));
+  reg.valueBase.set(TV.ROD, flat(90));
+});
 
 /**
  * object_value_real (obj-power.c L1099): the real price of a known (or partly

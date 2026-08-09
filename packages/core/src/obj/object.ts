@@ -31,6 +31,7 @@ import { ELEM, OF, TV } from "../generated/index.js";
 import { addGuardi16 } from "../guard.js";
 import type { Loc } from "../loc.js";
 import type { RandomValue, Rng } from "../rng.js";
+import { seedTval, tvalInClass } from "./tval-registry.js";
 import type {
   Activation,
   Artifact,
@@ -58,93 +59,80 @@ import {
 /* ------------------------------------------------------------------ */
 
 export function tvalIsStaff(tval: number): boolean {
-  return tval === TV.STAFF;
+  return tvalInClass("tvalIsStaff", tval);
 }
 export function tvalIsWand(tval: number): boolean {
-  return tval === TV.WAND;
+  return tvalInClass("tvalIsWand", tval);
 }
 export function tvalIsRod(tval: number): boolean {
-  return tval === TV.ROD;
+  return tvalInClass("tvalIsRod", tval);
 }
 export function tvalIsPotion(tval: number): boolean {
-  return tval === TV.POTION;
+  return tvalInClass("tvalIsPotion", tval);
 }
 export function tvalIsScroll(tval: number): boolean {
-  return tval === TV.SCROLL;
+  return tvalInClass("tvalIsScroll", tval);
 }
 export function tvalIsFood(tval: number): boolean {
-  return tval === TV.FOOD;
+  return tvalInClass("tvalIsFood", tval);
 }
 export function tvalIsMushroom(tval: number): boolean {
-  return tval === TV.MUSHROOM;
+  return tvalInClass("tvalIsMushroom", tval);
 }
 export function tvalIsLight(tval: number): boolean {
-  return tval === TV.LIGHT;
+  return tvalInClass("tvalIsLight", tval);
 }
 export function tvalIsRing(tval: number): boolean {
-  return tval === TV.RING;
+  return tvalInClass("tvalIsRing", tval);
 }
 export function tvalIsChest(tval: number): boolean {
-  return tval === TV.CHEST;
+  return tvalInClass("tvalIsChest", tval);
 }
 export function tvalIsFuel(tval: number): boolean {
-  return tval === TV.FLASK;
+  return tvalInClass("tvalIsFuel", tval);
 }
 export function tvalIsMoney(tval: number): boolean {
-  return tval === TV.GOLD;
+  return tvalInClass("tvalIsMoney", tval);
 }
 export function tvalIsDigger(tval: number): boolean {
-  return tval === TV.DIGGING;
+  return tvalInClass("tvalIsDigger", tval);
 }
 export function tvalCanHaveNourishment(tval: number): boolean {
-  return tval === TV.FOOD || tval === TV.POTION || tval === TV.MUSHROOM;
+  return tvalInClass("tvalCanHaveNourishment", tval);
 }
 export function tvalCanHaveCharges(tval: number): boolean {
-  return tval === TV.STAFF || tval === TV.WAND;
+  return tvalInClass("tvalCanHaveCharges", tval);
 }
 export function tvalCanHaveTimeout(tval: number): boolean {
-  return tval === TV.ROD;
+  return tvalInClass("tvalCanHaveTimeout", tval);
 }
 export function tvalIsBodyArmor(tval: number): boolean {
-  return (
-    tval === TV.SOFT_ARMOR || tval === TV.HARD_ARMOR || tval === TV.DRAG_ARMOR
-  );
+  return tvalInClass("tvalIsBodyArmor", tval);
 }
 export function tvalIsHeadArmor(tval: number): boolean {
-  return tval === TV.HELM || tval === TV.CROWN;
+  return tvalInClass("tvalIsHeadArmor", tval);
 }
 export function tvalIsAmmo(tval: number): boolean {
-  return tval === TV.SHOT || tval === TV.ARROW || tval === TV.BOLT;
+  return tvalInClass("tvalIsAmmo", tval);
 }
 export function tvalIsSharpMissile(tval: number): boolean {
-  return tval === TV.ARROW || tval === TV.BOLT;
+  return tvalInClass("tvalIsSharpMissile", tval);
 }
 /** tval_is_bolt (obj-tval.c L165): EF_BRAND_BOLTS' item_tester. */
 export function tvalIsBolt(tval: number): boolean {
-  return tval === TV.BOLT;
+  return tvalInClass("tvalIsBolt", tval);
 }
 export function tvalIsLauncher(tval: number): boolean {
-  return tval === TV.BOW;
+  return tvalInClass("tvalIsLauncher", tval);
 }
 export function tvalIsUseable(tval: number): boolean {
-  switch (tval) {
-    case TV.ROD:
-    case TV.WAND:
-    case TV.STAFF:
-    case TV.SCROLL:
-    case TV.POTION:
-    case TV.FOOD:
-    case TV.MUSHROOM:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalIsUseable", tval);
 }
 export function tvalCanHaveFailure(tval: number): boolean {
-  return tval === TV.STAFF || tval === TV.WAND || tval === TV.ROD;
+  return tvalInClass("tvalCanHaveFailure", tval);
 }
 export function tvalIsJewelry(tval: number): boolean {
-  return tval === TV.RING || tval === TV.AMULET;
+  return tvalInClass("tvalIsJewelry", tval);
 }
 /**
  * tval_has_variable_power (obj-tval.c L256): items whose value/price depends on
@@ -152,127 +140,31 @@ export function tvalIsJewelry(tval: number): boolean {
  * so object_value_real prices them by object_power rather than a flat cost.
  */
 export function tvalHasVariablePower(tval: number): boolean {
-  switch (tval) {
-    case TV.SHOT:
-    case TV.ARROW:
-    case TV.BOLT:
-    case TV.BOW:
-    case TV.DIGGING:
-    case TV.HAFTED:
-    case TV.POLEARM:
-    case TV.SWORD:
-    case TV.BOOTS:
-    case TV.GLOVES:
-    case TV.HELM:
-    case TV.CROWN:
-    case TV.SHIELD:
-    case TV.CLOAK:
-    case TV.SOFT_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.DRAG_ARMOR:
-    case TV.LIGHT:
-    case TV.AMULET:
-    case TV.RING:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalHasVariablePower", tval);
 }
 export function tvalIsWeapon(tval: number): boolean {
-  switch (tval) {
-    case TV.SWORD:
-    case TV.HAFTED:
-    case TV.POLEARM:
-    case TV.DIGGING:
-    case TV.BOW:
-    case TV.BOLT:
-    case TV.ARROW:
-    case TV.SHOT:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalIsWeapon", tval);
 }
 export function tvalIsArmor(tval: number): boolean {
-  switch (tval) {
-    case TV.DRAG_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.SOFT_ARMOR:
-    case TV.SHIELD:
-    case TV.CLOAK:
-    case TV.CROWN:
-    case TV.HELM:
-    case TV.BOOTS:
-    case TV.GLOVES:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalIsArmor", tval);
 }
 export function tvalIsMeleeWeapon(tval: number): boolean {
-  return (
-    tval === TV.SWORD ||
-    tval === TV.HAFTED ||
-    tval === TV.POLEARM ||
-    tval === TV.DIGGING
-  );
+  return tvalInClass("tvalIsMeleeWeapon", tval);
 }
 export function tvalIsWearable(tval: number): boolean {
-  switch (tval) {
-    case TV.BOW:
-    case TV.DIGGING:
-    case TV.HAFTED:
-    case TV.POLEARM:
-    case TV.SWORD:
-    case TV.BOOTS:
-    case TV.GLOVES:
-    case TV.HELM:
-    case TV.CROWN:
-    case TV.SHIELD:
-    case TV.CLOAK:
-    case TV.SOFT_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.DRAG_ARMOR:
-    case TV.LIGHT:
-    case TV.AMULET:
-    case TV.RING:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalIsWearable", tval);
 }
 export function tvalIsEdible(tval: number): boolean {
-  return tval === TV.FOOD || tval === TV.MUSHROOM;
+  return tvalInClass("tvalIsEdible", tval);
 }
 export function tvalCanHaveFlavor(tval: number): boolean {
-  switch (tval) {
-    case TV.AMULET:
-    case TV.RING:
-    case TV.STAFF:
-    case TV.WAND:
-    case TV.ROD:
-    case TV.POTION:
-    case TV.MUSHROOM:
-    case TV.SCROLL:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalCanHaveFlavor", tval);
 }
 export function tvalIsBook(tval: number): boolean {
-  switch (tval) {
-    case TV.MAGIC_BOOK:
-    case TV.PRAYER_BOOK:
-    case TV.NATURE_BOOK:
-    case TV.SHADOW_BOOK:
-    case TV.OTHER_BOOK:
-      return true;
-    default:
-      return false;
-  }
+  return tvalInClass("tvalIsBook", tval);
 }
 export function tvalIsZapper(tval: number): boolean {
-  return tval === TV.WAND || tval === TV.STAFF;
+  return tvalInClass("tvalIsZapper", tval);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1413,3 +1305,233 @@ export function distributeCharges(
     }
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Core's own class arms (MOD_REACH gap 28)                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The thirty-four `obj-tval.c` predicates, lifted UNCHANGED into the registry
+ * and keyed on their own exported names. The functions above are now one
+ * lookup each, so there is exactly one place that decides what an item class
+ * is and a mod can reach it.
+ *
+ * Registered from this module rather than from a central boot step, because
+ * this module is also the only one that READS the table: "object.ts is loaded"
+ * and "core's class arms are installed" cannot come apart. The failure mode if
+ * they could is silent and total - every predicate answers false and nothing
+ * in the game is a weapon.
+ */
+seedTval((reg) => {
+    reg.classes.set("tvalIsStaff", (tval) => {
+    return tval === TV.STAFF;
+    });
+    reg.classes.set("tvalIsWand", (tval) => {
+    return tval === TV.WAND;
+    });
+    reg.classes.set("tvalIsRod", (tval) => {
+    return tval === TV.ROD;
+    });
+    reg.classes.set("tvalIsPotion", (tval) => {
+    return tval === TV.POTION;
+    });
+    reg.classes.set("tvalIsScroll", (tval) => {
+    return tval === TV.SCROLL;
+    });
+    reg.classes.set("tvalIsFood", (tval) => {
+    return tval === TV.FOOD;
+    });
+    reg.classes.set("tvalIsMushroom", (tval) => {
+    return tval === TV.MUSHROOM;
+    });
+    reg.classes.set("tvalIsLight", (tval) => {
+    return tval === TV.LIGHT;
+    });
+    reg.classes.set("tvalIsRing", (tval) => {
+    return tval === TV.RING;
+    });
+    reg.classes.set("tvalIsChest", (tval) => {
+    return tval === TV.CHEST;
+    });
+    reg.classes.set("tvalIsFuel", (tval) => {
+    return tval === TV.FLASK;
+    });
+    reg.classes.set("tvalIsMoney", (tval) => {
+    return tval === TV.GOLD;
+    });
+    reg.classes.set("tvalIsDigger", (tval) => {
+    return tval === TV.DIGGING;
+    });
+    reg.classes.set("tvalCanHaveNourishment", (tval) => {
+    return tval === TV.FOOD || tval === TV.POTION || tval === TV.MUSHROOM;
+    });
+    reg.classes.set("tvalCanHaveCharges", (tval) => {
+    return tval === TV.STAFF || tval === TV.WAND;
+    });
+    reg.classes.set("tvalCanHaveTimeout", (tval) => {
+    return tval === TV.ROD;
+    });
+    reg.classes.set("tvalIsBodyArmor", (tval) => {
+    return (
+      tval === TV.SOFT_ARMOR || tval === TV.HARD_ARMOR || tval === TV.DRAG_ARMOR
+    );
+    });
+    reg.classes.set("tvalIsHeadArmor", (tval) => {
+    return tval === TV.HELM || tval === TV.CROWN;
+    });
+    reg.classes.set("tvalIsAmmo", (tval) => {
+    return tval === TV.SHOT || tval === TV.ARROW || tval === TV.BOLT;
+    });
+    reg.classes.set("tvalIsSharpMissile", (tval) => {
+    return tval === TV.ARROW || tval === TV.BOLT;
+    });
+    reg.classes.set("tvalIsBolt", (tval) => {
+    return tval === TV.BOLT;
+    });
+    reg.classes.set("tvalIsLauncher", (tval) => {
+    return tval === TV.BOW;
+    });
+    reg.classes.set("tvalIsUseable", (tval) => {
+    switch (tval) {
+      case TV.ROD:
+      case TV.WAND:
+      case TV.STAFF:
+      case TV.SCROLL:
+      case TV.POTION:
+      case TV.FOOD:
+      case TV.MUSHROOM:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalCanHaveFailure", (tval) => {
+    return tval === TV.STAFF || tval === TV.WAND || tval === TV.ROD;
+    });
+    reg.classes.set("tvalIsJewelry", (tval) => {
+    return tval === TV.RING || tval === TV.AMULET;
+    });
+    reg.classes.set("tvalHasVariablePower", (tval) => {
+    switch (tval) {
+      case TV.SHOT:
+      case TV.ARROW:
+      case TV.BOLT:
+      case TV.BOW:
+      case TV.DIGGING:
+      case TV.HAFTED:
+      case TV.POLEARM:
+      case TV.SWORD:
+      case TV.BOOTS:
+      case TV.GLOVES:
+      case TV.HELM:
+      case TV.CROWN:
+      case TV.SHIELD:
+      case TV.CLOAK:
+      case TV.SOFT_ARMOR:
+      case TV.HARD_ARMOR:
+      case TV.DRAG_ARMOR:
+      case TV.LIGHT:
+      case TV.AMULET:
+      case TV.RING:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsWeapon", (tval) => {
+    switch (tval) {
+      case TV.SWORD:
+      case TV.HAFTED:
+      case TV.POLEARM:
+      case TV.DIGGING:
+      case TV.BOW:
+      case TV.BOLT:
+      case TV.ARROW:
+      case TV.SHOT:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsArmor", (tval) => {
+    switch (tval) {
+      case TV.DRAG_ARMOR:
+      case TV.HARD_ARMOR:
+      case TV.SOFT_ARMOR:
+      case TV.SHIELD:
+      case TV.CLOAK:
+      case TV.CROWN:
+      case TV.HELM:
+      case TV.BOOTS:
+      case TV.GLOVES:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsMeleeWeapon", (tval) => {
+    return (
+      tval === TV.SWORD ||
+      tval === TV.HAFTED ||
+      tval === TV.POLEARM ||
+      tval === TV.DIGGING
+    );
+    });
+    reg.classes.set("tvalIsWearable", (tval) => {
+    switch (tval) {
+      case TV.BOW:
+      case TV.DIGGING:
+      case TV.HAFTED:
+      case TV.POLEARM:
+      case TV.SWORD:
+      case TV.BOOTS:
+      case TV.GLOVES:
+      case TV.HELM:
+      case TV.CROWN:
+      case TV.SHIELD:
+      case TV.CLOAK:
+      case TV.SOFT_ARMOR:
+      case TV.HARD_ARMOR:
+      case TV.DRAG_ARMOR:
+      case TV.LIGHT:
+      case TV.AMULET:
+      case TV.RING:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsEdible", (tval) => {
+    return tval === TV.FOOD || tval === TV.MUSHROOM;
+    });
+    reg.classes.set("tvalCanHaveFlavor", (tval) => {
+    switch (tval) {
+      case TV.AMULET:
+      case TV.RING:
+      case TV.STAFF:
+      case TV.WAND:
+      case TV.ROD:
+      case TV.POTION:
+      case TV.MUSHROOM:
+      case TV.SCROLL:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsBook", (tval) => {
+    switch (tval) {
+      case TV.MAGIC_BOOK:
+      case TV.PRAYER_BOOK:
+      case TV.NATURE_BOOK:
+      case TV.SHADOW_BOOK:
+      case TV.OTHER_BOOK:
+        return true;
+      default:
+        return false;
+    }
+    });
+    reg.classes.set("tvalIsZapper", (tval) => {
+    return tval === TV.WAND || tval === TV.STAFF;
+    });
+});

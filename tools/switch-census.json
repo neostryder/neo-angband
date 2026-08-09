@@ -30,7 +30,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 20,
       "hasDefault": true,
-      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
+      "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
       "file": "packages/web/src/main.ts",
@@ -66,13 +66,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 17,
       "hasDefault": true,
-      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
-    },
-    {
-      "file": "packages/core/src/obj/make.ts",
-      "cases": 16,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - tval dispatch in object generation (new gap 28). A mod adding a tval gets no allocation behaviour. Not converted."
+      "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",
@@ -87,16 +81,16 @@
       "verdict": "UI - options menu tag routing (MOD_REACH gap 18/24)."
     },
     {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 14,
+      "hasDefault": true,
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it has grown for registry:projection, registry:glyph, registry:effect-info, registry:randart and now registry:tval."
+    },
+    {
       "file": "packages/web/src/wizard.ts",
       "cases": 14,
       "hasDefault": true,
       "verdict": "DEBUG - wizard birth-option keypresses. Same as above."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 13,
-      "hasDefault": true,
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it grew by one when registry:projection landed, and again for registry:glyph, registry:effect-info and registry:randart."
     },
     {
       "file": "packages/core/src/combat/mon-melee.ts",
@@ -150,13 +144,7 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 9,
       "hasDefault": true,
-      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
-    },
-    {
-      "file": "packages/core/src/obj/value.ts",
-      "cases": 9,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - tval dispatch in object pricing (new gap 28). Same tval blind spot, pricing side. Not converted."
+      "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
       "file": "packages/core/src/player/shape-lore.ts",
@@ -210,13 +198,13 @@
       "file": "packages/core/src/obj/object.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
+      "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
       "file": "packages/core/src/obj/object.ts",
       "cases": 8,
       "hasDefault": true,
-      "verdict": "CANDIDATE - tval CLASS MEMBERSHIP, not naming (obj-tval.c): tvalIsUseable, tvalHasVariablePower, tvalIsWeapon/Armor/Wearable, tvalCanHaveFlavor, tvalIsBook. A mod-coined tval answers false to every one of them, so its items are not weapons, not wearable, cannot be flavoured and cannot be browsed. Same blind spot as make.ts / value.ts (gap 28), one seam, not gap 15. Not converted."
+      "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
       "file": "packages/web/src/birth.ts",

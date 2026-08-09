@@ -77,6 +77,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Change how random artifacts are built - what powers they can get, and what each kind of item starts with",
         elevated: true,
       };
+    case "tval":
+      return {
+        text: "Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, and whether it has an unidentified flavour",
+        elevated: true,
+      };
     case "vocab":
       return {
         text: "Add new vocabulary - flags, stats, and other terms",

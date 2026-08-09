@@ -83,6 +83,15 @@ import {
   effectNew,
   effectInfoRegistry,
   resetEffectInfoRegistry,
+  TV,
+  kindIsGood,
+  objectValueBase,
+  tvalCanHaveFlavor,
+  tvalIsBook,
+  tvalIsWeapon,
+  tvalIsWearable,
+  tvalRegistry,
+  resetTvalRegistry,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   TerrainRecordJson,
@@ -107,6 +116,22 @@ function loadPackJson<T>(name: string): T {
 }
 function loadPackRecords<T>(name: string): T[] {
   return loadPackJson<{ records: T[] }>(name).records;
+}
+
+/** The real object kinds, for the two tval dispatches that read a kind. */
+function loadObjKinds(): { tval: number; name: string }[] {
+  return new ObjRegistry({
+    objectBase: loadPackJson("object_base"),
+    object: loadPackJson("object"),
+    egoItem: loadPackJson("ego_item"),
+    artifact: loadPackJson("artifact"),
+    curse: loadPackJson("curse"),
+    brand: loadPackJson("brand"),
+    slay: loadPackJson("slay"),
+    activation: loadPackJson("activation"),
+    objectProperty: loadPackJson("object_property"),
+    flavor: loadPackJson("flavor"),
+  } as never).kinds as never;
 }
 
 const root = mkdtempSync(join(tmpdir(), "neo-mods-"));
@@ -1909,5 +1934,148 @@ describe("a mod folder on disk reaches the random artifact registry", () => {
     const before = JSON.stringify([art.toA, art.toD, art.flags.count()]);
     addAbilityAux(reg, art, MOD_ABILITY, 100, data, new Rng(5));
     expect(JSON.stringify([art.toA, art.toD, art.flags.count()])).toBe(before);
+  });
+});
+
+/**
+ * The item-CLASS registry, from disk.
+ *
+ * WHAT THIS EXISTS TO CATCH. `object.json` has always accepted a new record, so
+ * a mod could always ship a new ITEM. Making core recognise a new item CLASS -
+ * a tval - was a different thing: thirty-four predicates in `obj-tval.c` and
+ * two dispatches elsewhere decided every property a class has, all closed, all
+ * failing by answering NO across 408 call sites. A mod's new item class was not
+ * a weapon, could not be worn, could not be flavoured, was never "good", and
+ * was worth nothing before it was identified. No error anywhere.
+ *
+ * This registers one mod-coined tval and then calls the REAL exported
+ * predicates and the REAL `kindIsGood` / `objectValueBase`, asserting on what
+ * they answer rather than on the registry or on the mod's report of itself.
+ *
+ * The controls, all run: drop `tval` from the host's targets and the register
+ * call throws "did not wire"; drop the capability and it throws at the gate;
+ * leave the tval unregistered and every question comes back no, which is the
+ * silent failure this seam removes.
+ */
+describe("a mod folder on disk reaches the item-class registry", () => {
+  /* Module-level tables: restore core's arms so one test cannot leak into the
+   * next, and so the "before" test below is measuring core rather than the
+   * previous test's registration. */
+  afterEach(() => {
+    resetTvalRegistry();
+  });
+
+  /** A tval beyond everything core defines - a mod's own. */
+  const MOD_TVAL = 200;
+
+  it("teaches core an item class it has never heard of", async () => {
+    writeMod(
+      "relicforge",
+      { capabilities: ["registry:tval"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* WRAP rather than replace. Keeping the previous predicate and
+            * OR-ing one tval into it is the difference between widening a
+            * class and guessing at everything else that was already in it -
+            * and here the "everything else" is the whole base game. */
+           for (const cls of ["tvalIsWeapon", "tvalIsWearable", "tvalCanHaveFlavor"]) {
+             const inner = host.tval.classes.handlerFor(cls);
+             host.tval.classes.set(cls, (t) => t === ${String(MOD_TVAL)} || inner(t));
+           }
+           /* And the two dispatches: good on its own merits, and worth
+            * something before it is identified. */
+           host.tval.good.set(${String(MOD_TVAL)}, () => true);
+           host.tval.valueBase.set(${String(MOD_TVAL)}, () => 175);
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "relicforge", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:tval"],
+    });
+    expect(code.problems).toEqual([]);
+
+    /* BEFORE: core answers no to everything, which is the silent failure. */
+    expect({
+      weapon: tvalIsWeapon(MOD_TVAL),
+      wearable: tvalIsWearable(MOD_TVAL),
+      flavor: tvalCanHaveFlavor(MOD_TVAL),
+    }).toEqual({ weapon: false, wearable: false, flavor: false });
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { tval: tvalRegistry() },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("relicforge"));
+
+    /* AFTER, read through the REAL exported predicates - the same functions the
+     * 408 call sites call, not the table. */
+    expect({
+      weapon: tvalIsWeapon(MOD_TVAL),
+      wearable: tvalIsWearable(MOD_TVAL),
+      flavor: tvalCanHaveFlavor(MOD_TVAL),
+    }).toEqual({ weapon: true, wearable: true, flavor: true });
+
+    /* Composed, not shadowed: core's own classes still answer as they did. */
+    expect({
+      sword: tvalIsWeapon(TV.SWORD),
+      potionFlavour: tvalCanHaveFlavor(TV.POTION),
+      swordIsBook: tvalIsBook(TV.SWORD),
+      modIsBook: tvalIsBook(MOD_TVAL),
+    }).toEqual({
+      sword: true,
+      potionFlavour: true,
+      swordIsBook: false,
+      modIsBook: false,
+    });
+
+    /* And the two dispatches, through their real entry points. */
+    const kind = {
+      ...loadObjKinds().find((k) => k.tval === TV.POTION)!,
+      tval: MOD_TVAL,
+    };
+    expect({
+      good: kindIsGood(kind as never),
+      value: objectValueBase({ tval: MOD_TVAL, kind } as never, false),
+    }).toEqual({ good: true, value: 175 });
+  });
+
+  it("without the capability the tval registry refuses at the call", async () => {
+    writeMod(
+      "trespass",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           host.tval.classes.set("tvalIsWeapon", () => true);
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "trespass", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { tval: tvalRegistry() },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("trespass"))).toThrow(
+      /registry:tval/,
+    );
+    expect(tvalIsWeapon(MOD_TVAL)).toBe(false);
   });
 });

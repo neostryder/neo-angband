@@ -47,6 +47,8 @@ import type { Aspect, Rng } from "../rng.js";
 import type { ObjRegistry } from "./bind.js";
 import type { CurseTimedFoil, GameObject } from "./object.js";
 import { pickChestTraps } from "./chest.js";
+import { seedTval, tvalRegistry } from "./tval-registry.js";
+import type { TvalGoodHandler } from "./tval-registry.js";
 import { objectValueReal } from "./value.js";
 import {
   appendObjectCurse,
@@ -205,36 +207,52 @@ interface MoneyType {
 
 /**
  * kind_is_good: whether a template is "good" (kind-level test only).
+ *
+ * MOD_REACH gap 28: one lookup in `TvalRegistry.good`, keyed on tval. The
+ * fallthrough is upstream's own - `KF_GOOD` on the record - so an item class
+ * with no arm is good exactly when its record says so, which is a real default
+ * rather than a hole.
  */
 export function kindIsGood(kind: ObjectKind): boolean {
-  switch (kind.tval) {
-    case TV.HARD_ARMOR:
-    case TV.SOFT_ARMOR:
-    case TV.DRAG_ARMOR:
-    case TV.SHIELD:
-    case TV.CLOAK:
-    case TV.BOOTS:
-    case TV.GLOVES:
-    case TV.HELM:
-    case TV.CROWN:
-      return randcalcMin(kind.toA) >= 0;
-
-    case TV.BOW:
-    case TV.SWORD:
-    case TV.HAFTED:
-    case TV.POLEARM:
-    case TV.DIGGING:
-      return randcalcMin(kind.toH) >= 0 && randcalcMin(kind.toD) >= 0;
-
-    case TV.BOLT:
-    case TV.ARROW:
-      return true;
-    default:
-      break;
-  }
+  const handler = tvalRegistry().good.handlerFor(kind.tval);
+  if (handler) return handler(kind);
 
   return kind.kindFlags.has(KF.GOOD);
 }
+
+/*
+ * Core's own arms, lifted unchanged. Registered from this module because this
+ * module is also the only one that reads the table: "make.ts is loaded" and
+ * "core's good-item arms are installed" cannot come apart.
+ *
+ * The three arms read three DIFFERENT fields - armour checks to-AC, weapons
+ * check to-hit and to-dam, ammo checks nothing - which is why the table holds a
+ * handler over the kind rather than a set of tvals.
+ */
+seedTval((reg) => {
+  const armour: TvalGoodHandler = (kind) => randcalcMin(kind.toA) >= 0;
+  const weapon: TvalGoodHandler = (kind) =>
+    randcalcMin(kind.toH) >= 0 && randcalcMin(kind.toD) >= 0;
+  const always: TvalGoodHandler = () => true;
+
+  for (const tval of [
+    TV.HARD_ARMOR,
+    TV.SOFT_ARMOR,
+    TV.DRAG_ARMOR,
+    TV.SHIELD,
+    TV.CLOAK,
+    TV.BOOTS,
+    TV.GLOVES,
+    TV.HELM,
+    TV.CROWN,
+  ])
+    reg.good.set(tval, armour);
+
+  for (const tval of [TV.BOW, TV.SWORD, TV.HAFTED, TV.POLEARM, TV.DIGGING])
+    reg.good.set(tval, weapon);
+
+  for (const tval of [TV.BOLT, TV.ARROW]) reg.good.set(tval, always);
+});
 
 /**
  * The allocation state built by init_obj_make: cumulative kind
