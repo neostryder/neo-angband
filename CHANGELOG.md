@@ -46,6 +46,28 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **Random artifacts got the evidence a refactor needs, before the refactor.**
+  The four switches that build every random artifact - the 87-case
+  `add_ability_aux`, the item-class `artifact_prep`, the item-class census that
+  feeds the frequency table, and the activation-redundancy test - are the
+  largest dispatch left in the tree, and they are next to become registries
+  (MOD_REACH gap 14). What defended them until now was a determinism test that
+  runs `do_randart` twice in one process and compares, which is a real property
+  and *cannot fail across a refactor*: a change that moves every artifact moves
+  both runs identically. `randart-vectors.json` records **834 vectors** on disk
+  instead - three whole artifact sets field by field, every `ART_IDX` ability at
+  two seeds and two target powers, every item class through `artifact_prep`, and
+  the frequency census - each per-arm vector carrying an **RNG probe**, because
+  a changed draw count is invisible in the artifact and diverges everything
+  after it. Two holes were found and closed while recording: the artifact
+  fingerprint serialised the flag set as `"[object Object]"` in all 644 rows of
+  the first take, so an ability that stopped granting its flag would have moved
+  nothing; and the grid ran at one target power of 100, below the 300 threshold
+  `WEAPON_AGGR` and `NONWEAPON_AGGR` need to do anything at all, so those two
+  arms were recorded as no-ops indistinguishable from the indices that genuinely
+  have no case. Control: adding a single throwaway `randint0` to one ability -
+  changing no artifact field whatsoever - fails the replay and names
+  `BOW_MIGHT` and its probe.
 - **A mod's effect can finally SAY what it does: `registry:effect-info`.**
   `registry:effect` has always let a mod register a handler for a brand-new
   effect code and have it work. What no mod could do was let the game describe

@@ -160,8 +160,12 @@ export function copyArtifact(src: Artifact, dst: Artifact): void {
  * do_randart never mutates ObjRegistry.artifacts. This is NOT copy_artifact
  * (which deliberately drops activation/alt_msg); it is the honest clone the
  * working array needs.
+ *
+ * EXPORTED so a test harness can start from the same object shape production
+ * mutates - a hand-built Artifact would be the harness asserting what the
+ * struct looks like rather than measuring it.
  */
-function cloneArtifact(src: Artifact): Artifact {
+export function cloneArtifact(src: Artifact): Artifact {
   return {
     name: src.name,
     text: src.text,
