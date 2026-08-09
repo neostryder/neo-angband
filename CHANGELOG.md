@@ -46,6 +46,33 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can build a random artifact power core has never heard of:
+  `registry:randart`.** `artifact.json` has always accepted a new record, so a
+  mod could always ship a *fixed* artifact. The RANDOM artifact generator was
+  closed: four switches decided every property a randart can have, and each
+  failed silently in a different direction. The worst is `add_ability_aux`, 87
+  cases and **the largest dispatch in the tree** - its default arm is a bare
+  `break`, so a mod-coined ability index cost the design loop its power budget
+  and gave the artifact nothing at all, with no error and no way to find out
+  except generating a few hundred artifacts and staring at them. The other
+  three: `artifact_prep` (15 tvals) gave an unlisted item class zero to-hit,
+  to-dam and AC; the item-class census (14 tvals) dropped it into `otherTotal`,
+  which skews the frequency table the design loop **spends** and so changes what
+  every randart in the game becomes; and the redundancy test (9 `EFPROP` kinds)
+  could not judge a new property kind. `RandartRegistry`
+  (`obj/randart-registry.ts`) is four tables under three keys - the ability
+  index, the tval, the `EFPROP` kind - with `handlerFor` so a mod WRAPS core's
+  arm rather than reimplementing it, which matters more here than almost
+  anywhere: an ability that draws a different *number* of random values moves
+  every artifact generated after it. One change beyond the switches was needed
+  to make any of it usable, and it is the same class of trap the effect-info
+  seam nearly shipped with: `addFlag`, `addMod`, `addResist` and the dozen other
+  primitives a handler body is written from were exported from
+  `randart-build.ts`, but that module was never re-exported from core's index,
+  so **none of them were in `ctx.core`** - a mod could register a handler and
+  had no way to write it. All 834 randart vectors replay identically. The switch
+  census fell from 42 rows to **38** (531 case labels, 9 candidates left), and
+  `switch-census.test.ts` fails if any of the four comes back.
 - **Random artifacts got the evidence a refactor needs, before the refactor.**
   The four switches that build every random artifact - the 87-case
   `add_ability_aux`, the item-class `artifact_prep`, the item-class census that

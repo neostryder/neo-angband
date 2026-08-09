@@ -43,6 +43,7 @@
  */
 
 import { randartLog, randartLogf } from "./randart-log.js";
+import { randartRegistry, seedRandart } from "./randart-registry.js";
 import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
 import { ART_IDX } from "../generated/randart-properties.js";
 import type { Rng } from "../rng.js";
@@ -435,44 +436,62 @@ export function storeBasePower(
   for (let i = 0; i < aMax; i++) {
     const art = arts[i] ?? null;
     const tval = art ? art.tval : TV.NULL;
-    switch (tval) {
-      case TV.SWORD:
-      case TV.POLEARM:
-      case TV.HAFTED:
-        data.meleeTotal++;
-        break;
-      case TV.BOW:
-        data.bowTotal++;
-        break;
-      case TV.SOFT_ARMOR:
-      case TV.HARD_ARMOR:
-      case TV.DRAG_ARMOR:
-        data.armorTotal++;
-        break;
-      case TV.SHIELD:
-        data.shieldTotal++;
-        break;
-      case TV.CLOAK:
-        data.cloakTotal++;
-        break;
-      case TV.HELM:
-      case TV.CROWN:
-        data.headgearTotal++;
-        break;
-      case TV.GLOVES:
-        data.gloveTotal++;
-        break;
-      case TV.BOOTS:
-        data.bootTotal++;
-        break;
-      case TV.NULL:
-        break;
-      default:
-        data.otherTotal++;
-    }
+    /* The upstream switch on tval is now the randart registry's `census`
+     * table. This is not bookkeeping: the totals feed the frequency table the
+     * design loop SPENDS, so a mod's item class landing in `otherTotal` skews
+     * what every randart in the game becomes. An unregistered tval counts
+     * toward `otherTotal`, which is upstream's own default arm. */
+    const bucket = randartRegistry().census.handlerFor(tval);
+    if (bucket) bucket(data);
+    else data.otherTotal++;
     data.total++;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's item-class census buckets, lifted case by case.
+ * ------------------------------------------------------------------ */
+
+seedRandart((registry) => {
+  const bucket = (
+    tvals: readonly number[],
+    count: (data: ArtifactSetData) => void,
+  ): void => {
+    for (const tval of tvals) registry.census.set(tval, count);
+  };
+
+  bucket([TV.SWORD, TV.POLEARM, TV.HAFTED], (d) => {
+    d.meleeTotal++;
+  });
+  bucket([TV.BOW], (d) => {
+    d.bowTotal++;
+  });
+  bucket([TV.SOFT_ARMOR, TV.HARD_ARMOR, TV.DRAG_ARMOR], (d) => {
+    d.armorTotal++;
+  });
+  bucket([TV.SHIELD], (d) => {
+    d.shieldTotal++;
+  });
+  bucket([TV.CLOAK], (d) => {
+    d.cloakTotal++;
+  });
+  bucket([TV.HELM, TV.CROWN], (d) => {
+    d.headgearTotal++;
+  });
+  bucket([TV.GLOVES], (d) => {
+    d.gloveTotal++;
+  });
+  bucket([TV.BOOTS], (d) => {
+    d.bootTotal++;
+  });
+  /* An EMPTY artifact slot, registered explicitly rather than left to the
+   * default: upstream distinguishes "no artifact here" (counts toward nothing)
+   * from "an item class I have no bucket for" (counts toward otherTotal), and
+   * the default arm can only express the second. */
+  bucket([TV.NULL], () => {
+    /* deliberately nothing */
+  });
+});
 
 /* ------------------------------------------------------------------ */
 /* Ability counters (obj-randart.c L342-L1053)                         */

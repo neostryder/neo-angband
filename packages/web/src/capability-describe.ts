@@ -72,6 +72,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Change what the game tells you about a spell, potion or wand effect",
         elevated: true,
       };
+    case "randart":
+      return {
+        text: "Change how random artifacts are built - what powers they can get, and what each kind of item starts with",
+        elevated: true,
+      };
     case "vocab":
       return {
         text: "Add new vocabulary - flags, stats, and other terms",

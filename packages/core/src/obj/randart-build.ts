@@ -61,6 +61,12 @@ import type { CurseTimedFoil } from "./object.js";
 import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
 import { INHIBIT_POWER, lookupObjProperty } from "./power.js";
 import type { ArtifactSetData } from "./randart-data.js";
+import { randartRegistry, seedRandart } from "./randart-registry.js";
+import type {
+  RandartAbilityHandler,
+  RandartPrepHandler,
+  RandartRedundancyContext,
+} from "./randart-registry.js";
 import type {
   Artifact,
   EffectRecordJson,
@@ -376,45 +382,11 @@ export function artifactPrep(
     (art.elInfo[i] as ElementInfo).flags |= EL_INFO_IGNORE;
   }
 
-  /* Assign basic stats to the artifact based on its type. */
-  switch (kind.tval) {
-    case TV.BOW:
-    case TV.DIGGING:
-    case TV.HAFTED:
-    case TV.SWORD:
-    case TV.POLEARM:
-      art.toH += Math.trunc(data.hitStartval / 2) + rng.randint0(data.hitStartval);
-      art.toD += Math.trunc(data.damStartval / 2) + rng.randint0(data.damStartval);
-      randartLogf(
-        () =>
-          `Assigned basic stats, to_hit: ${String(art.toH)}, to_dam: ${String(art.toD)}\n`,
-      );
-      break;
-    case TV.BOOTS:
-    case TV.GLOVES:
-    case TV.HELM:
-    case TV.CROWN:
-    case TV.SHIELD:
-    case TV.CLOAK:
-    case TV.SOFT_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.DRAG_ARMOR:
-      art.toA += Math.trunc(data.acStartval / 2) + rng.randint0(data.acStartval);
-      randartLogf(
-        () => `Assigned basic stats, AC bonus: ${String(art.toA)}\n`,
-      );
-      break;
-    case TV.LIGHT:
-      art.flags.off(OF.TAKES_FUEL);
-      art.flags.off(OF.BURNS_OUT);
-      art.flags.on(OF.NO_FUEL);
-      if (kind.kidx >= reg.ordinaryKindCount) {
-        art.modifiers[OBJ_MOD.LIGHT] = 3;
-      }
-      break;
-    default:
-      break;
-  }
+  /* Assign basic stats to the artifact based on its type. The upstream switch
+   * on tval is now the randart registry's `prep` table, so a mod's new item
+   * class starts with something rather than a blank artifact. An unregistered
+   * tval gets nothing, which is upstream's own default arm. */
+  randartRegistry().prep.handlerFor(kind.tval)?.({ reg, art, kind, data, rng });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1266,262 +1238,19 @@ export function addAbilityAux(
 ): void {
   const kind = reg.lookupKind(art.tval, art.sval);
 
-  switch (r) {
-    case ART_IDX.BOW_SHOTS:
-    case ART_IDX.NONWEAPON_SHOTS:
-      addMod(reg, art, OBJ_MOD.SHOTS, rng);
-      break;
-
-    case ART_IDX.BOW_MIGHT:
-      addMod(reg, art, OBJ_MOD.MIGHT, rng);
-      break;
-
-    case ART_IDX.WEAPON_HIT:
-    case ART_IDX.NONWEAPON_HIT:
-      addToHit(art, 1, 2 * data.hitIncrement, rng);
-      break;
-
-    case ART_IDX.WEAPON_DAM:
-    case ART_IDX.NONWEAPON_DAM:
-      addToDam(art, 1, 2 * data.damIncrement, rng);
-      break;
-
-    case ART_IDX.NONWEAPON_HIT_DAM:
-    case ART_IDX.GLOVE_HIT_DAM:
-      addToHit(art, 1, 2 * data.hitIncrement, rng);
-      addToDam(art, 1, 2 * data.damIncrement, rng);
-      break;
-
-    case ART_IDX.WEAPON_AGGR:
-    case ART_IDX.NONWEAPON_AGGR:
-      if (targetPower > AGGR_POWER) addFlag(reg, art, OF.AGGRAVATE);
-      break;
-
-    case ART_IDX.MELEE_BLESS:
-      addFlag(reg, art, OF.BLESSED);
-      break;
-
-    case ART_IDX.BOW_BRAND:
-    case ART_IDX.MELEE_BRAND:
-    case ART_IDX.NONWEAPON_BRAND:
-      addBrand(reg, art, rng);
-      break;
-
-    case ART_IDX.BOW_SLAY:
-    case ART_IDX.MELEE_SLAY:
-    case ART_IDX.NONWEAPON_SLAY:
-      addSlay(reg, art, rng);
-      break;
-
-    case ART_IDX.MELEE_SINV:
-    case ART_IDX.HELM_SINV:
-    case ART_IDX.GEN_SINV:
-      addFlag(reg, art, OF.SEE_INVIS);
-      break;
-
-    case ART_IDX.MELEE_BLOWS:
-    case ART_IDX.NONWEAPON_BLOWS:
-      addMod(reg, art, OBJ_MOD.BLOWS, rng);
-      break;
-
-    case ART_IDX.MELEE_AC:
-    case ART_IDX.BOOT_AC:
-    case ART_IDX.GLOVE_AC:
-    case ART_IDX.HELM_AC:
-    case ART_IDX.SHIELD_AC:
-    case ART_IDX.CLOAK_AC:
-    case ART_IDX.ARMOR_AC:
-    case ART_IDX.GEN_AC:
-      addToAC(art, 1, 2 * data.acIncrement, rng);
-      break;
-
-    case ART_IDX.MELEE_DICE:
-      addDamageDice(art, rng);
-      break;
-
-    case ART_IDX.MELEE_WEIGHT:
-    case ART_IDX.ALLARMOR_WEIGHT:
-      addWeightMod(art);
-      break;
-
-    case ART_IDX.MELEE_TUNN:
-    case ART_IDX.GEN_TUNN:
-      addMod(reg, art, OBJ_MOD.TUNNEL, rng);
-      break;
-
-    case ART_IDX.BOOT_FEATHER:
-    case ART_IDX.GEN_FEATHER:
-      addFlag(reg, art, OF.FEATHER);
-      break;
-
-    case ART_IDX.BOOT_STEALTH:
-    case ART_IDX.CLOAK_STEALTH:
-    case ART_IDX.ARMOR_STEALTH:
-    case ART_IDX.GEN_STEALTH:
-      addMod(reg, art, OBJ_MOD.STEALTH, rng);
-      break;
-
-    case ART_IDX.BOOT_SPEED:
-    case ART_IDX.GEN_SPEED:
-      addMod(reg, art, OBJ_MOD.SPEED, rng);
-      break;
-
-    case ART_IDX.GLOVE_FA:
-    case ART_IDX.GEN_FA:
-      addFlag(reg, art, OF.FREE_ACT);
-      break;
-
-    case ART_IDX.GLOVE_DEX:
-      addMod(reg, art, OBJ_MOD.DEX, rng);
-      break;
-
-    case ART_IDX.HELM_RBLIND:
-    case ART_IDX.GEN_RBLIND:
-      addFlag(reg, art, OF.PROT_BLIND);
-      break;
-
-    case ART_IDX.HELM_ESP:
-    case ART_IDX.GEN_ESP:
-      addFlag(reg, art, OF.TELEPATHY);
-      break;
-
-    case ART_IDX.HELM_WIS:
-      addMod(reg, art, OBJ_MOD.WIS, rng);
-      break;
-
-    case ART_IDX.HELM_INT:
-      addMod(reg, art, OBJ_MOD.INT, rng);
-      break;
-
-    case ART_IDX.SHIELD_LRES:
-    case ART_IDX.ARMOR_LRES:
-    case ART_IDX.GEN_LRES:
-      addLowResist(reg, art, rng);
-      break;
-
-    case ART_IDX.ARMOR_HLIFE:
-    case ART_IDX.GEN_HLIFE:
-      addFlag(reg, art, OF.HOLD_LIFE);
-      break;
-
-    case ART_IDX.ARMOR_CON:
-      addMod(reg, art, OBJ_MOD.CON, rng);
-      break;
-
-    case ART_IDX.ARMOR_ALLRES:
-      addResist(reg, art, ELEM.ACID);
-      addResist(reg, art, ELEM.ELEC);
-      addResist(reg, art, ELEM.FIRE);
-      addResist(reg, art, ELEM.COLD);
-      break;
-
-    case ART_IDX.ARMOR_HRES:
-      addHighResist(reg, art, data, rng);
-      break;
-
-    case ART_IDX.GEN_STAT:
-      addStat(reg, art, rng);
-      break;
-
-    case ART_IDX.GEN_SUST:
-      addSustain(reg, art, rng);
-      break;
-
-    case ART_IDX.GEN_SEARCH:
-      addMod(reg, art, OBJ_MOD.SEARCH, rng);
-      break;
-
-    case ART_IDX.GEN_INFRA:
-      addMod(reg, art, OBJ_MOD.INFRA, rng);
-      break;
-
-    case ART_IDX.GEN_IMMUNE:
-      addImmunity(reg, art, rng);
-      break;
-
-    case ART_IDX.GEN_LIGHT:
-      if (art.tval !== TV.LIGHT) art.modifiers[OBJ_MOD.LIGHT] = 1;
-      break;
-
-    case ART_IDX.GEN_SDIG:
-      addFlag(reg, art, OF.SLOW_DIGEST);
-      break;
-
-    case ART_IDX.GEN_REGEN:
-      addFlag(reg, art, OF.REGEN);
-      break;
-
-    case ART_IDX.GEN_RPOIS:
-      addResist(reg, art, ELEM.POIS);
-      break;
-
-    case ART_IDX.GEN_RFEAR:
-      addFlag(reg, art, OF.PROT_FEAR);
-      break;
-
-    case ART_IDX.GEN_RLIGHT:
-      addResist(reg, art, ELEM.LIGHT);
-      break;
-
-    case ART_IDX.GEN_RDARK:
-      addResist(reg, art, ELEM.DARK);
-      break;
-
-    case ART_IDX.GEN_RCONF:
-      addFlag(reg, art, OF.PROT_CONF);
-      break;
-
-    case ART_IDX.GEN_RSOUND:
-      addResist(reg, art, ELEM.SOUND);
-      break;
-
-    case ART_IDX.GEN_RSHARD:
-      addResist(reg, art, ELEM.SHARD);
-      break;
-
-    case ART_IDX.GEN_RNEXUS:
-      addResist(reg, art, ELEM.NEXUS);
-      break;
-
-    case ART_IDX.GEN_RNETHER:
-      addResist(reg, art, ELEM.NETHER);
-      break;
-
-    case ART_IDX.GEN_RCHAOS:
-      addResist(reg, art, ELEM.CHAOS);
-      break;
-
-    case ART_IDX.GEN_RDISEN:
-      addResist(reg, art, ELEM.DISEN);
-      break;
-
-    case ART_IDX.GEN_PSTUN:
-      addFlag(reg, art, OF.PROT_STUN);
-      break;
-
-    case ART_IDX.BOOT_TRAP_IMM:
-    case ART_IDX.GEN_TRAP_IMM:
-      addFlag(reg, art, OF.TRAP_IMMUNE);
-      break;
-
-    case ART_IDX.GEN_DAM_RED:
-      addMod(reg, art, OBJ_MOD.DAM_RED, rng);
-      break;
-
-    case ART_IDX.GEN_MOVES:
-    case ART_IDX.BOOT_MOVES:
-      addMod(reg, art, OBJ_MOD.MOVES, rng);
-      break;
-
-    case ART_IDX.GEN_ACTIV:
-      if (!art.activation && !kind?.activation) {
-        addActivation(reg, art, targetPower, data.maxPower, rng);
-      }
-      break;
-
-    default:
-      break;
-  }
+  /* The upstream switch on the ability index is now the randart registry's
+   * `abilities` table, so a mod can coin a NEW ability and have it do
+   * something. An unregistered index does nothing, which is upstream's own
+   * default arm - but before this seam that was ALSO what a mod's index did,
+   * silently, after the design loop had already spent power on it. */
+  randartRegistry().abilities.handlerFor(r)?.({
+    reg,
+    art,
+    kind,
+    targetPower,
+    data,
+    rng,
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1691,50 +1420,12 @@ export function removeContradictoryActivation(
   } else {
     for (const p of props) {
       if (!redundant) break;
-      switch (p.kind) {
-        case EFPROP.BRAND: {
-          let maxmult = 1;
-          for (let i = 1; i < reg.brands.length; i++) {
-            if (!art.brands?.[i]) continue;
-            if (reg.brands[i]!.resistFlag !== reg.brands[p.idx]!.resistFlag) {
-              continue;
-            }
-            maxmult = Math.max(reg.brands[i]!.multiplier, maxmult);
-          }
-          if (maxmult < reg.brands[p.idx]!.multiplier) redundant = false;
-          break;
-        }
-        case EFPROP.SLAY: {
-          let maxmult = 1;
-          for (let i = 1; i < reg.slays.length; i++) {
-            if (!art.slays?.[i]) continue;
-            if (!sameMonstersSlain(reg, i, p.idx)) continue;
-            maxmult = Math.max(reg.slays[i]!.multiplier, maxmult);
-          }
-          if (maxmult < reg.slays[p.idx]!.multiplier) redundant = false;
-          break;
-        }
-        case EFPROP.RESIST:
-        case EFPROP.CONFLICT_RESIST:
-        case EFPROP.CONFLICT_VULN: {
-          const res = art.elInfo[p.idx]?.resLevel ?? 0;
-          if (res >= p.reslevelMin && res <= p.reslevelMax) redundant = false;
-          break;
-        }
-        case EFPROP.OBJECT_FLAG:
-          /* Does more than the flag; keep it (also screens HERO/SHERO). */
-          redundant = false;
-          break;
-        case EFPROP.OBJECT_FLAG_EXACT:
-        case EFPROP.CURE_FLAG:
-        case EFPROP.CONFLICT_FLAG:
-          if (!art.flags.has(p.idx)) redundant = false;
-          break;
-        default:
-          /* Something unexpected; assume the effect is useful. */
-          redundant = false;
-          break;
-      }
+      /* The upstream switch on the EFPROP kind is now the randart registry's
+       * `redundancy` table. An unregistered kind keeps the activation, which
+       * is upstream's own default and the safe direction: a kept activation is
+       * a weaker artifact than intended, a dropped one is a missing power. */
+      const judge = randartRegistry().redundancy.handlerFor(p.kind);
+      redundant = judge ? judge({ reg, art, prop: p }) : false;
     }
   }
 
@@ -1921,3 +1612,264 @@ export function makeBad(
     () => ` ${String(count2)} of ${String(count1)} curses applied\n`,
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's randart arms, lifted case by case.
+ *
+ * Every arm is the upstream case body unchanged, in upstream's order. A group
+ * that upstream handles in one shared `case` block registers the SAME closure
+ * under each index rather than being merged, because the indices are separate
+ * keys and a mod replacing one must not silently replace its siblings -
+ * `MELEE_AC` and `GEN_AC` do the same thing today and a mod may well want them
+ * to stop doing the same thing.
+ * ------------------------------------------------------------------ */
+
+seedRandart((registry) => {
+  /** Register one handler under every index of a group. */
+  const ability = (
+    indices: readonly number[],
+    handler: RandartAbilityHandler,
+  ): void => {
+    for (const index of indices) registry.abilities.set(index, handler);
+  };
+  /** The commonest shape: add one object modifier. */
+  const mod = (indices: readonly number[], objMod: number): void => {
+    ability(indices, (c) => {
+      addMod(c.reg, c.art, objMod, c.rng);
+    });
+  };
+  /** The next commonest: turn one object flag on. */
+  const flag = (indices: readonly number[], objFlag: number): void => {
+    ability(indices, (c) => {
+      addFlag(c.reg, c.art, objFlag);
+    });
+  };
+  /** And: grant one elemental resist. */
+  const resist = (indices: readonly number[], element: number): void => {
+    ability(indices, (c) => {
+      addResist(c.reg, c.art, element);
+    });
+  };
+
+  mod([ART_IDX.BOW_SHOTS, ART_IDX.NONWEAPON_SHOTS], OBJ_MOD.SHOTS);
+  mod([ART_IDX.BOW_MIGHT], OBJ_MOD.MIGHT);
+
+  ability([ART_IDX.WEAPON_HIT, ART_IDX.NONWEAPON_HIT], (c) => {
+    addToHit(c.art, 1, 2 * c.data.hitIncrement, c.rng);
+  });
+  ability([ART_IDX.WEAPON_DAM, ART_IDX.NONWEAPON_DAM], (c) => {
+    addToDam(c.art, 1, 2 * c.data.damIncrement, c.rng);
+  });
+  ability([ART_IDX.NONWEAPON_HIT_DAM, ART_IDX.GLOVE_HIT_DAM], (c) => {
+    addToHit(c.art, 1, 2 * c.data.hitIncrement, c.rng);
+    addToDam(c.art, 1, 2 * c.data.damIncrement, c.rng);
+  });
+
+  /* Aggravation is only worth its power cost on a strong artifact
+   * (obj-randart.h L47); below AGGR_POWER this arm does nothing at all. */
+  ability([ART_IDX.WEAPON_AGGR, ART_IDX.NONWEAPON_AGGR], (c) => {
+    if (c.targetPower > AGGR_POWER) addFlag(c.reg, c.art, OF.AGGRAVATE);
+  });
+
+  flag([ART_IDX.MELEE_BLESS], OF.BLESSED);
+
+  ability(
+    [ART_IDX.BOW_BRAND, ART_IDX.MELEE_BRAND, ART_IDX.NONWEAPON_BRAND],
+    (c) => {
+      addBrand(c.reg, c.art, c.rng);
+    },
+  );
+  ability([ART_IDX.BOW_SLAY, ART_IDX.MELEE_SLAY, ART_IDX.NONWEAPON_SLAY], (c) => {
+    addSlay(c.reg, c.art, c.rng);
+  });
+
+  flag([ART_IDX.MELEE_SINV, ART_IDX.HELM_SINV, ART_IDX.GEN_SINV], OF.SEE_INVIS);
+  mod([ART_IDX.MELEE_BLOWS, ART_IDX.NONWEAPON_BLOWS], OBJ_MOD.BLOWS);
+
+  ability(
+    [
+      ART_IDX.MELEE_AC,
+      ART_IDX.BOOT_AC,
+      ART_IDX.GLOVE_AC,
+      ART_IDX.HELM_AC,
+      ART_IDX.SHIELD_AC,
+      ART_IDX.CLOAK_AC,
+      ART_IDX.ARMOR_AC,
+      ART_IDX.GEN_AC,
+    ],
+    (c) => {
+      addToAC(c.art, 1, 2 * c.data.acIncrement, c.rng);
+    },
+  );
+
+  ability([ART_IDX.MELEE_DICE], (c) => {
+    addDamageDice(c.art, c.rng);
+  });
+  ability([ART_IDX.MELEE_WEIGHT, ART_IDX.ALLARMOR_WEIGHT], (c) => {
+    addWeightMod(c.art);
+  });
+
+  mod([ART_IDX.MELEE_TUNN, ART_IDX.GEN_TUNN], OBJ_MOD.TUNNEL);
+  flag([ART_IDX.BOOT_FEATHER, ART_IDX.GEN_FEATHER], OF.FEATHER);
+  mod(
+    [
+      ART_IDX.BOOT_STEALTH,
+      ART_IDX.CLOAK_STEALTH,
+      ART_IDX.ARMOR_STEALTH,
+      ART_IDX.GEN_STEALTH,
+    ],
+    OBJ_MOD.STEALTH,
+  );
+  mod([ART_IDX.BOOT_SPEED, ART_IDX.GEN_SPEED], OBJ_MOD.SPEED);
+  flag([ART_IDX.GLOVE_FA, ART_IDX.GEN_FA], OF.FREE_ACT);
+  mod([ART_IDX.GLOVE_DEX], OBJ_MOD.DEX);
+  flag([ART_IDX.HELM_RBLIND, ART_IDX.GEN_RBLIND], OF.PROT_BLIND);
+  flag([ART_IDX.HELM_ESP, ART_IDX.GEN_ESP], OF.TELEPATHY);
+  mod([ART_IDX.HELM_WIS], OBJ_MOD.WIS);
+  mod([ART_IDX.HELM_INT], OBJ_MOD.INT);
+
+  ability([ART_IDX.SHIELD_LRES, ART_IDX.ARMOR_LRES, ART_IDX.GEN_LRES], (c) => {
+    addLowResist(c.reg, c.art, c.rng);
+  });
+
+  flag([ART_IDX.ARMOR_HLIFE, ART_IDX.GEN_HLIFE], OF.HOLD_LIFE);
+  mod([ART_IDX.ARMOR_CON], OBJ_MOD.CON);
+
+  ability([ART_IDX.ARMOR_ALLRES], (c) => {
+    addResist(c.reg, c.art, ELEM.ACID);
+    addResist(c.reg, c.art, ELEM.ELEC);
+    addResist(c.reg, c.art, ELEM.FIRE);
+    addResist(c.reg, c.art, ELEM.COLD);
+  });
+  ability([ART_IDX.ARMOR_HRES], (c) => {
+    addHighResist(c.reg, c.art, c.data, c.rng);
+  });
+  ability([ART_IDX.GEN_STAT], (c) => {
+    addStat(c.reg, c.art, c.rng);
+  });
+  ability([ART_IDX.GEN_SUST], (c) => {
+    addSustain(c.reg, c.art, c.rng);
+  });
+
+  mod([ART_IDX.GEN_SEARCH], OBJ_MOD.SEARCH);
+  mod([ART_IDX.GEN_INFRA], OBJ_MOD.INFRA);
+
+  ability([ART_IDX.GEN_IMMUNE], (c) => {
+    addImmunity(c.reg, c.art, c.rng);
+  });
+  /* A light source already carries its own light; this only lifts an item that
+   * has none (obj-randart.c L2338). */
+  ability([ART_IDX.GEN_LIGHT], (c) => {
+    if (c.art.tval !== TV.LIGHT) c.art.modifiers[OBJ_MOD.LIGHT] = 1;
+  });
+
+  flag([ART_IDX.GEN_SDIG], OF.SLOW_DIGEST);
+  flag([ART_IDX.GEN_REGEN], OF.REGEN);
+  resist([ART_IDX.GEN_RPOIS], ELEM.POIS);
+  flag([ART_IDX.GEN_RFEAR], OF.PROT_FEAR);
+  resist([ART_IDX.GEN_RLIGHT], ELEM.LIGHT);
+  resist([ART_IDX.GEN_RDARK], ELEM.DARK);
+  flag([ART_IDX.GEN_RCONF], OF.PROT_CONF);
+  resist([ART_IDX.GEN_RSOUND], ELEM.SOUND);
+  resist([ART_IDX.GEN_RSHARD], ELEM.SHARD);
+  resist([ART_IDX.GEN_RNEXUS], ELEM.NEXUS);
+  resist([ART_IDX.GEN_RNETHER], ELEM.NETHER);
+  resist([ART_IDX.GEN_RCHAOS], ELEM.CHAOS);
+  resist([ART_IDX.GEN_RDISEN], ELEM.DISEN);
+  flag([ART_IDX.GEN_PSTUN], OF.PROT_STUN);
+  flag([ART_IDX.BOOT_TRAP_IMM, ART_IDX.GEN_TRAP_IMM], OF.TRAP_IMMUNE);
+  mod([ART_IDX.GEN_DAM_RED], OBJ_MOD.DAM_RED);
+  mod([ART_IDX.GEN_MOVES, ART_IDX.BOOT_MOVES], OBJ_MOD.MOVES);
+
+  /* Never a second activation, and never one over a base item that already
+   * activates (obj-randart.c L2400). */
+  ability([ART_IDX.GEN_ACTIV], (c) => {
+    if (!c.art.activation && !c.kind?.activation) {
+      addActivation(c.reg, c.art, c.targetPower, c.data.maxPower, c.rng);
+    }
+  });
+
+  /* ---------------- artifact_prep, keyed on the item class ---------------- */
+
+  const prep = (tvals: readonly number[], handler: RandartPrepHandler): void => {
+    for (const tval of tvals) registry.prep.set(tval, handler);
+  };
+
+  prep([TV.BOW, TV.DIGGING, TV.HAFTED, TV.SWORD, TV.POLEARM], (c) => {
+    c.art.toH +=
+      Math.trunc(c.data.hitStartval / 2) + c.rng.randint0(c.data.hitStartval);
+    c.art.toD +=
+      Math.trunc(c.data.damStartval / 2) + c.rng.randint0(c.data.damStartval);
+    randartLogf(
+      () =>
+        `Assigned basic stats, to_hit: ${String(c.art.toH)}, to_dam: ${String(c.art.toD)}\n`,
+    );
+  });
+
+  prep(
+    [
+      TV.BOOTS,
+      TV.GLOVES,
+      TV.HELM,
+      TV.CROWN,
+      TV.SHIELD,
+      TV.CLOAK,
+      TV.SOFT_ARMOR,
+      TV.HARD_ARMOR,
+      TV.DRAG_ARMOR,
+    ],
+    (c) => {
+      c.art.toA +=
+        Math.trunc(c.data.acStartval / 2) + c.rng.randint0(c.data.acStartval);
+      randartLogf(() => `Assigned basic stats, AC bonus: ${String(c.art.toA)}\n`);
+    },
+  );
+
+  prep([TV.LIGHT], (c) => {
+    c.art.flags.off(OF.TAKES_FUEL);
+    c.art.flags.off(OF.BURNS_OUT);
+    c.art.flags.on(OF.NO_FUEL);
+    if (c.kind.kidx >= c.reg.ordinaryKindCount) {
+      c.art.modifiers[OBJ_MOD.LIGHT] = 3;
+    }
+  });
+
+  /* -------------- activation redundancy, keyed on EFPROP kind -------------- */
+
+  registry.redundancy.set(EFPROP.BRAND, ({ reg, art, prop }) => {
+    let maxmult = 1;
+    for (let i = 1; i < reg.brands.length; i++) {
+      if (!art.brands?.[i]) continue;
+      if (reg.brands[i]!.resistFlag !== reg.brands[prop.idx]!.resistFlag) continue;
+      maxmult = Math.max(reg.brands[i]!.multiplier, maxmult);
+    }
+    return maxmult >= reg.brands[prop.idx]!.multiplier;
+  });
+
+  registry.redundancy.set(EFPROP.SLAY, ({ reg, art, prop }) => {
+    let maxmult = 1;
+    for (let i = 1; i < reg.slays.length; i++) {
+      if (!art.slays?.[i]) continue;
+      if (!sameMonstersSlain(reg, i, prop.idx)) continue;
+      maxmult = Math.max(reg.slays[i]!.multiplier, maxmult);
+    }
+    return maxmult >= reg.slays[prop.idx]!.multiplier;
+  });
+
+  const resistWindow = ({ art, prop }: RandartRedundancyContext): boolean => {
+    const res = art.elInfo[prop.idx]?.resLevel ?? 0;
+    return !(res >= prop.reslevelMin && res <= prop.reslevelMax);
+  };
+  registry.redundancy.set(EFPROP.RESIST, resistWindow);
+  registry.redundancy.set(EFPROP.CONFLICT_RESIST, resistWindow);
+  registry.redundancy.set(EFPROP.CONFLICT_VULN, resistWindow);
+
+  /* Does more than the flag; keep it (also screens HERO/SHERO). */
+  registry.redundancy.set(EFPROP.OBJECT_FLAG, () => false);
+
+  const flagHeld = ({ art, prop }: RandartRedundancyContext): boolean =>
+    art.flags.has(prop.idx);
+  registry.redundancy.set(EFPROP.OBJECT_FLAG_EXACT, flagHeld);
+  registry.redundancy.set(EFPROP.CURE_FLAG, flagHeld);
+  registry.redundancy.set(EFPROP.CONFLICT_FLAG, flagHeld);
+});

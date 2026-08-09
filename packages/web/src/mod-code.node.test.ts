@@ -68,6 +68,15 @@ import {
   loc,
   extensionData,
   CORE_RECORD_KEYS,
+  ART_IDX,
+  OF,
+  ObjRegistry,
+  addAbilityAux,
+  bindProjections,
+  cloneArtifact,
+  collectArtifactData,
+  randartRegistry,
+  resetRandartRegistry,
   EF,
   describeEffect,
   effectMenuName,
@@ -1727,5 +1736,178 @@ describe("a mod folder on disk reaches the effect-info registry", () => {
     const e = modEffect();
     expect(effectMenuName(e)).toBe("");
     expect(describeEffect(e, null, 0, true, { projections: [] })).toBeNull();
+  });
+});
+
+/**
+ * The random-artifact registry, from disk.
+ *
+ * WHAT THIS EXISTS TO CATCH. `artifact.json` has always accepted a new record,
+ * so a mod could always ship a FIXED artifact. Reaching the RANDOM artifact
+ * generator was a different thing entirely: `add_ability_aux` was an 87-case
+ * switch and a mod-coined ability index took its default arm, which is a bare
+ * `break`. The design loop SPENT POWER on that ability and the artifact got
+ * nothing - no error, no effect, and no way for an author to find out except by
+ * generating a few hundred artifacts and staring at them.
+ *
+ * This registers a new ability index and then runs `add_ability_aux` for real,
+ * asserting on the ARTIFACT - what the player would eventually pick up - rather
+ * than on the registry or on the mod's report of itself.
+ *
+ * The controls, all run: drop `randart` from the host's targets and the register
+ * call throws "did not wire"; drop the capability and it throws at the gate;
+ * leave the index unregistered and the artifact comes back untouched, which is
+ * the silent failure this seam removes.
+ */
+describe("a mod folder on disk reaches the random artifact registry", () => {
+  /* Module-level table: restore core's arms so one test cannot leak into the
+   * next, and so the "before" test below is measuring core rather than the
+   * previous test's registration. */
+  afterEach(() => {
+    resetRandartRegistry();
+  });
+
+  /** An ability index beyond everything core defines - a mod's own. */
+  const MOD_ABILITY = 500;
+
+  function objRegistry(): ObjRegistry {
+    const reg = new ObjRegistry({
+      objectBase: loadPackJson("object_base"),
+      object: loadPackJson("object"),
+      egoItem: loadPackJson("ego_item"),
+      artifact: loadPackJson("artifact"),
+      curse: loadPackJson("curse"),
+      brand: loadPackJson("brand"),
+      slay: loadPackJson("slay"),
+      activation: loadPackJson("activation"),
+      objectProperty: loadPackJson("object_property"),
+      flavor: loadPackJson("flavor"),
+    } as never);
+    reg.projections = bindProjections(loadPackRecords("projection"));
+    return reg;
+  }
+
+  /** The real set profile and a real artifact to build on. */
+  function buildBed(reg: ObjRegistry): {
+    art: ReturnType<typeof cloneArtifact>;
+    data: ReturnType<typeof collectArtifactData>;
+  } {
+    const constants = bindConstants(loadPackJson("constants"));
+    const data = collectArtifactData(reg, constants, reg.artifacts, new Rng(11));
+    const src = reg.artifacts.find((a) => a !== null);
+    return { art: cloneArtifact(src!), data };
+  }
+
+  it("teaches the generator a power core has never heard of", async () => {
+    writeMod(
+      "soulforge",
+      { capabilities: ["registry:randart"] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           /* A brand-new ability index. The flag is interpolated from core's
+            * own OF table rather than hard-coded, so the test cannot pass
+            * against a number that has drifted. */
+           host.randart.abilities.set(${String(MOD_ABILITY)}, (ctx) => {
+             ctx.art.flags.on(${String(OF.PROT_FEAR)});
+             ctx.art.toA += 5;
+           });
+           /* And WRAP a core ability rather than replacing it: keeping the
+            * previous handler and calling through is the difference between
+            * extending the generator and guessing at what it used to do. An
+            * ability that draws a different NUMBER of random values moves every
+            * artifact generated after it. */
+           const inner = host.randart.abilities.handlerFor(${String(ART_IDX.GEN_REGEN)});
+           host.randart.abilities.set(${String(ART_IDX.GEN_REGEN)}, (ctx) => {
+             inner(ctx);
+             ctx.art.toD += 1;
+           });
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "soulforge", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:randart"],
+    });
+    expect(code.problems).toEqual([]);
+
+    const registry = randartRegistry();
+    expect(registry.abilities.has(MOD_ABILITY)).toBe(false);
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { randart: registry },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("soulforge"));
+    expect(registry.abilities.has(MOD_ABILITY)).toBe(true);
+
+    /* Now run the REAL generator entry point and read the artifact. */
+    const reg = objRegistry();
+    const { art, data } = buildBed(reg);
+    const beforeAc = art.toA;
+    addAbilityAux(reg, art, MOD_ABILITY, 100, data, new Rng(5));
+    expect(art.flags.has(OF.PROT_FEAR)).toBe(true);
+    expect(art.toA).toBe(beforeAc + 5);
+
+    /* And the wrapped core ability still does what it did, plus the mod's
+     * addition - so wrapping composed rather than shadowed. */
+    const { art: art2, data: data2 } = buildBed(reg);
+    art2.flags.off(OF.REGEN);
+    const beforeDam = art2.toD;
+    addAbilityAux(reg, art2, ART_IDX.GEN_REGEN, 100, data2, new Rng(5));
+    expect(art2.flags.has(OF.REGEN)).toBe(true);
+    expect(art2.toD).toBe(beforeDam + 1);
+  });
+
+  it("without the capability the randart registry refuses at the call", async () => {
+    writeMod(
+      "overreach",
+      { capabilities: [] },
+      `export default {
+         api: ${MOD_API_VERSION},
+         register(host) {
+           host.randart.abilities.set(${String(MOD_ABILITY)}, () => {});
+         },
+       };`,
+    );
+    const report = await readModDir(
+      fsSource([{ id: "overreach", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const registry = randartRegistry();
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { randart: registry },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("overreach"))).toThrow(
+      /registry:randart/,
+    );
+    expect(registry.abilities.has(MOD_ABILITY)).toBe(false);
+  });
+
+  it("an unregistered ability silently does nothing - the failure this removes", () => {
+    /* The BEFORE picture, kept as a test so the seam's value is measured
+     * rather than asserted. add_ability_aux's default arm is a bare `break`,
+     * so the artifact comes back untouched and the design loop has already
+     * spent power on it. */
+    expect(randartRegistry().abilities.has(MOD_ABILITY)).toBe(false);
+    const reg = objRegistry();
+    const { art, data } = buildBed(reg);
+    const before = JSON.stringify([art.toA, art.toD, art.flags.count()]);
+    addAbilityAux(reg, art, MOD_ABILITY, 100, data, new Rng(5));
+    expect(JSON.stringify([art.toA, art.toD, art.flags.count()])).toBe(before);
   });
 });

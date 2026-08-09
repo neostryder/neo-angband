@@ -37,6 +37,11 @@
  *   which item it prompts for. "registry:effect" could always make a mod's
  *   effect DO something; this is what lets the game describe it instead of
  *   printing a blank row. Gated by "registry:effect-info".
+ * - randart  (RandartRegistry, obj/randart-registry.ts): random ARTIFACT
+ *   construction - what an ability does, what an item class starts with, which
+ *   census bucket it counts toward, and whether an activation is redundant.
+ *   artifact.json always accepted a new FIXED artifact; this is the GENERATOR.
+ *   Gated by "registry:randart".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -96,6 +101,14 @@ import type { PlayerSideHandler } from "../game/player-side.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 import type {
+  RandartAbilityHandler,
+  RandartCensusHandler,
+  RandartPrepHandler,
+  RandartRedundancyHandler,
+  RandartRegistry,
+  RandartTable,
+} from "../obj/randart-registry.js";
+import type {
   ActivationSummaryHandler,
   EffectInfoRegistry,
   EffectInfoTable,
@@ -116,6 +129,7 @@ export const REGISTRY_CAPABILITIES = {
   projection: "registry:projection",
   glyph: "registry:glyph",
   effectInfo: "registry:effect-info",
+  randart: "registry:randart",
   vocab: "registry:vocab",
 } as const;
 
@@ -151,6 +165,8 @@ export interface RegistryTargets {
   glyphs?: GlyphRegistry | null;
   /** Everything the game says about an effect (the module-level registry). */
   effectInfo?: EffectInfoRegistry | null;
+  /** Random artifact construction (the module-level registry). */
+  randart?: RandartRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -404,6 +420,48 @@ export interface EffectInfoFacade {
 }
 
 /**
+ * One table of the randart facade. Same shape as the effect-info tables and for
+ * the same reason: four hand-copied blocks would be four places for the
+ * capability check to go missing.
+ */
+export interface RandartTableFacade<K, H> {
+  /** Install (or replace) the handler for one key. */
+  set(key: K, handler: H): void;
+  /**
+   * The handler installed for a key right now, or null. Wrapping matters more
+   * here than almost anywhere else: an ability that draws a different NUMBER of
+   * random values changes every artifact generated after it, so reimplementing
+   * core's from scratch and getting the draw count wrong is a whole-set
+   * divergence rather than a local one.
+   */
+  handlerFor(key: K): H | null;
+  /** Whether anything handles this key. */
+  has(key: K): boolean;
+  /** Every key handled, core's first. */
+  keys(): readonly K[];
+}
+
+/**
+ * The random-artifact facade (gated by registry:randart).
+ *
+ * `artifact.json` has always accepted a new record, so a mod could always ship a
+ * FIXED artifact. Reaching the RANDOM artifact generator is a different thing:
+ * four closed switches decided every property a randart can have, and a
+ * mod-coined ability index took the default arm - which is a bare `break`. The
+ * design loop spent power on it and the artifact got nothing, silently.
+ */
+export interface RandartFacade {
+  /** What an ability does, keyed on the ART_IDX index. */
+  readonly abilities: RandartTableFacade<number, RandartAbilityHandler>;
+  /** An item class's starting to-hit / to-dam / AC, keyed on tval. */
+  readonly prep: RandartTableFacade<number, RandartPrepHandler>;
+  /** Which census bucket an item class counts toward, keyed on tval. */
+  readonly census: RandartTableFacade<number, RandartCensusHandler>;
+  /** Whether an activation is redundant, keyed on the EFPROP kind. */
+  readonly redundancy: RandartTableFacade<number, RandartRedundancyHandler>;
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -441,6 +499,7 @@ export interface ModRegistryHost {
   readonly projections: ProjectionFacade;
   readonly glyphs: GlyphFacade;
   readonly effectInfo: EffectInfoFacade;
+  readonly randart: RandartFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -534,6 +593,34 @@ function effectInfoTable<K, H>(
     },
     keys(): readonly K[] {
       requireCap(capabilities, "effectInfo");
+      return table().keys();
+    },
+  };
+}
+
+/** One table of the randart facade, gated. */
+function randartTable<K, H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: RandartRegistry) => RandartTable<K, H>,
+): RandartTableFacade<K, H> {
+  const table = (): RandartTable<K, H> =>
+    pick(requireTarget(targets.randart, "randart"));
+  return {
+    set(key, handler): void {
+      requireCap(capabilities, "randart");
+      table().set(key, handler);
+    },
+    handlerFor(key): H | null {
+      requireCap(capabilities, "randart");
+      return table().handlerFor(key);
+    },
+    has(key): boolean {
+      requireCap(capabilities, "randart");
+      return table().has(key);
+    },
+    keys(): readonly K[] {
+      requireCap(capabilities, "randart");
       return table().keys();
     },
   };
@@ -689,6 +776,12 @@ export function createModRegistryHost(
       summary: effectInfoTable(capabilities, targets, (r) => r.summary),
       subtype: effectInfoTable(capabilities, targets, (r) => r.subtype),
       request: effectInfoTable(capabilities, targets, (r) => r.request),
+    },
+    randart: {
+      abilities: randartTable(capabilities, targets, (r) => r.abilities),
+      prep: randartTable(capabilities, targets, (r) => r.prep),
+      census: randartTable(capabilities, targets, (r) => r.census),
+      redundancy: randartTable(capabilities, targets, (r) => r.redundancy),
     },
     vocab: {
       define(term): void {
