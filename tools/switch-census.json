@@ -69,16 +69,16 @@
       "verdict": "UI - keypress routing (nav-normalised) in the equipment-compare overlay (MOD_REACH gap 23)."
     },
     {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 15,
+      "hasDefault": true,
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it has grown for registry:projection, registry:glyph, registry:effect-info, registry:randart, registry:tval and now registry:rune."
+    },
+    {
       "file": "packages/web/src/options.ts",
       "cases": 15,
       "hasDefault": true,
       "verdict": "UI - options menu tag routing (MOD_REACH gap 18/24)."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 14,
-      "hasDefault": true,
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it has grown for registry:projection, registry:glyph, registry:effect-info, registry:randart and now registry:tval."
     },
     {
       "file": "packages/web/src/wizard.ts",
@@ -103,12 +103,6 @@
       "cases": 11,
       "hasDefault": true,
       "verdict": "PARSER - lore.txt directive grammar. Monster records reach mods as JSON through the content pack; the text format is an import path, not a mod surface."
-    },
-    {
-      "file": "packages/core/src/obj/knowledge.ts",
-      "cases": 11,
-      "hasDefault": true,
-      "verdict": "CANDIDATE - object knowledge (MOD_REACH gap 16). Not converted."
     },
     {
       "file": "packages/core/src/visuals/map-text.ts",

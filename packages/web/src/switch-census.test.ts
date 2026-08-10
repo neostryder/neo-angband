@@ -98,13 +98,15 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 35 into a CLOSED vocabulary", () => {
+  it("classifies all 34 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 35 switches exactly ONE is content dispatch a
-     * mod would want - object knowledge (obj/knowledge.ts). The
-     * other 34 are UI routing, parsers, host wiring, the mod
-     * system's own vocabulary, localization strings, or plain control flow -
-     * and saying so is a claim that can be checked against the file.
+     * than written in prose: of 34 switches, ZERO are content dispatch a mod
+     * would want. That is the finish line MOD_REACH gap list set - every one
+     * of the eighteen candidates the 2026-08-09 census opened with is now a
+     * registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
+     * parsers, host wiring, the mod system's own vocabulary, localization
+     * strings, or plain control flow - and saying so is a claim that can be
+     * checked against the file.
      *
      * The vocabulary is closed on purpose. Without this, a typo ("CANDIDTE - ")
      * silently opens a new bucket and quietly drops a row out of the candidate
@@ -115,7 +117,6 @@ describe("the switch census", () => {
       byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
     }
     expect(Object.fromEntries([...byClass].sort())).toEqual({
-      CANDIDATE: 1,
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 3,
@@ -134,7 +135,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 35 switches, 473 case labels", () => {
+  it("is measuring something: 34 switches, 463 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
@@ -180,5 +181,27 @@ describe("the switch census", () => {
      * biggest dispatch the census has ever recorded. */
     expect(files.has("packages/core/src/obj/randart-build.ts")).toBe(false);
     expect(files.has("packages/core/src/obj/randart-data.ts")).toBe(false);
+    /* And gap 16, the last candidate: obj/knowledge.ts's modMessage. The five
+     * rune.variety switches beside it were never IN this census - each sat
+     * under the eight-case threshold, and they were closed by a union type
+     * rather than a switch, which the census cannot see at any threshold. That
+     * is why this file's absence is worth less than it looks, and why
+     * rune-registry.test.ts derives its coverage from the rune list instead. */
+    expect(files.has("packages/core/src/obj/knowledge.ts")).toBe(false);
+  });
+
+  it("has no CANDIDATE left, which is what the alpha gate asked for", () => {
+    /* Stated separately from the distribution above so it fails by NAME. The
+     * census opened at 47 switches / 723 cases / 18 candidates on the morning
+     * of 2026-08-09; this is the other end of that.
+     *
+     * Zero candidates is not zero closed dispatch in the tree - a one-line
+     * `tval === TV.STAFF` and a closed union type are both exactly as shut to a
+     * mod as a switch, and this tool sees neither. It is the end of what this
+     * tool can measure, and MOD_REACH.md is where the rest is tracked. */
+    const candidates = manifest.switches.filter((r) =>
+      r.verdict.startsWith("CANDIDATE"),
+    );
+    expect(candidates.map((r) => r.file)).toEqual([]);
   });
 });

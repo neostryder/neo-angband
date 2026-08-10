@@ -46,6 +46,11 @@
  *   about an item CLASS - is it a weapon, can it be worn, can it be flavoured,
  *   is it good, what is it worth unidentified. object.json always accepted a new
  *   ITEM; this is the CLASS. Gated by "registry:tval".
+ * - rune     (RuneRegistry, obj/rune-registry.ts): every question core asks
+ *   about a RUNE - what it is called and described as, whether an item carries
+ *   it, whether the player knows it, how it is learned, and the line a modifier
+ *   prints on wield. Plus `contribute`, which is how a mod's rune gets into the
+ *   list every consumer enumerates. Gated by "registry:rune".
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -121,6 +126,18 @@ import type {
   TvalValueBaseHandler,
 } from "../obj/tval-registry.js";
 import type {
+  ModMessageHandler,
+  RuneContributor,
+  RuneDescHandler,
+  RuneKnowsHandler,
+  RuneLearnHandler,
+  RuneNameHandler,
+  RuneObjectHasHandler,
+  RuneRegistry,
+  RuneTable,
+  RuneVariety,
+} from "../obj/rune-registry.js";
+import type {
   ActivationSummaryHandler,
   EffectInfoRegistry,
   EffectInfoTable,
@@ -143,6 +160,7 @@ export const REGISTRY_CAPABILITIES = {
   effectInfo: "registry:effect-info",
   randart: "registry:randart",
   tval: "registry:tval",
+  rune: "registry:rune",
   vocab: "registry:vocab",
 } as const;
 
@@ -182,6 +200,8 @@ export interface RegistryTargets {
   randart?: RandartRegistry | null;
   /** Everything core asks about an item CLASS (the module-level registry). */
   tval?: TvalRegistry | null;
+  /** Everything core asks about a RUNE (the module-level registry). */
+  rune?: RuneRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
 }
@@ -528,6 +548,55 @@ export interface TvalFacade {
 }
 
 /**
+ * One table of the rune facade. Same shape as the tval, effect-info and randart
+ * table facades, and gated the same way.
+ */
+export interface RuneTableFacade<K, H> {
+  /** Install (or replace) the handler for a key. */
+  set(key: K, handler: H): void;
+  /**
+   * What is installed right now, or null - the WRAP idiom. Wrapping matters
+   * more here than anywhere else: a mod that wants its own rune understood
+   * almost never wants to replace core's answer for `"brand"`.
+   */
+  handlerFor(key: K): H | null;
+  /** Whether anything handles this key. */
+  has(key: K): boolean;
+  /** Every key handled, core's first. */
+  keys(): readonly K[];
+}
+
+/**
+ * The RUNE facade (gated by registry:rune).
+ *
+ * A rune is the unit of object knowledge. Before this seam, five of the six
+ * decisions below dispatched on `rune.variety`, which was a CLOSED TYPESCRIPT
+ * UNION - a harder closure than a switch, because a mod could not coin a
+ * variety at all and no default arm was ever reached to fail. See
+ * `obj/rune-registry.ts` for what each unregistered key costs.
+ *
+ * `contribute` is not an extra: nothing in core ever asks about a rune that is
+ * not in `buildRuneList`, so without it the six tables would be a seam every
+ * caller walks past.
+ */
+export interface RuneFacade {
+  /** The recall description, keyed on variety. */
+  readonly desc: RuneTableFacade<RuneVariety, RuneDescHandler>;
+  /** Whether the player knows it, keyed on variety. */
+  readonly knows: RuneTableFacade<RuneVariety, RuneKnowsHandler>;
+  /** Whether an item carries it, keyed on variety. */
+  readonly objectHas: RuneTableFacade<RuneVariety, RuneObjectHasHandler>;
+  /** Learning it, keyed on variety. */
+  readonly learn: RuneTableFacade<RuneVariety, RuneLearnHandler>;
+  /** The display decoration, keyed on variety. Absent means the bare name. */
+  readonly name: RuneTableFacade<RuneVariety, RuneNameHandler>;
+  /** The "You feel stronger!" line, keyed on the OBJ_MOD index. */
+  readonly modMessage: RuneTableFacade<number, ModMessageHandler>;
+  /** Add runes to the list every consumer enumerates. */
+  contribute(source: RuneContributor): void;
+}
+
+/**
  * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
  * (flags / stats / any mod-coined kind) and stores per-entity values for them -
  * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
@@ -567,6 +636,7 @@ export interface ModRegistryHost {
   readonly effectInfo: EffectInfoFacade;
   readonly randart: RandartFacade;
   readonly tval: TvalFacade;
+  readonly rune: RuneFacade;
   readonly vocab: VocabFacade;
 }
 
@@ -717,6 +787,35 @@ function tvalTable<K, H>(
     },
     keys(): readonly K[] {
       requireCap(capabilities, "tval");
+      return table().keys();
+    },
+  };
+}
+
+/**
+ * One table of the rune facade, gated.
+ */
+function runeTable<K, H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: RuneRegistry) => RuneTable<K, H>,
+): RuneTableFacade<K, H> {
+  const table = (): RuneTable<K, H> => pick(requireTarget(targets.rune, "rune"));
+  return {
+    set(key, handler): void {
+      requireCap(capabilities, "rune");
+      table().set(key, handler);
+    },
+    handlerFor(key): H | null {
+      requireCap(capabilities, "rune");
+      return table().handlerFor(key);
+    },
+    has(key): boolean {
+      requireCap(capabilities, "rune");
+      return table().has(key);
+    },
+    keys(): readonly K[] {
+      requireCap(capabilities, "rune");
       return table().keys();
     },
   };
@@ -884,6 +983,18 @@ export function createModRegistryHost(
       good: tvalTable(capabilities, targets, (r) => r.good),
       valueBase: tvalTable(capabilities, targets, (r) => r.valueBase),
       basename: tvalTable(capabilities, targets, (r) => r.basename),
+    },
+    rune: {
+      desc: runeTable(capabilities, targets, (r) => r.desc),
+      knows: runeTable(capabilities, targets, (r) => r.knows),
+      objectHas: runeTable(capabilities, targets, (r) => r.objectHas),
+      learn: runeTable(capabilities, targets, (r) => r.learn),
+      name: runeTable(capabilities, targets, (r) => r.name),
+      modMessage: runeTable(capabilities, targets, (r) => r.modMessage),
+      contribute(source): void {
+        requireCap(capabilities, "rune");
+        requireTarget(targets.rune, "rune").contribute(source);
+      },
     },
     vocab: {
       define(term): void {

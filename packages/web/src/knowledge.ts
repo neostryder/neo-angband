@@ -541,7 +541,23 @@ function moveIn(nav: MenuNav, cursor: number, count: number, page: number): numb
 /** rune_group_text[] (ui-knowledge.c L2178-2188), indexed by RuneVariety. */
 const RUNE_GROUP_TEXT = ["Combat", "Modifiers", "Resists", "Brands", "Slays", "Curses", "Other"];
 
-/** The variety -> group index used by rune_var (ui-knowledge.c L2211-2214). */
+/**
+ * The variety -> group index used by rune_var (ui-knowledge.c L2211-2214).
+ *
+ * THE CALLER HOLE gap 16 turned up. `RuneVariety` used to be a closed union of
+ * seven string literals, so this switch was exhaustive by construction and
+ * needed no default. Opening the type (obj/rune-registry.ts) means a mod can
+ * coin a variety, and without a fallback here its runes would be silently
+ * DROPPED from the knowledge browser - learnable, describable, and invisible.
+ *
+ * A mod's variety lands in "Other", which is upstream's own catch-all group and
+ * where `flag` already lives. Letting a mod NAME its own group is a UI question
+ * rather than a rune question, and belongs to MOD_REACH gap 9 (UI moddable) -
+ * this is deliberately the smallest thing that stops a rune vanishing, not a
+ * second UI seam invented on the way past.
+ */
+const RUNE_GROUP_OTHER = 6;
+
 function runeGroupIndex(variety: Rune["variety"]): number {
   switch (variety) {
     case "combat":
@@ -557,7 +573,9 @@ function runeGroupIndex(variety: Rune["variety"]): number {
     case "curse":
       return 5;
     case "flag":
-      return 6;
+      return RUNE_GROUP_OTHER;
+    default:
+      return RUNE_GROUP_OTHER;
   }
 }
 

@@ -199,7 +199,7 @@ import type {
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
-import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
+import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
   getGraphicsMode,
@@ -10120,6 +10120,7 @@ function installTrusted(trustedId: string): void {
           effectInfo: effectInfoRegistry(),
           randart: randartRegistry(),
           tval: tvalRegistry(),
+          rune: runeRegistry(),
           vocab: trustedVocab,
         },
         caps,
@@ -10329,6 +10330,7 @@ for (const loaded of activeModCode().plugins) {
         effectInfo: effectInfoRegistry(),
         randart: randartRegistry(),
         tval: tvalRegistry(),
+        rune: runeRegistry(),
         vocab: new VocabularyRegistry(),
       },
       CapabilitySet.fromManifest(loaded.manifest),
