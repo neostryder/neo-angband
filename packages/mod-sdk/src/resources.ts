@@ -64,11 +64,14 @@
  * Each one has a consumer wired in this build. That is a rule and not an
  * observation: a kind the game never reads is a manifest field that does
  * nothing, which is the exact failure `engine` spent months in before anything
- * evaluated it - authors fill it in and believe it. `locale` is the seventh
- * category and is deliberately ABSENT until there is an i18n layer to read it
- * (MOD_REACH gap 14); adding the field first would mean shipping a promise.
+ * evaluated it - authors fill it in and believe it.
+ *
+ * `locale` was deliberately absent when this file was written, because there was
+ * no i18n layer for it to be supplied INTO and the field would have been a
+ * promise. It arrived with that layer (MOD_REACH gap 14), and it is the seventh
+ * and last of the categories the resource census counted.
  */
-export type ResourceKind = "sound" | "font" | "prefs" | "help" | "art";
+export type ResourceKind = "sound" | "font" | "prefs" | "help" | "art" | "locale";
 
 /**
  * How several mods contributing the same kind are reconciled.
@@ -171,6 +174,32 @@ export const RESOURCE_KINDS: Readonly<Record<ResourceKind, ResourceKindSpec>> = 
     extensions: [".txt"],
     slot: "required",
     describe: "a piece of art",
+  },
+  locale: {
+    /* BY SLOT, and the slot is the BCP 47 language tag. Two mods may translate
+     * into two different languages and both must survive - which "one" would
+     * not allow - while two translations OF THE SAME language are a genuine
+     * contest the player's load order should settle, which "all" would not.
+     *
+     * WHAT THIS FILE CAN AND CANNOT CARRY. It is JSON, so it carries DATA: a
+     * tag, the language's own name, direction, and a message catalogue in ICU
+     * shape - which is more than a string table, because ICU plurals resolve
+     * through `Intl.PluralRules` and a Polish catalogue gets `few` and `many`
+     * without core knowing what those are.
+     *
+     * What it cannot carry is a FUNCTION, and some languages need one: Angband
+     * assembles an object's name from a pattern ("& Scroll~ titled #") by rules
+     * that are English's, and a Japanese counter or a German case ending is not
+     * reachable by substituting words. A translation that needs that ships a
+     * `plugin.js` and calls core's `registerLocale` with its own `forms` - the
+     * ordinary code path, with the ordinary consent, because it IS code. The
+     * two halves compose: the JSON gives the messages and the plugin gives the
+     * grammar. See packages/core/src/i18n/i18n.ts. */
+    merge: "slot",
+    directory: false,
+    extensions: [".json"],
+    slot: "required",
+    describe: "a translation",
   },
 };
 
@@ -390,4 +419,65 @@ export function resourcesOfKind(
   kind: ResourceKind,
 ): ContributedResource[] {
   return chosen.filter((c) => c.resource.kind === kind);
+}
+
+/**
+ * What is wrong with a locale file's CONTENTS, or null when nothing is.
+ *
+ * Separate from `resourceComplaint`, which judges the declaration: this one
+ * opens the file. It lives here rather than in the host because the mod BUILDER
+ * has to be able to run it too - a translator should learn that their tag is
+ * missing at build time, not from a player's bug report - and because the shape
+ * it checks is the shape core's `registerLocale` takes, so there is one
+ * description of a locale file and not two.
+ *
+ * NOT a check that the translation is any GOOD, and not a check that every id
+ * is covered. A half-finished translation is the normal state of every
+ * translation that has ever existed, and the fallback chain is built so that a
+ * missing id shows English rather than a blank - so refusing a partial
+ * catalogue would refuse the working case.
+ */
+export function localeFileComplaint(value: unknown, path: string): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return `locale "${path}" is not a JSON object`;
+  }
+  const b = value as Record<string, unknown>;
+  const tag = b["tag"];
+  if (typeof tag !== "string" || !/^[A-Za-z]{2,8}(-[A-Za-z0-9]{2,8})*$/u.test(tag)) {
+    return (
+      `locale "${path}" needs a "tag" that is a language tag ` +
+      `(BCP 47: "de", "pt-BR", "zh-Hans"), got ${JSON.stringify(tag)}`
+    );
+  }
+  if (b["name"] !== undefined && typeof b["name"] !== "string") {
+    return `locale "${path}" name must be a string - the language's name in that language`;
+  }
+  if (b["rtl"] !== undefined && typeof b["rtl"] !== "boolean") {
+    return `locale "${path}" rtl must be true or false`;
+  }
+  const messages = b["messages"];
+  if (messages === undefined) return null;
+  if (typeof messages !== "object" || messages === null || Array.isArray(messages)) {
+    return `locale "${path}" messages must be an object of id -> pattern`;
+  }
+  for (const [id, pattern] of Object.entries(messages)) {
+    if (typeof pattern !== "string") {
+      return `locale "${path}" message ${JSON.stringify(id)} must be a string`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The language tag a locale file declares, or null when it declares none.
+ *
+ * The declaration's `slot` and the FILE's `tag` are two statements of the same
+ * fact, and they can disagree - which is worth catching, because the slot is
+ * what arbitrates between two mods and the tag is what the game switches to. A
+ * file saying `de` behind a slot saying `fr` would be listed as French and read
+ * as German.
+ */
+export function localeFileTag(value: unknown): string | null {
+  const tag = (value as { tag?: unknown } | null)?.tag;
+  return typeof tag === "string" ? tag : null;
 }

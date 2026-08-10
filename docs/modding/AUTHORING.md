@@ -334,6 +334,7 @@ browser's database. The host composes your path with your mod's own resolver.
 | `prefs` | a `.prf` in ui-prefs.c's own grammar | **all of them apply**, in load order |
 | `help` | one page of plain text | per `slot` |
 | `art` | one screen of `{colour}…{/}` markup | per `slot` |
+| `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
 Three things that will otherwise cost you an afternoon:
 
@@ -369,8 +370,97 @@ Three checks run, and the last one can only run on the player's machine:
 3. **The machine.** Whether this build can play `.mp3` or `.ogg` at all, and
    whether your font JSON is structurally a font. Only opening the file can say.
 
-The bundled `demo-resources` mod is a working example of three of the five, and
+The bundled `demo-resources` mod is a working example of four of the six, and
 `packages/web/src/mod-resources.node.test.ts` reads it from disk in CI.
+
+---
+
+## Translating the game
+
+English ships in the game and is what a player sees with no mod installed. A
+translation is a `locale` resource — a JSON file whose `slot` is its language
+tag:
+
+```json
+{
+  "tag": "de",
+  "name": "Deutsch",
+  "messages": {
+    "help.commands.label": "Verfügbare Befehle",
+    "shop.stock": "{n, plural, one {# Gegenstand} other {# Gegenstände}}"
+  }
+}
+```
+
+`tag` must match the `slot` that declared the file. They are two statements of
+the same fact and the check refuses them when they disagree — the slot decides
+which language your file *is offered as*, and the tag decides what it *is*.
+
+**You do not have to translate everything.** A missing id falls back through the
+region (`pt-BR` → `pt`) to English, so a partial catalogue reads as part English
+rather than as a screen of blanks.
+
+### Patterns, not sentences you glue together
+
+Messages are [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse/messages/)
+— a subset, but the ordinary one, so ordinary translation tools can edit your
+file:
+
+| you write | you get |
+| --- | --- |
+| `{name}` | the value |
+| `{n, number}` | grouped for your locale (`1.234.567` in German) |
+| `{n, plural, one {# ring} other {# rings}}` | the right arm, `#` being the number |
+| `{n, plural, =0 {nothing} other {#}}` | an exact value short-circuits the rules |
+| `{g, select, male {Er} female {Sie} other {Es}}` | an exact match |
+| `{n, selectordinal, one {#.} other {#.}}` | ordinals |
+| `'{` | a literal brace |
+
+**Use the plural arms your language actually has.** They come from the platform's
+own rules, so Polish gets `one`/`few`/`many`/`other` and Arabic gets six, and the
+game never has to know which. Writing a bare `{n} Ringe` and letting the number
+do the work is the single most common way a translation ends up wrong.
+
+### When words are not enough
+
+Some text is *assembled*, not written. An object's name is built from a pattern
+like `& Scroll~ titled #` — the `~` is an English pluralizer, the `&` becomes
+`a`/`an` by the vowel after it, and the count goes in front. If your language
+counts with a classifier, inflects for case, or has no plural `s`, no amount of
+word replacement will get you there.
+
+For that, a locale replaces the **function**. Those live in code, so a
+translation that needs them ships a `plugin.js` alongside its JSON and calls
+core's `registerLocale` with its own `forms`:
+
+```js
+export function register(host, ctx) {
+  const core = ctx.core.coreForms();
+  ctx.core.registerLocale({
+    tag: "de",
+    forms: {
+      // English's machinery for everything except the nouns you care about
+      objectNameFormat: (fmt, modstr, plural) =>
+        fmt.includes("Scroll")
+          ? (plural ? "Rollen" : "Rolle")
+          : core.objectNameFormat(fmt, modstr, plural),
+    },
+  });
+}
+```
+
+`coreForms()` is what makes this a small job rather than a rewrite: take
+English's implementation, special-case what your language does differently, and
+delegate the rest.
+
+### Finding what is not translated yet
+
+Not every string in the game has been routed through the translator yet. A
+**pseudo-locale** is how you find the ones that have not: the bundled
+`demo-resources` mod ships `en-XA`, readable English with every letter accented
+and every string bracketed. Enable it, switch to it with `?lang=en-XA`, and
+anything still in plain ASCII on the screen is a string that cannot yet be
+translated. Those are worth reporting.
 
 ---
 

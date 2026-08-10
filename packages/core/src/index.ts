@@ -248,6 +248,10 @@ export * from "./score/display.js";
 
 /* --- Graphics/tiles + visuals (task #27: grafmode.c / ui-visuals.c) --- */
 export * from "./visuals/index.js";
+/* Localization (MOD_REACH gap 14). English ships in core and a locale is a
+ * MOD, so this exports the layer and not any translation. */
+export * from "./i18n/i18n.js";
+export * from "./i18n/text.js";
 
 /* --- The host layer (z-file.c + init.c's ANGBAND_DIR_*) ---
  * The injectable seam that lets a front end declare what its platform can do

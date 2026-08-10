@@ -10,8 +10,9 @@
  * file is parsed by the real ui-prefs.c grammar against the real registries, and
  * the art and the help page are read as text and handed to the real consumers.
  *
- * WHY A TEMP FOLDER FOR TWO OF THE FIVE. The demo mod ships art, help and prefs,
- * which are a few kilobytes between them. A complete bitmap font is tens of
+ * WHY A TEMP FOLDER FOR TWO OF THE SIX. The demo mod ships art, a help page, a
+ * pref file and a translation, which are a few kilobytes between them. A
+ * complete bitmap font is tens of
  * kilobytes and a sound pack is audio, and the demo manifests are inlined into
  * every build by a static glob - so keeping either in the tree would put real
  * weight into the shipped bundle for a mod that dev builds alone can see. They
@@ -27,7 +28,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  localeFileComplaint,
+  localeFileTag,
+  validateManifest,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   bindCore,
@@ -36,7 +41,12 @@ import {
   glyphTableSink,
   LIGHTING,
   processPrefText,
+  registerLocale,
+  resetLocales,
+  setLocale,
+  t,
 } from "@rpgm-tools/neo-angband-core";
+import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { loadGamePack } from "./pack";
 import {
   bitmapFontComplaint,
@@ -109,6 +119,9 @@ afterAll(() => {
 beforeEach(() => {
   setSplashArt(null);
   setModHelpPages([]);
+  /* Back to English before every case: a locale is latched at module scope, so
+   * one test switching language would otherwise decide what the next one reads. */
+  resetLocales();
 });
 
 describe("the bundled demo mod, read from the tree", () => {
@@ -119,14 +132,19 @@ describe("the bundled demo mod, read from the tree", () => {
   it("has a manifest the REAL validator accepts", () => {
     const m: PackManifest = validateManifest(raw);
     expect(m.id).toBe(DEMO);
-    expect(m.resources?.map((r) => r.kind).sort()).toEqual(["art", "help", "prefs"]);
+    expect(m.resources?.map((r) => r.kind).sort()).toEqual([
+      "art",
+      "help",
+      "locale",
+      "prefs",
+    ]);
   });
 
-  it("locates all three, and every file it declares is really there", async () => {
+  it("locates all four, and every file it declares is really there", async () => {
     const manifests = new Map<string, unknown>([[DEMO, raw]]);
     const { located, problems } = locateResources(inputFor(MODS_DIR, [DEMO], manifests));
     expect(problems).toEqual([]);
-    expect(located).toHaveLength(3);
+    expect(located).toHaveLength(4);
 
     /* The INVENTORY check, against the folder's real contents - this is the one
      * that catches a typo in a manifest, and it is worth running against the
@@ -145,7 +163,7 @@ describe("the bundled demo mod, read from the tree", () => {
     } as never);
     const { usable, refused } = await verifyResources(located, diskRuntime(), inventory);
     expect(refused).toEqual([]);
-    expect(usable).toHaveLength(3);
+    expect(usable).toHaveLength(4);
     /* And the files are on disk, which is what makes the line above a
      * measurement rather than a restatement of the manifest. */
     for (const path of declared) {
@@ -202,6 +220,42 @@ describe("the bundled demo mod, read from the tree", () => {
     for (let lighting = 0; lighting < LIGHTING.MAX; lighting++) {
       expect(table.featGlyph(lighting, fidx)).toEqual({ attr: 1, char: "." });
     }
+  });
+
+  it("has a TRANSLATION the game reads, and reading it changes the screen", () => {
+    /* The end of the gap-14 chain, from bytes on disk: the file validates,
+     * declares the tag its slot claims, registers, and the help index - real UI
+     * text, routed through `t` - comes back in the other language.
+     *
+     * A PSEUDO-LOCALE rather than a real translation, on purpose. Every string
+     * is readable English with the letters accented and the whole thing
+     * bracketed, so the assertions below stay legible AND the file does the job
+     * a pseudo-locale exists for: anything still in plain ASCII on a screen is a
+     * string the code forgot to route through the translator. */
+    const raw: unknown = JSON.parse(
+      readFileSync(join(MODS_DIR, DEMO, "locales/en-XA.json"), "utf8"),
+    );
+    expect(localeFileComplaint(raw, "locales/en-XA.json")).toBeNull();
+    expect(localeFileTag(raw)).toBe("en-XA");
+
+    const before = helpIndexLabels();
+    expect(before).toContain("Available commands");
+    registerLocale(raw as LocaleBundle);
+    setLocale("en-XA");
+    const after = helpIndexLabels();
+    expect(after).not.toContain("Available commands");
+    expect(after.some((l) => l.includes("Ãvãilãblę"))).toBe(true);
+
+    /* An id the catalogue does NOT translate still shows English, which is what
+     * makes a half-finished translation usable rather than a screen of holes.
+     * `demo-resources`' own help page label is supplied by the mod, not by the
+     * catalogue, so it is the natural untranslated case. */
+    expect(t("help.absent", "Nothing translated this")).toBe("Nothing translated this");
+
+    /* And the plural entry resolves through Intl rather than through a
+     * hard-coded `n === 1`. */
+    expect(t("demo.plural", "{n, plural, other {# scrolls}}", { n: 0 })).toContain("ñø");
+    expect(t("demo.plural", "{n, plural, other {# scrolls}}", { n: 1 })).toContain("1");
   });
 
   it("adds its help page to the index", () => {

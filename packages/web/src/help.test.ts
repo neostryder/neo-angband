@@ -95,14 +95,19 @@ describe("RNG invariance", () => {
    * build version. Widening it to "any core import is fine" would give up the
    * guarantee; so the check names the ONE symbol allowed through and is derived
    * from the import line itself, which cannot silently grow a second entry.
+   *
+   * `t` joined it for MOD_REACH gap 14, and the allowance is deliberate rather
+   * than a widening: `t` is a pure lookup in a message catalogue plus string
+   * formatting, with no RNG, no game state and no side effect of any kind, which
+   * is the property this guard exists to protect. Anything else still fails.
    */
-  it("reaches into the engine for the version string and nothing else", () => {
+  it("reaches into the engine for the version string and the translator, and nothing else", () => {
     const imports = [
       ...HELP_TS_SOURCE.matchAll(
         /import\s*\{([^}]*)\}\s*from\s*"@rpgm-tools\/neo-angband-core"/gu,
       ),
     ].flatMap((m) => (m[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-    expect(imports).toEqual(["ENGINE_VERSION"]);
+    expect(imports).toEqual(["ENGINE_VERSION", "t"]);
   });
 
   it("never touches the RNG or live game state", () => {

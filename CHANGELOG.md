@@ -46,6 +46,42 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **Localization is a first-class seam, and a translation is a mod.** English
+  ships in the game and is what runs with nothing installed; a language arrives
+  as a `locale` resource in a mod folder, through the same door as a sound pack.
+  **A string table would not have been enough, and the reason is specific to
+  this game**: Angband does not store the words it prints, it assembles them. An
+  object's name leaves the describer as a pattern - `"& Scroll~ titled #"` - and
+  the rules that turn that into "3 Scrolls titled xyzzy" are English's: `~`
+  appends an s (or es after s, h and x), `&` becomes a or an by the vowel that
+  follows, and the count goes in front. A translator handed that pattern and
+  asked to replace its words cannot express a Japanese counter, a German case
+  ending, or Polish's three plural forms; one handed the finished English
+  sentence has already lost the count. So the layer has two halves. **Messages**
+  are ids with the English written at the call site, filled through an ICU
+  subset - chosen rather than invented, so a catalogue for this game is a
+  catalogue in the ordinary sense that ordinary translation tools already edit.
+  Plural categories come from the platform's own rules, so a Polish catalogue
+  writes `few` and `many` and an Arabic one gets all six, and the game never
+  learns what those are - `n === 1 ? a : b`, the obvious shortcut, is wrong in
+  most of the world's languages. **Forms** are named functions a locale replaces
+  outright, for the text that is composed rather than written; English's own is
+  handed back so a translation can wrap it and special-case a handful of nouns
+  rather than reimplement the whole grammar. A missing entry falls back through
+  the region to the language to English, so a half-finished translation reads as
+  part English rather than as a screen of blanks - which is the normal state of
+  every translation there has ever been. **The terminal is a fixed grid**, which
+  is a localization problem that is not about words at all: an ideograph occupies
+  two cells and a combining accent occupies none, so measuring, padding and
+  truncating now count cells rather than characters. **Nothing about the English
+  game changed**, and that is measured rather than asserted: the golden set of
+  object descriptions over the whole shipped pack is untouched. The bundled demo
+  mod ships a pseudo-locale - readable English with accented letters and
+  bracketed strings - which is both the from-disk proof in CI and the tool for
+  finding what is left: anything still in plain ASCII on a screen is a string the
+  code has not routed through the translator yet. Those remaining literals are a
+  mechanical follow-up, not a gap in the seam.
+
 - **A mod folder can now supply sounds, a font, pref files, help pages and the
   title screen - and every one of them is checked when it loads.** MOD_REACH's
   resource census counted seven categories a total conversion needs and found

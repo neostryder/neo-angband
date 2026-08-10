@@ -40,6 +40,8 @@ export {
   extensionOf,
   RESOURCE_KIND_NAMES,
   RESOURCE_KINDS,
+  localeFileComplaint,
+  localeFileTag,
   resourceComplaint,
   resourcesOfKind,
 } from "./resources.js";

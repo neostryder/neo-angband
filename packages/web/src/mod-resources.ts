@@ -51,6 +51,8 @@
 import {
   chooseResources,
   extensionOf,
+  localeFileComplaint,
+  localeFileTag,
   RESOURCE_KINDS,
   resourceComplaint,
   type ContributedResource,
@@ -348,19 +350,37 @@ export async function verifyResource(
   if (text === null) {
     return `declares ${spec.describe} at "${resource.path}", which could not be read`;
   }
-  if (resource.kind === "font") {
+  if (resource.kind === "font" || resource.kind === "locale") {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return `supplies a font "${resource.path}" that is not valid JSON (${message(e)})`;
+      return `supplies ${spec.describe} "${resource.path}" that is not valid JSON (${message(e)})`;
     }
-    const complaint = bitmapFontComplaint(parsed);
-    if (complaint !== null) {
-      return (
-        `supplies a font "${resource.path}" that ${complaint} - this terminal draws ` +
-        `from a bitmap, so a font is {w, h, glyphs} with one scanline number per row`
-      );
+    if (resource.kind === "font") {
+      const complaint = bitmapFontComplaint(parsed);
+      if (complaint !== null) {
+        return (
+          `supplies a font "${resource.path}" that ${complaint} - this terminal draws ` +
+          `from a bitmap, so a font is {w, h, glyphs} with one scanline number per row`
+        );
+      }
+    } else {
+      const complaint = localeFileComplaint(parsed, resource.path);
+      if (complaint !== null) return complaint;
+      /* THE SLOT AND THE FILE ARE TWO STATEMENTS OF THE SAME FACT, and they can
+       * disagree. The slot is what arbitrates between two mods and puts the row
+       * in the language menu; the tag inside is what the game switches to. A
+       * file saying `de` behind a slot saying `fr` would be offered as French
+       * and read as German, which is the sort of wrong nobody would think to
+       * look for. */
+      const tag = localeFileTag(parsed);
+      if (tag !== resource.slot) {
+        return (
+          `supplies a translation declared for "${String(resource.slot)}" whose file ` +
+          `says "${String(tag)}" - the slot and the file's own tag must agree`
+        );
+      }
     }
   }
   return null;
@@ -554,4 +574,9 @@ export function modPrefResources(): readonly LocatedResource[] {
 /** Every help page the enabled mods supply. */
 export function modHelpResources(): readonly LocatedResource[] {
   return installed.filter((l) => l.resource.kind === "help");
+}
+
+/** Every translation the enabled mods supply, one per language tag. */
+export function modLocaleResources(): readonly LocatedResource[] {
+  return installed.filter((l) => l.resource.kind === "locale");
 }
