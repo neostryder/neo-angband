@@ -633,6 +633,18 @@ function composedProblems(): readonly ModProblem[] {
   return [
     ...refused,
     ...composed.faults.map((f) => ({ id: f.packId, why: f.why })),
+    /* THE RECORD CHECK (MOD_REACH gap 12). Not a refusal: these records are in
+     * the game and will be read. What they will not do is what their author
+     * thinks - a `weight` written as a string, a monster with no `depth`, a drop
+     * naming an object nothing defines. That is the same question the rest of
+     * this list answers ("why is my mod not doing anything?") from the other
+     * side, so it belongs on the same row rather than in a channel the manager
+     * would have to be taught to read.
+     *
+     * The message is passed through unchanged: it already names its file and its
+     * record, and none of the wordings claims the record was dropped, so a
+     * player can tell a finding from a refusal by reading it. */
+    ...composed.findings.map((f) => ({ id: f.packId, why: f.message })),
     /* A pack that could not be composed AT ALL. Distinguished in the wording,
      * because "this patch did nothing" and "none of this mod loaded" are very
      * different things to read on a row. */

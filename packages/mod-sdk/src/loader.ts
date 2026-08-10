@@ -91,6 +91,8 @@ import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
 import { applyFieldPolicy, declaredFields } from "./fields.js";
 import type { ResolvedField } from "./fields.js";
+import { checkPacks, composedObjects } from "./validate.js";
+import type { PackFinding } from "./validate.js";
 import {
   keyDescription,
   keySpecFor,
@@ -148,6 +150,22 @@ export interface ComposedContent {
    * survived composition instead of inferring it from a record.
    */
   declaredFields: ResolvedField[];
+  /**
+   * What is wrong with the records the mods contributed, checked against core's
+   * own blueprint and attributed to the mod that wrote them.
+   *
+   * A THIRD LIST, not a third source for `problems`. A fault is an operation the
+   * composer REFUSED - the record is not in the game. A finding is about a record
+   * that composed perfectly and will not do what its author thinks: a `weight`
+   * written as a string, a monster with no `depth`, a drop naming an object no
+   * loaded pack defines. Folding the two together would make `problems.length`
+   * mean two different things, and a host that showed findings as refusals would
+   * tell a player their mod had been cut when it had not.
+   *
+   * Empty when the base game composes alone; see validate.ts for why the base
+   * game is not reported on.
+   */
+  findings: PackFinding[];
 }
 
 /** How a refusal is recorded: one call, both channels, no chance to disagree. */
@@ -586,6 +604,27 @@ export function composeContentPacks(
     }
   }
 
+  /* THE RECORD CHECK, over the composed result and over the ORIGINAL pack list.
+   *
+   * `packs`, not `ordered`: expandSections turns one pack into several entries,
+   * and checking each entry would report a pack once per named part it ships.
+   * resolveLoadOrder has already refused a duplicate id by this point, so the
+   * input list is exactly one entry per pack.
+   *
+   * `packs[0]` is the base game - the convention this file already keeps, stated
+   * in composeDroppingBroken - and it is not reported on. See validate.ts.
+   *
+   * WARN AND ABOVE. `hint` is drafting advice ("core always writes `desc`") and
+   * belongs to the builder, where the author is sitting there with the draft
+   * open. At load the audience is a player asking why a mod does nothing and an
+   * author reading their bug report, and dozens of stylistic lines on a working
+   * mod's row would bury the one line that matters. */
+  const base = packs[0];
+  const findings = checkPacks(packs, composedObjects(out), {
+    minLevel: "warn",
+    ...(base === undefined ? {} : { baseId: base.manifest.id }),
+  });
+
   return {
     records: out,
     composedFiles: [...composable].sort(),
@@ -593,6 +632,7 @@ export function composeContentPacks(
     problems: refused.problems,
     faults: refused.faults,
     declaredFields: [...declared.values()],
+    findings,
   };
 }
 
@@ -684,6 +724,7 @@ export function composeDroppingBroken(
       problems: [],
       faults: [],
       declaredFields: [],
+      findings: [],
     },
     dropped,
   };

@@ -2,7 +2,15 @@
  * @rpgm-tools/neo-angband-mod-sdk - schemas and tooling for the mod ecosystem.
  *
  * Three pack shapes, one loading pipeline (see docs/MODS.md):
- * - content packs: schema-validated declarative JSON (safe by construction)
+ * - content packs: declarative JSON, checked against core's own record shapes
+ *   at load AND at build (validate.ts). Safe by construction in the sense that
+ *   matters - it is data, so it cannot execute - and CHECKED rather than
+ *   trusted for the rest. The check reports and never refuses: the shapes are
+ *   measured from core's data, and a mod coining a new value is doing something
+ *   legal. This line used to say "schema-validated" flatly, and MOD_REACH gap 12
+ *   recorded that as a claim with no code behind it. Half true: the checker
+ *   existed and only the BUILDER called it, so nothing checked a mod a player
+ *   installed. Do not weaken this wording without moving the caller.
  * - tile packs: Linoleum-style manifests with individual images and
  *   exact named targets, honest glyph fallback for uncovered targets
  * - scripted plugins: capability-scoped sandboxed scripts (escape hatch)
@@ -157,5 +165,12 @@ export type {
   Suggestion,
   TemplateScope,
 } from "./authoring.js";
+export { checkPacks, composedObjects, packSubject } from "./validate.js";
+export type {
+  CheckablePack,
+  CheckPacksOptions,
+  ComposedRecords,
+  PackFinding,
+} from "./validate.js";
 export { ModProject, modProject } from "./project.js";
 export type { EmittedFile, ProjectBuild } from "./project.js";
