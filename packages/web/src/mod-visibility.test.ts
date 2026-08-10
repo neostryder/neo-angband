@@ -166,8 +166,30 @@ describe("one broken mod costs that mod, not the game", () => {
       files: {
         monster: {
           patches: { "core:no-such-monster-at-all": { name: "x" } },
-          /* The forty that ARE fine, standing in as one. */
-          records: [{ name: "Survivor Hound" }],
+          /* The forty that ARE fine, standing in as one - and WRITTEN OUT in
+           * full, which it used to not be. `{name: "Survivor Hound"}` composed
+           * and survived, so it made the point about the patch; then gap 12
+           * taught the loader to check a mod's records against core's blueprint,
+           * and this one drew four warnings of its own. A record standing in for
+           * "the ones that are fine" cannot be one that is not. */
+          records: [
+            {
+              name: "Survivor Hound",
+              base: "canine",
+              color: "u",
+              speed: 110,
+              "hit-points": 5,
+              hearing: 30,
+              "armor-class": 12,
+              sleepiness: 10,
+              depth: 1,
+              rarity: 1,
+              experience: 1,
+              blow: [{ method: "BITE", effect: "HURT", damage: "1d3" }],
+              flags: ["ANIMAL"],
+              desc: ["It survived."],
+            },
+          ],
         },
       },
       code: [],

@@ -23,8 +23,8 @@
  * comes out of it.
  */
 
-import { checkRecords } from "./authoring.js";
 import type { AuthoringFinding } from "./authoring.js";
+import { checkPacks, composedObjects } from "./validate.js";
 import type { JsonRecord } from "./compose.js";
 import type { FieldDecl } from "./fields.js";
 import { composeContentPacks } from "./loader.js";
@@ -32,13 +32,6 @@ import type { LoadedPack } from "./loader.js";
 import { validateManifest } from "./manifest.js";
 import type { PackManifest } from "./manifest.js";
 import type { FieldOp } from "./patch.js";
-import { recordRefKeys } from "./record-key.js";
-
-/** The key half of a `<pack>:<key>` ref. */
-function refKey(ref: string): string {
-  const at = ref.indexOf(":");
-  return at === -1 ? ref : ref.slice(at + 1);
-}
 
 /** One file the mod folder should contain. */
 export interface EmittedFile {
@@ -239,53 +232,23 @@ export class ModProject {
       };
     }
 
-    const all: Record<string, readonly JsonRecord[]> = {};
-    for (const [file, records] of Object.entries(composed.records)) {
-      all[file] = records.filter(
-        (r): r is JsonRecord => r !== null && typeof r === "object" && !Array.isArray(r),
-      );
-    }
+    const all = composedObjects(composed.records);
 
-    /* The SUBJECT is every record this mod is answerable for, as it came OUT of
-     * composition rather than as it was drafted - a record this mod added and
-     * then patched is one record by the time the game sees it, and checking the
-     * draft would check something that never runs.
+    /* THE SAME FUNCTION THE GAME RUNS, at a lower floor.
      *
-     * Membership is decided with recordRefKeys, the same identity composition
-     * itself uses, rather than by matching on `name`: fourteen of the record
-     * files have no `name`, and a hand-rolled slug here would be a second
-     * spelling of an identity that already has one. A patch ref is
-     * `<pack>:<key>`, so only the key half is compared - which pack OWNS the
-     * record is not the question; whether this mod touched it is. */
-    const wantedKeys = new Map<string, Set<string>>();
-    const want = (file: string, key: string): void => {
-      const set = wantedKeys.get(file) ?? new Set<string>();
-      set.add(key);
-      wantedKeys.set(file, set);
-    };
-    for (const [file, records] of this.#records) {
-      for (const r of records) for (const k of recordRefKeys(file, r)) want(file, k);
-    }
-    for (const [file, perRef] of this.#fieldPatches) {
-      for (const ref of perRef.keys()) want(file, refKey(ref));
-    }
-    for (const [file, perRef] of this.#replaces) {
-      for (const ref of perRef.keys()) want(file, refKey(ref));
-    }
-
-    const subject: Record<string, readonly JsonRecord[]> = {};
-    for (const [file, keys] of wantedKeys) {
-      subject[file] = (all[file] ?? []).filter((r) =>
-        recordRefKeys(file, r).some((k) => keys.has(k)),
-      );
-    }
-    /* A file whose records composition dropped entirely still gets checked, on
-     * the drafts, so a mod is never silently unexamined. */
-    for (const [file, records] of this.#records) {
-      if ((subject[file] ?? []).length === 0) subject[file] = records;
-    }
-
-    const findings: AuthoringFinding[] = checkRecords(subject, all);
+     * The subject - every record this mod is answerable for, as it came OUT of
+     * composition rather than as it was drafted - used to be selected here, and
+     * that selection was the only thing standing between a mod's build and the
+     * game's boot. Both now call `checkPacks`, so the builder's answer and the
+     * loader's answer cannot disagree about what a mod is answerable for; see
+     * validate.ts for how membership is decided.
+     *
+     * NO `baseId`, and every level. The mod is the only pack that matters here -
+     * `core` is passed in purely so its records exist to resolve against - and
+     * the author is sitting in front of the draft, which is where the `hint`
+     * level earns its keep. The loader filters to `warn` for the opposite
+     * reason. */
+    const findings: AuthoringFinding[] = checkPacks([mine], all);
 
     /* THE ONE THAT COSTS THE WHOLE GAME, PROMOTED TO AN ERROR. A file whose
      * records have no ref of their own can only be contributed WHOLE, so a mod

@@ -46,6 +46,38 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod's records are now checked when the GAME loads them, not only when its
+  author builds it.** The SDK has said since it was written that a content pack
+  is schema-validated, and MOD_REACH gap 12 recorded that as a claim with no code
+  behind it. Half of that was wrong, and the wrong half is the one worth keeping:
+  the checker was fully built - 4,630 lines of field shapes, types, ranges and
+  required-ness MEASURED from core's own 3,279 shipped records rather than
+  hand-written - exported, and thoroughly tested. Its only caller was
+  `ModProject.build`, **the mod builder**, a tool nobody but the author runs. A
+  mod installed from a zip, hand-edited in the mods folder, or produced by any
+  other tool had never been near it. So what a player got for a mistyped field
+  was the failure this whole channel exists to prevent: the mod loads, the record
+  composes, nothing complains, and the monster does not appear. The builder and
+  the loader now call ONE function (`packages/mod-sdk/src/validate.ts`) and cannot
+  disagree about what a mod is answerable for, and the lines land on that mod's
+  own row in the manager. Four decisions carry it. A patch is checked as the
+  record it PRODUCED, because a patch body is `{"speed": 120}` with none of the
+  twenty fields every monster has, and checking patches as written would put a
+  required-field error on every legitimate patch in existence. The base game is
+  not reported on: core's own data raises 65 warnings against core's own
+  blueprint - almost all upstream warts the port keeps on purpose - and putting
+  those on a screen at every boot, with no mods installed, would bury every real
+  line. Drafting advice stays in the builder, where the author is looking at the
+  draft. And a finding **costs nothing** - not the record, not the mod: a
+  blueprint is a measurement rather than a specification, and a mod coining a new
+  tval or slay code is doing something legal, so taking the mod away over a
+  statistic would punish exactly the experimentation the mod system exists to
+  allow. Proven through `diskPackStatus()`, the reader the manager calls, with
+  both silences measured as well as the noise: core alone says nothing, a
+  well-formed mod says nothing, and deleting the one line that maps findings onto
+  rows fails exactly the three assertions about reach. **Running it corrected one
+  of our own tests**: a bare `{name: "Survivor Hound"}` had been standing in for
+  "the forty records that ARE fine", and it drew four warnings of its own.
 - **A broken mod cannot blank the screen at boot, and that is now RUN rather than
   claimed.** The mechanism has been in place for a while: `composition()`
   (`packages/web/src/pack.ts`) calls `composeDroppingBroken` and not

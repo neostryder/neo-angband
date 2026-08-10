@@ -118,6 +118,26 @@ Findings are graded, and **nothing here refuses anything**. The refusals live in
 the manifest validator and the declared-field rule, where the rules are the
 engine's own.
 
+### It also runs when the GAME loads your mod
+
+Since 2026-08-09 this is not only a build-time tool. `composeContentPacks` — the
+function every host composes through — runs the same check over every pack it
+loads and puts what it finds on that mod's own row in the mod manager, so a
+player who installs your mod from a zip sees the same sentences you do. Three
+differences from `build()`, all deliberate:
+
+- **`warn` and above only.** A `hint` is drafting advice and belongs where you
+  are looking at the draft. On a player's screen dozens of them would bury the
+  one line that matters.
+- **The base game is not reported on.** Core's own data raises warnings against
+  core's own blueprint; those are upstream warts the port keeps on purpose.
+- **A patch is checked as the record it produced**, not as you wrote it — so
+  `{"speed": 120}` is not a record missing twenty fields.
+
+The practical consequence: **your `build()` output is what your users will see.**
+If it is clean at `warn`, their mod manager is quiet. There is nothing extra to
+run and nothing to opt into.
+
 | Level | Meaning | Examples |
 |---|---|---|
 | `error` | the record cannot work | a required field is absent; an artifact with no `base-object` |
