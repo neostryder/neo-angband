@@ -92,6 +92,9 @@ import {
   tvalIsWearable,
   tvalRegistry,
   resetTvalRegistry,
+  ODESC,
+  objectDesc,
+  makeRuneEnv,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   TerrainRecordJson,
@@ -1987,6 +1990,11 @@ describe("a mod folder on disk reaches the item-class registry", () => {
             * something before it is identified. */
            host.tval.good.set(${String(MOD_TVAL)}, () => true);
            host.tval.valueBase.set(${String(MOD_TVAL)}, () => 175);
+           /* And a NAME. Without this every message, menu row and shop line
+            * that mentions the class reads "(nothing)". */
+           host.tval.basename.set(${String(MOD_TVAL)}, (c) =>
+             c.showFlavor ? "& # Relic~" : "& Relic~",
+           );
          },
        };`,
     );
@@ -2046,6 +2054,34 @@ describe("a mod folder on disk reaches the item-class registry", () => {
       good: kindIsGood(kind as never),
       value: objectValueBase({ tval: MOD_TVAL, kind } as never, false),
     }).toEqual({ good: true, value: 175 });
+
+    /* And what the PLAYER READS, through the real objectDesc - which is the
+     * whole point, because before this registered the answer was the literal
+     * string "(nothing)". */
+    const env = makeRuneEnv(
+      () => null,
+      ((v: { base: number }) => v.base) as never,
+      {
+        brands: [],
+        slays: [],
+        curses: [],
+        properties: [],
+        elementNames: ["acid", "lightning", "fire", "frost"],
+        msg: () => {},
+      } as never,
+    );
+    const named = objectDesc(
+      { tval: MOD_TVAL, kind, number: 1 } as never,
+      ODESC.PREFIX,
+      null,
+      env,
+      { isAware: () => true, isTried: () => false },
+    );
+    /* The mod's template composed with core's naming machinery rather than
+     * replacing it: "Relic" is the mod's, the article and the " of Strength"
+     * tail are obj-desc.c's, and before the registration this whole string
+     * would have read "(nothing)". */
+    expect(named).toBe("the Relic of Strength");
   });
 
   it("without the capability the tval registry refuses at the call", async () => {

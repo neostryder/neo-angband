@@ -46,6 +46,28 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod's item class has a NAME now, instead of being called "(nothing)".**
+  `obj_desc_get_basename` is a 34-case switch on tval holding the base-name
+  template for every item in the game - `"& # Potion~"`, `"& Scroll~ titled #"`,
+  `"& Book~ of Magic Spells #"` - and its default arm returns the **literal
+  string `"(nothing)"`**. So a mod-coined item class was not merely unnamed:
+  every message, menu row, shop line and object-recall header that mentioned it
+  read *(nothing)*. It is now a fourth table on the same `registry:tval`
+  capability, because naming is a property of the item class and splitting it
+  out would make an author declare two capabilities to do one thing. **2,358
+  golden descriptions** - 393 kinds across six axes, read out of the real
+  `objectDesc` before the registry existed - replay identically, and a mod
+  folder on disk now produces *"the Relic of Strength"*: the template is the
+  mod's, the article and the `of <kind>` tail are `obj-desc.c`'s. Two findings
+  while recording. The grid first reached only **31 of the 34 arms**: upstream
+  4.2.6 defines no book in `object.txt` - `registerBookKinds` synthesises them
+  from `class.txt` - so the five book templates were never exercised, and the
+  fixture now calls that real producer. And `desc.ts:391` compared
+  `obj.tval === TV.SCROLL` directly when `tvalIsScroll` already existed and was
+  exported; that one line went around the class predicates the rest of the file
+  uses. The wider version of that - 108 raw `tval === TV.X` sites across core
+  and web - is now tracked separately. The census is down to **35 switches, 473
+  case labels, and a single candidate** (`obj/knowledge.ts`).
 - **A mod can teach the game a whole new KIND of item: `registry:tval`.**
   `object.json` has always accepted a new record, so a mod could always ship a
   new *item*. Making core recognise a new item **class** - a tval - was a

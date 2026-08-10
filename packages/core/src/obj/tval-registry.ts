@@ -67,6 +67,7 @@
  * design.
  */
 
+import type { GameObject } from "./object.js";
 import type { ObjectKind } from "./types.js";
 
 /* ------------------------------------------------------------------ *
@@ -108,6 +109,43 @@ export type TvalGoodHandler = (kind: ObjectKind) => boolean;
  * Registering one is how a mod's unidentified potion stops looking like litter.
  */
 export type TvalValueBaseHandler = (kind: ObjectKind) => number;
+
+/* ------------------------------------------------------------------ *
+ * Table 4: the base NAME template, keyed on tval.
+ * ------------------------------------------------------------------ */
+
+/** The state one `obj_desc_get_basename` arm is given (obj-desc.c L152). */
+export interface TvalBasenameContext {
+  /** The object being described. */
+  readonly obj: GameObject;
+  /** Its kind, for the arms that answer with the record's own name. */
+  readonly kind: ObjectKind;
+  /**
+   * `show_flavor` (obj-desc.c L84-88): whether the `#` flavour placeholder
+   * belongs in the template. Already resolved from awareness, terseness, the
+   * store flag, the `show_flavors` option and whether flavour TEXT exists, so
+   * an arm never has to re-derive it and two arms cannot derive it differently.
+   */
+  readonly showFlavor: boolean;
+  /** `ODESC_TERSE`: the five book arms are the only ones that read it. */
+  readonly terse: boolean;
+  /** `object_flavor_is_aware`. */
+  readonly aware: boolean;
+}
+
+/**
+ * The base name TEMPLATE for an item class - `"& # Potion~"`,
+ * `"& Scroll~ titled #"`, `"& Book~ of Magic Spells #"` - in `obj-desc.c`'s
+ * own markup: `&` is the article slot, `~` pluralises, `|a|b|` picks by number,
+ * `#` is where the flavour or modifier string goes.
+ *
+ * An unregistered tval takes upstream's default arm, which returns the literal
+ * string **`"(nothing)"`**. That is not a graceful degradation: it is what every
+ * message, menu row, shop line and object-recall header would read for a mod's
+ * item class. Registering a template is the single most visible thing a mod
+ * adding an item class has to do.
+ */
+export type TvalBasenameHandler = (ctx: TvalBasenameContext) => string;
 
 /* ------------------------------------------------------------------ *
  * The tables.
@@ -155,6 +193,8 @@ export class TvalRegistry {
   readonly good = new TvalTable<number, TvalGoodHandler>();
   /** `object_value_base`, keyed on tval. */
   readonly valueBase = new TvalTable<number, TvalValueBaseHandler>();
+  /** `obj_desc_get_basename` - what the item class is CALLED, keyed on tval. */
+  readonly basename = new TvalTable<number, TvalBasenameHandler>();
 }
 
 /* ------------------------------------------------------------------ *

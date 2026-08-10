@@ -334,7 +334,7 @@ mod would reach through records, not code.
 | 12 | `PROJECT_OBJ_HANDLERS` (11, keyed by `code`) | **yes** — the SAME registry, second side |
 | 13 | store buy rule + `massProduce` (27 tvals) | **yes** (`registry:store`, 2026-08-08) |
 | 14 | randart property switches (87 + 15 + 14 + 9 = 125) | **yes** (`registry:randart`, 2026-08-09) |
-| 15 | object naming / desc switches (34, `obj/desc.ts` alone - the other 74 were miscounted, see the correction above) | no |
+| 15 | object naming: `obj_desc_get_basename` (34) | **yes** (`registry:tval`, 2026-08-09) |
 | 16 | object knowledge switch (43) | no |
 | 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
 | 18 | UI entry type switch (32) | no |
@@ -347,13 +347,13 @@ mod would reach through records, not code.
 | 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
-| 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` | **yes** (`registry:tval`, 2026-08-09) |
+| 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` + the base NAME | **yes** (`registry:tval`, 2026-08-09) |
 
-**16 yes, 2 accidental, 10 no** (re-measured 2026-08-09, when the item-class
-registry landed). This is a count of the ROWS above, which is the only
+**17 yes, 2 accidental, 9 no** (re-measured 2026-08-09, when object naming
+joined the item-class registry). This is a count of the ROWS above, which is the only
 form of the tally anyone can check by reading the column; earlier versions mixed
 rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
-reachable FROM DISK, so the non-bundled figure is 15/15 of the reachable seams
+reachable FROM DISK, so the non-bundled figure is 16/16 of the reachable seams
 rather than 0 - rows 9 and 10 are one capability delivered twice on purpose, two
 bodies of one dispatch, and a registry only one of them consulted would be worse
 than none, and rows 11/12/27 are one capability delivered three times for the
@@ -430,7 +430,7 @@ and the host constructs it for real:
 | `registry:glyph` | `GlyphFacade` | `GlyphRegistry` (`RoomRegistry.glyphs`, `gen/glyph.ts`) | — |
 | `registry:effect-info` | `EffectInfoFacade` (four tables) | `EffectInfoRegistry` (`effects/effect-info-registry.ts`, module-level) | — |
 | `registry:randart` | `RandartFacade` (four tables) | `RandartRegistry` (`obj/randart-registry.ts`, module-level) | — |
-| `registry:tval` | `TvalFacade` (three tables) | `TvalRegistry` (`obj/tval-registry.ts`, module-level) | — |
+| `registry:tval` | `TvalFacade` (four tables) | `TvalRegistry` (`obj/tval-registry.ts`, module-level) | — |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
 
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
