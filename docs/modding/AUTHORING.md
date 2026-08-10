@@ -479,7 +479,8 @@ the one input door and can represent a continuous direction (vector, magnitude,
 angle) without translating it to a keyboard arrow. There is no front-end or
 input-binding plugin member yet: do not depend on one until its capability and
 disk-loaded integration path ship. Player keymaps keep precedence over any later
-input consumer.
+input consumer while the root owns input; an active modal, score screen, or run
+interruption continues to receive the player's literal key first.
 
 Every record the game binds carries `from` when a mod was involved:
 

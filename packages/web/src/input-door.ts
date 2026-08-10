@@ -48,9 +48,22 @@ type Entry = { readonly listener: KeydownListener; readonly capture: boolean };
 type KeymapResolver = (input: UiInput) => readonly UiInputDraft[] | null;
 type KeyTarget = Pick<Window, "addEventListener" | "removeEventListener">;
 
+/** Host-owned conditions that make a player keymap ineligible for this input. */
+export interface KeymapResolverOptions {
+  /**
+   * The root game screen is not always the input owner: a modal, score page,
+   * or run-interrupt loop must see the literal key before a keymap can expand
+   * it. This predicate preserves that ownership boundary.
+   */
+  readonly enabled?: () => boolean;
+  /** Called for the literal trigger immediately before its expansion is queued. */
+  readonly onExpanded?: (input: UiInput) => void;
+}
+
 const entries: Entry[] = [];
 let nextSequence = 1;
 let keymapResolver: KeymapResolver | undefined;
+let keymapResolverOptions: KeymapResolverOptions | undefined;
 let browserWindow: KeyTarget | undefined;
 
 function directionForKey(key: string): UiDirection | undefined {
@@ -101,9 +114,9 @@ function deliver(input: UiInput, original?: KeyboardEvent): void {
   const event = compatEvent(input, original);
   let stopped = false;
   const proxy = new Proxy(event, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "stopImmediatePropagation") return () => { stopped = true; target.stopImmediatePropagation(); };
-      const value = Reflect.get(target, prop, receiver);
+      const value = Reflect.get(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as UiInputEvent;
@@ -163,15 +176,25 @@ export const inputEvents = {
 };
 
 /** Player keymaps are resolved before registered (including mod) input consumers. */
-export function setKeymapResolver(resolver: KeymapResolver | undefined): void {
+export function setKeymapResolver(
+  resolver: KeymapResolver | undefined,
+  options?: KeymapResolverOptions,
+): void {
   keymapResolver = resolver;
+  keymapResolverOptions = options;
 }
 
 /** Route a semantic input sample through the same door as browser input. */
 export function dispatchUiInput(draft: UiInputDraft, original?: KeyboardEvent, bypassKeymap = false): void {
   const input = stamp(draft);
-  const expansion = !bypassKeymap ? keymapResolver?.(input) : null;
+  const expansion = !bypassKeymap && (keymapResolverOptions?.enabled?.() ?? true)
+    ? keymapResolver?.(input)
+    : null;
   if (expansion) {
+    // The old root handler logged a keymap's trigger before it returned to
+    // queue the expansion. The root no longer sees this input, so preserve
+    // that observable ordering at the door.
+    keymapResolverOptions?.onExpanded?.(input);
     original?.preventDefault();
     enqueueUiInputs(expansion);
     return;
@@ -207,6 +230,7 @@ export function clearInputDoor(): void {
   entries.length = 0;
   clearQueuedUiInputs();
   keymapResolver = undefined;
+  keymapResolverOptions = undefined;
   nextSequence = 1;
   if (browserWindow) browserWindow.removeEventListener("keydown", browserKeydown, true);
   browserWindow = undefined;

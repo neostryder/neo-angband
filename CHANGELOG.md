@@ -50,7 +50,8 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   registrations now subscribe to it; keyboard and keymap input are normalized
   as device-neutral values, including continuous direction vectors and angles
   for a future controller/radial UI. A player's saved keymap is resolved before
-  later input consumers.
+  later input consumers only while the root owns input, preserving the existing
+  modal, score-screen, and run-interrupt literal-key behavior.
 
 - The web grid now renders through the renderer-neutral `GridSurface` contract.
   `GlyphTerm` remains the faithful canvas implementation; tile values are asset

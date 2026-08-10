@@ -86,6 +86,12 @@ describe("a run can be interrupted", () => {
     expect(dispatch).toBeGreaterThan(swallow);
   });
 
+  it("keeps player keymaps behind the run-interrupt gate", () => {
+    const start = MAIN.indexOf("setKeymapResolver(");
+    const resolver = MAIN.slice(start, MAIN.indexOf('inputEvents.addEventListener("keydown"', start));
+    expect(resolver).toContain("enabled: () => !scoresOpen && modalDepth === 0 && !pumping");
+  });
+
   it("reports an interrupted rest the way the engine reports an interrupted run", () => {
     const body = functionBody(MAIN, "driveRest");
     // Only the keypress arm: the monster-in-view and damage disturbs are silent

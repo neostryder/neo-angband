@@ -289,8 +289,10 @@ host path exists would be an inert seam.
 The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
 single device-neutral route by which keyboard and keymap input reaches screens;
 its direction carries an analog vector and angle. It does not grant a plugin a
-binding registry in this phase. Stored player keymaps are evaluated first, so a
-mod must not use injected input to outrank the player's chosen mapping.
+binding registry in this phase. Stored player keymaps are evaluated first when
+the root owns input; score pages, modals, and run interruption retain their
+existing literal-key gates, so a mod must not use injected input to outrank the
+player's chosen mapping or an active screen.
 
 `register` reaches nine registries, each gated by a capability your manifest must
 declare **and** the player must consent to:
