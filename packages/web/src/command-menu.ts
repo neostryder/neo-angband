@@ -23,6 +23,7 @@
  * is not listed - upstream's menu is cmds_all and nothing else.
  */
 
+import { inputEvents } from "./input-door";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { menuNav } from "./overlay";
 import { UI_TEXT, UI_CURSOR } from "./ui-colors";
@@ -139,7 +140,7 @@ function runMenu(
     };
 
     const finish = (value: number | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -176,7 +177,7 @@ function runMenu(
       paint();
     };
 
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     installTap();
     paint();
   });

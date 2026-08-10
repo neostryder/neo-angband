@@ -23,6 +23,7 @@
  * C oracle: reference/src/ui-knowledge.c. Attribution: neostryder / RPGM Tools.
  */
 
+import { inputEvents } from "./input-door";
 import {
   COLOUR_YELLOW,
   COLOUR_VIOLET,
@@ -396,7 +397,7 @@ export async function runGroupedBrowser<T>(
       };
 
       const finish = (value: T | null): void => {
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         setActiveCellTap(term, null);
         resolve(value);
       };
@@ -418,15 +419,15 @@ export async function runGroupedBrowser<T>(
         if (hooks.xtraAct && cur && panel === 1 && ev.key.length === 1 && ev.key !== "r" && ev.key !== "R") {
           const act = hooks.xtraAct;
           const held = cur.member;
-          window.removeEventListener("keydown", onKey, true);
+          inputEvents.removeEventListener("keydown", onKey, true);
           void act(ev.key, held).then((used) => {
             if (used) {
               /* Consumed: nothing was chosen, so re-arm and repaint over
                * whatever the prompt drew. */
-              window.addEventListener("keydown", onKey, true);
+              inputEvents.addEventListener("keydown", onKey, true);
               paint();
             } else {
-              window.addEventListener("keydown", onKey, true);
+              inputEvents.addEventListener("keydown", onKey, true);
               paint();
             }
           });
@@ -469,7 +470,7 @@ export async function runGroupedBrowser<T>(
         paint();
       };
 
-      window.addEventListener("keydown", onKey, true);
+      inputEvents.addEventListener("keydown", onKey, true);
       /* Tap: the pane you touch becomes the active one and the row you touch
        * becomes its cursor - upstream's EVT_MOUSE branch (region_inside on the
        * inactive menu swaps panels), plus MN_DBL_TAP's second tap to select. */

@@ -76,7 +76,7 @@ describe("a run can be interrupted", () => {
   });
 
   it("swallows keys while pumping instead of executing them", () => {
-    const handler = MAIN.slice(MAIN.indexOf('window.addEventListener("keydown"'));
+    const handler = MAIN.slice(MAIN.indexOf('inputEvents.addEventListener("keydown"'));
     const swallow = handler.indexOf("if (pumping) {");
     expect(swallow, "the keydown handler no longer checks `pumping`").toBeGreaterThan(-1);
     expect(handler.slice(swallow, swallow + 200)).toContain("interruptKey = true");

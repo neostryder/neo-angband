@@ -12,6 +12,7 @@
  * outside any tag is COLOUR_WHITE, matching the file loader's default.
  */
 
+import { inputEvents } from "./input-door";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import {
   BASIC_COLORS,
@@ -590,7 +591,7 @@ export function showTitleScreen(
     });
     let shimmerTimer: unknown = null;
     const finish = (choice: TitleChoice): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       /* The title screen is a promise that resolves once; a timer left running
        * would repaint row 23 over whatever screen comes next, forever. */
@@ -608,7 +609,7 @@ export function showTitleScreen(
       ev.stopImmediatePropagation();
       if (choice) finish(choice);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, (cell) => {
       if (cell.row !== promptRow) return;
       const hit = spans.find((s) => cell.col >= s.start && cell.col <= s.end);

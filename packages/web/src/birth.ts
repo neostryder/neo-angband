@@ -44,6 +44,7 @@
  * to play on with an unchosen character.
  */
 
+import { inputEvents } from "./input-door";
 import {
   getKeyInline,
   menuNav,
@@ -548,7 +549,7 @@ async function runQuickstart(
 
   return new Promise<QuickstartAction>((resolve) => {
     const finish = (action: QuickstartAction): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(action);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -572,7 +573,7 @@ async function runQuickstart(
       /* Anything else: `while (next == BIRTH_QUICKSTART)` goes round again with
        * the screen untouched. */
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -716,7 +717,7 @@ function pointBuyStats(
       );
     };
     const finish = (value: number[] | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -765,7 +766,7 @@ function pointBuyStats(
       }
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     // Touch: tap a stat row to move the cursor there; tap the footer to accept.
     setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
@@ -843,7 +844,7 @@ function standardRoller(
       );
     };
     const finish = (value: number[] | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -870,7 +871,7 @@ function standardRoller(
           // reroll and not a stage change (roller_command, ui-birth.c:925-926
           // -> ACT_CTX_BIRTH_ROLL_HELP, :993-994).
           openBirthHelp(term, onKey, () => {
-            window.addEventListener("keydown", onKey, true);
+            inputEvents.addEventListener("keydown", onKey, true);
             installTap();
             paint();
           });
@@ -898,7 +899,7 @@ function standardRoller(
       }
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     installTap();
     paint();
   });
@@ -961,7 +962,7 @@ function openBirthHelp(
   onKey: (ev: KeyboardEvent) => void,
   restore: () => void,
 ): void {
-  window.removeEventListener("keydown", onKey, true);
+  inputEvents.removeEventListener("keydown", onKey, true);
   /* Nulling the tap is belt-and-braces and mutation-verified as such: runHelp's
    * first act is selectFromMenu, which installs its own handler synchronously,
    * so there is no instant at which a tap could still reach the stage behind
@@ -1063,7 +1064,7 @@ function birthMenu(
     };
 
     const finish = (res: BirthMenuResult): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(res);
     };
@@ -1117,7 +1118,7 @@ function birthMenu(
           // (menu_question, ui-birth.c:859-861). The instruction header has
           // been advertising this key since print_menu_instructions was ported.
           openBirthHelp(term, onKey, () => {
-            window.addEventListener("keydown", onKey, true);
+            inputEvents.addEventListener("keydown", onKey, true);
             installTap();
             paint();
           });
@@ -1132,7 +1133,7 @@ function birthMenu(
         if (idx >= 0) finish({ kind: "pick", index: idx });
       }
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     installTap();
     paint();
   });
@@ -1245,7 +1246,7 @@ function confirmCharacter(
       PB_FG,
     );
     const finish = (value: ConfirmResult): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -1260,7 +1261,7 @@ function confirmCharacter(
       if (ev.key === "Escape") return finish("back");
       finish("begin");
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     // Touch: tapping the prompt row is "any other key" (begin).
     setActiveCellTap(term, () => {
       finish("begin");

@@ -11,6 +11,7 @@
  * the character save, so they are shared across characters, not per-save.
  */
 
+import { inputEvents } from "./input-door";
 import {
   COLOR_TABLE,
   MAX_COLORS,
@@ -103,7 +104,7 @@ export function runColorsEditor(term: GridSurface & GridPointerInput, persist: (
     };
 
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       persist();
       resolve();
     };
@@ -132,7 +133,7 @@ export function runColorsEditor(term: GridSurface & GridPointerInput, persist: (
       paint();
     };
 
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }

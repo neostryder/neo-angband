@@ -34,6 +34,7 @@
  * is the port's own addition standing in for upstream's page reconfiguration.
  */
 
+import { inputEvents } from "./input-door";
 import {
   COLOUR_WHITE,
   EQUIP_CMP_FILTER_NO_MATCH,
@@ -383,11 +384,11 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
      * it. Verified live before the fix.
      */
     const nested = async <T>(run: () => Promise<T>): Promise<T> => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       try {
         return await run();
       } finally {
-        window.addEventListener("keydown", onKey, true);
+        inputEvents.addEventListener("keydown", onKey, true);
       }
     };
 
@@ -515,7 +516,7 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
       if (nav === "end") { cursor = last; paint(); return; }
       switch (ev.key) {
         case "Escape":
-          window.removeEventListener("keydown", onKey, true);
+          inputEvents.removeEventListener("keydown", onKey, true);
           resolve();
           return;
         case "j":
@@ -611,7 +612,7 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
       }
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }

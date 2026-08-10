@@ -9,6 +9,7 @@
  * model as colours. Everything else mirrors ui_keymap_query / _create / _remove.
  */
 
+import { inputEvents } from "./input-door";
 import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import { UI_TEXT } from "./ui-colors";
@@ -35,10 +36,10 @@ function captureKey(term: GridSurface & GridPointerInput, prompt: string): Promi
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key.length !== 1 && ev.key !== "Escape") return; // ignore Shift/Arrows/etc.
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(ev.key === "Escape" ? null : ev.key);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -60,7 +61,7 @@ function captureAction(term: GridSurface & GridPointerInput, prompt: string): Pr
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") {
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve(null);
         return;
       }
@@ -76,7 +77,7 @@ function captureAction(term: GridSurface & GridPointerInput, prompt: string): Pr
         return;
       }
       if (ev.key === "=") {
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve(buf);
         return;
       }
@@ -85,7 +86,7 @@ function captureAction(term: GridSurface & GridPointerInput, prompt: string): Pr
         paint();
       }
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }
@@ -101,10 +102,10 @@ function ack(term: GridSurface & GridPointerInput, text: string): Promise<void> 
       if (ev.key.length !== 1 && ev.key !== "Escape" && ev.key !== "Enter") return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -124,10 +125,10 @@ function confirm(term: GridSurface & GridPointerInput, prompt: string): Promise<
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key.length !== 1 && ev.key !== "Escape") return;
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(ev.key === "y" || ev.key === "Y");
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 

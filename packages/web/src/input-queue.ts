@@ -6,11 +6,8 @@
  * reader AND each sub-menu / prompt) pulls the next queued key exactly as if the
  * player had typed it, so a keymap can drive menus (e.g. "qc" = quaff, then pick
  * item c). This shell has no single inkey(): the top-level game handler and each
- * modal attach their own capturing `keydown` listener on `window`, and the
- * top-level handler yields (returns early) whenever a modal is open. So a
- * synthesized keydown dispatched to `window` is delivered to whichever listener
- * is currently active - the modal's when one is open, the top-level's otherwise
- * - which is precisely the routing inkey() performs.
+ * modal subscribes to the one input door. Synthesised input uses that same door,
+ * so the top-most screen receives it just as inkey() would deliver it.
  *
  * Keys are delivered one per macrotask (setTimeout 0). A command that opens a
  * modal does so on the microtasks spawned while its trigger key is handled;
@@ -29,52 +26,20 @@ export interface SynthKey {
   metaKey?: boolean;
 }
 
-/** Marker on events this module synthesised, so a keymap never re-expands its
- * own output (upstream: keymap actions are not themselves keymapped). */
-const SYNTH_FLAG = "__neoKeymapSynth";
-
-const queue: SynthKey[] = [];
-let pumping = false;
-
-function makeKeyEvent(k: SynthKey): Event {
-  const ev = new Event("keydown", { cancelable: true, bubbles: false });
-  Object.assign(ev as object, {
-    key: k.key,
-    ctrlKey: !!k.ctrlKey,
-    shiftKey: !!k.shiftKey,
-    altKey: !!k.altKey,
-    metaKey: !!k.metaKey,
-    [SYNTH_FLAG]: true,
-  });
-  return ev;
-}
-
-function pump(): void {
-  if (pumping || queue.length === 0) return;
-  pumping = true;
-  setTimeout(() => {
-    pumping = false;
-    const next = queue.shift();
-    if (!next) return;
-    window.dispatchEvent(makeKeyEvent(next));
-    if (queue.length > 0) pump();
-  }, 0);
-}
+import { clearQueuedUiInputs, enqueueUiInputs } from "./input-door";
 
 /** Feed a sequence of keypresses into the input stream (keymap expansion). */
 export function enqueueKeys(keys: readonly SynthKey[]): void {
-  if (keys.length === 0) return;
-  queue.push(...keys);
-  pump();
-}
-
-/** Whether `ev` was synthesised here (a keymap's own output - do not re-expand). */
-export function isSynthKey(ev: Event): boolean {
-  return (ev as unknown as Record<string, unknown>)[SYNTH_FLAG] === true;
+  enqueueUiInputs(keys.map((key) => ({
+    key: {
+      key: key.key,
+      modifiers: { ctrl: !!key.ctrlKey, shift: !!key.shiftKey, alt: !!key.altKey, meta: !!key.metaKey },
+      repeat: false,
+    },
+  })));
 }
 
 /** Test hook: drop any pending synthesised keys. */
 export function clearInputQueue(): void {
-  queue.length = 0;
-  pumping = false;
+  clearQueuedUiInputs();
 }

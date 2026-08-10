@@ -22,8 +22,8 @@ describe("the equip-cmp screen's keyboard ownership", () => {
   it("detaches its own listener around a nested overlay, and reattaches after", () => {
     const nested = SRC.slice(SRC.indexOf("const nested ="));
     const body = nested.slice(0, nested.indexOf("\n    };") + 7);
-    expect(body).toContain('window.removeEventListener("keydown", onKey, true)');
-    expect(body).toMatch(/finally \{\s*window\.addEventListener\("keydown", onKey, true\);/);
+    expect(body).toContain('inputEvents.removeEventListener("keydown", onKey, true)');
+    expect(body).toMatch(/finally \{\s*inputEvents\.addEventListener\("keydown", onKey, true\);/);
   });
 
   it("routes both help screens and the comparison through it", () => {
