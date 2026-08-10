@@ -49,7 +49,7 @@ import {
   type MenuItem,
   type ScreenLine,
 } from "./overlay";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
@@ -680,7 +680,7 @@ export async function confirmGameplayNoscore(
   return needsGameplayNoscoreWarning(m, modNoscore) ? confirm() : true;
 }
 
-async function gameplayNoscorePrompt(term: GlyphTerm, m: CatalogMod): Promise<boolean> {
+async function gameplayNoscorePrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
   await showTextScreen(term, `Non-scoring save - ${m.name}`, [
     { text: "This mod changes core gameplay behavior.", color: C_WARN },
     { text: "Your save will be permanently marked as non-scoring.", color: C_WARN },
@@ -701,7 +701,7 @@ async function gameplayNoscorePrompt(term: GlyphTerm, m: CatalogMod): Promise<bo
  * The capability consent gate: show every requested capability in plain terms,
  * flag elevated ones, and require an explicit Yes. Returns true if consented.
  */
-async function consentPrompt(term: GlyphTerm, m: CatalogMod): Promise<boolean> {
+async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
   const lines: ScreenLine[] = [
     { text: `"${m.name}" requests these capabilities:`, color: C_TITLE },
     { text: "", color: C_FG },
@@ -752,7 +752,7 @@ async function consentPrompt(term: GlyphTerm, m: CatalogMod): Promise<boolean> {
  * real catalogue row and goes through the same enableMod every other path uses.
  */
 async function enableAfterInstall(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   id: string,
 ): Promise<boolean> {
@@ -787,7 +787,7 @@ async function enableAfterInstall(
 
 /** Enable a mod, gating plugins on capability consent. Returns true if enabled. */
 async function enableMod(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   m: CatalogMod,
 ): Promise<boolean> {
@@ -823,7 +823,7 @@ async function enableMod(
  * or by one already on, and the player needs to see it either way.
  */
 async function confirmDeclaredConflicts(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   m: CatalogMod,
 ): Promise<boolean> {
@@ -883,7 +883,7 @@ async function confirmDeclaredConflicts(
  * of a mod, arrives with it, and cannot exist without it.
  */
 async function manageMod(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   id: string,
 ): Promise<boolean> {
@@ -1054,7 +1054,7 @@ async function manageMod(
  * this is one button over the mods already installed, not staging, collections,
  * profiles-per-install or bulk management.
  */
-async function autoSortLoadOrder(term: GlyphTerm, deps: ModManagerDeps): Promise<boolean> {
+async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<boolean> {
   const current = deps.store.getEnabled();
   const byId = new Map(deps.listCatalog().map((m) => [m.id, m]));
   const manifests = current
@@ -1139,7 +1139,7 @@ async function autoSortLoadOrder(term: GlyphTerm, deps: ModManagerDeps): Promise
  * turning it on would patch nothing.
  */
 async function manageSections(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   m: CatalogMod,
 ): Promise<boolean> {
@@ -1251,7 +1251,7 @@ async function manageSections(
  *    effect. Listed so the picture is complete, kept last so it does not bury
  *    the group above.
  */
-async function viewConflicts(term: GlyphTerm, deps: ModManagerDeps): Promise<void> {
+async function viewConflicts(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
   const { declared, contested, combined } = deps.conflictLines();
   const body: ScreenLine[] = [];
 
@@ -1289,7 +1289,7 @@ async function viewConflicts(term: GlyphTerm, deps: ModManagerDeps): Promise<voi
 
 /** The profiles submenu: save current, apply, or delete a named config. */
 async function manageProfiles(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
 ): Promise<boolean> {
   let changed = false;
@@ -1345,7 +1345,7 @@ async function manageProfiles(
  * can then opt out of individual patches and take the set minus one.
  */
 async function managePatches(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   m: CatalogMod,
 ): Promise<void> {
@@ -1433,7 +1433,7 @@ async function managePatches(
  * composed at load time by the same pipeline the bundled mods use.
  */
 async function showModSources(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   status: DiskPackStatus | undefined,
   canPick: boolean,
 ): Promise<void> {
@@ -1576,7 +1576,7 @@ export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
  * to attach is how a player concludes the feature is broken.
  */
 async function manageModFolder(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   picker: ModFolderPicker,
   status: DiskPackStatus | undefined,
   savedName: string | null,
@@ -1667,7 +1667,7 @@ async function manageModFolder(
  * leaves; if changes were made it offers to reload so they take effect.
  */
 export async function runModManager(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
 ): Promise<void> {
   let dirty = false;

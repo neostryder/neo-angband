@@ -23,7 +23,7 @@
  * is not listed - upstream's menu is cmds_all and nothing else.
  */
 
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { menuNav } from "./overlay";
 import { UI_TEXT, UI_CURSOR } from "./ui-colors";
 
@@ -80,7 +80,7 @@ export function commandEntryText(cmd: MenuCommand): string {
 }
 
 /** window_make (ui-output.c:469): erase the region, then a '+'-cornered box. */
-function windowMake(term: GlyphTerm, x0: number, y0: number, x1: number, y1: number): void {
+function windowMake(term: GridSurface & GridPointerInput, x0: number, y0: number, x1: number, y1: number): void {
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) term.print(x, y, " ", UI_TEXT);
   }
@@ -104,7 +104,7 @@ function rowColor(selected: boolean): string {
  * MN_SKIN_SCROLL with a NULL get_tag - there are no letters on either screen.
  */
 function runMenu(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   labels: readonly string[],
   box: { x0: number; y0: number; x1: number; y1: number },
   col: number,
@@ -140,12 +140,12 @@ function runMenu(
 
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
 
     const installTap = (): void => {
-      term.onCellTap?.((cell) => {
+      setActiveCellTap(term, (cell) => {
         const i = top + (cell.row - row);
         if (cell.col < box.x0 || cell.col > box.x1) return;
         if (i >= 0 && i < count) finish(i);
@@ -190,7 +190,7 @@ function runMenu(
  * columns right and one row up so the parent stays visible behind it.
  */
 export async function runCommandList(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   category: CommandCategory,
   redraw: () => void,
   level = 0,
@@ -220,7 +220,7 @@ export async function runCommandList(
  * nine categories and each names a cmd_debug_* list (ui-game.c:341-351).
  */
 async function runNestedList(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   categories: readonly CommandCategory[],
   redraw: () => void,
   parentBox: { x0: number; y0: number; x1: number; y1: number },
@@ -256,7 +256,7 @@ async function runNestedList(
  * command through the same key_confirm_command gate a keypress goes through.
  */
 export async function chooseCommand(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   categories: readonly CommandCategory[],
   redraw: () => void,
 ): Promise<MenuCommand | null> {

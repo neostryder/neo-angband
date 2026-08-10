@@ -234,7 +234,7 @@ function makeSheetTerm(cols = 80, rows = 24): SheetTerm {
         colors[y]![x + i] = fg;
       }
     },
-    onResize: null,
+    onSizeChanged: () => () => undefined,
     onCellTap: (cb: ((cell: { col: number; row: number }) => void) | null) => {
       tapCb = cb;
     },

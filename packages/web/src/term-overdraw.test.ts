@@ -23,7 +23,7 @@
  * smallest canvas and window GlyphTerm will construct against.
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { GlyphTerm, type Glyph, type TileDraw } from "./term";
+import { GlyphTerm, type Glyph, type RenderAssetRef } from "./term";
 
 /** A 2D context that records nothing and refuses nothing. */
 function stubCtx(): CanvasRenderingContext2D {
@@ -189,8 +189,8 @@ describe("the terminal paints the difference, not the screen", () => {
      * "changed" about every tile on screen, every frame. The key is what two
      * frames of the same dungeon have in common. */
     const term = makeTerm();
-    const tile = (key: string): TileDraw => ({ draw: () => true, key });
-    const cell = (t: TileDraw): Glyph => ({ ch: "#", fg: "#888888", tile: t });
+    const tile = (key: string): RenderAssetRef => ({ kind: "test", key, data: null });
+    const cell = (t: RenderAssetRef): Glyph => ({ ch: "#", fg: "#888888", tile: t });
 
     term.put(2, 2, cell(tile("101@4,4")));
     term.flush();
@@ -209,11 +209,11 @@ describe("the terminal paints the difference, not the screen", () => {
     /* Conservative on purpose: a tileset that is not ready hands out keyless
      * draws, and the frame after it loads must not be skipped. */
     const term = makeTerm();
-    const keyless: Glyph = { ch: "#", fg: "#888888", tile: { draw: () => true } };
+    const keyless: Glyph = { ch: "#", fg: "#888888", tile: { kind: "test", data: null } };
     term.put(2, 2, keyless);
     term.flush();
     const painted = term.paintStats().cells;
-    term.put(2, 2, { ...keyless, tile: { draw: () => true } });
+    term.put(2, 2, { ...keyless, tile: { kind: "test", data: null } });
     term.flush();
     expect(term.paintStats().cells - painted).toBe(1);
   });

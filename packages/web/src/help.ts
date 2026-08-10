@@ -34,7 +34,7 @@
  * no game-state mutation, no turn spent, no autosave.
  */
 
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
@@ -473,7 +473,7 @@ function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }
  * exactly the show_file recursion (ui-help.c:337-453), resolving when ESC is
  * pressed at the index. Pure display: no RNG, no state mutation, no turn.
  */
-export async function runHelp(term: GlyphTerm): Promise<void> {
+export async function runHelp(term: GridSurface & GridPointerInput): Promise<void> {
   for (;;) {
     /* Read PER OPEN, not captured: the list is core's plus whatever the enabled
      * mods supplied, and the mod pages are latched during boot. */

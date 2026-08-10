@@ -9,7 +9,7 @@
  * model as colours. Everything else mirrors ui_keymap_query / _create / _remove.
  */
 
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import { UI_TEXT } from "./ui-colors";
 import {
@@ -22,7 +22,7 @@ import {
 } from "./keymap-store";
 
 /** Read a single keypress inline (keymap_get_trigger-style). ESC returns null. */
-function captureKey(term: GlyphTerm, prompt: string): Promise<string | null> {
+function captureKey(term: GridSurface & GridPointerInput, prompt: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const { cols } = term.size();
     /* prt("Key: ", 14, 0) (ui-options.c:594, :628, :705) - prt, so the menu
@@ -47,7 +47,7 @@ function captureKey(term: GlyphTerm, prompt: string): Promise<string | null> {
  * keys accumulate, '=' finishes, Backspace/Delete removes the last, Ctrl-U
  * resets, ESC cancels. Returns the action string, or null if cancelled.
  */
-function captureAction(term: GlyphTerm, prompt: string): Promise<string | null> {
+function captureAction(term: GridSurface & GridPointerInput, prompt: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     let buf = "";
     const paint = (): void => {
@@ -91,7 +91,7 @@ function captureAction(term: GlyphTerm, prompt: string): Promise<string | null> 
 }
 
 /** Show a status message and wait for any key (upstream's msg + anykey). */
-function ack(term: GlyphTerm, text: string): Promise<void> {
+function ack(term: GridSurface & GridPointerInput, text: string): Promise<void> {
   return new Promise<void>((resolve) => {
     const { cols } = term.size();
     /* prt(msg, 16, 0) + prt("Press any key to continue.", 17, 0)
@@ -114,7 +114,7 @@ function ack(term: GlyphTerm, text: string): Promise<void> {
  * its own trailing space - which is what keeps the prompt text identical to the
  * reference's.
  */
-function confirm(term: GlyphTerm, prompt: string): Promise<boolean> {
+function confirm(term: GridSurface & GridPointerInput, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
     const line = `${prompt}[y/n] `;
@@ -136,7 +136,7 @@ function confirm(term: GlyphTerm, prompt: string): Promise<boolean> {
  * current keyset. `roguelike` selects the keymap mode. `notify` shows a status
  * line (message). Loops until ESC. Persists on every create / remove.
  */
-export async function runKeymapEditor(term: GlyphTerm, roguelike: boolean): Promise<void> {
+export async function runKeymapEditor(term: GridSurface & GridPointerInput, roguelike: boolean): Promise<void> {
   const mode = keymapModeFor(roguelike);
   for (;;) {
     const count = keymapEntries(mode).length;

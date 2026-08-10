@@ -4,7 +4,7 @@
  * `GlyphTerm.fit()` reallocates the cell grid whenever the window changes, and
  * it used to allocate an EMPTY one. That wiped the terminal on every resize and
  * left it wiped until something repainted - and the only repaint wired to
- * `onResize` is the game map. So a resize landing while a full-screen overlay
+ * the size event is the game map. So a resize landing while a full-screen overlay
  * owned the screen erased that overlay, and the ResizeObserver fires once on
  * observe, i.e. right around the boot title screen: launching the game showed
  * an empty screen with the title modal still silently waiting on a key.
@@ -23,7 +23,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { blitCellTiles, type Glyph, type TileDraw } from "./term";
+import {
+  blitCellAssets,
+  setActiveCellTap,
+  type Glyph,
+  type GridPointerInput,
+  type GridSurface,
+  type RenderAssetRef,
+} from "./term";
 import { carryGrid } from "./term";
 
 const TERM = readFileSync(new URL("./term.ts", import.meta.url), "utf8");
@@ -80,18 +87,54 @@ describe("GlyphTerm.fit", () => {
     expect(TERM).not.toMatch(/new Array<Glyph \| null>\(this\.cols\)\.fill\(null\)/);
   });
 
-  it("still repaints from the carried grid, and still notifies onResize", () => {
+  it("still repaints from the carried grid before notifying size subscribers", () => {
     /* The paint that puts the carried cells back on the resized canvas has to
      * happen NOW and has to be a FULL one: cells have moved and changed size, so
      * the frame diff's record of what is on the canvas is worthless. `fullRepaint
      * = true` then a synchronous `flush()`, rather than the queued paint every
      * other mutator gets - a resize does not come from a frame of gameplay, and
      * leaving the window blank until some later task is what "the title screen
-     * vanished" looked like. The onResize callback is how the shell repaints the
-     * map when no overlay is up. */
+     * vanished" looked like. Size observers run only after that flush. */
     expect(TERM).toMatch(/carryGrid\(this\.grid[\s\S]{0,900}?this\.fullRepaint = true/);
     expect(TERM).toMatch(/this\.fullRepaint = true;[\s\S]{0,900}?this\.flush\(\)/);
-    expect(TERM).toMatch(/this\.fit\(\);\s*this\.onResize\?\.\(this\.size\(\)\)/);
+    expect(TERM).toMatch(/this\.fit\(\);\s*const size = this\.size\(\);\s*for \(const listener of this\.sizeListeners\) listener\(size\)/);
+  });
+});
+
+describe("GridSurface contract", () => {
+  it("keeps the shared contract and asset value free of Canvas2D", () => {
+    const contract = TERM.slice(
+      TERM.indexOf("export interface RenderAssetRef"),
+      TERM.indexOf("/** Canvas-only adapter"),
+    );
+    expect(contract).toContain("export interface GridSurface");
+    expect(contract).toContain("export interface RenderAssetRef");
+    expect(contract).not.toContain("CanvasRenderingContext2D");
+    expect(TERM).not.toContain("redraw(): void");
+  });
+
+  it("can be implemented as a grid without any canvas member", () => {
+    const surface: GridSurface = {
+      size: () => ({ cols: 1, rows: 1 }), invalidate: () => undefined, flush: () => undefined,
+      clear: () => undefined, setCursor: () => undefined, hideCursor: () => undefined,
+      put: () => undefined, print: () => undefined, eraseToEol: () => undefined, prt: () => undefined,
+    };
+    expect(surface.size()).toEqual({ cols: 1, rows: 1 });
+  });
+
+  it("replaces the active modal tap by disposing the previous subscription", () => {
+    const listeners: ((cell: { col: number; row: number }) => void)[] = [];
+    const input: GridPointerInput = {
+      onCellTap(listener) {
+        listeners.push(listener);
+        return () => listeners.splice(listeners.indexOf(listener), 1);
+      },
+    };
+    setActiveCellTap(input, () => undefined);
+    setActiveCellTap(input, () => undefined);
+    expect(listeners).toHaveLength(1);
+    setActiveCellTap(input, null);
+    expect(listeners).toHaveLength(0);
   });
 });
 
@@ -282,22 +325,26 @@ describe("prt census: the sites that must NOT erase (put_str, ui-output.c:362-37
  * Term_pict blits the terrain tile first, then the foreground tile only when the
  * pair differs (main-sdl.c L5511-5540).
  */
-describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
-  /** A TileDraw that records the order it was called in, and can refuse. */
-  const rec = (log: string[], name: string, ok = true): TileDraw => ({
-    draw: (_ctx, px, py, w, h) => {
+describe("blitCellAssets (Term_pict's terrain-then-foreground pass)", () => {
+  /** Renderer-neutral assets are resolved by the renderer, not the grid value. */
+  const rec = (name: string): RenderAssetRef => ({ kind: "test", data: name });
+  const renderer = (refusals = new Set<string>()) => ({
+    draw: (_ctx: CanvasRenderingContext2D, asset: RenderAssetRef, px: number, py: number, w: number, h: number) => {
+      const name = String(asset.data);
       log.push(`${name}@${px},${py}+${w}x${h}`);
-      return ok;
+      return !refusals.has(name);
     },
   });
   const CTX = null as unknown as CanvasRenderingContext2D;
   const cell = (g: Partial<Glyph>): Glyph => ({ ch: "@", fg: "#fff", ...g });
+  let log: string[];
 
   it("draws the terrain tile first and the foreground tile second", () => {
-    const log: string[] = [];
-    const drew = blitCellTiles(
+    log = [];
+    const drew = blitCellAssets(
+      renderer(),
       CTX,
-      cell({ bgTile: rec(log, "floor"), tile: rec(log, "player") }),
+      cell({ bgTile: rec("floor"), tile: rec("player") }),
       32,
       48,
       16,
@@ -310,8 +357,8 @@ describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
   it("draws only the foreground tile when the terrain IS the top layer", () => {
     /* Upstream's `if ((tap[i] == ap[i]) && (tcp[i] == cp[i])) continue;` - the
      * caller expresses that by leaving bgTile off an uncovered terrain cell. */
-    const log: string[] = [];
-    expect(blitCellTiles(CTX, cell({ tile: rec(log, "floor") }), 0, 0, 16, 24)).toBe(true);
+    log = [];
+    expect(blitCellAssets(renderer(), CTX, cell({ tile: rec("floor") }), 0, 0, 16, 24)).toBe(true);
     expect(log).toEqual(["floor@0,0+16x24"]);
   });
 
@@ -320,10 +367,11 @@ describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
      * the monster. Both engines can return false per tile: the tilesheet while
      * its atlas is still fetching, a loose pack for any target it has no art
      * for. */
-    const log: string[] = [];
-    const drew = blitCellTiles(
+    log = [];
+    const drew = blitCellAssets(
+      renderer(new Set(["floor"])),
       CTX,
-      cell({ bgTile: rec(log, "floor", false), tile: rec(log, "player") }),
+      cell({ bgTile: rec("floor"), tile: rec("player") }),
       0,
       0,
       16,
@@ -336,10 +384,11 @@ describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
   it("reports NOT drawn when only the terrain drew, so the ASCII glyph survives", () => {
     /* The whole degradation contract: a cell whose real content would not blit
      * falls back to its text glyph rather than showing scenery alone. */
-    const log: string[] = [];
-    const drew = blitCellTiles(
+    log = [];
+    const drew = blitCellAssets(
+      renderer(new Set(["player"])),
       CTX,
-      cell({ bgTile: rec(log, "floor"), tile: rec(log, "player", false) }),
+      cell({ bgTile: rec("floor"), tile: rec("player") }),
       0,
       0,
       16,
@@ -350,13 +399,14 @@ describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
   });
 
   it("draws nothing and reports NOT drawn for a plain text cell", () => {
-    expect(blitCellTiles(CTX, cell({}), 0, 0, 16, 24)).toBe(false);
-    expect(blitCellTiles(CTX, null, 0, 0, 16, 24)).toBe(false);
+    log = [];
+    expect(blitCellAssets(renderer(), CTX, cell({}), 0, 0, 16, 24)).toBe(false);
+    expect(blitCellAssets(renderer(), CTX, null, 0, 0, 16, 24)).toBe(false);
   });
 });
 
 /**
- * ...and the call sites, because blitCellTiles is only as good as what reaches
+ * ...and the call sites, because blitCellAssets is only as good as what reaches
  * it. main.ts boots a real game at module scope and cannot be imported here, so
  * these read the source - the same approach as render-background.test.ts.
  *
@@ -391,14 +441,14 @@ describe("main.ts supplies bgTile wherever something covers the terrain", () => 
     expect(MAIN).toContain("...(memTile ? { bgTile: memTile } : {})");
   });
 
-  it("term.ts routes paintCell through blitCellTiles rather than blitting once", () => {
+  it("term.ts routes paintCell through blitCellAssets rather than blitting once", () => {
     const term = stripComments(TERM);
     /* The size arguments are `cw`/`ch`, not `this.cellW`/`this.cellH`: tiles are
      * painted into the same device-pixel-snapped rect as the background under
      * them (see cellBox), or they reintroduce the seam that rect exists to
      * close. What this test is about is unchanged - both tile passes still go
      * through one helper. */
-    expect(term).toContain("if (blitCellTiles(this.ctx, g, px, py, cw, ch)) return;");
+    expect(term).toContain("if (blitCellAssets(canvasAssetRenderer, this.ctx, g, px, py, cw, ch)) return;");
     /* The old single-pass shape, which no longer exists anywhere. */
     expect(term).not.toContain("if (g?.tile && g.tile.draw(");
   });

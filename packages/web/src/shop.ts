@@ -43,7 +43,7 @@ import {
   storeStashGuard,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { getQuantity, itemSelect } from "./overlay";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
@@ -280,11 +280,11 @@ type StoreInput = { type: "key"; key: string } | { type: "tap"; row: number; col
  * not resolve as a bare key. Registers and tears down its own window-keydown and
  * onCellTap handlers each call, so no two readers are ever live at once.
  */
-function readStoreInput(term: GlyphTerm): Promise<StoreInput> {
+function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreInput> {
   return new Promise<StoreInput>((resolve) => {
     const finish = (value: StoreInput): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -296,7 +296,7 @@ function readStoreInput(term: GlyphTerm): Promise<StoreInput> {
       finish({ type: "key", key: ev.key });
     };
     window.addEventListener("keydown", onKey, true);
-    term.onCellTap?.((cell) => finish({ type: "tap", row: cell.row, col: cell.col }));
+    setActiveCellTap(term, (cell) => finish({ type: "tap", row: cell.row, col: cell.col }));
   });
 }
 
@@ -308,7 +308,7 @@ function readStoreInput(term: GlyphTerm): Promise<StoreInput> {
  * Assumes the store frame is already painted behind it.
  */
 function storeConfirm(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   price?: number,
 ): Promise<boolean> {
@@ -428,7 +428,7 @@ function objCanUse(game: StartedGame, obj: GameObject): boolean {
  * inline buy/sell/quantity/confirm prompts.
  */
 export async function runStore(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   game: StartedGame,
   store: Store,
   say: (text: string) => void,

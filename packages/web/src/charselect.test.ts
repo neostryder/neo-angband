@@ -37,6 +37,7 @@ function makeFakeWindow(): FakeWindow {
 function makeTerm(cols = 80, rows = 16): GlyphTerm & { snapshot(): string[] } {
   const grid: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
   return {
+    onCellTap: () => () => undefined,
     size: () => ({ cols, rows }),
     clear: () => {
       for (const row of grid) row.fill(" ");

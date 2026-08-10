@@ -46,6 +46,11 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- The web grid now renders through the renderer-neutral `GridSurface` contract.
+  `GlyphTerm` remains the faithful canvas implementation; tile values are asset
+  references rather than Canvas2D callbacks, and pointer, hit-test, readback,
+  and resize capabilities are explicitly separated for later front-end plugins.
+
 - **A record now says which mod it came from, and a savefile stores it.** The
   composer has always known - every composed record carried `owner` and
   `modifiedBy` - and the host threw both away one line later, when it flattened

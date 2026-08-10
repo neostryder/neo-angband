@@ -19,7 +19,7 @@ import {
   colorToCss,
 } from "@rpgm-tools/neo-angband-core";
 import type { AbilityRow } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { menuLetter, selectFromMenu } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 
@@ -47,7 +47,7 @@ function rowLabelAndColor(row: AbilityRow): { label: string; color: string } {
  * textui_view_ability_menu. The port drops that hook indirection - the web
  * layer calls this directly - so the trampoline has no separate counterpart.
  */
-export function showAbilities(term: GlyphTerm, rows: readonly AbilityRow[]): Promise<void> {
+export function showAbilities(term: GridSurface & GridPointerInput, rows: readonly AbilityRow[]): Promise<void> {
   const items: MenuItem[] = rows.map((r) => {
     const { label, color } = rowLabelAndColor(r);
     return { label, color };

@@ -280,6 +280,12 @@ becomes one line the mod manager shows, and the other mods carry on.
 
 ## Capabilities
 
+The `GridSurface` rendering contract is host infrastructure, not yet a plugin
+capability: no plugin receives or selects a front end in this phase. It removes
+the canvas requirement from grid consumers so the later front-end capability can
+hand a replacement renderer real work to do; declaring a capability before that
+host path exists would be an inert seam.
+
 `register` reaches nine registries, each gated by a capability your manifest must
 declare **and** the player must consent to:
 

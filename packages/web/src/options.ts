@@ -103,7 +103,7 @@ import {
   optionsSaveCustom,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, OptionOpts } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { getKeyInline, selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
@@ -148,7 +148,7 @@ export interface OptionRow {
  * construction, and it should - the at-birth editor is not an OptionState.
  */
 function customDefaultsFor(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   page: string,
   rows: OptionRow[],
   get: (name: string) => boolean,
@@ -302,7 +302,7 @@ export interface OptionCustomDefaults {
  * here, including CHEAT, where upstream has no such key.
  */
 export function optionToggleScreen(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   rows: OptionRow[],
   onToggle: (name: string, value: boolean) => void,
@@ -492,7 +492,7 @@ export function optionToggleScreen(
  * custom-defaults actions - upstream gives this page `cmd_keys = "YyNnTtSsRrXx"`
  * (ui-options.c L341-347), and it is one of only two pages that get them.
  */
-async function runInterfacePage(term: GlyphTerm, state: GameState): Promise<void> {
+async function runInterfacePage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   const rows = pageRows(state, "INTERFACE");
   await optionToggleScreen(
     term,
@@ -515,7 +515,7 @@ async function runInterfacePage(term: GlyphTerm, state: GameState): Promise<void
 }
 
 /** (b) Birth (difficulty) options: every BIRTH row, read-only in-game. */
-async function runBirthPage(term: GlyphTerm, state: GameState): Promise<void> {
+async function runBirthPage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   await optionToggleScreen(
     term,
     "Birth options",
@@ -538,7 +538,7 @@ async function runBirthPage(term: GlyphTerm, state: GameState): Promise<void> {
  * table defaults (OPTION_ENTRIES.normal) for any option the store has not set.
  */
 export async function runBirthOptionsEditor(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   store: Record<string, boolean>,
 ): Promise<void> {
   const rows: OptionRow[] = OPTION_ENTRIES.filter((e) => e.type === "BIRTH").map(
@@ -589,7 +589,7 @@ export async function runBirthOptionsEditor(
  * gated on the page declaring OptionCustomDefaults, which only INTERFACE and
  * the at-birth birth page do.
  */
-async function runCheatPage(term: GlyphTerm, state: GameState): Promise<void> {
+async function runCheatPage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   await optionToggleScreen(
     term,
     "Cheat options",
@@ -606,7 +606,7 @@ async function runCheatPage(term: GlyphTerm, state: GameState): Promise<void> {
  * MIN(val, 255)-clamped - promptNumber's generic [min, max] clamp is exactly
  * upstream's rule here (unlike hitpoint warning, see runHitpointWarnPrompt).
  */
-async function runDelayFactorPrompt(term: GlyphTerm, state: GameState): Promise<void> {
+async function runDelayFactorPrompt(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   const current = state.options?.delayFactor ?? DEFAULT_DELAY_FACTOR;
   const val = await promptNumber(
     term,
@@ -627,7 +627,7 @@ async function runDelayFactorPrompt(term: GlyphTerm, state: GameState): Promise<
  * (99, matching its 3-digit buffer) purely so it never mis-clamps the raw
  * value; the >9 -> 0 rule is applied here, on the raw result.
  */
-async function runHitpointWarnPrompt(term: GlyphTerm, state: GameState): Promise<void> {
+async function runHitpointWarnPrompt(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   const current = state.options?.hitpointWarn ?? DEFAULT_HITPOINT_WARN;
   const val = await promptNumber(
     term,
@@ -656,7 +656,7 @@ async function runHitpointWarnPrompt(term: GlyphTerm, state: GameState): Promise
  * port can honour it without a save-format change - a real gap, not a silent
  * one (mirrors center_player etc. in viewport()'s doc comment, main.ts).
  */
-async function runLazymoveDelayPrompt(term: GlyphTerm, state: GameState): Promise<void> {
+async function runLazymoveDelayPrompt(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   const current = state.options?.lazymoveDelay ?? DEFAULT_LAZYMOVE_DELAY;
   const val = await promptNumber(
     term,
@@ -692,7 +692,7 @@ export interface SidebarModeMenu {
  * SIDEBAR_MODE live on each cycle; set() does the same (persist + repaint).
  */
 async function runSidebarModePage(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   sidebar: SidebarModeMenu,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -775,7 +775,7 @@ export interface TileModeMenu {
  * page just renders and applies it.
  */
 export async function runTileModePage(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   tiles: TileModeMenu,
 ): Promise<void> {
   const cur = tiles.current();
@@ -801,7 +801,7 @@ export async function runTileModePage(
 }
 
 export async function runOptionsMenu(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   state: GameState,
   openIgnoreSetup: () => Promise<void>,
   sidebar?: SidebarModeMenu,

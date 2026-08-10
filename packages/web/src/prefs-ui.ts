@@ -38,12 +38,12 @@ import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@rpgm-tools/neo-a
 import { getCheck, getString, selectFromMenu } from "./overlay";
 import { argForceName } from "./launch";
 import type { MenuItem } from "./overlay";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { UI_TEXT } from "./ui-colors";
 
 /** What the pref screens need from the running game. */
 export interface PrefsUiCtx {
-  term: GlyphTerm;
+  term: GridSurface & GridPointerInput;
   /** msg() + EVENT_MESSAGE_FLUSH. */
   say: (text: string) => void;
   /** player->full_name, for the default `<name>.prf` filename. */

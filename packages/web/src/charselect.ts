@@ -11,7 +11,7 @@
  */
 
 import type { CharMeta } from "./roster";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
@@ -72,7 +72,7 @@ function charHint(c: CharMeta, now: number): string {
  * the storage, so there is no file to remove by hand - the reason this screen
  * has a delete at all when upstream, with a savefile directory, does not).
  */
-async function confirmDelete(term: GlyphTerm, c: CharMeta): Promise<boolean> {
+async function confirmDelete(term: GridSurface & GridPointerInput, c: CharMeta): Promise<boolean> {
   const who = `${c.name || "(unnamed)"} the ${c.race} ${c.cls}, level ${c.level}`;
   const title = c.alive ? `Delete ${who}?` : `${c.name || "(unnamed)"} has died.`;
   const keep = c.alive ? "Keep this character" : "Leave the tombstone";
@@ -96,7 +96,7 @@ async function confirmDelete(term: GlyphTerm, c: CharMeta): Promise<boolean> {
  * cancelling a file dialog returns you to the splash, it does not open a file.
  */
 export async function runCharacterSelect(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   roster: CharMeta[],
   /**
    * A standing warning about the storage these characters live in, when there is

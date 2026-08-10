@@ -41,7 +41,7 @@ import type { GameState, GameObject } from "@rpgm-tools/neo-angband-core";
 import { SVAL_DEPENDENT } from "./screens";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 
 /**
  * The seven selectable actions (ui-object.c:1701-1709 anonymous enum). Kept as
@@ -305,7 +305,7 @@ const IGNORE_TITLE = "(Enter to select, ESC) Ignore:";
  * do_cmd_throw's SHOW_THROWING.
  */
 export async function showIgnoreItemMenu(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   state: GameState,
   game: IgnoreMenuGame,
   applyIgnoreDrop: () => Promise<void>,

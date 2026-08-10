@@ -55,7 +55,12 @@ import type {
   UiEntryPackRecords,
   UiGridPanel,
 } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import {
+  setActiveCellTap,
+  type GridPointerInput,
+  type GridSurface,
+  type SurfaceSizeEvents,
+} from "./term";
 import {
   characterSheetLines,
   charSheetDeps,
@@ -596,7 +601,7 @@ export function dumpCharacterFile(
  * or a tap.
  */
 export function showCharacterSheet(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput & SurfaceSizeEvents,
   state: GameState,
   name: string,
   opts: CharSheetOpts = {},
@@ -746,8 +751,8 @@ export function showCharacterSheet(
 
     const finish = (): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
-      term.onResize = prevResize;
+      setActiveCellTap(term, null);
+      stopSizeChanged();
       resolve();
     };
 
@@ -767,7 +772,7 @@ export function showCharacterSheet(
         return;
       }
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       void promptText(term, "Enter your character's name", curName).then((entered) => {
         if (entered !== null && entered.trim()) {
           curName = entered.trim();
@@ -787,7 +792,7 @@ export function showCharacterSheet(
      */
     const fileDump = (): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       void (async () => {
         const file = await getFile(term, dumpFileName(curName));
         if (file !== null) {
@@ -867,7 +872,7 @@ export function showCharacterSheet(
      * button 1) and a footer tap closes; on the narrow list a tap scrolls
      * (upper half up, lower half down) and the footer closes. */
     const installTap = (): void => {
-      term.onCellTap?.((cell) => {
+      setActiveCellTap(term, (cell) => {
         const { rows } = term.size();
         if (cell.row === rows - 1) {
           finish();
@@ -885,11 +890,7 @@ export function showCharacterSheet(
     };
 
     // Repaint on resize so crossing the wide/narrow threshold re-lays out.
-    const prevResize = term.onResize;
-    term.onResize = (size) => {
-      prevResize?.(size);
-      paint();
-    };
+    const stopSizeChanged = term.onSizeChanged(() => paint());
     window.addEventListener("keydown", onKey, true);
     installTap();
     paint();
@@ -920,7 +921,7 @@ export function showCharacterSheet(
  * this replaces.
  */
 export function drawPlayerXtraInfo(
-  term: GlyphTerm,
+  term: GridSurface,
   panels: readonly { key: string; lines: readonly { label: string; value: string; color: number }[] }[],
   history: readonly ScreenLine[],
 ): void {
@@ -951,7 +952,7 @@ export function drawPlayerXtraInfo(
 }
 
 function paintPanel(
-  term: GlyphTerm,
+  term: GridSurface,
   region: { x: number; y: number; labelWidth: number; width: number; alignRight: boolean },
   lines: readonly { label: string; value: string; color: number }[],
 ): number {

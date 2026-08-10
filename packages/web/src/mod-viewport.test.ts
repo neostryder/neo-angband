@@ -53,6 +53,7 @@ interface FakeTerm extends GlyphTerm {
 function makeTerm(cols: number, rows = 24): FakeTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(" "));
   return {
+    onCellTap: () => () => undefined,
     size: () => ({ cols, rows }),
     clear: () => {
       for (const row of grid) row.fill(" ");

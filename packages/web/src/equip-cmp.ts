@@ -30,7 +30,7 @@
  *
  * Still unported, named rather than faked: the two MOUSE context menus
  * (L551-605, L1004-1042), which need a right-button/left-button distinction the
- * GlyphTerm tap seam does not carry, and the horizontal property-column scroll
+ * GridSurface's tap seam does not carry, and the horizontal property-column scroll
  * is the port's own addition standing in for upstream's page reconfiguration.
  */
 
@@ -53,7 +53,7 @@ import type {
   Textblock,
   UiEntryPackRecords,
 } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { dumpFileName } from "./charsheet";
@@ -144,7 +144,7 @@ export interface EquipCmpDeps {
  * keyboard until ESC. Re-derives the model on every state-changing key
  * (source cycle / reverse / reset) so the grid always reflects live gear.
  */
-export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDeps): Promise<void> {
+export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameState, deps: EquipCmpDeps): Promise<void> {
   return new Promise<void>((resolve) => {
     let source: StoreInclusion = "no-store";
     let reverse = false;

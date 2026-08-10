@@ -298,8 +298,8 @@ import {
   routeContextClick,
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
-import { GlyphTerm } from "./term";
-import type { TileDraw } from "./term";
+import { GlyphTerm, setActiveCellTap } from "./term";
+import type { RenderAssetRef } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import {
@@ -1464,33 +1464,22 @@ function tileDrawFor(
    * new one.
    */
   dimmed = false,
-): TileDraw | undefined {
+): RenderAssetRef | undefined {
   const ts = tileset;
   if (!atlas || !ts || !ts.ready) return undefined;
   if (!isTile(atlas.attr, atlas.char)) return undefined;
   const code = tileCode(atlas.attr, atlas.char);
   return {
-    draw: (ctx, px, py, w, h) => {
-      if (!dimmed) return ts.drawTile(ctx, px, py, w, h, code, { x, y });
-      /* globalAlpha over the blit, restored whatever the blit does. The cell has
-       * already been filled with its background, so a partly transparent tile
-       * lands on that rather than on the previous frame. */
-      const prev = ctx.globalAlpha;
-      ctx.globalAlpha = prev * DIM_SCALE;
-      try {
-        return ts.drawTile(ctx, px, py, w, h, code, { x, y });
-      } finally {
-        ctx.globalAlpha = prev;
-      }
-    },
-    /* The identity the terminal's frame diff needs - see TileDraw.key. It has to
+    /* The identity the terminal's frame diff needs - see RenderAssetRef.key. It has to
      * carry the map grid as well as the code, because a loose pack resolves a
      * variant POOL against the position, so the same code at two grids is two
      * different pictures. Which is also why this cannot be `${code}` alone. And
      * it has to carry `dimmed`: the same code at the same grid is two different
      * pictures either side of a grid leaving view, and a diff that could not see
      * that would leave the lit one on screen. */
+    kind: "canvas-tile",
     key: `${String(code)}@${String(x)},${String(y)}${dimmed ? "~" : ""}`,
+    data: { blitter: ts, code, grid: { x, y }, dimScale: dimmed ? DIM_SCALE : 1 },
   };
 }
 
@@ -2621,8 +2610,9 @@ async function doCmdItemListing(mode: "inven" | "equip" | "quiver"): Promise<voi
 
 /** routeContextClick's classification, applied to a canvas client point. */
 function contextClickGrid(clientX: number, clientY: number): Loc | null {
-  const rect = canvas.getBoundingClientRect();
-  const { col, row } = term.cellAt(clientX - rect.left, clientY - rect.top);
+  const cell = term.cellAt(clientX, clientY);
+  if (!cell) return null;
+  const { col, row } = cell;
   const vp = viewport();
   const sx = col - vp.mapOriginX;
   const sy = row - vp.mapTop;
@@ -4128,7 +4118,7 @@ function showMonsterList(): Promise<void> {
     };
     const finish = (): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve();
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -4159,7 +4149,7 @@ function showMonsterList(): Promise<void> {
       paint();
     };
     window.addEventListener("keydown", onKey, true);
-    term.onCellTap?.(() => finish());
+    setActiveCellTap(term, () => finish());
     paint();
   });
 }
@@ -6377,7 +6367,7 @@ interface CellGlyph {
   attr: number;
   css: string;
   bg?: string;
-  tile?: TileDraw;
+  tile?: RenderAssetRef;
 }
 
 // Revealed traps draw under objects and monsters (upstream layer order).
@@ -6631,7 +6621,7 @@ function doAnimation(): void {
  * but a base tile is not a partial fix of it, it is what upstream draws when the
  * expressions are absent.
  */
-function playerMapGlyph(): { ch: string; css: string; tile?: TileDraw } {
+function playerMapGlyph(): { ch: string; css: string; tile?: RenderAssetRef } {
   const slot = glyphs.monsterGlyph(0) ?? { attr: COLOUR_WHITE, char: "@" };
   const p = state.actor.player;
   const g = playerGlyph(slot, {
@@ -6668,7 +6658,7 @@ function hasAnimatedVisibleMonster(): boolean {
  */
 interface MonsterCell {
   input: Omit<MonsterGlyphInput, "under">;
-  tile?: TileDraw;
+  tile?: RenderAssetRef;
 }
 
 /**
@@ -7338,8 +7328,9 @@ async function runLocate(): Promise<void> {
     // a tap in the outer margin of the map pans that way; a tap on the map's
     // own center exits (there is no right-click on a touchscreen).
     const onTap = (ev: PointerEvent): void => {
-      const rect = canvas.getBoundingClientRect();
-      const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
+      const cell = term.cellAt(ev.clientX, ev.clientY);
+      if (!cell) return;
+      const { col, row } = cell;
       const vp = viewport();
       const sx = col - vp.mapOriginX;
       const sy = row - vp.mapTop;
@@ -8321,8 +8312,9 @@ canvas.addEventListener("pointerdown", (ev) => {
   // click-to-move specifically (not the context menu below, which upstream
   // never gates on this option). Defaults on (normal: true).
   if (!(state.options?.get("mouse_movement") ?? true)) return;
-  const rect = canvas.getBoundingClientRect();
-  const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
+  const cell = term.cellAt(ev.clientX, ev.clientY);
+  if (!cell) return;
+  const { col, row } = cell;
   const vp = viewport();
   const sx = col - vp.mapOriginX;
   const sy = row - vp.mapTop;
@@ -8582,7 +8574,7 @@ state.chunk.onlyPartial = false;
 // A resize/reflow is a background repaint (the ResizeObserver in term.ts also
 // fires once on observe, and again whenever the embed's layout settles), so it
 // must not paint the map over a boot overlay - see renderBackground.
-term.onResize = () => renderBackground();
+term.onSizeChanged(() => renderBackground());
 render();
 
 // Boot the persisted/URL-selected graphics mode (ASCII if none). Async and

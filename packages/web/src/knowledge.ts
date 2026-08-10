@@ -77,7 +77,7 @@ import type {
   RuneEnv,
   ObjectInfoExtras,
 } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import {
   promptText,
   showTextScreen,
@@ -272,7 +272,7 @@ const BROWSER_TOP = 6;
  * so ESC is "back one level" here without any port-specific rule for it.
  */
 export async function runGroupedBrowser<T>(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   groups: readonly KnowledgeGroup<T>[],
   recall: (member: T, groupName: string) => Promise<void>,
@@ -397,7 +397,7 @@ export async function runGroupedBrowser<T>(
 
       const finish = (value: T | null): void => {
         window.removeEventListener("keydown", onKey, true);
-        term.onCellTap?.(null);
+        setActiveCellTap(term, null);
         resolve(value);
       };
 
@@ -473,7 +473,7 @@ export async function runGroupedBrowser<T>(
       /* Tap: the pane you touch becomes the active one and the row you touch
        * becomes its cursor - upstream's EVT_MOUSE branch (region_inside on the
        * inactive menu swaps panels), plus MN_DBL_TAP's second tap to select. */
-      term.onCellTap?.((cell) => {
+      setActiveCellTap(term, (cell) => {
         const { rows } = term.size();
         const browserRows = Math.max(1, rows - 8);
         const r = cell.row - BROWSER_TOP;
@@ -656,7 +656,7 @@ function runeRecallLines(
 }
 
 export async function showRuneKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   runeEnv: Parameters<typeof buildRuneList>[0],
   player: Player,
   notes?: RuneNoteHooks,
@@ -771,7 +771,7 @@ export function featureKnowledgeGroups(reg: FeatureRegistry): KnowledgeGroup<Fea
   return groups;
 }
 
-export async function showFeatureKnowledge(term: GlyphTerm, reg: FeatureRegistry): Promise<void> {
+export async function showFeatureKnowledge(term: GridSurface & GridPointerInput, reg: FeatureRegistry): Promise<void> {
   await runGroupedBrowser(term, "features", featureKnowledgeGroups(reg), async (feat) => {
     const cap = feat.name.charAt(0).toUpperCase() + feat.name.slice(1);
     const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
@@ -822,7 +822,7 @@ export function trapKnowledgeGroups(traps: readonly TrapKind[]): KnowledgeGroup<
   return groups;
 }
 
-export async function showTrapKnowledge(term: GlyphTerm, traps: readonly TrapKind[]): Promise<void> {
+export async function showTrapKnowledge(term: GridSurface & GridPointerInput, traps: readonly TrapKind[]): Promise<void> {
   await runGroupedBrowser(term, "traps", trapKnowledgeGroups(traps), async (trap) => {
     const cap = trap.desc.charAt(0).toUpperCase() + trap.desc.slice(1);
     // trap_lore (ui-knowledge.c L2588-2605): capitalized desc then trap->text.
@@ -1042,7 +1042,7 @@ export function artifactFakeRecall(
  * dump (artifactFakeRecall).
  */
 export async function showArtifactKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   deps: ArtifactKnowledgeDeps,
 ): Promise<void> {
   const groups = artifactKnowledgeGroups(
@@ -1267,7 +1267,7 @@ export function objectKnowledgeGroups(
 }
 
 export async function showObjectKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   kinds: readonly ObjectKind[],
   bases: readonly (ObjectBase | undefined)[],
   deps: ObjectRecallDeps,
@@ -1385,7 +1385,7 @@ export function egoFakeRecall(
 }
 
 export async function showEgoKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   egos: readonly EgoItem[],
   kinds: readonly ObjectKind[],
   bases: readonly (ObjectBase | undefined)[],
@@ -1465,7 +1465,7 @@ export function monsterSummaryLine(
  * name takes the cursor colour like every other row.
  */
 export async function showMonsterKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   views: readonly { name: string; rows: readonly { race: MonsterRace; lore: MonsterLore }[] }[],
   purpleUniques: boolean,
   recall: (row: { race: MonsterRace; lore: MonsterLore }) => Promise<void>,
@@ -1531,7 +1531,7 @@ export function shapeKnowledgeRows(shapes: readonly Shape[]): Shape[] {
 }
 
 export async function showShapeKnowledge(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   shapes: readonly Shape[],
   env: ShapeLoreEnv,
 ): Promise<void> {
