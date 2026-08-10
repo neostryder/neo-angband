@@ -46,6 +46,46 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can teach the game a whole new kind of RUNE: `registry:rune`, and the
+  switch census is now at zero candidates.** A rune is the unit of object
+  knowledge - what the player learns, what an item is found to carry, what the
+  recall screen names and describes. Six places in `obj/knowledge.ts` decided all
+  of it, and **five of them were a harder closure than any switch the census has
+  recorded**: they dispatched on `rune.variety`, a **closed TypeScript union of
+  seven string literals**. A switch has a `default` arm a mod's key reaches and
+  fails at, which is at least somewhere to stand. A union refuses the key at the
+  type level, so a mod could not coin a variety at all and no arm was ever
+  reached. The census saw **one** row here - `modMessage`, 11 cases on OBJ_MOD,
+  the only OBJ_MOD switch in a tree with 114 `OBJ_MOD.*` references, so a
+  mod-coined modifier was learned in silence. The five `rune.variety` switches
+  each sat under its eight-case threshold, and it counts neither a union type's
+  existence nor its size at any threshold. Same lesson as `registry:tval` the
+  same day, in a new shape: **the census measures syntax; a gap is about reach.**
+  What each unregistered key cost: no description, never found on an item, never
+  knowable, never learnable - and unknowable *and* unlearnable together is worse
+  than either alone, because `objectRunesKnown` then held every object carrying
+  one permanently un-assessed. `RuneRegistry` (`obj/rune-registry.ts`) is six
+  tables plus a **producer**. The producer is not an extra: nothing in core ever
+  asks about a rune that is not in `buildRuneList`, so six handler tables with no
+  way into that list would have been a seam every caller walks past - the failure
+  three of the five previous conversions each turned up somewhere different.
+  Where a mod's rune KNOWLEDGE lives was the question that made this conversion
+  unlike the four before it, and the answer is that core needed no new store:
+  `knows` and `learn` are handed the player, and a mod keeps its own per-entity
+  values in its own `VocabularyRegistry`, which already persists into that mod's
+  save bag. One mechanism, not two. **99 golden runes** across all seven
+  varieties and **both signs of all 16 modifiers**, recorded before the registry
+  existed, replay identically; there is no RNG on these paths and that is
+  measured rather than assumed. A caller hole fell out of the type change and is
+  fixed: `runeGroupIndex` in the knowledge browser was exhaustive by construction
+  over the closed union and needed no `default`, so a mod's rune would have been
+  silently **dropped from that screen** - learnable, describable and invisible.
+  It now lands in "Other", upstream's own catch-all group. The census is down to
+  **34 switches, 463 case labels, and zero candidates**, from 47 / 723 / 18 on
+  the morning of 2026-08-09. Zero candidates is the end of what that tool can
+  see, not the end of closed dispatch in the tree - `docs/modding/MOD_REACH.md`
+  says so in the same breath, and the 108 raw `tval === TV.X` comparisons are the
+  standing example.
 - **A mod's item class has a NAME now, instead of being called "(nothing)".**
   `obj_desc_get_basename` is a 34-case switch on tval holding the base-name
   template for every item in the game - `"& # Potion~"`, `"& Scroll~ titled #"`,
@@ -66,8 +106,9 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   `obj.tval === TV.SCROLL` directly when `tvalIsScroll` already existed and was
   exported; that one line went around the class predicates the rest of the file
   uses. The wider version of that - 108 raw `tval === TV.X` sites across core
-  and web - is now tracked separately. The census is down to **35 switches, 473
-  case labels, and a single candidate** (`obj/knowledge.ts`).
+  and web - is now tracked separately. The census was down to **35 switches, 473
+  case labels, and a single candidate** (`obj/knowledge.ts`) at this point; the
+  entry above is that candidate closing.
 - **A mod can teach the game a whole new KIND of item: `registry:tval`.**
   `object.json` has always accepted a new record, so a mod could always ship a
   new *item*. Making core recognise a new item **class** - a tval - was a

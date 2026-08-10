@@ -82,6 +82,11 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, and whether it has an unidentified flavour",
         elevated: true,
       };
+    case "rune":
+      return {
+        text: "Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it",
+        elevated: true,
+      };
     case "vocab":
       return {
         text: "Add new vocabulary - flags, stats, and other terms",

@@ -25,11 +25,11 @@ is not a capability - it is called out as such.
 | | measured |
 | --- | --- |
 | `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:83`) |
-| Switches of >= 8 cases in the tree, counted by a script | **47** (`tools/switch-census.json`, re-derived 2026-08-09; was 50 before the three glyph decoders became one registry) |
-| ...still `CANDIDATE` — a dispatch point a mod cannot reach | **18** |
-| ...of those, a mod's CODE can add to or override | **10** (`profile`, `blow` and `store` added 2026-08-08; `projection` 2026-08-09; `glyph` 2026-08-09) |
+| Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
+| ...still `CANDIDATE` — a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
+| ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
 | ...reachable by a mod that is NOT compiled into the web bundle | **every one**, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
-| `registry:*` capabilities with real, wired, tested code | **10** (`blow`, `command`, `effect`, `glyph`, `monster`, `profile`, `projection`, `room`, `store`, `vocab`) |
+| `registry:*` capabilities with real, wired, tested code | **14** (`blow`, `command`, `effect`, `effect-info`, `glyph`, `monster`, `profile`, `projection`, `randart`, `room`, `rune`, `store`, `tval`, `vocab`) |
 | Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`); since 2026-08-08 the same key also decides what a record ADDED to those files is called |
@@ -207,7 +207,7 @@ These are the significant ones:
 | randart property construction | `packages/core/src/obj/randart-build.ts` | 111 |
 | object naming / description (`obj/desc.ts` only - see the correction below) | `packages/core/src/obj/desc.ts` | 34 |
 | tval CLASS MEMBERSHIP, miscounted as naming until 2026-08-09 | `packages/core/src/obj/object.ts` | 74 |
-| object knowledge | `packages/core/src/obj/knowledge.ts` | 43 |
+| ~~object knowledge~~ **now a registry a mod can write** (`RuneRegistry`, six tables keyed on `rune.variety` and OBJ_MOD, plus `contribute`; `registry:rune`) | `packages/core/src/obj/knowledge.ts` | was 43 |
 | effect info strings | `packages/core/src/effects/effect-info.ts` | 52 |
 | UI entry types | `packages/core/src/game/ui-entry.ts` | 32 |
 | web UI context-menu routing | `packages/web/src/main.ts` (6 `switch (items[idx]?.action)` sites) | - |
@@ -224,6 +224,34 @@ That is the same blind spot as `obj/make.ts` and `obj/value.ts`, so it belongs t
 gap 28 and the three are **one seam**, not two. Only `obj/desc.ts` (34) is
 genuinely naming. Mis-shelving it made the naming gap look twice its size and hid
 the tval gap at a third of its.
+
+**Second correction, 2026-08-09: the census reported ONE row for `obj/knowledge.ts`
+and the file had six closed decisions.** The row it saw was `modMessage`, 11
+cases on OBJ_MOD. Beside it sat five switches on `rune.variety` — `runeDesc`,
+`playerKnowsRune`, `objectHasRune`, `playerLearnRune`, `runeName` — each under
+the eight-case threshold, and all five keyed on a **closed TypeScript union of
+seven string literals**. A union is a harder closure than a switch: a switch has
+a `default` arm a mod-coined key reaches and fails at, which is at least
+somewhere to stand, while a union refuses the key at the type level so no arm is
+ever reached at all. The census counts neither a union type's existence nor its
+size, at any threshold.
+
+That is the same lesson as gap 28 (5 switches recorded; 34 predicates and 408
+call sites in the file) in a new shape, on the same day. **The census measures
+SYNTAX; a gap is about REACH.** So the headline's "0 candidates" means the census
+has nothing left to point at — not that the tree has no closed dispatch. A
+one-line `tval === TV.STAFF` and a seven-literal union are both exactly as shut
+to a mod as an eighty-case switch, and this page, not that tool, is where the
+remainder is tracked. Gap row 29 (the 108 raw `tval === TV.X` comparisons) is the
+current example.
+
+The other thing gap 16 turned up is a CALLER, not a dispatch. `runeGroupIndex`
+(`packages/web/src/knowledge.ts:545`) grouped runes for the knowledge browser and
+was exhaustive by construction over the closed union, so it needed no `default`.
+Opening the type meant a mod's rune would have been silently DROPPED from that
+screen — learnable, describable and invisible. It now falls into "Other",
+upstream's own catch-all group, where `flag` already lives. Letting a mod NAME
+its own group is gap 9's business, not a second UI seam invented on the way past.
 
 Two things stand out. **Monster blows are the clearest gap**: `blow_effects.json`
 has 30 records and a mod can add a 31st, but the behaviour of each is a hardcoded
@@ -335,7 +363,7 @@ mod would reach through records, not code.
 | 13 | store buy rule + `massProduce` (27 tvals) | **yes** (`registry:store`, 2026-08-08) |
 | 14 | randart property switches (87 + 15 + 14 + 9 = 125) | **yes** (`registry:randart`, 2026-08-09) |
 | 15 | object naming: `obj_desc_get_basename` (34) | **yes** (`registry:tval`, 2026-08-09) |
-| 16 | object knowledge switch (43) | no |
+| 16 | object knowledge: `modMessage` (11) **plus five `rune.variety` switches the census could not see** | **yes** (`registry:rune`, 2026-08-09) |
 | 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
 | 18 | UI entry type switch (32) | no |
 | 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap` |

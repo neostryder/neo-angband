@@ -76,6 +76,17 @@ import {
   cloneArtifact,
   collectArtifactData,
   randartRegistry,
+  objectNew,
+  runeRegistry,
+  resetRuneRegistry,
+  buildRuneList,
+  runeDesc,
+  runeKey,
+  runeName,
+  playerKnowsRune,
+  playerLearnRune,
+  objectHasRune,
+  objectLearnOnWield,
   resetRandartRegistry,
   EF,
   describeEffect,
@@ -135,6 +146,81 @@ function loadObjKinds(): { tval: number; name: string }[] {
     objectProperty: loadPackJson("object_property"),
     flavor: loadPackJson("flavor"),
   } as never).kinds as never;
+}
+
+
+/**
+ * A minimal rune world over the real pack, for the gap-16 sample mod below.
+ * Built here rather than imported from core so the fixture stays out of the
+ * published ABI surface - the same reason loadObjKinds above is local.
+ */
+function runeWorld(): {
+  env: never;
+  player(): never;
+  drain(): string[];
+  blankObject(tval: number): { modifiers: number[] };
+} {
+  const reg = new ObjRegistry({
+    objectBase: loadPackJson("object_base"),
+    object: loadPackJson("object"),
+    egoItem: loadPackJson("ego_item"),
+    artifact: loadPackJson("artifact"),
+    curse: loadPackJson("curse"),
+    brand: loadPackJson("brand"),
+    slay: loadPackJson("slay"),
+    activation: loadPackJson("activation"),
+    objectProperty: loadPackJson("object_property"),
+    flavor: loadPackJson("flavor"),
+  } as never) as never as {
+    brands: unknown[];
+    slays: unknown[];
+    curses: unknown[];
+    properties: unknown[];
+    kinds: { tval: number; kidx: number }[];
+    ordinaryKindCount: number;
+  };
+  const messages: string[] = [];
+  const env = makeRuneEnv(
+    () => null,
+    ((v: { base: number }) => v.base) as never,
+    {
+      brands: reg.brands,
+      slays: reg.slays,
+      curses: reg.curses,
+      properties: reg.properties,
+      elementNames: loadPackRecords<{ name: string }>("projection").map(
+        (p) => p.name,
+      ),
+      msg: (t: string) => messages.push(t),
+    } as never,
+  ) as never;
+  return {
+    env,
+    player(): never {
+      const p = blankPlayer(
+        {} as never,
+        {} as never,
+        { slots: [] } as unknown as never,
+      ) as never as { upkeep: { playing: boolean } };
+      /* modMessage is guarded by upkeep.playing: without this every modifier
+       * row would be empty and could not disagree with a broken table. */
+      p.upkeep.playing = true;
+      return p as never;
+    },
+    drain(): string[] {
+      const out = [...messages];
+      messages.length = 0;
+      return out;
+    },
+    blankObject(tval: number): { modifiers: number[] } {
+      /* object_new, zeroed: a prepared ring of the first ordinary sval is a
+       * Ring of Strength and would print its own lines first. */
+      const kind = reg.kinds.find(
+        (k) => k.tval === tval && k.kidx < reg.ordinaryKindCount,
+      );
+      return objectNew(kind as never) as never as { modifiers: number[] };
+    },
+  };
 }
 
 const root = mkdtempSync(join(tmpdir(), "neo-mods-"));
@@ -2113,5 +2199,226 @@ describe("a mod folder on disk reaches the item-class registry", () => {
       /registry:tval/,
     );
     expect(tvalIsWeapon(MOD_TVAL)).toBe(false);
+  });
+});
+
+/**
+ * MOD_REACH gap 16: a mod folder on disk teaches core a new kind of RUNE.
+ *
+ * The seam this exercises is the hardest closure the moddability work has hit.
+ * `RuneVariety` was a closed TypeScript union of seven string literals, so a mod
+ * could not coin a variety AT ALL - the type refused it before any default arm
+ * was reached. Five functions dispatched on it (`runeDesc`, `playerKnowsRune`,
+ * `objectHasRune`, `playerLearnRune`, `runeName`) and a sixth switched on
+ * OBJ_MOD (`modMessage`, the "You feel stronger!" line). A mod's rune had no
+ * description, could not be found on an item, could never be known, could never
+ * be learned, and a mod-coined modifier was learned in silence.
+ *
+ * This registers one mod-coined variety, contributes two runes of it, and then
+ * calls the REAL exported functions - the same ones `session/game.ts`,
+ * `game/known.ts` and the knowledge browser call - asserting on what they
+ * answer rather than on the registry or on the mod's report of itself.
+ *
+ * The controls, all run: drop `rune` from the host's targets and the register
+ * call throws "did not wire"; drop the capability and it throws at the gate;
+ * register the handlers but skip `contribute` and the rune never appears in
+ * `buildRuneList`, which is the "a seam its callers walk past" failure the
+ * previous four conversions each turned up somewhere different.
+ */
+describe("a mod folder on disk reaches the rune registry", () => {
+  /* Module-level tables: restore core's arms so one test cannot leak into the
+   * next, and so the "before" assertions measure core rather than the previous
+   * test's registration. */
+  afterEach(() => {
+    resetRuneRegistry();
+  });
+
+  /** A variety core has never heard of - a mod's own. */
+  const MOD_VARIETY = "relicforge:attunement";
+
+  const RUNE_PLUGIN = `export default {
+       api: ${MOD_API_VERSION},
+       register(host) {
+         /* The six answers core needs before a rune of this variety is real. */
+         host.rune.desc.set(
+           "${MOD_VARIETY}",
+           (env, rune) => "Object attunes the wielder to " + rune.name + ".",
+         );
+         host.rune.name.set(
+           "${MOD_VARIETY}",
+           (rune) => rune.name + " attunement",
+         );
+         /* The mod owns its own knowledge store - core never grew a slot for
+          * it, which is the whole point of the vocabulary architecture. */
+         const known = new Set();
+         host.rune.knows.set("${MOD_VARIETY}", (p, rune) => known.has(rune.name));
+         host.rune.learn.set("${MOD_VARIETY}", (p, env, rune, message) => {
+           if (known.has(rune.name)) return false;
+           known.add(rune.name);
+           if (message) env.msg("You have learned the rune of " + rune.name + ".");
+           return true;
+         });
+         host.rune.objectHas.set(
+           "${MOD_VARIETY}",
+           (env, obj, rune) => (obj.modifiers[0] || 0) !== 0,
+         );
+         /* Wrapping, not shadowing: core's TUNNEL modifier says nothing at all,
+          * so this is a pure addition; core's STR arm is composed with. */
+         host.rune.modMessage.set(8, (v) => (v > 0 ? "Your hands itch to dig." : null));
+         const innerStr = host.rune.modMessage.handlerFor(0);
+         host.rune.modMessage.set(0, (v) => {
+           const core = innerStr(v);
+           return core ? core + " Mightily so." : core;
+         });
+         /* And the PRODUCER. Without this the six tables above are a seam every
+          * caller in the game walks past: nothing asks about a rune that is not
+          * in buildRuneList. */
+         host.rune.contribute(() => [
+           { variety: "${MOD_VARIETY}", index: 0, name: "flame" },
+           { variety: "${MOD_VARIETY}", index: 1, name: "frost" },
+         ]);
+       },
+     };`;
+
+  it("teaches core a rune variety it has never heard of", async () => {
+    writeMod("relicforge-runes", { capabilities: ["registry:rune"] }, RUNE_PLUGIN);
+    const report = await readModDir(
+      fsSource([
+        { id: "relicforge-runes", files: ["manifest.json"], code: [PLUGIN_FILE] },
+      ]),
+    );
+    expect(report.problems).toEqual([]);
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => ["registry:rune"],
+    });
+    expect(code.problems).toEqual([]);
+
+    const world = runeWorld();
+    const modRune = { variety: MOD_VARIETY, index: 0, name: "flame" };
+
+    /* BEFORE: every answer is a silent no, and the rune is not in the list at
+     * all - which is why no caller could ever have asked. */
+    const before = buildRuneList(world.env);
+    expect({
+      inList: before.some((r) => r.variety === MOD_VARIETY),
+      desc: runeDesc(world.env, modRune),
+      knows: playerKnowsRune(world.player(), modRune),
+    }).toEqual({ inList: false, desc: "", knows: false });
+
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { rune: runeRegistry() },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    loaded!.plugin.register?.(host, ctx("relicforge-runes"));
+
+    /* AFTER, read through the REAL exported functions - the ones the knowledge
+     * screens, the save round-trip and EF_IDENTIFY all call. */
+    const after = buildRuneList(world.env);
+    const contributed = after.slice(before.length);
+    expect({
+      grew: after.length - before.length,
+      keys: contributed.map((r) => runeKey(r)),
+      /* Core's list is untouched and comes first. Every consumer keys on the
+       * list INDEX, so an insertion in the middle would renumber core's runes
+       * and mis-target every saved rune note. */
+      corePrefixIntact: after
+        .slice(0, before.length)
+        .every((r, i) => runeKey(r) === runeKey(before[i]!)),
+    }).toEqual({
+      grew: 2,
+      keys: ["relicforge:attunement:flame", "relicforge:attunement:frost"],
+      corePrefixIntact: true,
+    });
+
+    const flame = contributed[0]!;
+    const p = world.player();
+    world.drain();
+    const learned = playerLearnRune(p, world.env, flame, true);
+    const messages = world.drain();
+
+    const carrier = world.blankObject(TV.RING);
+    carrier.modifiers[0] = 2;
+
+    expect({
+      display: runeName(flame),
+      desc: runeDesc(world.env, flame),
+      knowsBefore: false,
+      learned,
+      messages,
+      knowsAfter: playerKnowsRune(p, flame),
+      again: playerLearnRune(p, world.env, flame, true),
+      onCarrier: objectHasRune(world.env, carrier as never, flame),
+      onBare: objectHasRune(world.env, world.blankObject(TV.RING) as never, flame),
+    }).toEqual({
+      display: "flame attunement",
+      desc: "Object attunes the wielder to flame.",
+      knowsBefore: false,
+      learned: true,
+      messages: ["You have learned the rune of flame."],
+      knowsAfter: true,
+      again: false,
+      onCarrier: true,
+      onBare: false,
+    });
+
+    /* Core's own runes still answer as they did - composed, not replaced. */
+    const coreBrand = after.find((r) => r.variety === "brand")!;
+    expect({
+      name: runeName(coreBrand).endsWith(" brand"),
+      desc: runeDesc(world.env, coreBrand).startsWith("Object brands"),
+    }).toEqual({ name: true, desc: true });
+
+    /* And the modifier lines, through objectLearnOnWield: a modifier core says
+     * nothing for now speaks, and core's own line is wrapped rather than lost. */
+    const say = (mod: number, value: number): string[] => {
+      const wielder = world.player();
+      const obj = world.blankObject(TV.RING);
+      obj.modifiers[mod] = value;
+      world.drain();
+      objectLearnOnWield(wielder, obj as never, world.env);
+      return world.drain().filter((m) => !m.startsWith("You have learned"));
+    };
+    expect({
+      tunnelUp: say(8, 2),
+      tunnelDown: say(8, -2),
+      strUp: say(0, 2),
+      strDown: say(0, -2),
+    }).toEqual({
+      tunnelUp: ["Your hands itch to dig."],
+      tunnelDown: [],
+      strUp: ["You feel stronger! Mightily so."],
+      strDown: ["You feel weaker! Mightily so."],
+    });
+  });
+
+  it("without the capability the rune registry refuses at the call", async () => {
+    writeMod("rune-trespass", { capabilities: [] }, RUNE_PLUGIN);
+    const report = await readModDir(
+      fsSource([
+        { id: "rune-trespass", files: ["manifest.json"], code: [PLUGIN_FILE] },
+      ]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    const loaded = code.plugins[0];
+    const host = createModRegistryHost(
+      { rune: runeRegistry() },
+      CapabilitySet.fromManifest(loaded!.manifest),
+    );
+    expect(() => loaded!.plugin.register?.(host, ctx("rune-trespass"))).toThrow(
+      /registry:rune/,
+    );
+    const world = runeWorld();
+    expect(
+      buildRuneList(world.env).some((r) => r.variety === MOD_VARIETY),
+    ).toBe(false);
   });
 });

@@ -30,6 +30,8 @@ import { FLAG_START, FlagSet, NO_FLAG } from "../bitflag.js";
 import type { RandomValue } from "../rng.js";
 import type { GameObject } from "./object.js";
 import { sameMonstersSlain, tvalIsBodyArmor, tvalIsJewelry } from "./object.js";
+import { runeRegistry, seedRune } from "./rune-registry.js";
+import type { ModMessageHandler, RuneVariety } from "./rune-registry.js";
 import type {
   Brand,
   Curse,
@@ -570,24 +572,9 @@ export function objectCursesFindElement(
 /** mod_message (obj-knowledge.c L1492): "You feel..." on noticing a modifier. */
 function modMessage(env: RuneEnv, obj: GameObject, mod: number): void {
   if (!env.msg) return;
-  const v = obj.modifiers[mod] ?? 0;
-  const both = (pos: string, neg: string): string | null =>
-    v > 0 ? pos : v < 0 ? neg : null;
-  let text: string | null = null;
-  switch (mod) {
-    case OBJ_MOD.STR: text = both("You feel stronger!", "You feel weaker!"); break;
-    case OBJ_MOD.INT: text = both("You feel smarter!", "You feel more stupid!"); break;
-    case OBJ_MOD.WIS: text = both("You feel wiser!", "You feel more naive!"); break;
-    case OBJ_MOD.DEX: text = both("You feel more dextrous!", "You feel clumsier!"); break;
-    case OBJ_MOD.CON: text = both("You feel healthier!", "You feel sicklier!"); break;
-    case OBJ_MOD.STEALTH: text = both("You feel stealthier.", "You feel noisier."); break;
-    case OBJ_MOD.SPEED: text = both("You feel strangely quick.", "You feel strangely sluggish."); break;
-    case OBJ_MOD.BLOWS: text = both("Your weapon tingles in your hands.", "Your weapon aches in your hands."); break;
-    case OBJ_MOD.SHOTS: text = both("Your missile weapon tingles in your hands.", "Your missile weapon aches in your hands."); break;
-    case OBJ_MOD.INFRA: text = "Your eyes tingle."; break;
-    case OBJ_MOD.LIGHT: text = "It glows!"; break;
-    default: break;
-  }
+  const text = runeRegistry().modMessage.handlerFor(mod)?.(
+    obj.modifiers[mod] ?? 0,
+  );
   if (text) env.msg(text);
 }
 
@@ -903,15 +890,13 @@ export function playerLearnAllRunes(p: Player, env: RuneEnv): void {
  * knowledge screens.
  * ------------------------------------------------------------------ */
 
-/** enum rune_variety. */
-export type RuneVariety =
-  | "combat"
-  | "mod"
-  | "resist"
-  | "brand"
-  | "slay"
-  | "curse"
-  | "flag";
+/**
+ * enum rune_variety - no longer a closed union. Core's seven plus whatever a
+ * mod coins; defined in `rune-registry.ts`, which is also where the reason it
+ * had to open lives. Re-exported here because `Rune` is this module's type and
+ * every consumer already imports it from here.
+ */
+export type { CoreRuneVariety, RuneVariety } from "./rune-registry.js";
 
 /** struct rune, resolved: a variety, its per-variety index, and a name. */
 export interface Rune {
@@ -988,6 +973,11 @@ export function buildRuneList(env: RuneEnv): Rune[] {
     }
     runes.push({ variety: "flag", index: i, name: prop.name });
   }
+  /* Every mod-contributed rune, after core's, in registration order. This is
+   * what makes the six handler tables reachable: nothing in core ever asks
+   * about a rune that is not in this list, so a registry without a producer
+   * would be a seam its own callers walk past. */
+  runes.push(...runeRegistry().contributed(env));
   return runes;
 }
 
@@ -1001,50 +991,12 @@ export function buildRuneList(env: RuneEnv): Rune[] {
  * curse (the C default falls through to NULL).
  */
 export function runeDesc(env: RuneEnv, rune: Rune): string {
-  switch (rune.variety) {
-    case "combat":
-      if (rune.index === 0)
-        return "Object magically increases the player's armor class";
-      if (rune.index === 1)
-        return "Object magically increases the player's chance to hit";
-      if (rune.index === 2)
-        return "Object magically increases the player's damage";
-      return "";
-    case "mod":
-      return `Object gives the player a magical bonus to ${rune.name}.`;
-    case "resist":
-      return `Object affects the player's resistance to ${rune.name}.`;
-    case "brand":
-      return `Object brands the player's attacks with ${rune.name}.`;
-    case "slay":
-      return `Object makes the player's attacks against ${rune.name} more powerful.`;
-    case "curse": {
-      const desc = env.curses[rune.index]?.desc;
-      return desc ? `Object ${desc}.` : "";
-    }
-    case "flag":
-      return `Object gives the player the property of ${rune.name}.`;
-  }
+  return runeRegistry().desc.handlerFor(rune.variety)?.(env, rune) ?? "";
 }
 
 /** player_knows_rune over the typed knowledge stores. */
 export function playerKnowsRune(p: Player, rune: Rune): boolean {
-  switch (rune.variety) {
-    case "combat":
-      return !!p.objKnown[COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD"];
-    case "mod":
-      return !!p.objKnown.modifiers[rune.index];
-    case "resist":
-      return !!p.objKnown.elInfo[rune.index]?.resLevel;
-    case "brand":
-      return playerKnowsBrand(p, rune.index);
-    case "slay":
-      return playerKnowsSlay(p, rune.index);
-    case "curse":
-      return playerKnowsCurse(p, rune.index);
-    case "flag":
-      return p.objKnown.flags.has(rune.index);
-  }
+  return runeRegistry().knows.handlerFor(rune.variety)?.(p, rune) ?? false;
 }
 
 /** object_has_rune. */
@@ -1053,36 +1005,9 @@ export function objectHasRune(
   obj: GameObject,
   rune: Rune,
 ): boolean {
-  switch (rune.variety) {
-    case "combat":
-      if (rune.index === 0) return obj.toA !== 0;
-      if (rune.index === 1) return !objectHasStandardToH(env, obj);
-      return obj.toD !== 0;
-    case "mod":
-      return (obj.modifiers[rune.index] ?? 0) !== 0;
-    case "resist":
-      return (obj.elInfo[rune.index]?.resLevel ?? 0) !== 0;
-    case "brand": {
-      if (!obj.brands) return false;
-      for (let i = 0; i < obj.brands.length; i++) {
-        if (obj.brands[i] && env.brands[i]?.name === rune.name) return true;
-      }
-      return false;
-    }
-    case "slay": {
-      if (!obj.slays) return false;
-      for (let i = 0; i < obj.slays.length; i++) {
-        if (obj.slays[i] && sameMonstersSlain(env.slays, rune.index, i)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    case "curse":
-      return (obj.curses?.[rune.index]?.power ?? 0) !== 0;
-    case "flag":
-      return obj.flags.has(rune.index);
-  }
+  return (
+    runeRegistry().objectHas.handlerFor(rune.variety)?.(env, obj, rune) ?? false
+  );
 }
 
 /**
@@ -1111,27 +1036,10 @@ export function playerLearnRune(
   rune: Rune,
   message: boolean,
 ): boolean {
-  switch (rune.variety) {
-    case "combat":
-      return playerLearnCombat(
-        p,
-        env,
-        COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD",
-        message,
-      );
-    case "mod":
-      return playerLearnMod(p, env, rune.index, message);
-    case "resist":
-      return playerLearnResist(p, env, rune.index, message);
-    case "brand":
-      return playerLearnBrand(p, env, rune.index, message);
-    case "slay":
-      return playerLearnSlay(p, env, rune.index, message);
-    case "curse":
-      return playerLearnCurse(p, env, rune.index, message);
-    case "flag":
-      return playerLearnFlagRune(p, env, rune.index, message);
-  }
+  return (
+    runeRegistry().learn.handlerFor(rune.variety)?.(p, env, rune, message) ??
+    false
+  );
 }
 
 /**
@@ -1551,18 +1459,9 @@ export function runeKey(rune: Rune): string {
  * "resist <x>", and the bare name for combat / modifier / flag runes.
  */
 export function runeName(rune: Rune): string {
-  switch (rune.variety) {
-    case "brand":
-      return `${rune.name} brand`;
-    case "slay":
-      return `slay ${rune.name}`;
-    case "curse":
-      return `${rune.name} curse`;
-    case "resist":
-      return `resist ${rune.name}`;
-    default:
-      return rune.name;
-  }
+  /* Upstream's `default` arm is the bare name, so an unregistered variety has a
+   * real fallback here rather than a hole - three of core's own seven take it. */
+  return runeRegistry().name.handlerFor(rune.variety)?.(rune) ?? rune.name;
 }
 
 /**
@@ -1634,3 +1533,197 @@ export function playerKnowObjectAwareness(
     flavor.objectFlavorAware(obj.kind, flavorDeps); // L1174
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Core's rune arms.
+ *
+ * Every body below is lifted VERBATIM from the switch it replaces - the
+ * bodies did not change, only where they are installed. `rune-vectors.json`
+ * (99 runes, both signs of all 16 modifiers) was recorded before this block
+ * existed and is what holds that claim.
+ *
+ * Registered at import time by the module that also READS these tables, so
+ * "knowledge.ts is loaded" and "core's arms are installed" cannot come apart.
+ * ------------------------------------------------------------------ */
+
+seedRune((reg) => {
+  /* rune_desc (obj-knowledge.c L344-403). */
+  reg.desc.set("combat", (_env, rune) => {
+    if (rune.index === 0)
+      return "Object magically increases the player's armor class";
+    if (rune.index === 1)
+      return "Object magically increases the player's chance to hit";
+    if (rune.index === 2)
+      return "Object magically increases the player's damage";
+    return "";
+  });
+  reg.desc.set(
+    "mod",
+    (_env, rune) => `Object gives the player a magical bonus to ${rune.name}.`,
+  );
+  reg.desc.set(
+    "resist",
+    (_env, rune) => `Object affects the player's resistance to ${rune.name}.`,
+  );
+  reg.desc.set(
+    "brand",
+    (_env, rune) => `Object brands the player's attacks with ${rune.name}.`,
+  );
+  reg.desc.set(
+    "slay",
+    (_env, rune) =>
+      `Object makes the player's attacks against ${rune.name} more powerful.`,
+  );
+  reg.desc.set("curse", (env, rune) => {
+    const desc = env.curses[rune.index]?.desc;
+    return desc ? `Object ${desc}.` : "";
+  });
+  reg.desc.set(
+    "flag",
+    (_env, rune) => `Object gives the player the property of ${rune.name}.`,
+  );
+
+  /* player_knows_rune, over the port's typed knowledge stores. */
+  reg.knows.set(
+    "combat",
+    (p, rune) =>
+      !!p.objKnown[COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD"],
+  );
+  reg.knows.set("mod", (p, rune) => !!p.objKnown.modifiers[rune.index]);
+  reg.knows.set(
+    "resist",
+    (p, rune) => !!p.objKnown.elInfo[rune.index]?.resLevel,
+  );
+  reg.knows.set("brand", (p, rune) => playerKnowsBrand(p, rune.index));
+  reg.knows.set("slay", (p, rune) => playerKnowsSlay(p, rune.index));
+  reg.knows.set("curse", (p, rune) => playerKnowsCurse(p, rune.index));
+  reg.knows.set("flag", (p, rune) => p.objKnown.flags.has(rune.index));
+
+  /* object_has_rune. */
+  reg.objectHas.set("combat", (env, obj, rune) => {
+    if (rune.index === 0) return obj.toA !== 0;
+    if (rune.index === 1) return !objectHasStandardToH(env, obj);
+    return obj.toD !== 0;
+  });
+  reg.objectHas.set(
+    "mod",
+    (_env, obj, rune) => (obj.modifiers[rune.index] ?? 0) !== 0,
+  );
+  reg.objectHas.set(
+    "resist",
+    (_env, obj, rune) => (obj.elInfo[rune.index]?.resLevel ?? 0) !== 0,
+  );
+  reg.objectHas.set("brand", (env, obj, rune) => {
+    if (!obj.brands) return false;
+    for (let i = 0; i < obj.brands.length; i++) {
+      if (obj.brands[i] && env.brands[i]?.name === rune.name) return true;
+    }
+    return false;
+  });
+  reg.objectHas.set("slay", (env, obj, rune) => {
+    if (!obj.slays) return false;
+    for (let i = 0; i < obj.slays.length; i++) {
+      if (obj.slays[i] && sameMonstersSlain(env.slays, rune.index, i)) {
+        return true;
+      }
+    }
+    return false;
+  });
+  reg.objectHas.set(
+    "curse",
+    (_env, obj, rune) => (obj.curses?.[rune.index]?.power ?? 0) !== 0,
+  );
+  reg.objectHas.set("flag", (_env, obj, rune) => obj.flags.has(rune.index));
+
+  /* player_learn_rune. */
+  reg.learn.set("combat", (p, env, rune, message) =>
+    playerLearnCombat(
+      p,
+      env,
+      COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD",
+      message,
+    ),
+  );
+  reg.learn.set("mod", (p, env, rune, message) =>
+    playerLearnMod(p, env, rune.index, message),
+  );
+  reg.learn.set("resist", (p, env, rune, message) =>
+    playerLearnResist(p, env, rune.index, message),
+  );
+  reg.learn.set("brand", (p, env, rune, message) =>
+    playerLearnBrand(p, env, rune.index, message),
+  );
+  reg.learn.set("slay", (p, env, rune, message) =>
+    playerLearnSlay(p, env, rune.index, message),
+  );
+  reg.learn.set("curse", (p, env, rune, message) =>
+    playerLearnCurse(p, env, rune.index, message),
+  );
+  reg.learn.set("flag", (p, env, rune, message) =>
+    playerLearnFlagRune(p, env, rune.index, message),
+  );
+
+  /* rune_name's decoration. Only four varieties decorate; combat, mod and flag
+   * take upstream's default arm, which is the bare name. */
+  reg.name.set("brand", (rune) => `${rune.name} brand`);
+  reg.name.set("slay", (rune) => `slay ${rune.name}`);
+  reg.name.set("curse", (rune) => `${rune.name} curse`);
+  reg.name.set("resist", (rune) => `resist ${rune.name}`);
+
+  /* mod_message (obj-knowledge.c L1492). Eleven of the sixteen modifiers say
+   * anything at all, and two of those eleven ignore sign. */
+  const both =
+    (pos: string, neg: string): ModMessageHandler =>
+    (v) =>
+      v > 0 ? pos : v < 0 ? neg : null;
+  const always =
+    (text: string): ModMessageHandler =>
+    () =>
+      text;
+  reg.modMessage.set(
+    OBJ_MOD.STR,
+    both("You feel stronger!", "You feel weaker!"),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.INT,
+    both("You feel smarter!", "You feel more stupid!"),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.WIS,
+    both("You feel wiser!", "You feel more naive!"),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.DEX,
+    both("You feel more dextrous!", "You feel clumsier!"),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.CON,
+    both("You feel healthier!", "You feel sicklier!"),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.STEALTH,
+    both("You feel stealthier.", "You feel noisier."),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.SPEED,
+    both("You feel strangely quick.", "You feel strangely sluggish."),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.BLOWS,
+    both(
+      "Your weapon tingles in your hands.",
+      "Your weapon aches in your hands.",
+    ),
+  );
+  reg.modMessage.set(
+    OBJ_MOD.SHOTS,
+    both(
+      "Your missile weapon tingles in your hands.",
+      "Your missile weapon aches in your hands.",
+    ),
+  );
+  /* INFRA and LIGHT print the same line for either sign - upstream assigns the
+   * text unconditionally rather than through its two-armed helper. */
+  reg.modMessage.set(OBJ_MOD.INFRA, always("Your eyes tingle."));
+  reg.modMessage.set(OBJ_MOD.LIGHT, always("It glows!"));
+});
