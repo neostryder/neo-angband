@@ -46,6 +46,34 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A broken mod cannot blank the screen at boot, and that is now RUN rather than
+  claimed.** The mechanism has been in place for a while: `composition()`
+  (`packages/web/src/pack.ts`) calls `composeDroppingBroken` and not
+  `composeContentPacks`, with a comment at the call site naming this exact
+  failure. What was missing was evidence about the BOOT. `composeDroppingBroken`
+  having its own tests proves a function behaves; it says nothing about whether
+  the host's chain - manifest normalisation, the engine gate, section resolution,
+  the bundled globs, the composer - gets a player to a screen. The cost of being
+  wrong is not a bad message: it is no canvas, so no mod manager to open and no
+  way to turn the offending mod off short of clearing localStorage, which also
+  destroys the player's saves. Twelve cases now drive the real readers
+  `main.ts` calls: a mod with a missing dependency, two of them at once, and a
+  hard cycle each leave the base game composed, the offender dropped and named,
+  and its namespace absent from the present set - which matters beyond cosmetics,
+  because that set is what `loadGame` reconciles a save's mod-lifecycle blocks
+  against. A good mod loaded beside a broken one survives, which is the greedy
+  fallback a coarser implementation would pass everything else with. **Two
+  corrections came out of running it.** The gap row's own closing condition -
+  "install a mod with a bad patch ref" - was stale: a patch whose target does not
+  exist stopped throwing when the composer gained its `onRefuse` reporter, so it
+  now costs the patch and gets a line. What still throws is `resolveLoadOrder`, a
+  statement about the whole enabled SET, where dropping a pack is the only move
+  that makes the rest loadable. And `discoverMods` reads `pack.manifest.id`
+  unguarded one layer earlier than the composer - which cannot fire, because both
+  producers of a pack report validate the manifest inside a `try` and drop the
+  folder on a throw. **No guard was added there on purpose**: it could never fail,
+  and a check that cannot fail reads as protection while being the reason nobody
+  re-asks the question. The invariant is proven at the producer instead.
 - **A mod can teach the game a whole new kind of RUNE: `registry:rune`, and the
   switch census is now at zero candidates.** A rune is the unit of object
   knowledge - what the player learns, what an item is found to carry, what the
