@@ -91,6 +91,7 @@
  * construction.
  */
 
+import { inputEvents } from "./input-door";
 import {
   OPTION_ENTRIES,
   DEFAULT_HITPOINT_WARN,
@@ -359,7 +360,7 @@ export function optionToggleScreen(
       term.print(0, termRows - 1, footer.slice(0, cols - 1), DIM);
     };
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve();
     };
     /** Mutate row `i` if it is writable; returns whether it changed. */
@@ -382,11 +383,11 @@ export function optionToggleScreen(
      * screen_load + menu_refresh.
      */
     const runAction = async (action: () => Promise<void>): Promise<void> => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       try {
         await action();
       } finally {
-        window.addEventListener("keydown", onKey, true);
+        inputEvents.addEventListener("keydown", onKey, true);
         paint();
       }
     };
@@ -482,7 +483,7 @@ export function optionToggleScreen(
         }
       }
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }
@@ -713,7 +714,7 @@ async function runSidebarModePage(
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") {
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve();
         return;
       }
@@ -724,7 +725,7 @@ async function runSidebarModePage(
       if (n > 0) sidebar.set((sidebar.current() + 1) % n);
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }

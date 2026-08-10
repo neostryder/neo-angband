@@ -474,6 +474,13 @@ implementation. This is intentional groundwork rather than a promise that a
 plugin can replace the UI today: the plugin-facing selection seam arrives only
 when it can be loaded, arbitrated, and exercised from a real mod folder.
 
+Input follows the same staged rule. `UiInput` is available to host code through
+the one input door and can represent a continuous direction (vector, magnitude,
+angle) without translating it to a keyboard arrow. There is no front-end or
+input-binding plugin member yet: do not depend on one until its capability and
+disk-loaded integration path ship. Player keymaps keep precedence over any later
+input consumer.
+
 Every record the game binds carries `from` when a mod was involved:
 
 ```js

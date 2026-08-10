@@ -14,6 +14,7 @@
  * them into faithful full-screen views a keyboard or touch can drive.
  */
 
+import { inputEvents } from "./input-door";
 import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
@@ -143,7 +144,7 @@ export function showTextScreen(
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), DIM);
     };
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve();
     };
@@ -170,7 +171,7 @@ export function showTextScreen(
       else if (nav === "end") top = maxTop;
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     // Tap: footer row closes; when the content scrolls, a tap in the upper
     // half pages up and in the lower half pages down; a non-scrolling screen
     // closes on any tap (the touch analogue of "any of ESC/Enter/Space").
@@ -231,7 +232,7 @@ export function showLevelMap(term: GridSurface & GridPointerInput, overview: Ove
       term.print(fx, rows - 1, footer.slice(0, cols - 1), DIM);
     };
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onTap, true);
       resolve();
     };
@@ -244,7 +245,7 @@ export function showLevelMap(term: GridSurface & GridPointerInput, overview: Ove
       ev.preventDefault();
       finish();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     window.addEventListener("pointerdown", onTap, true);
     paint();
   });
@@ -349,17 +350,17 @@ export function showFloorList(
       if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
         return;
       }
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       /* Term_event_push(&e) (ui-display.c:2644): the key that dismissed the list
        * becomes the next command. */
       refeed?.(ev.key);
       resolve();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     /* A tap is the touch analogue of "any key"; there is no key to re-feed. */
     setActiveCellTap(term, () => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve();
     });
@@ -408,7 +409,7 @@ export function getRepDir(
      * prt, not put_str - it is drawn over the live message row. */
     term.prt(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
     const finish = (value: number | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
     };
@@ -423,7 +424,7 @@ export function getRepDir(
       if (dir === 5 && !allow5) return finish(null); // "5 is equivalent to escape"
       finish(dir);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -449,7 +450,7 @@ export function getAimDir(
      * `prt(prompt, 0, 0)` at ui-input.c:1427 - over the live message row. */
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const finish = (value: number | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
     };
@@ -469,7 +470,7 @@ export function getAimDir(
       if (dir === 0 || dir === 5) return; // bell(): 5 handled above
       finish(dir);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -490,7 +491,7 @@ export function getCheck(term: GridSurface & GridPointerInput, prompt: string): 
      * - the live "Save and quit?[y/n] d5) (+5,+3) (0)." report. */
     term.prt(0, 0, buf.slice(0, cols - 1), FG);
     const finish = (value: boolean): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
     };
@@ -502,7 +503,7 @@ export function getCheck(term: GridSurface & GridPointerInput, prompt: string): 
       ev.stopImmediatePropagation();
       finish(ev.key === "y" || ev.key === "Y");
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -523,7 +524,7 @@ export function getKeyInline(term: GridSurface & GridPointerInput, prompt: strin
     /* prt(prompt, 0, 0) (get_com_ex, ui-input.c:1427). */
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const finish = (key: string): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(key);
     };
@@ -535,7 +536,7 @@ export function getKeyInline(term: GridSurface & GridPointerInput, prompt: strin
       ev.stopImmediatePropagation();
       finish(ev.key);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 
@@ -706,7 +707,7 @@ export function promptTextInline(
       paintLineEdit(term, x, row, st, firsttime);
     };
     const finish = (value: string | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term, row);
       resolve(value);
     };
@@ -730,7 +731,7 @@ export function promptTextInline(
       if (r === "enter") return finish(st.buf);
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }
@@ -875,7 +876,7 @@ export function promptText(
       term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
     const finish = (value: string | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -905,7 +906,7 @@ export function promptText(
       if (r === "enter") return finish(st.buf);
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }
@@ -951,7 +952,7 @@ export function promptNumber(
       term.print(0, rows - 1, "[ digits, Enter to accept, ESC to cancel ]".slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -973,7 +974,7 @@ export function promptNumber(
       }
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     paint();
   });
 }
@@ -1352,7 +1353,7 @@ export function selectFromMenu(
       if (!boxed) term.print(0, rows - 1, (extra?.footer ?? footer).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -1539,7 +1540,7 @@ export function selectFromMenu(
         if (idx >= 0 && idx < items.length) pick(idx);
       }
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     // Tap-to-select (MN_DBL_TAP): the first tap on a row highlights it, a tap
     // on the already-highlighted row selects it; a tap on the footer row
     // cancels, exactly like ESC. Registered per-modal and torn down in finish
@@ -1726,7 +1727,7 @@ export function itemSelect(
     };
 
     const finish = (value: { source: number; index: number } | null): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -1820,7 +1821,7 @@ export function itemSelect(
         paint();
       }
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
       if (cell.row === rows - 1) {

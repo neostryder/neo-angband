@@ -286,6 +286,12 @@ the canvas requirement from grid consumers so the later front-end capability can
 hand a replacement renderer real work to do; declaring a capability before that
 host path exists would be an inert seam.
 
+The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
+single device-neutral route by which keyboard and keymap input reaches screens;
+its direction carries an analog vector and angle. It does not grant a plugin a
+binding registry in this phase. Stored player keymaps are evaluated first, so a
+mod must not use injected input to outrank the player's chosen mapping.
+
 `register` reaches nine registries, each gated by a capability your manifest must
 declare **and** the player must consent to:
 

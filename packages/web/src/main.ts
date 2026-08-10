@@ -482,7 +482,8 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { enqueueKeys, isSynthKey } from "./input-queue";
+import { inputEvents, setKeymapResolver } from "./input-door";
+import { enqueueKeys } from "./input-queue";
 import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import {
   applyWebUpdate,
@@ -4117,7 +4118,7 @@ function showMonsterList(): Promise<void> {
       term.print(0, rows - 1, `[ ${toggle}  ESC: back ]`.slice(0, cols - 1), UI_DIM);
     };
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve();
     };
@@ -4148,7 +4149,7 @@ function showMonsterList(): Promise<void> {
       else if (nav === "end") top += page; // clamped in paint()
       paint();
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, () => finish());
     paint();
   });
@@ -4205,7 +4206,7 @@ function runTargetLoop(
     };
 
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
       modalDepth--; // release the input gate raised for this loop
       render();
@@ -4219,10 +4220,10 @@ function runTargetLoop(
      * a loop that stays attached eats the recall screen's own keys.
      */
     const openRecall = (mon: Monster): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
       void showMonsterRecall(mon).then(() => {
-        window.addEventListener("keydown", onKey, true);
+        inputEvents.addEventListener("keydown", onKey, true);
         canvas.addEventListener("pointerdown", onTap);
         paint();
       });
@@ -4288,7 +4289,7 @@ function runTargetLoop(
       paint();
     };
 
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     canvas.addEventListener("pointerdown", onTap);
     paint();
   });
@@ -4568,7 +4569,7 @@ async function querySymbolCmd(): Promise<void> {
         UI_GOLD,
       );
       const finish = (v: { all: boolean; uniq: boolean; norm: boolean; ch: string } | null): void => {
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve(v);
       };
       const onKey = (ev: KeyboardEvent): void => {
@@ -4585,7 +4586,7 @@ async function querySymbolCmd(): Promise<void> {
         }
         if (ev.key.length === 1) return finish({ all: false, uniq: false, norm: false, ch: ev.key });
       };
-      window.addEventListener("keydown", onKey, true);
+      inputEvents.addEventListener("keydown", onKey, true);
     },
   );
   render();
@@ -4872,7 +4873,7 @@ async function driveRest(nArg: number): Promise<void> {
     ev.stopImmediatePropagation();
     interrupted = true;
   };
-  window.addEventListener("keydown", onStopKey, true);
+  inputEvents.addEventListener("keydown", onStopKey, true);
   // No message: upstream announces a rest ONLY through prt_state's "Rest" field
   // in the status column (ui-display.c:957), which core's stateRuns now lights
   // up off state.resting. The invented "Resting... (press any key to stop)" line
@@ -4931,7 +4932,7 @@ async function driveRest(nArg: number): Promise<void> {
       await new Promise<void>((r) => setTimeout(r, 0));
     }
   } finally {
-    window.removeEventListener("keydown", onStopKey, true);
+    inputEvents.removeEventListener("keydown", onStopKey, true);
     delete (state as StateWithRest).resting;
     void REST_REQUIRED_FOR_REGEN; // seam threshold; read by loop.ts (WIRING-NEEDED)
     render();
@@ -7297,7 +7298,7 @@ async function runLocate(): Promise<void> {
   };
   await new Promise<void>((resolve) => {
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
       locateCam = null;
       locateActive = false;
@@ -7350,7 +7351,7 @@ async function runLocate(): Promise<void> {
       }
       panDir((1 - dy) * 3 + (dx + 2));
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     canvas.addEventListener("pointerdown", onTap);
     paintBanner();
   });
@@ -7373,11 +7374,11 @@ function waitAnyKey(): Promise<void> {
     const done = (ev: Event): void => {
       ev.preventDefault();
       if (ev.type === "keydown") (ev as KeyboardEvent).stopImmediatePropagation();
-      window.removeEventListener("keydown", done, true);
+      inputEvents.removeEventListener("keydown", done, true);
       window.removeEventListener("pointerdown", done, true);
       resolve();
     };
-    window.addEventListener("keydown", done, true);
+    inputEvents.addEventListener("keydown", done, true);
     window.addEventListener("pointerdown", done, true);
   });
 }
@@ -8049,7 +8050,21 @@ function logKeypress(ev: KeyboardEvent): void {
   if (KEYLOG.length > KEYLOG_MAX) KEYLOG.shift();
 }
 
-window.addEventListener("keydown", (ev) => {
+setKeymapResolver((input) => {
+  const key = input.key;
+  if (!key || key.modifiers.ctrl || key.modifiers.alt || key.modifiers.meta || key.key.length !== 1) return null;
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
+  // These root affordances deliberately precede upstream keymaps.
+  if (key.key === "?" || (key.key === "N" && !roguelike) || dead) return null;
+  const action = keymapFind(keymapModeFor(roguelike), key.key);
+  return action
+    ? [...action].map((mapped) => ({
+      key: { key: mapped, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+    }))
+    : null;
+});
+
+inputEvents.addEventListener("keydown", (ev) => {
   logKeypress(ev);
   if (scoresOpen || modalDepth > 0) return; // a modal owns the keyboard
   // While a run / pathfind / repeated command is being pumped, ANY key is the
@@ -8114,21 +8129,9 @@ window.addEventListener("keydown", (ev) => {
   // key through this exactly like cmd_info's key[0] (original) / key[1]
   // (roguelike) pair, so no binding differs from the reference.
   const roguelike = state.options?.get("rogue_like_commands") ?? false;
-  // User keymaps (keymap_find, applied in inkey before command interpretation):
-  // a modifier-free character trigger with a keymap expands into its action
-  // sequence, fed through the input queue so any sub-menu the action opens
-  // consumes the following keys exactly as upstream. Synthetic keys (a keymap's
-  // own expanded output) are skipped so a keymap never recurses. Checked here,
-  // after the ^-aliases guard's siblings above (N / ? / death), so those web
-  // affordances keep priority; every ordinary command key is keymappable.
-  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && !isSynthKey(ev) && ev.key.length === 1) {
-    const action = keymapFind(keymapModeFor(roguelike), ev.key);
-    if (action) {
-      ev.preventDefault();
-      enqueueKeys([...action].map((ch) => ({ key: ch })));
-      return;
-    }
-  }
+  // Player keymaps are resolved by input-door before this root screen (and
+  // before any future mod input consumer); queued expansion bypasses that
+  // resolver so an action never recursively re-keymaps itself.
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
@@ -9116,10 +9119,10 @@ async function showUpdatePage(): Promise<void> {
         if (ev.key.length !== 1 && ev.key !== "Enter" && ev.key !== "Escape") return;
         ev.preventDefault();
         ev.stopImmediatePropagation();
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve(ev.key);
       };
-      window.addEventListener("keydown", onKey, true);
+      inputEvents.addEventListener("keydown", onKey, true);
     });
 
   for (;;) {
@@ -9428,10 +9431,10 @@ async function showReportPage(): Promise<void> {
         if (ev.key.length !== 1 && ev.key !== "Enter" && ev.key !== "Escape") return;
         ev.preventDefault();
         ev.stopImmediatePropagation();
-        window.removeEventListener("keydown", onKey, true);
+        inputEvents.removeEventListener("keydown", onKey, true);
         resolve(ev.key);
       };
-      window.addEventListener("keydown", onKey, true);
+      inputEvents.addEventListener("keydown", onKey, true);
     });
 
   for (;;) {

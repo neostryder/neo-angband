@@ -15,6 +15,7 @@
  * empty Hall of Fame - it degrades gracefully.
  */
 
+import { inputEvents } from "./input-door";
 import {
   highscoreRegularize,
   scorePageRows,
@@ -308,7 +309,7 @@ export function showScoreScreen(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       if (ev.key === "Escape") {
-        window.removeEventListener("keydown", onKey);
+        inputEvents.removeEventListener("keydown", onKey);
         resolve();
         return;
       }
@@ -327,7 +328,7 @@ export function showScoreScreen(
           if (allowScrolling) {
             k = 0;
           } else {
-            window.removeEventListener("keydown", onKey);
+            inputEvents.removeEventListener("keydown", onKey);
             resolve();
             return;
           }
@@ -336,7 +337,7 @@ export function showScoreScreen(
       paint();
     };
 
-    window.addEventListener("keydown", onKey);
+    inputEvents.addEventListener("keydown", onKey);
     paint();
   });
 }

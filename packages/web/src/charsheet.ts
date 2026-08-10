@@ -28,6 +28,7 @@
  * opts.onRename (the shell persists it); nothing here touches state.
  */
 
+import { inputEvents } from "./input-door";
 import {
   characterPanels,
   statTable,
@@ -750,7 +751,7 @@ export function showCharacterSheet(
     };
 
     const finish = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       stopSizeChanged();
       resolve();
@@ -771,14 +772,14 @@ export function showCharacterSheet(
         opts.msg?.("You are not allowed to change your name!");
         return;
       }
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       void promptText(term, "Enter your character's name", curName).then((entered) => {
         if (entered !== null && entered.trim()) {
           curName = entered.trim();
           opts.onRename?.(curName);
         }
-        window.addEventListener("keydown", onKey, true);
+        inputEvents.addEventListener("keydown", onKey, true);
         installTap();
         paint();
       });
@@ -791,7 +792,7 @@ export function showCharacterSheet(
      * capture phase and would otherwise be starved by ours.
      */
     const fileDump = (): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       void (async () => {
         const file = await getFile(term, dumpFileName(curName));
@@ -809,7 +810,7 @@ export function showCharacterSheet(
           );
           opts.msg?.(ok ? "Character dump successful." : "Character dump failed!");
         }
-        window.addEventListener("keydown", onKey, true);
+        inputEvents.addEventListener("keydown", onKey, true);
         installTap();
         paint();
       })();
@@ -891,7 +892,7 @@ export function showCharacterSheet(
 
     // Repaint on resize so crossing the wide/narrow threshold re-lays out.
     const stopSizeChanged = term.onSizeChanged(() => paint());
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     installTap();
     paint();
   });

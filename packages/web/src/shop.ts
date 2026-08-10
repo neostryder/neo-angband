@@ -22,6 +22,7 @@
  * and p/g / s/d / l/x drive purchase / sell / examine directly, as ui-store.c does.
  */
 
+import { inputEvents } from "./input-door";
 import {
   describeObject,
   ODESC,
@@ -283,7 +284,7 @@ type StoreInput = { type: "key"; key: string } | { type: "tap"; row: number; col
 function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreInput> {
   return new Promise<StoreInput>((resolve) => {
     const finish = (value: StoreInput): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
     };
@@ -295,7 +296,7 @@ function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreInpu
       ev.stopImmediatePropagation();
       finish({ type: "key", key: ev.key });
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, (cell) => finish({ type: "tap", row: cell.row, col: cell.col }));
   });
 }
@@ -321,7 +322,7 @@ function storeConfirm(
     if (price !== undefined) term.prt(0, 1, `Price: ${price}`.slice(0, cols - 1), UI_TEXT);
     term.prt(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     const finish = (value: boolean): void => {
-      window.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("keydown", onKey, true);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -333,7 +334,7 @@ function storeConfirm(
       if (ev.key === "Escape" || ev.key === "n" || ev.key === "N") return finish(false);
       finish(true);
     };
-    window.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("keydown", onKey, true);
   });
 }
 

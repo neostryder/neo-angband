@@ -46,6 +46,12 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- The web front end has one input door. All former per-screen browser keydown
+  registrations now subscribe to it; keyboard and keymap input are normalized
+  as device-neutral values, including continuous direction vectors and angles
+  for a future controller/radial UI. A player's saved keymap is resolved before
+  later input consumers.
+
 - The web grid now renders through the renderer-neutral `GridSurface` contract.
   `GlyphTerm` remains the faithful canvas implementation; tile values are asset
   references rather than Canvas2D callbacks, and pointer, hit-test, readback,
