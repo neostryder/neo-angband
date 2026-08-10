@@ -197,6 +197,8 @@ import type {
   LoreDeps,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
+import { registerLocale, setLocale } from "@rpgm-tools/neo-angband-core";
+import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
@@ -470,9 +472,11 @@ import {
   modArtLines,
   modFontData,
   modHelpResources,
+  modLocaleResources,
   modPrefResources,
   modSoundBase,
 } from "./mod-resources";
+import { readStoredLocale } from "./locale-store";
 import { chooseCommand, groupCommands, keyForKeyset } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
@@ -9943,6 +9947,38 @@ async function applyModResources(): Promise<void> {
       );
     }
   }
+
+  /* TRANSLATIONS, before anything that prints. Each file was verified above -
+   * valid JSON, a readable language tag, and a tag agreeing with its slot - so
+   * what is left here is reading it and handing it to core.
+   *
+   * A translation is DATA and gets no consent prompt; a translation that needs
+   * to change how text is ASSEMBLED (Japanese counters, German case endings)
+   * ships a plugin.js and calls core's registerLocale itself, through the
+   * ordinary code path with the ordinary consent. That is why this loop only
+   * carries messages: it is the half that is safe by construction. */
+  for (const locale of modLocaleResources()) {
+    if (locale.resolve === null) continue;
+    const url = await locale.resolve(locale.resource.path);
+    if (url === null) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      registerLocale((await res.json()) as LocaleBundle);
+    } catch (e) {
+      reportModFault(
+        locale.modId,
+        `translation "${locale.resource.path}" could not be read (${faultMessage(e)})`,
+      );
+    }
+  }
+  /* ENGLISH UNLESS ASKED OTHERWISE. `?lang=` is a one-off override for testing
+   * and for a link; otherwise the player's saved choice; otherwise English.
+   * NOT `navigator.language`, deliberately - the game is English by default, and
+   * silently switching a player's game because their browser is set to French
+   * would be a surprise they did not ask for and might not be able to undo. */
+  const chosenLocale = params.get("lang") ?? readStoredLocale();
+  if (chosenLocale !== null) setLocale(chosenLocale);
 
   const pages: { slot: string; label: string; lines: ScreenLine[] }[] = [];
   for (const page of modHelpResources()) {

@@ -90,7 +90,9 @@ it fell out of the shape of core's own records.
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
-about 1800 runtime exports (1,813 as of 2026-08-09), deliberately not a curated slice (decision 18, and
+about 1900 runtime exports (1,897 as of 2026-08-09, up from 1,813 the same day
+when the localization layer landed - MOD_REACH gap 14), deliberately not a
+curated slice (decision 18, and
 because a curated list is the thing that drifts).
 
 `MOD_API_VERSION` does not version it. It versions the *shape of the plugin

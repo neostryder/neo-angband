@@ -38,7 +38,7 @@ import type { GlyphTerm } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
-import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
+import { ENGINE_VERSION, t } from "@rpgm-tools/neo-angband-core";
 
 const FG = UI_TEXT;
 const DIM = UI_DIM;
@@ -379,9 +379,10 @@ export function helpLinesFromText(text: string): ScreenLine[] {
 
 /** Core's own pages, then a mod's, with a mod's replacement swapped in place. */
 function helpIndex(): readonly { label: string; page: HelpPage }[] {
-  if (modPages.size === 0) return HELP_INDEX;
+  const core = coreHelpIndex();
+  if (modPages.size === 0) return core;
   const seen = new Set<string>();
-  const out = HELP_INDEX.map((entry) => {
+  const out = core.map((entry) => {
     const supplied = modPages.get(entry.id);
     if (supplied === undefined) return entry;
     seen.add(entry.id);
@@ -404,7 +405,7 @@ function helpIndex(): readonly { label: string; page: HelpPage }[] {
 
 /** The ids core's own pages answer to, so a mod knows what it can replace. */
 export function coreHelpPageIds(): string[] {
-  return HELP_INDEX.map((e) => e.id);
+  return coreHelpIndex().map((e) => e.id);
 }
 
 /** The index's row labels, so a test can assert a page is reachable at all. */
@@ -417,16 +418,54 @@ export function helpIndexLabels(): string[] {
  * page. Stable and separate from `label`, which is display text and therefore
  * the thing a translation changes.
  */
-const HELP_INDEX: readonly { id: string; label: string; page: HelpPage }[] = [
-  { id: "commands", label: "Available commands", page: { title: "Angband Help - Commands", lines: helpCommandLines } },
-  { id: "symbols", label: "Symbols on your map", page: { title: "Angband Help - Symbols", lines: helpSymbolLines } },
-  { id: "guide", label: "Playing guide", page: { title: "Angband Help - Playing Guide", lines: helpGuideLines } },
-  {
-    id: "community",
-    label: "Help, and telling us something is wrong",
-    page: { title: "Neo Angband - Help and reporting", lines: helpCommunityLines },
-  },
-];
+/**
+ * THE LABELS AND TITLES GO THROUGH `t` (MOD_REACH gap 14), and the English
+ * beside each id is the string that used to be written here - so with no locale
+ * installed this file prints exactly what it printed before.
+ *
+ * A FUNCTION rather than a constant, because a locale is chosen at boot and can
+ * be changed while the game runs: a `const` array would freeze whichever
+ * language happened to be active when this module was first imported. The ids
+ * are `help.<page>.label` and `.title`, which is also why HELP_INDEX carries an
+ * `id` - a mod REPLACING a page keys on that id, and keying on the label would
+ * make "which page is this" depend on what language the player is reading.
+ */
+function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }[] {
+  return [
+    {
+      id: "commands",
+      label: t("help.commands.label", "Available commands"),
+      page: {
+        title: t("help.commands.title", "Angband Help - Commands"),
+        lines: helpCommandLines,
+      },
+    },
+    {
+      id: "symbols",
+      label: t("help.symbols.label", "Symbols on your map"),
+      page: {
+        title: t("help.symbols.title", "Angband Help - Symbols"),
+        lines: helpSymbolLines,
+      },
+    },
+    {
+      id: "guide",
+      label: t("help.guide.label", "Playing guide"),
+      page: {
+        title: t("help.guide.title", "Angband Help - Playing Guide"),
+        lines: helpGuideLines,
+      },
+    },
+    {
+      id: "community",
+      label: t("help.community.label", "Help, and telling us something is wrong"),
+      page: {
+        title: t("help.community.title", "Neo Angband - Help and reporting"),
+        lines: helpCommunityLines,
+      },
+    },
+  ];
+}
 
 /**
  * The help modal (do_cmd_help, ui-help.c:470). Loops the index

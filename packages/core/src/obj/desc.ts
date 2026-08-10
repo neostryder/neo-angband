@@ -41,6 +41,7 @@
  *   object, so that branch is skipped (module docs of object.ts).
  */
 
+import { forms, registerSourceForms } from "../i18n/i18n.js";
 import { KF, OBJ_MOD, OF } from "../generated/index.js";
 import { TV } from "../generated/index.js";
 import type { Player } from "../player/player.js";
@@ -238,6 +239,25 @@ function objDescNamePrefix(
   number: number,
   knownArtifact: boolean,
 ): string {
+  /* The other half of the gap-14 seam. `a`/`an` by the following vowel, `the`
+   * for a known artifact, the count in front - all English. A language with no
+   * articles returns "" here; one that counts with a classifier returns the
+   * classifier; one that puts the number after the noun returns "" and does its
+   * counting in objectNameFormat, which is why the two travel together. */
+  const supplied = forms().objectNamePrefix;
+  return supplied === undefined
+    ? englishObjectNamePrefix(basename, modstr, terse, number, knownArtifact)
+    : supplied(basename, modstr, terse, number, knownArtifact);
+}
+
+/** The English rules, exactly as `obj_desc_name_prefix` has them. */
+export function englishObjectNamePrefix(
+  basename: string,
+  modstr: string,
+  terse: boolean,
+  number: number,
+  knownArtifact: boolean,
+): string {
   if (number === 0) return "no more ";
   if (number > 1) return `${number} `;
   if (knownArtifact) return "the ";
@@ -262,6 +282,34 @@ function objDescNamePrefix(
  * in the recursive call).
  */
 export function objDescNameFormat(
+  fmt: string,
+  modstr: string | null,
+  pluralise: boolean,
+): string {
+  /* THE LOCALIZATION SEAM (MOD_REACH gap 14), and the reason it is here rather
+   * than in a string table. `~` appends `s` - or `es` after s/h/x - and `|a|b|`
+   * picks between two spellings. Those are English's rules, not the game's, and
+   * a translator handed the pattern `"& Scroll~ titled #"` cannot express
+   * Japanese counters or Polish's three plural forms by replacing its words. So
+   * a locale replaces the FUNCTION. English's is `englishObjectNameFormat`
+   * below, registered as `en`'s form and reachable through `coreForms()`, so a
+   * language whose plurals are English's bar a handful of nouns can special-case
+   * those and delegate the rest. */
+  const supplied = forms().objectNameFormat;
+  return supplied === undefined
+    ? englishObjectNameFormat(fmt, modstr, pluralise)
+    : supplied(fmt, modstr, pluralise);
+}
+
+/**
+ * The English rules, exactly as `obj_desc_name_format` has them.
+ *
+ * SELF-RECURSIVE on purpose. The `#` arm expands the flavour or material with
+ * the same grammar, and calling the dispatcher there would hand a mod's locale
+ * the inside of a string English is in the middle of assembling - two languages
+ * in one name. A locale that wants the nested expansion recurses into its own.
+ */
+export function englishObjectNameFormat(
   fmt: string,
   modstr: string | null,
   pluralise: boolean,
@@ -296,7 +344,7 @@ export function objDescNameFormat(
       i = endmark; // loop's i++ then advances past the closing '|'
     } else if (c === "#" && modstr !== null) {
       /* Add modstr, pluralised if relevant. */
-      out += objDescNameFormat(modstr, null, pluralise);
+      out += englishObjectNameFormat(modstr, null, pluralise);
     } else {
       out += c;
     }
@@ -733,4 +781,23 @@ seedTval((reg) => {
   );
   reg.basename.set(TV.SHADOW_BOOK, book("& Tome~ #", "& Necromantic Tome~ #"));
   reg.basename.set(TV.OTHER_BOOK, book("& Book~ #", "& Book of Mysteries~ #"));
+});
+
+/**
+ * English IS a locale, registered like any other (MOD_REACH gap 14).
+ *
+ * At module scope rather than inside a boot function, and that is the point:
+ * these are the rules the game has always used, so they must be in place before
+ * anything can ask for a name - including a test that never boots a game. The
+ * dispatchers above fall back to the same two functions directly, so a
+ * `resetLocales()` in a test cannot leave the game unable to name a sword.
+ *
+ * What this buys is `coreForms()`: a locale can take English's implementation,
+ * wrap the nouns its own language handles differently, and delegate the rest -
+ * the same layering `registry:blow`'s `handlerFor` gives, rather than forcing a
+ * translator to reimplement obj_desc_name_format and inherit its edge cases.
+ */
+registerSourceForms({
+  objectNameFormat: englishObjectNameFormat,
+  objectNamePrefix: englishObjectNamePrefix,
 });

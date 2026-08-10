@@ -45,6 +45,7 @@ describe("a well-formed declaration is accepted", () => {
       { kind: "prefs", path: "prefs/colours.prf" },
       { kind: "help", path: "help/spoilers.txt", slot: "spoilers" },
       { kind: "art", path: "art/splash.txt", slot: "splash" },
+      { kind: "locale", path: "locales/de.json", slot: "de" },
     ];
     for (const resource of resources) {
       expect(resourceComplaint(resource, "test-mod")).toBeNull();
@@ -63,6 +64,7 @@ describe("a well-formed declaration is accepted", () => {
       "prefs",
       "help",
       "art",
+      "locale",
     ]);
     expect([...covered].sort()).toEqual([...RESOURCE_KIND_NAMES].sort());
   });
