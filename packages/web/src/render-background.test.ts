@@ -74,7 +74,7 @@ describe("background repaints stand down while an overlay owns the terminal", ()
   });
 
   it("routes the resize/reflow repaint through it", () => {
-    expect(MAIN).toMatch(/term\.onResize = \(\) => renderBackground\(\)/);
+    expect(MAIN).toMatch(/term\.onSizeChanged\(\(\) => renderBackground\(\)\)/);
   });
 
   it("routes the idle animation tick through it", () => {

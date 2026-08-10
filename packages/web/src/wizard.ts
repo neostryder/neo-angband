@@ -116,7 +116,7 @@ import type {
   ProjectionInfo,
 } from "@rpgm-tools/neo-angband-core";
 import { gearGet } from "@rpgm-tools/neo-angband-core";
-import { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import {
   getCheck,
   getFile,
@@ -181,7 +181,7 @@ export interface WizStatsCollectors {
  * player.noscore (persisted by save.ts, read by the score gate).
  */
 export interface WizardUiCtx {
-  term: GlyphTerm;
+  term: GridSurface & GridPointerInput;
   state: GameState;
   /**
    * The wizard engine dependency bundle assembled by the shell. Read it fresh at
@@ -371,7 +371,7 @@ export type SpoilKind = "obj" | "artifact" | "mon-desc" | "mon-info";
  * file_open's failure, file_close's failure, and success.
  */
 export async function runSpoilers(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   pack: GamePack,
   say: (text: string) => void,
 ): Promise<void> {
@@ -407,7 +407,7 @@ export async function runSpoilers(
 }
 
 /** get_check (textui_get_check): inline row-0 "<prompt>[y/n] ", y/Y only. */
-function confirmYesNo(term: GlyphTerm, title: string): Promise<boolean> {
+function confirmYesNo(term: GridSurface & GridPointerInput, title: string): Promise<boolean> {
   return getCheck(term, title);
 }
 
@@ -415,7 +415,7 @@ function confirmYesNo(term: GlyphTerm, title: string): Promise<boolean> {
  * get_com (textui_get_com, ui-input.c:1398): prompt at row 0, one keypress,
  * false on ESCAPE. Returns null where the C returns false.
  */
-async function getCom(term: GlyphTerm, prompt: string): Promise<string | null> {
+async function getCom(term: GridSurface & GridPointerInput, prompt: string): Promise<string | null> {
   const key = await getKeyInline(term, prompt);
   return key === "Escape" ? null : key;
 }

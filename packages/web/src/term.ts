@@ -25,28 +25,17 @@
 import { UI_BG, UI_GOLD } from "./ui-colors";
 import { FONT_16X24, type BitmapFontData } from "./font-16x24";
 
-export interface TileDraw {
-  draw(
-    ctx: CanvasRenderingContext2D,
-    px: number,
-    py: number,
-    w: number,
-    h: number,
-  ): boolean;
-  /**
-   * A stable identity: two TileDraws with the same key paint the same pixels
-   * into the same size of cell.
-   *
-   * Needed because the terminal repaints only the cells that CHANGED, and a
-   * TileDraw is a closure allocated afresh for every cell of every frame - so
-   * `a === b` is false between two frames showing the identical dungeon, and
-   * without a key every tile on screen is redrawn on every keypress.
-   *
-   * Absent means "assume it changed", which is the safe answer and is what a
-   * tileset that is not ready yet should give: the cell falls back to ASCII, and
-   * the frame after the atlas loads has to repaint it.
-   */
+/**
+ * A renderer-neutral reference to art associated with a grid cell.  The grid
+ * owns the meaning ("this cell has this asset"), while the selected renderer
+ * owns how that asset is painted.  `data` deliberately has no Canvas2D type:
+ * a DOM, WebGL, or test renderer can consume the same grid without manufacturing
+ * a 2d context.
+ */
+export interface RenderAssetRef {
+  readonly kind: string;
   readonly key?: string;
+  readonly data: unknown;
 }
 
 export interface Glyph {
@@ -54,7 +43,7 @@ export interface Glyph {
   fg: string;
   bg?: string;
   /** When set, blit this tile in place of the ASCII glyph (ASCII on failure). */
-  tile?: TileDraw;
+  tile?: RenderAssetRef;
   /**
    * The TERRAIN tile under `tile`, blitted first so an alpha foreground tile
    * shows the floor through its transparent pixels instead of the cell's flat
@@ -69,7 +58,7 @@ export interface Glyph {
    * undefined when the terrain IS the top layer, which is upstream's
    * `if ((tap[i] == ap[i]) && (tcp[i] == cp[i])) continue;`.
    */
-  bgTile?: TileDraw;
+  bgTile?: RenderAssetRef;
 }
 
 export interface TermSize {
@@ -83,6 +72,120 @@ export interface ColoredCell {
   fg: string;
   bg?: string;
 }
+
+export interface GridCell {
+  readonly col: number;
+  readonly row: number;
+}
+
+/** The common terminal-grid contract; no implementation detail leaks through it. */
+export interface GridSurface {
+  size(): TermSize;
+  invalidate(): void;
+  /** Commit queued work now; callers use this as a visible-progress fence. */
+  flush(): void;
+  clear(): void;
+  setCursor(x: number, y: number): void;
+  hideCursor(): void;
+  put(x: number, y: number, glyph: Glyph): void;
+  print(x: number, y: number, text: string, fg: string, bg?: string): void;
+  eraseToEol(x: number, y: number): void;
+  /** Erase through the end of the row, then print. */
+  prt(x: number, y: number, text: string, fg: string): void;
+}
+
+/** Pointer delivery is optional for a grid renderer, and owns one active modal tap. */
+export interface GridPointerInput {
+  onCellTap(listener: (cell: GridCell) => void): () => void;
+}
+
+const activeCellTaps = new WeakMap<GridPointerInput, () => void>();
+
+/**
+ * Preserve the terminal modal protocol while using subscriptions: there is one
+ * active modal owner, and replacing it always disposes the previous listener.
+ */
+export function setActiveCellTap(
+  input: GridPointerInput,
+  listener: ((cell: GridCell) => void) | null,
+): void {
+  /* Old test doubles (and only test doubles) may be structurally cast from the
+   * pre-split terminal. Production consumers require GridPointerInput in their
+   * type, but preserving keyboard-only tests keeps the former no-touch path
+   * observable while those doubles migrate. */
+  if (typeof input.onCellTap !== "function") return;
+  activeCellTaps.get(input)?.();
+  activeCellTaps.delete(input);
+  if (!listener) return;
+  const dispose = input.onCellTap(listener);
+  /* Compatibility for pre-split test doubles. Real GridPointerInput providers
+   * return a disposer; the fallback is never selected by GlyphTerm. */
+  activeCellTaps.set(
+    input,
+    typeof dispose === "function"
+      ? dispose
+      : () => (input.onCellTap as unknown as (listener: null) => void)(null),
+  );
+}
+
+/** Convert client-space pointer coordinates to a grid cell, or reject off-grid input. */
+export interface GridHitTest {
+  cellAt(clientX: number, clientY: number): GridCell | null;
+}
+
+/** Logical-grid readback is optional: 3D renderers need not retain a character buffer. */
+export interface GridReadback {
+  snapshot(): string[];
+  snapshotColored(): ColoredCell[][];
+}
+
+/** Size subscribers run only after a resize has synchronously repainted retained cells. */
+export interface SurfaceSizeEvents {
+  onSizeChanged(listener: (size: TermSize) => void): () => void;
+}
+
+/** Canvas-only adapter used by GlyphTerm to resolve the otherwise-neutral assets. */
+interface CanvasAssetRenderer {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    asset: RenderAssetRef,
+    px: number,
+    py: number,
+    w: number,
+    h: number,
+  ): boolean;
+}
+
+/** The legacy tilesheet/loose-pack adapter; it is intentionally not GridSurface API. */
+const canvasAssetRenderer: CanvasAssetRenderer = {
+  draw(ctx, asset, px, py, w, h): boolean {
+    if (asset.kind !== "canvas-tile" || !asset.data || typeof asset.data !== "object") return false;
+    const data = asset.data as {
+      blitter?: {
+        drawTile: (
+          ctx: CanvasRenderingContext2D,
+          px: number,
+          py: number,
+          w: number,
+          h: number,
+          code: { row: number; col: number },
+          grid?: { x: number; y: number },
+        ) => boolean;
+      };
+      code?: { row: number; col: number };
+      grid?: { x: number; y: number };
+      dimScale?: number;
+    };
+    if (!data.blitter || !data.code) return false;
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * (data.dimScale ?? 1);
+    try {
+      return data.blitter.drawTile(ctx, px, py, w, h, data.code, data.grid);
+    } finally {
+      ctx.globalAlpha = alpha;
+    }
+  },
+};
 
 // Fallback vector font (FONT-1): the terminal blits the original Angband
 // 16x24 bitmap glyphs (font-16x24.ts, from 16X24x.FON) for code points 0-255,
@@ -126,7 +229,7 @@ const FIXED_ROWS = 24;
  * This is what keeps a resize from BLANKING the terminal. `fit()` has to
  * reallocate the grid because the geometry may change, and it used to allocate an
  * empty one - so every resize wiped the screen and left it wiped until something
- * repainted. The only repaint wired to onResize is the game map, so a resize
+ * repainted. The only repaint wired to the size event is the game map, so a resize
  * landing while a full-screen overlay owned the screen erased that overlay: the
  * ResizeObserver fires once on observe, i.e. right around the boot title screen,
  * which is how launching the game came to show nothing at all with the title
@@ -164,7 +267,8 @@ export function carryGrid<T>(
  * the class itself needs a real 2d context the node test environment has not
  * got (see carryGrid above for the same split).
  */
-export function blitCellTiles(
+export function blitCellAssets(
+  renderer: CanvasAssetRenderer,
   ctx: CanvasRenderingContext2D,
   g: Glyph | null,
   px: number,
@@ -172,11 +276,14 @@ export function blitCellTiles(
   w: number,
   h: number,
 ): boolean {
-  g?.bgTile?.draw(ctx, px, py, w, h);
-  return g?.tile?.draw(ctx, px, py, w, h) === true;
+  if (g?.bgTile) renderer.draw(ctx, g.bgTile, px, py, w, h);
+  return g?.tile ? renderer.draw(ctx, g.tile, px, py, w, h) : false;
 }
 
-export class GlyphTerm {
+/** Canvas implementation of GridSurface. Canvas-only policy stays in this class. */
+export class GlyphTerm
+  implements GridSurface, GridPointerInput, GridHitTest, GridReadback, SurfaceSizeEvents
+{
   private ctx: CanvasRenderingContext2D;
   /** Term_gotoxy's cursor cell, and whether Term_set_cursor showed it. */
   private cursorX = 0;
@@ -230,14 +337,14 @@ export class GlyphTerm {
    * the cache is independent of cell size and survives resizes.
    */
   private glyphCache = new Map<string, HTMLCanvasElement | null>();
-  onResize: ((size: TermSize) => void) | null = null;
+  private sizeListeners = new Set<(size: TermSize) => void>();
   /**
    * The active modal's tap handler (see onCellTap). While set, a pointerdown
    * on the canvas is consumed here (stopImmediatePropagation) so the in-world
    * tap-to-move and long-press handlers - registered later on the same canvas
    * - never double-fire underneath an open menu.
    */
-  private tapCb: ((cell: { col: number; row: number }) => void) | null = null;
+  private tapCb: ((cell: GridCell) => void) | null = null;
 
   /**
    * How many cell paints this term has issued, ever.
@@ -287,7 +394,8 @@ export class GlyphTerm {
     this.fit();
     const refit = () => {
       this.fit();
-      this.onResize?.(this.size());
+      const size = this.size();
+      for (const listener of this.sizeListeners) listener(size);
     };
     window.addEventListener("resize", refit);
     // Some embeds start at 0x0 and never fire window resize; observe the
@@ -301,22 +409,28 @@ export class GlyphTerm {
       if (!this.tapCb) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      const rect = canvas.getBoundingClientRect();
-      this.tapCb(this.cellAt(ev.clientX - rect.left, ev.clientY - rect.top));
+      const cell = this.cellAt(ev.clientX, ev.clientY);
+      if (cell) this.tapCb(cell);
     });
   }
 
   /**
-   * Register (or clear, with null) the tap handler for the active modal: a
-   * pointer/touch tap on the canvas is mapped to its grid cell via cellAt()
-   * and delivered to `cb`. Exactly one handler is active at a time - each
-   * modal registers on open and MUST clear (or restore its parent's handler)
-   * on resolve, mirroring the window-keydown add/remove discipline. While a
-   * handler is registered the tap never reaches the in-world tap-to-move or
-   * long-press listeners.
+   * Subscribe the active modal's tap handler. A pointer/touch tap is mapped from
+   * client coordinates to a grid cell and delivered to `cb`; the returned
+   * disposer clears this listener only if it is still active. `setActiveCellTap`
+   * provides the shell's one-modal-owner policy. While a handler is registered
+   * the tap never reaches the in-world tap-to-move or long-press listeners.
    */
-  onCellTap(cb: ((cell: { col: number; row: number }) => void) | null): void {
+  onCellTap(cb: (cell: GridCell) => void): () => void {
     this.tapCb = cb;
+    return () => {
+      if (this.tapCb === cb) this.tapCb = null;
+    };
+  }
+
+  onSizeChanged(listener: (size: TermSize) => void): () => void {
+    this.sizeListeners.add(listener);
+    return () => this.sizeListeners.delete(listener);
   }
 
   size(): TermSize {
@@ -325,14 +439,15 @@ export class GlyphTerm {
 
   /**
    * The grid cell under a client-space pixel (e.g. a pointer/touch), for
-   * tap-to-move on touch devices. Coordinates are relative to the canvas's
-   * top-left; callers pass event.clientX/Y minus the canvas bounding rect.
+   * tap-to-move on touch devices. Coordinates are in client space; this method
+   * owns the canvas rectangle and letterbox, and returns null outside the grid.
    */
-  cellAt(cssX: number, cssY: number): { col: number; row: number } {
-    return {
-      col: Math.floor((cssX - this.offsetX) / this.cellW),
-      row: Math.floor((cssY - this.offsetY) / this.cellH),
-    };
+  cellAt(clientX: number, clientY: number): GridCell | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const col = Math.floor((clientX - rect.left - this.offsetX) / this.cellW);
+    const row = Math.floor((clientY - rect.top - this.offsetY) / this.cellH);
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return null;
+    return { col, row };
   }
 
   /**
@@ -884,7 +999,7 @@ export class GlyphTerm {
     const { x: px, y: py, w: cw, h: ch } = this.cellBox(x, y);
     this.ctx.fillStyle = g?.bg ?? UI_BG;
     this.ctx.fillRect(px, py, cw, ch);
-    if (blitCellTiles(this.ctx, g, px, py, cw, ch)) return;
+    if (blitCellAssets(canvasAssetRenderer, this.ctx, g, px, py, cw, ch)) return;
     if (g && g.ch !== " ") {
       // FONT-1: blit the original 16x24 bitmap glyph, tinted to fg and scaled to
       // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any
@@ -916,19 +1031,14 @@ export class GlyphTerm {
 
   private redraws = 0;
 
-  /** Repaint the whole canvas from the grid, now. */
-  redraw(): void {
-    this.invalidate();
-    this.flush();
-  }
 }
 
 /**
  * Whether two cells would paint identically, i.e. whether the diff may skip one.
  *
  * Conservative by construction: anything it cannot compare counts as changed. A
- * TileDraw is a closure allocated per cell per frame, so identity is useless -
- * `key` is what two frames of the same dungeon have in common, and a TileDraw
+ * RenderAssetRef values are allocated per cell per frame, so identity is useless -
+ * `key` is what two frames of the same dungeon have in common, and an asset
  * without one (a tileset that is not ready) is always redrawn.
  */
 function sameGlyph(a: Glyph | null, b: Glyph | null): boolean {
@@ -938,7 +1048,7 @@ function sameGlyph(a: Glyph | null, b: Glyph | null): boolean {
   return sameTile(a.tile, b.tile) && sameTile(a.bgTile, b.bgTile);
 }
 
-function sameTile(a: TileDraw | undefined, b: TileDraw | undefined): boolean {
+function sameTile(a: RenderAssetRef | undefined, b: RenderAssetRef | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.key !== undefined && a.key === b.key;

@@ -466,6 +466,14 @@ translated. Those are worth reporting.
 
 ## Knowing which mod a record came from
 
+## Front-end groundwork
+
+There is no front-end manifest field to use yet. The host now draws through a
+renderer-neutral `GridSurface`, and its existing canvas terminal is merely one
+implementation. This is intentional groundwork rather than a promise that a
+plugin can replace the UI today: the plugin-facing selection seam arrives only
+when it can be loaded, arbitrated, and exercised from a real mod folder.
+
 Every record the game binds carries `from` when a mod was involved:
 
 ```js

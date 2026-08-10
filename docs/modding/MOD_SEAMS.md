@@ -17,6 +17,26 @@ upstream defaults - and every new fix, tweak, or feature ships as a mod.** The
 seams below are how a mod reaches into core WITHOUT core carrying the mod's
 behaviour by default.
 
+## 0. Grid rendering is a surface contract
+
+The web shell's 80x24 renderer is now consumed as `GridSurface`
+(`packages/web/src/term.ts`), rather than as the canvas-specific `GlyphTerm`.
+It carries the operations a text grid actually needs: drawing cells and strings,
+clearing, cursor control, invalidation, and an explicit `flush()` progress fence.
+`GlyphTerm` is the first implementation, not the contract.
+
+`Glyph.tile` and `Glyph.bgTile` carry a renderer-neutral `RenderAssetRef`; their
+values do not accept a canvas context. A canvas adapter in `GlyphTerm` resolves
+the existing tile packs, while another grid renderer can resolve the same asset
+meaning differently without inventing Canvas2D just to satisfy a type.
+
+Input, hit testing, logical readback, and resize notifications are deliberately
+separate capabilities (`GridPointerInput`, `GridHitTest`, `GridReadback`, and
+`SurfaceSizeEvents`). Pointer listeners return disposers, client-space hit tests
+return `null` off-grid, and size observers run only after retained grid content
+has been synchronously repainted. This preserves the old queued-paint and resize
+ordering while leaving non-grid front ends to the later front-end seam.
+
 > For an honest, measured account of how much of the game these seams can
 > actually reach - and the much longer list of things they cannot - see
 > `docs/modding/MOD_REACH.md`.

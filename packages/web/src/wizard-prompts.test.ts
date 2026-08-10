@@ -270,6 +270,7 @@ async function tick(): Promise<void> {
 function makeTerm(cols = 80, rows = 24): GlyphTerm & { snapshot(): string[] } {
   const grid: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(" "));
   return {
+    onCellTap: () => () => undefined,
     size: () => ({ cols, rows }),
     clear: () => {
       for (const row of grid) row.fill(" ");

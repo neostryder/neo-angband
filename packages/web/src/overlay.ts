@@ -17,7 +17,7 @@
 import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import type { Overview } from "./mapview";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
@@ -110,7 +110,7 @@ export function menuNav(ev: KeyboardEvent): MenuNav | null {
  * the screen. Any of ESC / Enter / Space closes it; resolves when dismissed.
  */
 export function showTextScreen(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   lines: readonly ScreenLine[],
   footer = "[ Press ESC to return ]",
@@ -144,7 +144,7 @@ export function showTextScreen(
     };
     const finish = (): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve();
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -174,7 +174,7 @@ export function showTextScreen(
     // Tap: footer row closes; when the content scrolls, a tap in the upper
     // half pages up and in the lower half pages down; a non-scrolling screen
     // closes on any tap (the touch analogue of "any of ESC/Enter/Space").
-    term.onCellTap?.((cell) => {
+    setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
       const bodyRows = rows - BODY_TOP - 1;
       const maxTop = Math.max(0, lines.length - bodyRows);
@@ -200,7 +200,7 @@ export function showTextScreen(
  * player's '@' at its scaled cell, the centered footer) and resolves on any
  * key or tap - it builds no rendering of its own.
  */
-export function showLevelMap(term: GlyphTerm, overview: Overview): Promise<void> {
+export function showLevelMap(term: GridSurface & GridPointerInput, overview: Overview): Promise<void> {
   return new Promise<void>((resolve) => {
     const paint = (): void => {
       const { cols, rows } = term.size();
@@ -299,7 +299,7 @@ const OLIST_WEIGHT_WIDTH = 9;
  * resolves, which is what puts the map back.
  */
 export function showFloorList(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   rows: readonly ObjListRow[],
   refeed?: (key: string) => void,
@@ -350,7 +350,7 @@ export function showFloorList(
         return;
       }
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       /* Term_event_push(&e) (ui-display.c:2644): the key that dismissed the list
        * becomes the next command. */
       refeed?.(ev.key);
@@ -358,9 +358,9 @@ export function showFloorList(
     };
     window.addEventListener("keydown", onKey, true);
     /* A tap is the touch analogue of "any key"; there is no key to re-feed. */
-    term.onCellTap?.(() => {
+    setActiveCellTap(term, () => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve();
     });
   });
@@ -386,7 +386,7 @@ const ARROW_DIR: Record<string, number> = {
  * untouched (Term_erase's 255 is clamped to the full term width) and painted
  * spaces where upstream leaves empty cells. term.prt does the real erase.
  */
-function clearPromptRow(term: GlyphTerm, row = 0): void {
+function clearPromptRow(term: GridSurface & GridPointerInput, row = 0): void {
   term.prt(0, row, "", FG);
 }
 
@@ -399,7 +399,7 @@ function clearPromptRow(term: GlyphTerm, row = 0): void {
  * a separate function (get_aim_dir). Resolves the keypad digit, or null.
  */
 export function getRepDir(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   allow5 = false,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
@@ -437,7 +437,7 @@ export function getRepDir(
  * cancels. Resolves the keypad digit, a sentinel, 5, or null.
  */
 export function getAimDir(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   targetOkay: boolean,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
@@ -481,7 +481,7 @@ export function getAimDir(
  * modifier keydowns (Shift/Ctrl/Alt/Meta) are ignored so a Shift+Y chord is
  * not read as an immediate "no".
  */
-export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
+export function getCheck(term: GridSurface & GridPointerInput, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
     const buf = `${prompt.slice(0, 70)}[y/n] `;
@@ -517,7 +517,7 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
  * get_com_ex narrowed to an ASCII char, so it has no separate counterpart. The
  * C returns false on ESCAPE where callers here compare the resolved key.
  */
-export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
+export function getKeyInline(term: GridSurface & GridPointerInput, prompt: string): Promise<string> {
   return new Promise<string>((resolve) => {
     const { cols } = term.size();
     /* prt(prompt, 0, 0) (get_com_ex, ui-input.c:1427). */
@@ -621,7 +621,7 @@ function askforAuxKeypress(
  * end of the row) before this runs.
  */
 function paintLineEdit(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   x: number,
   y: number,
   st: LineEdit,
@@ -686,7 +686,7 @@ function paintLineEdit(
  * (get_pref_path's `prt("File: ", row + 2, 0)`), and pass that row here.
  */
 export function promptTextInline(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   initial = "",
   maxLen = 15,
@@ -747,7 +747,7 @@ export function promptTextInline(
  * the C's sizeof value verbatim so both limits land where upstream puts them.
  */
 export function getString(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   initial = "",
   len = 80,
@@ -769,7 +769,7 @@ export function getString(
  * upstream's own "Quantity (0-N, *=all): ".
  */
 export async function getQuantity(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string | null,
   max: number,
 ): Promise<number> {
@@ -794,7 +794,7 @@ export async function getQuantity(
  * lower-cases A-Z, and answers `fallback` for anything not in `options`.
  */
 export async function getChar(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   options: string,
   fallback = " ",
@@ -823,7 +823,7 @@ export async function getChar(
  * which means only on a front end that has a command line.
  */
 export async function getFile(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   suggestedName: string,
 ): Promise<string | null> {
   /* char buf[160] (L1337). */
@@ -855,7 +855,7 @@ export async function getFile(
 }
 
 export function promptText(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   initial = "",
   maxLen = 15,
@@ -925,7 +925,7 @@ export function promptText(
  * the returned number.
  */
 export function promptNumber(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   current: number,
   min: number,
@@ -1181,7 +1181,7 @@ export const MENU_CLOSE = -3;
 export const MENU_REFRESH = -4;
 
 export function selectFromMenu(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   items: readonly MenuItem[],
   footer = "[ a-z to choose, ESC to cancel ]",
@@ -1353,7 +1353,7 @@ export function selectFromMenu(
     };
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     const setCursor = (i: number): void => {
@@ -1544,7 +1544,7 @@ export function selectFromMenu(
     // on the already-highlighted row selects it; a tap on the footer row
     // cancels, exactly like ESC. Registered per-modal and torn down in finish
     // so it never leaks into the game underneath or a sibling modal.
-    term.onCellTap?.((cell) => {
+    setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
       /* Only where there IS a footer. In overlay mode the bottom row is the map,
        * and cancelling the picker because a finger landed on the dungeon floor
@@ -1665,7 +1665,7 @@ function itemMenuHeader(
  * carries across a source switch.
  */
 export function itemSelect(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   prompt: string,
   sources: readonly ItemMenuSource[],
   initialSource = 0,
@@ -1727,7 +1727,7 @@ export function itemSelect(
 
     const finish = (value: { source: number; index: number } | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     const pick = (i: number): void => {
@@ -1821,7 +1821,7 @@ export function itemSelect(
       }
     };
     window.addEventListener("keydown", onKey, true);
-    term.onCellTap?.((cell) => {
+    setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
       if (cell.row === rows - 1) {
         finish(null);

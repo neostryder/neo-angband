@@ -40,7 +40,7 @@
  */
 
 import { promptText, selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 import { authorFor, displayName, standingNote, type AuthorRegister } from "./mod-authors";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "./mod-consent";
@@ -347,7 +347,7 @@ const ABOUT: readonly ScreenLine[] = [
 ];
 
 /** Ask the consent question, showing the disclaimer. Returns the new setting. */
-async function askConsent(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean> {
+async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseDeps): Promise<boolean> {
   const on = deps.consent.read();
   if (on) {
     const off = await selectFromMenu(
@@ -433,7 +433,7 @@ async function askConsent(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean
  * survived.
  */
 async function installOne(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   entry: Extract<BrowseEntry, { ok: true }>,
   origin: ModOrigin,
   deps: ModBrowseDeps,
@@ -532,7 +532,7 @@ export function installOutcomeLines(
  * player presses ESC out of a detail pane would spend a rate limit on nothing.
  */
 async function showSource(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   origin: ModOrigin,
   refs: readonly RepoRef[],
@@ -662,7 +662,7 @@ async function showSource(
 
 /** Read a registry, then show it. Shared by doors 1 and 2. */
 async function openRegistry(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   origin: ModOrigin,
   read: () => Promise<{ registry: ModRegistry | null; problem: string | null }>,
   deps: ModBrowseDeps,
@@ -779,7 +779,7 @@ export function importedLines(
 
 /** Read, validate, store - then, only then, move the source aside. */
 async function importOne(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   bytes: Uint8Array,
   source: string,
   /** The leaf name to move afterwards, or null for a file the game does not own. */
@@ -828,7 +828,7 @@ async function importOne(
  * the ONLY difference between them is whether the source file can be deleted, and that
  * difference is stated on the screen rather than hidden.
  */
-export async function showZipImport(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean> {
+export async function showZipImport(term: GridSurface & GridPointerInput, deps: ModBrowseDeps): Promise<boolean> {
   const zip = deps.importZip;
   if (!zip) return false;
   let changed = false;
@@ -940,7 +940,7 @@ function aboutImport(folder: string | null, canArchive: boolean): readonly Scree
  * Returns true when anything was installed or removed, so the caller can offer the
  * reload that makes it take effect.
  */
-export async function showModBrowse(term: GlyphTerm, deps: ModBrowseDeps): Promise<boolean> {
+export async function showModBrowse(term: GridSurface & GridPointerInput, deps: ModBrowseDeps): Promise<boolean> {
   let changed = false;
 
   for (;;) {
@@ -1077,7 +1077,7 @@ export async function showModBrowse(term: GlyphTerm, deps: ModBrowseDeps): Promi
  * consent gate, the requirements inspection, the origin check and the progress line
  * are not reimplemented here.
  */
-export async function showModUpgrades(term: GlyphTerm, deps: ModUpgradeDeps): Promise<boolean> {
+export async function showModUpgrades(term: GridSurface & GridPointerInput, deps: ModUpgradeDeps): Promise<boolean> {
   let changed = false;
 
   for (;;) {
@@ -1209,7 +1209,7 @@ const ABOUT_MOD_UPGRADES: readonly ScreenLine[] = [
 
 /** Draw one line, let it paint, then run `job`. For a wait a player can read. */
 async function paintWhile<T>(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   title: string,
   line: string,
   job: () => Promise<T>,

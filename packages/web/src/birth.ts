@@ -63,7 +63,7 @@ import {
   statRowLine,
 } from "./screens";
 import { drawPlayerXtraInfo } from "./charsheet";
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import {
   BIRTH_STAT_BASE,
@@ -416,7 +416,7 @@ function dimLines(strs: readonly string[]): ScreenLine[] {
 }
 
 /** Draw one ScreenLine (run-aware) at (x, y), clipped to the terminal width. */
-function drawScreenLine(term: GlyphTerm, x: number, y: number, line: ScreenLine): void {
+function drawScreenLine(term: GridSurface & GridPointerInput, x: number, y: number, line: ScreenLine): void {
   const { cols } = term.size();
   if (line.runs) {
     let cx = x;
@@ -507,7 +507,7 @@ interface PreviewSheet {
  * display_player_xtra_info: the five panels at their upstream anchors plus the
  * history block, shared verbatim with the character screen (charsheet.ts).
  */
-function drawBirthPanels(term: GlyphTerm, sheet: PreviewSheet | null): void {
+function drawBirthPanels(term: GridSurface & GridPointerInput, sheet: PreviewSheet | null): void {
   if (!sheet) return;
   drawPlayerXtraInfo(term, sheet.panels, sheet.history);
 }
@@ -532,7 +532,7 @@ type QuickstartAction = "accept" | "redo" | "name" | "options" | "quit";
  * `sheet` is called per repaint so an option changed through '=' is reflected.
  */
 async function runQuickstart(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   sheet: () => PreviewSheet | null,
 ): Promise<QuickstartAction> {
   const PROMPT =
@@ -581,7 +581,7 @@ async function runQuickstart(
  * and the panels/history. No title row - row 0 is the message/prompt line, which
  * is exactly where the name and history prompts go.
  */
-function drawBirthSheet(term: GlyphTerm, sheet: PreviewSheet | null): void {
+function drawBirthSheet(term: GridSurface & GridPointerInput, sheet: PreviewSheet | null): void {
   term.clear();
   if (!sheet) return;
   drawScreenLine(term, STAT_TABLE_COL, STAT_HEADER_ROW, statHeaderLine());
@@ -632,7 +632,7 @@ function birthStatRow(
  * out. Draws NO RNG - the allocation is deterministic.
  */
 function pointBuyStats(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   race: Named,
   cls: Named,
   initial?: readonly number[],
@@ -717,7 +717,7 @@ function pointBuyStats(
     };
     const finish = (value: number[] | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -767,7 +767,7 @@ function pointBuyStats(
     };
     window.addEventListener("keydown", onKey, true);
     // Touch: tap a stat row to move the cursor there; tap the footer to accept.
-    term.onCellTap?.((cell) => {
+    setActiveCellTap(term, (cell) => {
       const { rows } = term.size();
       if (cell.row === rows - 1) {
         finish([...buy.stats]);
@@ -793,7 +793,7 @@ function pointBuyStats(
  * by generatePlayer's rolledStats option. Resolves the accepted stats or null.
  */
 function standardRoller(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   race: Named,
   cls: Named,
   rng: Rng,
@@ -844,13 +844,13 @@ function standardRoller(
     };
     const finish = (value: number[] | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     /** Touch: a tap on the footer accepts the current roll. Named because '?'
      * suspends the stage and has to put it back (see openBirthHelp). */
     const installTap = (): void => {
-      term.onCellTap?.((cell) => {
+      setActiveCellTap(term, (cell) => {
         const { rows } = term.size();
         if (cell.row === rows - 1) finish([...current]);
       });
@@ -957,7 +957,7 @@ type BirthMenuResult =
  * out - and repaint, since help has cleared the screen.
  */
 function openBirthHelp(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   onKey: (ev: KeyboardEvent) => void,
   restore: () => void,
 ): void {
@@ -968,7 +968,7 @@ function openBirthHelp(
    * the modal. It stays because that is a property of the help browser, not of
    * this call, and a help screen that opened without a tap handler would
    * otherwise let a stray tap pick a race nobody could see. */
-  term.onCellTap?.(null);
+  setActiveCellTap(term, null);
   void runHelp(term)
     .catch((err: unknown) => {
       log.error("birth", "the help browser failed", err);
@@ -991,7 +991,7 @@ function openBirthHelp(
  * and tap-to-select. Resolves a BirthMenuResult.
  */
 function birthMenu(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   hint: string,
   frozen: readonly FrozenColumn[],
   active: ActiveColumn,
@@ -1064,14 +1064,14 @@ function birthMenu(
 
     const finish = (res: BirthMenuResult): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(res);
     };
 
     /** Touch: tap a row in the active column to select it. Named because '?'
      * suspends the stage and has to put it back (see openBirthHelp). */
     const installTap = (): void => {
-      term.onCellTap?.((cell) => {
+      setActiveCellTap(term, (cell) => {
         const i = cell.row - TABLE_ROW;
         if (i >= 0 && i < count) finish({ kind: "pick", index: i });
       });
@@ -1163,7 +1163,7 @@ function wrapHistory(text: string, width = 60): ScreenLine[] {
  * Resolves the final background text, or null to step back (ESC / BIRTH_BACK).
  */
 async function historyStage(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   historyText: string,
   drawSheet: (history: string) => boolean,
 ): Promise<string | null> {
@@ -1211,7 +1211,7 @@ async function historyStage(
 type ConfirmResult = "begin" | "back" | "restart";
 
 function confirmCharacter(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   sheet: PreviewSheet | null,
   fallbackTitle: string,
 ): Promise<ConfirmResult> {
@@ -1246,7 +1246,7 @@ function confirmCharacter(
     );
     const finish = (value: ConfirmResult): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap?.(null);
+      setActiveCellTap(term, null);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -1262,7 +1262,7 @@ function confirmCharacter(
     };
     window.addEventListener("keydown", onKey, true);
     // Touch: tapping the prompt row is "any other key" (begin).
-    term.onCellTap?.(() => {
+    setActiveCellTap(term, () => {
       finish("begin");
     });
   });
@@ -1280,7 +1280,7 @@ type Stage =
   | "confirm";
 
 export async function runBirth(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   races: readonly PlayerRace[],
   classes: readonly PlayerClass[],
   opts: BirthOpts = {},

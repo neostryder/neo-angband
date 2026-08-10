@@ -12,7 +12,7 @@
  * outside any tag is COLOUR_WHITE, matching the file loader's default.
  */
 
-import type { GlyphTerm } from "./term";
+import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import {
   BASIC_COLORS,
   colorTextToAttr,
@@ -511,7 +511,7 @@ export interface TitleDeps {
  * have answered. showTitleScreen repaints this art itself; the terminal diffs
  * against what is already on the canvas, so the second call draws nothing.
  */
-export function paintTitleArt(term: GlyphTerm): void {
+export function paintTitleArt(term: GridSurface & GridPointerInput): void {
   const { cols, rows: height } = term.size();
   term.clear();
   const lines = titleLines();
@@ -542,7 +542,7 @@ export function paintTitleArt(term: GlyphTerm): void {
 }
 
 export function showTitleScreen(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   opts: TitleOptions,
   deps?: TitleDeps,
 ): Promise<TitleChoice> {
@@ -591,7 +591,7 @@ export function showTitleScreen(
     let shimmerTimer: unknown = null;
     const finish = (choice: TitleChoice): void => {
       window.removeEventListener("keydown", onKey, true);
-      term.onCellTap(null);
+      setActiveCellTap(term, null);
       /* The title screen is a promise that resolves once; a timer left running
        * would repaint row 23 over whatever screen comes next, forever. */
       if (shimmerTimer !== null) {
@@ -609,7 +609,7 @@ export function showTitleScreen(
       if (choice) finish(choice);
     };
     window.addEventListener("keydown", onKey, true);
-    term.onCellTap((cell) => {
+    setActiveCellTap(term, (cell) => {
       if (cell.row !== promptRow) return;
       const hit = spans.find((s) => cell.col >= s.start && cell.col <= s.end);
       if (hit?.row.enabled) finish(hit.row.choice);

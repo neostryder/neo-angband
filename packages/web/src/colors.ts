@@ -20,7 +20,7 @@ import {
   restoreColorTable,
   setColorChannel,
 } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 import { UI_TEXT } from "./ui-colors";
 
 /** localStorage key for the user's edited colour table (a global pref). */
@@ -60,7 +60,7 @@ function hx(n: number): string {
  * colors_modify (ui-options.c L876): edit the live colour table. `persist` is
  * called on exit so the front end can save the edited table (localStorage).
  */
-export function runColorsEditor(term: GlyphTerm, persist: () => void): Promise<void> {
+export function runColorsEditor(term: GridSurface & GridPointerInput, persist: () => void): Promise<void> {
   return new Promise<void>((resolve) => {
     let a = 0; // the current colour index (colors_modify's static `a`).
 

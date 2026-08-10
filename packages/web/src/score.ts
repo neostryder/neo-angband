@@ -34,7 +34,7 @@ import type {
   Player,
   BuildScoreDeps,
 } from "@rpgm-tools/neo-angband-core";
-import type { GlyphTerm } from "./term";
+import type { GridPointerInput, GridSurface } from "./term";
 
 /** Version-name shown in the page title (ui-score.c VERSION_NAME). */
 const VERSION_NAME = "Neo Angband";
@@ -253,7 +253,7 @@ export function registryNameResolver(reg: {
  *    forward, wrapping to the top at the end when scrolling, else exiting.
  */
 export function showScoreScreen(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   scores: readonly HighScore[],
   names: ScoreNameResolver,
   options: {
@@ -347,7 +347,7 @@ export function showScoreScreen(
  * when alive), resolves the window, and runs the screen.
  */
 export function showPredictedScores(
-  term: GlyphTerm,
+  term: GridSurface & GridPointerInput,
   store: ScoreStore,
   player: Player,
   build: Omit<BuildScoreDeps, "diedFrom" | "deathTime"> & {

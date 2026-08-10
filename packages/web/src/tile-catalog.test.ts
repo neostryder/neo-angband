@@ -425,7 +425,7 @@ describe("the game does not know or expect any particular mod", () => {
 
   it("passes the map cell to the blit, so a variant pool can resolve", () => {
     const main = read("main.ts");
-    expect(main).toMatch(/drawTile\(ctx, px, py, w, h, code, \{ x, y \}\)/);
+    expect(main).toMatch(/data: \{ blitter: ts, code, grid: \{ x, y \}, dimScale: dimmed \? DIM_SCALE : 1 \}/);
     // Every call site feeds the grid it is drawing, not a placeholder.
     expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y\)/);
     expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
@@ -481,7 +481,8 @@ describe("the game does not know or expect any particular mod", () => {
      * glyph and the tile cannot disagree about how dark "remembered" is. */
     expect(main).toMatch(/const DIM_SCALE = 0\.38;/);
     expect(main).toMatch(/parseInt\(h, 16\) \* DIM_SCALE/);
-    expect(main).toMatch(/ctx\.globalAlpha = prev \* DIM_SCALE/);
+    const term = read("term.ts");
+    expect(term).toMatch(/ctx\.globalAlpha = alpha \* \(data\.dimScale \?\? 1\)/);
     /* The frame diff has to be able to tell the two apart, or it leaves the lit
      * tile on screen - which is exactly how this was reported. */
     expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
