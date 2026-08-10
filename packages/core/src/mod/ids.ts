@@ -34,6 +34,16 @@
  * frozen datafiles and cross-version additions append), which is the same
  * append-only assumption every mod ecosystem relies on - and strictly less
  * fragile than upstream's bare-index scheme, which breaks on ANY reorder.
+ *
+ * "MODS LIVE IN THEIR OWN NAMESPACE" WAS A DESCRIPTION OF THE DESIGN AND NOT OF
+ * THE CODE until 0.19.0. Every resolver was built with the default namespace, so
+ * everything - core's kobold and a mod's alike - was minted under `core:`, and
+ * the sentence above quietly became its own opposite: a mod's records did NOT
+ * append into a space of their own, they collided with core's and took the
+ * suffix. Which suffix depended on which mods were enabled and in what order,
+ * in a string embedded in the player's save. The namespace now comes from the
+ * record's own provenance (mod/extension.ts), which is what this paragraph has
+ * claimed all along. IdTable.index carries the compatibility half.
  */
 
 import { TVAL_ENTRIES } from "../generated/index.js";
@@ -42,6 +52,7 @@ import type { MonsterRace } from "../mon/types.js";
 import type { PlayerClass, PlayerRace } from "../player/types.js";
 import type { FeatureRegistry } from "../world/feature.js";
 import type { TrapKind } from "../world/trap.js";
+import type { ModExtensible } from "./extension.js";
 
 /** The base game's namespace (pack zero). */
 export const CORE_NS = "core";
@@ -125,28 +136,67 @@ export interface ContentIdRegistries {
   playerClasses?: readonly PlayerClass[];
 }
 
+/**
+ * The pack a bound record came from, or undefined when it carries no provenance.
+ *
+ * Undefined rather than `CORE_NS` so the resolver's own `namespace` argument
+ * stays the fallback: a caller that deliberately built a resolver in some other
+ * namespace still gets it for every unstamped record, and would not if this
+ * substituted "core" on its behalf.
+ *
+ * The composer only stamps a record a mod added or changed
+ * (mod-sdk/provenance.ts), so this is undefined for the whole base game and the
+ * ids of an unmodded run are byte-identical to what every earlier engine wrote.
+ */
+function packOf(entity: ModExtensible): string | undefined {
+  return entity.from?.owner;
+}
+
 /** One bidirectional index<->id table for a single entity kind. */
 class IdTable {
   private readonly toId: (string | null)[] = [];
   private readonly toIndex = new Map<string, number>();
+  /**
+   * The id an engine before 0.19.0 would have minted for each index: every
+   * record in the default namespace, suffixed against every other record rather
+   * than only its pack-mates. Consulted only when the exact id misses. See
+   * `index` for why this is a reproduction rather than a heuristic.
+   */
+  private readonly legacyToIndex = new Map<string, number>();
 
   constructor(private readonly namespace: string) {}
 
   /**
-   * Register an index's base localid. If that id is already taken (a genuine
-   * duplicate-name entity), append the first free numeric suffix so every id
-   * is unique. Called in registry-binding order, so the suffix a given entity
-   * receives is deterministic and identical across a save round-trip.
+   * Register an index's base localid under the pack that owns it. If that id is
+   * already taken (a genuine duplicate-name entity WITHIN one pack), append the
+   * first free numeric suffix so every id is unique. Called in registry-binding
+   * order, so the suffix a given entity receives is deterministic and identical
+   * across a save round-trip.
+   *
+   * THE NAMESPACE IS PER RECORD, not per table, and that is what makes the
+   * suffix stop depending on load order. Before this, every record in the game
+   * shared one namespace, so a mod that added a monster called "kobold" got
+   * `core:kobold-2` - a number decided by which mods happened to be enabled and
+   * in what order, embedded in the player's save. It is now `frost:kobold`,
+   * which says who supplied it and is the same string whatever else is loaded.
    */
-  add(index: number, base: string): void {
-    let id = makeId(this.namespace, base);
+  add(index: number, base: string, namespace: string = this.namespace): void {
+    let id = makeId(namespace, base);
     if (this.toIndex.has(id)) {
       let n = 2;
-      while (this.toIndex.has(makeId(this.namespace, `${base}-${n}`))) n++;
-      id = makeId(this.namespace, `${base}-${n}`);
+      while (this.toIndex.has(makeId(namespace, `${base}-${n}`))) n++;
+      id = makeId(namespace, `${base}-${n}`);
     }
     this.toIndex.set(id, index);
     this.toId[index] = id;
+
+    let legacy = makeId(this.namespace, base);
+    if (this.legacyToIndex.has(legacy)) {
+      let n = 2;
+      while (this.legacyToIndex.has(makeId(this.namespace, `${base}-${n}`))) n++;
+      legacy = makeId(this.namespace, `${base}-${n}`);
+    }
+    this.legacyToIndex.set(legacy, index);
   }
 
   /** The id for an index, or null when the index is unbound (e.g. slot 0). */
@@ -154,9 +204,30 @@ class IdTable {
     return this.toId[index] ?? null;
   }
 
-  /** The index for an id, or undefined when no such id is bound. */
+  /**
+   * The index for an id, or undefined when no such id is bound.
+   *
+   * A MISS FALLS BACK TO THE PRE-0.19.0 SPELLING, because the change that gave
+   * mod content its own namespace also changed what an existing savefile means:
+   * a character who was carrying a mod's sword saved it as `core:frost-brand`,
+   * and that string is now minted as `frost:frost-brand`. Without this the item
+   * would come back unresolvable on the next load - a save silently losing
+   * content because the engine got MORE correct, which is the one thing the
+   * whole id scheme exists to prevent. No SAVE_VERSION bump: the format did not
+   * change, only which of two spellings the writer chooses.
+   *
+   * It is a REPRODUCTION of the old algorithm rather than a search for a near
+   * match. A "try the same localid in any namespace" rule would be a guess, and
+   * would silently hand back the wrong record whenever two packs use one name -
+   * which is exactly the collision case the old suffix existed for. Running the
+   * old rule forwards gives the id the old engine actually wrote, or nothing.
+   *
+   * Exact first, always: a save written by this engine never consults the
+   * fallback, so a legacy id that happens to collide with a live one cannot
+   * shadow it.
+   */
   index(id: string): number | undefined {
-    return this.toIndex.get(id);
+    return this.toIndex.get(id) ?? this.legacyToIndex.get(id);
   }
 }
 
@@ -185,18 +256,18 @@ export class ContentIdResolver {
 
     this.kinds = new IdTable(namespace);
     for (const kind of objects.kinds) {
-      this.kinds.add(kind.kidx, kindLocalId(kind.tval, kind.name));
+      this.kinds.add(kind.kidx, kindLocalId(kind.tval, kind.name), packOf(kind));
     }
 
     this.egos = new IdTable(namespace);
-    for (const ego of objects.egos) this.egos.add(ego.eidx, slug(ego.name));
+    for (const ego of objects.egos) this.egos.add(ego.eidx, slug(ego.name), packOf(ego));
 
     /* Artifacts, curses, brands, slays are 1-based with a null at slot 0. */
     this.artifacts = new IdTable(namespace);
     for (let i = 1; i < objects.artifacts.length; i++) {
       const a = objects.artifacts[i];
       if (a) {
-        this.artifacts.add(i, slug(a.name));
+        this.artifacts.add(i, slug(a.name), packOf(a));
         this.artifactNames.set(i, a.name);
       }
     }
@@ -204,44 +275,44 @@ export class ContentIdResolver {
     this.curses = new IdTable(namespace);
     for (let i = 1; i < objects.curses.length; i++) {
       const c = objects.curses[i];
-      if (c) this.curses.add(i, slug(c.name));
+      if (c) this.curses.add(i, slug(c.name), packOf(c));
     }
 
     this.brands = new IdTable(namespace);
     for (let i = 1; i < objects.brands.length; i++) {
       const b = objects.brands[i];
-      if (b) this.brands.add(i, slug(b.code));
+      if (b) this.brands.add(i, slug(b.code), packOf(b));
     }
 
     this.slays = new IdTable(namespace);
     for (let i = 1; i < objects.slays.length; i++) {
       const s = objects.slays[i];
-      if (s) this.slays.add(i, slug(s.code));
+      if (s) this.slays.add(i, slug(s.code), packOf(s));
     }
 
     this.races = new IdTable(namespace);
     for (const race of reg.monsters?.races ?? []) {
-      this.races.add(race.ridx, slug(race.name));
+      this.races.add(race.ridx, slug(race.name), packOf(race));
     }
 
     this.traps = new IdTable(namespace);
     for (const trap of reg.traps ?? []) {
-      this.traps.add(trap.tidx, slug(trap.name));
+      this.traps.add(trap.tidx, slug(trap.name), packOf(trap));
     }
 
     this.feats = new IdTable(namespace);
     for (const feat of reg.features?.allFeatures() ?? []) {
-      this.feats.add(feat.fidx, slug(feat.code));
+      this.feats.add(feat.fidx, slug(feat.code), packOf(feat));
     }
 
     this.playerRaces = new IdTable(namespace);
     for (const race of reg.playerRaces ?? []) {
-      this.playerRaces.add(race.ridx, slug(race.name));
+      this.playerRaces.add(race.ridx, slug(race.name), packOf(race));
     }
 
     this.playerClasses = new IdTable(namespace);
     for (const cls of reg.playerClasses ?? []) {
-      this.playerClasses.add(cls.cidx, slug(cls.name));
+      this.playerClasses.add(cls.cidx, slug(cls.name), packOf(cls));
     }
   }
 

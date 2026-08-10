@@ -95,6 +95,8 @@ export type { EngineVerdict } from "./engine.js";
 export { ComposeError, composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 export { composeContentPacks, composeDroppingBroken } from "./loader.js";
 export type { ComposedContent, ComposeFault, DroppedPack, LoadedPack } from "./loader.js";
+export { PROVENANCE_KEY, provenanceOf, stampProvenance } from "./provenance.js";
+export type { RecordProvenance } from "./provenance.js";
 export {
   KEYED_RECORD_FILES,
   keyDescription,

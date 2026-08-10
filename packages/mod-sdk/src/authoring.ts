@@ -37,6 +37,7 @@ import type { FieldShape, RecordBlueprint } from "./blueprints.js";
 import type { JsonRecord, JsonValue } from "./compose.js";
 import { danglingReferences, valuesAtPath } from "./references.js";
 import { isExtensionKey } from "./fields.js";
+import { isReservedKey } from "./provenance.js";
 
 /**
  * How much a finding costs.
@@ -668,6 +669,12 @@ export function checkRecords(
         /* An extension field is a mod's own vocabulary and core knows nothing
          * about it by design - fields.ts is what governs those. */
         if (isExtensionKey(key)) continue;
+        /* Provenance is the ENGINE's own key, stamped by the composer onto a
+         * record a mod touched. It reaches this check whenever an author lints
+         * composed output rather than their source files, and telling them
+         * `$from` is not a field core uses would send them looking for a typo
+         * they did not make. */
+        if (isReservedKey(key)) continue;
         const shape = bp.fields[key];
         if (shape === undefined) {
           const near = nearest(key, known);

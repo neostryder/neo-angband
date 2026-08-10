@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { composeContentPacks } from "./loader.js";
 import type { LoadedPack } from "./loader.js";
 import type { PackManifest } from "./manifest.js";
+import { PROVENANCE_KEY } from "./provenance.js";
 
 function manifest(id: string, deps?: Record<string, string>): PackManifest {
   const m: PackManifest = { id, name: id, version: "1.0.0", shape: "content" };
@@ -109,7 +110,11 @@ describe("composeContentPacks", () => {
     };
     const composed = composeContentPacks([corePack(), mod]);
     expect(composed.records["constants"]).toEqual([
-      { "level-max": [{ label: "monsters", value: 2048 }] },
+      {
+        "level-max": [{ label: "monsters", value: 2048 }],
+        /* The whole file is the mod's now, so the record says so. */
+        [PROVENANCE_KEY]: { owner: "deeper" },
+      },
     ]);
     expect(composed.passthroughFiles).toContain("constants");
   });
@@ -388,8 +393,14 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
     const composed = composeContentPacks([passthroughCore(), mod]);
     expect(composed.problems).toEqual([]);
     expect(recordsOf(composed, "store")).toEqual([
+      /* Untouched, so unstamped - the general store is still plainly core's. */
       { store: "STORE_GENERAL", slots: { min: 0, max: 4 }, turnover: 9 },
-      { store: "STORE_ARMOR", slots: { min: 6, max: 18 }, turnover: 40 },
+      {
+        store: "STORE_ARMOR",
+        slots: { min: 6, max: 18 },
+        turnover: 40,
+        [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["shops"] },
+      },
     ]);
   });
 
@@ -409,7 +420,10 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
     const composed = composeContentPacks([passthroughCore(), mod]);
     expect(composed.problems).toEqual([]);
     expect(recordsOf(composed, "constants")).toEqual([
-      { "level-max": [{ label: "monsters", value: 2048 }] },
+      {
+        "level-max": [{ label: "monsters", value: 2048 }],
+        [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["deeper"] },
+      },
     ]);
   });
 
@@ -435,6 +449,10 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
       type: "scroll",
       name: "Word of Recall",
       cost: 1,
+      /* A wholesale replace still leaves the record core's - the mod did not
+       * add a scroll, it overwrote one - so `owner` stays core and `edit`
+       * appears as a modifier. */
+      [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["edit"] },
     });
     expect(recordsOf(composed, "store").map((r) => r["store"])).toEqual([
       "STORE_ARMOR",

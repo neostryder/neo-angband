@@ -91,6 +91,7 @@ import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
 import { applyFieldPolicy, declaredFields } from "./fields.js";
 import type { ResolvedField } from "./fields.js";
+import { stampProvenance } from "./provenance.js";
 import { checkPacks, composedObjects } from "./validate.js";
 import type { PackFinding } from "./validate.js";
 import {
@@ -314,18 +315,30 @@ const OP_VERB: Readonly<Record<OpKind, string>> = {
  * Returns the (possibly new) record array; the input is never mutated, and when
  * no pack contributes an op the input array is returned unchanged so routing the
  * base game alone through this path stays a no-op by reference.
+ *
+ * Provenance is stamped HERE rather than by the caller because this is the only
+ * place that knows which packs' ops actually landed on which record. A caller
+ * could see that a mod contributed ops to the file; only this loop knows that
+ * three of them were refused and the fourth hit record 12.
  */
 function applyPassthroughOps(
   file: string,
   records: readonly unknown[],
   ordered: readonly LoadedPack[],
   providerId: string,
+  baseId: string,
   refused: Refusals,
 ): unknown[] {
+  /** Whole-file ownership with nothing layered on: the caller's array, as it was. */
+  const unmodified = (): unknown[] =>
+    providerId === baseId
+      ? (records as unknown[])
+      : records.map((r) => stampProvenance(r, providerId, [], baseId));
+
   const hasOps = ordered.some(
     (p) => p.files[file] !== undefined && perRecordOps(p.files[file] as FileContribution).length > 0,
   );
-  if (!hasOps) return records as unknown[];
+  if (!hasOps) return unmodified();
 
   /* No declared identity (history: chart/next/roll/phrase are all values a mod
    * would change). Every op is reported and none is applied - the one honest
@@ -341,7 +354,7 @@ function applyPassthroughOps(
         );
       }
     }
-    return records as unknown[];
+    return unmodified();
   }
 
   const spec = keySpecFor(file);
@@ -379,6 +392,13 @@ function applyPassthroughOps(
   });
 
   const removed = new Set<number>();
+
+  /* Which packs' ops LANDED on each record, in the order they landed. Recorded
+   * per applied op rather than per contributing pack, and without deduping,
+   * because that is exactly what compose.ts does for the composable files - two
+   * files that disagreed about the shape of the same list would be worse than
+   * either answer. */
+  const modifiers: string[][] = records.map(() => []);
 
   /** The refs that resolve to exactly record `i` - what to suggest on ambiguity. */
   const unambiguousRefs = (i: number): string[] => {
@@ -453,16 +473,19 @@ function applyPassthroughOps(
       const at = resolve(pack, "patch", ref);
       if (at === null) continue;
       working[at] = mergePatch(working[at] as JsonRecord, body);
+      modifiers[at]?.push(pack.manifest.id);
     }
     for (const [ref, body] of Object.entries(contrib.replaces ?? {})) {
       const at = resolve(pack, "replace", ref);
       if (at === null) continue;
       working[at] = body;
+      modifiers[at]?.push(pack.manifest.id);
     }
     for (const [ref, ops] of Object.entries(contrib.fieldPatches ?? {})) {
       const at = resolve(pack, "fieldPatch", ref);
       if (at === null) continue;
       working[at] = applyFieldPatch(working[at] as JsonRecord, ops);
+      modifiers[at]?.push(pack.manifest.id);
     }
     for (const ref of contrib.removes ?? []) {
       const at = resolve(pack, "remove", ref);
@@ -473,7 +496,8 @@ function applyPassthroughOps(
 
   const out: unknown[] = [];
   working.forEach((r, i) => {
-    if (!removed.has(i)) out.push(r === null ? records[i] : r);
+    if (removed.has(i)) return;
+    out.push(stampProvenance(r === null ? records[i] : r, providerId, modifiers[i] ?? [], baseId));
   });
   return out;
 }
@@ -537,9 +561,18 @@ export function composeContentPacks(
    * default is still the right answer for a mod's own build. */
   const game = composePacks(contents, { onRefuse: refused.refuse });
 
+  /* PACK ZERO IS THE FLOOR. Ownership by the base game with nothing layered on
+   * top is the unremarkable case and is left unstamped, which is what keeps
+   * "compose the base game alone and get your own objects back" true. Falling
+   * back to "core" when there are no packs at all matches ContentIdResolver's
+   * own default, so the writer and the reader agree about the same absence. */
+  const baseId = packs[0]?.manifest.id ?? "core";
+
   const out: Record<string, unknown[]> = {};
   for (const [file, table] of game) {
-    out[file] = [...table.values()].map((r) => r.value);
+    out[file] = [...table.values()].map((r) =>
+      stampProvenance(r.value, r.owner, r.modifiedBy, baseId),
+    );
   }
 
   /* Passthrough files, in two phases (see the header): the last provider in load
@@ -587,7 +620,7 @@ export function composeContentPacks(
       continue;
     }
 
-    out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, refused);
+    out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, baseId, refused);
   }
 
   /* THE FIELD POLICY RUNS LAST, over the composed result, because that is the

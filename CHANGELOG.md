@@ -46,6 +46,33 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A record now says which mod it came from, and a savefile stores it.** The
+  composer has always known - every composed record carried `owner` and
+  `modifiedBy` - and the host threw both away one line later, when it flattened
+  the composed table into the per-file record arrays the binders want. The cost
+  was not bookkeeping: `ContentIdResolver` namespaces every id it mints, every
+  caller left it at the default, and so **a monster a mod added was written into
+  the savefile as `core:frost-wyrm`** - a claim, embedded in a player's save,
+  that the base game defines a record it has never heard of. Turn the mod off
+  and the save asks core for something core cannot supply, with nothing in the
+  id to say who should have. Provenance now rides on the record itself under a
+  reserved key, is read by the one helper all fifteen binders already call, and
+  reaches the id: a mod's monster is `demo-modtest:modberry-slime`. A plugin can
+  read it as `race.from`.
+- **The order-dependent `-2` suffix in content ids is gone**, and it dissolved
+  rather than being fixed. A mod that added a monster called "kobold" used to
+  collide with core's and take a numeric suffix decided by which other mods
+  happened to load first - a load-order-dependent string, embedded in a save.
+  With each pack in its own namespace there is no collision, so the suffix is
+  confined to core's own duplicate names, which are frozen data.
+- **No save-format change and no version bump for any of it.** An id written by
+  an older engine still resolves, because the resolver reproduces the old
+  algorithm and consults it only when the exact id misses. It is the old rule
+  run forwards, not a fuzzy match - "the same localid in any namespace" would
+  hand back the wrong record precisely when two packs share a name.
+- Mod-supplied fields (`ext`) now also reach bound `brand` and `slay` records.
+  They were the two record types a savefile writes ids for that the extension
+  census did not cover, so provenance would have reached every id but those two.
 - **Localization is a first-class seam, and a translation is a mod.** English
   ships in the game and is what runs with nothing installed; a language arrives
   as a `locale` resource in a mod folder, through the same door as a sound pack.
