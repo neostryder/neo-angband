@@ -676,7 +676,7 @@ export class ObjRegistry {
       if (raceFlag < 0) {
         throw new Error(`slay: invalid race flag ${rec["race-flag"]}`);
       }
-      this.slays.push({
+      this.slays.push(attachExt<Slay>("slay", rec, {
         index: this.slays.length,
         code: rec.code,
         name: rec.name ?? "",
@@ -687,7 +687,7 @@ export class ObjRegistry {
         multiplier: rec.multiplier ?? 0,
         oMultiplier: rec["o-multiplier"] ?? 0,
         power: rec.power ?? 0,
-      });
+      }));
     }
   }
 
@@ -702,7 +702,7 @@ export class ObjRegistry {
         }
         return value;
       };
-      this.brands.push({
+      this.brands.push(attachExt<Brand>("brand", rec, {
         index: this.brands.length,
         code: rec.code,
         name: rec.name ?? "",
@@ -712,7 +712,7 @@ export class ObjRegistry {
         multiplier: rec.multiplier ?? 0,
         oMultiplier: rec["o-multiplier"] ?? 0,
         power: rec.power ?? 0,
-      });
+      }));
     }
   }
 

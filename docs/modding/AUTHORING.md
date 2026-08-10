@@ -464,6 +464,35 @@ translated. Those are worth reporting.
 
 ---
 
+## Knowing which mod a record came from
+
+Every record the game binds carries `from` when a mod was involved:
+
+```js
+const race = ctx.core.lookupMonster(reg, "Modberry Slime");
+race.from;            // { owner: "demo-modtest" }        - a mod ADDED it
+someCoreRace.from;    // { owner: "core", modifiedBy: ["qol"] } - a mod CHANGED it
+anotherCoreRace.from; // undefined                          - core's, untouched
+```
+
+`undefined` is the common case and it means "core's own, and nothing touched
+it", exactly as `ext` does. So a plugin never has to tell "no mod" from "a mod
+that left no mark", and a check like `if (race.from) ...` reads correctly.
+
+`owner` is the pack that ADDED the record. A patch does not transfer ownership:
+if your mod renames one of core's monsters, that monster is still core's - turn
+your mod off and it is still there - so `owner` stays `core` and your id joins
+`modifiedBy`. This matters beyond bookkeeping, because **`owner` is the
+namespace a savefile stores the record under**. A monster your mod adds is saved
+as `yourmod:its-name`; if it were saved as `core:its-name`, a player who removed
+your mod would have a save asking the base game for content it has never heard
+of, with nothing in the id to say who should have supplied it.
+
+You do not write `from` and you cannot: it is stamped by the composer under a
+reserved key that no mod can mint, because a mod's own fields must be namespaced
+and the reserved key is not. Writing `"$from"` into your own JSON by hand is
+ignored.
+
 ## Regenerating the blueprint table
 
 `packages/mod-sdk/src/blueprints.ts` is generated from the shipped pack:

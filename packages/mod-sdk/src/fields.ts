@@ -33,6 +33,7 @@
  */
 
 import type { PackManifest } from "./manifest.js";
+import { isReservedKey } from "./provenance.js";
 
 /** The JSON shapes a declared field may take. "any" declines to check. */
 export type FieldType = "string" | "number" | "boolean" | "object" | "array" | "any";
@@ -228,7 +229,7 @@ export function checkUnqualified(
   const seen = new Set<string>();
   for (const record of records) {
     for (const key of Object.keys(record)) {
-      if (isExtensionKey(key) || known.has(key)) continue;
+      if (isExtensionKey(key) || known.has(key) || isReservedKey(key)) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       const near = nearest(key, knownKeys);

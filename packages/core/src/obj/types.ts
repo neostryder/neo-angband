@@ -494,7 +494,7 @@ export interface Curse extends ModExtensible {
 }
 
 /** struct brand. */
-export interface Brand {
+export interface Brand extends ModExtensible {
   index: number;
   code: string;
   name: string;
@@ -508,7 +508,7 @@ export interface Brand {
 }
 
 /** struct slay. */
-export interface Slay {
+export interface Slay extends ModExtensible {
   index: number;
   code: string;
   name: string;
