@@ -376,6 +376,13 @@ export function modManifest(raw: unknown): PackManifest {
      * be told "none" and be wrong. The provenance three are what a marketplace
      * listing and the detail pane are made of. */
     ...(m.tilePacks ? { tilePacks: m.tilePacks } : {}),
+    /* THE CENSUS EARNED ITS KEEP AGAIN, on the day `resources` was added: the
+     * field was written, the validator accepted it, the loader read it off the
+     * RAW manifest - and this function dropped it, so anything reading a
+     * NORMALISED manifest would have been told the mod supplies nothing. That is
+     * the same shape as `tilePacks` above, and the same reason it is dangerous:
+     * the symptom does not appear where the mistake is. */
+    ...(m.resources ? { resources: m.resources } : {}),
     ...(m.repository ? { repository: m.repository } : {}),
     /* Which of the repository's files ARE the mod. Carried through because the
      * updater re-reads an installed mod's manifest to work out what to fetch for

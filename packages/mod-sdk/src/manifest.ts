@@ -7,6 +7,8 @@
 
 import { FIELD_TYPES } from "./fields.js";
 import type { FieldDecl, FieldType } from "./fields.js";
+import { resourceComplaint } from "./resources.js";
+import type { PackResource } from "./resources.js";
 
 /** Pack identifiers are namespaced: "<pack>:<id>", e.g. "core:kobold". */
 export type PackRef = `${string}:${string}`;
@@ -469,6 +471,19 @@ export interface PackManifest {
    */
   tilePacks?: PackTilePack[];
   /**
+   * Sounds, fonts, pref files, help pages and art this pack supplies (see
+   * PackResource and resources.ts).
+   *
+   * SEPARATE FROM `tilePacks` and staying that way. Tiles carry three fields no
+   * other category has - the catalog serial they render as, which renderer draws
+   * them, and their Graphics-menu label - so folding them in would widen every
+   * entry with fields six kinds cannot use, and narrowing them into this shape
+   * would break every tiles mod already published. One array with a `kind` is
+   * the right shape for the six categories that had NO field at all; it is not
+   * the right shape for the one that has a good one.
+   */
+  resources?: PackResource[];
+  /**
    * Declares the pack deliberately nondeterministic (a wall-clock event, an
    * external agent, live multiplayer). Trips the save's determinism ratchet
    * once, irreversibly (MOD_LIFECYCLE section 4, decision 4/18).
@@ -637,6 +652,7 @@ export function validateManifest(value: unknown): PackManifest {
   validateGroup(m["group"], id);
   validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);
+  validateResources(m["resources"], id);
   validatePayload(m["payload"], id);
   for (const key of [
     "engine",
@@ -948,6 +964,26 @@ function validateTilePacks(value: unknown, id: string): void {
         `manifest ${id}: tilePacks path "${path}" must stay inside the mod folder`,
       );
     }
+  }
+}
+
+/**
+ * Validate the optional `resources` array (PackResource[]); throws ManifestError.
+ *
+ * THE RULE ITSELF IS NOT HERE. `resourceComplaint` in resources.ts holds it, and
+ * this only decides that a complaint is fatal at THIS door. The mod builder
+ * calls the same function and prints; the game calls it and puts the sentence on
+ * the mod's row. One rule, three audiences - which is the shape gap 12 arrived
+ * at the hard way, after a checker that existed had exactly one caller.
+ */
+function validateResources(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: resources must be an array`);
+  }
+  for (const entry of value) {
+    const complaint = resourceComplaint(entry, id);
+    if (complaint !== null) throw new ManifestError(complaint);
   }
 }
 

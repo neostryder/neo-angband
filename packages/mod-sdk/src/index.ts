@@ -34,6 +34,22 @@ export {
   slugify,
   validateManifest,
 } from "./manifest.js";
+export {
+  ART_SLOTS,
+  chooseResources,
+  extensionOf,
+  RESOURCE_KIND_NAMES,
+  RESOURCE_KINDS,
+  resourceComplaint,
+  resourcesOfKind,
+} from "./resources.js";
+export type {
+  ContributedResource,
+  PackResource,
+  ResourceKind,
+  ResourceKindSpec,
+  ResourceMerge,
+} from "./resources.js";
 export type {
   Capability,
   CompatClaim,

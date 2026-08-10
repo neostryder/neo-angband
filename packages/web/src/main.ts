@@ -261,6 +261,7 @@ import {
   folderPermission,
 } from "./mod-folder";
 import type { PrefsUiCtx } from "./prefs-ui";
+import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
@@ -342,7 +343,7 @@ import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
-import { paintTitleArt, showTitleScreen } from "./news";
+import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import type { TitleChoice } from "./news";
 import type { BirthDeps } from "./birth";
 import {
@@ -463,7 +464,15 @@ import {
   applyIgnoreItemChoice,
 } from "./ignore-menu";
 import type { Store } from "@rpgm-tools/neo-angband-core";
-import { runHelp } from "./help";
+import { helpLinesFromText, runHelp, setModHelpPages } from "./help";
+import {
+  installModResources,
+  modArtLines,
+  modFontData,
+  modHelpResources,
+  modPrefResources,
+  modSoundBase,
+} from "./mod-resources";
 import { chooseCommand, groupCommands, keyForKeyset } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
@@ -8517,8 +8526,18 @@ state.events = soundEvents;
 // Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0); samples are
 // heard only when use_sound is enabled (off by default). Override with ?sounds=<url>.
 const soundBase = params.get("sounds") ?? "sounds/";
+/* A MOD'S SOUND PACK, once boot has verified one (MOD_REACH gap 7). Latched
+ * here rather than passed, because this install runs at module scope and the
+ * pack is a fetch away - see SoundBase in sound.ts.
+ *
+ * PRECEDENCE: an explicit `?sounds=` beats a mod, and a mod beats the bundled
+ * default. The query parameter is the USER saying which pack they want, right
+ * now, in this tab; a mod is a standing preference they set earlier. When the
+ * two disagree the one typed most recently wins, which is the same rule the
+ * `?tiles=` override already follows. */
+let modSoundPack: string | null = null;
 installWebSound(soundEvents, {
-  baseUrl: soundBase,
+  baseUrl: () => (params.get("sounds") ?? modSoundPack ?? soundBase),
   randint0: (n: number): number => state.rng.randint0(n),
 });
 // Route the engine's sound() emits (msgt types from combat, deaths, casts,
@@ -9875,7 +9894,91 @@ async function resetVisualsForCharacter(): Promise<void> {
   await applyTileMode(currentGrafID);
 }
 
-void bootMenus().then(resetVisualsForCharacter).then(maybeShowGraphics);
+/**
+ * Hand the enabled mods' verified resources to the five things that read them
+ * (MOD_REACH gap 7).
+ *
+ * BEFORE bootMenus, because two of the five are already on screen by the time it
+ * resolves: the font decides the size of every cell, and the splash is what the
+ * title screen paints. A font arriving later would mean tearing the terminal
+ * down and rebuilding it mid-screen; art arriving later would mean the player
+ * watching the title change under them.
+ *
+ * Each consumer is wrapped on its own. A mod's pref file that will not parse
+ * must not cost the player the mod's SOUND pack, and none of the five may cost
+ * them the game - so a throw anywhere in here becomes a line on a mod's row and
+ * boot carries on with core's own resources, which is exactly what would have
+ * happened had the mod not been installed.
+ */
+async function applyModResources(): Promise<void> {
+  await installModResources();
+
+  const font = await modFontData();
+  if (font !== null) term.setBitmapFont(font);
+
+  modSoundPack = await modSoundBase();
+
+  const splash = await modArtLines("splash");
+  setSplashArt(splash);
+
+  /* PREF FILES ACCUMULATE, in load order - a `.prf` is a list of assignments and
+   * layering them is what upstream's own pref pipeline does. Applied after the
+   * font because a pref file may set glyphs the font has to already be able to
+   * draw. */
+  const ctx = prefsUiCtx();
+  for (const pref of modPrefResources()) {
+    if (pref.resolve === null) continue;
+    const url = await pref.resolve(pref.resource.path);
+    if (url === null) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      for (const line of applyPrefText(ctx, await res.text(), pref.resource.path)) {
+        reportModFault(pref.modId, line);
+      }
+    } catch (e) {
+      reportModFault(
+        pref.modId,
+        `pref file "${pref.resource.path}" could not be applied (${faultMessage(e)})`,
+      );
+    }
+  }
+
+  const pages: { slot: string; label: string; lines: ScreenLine[] }[] = [];
+  for (const page of modHelpResources()) {
+    if (page.resolve === null) continue;
+    const url = await page.resolve(page.resource.path);
+    if (url === null) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      pages.push({
+        slot: page.resource.slot ?? page.resource.path,
+        /* The mod's own `name`, then the mod's display name - a row in the help
+         * index has to say something, and "which mod is this from" is the useful
+         * thing for it to say when the author did not name the page. */
+        label: page.resource.name ?? page.modName,
+        lines: helpLinesFromText(await res.text()),
+      });
+    } catch (e) {
+      reportModFault(
+        page.modId,
+        `help page "${page.resource.path}" could not be read (${faultMessage(e)})`,
+      );
+    }
+  }
+  setModHelpPages(pages);
+}
+
+void applyModResources()
+  .catch((e: unknown) => {
+    /* The whole pass, as the last net under the per-consumer ones. A resource is
+     * decoration; the game starting is not. */
+    reportModFault("mods", `resources could not be applied (${faultMessage(e)})`);
+  })
+  .then(bootMenus)
+  .then(resetVisualsForCharacter)
+  .then(maybeShowGraphics);
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen

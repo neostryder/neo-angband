@@ -40,7 +40,7 @@ is not a capability - it is called out as such.
 | A mod's added field is NAMESPACED and DECLARED, so two mods cannot collide | **YES** (2026-08-08) — `"gore:bleed"`, declared in the manifest under `fields`; undeclared is stripped and reported |
 | Gamedata record files a mod can ADD a record to without replacing the file | **41** of 44 (2026-08-08) — was 24. `object` (375 records), `ego_item` (107) and `vault` (162) joined the other 38 when composition stopped keying on `slugify(name)` and started keying on `recordRefKeys`. The 3 left are `constants` and `visuals` (config singletons, where whole-file IS the meaning) and `history` (no per-record identity). `ModProject.build` raises a whole-file replacement as an `error` rather than a line in a list |
 | An author is TOLD what a new record needs, and what core's comparable records do | **YES** (2026-08-08) — `draftRecord` / `checkRecords` / `ModProject`, measured from core's 3,279 records; **37** declared reference edges, each run over the shipped pack (`docs/modding/AUTHORING.md`) |
-| Resource categories a non-bundled mod can supply or override | **0** of 7 |
+| Resource categories a non-bundled mod can supply or override | **6** of 7 (2026-08-09) - tiles (gap 8), then sounds, fonts, pref files, help pages and art (gap 7). The seventh is UI strings, which needs an i18n layer to be supplied INTO and is gap 14 |
 
 > **The numbers in this table predate 2026-08-08 and are being re-derived row by
 > row, not edited.** The dispatch-point rows above are now DERIVED - `47` and
@@ -879,7 +879,7 @@ TILE pack does supply `.prf` files, which `loadTilePrefs` fetches and follows
 `%:` includes from (`tiles.ts:214-248`) - reachable only through the gated tile
 discovery or `?tiles=`.
 
-### Fonts — no loading or selection path at all
+### Fonts — CLOSED 2026-08-09 (what follows is the BEFORE picture)
 
 One hardcoded bitmap font, `FONT_16X24`
 (`packages/web/src/font-16x24.ts:16`, generated from
@@ -892,7 +892,15 @@ fetch, no `font.prf` (mentioned only as a non-ported upstream file at
 `packages/web/src/launch.ts:33-34`), no manifest field. A mod cannot supply a
 font.
 
-### Sounds — a full subsystem exists and assets ship; a mod still cannot supply one
+**True until gap 7 closed**, and the escape hatch could not have had a caller:
+the sole construction site is at module scope and a mod's font arrives from a
+fetch. So the terminal grew `setBitmapFont`, which also clears the glyph cache
+(keyed `code:colour`, with no font in the key) and re-runs the layout, since the
+cell size comes from the font. A mod declares a `font` resource and the JSON is
+checked for being structurally a font - cell size in range, one scanline number
+per declared row - before it is installed.
+
+### Sounds — CLOSED 2026-08-09; the subsystem always existed, the door did not
 
 Correcting a common assumption: this is present and wired.
 
@@ -907,9 +915,12 @@ Correcting a common assumption: this is present and wired.
   pack (`:7619`), gated on `use_sound`, off by default (`:7633-7634`).
 - Assets DO ship: `packages/web/public/sounds/` carries the Dubtrain CC-BY pack.
 
-A USER can point it elsewhere with `?sounds=<base-url>` (`main.ts:7619`). A MOD
-cannot: `grep -rn "soundPacks|soundPack|fontPacks"` across `packages/` returns
-zero hits - no manifest field, no discovery, no per-mod sound base.
+A USER can point it elsewhere with `?sounds=<base-url>`. A MOD could not: no
+manifest field, no discovery, no per-mod sound base. **Gap 7 supplied the door
+and nothing else** - `WebSoundOptions.baseUrl` now also takes a function, asked
+per sample load rather than captured at install, because the engine is installed
+at module scope and a mod's pack is a fetch away. Precedence is `?sounds=` (the
+user, now, in this tab) over a mod over the bundled default.
 
 ### Other assets
 
@@ -923,7 +934,7 @@ zero hits - no manifest field, no discovery, no per-mod sound base.
 | PWA icons | `packages/web/public/icons/` | no |
 | Mod `screenshots` | declared at `packages/mod-sdk/src/manifest.ts:117-118` and **dead** - no consumer outside `dist/` and tests | n/a |
 
-### Localization — no seam
+### Localization — no seam (gap 14, and the SEVENTH resource category)
 
 No i18n layer exists. `grep -rn "i18n|useTranslation|gettext|navigator.language|Intl\."`
 over `packages/` (excluding `node_modules`) yields two hits, both unrelated
@@ -932,12 +943,20 @@ sort). Every other `locale` hit is `localeCompare`. All UI text is inline TS
 string literals. There is nothing a mod could supply strings through - which is
 also worth noting against the standing "localization everywhere" intent.
 
-**Net for resources: 1 of 7 categories** (tiles, prefs, fonts, sounds, UI
-strings, help, art) is reachable by a non-bundled mod. Tiles was the only one with
-a mod seam at all and was bundle-gated; that gate is gone as of 2026-07-30, and the
-other six still have no manifest field and no discovery. The tile fix is the shape
-the rest would take: a manifest field, a merge that reads the mods directory as
-well as the bundle, and a resolver so the mod's own bytes are what load.
+**Net for resources: 6 of 7 categories** (tiles, prefs, fonts, sounds, help, art)
+are reachable by a non-bundled mod as of 2026-08-09. The seventh is UI strings,
+which has nothing to be supplied INTO until an i18n layer exists - gap 14.
+
+This paragraph used to read "1 of 7", and it predicted the shape of the fix:
+"a manifest field, a merge that reads the mods directory as well as the bundle,
+and a resolver so the mod's own bytes are what load". Two of the three were right
+and were reused rather than rebuilt - `discoverMods` is now shared with tile
+discovery instead of copied, and the resolver is the same `PackFileResolver` both
+tile engines take. The third was wrong in the PLURAL: not a manifest field per
+category but one `resources` array with a `kind`, so the merge rule, the version
+gate, the conflict wording and the load-time check are written once for all of
+them. Gap 7 in the table below says what a resource is checked for before it is
+used, and what a failed check costs.
 
 ---
 
@@ -953,7 +972,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 4 | **Monster combat is moddable** | **CLOSED 2026-08-08** | `blow_effects.json` accepts a 31st record but its behaviour is a 26-case switch in `resolveBlowEffect` and again in `resolveBlowEffectLive` (`combat/mon-melee.ts`). **These are not duplicates.** Same 26 case labels, but 171 lines against 219, and they do different jobs: the first records side-effect *intents* for the worldless path, the second applies HP, messages and elemental reduction for real through `MonBlowEnv`. So "collapse the duplicated switch to one body first" - which this row used to say - describes a large, parity-sensitive refactor that would buy no modding capability. What was actually needed - and is now built - is ONE registry keyed by blow-effect name that BOTH bodies consult. `BlowEffectRegistry` (`combat/mon-melee.ts`) holds a `{record, live}` handler per effect; core seeds it with its 30 at boot (`registerCoreBlowEffects`, called from `wireGame`), and a mod reaches it through `registry:blow`. A mod normally writes ONE description and `blowEffect()` derives both halves, so the two paths cannot drift; `handlerFor(name)` hands back the installed handler, so wrapping core is possible instead of only replacing it. The 26-case switches were lifted case by case with nothing rewritten - including the places where the two paths disagree about RNG ORDER, which is a port wart core keeps. What proves it: `blow-vectors.json`, 480 scenarios recorded from the code BEFORE the registry existed and replayed against it, covering 30 effects x both paths x two envs that flip every branch, with a probe draw that catches a change in the NUMBER of random values even when nothing else moves. Reach is proven from disk (`mod-code.node.test.ts`), by a real `monMeleeAttack` on both paths. |
 | 5 | **Store behaviour is moddable** | **CLOSED 2026-08-08** | `StoreBehaviourRegistry` (`store/store.ts`) replaces both switches, keyed the way each decision is actually made: stack size by TVAL, the buy rule by store FEAT with an `ANY_STORE` wildcard, because upstream has one body every shop shares. Core registers its own rule under the wildcard, so `willBuyFor(ANY_STORE)` hands it back and a mod layers on top instead of reimplementing the worthless-item and buy-list logic. Two refusals are deliberate: an empty registry REFUSES rather than becoming permissive ("nobody decides" must not read as "every shop buys anything"), and the `maxStack` clamp stays in core, so a mod's stack rule cannot break a pile. Reached on both paths that ask - store maintenance and the sell command - because a seam supplied to every path but one is how a mod comes to work in town and not in the shop. Proof: 1,167 `mass_produce` golden vectors recorded before the refactor (the function had NO test at all), plus behavioural tests against the real pack and a from-disk mod that changes what a shop buys. `StoreRegistry`'s linear `byFeat`/`byName` scans remain, and are lookup rather than behaviour. |
 | 6 | **Level generation architecture is moddable** | **CLOSED 2026-08-08** | `registry:profile` now exists: `ProfileFacade` (`mod/registry-host.ts`) over the live `DungeonProfiles` (`gen/cave.ts:2952`), so a mod registers its own whole-cave builder and adds the profile that selects it. `builder(key)` hands back a core builder, so a mod can WRAP core generation instead of reimplementing it. Two refusals are deliberate: a profile naming an unregistered builder is rejected at `addProfile` rather than exploding inside generation a level later, and `addProfile` only appends, because `choose_profile`'s running-total `randint0` walks the list in order and inserting would change which profile CORE picks from the same seed. Proven by a mod written to a real folder and imported for real (`packages/web/src/mod-code.node.test.ts`), asserting on the registry rather than on the mod's own report. |
-| 7 | **Resources: sounds / fonts / splash / help** | **no** | Manifest fields (`soundPacks`, `fontPacks`, …) plus discovery, and - on the desktop side only - nothing else, because the loopback server already serves images and audio from the mods folder (`packages/desktop/src/main.ts:145-152`, `:312-314`). |
+| 7 | **Resources: sounds / fonts / splash / help** | **CLOSED 2026-08-09** | **ONE `resources` array with a `kind`, not the seven separate manifest fields this row proposed.** Seven fields would each need their own validator, discovery pass, merge rule and conflict wording - four chances per category to disagree with the other six - and the eighth category would arrive to find no shared shape to join. `packages/mod-sdk/src/resources.ts` holds the kind registry; adding a category is a row there plus a consumer, and everything between the manifest and that consumer is already written. `tilePacks` STAYS AS IT IS: it ships, mods declare it, and it carries three fields no other kind has (the catalog serial it renders as, which renderer draws it, its Graphics-menu label), so folding it in would either widen every entry with fields six kinds cannot use or break every published tiles mod. Five kinds, each with a consumer wired in the same commit, because a kind the game never reads is exactly the failure `engine` spent months in before anything evaluated it - authors fill a field in and believe it. `sound` a directory of samples, into the SoundEngine that already existed (only `?sounds=` could aim it before); `font` a bitmap font JSON, into `GlyphTerm`'s `bitmapFont`, which had been on the options object since the terminal was written **with zero callers** - and could not have had one, because the sole construction site is at module scope and a mod's font is a fetch away, so the terminal grew `setBitmapFont`; `prefs` a `.prf` through the SAME ui-prefs.c grammar a user's file goes through; `help` a page, replacing one of core's by id or adding its own; `art` the title screen. **`art` is `.txt` only, and that is the honest half.** `.png` was in the list while it was being written and came out: nothing paints a bitmap into the title screen - the terminal is a glyph grid and blitting across it is front-end work - so accepting one would have meant a mod that validates, loads, verifies and then silently does nothing. Upstream's own splash IS text (`lib/screens/news.txt`), so a conversion drawing in ASCII is doing the most faithful possible thing. The credits are APPENDED to a mod's art rather than woven at core's row indices, because `SPACER_ROW` is 20 and a twelve-row splash would never reach it - the Angband credit would have vanished without a word. **AND THE RESOURCES ARE CHECKED WHEN THEY LOAD**, which this row did not ask for and is the half that matters: three checks, cheapest first. (1) The DECLARATION (`resourceComplaint`, pure, same verdict on every machine): an unknown kind, a `..` in a path, an extension the kind cannot be, a slot no screen paints, a slot on a kind that has none - refused rather than dropped, because an ignored key is an author believing something that survives to ship. It also refuses a top-level `.json`, which is a real cross-file collision: `sortPackFiles` sorts by path shape alone, so `font.json` would go to the record composer, find no content file by that name, and leave the mod loaded with no font and no complaint. (2) The INVENTORY, free, and the one that catches the mistake authors actually make - a disk pack arrives with a list of every file it holds, so a mistyped filename is a set lookup rather than a request. Absent for a bundled mod, whose files are copied rather than enumerated, which is why absence means "no inventory" and not "empty". (3) The RUNTIME, injected so every decision is reachable from a test: whether this build can play `.mp3` or `.ogg` at all, and whether a font JSON is structurally a font - cell size in range and one scanline number per declared row, because a font is the single resource whose failure is total. **A failed check costs the RESOURCE, never the mod** - ratified decision 18 read through: a resource is data of the least dangerous sort, and taking a mod's records away over an undecodable splash would be a punishment with no offence behind it. But it is never silent either: every refusal goes to `reportModFault`, so it lands on that mod's row beside everything else known about it. A resource that falls back quietly is indistinguishable from a mod that does nothing, which is the bug report no author can reproduce. Proof: `resources.test.ts` (23) for the pure rules and the arbitration - a shadowed contribution is invisible by construction and only a test can see one; `mod-resources.test.ts` (21) for the host decisions, including a build that can play neither format, a font that parses and is not a font, a throwing probe becoming a refusal rather than a crashed boot, and the engine gate at this door; `mod-resources.node.test.ts` (8) from REAL FILES - the bundled `demo-resources` mod's art, help page and pref file, plus a font and a sound pack written to a temp folder. **Two defects the tests found, not review**: the gate was being handed `engine` without `modApi`, so a code pack out of range would have been waved through at this door while the content and code doors refused it; and `modManifest` dropped `resources` entirely, so anything reading a NORMALISED manifest would have been told the mod supplies nothing - the third time `manifest-allowlist.test.ts` has caught exactly that. And the demo mod's `.prf` is parsed by the real grammar against the real registries in CI, which caught its first draft using a feature NAME where the grammar wants its CODE - every line of it would have failed silently on a player's machine. |
 | 8 | **A disk tile pack registers a Graphics row** | **YES** (closed 2026-07-30) | Done. `mergeModSources` merges `diskPacks()` into the glob; `tilePacks[].path` became MOD-relative and both engines take a `PackFileResolver`, so a pack in a picked folder or installed from a repository reaches its own bytes; `tilePacks` joined the validated schema as `PackTilePack`. See section (c) above. |
 | 9 | **UI is moddable** | **no** | Menus are row-building FUNCTIONS (`game-menu.ts:56`, `:166`) and the 62-entry keypress table is declared inside a keydown closure (`main.ts:7337`, inside the handler opened at `:7149`), so there is nothing to register into even from inside the bundle. |
 | 10 | **Provenance survives into the running game and the save** | **no** | `loader.ts:126-129` drops `owner`/`modifiedBy`; every `ContentIdResolver` uses `CORE_NS` (`mod/ids.ts:183`), so mod content is saved as `core:*`. Until this is fixed, a save cannot honestly say which content produced it, and `-2` localid suffixes make ids order-dependent (`ids.ts:142-146`). |

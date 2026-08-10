@@ -456,6 +456,34 @@ export class GlyphTerm {
   }
 
   /**
+   * Swap the bitmap font the terminal draws from - core's FONT_16X24, a mod's,
+   * or null to fall back to the vector FONT_STACK.
+   *
+   * THE CONSTRUCTOR OPTION COULD NOT DO THIS JOB. `bitmapFont` has been on the
+   * options object since the terminal was written and had zero callers, and the
+   * reason is structural rather than an oversight: the one construction site is
+   * at module scope in main.ts, and a mod's font arrives from a fetch, which is
+   * asynchronous. A resource that can only be supplied before the first `await`
+   * can only be supplied by code compiled into the app - which is the whole
+   * thing MOD_REACH gap 7 was about.
+   *
+   * Three things have to happen together and none of them is optional. The cell
+   * SIZE comes from the font (fitFixed scales `font.w`/`font.h`), so the layout
+   * has to be recomputed or the new glyphs draw at the old font's pitch. The
+   * glyph CACHE is keyed by `code:colour` with no font in the key - correct
+   * while the font never changed, and stale the instant it does, which would
+   * paint the old font's shapes for the rest of the session. And `fit` marks a
+   * full repaint, so the screen already on the canvas is redrawn rather than
+   * left as a half-and-half of two fonts.
+   */
+  setBitmapFont(font: BitmapFontData | null): void {
+    if (this.font === font) return;
+    this.font = font;
+    this.glyphCache.clear();
+    this.fit();
+  }
+
+  /**
    * Fixed 80x24 (REND-1): pick the largest font at which the whole grid fits
    * the window, then center it so the grid is letterboxed. If even the smallest
    * font overflows (a very small window), the grid stays 80x24 and clamps the

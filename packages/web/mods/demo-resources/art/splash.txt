@@ -1,0 +1,16 @@
+{light slate}                                                                  {/}
+{mud}        #####   ######  #     #  #####    #    #  #####   #####   {/}
+{mud}        #    #  #       ##   ##  #    #   #    #  #    #  #       {/}
+{mud}        #    #  #####   # # # #  #    #   #    #  #    #  #####   {/}
+{mud}        #    #  #       #  #  #  #    #   #    #  #####   #       {/}
+{mud}        #####   ######  #     #  #####     ####   #   #   ######  {/}
+{light slate}                                                                  {/}
+{red}                  T H E   R E S O U R C E   S E A M                {/}
+{light slate}                                                                  {/}
+{slate}       This screen is not news.txt. It came out of a mod folder,    {/}
+{slate}       through the `art` resource, slot `splash` - the same door a  {/}
+{slate}       total conversion would replace the title screen through.     {/}
+{light slate}                                                                  {/}
+{slate}       The two lines below are not the mod's to remove.             {/}
+{light slate}                                                                  {/}
+{white}                        Neo Angband $VERSION                       {/}

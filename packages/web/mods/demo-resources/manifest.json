@@ -1,0 +1,21 @@
+{
+  "id": "demo-resources",
+  "name": "Resources Demo (art, help, prefs)",
+  "version": "0.18.0",
+  "shape": "content",
+  "engine": ">=0.1.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "description": "A framework proof, not a mod anyone plays: it keeps the resource seam (MOD_REACH gap 7) exercised. Three of the five categories a mod can supply without being compiled into the app - the title screen's art, a help page and a pref file - each in its own file, declared in `resources`, and each read by the part of the game that owns it. The other two need bytes too big to keep in the tree for a dev-only demo: a complete font is tens of kilobytes and a sound pack is audio. Both are proven from real files on disk by mod-resources.node.test.ts instead. Dev builds only.",
+  "resources": [
+    { "kind": "art", "path": "art/splash.txt", "slot": "splash" },
+    {
+      "kind": "help",
+      "path": "help/resources.txt",
+      "slot": "demo-resources",
+      "name": "About the resource demo"
+    },
+    { "kind": "prefs", "path": "prefs/demo.prf" }
+  ]
+}

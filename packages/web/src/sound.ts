@@ -39,13 +39,34 @@ const DEFAULT_FORMATS: SoundFileType[] = [
   { extension: ".ogg", type: 2 },
 ];
 
+/**
+ * Where the samples are - either a fixed base, or a function asked for one each
+ * time a sample loads.
+ *
+ * THE FUNCTION FORM IS WHAT A MOD NEEDS. The engine is installed at module scope
+ * in main.ts, synchronously, and a mod's sound pack is not known until the
+ * resource seam has finished verifying it, which is a fetch away. A fixed string
+ * therefore cannot express "the pack the enabled mods supply" - the only base
+ * available at that instant is the bundled one. Read per load rather than once,
+ * so the answer is whatever boot has settled on by the time a sample is first
+ * wanted; with `preload: false` (the default) that is long after.
+ */
+export type SoundBase = string | (() => string);
+
+/** Resolve a SoundBase, normalising so name concatenation gives one separator. */
+function baseOf(base: SoundBase): string {
+  const raw = typeof base === "function" ? base() : base;
+  return raw.endsWith("/") || raw === "" ? raw : `${raw}/`;
+}
+
 export interface WebSoundOptions {
   /**
    * Base URL/path the user's sound pack lives under (e.g. "/sounds/" or
-   * "https://my-cdn.example/angband-sounds/"). Sample files are expected at
-   * `${baseUrl}${name}${ext}`. When omitted or empty, sound is disabled.
+   * "https://my-cdn.example/angband-sounds/"), or a function answering with one.
+   * Sample files are expected at `${baseUrl}${name}${ext}`. When omitted or
+   * empty, sound is disabled.
    */
-  baseUrl?: string;
+  baseUrl?: SoundBase;
   /** RNG seam so selection is deterministic (pass the game RNG's randint0). */
   randint0?: Randint0;
   /** Audio extensions to try (defaults to .mp3 then .ogg). */
@@ -62,16 +83,15 @@ export interface WebSoundOptions {
  * the game.
  */
 export function createWebSoundHooks(
-  baseUrl: string,
+  baseUrl: SoundBase,
   formats: readonly SoundFileType[] = DEFAULT_FORMATS,
 ): SoundHooks {
-  // Normalise so name concatenation gives exactly one separator.
-  const base = baseUrl.endsWith("/") || baseUrl === "" ? baseUrl : `${baseUrl}/`;
-
   return {
     supportedFiles: () => formats,
 
     loadSound: (filename: string, _fileType: number, data: SoundData): boolean => {
+      /* Asked HERE rather than captured at install: see SoundBase. */
+      const base = baseOf(baseUrl);
       if (!base) return false; // no pack configured -> stay unloaded
       // `filename` is the sample base-name (the core passes data.name); the
       // core tries each supported extension in turn, but HTMLAudioElement

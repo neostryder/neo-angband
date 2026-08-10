@@ -161,6 +161,38 @@ export function processPrefFile(
 }
 
 /**
+ * Apply pref-file TEXT that did not come from the user directory - a mod's
+ * `prefs` resource (MOD_REACH gap 7).
+ *
+ * The same grammar, the same sink and the same deps as `processPrefFile`: one
+ * parse loop, which is the rule this file has held since the parser was ported.
+ * What differs is where the bytes came from and what happens to the errors -
+ * they are RETURNED rather than said, because these are applied during boot,
+ * before there is a message line to say them on, and they belong on the
+ * contributing mod's row rather than in the player's message history.
+ *
+ * `%:` INCLUDES ARE NOT FOLLOWED, and that is a real limit rather than an
+ * oversight. The grammar's `loadFile` is synchronous - it is called from inside
+ * the parse - and a mod's files are reached through a resolver that may mint a
+ * blob or read IndexedDB, neither of which can answer synchronously. An include
+ * therefore produces a parse error naming the line, which is the honest outcome:
+ * silently skipping it would leave the author believing a file was applied.
+ */
+export function applyPrefText(
+  ctx: PrefsUiCtx,
+  text: string,
+  source: string,
+): string[] {
+  const sink = glyphTableSink(ctx.glyphs, {
+    loadFile: () => null,
+    ...ctx.extraSink,
+  });
+  const errors = processPrefText(text, ctx.prefDeps, sink);
+  ctx.afterLoad?.();
+  return errors.map((e) => prefErrorMessage(source, e));
+}
+
+/**
  * do_cmd_pref_file_hack (ui-options.c L1202-1241): the "Command: Load a user
  * pref file" screen, its "File: " prompt, and the two outcome messages.
  *

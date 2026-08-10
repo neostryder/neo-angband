@@ -46,6 +46,50 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod folder can now supply sounds, a font, pref files, help pages and the
+  title screen - and every one of them is checked when it loads.** MOD_REACH's
+  resource census counted seven categories a total conversion needs and found
+  ONE reachable by a mod that is not compiled into the app. Six of the seven are
+  now open; the seventh is UI strings, which needs an i18n layer to be supplied
+  into and is a separate piece of work. A mod declares them in one `resources`
+  array with a `kind` rather than through seven separate manifest fields:
+  seven fields would each need their own validator, discovery pass, merge rule
+  and conflict wording, and the eighth category would arrive to find no shared
+  shape to join. `tilePacks` stays exactly as it is - it ships, and it carries
+  three fields no other kind has. **Each kind landed with the thing that reads
+  it**, because a manifest field with no reader is a promise: the sound pack
+  goes into the engine that already existed and could only be aimed with
+  `?sounds=`; the font goes into a `GlyphTerm` option that had been there since
+  the terminal was written **with zero callers**, and could not have had one,
+  since the sole construction site is at module scope and a mod's font is a
+  fetch away; a `.prf` goes through the SAME ui-prefs.c grammar a player's own
+  file goes through; a help page replaces one of the game's by id or adds its
+  own; and the title screen is text, as upstream's `news.txt` is. The credits
+  are appended to a mod's art rather than woven at the game's own row indices,
+  because a twelve-row splash would never have reached row 20 and the Angband
+  credit would have vanished without a word. **And the resources are checked
+  before they are used**, in three passes, cheapest first: the declaration (an
+  unknown kind, a path leaving the mod folder, an extension the kind cannot be,
+  a slot no screen paints - and a slot on a kind that has none is REFUSED rather
+  than ignored, because an ignored key is an author's belief surviving to ship);
+  the mod's own file list, which catches a mistyped filename with no request at
+  all; and finally the machine itself, which is the only thing that can say this
+  build plays neither `.mp3` nor `.ogg`, or that a JSON that parses is not
+  structurally a font. **A failed check costs the resource and never the mod** -
+  a splash that will not decode is no reason to take a mod's records away - and
+  it is never silent: the sentence lands on that mod's own row in the manager,
+  because a resource that falls back quietly is indistinguishable from a mod
+  that does nothing, which is the bug report no author can reproduce. Proven
+  from real files on disk, including the bundled `demo-resources` mod, whose
+  pref file is parsed in CI by the real grammar against the real registries -
+  which caught its first draft naming a feature the way a player would rather
+  than the way the parser does, so every line of it would have failed silently.
+  Two more defects came from the tests rather than from review: the version gate
+  at this door was being handed `engine` without `modApi`, so a code pack out of
+  range would have been waved through here while the other doors refused it; and
+  manifest normalisation dropped `resources` entirely, which is the third time
+  that particular census has caught that particular mistake.
+
 - **A mod's records are now checked when the GAME loads them, not only when its
   author builds it.** The SDK has said since it was written that a content pack
   is schema-validated, and MOD_REACH gap 12 recorded that as a claim with no code

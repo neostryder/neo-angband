@@ -183,8 +183,64 @@ export interface TitleLine {
  * a second insert would put the help line under the prompt. news.test.ts asserts
  * the count.
  */
+/**
+ * A mod's replacement for news.txt, or null for core's own (MOD_REACH gap 7's
+ * `art` resource, slot `splash`).
+ *
+ * Latched rather than passed, because `titleLines` is called from paint code
+ * that has no argument to spare and no way to await a fetch. Set once by boot,
+ * before the title is drawn; see installModResources for why that is sound.
+ *
+ * The mod's rows go through the SAME pipeline core's do - `$VERSION`
+ * substitution, the two credit lines, the row budget - rather than replacing the
+ * screen wholesale. Credit for what the game is built on is not a mod's to
+ * remove, and the budget is the thing an edit here breaks silently.
+ */
+let splashOverride: readonly string[] | null = null;
+
+/** Install (or clear, with null) the mod-supplied splash art. */
+export function setSplashArt(lines: readonly string[] | null): void {
+  splashOverride = lines === null || lines.length === 0 ? null : lines;
+}
+
+/** True when a mod has replaced news.txt, for a test and for the report. */
+export function splashIsModded(): boolean {
+  return splashOverride !== null;
+}
+
+/**
+ * How many rows the title screen has for art, once the two credit lines are
+ * taken out of the budget.
+ *
+ * The budget itself is 23 (0-22) with the prompt at row 23, which is upstream's
+ * 80x24 terminal with nothing to spare - see the comment on titleLines. Core's
+ * own art is woven at fixed indices because it was written to be; a mod's art is
+ * any length, so it is CLAMPED and the credits are appended after it. Those are
+ * two different problems and one formula cannot solve both: GROUND_ROW and
+ * SPACER_ROW are positions inside news.txt's picture, and a mod's picture does
+ * not have them.
+ */
+export const MOD_SPLASH_ROWS = 21;
+
 export function titleLines(): readonly TitleLine[] {
   const out: TitleLine[] = [];
+  if (splashOverride !== null) {
+    /* CLAMPED, not scrolled and not rejected. Too much art is the author having
+     * drawn for a taller screen, and showing the top of it beats showing none
+     * of it - the same choice reflow mode makes when the grid does not fit.
+     *
+     * THE CREDITS ARE NOT OPTIONAL, and this is the only place that could have
+     * quietly made them so. Weaving them at core's indices would have dropped
+     * one or both for any art that is not exactly news.txt's shape: SPACER_ROW
+     * is 20, so a 12-row splash would never reach it and the Angband credit
+     * would vanish without a word. Appending is the form that cannot fail. */
+    for (const raw of splashOverride.slice(0, MOD_SPLASH_ROWS)) {
+      out.push({ markup: raw.replace("$VERSION", ENGINE_VERSION), centred: false });
+    }
+    out.push({ markup: PORT_CREDIT, centred: true });
+    out.push({ markup: ANGBAND_CREDIT, centred: true });
+    return out;
+  }
   for (let i = 0; i < NEWS.length; i++) {
     const raw = NEWS[i] ?? "";
     out.push({
