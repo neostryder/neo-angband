@@ -408,7 +408,9 @@ normalizes keyboard and queued keymap output into `UiInput`; a future gamepad or
 touch adapter submits the same value. `UiDirection` deliberately includes a
 continuous `x`/`y` vector, magnitude, and clockwise angle, so analog input may
 remain at (for example) 37 degrees until a legacy direction prompt elects to
-quantize it. This is host infrastructure, not a registry or plugin capability
+quantize it. Before the player-keymap resolver runs, the host keeps its three
+prior ownership gates: score pages, modal depth, and an active run-interrupt
+pump receive the literal key rather than a queued expansion. This is host infrastructure, not a registry or plugin capability
 yet. The player's stored keymap is resolved before screen subscribers, so a
 later mod input consumer cannot silently take a player-selected binding.
 

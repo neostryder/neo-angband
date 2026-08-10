@@ -8026,7 +8026,7 @@ function commandTable(): CommandRow[] {
   return commandTableCache;
 }
 
-function logKeypress(ev: KeyboardEvent): void {
+function logKeypress(ev: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey">): void {
   if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
     return; // a modifier alone is not a keypress upstream would log
   }
@@ -8050,19 +8050,38 @@ function logKeypress(ev: KeyboardEvent): void {
   if (KEYLOG.length > KEYLOG_MAX) KEYLOG.shift();
 }
 
-setKeymapResolver((input) => {
-  const key = input.key;
-  if (!key || key.modifiers.ctrl || key.modifiers.alt || key.modifiers.meta || key.key.length !== 1) return null;
-  const roguelike = state.options?.get("rogue_like_commands") ?? false;
-  // These root affordances deliberately precede upstream keymaps.
-  if (key.key === "?" || (key.key === "N" && !roguelike) || dead) return null;
-  const action = keymapFind(keymapModeFor(roguelike), key.key);
-  return action
-    ? [...action].map((mapped) => ({
-      key: { key: mapped, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
-    }))
-    : null;
-});
+setKeymapResolver(
+  (input) => {
+    const key = input.key;
+    if (!key || key.modifiers.ctrl || key.modifiers.alt || key.modifiers.meta || key.key.length !== 1) return null;
+    const roguelike = state.options?.get("rogue_like_commands") ?? false;
+    // These root affordances deliberately precede upstream keymaps.
+    if (key.key === "?" || (key.key === "N" && !roguelike) || dead) return null;
+    const action = keymapFind(keymapModeFor(roguelike), key.key);
+    return action
+      ? [...action].map((mapped) => ({
+        key: { key: mapped, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+      }))
+      : null;
+  },
+  {
+    // These are the three gates that occurred before keymap lookup when it
+    // lived in the root listener. The active modal, score page, or interrupt
+    // loop must receive the literal key instead of a queued player macro.
+    enabled: () => !scoresOpen && modalDepth === 0 && !pumping,
+    onExpanded: (input) => {
+      const key = input.key;
+      if (!key) return;
+      logKeypress({
+        key: key.key,
+        ctrlKey: key.modifiers.ctrl,
+        shiftKey: key.modifiers.shift,
+        altKey: key.modifiers.alt,
+        metaKey: key.modifiers.meta,
+      });
+    },
+  },
+);
 
 inputEvents.addEventListener("keydown", (ev) => {
   logKeypress(ev);
