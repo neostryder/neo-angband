@@ -396,8 +396,19 @@ export function contributedTileModes(
 /**
  * Glob every bundled mod manifest, merge in the mods directory, and resolve the
  * enabled set - the browser-side input for the entry point below.
+ *
+ * EXPORTED, because tiles are no longer the only thing discovered this way: the
+ * resource seam (mod-resources.ts) needs the identical merge of bundle and disk,
+ * the identical enabled-set resolution, and the identical per-source asset
+ * resolver. A second copy of this glob would be a second answer to "which mods
+ * are there", and the two would part the first time either changed. The disk
+ * report rides along because a report knows which FILES each pack holds, which
+ * is how a declared resource can be checked for existence without fetching it.
  */
-function discover(): DiscoveredMods & { enabledIds: readonly string[] } {
+export function discoverMods(): DiscoveredMods & {
+  enabledIds: readonly string[];
+  disk: DiskPackReport;
+} {
   const manifestGlob = import.meta.glob("../mods/*/manifest.json", {
     eager: true,
     import: "default",
@@ -413,6 +424,7 @@ function discover(): DiscoveredMods & { enabledIds: readonly string[] } {
   const merged = mergeModSources({ bundled, disk });
   return {
     ...merged,
+    disk,
     enabledIds: readEnabledModIds({
       discovered: [...merged.manifests.keys()],
       diskOrder: disk.order,
@@ -428,7 +440,7 @@ function discover(): DiscoveredMods & { enabledIds: readonly string[] } {
  * which leaves the Graphics menu showing core's own tile sets.
  */
 export function discoverEnabledTileModes(): TileModePack[] {
-  return contributedTileModes(discover());
+  return contributedTileModes(discoverMods());
 }
 
 /**
@@ -437,5 +449,5 @@ export function discoverEnabledTileModes(): TileModePack[] {
  * going to be described.
  */
 export function discoverEnabledTileModeClaims(): TileModePack[] {
-  return enabledTileModeClaims(discover());
+  return enabledTileModeClaims(discoverMods());
 }

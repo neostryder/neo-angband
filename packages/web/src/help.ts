@@ -340,16 +340,89 @@ interface HelpPage {
  * instead of parsed from RST directives). Order matches index.txt:9-11 plus
  * the added playing guide.
  */
-/** The index's row labels, so a test can assert a page is reachable at all. */
-export function helpIndexLabels(): string[] {
-  return HELP_INDEX.map((e) => e.label);
+/**
+ * Help pages a mod supplied (MOD_REACH gap 7's `help` resource), keyed by the
+ * resource's `slot`.
+ *
+ * A slot matching one of core's REPLACES that page; any other ADDS one at the
+ * end. Both are wanted and neither can be the only rule: a total conversion
+ * whose commands are not Angband's needs the commands page to be wrong-headed
+ * about its own game, and a mod adding one system needs a page for it without
+ * touching the four that are right.
+ *
+ * The core ids are spelled here rather than derived from the labels because a
+ * LABEL is display text - it is the thing a localization changes - and keying a
+ * replacement on it would make "which page is this" depend on what language the
+ * player is reading. The ids are the stable name; see MOD_REACH gap 14.
+ */
+const modPages = new Map<string, { label: string; lines: readonly ScreenLine[] }>();
+
+/** Install (or, with an empty list, clear) the mod-supplied help pages. */
+export function setModHelpPages(
+  pages: readonly { slot: string; label: string; lines: readonly ScreenLine[] }[],
+): void {
+  modPages.clear();
+  for (const p of pages) modPages.set(p.slot, { label: p.label, lines: p.lines });
 }
 
-const HELP_INDEX: readonly { label: string; page: HelpPage }[] = [
-  { label: "Available commands", page: { title: "Angband Help - Commands", lines: helpCommandLines } },
-  { label: "Symbols on your map", page: { title: "Angband Help - Symbols", lines: helpSymbolLines } },
-  { label: "Playing guide", page: { title: "Angband Help - Playing Guide", lines: helpGuideLines } },
+/**
+ * Turn a mod's plain `.txt` into help lines.
+ *
+ * PLAIN, deliberately: core's own pages carry per-run colouring built by code,
+ * and inventing a markup for a mod to reproduce it would be a second text format
+ * for this project to own. A help page is prose; prose in one colour is what
+ * upstream's own lib/help/*.txt amounts to once the RST directives are gone.
+ */
+export function helpLinesFromText(text: string): ScreenLine[] {
+  return text.split("\n").map((line) => ({ text: line.replace(/\r$/u, ""), color: FG }));
+}
+
+/** Core's own pages, then a mod's, with a mod's replacement swapped in place. */
+function helpIndex(): readonly { label: string; page: HelpPage }[] {
+  if (modPages.size === 0) return HELP_INDEX;
+  const seen = new Set<string>();
+  const out = HELP_INDEX.map((entry) => {
+    const supplied = modPages.get(entry.id);
+    if (supplied === undefined) return entry;
+    seen.add(entry.id);
+    return {
+      ...entry,
+      label: supplied.label,
+      page: { title: supplied.label, lines: () => [...supplied.lines] },
+    };
+  });
+  for (const [slot, supplied] of modPages) {
+    if (seen.has(slot)) continue;
+    out.push({
+      id: slot,
+      label: supplied.label,
+      page: { title: supplied.label, lines: () => [...supplied.lines] },
+    });
+  }
+  return out;
+}
+
+/** The ids core's own pages answer to, so a mod knows what it can replace. */
+export function coreHelpPageIds(): string[] {
+  return HELP_INDEX.map((e) => e.id);
+}
+
+/** The index's row labels, so a test can assert a page is reachable at all. */
+export function helpIndexLabels(): string[] {
+  return helpIndex().map((e) => e.label);
+}
+
+/**
+ * `id` is the name a mod's `help` resource names in its `slot` to REPLACE a
+ * page. Stable and separate from `label`, which is display text and therefore
+ * the thing a translation changes.
+ */
+const HELP_INDEX: readonly { id: string; label: string; page: HelpPage }[] = [
+  { id: "commands", label: "Available commands", page: { title: "Angband Help - Commands", lines: helpCommandLines } },
+  { id: "symbols", label: "Symbols on your map", page: { title: "Angband Help - Symbols", lines: helpSymbolLines } },
+  { id: "guide", label: "Playing guide", page: { title: "Angband Help - Playing Guide", lines: helpGuideLines } },
   {
+    id: "community",
     label: "Help, and telling us something is wrong",
     page: { title: "Neo Angband - Help and reporting", lines: helpCommunityLines },
   },
@@ -363,14 +436,17 @@ const HELP_INDEX: readonly { label: string; page: HelpPage }[] = [
  */
 export async function runHelp(term: GlyphTerm): Promise<void> {
   for (;;) {
+    /* Read PER OPEN, not captured: the list is core's plus whatever the enabled
+     * mods supplied, and the mod pages are latched during boot. */
+    const index = helpIndex();
     const pick = await selectFromMenu(
       term,
       "Angband Help",
-      HELP_INDEX.map((entry) => ({ label: entry.label })),
+      index.map((entry) => ({ label: entry.label })),
       "[ a-z to choose, ESC to exit ]",
     );
     if (pick === null) return;
-    const entry = HELP_INDEX[pick];
+    const entry = index[pick];
     if (!entry) continue;
     await showTextScreen(term, entry.page.title, entry.page.lines());
   }

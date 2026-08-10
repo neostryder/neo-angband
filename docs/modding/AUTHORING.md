@@ -306,6 +306,74 @@ rather than a `kidx`.
 
 ---
 
+## Shipping resources: sounds, a font, pref files, help pages, art
+
+Records are not the only thing a mod folder can hold. Five other categories are
+declared in one `resources` array in your manifest, each naming a `kind` and a
+`path` **inside your mod folder**:
+
+```json
+"resources": [
+  { "kind": "sound", "path": "sounds" },
+  { "kind": "font",  "path": "fonts/terminal.json" },
+  { "kind": "prefs", "path": "prefs/colours.prf" },
+  { "kind": "help",  "path": "help/lore.txt", "slot": "lore", "name": "The lore" },
+  { "kind": "art",   "path": "art/splash.txt", "slot": "splash" }
+]
+```
+
+`path` is never a URL. You cannot know where the game is serving your mod from,
+and two of the three places a mod can live have no path at all — a folder the
+player picked, and a mod installed from a repository, which lives in the
+browser's database. The host composes your path with your mod's own resolver.
+
+| kind | what it is | several mods? |
+| --- | --- | --- |
+| `sound` | a **directory** of samples named as `sound.prf` names them, `.mp3` or `.ogg` | the last enabled one wins |
+| `font` | a bitmap font, `{ "w", "h", "glyphs" }` — one scanline number per row | the last enabled one wins |
+| `prefs` | a `.prf` in ui-prefs.c's own grammar | **all of them apply**, in load order |
+| `help` | one page of plain text | per `slot` |
+| `art` | one screen of `{colour}…{/}` markup | per `slot` |
+
+Three things that will otherwise cost you an afternoon:
+
+- **A `.json` resource must sit in a subdirectory.** A top-level `.json` is read
+  as a record contribution, so `font.json` would be handed to the record
+  composer, which has no content file by that name, and your mod would load with
+  no font and no complaint anywhere. `fonts/font.json` is fine.
+- **`art` is text, not an image.** The terminal is a glyph grid; nothing paints a
+  bitmap into it. Upstream's own splash is text (`lib/screens/news.txt`), and
+  `$VERSION` is substituted in yours exactly as it is in that one. Your art is
+  clamped to 21 rows and the two credit lines are appended after it.
+- **A `help` slot that matches one of the game's REPLACES that page**; any other
+  slot adds one. The ids are `commands`, `symbols`, `guide`, `community`. Use one
+  of those if your conversion's keys are not Angband's; use your own otherwise.
+
+### What happens when a resource is wrong
+
+Nothing is taken away except that resource. A pref file that will not parse costs
+you the pref file — not your records, not your sound pack, not the mod. But it is
+never silent: whatever could not be used is written on your mod's row in the mod
+manager, in a sentence saying what was wrong with it.
+
+Three checks run, and the last one can only run on the player's machine:
+
+1. **Your declaration**, at build time and again at load: an unknown kind, a path
+   leaving your folder, an extension the kind cannot be, a slot no screen paints.
+   A `slot` on a kind that has no slots is refused rather than ignored, because a
+   silently dropped key is a belief of yours that would survive to ship.
+2. **Your file list.** A mod read from a folder or installed from a repository
+   arrives with every filename it holds, so a typo is caught without a single
+   request. (Not available for a mod compiled into the app — check 3 catches
+   those.)
+3. **The machine.** Whether this build can play `.mp3` or `.ogg` at all, and
+   whether your font JSON is structurally a font. Only opening the file can say.
+
+The bundled `demo-resources` mod is a working example of three of the five, and
+`packages/web/src/mod-resources.node.test.ts` reads it from disk in CI.
+
+---
+
 ## Regenerating the blueprint table
 
 `packages/mod-sdk/src/blueprints.ts` is generated from the shipped pack:
