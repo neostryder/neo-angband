@@ -98,10 +98,10 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 36 into a CLOSED vocabulary", () => {
+  it("classifies all 35 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 36 switches only TWO are content dispatch a
-     * mod would want - object naming (obj/desc.ts) and object knowledge. The
+     * than written in prose: of 35 switches exactly ONE is content dispatch a
+     * mod would want - object knowledge (obj/knowledge.ts). The
      * other 34 are UI routing, parsers, host wiring, the mod
      * system's own vocabulary, localization strings, or plain control flow -
      * and saying so is a claim that can be checked against the file.
@@ -115,7 +115,7 @@ describe("the switch census", () => {
       byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
     }
     expect(Object.fromEntries([...byClass].sort())).toEqual({
-      CANDIDATE: 2,
+      CANDIDATE: 1,
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 3,
@@ -134,15 +134,15 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 36 switches, 507 case labels", () => {
+  it("is measuring something: 35 switches, 473 case labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
     expect(manifest.threshold).toBe(8);
-    expect(manifest.switches.length).toBeGreaterThanOrEqual(33);
+    expect(manifest.switches.length).toBeGreaterThanOrEqual(32);
     expect(
       manifest.switches.reduce((sum, r) => sum + r.cases, 0),
-    ).toBeGreaterThanOrEqual(495);
+    ).toBeGreaterThanOrEqual(460);
     /* And it finds the biggest one we know about by name. */
     expect(manifest.switches[0]?.file).toBe("packages/web/src/wizard.ts");
   });

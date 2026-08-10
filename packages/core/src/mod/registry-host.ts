@@ -113,6 +113,7 @@ import type {
   RandartTable,
 } from "../obj/randart-registry.js";
 import type {
+  TvalBasenameHandler,
   TvalClassPredicate,
   TvalGoodHandler,
   TvalRegistry,
@@ -517,6 +518,13 @@ export interface TvalFacade {
   readonly good: TvalTableFacade<number, TvalGoodHandler>;
   /** What an UNIDENTIFIED item of this class is worth, keyed on tval. */
   readonly valueBase: TvalTableFacade<number, TvalValueBaseHandler>;
+  /**
+   * What the item class is CALLED, keyed on tval. Without an entry every
+   * message, menu row, shop line and recall header naming the class reads the
+   * literal string "(nothing)" - upstream's own default arm. This is the single
+   * most visible thing a mod adding an item class has to register.
+   */
+  readonly basename: TvalTableFacade<number, TvalBasenameHandler>;
 }
 
 /**
@@ -875,6 +883,7 @@ export function createModRegistryHost(
       classes: tvalTable(capabilities, targets, (r) => r.classes),
       good: tvalTable(capabilities, targets, (r) => r.good),
       valueBase: tvalTable(capabilities, targets, (r) => r.valueBase),
+      basename: tvalTable(capabilities, targets, (r) => r.basename),
     },
     vocab: {
       define(term): void {

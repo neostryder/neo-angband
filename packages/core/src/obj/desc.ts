@@ -45,6 +45,8 @@ import { KF, OBJ_MOD, OF } from "../generated/index.js";
 import { TV } from "../generated/index.js";
 import type { Player } from "../player/player.js";
 import type { GameObject } from "./object.js";
+import { seedTval, tvalRegistry } from "./tval-registry.js";
+import type { TvalBasenameHandler } from "./tval-registry.js";
 import {
   tvalCanHaveCharges,
   tvalCanHaveFlavor,
@@ -55,6 +57,7 @@ import {
   tvalIsLight,
   tvalIsMoney,
   tvalIsRod,
+  tvalIsScroll,
   tvalIsWeapon,
 } from "./object.js";
 import { chestTrapName } from "./chest.js";
@@ -212,57 +215,13 @@ function objDescGetBasename(
     return obj.kind.name;
   }
 
-  switch (obj.tval) {
-    case TV.FLASK:
-    case TV.CHEST:
-    case TV.SHOT:
-    case TV.BOLT:
-    case TV.ARROW:
-    case TV.BOW:
-    case TV.HAFTED:
-    case TV.POLEARM:
-    case TV.SWORD:
-    case TV.DIGGING:
-    case TV.BOOTS:
-    case TV.GLOVES:
-    case TV.CLOAK:
-    case TV.CROWN:
-    case TV.HELM:
-    case TV.SHIELD:
-    case TV.SOFT_ARMOR:
-    case TV.HARD_ARMOR:
-    case TV.DRAG_ARMOR:
-    case TV.LIGHT:
-    case TV.FOOD:
-      return obj.kind.name;
-
-    case TV.AMULET:
-      return showFlavor ? "& # Amulet~" : "& Amulet~";
-    case TV.RING:
-      return showFlavor ? "& # Ring~" : "& Ring~";
-    case TV.STAFF:
-      return showFlavor ? "& # Sta|ff|ves|" : "& Sta|ff|ves|";
-    case TV.WAND:
-      return showFlavor ? "& # Wand~" : "& Wand~";
-    case TV.ROD:
-      return showFlavor ? "& # Rod~" : "& Rod~";
-    case TV.POTION:
-      return showFlavor ? "& # Potion~" : "& Potion~";
-    case TV.SCROLL:
-      return showFlavor ? "& Scroll~ titled #" : "& Scroll~";
-    case TV.MUSHROOM:
-      return showFlavor ? "& # Mushroom~" : "& Mushroom~";
-
-    case TV.MAGIC_BOOK:
-      return terse ? "& Book~ #" : "& Book~ of Magic Spells #";
-    case TV.PRAYER_BOOK:
-      return terse ? "& Book~ #" : "& Holy Book~ of Prayers #";
-    case TV.NATURE_BOOK:
-      return terse ? "& Book~ #" : "& Book~ of Nature Magics #";
-    case TV.SHADOW_BOOK:
-      return terse ? "& Tome~ #" : "& Necromantic Tome~ #";
-    case TV.OTHER_BOOK:
-      return terse ? "& Book~ #" : "& Book of Mysteries~ #";
+  /* MOD_REACH gap 15: one lookup in `TvalRegistry.basename`. The default
+   * below is upstream's own - and it is the literal string a mod-coined item
+   * class would read as its NAME, everywhere in the game, until it registers a
+   * template. */
+  const handler = tvalRegistry().basename.handlerFor(obj.tval);
+  if (handler) {
+    return handler({ obj, kind: obj.kind, showFlavor, terse, aware });
   }
 
   return "(nothing)";
@@ -388,7 +347,7 @@ function objDescName(
   } else if (
     aware &&
     !obj.artifact &&
-    (descHasFlavor(obj.kind, deps) || obj.tval === TV.SCROLL)
+    (descHasFlavor(obj.kind, deps) || tvalIsScroll(obj.tval))
   ) {
     if (terse) out += ` '${obj.kind.name}'`;
     else out += ` of ${obj.kind.name}`;
@@ -701,3 +660,77 @@ export function objectDesc(
 
   return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* Core's own base-name arms (MOD_REACH gap 15)                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * `obj_desc_get_basename`'s 34 cases, lifted UNCHANGED into the registry.
+ * Registered from this module because this module is also the only one that
+ * READS the table: "desc.ts is loaded" and "core's names are installed" cannot
+ * come apart, and the failure if they could is that every item in the game is
+ * called "(nothing)".
+ *
+ * The markup is `obj-desc.c`'s own: `&` is the article slot, `~` pluralises,
+ * `|a|b|` picks by number, `#` is where the flavour or modifier string goes.
+ */
+seedTval((reg) => {
+  /** The 21 classes whose name is simply the record's own. */
+  const ownName: TvalBasenameHandler = (ctx) => ctx.kind.name;
+  for (const tval of [
+    TV.FLASK,
+    TV.CHEST,
+    TV.SHOT,
+    TV.BOLT,
+    TV.ARROW,
+    TV.BOW,
+    TV.HAFTED,
+    TV.POLEARM,
+    TV.SWORD,
+    TV.DIGGING,
+    TV.BOOTS,
+    TV.GLOVES,
+    TV.CLOAK,
+    TV.CROWN,
+    TV.HELM,
+    TV.SHIELD,
+    TV.SOFT_ARMOR,
+    TV.HARD_ARMOR,
+    TV.DRAG_ARMOR,
+    TV.LIGHT,
+    TV.FOOD,
+  ])
+    reg.basename.set(tval, ownName);
+
+  /** A flavoured class: the same template with and without the `#` slot. */
+  const flavoured =
+    (withFlavor: string, without: string): TvalBasenameHandler =>
+    (ctx) =>
+      ctx.showFlavor ? withFlavor : without;
+  reg.basename.set(TV.AMULET, flavoured("& # Amulet~", "& Amulet~"));
+  reg.basename.set(TV.RING, flavoured("& # Ring~", "& Ring~"));
+  reg.basename.set(TV.STAFF, flavoured("& # Sta|ff|ves|", "& Sta|ff|ves|"));
+  reg.basename.set(TV.WAND, flavoured("& # Wand~", "& Wand~"));
+  reg.basename.set(TV.ROD, flavoured("& # Rod~", "& Rod~"));
+  reg.basename.set(TV.POTION, flavoured("& # Potion~", "& Potion~"));
+  reg.basename.set(TV.SCROLL, flavoured("& Scroll~ titled #", "& Scroll~"));
+  reg.basename.set(TV.MUSHROOM, flavoured("& # Mushroom~", "& Mushroom~"));
+
+  /** A book class: the only arms that read `terse`. */
+  const book =
+    (short: string, long: string): TvalBasenameHandler =>
+    (ctx) =>
+      ctx.terse ? short : long;
+  reg.basename.set(TV.MAGIC_BOOK, book("& Book~ #", "& Book~ of Magic Spells #"));
+  reg.basename.set(
+    TV.PRAYER_BOOK,
+    book("& Book~ #", "& Holy Book~ of Prayers #"),
+  );
+  reg.basename.set(
+    TV.NATURE_BOOK,
+    book("& Book~ #", "& Book~ of Nature Magics #"),
+  );
+  reg.basename.set(TV.SHADOW_BOOK, book("& Tome~ #", "& Necromantic Tome~ #"));
+  reg.basename.set(TV.OTHER_BOOK, book("& Book~ #", "& Book of Mysteries~ #"));
+});

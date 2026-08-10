@@ -11,6 +11,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { KF } from "../generated/index.js";
 import { TV } from "../generated/tvals.js";
+import { objectDesc } from "./desc.js";
+import { descVectorFixtures } from "./desc-vectors.fixtures.js";
 import { kindIsGood } from "./make.js";
 import { tvalIsBook, tvalIsWeapon } from "./object.js";
 import { tvalVectorRegistry } from "./tval-vectors.fixtures.js";
@@ -47,6 +49,73 @@ describe("the tval registry", () => {
     expect([...tvalRegistry().classes.keys()].sort()).toEqual([
       ...tvalPredicateNames(),
     ]);
+  });
+
+  it("names every item class the shipped data can produce", () => {
+    /* The other half of "the table cannot fall behind the code". A tval with
+     * no basename arm is not merely unnamed - `obj_desc_get_basename`'s
+     * default returns the literal "(nothing)", which is what the player would
+     * read everywhere. Derived from the pack rather than listed, so a class
+     * that gained records and no name fails here.
+     *
+     * `TV.NULL` is excluded and that is upstream's own behaviour, not a hole:
+     * its four kinds are internal placeholders (<pile>, <unknown item>,
+     * <unknown treasure>, <curse object>) that upstream also leaves to the
+     * default arm and describes by other paths.
+     *
+     * THE FIRST RUN OF THIS TEST FAILED WITH ALL THIRTY MISSING, and the
+     * reason is worth keeping. A module-level registry's arms exist only if the
+     * module that seeds them is in the import graph, and this file did not
+     * import `desc.ts`. In the live game that cannot happen - describing an
+     * object is what `desc.ts` is for - but a test can absolutely measure a
+     * table nothing filled. So the check runs THROUGH `objectDesc` first: the
+     * import is load-bearing rather than decorative, and no unused-import sweep
+     * can quietly empty this test. */
+    const reg = tvalVectorRegistry();
+    const potion = reg.kinds.find((k) => k.tval === TV.POTION)!;
+    const named = objectDesc(
+      { tval: TV.POTION, kind: potion, number: 1 } as unknown as GameObject,
+      0,
+      null,
+      descVectorFixtures().env(),
+      { isAware: () => true, isTried: () => false },
+    );
+    expect(named).not.toBe("(nothing)");
+
+    const missing = [
+      ...new Set(reg.kinds.map((k) => k.tval)),
+    ]
+      /* Two exclusions, both upstream's own and both checked rather than
+       * assumed. TV.NULL is the internal placeholders above. TV.GOLD never
+       * reaches the basename path at all: `objectDesc` short-circuits money at
+       * `desc.ts:630` via `tvalIsMoney`, which is itself a registry class a
+       * mod can widen. */
+      .filter((tval) => tval !== TV.NULL && tval !== TV.GOLD)
+      .filter((tval) => !tvalRegistry().basename.has(tval))
+      .sort((a, b) => a - b);
+    expect(missing).toEqual([]);
+  });
+
+  it("a mod's item class is called (nothing) until it registers a name", () => {
+    /* The BEFORE picture, kept as a test so the seam's value is measured
+     * rather than asserted. */
+    expect(tvalRegistry().basename.has(MOD_TVAL)).toBe(false);
+    const reg = tvalVectorRegistry();
+    const kind = { ...reg.kinds.find((k) => k.tval === TV.POTION)! };
+    kind.tval = MOD_TVAL;
+    const obj = { tval: MOD_TVAL, kind } as unknown as GameObject;
+    const ctx = { obj, kind, showFlavor: false, terse: false, aware: true };
+
+    const before = tvalRegistry().basename.handlerFor(MOD_TVAL)?.(ctx) ?? null;
+    expect(before).toBe(null);
+
+    tvalRegistry().basename.set(MOD_TVAL, (c) =>
+      c.showFlavor ? "& # Relic~" : "& Relic~",
+    );
+    expect(tvalRegistry().basename.handlerFor(MOD_TVAL)!(ctx)).toBe("& Relic~");
+    expect(
+      tvalRegistry().basename.handlerFor(MOD_TVAL)!({ ...ctx, showFlavor: true }),
+    ).toBe("& # Relic~");
   });
 
   it("a mod widens a class by WRAPPING, and core's answers survive", () => {

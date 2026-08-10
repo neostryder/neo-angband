@@ -9,12 +9,6 @@
       "verdict": "DEBUG - wizard/debug menu action routing. Not player-facing content; a mod extends the debug menu through the command seam, not here."
     },
     {
-      "file": "packages/core/src/obj/desc.ts",
-      "cases": 34,
-      "hasDefault": false,
-      "verdict": "CANDIDATE - object naming / description (MOD_REACH gap 15). Not converted."
-    },
-    {
       "file": "packages/core/src/mon/desc.ts",
       "cases": 24,
       "hasDefault": false,
