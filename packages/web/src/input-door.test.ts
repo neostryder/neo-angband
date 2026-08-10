@@ -41,7 +41,7 @@ describe("the single input door", () => {
   });
 
   it("leaves a modal's literal key alone instead of expanding its player keymap", async () => {
-    let rootMayOwnInput = false;
+    const rootMayOwnInput = false;
     const seen: string[] = [];
     setKeymapResolver(
       (input) => input.key?.key === "X" ? [key("q")] : null,
@@ -60,7 +60,7 @@ describe("the single input door", () => {
   });
 
   it("sends a keymap trigger to the interrupt owner while a run is pumping", async () => {
-    let rootMayOwnInput = false;
+    const rootMayOwnInput = false;
     let interrupted = false;
     const seen: string[] = [];
     setKeymapResolver(
