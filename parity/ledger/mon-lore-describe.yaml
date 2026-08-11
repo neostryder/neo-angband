@@ -75,12 +75,13 @@ deferred:
     monster's blow hit chance / its centidamage average (lore_append_attack
     L1710) need the player-attack combat math + live defensive state; they are
     the deps.meleeHitPercent / deps.monsterHitPercent callbacks, defaulting to 0
-    when the combat layer does not supply them. BOTH live callers supply them
-    now: web/src/main.ts:3688-3695 for the recall screen, and game/spoil.ts for
-    the monster dump (PORT_TODO 5.6) - the dump used to print 0% for every blow
-    and a zero centidamage average with it. The spoiler supplies only
-    monsterHitPercent: meleeHitPercent feeds lore_append_toughness, which the
-    spoilers flag suppresses, so supplying it there would be inert.
+    only when a caller omits them. Live recall supplies both, plus
+    breathProjection, in web/src/main.ts:3786-3794 and passes that object to
+    monsterRecallLines at :3807. The spoiler supplies monsterHitPercent and
+    breathProjection at game/spoil.ts:553-578 (PORT_TODO 5.6) - the dump used to
+    print 0% for every blow and a zero centidamage average with it. It
+    deliberately omits meleeHitPercent because spoilers suppress
+    lore_append_toughness, so supplying it there would be inert.
   - spell_color (mon-lore.c L59) and blow_color (L178) read the player's
     known_state (resists / skills / inventory) for danger colouring; defaulted
     to the datum's base lore colour (loreColorBase), overridable via

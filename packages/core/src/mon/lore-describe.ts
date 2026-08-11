@@ -152,8 +152,8 @@ export interface LoreDeps {
   /**
    * The monster's percent chance to land the given blow on the player
    * (random_chance_scaled of hit_chance(chance_of_monster_hit_base, ac+to_a)).
-   * Defaults to 0 in a worldless caller such as the core spoiler dump, which
-   * has no player defence to supply.
+   * Defaults to 0 only for a caller that omits it and has no player defence to
+   * supply. The core spoiler dump supplies this callback from its booted state.
    */
   monsterHitPercent?: (race: MonsterRace, effect: BlowEffect) => number;
   /**
