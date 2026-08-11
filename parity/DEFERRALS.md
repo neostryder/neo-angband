@@ -153,8 +153,9 @@ asked here.**
 ## The headline
 
 **141 of the 367 notes were describing a state of the code that no longer held,
-and they have been rewritten.** The census is 232 rows because 140 of those
-notes no longer read as deferrals at all.
+and they have been rewritten.** The live census is 227 rows; five additional
+stale-documentation records were retired to the census ledger with their original
+verdicts and closure evidence, rather than silently disappearing.
 
 The notes were a fossil record of the build order, not a description of the port.
 The single most common shape: core was built as a headless library first, so a
@@ -864,8 +865,8 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/gen-cave.yaml:48` - Records that every builder the list called missing is registered and selectable, and names arena_gen as the one genuine exception
 - `parity/ledger/gen-framework.yaml:57` - gen/room.ts:1472-1514 and :1561-1602 build nests/pits with setPitType then table.prep(monPitHook(pit)); this line records the closure, not an owed gap.
 - `parity/ledger/gen-framework.yaml:77` - Records that the three persistent-level connector functions are all present and that the one_off lists are an AVOID list, imposing no minimum
-- `parity/ledger/mon-lore-describe.yaml:106` - Records that the tile-size gate is unconditionally true and omitted rather than faked, a ratified divergence at web/src/mapview.ts:70
-- `parity/ledger/mon-make.yaml:43` - Records that LEVEL RATING was listed as deferred and is not - add_to_monster_rating is wired for generation and for live summons/breeders
+- `parity/ledger/mon-lore-describe.yaml:107` - Records that the tile-size gate is unconditionally true and omitted rather than faked, a ratified divergence at web/src/mapview.ts:70
+- `parity/ledger/mon-make.yaml:49` - Records that LEVEL RATING was listed as deferred and is not - add_to_monster_rating is wired for generation and for live summons/breeders
 - `parity/ledger/mon-take-hit.yaml:31` - Records that onKill is supplied by the live session and that player_kill_monster's consequences all run from there
 - `parity/ledger/mon-take-hit.yaml:40` - Records that melee routes through monTakeHit at every site and that nothing applies damage inline any more
 - `parity/ledger/obj-desc.yaml:44` - The sentence names objectKnownShadow as the replacement - the divergence, recorded
