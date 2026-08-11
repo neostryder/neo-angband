@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/changelog-section.mjs
-import { changelogSection } from "../../../tools/changelog-section.mjs";
+import { changelogSection, fitToLimit } from "../../../tools/changelog-section.mjs";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/version.mjs
 import { projectVersion } from "../../../tools/version.mjs";
 
@@ -60,5 +60,57 @@ describe("this repository's CHANGELOG can actually be cut", () => {
     const found = section(projectVersion() as string) ?? section("Unreleased");
     expect(found, "add a heading for this version to CHANGELOG.md").not.toBeNull();
     expect((found ?? "").length).toBeGreaterThan(200);
+  });
+
+  /* The check that was missing. 0.19.0's section reached 126,288 characters
+   * against the API's 125,000, and nothing said so until the release job had
+   * already built three desktop apps and a site zip and was on its last step.
+   * The workflow computes the exact budget by measuring its own preamble; this
+   * can only bound it, so it allows 4,000 characters for that preamble - which
+   * measured 1,616 in the shipped v0.18.0 notes. Loose, and it would still have
+   * failed here. */
+  it("fits a release body, with room for the preamble the workflow adds", () => {
+    const found = (section(projectVersion() as string) ?? section("Unreleased") ?? "") as string;
+    expect(
+      found.length,
+      "CHANGELOG section is too long for a GitHub release body; " +
+        "give this version its own `## [x.y.z]` heading instead of letting " +
+        "everything accumulate under Unreleased",
+    ).toBeLessThanOrEqual(125_000 - 4_000);
+  });
+});
+
+describe("fitToLimit", () => {
+  const long = Array.from({ length: 40 }, (_, i) => `- entry ${i} ${"x".repeat(100)}`).join("\n\n");
+
+  it("leaves a body that already fits completely alone", () => {
+    expect(fitToLimit("- one\n\n- two", 125_000, "0.19.0")).toBe("- one\n\n- two");
+  });
+
+  it("returns the whole body when no limit is given", () => {
+    expect(fitToLimit(long, Number.NaN, "0.19.0")).toBe(long);
+  });
+
+  it("cuts to under the limit and says that it cut", () => {
+    const fitted = fitToLimit(long, 1_000, "0.19.0") as string;
+    expect(fitted.length).toBeLessThanOrEqual(1_000);
+    expect(fitted).toContain("cut short");
+    expect(fitted).toContain("blob/v0.19.0/CHANGELOG.md");
+  });
+
+  it("cuts on an entry boundary rather than mid-sentence", () => {
+    const fitted = fitToLimit(long, 1_000, "0.19.0") as string;
+    const kept = fitted.slice(0, fitted.indexOf("\n\n---\n\n"));
+    /* Every line that survived is a whole entry: no half-written last one. */
+    for (const line of kept.split("\n").filter(Boolean)) {
+      expect(line).toMatch(/^- entry \d+ x{100}$/u);
+    }
+  });
+
+  it("still returns something when one block alone is over budget", () => {
+    const oneBlock = `- ${"y".repeat(5_000)}`;
+    const fitted = fitToLimit(oneBlock, 900, "0.19.0") as string;
+    expect(fitted.length).toBeLessThanOrEqual(900);
+    expect(fitted).toContain("cut short");
   });
 });

@@ -149,6 +149,35 @@ exactly what they are. A tag-to-object-id list was taken before the deletion and
 is kept outside this repository, and upstream Angband has every one of them
 regardless - so this is undoable, not irreversible.
 
+## Give the version its own CHANGELOG heading
+
+**Before tagging, move the Unreleased entries under a `## [x.y.z]` heading.** The
+file's preamble has always said so; it had never once been done, and the cost
+came due at 0.19.0.
+
+A GitHub release body caps at **125,000 characters**, and the release notes are
+cut from the changelog so that there is one account of a release rather than two
+that drift. Every entry since 0.14.0 had accumulated in a single `## [Unreleased]`
+section, so the body the release job composed grew with each release instead of
+being one release's worth. At 0.19.0 it reached 126,288 characters. All three
+desktop builds, the macOS bundle and the site zip were made, and then the last
+step failed by 1,288 characters — 1% over.
+
+Two things came out of that, and only the first is the fix:
+
+- **The heading.** `## [0.19.0] - 2026-08-11`, with 0.18.0 and everything before
+  it collected under `## [0.18.0 and earlier]` rather than being invented into
+  sections nobody can now reconstruct. `release-notes.test.ts` fails when the
+  section a release would cut is too long to send, so this cannot go unnoticed
+  again at the one moment it is expensive.
+- **The fallback.** `tools/changelog-section.mjs --max-chars=N` fits the section
+  to a budget, cutting on a blank line and linking to the full file. The release
+  workflow measures its own preamble and hands over what is left, so nothing here
+  has a length written down that could go stale. A release should degrade rather
+  than die after the artifacts are already built — the same argument the tool
+  already made about a *missing* changelog entry, which had simply never been
+  applied to a section that was too long.
+
 ## Bumping a version
 
 One command, and it is the only supported way:
