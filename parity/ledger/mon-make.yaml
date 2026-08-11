@@ -29,10 +29,11 @@ notes: >-
   SEASONAL is an option flag instead of reading the wall clock;
   turn_energy clamps speed to 0..199 where upstream indexes unchecked;
   builder throws when a race's level breaches max-depth (upstream would
-  corrupt memory). Deferred (ledgered here): update_mon,
-  mon_create_drop and mon_create_drop_count, mimicked-object creation,
-  summon placement, compaction (compact_monsters, monster_index_move,
-  wipe_mon_list). Town generation counts (town-day/town-night) belong
+  corrupt memory). The cross-module operations are supplied elsewhere:
+  updateMon (game/known.ts), monCreateDrop and monCreateDropCount
+  (game/mon-death.ts), mimicked-object creation and summon placement
+  (game/mon-place.ts), and compactMonsters / monsterIndexMove
+  (game/loop.ts and game/world.ts). Town generation counts (town-day/town-night) belong
   to level generation. NOW PORTED ELSEWHERE: group and friends
   placement (place_new_monster, place_new_monster_group, place_friends,
   place_monster_base_okay) and pick_and_place_monster/_distant live in

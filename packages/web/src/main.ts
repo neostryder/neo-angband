@@ -1560,8 +1560,6 @@ const sidebarModeMenu: SidebarModeMenu = {
 let message = loadedNote;
 let messageColor = UI_TEXT;
 let dead = false;
-/** The selected ModPlugin.frontend, or null while the glyph renderer owns the map. */
-let installedFrontend: InstalledFrontend | null = null;
 
 // The message log: every message the engine emits this session, for the top
 // status line and the scrollable history (Ctrl-P). state.msg is the core's
@@ -10127,6 +10125,8 @@ const installedPluginIds = new Set<string>();
  * autoplayer and one mod that thinks it is running and is not.
  */
 let installedController: { id: string; session: AgentSession } | null = null;
+/** The selected ModPlugin.frontend, or null while the glyph renderer owns the map. */
+let installedFrontend: InstalledFrontend | null = null;
 
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
