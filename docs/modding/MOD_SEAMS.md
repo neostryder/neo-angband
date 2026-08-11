@@ -61,7 +61,8 @@ front end remains a later phase.
 ## 0b. The live world is a frame stream
 
 `packages/web/src/world-view.ts` defines the renderer-neutral `WorldFrame` that
-the real `render()` path produces once per map repaint and passes through its
+the extracted `world-frame-producer.ts`, invoked by the real `render()` path,
+produces once per map repaint and passes through its
 single `WorldFrameSink`. It contains the viewport
 geometry and every in-bounds grid in order, including unknown grids; each cell
 has player knowledge (`seen`, `remembered`, or `unknown`), a semantic terrain
@@ -77,9 +78,9 @@ future isometric or 3D front end consumes the registry ids and visibility rather
 than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
 asset reference used by the grid contract; it has no Canvas2D dependency. This
 is host infrastructure, not a plugin field yet: Phase 5 will select a frontend
-and hand it this stream. The Phase-4 tests cover both the unmodded glyph-sink
-control and an independently owned sink receiving the exact produced frame;
-they do not claim a plugin can receive one yet.
+and hand it this stream. The Phase-4 tests execute that producer: the unmodded
+glyph-sink control checks the pre-frame glyph tuples and an independently owned
+sink receives the exact produced frame; they do not claim a plugin can receive one yet.
 
 ## 1. `GameState.modHooks` - the behaviour seam
 

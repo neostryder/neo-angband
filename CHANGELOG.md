@@ -46,12 +46,12 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
-- The actual map repaint now first produces a renderer-neutral `WorldFrame` and
-  sends it through a single host `WorldFrameSink`:
+- The actual map repaint now invokes an extracted production world-frame producer
+  that produces a renderer-neutral `WorldFrame` and sends it through a single host `WorldFrameSink`:
   viewport geometry, player knowledge, semantic terrain/object/trap/monster/path
-  layers, cursor state, and player placement. The unmodded `GlyphTerm` sink's
-  frame-to-glyph control and a separately owned sink are covered through this
-  production pipeline. A plugin cannot select or receive a front end until
+  layers, cursor state, and player placement. Tests execute this producer for
+  the unmodded `GlyphTerm` sink's pre-frame glyph tuples and prove a separately
+  owned sink receives the exact same frame. A plugin cannot select or receive a front end until
   Phase 5, but that future consumer can use world data for an isometric or 3D
   view without parsing terminal characters.
 

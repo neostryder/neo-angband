@@ -486,12 +486,12 @@ describe("the game does not know or expect any particular mod", () => {
     /* The frame diff has to be able to tell the two apart, or it leaves the lit
      * tile on screen - which is exactly how this was reported. */
     expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
-    /* The actual map resolver builds that foreground visual, then sends the
-     * completed frame through the live sink boundary. Its executable frame
-     * pipeline is covered in world-view.test.ts; this check keeps the live
-     * resolver wired to that boundary. */
-    expect(main).toMatch(/drawn = rememberedObjectCell\(mem, gx, gy\);/);
-    expect(main).toMatch(/renderWorldFrame\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
+    /* The extracted production resolver builds that foreground visual, then
+     * the live shell sends its completed frame to the glyph sink. The producer
+     * tests execute this path; these checks keep main routed to it. */
+    const producer = read("world-frame-producer.ts");
+    expect(producer).toMatch(/drawn = p\.rememberedObject\(memory, grid\);/);
+    expect(main).toMatch(/produceWorldFrame\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
   });
 
   /**

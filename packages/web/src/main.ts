@@ -230,13 +230,13 @@ import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
 import {
-  backgroundAssetForWorldCell,
   glyphWorldFrameSink,
-  renderWorldFrame,
-  type WorldLayer,
-  type WorldPlayer,
-  type WorldVisual,
 } from "./world-view";
+import {
+  produceWorldFrame,
+  type FrameCellGlyph,
+} from "./world-frame-producer";
+import type { WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
@@ -6395,25 +6395,7 @@ function gridIndex(x: number, y: number): number {
  * (ui-map.c L275-286: the tile-code test and the ATTR_CLEAR/CHAR_CLEAR arms),
  * which a CSS string cannot answer.
  */
-interface CellGlyph {
-  ch: string;
-  attr: number;
-  css: string;
-  bg?: string;
-  tile?: RenderAssetRef;
-  /** The non-presentation identity an alternate renderer needs. */
-  layer?: WorldLayer;
-}
-
-function worldVisual(glyph: CellGlyph, backgroundAsset?: RenderAssetRef): WorldVisual {
-  return {
-    ch: glyph.ch,
-    fg: glyph.css,
-    ...(glyph.bg !== undefined ? { bg: glyph.bg } : {}),
-    ...(glyph.tile ? { asset: glyph.tile } : {}),
-    ...(backgroundAsset ? { backgroundAsset } : {}),
-  };
-}
+type CellGlyph = FrameCellGlyph;
 
 // Revealed traps draw under objects and monsters (upstream layer order).
 function trapIndex(): Map<number, CellGlyph> {
@@ -7125,137 +7107,52 @@ function render(targeting?: TargetingOverlay): void {
     });
   }
 
-  // This is the Phase-4 producer.  It reads exactly the same live knowledge
-  // helpers that formerly wrote to `term` inline, but returns a semantic frame
-  // first.  The GlyphTerm below is merely its first consumer.
-  const playerDx = state.actor.grid.x - camX;
-  const playerDy = state.actor.grid.y - camY;
-  let player: WorldPlayer | undefined;
-  if (playerDx >= 0 && playerDx < mapCols && playerDy >= 0 && playerDy < mapRows) {
-    const playerScreenX = mapOriginX + playerDx;
-    const playerScreenY = mapTop + playerDy;
-    const playerIsCursor =
-      !!targeting &&
-      state.actor.grid.x === targeting.cursor.x &&
-      state.actor.grid.y === targeting.cursor.y;
-    const pg = playerMapGlyph();
-    const pTerrain = terrainGlyph(state.actor.grid.x, state.actor.grid.y, LIGHTING.LOS);
-    player = {
-      grid: { x: state.actor.grid.x, y: state.actor.grid.y },
-      screen: { x: playerScreenX, y: playerScreenY },
-      layer: { kind: "player", id: 0 },
-      visual: {
-        ch: pg.ch,
-        fg: pg.css,
-        ...(pg.tile ? { asset: pg.tile } : {}),
-        ...(pTerrain.tile ? { backgroundAsset: pTerrain.tile } : {}),
-        ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
-      },
-      cursor: playerIsCursor,
-    };
-  }
-
-  const frame = renderWorldFrame({
+  // The importable Phase-4 producer owns cell resolution and visual projection.
+  // These closures are its live state reads; the terminal is merely its first sink.
+  const frame = produceWorldFrame({
     width: state.chunk.width,
     height: state.chunk.height,
     origin: { x: camX, y: camY },
     size: { width: mapCols, height: mapRows },
     screenOrigin: { x: mapOriginX, y: mapTop },
-    ...(player ? { player } : {}),
-    resolveCell: (grid, screen) => {
-      const { x: gx, y: gy } = grid;
-      const idx = gridIndex(gx, gy);
-      const isCursor = !!targeting && gx === targeting.cursor.x && gy === targeting.cursor.y;
-      const pathColour = pathColourAt.get(idx);
-      const path = pathColour === undefined ? undefined : { kind: "path" as const };
-      const seen = squareIsSeen(state.chunk, loc(gx, gy));
-      if (!seen) {
-        const kf = knownFeat(state, loc(gx, gy));
-        if (kf < 0) {
-          const visual = pathColour !== undefined
-            ? { ch: "*", fg: colorToCss(pathColour), ...(isCursor ? { bg: CURSOR_BG } : {}) }
-            : isCursor ? { ch: " ", fg: UI_BG, bg: CURSOR_BG } : undefined;
-          return { grid, screen, visibility: "unknown", overlays: path ? [path] : [], cursor: isCursor, ...(visual ? { visual } : {}) };
-        }
-        const f = features.get(kf);
-        const disp = f.mimic !== null ? features.get(f.mimic) : f;
-        const memTile = tileMap
-          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), gx, gy)
-          : undefined;
-        const memSlot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
-        const memAttr = memSlot?.attr ?? colorCharToAttr(disp.dAttr);
-        const terrain: CellGlyph = {
-          ch: memSlot?.char ?? disp.dChar,
-          attr: memAttr,
-          css: colorToCss(memAttr),
-          layer: { kind: "terrain", id: disp.fidx, lighting: LIGHTING.LIT },
-        };
-        let drawn: CellGlyph = { ...terrain, css: dim(terrain.css), ...(memTile ? { tile: memTile } : {}) };
-        const overlays: WorldLayer[] = [];
-        const mem = knownObjectShown(gx, gy);
-        if (mem) {
-          drawn = rememberedObjectCell(mem, gx, gy);
-          overlays.push(drawn.layer!);
-        }
-        const marked = monsterAt.get(idx);
-        if (marked) {
-          drawn = composeMonster(drawn, marked);
-          overlays.push(marked.layer);
-        }
-        if (pathColour !== undefined) {
-          drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
-          overlays.push(path!);
-        }
-        const visual = worldVisual(
-          { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
-          backgroundAssetForWorldCell(
-            "remembered",
-            memTile,
-            overlays,
-          ),
-        );
-        return {
-          grid,
-          screen,
-          visibility: "remembered",
-          terrain: terrain.layer!,
-          overlays,
-          visual,
-          cursor: isCursor,
-        };
-      }
-
-      const terrain = terrainGlyph(gx, gy, LIGHTING.LOS);
-      let drawn: CellGlyph = terrain;
-      const overlays: WorldLayer[] = [];
-      const trap = trapAt.get(idx);
-      if (trap) { drawn = trap; overlays.push(trap.layer!); }
-      const obj = objectAt.get(idx);
-      if (obj) { drawn = obj; overlays.push(obj.layer!); }
-      const mon = monsterAt.get(idx);
-      if (mon) { drawn = composeMonster(drawn, mon); overlays.push(mon.layer); }
-      if (pathColour !== undefined) {
-        drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
-        overlays.push(path!);
-      }
-      const visual = worldVisual(
-        { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
-        backgroundAssetForWorldCell(
-          "seen",
-          terrain.tile,
-          overlays,
-        ),
-      );
+    playerGrid: state.actor.grid,
+    ...(targeting ? { cursor: targeting.cursor } : {}),
+    cursorBackground: CURSOR_BG,
+    unknownForeground: UI_BG,
+    pathColours: pathColourAt,
+    gridKey: ({ x, y }) => gridIndex(x, y),
+    colorToCss,
+    isSeen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y)),
+    knownFeature: ({ x, y }) => knownFeat(state, loc(x, y)),
+    rememberedTerrain: ({ x, y }, kf) => {
+      const f = features.get(kf);
+      const disp = f.mimic !== null ? features.get(f.mimic) : f;
+      const tile = tileMap
+        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y)
+        : undefined;
+      const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
+      const attr = slot?.attr ?? colorCharToAttr(disp.dAttr);
+      const terrain: CellGlyph = {
+        ch: slot?.char ?? disp.dChar,
+        attr,
+        css: colorToCss(attr),
+        layer: { kind: "terrain", id: disp.fidx, lighting: LIGHTING.LIT },
+      };
       return {
-        grid,
-        screen,
-        visibility: "seen",
-        terrain: terrain.layer!,
-        overlays,
-        visual,
-        cursor: isCursor,
+        terrain,
+        drawn: { ...terrain, css: dim(terrain.css), ...(tile ? { tile } : {}) },
+        ...(tile ? { tile } : {}),
       };
     },
+    knownObjectShown: ({ x, y }) => knownObjectShown(x, y) ?? undefined,
+    rememberedObject: (memory, { x, y }) => rememberedObjectCell(memory, x, y),
+    seenTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
+    traps: trapAt,
+    objects: objectAt,
+    monsters: monsterAt,
+    composeMonster,
+    playerGlyph: playerMapGlyph,
+    playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
   }, glyphWorldFrameSink(term));
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
