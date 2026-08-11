@@ -79,12 +79,6 @@ owned frame snapshot on each real repaint, so retaining it cannot retain or
 mutate `state.actor.grid`; a throwing frontend falls back to the glyph sink and
 is reported on that mod's row.
 
-At startup, `main.ts` performs its boot `render()` before it installs a selected
-`ModPlugin.frontend`. Consequently, the first frame is always glyph-drawn, even
-when a disk-loaded mod frontend will own later display renders. This is an
-expected property of the seam: frontend authors must tolerate their display
-starting on a subsequent repaint rather than receiving the boot frame.
-
 With no replacement selected, the current `GlyphTerm` is that sink and consumes
 the frame's optional `visual` fallback,
 including the upstream terrain-under-foreground tile pass for visible path

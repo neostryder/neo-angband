@@ -1,24 +1,26 @@
 # Every item that still needs porting
 
-**Dated 2026-08-04, last worked 2026-08-07.** The work list derived from
+**Dated 2026-08-04, last worked 2026-08-11.** The work list derived from
 [DEFERRALS.md](DEFERRALS.md), which is the accounting of what was found and how
 each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 20 confirmed-absent citations** — **all 68 closed**, as
+**68 items covering all 15 confirmed-absent citations** — **all 68 closed**, as
 of 2026-08-07, when 5.5's last log line landed. That is a statement about this
 list and nothing wider: see [What "zero open" does and does not
 mean](#what-zero-open-does-and-does-not-mean) at the foot of this file, which
 names what is still deliberately divergent and what has never been measured.
 
-**That citation count used to read 76, and the drop is the closure, not a
-narrowing.** The two censuses held 55 `real` + 21 `partial` when these 68 items
-were written; re-adjudicating after the closure work left 5 `real` + 15
-`partial`, because most of those rows now describe code that exists. The number
-is checked against the censuses by `packages/cli/src/port-todo.test.ts`, which
-is the only reason it is current — the closure commit moved the censuses and
-left this line behind, and CI caught it.
+**That citation count used to read 76, and every drop since has been closure,
+not narrowing.** The two censuses held 55 `real` + 21 `partial` when these 68
+items were written; re-adjudicating after the closure work left 5 `real` + 15
+`partial`, because most of those rows now describe code that exists. A second
+re-verification on 2026-08-11 retired five more `partial` rows the same way,
+leaving 5 `real` + 10 `partial`. The number is checked against the censuses by
+`packages/cli/src/port-todo.test.ts`, which is the only reason it is current —
+every one of those passes moved the censuses and left this line behind, and the
+guard caught it each time.
 
 **And then re-running the census reopened two, on the same day.** Closing the 68
 rewrote the notes they were written on, so the census retired 71 rows and returned
@@ -3556,7 +3558,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 20 citations, 5 `real` + 15
+2. the counts stated at the top (**68 items, 15 citations, 5 `real` + 10
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
@@ -3568,7 +3570,10 @@ description at all**, and it was the worst of the four.
    reason**: adjudicating thirteen ledger rows turned seven of them `partial`,
    which RAISED the citation count 111 to 118 with no new item and no new work
    discovered by reading. A guard that only ever catches the count going down
-   would have missed it;
+   would have missed it. **And again on 2026-08-11**, when re-verifying the
+   appendix retired five more `partial` rows: the pass that moved the census left
+   this line stating the old count, and the guard held the suite red until the
+   number was corrected rather than letting a stale total ship;
 3. any path named in a `Sites:` line does not exist on disk — so a citation
    cannot rot into fiction after a rename;
 4. **any cited LINE has drifted off the note it points at** — the neighbourhood

@@ -1342,8 +1342,8 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
  * delete_monster_idx (mon-make.c:314-397): remove the monster from its groups
  * (leader succession / group split happen here), forget its racial
  * occurrence, delete the object it was mimicking, clear its square and free
- * its slot. The held-object drop and the redraw bookkeeping are DEFERRED with
- * their subsystems; the caller runs monster_death (drops) beforehand.
+ * its slot. The former DEFERRED wording is stale: the caller runs monsterDeath()
+ * for held-object drops; redraw is the documented repaint-layer divergence.
  */
 export function deleteMonster(state: GameState, midx: number): void {
   const mon = state.monsters[midx];
