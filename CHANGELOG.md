@@ -18,7 +18,25 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
-Nothing yet — everything through 2026-08-11 is in `0.19.0` below.
+### Fixed
+
+- `docs/modding/MOD_REACH.md` reported a moddability backlog that no longer
+  existed. Its class table still read `51 switches` and `22 CANDIDATE`, its gap-3
+  row still named `18 CANDIDATE rows` as the remaining work, and its opening
+  paragraph still closed by saying the problem that remained was behaviour living
+  in `switch` statements with nothing to register into. Re-derived from
+  `tools/switch-census.json`: **34 switches, 463 case labels, 0 `CANDIDATE`**. The
+  document warns on the same page that a hand-written inventory quietly stops
+  being a census while still reading like one, and that is exactly what had
+  happened to its own numbers.
+- Same file, the headline: `registry:*` capabilities read **14** and omitted
+  `registry:menu`, which is real, wired and gated like the rest. The count is
+  **15**, and the row now points at `REGISTRY_CAPABILITIES` in
+  `mod/registry-host.ts` so the next reader re-derives it instead of trusting the
+  prose. (`registry:player` is still not one - the only occurrence of that string
+  in the tree is a test asserting it is rejected.)
+
+Everything else through 2026-08-11 is in `0.19.0` below.
 
 Current state of the project at version `0.19.0`. High level, what exists today:
 

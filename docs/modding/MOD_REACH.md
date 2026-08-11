@@ -29,7 +29,7 @@ is not a capability - it is called out as such.
 | ...still `CANDIDATE` — a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
 | ...reachable by a mod that is NOT compiled into the web bundle | **every one**, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
-| `registry:*` capabilities with real, wired, tested code | **14** (`blow`, `command`, `effect`, `effect-info`, `glyph`, `monster`, `profile`, `projection`, `randart`, `room`, `rune`, `store`, `tval`, `vocab`) |
+| `registry:*` capabilities with real, wired, tested code | **15** (`blow`, `command`, `effect`, `effect-info`, `glyph`, `menu`, `monster`, `profile`, `projection`, `randart`, `room`, `rune`, `store`, `tval`, `vocab`) — the list is `REGISTRY_CAPABILITIES` in `mod/registry-host.ts`, which is the one source the vocabulary has |
 | Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`); since 2026-08-08 the same key also decides what a record ADDED to those files is called |
@@ -66,15 +66,20 @@ is not a capability - it is called out as such.
 What a mod installed from disk can do today, in a release build: **contribute
 gamedata JSON records** (43 of 44 files per record, and every individual record
 of the shipped pack is nameable by some ref), **supply a tile pack** that registers its own Graphics row, **run its own
-code** through `plugin.js` with the engine passed in, and reach the eight
+code** through `plugin.js` with the engine passed in, and reach the fifteen
 capability-gated registries - including, since 2026-08-08, **its own kind of
 dungeon level** (`registry:profile`) and **its own kind of monster attack**
 (`registry:blow`), and since 2026-08-09 **what its own projection does** to
 terrain, floor items and the player (`registry:projection`) and **what a symbol
-in its own vault means** (`registry:glyph`). What it still
-cannot do is reach the rest of the game's behaviour, because that behaviour
-lives in the remaining `switch` statements with nothing to register into. That,
-not the loading path, is the problem that remains.
+in its own vault means** (`registry:glyph`).
+
+The sentence that used to close this paragraph said the problem that remained
+was the game's behaviour living in `switch` statements with nothing to register
+into. As of 2026-08-11 that is no longer true and saying so would be the
+staleness this document keeps warning about: the census carries **0 `CANDIDATE`
+rows**. What remains is not a backlog of closed dispatch but the caution below -
+zero candidates is the end of what the TOOL can see, and a dispatch point that
+never grew to eight cases was never in its field of view.
 
 > A correction to this table's own history: the row above previously named
 > `player` as one of the six registry capabilities. There is no `registry:player`
@@ -176,23 +181,28 @@ hand-written inventory of switches only ever gets smaller - converting one to a
 registry gets its row updated, ADDING one gets no row at all, and the list
 quietly stops being a census while still reading like one. Several rows here
 have already gone stale that way. `node tools/switch-census.mjs` counts every
-switch of >= 8 cases in the tree (**51 switches, 794 case labels** as of
-2026-08-08) and `packages/web/src/switch-census.test.ts` fails when the tree and
+switch of >= 8 cases in the tree (**34 switches, 463 case labels** as of
+2026-08-11) and `packages/web/src/switch-census.test.ts` fails when the tree and
 the manifest disagree, so a new dispatch cannot arrive unnoticed.
 
-**All 51 now carry a verdict** (2026-08-08), and the distribution is the useful
-result rather than the raw count:
+**All 34 carry a verdict**, and the distribution is the useful result rather
+than the raw count. This table is derived from `tools/switch-census.json`, and
+it had gone stale exactly the way the paragraph above warns a hand-written
+inventory does - it read `51 switches` and `22 CANDIDATE` until 2026-08-11,
+months after the conversions that emptied the candidate column. A count in
+prose is not a measurement; re-derive it from the JSON before quoting it:
 
 | Class | Rows | What it means for a mod |
 | --- | --- | --- |
-| `CANDIDATE` | 22 | Content dispatch a mod would want. **This is the real backlog.** |
+| `CANDIDATE` | 0 | Content dispatch a mod cannot reach. **The backlog is empty** - see the caution below for what that does and does not mean. |
 | `UI` | 12 | Menu-action and keypress routing; rows 23/24 above own them as a class. |
-| `PARSER` / `HOST` | 6 | Grammars and host wiring: the dice syntax, `lore.txt` directives, CLI flags, the host RPC. Deliberately closed - a mod changing dice syntax invalidates every record in every pack. |
+| `REACHABLE` | 6 | Already behind a registry - the arm is core's registered handler, which a mod wraps through `handlerFor`. |
+| `PARSER` | 3 | Grammars: the dice syntax and `lore.txt` directives. Deliberately closed - a mod changing dice syntax invalidates every record in every pack. |
+| `HOST` | 3 | Host wiring: CLI flags and the host RPC. Not game content. |
 | `LOCALIZATION` | 3 | Index-to-string tables. Row 14 of the gap list replaces the strings wholesale; converting the switch would not help. |
 | `CONTROL FLOW` | 3 | Numeric buckets and geometry. Not dispatch at all. |
 | `INTERNAL` | 2 | The save format's block union and the mod system's own capability vocabulary - both grow only when core does. |
 | `DEBUG` | 2 | Wizard-mode menus. |
-| `REACHABLE` | 1 | Already behind a registry. |
 
 The verdicts live in `tools/switch-census.json` and the class counts are
 asserted in `switch-census.test.ts` against a **closed vocabulary**, because a
@@ -980,7 +990,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | --- | --- | --- | --- |
 | 1 | **A mod can supply CODE without being compiled into the app** | **YES** (closed; re-measured 2026-08-08) | Done, and nothing below is blocked on it any more. `packages/web/src/mod-plugin.ts` loads a `plugin.js` sitting beside a mod's `manifest.json`, with the engine **passed in** rather than imported, so a mod installed from disk runs real code. The `import.meta.glob` in `mod-hooks.ts` remains, but it is now the path for the *bundled demo* mods only, not the only door. This row read "**no**" with "everything below is blocked on this" for long enough to misdirect planning - the rest of this table is re-derived, not edited. |
 | 2 | **Per-record patching of the other 20 gamedata files** | **CLOSED 2026-08-08** (phase 1 2026-07-29, residue 2026-08-08) | This row said "silently dropped, `loader.ts:119`" for nine days after that stopped being true, and the stale wording cost two reviewers a duplicate P1 each - see the header of `record-key.ts`. What is actually built: `loader.ts` applies per-record ops to passthrough files in a second phase against the winning array, keyed by the explicit per-file table in `packages/mod-sdk/src/record-key.ts` (19 files declared, 24 keyed by `name`), and an op that cannot be honoured produces a named line in `ComposedContent.problems` plus an attributed `faults` entry. **But a key declared per FILE is not every RECORD being addressable**, and the difference was 73 records: 61 of `ego_item`'s 107 - so "of Acid" could not be patched at all - plus 10 in `object` and 2 in `vault`. Two different causes, separated rather than papered over. (a) INFORMATION THE SLUG THREW AWAY: `slugify` drops `*` and `+`, so `*Healing*` and `Healing` arrived as one key; `keySlug` now spells the marks out, which alone fixes every `object` and `vault` collision and 16 of `ego_item`'s. (b) GENUINELY REPEATED NAMES: `ego_item` ships "of Acid" twice, so a declared DISCRIMINATOR appends the item types it applies to - `core:of-acid#shot-arrow-bolt` - which is not a guess but upstream's own `lookup_ego_item(name, tval, sval)`. A record answers to SEVERAL refs, and the pre-2026-08-08 slug is kept as an alias except where it would shadow another record's primary key, so nothing that resolved before stopped resolving. Result, asserted over the real pack: **0 unaddressable records** in every keyed file. `history` remains keyed by nothing on purpose - `{chart, phrase}` is all values a mod would change - and an op against it is reported. An ambiguous ref now REPLIES WITH THE REFS THAT WORK, because "ambiguous" with no alternative is where an author gives up. Proof: `record-key.test.ts` asserts zero-unaddressable in both directions and both controls were run (dropping `item.tval` from the discriminator, and reverting `keySlug`, each fail exactly their own tests); reach is proven from disk in `mod-code.node.test.ts` by a real mod folder patching one "of Acid" out of the REAL `ego_item.json` and leaving the others alone. |
-| 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks + 7 registries** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in `switch` statements; converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. Blow effects went first and are done (row 4), which also established the method: record golden vectors from the code BEFORE the refactor, then replay them against it. Store (27) followed, then the whole projection family: project-feat (37), project-obj (11) and project-player (21), so a mod's projection now reaches terrain, objects AND the player. Then the three room/vault glyph decoders (16 + 13 + 23), which is where a mod's own VAULT stopped being a picture and started being a place - see row 17. Remaining is a counted list rather than a phrase: **18 `CANDIDATE` rows** in `tools/switch-census.json` (was 21), of which the largest are randart (87 + 15 + 9) and object naming/desc (34 + 20 + 17 + 9 + 8 + 8). Converting is only half the work - a converted table with no producer is still unreachable, which is what row 17 and `registry:projection` both exist to close. |
+| 3 | **Behaviour seams covering the game rather than 7 points** | **7 hooks + 7 registries** | Not more one-off hooks. The measured shape of the problem is that behaviour lives in `switch` statements; converting the significant ones into keyed registries of the `EffectRegistry` shape is the only mechanical route from 7 points to a layer. Blow effects went first and are done (row 4), which also established the method: record golden vectors from the code BEFORE the refactor, then replay them against it. Store (27) followed, then the whole projection family: project-feat (37), project-obj (11) and project-player (21), so a mod's projection now reaches terrain, objects AND the player. Then the three room/vault glyph decoders (16 + 13 + 23), which is where a mod's own VAULT stopped being a picture and started being a place - see row 17. Remaining is a counted list rather than a phrase, and as of 2026-08-11 that list is empty: **0 `CANDIDATE` rows** in `tools/switch-census.json` (was 18 here, and 21 before that). The randart and object naming/desc families this row last named as the largest remaining went through the same conversion as the rest; what is left in the census is UI routing, parsers, host wiring and localization, none of which this row is about. Converting is only half the work - a converted table with no producer is still unreachable, which is what row 17 and `registry:projection` both exist to close. |
 | 4 | **Monster combat is moddable** | **CLOSED 2026-08-08** | `blow_effects.json` accepts a 31st record but its behaviour is a 26-case switch in `resolveBlowEffect` and again in `resolveBlowEffectLive` (`combat/mon-melee.ts`). **These are not duplicates.** Same 26 case labels, but 171 lines against 219, and they do different jobs: the first records side-effect *intents* for the worldless path, the second applies HP, messages and elemental reduction for real through `MonBlowEnv`. So "collapse the duplicated switch to one body first" - which this row used to say - describes a large, parity-sensitive refactor that would buy no modding capability. What was actually needed - and is now built - is ONE registry keyed by blow-effect name that BOTH bodies consult. `BlowEffectRegistry` (`combat/mon-melee.ts`) holds a `{record, live}` handler per effect; core seeds it with its 30 at boot (`registerCoreBlowEffects`, called from `wireGame`), and a mod reaches it through `registry:blow`. A mod normally writes ONE description and `blowEffect()` derives both halves, so the two paths cannot drift; `handlerFor(name)` hands back the installed handler, so wrapping core is possible instead of only replacing it. The 26-case switches were lifted case by case with nothing rewritten - including the places where the two paths disagree about RNG ORDER, which is a port wart core keeps. What proves it: `blow-vectors.json`, 480 scenarios recorded from the code BEFORE the registry existed and replayed against it, covering 30 effects x both paths x two envs that flip every branch, with a probe draw that catches a change in the NUMBER of random values even when nothing else moves. Reach is proven from disk (`mod-code.node.test.ts`), by a real `monMeleeAttack` on both paths. |
 | 5 | **Store behaviour is moddable** | **CLOSED 2026-08-08** | `StoreBehaviourRegistry` (`store/store.ts`) replaces both switches, keyed the way each decision is actually made: stack size by TVAL, the buy rule by store FEAT with an `ANY_STORE` wildcard, because upstream has one body every shop shares. Core registers its own rule under the wildcard, so `willBuyFor(ANY_STORE)` hands it back and a mod layers on top instead of reimplementing the worthless-item and buy-list logic. Two refusals are deliberate: an empty registry REFUSES rather than becoming permissive ("nobody decides" must not read as "every shop buys anything"), and the `maxStack` clamp stays in core, so a mod's stack rule cannot break a pile. Reached on both paths that ask - store maintenance and the sell command - because a seam supplied to every path but one is how a mod comes to work in town and not in the shop. Proof: 1,167 `mass_produce` golden vectors recorded before the refactor (the function had NO test at all), plus behavioural tests against the real pack and a from-disk mod that changes what a shop buys. `StoreRegistry`'s linear `byFeat`/`byName` scans remain, and are lookup rather than behaviour. |
 | 6 | **Level generation architecture is moddable** | **CLOSED 2026-08-08** | `registry:profile` now exists: `ProfileFacade` (`mod/registry-host.ts`) over the live `DungeonProfiles` (`gen/cave.ts:2952`), so a mod registers its own whole-cave builder and adds the profile that selects it. `builder(key)` hands back a core builder, so a mod can WRAP core generation instead of reimplementing it. Two refusals are deliberate: a profile naming an unregistered builder is rejected at `addProfile` rather than exploding inside generation a level later, and `addProfile` only appends, because `choose_profile`'s running-total `randint0` walks the list in order and inserting would change which profile CORE picks from the same seed. Proven by a mod written to a real folder and imported for real (`packages/web/src/mod-code.node.test.ts`), asserting on the registry rather than on the mod's own report. |
