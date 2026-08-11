@@ -145,8 +145,8 @@ export interface LoreDeps {
   /**
    * The player's percent chance to hit this race in melee
    * (random_chance_scaled of hit_chance(chance_of_melee_hit_base, ac)).
-   * Defaults to 0 in a worldless caller such as the core spoiler dump, which
-   * has no player combat state to supply.
+   * Defaults to 0 only for a caller that omits it. The core spoiler dump has
+   * booted player combat state, but deliberately omits this inert callback.
    */
   meleeHitPercent?: (race: MonsterRace) => number;
   /**
