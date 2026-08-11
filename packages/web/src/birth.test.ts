@@ -1323,19 +1323,22 @@ describe("runBirth: the sheet preview builds a usable GameState", () => {
     realms: packRecords("realm"),
   } as PlayerPackRecords);
 
-  const realDeps = {
-    bodyFor: (raceName: string) => {
+  /* The same two lookups the real host performs -- registry.bodies[race.body]
+   * and registry.historyChart(race) -- rather than an approximation of them.
+   * A first draft reached for a `race.history` field that does not exist, which
+   * threw inside the race screen and never got near the sheet at all. */
+  const realDeps: BirthDeps = {
+    bodyFor: (raceName) => {
       const race = players.races.find((r) => r.name === raceName);
-      return race ? (players.bodies[0] ?? null) : null;
+      return race ? (players.bodies[race.body] ?? null) : null;
     },
-    /* The race's own bound chart. bindPlayer resolves history into the race
-     * record itself, so there is no separate array to index -- reaching for one
-     * threw inside the race screen's ability rows and never got near the sheet. */
-    historyChartFor: (raceName: string) =>
-      players.races.find((r) => r.name === raceName)?.history ?? null,
+    historyChartFor: (raceName) => {
+      const race = players.races.find((r) => r.name === raceName);
+      return race ? players.historyChart(race) : null;
+    },
     properties: packRecords("player_property"),
     elementNames: [],
-  } as unknown as BirthDeps;
+  };
 
   it("draws the point-based stat table and panels without throwing", async () => {
     const win = makeFakeWindow();
