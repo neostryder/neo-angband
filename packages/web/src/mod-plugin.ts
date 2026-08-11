@@ -86,6 +86,10 @@ import type {
 /* Type-only, like every other import here: a mod's source imports this module,
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
+import type { WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
+
+/** The renderer-neutral map snapshot a selected front end receives. */
+export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * The ABI version this host implements. Bump ONLY when an existing plugin would
@@ -326,6 +330,21 @@ export interface ModPlugin {
    */
   controller?(ctx: ModPluginContext): AgentController | undefined;
   /**
+   * Replace the map renderer with a sink for the live `WorldFrame` stream.
+   *
+   * The host selects exactly one declaration before invoking it: the LAST
+   * enabled mod in load order wins. Earlier frontends are not constructed, so
+   * they cannot mount UI or retain game data after losing. Return `undefined`
+   * to decline, which leaves the faithful glyph renderer active. The sink gets
+   * a frozen, structurally owned snapshot on every real map repaint; it may
+   * retain that frame, but cannot retain or mutate the player's live grid.
+   *
+   * This is a front-end seam, not a registry capability. It replaces display
+   * only; input remains at the host's one input door until a later input-binding
+   * seam lets a replacement front end submit intents.
+   */
+  frontend?(ctx: ModPluginContext): WorldFrameSink | undefined;
+  /**
    * Teardown, called when the mod set changes and the page is about to re-compose.
    *
    * The re-compose is what actually removes the mod - a plugin that is not
@@ -387,10 +406,13 @@ export function validateModPlugin(
   if (p.controller !== undefined && typeof p.controller !== "function") {
     return "plugin.js: controller is not a function";
   }
+  if (p.frontend !== undefined && typeof p.frontend !== "function") {
+    return "plugin.js: frontend is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
-  if (p.hooks === undefined && p.register === undefined && p.controller === undefined) {
+  if (p.hooks === undefined && p.register === undefined && p.controller === undefined && p.frontend === undefined) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
      * loading it and having nothing happen. `controller` counts because an
@@ -399,7 +421,7 @@ export function validateModPlugin(
      * to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register or controller, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller or frontend, so it would do nothing";
   }
   return null;
 }

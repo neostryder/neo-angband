@@ -58,6 +58,8 @@ export interface ConflictInputs {
   ruleDecls: readonly { modId: string; flag: string }[];
   /** Enabled mods that handed the host an autoplayer, in load order. */
   controllers: readonly string[];
+  /** Enabled mods that declare a replacement front end, in load order. */
+  frontends: readonly string[];
 }
 
 /** A pack's display name from its manifest, falling back to its id. */
@@ -145,6 +147,20 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
     ),
   );
 
+  /* FRONTEND. The last enabled declaration owns the one display slot; lower
+   * candidates are never invoked, so a loser cannot leave a hidden root behind. */
+  slots.push(
+    ...contestedSlots(
+      "frontend",
+      "single-slot",
+      inputs.frontends.map((id) => ({
+        key: "frontend",
+        what: "a replacement map front end",
+        claim: { packId: id } as Claim,
+      })),
+    ),
+  );
+
   return slots;
 }
 
@@ -223,6 +239,9 @@ export function liveConflictLines(): ConflictReportLines {
     ruleDecls: loadEnabledModRuleDecls().map((d) => ({ modId: d.modId, flag: d.rule.flag })),
     controllers: activeModCode()
       .plugins.filter((p) => typeof p.plugin.controller === "function")
+      .map((p) => p.id),
+    frontends: activeModCode()
+      .plugins.filter((p) => typeof p.plugin.frontend === "function")
       .map((p) => p.id),
   });
 }

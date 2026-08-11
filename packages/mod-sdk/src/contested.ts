@@ -39,7 +39,8 @@ export type ContestedLayer =
   | "graphics" // a grafID (a Graphics-menu row)
   | "behaviour" // a ModHooks member
   | "rule" // a player-facing flag name
-  | "controller"; // the single autoplayer slot
+  | "controller" // the single autoplayer slot
+  | "frontend"; // the single selected display sink
 
 /**
  * How a layer resolves several claims on one slot.

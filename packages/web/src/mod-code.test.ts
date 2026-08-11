@@ -325,9 +325,9 @@ describe("a broken plugin is one line, not a boot failure", () => {
     expect(problemLines(report.problems)[0]).toContain("no default export");
   });
 
-  it("rejects a default export that declares no hooks, register or controller", async () => {
+  it("rejects a default export that declares no hooks, register, controller or frontend", async () => {
     const report = await loadDefault({ api: MOD_API_VERSION });
-    expect(problemLines(report.problems)[0]).toContain("no hooks, register or controller");
+    expect(problemLines(report.problems)[0]).toContain("no hooks, register, controller or frontend");
   });
 
   it("accepts a plugin whose ONLY member is a controller", async () => {

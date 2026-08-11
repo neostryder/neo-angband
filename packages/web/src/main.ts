@@ -233,6 +233,11 @@ import {
   glyphWorldFrameSink,
 } from "./world-view";
 import {
+  frontendWorldFrameSink,
+  installFrontend,
+  type InstalledFrontend,
+} from "./frontend-runtime";
+import {
   projectLiveWorld,
   type ResolvedGlyph,
 } from "./world-render-data";
@@ -7154,7 +7159,14 @@ function render(targeting?: TargetingOverlay): void {
     monsterGlyph: composeMonster,
     playerGlyph: playerMapGlyph,
     playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
-  }, glyphWorldFrameSink(term));
+  }, frontendWorldFrameSink(
+    glyphWorldFrameSink(term),
+    installedFrontend,
+    (id, message, error) => {
+      reportModFault(id, `${message}: ${faultMessage(error)}`);
+      log.error(`mod:${id}`, "frontend display failed:", error);
+    },
+  ));
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
 
@@ -8909,6 +8921,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     controller: installedController,
   });
   installedController = null;
+  installedFrontend = null;
   try {
     autosave(true); // keep the live hero before the page re-composes
     if (opts?.resume !== false) sessionStorage.setItem(SKIP_TITLE_KEY, "1");
@@ -10112,6 +10125,8 @@ const installedPluginIds = new Set<string>();
  * autoplayer and one mod that thinks it is running and is not.
  */
 let installedController: { id: string; session: AgentSession } | null = null;
+/** The selected ModPlugin.frontend, or null while the glyph renderer owns the map. */
+let installedFrontend: InstalledFrontend | null = null;
 
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
@@ -10474,6 +10489,27 @@ for (const loaded of activeModCode().plugins) {
     log.error(`mod:${loaded.id}`, `register() failed:`, err);
   }
 }
+
+/* The display slot is last-load-wins, unlike the autoplayer's historical
+ * first-claim guard. Select BEFORE invoking: a lower front end never gets a
+ * chance to mount anything when a later mod replaces it. */
+installedFrontend = installFrontend(
+  activeModCode().plugins,
+  (id) => {
+    const loaded = activeModCode().plugins.find((plugin) => plugin.id === id)!;
+    return modPluginContext(
+      id,
+      folderRuleFlags.get(id) ?? {},
+      state,
+      modOwnFiles(loaded.data),
+      sessionFacts,
+    );
+  },
+  (id, message, error) => {
+    reportModFault(id, `${message}: ${faultMessage(error)}`);
+    log.error(`mod:${id}`, "frontend() failed:", error);
+  },
+);
 
 /* The controller() half: an autoplayer mod takes over state.nextCommand.
  *

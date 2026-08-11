@@ -478,19 +478,25 @@ than parsing its label. Call `host.menus.handlerFor(id)` before registering when
 you need to wrap a transformer installed by an earlier mod. A failed transform
 is reported and the unmodified menu stays openable.
 
-This is still not a total-front-end manifest field. The host now invokes the
-extracted world-render-data producer from its actual map repaint and passes its
-renderer-neutral `WorldFrame` to a host-owned `WorldFrameSink`: grids retain semantic
+`ModPlugin.frontend?(ctx)` is now the one map-display slot. The later enabled
+frontend wins, and only that factory is invoked; return a `WorldFrameSink` or
+`undefined` to preserve the glyph terminal. The host invokes the extracted
+world-render-data producer from its actual map repaint and passes the winner a
+frozen, renderer-neutral `WorldFrame` snapshot: grids retain semantic
 terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
 while the glyph projection is only the current terminal fallback (including its
 terrain-under-foreground tile inputs, even for a path over otherwise bare seen
 terrain). That makes the
-world data ready for a later isometric or 3D consumer. Its Phase-4 control
+world data ready for an isometric or 3D consumer. TypeScript mods can write
+`import type { WorldFrame, WorldFrameSink } from
+"@rpgm-tools/neo-angband-mod-sdk"`; it is type-only, so it does not violate the
+folder-plugin no-bare-runtime-import rule. Its Phase-4 control
 executes the same producer `main.ts` calls, checks the unmodded glyph sink's
 pre-frame `term.put` tuples, and proves an independently owned host sink
-receives that exact frame in the same call,
-but no plugin can select or receive a frontend until the Phase-5 manifest member
-exists.
+receives that exact frame in the same call. The Phase-5 disk fixture proves the
+later plugin receives it and an unmodded control preserves glyph painting. The
+snapshot has no mutable player-grid alias, so a frontend can retain a frame
+without retaining live game state.
 
 Input follows the same staged rule. `UiInput` is available to host code through
 the one input door and can represent a continuous direction (vector, magnitude,

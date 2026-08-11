@@ -89,7 +89,9 @@ function projectPlayer<TMemory, TMonster>(read: LiveWorldRead<TMemory, TMonster>
   const glyph = read.playerGlyph();
   const terrain = read.playerTerrain(read.playerGrid);
   return {
-    grid: read.playerGrid,
+    // `state.actor.grid` is mutable. A WorldFrame may cross into a plugin and
+    // be retained there, so it must never carry that live object by alias.
+    grid: { x: read.playerGrid.x, y: read.playerGrid.y },
     screen: { x: read.screenOrigin.x + dx, y: read.screenOrigin.y + dy },
     layer: { kind: "player", id: 0 },
     visual: {
