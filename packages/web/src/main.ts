@@ -229,7 +229,14 @@ import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryR
 import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
-import { buildWorldFrame, type WorldLayer, type WorldPlayer, type WorldVisual } from "./world-view";
+import {
+  backgroundAssetForWorldCell,
+  buildWorldFrame,
+  paintWorldFrame,
+  type WorldLayer,
+  type WorldPlayer,
+  type WorldVisual,
+} from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
@@ -7204,7 +7211,12 @@ function render(targeting?: TargetingOverlay): void {
         }
         const visual = worldVisual(
           { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
-          coveredTerrain && pathColour === undefined ? memTile : undefined,
+          backgroundAssetForWorldCell(
+            "remembered",
+            memTile,
+            coveredTerrain,
+            pathColour !== undefined,
+          ),
         );
         return {
           grid,
@@ -7233,7 +7245,12 @@ function render(targeting?: TargetingOverlay): void {
       }
       const visual = worldVisual(
         { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
-        coveredTerrain && pathColour === undefined ? terrain.tile : undefined,
+        backgroundAssetForWorldCell(
+          "seen",
+          terrain.tile,
+          coveredTerrain,
+          pathColour !== undefined,
+        ),
       );
       return {
         grid,
@@ -7247,26 +7264,8 @@ function render(targeting?: TargetingOverlay): void {
     },
   });
 
-  for (const cell of frame.cells) {
-    if (!cell.visual) continue;
-    term.put(cell.screen.x, cell.screen.y, {
-      ch: cell.visual.ch,
-      fg: cell.visual.fg,
-      ...(cell.visual.bg !== undefined ? { bg: cell.visual.bg } : {}),
-      ...(cell.visual.asset ? { tile: cell.visual.asset } : {}),
-      ...(cell.visual.backgroundAsset ? { bgTile: cell.visual.backgroundAsset } : {}),
-    });
-  }
-  if (frame.player) {
-    if (import.meta.env.DEV) lastPlayerCell = frame.player.screen;
-    term.put(frame.player.screen.x, frame.player.screen.y, {
-      ch: frame.player.visual.ch,
-      fg: frame.player.visual.fg,
-      ...(frame.player.visual.bg !== undefined ? { bg: frame.player.visual.bg } : {}),
-      ...(frame.player.visual.asset ? { tile: frame.player.visual.asset } : {}),
-      ...(frame.player.visual.backgroundAsset ? { bgTile: frame.player.visual.backgroundAsset } : {}),
-    });
-  }
+  if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
+  paintWorldFrame(term, frame);
 
   if (layout === "top") renderCompactVitals(1, cols);
   else if (layout === "left") renderSidebar(rows);
