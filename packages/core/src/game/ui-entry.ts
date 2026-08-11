@@ -23,9 +23,9 @@
  *
  * Seams the port does not carry on GameState arrive through UiEntryDeps; each
  * has a documented default and is listed in parity/ledger/ui-entry.yaml. The
- * former "not ported" claim about the per-object known twin and
- * player_flags_timed() is stale: objectKnownShadow supplies the former and
- * liveTimedUiDeps derives timed flags/resists from active effects.
+ * per-object known twin (obj->known) and player_flags_timed() are not ported,
+ * so the timed player-flag / timed element contributions default to "no timed
+ * effect" - faithful for a character with no active buffs.
  */
 
 import { BASIC_COLORS, COLOR_TABLE, colorCharToAttr } from "../color.js";
