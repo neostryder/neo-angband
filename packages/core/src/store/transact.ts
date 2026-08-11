@@ -23,8 +23,8 @@
  *   supplied. The two were wired months apart, and while only the sell half
  *   existed a purchase left an item's runes unknown; the header said DEFERRED for
  *   both, which is how the asymmetry read as intentional.
- * - Still DEFERRED: the obj->known twin, total_weight upkeep, autoinscription,
- *   and history_find/lose_artifact.
+ * - Still DEFERRED: the store-purchase history entry (PORT_TODO); obj->known is
+ *   an on-demand shadow, and totalWeight, autoinscription and artifact history are live.
  * - Deliberately ABSENT: the HOME teaches nothing (do_cmd_retrieve L1783-1851 and
  *   do_cmd_stash L2009 learn nothing at all), so homeRetrieve/homeStash have no
  *   learn block and must not gain one.
