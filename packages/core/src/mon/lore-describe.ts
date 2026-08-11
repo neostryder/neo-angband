@@ -18,8 +18,8 @@
  * spell&blow danger colors that upstream reads off the global player) is not
  * available in this module, so it is injected through the LoreDeps object.
  * Colors default to the datum's base lore color when no danger evaluator is
- * supplied; the two hit-chance callbacks are the remaining integration seams
- * for the combat layer (still default to 0 unwired). The spell damage
+ * supplied; the two hit-chance callbacks are integration seams supplied by the
+ * combat layer in the live game. The spell damage
  * callback (`spellLoreDamage`) is a full override only - its default
  * computes the real mon_spell_lore_damage from the bound spell + race data
  * (see monSpellLoreDamage below), needing just `breathProjection` from the
@@ -145,13 +145,15 @@ export interface LoreDeps {
   /**
    * The player's percent chance to hit this race in melee
    * (random_chance_scaled of hit_chance(chance_of_melee_hit_base, ac)).
-   * DEFERRED: defaults to 0 when the combat layer does not supply it.
+   * Defaults to 0 in a worldless caller such as the core spoiler dump, which
+   * has no player combat state to supply.
    */
   meleeHitPercent?: (race: MonsterRace) => number;
   /**
    * The monster's percent chance to land the given blow on the player
    * (random_chance_scaled of hit_chance(chance_of_monster_hit_base, ac+to_a)).
-   * DEFERRED: defaults to 0 when the combat layer does not supply it.
+   * Defaults to 0 in a worldless caller such as the core spoiler dump, which
+   * has no player defence to supply.
    */
   monsterHitPercent?: (race: MonsterRace, effect: BlowEffect) => number;
   /**
@@ -167,9 +169,8 @@ export interface LoreDeps {
    * The breath element's damage divisor/cap (element->divisor /
    * element->damage_cap, projection.txt), keyed by PROJ_ value - the one
    * piece of breath damage that lives outside mon/ (world/projection.ts).
-   * Only consulted for breath-type spells' default damage. DEFERRED: damage
-   * shows as 0 when the caller does not supply it, like the other
-   * world-derived callbacks above.
+   * Only consulted for breath-type spells' default damage. A worldless caller
+   * without projection data renders that component as 0.
    */
   breathProjection?: (subtype: number) => BreathProjection | undefined;
 }
