@@ -233,9 +233,9 @@ import {
   glyphWorldFrameSink,
 } from "./world-view";
 import {
-  produceWorldFrame,
-  type FrameCellGlyph,
-} from "./world-frame-producer";
+  projectLiveWorld,
+  type ResolvedGlyph,
+} from "./world-render-data";
 import type { WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
@@ -6395,7 +6395,7 @@ function gridIndex(x: number, y: number): number {
  * (ui-map.c L275-286: the tile-code test and the ATTR_CLEAR/CHAR_CLEAR arms),
  * which a CSS string cannot answer.
  */
-type CellGlyph = FrameCellGlyph;
+type CellGlyph = ResolvedGlyph;
 
 // Revealed traps draw under objects and monsters (upstream layer order).
 function trapIndex(): Map<number, CellGlyph> {
@@ -7108,8 +7108,9 @@ function render(targeting?: TargetingOverlay): void {
   }
 
   // The importable Phase-4 producer owns cell resolution and visual projection.
-  // These closures are its live state reads; the terminal is merely its first sink.
-  const frame = produceWorldFrame({
+  // These callbacks are the real repaint's current-state reads; the terminal is
+  // only one sink for the exact frame this call produces.
+  const frame = projectLiveWorld({
     width: state.chunk.width,
     height: state.chunk.height,
     origin: { x: camX, y: camY },
@@ -7121,10 +7122,10 @@ function render(targeting?: TargetingOverlay): void {
     unknownForeground: UI_BG,
     pathColours: pathColourAt,
     gridKey: ({ x, y }) => gridIndex(x, y),
-    colorToCss,
-    isSeen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y)),
+    css: colorToCss,
+    seen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y)),
     knownFeature: ({ x, y }) => knownFeat(state, loc(x, y)),
-    rememberedTerrain: ({ x, y }, kf) => {
+    remembered: ({ x, y }, kf) => {
       const f = features.get(kf);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
       const tile = tileMap
@@ -7140,17 +7141,17 @@ function render(targeting?: TargetingOverlay): void {
       };
       return {
         terrain,
-        drawn: { ...terrain, css: dim(terrain.css), ...(tile ? { tile } : {}) },
-        ...(tile ? { tile } : {}),
+        visual: { ...terrain, css: dim(terrain.css), ...(tile ? { tile } : {}) },
+        ...(tile ? { terrainAsset: tile } : {}),
       };
     },
-    knownObjectShown: ({ x, y }) => knownObjectShown(x, y) ?? undefined,
-    rememberedObject: (memory, { x, y }) => rememberedObjectCell(memory, x, y),
-    seenTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
+    rememberedObjectAt: ({ x, y }) => knownObjectShown(x, y) ?? undefined,
+    rememberedObjectGlyph: (memory, { x, y }) => rememberedObjectCell(memory, x, y),
+    terrainAt: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
     traps: trapAt,
     objects: objectAt,
     monsters: monsterAt,
-    composeMonster,
+    monsterGlyph: composeMonster,
     playerGlyph: playerMapGlyph,
     playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
   }, glyphWorldFrameSink(term));

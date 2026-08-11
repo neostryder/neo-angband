@@ -479,15 +479,15 @@ you need to wrap a transformer installed by an earlier mod. A failed transform
 is reported and the unmodified menu stays openable.
 
 This is still not a total-front-end manifest field. The host now invokes the
-extracted world-frame producer from its actual map repaint and passes its
+extracted world-render-data producer from its actual map repaint and passes its
 renderer-neutral `WorldFrame` to a host-owned `WorldFrameSink`: grids retain semantic
 terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
 while the glyph projection is only the current terminal fallback (including its
 terrain-under-foreground tile inputs, even for a path over otherwise bare seen
 terrain). That makes the
 world data ready for a later isometric or 3D consumer. Tests execute that
-producer for the unmodded glyph sink's pre-frame glyph tuples and prove a
-separately owned sink receives the exact same frame,
+producer for the unmodded glyph sink's pre-frame glyph tuples and prove an
+independently owned sink receives the exact same frame,
 but no plugin can select or receive a frontend until the Phase-5 manifest member
 exists.
 
