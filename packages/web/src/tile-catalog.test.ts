@@ -489,9 +489,9 @@ describe("the game does not know or expect any particular mod", () => {
     /* The extracted production resolver builds that foreground visual, then
      * the live shell sends its completed frame to the glyph sink. The producer
      * tests execute this path; these checks keep main routed to it. */
-    const producer = read("world-frame-producer.ts");
-    expect(producer).toMatch(/drawn = p\.rememberedObject\(memory, grid\);/);
-    expect(main).toMatch(/produceWorldFrame\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
+    const producer = read("world-render-data.ts");
+    expect(producer).toMatch(/visual = read\.rememberedObjectGlyph\(object, grid\);/);
+    expect(main).toMatch(/projectLiveWorld\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
   });
 
   /**
