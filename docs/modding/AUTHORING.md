@@ -482,7 +482,8 @@ This is still not a total-front-end manifest field. The host now also produces a
 renderer-neutral `WorldFrame` from its actual map repaint: grids retain semantic
 terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
 while the glyph projection is only the current terminal fallback (including its
-terrain-under-foreground tile inputs). That makes the
+terrain-under-foreground tile inputs, even for a path over otherwise bare seen
+terrain). That makes the
 world data ready for a later isometric or 3D consumer, but no plugin can select
 or receive a frontend until the Phase-5 manifest member exists.
 
