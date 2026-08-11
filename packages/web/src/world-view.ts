@@ -132,10 +132,12 @@ export function buildWorldFrame(p: BuildWorldFrameParams): WorldFrame {
 }
 
 /**
- * The live production path: make a frame once, then hand that same value to
- * whichever renderer owns this repaint.  `main.ts` calls this rather than
- * separately building and painting, so tests of this function cover the
- * producer-to-consumer boundary the game actually uses.
+ * The live production path: build one new frame wrapper and cells array, then
+ * hand that exact frame object to the sink and return it.  Its viewport values,
+ * resolved cells, and optional player are the values supplied by the producer;
+ * this function does not clone them. `main.ts` calls this rather than separately
+ * building and painting, so its tests cover the production producer-to-consumer
+ * boundary.
  */
 export function renderWorldFrame(
   params: BuildWorldFrameParams,
