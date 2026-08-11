@@ -287,16 +287,17 @@ hand a replacement renderer real work to do; declaring a capability before that
 host path exists would be an inert seam.
 
 The same boundary applies to the live `WorldFrame` in
-`packages/web/src/world-view.ts`: `render()` produces it from the actual map
-knowledge path and passes it to its `WorldFrameSink`; the default glyph terminal
+`packages/web/src/world-view.ts`: `render()` invokes the extracted
+`world-frame-producer.ts` with the actual map-knowledge reads and passes its
+frame to a `WorldFrameSink`; the default glyph terminal
 is that sink and consumes its fallback visual
 projection, including the terrain-under-foreground tile inputs for a path over
 otherwise bare seen terrain. The frame
 carries semantic feature/trap/object/monster ids,
 visibility, ordered layers, cursor, and player placement, so a later selected
 front end can make an isometric or 3D view without decoding terminal glyphs.
-The unmodded glyph-sink control and an independently owned sink are both
-exercised against this production pipeline. It is deliberately not a manifest
+Tests execute that production producer for the unmodded glyph-sink control, and
+prove that an independently owned sink receives its exact frame. It is deliberately not a manifest
 capability until the Phase-5 `frontend` member can receive it; a capability with
 no recipient would be a false seam.
 
