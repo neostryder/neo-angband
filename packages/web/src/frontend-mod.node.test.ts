@@ -69,16 +69,34 @@ async function bootDiskFrontendCode() {
   return { disk, code: activeModCode() };
 }
 
-function reads(playerGrid: { x: number; y: number }): LiveWorldRead<never, never> {
-  const terrain: ResolvedGlyph = { ch: ".", attr: 1, css: "#777", layer: { kind: "terrain", id: 1 } };
+function reads(
+  playerGrid: { x: number; y: number },
+  cave: { width: number; height: number } = { width: 2, height: 1 },
+  viewport: { width: number; height: number; origin: { x: number; y: number } } = { width: 2, height: 1, origin: { x: 0, y: 0 } },
+): LiveWorldRead<never, never> {
+  const caveKey = ({ x, y }: { x: number; y: number }) => y * cave.width + x;
+  const terrain = new Map<number, ResolvedGlyph>();
+  for (let y = 0; y < cave.height; y++) {
+    for (let x = 0; x < cave.width; x++) {
+      const id = 1 + (x + y * 2) % 3;
+      terrain.set(caveKey({ x, y }), { ch: ".", attr: id, css: `#77${id}`, layer: { kind: "terrain", id } });
+    }
+  }
+  const terrainAt = (grid: { x: number; y: number }): ResolvedGlyph => {
+    const glyph = terrain.get(caveKey(grid));
+    if (!glyph) throw new RangeError(`test cave has no terrain at ${grid.x},${grid.y}`);
+    return glyph;
+  };
   return {
-    width: 2, height: 1, origin: { x: 0, y: 0 }, size: { width: 2, height: 1 }, screenOrigin: { x: 4, y: 3 },
+    width: cave.width, height: cave.height, origin: viewport.origin,
+    size: { width: viewport.width, height: viewport.height }, screenOrigin: { x: 4, y: 3 },
     playerGrid, cursorBackground: "#123", unknownForeground: "#000", pathColours: new Map(),
-    gridKey: ({ x, y }) => y * 2 + x, css: () => "#777", seen: () => true, knownFeature: () => -1,
-    remembered: () => ({ terrain, visual: terrain }), rememberedObjectAt: () => undefined,
-    rememberedObjectGlyph: () => terrain, terrainAt: () => terrain,
+    gridKey: caveKey,
+    css: () => "#777", seen: () => true, knownFeature: () => -1,
+    remembered: (grid) => ({ terrain: terrainAt(grid), visual: terrainAt(grid) }), rememberedObjectAt: () => undefined,
+    rememberedObjectGlyph: () => terrainAt(viewport.origin), terrainAt,
     traps: new Map<number, ResolvedGlyph>(), objects: new Map<number, ResolvedGlyph>(), monsters: new Map<number, never>(),
-    monsterGlyph: (_under, monster) => monster, playerGlyph: () => ({ ch: "@", css: "#fff" }), playerTerrain: () => terrain,
+    monsterGlyph: (_under, monster) => monster, playerGlyph: () => ({ ch: "@", css: "#fff" }), playerTerrain: terrainAt,
   };
 }
 
@@ -101,9 +119,13 @@ describe("a disk-loaded frontend plugin", () => {
     expect(frontend?.id).toBe("late-view");
     expect(faults).toEqual([]);
 
-    const playerGrid = { x: 1, y: 0 };
+    const cave = { width: 198, height: 66 };
+    const dungeon = { width: 66, height: 22, origin: { x: 100, y: 22 } };
+    expect(dungeon.origin.x + dungeon.width).toBeLessThanOrEqual(cave.width);
+    expect(dungeon.origin.y + dungeon.height).toBeLessThanOrEqual(cave.height);
+    const playerGrid = { x: dungeon.origin.x + 33, y: dungeon.origin.y + 11 };
     const producedFrame = projectLiveWorld(
-      reads(playerGrid),
+      reads(playerGrid, cave, dungeon),
       frontendWorldFrameSink(
         glyphWorldFrameSink({ put: () => { throw new Error("selected frontend should replace glyph paint"); } }),
         frontend,
@@ -114,17 +136,22 @@ describe("a disk-loaded frontend plugin", () => {
     const received = (globalThis as FrontendGlobal).__neoFrontendFrames!;
     expect(received).toHaveLength(1);
     expect(received[0]?.owner).toBe("late-view");
+    expect(producedFrame.viewport.size).toEqual({ width: dungeon.width, height: dungeon.height });
+    expect(producedFrame.cells).toHaveLength(1_452);
+    expect(producedFrame.cells).toHaveLength(dungeon.width * dungeon.height);
     const expectedBadge = `WorldFrame ${producedFrame.viewport.size.width}x${producedFrame.viewport.size.height} (${producedFrame.cells.length} cells)`;
     expect(received[0]?.badge).toBe(expectedBadge);
-    expect(received[0]?.badge).toMatch(/^WorldFrame \d+x\d+ \(\d+ cells\)$/);
     expect(received[0]?.badge).not.toContain("undefined");
     const frame = received[0]!.frame;
-    expect(frame.cells[0]).toMatchObject({ terrain: { id: 1 }, visibility: "seen" });
-    expect(frame.player).toMatchObject({ grid: { x: 1, y: 0 }, layer: { kind: "player" } });
+    expect(frame).toEqual(producedFrame);
+    expect(frame).not.toBe(producedFrame);
+    expect(frame.cells).toHaveLength(dungeon.width * dungeon.height);
+    expect(new Set(frame.cells.map((cell) => cell.terrain?.id))).toEqual(new Set([1, 2, 3]));
+    expect(frame.player).toMatchObject({ grid: playerGrid, layer: { kind: "player" } });
     expect(Object.isFrozen(frame)).toBe(true);
     expect(Object.isFrozen(frame.player?.grid)).toBe(true);
     playerGrid.x = 9;
-    expect(frame.player?.grid).toEqual({ x: 1, y: 0 });
+    expect(frame.player?.grid).toEqual({ x: dungeon.origin.x + 33, y: dungeon.origin.y + 11 });
 
     const frameWithMissingWidth = {
       ...producedFrame,
