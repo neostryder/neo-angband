@@ -231,8 +231,8 @@ import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
 import {
   backgroundAssetForWorldCell,
-  buildWorldFrame,
-  paintWorldFrame,
+  glyphWorldFrameSink,
+  renderWorldFrame,
   type WorldLayer,
   type WorldPlayer,
   type WorldVisual,
@@ -7155,7 +7155,7 @@ function render(targeting?: TargetingOverlay): void {
     };
   }
 
-  const frame = buildWorldFrame({
+  const frame = renderWorldFrame({
     width: state.chunk.width,
     height: state.chunk.height,
     origin: { x: camX, y: camY },
@@ -7256,10 +7256,9 @@ function render(targeting?: TargetingOverlay): void {
         cursor: isCursor,
       };
     },
-  });
+  }, glyphWorldFrameSink(term));
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
-  paintWorldFrame(term, frame);
 
   if (layout === "top") renderCompactVitals(1, cols);
   else if (layout === "left") renderSidebar(rows);

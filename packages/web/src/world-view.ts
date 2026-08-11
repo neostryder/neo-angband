@@ -83,6 +83,16 @@ export interface BuildWorldFrameParams {
 }
 
 /**
+ * The one consumer boundary for a produced world frame.  Phase 4 deliberately
+ * keeps ownership here in the host: Phase 5 will decide which installed front
+ * end supplies this sink.  Naming the boundary now prevents the default glyph
+ * projection from becoming a second, privileged producer path.
+ */
+export interface WorldFrameSink {
+  present(frame: WorldFrame): void;
+}
+
+/**
  * Preserve grid_data_as_text's terrain pair when a visible path marker covers
  * a tile. A remembered path has always been glyph-only; the visible path is
  * painted by the normal foreground pass and therefore keeps its terrain tile.
@@ -122,6 +132,21 @@ export function buildWorldFrame(p: BuildWorldFrameParams): WorldFrame {
 }
 
 /**
+ * The live production path: make a frame once, then hand that same value to
+ * whichever renderer owns this repaint.  `main.ts` calls this rather than
+ * separately building and painting, so tests of this function cover the
+ * producer-to-consumer boundary the game actually uses.
+ */
+export function renderWorldFrame(
+  params: BuildWorldFrameParams,
+  sink: WorldFrameSink,
+): WorldFrame {
+  const frame = buildWorldFrame(params);
+  sink.present(frame);
+  return frame;
+}
+
+/**
  * The default glyph projection of a live frame. Keeping this consumer beside
  * the frame contract makes its player-last order and tile inputs executable
  * rather than an implicit convention in main.ts.
@@ -138,6 +163,11 @@ export function paintWorldFrame(surface: Pick<GridSurface, "put">, frame: WorldF
       worldVisualToGlyph(frame.player.visual),
     );
   }
+}
+
+/** The unmodded renderer's sink; it is an ordinary consumer of the live frame. */
+export function glyphWorldFrameSink(surface: Pick<GridSurface, "put">): WorldFrameSink {
+  return { present: (frame) => paintWorldFrame(surface, frame) };
 }
 
 function worldVisualToGlyph(visual: WorldVisual): Glyph {

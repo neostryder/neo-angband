@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { Glyph, RenderAssetRef } from "./term";
 import {
   backgroundAssetForWorldCell,
-  buildWorldFrame,
-  paintWorldFrame,
+  glyphWorldFrameSink,
+  renderWorldFrame,
   type WorldCell,
 } from "./world-view";
 
-describe("buildWorldFrame", () => {
+describe("the live WorldFrame render path", () => {
   it("streams the in-bounds viewport in row order with semantic layers intact", () => {
     const seen: WorldCell[] = [];
-    const frame = buildWorldFrame({
+    const frames: WorldCell[][] = [];
+    const frame = renderWorldFrame({
       width: 3,
       height: 2,
       origin: { x: -1, y: 0 },
@@ -35,7 +36,7 @@ describe("buildWorldFrame", () => {
         visual: { ch: "@", fg: "#fff" },
         cursor: false,
       },
-    });
+    }, { present: (produced) => frames.push([...produced.cells]) });
 
     expect(seen.map((c) => [c.grid, c.screen])).toEqual([
       [{ x: 0, y: 0 }, { x: 11, y: 4 }],
@@ -50,6 +51,7 @@ describe("buildWorldFrame", () => {
       cursor: true,
     });
     expect(frame.player).toMatchObject({ layer: { kind: "player", id: 0 } });
+    expect(frames).toEqual([[...frame.cells]]);
   });
 });
 
@@ -64,11 +66,11 @@ describe("the live WorldFrame projection", () => {
     expect(backgroundAssetForWorldCell("seen", floor, [])).toBeUndefined();
   });
 
-  it("runs resolved cells through the frame consumer with exact tile inputs and player-last order", () => {
+  it("keeps the unmodded glyph sink's frame-to-glyph output unchanged", () => {
     const calls: Array<{ x: number; y: number; glyph: Glyph }> = [];
     const floor = asset("floor");
     const path = asset("path");
-    const frame = buildWorldFrame({
+    renderWorldFrame({
       width: 2,
       height: 1,
       origin: { x: 0, y: 0 },
@@ -92,14 +94,49 @@ describe("the live WorldFrame projection", () => {
         visual: { ch: "@", fg: "#fff", backgroundAsset: floor },
         cursor: false,
       },
-    });
-
-    paintWorldFrame({ put: (x, y, glyph) => calls.push({ x, y, glyph }) }, frame);
+    }, glyphWorldFrameSink({ put: (x, y, glyph) => calls.push({ x, y, glyph }) }));
 
     expect(calls).toEqual([
       { x: 10, y: 4, glyph: { ch: "*", fg: "#f00", tile: path, bgTile: floor } },
       { x: 11, y: 4, glyph: { ch: ".", fg: "#777" } },
       { x: 11, y: 4, glyph: { ch: "@", fg: "#fff", bgTile: floor } },
     ]);
+  });
+
+  it("hands a separately owned renderer the same semantic frame the live path produced", () => {
+    const received: WorldCell[][] = [];
+    const modOwnedLayer = { kind: "object" as const, id: 901 };
+
+    renderWorldFrame({
+      width: 1,
+      height: 1,
+      origin: { x: 0, y: 0 },
+      size: { width: 1, height: 1 },
+      screenOrigin: { x: 3, y: 2 },
+      resolveCell: (grid, screen): WorldCell => ({
+        grid,
+        screen,
+        visibility: "seen",
+        terrain: { kind: "terrain", id: 4 },
+        overlays: [modOwnedLayer],
+        visual: { ch: "!", fg: "#f0f" },
+        cursor: false,
+      }),
+    }, {
+      /* Phase 5 will install this from a plugin.  Phase 4 proves that a
+       * non-glyph owner can already consume the live frame without decoding
+       * the fallback character. */
+      present: (produced) => received.push([...produced.cells]),
+    });
+
+    expect(received).toEqual([[{
+      grid: { x: 0, y: 0 },
+      screen: { x: 3, y: 2 },
+      visibility: "seen",
+      terrain: { kind: "terrain", id: 4 },
+      overlays: [modOwnedLayer],
+      visual: { ch: "!", fg: "#f0f" },
+      cursor: false,
+    }]]);
   });
 });

@@ -288,14 +288,17 @@ host path exists would be an inert seam.
 
 The same boundary applies to the live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` produces it from the actual map
-knowledge path, and the default glyph terminal consumes its fallback visual
+knowledge path and passes it to its `WorldFrameSink`; the default glyph terminal
+is that sink and consumes its fallback visual
 projection, including the terrain-under-foreground tile inputs for a path over
 otherwise bare seen terrain. The frame
 carries semantic feature/trap/object/monster ids,
 visibility, ordered layers, cursor, and player placement, so a later selected
 front end can make an isometric or 3D view without decoding terminal glyphs.
-It is deliberately not a manifest capability until the Phase-5 `frontend`
-member can receive it; a capability with no recipient would be a false seam.
+The unmodded glyph-sink control and an independently owned sink are both
+exercised against this production pipeline. It is deliberately not a manifest
+capability until the Phase-5 `frontend` member can receive it; a capability with
+no recipient would be a false seam.
 
 The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
 single device-neutral route by which keyboard and keymap input reaches screens;

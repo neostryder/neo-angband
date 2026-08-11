@@ -487,11 +487,11 @@ describe("the game does not know or expect any particular mod", () => {
      * tile on screen - which is exactly how this was reported. */
     expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
     /* The actual map resolver builds that foreground visual, then sends the
-     * completed frame through the one terminal consumer. Its executable frame
-     * projection is covered in world-view.test.ts; this check keeps the live
-     * resolver wired to that consumer. */
+     * completed frame through the live sink boundary. Its executable frame
+     * pipeline is covered in world-view.test.ts; this check keeps the live
+     * resolver wired to that boundary. */
     expect(main).toMatch(/drawn = rememberedObjectCell\(mem, gx, gy\);/);
-    expect(main).toMatch(/paintWorldFrame\(term, frame\);/);
+    expect(main).toMatch(/renderWorldFrame\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
   });
 
   /**
