@@ -792,6 +792,7 @@ export async function runTileModePage(
   }));
   const idx = await selectFromMenu(
     term,
+    "core:graphics-mode",
     "Graphics (tiles) mode",
     items,
     "[ choose a tile set, ESC to keep current ]",
@@ -857,6 +858,7 @@ export async function runOptionsMenu(
   for (;;) {
     const idx = await selectFromMenu(
       term,
+      "core:options",
       "Options Menu",
       items,
       `[ ${tagHint} to choose, ESC to return ]`,

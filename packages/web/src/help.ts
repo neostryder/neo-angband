@@ -480,6 +480,7 @@ export async function runHelp(term: GridSurface & GridPointerInput): Promise<voi
     const index = helpIndex();
     const pick = await selectFromMenu(
       term,
+      "core:help-index",
       "Angband Help",
       index.map((entry) => ({ label: entry.label })),
       "[ a-z to choose, ESC to exit ]",

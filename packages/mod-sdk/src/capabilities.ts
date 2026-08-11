@@ -69,6 +69,9 @@
  *                             bug-fixes mods use, GameState.modRules, are a
  *                             DECLARATIVE manifest field - PackManifest.rules -
  *                             applied by the host, so they need no capability.)
+ *                             "registry:menu" rewrites the semantic rows of
+ *                             one stable front-end menu id. It is distinct from
+ *                             a future full front-end selection capability.
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -93,7 +96,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|rune|tval|vocab)$/;
+  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|rune|tval|vocab|menu)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

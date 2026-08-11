@@ -14,6 +14,7 @@ import {
   DEATH_MENU_FOOTER,
 } from "./game-menu";
 import { selectFromMenu, menuLetter, MENU_CLOSE } from "./overlay";
+import { menuRegistry } from "./menu-registry";
 import type { GlyphTerm } from "./term";
 
 interface FakeWindow {
@@ -92,6 +93,7 @@ function press(win: FakeWindow, key: string, mods: { ctrl?: boolean } = {}): voi
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
+  menuRegistry.clear();
 });
 
 const ASCII = /^[\x20-\x7e]*$/u;
@@ -111,6 +113,10 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       expect(e.item.hint, `${e.action} needs a hint`).toBeTruthy();
       expect(e.item.label).toMatch(ASCII);
       expect(e.item.hint!).toMatch(ASCII);
+      expect(e.item).toMatchObject({
+        id: `core:game-menu:${e.action}`,
+        semantic: { kind: "command", ref: e.action },
+      });
     }
     expect(GAME_MENU_FOOTER).toMatch(ASCII);
   });
@@ -147,6 +153,23 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     for (let i = 0; i < target; i++) press(win, "ArrowDown");
     press(win, "Enter");
     expect(await done).toBe(target);
+  });
+
+  it("uses a transformed row's stable id, not its displayed position", async () => {
+    const entries = gameMenuEntries();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    menuRegistry.forOwner("test-mod").register("core:game-menu", (_id, rows) => [...rows].reverse());
+    const done = selectFromMenu(
+      term,
+      "core:game-menu",
+      "Game menu",
+      entries.map((entry) => entry.item),
+      GAME_MENU_FOOTER,
+    );
+    press(win, "Enter");
+    expect(await done).toBe(entries.length - 1);
   });
 
   it("every row is reachable by double tap; ESC resumes (null)", async () => {
@@ -204,6 +227,10 @@ describe("deathMenuEntries (ui-death.c death_actions)", () => {
     for (const e of entries) {
       expect(e.item.hint).toBeTruthy();
       expect(e.item.label).toMatch(ASCII);
+      expect(e.item).toMatchObject({
+        id: `core:death-menu:${e.action}`,
+        semantic: { kind: "command", ref: e.action },
+      });
     }
     expect(DEATH_MENU_FOOTER).toMatch(ASCII);
   });

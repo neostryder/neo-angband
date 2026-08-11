@@ -20,6 +20,8 @@ import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import type { Overview } from "./mapview";
+import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
+import { menuRegistry } from "./menu-registry";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
 export interface ScreenLine {
@@ -980,10 +982,11 @@ export function promptNumber(
 }
 
 /** One selectable row in a menu. Disabled rows show dimmed and cannot be picked. */
-export interface MenuItem {
-  label: string;
-  color?: string;
-  disabled?: boolean;
+export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
+  /** Stable row identity for front-end transformers. Omitted only by legacy tests. */
+  id?: string;
+  /** What this row means, independent of its localized label or current layout. */
+  semantic?: MenuSemantics;
   /**
    * An explicit tag letter (menu_action's own `.c` tag, e.g. option_actions[]'
    * stable a/b/d/h in ui-options.c), overriding the default positional a,b,c..
@@ -1183,11 +1186,42 @@ export const MENU_REFRESH = -4;
 
 export function selectFromMenu(
   term: GridSurface & GridPointerInput,
+  id: string,
   title: string,
   items: readonly MenuItem[],
-  footer = "[ a-z to choose, ESC to cancel ]",
+  footer?: string,
   extra?: SelectMenuOptions,
+): Promise<number | null>;
+/** Compatibility for focused renderer tests; production callers declare an id. */
+export function selectFromMenu(
+  term: GridSurface & GridPointerInput,
+  title: string,
+  items: readonly MenuItem[],
+  footer?: string,
+  extra?: SelectMenuOptions,
+): Promise<number | null>;
+export function selectFromMenu(
+  term: GridSurface & GridPointerInput,
+  idOrTitle: string,
+  titleOrItems: string | readonly MenuItem[],
+  itemsOrFooter?: readonly MenuItem[] | string,
+  footerOrExtra?: string | SelectMenuOptions,
+  maybeExtra?: SelectMenuOptions,
 ): Promise<number | null> {
+  const declared = typeof titleOrItems === "string";
+  const id = declared ? idOrTitle : "test:legacy-menu";
+  const title = declared ? titleOrItems : idOrTitle;
+  const rawItems = (declared ? itemsOrFooter : titleOrItems) as readonly MenuItem[];
+  const footer = (declared ? footerOrExtra : itemsOrFooter) as string | undefined;
+  const extra = (declared ? maybeExtra : footerOrExtra) as SelectMenuOptions | undefined;
+  const originalRows: readonly MenuTransformRow[] = rawItems.map((item, index) => ({
+    ...item,
+    id: item.id ?? `${id}:row:${index}`,
+    semantic: item.semantic ?? { kind: "choice", ref: index },
+  }));
+  const items = (declared ? menuRegistry.transform(id, originalRows) : originalRows) as readonly MenuItem[];
+  const originalIndex = new Map(originalRows.map((row, index) => [row.id, index]));
+  const displayedFooter = footer ?? "[ a-z to choose, ESC to cancel ]";
   return new Promise<number | null>((resolve) => {
     let cursor = items.findIndex((it) => !it.disabled);
     if (cursor < 0) cursor = 0;
@@ -1213,7 +1247,7 @@ export function selectFromMenu(
       const { cols, rows } = term.size();
       /* Upstream's header is the prompt AND the legend on one row (get_item builds
        * `header` from both), because the box it opens has no footer line. */
-      const heading = boxed ? `${title} ${extra?.footer ?? footer}` : title;
+      const heading = boxed ? `${title} ${extra?.footer ?? displayedFooter}` : title;
       /* menu_layout gives a menu with a `header` its own row, and the list starts
        * below it (the spell menu's "Name Lv Mana Fail Info", ui-spell.c:250). Off
        * screen that is BODY_TOP's spare row; in a box it has to be counted. */
@@ -1350,7 +1384,7 @@ export function selectFromMenu(
       }
       /* No footer row in overlay mode: the legend is already on the title row,
        * and a bar across the bottom of the map is the thing this avoids. */
-      if (!boxed) term.print(0, rows - 1, (extra?.footer ?? footer).slice(0, cols - 1), DIM);
+      if (!boxed) term.print(0, rows - 1, (extra?.footer ?? displayedFooter).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
@@ -1370,7 +1404,15 @@ export function selectFromMenu(
         paint();
         return;
       }
-      finish(i);
+      /* A transformer may reorder rows. Callers intentionally still receive an
+       * index into their own source list, so map the chosen stable row id back
+       * rather than treating its visual position as an action. A genuinely new
+       * row has no faithful-shell action yet; it remains visible for a replacing
+       * front end but cannot accidentally invoke whichever core action happened
+       * to occupy the same ordinal slot. */
+      const source = originalIndex.get(it.id ?? "");
+      if (source === undefined) return;
+      finish(source);
     };
     const commands = extra?.commands;
     /**

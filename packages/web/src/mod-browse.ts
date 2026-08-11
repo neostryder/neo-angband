@@ -352,6 +352,7 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
   if (on) {
     const off = await selectFromMenu(
       term,
+      "core:mods-third-party-disable",
       "Third-party mods are allowed",
       [
         { label: "Leave them allowed", color: C_FG, hint: "No change." },
@@ -382,6 +383,7 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
   ]);
   const yes = await selectFromMenu(
     term,
+    "core:mods-third-party-consent",
     "Allow third-party mods?",
     [
       { label: "No, not for now", color: C_FG, hint: "Only the recommended list stays available." },
@@ -573,7 +575,7 @@ async function showSource(
       });
     }
 
-    const pick = await selectFromMenu(term, title, items, "[ ESC to go back ]", {
+    const pick = await selectFromMenu(term, "core:mod-browse", title, items, "[ ESC to go back ]", {
       detail: (i) => {
         const e = entries[i];
         if (!e) return [];
@@ -642,7 +644,7 @@ async function showSource(
               { label: "Remove", color: C_BAD, hint: "Delete its files." },
             ];
 
-    const what = await selectFromMenu(term, entry.mod.name, actions, "[ ESC to go back ]");
+    const what = await selectFromMenu(term, "core:mod-browse-actions", entry.mod.name, actions, "[ ESC to go back ]");
     if (what === null) continue;
     if (at !== null && what === 1) {
       const gone = await deps.uninstall(entry.mod.id);
@@ -857,7 +859,7 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
     ];
 
     const title = folder === null ? "Import a mod" : `Import a mod  -  ${folder}`;
-    const pick = await selectFromMenu(term, title, items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(term, "core:mod-import", title, items, "[ ESC to go back ]");
     if (pick === null) return changed;
 
     if (pick === items.length - 1) {
@@ -982,7 +984,7 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
       { label: "What is this?", color: C_DIM, hint: "Where mods come from." },
     ];
 
-    const pick = await selectFromMenu(term, "Get mods", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(term, "core:mod-get", "Get mods", items, "[ ESC to go back ]");
     if (pick === null) return changed;
 
     if (pick === 0) {
@@ -1145,7 +1147,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
       })),
     ];
 
-    const pick = await selectFromMenu(term, "Update installed mods", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(term, "core:mod-update", "Update installed mods", items, "[ ESC to go back ]");
     if (pick === null) return changed;
 
     /* Snapshotted before the first install: `refresh()` is re-read at the top of the

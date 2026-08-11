@@ -687,6 +687,7 @@ async function gameplayNoscorePrompt(term: GridSurface & GridPointerInput, m: Ca
   ], "[ Press ESC to review, then choose ]");
   const pick = await selectFromMenu(
     term,
+    "core:mod-enable-gameplay",
     `Enable gameplay-changing mod "${m.name}"?`,
     [
       { label: "Yes, enable and mark save non-scoring", color: C_WARN },
@@ -730,6 +731,7 @@ async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod
   await showTextScreen(term, `Consent - ${m.name}`, lines, "[ Press ESC to review, then choose ]");
   const pick = await selectFromMenu(
     term,
+    "core:mod-capability-consent",
     `Grant these capabilities to "${m.name}"?`,
     [
       { label: "Yes, enable and grant", color: C_ENABLED },
@@ -765,6 +767,7 @@ async function enableAfterInstall(
   if (m.enabled) return true;
   const pick = await selectFromMenu(
     term,
+    "core:mod-enable",
     `Turn ${m.name} on now?`,
     [
       {
@@ -866,6 +869,7 @@ async function confirmDeclaredConflicts(
 
   const pick = await selectFromMenu(
     term,
+    "core:mod-enable-anyway",
     `Enable ${m.name} anyway?`,
     [
       { label: "Enable it anyway", color: C_WARN },
@@ -902,6 +906,7 @@ async function manageMod(
     if (m.missing) {
       const pick = await selectFromMenu(
         term,
+        "core:mod-missing",
         m.name,
         [
           {
@@ -996,6 +1001,7 @@ async function manageMod(
 
     const pick = await selectFromMenu(
       term,
+      "core:mod-details",
       `${m.name}  v${m.version}`,
       items,
       "[ choose an action; ESC to go back ]",
@@ -1115,6 +1121,7 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
 
   const pick = await selectFromMenu(
     term,
+    "core:mod-apply-order",
     "Apply this order?",
     [
       { label: "Apply it", color: C_ENABLED },
@@ -1182,7 +1189,7 @@ async function manageSections(
     });
     items.push({ label: "Back", color: C_DIM });
 
-    const pick = await selectFromMenu(term, title, items, "[ Space or Enter toggles a part; ESC to go back ]", {
+    const pick = await selectFromMenu(term, "core:mod-parts", title, items, "[ Space or Enter toggles a part; ESC to go back ]", {
       initialCursor: cursor,
       onHighlight: (i) => {
         cursor = i;
@@ -1310,6 +1317,7 @@ async function manageProfiles(
 
     const pick = await selectFromMenu(
       term,
+      "core:mod-profiles",
       "Mod profiles",
       items,
       "[ save / apply / delete; ESC to go back ]",
@@ -1377,6 +1385,7 @@ async function managePatches(
     });
     const pick = await selectFromMenu(
       term,
+      "core:mod-rule-flags",
       title,
       items,
       "[ On with the mod; Space or Enter opts one out; ESC to go back ]",
@@ -1619,7 +1628,7 @@ async function manageModFolder(
   add("What is this?", "about", C_DIM, "Where mods come from, and the folder layout.");
 
   for (;;) {
-    const pick = await selectFromMenu(term, "Mods folder", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(term, "core:mods-folder", "Mods folder", items, "[ ESC to go back ]");
     if (pick === null) return false;
     const row = rows[pick];
     if (row === "about") {
@@ -1883,7 +1892,7 @@ export async function runModManager(
              * screen telling a player to do something there is nothing to do. */
             "[ No mods installed - Install a mod... to get one; ESC to go back ]"
           : "[ Space turns one on or off, Enter opens it; ESC to go back ]";
-    const pick = await selectFromMenu(term, "Mods", items, footer, {
+    const pick = await selectFromMenu(term, "core:mods", "Mods", items, footer, {
       initialCursor: cursorId === null ? cursor : (() => {
         const at = rowKinds.findIndex((r) => r.kind === "mod" && "id" in r && r.id === cursorId);
         return at >= 0 ? at : Math.min(cursor, items.length - 1);
@@ -2076,6 +2085,7 @@ export async function runModManager(
     const newTiles = [...enabledTileModIds(deps)].some((id) => !tileModsAtEntry.has(id));
     const pick = await selectFromMenu(
       term,
+      "core:mod-apply",
       newTiles ? "Apply mod changes? (adds tile sets to Graphics)" : "Apply mod changes?",
       [
         {

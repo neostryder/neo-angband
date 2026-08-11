@@ -468,11 +468,19 @@ translated. Those are worth reporting.
 
 ## Front-end groundwork
 
-There is no front-end manifest field to use yet. The host now draws through a
-renderer-neutral `GridSurface`, and its existing canvas terminal is merely one
-implementation. This is intentional groundwork rather than a promise that a
-plugin can replace the UI today: the plugin-facing selection seam arrives only
-when it can be loaded, arbitrated, and exercised from a real mod folder.
+The host draws through a renderer-neutral `GridSurface`, and its existing canvas
+terminal is merely one implementation. Menus are now declarative front-end data:
+request `registry:menu` and use `host.menus.register("core:game-menu", fn)` to
+rewrite one named menu's rows. The id is stable and never a localized title;
+each row carries a stable id plus `semantic.kind`, optional `semantic.ref`, and
+small scalar `semantic.data`, so an alternative layout works from meaning rather
+than parsing its label. Call `host.menus.handlerFor(id)` before registering when
+you need to wrap a transformer installed by an earlier mod. A failed transform
+is reported and the unmodified menu stays openable.
+
+This is still not a total-front-end manifest field. It makes menus re-presentable
+without promising that a graphical or 3D front end ships; renderer selection and
+world data remain later seams.
 
 Input follows the same staged rule. `UiInput` is available to host code through
 the one input door and can represent a continuous direction (vector, magnitude,

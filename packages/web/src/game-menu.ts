@@ -56,7 +56,7 @@ export const GAME_MENU_FOOTER = "[ a-z to choose, tap a row, ESC to resume ]";
  * the app; separating them left the desktop build with no discoverable way out at
  * all, since a tab's close button has no equivalent there. */
 export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry[] {
-  return [
+  const entries: GameMenuEntry[] = [
     {
       action: "resume",
       item: { label: "Resume play", hint: "Close this menu and return to the dungeon (ESC)." },
@@ -166,6 +166,14 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
         ]
       : []),
   ];
+  return entries.map((entry) => ({
+    ...entry,
+    item: {
+      ...entry.item,
+      id: `core:game-menu:${entry.action}`,
+      semantic: { kind: "command", ref: entry.action },
+    },
+  }));
 }
 
 export type DeathMenuAction =
@@ -190,7 +198,7 @@ export const DEATH_MENU_FOOTER = "[ letters or tap to choose, ESC to quit ]";
  * its tag letter (MN_CASELESS_TAGS). Quit is last because death_screen's own
  * comment requires it to be. */
 export function deathMenuEntries(): DeathMenuEntry[] {
-  return [
+  const entries: DeathMenuEntry[] = [
     {
       action: "info",
       item: { label: "Information", tag: "i", hint: "The final character sheet and gear." },
@@ -228,4 +236,12 @@ export function deathMenuEntries(): DeathMenuEntry[] {
       item: { label: "Quit", tag: "q", hint: "Leave play for the title screen (Ctrl-X)." },
     },
   ];
+  return entries.map((entry) => ({
+    ...entry,
+    item: {
+      ...entry.item,
+      id: `core:death-menu:${entry.action}`,
+      semantic: { kind: "command", ref: entry.action },
+    },
+  }));
 }

@@ -77,7 +77,7 @@ async function confirmDelete(term: GridSurface & GridPointerInput, c: CharMeta):
   const title = c.alive ? `Delete ${who}?` : `${c.name || "(unnamed)"} has died.`;
   const keep = c.alive ? "Keep this character" : "Leave the tombstone";
   const drop = c.alive ? "Delete this save PERMANENTLY" : "Delete this record";
-  const pick = await selectFromMenu(term, title, [{ label: keep }, { label: drop }], "[ ESC to go back ]", {
+  const pick = await selectFromMenu(term, "core:character-delete", title, [{ label: keep }, { label: drop }], "[ ESC to go back ]", {
     ...(c.alive ? { subtitle: "The save is erased from this browser. There is no undo." } : {}),
   });
   return pick === 1;
@@ -151,6 +151,7 @@ export async function runCharacterSelect(
     };
     const pick = await selectFromMenu(
       term,
+      "core:character-select",
       "Select a character",
       [...items, newRow],
       "[ a-z choose, Del delete, Shift-X export, Shift-M import, ESC title ]",
