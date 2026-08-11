@@ -36,6 +36,14 @@ digest in the game's catalogue and must never be moved.
   prose. (`registry:player` is still not one - the only occurrence of that string
   in the tree is a test asserting it is rejected.)
 
+- `parity/tools/c-vs-c-all-pairs.mjs` is back in this repository. It had been
+  moved out with the working record, which left the pooled-object-count question
+  unable to run its own first step from a clean checkout — a measurement
+  instrument is not a record of past work. Its header now also states what it
+  does **not** measure: it computes the null for the *feeling* histograms, not
+  the object-count Stouffer Z, so running it as-is answers a different question
+  than the one it was cited for.
+
 Everything else through 2026-08-11 is in `0.19.0` below.
 
 Current state of the project at version `0.19.0`. High level, what exists today:
