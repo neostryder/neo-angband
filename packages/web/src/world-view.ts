@@ -170,6 +170,18 @@ export function glyphWorldFrameSink(surface: Pick<GridSurface, "put">): WorldFra
   return { present: (frame) => paintWorldFrame(surface, frame) };
 }
 
+/**
+ * Deliver one already-produced frame to more than one host-owned consumer.
+ *
+ * This deliberately fans out the object it is given rather than rebuilding a
+ * frame per consumer: a debugger, recorder, or future alternate renderer must
+ * observe the exact same world snapshot as the glyph terminal. `main.ts`
+ * still installs only the glyph sink until Phase 5 selects another owner.
+ */
+export function teeWorldFrameSink(...sinks: readonly WorldFrameSink[]): WorldFrameSink {
+  return { present: (frame) => { for (const sink of sinks) sink.present(frame); } };
+}
+
 function worldVisualToGlyph(visual: WorldVisual): Glyph {
   return {
     ch: visual.ch,

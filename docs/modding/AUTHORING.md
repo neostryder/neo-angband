@@ -485,9 +485,10 @@ terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
 while the glyph projection is only the current terminal fallback (including its
 terrain-under-foreground tile inputs, even for a path over otherwise bare seen
 terrain). That makes the
-world data ready for a later isometric or 3D consumer. Tests execute that
-producer for the unmodded glyph sink's pre-frame glyph tuples and prove an
-independently owned sink receives the exact same frame,
+world data ready for a later isometric or 3D consumer. Its Phase-4 control
+executes the same producer `main.ts` calls, checks the unmodded glyph sink's
+pre-frame `term.put` tuples, and proves an independently owned host sink
+receives that exact frame in the same call,
 but no plugin can select or receive a frontend until the Phase-5 manifest member
 exists.
 

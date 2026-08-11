@@ -296,8 +296,9 @@ otherwise bare seen terrain. The frame
 carries semantic feature/trap/object/monster ids,
 visibility, ordered layers, cursor, and player placement, so a later selected
 front end can make an isometric or 3D view without decoding terminal glyphs.
-Tests execute the same producer used by `render()` for the unmodded glyph-sink
-control, and prove that an independently owned sink receives its exact frame.
+The Phase-4 control executes the same producer used by `render()`, checks its
+unmodded pre-frame glyph tuples, and tees that exact frame to an independent
+host sink in the same call.
 It is deliberately not a manifest
 capability until the Phase-5 `frontend` member can receive it; a capability with
 no recipient would be a false seam.
