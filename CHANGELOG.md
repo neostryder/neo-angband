@@ -46,6 +46,16 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- **A mod can replace the map frontend.** `ModPlugin.frontend?(ctx)` selects
+  one `WorldFrameSink`, with the later enabled mod winning by load order and
+  lower candidates never constructed. The winner receives a frozen,
+  structurally owned live-world snapshot; it cannot retain the mutable player
+  grid, and a display fault is reported before the faithful glyph sink resumes.
+  The public `WorldFrame` / `WorldFrameSink` types are available type-only from
+  the mod SDK, and the CI fixture loads two real folders from disk to prove the
+  later one receives the production frame while an unmodded control keeps glyph
+  paints unchanged.
+
 - The actual map repaint now invokes an extracted live world-data producer
   that produces a renderer-neutral `WorldFrame` and sends it through a single host `WorldFrameSink`:
   viewport geometry, player knowledge, semantic terrain/object/trap/monster/path

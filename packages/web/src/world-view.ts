@@ -93,6 +93,69 @@ export interface WorldFrameSink {
 }
 
 /**
+ * Make a front-end-owned snapshot of one live frame.
+ *
+ * A plugin is allowed to retain a frame for animation or inspection, so the
+ * object it receives must not retain the game's mutable grid objects.  This is
+ * deliberately a structural copy rather than a JSON round trip: render assets
+ * are opaque renderer-owned values, while every game-derived wrapper and
+ * coordinate is copied and frozen.  The default glyph sink keeps consuming the
+ * live frame directly; only the cross-plugin boundary needs this ownership cut.
+ */
+export function snapshotWorldFrame(frame: WorldFrame): WorldFrame {
+  const copyGrid = (grid: WorldGrid): WorldGrid => Object.freeze({ x: grid.x, y: grid.y });
+  const copyAsset = (asset: RenderAssetRef): RenderAssetRef => Object.freeze({ ...asset });
+  const copyVisual = (visual: WorldVisual): WorldVisual => {
+    const copy: {
+      ch: string; fg: string; bg?: string; asset?: RenderAssetRef; backgroundAsset?: RenderAssetRef;
+    } = { ch: visual.ch, fg: visual.fg };
+    if (visual.bg !== undefined) copy.bg = visual.bg;
+    if (visual.asset !== undefined) copy.asset = copyAsset(visual.asset);
+    if (visual.backgroundAsset !== undefined) copy.backgroundAsset = copyAsset(visual.backgroundAsset);
+    return Object.freeze(copy);
+  };
+  const copyLayer = (layer: WorldLayer): WorldLayer =>
+    Object.freeze({
+      kind: layer.kind,
+      ...(layer.id === undefined ? {} : { id: layer.id }),
+      ...(layer.lighting === undefined ? {} : { lighting: layer.lighting }),
+    });
+  const cells: readonly WorldCell[] = Object.freeze(frame.cells.map((cell) => {
+    const copy: {
+      grid: WorldGrid; screen: WorldGrid; visibility: WorldVisibility; terrain?: WorldLayer;
+      overlays: readonly WorldLayer[]; visual?: WorldVisual; cursor: boolean;
+    } = {
+      grid: copyGrid(cell.grid),
+      screen: copyGrid(cell.screen),
+      visibility: cell.visibility,
+      overlays: Object.freeze(cell.overlays.map(copyLayer)),
+      cursor: cell.cursor,
+    };
+    if (cell.terrain !== undefined) copy.terrain = copyLayer(cell.terrain);
+    if (cell.visual !== undefined) copy.visual = copyVisual(cell.visual);
+    return Object.freeze(copy);
+  }));
+  const player = frame.player === undefined
+    ? undefined
+    : Object.freeze({
+        grid: copyGrid(frame.player.grid),
+        screen: copyGrid(frame.player.screen),
+        layer: copyLayer(frame.player.layer),
+        visual: copyVisual(frame.player.visual),
+        cursor: frame.player.cursor,
+      });
+  return Object.freeze({
+    viewport: Object.freeze({
+      origin: copyGrid(frame.viewport.origin),
+      size: Object.freeze({ width: frame.viewport.size.width, height: frame.viewport.size.height }),
+      screenOrigin: copyGrid(frame.viewport.screenOrigin),
+    }),
+    cells,
+    ...(player === undefined ? {} : { player }),
+  });
+}
+
+/**
  * Preserve grid_data_as_text's terrain pair when a visible path marker covers
  * a tile. A remembered path has always been glyph-only; the visible path is
  * painted by the normal foreground pass and therefore keeps its terrain tile.

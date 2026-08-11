@@ -194,3 +194,15 @@ export type {
 } from "./validate.js";
 export { ModProject, modProject } from "./project.js";
 export type { EmittedFile, ProjectBuild } from "./project.js";
+export type {
+  WorldCell,
+  WorldFrame,
+  WorldFrameSink,
+  WorldGrid,
+  WorldLayer,
+  WorldLayerKind,
+  WorldPlayer,
+  WorldRenderAssetRef,
+  WorldVisibility,
+  WorldVisual,
+} from "./frontend.js";

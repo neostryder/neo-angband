@@ -70,6 +70,15 @@ feature id, ordered trap/object/monster/path layers, and the look cursor. The
 player remains a separate, player-last layer because that is the upstream glyph
 paint order, not because it is absent from the stream.
 
+`ModPlugin.frontend?(ctx)` now selects that sink: the last enabled mod in load
+order that declares it wins, and the lower candidates are not invoked. Return a
+`WorldFrameSink` (the public type is importable with `import type { WorldFrame,
+WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk"`) or `undefined` to
+leave the glyph frontend selected. A plugin receives a frozen, structurally
+owned frame snapshot on each real repaint, so retaining it cannot retain or
+mutate `state.actor.grid`; a throwing frontend falls back to the glyph sink and
+is reported on that mod's row.
+
 With no replacement selected, the current `GlyphTerm` is that sink and consumes
 the frame's optional `visual` fallback,
 including the upstream terrain-under-foreground tile pass for visible path
@@ -77,12 +86,13 @@ markers over otherwise bare seen terrain, but a
 future isometric or 3D front end consumes the registry ids and visibility rather
 than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
 asset reference used by the grid contract; it has no Canvas2D dependency. This
-is host infrastructure, not a plugin field yet: Phase 5 will select a frontend
-and hand it this stream. The Phase-4 control executes the extracted producer
+is host infrastructure. The Phase-4 control executes the extracted producer
 that `main.ts` calls, compares its unmodded glyph-sink output to the pre-frame
 `term.put` tuples across visible, remembered, unknown, path, cursor, and
 player-last cases, and tees that one frame to an independent host sink by
-reference. It does not claim a plugin can receive one yet.
+reference. The Phase-5 disk fixture then loads two real plugin folders, proves
+only the later one receives that production frame, and keeps an unmodded glyph
+control.
 
 ## 1. `GameState.modHooks` - the behaviour seam
 

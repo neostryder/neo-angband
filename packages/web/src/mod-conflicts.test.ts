@@ -31,6 +31,7 @@ function inputs(over: Partial<ConflictInputs> = {}): ConflictInputs {
     hookContributions: [],
     ruleDecls: [],
     controllers: [],
+    frontends: [],
     ...over,
   };
 }
@@ -208,6 +209,18 @@ describe("controller: two mods each shipping an autoplayer", () => {
 
   it("says nothing about one autoplayer", () => {
     expect(layerSlots(inputs({ controllers: ["borg"] }))).toEqual([]);
+  });
+});
+
+describe("frontend: two mods each replacing the map", () => {
+  it("is reported as one last-load-wins display slot", () => {
+    const slots = layerSlots(inputs({ frontends: ["first", "last"] }));
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ layer: "frontend", winner: "last" });
+  });
+
+  it("does not report an uncontested replacement", () => {
+    expect(layerSlots(inputs({ frontends: ["only"] }))).toEqual([]);
   });
 });
 

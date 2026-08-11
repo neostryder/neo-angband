@@ -62,7 +62,7 @@ describe("the production live-world data producer", () => {
 
   it("is the producer the live render path calls, rather than a test-only projection", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
-    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, glyphWorldFrameSink\(term\)\);/);
+    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*glyphWorldFrameSink\(term\),/);
     expect(main).toContain("seen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y))");
     expect(main).toContain("terrainAt: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS)");
     expect(main).toContain("monsterGlyph: composeMonster");

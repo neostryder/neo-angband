@@ -278,15 +278,46 @@ Nothing about a bad plugin can stop the game booting. A hand-edited manifest, a
 half-finished download, a plugin that throws at import or inside `hooks()` — each
 becomes one line the mod manager shows, and the other mods carry on.
 
+## Front-end replacement
+
+`frontend(ctx)` is an optional `plugin.js` member. It returns a sink for the
+live map stream (or `undefined` to decline):
+
+```js
+export default {
+  api: 1,
+  frontend(ctx) {
+    return {
+      present(frame) {
+        // frame.cells: semantic terrain/occupant layers and visibility,
+        // not terminal characters that need reverse-parsing.
+      },
+    };
+  },
+};
+```
+
+For TypeScript, import the public data contract type-only from the SDK:
+`import type { WorldFrame, WorldFrameSink } from
+"@rpgm-tools/neo-angband-mod-sdk"`. The build erases that import, so a folder
+plugin still has no bare runtime dependency. There is one slot and the **last
+enabled mod in load order wins**; earlier frontend factories are not called.
+The host hands the winner a frozen, structurally owned snapshot per real map
+repaint. It is safe to retain for an animation frame, but cannot expose or
+mutate the live player-grid object. A frontend that throws loses its display
+attempt and the glyph renderer resumes.
+
+This replaces the map display only. Menus still use `registry:menu`, and input
+still enters through the host's device-neutral input door; gamepad bindings and
+whole-screen ownership are later seams.
+
 ## Capabilities
 
-The `GridSurface` rendering contract is host infrastructure, not yet a plugin
-capability: no plugin receives or selects a front end in this phase. It removes
-the canvas requirement from grid consumers so the later front-end capability can
-hand a replacement renderer real work to do; declaring a capability before that
-host path exists would be an inert seam.
+The `GridSurface` rendering contract is host infrastructure, not a registry
+capability. `frontend` is a direct `ModPlugin` member because it selects one
+display owner rather than registering an independent game behaviour.
 
-The same boundary applies to the live `WorldFrame` in
+The live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` invokes the extracted
 `world-render-data.ts` with the actual map-knowledge reads and passes its
 frame to a `WorldFrameSink`; the default glyph terminal
@@ -294,14 +325,13 @@ is that sink and consumes its fallback visual
 projection, including the terrain-under-foreground tile inputs for a path over
 otherwise bare seen terrain. The frame
 carries semantic feature/trap/object/monster ids,
-visibility, ordered layers, cursor, and player placement, so a later selected
-front end can make an isometric or 3D view without decoding terminal glyphs.
+visibility, ordered layers, cursor, and player placement, so a selected front
+end can make an isometric or 3D view without decoding terminal glyphs.
 The Phase-4 control executes the same producer used by `render()`, checks its
 unmodded pre-frame glyph tuples, and tees that exact frame to an independent
 host sink in the same call.
-It is deliberately not a manifest
-capability until the Phase-5 `frontend` member can receive it; a capability with
-no recipient would be a false seam.
+The selected frontend receives a frozen copy of that frame; the unselected and
+absent paths leave the exact glyph sink active.
 
 The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
 single device-neutral route by which keyboard and keymap input reaches screens;
