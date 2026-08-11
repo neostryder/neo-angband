@@ -229,6 +229,7 @@ import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryR
 import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
+import { buildWorldFrame, type WorldLayer, type WorldPlayer, type WorldVisual } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
@@ -6393,6 +6394,18 @@ interface CellGlyph {
   css: string;
   bg?: string;
   tile?: RenderAssetRef;
+  /** The non-presentation identity an alternate renderer needs. */
+  layer?: WorldLayer;
+}
+
+function worldVisual(glyph: CellGlyph, backgroundAsset?: RenderAssetRef): WorldVisual {
+  return {
+    ch: glyph.ch,
+    fg: glyph.css,
+    ...(glyph.bg !== undefined ? { bg: glyph.bg } : {}),
+    ...(glyph.tile ? { asset: glyph.tile } : {}),
+    ...(backgroundAsset ? { backgroundAsset } : {}),
+  };
 }
 
 // Revealed traps draw under objects and monsters (upstream layer order).
@@ -6412,6 +6425,7 @@ function trapIndex(): Map<number, CellGlyph> {
         attr,
         css: colorToCss(attr),
         ...(tile ? { tile } : {}),
+        layer: { kind: "trap", id: t.kind.tidx, lighting: LIGHTING.LOS },
       });
     }
   }
@@ -6468,6 +6482,7 @@ function objectKindCell(
     attr,
     css: dimmed ? dim(css) : css,
     ...(tile ? { tile } : {}),
+    layer: { kind: "object", id: kind.kidx },
   };
 }
 
@@ -6506,7 +6521,7 @@ function rememberedObjectCell(
    * thing on a dim corridor drawn at full brightness - "the cell stays lit
    * instead of going dim when I walk away". */
   if (kind) return objectKindCell(kind, gx, gy, true);
-  return { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM };
+  return { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM, layer: { kind: "object" } };
 }
 
 // Live floor items from the engine's piles (pile head = newest, drawn on
@@ -6579,11 +6594,31 @@ function terrainGlyph(
     : undefined;
   if (disp.flags.has(TF["WALL"])) {
     if (state.options?.get("hybrid_walls"))
-      return { ch: dChar, attr, css, bg: dim(css), ...(tile ? { tile } : {}) };
+      return {
+        ch: dChar,
+        attr,
+        css,
+        bg: dim(css),
+        ...(tile ? { tile } : {}),
+        layer: { kind: "terrain", id: disp.fidx, lighting },
+      };
     if (state.options?.get("solid_walls"))
-      return { ch: dChar, attr, css, bg: css, ...(tile ? { tile } : {}) };
+      return {
+        ch: dChar,
+        attr,
+        css,
+        bg: css,
+        ...(tile ? { tile } : {}),
+        layer: { kind: "terrain", id: disp.fidx, lighting },
+      };
   }
-  return { ch: dChar, attr, css, ...(tile ? { tile } : {}) };
+  return {
+    ch: dChar,
+    attr,
+    css,
+    ...(tile ? { tile } : {}),
+    layer: { kind: "terrain", id: disp.fidx, lighting },
+  };
 }
 
 /**
@@ -6684,6 +6719,7 @@ function hasAnimatedVisibleMonster(): boolean {
 interface MonsterCell {
   input: Omit<MonsterGlyphInput, "under">;
   tile?: RenderAssetRef;
+  layer: WorldLayer;
 }
 
 /**
@@ -6726,6 +6762,7 @@ function monsterIndex(): Map<number, MonsterCell> {
         shapeUnique: monsterIsShapeUnique(mon),
       },
       ...(tile ? { tile } : {}),
+      layer: { kind: "monster", id: mon.race.ridx },
     });
   }
   return map;
@@ -6745,6 +6782,7 @@ function composeMonster(under: CellGlyph, cell: MonsterCell): CellGlyph {
     attr: g.attr,
     css: colorToCss(g.attr),
     ...(cell.tile ? { tile: cell.tile } : {}),
+    layer: cell.layer,
   };
 }
 
@@ -7080,126 +7118,12 @@ function render(targeting?: TargetingOverlay): void {
     });
   }
 
-  for (let sy = 0; sy < mapRows; sy++) {
-    for (let sx = 0; sx < mapCols; sx++) {
-      const gx = camX + sx;
-      const gy = camY + sy;
-      if (gx < 0 || gy < 0 || gx >= state.chunk.width || gy >= state.chunk.height) continue;
-      const idx = gridIndex(gx, gy);
-      const screenX = mapOriginX + sx;
-      const screenY = mapTop + sy;
-      const isCursor = !!targeting && gx === targeting.cursor.x && gy === targeting.cursor.y;
-      const cursorBg = isCursor ? { bg: CURSOR_BG } : {};
-      const pathColour = pathColourAt.get(idx);
-
-      const seen = squareIsSeen(state.chunk, loc(gx, gy));
-      if (!seen) {
-        /* Remembered terrain from the engine's knowledge layer, drawn
-         * dim - possibly stale, exactly as upstream memory works. */
-        const kf = knownFeat(state, loc(gx, gy));
-        if (kf < 0) {
-          if (pathColour !== undefined) {
-            term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
-          } else if (isCursor) {
-            term.put(screenX, screenY, { ch: " ", fg: UI_BG, ...cursorBg });
-          }
-          continue;
-        }
-        const f = features.get(kf);
-        const disp = f.mimic !== null ? features.get(f.mimic) : f;
-        // Remembered (out-of-view) terrain is the LIT lighting variant
-        // (cave-map.c map_info: the default for known, non-in-view grids). A
-        // mapped tile shows at full brightness (upstream does not dim tiles);
-        // absent a tile, the ASCII glyph is drawn dim as before.
-        const memTile = tileMap
-          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), gx, gy)
-          : undefined;
-        const memSlot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
-        const memAttr = memSlot?.attr ?? colorCharToAttr(disp.dAttr);
-        let under: CellGlyph = {
-          ch: memSlot?.char ?? disp.dChar,
-          attr: memAttr,
-          css: colorToCss(memAttr),
-        };
-        term.put(screenX, screenY, {
-          ch: under.ch,
-          fg: dim(under.css),
-          ...cursorBg,
-          ...(memTile ? { tile: memTile } : {}),
-        });
-        /* Remembered / sensed objects persist on the map in full color - and
-         * with their TILE, which the glyph-only memory could not supply. The
-         * remembered terrain tile stays behind it as the background. */
-        const mem = knownObjectShown(gx, gy);
-        if (mem) {
-          under = rememberedObjectCell(mem, gx, gy);
-          term.put(screenX, screenY, {
-            ch: under.ch,
-            fg: under.css,
-            ...cursorBg,
-            ...(under.tile ? { tile: under.tile } : {}),
-            ...(memTile ? { bgTile: memTile } : {}),
-          });
-        }
-        /* Detected monsters show even out of view - that is the point. */
-        const marked = monsterAt.get(idx);
-        if (marked) {
-          const drawnMon = composeMonster(under, marked);
-          term.put(screenX, screenY, {
-            ch: drawnMon.ch,
-            fg: drawnMon.css,
-            ...cursorBg,
-            ...(drawnMon.tile ? { tile: drawnMon.tile } : {}),
-            ...(memTile ? { bgTile: memTile } : {}),
-          });
-        }
-        if (pathColour !== undefined) {
-          term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
-        }
-        continue;
-      }
-
-      const t = terrainGlyph(gx, gy, LIGHTING.LOS);
-      let drawn: CellGlyph = t;
-      const trap = trapAt.get(idx);
-      if (trap) drawn = trap;
-      const obj = objectAt.get(idx);
-      if (obj) drawn = obj;
-      const mon = monsterAt.get(idx);
-      if (mon) drawn = composeMonster(drawn, mon);
-      if (pathColour !== undefined)
-        drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
-      // The wall shading (solid_walls/hybrid_walls) is terrain-only: any
-      // trap/object/monster covering the cell (or the cursor highlight,
-      // spread last below) fully overrides it, matching upstream drawing
-      // whatever is "on top" of the grid without the terrain's own bg. A
-      // graphics tile (drawn.tile), when present and loaded, blits over the
-      // cell; the terminal falls back to ch/fg if the atlas is not ready.
-      //
-      // The terrain tile rides along as bgTile whenever something COVERS the
-      // terrain, which is grid_data_as_text's (tap, tcp) pair: the terrain
-      // attr/char saved before the trap/object/monster arms overwrite (ap, cp)
-      // (ui-map.c L186-189). `drawn === t` is the case upstream skips the
-      // foreground blit for entirely (tap == ap && tcp == cp), so there is
-      // nothing to lay under.
-      term.put(screenX, screenY, {
-        ch: drawn.ch,
-        fg: drawn.css,
-        ...(drawn.bg !== undefined ? { bg: drawn.bg } : {}),
-        ...cursorBg,
-        ...(drawn.tile ? { tile: drawn.tile } : {}),
-        ...(drawn !== t && t.tile ? { bgTile: t.tile } : {}),
-      });
-    }
-  }
-
-  // The player: centered and bright when the camera follows the player;
-  // repositioned to its own grid (which may be off-center) while targeting,
-  // or while 'L' locate has panned the camera away entirely - in which case
-  // the marker is simply not drawn, exactly as a panned real-terminal panel
-  // would show no player glyph when it scrolls out of the visible sector.
+  // This is the Phase-4 producer.  It reads exactly the same live knowledge
+  // helpers that formerly wrote to `term` inline, but returns a semantic frame
+  // first.  The GlyphTerm below is merely its first consumer.
   const playerDx = state.actor.grid.x - camX;
   const playerDy = state.actor.grid.y - camY;
+  let player: WorldPlayer | undefined;
   if (playerDx >= 0 && playerDx < mapCols && playerDy >= 0 && playerDy < mapRows) {
     const playerScreenX = mapOriginX + playerDx;
     const playerScreenY = mapTop + playerDy;
@@ -7207,20 +7131,140 @@ function render(targeting?: TargetingOverlay): void {
       !!targeting &&
       state.actor.grid.x === targeting.cursor.x &&
       state.actor.grid.y === targeting.cursor.y;
-    /* Dev-only: where the player's cell landed on the canvas, so automated
-     * verification can crop exactly that cell (see the __neo.tiles() probe). */
-    if (import.meta.env.DEV) lastPlayerCell = { x: playerScreenX, y: playerScreenY };
     const pg = playerMapGlyph();
-    /* The player is painted in its own pass, so it has to fetch its own (tap,
-     * tcp): the TERRAIN of its grid, not whatever object it is standing on -
-     * grid_data_as_text saves the pair before the object arm runs at all. */
     const pTerrain = terrainGlyph(state.actor.grid.x, state.actor.grid.y, LIGHTING.LOS);
-    term.put(playerScreenX, playerScreenY, {
-      ch: pg.ch,
-      fg: pg.css,
-      ...(pg.tile ? { tile: pg.tile } : {}),
-      ...(pTerrain.tile ? { bgTile: pTerrain.tile } : {}),
-      ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
+    player = {
+      grid: { x: state.actor.grid.x, y: state.actor.grid.y },
+      screen: { x: playerScreenX, y: playerScreenY },
+      layer: { kind: "player", id: 0 },
+      visual: {
+        ch: pg.ch,
+        fg: pg.css,
+        ...(pg.tile ? { asset: pg.tile } : {}),
+        ...(pTerrain.tile ? { backgroundAsset: pTerrain.tile } : {}),
+        ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
+      },
+      cursor: playerIsCursor,
+    };
+  }
+
+  const frame = buildWorldFrame({
+    width: state.chunk.width,
+    height: state.chunk.height,
+    origin: { x: camX, y: camY },
+    size: { width: mapCols, height: mapRows },
+    screenOrigin: { x: mapOriginX, y: mapTop },
+    ...(player ? { player } : {}),
+    resolveCell: (grid, screen) => {
+      const { x: gx, y: gy } = grid;
+      const idx = gridIndex(gx, gy);
+      const isCursor = !!targeting && gx === targeting.cursor.x && gy === targeting.cursor.y;
+      const pathColour = pathColourAt.get(idx);
+      const path = pathColour === undefined ? undefined : { kind: "path" as const };
+      const seen = squareIsSeen(state.chunk, loc(gx, gy));
+      if (!seen) {
+        const kf = knownFeat(state, loc(gx, gy));
+        if (kf < 0) {
+          const visual = pathColour !== undefined
+            ? { ch: "*", fg: colorToCss(pathColour), ...(isCursor ? { bg: CURSOR_BG } : {}) }
+            : isCursor ? { ch: " ", fg: UI_BG, bg: CURSOR_BG } : undefined;
+          return { grid, screen, visibility: "unknown", overlays: path ? [path] : [], cursor: isCursor, ...(visual ? { visual } : {}) };
+        }
+        const f = features.get(kf);
+        const disp = f.mimic !== null ? features.get(f.mimic) : f;
+        const memTile = tileMap
+          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), gx, gy)
+          : undefined;
+        const memSlot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
+        const memAttr = memSlot?.attr ?? colorCharToAttr(disp.dAttr);
+        const terrain: CellGlyph = {
+          ch: memSlot?.char ?? disp.dChar,
+          attr: memAttr,
+          css: colorToCss(memAttr),
+          layer: { kind: "terrain", id: disp.fidx, lighting: LIGHTING.LIT },
+        };
+        let drawn: CellGlyph = { ...terrain, css: dim(terrain.css), ...(memTile ? { tile: memTile } : {}) };
+        let coveredTerrain = false;
+        const overlays: WorldLayer[] = [];
+        const mem = knownObjectShown(gx, gy);
+        if (mem) {
+          drawn = rememberedObjectCell(mem, gx, gy);
+          coveredTerrain = true;
+          overlays.push(drawn.layer!);
+        }
+        const marked = monsterAt.get(idx);
+        if (marked) {
+          drawn = composeMonster(drawn, marked);
+          coveredTerrain = true;
+          overlays.push(marked.layer);
+        }
+        if (pathColour !== undefined) {
+          drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
+          overlays.push(path!);
+        }
+        const visual = worldVisual(
+          { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
+          coveredTerrain && pathColour === undefined ? memTile : undefined,
+        );
+        return {
+          grid,
+          screen,
+          visibility: "remembered",
+          terrain: terrain.layer!,
+          overlays,
+          visual,
+          cursor: isCursor,
+        };
+      }
+
+      const terrain = terrainGlyph(gx, gy, LIGHTING.LOS);
+      let drawn: CellGlyph = terrain;
+      let coveredTerrain = false;
+      const overlays: WorldLayer[] = [];
+      const trap = trapAt.get(idx);
+      if (trap) { drawn = trap; coveredTerrain = true; overlays.push(trap.layer!); }
+      const obj = objectAt.get(idx);
+      if (obj) { drawn = obj; coveredTerrain = true; overlays.push(obj.layer!); }
+      const mon = monsterAt.get(idx);
+      if (mon) { drawn = composeMonster(drawn, mon); coveredTerrain = true; overlays.push(mon.layer); }
+      if (pathColour !== undefined) {
+        drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
+        overlays.push(path!);
+      }
+      const visual = worldVisual(
+        { ...drawn, ...(isCursor ? { bg: CURSOR_BG } : {}) },
+        coveredTerrain && pathColour === undefined ? terrain.tile : undefined,
+      );
+      return {
+        grid,
+        screen,
+        visibility: "seen",
+        terrain: terrain.layer!,
+        overlays,
+        visual,
+        cursor: isCursor,
+      };
+    },
+  });
+
+  for (const cell of frame.cells) {
+    if (!cell.visual) continue;
+    term.put(cell.screen.x, cell.screen.y, {
+      ch: cell.visual.ch,
+      fg: cell.visual.fg,
+      ...(cell.visual.bg !== undefined ? { bg: cell.visual.bg } : {}),
+      ...(cell.visual.asset ? { tile: cell.visual.asset } : {}),
+      ...(cell.visual.backgroundAsset ? { bgTile: cell.visual.backgroundAsset } : {}),
+    });
+  }
+  if (frame.player) {
+    if (import.meta.env.DEV) lastPlayerCell = frame.player.screen;
+    term.put(frame.player.screen.x, frame.player.screen.y, {
+      ch: frame.player.visual.ch,
+      fg: frame.player.visual.fg,
+      ...(frame.player.visual.bg !== undefined ? { bg: frame.player.visual.bg } : {}),
+      ...(frame.player.visual.asset ? { tile: frame.player.visual.asset } : {}),
+      ...(frame.player.visual.backgroundAsset ? { bgTile: frame.player.visual.backgroundAsset } : {}),
     });
   }
 

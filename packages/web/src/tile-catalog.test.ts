@@ -486,11 +486,11 @@ describe("the game does not know or expect any particular mod", () => {
     /* The frame diff has to be able to tell the two apart, or it leaves the lit
      * tile on screen - which is exactly how this was reported. */
     expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
-    /* And the tile actually reaches the draw. `bgTile: memTile` alone - the
-     * remembered TERRAIN tile - is what used to be there by itself. */
-    expect(main).toMatch(
-      /under = rememberedObjectCell\(mem, gx, gy\);[\s\S]{0,400}?\.\.\.\(under\.tile \? \{ tile: under\.tile \} : \{\}\)/,
-    );
+    /* And the tile actually reaches the draw through the renderer-neutral
+     * frame visual; `backgroundAsset: memTile` alone is only remembered
+     * terrain, not the remembered object. */
+    expect(main).toMatch(/drawn = rememberedObjectCell\(mem, gx, gy\);/);
+    expect(main).toMatch(/\.\.\.\(cell\.visual\.asset \? \{ tile: cell\.visual\.asset \} : \{\}\)/);
   });
 
   /**
