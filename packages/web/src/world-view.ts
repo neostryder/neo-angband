@@ -8,7 +8,7 @@
  * a character cell.  No DOM or canvas type appears in this contract.
  */
 
-import type { RenderAssetRef } from "./term";
+import type { Glyph, GridSurface, RenderAssetRef } from "./term";
 
 export interface WorldGrid {
   readonly x: number;
@@ -83,6 +83,22 @@ export interface BuildWorldFrameParams {
 }
 
 /**
+ * Preserve grid_data_as_text's terrain pair when a visible path marker covers
+ * a tile. A remembered path has always been glyph-only; the visible path is
+ * painted by the normal foreground pass and therefore keeps its terrain tile.
+ */
+export function backgroundAssetForWorldCell(
+  visibility: Exclude<WorldVisibility, "unknown">,
+  terrainAsset: RenderAssetRef | undefined,
+  coveredTerrain: boolean,
+  hasPath: boolean,
+): RenderAssetRef | undefined {
+  if (!coveredTerrain) return undefined;
+  if (visibility === "remembered" && hasPath) return undefined;
+  return terrainAsset;
+}
+
+/**
  * Produce the exact viewport stream once. Bounds live here so every consumer
  * sees the same ordered, in-world rectangle rather than reimplementing camera
  * clipping around a terminal grid.
@@ -101,5 +117,34 @@ export function buildWorldFrame(p: BuildWorldFrameParams): WorldFrame {
     viewport: { origin: p.origin, size: p.size, screenOrigin: p.screenOrigin },
     cells,
     ...(p.player ? { player: p.player } : {}),
+  };
+}
+
+/**
+ * The default glyph projection of a live frame. Keeping this consumer beside
+ * the frame contract makes its player-last order and tile inputs executable
+ * rather than an implicit convention in main.ts.
+ */
+export function paintWorldFrame(surface: Pick<GridSurface, "put">, frame: WorldFrame): void {
+  for (const cell of frame.cells) {
+    if (!cell.visual) continue;
+    surface.put(cell.screen.x, cell.screen.y, worldVisualToGlyph(cell.visual));
+  }
+  if (frame.player) {
+    surface.put(
+      frame.player.screen.x,
+      frame.player.screen.y,
+      worldVisualToGlyph(frame.player.visual),
+    );
+  }
+}
+
+function worldVisualToGlyph(visual: WorldVisual): Glyph {
+  return {
+    ch: visual.ch,
+    fg: visual.fg,
+    ...(visual.bg !== undefined ? { bg: visual.bg } : {}),
+    ...(visual.asset ? { tile: visual.asset } : {}),
+    ...(visual.backgroundAsset ? { bgTile: visual.backgroundAsset } : {}),
   };
 }

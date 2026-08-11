@@ -718,6 +718,11 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Fixed
 
+- Restored the visible target-path tile projection while routing map paint
+  through `WorldFrame`: a path marker once again receives the terrain tile
+  beneath it, matching the prior glyph renderer and upstream's two-pass tile
+  paint.
+
 - **Banishment did nothing.** `EF_BANISH` reads a chooser for the monster glyph
   to banish, and nothing in the shipped game ever supplied it, so the handler
   returned "cancelled" on every cast: the Banishment spell, the Scroll and Staff

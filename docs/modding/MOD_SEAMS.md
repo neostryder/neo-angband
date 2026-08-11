@@ -68,7 +68,9 @@ feature id, ordered trap/object/monster/path layers, and the look cursor. The
 player remains a separate, player-last layer because that is the upstream glyph
 paint order, not because it is absent from the stream.
 
-The current `GlyphTerm` consumes the frame's optional `visual` fallback, but a
+The current `GlyphTerm` consumes the frame's optional `visual` fallback,
+including the upstream terrain-under-foreground tile pass for visible path
+markers, but a
 future isometric or 3D front end consumes the registry ids and visibility rather
 than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
 asset reference used by the grid contract; it has no Canvas2D dependency. This

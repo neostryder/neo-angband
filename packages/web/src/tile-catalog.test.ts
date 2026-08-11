@@ -486,11 +486,12 @@ describe("the game does not know or expect any particular mod", () => {
     /* The frame diff has to be able to tell the two apart, or it leaves the lit
      * tile on screen - which is exactly how this was reported. */
     expect(main).toMatch(/\$\{dimmed \? "~" : ""\}/);
-    /* And the tile actually reaches the draw through the renderer-neutral
-     * frame visual; `backgroundAsset: memTile` alone is only remembered
-     * terrain, not the remembered object. */
+    /* The actual map resolver builds that foreground visual, then sends the
+     * completed frame through the one terminal consumer. Its executable frame
+     * projection is covered in world-view.test.ts; this check keeps the live
+     * resolver wired to that consumer. */
     expect(main).toMatch(/drawn = rememberedObjectCell\(mem, gx, gy\);/);
-    expect(main).toMatch(/\.\.\.\(cell\.visual\.asset \? \{ tile: cell\.visual\.asset \} : \{\}\)/);
+    expect(main).toMatch(/paintWorldFrame\(term, frame\);/);
   });
 
   /**
