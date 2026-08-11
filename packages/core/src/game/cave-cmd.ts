@@ -33,11 +33,9 @@
  * the old easy_open option no longer exists -- so deferring it as "UI" changed
  * the keystrokes ordinary play requires on every door and trap.
  *
- * The do_cmd_steal command and command repetition are PORTED: installSteal()
- * registers the command and the live repeat path is game/repeat.ts. Only the
- * steal command's shapechanged-player gate remains owed (ledgered in
- * game-cave-cmd.yaml). Running and travel / explore (player-path #24) are
- * ported in game/player-path.ts.
+ * DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22) and
+ * command repetition. Running and travel / explore (player-path #24) are ported
+ * in game/player-path.ts.
  */
 
 import type { Loc } from "../loc.js";
