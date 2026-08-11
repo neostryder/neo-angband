@@ -90,11 +90,12 @@ export interface BuildWorldFrameParams {
 export function backgroundAssetForWorldCell(
   visibility: Exclude<WorldVisibility, "unknown">,
   terrainAsset: RenderAssetRef | undefined,
-  coveredTerrain: boolean,
-  hasPath: boolean,
+  overlays: readonly WorldLayer[],
 ): RenderAssetRef | undefined {
-  if (!coveredTerrain) return undefined;
-  if (visibility === "remembered" && hasPath) return undefined;
+  if (overlays.length === 0) return undefined;
+  if (visibility === "remembered" && overlays.some((layer) => layer.kind === "path")) {
+    return undefined;
+  }
   return terrainAsset;
 }
 

@@ -7191,18 +7191,15 @@ function render(targeting?: TargetingOverlay): void {
           layer: { kind: "terrain", id: disp.fidx, lighting: LIGHTING.LIT },
         };
         let drawn: CellGlyph = { ...terrain, css: dim(terrain.css), ...(memTile ? { tile: memTile } : {}) };
-        let coveredTerrain = false;
         const overlays: WorldLayer[] = [];
         const mem = knownObjectShown(gx, gy);
         if (mem) {
           drawn = rememberedObjectCell(mem, gx, gy);
-          coveredTerrain = true;
           overlays.push(drawn.layer!);
         }
         const marked = monsterAt.get(idx);
         if (marked) {
           drawn = composeMonster(drawn, marked);
-          coveredTerrain = true;
           overlays.push(marked.layer);
         }
         if (pathColour !== undefined) {
@@ -7214,8 +7211,7 @@ function render(targeting?: TargetingOverlay): void {
           backgroundAssetForWorldCell(
             "remembered",
             memTile,
-            coveredTerrain,
-            pathColour !== undefined,
+            overlays,
           ),
         );
         return {
@@ -7231,14 +7227,13 @@ function render(targeting?: TargetingOverlay): void {
 
       const terrain = terrainGlyph(gx, gy, LIGHTING.LOS);
       let drawn: CellGlyph = terrain;
-      let coveredTerrain = false;
       const overlays: WorldLayer[] = [];
       const trap = trapAt.get(idx);
-      if (trap) { drawn = trap; coveredTerrain = true; overlays.push(trap.layer!); }
+      if (trap) { drawn = trap; overlays.push(trap.layer!); }
       const obj = objectAt.get(idx);
-      if (obj) { drawn = obj; coveredTerrain = true; overlays.push(obj.layer!); }
+      if (obj) { drawn = obj; overlays.push(obj.layer!); }
       const mon = monsterAt.get(idx);
-      if (mon) { drawn = composeMonster(drawn, mon); coveredTerrain = true; overlays.push(mon.layer); }
+      if (mon) { drawn = composeMonster(drawn, mon); overlays.push(mon.layer); }
       if (pathColour !== undefined) {
         drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
         overlays.push(path!);
@@ -7248,8 +7243,7 @@ function render(targeting?: TargetingOverlay): void {
         backgroundAssetForWorldCell(
           "seen",
           terrain.tile,
-          coveredTerrain,
-          pathColour !== undefined,
+          overlays,
         ),
       );
       return {

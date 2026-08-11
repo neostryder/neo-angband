@@ -56,11 +56,12 @@ describe("buildWorldFrame", () => {
 describe("the live WorldFrame projection", () => {
   const asset = (name: string): RenderAssetRef => ({ kind: "test", data: name });
 
-  it("keeps a visible path marker's terrain tile while preserving remembered path behavior", () => {
+  it("keeps a live visible path marker's terrain tile, even over otherwise bare terrain", () => {
     const floor = asset("floor");
-    expect(backgroundAssetForWorldCell("seen", floor, true, true)).toBe(floor);
-    expect(backgroundAssetForWorldCell("remembered", floor, true, true)).toBeUndefined();
-    expect(backgroundAssetForWorldCell("seen", floor, false, false)).toBeUndefined();
+    const path = [{ kind: "path" as const }];
+    expect(backgroundAssetForWorldCell("seen", floor, path)).toBe(floor);
+    expect(backgroundAssetForWorldCell("remembered", floor, path)).toBeUndefined();
+    expect(backgroundAssetForWorldCell("seen", floor, [])).toBeUndefined();
   });
 
   it("runs resolved cells through the frame consumer with exact tile inputs and player-last order", () => {

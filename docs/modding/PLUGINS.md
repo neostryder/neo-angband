@@ -289,7 +289,8 @@ host path exists would be an inert seam.
 The same boundary applies to the live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` produces it from the actual map
 knowledge path, and the default glyph terminal consumes its fallback visual
-projection, including the terrain-under-foreground tile inputs. The frame
+projection, including the terrain-under-foreground tile inputs for a path over
+otherwise bare seen terrain. The frame
 carries semantic feature/trap/object/monster ids,
 visibility, ordered layers, cursor, and player placement, so a later selected
 front end can make an isometric or 3D view without decoding terminal glyphs.
