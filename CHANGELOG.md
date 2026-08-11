@@ -44,6 +44,24 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
 
+### Fixed
+
+- **(N)ew game crashed on the character-creation screen.** Choosing *New game*
+  threw `Cannot read properties of undefined` and stopped at the crash reporter,
+  so no new character could be created at all. Existing savefiles were never
+  touched — the birth screen is the only path affected, and loading a character
+  does not go through it.
+
+  The birth screens preview a character sheet before the game exists, so they
+  hand the sheet renderers a small hand-built `GameState`. On 2026-08-06 core
+  gained its known-state twin and began reading two more fields from that state
+  (`actor.knownCombat` and `runeEnv`); the preview object was not updated, and
+  the `as unknown as GameState` cast it is built with meant the compiler had
+  nothing to say. It went unnoticed because no test supplied the registry deps
+  the preview needs, so the entire path was unexecuted on a green suite. The
+  preview now supplies both fields, and `birth.test.ts` drives it against the
+  real shipped pack so the next field a sheet renderer reads fails in CI.
+
 ### Added
 
 - **A mod can replace the map frontend.** `ModPlugin.frontend?(ctx)` selects
