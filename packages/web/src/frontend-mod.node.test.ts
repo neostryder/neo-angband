@@ -12,20 +12,26 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModDirEntry, ModDirSource } from "./disk-packs";
-import { readModDir } from "./disk-packs";
+import { diskPacks, readModDir, resetDiskPacks, setDiskPacks } from "./disk-packs";
 import { frontendWorldFrameSink, installFrontend } from "./frontend-runtime";
-import { loadModCode, PLUGIN_FILE } from "./mod-code";
+import { activeModCode, loadModCode, PLUGIN_FILE, resetModCode, setModCode } from "./mod-code";
 import { modPluginContext } from "./mod-context";
+import { defaultModStore } from "./mod-store";
+import { enabledModIds } from "./pack";
 import { projectLiveWorld, type LiveWorldRead, type ResolvedGlyph } from "./world-render-data";
 import { glyphWorldFrameSink, type WorldFrame } from "./world-view";
 
 const ids = ["early-view", "late-view"] as const;
 const root = new URL("../test-fixtures/frontend-mods/", import.meta.url);
 
-type FrontendGlobal = typeof globalThis & { __neoFrontendFrames?: Array<{ owner: string; frame: WorldFrame }> };
+type FrontendGlobal = typeof globalThis & {
+  __neoFrontendFrames?: Array<{ owner: string; badge: string; frame: WorldFrame }>;
+};
 
 afterEach(() => {
   delete (globalThis as FrontendGlobal).__neoFrontendFrames;
+  resetDiskPacks();
+  resetModCode();
 });
 
 /** A real filesystem implementation of the same disk-folder reader contract. */
@@ -39,6 +45,28 @@ function fixtureSource(): ModDirSource {
     order: () => Promise.resolve([...ids]),
     codeUrl: (id, file) => Promise.resolve(pathToFileURL(fileURLToPath(new URL(`${id}/${file}`, root))).href),
   };
+}
+
+/**
+ * The disk-code portion of main.ts's boot block, with the physical fixture
+ * folder standing in for the desktop shell's already-enumerated folder.  Keep
+ * this deliberately literal: the latches and the enabled/consent gates are
+ * part of the shipped route, and omitting `importer` makes loadModCode use its
+ * production dynamic import rather than a test substitute.
+ */
+async function bootDiskFrontendCode() {
+  setDiskPacks(await readModDir(fixtureSource()));
+  const disk = diskPacks();
+  const store = defaultModStore();
+  setModCode(
+    await loadModCode({
+      packs: disk.packs,
+      codeUrl: disk.codeUrl,
+      enabled: (id) => enabledModIds().includes(id),
+      consented: (id) => store.getConsent(id),
+    }),
+  );
+  return { disk, code: activeModCode() };
 }
 
 function reads(playerGrid: { x: number; y: number }): LiveWorldRead<never, never> {
@@ -55,18 +83,15 @@ function reads(playerGrid: { x: number; y: number }): LiveWorldRead<never, never
 }
 
 describe("a disk-loaded frontend plugin", () => {
-  it("receives a safely owned live WorldFrame, with the last folder winning", async () => {
+  it("follows the shipped disk loader into a safely owned live WorldFrame", async () => {
     (globalThis as FrontendGlobal).__neoFrontendFrames = [];
-    const disk = await readModDir(fixtureSource());
+    const { disk, code } = await bootDiskFrontendCode();
     expect(disk.problems).toEqual([]);
-    const code = await loadModCode({
-      packs: disk.packs,
-      codeUrl: disk.codeUrl,
-      enabled: () => true,
-      consented: () => [],
-      importer: (url) => import(url),
-    });
+    expect(disk.order).toEqual(ids);
     expect(code.problems).toEqual([]);
+    expect(code.skipped).toEqual([]);
+    expect(code.plugins.map((plugin) => plugin.id)).toEqual(ids);
+    expect(code.plugins.map((plugin) => new URL(plugin.url).protocol)).toEqual(["file:", "file:"]);
     const faults: string[] = [];
     const frontend = installFrontend(
       code.plugins,
@@ -77,7 +102,7 @@ describe("a disk-loaded frontend plugin", () => {
     expect(faults).toEqual([]);
 
     const playerGrid = { x: 1, y: 0 };
-    projectLiveWorld(
+    const producedFrame = projectLiveWorld(
       reads(playerGrid),
       frontendWorldFrameSink(
         glyphWorldFrameSink({ put: () => { throw new Error("selected frontend should replace glyph paint"); } }),
@@ -89,6 +114,10 @@ describe("a disk-loaded frontend plugin", () => {
     const received = (globalThis as FrontendGlobal).__neoFrontendFrames!;
     expect(received).toHaveLength(1);
     expect(received[0]?.owner).toBe("late-view");
+    const expectedBadge = `WorldFrame ${producedFrame.viewport.size.width}x${producedFrame.viewport.size.height} (${producedFrame.cells.length} cells)`;
+    expect(received[0]?.badge).toBe(expectedBadge);
+    expect(received[0]?.badge).toMatch(/^WorldFrame \d+x\d+ \(\d+ cells\)$/);
+    expect(received[0]?.badge).not.toContain("undefined");
     const frame = received[0]!.frame;
     expect(frame.cells[0]).toMatchObject({ terrain: { id: 1 }, visibility: "seen" });
     expect(frame.player).toMatchObject({ grid: { x: 1, y: 0 }, layer: { kind: "player" } });
@@ -96,6 +125,19 @@ describe("a disk-loaded frontend plugin", () => {
     expect(Object.isFrozen(frame.player?.grid)).toBe(true);
     playerGrid.x = 9;
     expect(frame.player?.grid).toEqual({ x: 1, y: 0 });
+
+    const frameWithMissingWidth = {
+      ...producedFrame,
+      viewport: { ...producedFrame.viewport, size: { ...producedFrame.viewport.size, width: undefined } },
+    } as unknown as WorldFrame;
+    expect(() => frontend!.sink.present(frameWithMissingWidth))
+      .toThrow("WorldFrame viewport.size.width must be a finite number");
+    const frameWithNonNumericWidth = {
+      ...producedFrame,
+      viewport: { ...producedFrame.viewport, size: { ...producedFrame.viewport.size, width: "two" } },
+    } as unknown as WorldFrame;
+    expect(() => frontend!.sink.present(frameWithNonNumericWidth))
+      .toThrow("WorldFrame viewport.size.width must be a finite number");
   });
 
   it("THE CONTROL: no frontend leaves the existing glyph sink active", () => {
