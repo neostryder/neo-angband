@@ -78,10 +78,11 @@ future isometric or 3D front end consumes the registry ids and visibility rather
 than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
 asset reference used by the grid contract; it has no Canvas2D dependency. This
 is host infrastructure, not a plugin field yet: Phase 5 will select a frontend
-and hand it this stream. The Phase-4 tests execute the extracted producer with
-the live producer's dependency contract: the unmodded glyph-sink control checks
-the pre-frame glyph tuples and an independently owned sink receives the exact
-produced frame. They do not claim a plugin can receive one yet.
+and hand it this stream. The Phase-4 control executes the extracted producer
+that `main.ts` calls, compares its unmodded glyph-sink output to the pre-frame
+`term.put` tuples across visible, remembered, unknown, path, cursor, and
+player-last cases, and tees that one frame to an independent host sink by
+reference. It does not claim a plugin can receive one yet.
 
 ## 1. `GameState.modHooks` - the behaviour seam
 
