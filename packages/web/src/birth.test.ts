@@ -15,8 +15,10 @@ import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { runBirth } from "./birth";
 import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import type { GlyphTerm } from "./term";
-import type { PlayerClass, PlayerRace } from "@rpgm-tools/neo-angband-core";
+import type { BirthDeps } from "./birth";
+import type { PlayerClass, PlayerPackRecords, PlayerRace } from "@rpgm-tools/neo-angband-core";
 import {
+  bindPlayer,
   HostDir,
   NULL_HOST,
   OPTION_ENTRIES,
@@ -1274,5 +1276,91 @@ describe("runBirth: '?' opens help and returns to the same screen", () => {
     await tick();
     expect(term.snapshot().join("\n")).not.toContain("Angband Help");
     expect(term.snapshot().join("\n")).toBe(before);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The birth SHEET PREVIEW, against the real shipped pack.            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every other test in this file omits `opts.deps`. That is not a small gap: with
+ * no deps, `buildPreview` returns before it constructs its GameState, so the one
+ * birth path that builds a state -- and the only one that calls into core's
+ * character-sheet renderers -- was never executed by any test.
+ *
+ * It stayed unexecuted while 0b2c72530 (2026-08-06) gave core the known-state
+ * twin. char-sheet.ts began reading `state.actor.knownCombat` and
+ * `state.runeEnv`; birth.ts's hand-built `previewState` supplied neither, and
+ * its `as unknown as GameState` cast meant tsc said nothing. (N)ew game threw
+ * "Cannot read properties of undefined (reading 'slotObject')", then
+ * "(reading 'toD')", and died at the crash reporter -- on a green suite, for
+ * five days, shipped to the early channel.
+ *
+ * So this block's job is NOT to assert a layout; the tests above already do
+ * that. Its job is to RUN the preview with real records, so that the next time a
+ * sheet renderer reads a new GameState field, it fails here.
+ */
+describe("runBirth: the sheet preview builds a usable GameState", () => {
+  function packRecords<T>(name: string): T[] {
+    return (
+      JSON.parse(
+        readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8"),
+      ) as { records: T[] }
+    ).records;
+  }
+
+  /* The real bound race/class/body/history records, not stand-ins: a stand-in is
+   * how the production object drifted from its consumers in the first place. */
+  const players = bindPlayer({
+    races: packRecords("p_race"),
+    classes: packRecords("class"),
+    properties: packRecords("player_property"),
+    timed: packRecords("player_timed"),
+    shapes: packRecords("shape"),
+    bodies: packRecords("body"),
+    history: packRecords("history"),
+    realms: packRecords("realm"),
+  } as PlayerPackRecords);
+
+  const realDeps = {
+    bodyFor: (raceName: string) => {
+      const race = players.races.find((r) => r.name === raceName);
+      return race ? (players.bodies[0] ?? null) : null;
+    },
+    /* The race's own bound chart. bindPlayer resolves history into the race
+     * record itself, so there is no separate array to index -- reaching for one
+     * threw inside the race screen's ability rows and never got near the sheet. */
+    historyChartFor: (raceName: string) =>
+      players.races.find((r) => r.name === raceName)?.history ?? null,
+    properties: packRecords("player_property"),
+    elementNames: [],
+  } as unknown as BirthDeps;
+
+  it("draws the point-based stat table and panels without throwing", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, players.races, players.classes, {
+      rng: new Rng(1),
+      deps: realDeps,
+    });
+    await tick();
+    press(win, "a"); await tick(); // first race
+    press(win, "a"); await tick(); // first class
+    press(win, "a"); await tick(); // Point-based -> the screen that draws the sheet
+
+    /* The stat table is the preview's own output: reaching it at all means
+     * charSheetDeps / statTable / characterPanels all ran on previewState. */
+    const screen = term.snapshot().join("\n");
+    expect(screen).toContain("Total Cost");
+    /* And the panels really rendered, rather than the compact no-deps fallback
+     * that silently replaces them when buildPreview returns null. */
+    expect(screen).toMatch(/Age|Height|Weight/u);
+
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    void done;
   });
 });

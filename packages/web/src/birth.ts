@@ -86,6 +86,7 @@ import {
   generatePlayer,
   generateStats,
   incrementNameSuffix,
+  makeRuneEnv,
   modifyStatValue,
   playerAbilities,
   resetStats,
@@ -433,25 +434,50 @@ function drawScreenLine(term: GridSurface & GridPointerInput, x: number, y: numb
 }
 
 /**
- * A minimal GameState wrapping a derived preview character, carrying exactly the
- * fields the character-sheet renderers read (actor.player / actor.combat /
- * actor.speed / actor.weapon, chunk.depth, turn, playerState). The birth flow
- * has no live GameState yet, so this feeds statTable / characterPanels /
+ * A minimal GameState wrapping a derived preview character. The birth flow has
+ * no live GameState yet, so this feeds statTable / characterPanels /
  * characterSheetLines the same real, calc_bonuses-derived values a played
  * character would show. Cast because a preview needs none of the world state.
+ *
+ * THE CAST IS THE HAZARD, and it has already cost a shipped release. This used
+ * to claim it carried "exactly the fields the character-sheet renderers read",
+ * which is a promise about OTHER people's code that nothing checks. On
+ * 2026-08-06, 0b2c72530 gave core the known-state twin: char-sheet.ts started
+ * reading `state.actor.knownCombat` and `state.runeEnv`, this object was not
+ * updated, and `as unknown as GameState` silenced both. (N)ew game threw
+ * "Cannot read properties of undefined" and died at the crash reporter for five
+ * days, on the green suite, because no test supplied `deps` and buildPreview
+ * returns null without them - so the whole path was never executed.
+ *
+ * So: when a sheet renderer starts reading a new GameState field, it must be
+ * added here too, and birth-preview.test.ts is what makes that failure land in
+ * CI rather than on a player's first keypress. Do not restore a comment that
+ * enumerates the fields as though the list were authoritative.
  */
 function previewState(player: Player, ps: PlayerState): GameState {
+  const combat = toCombatState(ps);
   return {
     turn: 0,
     chunk: { depth: 0 },
     actor: {
       player,
-      combat: toCombatState(ps),
+      combat,
+      /* p->known_state, seeded with the real state exactly as session/game.ts
+       * does it. A birth character carries no equipment, so there is nothing
+       * unknown to derive and the seed IS the final value. */
+      knownCombat: combat,
       speed: ps.speed,
       totalEnergy: 0,
       weapon: null,
     },
     playerState: ps,
+    /* A birth character has no equipment, so every body slot is empty and
+     * nothing varies: the same placeholder env session/game.ts installs before
+     * wireGame swaps in the registry-backed one. */
+    runeEnv: makeRuneEnv(
+      () => null,
+      () => false,
+    ),
   } as unknown as GameState;
 }
 
