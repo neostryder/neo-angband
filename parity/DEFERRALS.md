@@ -649,6 +649,10 @@ decision.
   must match, and a cited path must exist. It is keyed on **file**, not
   `file:line`, on purpose — a line-keyed guard fails on every unrelated edit
   above a citation, and a churning test gets turned off.
+- **Known 2026-08-11 reconciliation debt:** the `port-todo.test.ts` count
+  guard is currently red. Its repair belongs to the dedicated PORT_TODO
+  reconciliation pass; this ported-verdict batch deliberately records the
+  condition without changing PORT_TODO.md or weakening the guard.
 - **The hand-written `file:line` numbers in the prose above are the one part of
   this document that drifts, and they already have once**: rewriting the notes
   moved ten of them by a line or two, and nothing caught it until the two
@@ -660,17 +664,17 @@ decision.
 
 ## Appendix: every row, with its verdict
 
-Generated from `parity/reports/deferral-census.tsv` (227 rows).
+Generated from `parity/reports/deferral-census.tsv` (226 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
 | `partial` | Part ported; the note must say which part is not | 2 |
 | `divergence` | Deliberately different, with the mechanism named | 32 |
 | `n-a` | Not applicable to this port, with the mechanism named | 53 |
-| `ported` | Done; the note was stale and has been rewritten | 29 |
-| `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 81 |
-| `not-a-deferral` | Ordinary English, not a parity claim | 30 |
-| | **total** | **227** |
+| `ported` | Done; the note was stale and has been rewritten | 24 |
+| `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 83 |
+| `not-a-deferral` | Ordinary English, not a parity claim | 32 |
+| | **total** | **226** |
 
 ### `partial` - Part ported; the note must say which part is not (2)
 
@@ -768,39 +772,34 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (29)
+### `ported` - Done; the note was stale and has been rewritten (24)
 
-- `packages/core/src/game/cave-cmd.ts:36` - STALE. do_cmd_steal is game/steal.ts (installSteal registers "steal"), reachable on s / roguelike s via web/src/main.ts:4515 stealCmd. Grepping do_cmd_steal's port name, not the C name, is what showed it.
-- `packages/core/src/game/ui-entry.ts:26` - ui-entry.ts:1417-1447 derives timed flags and resists from active effects; objectKnownShadow supplies the UI-known object view. ui-entry.test.ts:455-539 exercises the visible grid.
-- `packages/core/src/game/wizard.ts:68` - CORRECTED from real. The wiz-spoil.c generators ARE ported - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo (game/spoil.ts:255, :344, :453, :505) - and reachable through runSpoilers (web/src/wizard.ts:373, case "spoilers" at :874), which writes the file through the host seam. The remaining spoiler gaps are content lines, tracked at spoil.ts:93 / :518 / :519 / :550
-- `packages/core/src/gen/gen-monster.ts:350` - LEAD READ, and CORRECTED from real. The note says spreadMonsters is "not wired to a builder yet (room_of_chambers/cavern callers are deferred)". It is wired, twice: gen/cave.ts:1721 (the lair, after setPitType/monRestrict) and gen/cave.ts:1865. room_of_chambers is built too, and its builder asserts true in gen/gen.test.ts:2175
-- `packages/core/src/mon/lore-describe.ts:863` - LEAD READ, and CORRECTED from real. Both halves the note calls unavailable exist and are wired: chanceOfMeleeHitBase (combat/melee.ts:242) and hitChance (combat/hit.ts:60), joined at web/src/main.ts:3650 as meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac). web/src/screens.test.ts:929 asserts the real percentage reaches the recall screen. The seam default of 0 survives only for callers with no player - the core spoiler dump, tracked at game/spoil.ts:518
-- `packages/core/src/mon/lore-describe.ts:1316` - LEAD READ, and CORRECTED from real. Same: monsterHitPercent is wired at web/src/main.ts:3652 as getHitChance(max(race.level,1)*3 + effect.power, defense.ac + defense.toA), which is chance_of_monster_hit_base (combat/mon-melee.ts:191) against the player's live defensive state
-- `packages/core/src/obj/knowledge.ts:1331` - STALE. PN_IGNORE is consumed: game/notice.ts:37-38 tests the bit, clears it and runs the ignore-drop pass, and session/game.ts:581 raises it. PORT_TODO 1.1 built the notice pipeline after this verdict was recorded and never touched this note
-- `packages/core/src/obj/object.ts:910` - STALE. object_is_equipped is ported (isEquipped, 15 non-comment sites) and there IS player gear.
-- `packages/web/src/main.ts:5910` - CORRECTED from real. show_floor for multiple objects IS ported: showFloorList (web/src/overlay.ts:301), an overlay over screen_save, called at main.ts:5967
-- `packages/web/src/main.ts:5931` - CORRECTED from real. Same: showFloorList exists and is called. My "0 showFloor sites" was a transliteration grep
-- `parity/ledger/game-mon-ranged.yaml:31` - mon-ranged.ts:81-95 rejects arena levels and squareIsWarded grids before accepting an empty LOS summon square.
-- `parity/ledger/game-obj-list.yaml:45` - CORRECTED from real. object_list_format_name IS ported: objectListEntryName (game/obj-list.ts:289) passes the summed stack count through ODESC.ALTNUM exactly as upstream and gates the name by knowledge via describeObject. Only the terminal "%3.3s" padding of the upstream DRAW code stays with the shell, which is front-end-agnostic
-- `parity/ledger/game-project-cast.yaml:53` - STALE. BOTH branches of effect_handler_TOUCH are ported at game/effect-attack.ts handleTOUCH: the decoy arm at :433-443 (caveFindDecoy, ball sourced at the decoy) and the target-monster arm at :445 (monsterTargetMonster, ball sourced at mon->target.midx). game/project-cast.ts:705 says so too - the branches belong one level up, not here
-- `parity/ledger/high-scores.yaml:96` - STALE. The killer IS wired: monsterDesc(mon, MDESC_DIED_FROM) feeds it at game/effect-attack.ts:694 and game/project-cast.ts:136, project_p's takeHit hooks record it (session/game.ts:1394-1404), player.diedFrom round-trips through the save, and both the tombstone and the score entry read it (web/src/main.ts:4900 scoreBuildDeps, web/src/charsheet.ts:482)
-- `parity/ledger/player-history.yaml:46` - STALE on its own premise. dump_history is in the character dump (web/src/charsheet.ts:504 calls historyLines under the "[Player history]" header), and character-dump-to-file exists - dumpCharacterFile, now through the host seam.
-- `parity/ledger/player-history.yaml:79` - CORRECTED from real. Both hooks ARE wired: onArtifactFound (game/context.ts:687-693, installed by wireGame, called from pickup.ts playerPickupAux) and onArtifactLost (:695-701, the destroy / abandon / store-discard paths). The store-PURCHASE site is the part still missing, tracked at store/transact.ts:26
-- `parity/ledger/player-history.yaml:91` - STALE. do_cmd_note (cmd-misc.c:88) is web/src/main.ts:4435-4467, bound to ':' and calling historyAdd with HIST.USER_INPUT, with web/src/rest-steal-note.test.ts:60 covering it
-- `parity/ledger/store-price.yaml:21` - CORRECTED from real. store_init's runtime owner selection IS ported: storeChooseOwner (store/store.ts:100, rng.randint0 over store.owners) called at :116, :120 and :700. My "0 storeInit sites" was a transliteration grep
-- `parity/ledger/ui-entry.yaml:138` - CORRECTED from real, same bullet as ledger row :135. The EQUIPCMP_SCREEN category IS iterated: equipCmpCategories (game/ui-entry.ts:1965) is called by equipCmpSummary (game/equip-cmp.ts:391), one column per entry across all five categories plus a combined row of matching length (game/equip-cmp.test.ts:116). show_combined = false on CHAR_SCREEN1 is upstream's own character-screen behaviour
-- `parity/ledger/wizard-debug.yaml:14` - CORRECTED from real. The artifact-created registry EXISTS: ArtifactState (obj/make.ts:736) is aup_info[] with isCreated / mark, one instance per game, serialized as artifactsCreated (session/save.ts:976, :1200, :1346)
-- `parity/ledger/wizard-debug.yaml:87` - CORRECTED from real. The shell follow-up exists: runTweakItem (web/src/wizard.ts:2043), reached from the play-item T branch at :1914, alongside runRerollItem and runCurseItem
-- `parity/ledger/wizard-debug.yaml:112` - CORRECTED from real. dump_level IS ported: game/dump-level.ts with its own test (dump-level.test.ts), driven by runWriteMap (web/src/wizard.ts, case "write-map" at :878)
-- `parity/ledger/wizard-debug.yaml:139` - CORRECTED from real. The wiz-spoil.c generators ARE ported (game/spoil.ts:255, :344, :453, :505) and wired through runSpoilers (web/src/wizard.ts:373). "Deferred entirely" has not been true for some time
-- `parity/ledger/wizard-debug.yaml:144` - CORRECTED from real. The three Monte-Carlo collectors ARE ported and wired: runCollectObjMonStats / runCollectPitStats / runCollectDisconnectStats (web/src/wizard.ts, cases at :883, :886, :889)
-- `parity/ledger/wizard-debug.yaml:147` - CORRECTED from real. The wiz-stats sampler IS ported: wizStatItem (game/wizard.ts) driven by runStatItem (web/src/wizard.ts)
-- `parity/ledger/wizard-debug.yaml:154` - CORRECTED from real. Same as :164 - runChangeQuantity (web/src/wizard.ts) is reached from the play-item Q branch at :1921
-- `parity/ledger/wizard-debug.yaml:164` - CORRECTED from real. do_cmd_wiz_change_item_quantity IS ported: runChangeQuantity (web/src/wizard.ts), reached from the play-item submenu's Q/q branch (wizard.ts:1921). My "0 changeItemQuantity sites" was a grep for a camelCase name the port never uses
-- `parity/ledger/wizard-debug.yaml:166` - CORRECTED from real. The play_item shell IS ported: runPlayItem (web/src/wizard.ts), case "play-item" at :779, with upstream's full A/K/S/R/T/C/Q submenu at :1894-1923 and the core-side session snapshot/restore/commit (wizPlayItemBegin / Reject / Accept, game/wizard.ts:61-63)
-- `parity/ledger/wizard-debug.yaml:167` - CORRECTED from real. Same: the play_item shell exists, so the quantity action does have somewhere to live
+- `packages/core/src/game/wizard.ts:68` - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo are live at game/spoil.ts:273, :366, :480, :532; web/src/wizard.ts:373 runSpoilers reaches them through the host seam.
+- `packages/core/src/gen/gen-monster.ts:350` - spreadMonsters is exported at gen-monster.ts:353 and used by the cave builders at gen/cave.ts:1721 and :1865; gen/gen.test.ts:2175 exercises room_of_chambers.
+- `packages/core/src/mon/lore-describe.ts:863` - combat/melee.ts:243 chanceOfMeleeHitBase and combat/hit.ts:60 hitChance are wired as meleeHitPercent in web/src/main.ts:3786-3787; web/src/screens.test.ts:942-969 checks the live percentage.
+- `packages/core/src/mon/lore-describe.ts:1316` - web/src/main.ts:3788-3790 wires monsterHitPercent from the actor defence and monster attack power; lore-describe.ts:1319 consumes that supplied seam.
+- `packages/core/src/obj/knowledge.ts:1331` - obj/knowledge.ts:1134 requests PN_IGNORE, session/game.ts:609-611 names the next notice pass, and game/notice.ts:30 consumes it; game/notice.test.ts:177 covers its ordering.
+- `packages/core/src/obj/object.ts:910` - The object-info seam calls ObjectInfoDeps.isEquipped at obj/object.ts:1020 and :1049; store/transact.ts:84, :410 and :652 implement and use the real player-equipment predicate.
+- `parity/ledger/game-obj-list.yaml:45` - game/obj-list.ts:306 objectListEntryName sends the summed count through ODESC.ALTNUM; the row renderer uses it at :340-341 and obj-list.test.ts covers the listing behaviour.
+- `parity/ledger/game-project-cast.yaml:53` - game/effect-attack.ts:433-445 implements both handleTOUCH target branches, and game/project-cast.ts:705 delegates to the handler.
+- `parity/ledger/high-scores.yaml:96` - game/effect-attack.ts:703 and game/project-cast.ts:147 form MDESC_DIED_FROM killers; game/take-hit-hooks.ts:66-68 records diedFrom and web/src/main.ts:4990-5000 passes it to score construction.
+- `parity/ledger/player-history.yaml:46` - web/src/screens.ts:1107 exports historyLines and web/src/charsheet.ts:581 dumpCharacterFile writes the character dump through the host seam.
+- `parity/ledger/player-history.yaml:79` - session/game.ts:1113-1137 wires onArtifactFound and onArtifactLost; game/pickup.ts:305-310 invokes the find hook and game/effect-item.ts:678 invokes the loss hook. The distinct store-purchase entry remains separately owed at store/transact.ts:26.
+- `parity/ledger/player-history.yaml:91` - web/src/main.ts:4557 calls historyAdd with HIST.USER_INPUT from the note command, and web/src/rest-steal-note.test.ts:53-60 verifies the binding and history action.
+- `parity/ledger/store-price.yaml:21` - store/store.ts:113 exports storeChooseOwner and invokes it at :129, :133 and :716 when a store is initialized or maintained.
+- `parity/ledger/ui-entry.yaml:138` - game/ui-entry.ts:2114 exports equipCmpCategories; game/equip-cmp.ts:391 consumes it and game/equip-cmp.test.ts:116 checks all categories and the combined row.
+- `parity/ledger/wizard-debug.yaml:14` - obj/make.ts:754 ArtifactState records created artifacts, and session/save.ts:1069 plus :1500 serialize artifactsCreated.
+- `parity/ledger/wizard-debug.yaml:87` - web/src/wizard.ts:2083 runTweakItem is reached from the play-item T branch at :1918-1920.
+- `parity/ledger/wizard-debug.yaml:112` - game/dump-level.ts:109 exports dumpLevel and web/src/wizard.ts:1592 runWriteMap drives it; game/dump-level.test.ts covers its output.
+- `parity/ledger/wizard-debug.yaml:139` - The spoiler generators are game/spoil.ts:273, :366, :480 and :532, reachable from web/src/wizard.ts:373 runSpoilers.
+- `parity/ledger/wizard-debug.yaml:144` - web/src/wizard.ts:901, :904 and :907 invoke the three collectors runCollectObjMonStats (:1731), runCollectPitStats (:1758), and runCollectDisconnectStats (:1717).
+- `parity/ledger/wizard-debug.yaml:147` - game/wizard.ts:1682 exports wizStatItem and web/src/wizard.ts:2003 runs it from the item-stat workflow.
+- `parity/ledger/wizard-debug.yaml:154` - web/src/wizard.ts:2058 runChangeQuantity is selected by the play-item Q branch at :1923-1925.
+- `parity/ledger/wizard-debug.yaml:164` - web/src/wizard.ts:2058 runChangeQuantity is reachable through the Q/q play-item action at :1923-1925.
+- `parity/ledger/wizard-debug.yaml:166` - web/src/wizard.ts:1890 runPlayItem contains the A/K/S/R/T/C/Q dispatch at :1914-1925 and uses game/wizard.ts:1520, :1575 and :1610 snapshot/reject/accept operations.
+- `parity/ledger/wizard-debug.yaml:167` - The quantity action has its live play-item shell: web/src/wizard.ts:1890 dispatches Q at :1923-1925 to runChangeQuantity (:2058).
 
-### `note-is-fix` - The wording sits inside a record of a FIX, not a gap (81)
+### `note-is-fix` - The wording sits inside a record of a FIX, not a gap (83)
 
 - `packages/core/src/combat/mon-melee.ts:29` - The rewritten header: it records that all four formerly-listed items are ported and names the one that is not (mon/steal.ts:234)
 - `packages/core/src/effects/handlers.ts:82` - Records that the "deferred (8.9)" note outlived its wiring: this worldless layer has no monster registry, and the GAME override names the killer through monsterDesc(MDESC_DIED_FROM) at game/effect-attack.ts and game/project-cast.ts
@@ -825,6 +824,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/game/project-cast.ts:739` - Records that the decoy / target-monster branches are ported one level up in game/effect-attack.ts handleTOUCH, and that the stale note manufactured PORT_TODO 2.13
 - `packages/core/src/game/ranged-cmd.ts:24` - The sentence explicitly says the item "had been listed here as deferred, which is" wrong - a correction
 - `packages/core/src/game/take-hit-hooks.ts:23` - Records that the port deliberately mirrors upstream's close_game ordering, and names where it happens
+- `packages/core/src/game/ui-entry.ts:26` - ui-entry.ts:26-28 is a historical correction, not an outstanding absence: liveTimedUiDeps is exported at :1417 and objectKnownShadow at obj/known-object.ts:441 supplies the view.
 - `packages/core/src/game/ui-entry.ts:1408` - Records that PORT_TODO 3.8's stated cause was wrong - player_flags_timed is ported at player/calcs.ts:1097 - and that the DEFERRED comment on the seams had outlived it
 - `packages/core/src/game/ui-entry.ts:1411` - Same fix record, temp_resist half: TimedEffect.tempResist exists at player/types.ts:341, so PORT_TODO 3.7's stated cause was also wrong
 - `packages/core/src/gen/cave.ts:32` - Records that neither thing this header called deferred still is: the town builder places all eight stores and the persistent-level connectors are live end to end (PORT_TODO 4.3)
@@ -855,6 +855,7 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/game-effect-teleport.yaml:37` - Records that teleportMonster is the backing for the hook
 - `parity/ledger/game-effect-teleport.yaml:115` - Records that MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL now go through state.sound at every site upstream calls sound() (PORT_TODO 3.26)
 - `parity/ledger/game-effect-terrain.yaml:53` - Records that squareMemorize, squareKnowPile and squareSensePile are all ported and called, and that square_light_spot falls under the ratified repaint divergence
+- `parity/ledger/game-mon-ranged.yaml:31` - The ledger sentence records a completed fix: summonPossible rejects arena levels at game/mon-ranged.ts:81-83 and warded grids at :90-92.
 - `parity/ledger/game-monster-ai.yaml:40` - "NOW WIRED (were deferred)"
 - `parity/ledger/game-project-feat.yaml:45` - Records that exposeToSun is ported and that the reason for deferring it ("no town or day-night cycle yet") expired when PORT_TODO 4.3 built town generation
 - `parity/ledger/game-trap.yaml:54` - Records that the trap hooks are supplied by the live session and that equip learning fires on both upstream paths (trap.c:515-518 and 534-539)
@@ -884,9 +885,9 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `parity/ledger/store-maint.yaml:37` - Records that both conjuncts of the buy check are ported and that the object_flag_is_known half landed with PORT_TODO 2.10
 - `parity/ledger/ui-entry.yaml:133` - Records that PF_FAST_SHOT is live and that the launcher-slot reach the row called deferred already existed in player/calcs.ts
 
-### `not-a-deferral` - Ordinary English, not a parity claim (30)
+### `not-a-deferral` - Ordinary English, not a parity claim (32)
 
-- `packages/core/src/game/cave-cmd.ts:954` - Describes the fallback when the traps module is absent, not a missing feature; trap.ts registers the real disarm and session/game.ts:1698 supplies trapDeps
+- `packages/core/src/game/cave-cmd.ts:956` - Describes the fallback when the traps module is absent, not a missing feature; trap.ts registers the real disarm and session/game.ts:1698 supplies trapDeps
 - `packages/core/src/game/context.ts:349` - Prose about why the options store is optional, and it states the fallback is exact; no feature is claimed absent
 - `packages/core/src/game/context.ts:848` - Policy prose about an optional seam, not a parity claim, and the policy is honoured: state.combinePack IS supplied by the live session at session/game.ts:899, so only a worldless harness leaves the bit owed
 - `packages/core/src/game/gear.ts:1269` - A sentence ABOUT the census, not a parity claim: the docblock explains that the local is named newPile after upstream rather than "deferred", and in saying so it matched the census itself. Left as-is rather than reworded, because the clearer sentence is worth one classified row.
@@ -898,6 +899,8 @@ Generated from `parity/reports/deferral-census.tsv` (227 rows).
 - `packages/core/src/session/game.ts:3416` - A note about the mod event flood, not a parity claim
 - `packages/web/src/charselect.ts:130` - Describes the shell's own command hook, not a parity claim
 - `packages/web/src/main.ts:3736` - Records that a utility is deliberately unbound; nothing upstream is missing
+- `packages/web/src/main.ts:5910` - main.ts:5910 merely describes routing a multi-object pile to the floor-list UI; main.ts:5973 calls showFloorList, which is implemented at overlay.ts:304 and exercised at overlay.test.ts:1424-1525.
+- `packages/web/src/main.ts:5931` - The word "defer" is ordinary UI-routing prose, not an absence: this branch sets pendingFloorPile at main.ts:5931-5932 and the live caller opens showFloorList at :5973.
 - `packages/web/src/main.ts:8475` - A setTimeout, chosen because the fault surfaces inside core
 - `packages/web/src/mod-browse.ts:1156` - A variable named `todo`
 - `packages/web/src/mod-browse.ts:1158` - A variable named `todo`
