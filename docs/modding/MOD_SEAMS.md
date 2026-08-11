@@ -60,22 +60,26 @@ front end remains a later phase.
 
 ## 0b. The live world is a frame stream
 
-`packages/web/src/world-view.ts` defines the renderer-neutral `WorldFrame` the
-real `render()` path now produces once per map repaint. It contains the viewport
+`packages/web/src/world-view.ts` defines the renderer-neutral `WorldFrame` that
+the real `render()` path produces once per map repaint and passes through its
+single `WorldFrameSink`. It contains the viewport
 geometry and every in-bounds grid in order, including unknown grids; each cell
 has player knowledge (`seen`, `remembered`, or `unknown`), a semantic terrain
 feature id, ordered trap/object/monster/path layers, and the look cursor. The
 player remains a separate, player-last layer because that is the upstream glyph
 paint order, not because it is absent from the stream.
 
-The current `GlyphTerm` consumes the frame's optional `visual` fallback,
+With no replacement selected, the current `GlyphTerm` is that sink and consumes
+the frame's optional `visual` fallback,
 including the upstream terrain-under-foreground tile pass for visible path
 markers over otherwise bare seen terrain, but a
 future isometric or 3D front end consumes the registry ids and visibility rather
 than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
 asset reference used by the grid contract; it has no Canvas2D dependency. This
-is an exported host data contract, not a plugin field yet: selecting a frontend
-and handing it this stream is Phase 5.
+is host infrastructure, not a plugin field yet: Phase 5 will select a frontend
+and hand it this stream. The Phase-4 tests cover both the unmodded glyph-sink
+control and an independently owned sink receiving the exact produced frame;
+they do not claim a plugin can receive one yet.
 
 ## 1. `GameState.modHooks` - the behaviour seam
 
