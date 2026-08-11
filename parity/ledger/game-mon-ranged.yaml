@@ -28,7 +28,7 @@ upstream:
         + 3) / 4, +20 with fear, +50 with confusion or disenchantment; zero for
         stupid monsters.
       - summon_possible (L238): summonPossible - an empty floor grid within 2 of
-        the caster in line of sight (glyph-of-warding / arena exclusions deferred).
+        the caster in line of sight; formerly deferred ward/arena exclusions are live.
   - path: src/mon-move.c
     items:
       - monster_turn's `if (make_ranged_attack(mon)) return;` (L1568): wired
