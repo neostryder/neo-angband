@@ -286,6 +286,15 @@ the canvas requirement from grid consumers so the later front-end capability can
 hand a replacement renderer real work to do; declaring a capability before that
 host path exists would be an inert seam.
 
+The same boundary applies to the live `WorldFrame` in
+`packages/web/src/world-view.ts`: `render()` produces it from the actual map
+knowledge path, and the default glyph terminal consumes its fallback visual
+projection. The frame carries semantic feature/trap/object/monster ids,
+visibility, ordered layers, cursor, and player placement, so a later selected
+front end can make an isometric or 3D view without decoding terminal glyphs.
+It is deliberately not a manifest capability until the Phase-5 `frontend`
+member can receive it; a capability with no recipient would be a false seam.
+
 The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
 single device-neutral route by which keyboard and keymap input reaches screens;
 its direction carries an analog vector and angle. It does not grant a plugin a

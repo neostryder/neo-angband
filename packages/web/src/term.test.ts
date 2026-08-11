@@ -420,9 +420,11 @@ describe("main.ts supplies bgTile wherever something covers the terrain", () => 
   const MAIN = stripComments(WEB("main.ts"));
 
   it("passes the terrain tile under a trap/object/monster on a visible cell", () => {
-    /* `drawn !== t` is the port of tap==ap && tcp==cp: `t` IS the terrain glyph,
-     * so when nothing covered the cell the two are the same object. */
-    expect(MAIN).toContain("...(drawn !== t && t.tile ? { bgTile: t.tile } : {})");
+    /* The world-frame producer retains the terrain asset only when a semantic
+     * occupant covers it; the GlyphTerm consumer maps that neutral field back
+     * to its faithful bgTile paint input. */
+    expect(MAIN).toContain("coveredTerrain && pathColour === undefined ? terrain.tile : undefined");
+    expect(MAIN).toContain("...(cell.visual.backgroundAsset ? { bgTile: cell.visual.backgroundAsset } : {})");
   });
 
   it("passes the terrain tile under the player, from the player's OWN grid", () => {
@@ -432,13 +434,14 @@ describe("main.ts supplies bgTile wherever something covers the terrain", () => 
     expect(MAIN).toContain(
       "terrainGlyph(state.actor.grid.x, state.actor.grid.y, LIGHTING.LOS)",
     );
-    expect(MAIN).toContain("...(pTerrain.tile ? { bgTile: pTerrain.tile } : {})");
+    expect(MAIN).toContain("...(pTerrain.tile ? { backgroundAsset: pTerrain.tile } : {})");
+    expect(MAIN).toContain("...(frame.player.visual.backgroundAsset ? { bgTile: frame.player.visual.backgroundAsset } : {})");
   });
 
   it("passes the remembered terrain tile under a detected monster out of view", () => {
     /* Remembered terrain is the LIT variant (cave-map.c map_info), and a
      * detected monster is drawn over it - so it needs the same pass. */
-    expect(MAIN).toContain("...(memTile ? { bgTile: memTile } : {})");
+    expect(MAIN).toContain("coveredTerrain && pathColour === undefined ? memTile : undefined");
   });
 
   it("term.ts routes paintCell through blitCellAssets rather than blitting once", () => {

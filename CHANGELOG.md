@@ -46,6 +46,12 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- The actual map repaint now first produces a renderer-neutral `WorldFrame`:
+  viewport geometry, player knowledge, semantic terrain/object/trap/monster/path
+  layers, cursor state, and player placement. `GlyphTerm` consumes its faithful
+  glyph projection unchanged, while a future selected front end can consume the
+  world data for an isometric or 3D view without parsing terminal characters.
+
 - Menu screens are declarative at the shared `selectFromMenu` door. Each game
   menu has a stable non-localized id and semantic rows, and trusted mods granted
   `registry:menu` can layer a transformer with `handlerFor(id)`. A bad transform

@@ -58,6 +58,23 @@ reported on that mod's row; the original menu still opens. This is a screen-data
 seam, not a claim that a graphical or 3D front end is shipped: choosing a total
 front end remains a later phase.
 
+## 0b. The live world is a frame stream
+
+`packages/web/src/world-view.ts` defines the renderer-neutral `WorldFrame` the
+real `render()` path now produces once per map repaint. It contains the viewport
+geometry and every in-bounds grid in order, including unknown grids; each cell
+has player knowledge (`seen`, `remembered`, or `unknown`), a semantic terrain
+feature id, ordered trap/object/monster/path layers, and the look cursor. The
+player remains a separate, player-last layer because that is the upstream glyph
+paint order, not because it is absent from the stream.
+
+The current `GlyphTerm` consumes the frame's optional `visual` fallback, but a
+future isometric or 3D front end consumes the registry ids and visibility rather
+than parsing glyphs or CSS. `WorldVisual.asset` is the same renderer-neutral
+asset reference used by the grid contract; it has no Canvas2D dependency. This
+is an exported host data contract, not a plugin field yet: selecting a frontend
+and handing it this stream is Phase 5.
+
 ## 1. `GameState.modHooks` - the behaviour seam
 
 The one seam behind both bundled mods. `GameState.modHooks`

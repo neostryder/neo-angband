@@ -478,9 +478,12 @@ than parsing its label. Call `host.menus.handlerFor(id)` before registering when
 you need to wrap a transformer installed by an earlier mod. A failed transform
 is reported and the unmodified menu stays openable.
 
-This is still not a total-front-end manifest field. It makes menus re-presentable
-without promising that a graphical or 3D front end ships; renderer selection and
-world data remain later seams.
+This is still not a total-front-end manifest field. The host now also produces a
+renderer-neutral `WorldFrame` from its actual map repaint: grids retain semantic
+terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
+while the glyph projection is only the current terminal fallback. That makes the
+world data ready for a later isometric or 3D consumer, but no plugin can select
+or receive a frontend until the Phase-5 manifest member exists.
 
 Input follows the same staged rule. `UiInput` is available to host code through
 the one input door and can represent a continuous direction (vector, magnitude,
