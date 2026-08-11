@@ -46,6 +46,12 @@ Current state of the project at version `0.19.0`. High level, what exists today:
 
 ### Added
 
+- Menu screens are declarative at the shared `selectFromMenu` door. Each game
+  menu has a stable non-localized id and semantic rows, and trusted mods granted
+  `registry:menu` can layer a transformer with `handlerFor(id)`. A bad transform
+  is reported and falls back to the unchanged menu, so a plugin cannot trap a
+  player behind a failed screen.
+
 - The web front end has one input door. All former per-screen browser keydown
   registrations now subscribe to it; keyboard and keymap input are normalized
   as device-neutral values, including continuous direction vectors and angles

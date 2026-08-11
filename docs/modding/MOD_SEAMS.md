@@ -41,6 +41,23 @@ ordering while leaving non-grid front ends to the later front-end seam.
 > actually reach - and the much longer list of things they cannot - see
 > `docs/modding/MOD_REACH.md`.
 
+## 0a. Menu rows are front-end data
+
+Every `selectFromMenu` caller declares a stable, non-localized id (for example
+`core:game-menu`, `core:ignore`, or `core:knowledge-group`). Its rows arrive at
+the one menu choke point with stable row ids and semantic data: `kind` says
+whether the row is a command, item, category, toggle, or other choice, and
+`ref`/`data` carry the target without requiring an alternative front end to
+parse a display label.
+
+Trusted plugin code with `registry:menu` can register a transformer per menu id.
+`menus.handlerFor(id)` is the installed transform at that point in load order,
+so a later mod wraps an earlier one instead of discarding it. A transformer that
+throws, or returns anything other than an array of valid rows, is refused and
+reported on that mod's row; the original menu still opens. This is a screen-data
+seam, not a claim that a graphical or 3D front end is shipped: choosing a total
+front end remains a later phase.
+
 ## 1. `GameState.modHooks` - the behaviour seam
 
 The one seam behind both bundled mods. `GameState.modHooks`

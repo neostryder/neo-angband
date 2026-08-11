@@ -59,7 +59,7 @@ export function showAbilities(term: GridSurface & GridPointerInput, rows: readon
     if (!row?.desc) return [];
     return [{ text: row.desc, color: colorToCss(COLOUR_L_BLUE) }];
   };
-  return selectFromMenu(term, header, items, "[ arrows to browse, ESC to exit ]", {
+  return selectFromMenu(term, "core:abilities", header, items, "[ arrows to browse, ESC to exit ]", {
     detail,
     browseOnly: true,
     cursorColor: colorToCss(COLOUR_WHITE),

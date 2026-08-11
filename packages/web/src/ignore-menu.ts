@@ -315,8 +315,12 @@ export async function showIgnoreItemMenu(
   if (!obj) return;
 
   const entries = buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game));
-  const items: MenuItem[] = entries.map((e) => ({ label: e.label }));
-  const idx = await selectFromMenu(term, IGNORE_TITLE, items);
+  const items: MenuItem[] = entries.map((e) => ({
+    label: e.label,
+    id: `core:ignore:${e.action}`,
+    semantic: { kind: "command", ref: e.action },
+  }));
+  const idx = await selectFromMenu(term, "core:ignore", IGNORE_TITLE, items);
   if (idx === null) return;
 
   const entry = entries[idx];

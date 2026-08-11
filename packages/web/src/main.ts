@@ -228,6 +228,7 @@ import type {
 import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@rpgm-tools/neo-angband-core";
 import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
+import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
@@ -281,6 +282,10 @@ import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
+
+/* A menu rewrite is optional mod decoration. Attribute a refusal to its owner,
+ * but never turn a screen the player needs into a failed plugin install. */
+setMenuTransformProblemReporter((owner, problem) => reportModFault(owner ?? "mods", problem));
 import { showModUpgrades } from "./mod-browse";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -1080,6 +1085,7 @@ async function choosePlayerEffect(chain: Effect | null): Promise<boolean> {
   const rows = effectChoiceRows(chain.next, value.base, effectMenuDeps);
   const selected = await selectFromMenu(
     term,
+    "core:effect-choice",
     "Which effect?",
     rows.map((row) => ({ label: row.label })),
     "[ a-z to choose, ESC to cancel ]",
@@ -2144,7 +2150,12 @@ function prefsUiCtx(): PrefsUiCtx {
 /** MenuEntry -> MenuItem, omitting `disabled` rather than setting it undefined
  * (exactOptionalPropertyTypes). */
 function toMenuItems<A extends string>(entries: readonly MenuEntry<A>[]): MenuItem[] {
-  return entries.map((e) => (e.disabled ? { label: e.label, disabled: true } : { label: e.label }));
+  return entries.map((e) => ({
+    label: e.label,
+    ...(e.disabled ? { disabled: true } : {}),
+    id: `core:context:${e.action}`,
+    semantic: { kind: "command", ref: e.action },
+  }));
 }
 
 function contextPlayerCtx(): PlayerMenuCtx {
@@ -2165,6 +2176,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
   const items = buildPlayerOtherMenu();
   const idx = await selectFromMenu(
     term,
+    "core:context-player-other",
     "Other",
     toMenuItems(items),
   );
@@ -2217,6 +2229,7 @@ async function runContextMenuPlayer(): Promise<void> {
   const items = buildPlayerMenu(contextPlayerCtx());
   const idx = await selectFromMenu(
     term,
+    "core:context-player",
     "Command for yourself",
     toMenuItems(items),
   );
@@ -2299,6 +2312,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
   const items = buildCaveMenu(ctx);
   const idx = await selectFromMenu(
     term,
+    "core:context-grid",
     describeLookGrid(state, grid, TARGET.LOOK).text || "Command for that grid",
     toMenuItems(items),
   );
@@ -2327,7 +2341,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
         say("You have no usable items.");
         break;
       }
-      const useIdx = await selectFromMenu(term, "Use which item? ", items);
+      const useIdx = await selectFromMenu(term, "core:context-use-item", "Use which item? ", items);
       if (useIdx === null) break;
       const useHandle = handles[useIdx];
       if (useHandle === undefined) break;
@@ -2459,6 +2473,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
   const items = buildObjectMenu(ctx);
   const idx = await selectFromMenu(
     term,
+    "core:context-object",
     `Command for ${objectName(state, obj)}`,
     toMenuItems(items),
   );
@@ -2536,6 +2551,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
       const entries = buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game));
       const pick = await selectFromMenu(
         term,
+        "core:ignore-item",
         "(Enter to select, ESC) Ignore:",
         entries.map((e) => ({ label: e.label })),
       );
@@ -2712,7 +2728,7 @@ async function selectCurse(removable: number[], obj: GameObject, diceString: str
     const capped = desc.charAt(0).toUpperCase() + desc.slice(1);
     return [{ text: `${capped}.`, color: UI_TEXT }];
   };
-  const idx = await selectFromMenu(term, header, items, "[ a-z to choose, ESC to cancel ]", { detail });
+  const idx = await selectFromMenu(term, "core:curse-removal", header, items, "[ a-z to choose, ESC to cancel ]", { detail });
   if (idx === null) return null;
   return removable[idx] ?? null;
 }
@@ -2978,7 +2994,7 @@ async function activateItem(): Promise<void> {
     say("You have no items to activate.");
     return;
   }
-  const idx = await selectFromMenu(term, "Activate which item? ", items, undefined, {
+  const idx = await selectFromMenu(term, "core:activate-item", "Activate which item? ", items, undefined, {
     inscripCmdKey: itemCmdKey("activate"),
   });
   if (idx === null) return;
@@ -3224,7 +3240,7 @@ async function applyIgnoreDrop(): Promise<void> {
 /** quality_action's tier submenu (ui-options.c L1584-1625): pick a tier. */
 async function openQualityLevelMenu(itype: number): Promise<void> {
   const items = qualityLevelItems(itype);
-  const idx = await selectFromMenu(term, "Quality ignore menu", items);
+  const idx = await selectFromMenu(term, "core:ignore-quality-level", "Quality ignore menu", items);
   if (idx === null) return;
   state.ignore.level[itype] = idx;
   ignoreConfigChanged = true;
@@ -3234,7 +3250,7 @@ async function openQualityLevelMenu(itype: number): Promise<void> {
 async function openQualityMenu(): Promise<void> {
   for (;;) {
     const { items, itypes } = qualityIgnoreMenu(state.ignore);
-    const idx = await selectFromMenu(term, "Quality ignore menu", items);
+    const idx = await selectFromMenu(term, "core:ignore-quality", "Quality ignore menu", items);
     if (idx === null) return;
     const itype = itypes[idx];
     if (itype !== undefined) await openQualityLevelMenu(itype);
@@ -3255,7 +3271,7 @@ async function openEgoMenu(): Promise<void> {
       say("No known ego items to configure.");
       return;
     }
-    const idx = await selectFromMenu(term, "Ego item ignore menu", items);
+    const idx = await selectFromMenu(term, "core:ignore-ego", "Ego item ignore menu", items);
     if (idx === null) return;
     const choice = choices[idx];
     if (!choice) continue;
@@ -3276,6 +3292,7 @@ async function openSvalKindMenu(tval: number, desc: string): Promise<void> {
     if (items.length === 0) return;
     const idx = await selectFromMenu(
       term,
+      "core:ignore-sval",
       `Ignore the following ${desc}:`,
       items,
       "[ a-z toggle, ESC to go back ]",
@@ -3305,7 +3322,7 @@ async function openIgnoreSetup(): Promise<void> {
       { label: "Ego ignoring options" },
       ...catItems,
     ];
-    const idx = await selectFromMenu(term, "Item ignoring setup", items);
+    const idx = await selectFromMenu(term, "core:ignore-setup", "Item ignoring setup", items);
     if (idx === null) break;
     if (idx === 0) {
       await openQualityMenu();
@@ -3354,7 +3371,7 @@ async function chooseBook(
   // the "<Verb> which book?" selection, even for one candidate, so browse/cast/
   // study never silently jump past the book prompt. The player presses the
   // book's letter (or ESC) exactly as in the original.
-  const idx = await selectFromMenu(term, `${verb} which book?`, items, undefined, {
+  const idx = await selectFromMenu(term, "core:spell-book", `${verb} which book?`, items, undefined, {
     inscripCmdKey: cmdCode ? itemCmdKey(cmdCode) : undefined,
     /* item_menu draws a box over the level, it does not blank it (ui-object.c
      * L1198-1215). Casting a spell was clearing the terminal and printing a list
@@ -3402,6 +3419,7 @@ async function castSpell(): Promise<void> {
   const noun = realm?.spellNoun ?? "spell";
   const pick = await selectFromMenu(
     term,
+    "core:cast-spell",
     // "%s which %s? ('?' to toggle description)" (ui-spell.c:285).
     `${verb[0]?.toUpperCase()}${verb.slice(1)} which ${noun}? ('?' to toggle description)`,
     items,
@@ -3497,6 +3515,7 @@ async function studySpell(): Promise<void> {
     const noun = playerObjectToBook(player, bookObj)?.realm.spellNoun ?? "spell";
     const pick = await selectFromMenu(
       term,
+      "core:study-spell",
       // "Study which %s? ('?' to toggle description)" (study path, ui-spell.c).
       `Study which ${noun}? ('?' to toggle description)`,
       items,
@@ -3579,6 +3598,7 @@ async function browseBookObject(handle: number): Promise<void> {
   // (spell_menu_new show_description=true).
   await selectFromMenu(
     term,
+    "core:browse-spell",
     `Browsing ${noun}s. ('?' to toggle description)`,
     items.map((it, i) => ({
       ...it,
@@ -3998,6 +4018,7 @@ async function openKnowledgeMenu(): Promise<void> {
   for (;;) {
     const idx = await selectFromMenu(
       term,
+      "core:knowledge-group",
       "Display current knowledge",
       items,
       undefined,
@@ -4316,6 +4337,7 @@ async function chooseTarget(): Promise<boolean> {
   }
   const idx = await selectFromMenu(
     term,
+    "core:target-monster",
     "Target which monster?",
     items,
     "[ a-z to target, ESC to cancel ]",
@@ -4612,7 +4634,7 @@ async function querySymbolCmd(): Promise<void> {
 
   // Prompt sort order: y = by level, k = by kills, anything else aborts
   // (L4538-4557). ESC on the menu = the "nope" branch.
-  const sortIdx = await selectFromMenu(term, "Recall details?", [
+  const sortIdx = await selectFromMenu(term, "core:monster-recall-sort", "Recall details?", [
     { label: "Sort by level" },
     { label: "Sort by kills" },
   ]);
@@ -4630,7 +4652,7 @@ async function querySymbolCmd(): Promise<void> {
     const items = matches.map(({ race, lore }) => ({
       label: `${capRaceName(race)}${lore.pkills > 0 ? `  (${lore.pkills} killed)` : ""}`,
     }));
-    const idx = await selectFromMenu(term, "Recall which monster?", items);
+    const idx = await selectFromMenu(term, "core:monster-recall", "Recall which monster?", items);
     if (idx === null) return;
     const row = matches[idx];
     if (!row) return;
@@ -5487,6 +5509,7 @@ async function gameMenuOnce(): Promise<boolean> {
   const entries = gameMenuEntries({ canQuit: desktopQuitAvailable() });
   const pick = await selectFromMenu(
     term,
+    "core:game-menu",
     "Game menu",
     entries.map((e) => e.item),
     GAME_MENU_FOOTER,
@@ -5659,6 +5682,7 @@ async function runDeathMenu(): Promise<void> {
     const entries = deathMenuEntries();
     const pick = await selectFromMenu(
       term,
+      "core:death-menu",
       "You have died.",
       entries.map((e) => e.item),
       DEATH_MENU_FOOTER,
@@ -5846,7 +5870,7 @@ async function pickupCmd(): Promise<void> {
   let target = canPickup[0] ?? null;
   if (canPickup.length > 1) {
     const items = canPickup.map((o) => ({ label: objectName(state, o), color: UI_TEXT }));
-    const idx = await selectFromMenu(term, "Get which item?", items);
+    const idx = await selectFromMenu(term, "core:pickup", "Get which item?", items);
     if (idx === null) return;
     pendingPickupChoice = canPickup[idx] ?? null;
     target = pendingPickupChoice;
@@ -6070,7 +6094,7 @@ async function useGenericCmd(): Promise<void> {
     say("You have no items to use.");
     return;
   }
-  const idx = await selectFromMenu(term, "Use which item? ", rows, undefined, {
+  const idx = await selectFromMenu(term, "core:use-item", "Use which item? ", rows, undefined, {
     inscripCmdKey: itemCmdKey("use"),
   });
   if (idx === null) return;
@@ -10275,6 +10299,7 @@ function installTrusted(trustedId: string): void {
           tval: tvalRegistry(),
           rune: runeRegistry(),
           vocab: trustedVocab,
+          menus: menuRegistry.forOwner(trustedId),
         },
         caps,
       );
@@ -10485,6 +10510,7 @@ for (const loaded of activeModCode().plugins) {
         tval: tvalRegistry(),
         rune: runeRegistry(),
         vocab: new VocabularyRegistry(),
+        menus: menuRegistry.forOwner(loaded.id),
       },
       CapabilitySet.fromManifest(loaded.manifest),
     );

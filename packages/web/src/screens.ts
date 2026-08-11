@@ -270,6 +270,8 @@ export function packMenu(
       color: objectColor(obj, state),
       tag: objLetter(slot),
       inscrip: obj.note,
+      id: `core:gear:${handle}`,
+      semantic: { kind: "item", ref: handle, data: { source: "inventory", slot } },
     });
     handles.push(handle);
   });
@@ -300,6 +302,8 @@ export function quiverMenu(
       color: objectColor(obj, state),
       tag: String(slot),
       inscrip: obj.note,
+      id: `core:gear:${handle}`,
+      semantic: { kind: "item", ref: handle, data: { source: "quiver", slot } },
     });
     handles.push(handle);
   });
@@ -451,6 +455,8 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
       label: `${(slot ? equipMention(slot) : "").padEnd(14).slice(0, 14)} ${objectName(state, obj)}`,
       color: objectColor(obj, state),
       tag: objLetter(i),
+      id: `core:gear:${handle}`,
+      semantic: { kind: "item", ref: handle, data: { source: "equipment", slot: i } },
     });
     handles.push(handle);
   }

@@ -239,6 +239,7 @@ export async function runVisualsMenu(ctx: PrefsUiCtx, title: string): Promise<vo
   for (;;) {
     const idx = await selectFromMenu(
       ctx.term,
+      "core:visuals",
       title,
       items,
       "[ a-f to choose, ESC to return ]",
@@ -294,6 +295,7 @@ export async function runColorsMenu(
   for (;;) {
     const idx = await selectFromMenu(
       ctx.term,
+      "core:pref-options",
       title,
       items,
       "[ a-c to choose, ESC to return ]",

@@ -143,6 +143,7 @@ export async function runKeymapEditor(term: GridSurface & GridPointerInput, rogu
     const count = keymapEntries(mode).length;
     const idx = await selectFromMenu(
       term,
+      "core:keymap-edit",
       `Keymaps (${roguelike ? "roguelike" : "original"} keyset, ${count} defined)`,
       [
         { label: "Query a keymap" },

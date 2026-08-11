@@ -377,6 +377,7 @@ export async function runSpoilers(
 ): Promise<void> {
   const idx = await selectFromMenu(
     term,
+    "core:wizard-spoilers",
     "Create spoilers",
     SPOIL_ACTIONS.map((a) => ({ label: a.label })),
   );
@@ -1057,6 +1058,7 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
     rows.push({ label: art ? "All artifacts" : "All objects" });
     const pick = await selectFromMenu(
       term,
+      "core:wizard-object-kind",
       art ? "What kind of artifact?" : "What kind of object?",
       rows,
       "[ a-z to choose, ESC to cancel ]",
@@ -1097,6 +1099,7 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
 
     const sub = await selectFromMenu(
       term,
+      "core:wizard-object-subtype",
       art ? `Which artifact ${baseName}? ` : `What kind of ${baseName}?`,
       subRows,
       "[ a-z to choose, ESC to go back ]",
@@ -1179,7 +1182,7 @@ async function runProjDemo(ctx: WizardUiCtx): Promise<void> {
       ],
     };
   });
-  await selectFromMenu(ctx.term, "PROJ_ types display", rows, "[ ESC to close ]");
+  await selectFromMenu(ctx.term, "core:wizard-projection", "PROJ_ types display", rows, "[ ESC to close ]");
 }
 
 /* ------------------------------------------------------------------ *
@@ -1897,6 +1900,7 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
   }
   const pick = await selectFromMenu(
     term,
+    "core:wizard-play-object",
     "Play with which object? ",
     items,
     "[ a-z to choose, ESC to cancel ]",

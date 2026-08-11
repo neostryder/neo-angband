@@ -159,6 +159,7 @@ function targets() {
   const stores = new StoreBehaviourRegistry();
   registerCoreStoreBehaviour(stores);
   const projections = new ProjectionHandlerRegistry();
+  const menus = { register: vi.fn(), handlerFor: vi.fn(() => null) };
   return {
     effects: new EffectRegistry(),
     rooms,
@@ -168,6 +169,7 @@ function targets() {
     commands: new ActionRegistry(),
     state,
     projections,
+    menus,
     vocab,
     _rooms: rooms,
     _profiles: profiles,
@@ -176,6 +178,7 @@ function targets() {
     _projections: projections,
     _state: state,
     _vocab: vocab,
+    _menus: menus,
   };
 }
 
@@ -210,6 +213,8 @@ describe("createModRegistryHost - trusted host (no capabilities)", () => {
     ).not.toThrow();
     host.vocab.setValue("player", "demo:luck", 7);
     expect(host.vocab.getValue("player", "demo:luck")).toBe(7);
+    expect(() => host.menus.register("core:game-menu", (_id, rows) => rows)).not.toThrow();
+    expect(t._menus.register).toHaveBeenCalledWith("core:game-menu", expect.any(Function));
   });
 });
 
@@ -237,6 +242,7 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.profiles.list()).toThrow(/registry:profile/);
     expect(() => host.blows.names()).toThrow(/registry:blow/);
     expect(() => host.stores.massProduceTvals()).toThrow(/registry:store/);
+    expect(() => host.menus.handlerFor("core:game-menu")).toThrow(/registry:menu/);
   });
 
   it("gates each domain independently and only at call time", () => {

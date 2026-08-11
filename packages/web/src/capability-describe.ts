@@ -28,6 +28,15 @@ export interface CapabilityDescription {
 
 /** Describe one registry:<domain> override grant. */
 function describeRegistry(domain: string): { text: string; elevated: boolean } {
+  /* Keep this new front-end seam beside the long-lived core switch rather than
+   * growing a measured dispatch table. The switch census deliberately records
+   * that table's 15 core-style domains; menu data belongs to the web host. */
+  if (domain === "menu") {
+    return {
+      text: "Rewrite one named game menu's semantic rows and layout",
+      elevated: true,
+    };
+  }
   switch (domain) {
     case "*":
       return {

@@ -294,7 +294,7 @@ the root owns input; score pages, modals, and run interruption retain their
 existing literal-key gates, so a mod must not use injected input to outrank the
 player's chosen mapping or an active screen.
 
-`register` reaches nine registries, each gated by a capability your manifest must
+`register` reaches fifteen registries, each gated by a capability your manifest must
 declare **and** the player must consent to:
 
 | Capability | What it opens |
@@ -313,6 +313,7 @@ declare **and** the player must consent to:
 | `registry:randart` | how RANDOM artifacts are built — `randart.abilities` (what a power does), `.prep` (what an item class starts with), `.census` (which frequency bucket it feeds) and `.redundancy` (whether an activation duplicates something the artifact already has). Shipping a *fixed* artifact needs no capability; this is the generator |
 | `registry:rune` | what a RUNE is — the unit of object knowledge. `rune.desc` (the recall line), `.name` (the display decoration), `.knows` / `.learn` (the knowledge pair, handed the player so YOUR mod keeps the store — core never grew a slot for it), `.objectHas` (whether an item carries it) and `.modMessage` (the "You feel stronger!" line, keyed on the modifier). Plus `.contribute`, which is how your rune gets into the list every consumer enumerates — without it the six tables above are handlers nothing ever calls |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
+| `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable |
 
 A facade you did not declare throws when you touch it, even if the player
 consented to something else. Consent says the player allowed these domains; the
@@ -349,6 +350,23 @@ register(host) {
 `handlerFor` is on every facade in the table above (`blows.handlerFor`,
 `stores.willBuyFor`, `profiles.builder`, …). Reach for it before reimplementing
 anything: a wrapper survives a core change that a copy does not.
+
+Menus are declared by stable ids such as `core:game-menu` and
+`core:knowledge-group`, never their localized titles. Each row has a stable
+`id` plus `semantic: { kind, ref?, data? }`: a command wheel can use a command
+row's `ref`, while an inventory grid can use an item row without reverse-parsing
+the label. A transformer receives those rows, may add/remove/reorder/relabel,
+and returns the replacement row array:
+
+```js
+register(host) {
+  const previous = host.menus.handlerFor("core:game-menu");
+  host.menus.register("core:game-menu", (id, rows) => [
+    ...(previous ? previous(id, rows) : rows),
+    { id: "my-mod:rest", label: "Rest", semantic: { kind: "command", ref: "rest" } },
+  ]);
+}
+```
 
 Plugin code runs **in process, synchronously**, with the same access to the rng,
 the chunk, the player and the monster that core has — because a deep override

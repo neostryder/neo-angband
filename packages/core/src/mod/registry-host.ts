@@ -162,6 +162,8 @@ export const REGISTRY_CAPABILITIES = {
   tval: "registry:tval",
   rune: "registry:rune",
   vocab: "registry:vocab",
+  /** Web-owned screen rows; kept here so the capability vocabulary has one source. */
+  menu: "registry:menu",
 } as const;
 
 export type RegistryDomain = keyof typeof REGISTRY_CAPABILITIES;
@@ -204,6 +206,46 @@ export interface RegistryTargets {
   rune?: RuneRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
+  /** The front end's menu transformer registry (web owns the live implementation). */
+  menus?: MenuRegistryTarget | null;
+}
+
+/**
+ * A menu row's stable, presentation-independent meaning. `kind` identifies
+ * the broad interaction (command, item, category, toggle, ...); `ref` names
+ * the concrete target when there is one. Extra scalar data lets a front end
+ * carry upstream details without inventing a type dependency on its renderer.
+ */
+export interface MenuSemantics {
+  readonly kind: string;
+  readonly ref?: string | number;
+  readonly data?: Readonly<Record<string, string | number | boolean | null>>;
+}
+
+/** The declarative part of a selectable front-end row, safe for a plugin to rewrite. */
+export interface MenuTransformRow {
+  /** Stable per-row identity, never a localized display string. */
+  readonly id: string;
+  readonly semantic: MenuSemantics;
+  readonly label: string;
+  readonly color?: string;
+  readonly disabled?: boolean;
+  readonly tag?: string;
+  readonly inscrip?: string | null;
+  readonly hint?: string;
+  readonly suffix?: { readonly text: string; readonly color: string; readonly col: number };
+}
+
+/** Transform every row of one stable menu id. */
+export type MenuTransformer = (
+  id: string,
+  rows: readonly MenuTransformRow[],
+) => readonly MenuTransformRow[];
+
+/** Structural target implemented by the web front end, not by headless core. */
+export interface MenuRegistryTarget {
+  register(id: string, transformer: MenuTransformer, owner?: string): void;
+  handlerFor(id: string): MenuTransformer | null;
 }
 
 /** The effect-override facade (gated by registry:effect). */
@@ -324,6 +366,14 @@ export interface CommandFacade {
   register(code: string, action: PlayerAction): void;
   /** Whether a command code currently has an action. */
   has(code: string): boolean;
+}
+
+/** The front-end menu facade (gated by registry:menu). */
+export interface MenuFacade {
+  /** Install (or replace) the transformer for one stable menu id. */
+  register(id: string, transformer: MenuTransformer): void;
+  /** The currently installed transformer, for layering/wrapping an earlier mod. */
+  handlerFor(id: string): MenuTransformer | null;
 }
 
 /** The monster-AI facade (gated by registry:monster). */
@@ -638,6 +688,7 @@ export interface ModRegistryHost {
   readonly tval: TvalFacade;
   readonly rune: RuneFacade;
   readonly vocab: VocabFacade;
+  readonly menus: MenuFacade;
 }
 
 /** Absent capabilities => trusted host, all granted (perceive/act convention). */
@@ -1020,6 +1071,16 @@ export function createModRegistryHost(
       valuesOf(entity): { [term: string]: JsonValue } {
         requireCap(capabilities, "vocab");
         return requireTarget(targets.vocab, "vocab").valuesOf(entity);
+      },
+    },
+    menus: {
+      register(id, transformer): void {
+        requireCap(capabilities, "menu");
+        requireTarget(targets.menus, "menu").register(id, transformer);
+      },
+      handlerFor(id): MenuTransformer | null {
+        requireCap(capabilities, "menu");
+        return requireTarget(targets.menus, "menu").handlerFor(id);
       },
     },
   };

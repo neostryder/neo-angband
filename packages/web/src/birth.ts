@@ -1221,6 +1221,7 @@ function confirmCharacter(
     // fall back to a plain choice rather than an empty screen.
     return selectFromMenu(
       term,
+      "core:birth-confirm",
       fallbackTitle,
       [
         { label: "Begin the adventure", hint: "Accept this character and play." },
