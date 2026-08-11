@@ -18,6 +18,8 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+Nothing yet — everything through 2026-08-11 is in `0.19.0` below.
+
 Current state of the project at version `0.19.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
@@ -44,23 +46,7 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
 
-### Fixed
-
-- **(N)ew game crashed on the character-creation screen.** Choosing *New game*
-  threw `Cannot read properties of undefined` and stopped at the crash reporter,
-  so no new character could be created at all. Existing savefiles were never
-  touched — the birth screen is the only path affected, and loading a character
-  does not go through it.
-
-  The birth screens preview a character sheet before the game exists, so they
-  hand the sheet renderers a small hand-built `GameState`. On 2026-08-06 core
-  gained its known-state twin and began reading two more fields from that state
-  (`actor.knownCombat` and `runeEnv`); the preview object was not updated, and
-  the `as unknown as GameState` cast it is built with meant the compiler had
-  nothing to say. It went unnoticed because no test supplied the registry deps
-  the preview needs, so the entire path was unexecuted on a green suite. The
-  preview now supplies both fields, and `birth.test.ts` drives it against the
-  real shipped pack so the next field a sheet renderer reads fails in CI.
+## [0.19.0] - 2026-08-11
 
 ### Added
 
@@ -749,7 +735,66 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   first whose plain record is later removed - is tested with a fixture, its
   control run.
 
+- **The working record left the public tree.** 218 files of construction notes,
+  audit ledgers and planning material moved into a private repository. What
+  public code *cites* stayed - the parity ledger behind the parity claim, the
+  accounting those citations resolve to, and the machinery guards actually
+  execute - because a comment citing a document the reader has is provenance,
+  and the same comment citing nothing is an excuse. `docs/WORKING_RECORD.md`
+  says which citations lead where and what they concluded.
+
+- **`reference/` is the 4.2.6 tag, and something checks that it is.** The vendored
+  upstream tree had drifted onto master; it is back on the official baseline with
+  a guard, and four unowned Windows binaries are gone from the public tree.
+
+- **The tiles the game serves are 4.2.6's, and are stored once.** The served tree
+  had been built from upstream master, and twenty megabytes of tiles were
+  committed twice; the served copy is now generated.
+
+
+- **An imported mod zip is moved aside, not deleted.** It used to be unlinked once
+  the mod was in storage, which is tidy and wrong: the zip is the player's copy of
+  somebody else's work, and making the game's copy the only one leaves a player
+  with nothing to go back to when a mod turns out to be broken. It now moves into
+  `mods/imported/`, numbered rather than overwriting so importing v2 cannot destroy
+  the archived v1, and the screen names where it went. The folder is skipped when
+  the shell lists mod folders, so it never appears in the mod list as an empty pack.
+
+- **Every mod is listed with its author: `Neo Linoleum (neostryder)`.** Who wrote a
+  mod is the most useful single fact about a third-party one, and it used to be a
+  line in a detail pane you had to open per row. It comes from the MANIFEST, never
+  from the author register - the register is a standing this project has looked at,
+  and the two must not be able to be read as each other. Where a row cannot fit
+  both, the author is dropped whole rather than truncated: `Bug Fixes (neost...`
+  attributes a mod to an account that does not exist.
+
+- **A host directory is created on its first write, not at startup.** `save/`,
+  `panic/` and `scores/` sat empty in every game folder for the life of an install,
+  because the port creates all five `ANGBAND_DIR_*` at launch exactly as
+  `init.c:411` does. Upstream carries the answer as its own comment - *"ToDo: Only
+  create the directories when actually writing files"* - and that is now what
+  happens. It is not a behaviour divergence: no caller can tell an absent directory
+  from an empty one, since every reader already answers for a directory that is not
+  there. The desktop shell's startup writability check is unaffected, so upstream's
+  quit-rather-than-run-on behaviour is still in place.
+
 ### Fixed
+
+- **(N)ew game crashed on the character-creation screen.** Choosing *New game*
+  threw `Cannot read properties of undefined` and stopped at the crash reporter,
+  so no new character could be created at all. Existing savefiles were never
+  touched — the birth screen is the only path affected, and loading a character
+  does not go through it.
+
+  The birth screens preview a character sheet before the game exists, so they
+  hand the sheet renderers a small hand-built `GameState`. On 2026-08-06 core
+  gained its known-state twin and began reading two more fields from that state
+  (`actor.knownCombat` and `runeEnv`); the preview object was not updated, and
+  the `as unknown as GameState` cast it is built with meant the compiler had
+  nothing to say. It went unnoticed because no test supplied the registry deps
+  the preview needs, so the entire path was unexecuted on a green suite. The
+  preview now supplies both fields, and `birth.test.ts` drives it against the
+  real shipped pack so the next field a sheet renderer reads fails in CI.
 
 - Restored the visible target-path tile projection while routing map paint
   through `WorldFrame`: a path marker once again receives the terrain tile
@@ -1029,6 +1074,83 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   offline - and it can never offer anything newer than the build knows. Updating
   the game is what brings newer mods within reach.
 
+Six days of parity work against the 4.2.6 golden master turned up defects a
+player could feel. The ones worth naming:
+
+- **Free Action did not stop a paralysing breath.** The flag was checked on the
+  melee path and not on the breath path.
+
+- **A resisted breath said nothing, while the same flag resisted in melee said
+  everything.** Two paths, one rule, and only one of them told you.
+
+- **A Wand of Polymorph did nothing at all.**
+
+- **Banishing a monster destroyed the artifact it was carrying**, and **a store
+  could quietly destroy the artifact you sold it.** Both are unrecoverable in a
+  permadeath game.
+
+- **A decoy did not stop a bolt**, which is the one thing a decoy is for.
+
+- **A cursed bow's to-hit penalty never reached the shot.**
+
+- **A monster draining another monster drained the player instead.**
+
+- **Streamers were destroying secret doors on every classic level.**
+
+- **Word of Recall could send you to level 1 by accident.**
+
+- **Phase Door worked inside single combat** - the one place it must not.
+
+- **Persistent levels crashed roughly one descent in eight.**
+
+- **Auto-ignore judged an item by stats the player could not see**, and the
+  ignore menus listed every ego and kind in the game rather than the ones you
+  had met.
+
+- **Remove Curse read the curses you *had*, not the ones you knew about**, and a
+  **store bought on runes the player had never learned.** Both leaked knowledge
+  the character has not earned.
+
+- **The look scan stopped on a grid holding nothing but ignored junk.**
+
+- **The targeting preview drew walls the player had never seen.**
+
+- **A mimic keeps its object now, and loses it when it dies.**
+
+- **Eight things you could watch a monster do and learn nothing from**, and a
+  bear that never taught you it hits harder: monster lore was not being recorded
+  from what happened in front of you.
+
+- **Every blow in the monster spoiler claimed a 0% chance to land**, and the
+  spoiler files were generated with no player at all - so "how many have you
+  killed" was always zero.
+
+- **A short screen dropped the depth and kept the class**, and the birth screens
+  advertised a help key they then ate.
+
+- **"Killed by a kobold", not "Killed by kobold."**
+
+- **A monster told to drop something had nothing to drop.**
+
+- **A paragraph break in a mod's description painted as two solid blocks.** The
+  word-wrap behind the detail pane broke on the space character and treated
+  everything else as ordinary text, so a newline was carried into the output line
+  and the terminal - which has no glyph for U+000A - drew it as a filled cell.
+  `qol`'s manifest has a real blank line between its two paragraphs, so its row
+  read "are not touched here." followed by two blocks and then "Enable it and you
+  get...", and it has looked that way since **0.16.0**, when that description
+  landed. A description is written by the MOD AUTHOR, so "do not put newlines in
+  it" was never an answer available to the game. `wrapCssRuns` splits the run
+  stream on newlines first now and wraps each paragraph on its own, emitting an
+  empty line where the break was; `\r\n` and a lone `\r` are the same break, so a
+  manifest written on Windows cannot leave a stray carriage return behind either.
+  The store help legend is the only other caller and has no newlines in it at all,
+  so nothing there changes.
+
+## [0.18.0 and earlier]
+
+### Added
+
 - **Three mod seams, so a mod can remember something.** A mod could already keep
   data with a CHARACTER - its save bag - and had nowhere at all to keep data
   about the PLAYER, so anything it learned died with the character. `ctx.prefs`
@@ -1061,49 +1183,6 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   every logged Windows path actually arrives in.
 
 ### Changed
-
-- **The working record left the public tree.** 218 files of construction notes,
-  audit ledgers and planning material moved into a private repository. What
-  public code *cites* stayed - the parity ledger behind the parity claim, the
-  accounting those citations resolve to, and the machinery guards actually
-  execute - because a comment citing a document the reader has is provenance,
-  and the same comment citing nothing is an excuse. `docs/WORKING_RECORD.md`
-  says which citations lead where and what they concluded.
-
-- **`reference/` is the 4.2.6 tag, and something checks that it is.** The vendored
-  upstream tree had drifted onto master; it is back on the official baseline with
-  a guard, and four unowned Windows binaries are gone from the public tree.
-
-- **The tiles the game serves are 4.2.6's, and are stored once.** The served tree
-  had been built from upstream master, and twenty megabytes of tiles were
-  committed twice; the served copy is now generated.
-
-
-- **An imported mod zip is moved aside, not deleted.** It used to be unlinked once
-  the mod was in storage, which is tidy and wrong: the zip is the player's copy of
-  somebody else's work, and making the game's copy the only one leaves a player
-  with nothing to go back to when a mod turns out to be broken. It now moves into
-  `mods/imported/`, numbered rather than overwriting so importing v2 cannot destroy
-  the archived v1, and the screen names where it went. The folder is skipped when
-  the shell lists mod folders, so it never appears in the mod list as an empty pack.
-
-- **Every mod is listed with its author: `Neo Linoleum (neostryder)`.** Who wrote a
-  mod is the most useful single fact about a third-party one, and it used to be a
-  line in a detail pane you had to open per row. It comes from the MANIFEST, never
-  from the author register - the register is a standing this project has looked at,
-  and the two must not be able to be read as each other. Where a row cannot fit
-  both, the author is dropped whole rather than truncated: `Bug Fixes (neost...`
-  attributes a mod to an account that does not exist.
-
-- **A host directory is created on its first write, not at startup.** `save/`,
-  `panic/` and `scores/` sat empty in every game folder for the life of an install,
-  because the port creates all five `ANGBAND_DIR_*` at launch exactly as
-  `init.c:411` does. Upstream carries the answer as its own comment - *"ToDo: Only
-  create the directories when actually writing files"* - and that is now what
-  happens. It is not a behaviour divergence: no caller can tell an absent directory
-  from an empty one, since every reader already answers for a directory that is not
-  there. The desktop shell's startup writability check is unaffected, so upstream's
-  quit-rather-than-run-on behaviour is still in place.
 
 - **Updates unpack in-process, with no external program on Windows or Linux.**
   The updater used to hand the archive to `tar`, and PATH does not promise which
@@ -1184,65 +1263,6 @@ Everything below came out of one play session on the 0.15.3 build.
 
 ### Fixed
 
-Six days of parity work against the 4.2.6 golden master turned up defects a
-player could feel. The ones worth naming:
-
-- **Free Action did not stop a paralysing breath.** The flag was checked on the
-  melee path and not on the breath path.
-
-- **A resisted breath said nothing, while the same flag resisted in melee said
-  everything.** Two paths, one rule, and only one of them told you.
-
-- **A Wand of Polymorph did nothing at all.**
-
-- **Banishing a monster destroyed the artifact it was carrying**, and **a store
-  could quietly destroy the artifact you sold it.** Both are unrecoverable in a
-  permadeath game.
-
-- **A decoy did not stop a bolt**, which is the one thing a decoy is for.
-
-- **A cursed bow's to-hit penalty never reached the shot.**
-
-- **A monster draining another monster drained the player instead.**
-
-- **Streamers were destroying secret doors on every classic level.**
-
-- **Word of Recall could send you to level 1 by accident.**
-
-- **Phase Door worked inside single combat** - the one place it must not.
-
-- **Persistent levels crashed roughly one descent in eight.**
-
-- **Auto-ignore judged an item by stats the player could not see**, and the
-  ignore menus listed every ego and kind in the game rather than the ones you
-  had met.
-
-- **Remove Curse read the curses you *had*, not the ones you knew about**, and a
-  **store bought on runes the player had never learned.** Both leaked knowledge
-  the character has not earned.
-
-- **The look scan stopped on a grid holding nothing but ignored junk.**
-
-- **The targeting preview drew walls the player had never seen.**
-
-- **A mimic keeps its object now, and loses it when it dies.**
-
-- **Eight things you could watch a monster do and learn nothing from**, and a
-  bear that never taught you it hits harder: monster lore was not being recorded
-  from what happened in front of you.
-
-- **Every blow in the monster spoiler claimed a 0% chance to land**, and the
-  spoiler files were generated with no player at all - so "how many have you
-  killed" was always zero.
-
-- **A short screen dropped the depth and kept the class**, and the birth screens
-  advertised a help key they then ate.
-
-- **"Killed by a kobold", not "Killed by kobold."**
-
-- **A monster told to drop something had nothing to drop.**
-
-
 - **A ghost of the previous screen survived every full-screen change.** Cell
   metrics are whole CSS pixels and the canvas carries `setTransform(dpr, ...)`,
   so on a fractional device-pixel ratio a cell's edge landed part-way through a
@@ -1273,20 +1293,6 @@ player could feel. The ones worth naming:
   way to reach *Move earlier*, *Move later* or *Back*, and no way to scroll the
   prose either. The pane is capped now, says so when it cuts, and a *Read the full
   description* row opens the whole thing in a viewer that scrolls.
-- **A paragraph break in a mod's description painted as two solid blocks.** The
-  word-wrap behind the detail pane broke on the space character and treated
-  everything else as ordinary text, so a newline was carried into the output line
-  and the terminal - which has no glyph for U+000A - drew it as a filled cell.
-  `qol`'s manifest has a real blank line between its two paragraphs, so its row
-  read "are not touched here." followed by two blocks and then "Enable it and you
-  get...", and it has looked that way since **0.16.0**, when that description
-  landed. A description is written by the MOD AUTHOR, so "do not put newlines in
-  it" was never an answer available to the game. `wrapCssRuns` splits the run
-  stream on newlines first now and wraps each paragraph on its own, emitting an
-  empty line where the break was; `\r\n` and a lone `\r` are the same break, so a
-  manifest written on Windows cannot leave a stray carriage return behind either.
-  The store help legend is the only other caller and has no newlines in it at all,
-  so nothing there changes.
 - **The macOS bundle was never sealed.** With no Apple Developer identity,
   electron-builder skips signing and says so in its own log ("skipped macOS
   application code signing"). Measured against the artifacts rather than

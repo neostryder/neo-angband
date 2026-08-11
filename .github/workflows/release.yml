@@ -159,6 +159,12 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           version="${TAG#v}"
+          # A GitHub release body caps at 125,000 characters, and 0.19.0's
+          # changelog section crossed it - so the notes are assembled in three
+          # pieces and the changelog gets what the other two leave. Measuring the
+          # preamble beats writing its length down here: a constant would go
+          # stale the next time this text gains a paragraph, and would go stale
+          # silently, at the one moment every artifact is already built.
           {
             printf '## What you can download\n\n'
             printf '| Platform | File |\n| --- | --- |\n'
@@ -197,12 +203,33 @@ jobs:
             printf 'reads the version before it, and a save this build cannot open is left\n'
             printf 'untouched rather than replaced.\n\n'
             printf -- '---\n\n'
-            node tools/changelog-section.mjs "$version"
+          } > notes-head.md
+          {
             printf '\n\n---\n\n'
             printf 'Found something that does not match Angband 4.2.6? '
             printf '[Open an issue](https://github.com/neostryder/neo-angband/issues/new/choose) '
             printf 'or come and say so in [the Discord](https://discord.gg/YegtwbHTBQ).\n'
-          } > release-notes.md
+          } > notes-foot.md
+
+          # `wc -m`, not `-c`: the cap is on CHARACTERS and this file is UTF-8
+          # full of em dashes, so counting bytes would shrink the budget by
+          # every multibyte character and could refuse a body the API accepts -
+          # the same spurious late failure this is here to prevent.
+          head=$(wc -m < notes-head.md)
+          foot=$(wc -m < notes-foot.md)
+          budget=$((125000 - head - foot))
+          echo "notes budget for the changelog section: $budget characters"
+          node tools/changelog-section.mjs "$version" --max-chars="$budget" > notes-body.md
+          cat notes-head.md notes-body.md notes-foot.md > release-notes.md
+
+          # The whole point is that this cannot be over, so say so if it is
+          # rather than letting the API be the one to find out.
+          total=$(wc -m < release-notes.md)
+          echo "release notes: $total characters"
+          if [ "$total" -gt 125000 ]; then
+            echo "::error::release notes are $total characters; the API caps at 125000"
+            exit 1
+          fi
           cat release-notes.md
 
       - name: Draft it
