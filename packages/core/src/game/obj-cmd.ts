@@ -1043,10 +1043,21 @@ export function buildObjectEffectChain(
      * detection and mapping effect reads as context->y/x. Dropping it leaves
      * y=x=0, and every such handler then works a zero-size box: the scroll is
      * consumed, ident is set, no message is wrong, and nothing happens. */
-    const yx = e["effect-yx"];
+    /* The `-xtra` spellings are the SAME directives on an effect-xtra chain
+     * (init.c parse_trap_dice_xtra et al), and the compiler keeps whichever
+     * name the data used. A trap's effect-xtra list carries `dice-xtra`, so
+     * reading only `dice` rolled 0 for every extra effect: a spiked pit printed
+     * "You are impaled!" and dealt none of its 2d6, and neither pit ever cut or
+     * poisoned. See EffectRecordJson. */
+    const yx = e["effect-yx"] ?? e["effect-yx-xtra"];
     if (yx) builder.effectYx(yx.y, yx.x);
-    if (e.dice) builder.dice(e.dice);
-    for (const x of e.expr ?? []) builder.expr(x.name, x.base, x.expr);
+    /* effect-msg: the killer string a SRC_PLAYER EF_DAMAGE dies from. */
+    for (const line of e["effect-msg"] ?? []) builder.effectMsg(line);
+    const dice = e.dice ?? e["dice-xtra"];
+    if (dice) builder.dice(dice);
+    for (const x of e.expr ?? e["expr-xtra"] ?? []) {
+      builder.expr(x.name, x.base, x.expr);
+    }
   }
   return builder.build();
 }

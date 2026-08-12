@@ -151,6 +151,28 @@ export interface EffectRecordJson {
   dice?: string;
   expr?: EffectExprJson[];
   "effect-yx"?: { y: number; x: number };
+  /**
+   * effect-msg:<text>, string_append'ed to the last effect's msg - which is an
+   * ARRAY here because the compiler keeps one entry per repeated directive.
+   * EF_DAMAGE from a SRC_PLAYER origin uses it as the killer string
+   * (effect-handler-attack.c:516), so without it the Necromancer's three
+   * self-damage spells kill you with "yourself" instead of "shadow shifting",
+   * "self sacrifice" or "performing a curse".
+   */
+  "effect-msg"?: string[];
+  /**
+   * The `-xtra` spellings, for records built from an `effect-xtra` list rather
+   * than an `effect` list. They are not different directives: within an
+   * effect-xtra chain, `dice-xtra` sets `effect->dice` on the last effect
+   * exactly as `dice` does in an effect chain (init.c `parse_trap_dice_xtra`,
+   * and the same shape for the yx / expr pair). The compiler keeps the
+   * directive's own name, so the builder has to know both spellings - a builder
+   * that knows only `dice` reads an effect-xtra chain as all-zero dice, which
+   * is what silently disarmed the spiked and poison pits.
+   */
+  "dice-xtra"?: string;
+  "effect-yx-xtra"?: { y: number; x: number };
+  "expr-xtra"?: EffectExprJson[];
 }
 
 export interface ObjectBaseRecordJson {
