@@ -87,11 +87,34 @@ rule a parity defect is fixed in core, not mitigated in a mod.
   but the thing being judged is still a single port sample. Gate it after the
   replication below, not before — a gate whose threshold and whose subject were
   fixed in the same pass has never been tested against anything.
-- **Do not touch core until the port's Z replicates.** −4.29 is one run at one
-  base seed. This metric has already swung once (−2.66 at 400 runs → −1.78 at
-  1000, under the post-tag gamedata), and a single draw is not a finding no
-  matter how far into the tail it lands. `NEO_PARITY_SEED` exists for exactly
-  this; run it at three seeds before believing the number.
+- ~~**Do not touch core until the port's Z replicates.**~~ **Discharged
+  2026-08-12** — it replicated at three seeds, see above. What that licenses is
+  looking for the cause in core, not changing core: the finding is "fewer
+  objects", and nothing yet says *where*.
+
+## It replicates
+
+Three base seeds, 1000 port runs each, against the same C baseline
+(`NEO_PARITY_SEED`, added for exactly this):
+
+| Base seed | Raw Z     | Calibrated (÷1.155) | Beyond the C-vs-C empirical max (2.393)? |
+| --------- | --------- | ------------------- | ---------------------------------------- |
+| 1337      | **−4.29** | −3.72               | yes                                       |
+| 24601     | **−3.73** | −3.23               | yes                                       |
+| 90210     | **−2.58** | −2.24               | marginally                                |
+| mean      | **−3.53** | −3.06               |                                           |
+
+Every seed is negative, and the spread across them (SD 0.87) is what a null of
+width 1.155 predicts. Three draws scattered about **−3.5**, not about 0. The
+sign is unanimous and the weakest seed still lands outside the largest |Z| seen
+in 153 C-vs-C pairs. **Reading 2 is confirmed: the port generates fewer objects
+than 4.2.6 does.**
+
+> **Do not combine the three into a √3 improvement.** They share one fixed C
+> baseline, so the C-side error is common to all three and does not average
+> down; the naive pooled "−5.3σ" is not available from this design. Varying the
+> C side as well is a different and much more expensive experiment, and nothing
+> here needs it — the per-seed numbers already clear the bar on their own.
 
 ## The port's own Z, and a trap in reading it
 
