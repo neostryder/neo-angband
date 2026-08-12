@@ -75,3 +75,7 @@ CLAUDE.md
 # public methodology lives in docs/PARITY.md; the per-module provenance map is
 # parity/ledger/.
 parity/PARITY_REMEDIATION_2026-07-21.md
+
+# tools/play-smoke.mjs writes its frames here; the CI job uploads them as an
+# artifact rather than committing them.
+smoke-shots/

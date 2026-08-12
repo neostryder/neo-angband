@@ -250,6 +250,37 @@ released tag is iterated takes a MINOR bump rather than a patch: a published tag
 is what a player's install is pinned to, and moving it makes an installed copy
 disagree with its own version number.
 
+## CI plays the game, because a green suite does not mean a playable one
+
+`node tools/play-smoke.mjs` boots the built desktop shell over the Chrome
+DevTools Protocol and plays a player's first minute: title, (N)ew game, a random
+character, the character sheet, the town, a staircase, the dungeon, the inventory
+and knowledge screens. The `play` job in `ci.yml` runs it on every push, under
+`xvfb-run`, against the **production** bundle.
+
+It exists because of a specific failure. On 2026-08-06 the birth preview began
+reading two `GameState` fields it was never given; the hand-built partial state is
+cast with `as unknown as GameState`, so the compiler said nothing, and (N)ew game
+threw on the first keypress **for five days on the early channel, past a green
+suite and green CI**. All 46 birth tests omit `opts.deps`, and `buildPreview`
+returns before constructing the state when deps are absent — so the one path that
+builds a `GameState` was never executed by anything. No unit test could have
+caught it; the suite was green *because* it did not go there.
+
+**The assertion that matters is not "no exceptions".** A game that draws its title
+screen and then ignores every keystroke throws nothing, and a smoke test watching
+only for errors would pass it — a green light over a dead game. So the tool also
+requires the framebuffer to CHANGE at each step. That guard is only meaningful
+because the screen is otherwise static: measured, six consecutive frames on both
+the title screen and the town are byte-identical with no input. Verified by
+running it with input dispatch disabled, which fails at step 1 with
+*"the game is running but not responding to input"*.
+
+Run it locally before cutting a release, after `pnpm --dir packages/web bundle`
+and the desktop build. Frames land in `smoke-shots/`; the CI job uploads them as
+an artifact on success and failure alike, so a failing hash says which step
+stopped and the PNG says what was on screen when it did.
+
 ## The GitHub Release is always a draft, and that never changes
 
 Pushing the tag also starts `.github/workflows/release.yml`, which builds the

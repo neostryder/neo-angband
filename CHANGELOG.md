@@ -18,6 +18,25 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Added
+
+- **CI plays the game now.** `tools/play-smoke.mjs` boots the built desktop shell
+  over the DevTools protocol and plays a player's first minute — title, (N)ew
+  game, a random character, the character sheet, town, a staircase, the dungeon,
+  the item menus — and the new `play` job in `ci.yml` runs it on every push
+  against the **production** bundle. It exists because the birth crash fixed in
+  `0.19.0` shipped for five days past a green suite and green CI: all 46 birth
+  tests omit `opts.deps`, so the one code path that builds a `GameState` was
+  never executed by anything.
+
+  It does not only watch for exceptions. A game that renders its title screen and
+  then ignores every keystroke throws nothing, so the tool also requires the
+  screen to change at each step. That guard is meaningful because the screen is
+  otherwise static — six consecutive frames on both the title screen and the town
+  are byte-identical with no input — and it was verified by running with input
+  dispatch disabled, which fails at step 1 saying the game is not responding to
+  input.
+
 ### Fixed
 
 - `docs/modding/MOD_REACH.md` reported a moddability backlog that no longer
