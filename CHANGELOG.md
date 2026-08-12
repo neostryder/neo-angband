@@ -78,6 +78,23 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **Dungeon spellbooks could not be found the way upstream finds them, and
+  burned when upstream's do not.** `write_book_kind` (init.c L269-275) gives a
+  book declared `dungeon` in `class.txt` two extra properties: `KF_GOOD`, and
+  `EL_INFO_IGNORE` on the four base elements. The port applied neither.
+  `KF_GOOD` is what decides whether a kind is in the GREAT allocation table at
+  all, so no dungeon spellbook could ever come from a vault, a labyrinth or
+  cavern `TYP_GOOD`, a `DROP_GOOD` monster's drop, or any `make_object` called
+  with `good`; and without the ignore flags an acid or fire hit destroyed a book
+  upstream would have spared. Measured against the compiled 4.2.6 oracle over
+  20 000 generated levels, this alone moved the port's object count from −0.23%
+  to −0.10% of upstream's, and brought three of the four spellbook tvals to
+  within 2% of it. Note for anyone comparing fixed seeds across this release:
+  putting twelve kinds into the GREAT allocation table moves the generation
+  stream, so a given seed builds a different level than it did in 0.19.0. The
+  two streams that must never move are unaffected — `randartSeed` and
+  `seedFlavor` are stored in the save and re-derived from there.
+
 - **`Your & Leather Shield~ is damaged!`** — acid damaging a worn armour piece
   printed the raw `object.txt` template instead of a name. `minus_ac`'s naming
   hook defaulted to `obj.kind.name` when a caller forgot to supply one, and the
