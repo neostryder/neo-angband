@@ -237,13 +237,85 @@ function dumpDiagnostics() {
 }
 
 /**
- * Electron's own security warnings are `error`-level and are about the dev
- * launch, not the game; they are the only thing filtered, by exact subject, so
- * that a real error can never hide behind a loose pattern.
+ * What counts as a game error.
+ *
+ * Two things are filtered, both by EXACT subject, because a loose pattern here
+ * is how a real error hides. Anything not named below fails the run.
+ *
+ *  1. Electron's own security warnings. They are `error`-level and are about
+ *     the dev launch, not the game.
+ *  2. The sandboxed-renderer bootstrap failure, and ONLY under --no-sandbox.
+ *     Disabling the sandbox is what leaves `binding.startupData` null, so
+ *     Electron's own sandbox_bundle throws before the app has run a line:
+ *
+ *       Electron sandboxed_renderer.bundle.js script failed to run
+ *       TypeError: Cannot destructure property 'preloadScripts' of
+ *         'binding.startupData' as it is null.
+ *
+ *     It is a property of the flag, not of the build - it appeared on one CI
+ *     run and not the one before it on the same code, and the run that hit it
+ *     had already played all ten steps and screenshotted a live character
+ *     sheet. Gating on the flag matters: in a normal run a renderer that fails
+ *     to boot is a real failure and must still fail here. `--self-check` below
+ *     asserts exactly that, in both directions.
  */
+const SANDBOX_BOOTSTRAP_NOISE =
+  /sandboxed_renderer\.bundle\.js script failed to run|Cannot destructure property 'preloadScripts' of 'binding\.startupData'/u;
+
 function isErrorLine(line) {
   if (line.level !== "error" && line.level !== "severe") return false;
-  return !/Electron Security Warning/u.test(line.text);
+  if (/Electron Security Warning/u.test(line.text)) return false;
+  if (flag("--no-sandbox") && SANDBOX_BOOTSTRAP_NOISE.test(line.text)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * `--self-check`: run isErrorLine over fixtures and exit, before Electron is
+ * launched. It exists because that filter is the one place where making CI
+ * green and making CI honest pull in opposite directions - a slightly looser
+ * pattern silences a flake AND every real error behind it, and nothing would
+ * say so. This asserts both directions, including that an unrelated error still
+ * fails and that the sandbox exemption does NOT apply without the flag.
+ *
+ * Verified by removing the mechanism: with the `flag("--no-sandbox") &&` guard
+ * deleted, the no-flag run reports both sandbox cases as failures.
+ *
+ * CI runs it as its own step, so the check happens even on a machine where
+ * Electron cannot start.
+ */
+if (flag("--self-check")) {
+  const sandboxLines = [
+    "Electron sandboxed_renderer.bundle.js script failed to run",
+    "TypeError: Cannot destructure property 'preloadScripts' of 'binding.startupData' as it is null.\n    at node:electron/js2c/sandbox_bundle:2:132134",
+  ];
+  const noSandbox = flag("--no-sandbox");
+  const cases = [
+    ["a game exception is an error", { level: "error", text: "TypeError: state.chunk is undefined" }, true],
+    ["an unknown error is an error", { level: "severe", text: "Failed to load resource: tiles.png" }, true],
+    ["a warning is not", { level: "warning", text: "whatever" }, false],
+    ["Electron's security warning is not", { level: "error", text: "Electron Security Warning (Insecure CSP)" }, false],
+    ...sandboxLines.map((text, i) => [
+      `sandbox bootstrap ${i + 1} is ${noSandbox ? "exempt with" : "an error without"} --no-sandbox`,
+      { level: "error", text },
+      !noSandbox,
+    ]),
+  ];
+  let bad = 0;
+  for (const [name, line, want] of cases) {
+    const got = isErrorLine(line);
+    if (got !== want) {
+      console.error(`self-check FAILED: ${name} (expected ${want}, got ${got})`);
+      bad++;
+    }
+  }
+  if (bad) {
+    console.error(`\nplay-smoke self-check FAILED: ${bad}/${cases.length}`);
+    process.exit(1);
+  }
+  console.log(`play-smoke self-check OK: ${cases.length} cases (--no-sandbox ${noSandbox ? "on" : "off"})`);
+  process.exit(0);
 }
 
 /* ------------------------------------------------------------------ main ---- */

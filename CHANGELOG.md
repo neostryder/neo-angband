@@ -39,6 +39,18 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- The `play` job failed on a `--no-sandbox` artifact rather than on the game.
+  Disabling Chromium's sandbox is what leaves `binding.startupData` null, so
+  Electron's own `sandbox_bundle` throws before the app has run a line — and the
+  run that hit it had already played all ten steps and screenshotted a live
+  character sheet. The filter now exempts those two exact lines, and **only when
+  `--no-sandbox` was passed**, so a renderer that genuinely fails to boot still
+  fails the job. Because narrowing that filter is precisely how a real error
+  gets hidden, `tools/play-smoke.mjs --self-check` now asserts the predicate in
+  both directions and CI runs it, with and without the flag, before Electron
+  starts. Verified by deleting the flag guard: the no-flag self-check then
+  reports both sandbox cases as failures.
+
 - **Every detection and mapping effect in the game did nothing.** A scroll of
   Magic Mapping is `effect:MAP_AREA` plus `effect-yx:22:40`, and that second
   directive is the *area* — `effect_handler_MAP_AREA` reads it as

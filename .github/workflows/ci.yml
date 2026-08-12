@@ -112,6 +112,13 @@ jobs:
       - run: pnpm build
       - run: pnpm --dir packages/web bundle
       - run: pnpm --filter @rpgm-tools/neo-angband-desktop build
+      # The smoke tool's own error filter, checked in both directions before
+      # anything launches. It decides what counts as a game error, so a loosened
+      # pattern there would silence real failures silently; this fails the job
+      # instead. Runs with and without --no-sandbox because the flag is what
+      # gates the one exemption that is conditional on it.
+      - run: node tools/play-smoke.mjs --self-check
+      - run: node tools/play-smoke.mjs --self-check --no-sandbox
       # `xvfb-run` because a runner has no display and Electron will not open a
       # window without one; `--no-sandbox` because Chromium's setuid sandbox is
       # not available on the runner image.
