@@ -25,6 +25,7 @@ import { basicPlayerActor } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import { registerDetectHandlers } from "./effect-detect.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
 import { knownFeat, knownObject, squareIsKnown, squareMemorize } from "./known.js";
 import { floorCarry } from "./floor.js";
 import { placeTrap, squareTrap } from "./trap.js";
@@ -124,6 +125,39 @@ describe("EF_MAP_AREA (effect-handler-general.c L1201)", () => {
     /* The door is remembered; open floor is not (it is boring). */
     expect(knownFeat(state, loc(12, 10))).toBe(FEAT.CLOSED);
     expect(squareIsKnown(state, loc(11, 10))).toBe(false);
+  });
+
+  /**
+   * The two tests either side of this one hand `{y: 5, x: 5}` straight to
+   * effectSimple. That makes them assertions about the HANDLER, and an
+   * unchecked assumption about the producer - and the producer was wrong.
+   * buildObjectEffectChain read eff/type/radius/other/dice/expr and dropped
+   * `effect-yx`, so a real scroll of Magic Mapping reached this handler with
+   * y = x = 0 and mapped a zero-size box. Nothing errored: the scroll was
+   * consumed, ident was set, and no square changed.
+   *
+   * So this one starts from the shipped record and runs the chain the game
+   * builds, which is the only version of this test that could have caught it.
+   */
+  it("a REAL scroll of Magic Mapping maps its area (producer, not just handler)", () => {
+    const state = makeState({ playerGrid: loc(10, 10), w: 60, h: 40 });
+    /* A door 30 grids away: inside the scroll's 22x40 box, far outside the
+     * 5x5 the hand-built tests use, and nowhere near a zero-size one. */
+    const far = loc(40, 10);
+    state.chunk.setFeat(far, FEAT.CLOSED);
+
+    const kind = objReg.kinds.find((k) => k.name === "Magic Mapping");
+    if (!kind) throw new Error("Magic Mapping is not in the object pack");
+    const scroll = objectPrep(new Rng(3), objReg, constants, kind, 0, "average");
+
+    const chain = buildObjectEffectChain(scroll.effect ?? [], state);
+    const used = registry().effectDo(chain, env(state), {
+      origin: sourcePlayer(),
+      obj: scroll,
+    });
+
+    expect(used).toBe(true);
+    expect(knownFeat(state, far)).toBe(FEAT.CLOSED);
   });
 
   it("forgets misremembered grids in the mapped area", () => {
