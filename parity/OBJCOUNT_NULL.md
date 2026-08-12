@@ -116,6 +116,58 @@ than 4.2.6 does.**
 > C side as well is a different and much more expensive experiment, and nothing
 > here needs it — the per-seed numbers already clear the bar on their own.
 
+## Where it is: everywhere, and below every per-depth test's resolution
+
+Per-depth object counts at seed 1337, 1000 runs (the rows the test already
+prints):
+
+| Band          | C items/level | port  | delta | relative |
+| ------------- | ------------- | ----- | ----- | -------- |
+| depths 1–6    | 17.62         | 17.38 | −0.24 | −1.3%    |
+| depths 7–13   | 21.50         | 21.20 | −0.30 | −1.4%    |
+| depths 14–20  | 25.17         | 24.67 | −0.50 | −2.0%    |
+| **all 20**    | 21.62         | 21.27 | −0.35 | **−1.6%** |
+
+**16 of 20 depths are negative** (the four positive ones are 1, 7, 8, 9, and the
+largest is +0.08). The deficit is roughly constant as a *fraction*, drifting from
+1.3% to 2.0% with depth, which is the signature of something multiplicative —
+every level gets slightly fewer items — rather than a fault localised in one
+depth band, one room type or one feature.
+
+### Why no per-depth test ever caught it
+
+The `resolves +/-` column is what each depth can detect at its own alpha. It runs
+from ±0.75 at depth 1 to ±2.51 at depth 20. **The effect is inside that band at
+every single depth**, and the largest per-depth |z| in the whole sweep is 2.88 at
+depth 13, which does not clear the Bonferroni-corrected alpha of 1.25e-4. So the
+twenty gated per-depth tests are not merely silent here — they *cannot* speak. A
+1.6% shift is far below their resolution and always was.
+
+That is the justification for the pooled row existing at all, and it is worth
+being explicit about because the same fact cuts the other way on the next step.
+
+### Ruled out first: a measurement asymmetry
+
+A uniform proportional deficit is exactly what a counting mismatch would look
+like, so that was checked before anything else. Money is excluded on **both**
+sides — the port skips `TV_GOLD` before counting, and the C importer subtracts
+the money kinds back out of `consumables` because the C double-books them. The
+comparison is real items against real items. Recorded here as a negative result
+so it is not re-checked: the deficit is in the game, not in the instrument.
+
+### What this does to the generator bisect
+
+The plan was to split by generator — classic, modified, cavern, labyrinth — and
+find the guilty one. **That plan cannot work as a per-depth bisect.** Splitting
+into four subsets divides the data four ways, and the effect is already below the
+resolution of the *undivided* per-depth tests. Each cell would resolve less than
+nothing.
+
+The bisect has to be done at the pooled level instead: one Stouffer statistic per
+generator, across depths, and each of those four needs its own C-vs-C null
+measured the same way this one was. That is four more instruments, not four more
+columns, and it should be costed before it is started.
+
 ## The port's own Z, and a trap in reading it
 
 |                  | post-tag gamedata | 4.2.6 gamedata |
