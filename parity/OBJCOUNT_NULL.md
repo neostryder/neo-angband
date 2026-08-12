@@ -1,5 +1,50 @@
 # The pooled object-count null, measured
 
+> ## ANSWERED, 2026-08-12: it was the instrument
+>
+> The pooled deficit was **the stats harness generating no spellbooks at all**,
+> not the generator generating too few items. Spellbook kinds are not in
+> `object.txt`; `write_book_kind` (init.c L208) synthesises one per class.txt
+> `book:` record. `startGame` and `loadGame` call `registerBookKinds` for exactly
+> that reason — **`runStatsBatch` never did**, so its allocation table held no
+> books and every measured level was short 0.92 items the C oracle placed.
+>
+> | port objects/level vs the C oracle, 20 000 levels | delta |
+> | ------------------------------------------------- | ------ |
+> | as measured through this whole document            | −1.61% |
+> | with book kinds registered in the harness          | −0.23% |
+> | with `KF_GOOD` restored on dungeon books too       | **−0.10%** |
+>
+> Two fixes, one in the instrument and one in core:
+>
+> 1. **The harness.** `bindForGeneration` (packages/cli/src/stats.ts) is now the
+>    one door every headless generation harness binds through: `bindCore` +
+>    `registerBookKinds`, plus the `obj_kind_can_browse` foil main-stats' Human
+>    Warrior implies. Four call sites needed the same two lines and all four were
+>    missing them, which is why the fix is a door and not four patches.
+> 2. **Core, a real defect the harness exposed.** `registerBookKinds` never
+>    applied init.c L269-275, so dungeon spellbooks carried neither `KF_GOOD` nor
+>    `EL_INFO_IGNORE`. Without `KF_GOOD` no dungeon book can be in the GREAT
+>    allocation table, so none could ever come from a vault, a labyrinth or
+>    cavern `TYP_GOOD`, a `DROP_GOOD` monster, or any `make_object` called with
+>    `good`. Without `EL_INFO_IGNORE` acid and fire destroy books upstream
+>    spares. This one shipped to players.
+>
+> **What survives:** the measured null width (1.155 ± 0.122 over 153 C-vs-C
+> pairs) and the feeling nulls. Those are properties of the C oracle and the
+> statistic, and a bug on the port side does not touch them.
+>
+> **What is superseded:** every conclusion below about *where the deficit lives*.
+> The depth-band table, the "multiplicative, therefore in shared allocation"
+> reading, and the generator-bisect costing were all reasoning about an artefact.
+> They are left in place because the failure is the useful part — see
+> [Ruled out first](#ruled-out-first-a-measurement-asymmetry-and-the-asymmetry-that-was-not-checked),
+> which asserted the instrument had been cleared and had cleared only one way it
+> could be wrong.
+>
+> **What is left open:** shadow books alone still run at about a third of
+> upstream's rate (task #242). The other three book tvals now match to under 2%.
+
 **Task #150, step 1. Measured 2026-08-12** with
 [`tools/c-vs-c-objcount.mjs`](tools/c-vs-c-objcount.mjs) over **eighteen**
 independent C `main-stats` databases, each 1000 levels per depth, from the
@@ -146,16 +191,43 @@ twenty gated per-depth tests are not merely silent here — they *cannot* speak.
 That is the justification for the pooled row existing at all, and it is worth
 being explicit about because the same fact cuts the other way on the next step.
 
-### Ruled out first: a measurement asymmetry
+### Ruled out first: a measurement asymmetry, and the asymmetry that was not checked
+
+> **This section was wrong, and it is the most useful thing in the file.** What
+> it says about money is still true. What it concluded from that — "the deficit
+> is in the game, not in the instrument" — was false, and it stood for a day and
+> steered the whole investigation into the generator.
 
 A uniform proportional deficit is exactly what a counting mismatch would look
 like, so that was checked before anything else. Money is excluded on **both**
 sides — the port skips `TV_GOLD` before counting, and the C importer subtracts
 the money kinds back out of `consumables` because the C double-books them. The
-comparison is real items against real items. Recorded here as a negative result
-so it is not re-checked: the deficit is in the game, not in the instrument.
+comparison is real items against real items.
+
+That much holds. The error was in the word *first*: one instrument asymmetry was
+checked and the instrument was then treated as cleared. **Clearing one way a
+measurement can be wrong is not clearing the measurement.** The asymmetry that
+was actually there was not in the counting at all — it was upstream of it, in
+what the harness had to count. The two sides were not generating from the same
+kind table, because `runStatsBatch` never registered the spellbook kinds.
+
+The generalisable form: the counting code was compared line for line and the
+*inputs to the counting code* were assumed identical. A comparison is only as
+sound as the least-examined thing both sides share, and "both sides count the
+same way" says nothing about whether both sides had the same things to count.
+
+What would have caught it in minutes, and is now the first thing to do with any
+distribution mismatch: **print the per-category breakdown before theorising about
+the total.** One tval-by-tval diff showed four tvals at exactly zero against the
+oracle's non-zero. There was never a 1.6% shortfall spread across everything;
+there was a 100% shortfall in four categories and a small surplus everywhere
+else, and the aggregate had been hiding it the entire time.
 
 ### What this does to the generator bisect
+
+> Moot: there was no generator fault to bisect. Kept for the resolution
+> argument, which is a real property of the test and still governs any future
+> per-depth split.
 
 The plan was to split by generator — classic, modified, cavern, labyrinth — and
 find the guilty one. **That plan cannot work as a per-depth bisect.** Splitting

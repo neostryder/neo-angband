@@ -51,9 +51,11 @@ import {
   TV,
   TVAL_ENTRIES,
   bindCore,
+  bindPlayer,
   doRandart,
   generateLevel,
   genDeps,
+  registerBookKinds,
 } from "@rpgm-tools/neo-angband-core";
 import type { CoreRegistries, GameObject, GamePack } from "@rpgm-tools/neo-angband-core";
 
@@ -343,6 +345,66 @@ export function perLevelSd(
   return variance > 0 ? Math.sqrt(variance) : 0;
 }
 
+/** A registry bound for headless generation, with its player-dependent foils. */
+export interface GenerationBinding {
+  /** Fresh registries, with the class-book kinds registered. */
+  reg: CoreRegistries;
+  /** The make_object foils main-stats' player implies. */
+  foils: { canBrowseBook: (kind: { tval: number; sval: number }) => boolean };
+}
+
+/**
+ * The ONE door every headless generation harness in this package binds through.
+ *
+ * It exists because `bindCore` alone does not produce the kind table the game
+ * generates from. Spellbooks are not in object.txt: write_book_kind (init.c
+ * L208) synthesises one object kind per class.txt `book:` record and gives it
+ * the allocation on the following `book-properties:cost:common:min to max`
+ * line. startGame and loadGame call registerBookKinds for exactly that reason;
+ * the stats harnesses never did, so their allocation tables held NO BOOKS and
+ * they generated zero spellbooks at every depth while the C oracle generated
+ * 0.92 per level. That was the whole of the pooled object-count deficit chased
+ * through parity/OBJCOUNT_NULL.md -- the instrument, not the engine.
+ *
+ * Four call sites needed the same two lines and all four were missing them, so
+ * the fix is a door rather than four patches: a fifth harness that forgets to
+ * call registerBookKinds is the same bug again.
+ *
+ * The foils mirror main-stats.c L435-436, which sets `player->race = races;
+ * player->class = classes` -- the head of each list, a Human Warrior. The only
+ * generation foil a fresh player makes non-trivial is obj_kind_can_browse
+ * (obj-make.c L1185-1195): make_object rejects a book the class cannot read,
+ * re-rolls up to three times and loses the object entirely if all three fail.
+ * A Warrior reads nothing, so every book pick runs that gauntlet and only the
+ * one-in-five escape survives -- which is why the C's book count is well under
+ * what the allocation table alone would predict. Reading the set off classes[0]
+ * rather than hardcoding `false` keeps this right if class.txt is reordered.
+ *
+ * The other two foils stay absent, as before: append_object_curse's TIMED_INC
+ * foil is a no-op against a fresh player's all-zero timed table, and
+ * birth_no_selling is off. Gold matched the oracle to +0.19% with both absent.
+ */
+export function bindForGeneration(pack: GamePack): GenerationBinding {
+  const reg = bindCore(pack);
+  const players = bindPlayer(pack.player);
+  /* Must run before genDeps, which builds ObjAllocState from reg.objects. */
+  registerBookKinds(reg.objects, players.classes);
+  /* Read AFTER registerBookKinds, which stamps the numeric tval/sval onto each
+   * ClassBook. Empty for a Warrior, which is the point. */
+  const readable = new Set(
+    (players.classes[0]?.magic.books ?? []).map(
+      (b) => `${b.tvalIdx},${b.sval}`,
+    ),
+  );
+  return {
+    reg,
+    foils: {
+      canBrowseBook: (kind): boolean =>
+        readable.has(`${kind.tval},${kind.sval}`),
+    },
+  };
+}
+
 /**
  * Run a full Monte-Carlo batch and return the aggregate report.
  *
@@ -366,13 +428,13 @@ export function runStatsBatch(
   for (let d = p.depthMin; d <= p.depthMax; d++) depths[String(d)] = emptyDepth();
 
   for (let run = 0; run < p.runs; run++) {
-    const reg = bindCore(pack);
+    const { reg, foils } = bindForGeneration(pack);
     if (p.randarts) applyRandarts(reg, deriveRandartSeed(p.baseSeed, run));
     const artifacts = new ArtifactState(reg.objects.artifacts.length);
 
     for (let d = p.depthMin; d <= p.depthMax; d++) {
       const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-      const deps = genDeps(reg, true, "no-player", artifacts, false);
+      const deps = genDeps(reg, true, foils, artifacts, false);
       const g = generateLevel(rng, d, deps, { daytime: true });
       collectLevel(depths[String(d)]!, g);
       /* kill_all_monsters (main-stats.c L557-560): every monster on the level is

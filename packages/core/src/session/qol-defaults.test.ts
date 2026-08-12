@@ -236,14 +236,45 @@ describe("the levelGenerated seam reaches level generation from startGame", () =
      *
      * Every direction is DERIVED from strandedDirs, never hand-written: the
      * 2026-08-06 re-pin nearly shipped 22 guessed labels.
+     *
+     * RE-PINNED AGAIN 2026-08-12, five of the six. Restoring KF_GOOD on dungeon
+     * spellbooks (player/spell.ts, init.c L269-275) puts twelve kinds into the
+     * GREAT allocation table, and the first good/great draw that lands on one
+     * moves every draw after it -- including the store stocking startGame does
+     * before it reaches the dungeon, which is why a level's LAYOUT changes at a
+     * fixed seed even though the change is about objects.
+     *
+     * Most of the list going stale is normally the signal for a behavioural
+     * regression rather than a stream shift (see the long note on gen.test.ts'
+     * STRANDED list). It is not one here, and the control says so directly:
+     * gen/gen.test.ts pins 32 seeds through the RAW generator -- bootLevel, no
+     * player, no stores, no book kinds -- and all 32 still strand in the same
+     * directions after this change. The generator's stranding behaviour did not
+     * move; where in startGame's seed space it lands did.
+     *
+     * The rate held too. Replacement searches over consecutive seeds hit a
+     * stranding at 3/1126 (d40), 1/241 and 1/593 (d50) and 1/1875 (d60) -- about
+     * 0.2-0.3%, against the 0.26% measured over 12,000 seeds when #143 last
+     * re-pinned this list.
+     *
+     *   d40 801221  -> 801295
+     *   d50 1000004 -> 1000245
+     *   d50 1000369 -> 1000962
+     *   d60 1201183 -> 1203058
+     *   d60 1201610 -> (dropped; see below)
      */
     [40, 800126, "up"],
-    [40, 801221, "up"],
-    [50, 1000004, "up"],
-    [50, 1000369, "up"],
-    /* The two down-only cases: the direction that actually blocks descent. */
-    [60, 1201183, "down"],
-    [60, 1201610, "down"],
+    [40, 801295, "up"],
+    [50, 1000245, "up"],
+    [50, 1000962, "up"],
+    /*
+     * ONE down-only case, not two: the direction that actually blocks descent.
+     * Both old d60 seeds resolved to the same replacement, and a further 8,000
+     * consecutive d60 seeds past it produced no second down-only stranding, so
+     * the list carries one rather than a padded second entry. gen.test.ts' raw
+     * generator list keeps several down cases if more are ever wanted.
+     */
+    [60, 1203058, "down"],
   ];
 
   /** The directions of this level that have a stair but no walk-reachable one. */

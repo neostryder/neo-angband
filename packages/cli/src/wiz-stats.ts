@@ -36,9 +36,10 @@ import {
   generateLevel,
   genDeps,
 } from "@rpgm-tools/neo-angband-core";
-import type { CoreRegistries, GamePack, Loc } from "@rpgm-tools/neo-angband-core";
+import type { GamePack, Loc } from "@rpgm-tools/neo-angband-core";
 import {
   type DepthMetrics,
+  bindForGeneration,
   collectLevel,
   deriveSeed,
   emptyDepth,
@@ -133,11 +134,11 @@ export function objMonStats(
   if (clearing) {
     /* One registry + ArtifactState per descent, shared across every depth. */
     for (let run = 0; run < p.nsim; run++) {
-      const reg = bindCore(pack);
+      const { reg, foils } = bindForGeneration(pack);
       const artifacts = new ArtifactState(reg.objects.artifacts.length);
       for (const d of depths) {
         const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-        const deps = genDeps(reg, true, "no-player", artifacts, false);
+        const deps = genDeps(reg, true, foils, artifacts, false);
         const g = generateLevel(rng, d, deps, { daytime: true });
         collectLevel(agg[String(d)]!, g);
       }
@@ -146,10 +147,10 @@ export function objMonStats(
     /* Fresh registry + ArtifactState per level: every level sees all arts. */
     for (const d of depths) {
       for (let run = 0; run < p.nsim; run++) {
-        const reg = bindCore(pack);
+        const { reg, foils } = bindForGeneration(pack);
         const artifacts = new ArtifactState(reg.objects.artifacts.length);
         const rng = new Rng(deriveSeed(p.baseSeed, run, d));
-        const deps = genDeps(reg, true, "no-player", artifacts, false);
+        const deps = genDeps(reg, true, foils, artifacts, false);
         const g = generateLevel(rng, d, deps, { daytime: true });
         collectLevel(agg[String(d)]!, g);
       }
@@ -235,6 +236,10 @@ export function pitStats(
   };
   if (p.depthMax === undefined || p.depthMax < p.depthMin) p.depthMax = p.depthMin;
 
+  /* bindCore alone is right here and only here: pit_stats reads the monster pit
+   * table and never generates an object, so it needs nothing from
+   * bindForGeneration. Every path that DOES place objects must use that door -
+   * see its note on the spellbook kinds bindCore does not create. */
   const reg = bindCore(pack);
   const pits = reg.monsters.pits;
   const rng = new Rng(p.baseSeed);
@@ -411,10 +416,10 @@ export function disconnectStats(
   let stairsInaccessible = 0;
 
   for (let i = 0; i < p.nsim; i++) {
-    const reg: CoreRegistries = bindCore(pack);
+    const { reg, foils } = bindForGeneration(pack);
     const artifacts = new ArtifactState(reg.objects.artifacts.length);
     const rng = new Rng(deriveSeed(p.baseSeed, i, p.depth));
-    const deps = genDeps(reg, true, "no-player", artifacts, false);
+    const deps = genDeps(reg, true, foils, artifacts, false);
     const g = generateLevel(rng, p.depth, deps, { daytime: true });
     levels++;
 

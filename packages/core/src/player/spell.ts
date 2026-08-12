@@ -11,10 +11,17 @@
  * monster spells (mon/spell.ts vs game/mon-cast.ts).
  */
 
-import { TMD, PF, TVAL_ENTRIES } from "../generated/index.js";
+import { TMD, KF, PF, TVAL_ENTRIES } from "../generated/index.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { ObjectKind } from "../obj/types.js";
-import { newElemInfo, newModifiersRv, newOfFlags } from "../obj/types.js";
+import {
+  EL_INFO_IGNORE,
+  ELEM_BASE_MAX,
+  ELEM_BASE_MIN,
+  newElemInfo,
+  newModifiersRv,
+  newOfFlags,
+} from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import type { ClassBook, ClassSpell, MagicRealm, PlayerClass } from "./types.js";
 import type { Player } from "./player.js";
@@ -149,6 +156,28 @@ export function registerBookKinds(
         genMultProb: 0,
         stackSize: { base: 1, dice: 0, sides: 0, mBonus: 0 },
       };
+      /* Dungeon books get extra properties (init.c L269-275). Both arms were
+       * missing, and both are load-bearing:
+       *
+       *   KF_GOOD is what kindIsGood reads, and kindIsGood is what decides
+       *   whether a kind appears in the GREAT allocation table at all. Without
+       *   it no dungeon spellbook could ever be picked by a good/great draw --
+       *   vault contents, labyrinth and cavern TYP_GOOD, a DROP_GOOD monster's
+       *   drop, or any make_object called with good. Measured against the
+       *   compiled 4.2.6 oracle over 20 000 levels, restoring it moved the
+       *   port's whole object count from -0.23% to -0.10% of upstream's.
+       *
+       *   EL_INFO_IGNORE on the four base elements is why upstream's dungeon
+       *   books do not burn or dissolve. Without it an acid or fire hit
+       *   destroys a book upstream would have spared. */
+      if (book.dungeon) {
+        for (let e = ELEM_BASE_MIN; e < ELEM_BASE_MAX; e++) {
+          const info = kind.elInfo[e];
+          if (info) info.flags |= EL_INFO_IGNORE;
+        }
+        kind.kindFlags.on(KF.GOOD);
+      }
+
       /* NOTE ON ORDER (init.c:208-232 write_book_kind): upstream creates book
        * kinds while parsing class.txt - BEFORE the special-artifact dummies -
        * and bumps ordinary_kind_max with each one, so upstream's k_info runs

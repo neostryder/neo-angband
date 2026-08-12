@@ -65,9 +65,13 @@ const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
  * finding REPLICATES rather than whether it exists once.
  *
  * That distinction is not academic here. The pooled object-count Z is a single
- * draw from a distribution whose measured width is about 1.4 (see
- * parity/OBJCOUNT_NULL.md), so one seed's -4.29 is one observation, not a
+ * draw from a distribution whose measured width is 1.155 (see
+ * parity/OBJCOUNT_NULL.md), so any one seed's value is one observation, not a
  * result. Vary this, not NEO_PARITY_RUNS, when the question is "is it real".
+ * Replicating across three seeds is what established that the old -4.29 was not
+ * noise -- which was correct, and still pointed at the wrong thing: it was this
+ * harness generating no spellbooks, not the generator. Replication tells you an
+ * effect is real. It tells you nothing about what is producing it.
  */
 const BASE_SEED = Number(process.env.NEO_PARITY_SEED ?? 1337);
 
@@ -464,16 +468,35 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * its own resolving power ("about 17 runs"), twelve more runs were generated,
      * and the estimate moved by two standard errors.
      *
-     * Carrying the +/-2 SE band through, the port's -4.29 calibrates to
-     * [-4.29, -3.07] -- every point clears this test's alpha, so unlike the
-     * six-run pass the conclusion no longer depends on where in the band the
-     * truth sits. Bluntly: across all 153 C-vs-C pairs the largest |Z| ever seen
-     * is 2.393, so -4.29 is outside the null's empirical RANGE, not in its tail.
+     * Carrying the +/-2 SE band through, the port's -4.29 calibrated to
+     * [-4.29, -3.07], outside the null's empirical RANGE rather than in its tail
+     * -- across all 153 C-vs-C pairs the largest |Z| ever seen is 2.393.
      *
-     * It stays ungated anyway, for the one reason left: the thing being judged is
-     * still a SINGLE port sample at one base seed. Gate it after NEO_PARITY_SEED
-     * replication, never in the pass that fixes its threshold. See
-     * parity/OBJCOUNT_NULL.md and task #150.
+     * RESOLVED 2026-08-12, and it was THIS HARNESS. The -4.29 was not a
+     * generation defect: runStatsBatch never called registerBookKinds, so the
+     * allocation table it built had no spellbook kinds in it at all -- book kinds
+     * are synthesised from class.txt (init.c write_book_kind), not read from
+     * object.txt -- and every measured level was short the 0.92 books per level
+     * the C oracle placed. Binding through bindForGeneration (stats.ts), the same
+     * sweep at the same seed and run count gives Z=-0.70, calibrated -0.61, with
+     * no per-depth |z| above 1.2. Closing that gap also surfaced a real core
+     * defect: dungeon books were missing KF_GOOD and EL_INFO_IGNORE (init.c
+     * L269-275), fixed in player/spell.ts.
+     *
+     * Two things worth keeping from how that went wrong. The deficit LOOKED
+     * uniform and multiplicative across all 20 depths -- and a uniform
+     * proportional deficit is also exactly what a whole missing CATEGORY looks
+     * like after averaging, so print the per-tval breakdown before theorising
+     * about the total. And the instrument had been cleared of a counting
+     * asymmetry (money, excluded symmetrically) and was then treated as cleared
+     * outright: ruling out one way a measurement can be wrong is not ruling out
+     * the measurement. See parity/OBJCOUNT_NULL.md.
+     *
+     * It stays ungated, for the reason that always applied: the thing being
+     * judged is a SINGLE port sample at one base seed, and a threshold must not
+     * be fixed in the same pass that measures it. Gate it after NEO_PARITY_SEED
+     * replication. Residual known gap: shadow books alone still run at about a
+     * third of upstream's rate (task #242).
      *
      * The per-depth object-count tests ARE gated: they are two-sample mean tests,
      * the same instrument as density, whose calibration was established when S-2
