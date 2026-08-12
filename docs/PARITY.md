@@ -120,6 +120,25 @@ this is **accepted, not a defect**: it shifts which specific values a seed
 produces but changes neither the rules nor the distribution of outcomes. We do
 not flip argument order to chase a particular compiler's stream.
 
+### Accepted: where the custom-options reader's three `msg()` lines go
+
+`options_restore_custom` reports a bad line in `customized_birth_options.txt` or
+`customized_interface_options.txt` with `msg()` (option.c:302, :320, :328).
+The port emits all three, and where they land depends on whether there is a game:
+
+- the **in-game** interface options page (`=` → User interface options, `r`)
+  routes them to `state.msg`, which is upstream's message line and history
+  screen. Same place, same text.
+- **at birth**, and inside `options_init_defaults` itself, there is no character
+  and no message line drawn yet, so they go to the log only
+  (`customPageDefaults`, `packages/web/src/options.ts`). Upstream's `msg()` at
+  that moment queues into a buffer nothing has displayed either, so nothing is
+  lost that a player was going to read - but the sink is genuinely not the same
+  one, which is why it is written here rather than left implicit.
+
+The messages themselves are checked against the C's own format strings, argument
+order included, in `packages/core/src/player/options-file.test.ts`.
+
 ### RNG neutrality (the hard rule)
 
 The port owns its seed lineage, but that lineage must be **stable and
@@ -227,7 +246,7 @@ re-investigated. A row here is a candidate for the `qol` mod, never for core.
 |---|---|---|
 | Town floors are **black** at night, not faded | `cave_illuminate(c, false)` calls `square_forget` on every non-bright floor grid, so a town floor at night is *unknown*, not dim. Walls and shop doorways stay memorized, which is why the outline survives. | `cave-map.c` `cave_illuminate`; `map_info` draws `FEAT_NONE` for `!square_isknown` |
 | The **target survives** the monster leaving sight | Upstream keeps the target set and re-acquires it when the monster returns to view. Nothing fires at an unseen monster: every aim path re-checks `target_okay`, which needs `monster_is_obvious` and `projectable`. | `target.c:110` `target_able`, `:124` `target_okay` |
-| **Birth options are not remembered** | They are, but only after an explicit save. 4.2.6 writes `customized_birth_options.txt` from the `s` key on the options page; nothing writes it automatically. The next character's birth screen opens on that file. | `ui-options.c:170` (`s` → `options_save_custom`), `option.c:171` |
+| **Birth options are not remembered** | They are, but only after an explicit save. 4.2.6 writes `customized_birth_options.txt` from the `s` key on the options page; nothing writes it automatically. The next character's birth screen opens on that file. A file that was hand-edited and no longer parses now says so, in 4.2.6's own words. | `ui-options.c:170` (`s` → `options_save_custom`), `option.c:171`, `:225-333` |
 | A **cutpurse never steals** | `EAT_GOLD` has `power: 0` in `blow_effects.txt`, so its `check_hit` chance is `0 + level*3` - a depth-2 cutpurse lands the theft touch about **12%** of rounds against AC 16, and the victim then saves on `adj_dex_safe[DEX] + level`. At 18/20 DEX and level 8 that is a 23% save, so ~9% of rounds actually cost gold. | `mon-blows.c` `melee_effect_handler_EAT_GOLD`, `player-attack.c` `hit_chance`, `player-calcs.c:640` `adj_dex_safe` |
 | **Wormtongue cackles and no traps appear** | `TRAPS` is `effect:TOUCH:MAKE_TRAP:3` with no dice - a radius-3 ball on the player, and each grid is `one_in_(4)` *and* must be an empty, trapless floor. The player's own grid never qualifies. Zero traps from one cast is ordinary. | `project-feat.c` `project_feature_handler_MAKE_TRAP` |
 

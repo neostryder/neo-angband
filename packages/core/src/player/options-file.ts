@@ -1,6 +1,6 @@
 /**
  * The customised-defaults option files, ported from reference/src/option.c
- * L207-L328: `options_save_custom`, `options_restore_custom` and
+ * 148-345: `options_save_custom`, `options_restore_custom` and
  * `options_restore_maintainer`, plus the `options_init_defaults` ordering that
  * makes them matter.
  *
@@ -13,7 +13,7 @@
  *     ANGBAND_DIR_USER hold the defaults the PLAYER wants every NEW character
  *     to start from.
  *
- * The second is read by `options_init_defaults` (option.c L192-199, called from
+ * The second is read by `options_init_defaults` (option.c:148-164, called from
  * `player_init`, player.c:491) BEFORE any birth choice is made, so it sets what
  * the birth screen opens on. That is the whole point of it, and it is why the
  * port's previous position - recorded in web/src/options.ts as "the port has no
@@ -21,7 +21,7 @@
  * behavioural gap rather than a filing decision. The savefile cannot seed the
  * NEXT character; there is no savefile yet.
  *
- * Only BIRTH and INTERFACE are restored at init. `options_init_defaults` names
+ * Only BIRTH and INTERFACE are restored at init. `options_init_defaults` (:155-156) names
  * those two pages and no others, so a `customized_cheat_options.txt` written by
  * hand is never read - and upstream cannot write one either, because
  * `option_toggle_menu` only gives `cmd_keys` containing S/R/X to the interface
@@ -35,23 +35,27 @@
  * page whose options are not locked. Passing the raw map keeps the lock where it
  * belongs instead of adding a bypass to it.
  *
- * The grammar is `parser.c`'s, not a lookalike - see parser.ts Strtok for the
- * three strtok behaviours a `split(":")` gets wrong, all of which are reachable
- * from a hand-edited file.
+ * THE READER IS NOT A `struct parser`, AND THAT IS THE POINT. 4.2.6 says so in
+ * a comment of its own (option.c:284-287): "Could use run_parser(), but that
+ * exits the application if there are syntax errors.  Therefore, use our own
+ * parsing." So `options_restore_custom` hand-rolls a read loop over `file_getl`
+ * - `strstr` for "option:", a prefix match against the page's option names, and
+ * a `msg()` per bad line with no error cap and no parser_state anywhere.
+ *
+ * Upstream MASTER later replaced that loop with `parser_reg(p, "option sym name
+ * str yno", parse_option)`, and until 2026-08-12 this file was a careful port of
+ * THAT - PARSE_ERROR codes, colno bookkeeping and the errmsg-buffer wart
+ * included. It was found by #143, which moved reference/ back to the 4.2.6 tag,
+ * and it is now written down as the divergence it was: the three msg() lines
+ * below are 4.2.6's, and the parser-shaped reader is gone rather than kept
+ * behind a switch, because nothing a player can see was better about it. See
+ * docs/modding/MOD_COMPATIBILITY.md for the one export that went with it.
  */
 
-import { PARSE_ERROR } from "../generated/index.js";
 import { OPTION_ENTRIES } from "../generated/options.js";
 import { FileMode, FileType, HostDir } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
-import {
-  containsOnlySpaces,
-  getParserErrorLimit,
-  parserErrorText,
-  parserSkipBlankOrComment,
-  Strtok,
-} from "../parser.js";
-import type { ParserState } from "../parser.js";
+import { containsOnlySpaces } from "../parser.js";
 import { DEFAULT_DELAY_FACTOR, DEFAULT_HITPOINT_WARN } from "./options.js";
 
 /**
@@ -64,7 +68,7 @@ export type OptionOpts = Record<string, boolean>;
 export type OptionPage = (typeof OPTION_ENTRIES)[number]["type"];
 
 /**
- * option_type_name (option.c L280-311): the lower-case short name that goes in
+ * option_type_name (option.c:42-73): the lower-case short name that goes in
  * the file name and in the file's own first line. The `unknown` arm is
  * upstream's `default:`; in the port the page is a string union, so it is only
  * reachable from a caller that widened the type.
@@ -88,8 +92,8 @@ export function optionTypeName(page: string): string {
 
 /**
  * `strnfmt(file_name, ..., "customized_%s_options.txt", page_name)` - the same
- * expression in both options_save_custom (L221) and options_restore_custom
- * (L271), which is why it is one function here.
+ * expression in both options_save_custom (:177) and options_restore_custom
+ * (:232), which is why it is one function here.
  */
 export function customOptionsFileName(page: string): string {
   return `customized_${optionTypeName(page)}_options.txt`;
@@ -110,7 +114,7 @@ function pageEntries(page: string): readonly (typeof OPTION_ENTRIES)[number][] {
  * ------------------------------------------------------------------------ */
 
 /**
- * The exact bytes options_save_custom writes (option.c L226-246): a three-line
+ * The exact bytes options_save_custom writes (option.c:185-205): a three-line
  * header naming the page, then two lines per option - its description as a
  * comment, then the `option:name:yes|no` line the reader parses back.
  *
@@ -130,7 +134,7 @@ export function optionsSaveCustomText(opts: Readonly<OptionOpts>, page: string):
 }
 
 /**
- * options_save_custom (option.c L212-254). Returns false when the file could
+ * options_save_custom (option.c:171-215). Returns false when the file could
  * not be opened OR could not be closed - upstream folds both into one boolean
  * here (unlike wiz-spoil.c, which reports them separately), and the caller
  * prints "Save failed." either way.
@@ -156,150 +160,118 @@ export function optionsSaveCustom(
  * ------------------------------------------------------------------------ */
 
 /**
- * parse_option (option.c L44-77) over one already-tokenised line, applied to
- * `opts`. Returns the parser_error code, or PARSE_ERROR.NONE.
+ * The whole read loop of options_restore_custom (option.c:292-331) over
+ * already-read text, applied to `opts`. Returns the `msg()` lines it produced,
+ * in order - there is no error cap and no `struct parser_state`, because there
+ * is no parser (option.c:284-287, quoted at the top of this file).
  *
- * The name must be on THIS page: upstream's search loop tests
- * `options[opt].type == ctx->page` before comparing names, so
- * `option:birth_force_descend:yes` inside customized_interface_options.txt is
- * PARSE_ERROR_INVALID_OPTION rather than a cross-page write. That is the
- * mechanism that keeps a birth option out of the interface file.
- */
-function applyOptionLine(
-  opts: OptionOpts,
-  page: string,
-  name: string,
-  yno: string,
-): number {
-  const entry = pageEntries(page).find((e) => e.name === name);
-  if (!entry) return PARSE_ERROR.INVALID_OPTION;
-
-  /* strncmp("yes", yno, 3) == 0 && contains_only_spaces(yno + 3). Prefix, NOT
-   * equality: "yes   " is accepted and "yesterday" is not, and the tail may
-   * hold only spaces and tabs. */
-  if (yno.startsWith("yes") && containsOnlySpaces(yno.slice(3))) {
-    opts[entry.name] = true;
-    return PARSE_ERROR.NONE;
-  }
-  if (yno.startsWith("no") && containsOnlySpaces(yno.slice(2))) {
-    opts[entry.name] = false;
-    return PARSE_ERROR.NONE;
-  }
-  return PARSE_ERROR.INVALID_VALUE;
-}
-
-/**
- * `parser_parse` for the one grammar this file registers:
- * `parser_reg(p, "option sym name str yno", parse_option)` (option.c L288).
+ * The shape of a line is `strstr(buf, "option:")`, which is why so much of this
+ * is about what comes BEFORE the match:
  *
- * `errmsg` is threaded through rather than reset per line, and that is
- * deliberate: upstream's `p->errmsg` is a buffer on the parser that only the
- * FIELD-level errors write to (parser.c L256, L284-298). A handler error
- * (INVALID_OPTION / INVALID_VALUE) leaves whatever the last field error put
- * there, so the first such error in a file reports an empty `msg` (mem_zalloc)
- * and a later one can inherit "name" or "yno" from an earlier bad line. It is
- * scruffy, it is only ever printed, and reproducing it costs one parameter.
- */
-function parseOptionLine(
-  raw: string,
-  opts: OptionOpts,
-  page: string,
-  lineNo: number,
-  errmsg: string,
-): { state: ParserState | null; errmsg: string } {
-  const line = parserSkipBlankOrComment(raw);
-  if (line === null) return { state: null, errmsg };
-
-  const tok = new Strtok(line);
-
-  /* strtok(cline, ":") - the directive. */
-  const directive = tok.next(":");
-  if (directive === null) {
-    return {
-      state: { line: lineNo, col: 1, msg: errmsg, error: PARSE_ERROR.MISSING_FIELD },
-      errmsg,
-    };
-  }
-  if (directive !== "option") {
-    return {
-      state: {
-        line: lineNo,
-        col: 1,
-        msg: directive,
-        error: PARSE_ERROR.UNDEFINED_DIRECTIVE,
-      },
-      errmsg: directive,
-    };
-  }
-
-  /* `sym name` - colon-tokenised (parser.c L272-274). colno is bumped per spec
-   * BEFORE the token is taken, so a missing name reports column 2. */
-  const name = tok.next(":");
-  if (name === null) {
-    return {
-      state: { line: lineNo, col: 2, msg: "name", error: PARSE_ERROR.MISSING_FIELD },
-      errmsg: "name",
-    };
-  }
-
-  /* `str yno` - strtok(sp, "") takes the whole remainder, colons included. */
-  const yno = tok.next("");
-  if (yno === null) {
-    return {
-      state: { line: lineNo, col: 3, msg: "yno", error: PARSE_ERROR.MISSING_FIELD },
-      errmsg: "yno",
-    };
-  }
-
-  const error = applyOptionLine(opts, page, name, yno);
-  if (error === PARSE_ERROR.NONE) return { state: null, errmsg };
-  return { state: { line: lineNo, col: 3, msg: errmsg, error }, errmsg };
-}
-
-/**
- * The whole read loop of options_restore_custom (option.c L285-306) over
- * already-read text, applied to `opts`. Returns every error it reported, in
- * order, capped exactly as upstream caps it.
+ *   - no match at all: the line has to be a comment or whitespace. Everything
+ *     up to the first `#` is judged, so `foo # bar` is unparseable and
+ *     `   # anything` is fine.
+ *   - a match with a `#` before it: the directive is inside a comment, so the
+ *     line is skipped entirely - and only the text before the `#` is judged.
+ *     This is what lets the writer's own `# <description>` lines carry the word
+ *     `option:` without the reader choking on them.
+ *   - a match with non-space text before it and no `#`: unparseable.
  *
- * The cap is not cosmetic. `if (maxe) { if (counte >= maxe - 1) break; ++counte; }`
- * BREAKS the read loop, so with the default limit of 20 upstream stops applying
- * the file after its twentieth bad line and everything below is ignored.
+ * The name search is a PREFIX match against the page's options requiring a
+ * colon immediately after (`sub[lname] == ':'`), not a split-then-compare, and
+ * it walks the table in order. Restricting it to the page is the mechanism that
+ * keeps a birth option out of the interface file: an option that exists but
+ * lives elsewhere is "Unrecognized" here rather than a cross-page write.
  */
 export function parseCustomOptionsText(
   text: string,
   opts: OptionOpts,
   page: string,
-  errorLimit = getParserErrorLimit(),
-): ParserState[] {
-  const errors: ParserState[] = [];
-  let counte = 0;
-  let errmsg = ""; /* mem_zalloc'd parser: the buffer starts empty. */
-  let lineNo = 0;
+): string[] {
+  const pageName = optionTypeName(page);
+  const messages: string[] = [];
+  const entries = pageEntries(page);
+  let lineNo = 1;
 
   for (const rawLine of text.split("\n")) {
-    lineNo++;
     /* file_getl strips the newline; a CRLF file leaves the CR behind on
      * platforms whose fgets does not, so drop it here as the pref reader does. */
     const line = rawLine.replace(/\r$/, "");
-    const res = parseOptionLine(line, opts, page, lineNo, errmsg);
-    errmsg = res.errmsg;
-    if (res.state === null) continue;
-    errors.push(res.state);
-    if (errorLimit) {
-      if (counte >= errorLimit - 1) break;
-      counte++;
+    /* `msg("Line %d of the customized %s options is not parseable.", ...)`,
+     * which the C writes out three times from three branches (:302, :317, :325). */
+    const unparseable = (): void => {
+      messages.push(
+        `Line ${lineNo} of the customized ${pageName} options is not parseable.`,
+      );
+    };
+
+    const at = line.indexOf("option:");
+    if (at < 0) {
+      /* Not an option, so it should be a comment or whitespace. */
+      const hash = line.indexOf("#");
+      if (!containsOnlySpaces(hash < 0 ? line : line.slice(0, hash))) unparseable();
+      lineNo++;
+      continue;
     }
+
+    /* `*sub = '\0'` - from here on the C is judging the HEAD of the line. */
+    const head = line.slice(0, at);
+    const hash = head.indexOf("#");
+    if (hash >= 0) {
+      /* Ignore if the "option:" is embedded in a comment. */
+      if (!containsOnlySpaces(head.slice(0, hash))) unparseable();
+      lineNo++;
+      continue;
+    }
+    if (!containsOnlySpaces(head)) {
+      unparseable();
+      lineNo++;
+      continue;
+    }
+
+    /* Try to find the option. `sub += 7` steps over "option:". */
+    const rest = line.slice(at + 7);
+    let found = false;
+    for (const entry of entries) {
+      /* `!options[opt].name` - 4.2.6's table has no nameless row, so this is
+       * the C's guard kept rather than a case anything can reach. */
+      if (!entry.name) continue;
+      const lname = entry.name.length;
+      if (!rest.startsWith(entry.name) || rest[lname] !== ":") continue;
+      found = true;
+
+      /* strncmp("yes", sub + lname + 1, 3) == 0 && contains_only_spaces(...).
+       * Prefix, NOT equality: "yes   " is accepted and "yesterday" is not, and
+       * the tail may hold only spaces and tabs. */
+      const value = rest.slice(lname + 1);
+      if (value.startsWith("yes") && containsOnlySpaces(value.slice(3))) {
+        opts[entry.name] = true;
+      } else if (value.startsWith("no") && containsOnlySpaces(value.slice(2))) {
+        opts[entry.name] = false;
+      } else {
+        messages.push(
+          `Value at line ${lineNo} of the customized ${pageName} options is not yes or no.`,
+        );
+      }
+      break;
+    }
+    if (!found) {
+      messages.push(
+        `Unrecognized option at line ${lineNo} of the customized ${pageName} options.`,
+      );
+    }
+    lineNo++;
   }
   /* A trailing newline makes split() yield one extra empty element, which
    * file_getl would never have returned. It parses as a blank line and is
    * skipped, so the only visible effect would be lineNo counting one line too
-   * many - and it never reaches an error report, because a blank line cannot
-   * produce one. */
-  return errors;
+   * many - and it never reaches a message, because a blank line cannot produce
+   * one. */
+  return messages;
 }
 
 /**
- * options_restore_maintainer (option.c L313-322): every option on the page back
+ * options_restore_maintainer (option.c:338-345): every option on the page back
  * to its table `normal`. No file, no failure mode, and no return value.
  */
 export function optionsRestoreMaintainer(opts: OptionOpts, page: string): void {
@@ -309,29 +281,24 @@ export function optionsRestoreMaintainer(opts: OptionOpts, page: string): void {
 }
 
 /**
- * The plog_fmt an unparseable line produces (option.c L299-302). Identical in
- * shape to ui-prefs.c's print_error, because both print a parser_state.
- */
-export function optionFileErrorMessage(path: string, e: ParserState): string {
-  return `Parse error in ${path} line ${e.line} column ${e.col}: ${e.msg}: ${parserErrorText(
-    e.error,
-  )}`;
-}
-
-/**
- * options_restore_custom (option.c L263-309).
+ * options_restore_custom (option.c:225-333).
  *
  * Returns TRUE when there was nothing to restore (the page's file does not
  * exist, so the maintainer's defaults are applied instead) and true again when
  * the file was read, however badly it parsed. It returns FALSE for exactly one
  * case: the file is present but could not be opened. Upstream's caller reads
  * that distinction - "Restore failed." is printed only for the false.
+ *
+ * (Upstream has a second false, from a failing `file_close` at :329. HostIo
+ * reads a whole file in one call and has no handle to close, so there is no
+ * counterpart and nothing is lost: a close that fails on a READ has already
+ * given us the bytes.)
  */
 export function optionsRestoreCustom(
   io: HostIo,
   opts: OptionOpts,
   page: string,
-  plog?: (message: string) => void,
+  msg?: (message: string) => void,
 ): boolean {
   const name = customOptionsFileName(page);
   if (!io.exists(HostDir.USER, name)) {
@@ -341,11 +308,8 @@ export function optionsRestoreCustom(
   const text = io.read(HostDir.USER, name);
   if (text === null) return false;
 
-  const errors = parseCustomOptionsText(text, opts, page);
-  if (plog) {
-    const path = io.displayPath(HostDir.USER, name);
-    for (const e of errors) plog(optionFileErrorMessage(path, e));
-  }
+  const messages = parseCustomOptionsText(text, opts, page);
+  if (msg) for (const m of messages) msg(m);
   return true;
 }
 
@@ -361,7 +325,7 @@ export interface InitialOptions {
 }
 
 /**
- * options_init_defaults (option.c L186-205), whole and in order: the table
+ * options_init_defaults (option.c:148-164), whole and in order: the table
  * defaults, then the player's customised BIRTH defaults, then their customised
  * INTERFACE defaults, then delay_factor = 40 and hitpoint_warn = 3.
  *
@@ -373,12 +337,12 @@ export interface InitialOptions {
  */
 export function optionsInitDefaults(
   io: HostIo,
-  plog?: (message: string) => void,
+  msg?: (message: string) => void,
 ): InitialOptions {
   const opts: OptionOpts = {};
   for (const entry of OPTION_ENTRIES) opts[entry.name] = entry.normal;
-  optionsRestoreCustom(io, opts, "BIRTH", plog);
-  optionsRestoreCustom(io, opts, "INTERFACE", plog);
+  optionsRestoreCustom(io, opts, "BIRTH", msg);
+  optionsRestoreCustom(io, opts, "INTERFACE", msg);
   return {
     opts,
     delayFactor: DEFAULT_DELAY_FACTOR,

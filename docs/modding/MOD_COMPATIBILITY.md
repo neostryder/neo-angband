@@ -90,9 +90,10 @@ it fell out of the shape of core's own records.
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
-about 1900 runtime exports (1,899 as of 2026-08-10, up from 1,813 on 2026-08-09
-when the localization layer landed - MOD_REACH gap 14 - and two more when record
-provenance did, gap 10), deliberately not a
+about 1900 runtime exports (1,898 as of 2026-08-12, up from 1,813 on 2026-08-09
+when the localization layer landed - MOD_REACH gap 14 - two more when record
+provenance did, gap 10, and one back down for the removal recorded below),
+deliberately not a
 curated slice (decision 18, and
 because a curated list is the thing that drifts).
 
@@ -113,6 +114,21 @@ What exists now is not a fence but a **ratchet**:
   tolerated additions would go stale, an export added in one release and removed
   in the next would never have been recorded, and the removal check would be
   measuring nothing.
+
+#### Removals taken knowingly
+
+One row, and it is the shape the mechanism above is for.
+
+| Version | Export | Why | What to use instead |
+|---|---|---|---|
+| unreleased (2026-08-12) | `optionFileErrorMessage` | Its whole subject is gone. The custom-options reader was a port of upstream **master**'s `struct parser` grammar; #149 rewrote it to 4.2.6's hand-rolled read loop, which has no `parser_state` to format - it emits three plain `msg()` lines instead. | `prefErrorMessage` (`visuals/prefs.ts`), which formats the identical `Parse error in %s line %d column %d: %s: %s` from the same `ParserState`. It was always the same function; this one was the duplicate. |
+
+`parseCustomOptionsText` survives by name but **changed shape** in the same
+commit: it returns `string[]` (the messages) rather than `ParserState[]`, and
+its fourth `errorLimit` parameter is gone, because 4.2.6's reader has no error
+cap. A plugin calling it for its own diagnostics gets a type error at build and
+a different array at runtime. Recorded here rather than aliased: there is no
+honest alias for "the same call now answers a different question."
 
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a

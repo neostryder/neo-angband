@@ -1,23 +1,22 @@
 /**
- * The customised-defaults option files (PORT_TODO 5.3), against option.c
- * L207-L328 and the parser.c tokenisation those functions inherit.
+ * The customised-defaults option files (PORT_TODO 5.3), against option.c:148-345.
  *
  * The expectations here are transcribed from the C's format strings and from
- * `strtok`'s documented behaviour, not read back off the implementation. Where
- * a case is only interesting because a `split(":")` reader would get it wrong,
- * the test says so.
+ * its hand-rolled read loop, not read back off the implementation. 4.2.6 says
+ * in a comment why that loop is not a `struct parser` (option.c:284-287), and
+ * the cases below are chosen for the places where a tidier reader - a
+ * `split(":")`, a `startsWith("option:")`, a trim - would quietly disagree with
+ * it.
  */
 
-import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
 
-import { PARSE_ERROR } from "../generated/index.js";
 import { OPTION_ENTRIES } from "../generated/options.js";
 import { FileMode, HostDir, NULL_HOST } from "../host/io.js";
 import type { HostIo, WriteOutcome } from "../host/io.js";
-import { setParserErrorLimit } from "../parser.js";
 import {
   customOptionsFileName,
-  optionFileErrorMessage,
   optionsInitDefaults,
   optionsRestoreCustom,
   optionsRestoreMaintainer,
@@ -55,12 +54,7 @@ function tableDefaults(): OptionOpts {
   return out;
 }
 
-/* Every test that does not deliberately exercise the cap pins the limit, so a
- * PARSE_ERROR_LIMIT set in the developer's shell cannot change a result. */
-beforeEach(() => setParserErrorLimit(0));
-afterEach(() => setParserErrorLimit(undefined));
-
-describe("option_type_name (option.c L280-311)", () => {
+describe("option_type_name (option.c:42-73)", () => {
   it("names all five pages in lower case, and anything else 'unknown'", () => {
     expect(optionTypeName("INTERFACE")).toBe("interface");
     expect(optionTypeName("BIRTH")).toBe("birth");
@@ -70,13 +64,13 @@ describe("option_type_name (option.c L280-311)", () => {
     expect(optionTypeName("NOT_A_PAGE")).toBe("unknown");
   });
 
-  it("builds the file name option.c strnfmts twice (L220, L270)", () => {
+  it("builds the file name option.c strnfmts twice (:177, :232)", () => {
     expect(customOptionsFileName("BIRTH")).toBe("customized_birth_options.txt");
     expect(customOptionsFileName("INTERFACE")).toBe("customized_interface_options.txt");
   });
 });
 
-describe("options_save_custom (option.c L212-254)", () => {
+describe("options_save_custom (option.c:171-215)", () => {
   it("writes the three header lines verbatim", () => {
     const text = optionsSaveCustomText(tableDefaults(), "INTERFACE");
     const lines = text.split("\n");
@@ -134,7 +128,7 @@ describe("options_save_custom (option.c L212-254)", () => {
   });
 
   it("returns false when the file cannot be created OR cannot be closed", () => {
-    /* option.c folds both into one `success` boolean (L228-249), unlike
+    /* option.c folds both into one `success` boolean (:185-210), unlike
      * wiz-spoil.c which reports them separately. */
     for (const outcome of ["create-failed", "close-failed"] as const) {
       const io = memHost(new Map(), { writeOutcome: outcome });
@@ -143,7 +137,7 @@ describe("options_save_custom (option.c L212-254)", () => {
   });
 });
 
-describe("options_restore_maintainer (option.c L313-322)", () => {
+describe("options_restore_maintainer (option.c:338-345)", () => {
   it("resets every option on the page and touches no other page", () => {
     const opts = tableDefaults();
     for (const e of OPTION_ENTRIES) opts[e.name] = !e.normal; /* all wrong */
@@ -154,12 +148,18 @@ describe("options_restore_maintainer (option.c L313-322)", () => {
   });
 });
 
-describe("parse_option (option.c L44-77)", () => {
+describe("the read loop of options_restore_custom (option.c:292-331)", () => {
   const parse = (text: string, page = "INTERFACE") => {
     const opts = tableDefaults();
-    const errors = parseCustomOptionsText(text, opts, page);
-    return { opts, errors };
+    const msgs = parseCustomOptionsText(text, opts, page);
+    return { opts, msgs };
   };
+  const NOT_PARSEABLE = (n: number, page = "interface"): string =>
+    `Line ${n} of the customized ${page} options is not parseable.`;
+  const UNRECOGNIZED = (n: number, page = "interface"): string =>
+    `Unrecognized option at line ${n} of the customized ${page} options.`;
+  const BAD_VALUE = (n: number, page = "interface"): string =>
+    `Value at line ${n} of the customized ${page} options is not yes or no.`;
   /* A pair of INTERFACE options with opposite defaults, so "did it change?" is
    * answerable in both directions without hard-coding a name. */
   const IFACE = OPTION_ENTRIES.filter((e) => e.type === "INTERFACE");
@@ -172,30 +172,30 @@ describe("parse_option (option.c L44-77)", () => {
   });
 
   it("sets yes and no", () => {
-    const { opts, errors } = parse(
+    const { opts, msgs } = parse(
       `option:${NORMAL_TRUE.name}:no\noption:${NORMAL_FALSE.name}:yes\n`,
     );
-    expect(errors).toEqual([]);
+    expect(msgs).toEqual([]);
     expect(opts[NORMAL_TRUE.name]).toBe(false);
     expect(opts[NORMAL_FALSE.name]).toBe(true);
   });
 
   it("skips blank lines and # comments, including the header it writes", () => {
     const written = optionsSaveCustomText(tableDefaults(), "INTERFACE");
-    expect(parse(written).errors).toEqual([]);
-    expect(parse("\n   \n\t\n# a comment\n   # indented comment\n").errors).toEqual([]);
+    expect(parse(written).msgs).toEqual([]);
+    expect(parse("\n   \n\t\n# a comment\n   # indented comment\n").msgs).toEqual([]);
   });
 
   it("round-trips its own writer", () => {
     const source = tableDefaults();
     for (const e of IFACE) source[e.name] = !e.normal;
-    const { opts, errors } = parse(optionsSaveCustomText(source, "INTERFACE"));
-    expect(errors).toEqual([]);
+    const { opts, msgs } = parse(optionsSaveCustomText(source, "INTERFACE"));
+    expect(msgs).toEqual([]);
     for (const e of IFACE) expect(opts[e.name], e.name).toBe(!e.normal);
   });
 
-  /* strncmp("yes", yno, 3) == 0 && contains_only_spaces(yno + 3): a PREFIX test
-   * with a spaces-and-tabs-only tail, not an equality test. */
+  /* strncmp("yes", sub + lname + 1, 3) == 0 && contains_only_spaces(...): a
+   * PREFIX test with a spaces-and-tabs-only tail, not an equality test. */
   it("accepts trailing spaces and tabs after yes/no", () => {
     expect(parse(`option:${NORMAL_FALSE.name}:yes  \t `).opts[NORMAL_FALSE.name]).toBe(true);
     expect(parse(`option:${NORMAL_TRUE.name}:no\t`).opts[NORMAL_TRUE.name]).toBe(false);
@@ -203,135 +203,154 @@ describe("parse_option (option.c L44-77)", () => {
 
   it("rejects a longer word that merely starts with yes/no", () => {
     /* Both arms, because they are two separate strncmp/contains_only_spaces
-     * pairs in the C (L67, L71) and a mutation battery will find the one that
+     * pairs in the C (:313, :316) and a mutation battery will find the one that
      * has no test. */
     const yes = parse(`option:${NORMAL_FALSE.name}:yesterday`);
-    expect(yes.errors.map((e) => e.error)).toEqual([PARSE_ERROR.INVALID_VALUE]);
+    expect(yes.msgs).toEqual([BAD_VALUE(1)]);
     expect(yes.opts[NORMAL_FALSE.name]).toBe(NORMAL_FALSE.normal);
 
     const no = parse(`option:${NORMAL_TRUE.name}:nope`);
-    expect(no.errors.map((e) => e.error)).toEqual([PARSE_ERROR.INVALID_VALUE]);
+    expect(no.msgs).toEqual([BAD_VALUE(1)]);
     expect(no.opts[NORMAL_TRUE.name]).toBe(NORMAL_TRUE.normal);
   });
 
-  it("rejects anything else as INVALID_VALUE and leaves the option alone", () => {
-    for (const v of ["true", "1", "Yes", "NO", "y"]) {
-      const { opts, errors } = parse(`option:${NORMAL_FALSE.name}:${v}`);
-      expect(errors.map((e) => e.error), v).toEqual([PARSE_ERROR.INVALID_VALUE]);
+  it("reports anything else as a bad value and leaves the option alone", () => {
+    for (const v of ["true", "1", "Yes", "NO", "y", ""]) {
+      const { opts, msgs } = parse(`option:${NORMAL_FALSE.name}:${v}`);
+      expect(msgs, v).toEqual([BAD_VALUE(1)]);
       expect(opts[NORMAL_FALSE.name], v).toBe(NORMAL_FALSE.normal);
     }
   });
 
   it("rejects an option that exists but is on ANOTHER page", () => {
-    /* The search loop tests `options[opt].type == ctx->page` BEFORE the name
-     * compare (L57-63), which is what keeps a birth option out of the
+    /* The search loop tests `options[opt].type != page` BEFORE the name
+     * compare (:293-296), which is what keeps a birth option out of the
      * interface file rather than silently writing it. */
     const birth = OPTION_ENTRIES.find((e) => e.type === "BIRTH")!;
-    const { opts, errors } = parse(`option:${birth.name}:yes`, "INTERFACE");
-    expect(errors.map((e) => e.error)).toEqual([PARSE_ERROR.INVALID_OPTION]);
+    const { opts, msgs } = parse(`option:${birth.name}:yes`, "INTERFACE");
+    expect(msgs).toEqual([UNRECOGNIZED(1)]);
     expect(opts[birth.name]).toBe(birth.normal);
     /* ...and the same line in the birth file is fine. */
-    expect(parse(`option:${birth.name}:${birth.normal ? "no" : "yes"}`, "BIRTH").errors).toEqual(
+    expect(parse(`option:${birth.name}:${birth.normal ? "no" : "yes"}`, "BIRTH").msgs).toEqual(
       [],
     );
   });
 
-  it("rejects an unknown name as INVALID_OPTION", () => {
-    expect(parse("option:no_such_option:yes").errors.map((e) => e.error)).toEqual([
-      PARSE_ERROR.INVALID_OPTION,
-    ]);
+  it("names the PAGE in every message, not just the line", () => {
+    /* The three format strings all take page_name, and a birth file that
+     * complains about "interface options" would send its reader to the wrong
+     * file. */
+    expect(parse("option:no_such_option:yes", "BIRTH").msgs).toEqual([UNRECOGNIZED(1, "birth")]);
   });
 
-  it("rejects a directive that is not `option`", () => {
-    const errors = parse("colour:red:1").errors;
-    expect(errors.map((e) => e.error)).toEqual([PARSE_ERROR.UNDEFINED_DIRECTIVE]);
-    /* p->errmsg is the offending token (parser.c L256). */
-    expect(errors[0]!.msg).toBe("colour");
-    expect(errors[0]!.col).toBe(1);
-  });
-
-  it("reports a missing name at column 2 and a missing value at column 3", () => {
-    /* colno is bumped once per spec before that spec's token is taken
-     * (parser.c L270), so the two missing fields report different columns. */
-    const noName = parse("option").errors;
-    expect(noName.map((e) => [e.error, e.col, e.msg])).toEqual([
-      [PARSE_ERROR.MISSING_FIELD, 2, "name"],
-    ]);
-    const noValue = parse(`option:${NORMAL_TRUE.name}`).errors;
-    expect(noValue.map((e) => [e.error, e.col, e.msg])).toEqual([
-      [PARSE_ERROR.MISSING_FIELD, 3, "yno"],
-    ]);
+  it("reports an unknown name as Unrecognized", () => {
+    expect(parse("option:no_such_option:yes").msgs).toEqual([UNRECOGNIZED(1)]);
   });
 
   it("counts EVERY line for the line number, comments and blanks included", () => {
-    /* p->lineno++ happens before the comment test (parser.c L234 vs L239). */
-    const errors = parse("# one\n\n# three\noption:nope:yes\n").errors;
-    expect(errors.map((e) => e.line)).toEqual([4]);
+    /* ++linenum runs on every path through the loop, including the two that
+     * `continue` without a message. */
+    expect(parse("# one\n\n# three\noption:nope:yes\n").msgs).toEqual([UNRECOGNIZED(4)]);
   });
 
-  /* ---- the three strtok behaviours a split(":") reader gets wrong ---- */
-
-  it("collapses a run of colons instead of seeing an empty field", () => {
-    /* `option::name` is TWO tokens to strtok. A split would see three and read
-     * the name as "", so this line would be an unknown-option error there;
-     * upstream parses it as a normal set. */
-    const { opts, errors } = parse(`option::${NORMAL_FALSE.name}:yes`);
-    expect(errors).toEqual([]);
-    expect(opts[NORMAL_FALSE.name]).toBe(true);
-  });
-
-  it("skips leading colons before the directive", () => {
-    const { opts, errors } = parse(`::option:${NORMAL_FALSE.name}:yes`);
-    expect(errors).toEqual([]);
-    expect(opts[NORMAL_FALSE.name]).toBe(true);
-  });
-
-  it("gives the whole remainder to the value field, colons included", () => {
-    /* PARSE_T_STR is strtok(sp, "") - it consumes the rest of the line. So
-     * `:yes` arrives as ":yes" and fails, where a split reader would have
-     * handed the handler a clean "yes" and set the option. */
-    const { opts, errors } = parse(`option:${NORMAL_FALSE.name}::yes`);
-    expect(errors.map((e) => e.error)).toEqual([PARSE_ERROR.INVALID_VALUE]);
-    expect(opts[NORMAL_FALSE.name]).toBe(NORMAL_FALSE.normal);
-
-    const trailing = parse(`option:${NORMAL_FALSE.name}:yes:extra`);
-    expect(trailing.errors.map((e) => e.error)).toEqual([PARSE_ERROR.INVALID_VALUE]);
-  });
-});
-
-describe("the parse error limit (parser.c L637-658, option.c L292-305)", () => {
-  const bad = (n: number): string =>
-    Array.from({ length: n }, (_, i) => `option:no_such_${i}:yes`).join("\n");
-
-  it("defaults to 20, not to unlimited", () => {
-    setParserErrorLimit(undefined); /* back to getenv/compile-time */
-    const opts = tableDefaults();
-    expect(parseCustomOptionsText(bad(25), opts, "INTERFACE")).toHaveLength(20);
-  });
-
-  it("BREAKS the read loop, so lines past the limit are never applied", () => {
-    /* `if (counte >= maxe - 1) break` leaves the file. This is the half that
-     * makes the limit behavioural rather than cosmetic. */
+  it("has no error cap: every bad line in a long file is reported and the file is read to the end", () => {
+    /* run_parser's PARSE_ERROR_LIMIT does not apply, because this reader is not
+     * a parser (option.c:284-287). Upstream MASTER's replacement DOES cap at 20
+     * and BREAKS the loop there, so the good line at the end would be lost.
+     * That difference is the whole of #149 in one assertion. */
     const target = OPTION_ENTRIES.find((e) => e.type === "INTERFACE" && !e.normal)!;
-    const opts = tableDefaults();
-    const text = `${bad(3)}\noption:${target.name}:yes\n`;
-    const errors = parseCustomOptionsText(text, opts, "INTERFACE", 3);
-    expect(errors).toHaveLength(3);
-    expect(opts[target.name]).toBe(false); /* the good line was never reached */
-
-    /* Control: with a limit of 4 the same file gets there. */
-    const opts2 = tableDefaults();
-    parseCustomOptionsText(text, opts2, "INTERFACE", 4);
-    expect(opts2[target.name]).toBe(true);
+    const bad = Array.from({ length: 25 }, (_, i) => `option:no_such_${i}:yes`).join("\n");
+    const { opts, msgs } = parse(`${bad}\noption:${target.name}:yes\n`);
+    expect(msgs).toHaveLength(25);
+    expect(opts[target.name]).toBe(true);
   });
 
-  it("treats zero as no limit", () => {
-    const opts = tableDefaults();
-    expect(parseCustomOptionsText(bad(25), opts, "INTERFACE", 0)).toHaveLength(25);
+  /* ---- what `strstr(buf, "option:")` does that a startsWith does not ---- */
+
+  it("finds the directive anywhere on the line, so leading whitespace is fine", () => {
+    /* Not a trim: the C never strips anything. It finds "option:" and then
+     * requires that what came BEFORE it be spaces and tabs only. */
+    const { opts, msgs } = parse(`  \t option:${NORMAL_FALSE.name}:yes`);
+    expect(msgs).toEqual([]);
+    expect(opts[NORMAL_FALSE.name]).toBe(true);
+  });
+
+  it("ignores the directive when it sits inside a comment, silently", () => {
+    /* The reason the writer's own `# <description>` lines are safe: a
+     * description is free text and could contain the word. No message, because
+     * everything before the '#' is spaces. */
+    const { opts, msgs } = parse(`# see option:${NORMAL_FALSE.name}:yes for details`);
+    expect(msgs).toEqual([]);
+    expect(opts[NORMAL_FALSE.name]).toBe(NORMAL_FALSE.normal);
+  });
+
+  it("complains when there is real text before the '#' that hid the directive", () => {
+    expect(parse(`junk # option:${NORMAL_FALSE.name}:yes`).msgs).toEqual([NOT_PARSEABLE(1)]);
+  });
+
+  it("complains when there is real text before the directive and no comment", () => {
+    const { opts, msgs } = parse(`junk option:${NORMAL_FALSE.name}:yes`);
+    expect(msgs).toEqual([NOT_PARSEABLE(1)]);
+    expect(opts[NORMAL_FALSE.name]).toBe(NORMAL_FALSE.normal);
+  });
+
+  it("calls a line with no directive at all unparseable, up to its '#'", () => {
+    expect(parse("colour:red:1").msgs).toEqual([NOT_PARSEABLE(1)]);
+    expect(parse("colour:red:1 # trailing comment").msgs).toEqual([NOT_PARSEABLE(1)]);
+    /* ...and the same line with nothing but a comment on it is silent. */
+    expect(parse("   # colour:red:1").msgs).toEqual([]);
+  });
+
+  it("treats a bare `option` with no colon as unparseable, not as a missing field", () => {
+    /* There is no field machinery here to be missing: `strstr` simply does not
+     * match, so the line falls into the comment-or-whitespace branch. */
+    expect(parse("option").msgs).toEqual([NOT_PARSEABLE(1)]);
+  });
+
+  it("requires the colon straight after the name, so a name with no value is Unrecognized", () => {
+    /* `sub[lname] == ':'` fails at end-of-string, so no option matches at all
+     * and the loop runs off the end of the table. */
+    expect(parse(`option:${NORMAL_TRUE.name}`).msgs).toEqual([UNRECOGNIZED(1)]);
+  });
+
+  it("does not collapse a run of colons the way strtok would", () => {
+    /* The master parser tokenised with strtok, which treats "::" as one
+     * separator and so accepted `option::name:yes`. This reader compares the
+     * name against the text immediately after "option:", so the leading colon
+     * is part of what has to match - and nothing does. */
+    expect(parse(`option::${NORMAL_FALSE.name}:yes`).msgs).toEqual([UNRECOGNIZED(1)]);
+  });
+
+  it("requires the colon right after the name, so a longer name is not the shorter one", () => {
+    /* The name test is a PREFIX compare plus `sub[lname] == ':'`, and the
+     * colon is the whole disambiguation. Without it `show_damageX` would set
+     * `show_damage`. */
+    const { opts, msgs } = parse(`option:${NORMAL_FALSE.name}X:yes`);
+    expect(msgs).toEqual([UNRECOGNIZED(1)]);
+    expect(opts[NORMAL_FALSE.name]).toBe(NORMAL_FALSE.normal);
+  });
+
+  it("has no option name that prefixes another, which is why table ORDER cannot matter", () => {
+    /* Recorded rather than assumed. The C takes the FIRST match walking the
+     * table, so if 4.2.6 ever grew `pickup` beside `pickup_always` the order of
+     * OPTION_ENTRIES would become load-bearing - and this test would say so
+     * before a player found out by having the wrong option flipped. */
+    const names = OPTION_ENTRIES.map((e) => e.name);
+    const collisions = names.flatMap((a) =>
+      names.filter((b) => b !== a && b.startsWith(a)).map((b) => `${a} <- ${b}`),
+    );
+    expect(collisions).toEqual([]);
+  });
+
+  it("gives the whole remainder to the value, colons included", () => {
+    /* Everything after the name's colon is the value, so `::yes` is not `yes`
+     * and `yes:extra` is not `yes`. */
+    expect(parse(`option:${NORMAL_FALSE.name}::yes`).msgs).toEqual([BAD_VALUE(1)]);
+    expect(parse(`option:${NORMAL_FALSE.name}:yes:extra`).msgs).toEqual([BAD_VALUE(1)]);
   });
 });
 
-describe("options_restore_custom (option.c L263-309)", () => {
+describe("options_restore_custom (option.c:225-333)", () => {
   it("falls back to the maintainer's defaults when the file is absent, and says true", () => {
     const io = memHost();
     const opts = tableDefaults();
@@ -349,7 +368,7 @@ describe("options_restore_custom (option.c L263-309)", () => {
     const before = { ...opts };
     expect(optionsRestoreCustom(io, opts, "INTERFACE")).toBe(false);
     /* Nothing is applied, and crucially the maintainer defaults are NOT: the
-     * early-return at L273 is the only path that resets. */
+     * early-return at :239 is the only path that resets. */
     expect(opts).toEqual(before);
   });
 
@@ -367,12 +386,18 @@ describe("options_restore_custom (option.c L263-309)", () => {
     const logged: string[] = [];
     expect(optionsRestoreCustom(io, opts, "INTERFACE", (m) => logged.push(m))).toBe(true);
     expect(opts[target.name]).toBe(true);
-    /* The empty `msg` is upstream's: a HANDLER error leaves p->errmsg at
-     * whatever the last FIELD error wrote, and this is the first error in the
-     * file, so the buffer is still the mem_zalloc'd empty string. */
+    /* msg(), verbatim - no path in it, because option.c's three format strings
+     * name the PAGE and never the file. */
     expect(logged).toEqual([
-      "Parse error in user/customized_interface_options.txt line 1 column 3: : invalid option",
+      "Unrecognized option at line 1 of the customized interface options.",
     ]);
+  });
+
+  it("says nothing at all when the sink is omitted", () => {
+    /* The sink is optional because options_init_defaults runs before there is
+     * anywhere to print; the messages must not become a throw when it does. */
+    const io = memHost(new Map([[customOptionsFileName("INTERFACE"), "garbage\n"]]));
+    expect(optionsRestoreCustom(io, tableDefaults(), "INTERFACE")).toBe(true);
   });
 
   it("round-trips through a host: save, change everything, restore", () => {
@@ -389,7 +414,7 @@ describe("options_restore_custom (option.c L263-309)", () => {
   });
 });
 
-describe("options_init_defaults (option.c L186-205)", () => {
+describe("options_init_defaults (option.c:148-164)", () => {
   it("restores BIRTH and INTERFACE from file, and no other page", () => {
     const io = memHost();
     /* Write a customised file for all five pages with everything inverted. */
@@ -412,15 +437,15 @@ describe("options_init_defaults (option.c L186-205)", () => {
 
   it("sets delay_factor and hitpoint_warn AFTER the files, so no file can move them", () => {
     const io = memHost();
-    /* The files carry booleans only, so this is a statement about ORDER: L201
-     * and L204 run last and are unconditional. */
+    /* The files carry booleans only, so this is a statement about ORDER: :159
+     * and :162 run last and are unconditional. */
     const res = optionsInitDefaults(io);
     expect(res.delayFactor).toBe(DEFAULT_DELAY_FACTOR);
     expect(res.hitpointWarn).toBe(DEFAULT_HITPOINT_WARN);
   });
 
   it("survives an unreadable customised file rather than refusing to start", () => {
-    /* The two restore calls' return values are discarded (L198-199). */
+    /* The two restore calls' return values are discarded (:155-156). */
     const io = memHost(new Map(), {
       unreadable: new Set([customOptionsFileName("BIRTH")]),
     });
@@ -428,15 +453,58 @@ describe("options_init_defaults (option.c L186-205)", () => {
   });
 });
 
-describe("the plog line (option.c L299-302)", () => {
-  it("formats line, column, token and the parser_error_str text", () => {
+describe("the three msg() lines, against the C rather than against a transcription", () => {
+  /* Everything above this point compares the port to strings I typed out of
+   * option.c, which is exactly the mistake that let the port ship MASTER's
+   * parser under 4.2.6's name for months. So: read the C, recover its three
+   * format strings, and substitute the arguments IN THE ORDER THE C PASSES
+   * THEM. That last part is what the text census cannot do - it proves a
+   * literal is present somewhere in the port, not that the port fills %d and
+   * %s the right way round. */
+  const SRC = readFileSync(
+    new URL("../../../../reference/src/option.c", import.meta.url),
+    "utf8",
+  );
+  /* Adjacent string literals are one string in C, and all three of these are
+   * wrapped across source lines. */
+  const JOINED = SRC.replace(/"[\t ]*\n[\t ]*"/gu, "");
+  const formats = [
+    ...JOINED.matchAll(/\bmsg\("([^"]*)",\s*linenum,\s*page_name\)/gu),
+  ].map((m) => m[1]!);
+
+  it("finds all five msg() calls in options_restore_custom, three distinct", () => {
+    /* A fixture guard: if reference/ moves or the regex rots, every assertion
+     * below would pass vacuously against an empty list. Five calls, because
+     * "not parseable" is written out three times from three branches. */
+    expect(formats).toHaveLength(5);
+    expect(new Set(formats).size).toBe(3);
+  });
+
+  const fill = (fmt: string, n: number, page: string): string =>
+    fmt.replace("%d", String(n)).replace("%s", page);
+
+  it("emits the unparseable line exactly, with the line number and the page in the C's order", () => {
+    const fmt = formats.find((f) => f.includes("not parseable"))!;
+    const opts = tableDefaults();
+    expect(parseCustomOptionsText("\n\ngarbage\n", opts, "BIRTH")).toEqual([
+      fill(fmt, 3, "birth"),
+    ]);
+  });
+
+  it("emits the unrecognized-option line exactly", () => {
+    const fmt = formats.find((f) => f.startsWith("Unrecognized"))!;
+    const opts = tableDefaults();
+    expect(parseCustomOptionsText("option:no_such:yes\n", opts, "SCORE")).toEqual([
+      fill(fmt, 1, "score"),
+    ]);
+  });
+
+  it("emits the bad-value line exactly", () => {
+    const fmt = formats.find((f) => f.startsWith("Value"))!;
+    const target = OPTION_ENTRIES.find((e) => e.type === "CHEAT")!;
+    const opts = tableDefaults();
     expect(
-      optionFileErrorMessage("user/customized_birth_options.txt", {
-        line: 7,
-        col: 2,
-        msg: "name",
-        error: PARSE_ERROR.MISSING_FIELD,
-      }),
-    ).toBe("Parse error in user/customized_birth_options.txt line 7 column 2: name: missing field");
+      parseCustomOptionsText(`# a header\noption:${target.name}:maybe\n`, opts, "CHEAT"),
+    ).toEqual([fill(fmt, 2, "cheat")]);
   });
 });
