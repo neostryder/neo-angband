@@ -6328,7 +6328,13 @@ async function ignoreItemCmd(): Promise<void> {
       /* textui_cmd_ignore passes no IS_HARMLESS, so a blanket `!*` does prompt. */
       false,
     );
-    return ref && "handle" in ref ? (gearGet(state.gear, ref.handle) ?? null) : null;
+    /* targetRefObject, NOT a `"handle" in ref` test: an ItemTargetRef is
+     * `{handle}` for gear and `{floor}` for a floor pile entry, so testing for
+     * the gear shape and returning null otherwise made every floor row a silent
+     * no-op - the picker offered the item, took the keypress, and dropped it.
+     * The USE_FLOOR above is what puts those rows on the screen in the first
+     * place (ui-object.c:1833). */
+    return ref ? targetRefObject(ref) : null;
   });
 }
 
@@ -6808,7 +6814,20 @@ function buildOverviewForShell(): Overview {
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
       const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
       const attr = slot?.attr ?? colorCharToAttr(disp.dAttr);
-      return { ch: slot?.char ?? disp.dChar, css: colorToCss(attr), priority: disp.priority };
+      /* display_map's "Hack - make every grid on the map lit" (ui-map.c:846)
+       * sets g.lighting = LIGHTING_LIT before re-resolving, so the miniature's
+       * TILE is the lit variant too - the same lighting this glyph already
+       * asks for. The x/y are the CAVE grid, not the scaled cell: tileDrawFor
+       * uses them only to pick a per-grid variant. */
+      const tile = tileMap
+        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), 0, 0)
+        : undefined;
+      return {
+        ch: slot?.char ?? disp.dChar,
+        css: colorToCss(attr),
+        priority: disp.priority,
+        ...(tile ? { tile } : {}),
+      };
     },
     objectGlyphAt: (x, y) => {
       const mem = knownObjectShown(x, y);
@@ -6816,7 +6835,7 @@ function buildOverviewForShell(): Overview {
       /* display_map goes through grid_data_as_text too (ui-map.c:446), so the
        * miniature resolves a remembered object the same way the map does. */
       const cell = rememberedObjectCell(mem, x, y);
-      return { ch: cell.ch, css: cell.css };
+      return { ch: cell.ch, css: cell.css, ...(cell.tile ? { tile: cell.tile } : {}) };
     },
     trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
     monsterGlyphAt: (x, y) => {
@@ -6837,6 +6856,11 @@ function buildOverviewForShell(): Overview {
       return composeMonster(under, cell);
     },
     playerGrid: { x: state.actor.grid.x, y: state.actor.grid.y },
+    /* The SAME cell the live map draws the player with. display_map has no
+     * player special case - map_info reports the player's grid like any other
+     * (ui-map.c:184) - so a hard-coded white '@' here was the one cell on the
+     * miniature guaranteed to disagree with the map it summarises. */
+    playerGlyph: playerMapGlyph(),
   });
 }
 

@@ -39,6 +39,48 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **Every detection and mapping effect in the game did nothing.** A scroll of
+  Magic Mapping is `effect:MAP_AREA` plus `effect-yx:22:40`, and that second
+  directive is the *area* — `effect_handler_MAP_AREA` reads it as
+  `context->y`/`context->x`. Neither producer of a live effect chain carried it:
+  `buildObjectEffectChain` (objects, activations, class spells, chest traps,
+  curses) and `buildSpellEffectChain` (monster spells) both read `eff`, `type`,
+  `radius`, `other`, `dice` and `expr`, and dropped `effect-yx` on the floor. The
+  handlers then worked a zero-size box — the scroll was consumed, `ident` was
+  set, no message was wrong, and nothing happened. **63 effect instances across
+  `object`, `activation` and `class` were affected**: Magic Mapping, Detection,
+  \*Enlightenment\*, Treasure Detection/Location, Detect Invisible, Detect Evil,
+  and every class's detection spells for Mage, Druid, Priest, Necromancer,
+  Paladin, Rogue, Ranger and Blackguard.
+
+  It survived because `effect-detect.test.ts` passes `{y: 22, x: 40}` straight to
+  `effectSimple`, which makes it an assertion about the *handler* and an unchecked
+  assumption about the *producer*. The new test builds the chain from the real
+  `Magic Mapping` record and asserts the y/x arrive.
+
+- **A phase door left the player unable to read.** `player_handle_post_move` ends
+  with `update_view(cave, p)` (player-util.c:1635); the port's teleport wiring ran
+  only the trap half. `no_light(p)` is `!square_isseen(cave, p->grid)`, so until
+  the view is recomputed the player's own grid still reads as unseen at the grid
+  they *left*, and reading is refused with "You have no light to read by." A walk
+  hid this because the turn loop recomputes the view anyway. Fixed at both
+  producers — teleport and `thrust_away`. Reported from play.
+
+- **Ignoring (`k`) a floor item silently did nothing.** The picker offers floor
+  rows (`USE_FLOOR`, ui-object.c:1833) and took the keypress, but the callback
+  tested for the gear shape — `"handle" in ref` — and returned null for the
+  `{floor}` shape, so every floor row was a no-op. It now resolves through
+  `targetRefObject`, which handles both.
+
+- **The level map ('M') was ASCII even with a tileset selected.** `display_map`
+  queues every cell through `Term_queue_char(..., a, c, ta, tc)` (ui-map.c:849) —
+  the same attr/char + terrain pair the live map queues — and scales by
+  `tile_width`/`tile_height`, which exists for no other reason. The port's
+  overview carried only `ch`/`css`. It now carries the foreground tile and the
+  terrain tile beneath it, for terrain, traps, objects and monsters, and draws
+  the player through the same cell the live map uses instead of a hard-coded
+  white `@`.
+
 - `docs/modding/MOD_REACH.md` reported a moddability backlog that no longer
   existed. Its class table still read `51 switches` and `22 CANDIDATE`, its gap-3
   row still named `18 CANDIDATE rows` as the remaining work, and its opening

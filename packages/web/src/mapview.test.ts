@@ -69,6 +69,78 @@ describe("buildOverview (display_map priority scan)", () => {
     expect(overview.cells.flat().filter((c) => c !== null)).toHaveLength(1);
   });
 
+  /**
+   * display_map queues (a, c, ta, tc) - Term_queue_char, ui-map.c:849 - so the
+   * miniature is a TILE map in graphics mode, and (ta, tc) is always the TERRAIN
+   * pair regardless of what overwrites (a, c). The overview used to carry ch/css
+   * only, which made the level map ASCII no matter what tileset was selected.
+   */
+  describe("graphics tiles (Term_queue_char's a/c + ta/tc)", () => {
+    const floorTile = { kind: "canvas-tile", key: "floor", data: {} };
+    const monTile = { kind: "canvas-tile", key: "kobold", data: {} };
+
+    it("carries the terrain tile onto the cell", () => {
+      const overview = buildOverview({
+        width: 1,
+        height: 1,
+        mapW: 1,
+        mapH: 1,
+        knownFeatAt: () => 7,
+        featureGlyph: () => ({ ch: ".", css: "#fff", priority: 5, tile: floorTile }),
+        playerGrid: { x: 0, y: 0 },
+      });
+      expect(overview.cells[0]![0]).toEqual({ ch: ".", css: "#fff", tile: floorTile });
+    });
+
+    it("a foreground layer keeps the terrain tile under it as bgTile", () => {
+      const overview = buildOverview({
+        width: 1,
+        height: 1,
+        mapW: 1,
+        mapH: 1,
+        knownFeatAt: () => 7,
+        featureGlyph: () => ({ ch: ".", css: "#fff", priority: 5, tile: floorTile }),
+        monsterGlyphAt: () => ({ ch: "k", css: "#0f0", tile: monTile }),
+        playerGrid: { x: 0, y: 0 },
+      });
+      expect(overview.cells[0]![0]).toEqual({
+        ch: "k",
+        css: "#0f0",
+        tile: monTile,
+        bgTile: floorTile,
+      });
+    });
+
+    it("adds no bgTile in ASCII mode, where there is no terrain tile to lay down", () => {
+      const overview = buildOverview({
+        width: 1,
+        height: 1,
+        mapW: 1,
+        mapH: 1,
+        knownFeatAt: () => 7,
+        featureGlyph: () => ({ ch: ".", css: "#fff", priority: 5 }),
+        monsterGlyphAt: () => ({ ch: "k", css: "#0f0" }),
+        playerGrid: { x: 0, y: 0 },
+      });
+      expect(overview.cells[0]![0]).toEqual({ ch: "k", css: "#0f0" });
+    });
+
+    it("passes the player's own cell through, so it is not a hard-coded '@'", () => {
+      const player = { ch: "@", css: "#ff0", tile: monTile };
+      const overview = buildOverview({
+        width: 1,
+        height: 1,
+        mapW: 1,
+        mapH: 1,
+        knownFeatAt: () => 7,
+        featureGlyph: () => ({ ch: ".", css: "#fff", priority: 5 }),
+        playerGrid: { x: 0, y: 0 },
+        playerGlyph: player,
+      });
+      expect(overview.playerGlyph).toEqual(player);
+    });
+  });
+
   it("higher Feature.priority wins when multiple grids collapse into one cell", () => {
     // width=4 scaled to mapW=1: every x in 0..3 maps to col 0. Two grids at
     // the same row (y=0 -> row 0) compete: lower priority first (x=0), then

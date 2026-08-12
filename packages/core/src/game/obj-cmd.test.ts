@@ -464,6 +464,31 @@ describe("objNeedsAim / buildObjectEffectChain", () => {
     const chain = buildObjectEffectChain(potion.effect ?? [], state);
     expect(chain).not.toBeNull();
   });
+
+  /**
+   * effect-yx carries the AREA of every detection and mapping effect
+   * (`effect_handler_MAP_AREA` reads context->y/x, effect-handler-general.c:1236),
+   * and grab_effect_data applies the directive to the effect it follows
+   * (init.c:225). The builder here is the only producer of a live chain for
+   * objects, activations, class spells, chest traps and curses, so an effect-yx
+   * it drops is an effect that maps a zero-size box - silently, with no error
+   * and no message, which is exactly what a player sees as "the scroll did
+   * nothing".
+   *
+   * This asserts on the REAL record rather than a hand-built one on purpose.
+   * effect-detect.test.ts passes {y: 22, x: 40} to effectSimple directly, which
+   * makes it an assertion about the handler and an unchecked assumption about
+   * the producer - and the producer was wrong for as long as that was the only
+   * coverage.
+   */
+  it("carries effect-yx from the record onto the built effect", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const scroll = makeNamed("Magic Mapping", TV.SCROLL);
+    const chain = buildObjectEffectChain(scroll.effect ?? [], state);
+    expect(chain).not.toBeNull();
+    /* scroll.txt: effect:MAP_AREA / effect-yx:22:40. */
+    expect({ y: chain!.y, x: chain!.x }).toEqual({ y: 22, x: 40 });
+  });
 });
 
 describe("registered commands", () => {
