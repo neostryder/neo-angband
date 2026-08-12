@@ -20,10 +20,13 @@
  *
  * The method is what transfers: all pairs among several independent C runs,
  * with `jackknifeSe` supplying a run-level standard error because pairs share
- * runs and SD / sqrt(pairs) would understate the uncertainty. An object-count
- * sibling has to pool per-depth deviates the way parity-c-stat.ts does and
- * then take the same all-pairs, delete-one-run treatment. Until that exists,
- * the honest statement about the pooled object count stays "not calibrated".
+ * runs and SD / sqrt(pairs) would understate the uncertainty.
+ *
+ * THAT SIBLING NOW EXISTS: `c-vs-c-objcount.mjs`, written 2026-08-12, which
+ * pools per-depth deviates the way parity-c-stat.ts does and gives them the
+ * same all-pairs, delete-one-run treatment. Its finding is in
+ * parity/OBJCOUNT_NULL.md. Use it, not this file, for anything about object
+ * COUNT; this file remains the instrument for the feeling histograms.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";

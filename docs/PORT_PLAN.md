@@ -249,6 +249,42 @@ documentation lives here under `docs/`.
     This is decision 18 applied to upstream drift: everything-new-is-a-mod,
     including upstream's own later fixes. The mod's design of record and
     referenced changelog live in docs/modding/BUG_FIXES.md.
+
+    **AMENDED 2026-08-12: one mod becomes two, split by whether upstream has
+    already accepted the fix.** Everything above stands; only the destination
+    changes. "All such fixes ship in a single bundled mod" bundled two jobs with
+    different lifetimes into one changelog:
+
+    - **Catching core up to upstream's tip** is finite, mechanical, and
+      *expires*. Every commit in it has an upstream SHA, and the moment 4.2.7 is
+      tagged and core rebaselines onto it, that entire mod is redundant and
+      deletes itself. It should be reviewable as "what has upstream done since
+      the tag", one row per commit.
+    - **Fixing bugs upstream has not fixed** is open-ended and permanent. It
+      never expires against any tag, because there is nothing upstream to
+      inherit it from. It is the project's own patch set, and it is the thing a
+      player means by an unofficial patch.
+
+    Merged, the second is buried under the first's churn and neither can be
+    reviewed on its own. Split, each has a rule that decides membership without
+    argument: **does an accepted upstream commit exist?** Yes -> the upstream
+    catch-up mod, cited by SHA. No -> bug-fixes, cited by issue or by
+    measurement. A fix that upstream later accepts MOVES between them at the
+    next release, and that migration is the point rather than an inconvenience.
+
+    The citation requirement is unchanged and applies to both. So does the rule
+    that core keeps the wart either way: a flag-gated fix compiled into core is
+    still core shipping the fix.
+
+    **This cost nothing to adopt, which is why it was adopted now.** The
+    bug-fixes mod's six shipped toggles were audited on 2026-08-12 against all
+    161 post-4.2.6 upstream commits: **none of them is upstream work**. The four
+    that cite upstream issues (#4245, #4605, #4664, #4510) cite OPEN issues --
+    #4664's PR #4668 was closed unmerged -- and the other two (reachable
+    staircases, misc. strings) were found here by measurement. Every
+    master-derived item is still unbuilt backlog. The split therefore redirects
+    a backlog rather than unpicking a shipped mod, and doing it later would not
+    have been free.
 25. **No unapproved simplifications; upstream-faithful configuration**
     (ratified 2026-07-08): reinforcing decisions 2 and 23, any place the port
     took a modeling shortcut that changes configured behavior from the 4.2.6

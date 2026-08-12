@@ -398,6 +398,18 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * shrinks is noise, and the 20 per-depth deviates are plausibly correlated
      * since one run walks every depth on one RNG stream.
      *
+     * MEASURED 2026-08-12, and it stays ungated for a NEW reason.
+     * `parity/tools/c-vs-c-objcount.mjs` ran this same pooling over 15 pairs of
+     * independent C runs and found the null is NOT standard normal: its width is
+     * 1.404 +/- 0.340, confirmed by a second estimator at 1.476 and by a negative
+     * control that removes the correlation and returns 0.939. So the nominal p
+     * printed below is overstated by about two orders of magnitude -- but the
+     * error bar on that width is wide enough that the port's -4.29 calibrates to
+     * anywhere in [-4.29, -2.06], which straddles this test's own alpha. Gating
+     * on 1.404 would freeze a wide error bar into a hard threshold, which is the
+     * same mistake as assuming 1.0 was, one notch smaller. Settling it needs
+     * about 17 C runs; see parity/OBJCOUNT_NULL.md.
+     *
      * The per-depth object-count tests ARE gated: they are two-sample mean tests,
      * the same instrument as density, whose calibration was established when S-2
      * was closed.
@@ -407,7 +419,9 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     const objStoufferP = normalTwoTailedP(objStouffer);
     report.push(
       `pooled objcount (Stouffer over ${objCountZ.length} depths): Z=${objStouffer.toFixed(2)} ` +
-        `p=${objStoufferP.toExponential(2)} -- DIAGNOSTIC ONLY, null not yet measured`,
+        `p=${objStoufferP.toExponential(2)} -- DIAGNOSTIC ONLY. Null width measured ` +
+        `at 1.40 +/- 0.34 (parity/OBJCOUNT_NULL.md), so that p is overstated; ` +
+        `calibrated Z=${(objStouffer / 1.404).toFixed(2)}`,
     );
 
     /* Every `-pooled` row is pushed ONLY when it has already breached its own
