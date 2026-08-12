@@ -78,6 +78,15 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **`Your & Leather Shield~ is damaged!`** — acid damaging a worn armour piece
+  printed the raw `object.txt` template instead of a name. `minus_ac`'s naming
+  hook defaulted to `obj.kind.name` when a caller forgot to supply one, and the
+  live projection path (acid traps, acid balls) never supplied one; the
+  venom-sting path did, so the same message was right or wrong depending on
+  where the acid came from. The hook is now **required**, so a call site that
+  forgets is a compile error rather than a sentence with the article and plural
+  markers still in it. Reported from play.
+
 - The `play` job failed on a `--no-sandbox` artifact rather than on the game.
   Disabling Chromium's sandbox is what leaves `binding.startupData` null, so
   Electron's own `sandbox_bundle` throws before the app has run a line — and the
