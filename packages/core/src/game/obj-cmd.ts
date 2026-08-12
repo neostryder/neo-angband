@@ -1039,6 +1039,12 @@ export function buildObjectEffectChain(
     if (e.radius || e.other) spec += ":" + (e.radius ?? 0);
     if (e.other) spec += ":" + e.other;
     builder.effect(spec);
+    /* effect-yx:<y>:<x> (grab_effect_data, init.c:225) - the AREA every
+     * detection and mapping effect reads as context->y/x. Dropping it leaves
+     * y=x=0, and every such handler then works a zero-size box: the scroll is
+     * consumed, ident is set, no message is wrong, and nothing happens. */
+    const yx = e["effect-yx"];
+    if (yx) builder.effectYx(yx.y, yx.x);
     if (e.dice) builder.dice(e.dice);
     for (const x of e.expr ?? []) builder.expr(x.name, x.base, x.expr);
   }

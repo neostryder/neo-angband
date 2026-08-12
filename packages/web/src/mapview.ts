@@ -20,11 +20,27 @@
  */
 
 import { DDX, DDY } from "@rpgm-tools/neo-angband-core";
+import type { RenderAssetRef } from "./term";
 
-/** A single displayed cell: glyph char + resolved CSS color. */
+/**
+ * A single displayed cell: glyph char + resolved CSS color, plus the graphics
+ * tile the cell blits when a tileset is active.
+ *
+ * The tile pair is not decoration. display_map queues each cell through
+ * `Term_queue_char(Term, col + 1, row + 1, a, c, ta, tc)` (ui-map.c:849) -
+ * exactly the attr/char + terrain-attr/terrain-char pair the live map queues,
+ * so in graphics mode the level overview is a TILE map upstream, and it scales
+ * by tile_width / tile_height (ui-map.c:838, 842) which only exists for that
+ * reason. Carrying only ch/css made the overview ASCII no matter what the
+ * player had selected.
+ */
 export interface OverviewGlyph {
   ch: string;
   css: string;
+  /** The foreground tile (a, c), blitted in place of the ASCII glyph. */
+  tile?: RenderAssetRef;
+  /** The terrain tile under it (ta, tc), so an alpha foreground shows floor. */
+  bgTile?: RenderAssetRef;
 }
 
 /**
@@ -52,6 +68,13 @@ export interface BuildOverviewParams {
    * uses for the live map). */
   monsterGlyphAt?: (x: number, y: number) => OverviewGlyph | null;
   playerGrid: { x: number; y: number };
+  /**
+   * How the player draws on the miniature. display_map has no special case for
+   * the player at all - map_info reports the player's own grid like any other,
+   * so in graphics mode the '@' is race 0's tile (ui-map.c:184, the
+   * MFLAG_VISIBLE player arm). Omit to keep the plain '@'.
+   */
+  playerGlyph?: OverviewGlyph;
 }
 
 /** The scaled, priority-resolved miniature plus the player's scaled cell. */
@@ -62,6 +85,8 @@ export interface Overview {
   mapH: number;
   playerRow: number;
   playerCol: number;
+  /** The player's own cell, drawn last over whatever occupies its scaled cell. */
+  playerGlyph?: OverviewGlyph;
 }
 
 /**
@@ -85,7 +110,14 @@ export interface Overview {
 export function buildOverview(p: BuildOverviewParams): Overview {
   const { width, height, mapW, mapH } = p;
   if (mapW < 1 || mapH < 1 || width < 1 || height < 1) {
-    return { cells: [], mapW, mapH, playerRow: 0, playerCol: 0 };
+    return {
+      cells: [],
+      mapW,
+      mapH,
+      playerRow: 0,
+      playerCol: 0,
+      ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
+    };
   }
   const cells: (OverviewGlyph | null)[][] = Array.from({ length: mapH }, () =>
     new Array<OverviewGlyph | null>(mapW).fill(null),
@@ -99,22 +131,30 @@ export function buildOverview(p: BuildOverviewParams): Overview {
       const fidx = p.knownFeatAt(x, y);
       if (fidx < 0) continue;
       const col = Math.floor((x * mapW) / width);
-      const terrain = p.featureGlyph(fidx);
-      let glyph: OverviewGlyph = { ch: terrain.ch, css: terrain.css };
-      let prio = terrain.priority;
+      const { priority: terrainPrio, ...terrain } = p.featureGlyph(fidx);
+      let glyph: OverviewGlyph = terrain;
+      let prio = terrainPrio;
+      /* Term_queue_char's (ta, tc) is ALWAYS the terrain pair, whatever
+       * overwrites (a, c) - the trap, object or monster on top of it
+       * (ui-map.c:849, and grid_data_as_text's L186-189 save). So a foreground
+       * layer keeps the terrain tile beneath it, exactly as the live map does. */
+      const over = (g: OverviewGlyph): OverviewGlyph =>
+        terrain.tile && g.tile && g.tile !== terrain.tile
+          ? { ...g, bgTile: terrain.tile }
+          : g;
       const trap = p.trapGlyphAt?.(x, y);
       if (trap) {
-        glyph = trap;
+        glyph = over(trap);
         prio = 20;
       }
       const obj = p.objectGlyphAt?.(x, y);
       if (obj) {
-        glyph = obj;
+        glyph = over(obj);
         prio = 20;
       }
       const mon = p.monsterGlyphAt?.(x, y);
       if (mon) {
-        glyph = mon;
+        glyph = over(mon);
         prio = 20;
       }
       const rowArr = priority[row]!;
@@ -126,7 +166,14 @@ export function buildOverview(p: BuildOverviewParams): Overview {
   }
   const playerRow = Math.floor((p.playerGrid.y * mapH) / height);
   const playerCol = Math.floor((p.playerGrid.x * mapW) / width);
-  return { cells, mapW, mapH, playerRow, playerCol };
+  return {
+    cells,
+    mapW,
+    mapH,
+    playerRow,
+    playerCol,
+    ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
+  };
 }
 
 /** A locate/panel position (top-left of the viewport, cave-space). */

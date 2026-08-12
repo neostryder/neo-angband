@@ -169,6 +169,33 @@ describe("wireGame supplies every TeleportEnv member", () => {
     }
   });
 
+  /**
+   * player_handle_post_move (player-util.c:1596-1636) does TWO things at the
+   * landing grid: hit_trap, and then `update_view(cave, p)` as its last line.
+   * The wiring ran only the first.
+   *
+   * It matters because no_light(p) is `!square_isseen(cave, p->grid)`
+   * (cave-view.c:913): with a stale view the player's own grid still reads as
+   * unseen at the grid they LEFT, so player_can_read refuses with "You have no
+   * light to read by." until the next turn recomputes it. A walk hides this,
+   * because the turn loop recomputes anyway - a phase door lands mid-turn.
+   * Reported from play, 2026-08-12.
+   */
+  it("onPlayerPostMove recomputes the view, not only the trap", () => {
+    const { game } = started(5104);
+    const tp = liveTeleport(game);
+    const seen: string[] = [];
+    game.state.onPlayerMoved = (): void => void seen.push("trap");
+    game.state.updateFov = (): void => void seen.push("view");
+
+    tp.onPlayerPostMove!(false);
+
+    /* Order matters as much as presence: upstream evaluates the trap first and
+     * updates the view after, so a trap that moves the player is not followed
+     * by a view computed for the grid it moved them off. */
+    expect(seen).toEqual(["trap", "view"]);
+  });
+
   it("z_info->max_depth comes from the bound constants, not a hardcoded 128", () => {
     const { game } = started(5102);
     expect(liveTeleport(game).maxDepth).toBe(game.booted.registries.constants.maxDepth);

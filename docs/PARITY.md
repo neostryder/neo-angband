@@ -216,6 +216,21 @@ Distribution comparisons (lane 2) use fixed-seed batches large enough that
 agreed per-metric tolerances (documented per check in the harness) distinguish
 real behavioral drift from sampling noise. Any check that fails blocks merge.
 
+## Behaviour that reads as a bug and is not
+
+Some of 4.2.6's behaviour looks broken to a player. Core keeps it. This list is
+short on purpose - each row is here because it was reported from play and closed
+against the C, so the next report can be answered in one line instead of
+re-investigated. A row here is a candidate for the `qol` mod, never for core.
+
+| Reported as | Actually | Evidence |
+|---|---|---|
+| Town floors are **black** at night, not faded | `cave_illuminate(c, false)` calls `square_forget` on every non-bright floor grid, so a town floor at night is *unknown*, not dim. Walls and shop doorways stay memorized, which is why the outline survives. | `cave-map.c` `cave_illuminate`; `map_info` draws `FEAT_NONE` for `!square_isknown` |
+| The **target survives** the monster leaving sight | Upstream keeps the target set and re-acquires it when the monster returns to view. Nothing fires at an unseen monster: every aim path re-checks `target_okay`, which needs `monster_is_obvious` and `projectable`. | `target.c:110` `target_able`, `:124` `target_okay` |
+| **Birth options are not remembered** | They are, but only after an explicit save. 4.2.6 writes `customized_birth_options.txt` from the `s` key on the options page; nothing writes it automatically. The next character's birth screen opens on that file. | `ui-options.c:170` (`s` → `options_save_custom`), `option.c:171` |
+| A **cutpurse never steals** | `EAT_GOLD` has `power: 0` in `blow_effects.txt`, so its `check_hit` chance is `0 + level*3` - a depth-2 cutpurse lands the theft touch about **12%** of rounds against AC 16, and the victim then saves on `adj_dex_safe[DEX] + level`. At 18/20 DEX and level 8 that is a 23% save, so ~9% of rounds actually cost gold. | `mon-blows.c` `melee_effect_handler_EAT_GOLD`, `player-attack.c` `hit_chance`, `player-calcs.c:640` `adj_dex_safe` |
+| **Wormtongue cackles and no traps appear** | `TRAPS` is `effect:TOUCH:MAKE_TRAP:3` with no dice - a radius-3 ball on the player, and each grid is `one_in_(4)` *and* must be an empty, trapless floor. The player's own grid never qualifies. Zero traps from one cast is ordinary. | `project-feat.c` `project_feature_handler_MAKE_TRAP` |
+
 ## Definition of "done"
 
 There is no single "100% done" flag for parity - it is a standing property. A

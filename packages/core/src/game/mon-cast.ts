@@ -107,6 +107,10 @@ export function buildSpellEffectChain(
     if (e.radius || e.other) spec += ":" + e.radius;
     if (e.other) spec += ":" + e.other;
     builder.effect(spec);
+    /* effect-yx, as the object builder does (game/obj-cmd.ts). Vanilla 4.2.6
+     * has no monster spell that carries one; the parser accepts it, so a mod's
+     * spell can, and it reaches the handler as context->y/x either way. */
+    if (e.yx) builder.effectYx(e.yx.y, e.yx.x);
     if (e.diceRaw) builder.dice(e.diceRaw);
     for (const x of e.exprs) builder.expr(x.name, x.base, x.expr);
   }

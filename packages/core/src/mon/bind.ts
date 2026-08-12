@@ -105,6 +105,8 @@ export interface SpellEffectJson {
   other?: number;
   dice?: string;
   expr?: Array<{ name: string; base: string; expr: string }>;
+  /** effect-yx:<y>:<x>; mon-init.c accepts it, so a mod's spell can carry one. */
+  "effect-yx"?: { y: number; x: number };
 }
 
 /** monster_spell.json power-cutoff entry (same lore/message fields). */
@@ -441,6 +443,7 @@ function bindSpells(
         type: e.type ?? null,
         radius: e.radius ?? 0,
         other: e.other ?? 0,
+        yx: e["effect-yx"] ? { ...e["effect-yx"] } : null,
         dice,
         diceRaw: e.dice ?? null,
         exprs,

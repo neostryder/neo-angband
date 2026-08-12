@@ -87,6 +87,13 @@ export interface MonsterSpellEffect {
   type: string | null;
   radius: number;
   other: number;
+  /**
+   * effect-yx:<y>:<x> (mon-init.c's effect-yx directive), or null when the
+   * record omits it. No 4.2.6 monster spell writes one, but the parser spec
+   * accepts it, so a mod's spell can - and a bound record that cannot hold it
+   * would drop it silently, the same way the object builder did.
+   */
+  yx: { y: number; x: number } | null;
   /** Parsed dice (expressions bound where present), or null. */
   dice: Dice | null;
   diceRaw: string | null;

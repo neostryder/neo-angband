@@ -1295,10 +1295,20 @@ function wireGame(
         state.targetDepth = targetDepth;
         state.generateLevel = true;
       },
-      /* player_handle_post_move eval_trap half (player-util.c:1627-1629):
-       * immediate traps at the landing grid after teleport / thrust. */
+      /* player_handle_post_move (player-util.c:1596-1636): the eval_trap half
+       * at the landing grid, and then update_view(cave, p) - the LAST line of
+       * the function (:1635).
+       *
+       * That second call is not cosmetic. no_light(p) is
+       * `!square_isseen(cave, p->grid)` (cave-view.c:913), so until the view is
+       * recomputed the player's OWN grid still reads as unseen at the grid they
+       * just left, and player_can_read refuses with "You have no light to read
+       * by." A walk does not show this because the turn loop recomputes the
+       * view anyway; a phase door lands mid-turn, and the light did not catch
+       * up until a tick passed. Reported from play, 2026-08-12. */
       onPlayerPostMove: (_byMonster: boolean): void => {
         state.onPlayerMoved?.(state, state.actor.grid);
+        state.updateFov?.(state);
       },
       /* handle_stuff(player) after a monster teleports (PU_UPDATE_VIEW): the
        * monster's own visibility and lighting are monsterSwap's, but the
@@ -1533,6 +1543,9 @@ function wireGame(
             thrustAway(state, centre, target, gridsAway, {
               onPlayerPostMove: (): void => {
                 state.onPlayerMoved?.(state, state.actor.grid);
+                /* update_view, as the teleport wiring above - thrust_away
+                 * lands the player through the same player_handle_post_move. */
+                state.updateFov?.(state);
               },
             }),
         },

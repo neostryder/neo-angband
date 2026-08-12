@@ -19,7 +19,7 @@ import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
-import type { Overview } from "./mapview";
+import type { Overview, OverviewGlyph } from "./mapview";
 import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 import { menuRegistry } from "./menu-registry";
 
@@ -203,6 +203,32 @@ export function showTextScreen(
  * player's '@' at its scaled cell, the centered footer) and resolves on any
  * key or tap - it builds no rendering of its own.
  */
+/**
+ * One miniature cell. `put` rather than `print` because a cell can carry a
+ * graphics tile: display_map queues (a, c, ta, tc) through Term_queue_char
+ * (ui-map.c:849), the same pair the live map queues, so the overview is a tile
+ * map whenever a tileset is active. A cell with no tile lands on exactly the
+ * ASCII print this replaced - `put` degrades to ch/fg on its own, and also does
+ * so when the atlas image is not ready yet.
+ */
+function drawOverviewCell(
+  term: GridSurface,
+  x: number,
+  y: number,
+  g: OverviewGlyph,
+): void {
+  if (!g.tile) {
+    term.print(x, y, g.ch, g.css);
+    return;
+  }
+  term.put(x, y, {
+    ch: g.ch,
+    fg: g.css,
+    tile: g.tile,
+    ...(g.bgTile ? { bgTile: g.bgTile } : {}),
+  });
+}
+
 export function showLevelMap(term: GridSurface & GridPointerInput, overview: Overview): Promise<void> {
   return new Promise<void>((resolve) => {
     const paint = (): void => {
@@ -223,11 +249,11 @@ export function showLevelMap(term: GridSurface & GridPointerInput, overview: Ove
           if (!row) continue;
           for (let c = 0; c < mapW; c++) {
             const g = row[c];
-            if (g) term.print(c + 1, r + 1, g.ch, g.css);
+            if (g) drawOverviewCell(term, c + 1, r + 1, g);
           }
         }
         // The player is always drawn last, on top of whatever occupies its cell.
-        term.print(playerCol + 1, playerRow + 1, "@", TITLE);
+        drawOverviewCell(term, playerCol + 1, playerRow + 1, overview.playerGlyph ?? { ch: "@", css: TITLE });
       }
       const footer = "Hit any key to continue";
       const fx = Math.max(0, Math.floor((cols - footer.length) / 2));
