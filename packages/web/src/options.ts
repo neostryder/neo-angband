@@ -154,6 +154,7 @@ function customDefaultsFor(
   rows: OptionRow[],
   get: (name: string) => boolean,
   set: (name: string, value: boolean) => void,
+  msg?: (text: string) => void,
 ): OptionCustomDefaults {
   const snapshot = (): OptionOpts => {
     const opts: OptionOpts = {};
@@ -170,10 +171,15 @@ function customDefaultsFor(
     save: () => optionsSaveCustom(host(), snapshot(), page),
     restore: () => {
       const opts = snapshot();
-      /* A parse error goes to the console rather than the message line:
-       * upstream's plog_fmt is stderr on the curses front ends, and this
-       * screen's one row is already the get_com prompt. */
-      const ok = optionsRestoreCustom(host(), opts, page, (m) => log.warn("options", m));
+      /* 4.2.6 reports a bad line with msg() (option.c:302, :320, :328), so it
+       * reaches the message line and the history screen. It goes to the LOG as
+       * well as the message line, unconditionally, because that is where a
+       * "Report a problem" dump can find it - and because the birth-time caller
+       * has no message line to write to. See customPageDefaults. */
+      const ok = optionsRestoreCustom(host(), opts, page, (m) => {
+        log.warn("options", m);
+        msg?.(m);
+      });
       /* The `if` is belt-and-braces and a mutation battery says so: dropping it
        * kills nothing, because optionsRestoreCustom returns false only from its
        * pre-parse early return, so a failed restore leaves `opts` byte-identical
@@ -237,6 +243,11 @@ function pageRows(
 export function customPageDefaults(page: string): Record<string, boolean> {
   const opts: OptionOpts = {};
   optionsRestoreMaintainer(opts, page);
+  /* Log only, and that is a divergence worth naming rather than hiding: this
+   * runs where options_init_defaults does, inside player_init, BEFORE a
+   * character exists - so there is no state.msg to call and no message line
+   * drawn yet. Upstream's msg() at that moment goes into a buffer nobody has
+   * shown either. Recorded in docs/PARITY.md. */
   optionsRestoreCustom(host(), opts, page, (m) => log.warn("options", m));
   return opts;
 }
@@ -511,6 +522,9 @@ async function runInterfacePage(term: GridSurface & GridPointerInput, state: Gam
       (name, value) => {
         state.options?.set(name, value);
       },
+      /* The one custom-defaults page reached with a game running, so the one
+       * that can put option.c's msg() where upstream puts it. */
+      (m) => state.msg?.(m),
     ),
   );
 }

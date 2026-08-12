@@ -37,6 +37,45 @@ digest in the game's catalogue and must never be moved.
   dispatch disabled, which fails at step 1 saying the game is not responding to
   input.
 
+### Changed
+
+- **The customised-options reader is 4.2.6's again.** `options_restore_custom`
+  hand-rolls its own read loop, and 4.2.6 says why in a comment of its own: "Could
+  use `run_parser()`, but that exits the application if there are syntax errors"
+  (option.c:284-287). Upstream *master* later replaced that loop with a
+  `parser_reg("option sym name str yno")` grammar, and core shipped a careful port
+  of THAT — `PARSE_ERROR` codes, column bookkeeping, and the `errmsg`-buffer wart
+  included — under 4.2.6's name. #143 exposed it by moving `reference/` back to the
+  4.2.6 tag; this replaces it.
+
+  What a player sees change, on a `customized_birth_options.txt` or
+  `customized_interface_options.txt` they have hand-edited:
+
+  - the three `msg()` lines 4.2.6 prints are printed, where before there were
+    none — "Line %d ... is not parseable.", "Unrecognized option at line %d ...",
+    "Value at line %d ... is not yes or no." They named the page and the line all
+    along; the port had a `Parse error in <path> line N column M` of a different
+    lineage.
+  - **no error cap.** The parser version stopped applying the file after its
+    twentieth bad line, because `PARSE_ERROR_LIMIT` *breaks* the read loop. 4.2.6
+    reads to the end, so a good line below twenty typos is now honoured.
+  - `option:` is found anywhere on the line (`strstr`), and a `#` before it means
+    the line is a comment rather than a directive — which is what makes the
+    writer's own second header line, the one containing the words `"option:"`,
+    safe to read back. `option::name:yes` is no longer accepted: `strtok`
+    collapsed the double colon, this reader does not.
+
+  The three messages leave `text-census.test.ts`'s `KNOWN_ABSENT` list by being
+  ported, and the new tests check them against the C's own format strings with the
+  arguments substituted in the C's order — which is the thing the census cannot
+  do, because presence of a literal says nothing about filling `%d` and `%s` the
+  right way round.
+
+  **Mod authors:** `optionFileErrorMessage` is gone and `parseCustomOptionsText`
+  returns `string[]` instead of `ParserState[]`. Both are recorded in
+  `docs/modding/MOD_COMPATIBILITY.md`; `prefErrorMessage` was always the same
+  formatter and remains.
+
 ### Fixed
 
 - The `play` job failed on a `--no-sandbox` artifact rather than on the game.
