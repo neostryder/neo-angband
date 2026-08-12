@@ -18,9 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # pnpm-workspace.yaml allowlists Electron's postinstall so a DEVELOPER gets
-      # the Chromium binary (without it `electron .` cannot start at all). CI only
-      # type-checks, lints and tests the desktop front end - it never launches it -
-      # so skip the ~110 MB download here rather than pay it on every run.
+      # the Chromium binary (without it `electron .` cannot start at all). THIS
+      # job only type-checks, lints and tests the desktop front end, so it skips
+      # the ~110 MB download rather than pay it here.
+      #
+      # CI as a whole DOES launch the game now - the `play` job below does, and
+      # deliberately does not set this. That sentence used to read "CI never
+      # launches it", which was true and was the hole a five-day birth crash went
+      # through.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7
@@ -79,3 +84,45 @@ jobs:
       # directly with no transport, so nothing else here would notice a break in
       # the stdio wiring - and a client's only symptom is a disconnect.
       - run: node packages/mcp/tools/smoke.mjs
+
+  # PLAY THE GAME. Everything above this job can be green while the game is
+  # unplayable, and on 2026-08-06 that is exactly what happened: the birth
+  # preview began reading two GameState fields it was never given, `as unknown as
+  # GameState` silenced the compiler, and (N)ew game threw on the first keypress
+  # for five days on the early channel. All 46 birth tests omit `opts.deps`, so
+  # the one path that builds a GameState was never executed by anything here.
+  #
+  # A separate job, not a step in `test`: this one needs the ~110 MB Electron
+  # binary that `test` deliberately skips, and it must not slow the fast lane
+  # down. It is also the only job that runs the game as a player gets it - the
+  # PRODUCTION bundle, in the desktop shell.
+  play:
+    name: Play the game
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      # NOT setting ELECTRON_SKIP_BINARY_DOWNLOAD. This is the job that launches
+      # Chromium, so it is the job that needs it.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --dir packages/web bundle
+      - run: pnpm --filter @rpgm-tools/neo-angband-desktop build
+      # `xvfb-run` because a runner has no display and Electron will not open a
+      # window without one; `--no-sandbox` because Chromium's setuid sandbox is
+      # not available on the runner image.
+      - run: xvfb-run -a node tools/play-smoke.mjs --no-sandbox
+      # The screenshots are the whole diagnosis when this fails - a hash that did
+      # not change says WHICH step stopped, and the PNG says what was on screen
+      # when it did. Kept on success too, so a passing run still shows what the
+      # game looked like at that commit.
+      - if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: play-smoke-screenshots
+          path: smoke-shots/
+          if-no-files-found: warn
