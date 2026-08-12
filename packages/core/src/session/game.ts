@@ -1451,6 +1451,7 @@ function wireGame(
       minusAc: (): boolean =>
         applyMinusAc(state.actor.player, state.gear, state.rng, {
           msg: (text: string): void => state.msg?.(text),
+          describe: (o): string => describeObject(state, o, ODESC.BASE),
           updateBonuses: (): void => state.updateBonuses?.(),
         }),
     });
