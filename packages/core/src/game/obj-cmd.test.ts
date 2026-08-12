@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
 import { OF, SQUARE, TMD, TV } from "../generated/index.js";
@@ -7,7 +7,7 @@ import { Rng } from "../rng.js";
 import { EffectRegistry } from "../effects/interpreter.js";
 import { registerCoreHandlers } from "../effects/handlers.js";
 import { ObjRegistry } from "../obj/bind.js";
-import type { ObjPackJson } from "../obj/types.js";
+import type { EffectRecordJson, ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import {
@@ -481,6 +481,112 @@ describe("objNeedsAim / buildObjectEffectChain", () => {
    * the producer - and the producer was wrong for as long as that was the only
    * coverage.
    */
+  /**
+   * The class, not the instance. Three directives had been dropped by this
+   * builder - `effect-yx` (every detection and mapping effect mapped a
+   * zero-size box), `dice-xtra` (a spiked pit printed "You are impaled!" and
+   * dealt none of its 2d6) and `effect-msg` (the Necromancer's self-damage
+   * killed you with "yourself") - and every one of them was silent. An effect
+   * directive the builder does not know is not an error; it is an effect that
+   * quietly does less.
+   *
+   * So instead of a test per directive, this asserts the builder's vocabulary
+   * covers every key the shipped packs actually put on an effect record. A new
+   * directive in the data fails HERE, at the producer, instead of somewhere in
+   * play months later.
+   */
+  it("consumes every key the packs put on an effect record", () => {
+    const handled = new Set([
+      "eff",
+      "type",
+      "radius",
+      "other",
+      "dice",
+      "expr",
+      "effect-yx",
+      "effect-msg",
+      "dice-xtra",
+      "effect-yx-xtra",
+      "expr-xtra",
+    ]);
+    /**
+     * Keys a DIFFERENT producer consumes before a chain is ever built, listed
+     * with the line that does it so an exemption cannot be granted by silence.
+     *
+     * `effect-dice` is player_timed.txt's own directive (SPRINT's on-begin
+     * chain); player/bind.ts:809 folds it into the step's `dice` field, so it
+     * never reaches this builder under that name.
+     */
+    const boundElsewhere = new Set(["effect-dice"]);
+    const seen = new Set<string>();
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const v of node) walk(v);
+        return;
+      }
+      const rec = node as Record<string, unknown>;
+      if (typeof rec["eff"] === "string") {
+        for (const k of Object.keys(rec)) seen.add(k);
+      }
+      for (const v of Object.values(rec)) walk(v);
+    };
+    const dir = new URL("../../../content/pack/", import.meta.url);
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".json")) continue;
+      walk(
+        (
+          JSON.parse(readFileSync(new URL(file, dir), "utf8")) as {
+            records?: unknown;
+          }
+        ).records,
+      );
+    }
+    /* Non-empty, or the walk found nothing and the assertion is vacuous. */
+    expect(seen.size).toBeGreaterThan(5);
+    expect(
+      [...seen].filter((k) => !handled.has(k) && !boundElsewhere.has(k)).sort(),
+    ).toEqual([]);
+    /* And the exemption list is not allowed to rot into a way of ignoring
+     * keys that stopped appearing: every entry must still be in the data. */
+    expect([...boundElsewhere].filter((k) => !seen.has(k))).toEqual([]);
+  });
+
+  /**
+   * A trap's effect-xtra chain spells its dice `dice-xtra`, because that is the
+   * directive's name and the compiler keeps it (init.c parse_trap_dice_xtra
+   * sets effect->dice on the last effect-xtra, exactly as `dice` does on an
+   * effect). Reading only `dice` rolled 0 for every extra effect: the spiked
+   * pit printed "You are impaled!" and dealt none of its 2d6, and neither pit
+   * ever cut or poisoned.
+   */
+  it("carries dice-xtra, so a spiked pit's extra damage has dice", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const traps = (
+      JSON.parse(
+        readFileSync(
+          new URL("../../../content/pack/trap.json", import.meta.url),
+          "utf8",
+        ),
+      ) as { records: Array<{ name: { desc: string }; "effect-xtra"?: unknown }> }
+    ).records;
+    const pit = traps.find((t) => t.name.desc === "spiked pit");
+    if (!pit?.["effect-xtra"]) throw new Error("no spiked pit effect-xtra");
+
+    const chain = buildObjectEffectChain(
+      pit["effect-xtra"] as EffectRecordJson[],
+      state,
+    );
+    /* trap.txt: effect-xtra:DAMAGE / dice-xtra:2d6. */
+    expect(chain?.dice).not.toBeNull();
+    expect(chain!.dice!.roll(new Rng(1), {
+      base: 0,
+      dice: 0,
+      sides: 0,
+      mBonus: 0,
+    })).toBeGreaterThan(0);
+  });
+
   it("carries effect-yx from the record onto the built effect", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const scroll = makeNamed("Magic Mapping", TV.SCROLL);

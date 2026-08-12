@@ -58,6 +58,27 @@ digest in the game's catalogue and must never be moved.
   assumption about the *producer*. The new test builds the chain from the real
   `Magic Mapping` record and asserts the y/x arrive.
 
+- **Two more directives the same builder was dropping**, found by asking whether
+  the one above was an instance or a class. It was a class: an effect directive
+  the builder does not know is not an error, it is an effect that quietly does
+  less.
+  - `dice-xtra` is what a trap's `effect-xtra` chain calls its dice
+    (`parse_trap_dice_xtra` sets `effect->dice` exactly as `dice` does on an
+    `effect`). The builder read only `dice`, so **every extra effect of a pit
+    rolled zero**: a spiked pit printed "You are impaled!" and dealt none of its
+    2d6, and neither the spiked nor the poison pit ever cut or poisoned.
+  - `effect-msg` is the killer string `EF_DAMAGE` uses for a `SRC_PLAYER` origin
+    (effect-handler-attack.c:516), so the Necromancer's three self-damage spells
+    killed you with "yourself" instead of "shadow shifting", "self sacrifice" or
+    "performing a curse".
+
+  Rather than a test per directive, a new census test asserts the builder's
+  vocabulary covers **every key the shipped packs actually put on an effect
+  record**. It found a fourth, `effect-dice`, which is genuinely consumed
+  elsewhere (`player/bind.ts:809` folds it into the step's `dice`) — so that one
+  is an explicit exemption carrying the line that handles it, and a second
+  assertion fails if an exemption stops appearing in the data.
+
 - **A phase door left the player unable to read.** `player_handle_post_move` ends
   with `update_view(cave, p)` (player-util.c:1635); the port's teleport wiring ran
   only the trap half. `no_light(p)` is `!square_isseen(cave, p->grid)`, so until
