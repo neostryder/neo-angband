@@ -93,6 +93,31 @@ rule a parity defect is fixed in core, not mitigated in a mod.
   matter how far into the tail it lands. `NEO_PARITY_SEED` exists for exactly
   this; run it at three seeds before believing the number.
 
+## The port's own Z, and a trap in reading it
+
+|                  | post-tag gamedata | 4.2.6 gamedata |
+| ---------------- | ----------------- | -------------- |
+| 400 port runs    | −2.66             | **−4.17**      |
+| 1000 port runs   | −1.78             | **−4.29**      |
+
+Under the post-tag data the statistic **shrank** with two and a half times the
+evidence, which is the signature of noise and is why it was ungated. Under 4.2.6
+it does not shrink. That change of behaviour, not the size of either number, is
+what makes #150 a question worth asking.
+
+> **`vitest run | grep` prints nothing, and exits 0.** Vitest intercepts
+> `console.log` and the default reporter drops it for a passing test, so the
+> whole report — the only output this test produces — vanishes. The first
+> replication batch here returned `Test Files 1 passed` three times, exit code 0,
+> and **contained no measurement at all**; it looks exactly like a batch that
+> replicated cleanly. Pass `--disable-console-intercept=true`, and check for the
+> `Stouffer` line rather than for a green run.
+>
+> Put the flag **before** the test path or write it as `=true`. Bare
+> `--disable-console-intercept packages/cli/src/parity-c-stat.test.ts` consumes
+> the path as the flag's value, so the filter disappears and the entire 502-file
+> suite runs instead of the one file. It still passes, so nothing complains.
+
 ## Reproducing
 
 ```bash

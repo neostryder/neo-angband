@@ -112,18 +112,35 @@ const BASE_SEED = Number(process.env.NEO_PARITY_SEED ?? 1337);
  *    does not gate; run with NEO_PARITY_RUNS=1000 for a valid decision.
  *
  * 3. When it IS comparable, the honest threshold is the empirical maximum, not a
- *    chi-square tail. The dispersion's own spread (1.56 to 2.49) is wider than a
- *    scaled chi-square at ~140 df predicts, so the parametric tail is not
- *    trustworthy at 1e-4. Fifteen replicates buy a rank-based one-sided
- *    resolution of about 1/16 = 0.06 and no more. That is far weaker than the
- *    rest of the family, and saying so is the point: this metric currently
- *    cannot detect a small divergence, and pretending otherwise produced a
- *    "p = 8e-25" that was an artefact of the wrong null.
+ *    chi-square tail. The dispersion's own spread (1.07 to 2.60 for objFeel) is
+ *    wider than a scaled chi-square at ~140 df predicts, so the parametric tail
+ *    is not trustworthy at 1e-4. 153 replicates buy a rank-based one-sided
+ *    resolution of about 1/154 = 0.0065 and no more -- ten times better than the
+ *    15 pairs this note used to quote, and still far weaker than the rest of the
+ *    family. Saying so is the point: this metric detects only a LARGE
+ *    divergence, and pretending otherwise produced a "p = 8e-25" that was an
+ *    artefact of the wrong null.
  */
 const FEEL_NULL: Record<string, { phi: number; max: number; pairs: number }> = {
   objFeel: { phi: 1.79, max: 2.6, pairs: 153 },
   monFeel: { phi: 1.93, max: 2.54, pairs: 153 },
 };
+/**
+ * MEASURED width of the pooled object-count Stouffer null, from the same
+ * eighteen C runs (153 pairs) via `parity/tools/c-vs-c-objcount.mjs`. Under
+ * depth independence this would be 1.0; one run walks every depth on one RNG
+ * stream, and the measured excess is the price of that.
+ *
+ * The low end is CLAMPED at 1.0 rather than taken as 1.155 - 0.244 = 0.911.
+ * Positive correlation between depths can only widen a Stouffer null, never
+ * narrow it below 1, so a sub-1 estimate is sampling noise on the estimator and
+ * using it would report a stronger calibrated Z than the data can support.
+ * Nothing gates on these; they only correct a printed diagnostic.
+ */
+const OBJCOUNT_NULL_WIDTH = 1.155;
+const OBJCOUNT_NULL_LO = 1.0;
+const OBJCOUNT_NULL_HI = 1.399;
+
 const DEPTH_MAX = 20;
 const ALPHA = 0.01;
 
@@ -226,7 +243,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * excess stayed put. See poolDistributionTests for the additivity argument.
      *
      * Both pooled feeling tests are judged against their MEASURED null
-     * (FEEL_NULL above, 15 C-vs-C pairs), not against a chi-square tail, and
+     * (FEEL_NULL above, 153 C-vs-C pairs), not against a chi-square tail, and
      * only when the port's sample size matches the C's. Pooling is still the
      * right move -- it removes the seed-dependent choice of depth -- but the
      * uncorrected p-value it produced was an artefact of assuming dispersion 1.
@@ -428,17 +445,35 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * shrinks is noise, and the 20 per-depth deviates are plausibly correlated
      * since one run walks every depth on one RNG stream.
      *
+     * That history is about the POST-TAG gamedata and it no longer describes what
+     * this file measures. Under 4.2.6's gamedata the same sweep gives Z=-4.17 at
+     * 400 runs and Z=-4.29 at 1000: it HOLDS as n grows rather than shrinking,
+     * which is the opposite signature and the reason #150 exists at all.
+     *
      * MEASURED 2026-08-12, and it stays ungated for a NEW reason.
-     * `parity/tools/c-vs-c-objcount.mjs` ran this same pooling over 15 pairs of
-     * independent C runs and found the null is NOT standard normal: its width is
-     * 1.404 +/- 0.340, confirmed by a second estimator at 1.476 and by a negative
-     * control that removes the correlation and returns 0.939. So the nominal p
-     * printed below is overstated by about two orders of magnitude -- but the
-     * error bar on that width is wide enough that the port's -4.29 calibrates to
-     * anywhere in [-4.29, -2.06], which straddles this test's own alpha. Gating
-     * on 1.404 would freeze a wide error bar into a hard threshold, which is the
-     * same mistake as assuming 1.0 was, one notch smaller. Settling it needs
-     * about 17 C runs; see parity/OBJCOUNT_NULL.md.
+     * `parity/tools/c-vs-c-objcount.mjs` ran this same pooling over 153 pairs
+     * from EIGHTEEN independent C runs and found the null is NOT standard
+     * normal: its width is 1.155 +/- 0.122, confirmed to three decimals by a
+     * second estimator with a different null (leave-two-out, 1.155 +/- 0.124)
+     * and by a negative control that permutes away the cross-depth correlation
+     * and returns 0.995. So the nominal p printed below IS overstated -- but
+     * only by about 1.16x in Z, not the 1.4x the first six-run pass suggested.
+     *
+     * That six-run pass reported 1.404 +/- 0.340 and could not decide anything;
+     * this note used to quote it, and quoting it was the error. The tool printed
+     * its own resolving power ("about 17 runs"), twelve more runs were generated,
+     * and the estimate moved by two standard errors.
+     *
+     * Carrying the +/-2 SE band through, the port's -4.29 calibrates to
+     * [-4.29, -3.07] -- every point clears this test's alpha, so unlike the
+     * six-run pass the conclusion no longer depends on where in the band the
+     * truth sits. Bluntly: across all 153 C-vs-C pairs the largest |Z| ever seen
+     * is 2.393, so -4.29 is outside the null's empirical RANGE, not in its tail.
+     *
+     * It stays ungated anyway, for the one reason left: the thing being judged is
+     * still a SINGLE port sample at one base seed. Gate it after NEO_PARITY_SEED
+     * replication, never in the pass that fixes its threshold. See
+     * parity/OBJCOUNT_NULL.md and task #150.
      *
      * The per-depth object-count tests ARE gated: they are two-sample mean tests,
      * the same instrument as density, whose calibration was established when S-2
@@ -450,8 +485,11 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     report.push(
       `pooled objcount (Stouffer over ${objCountZ.length} depths): Z=${objStouffer.toFixed(2)} ` +
         `p=${objStoufferP.toExponential(2)} -- DIAGNOSTIC ONLY. Null width measured ` +
-        `at 1.40 +/- 0.34 (parity/OBJCOUNT_NULL.md), so that p is overstated; ` +
-        `calibrated Z=${(objStouffer / 1.404).toFixed(2)}`,
+        `at ${OBJCOUNT_NULL_WIDTH} +/- 0.122 over 153 C-vs-C pairs ` +
+        `(parity/OBJCOUNT_NULL.md), so that p is overstated; ` +
+        `calibrated Z=${(objStouffer / OBJCOUNT_NULL_WIDTH).toFixed(2)} ` +
+        `[${(objStouffer / OBJCOUNT_NULL_LO).toFixed(2)}, ` +
+        `${(objStouffer / OBJCOUNT_NULL_HI).toFixed(2)}] at +/-2 SE`,
     );
 
     /* Every `-pooled` row is pushed ONLY when it has already breached its own
