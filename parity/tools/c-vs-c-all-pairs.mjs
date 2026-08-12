@@ -130,7 +130,9 @@ for (const table of ["obj_feelings", "mon_feelings"]) {
       pairs.push({ i, j, ...pooled(hists[i], hists[j]) });
     }
   }
-  console.log(`\\n${table}`);
+  /* A literal "\n" here for a long time, so every summary printed unlabelled
+   * and the two tables could only be told apart by their order in the loop. */
+  console.log(`\n${table}`);
   for (const pair of pairs) {
     console.log(
       `${path.basename(dbs[pair.i])} vs ${path.basename(dbs[pair.j])}: ` +

@@ -60,14 +60,42 @@ const cbase = loadCBaseline();
 const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
 
 /**
- * MEASURED null of the pooled feeling G-statistics, from SIX independent
- * 1000-run C main-stats databases produced by the same binary. Every unordered
- * pair (15 of them) is a run of this exact instrument on data where the answer
- * is known to be "no difference", so the pairs ARE the null distribution.
- * Produced by `parity/phase3-2026-07-25/tools/c-vs-c-all-pairs.mjs`:
+ * Base seed for the port's batch. 1337 is the historical default and every
+ * recorded figure was measured at it; overriding it is how you ask whether a
+ * finding REPLICATES rather than whether it exists once.
  *
- *   objFeel  mean 1.94, sd 0.31, range [1.56, 2.49]   (15 pairs)
- *   monFeel  mean 1.82, sd 0.18, range [1.45, 2.21]   (15 pairs)
+ * That distinction is not academic here. The pooled object-count Z is a single
+ * draw from a distribution whose measured width is about 1.4 (see
+ * parity/OBJCOUNT_NULL.md), so one seed's -4.29 is one observation, not a
+ * result. Vary this, not NEO_PARITY_RUNS, when the question is "is it real".
+ */
+const BASE_SEED = Number(process.env.NEO_PARITY_SEED ?? 1337);
+
+/**
+ * MEASURED null of the pooled feeling G-statistics, from EIGHTEEN independent
+ * 1000-run C main-stats databases produced by the same binary. Every unordered
+ * pair (153 of them) is a run of this exact instrument on data where the answer
+ * is known to be "no difference", so the pairs ARE the null distribution.
+ * Produced by `parity/tools/c-vs-c-all-pairs.mjs`:
+ *
+ *   objFeel  mean 1.79, sd 0.32, range [1.07, 2.60]   (153 pairs)
+ *   monFeel  mean 1.93, sd 0.23, range [1.38, 2.54]   (153 pairs)
+ *
+ * RE-MEASURED 2026-08-12 from 6 runs to 18, and the correction went the
+ * dangerous way. The old figures were objFeel {phi 1.94, max 2.49} and monFeel
+ * {phi 1.82, max 2.21}, from 15 pairs. Both MAXIMA were too low, monFeel's by
+ * 15% -- and `max` is what this file gates on, so the old threshold could have
+ * failed a port that matches the C. Fifteen pairs from six runs was never
+ * enough to pin the tail of a distribution, and the file said so at the time
+ * ("fifteen replicates buy a rank-based one-sided resolution of about 1/16");
+ * it just did not follow that through to "so do not gate on the maximum of
+ * fifteen". The ordering of the two statistics also reversed, which is a plain
+ * signal that neither was resolved.
+ *
+ * The objFeel excess the port shows (pooled G/df = 2.70) STILL clears the new
+ * maximum, so that finding survives -- but by 0.10 rather than 0.21, and it is
+ * one sample against a tail estimated from 153 pairs. Treat it as standing, not
+ * as settled.
  *
  * Three things follow, and they matter more than the constants.
  *
@@ -93,8 +121,8 @@ const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
  *    "p = 8e-25" that was an artefact of the wrong null.
  */
 const FEEL_NULL: Record<string, { phi: number; max: number; pairs: number }> = {
-  objFeel: { phi: 1.94, max: 2.49, pairs: 15 },
-  monFeel: { phi: 1.82, max: 2.21, pairs: 15 },
+  objFeel: { phi: 1.79, max: 2.6, pairs: 153 },
+  monFeel: { phi: 1.93, max: 2.54, pairs: 153 },
 };
 const DEPTH_MAX = 20;
 const ALPHA = 0.01;
@@ -117,7 +145,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     runs: PORT_RUNS,
     depthMin: base.meta.depthMin,
     depthMax: DEPTH_MAX,
-    baseSeed: 1337,
+    baseSeed: BASE_SEED,
     race: "Human",
     class: "Warrior",
     randarts: false,
@@ -318,9 +346,11 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     for (const metric of ["objFeel", "monFeel"] as const) {
       const nul = FEEL_NULL[metric] ?? { phi: 1, max: Infinity, pairs: 0 };
       const t = poolDistributionTests(pooling[metric] ?? [], nul.phi);
-      /* Gated on the EMPIRICAL maximum of the measured null, not on t.p: with 15
-       * replicates the rank-based resolution is ~1/16, and the parametric tail
-       * over-claims. t.p is still printed as a second reading. */
+      /* Gated on the EMPIRICAL maximum of the measured null, not on t.p: the
+       * parametric tail over-claims here. With 153 replicates the rank-based
+       * resolution is ~1/154, which is a real threshold rather than the ~1/16
+       * the six-run null could offer. t.p is still printed as a second
+       * reading. */
       if (feelComparable && t.ratio > nul.max) {
         rows.push({
           depth: -1,
@@ -429,7 +459,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * rows against their measured empirical maximum -- so their `p` field is a
      * report, not something to re-test against `alpha`. Comparing them with
      * `alpha` would silently swallow them: the feeling rows carry a rank bound
-     * of 1/16, which is nowhere near 1.2e-4. */
+     * of 1/154, which is still nowhere near 1.2e-4. */
     const failures = rows.filter((r) => r.p < alpha || r.metric.endsWith("-pooled"));
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
