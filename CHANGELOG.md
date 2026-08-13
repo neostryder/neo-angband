@@ -110,6 +110,39 @@ digest in the game's catalogue and must never be moved.
   and `player_timed.txt`'s FOOD grades read like percentages but are scaled by
   `z_info->food_value` (`player-timed.c:263`), so Full is 10000, not 100.
 
+### Added
+
+- **A worked front-end mod you can copy** (`samples/frontend-blueprint/`, #234).
+
+  The front-end seam's existing proofs are three test fixtures that push the
+  frames they receive into a global so an assertion can read them back. That
+  proves a frame *arrives*; it does not prove a mod can put anything on the
+  screen with one. **Blueprint View** is a real mod folder — manifest,
+  `plugin.js`, README — that takes the dungeon display and draws it as a
+  drafting-table plan: walls as strokes, known floor as hatch, remembered grids
+  dimmed, marks for monsters, objects and traps.
+
+  Every decision it makes comes from `cell.visibility`, `cell.terrain.id` and
+  `cell.overlays[].kind`. It never reads `cell.visual`, which is the terminal's
+  own projection — reverse-parsing a `#` back into "wall" would have been
+  shorter and would have demonstrated the opposite of the seam's claim. It
+  resolves terrain by CODE through `ctx.core.FEAT`, because `FEAT` is generated
+  from `list-terrain.h` and a content pack that adds terrain moves every index
+  after its insertion point.
+
+  `sample-blueprint.node.test.ts` loads **that folder by path**, puts it through
+  the real front-end selection against core as candidate zero, and records every
+  canvas call it makes for a `WorldFrame` built by the same producer `render()`
+  uses — so the sample is checked code, not an illustration that rots.
+
+  Writing it surfaced a real gap, recorded in `MOD_REACH.md` gap 9 rather than
+  worked around quietly: **a front end is never told where the map's pixels
+  are.** Cell size, the letterbox offset and the grid dimensions are private to
+  the terminal and no `ModPluginContext` member exposes them, so a replacement
+  that wants to draw *inside* the existing layout has to guess the rectangle.
+  The seam's motivating cases — isometric, 3D — take the whole window and never
+  noticed. The sample takes the window too.
+
 ### Changed
 
 - **Choosing a slower update channel no longer rolls the engine backwards**
