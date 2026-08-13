@@ -9083,9 +9083,9 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   } catch {
     /* sessionStorage unavailable: fall through and show the title */
   }
-  /* The loading screen has had the terminal until now; the title art replaces
-   * it in the same frame. Boot's tail calls this again and it is free. */
-  stopLoading();
+  /* The loading screen is NOT stopped here. It used to be, one line above this
+   * paint, and that put the only stop behind one of this function's four exits -
+   * see bootMenus, which now owns it (#251). */
   paintTitleArt(term);
   /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
    * with something to exit; desktopQuit reports whether there is one. */
@@ -10187,6 +10187,30 @@ async function startNewCharacter(): Promise<BootStep> {
  *     were in creation there was no way back to the title at all.
  */
 async function bootMenus(): Promise<void> {
+  /*
+   * THE LOADING SCREEN ENDS HERE, and it ends at the ONE ENTRY to the menu
+   * stack rather than at one of maybeTitle's four EXITS.
+   *
+   * It used to sit inside maybeTitle, one line above paintTitleArt. Three of
+   * that function's four returns never reached it - `?agent=`, SKIP_TITLE and
+   * BIRTH_DONE all answer null before it - and two of those three go on to
+   * paint a real screen. So the animation kept its 90ms interval and kept
+   * calling term.clear(), and whatever came next was drawn and erased eleven
+   * times a second. Measured on the shipped Windows build, 2026-08-13: (N)ew
+   * game from the title sets SKIP_TITLE (newGame), reloads, and the birth
+   * screen was LIVE and invisible underneath - killing the interval from
+   * outside made the race menu appear, mid-prompt, exactly where it should
+   * have been. No character could be created at all (#251). Switch character
+   * takes the same route and lost the roster the same way.
+   *
+   * Everything the loading screen is for - mod resources, the tile atlas, the
+   * save - has already finished by the time this is called, and every route out
+   * of here hands the terminal to a screen. So one unconditional stop at the
+   * top is the whole rule, and there is no exit left for it to hide behind.
+   * It stays idempotent, and boot's tail still calls it for the routes that
+   * return from here without painting anything.
+   */
+  stopLoading();
   /* ?agent= suppresses the title for the whole session (maybeTitle's first line),
    * so there is no level above to back up TO and no loop to make infinite: an
    * autoplayer boot keeps the old fall-through. Every other suppressor
