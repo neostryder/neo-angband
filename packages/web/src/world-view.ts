@@ -9,6 +9,7 @@
  */
 
 import type { Glyph, GridSurface, RenderAssetRef } from "./term";
+import type { RegionCells, RegionPixels, ScreenRegion, ScreenRegions } from "./regions";
 
 export interface WorldGrid {
   readonly x: number;
@@ -70,6 +71,12 @@ export interface WorldFrame {
   readonly cells: readonly WorldCell[];
   /** Separate only to preserve the upstream terminal's player-last paint order. */
   readonly player?: WorldPlayer;
+  /**
+   * Where this frame's map sits on the screen, and what core is still drawing
+   * around it (#234). Optional because a producer without a fitted surface has
+   * no geometry to give - not because a front end may ignore it.
+   */
+  readonly regions?: ScreenRegions;
 }
 
 export interface BuildWorldFrameParams {
@@ -80,6 +87,7 @@ export interface BuildWorldFrameParams {
   readonly screenOrigin: WorldGrid;
   readonly resolveCell: (grid: WorldGrid, screen: WorldGrid) => WorldCell;
   readonly player?: WorldPlayer;
+  readonly regions?: ScreenRegions;
 }
 
 /**
@@ -152,6 +160,31 @@ export function snapshotWorldFrame(frame: WorldFrame): WorldFrame {
     }),
     cells,
     ...(player === undefined ? {} : { player }),
+    ...(frame.regions === undefined ? {} : { regions: copyRegions(frame.regions) }),
+  });
+}
+
+/**
+ * Regions are recomputed every frame from live terminal metrics, so they are
+ * the host's mutable-in-principle objects like everything else here and get the
+ * same ownership cut. Cheap: four small rectangles, not a grid of cells.
+ */
+function copyRegions(regions: ScreenRegions): ScreenRegions {
+  const copyCells = (cells: RegionCells): RegionCells =>
+    Object.freeze({ col: cells.col, row: cells.row, cols: cells.cols, rows: cells.rows });
+  const copyPixels = (pixels: RegionPixels): RegionPixels =>
+    Object.freeze({ x: pixels.x, y: pixels.y, width: pixels.width, height: pixels.height });
+  const copyRegion = (region: ScreenRegion): ScreenRegion =>
+    Object.freeze({
+      name: region.name,
+      cells: copyCells(region.cells),
+      ...(region.pixels === undefined ? {} : { pixels: copyPixels(region.pixels) }),
+    });
+  return Object.freeze({
+    map: copyRegion(regions.map),
+    ...(regions.messages === undefined ? {} : { messages: copyRegion(regions.messages) }),
+    ...(regions.sidebar === undefined ? {} : { sidebar: copyRegion(regions.sidebar) }),
+    ...(regions.status === undefined ? {} : { status: copyRegion(regions.status) }),
   });
 }
 
@@ -191,6 +224,7 @@ export function buildWorldFrame(p: BuildWorldFrameParams): WorldFrame {
     viewport: { origin: p.origin, size: p.size, screenOrigin: p.screenOrigin },
     cells,
     ...(p.player ? { player: p.player } : {}),
+    ...(p.regions ? { regions: p.regions } : {}),
   };
 }
 

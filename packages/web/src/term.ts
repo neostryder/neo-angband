@@ -24,6 +24,10 @@
  */
 import { UI_BG, UI_GOLD } from "./ui-colors";
 import { FONT_16X24, type BitmapFontData } from "./font-16x24";
+/* Type-only, and it points the other way from the usual dependency: regions.ts
+ * knows nothing about a canvas, so the geometry contract lives beside the
+ * consumer that needs it rather than inside the renderer that answers it. */
+import type { GridGeometry, GridPixelMetrics } from "./regions";
 
 /**
  * A renderer-neutral reference to art associated with a grid cell.  The grid
@@ -344,7 +348,13 @@ export function blitCellAssets(
 
 /** Canvas implementation of GridSurface. Canvas-only policy stays in this class. */
 export class GlyphTerm
-  implements GridSurface, GridPointerInput, GridHitTest, GridReadback, SurfaceSizeEvents
+  implements
+    GridSurface,
+    GridPointerInput,
+    GridHitTest,
+    GridReadback,
+    SurfaceSizeEvents,
+    GridGeometry
 {
   private ctx: CanvasRenderingContext2D;
   /** Term_gotoxy's cursor cell, and whether Term_set_cursor showed it. */
@@ -497,6 +507,29 @@ export class GlyphTerm
 
   size(): TermSize {
     return { cols: this.cols, rows: this.rows };
+  }
+
+  /**
+   * Where this grid's cells are, in CSS pixels.
+   *
+   * These four numbers were private for five phases of the front-end work, and
+   * that is exactly what left a replacement front end with nowhere to draw but
+   * over the whole window: `screenRegions()` turns them into the map rectangle,
+   * and the frame carries it to whoever holds the display (#234).
+   *
+   * CSS pixels, not device pixels. The canvas fills the window at the origin
+   * (index.html) and its context carries `setTransform(dpr, ...)`, so these are
+   * already in the space `getBoundingClientRect()` answers in and a `position:
+   * fixed` element positions in - which is the space a mod's own canvas needs.
+   * cellAt() reads the same fields the same way for the reverse trip.
+   */
+  metrics(): GridPixelMetrics {
+    return {
+      cellWidth: this.cellW,
+      cellHeight: this.cellH,
+      originX: this.offsetX,
+      originY: this.offsetY,
+    };
   }
 
   /**

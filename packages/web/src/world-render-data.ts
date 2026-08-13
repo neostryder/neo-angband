@@ -6,6 +6,7 @@
  * for a repaint before sending that same object to its caller's sink.
  */
 import type { RenderAssetRef } from "./term";
+import type { ScreenRegions } from "./regions";
 import {
   backgroundAssetForWorldCell,
   renderWorldFrame,
@@ -62,6 +63,12 @@ export interface LiveWorldRead<TMemory, TMonster> {
   readonly origin: WorldGrid;
   readonly size: { readonly width: number; readonly height: number };
   readonly screenOrigin: WorldGrid;
+  /**
+   * The named regions of the screen this frame is being drawn on (#234). Passed
+   * through untouched: this producer owns the world, and where the world sits
+   * on a screen is the host's fact, not a projection of the dungeon.
+   */
+  readonly regions?: ScreenRegions;
   readonly playerGrid: WorldGrid;
   readonly cursor?: WorldGrid;
   readonly cursorBackground: string;
@@ -116,6 +123,7 @@ export function projectLiveWorld<TMemory, TMonster>(
     origin: read.origin,
     size: read.size,
     screenOrigin: read.screenOrigin,
+    ...(read.regions ? { regions: read.regions } : {}),
     ...(player ? { player } : {}),
     resolveCell: (grid, screen) => projectCell(read, grid, screen),
   }, sink);

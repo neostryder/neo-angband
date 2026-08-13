@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Glyph, RenderAssetRef } from "./term";
+import type { WorldFrame as SdkWorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   backgroundAssetForWorldCell,
   glyphWorldFrameSink,
   renderWorldFrame,
   type WorldCell,
+  type WorldFrame,
 } from "./world-view";
 
 describe("the live WorldFrame render path", () => {
@@ -138,5 +140,37 @@ describe("the live WorldFrame projection", () => {
       visual: { ch: "!", fg: "#f0f" },
       cursor: false,
     }]]);
+  });
+});
+
+describe("the host frame and the SDK frame are the same type", () => {
+  it("stays assignable in both directions", () => {
+    /* `world-view.ts` declares the live frame and `@rpgm-tools/neo-angband-mod-sdk`
+     * declares the public one, on purpose: a folder plugin `import type`s the
+     * SDK, and the host must not pull a mod-facing package into its render path.
+     * frontend-runtime.ts's adapter has always ASSUMED they are structurally
+     * identical - `present: (frame) => sink.present(frame)` - and nothing
+     * checked it. Adding `regions` to both (#234) is exactly the kind of change
+     * that drifts, so the assumption is now a compile error when it breaks.
+     *
+     * The runtime expect is only so this reads as a test; the assertion is that
+     * this file type-checks at all, which `tsc -b` is what runs. */
+    type Assignable<A, B> = [A] extends [B] ? true : false;
+    /* KEYS AS WELL AS ASSIGNABILITY, and this is the part that was nearly
+     * wrong: an OPTIONAL field added to one side only stays assignable both
+     * ways, so a mutual-extends check alone would have passed while `regions`
+     * existed on exactly one of these types - the precise drift it is here to
+     * catch. Comparing key unions is what makes a one-sided addition fail. */
+    type SameKeys<A, B> = [keyof A] extends [keyof B]
+      ? [keyof B] extends [keyof A]
+        ? true
+        : false
+      : false;
+    const bothWays: [
+      Assignable<WorldFrame, SdkWorldFrame>,
+      Assignable<SdkWorldFrame, WorldFrame>,
+      SameKeys<WorldFrame, SdkWorldFrame>,
+    ] = [true, true, true];
+    expect(bothWays).toEqual([true, true, true]);
   });
 });

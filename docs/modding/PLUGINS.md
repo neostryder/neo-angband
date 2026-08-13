@@ -302,8 +302,8 @@ can copy straight into a mods folder. It draws a blueprint of the dungeon from
 the frame's semantic layers, and `packages/web/src/sample-blueprint.node.test.ts`
 loads that folder by path and records what it draws, so the sample is checked
 code rather than an illustration. It has also been run in the installed desktop
-build, which is where the limitation in the next paragraph stopped being
-theoretical.
+build, which is where the missing viewport geometry stopped being theoretical —
+see **Where you may draw** below for what it now reads instead.
 
 The manifest must request **`display:replace`**, and the player must approve it:
 
@@ -338,23 +338,54 @@ This replaces the map display only. Menus still use `registry:menu`, and input
 still enters through the host's device-neutral input door; gamepad bindings and
 whole-screen ownership are later seams.
 
-**A front end is not told where the map's pixels are.** Cell size, the letterbox
-offset and the grid dimensions belong to the terminal and no `ctx` member
-exposes them, so a replacement that wanted to draw *inside* the existing layout
-would have to guess the rectangle. The seam's own cases — isometric, 3D — take
-the window, which is what the sample does. Anything that wants to sit inside the
-terminal's map area needs viewport geometry the seam does not yet publish; see
-`MOD_REACH.md` gap 9.
+### Where you may draw: `frame.regions`
 
-**Taking the window costs the player everything else on it**, which running the
-sample in the installed build made plain. `display:replace` really does replace
-the map only: core stops drawing the dungeon and goes on drawing the sidebar,
-the message line and every menu. But a front end that covers the window paints
-over all of it, so with one enabled you cannot read your hit points, see a
-message, or open the Mods screen to turn it off — you would have to edit the
-enabled set by hand. **Until gap 9's second half lands, a `display:replace` mod
-is a demonstration rather than something to play**, and a mod that ships one
-should say so where its players will read it.
+Every frame carries the named parts of the screen, so a front end no longer has
+to guess where the map is:
+
+```js
+present(frame) {
+  const box = frame.regions?.map?.pixels;
+  if (!box) return;                       // no geometry: draw NOTHING
+  canvas.style.left = `${box.x}px`;
+  canvas.style.top = `${box.y}px`;
+  canvas.style.width = `${box.width}px`;
+  canvas.style.height = `${box.height}px`;
+  // ...
+}
+```
+
+`regions` has `map`, and — depending on the player's sidebar mode — `messages`,
+`sidebar` and `status`. Each carries `cells` (a rectangle of the character grid)
+and `pixels` (CSS pixels in the game window's coordinate space, the space
+`getBoundingClientRect()` answers in). `map` is yours while you hold the
+display; the others are core's and are published so you can stay off them, or
+cover them knowing what you are covering.
+
+Three things worth knowing:
+
+- **The names are roles, not places.** `sidebar` is the 13-column left column in
+  the classic layout and a one-line header under the messages in the compact
+  one, and it is **absent** when the player has turned the vitals off. Read it
+  every frame rather than caching it: it moves on a resize, on a sidebar-mode
+  change, and when a narrow window forces the compact layout.
+- **`regions` is optional.** A host with no fitted surface has none to give.
+  Treat that as "draw nothing", not as "fall back to the window" — falling back
+  reintroduces the defect below, intermittently.
+- **The map is one column narrower than the screen.** That is upstream's own
+  rule (`SCREEN_WID` reserves the rightmost column), not a rounding error.
+
+**Covering the window costs the player everything else on it.** Before regions
+existed, running the sample in the installed build made this plain:
+`display:replace` really does replace the map only — core stops drawing the
+dungeon and goes on drawing the sidebar, the message line and every menu — but a
+front end that covers the window paints over all of it, so you could not read
+your hit points, see a message, or open the Mods screen to turn the mod off. You
+would have had to edit the enabled set by hand.
+
+A front end is still *allowed* to take the whole window; an isometric or 3D view
+may want to. What the regions change is that it is now a decision, taken knowing
+what is being covered, rather than the only thing a mod could do.
 
 ## Capabilities
 
