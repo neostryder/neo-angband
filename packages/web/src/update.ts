@@ -24,9 +24,25 @@
  *    would offer a downgrade, and the updater would then loop between two
  *    versions forever.
  *
- * The check is one request with a short timeout and every failure is silent:
- * no shimmer, no message. A game that cannot reach GitHub is not broken, and a
- * player who is offline did not ask a question.
+ * The check is one request with a short timeout, and a failure is silent ON THE
+ * TITLE SCREEN - no shimmer, no message. A game that cannot reach GitHub is not
+ * broken, and a player who is offline did not ask a question.
+ *
+ * IT IS NOT SILENT ON THE UPDATE SCREEN, and that distinction is the whole
+ * reason this function returns a result type instead of `AvailableUpdate | null`.
+ * A player who presses (U) HAS asked the question, and "null" answered four
+ * different things at once: there is nothing newer, GitHub could not be reached,
+ * GitHub refused, GitHub did not answer in time. The screen printed "This is the
+ * newest build on your channel" for all four - a claim it could not stand behind
+ * - and the check ran once at boot, so there was no way to ask again short of
+ * restarting the game.
+ *
+ * This project has already paid for that exact shape once, on the other side of
+ * the same screen: mod-registry.ts's comment records a silence that "meant
+ * nothing newer shipped HERE and it said you are up to date", and
+ * mod-refresh.test.ts asserts the phrase is never used. The lesson was applied
+ * to mod updates and not to the game's own, which is how one screen came to
+ * carry both the fixed version and the bug.
  */
 
 import { compareSemver } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -78,6 +94,23 @@ export interface AvailableUpdate {
    */
   readonly older: boolean;
 }
+
+/**
+ * What one check found, with "could not ask" kept apart from "nothing to offer".
+ *
+ * `ok: true, update: null` is the good answer nobody notices: GitHub was asked,
+ * it answered, and this channel holds nothing newer. `ok: false` is a question
+ * that never got answered, and the screen must say so rather than reporting the
+ * absence of an update as the presence of currency.
+ *
+ * `reason` is a SENTENCE, not a code. It is printed straight onto the update
+ * screen, where the reader is a player deciding whether to worry - "GitHub did
+ * not answer in time." tells them to press the key again; a 403 tells them to
+ * wait an hour; "could not be reached" tells them to check their connection.
+ */
+export type UpdateCheck =
+  | { readonly ok: true; readonly update: AvailableUpdate | null }
+  | { readonly ok: false; readonly reason: string };
 
 /**
  * How fresh a build the player is willing to run.
@@ -423,18 +456,30 @@ export interface UpdateCheckDeps {
 }
 
 /**
- * Ask GitHub, once. Resolves null on ANY failure - offline, rate-limited,
- * malformed, timed out, or simply up to date.
+ * Ask GitHub, once. Never throws; reports WHICH of the four outcomes happened.
  *
  * `per_page=20` because the answer is "the highest version among recent
  * releases" and the list is newest-first: twenty covers any plausible run of
- * hotfixes without paging, and paging to be sure would turn one silent request
- * into several.
+ * hotfixes without paging, and paging to be sure would turn one request into
+ * several.
+ *
+ * THE TIMEOUT IS A REAL FAILURE MODE, not a formality, and it is the one most
+ * likely to be mistaken for currency. The check is started while the page is
+ * still booting - loading mods, decoding tile packs - and the abort timer fires
+ * on wall-clock time whether or not the main thread was free to read the
+ * response. A heavy install can therefore lose a check that GitHub answered
+ * perfectly well. Answering "timed out" rather than "you are up to date" is what
+ * makes that visible, and pressing the key again after boot is what fixes it.
  */
-export async function checkForUpdate(deps: UpdateCheckDeps): Promise<AvailableUpdate | null> {
+export async function checkForUpdate(deps: UpdateCheckDeps): Promise<UpdateCheck> {
   const repo = deps.repo ?? UPDATE_REPO;
   const ctl = new AbortController();
+  /* Recorded rather than sniffed out of the error: an abort and a dropped
+   * connection both arrive here as a rejected fetch, and only this flag knows
+   * which clock ran out. */
+  let timedOut = false;
   const timer = setTimeout(() => {
+    timedOut = true;
     ctl.abort();
   }, deps.timeoutMs ?? UPDATE_TIMEOUT_MS);
   try {
@@ -442,11 +487,38 @@ export async function checkForUpdate(deps: UpdateCheckDeps): Promise<AvailableUp
       signal: ctl.signal,
       headers: { Accept: "application/vnd.github+json" },
     });
-    if (!res.ok) return null;
-    return decideUpdate(deps.current, parseReleases(await res.json()), deps.machine, deps.channel);
+    if (!res.ok) {
+      const status = typeof res.status === "number" ? res.status : 0;
+      /* 403 and 429 are both how GitHub says "too many requests from this
+       * address this hour" to a caller with no credentials, and the game has
+       * none on purpose. Named, because "GitHub answered 403" reads as a
+       * permissions problem the player cannot fix, and an hour's wait is not
+       * that. */
+      return {
+        ok: false,
+        reason:
+          status === 403 || status === 429
+            ? `GitHub answered ${String(status)}, which is how it says too many requests have come from this network in the last hour. It clears on its own.`
+            : `GitHub answered ${status === 0 ? "an error" : String(status)}.`,
+      };
+    }
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      return { ok: false, reason: "GitHub's answer could not be read." };
+    }
+    return {
+      ok: true,
+      update: decideUpdate(deps.current, parseReleases(body), deps.machine, deps.channel),
+    };
   } catch {
-    /* A failed update check is not an error the player asked about. */
-    return null;
+    return {
+      ok: false,
+      reason: timedOut
+        ? "GitHub did not answer in time."
+        : "GitHub could not be reached.",
+    };
   } finally {
     clearTimeout(timer);
   }

@@ -533,8 +533,8 @@ import {
   updaterBridge,
   writeChannel,
 } from "./update";
-import type { AvailableUpdate, UpdateChannel, UpdaterBridge } from "./update";
-import { updateFooter, updateLines } from "./update-ui";
+import type { UpdateChannel, UpdateCheck, UpdaterBridge } from "./update";
+import { checkPhase, updateFooter, updateLines } from "./update-ui";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
 import { installLogSinks, log, setLogLevel } from "./logging";
@@ -9006,7 +9006,11 @@ async function maybeTitle(): Promise<TitleChoice | null> {
    * Waiting for it HERE rather than painting and then adding a row is the point:
    * a row that appears under the player's cursor a second after the screen does
    * is how a menu gets mis-clicked. */
-  const update = await updateOffer();
+  const updateCheck = await updateOffer();
+  /* A check that never got an answer must not shimmer and must not hide the
+   * row: the row is the only door to the update screen, which is where the
+   * failure is now reported and where it can be retried. */
+  const update = updateCheck.ok ? updateCheck.update : null;
   /* MODS ARE DELIBERATELY NOT ASKED ABOUT HERE. This used to add
    * `|| modsWaiting` to both flags below, on the grounds that a player whose mods
    * are stale has the same question - which is true, and was free while the answer
@@ -9103,33 +9107,52 @@ const shapeProbe: Promise<{ platform: string; arch: string } | null> = (async ()
   }
 })();
 
-/** Ask GitHub what this channel currently holds. Never throws. */
-async function runUpdateCheck(channel: UpdateChannel): Promise<AvailableUpdate | null> {
+/**
+ * Ask GitHub what this channel currently holds. Never throws.
+ *
+ * NO MACHINE IS NOT A FAILED CHECK. `shapeProbe` answers null for a launch
+ * with nothing to replace - a dev run, or the browser - and there is no
+ * question to have failed there, so it reports a successful check with nothing
+ * to offer. Calling that a failure would put "the check did not get an answer"
+ * on a screen whose real answer is "this shell does not install updates".
+ */
+async function runUpdateCheck(channel: UpdateChannel): Promise<UpdateCheck> {
   try {
     const machine = await shapeProbe;
-    if (!machine) return null;
+    if (!machine) return { ok: true, update: null };
     return await checkForUpdate({
       fetch: globalThis.fetch.bind(globalThis),
       machine,
       current: ENGINE_VERSION,
       channel,
     });
-  } catch {
-    return null;
+  } catch (err) {
+    /* checkForUpdate does not throw, so reaching here means the bridge did.
+     * Still an unanswered question, and still not currency. */
+    return { ok: false, reason: `The check could not be made: ${String(err)}` };
   }
 }
 
 /* Started at boot so the title screen does not wait on a network round trip. */
-let updateProbe: Promise<AvailableUpdate | null> = runUpdateCheck(updateChannel);
+let updateProbe: Promise<UpdateCheck> = runUpdateCheck(updateChannel);
 
-/** What, if anything, the title screen should offer. */
-async function updateOffer(): Promise<AvailableUpdate | null> {
+/**
+ * What, if anything, the title screen should offer.
+ *
+ * The web half cannot fail the way the desktop half can: the service worker
+ * has already fetched whatever it is going to say, so `webUpdateReady` is a
+ * local question and its "no" really does mean no.
+ */
+async function updateOffer(): Promise<UpdateCheck> {
   if (desktopBridge === null) {
-    if (!webUpdateReady()) return null;
+    if (!webUpdateReady()) return { ok: true, update: null };
     updateHow = "web";
     /* The worker does not report a version number - it has a build, not a tag -
      * so the screen says "a newer version" rather than inventing one. */
-    return { version: "a newer version", tag: "", url: "", asset: null, older: false };
+    return {
+      ok: true,
+      update: { version: "a newer version", tag: "", url: "", asset: null, older: false },
+    };
   }
   return updateProbe;
 }
@@ -9308,7 +9331,17 @@ function modBrowseDeps(): ModUpgradeDeps {
  */
 async function showUpdatePage(): Promise<void> {
   const bridge = updaterBridge();
-  let offer = await updateOffer();
+  let check = await updateOffer();
+  /* ASK AGAIN, HERE, when the boot check got no answer. That check races the
+   * heaviest part of startup and is bounded by a six-second timer, so a big
+   * install can lose it to its own mods and tile packs. Pressing (U) is a
+   * player asking the question deliberately, which is worth one request, and
+   * by now boot is long finished. */
+  if (!check.ok) {
+    updateProbe = runUpdateCheck(updateChannel);
+    check = await updateProbe;
+  }
+  let offer = check.ok ? check.update : null;
 
   /* Mod updates share this screen, and asking is now a request per installed mod
    * against each mod's own repository. That is affordable HERE and nowhere else on
@@ -9324,21 +9357,28 @@ async function showUpdatePage(): Promise<void> {
 
   /* The page is reachable with nothing to install, because it is also where the
    * channel is chosen - see UpdatePhase's comment. */
-  const viewFor = (o: AvailableUpdate | null): UpdateView => ({
-    how: updateHow,
-    current: ENGINE_VERSION,
-    version: o?.version ?? ENGINE_VERSION,
-    channel: updateChannel,
-    buildId: WEB_BUILD_ID,
-    older: o?.older ?? false,
-    installRoot: updateRoot,
-    assetName: o?.asset?.name,
-    phase: o ? "offer" : "uptodate",
-    releaseUrl: o?.url ?? `https://github.com/${UPDATE_REPO}/releases`,
-    modUpdates: modPending,
-  });
+  const viewFor = (c: UpdateCheck): UpdateView => {
+    const o = c.ok ? c.update : null;
+    return {
+      how: updateHow,
+      current: ENGINE_VERSION,
+      version: o?.version ?? ENGINE_VERSION,
+      channel: updateChannel,
+      buildId: WEB_BUILD_ID,
+      older: o?.older ?? false,
+      installRoot: updateRoot,
+      assetName: o?.asset?.name,
+      /* THREE OUTCOMES, THREE PHASES, decided in update-ui.ts where a test can
+       * see it: `uptodate` is now reachable only from a check that actually got
+       * an answer, and the third phase is what used to be indistinguishable
+       * from it. */
+      ...checkPhase(c),
+      releaseUrl: o?.url ?? `https://github.com/${UPDATE_REPO}/releases`,
+      modUpdates: modPending,
+    };
+  };
 
-  let view: UpdateView = viewFor(offer);
+  let view: UpdateView = viewFor(check);
 
   const paint = (): void => {
     const { cols, rows } = term.size();
@@ -9383,8 +9423,9 @@ async function showUpdatePage(): Promise<void> {
         view = { ...view, channel: next, phase: "uptodate" };
         paint();
         updateProbe = runUpdateCheck(next);
-        offer = await updateProbe;
-        view = viewFor(offer);
+        check = await updateProbe;
+        offer = check.ok ? check.update : null;
+        view = viewFor(check);
       }
       continue;
     }
@@ -9394,7 +9435,7 @@ async function showUpdatePage(): Promise<void> {
     if ((pressed === "m" || pressed === "M") && modPending.length > 0 && view.phase !== "downloading") {
       const touched = await showModUpgrades(term, browse);
       await refreshModPending();
-      view = viewFor(offer);
+      view = viewFor(check);
       /* Mod code is read at boot, so a mod that changed on disk is not the mod
        * that is loaded until the page starts again. Reloading from the title
        * screen is invisible - the same reasoning pwa.ts relies on. */
@@ -9405,6 +9446,16 @@ async function showUpdatePage(): Promise<void> {
       continue;
     }
     if (pressed !== "Enter") continue;
+    /* The retry the screen names in its footer. Without it the only way to ask
+     * a second time was to restart the game, which is how a transient failure
+     * at boot became a permanent "you are up to date". */
+    if (view.phase === "unchecked") {
+      updateProbe = runUpdateCheck(updateChannel);
+      check = await updateProbe;
+      offer = check.ok ? check.update : null;
+      view = viewFor(check);
+      continue;
+    }
     if (!offer) continue;
 
     if (view.how === "web") {

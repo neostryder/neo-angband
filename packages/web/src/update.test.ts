@@ -410,21 +410,54 @@ describe("the request itself", () => {
     expect(url).not.toContain("/releases/latest");
   });
 
-  it("resolves null on a non-ok response", async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
-    await expect(
-      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" }),
-    ).resolves.toBeNull();
+  /*
+   * THESE FOUR USED TO ASSERT THE BUG.
+   *
+   * Each of them said `.resolves.toBeNull()`, and so did the up-to-date case -
+   * which is exactly what the update screen then read, printing "This is the
+   * newest build on your channel" over a check that had timed out, been refused,
+   * or never left the machine. The tests were not wrong about the code; they
+   * pinned the collapse in place. What each one asserts now is that its own
+   * failure is DISTINGUISHABLE from currency, which is the only property the
+   * screen above it needs.
+   */
+  const failed = (r: Awaited<ReturnType<typeof checkForUpdate>>): string => {
+    if (r.ok) throw new Error(`expected a failed check, got ${JSON.stringify(r)}`);
+    return r.reason;
+  };
+
+  it("says GitHub REFUSED, and does not call that up to date", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+    const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
+    expect(failed(got)).toContain("500");
   });
 
-  it("resolves null when the network throws, rather than surfacing it", async () => {
+  it("names the rate limit, because an hour's wait is not a permissions problem", async () => {
+    /* The unauthenticated limit is sixty an hour per address, and this game
+     * ships no credential on purpose - so a player with other GitHub traffic on
+     * the same network hits it through no fault of their own. "403" alone reads
+     * as "you are not allowed", which is the wrong thing to go and investigate. */
+    for (const status of [403, 429]) {
+      const fetch = vi.fn().mockResolvedValue({ ok: false, status } as Response);
+      const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
+      expect(failed(got), `status=${String(status)}`).toMatch(/too many requests/iu);
+    }
+  });
+
+  it("says it could not REACH GitHub when the network throws", async () => {
     const fetch = vi.fn().mockRejectedValue(new Error("offline"));
-    await expect(
-      checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" }),
-    ).resolves.toBeNull();
+    const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
+    expect(failed(got)).toMatch(/could not be reached/iu);
   });
 
-  it("aborts rather than hanging the title screen", async () => {
+  it("aborts rather than hanging the title screen, and says the clock ran out", async () => {
+    /*
+     * The failure most easily mistaken for currency, and the one with a real
+     * shipped cause: this request is issued while the page is still loading mods
+     * and tile packs, and the abort timer runs on wall-clock time whether or not
+     * the main thread was free to read a response GitHub already sent. A big
+     * install can lose a check it won.
+     */
     const fetch = vi.fn(
       (_u: unknown, init?: { signal?: AbortSignal }) =>
         new Promise<Response>((_res, rej) => {
@@ -433,15 +466,31 @@ describe("the request itself", () => {
           });
         }),
     );
-    await expect(
-      checkForUpdate({
-        fetch: fetch as unknown as typeof globalThis.fetch,
-        machine: WIN,
-        current: "0.16.0",
-        channel: "beta",
-        timeoutMs: 10,
-      }),
-    ).resolves.toBeNull();
+    const got = await checkForUpdate({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      machine: WIN,
+      current: "0.16.0",
+      channel: "beta",
+      timeoutMs: 10,
+    });
+    expect(failed(got)).toMatch(/in time/iu);
+  });
+
+  it("tells a body it cannot parse apart from a network it cannot reach", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new Error("not json")),
+    } as unknown as Response);
+    const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
+    expect(failed(got)).toMatch(/could not be read/iu);
+  });
+
+  it("answers ok with NO update when the feed is genuinely empty - the case the failures must not imitate", async () => {
+    const fetch = vi.fn().mockResolvedValue(ok([]));
+    const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
+    expect(got.ok).toBe(true);
+    expect(got.ok && got.update).toBeNull();
   });
 
   it("end to end: a published 0.17.0 offers the win zip to a Windows machine", async () => {
@@ -458,7 +507,8 @@ describe("the request itself", () => {
       current: "0.16.0",
       channel: "beta",
     });
-    expect(got?.version).toBe("0.17.0");
-    expect(got?.asset?.name).toBe("Neo.Angband-0.17.0-win.zip");
+    expect(got.ok).toBe(true);
+    expect(got.ok && got.update?.version).toBe("0.17.0");
+    expect(got.ok && got.update?.asset?.name).toBe("Neo.Angband-0.17.0-win.zip");
   });
 });

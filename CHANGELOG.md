@@ -151,6 +151,56 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **An update check that failed said "This is the newest build on your channel",
+  and there was no way to ask again** (#247, reported from a playtest as "my edge
+  game is supposed to update to the latest pushed commit, but it doesn't see
+  246").
+
+  `checkForUpdate` returned `AvailableUpdate | null`, and `null` was four
+  different answers wearing one value: nothing newer, GitHub unreachable, GitHub
+  refusing, GitHub too slow. The update screen read all four as the first and
+  printed a sentence it could not stand behind. Worse, the check ran **once**, at
+  module load, and both the title-screen row and the update screen read that one
+  memo — so a check that failed at launch was a confident wrong answer for the
+  rest of the session, and the only retry was restarting the game.
+
+  It now returns `UpdateCheck`: `{ ok: true, update }` or `{ ok: false, reason }`.
+  The screen has a third phase, `unchecked`, which names what went wrong in the
+  words the check reported, claims nothing about currency in either direction,
+  and offers ENTER to ask again. Opening the screen after a failed boot check
+  re-asks on its own, since pressing (U) is a player asking deliberately and boot
+  is long over by then. 403 and 429 are called what they are — the
+  sixty-an-hour unauthenticated rate limit, which clears by itself — because
+  "GitHub answered 403" reads as a permissions problem nobody can fix.
+
+  **This project had already fixed this exact bug on the other half of the same
+  screen.** `mod-registry.ts` records a silence that "meant nothing newer shipped
+  HERE and it said you are up to date", and `mod-refresh.test.ts` asserts the
+  phrase is never used for mod updates. The lesson was never carried across to
+  the game's own updater, so one screen shipped both the fix and the bug.
+
+  Three tests in `update.test.ts` used to assert the collapse directly —
+  `.resolves.toBeNull()` for a refused request, a thrown network and an abort,
+  the same value the up-to-date case returns. They were not wrong about the code;
+  they pinned it. Each now asserts that its own failure is distinguishable from
+  currency. The phase mapping moved out of `main.ts` into `checkPhase` in
+  `update-ui.ts` for a related reason: `main.ts` is the one file in the package no
+  test runs, and three lines of untestable shell code under a screen whose every
+  sentence is asserted is how this survived a release cycle.
+
+  Verified in the shipped desktop build, both halves, driving it over CDP with
+  `Network.setBlockedURLs` holding `api.github.com` shut: the screen reports "The
+  check for a new version did not get an answer / GitHub could not be reached."
+  with the retry in its footer, and pressing ENTER once the block is lifted
+  produces "Neo Angband 0.19.1-edge.247 is available."
+
+  A suspected contributor to the original report, recorded rather than claimed:
+  the boot check is issued while the page is still loading mods and tile packs,
+  and its six-second abort runs on wall-clock time whether or not the main thread
+  was free to read a response GitHub had already sent. A large install can lose a
+  check it won. That is now visible instead of silent, and retryable instead of
+  terminal.
+
 - **Repeating a shot at a monster that had walked out of view fired the arrow
   into the player's own grid** (#245, reported from a playtest as "firing an
   arrow when my target leaves my view should ask for another target or a
