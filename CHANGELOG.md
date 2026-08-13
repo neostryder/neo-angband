@@ -93,6 +93,32 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **Hallucination had no visual effect at all.** `hallucinatory_monster` and
+  `hallucinatory_object` (`ui-map.c:41-80`) were never ported, and neither was
+  the `one_in_(128)` placeholder block `map_info` runs on an empty grid
+  (`cave-map.c:179-188`). A hallucinating character got the "something strange"
+  look descriptions and the replaced monster list — those were already there —
+  but the map itself drew the dungeon exactly as it really was. Now a real
+  monster or item is replaced by a random one, an empty non-permanent grid
+  invents a monster at 1/128 or an item at 127/16384, a grid that hallucinates
+  hides its trap, and the player's own `@` is replaced by a phantom monster on
+  that same 1/128 — every arm upstream has, on the live map and on the `M` level
+  overview both.
+
+  Three details that are easy to get wrong and are pinned by tests: the two
+  placeholder rolls are exclusive (upstream's second test is an `else if`); each
+  `one_in_(128)` is evaluated *before* the permanent-wall check, so an empty
+  outer wall consumes both draws and gets nothing; and a hallucinated object
+  takes the unflavoured **kind** glyph, which upstream flags as deliberate
+  ("HACK - without flavors").
+
+  The draws come from a display-only RNG, never `state.rng`. Upstream rolls
+  these at render time on the main stream, which is safe when only a game event
+  can repaint; here a window resize, a closed menu or the animation timer all
+  repaint, so binding them to the game stream would have made the dungeon depend
+  on how often the screen was painted. Same odds, same rejection loops, a
+  different stream — see `docs/PARITY.md`, which now states the general rule.
+
 - **Dungeon spellbooks could not be found the way upstream finds them, and
   burned when upstream's do not.** `write_book_kind` (init.c L269-275) gives a
   book declared `dungeon` in `class.txt` two extra properties: `KF_GOOD`, and

@@ -55,6 +55,30 @@ character is on the other side of them. Everything else is free. The 834
 detector, not a prohibition, and a deliberate change updates the vectors in the
 same commit that makes it.
 
+#### The one place a SEPARATE stream is mandatory
+
+Upstream draws random numbers at *render* time in exactly one place:
+`grid_data_as_text`'s hallucination arms, plus the `one_in_(128)` placeholder
+block in `map_info` (`cave-map.c:179`, `ui-map.c:41-80`). Those come off the main
+RNG, which is safe in a C program whose only repaint trigger is a game event.
+
+It is not safe here. This port repaints on a window resize, on returning from a
+menu, on the animation timer and on the level-overview screen — none of which are
+game events. Wiring those draws to `state.rng` would make the dungeon a function
+of how many times the player resized their window while hallucinating, which is
+a change to the *rules*, not merely to the stream.
+
+So `packages/core/src/visuals/hallucination.ts` takes its randomness as an
+injected parameter, and the web shell backs it with a display-only `Rng` seeded
+from wall-clock entropy and never saved (`main.ts hallucinationRng`). Same
+1/128, same rejection loops, same distribution over races and kinds — a
+different stream, which the ruling above allows. Hallucination is therefore not
+reproducible from a savefile, and nothing in the game depends on it being so.
+
+Anything else that wants randomness at draw time belongs here too, for the same
+reason. The rule is: **a draw that a repaint can trigger must not touch
+`state.rng`.**
+
 ### What that is worth today, measured
 
 Last run 2026-08-01, engine `0.14.0`, at full power:

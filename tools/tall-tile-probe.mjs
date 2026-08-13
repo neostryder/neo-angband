@@ -442,9 +442,36 @@ try {
     steps.push([",", 2500, "after-hold"]);
     steps.push([",", 2500, "after-hold2"]);
   }
+  /**
+   * `--after "tok|tok|..."`: an arbitrary key sequence appended after
+   * everything above, with a labelled screenshot per token. A token of the form
+   * `type:TEXT` types TEXT one character at a time (for the debug menu's string
+   * prompts); a token of `wait:MS` just settles; anything else is one key.
+   *
+   * Separated by `|`, not by a comma, because `,` is itself a key worth sending
+   * - it is "hold still", the cheapest way to advance one game turn without
+   * moving the player off the tile a shot is framed around.
+   *
+   * This is how a run reaches a state the fixed steps above cannot express -
+   * e.g. `^a|E|type:TIMED_INC|Enter|type:60|Enter|type:IMAGE|Enter|...` to
+   * inflict hallucination through "Perform an effect".
+   */
+  for (const tok of (opt("--after", "") || "").split("|").filter(Boolean)) {
+    if (tok.startsWith("type:")) {
+      const text = tok.slice(5);
+      text.split("").forEach((ch, i) =>
+        steps.push([ch, 150, i === text.length - 1 ? `typed-${text}` : "type"]),
+      );
+    } else if (tok.startsWith("wait:")) {
+      steps.push([null, Number(tok.slice(5)), `wait-${tok.slice(5)}`]);
+    } else {
+      steps.push([tok, 1800, `after-${tok}`]);
+    }
+  }
   const frames = [];
   for (const [key, settle, label] of steps) {
-    await cdp.press(key, settle);
+    if (key === null) await sleep(settle);
+    else await cdp.press(key, settle);
     if (label !== "type") frames.push({ label, ...(await cdp.shot(label)) });
   }
   await sleep(2500);

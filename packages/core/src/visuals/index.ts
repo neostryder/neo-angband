@@ -13,6 +13,7 @@
 export * from "./engine.js";
 export * from "./glyph-table.js";
 export * from "./grafmode.js";
+export * from "./hallucination.js";
 export * from "./map-text.js";
 export * from "./object-glyph.js";
 export * from "./pref-expr.js";

@@ -13,10 +13,13 @@
  * rendering system is built here, only the scan/scale/priority arithmetic
  * upstream performs in display_map and the panel math from ui-output.c.
  *
- * Neither function below touches the game RNG (display_map and
- * do_cmd_locate/change_panel/modify_panel/verify_panel consume none either -
- * the only random draw anywhere in ui-map.c is the hallucinatory-monster/
- * object path, which this port does not model here).
+ * Neither function below touches the GAME RNG, and display_map /
+ * do_cmd_locate / change_panel / modify_panel / verify_panel consume none
+ * either. The one random draw in ui-map.c is the hallucinatory-monster/object
+ * path, and buildOverview does now model it - but only through the injected
+ * `hallucinateAt` callback, which the live shell backs with a display-only
+ * stream (see main.ts hallucinationRng). Omit the callback and this module is
+ * pure again, which is what every caller but the shell does.
  */
 
 import { DDX, DDY } from "@rpgm-tools/neo-angband-core";
@@ -75,6 +78,23 @@ export interface BuildOverviewParams {
    * MFLAG_VISIBLE player arm). Omit to keep the plain '@'.
    */
   playerGlyph?: OverviewGlyph;
+  /**
+   * map_info's hallucination pass, applied here because display_map resolves
+   * every grid through grid_data_as_text exactly as the live panel does
+   * (ui-map.c L825, L837) - so the level miniature hallucinates too. Null means
+   * this grid draws normally. Omit to build an overview with no hallucination,
+   * which is what every caller that is not the live shell wants.
+   *
+   * `sensed` is grid_data_as_text's unseen_money/unseen_object arm: it is drawn
+   * literally, and an invented object never shows under it.
+   */
+  hallucinateAt?: (
+    x: number,
+    y: number,
+    present: { object: boolean; sensed: boolean; monster: boolean },
+  ) => { object?: OverviewGlyph; monster?: OverviewGlyph } | null;
+  /** knownObject's `seen === false`: this grid's memory is a sensed marker. */
+  sensedObjectAt?: (x: number, y: number) => boolean;
 }
 
 /** The scaled, priority-resolved miniature plus the player's scaled cell. */
@@ -143,17 +163,27 @@ export function buildOverview(p: BuildOverviewParams): Overview {
           ? { ...g, bgTile: terrain.tile }
           : g;
       const trap = p.trapGlyphAt?.(x, y);
-      if (trap) {
+      const obj = p.objectGlyphAt?.(x, y);
+      const mon = p.monsterGlyphAt?.(x, y);
+      const sensed = !!obj && (p.sensedObjectAt?.(x, y) ?? false);
+      const fake =
+        p.hallucinateAt?.(x, y, { object: !!obj && !sensed, sensed, monster: !!mon }) ?? null;
+      /* ui-map.c L193: a trap draws only while the grid is NOT hallucinating. */
+      if (trap && !fake) {
         glyph = over(trap);
         prio = 20;
       }
-      const obj = p.objectGlyphAt?.(x, y);
-      if (obj) {
+      if (fake?.object) {
+        glyph = over(fake.object);
+        prio = 20;
+      } else if (obj) {
         glyph = over(obj);
         prio = 20;
       }
-      const mon = p.monsterGlyphAt?.(x, y);
-      if (mon) {
+      if (fake?.monster) {
+        glyph = over(fake.monster);
+        prio = 20;
+      } else if (mon) {
         glyph = over(mon);
         prio = 20;
       }

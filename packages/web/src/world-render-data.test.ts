@@ -60,6 +60,79 @@ describe("the production live-world data producer", () => {
     ]);
   });
 
+  /**
+   * map_info's hallucination pass reaching the real layering (cave-map.c
+   * L179-188, ui-map.c L192-235). The fixture's grid 0 is a SEEN grid that
+   * carries a trap AND an object, so all three of upstream's arms - trap
+   * suppression, object substitution, monster substitution - are observable on
+   * one cell.
+   */
+  describe("hallucination", () => {
+    const fake = (ch: string, kind: "object" | "monster"): ResolvedGlyph =>
+      ({ ch, attr: 99, css: "#99", layer: { kind, id: 99 } });
+
+    it("replaces the object, drops the trap, and never asks monsterGlyph", () => {
+      let composed = 0;
+      const frame = projectLiveWorld(reads({
+        monsters: new Map([[0, { ch: "D", attr: 7, css: "#7", layer: { kind: "monster", id: 7 } }]]),
+        monsterGlyph: (_u, m) => { composed++; return m; },
+        hallucinate: () => ({ object: fake("?", "object"), monster: fake("W", "monster") }),
+      }), { present: () => {} });
+      const cell = frame.cells[0]!;
+      expect(cell.visual?.ch).toBe("W");
+      /* The trap's layer is gone: ui-map.c L193 draws it only while the grid
+       * is NOT hallucinating. The two 99s are the substitutions. */
+      expect(cell.overlays).toEqual([{ kind: "object", id: 99 }, { kind: "monster", id: 99 }]);
+      /* A hallucinated monster gets the race's attr/char assigned directly and
+       * returns (L232-235); it never enters the seven-arm clear/unique chain. */
+      expect(composed).toBe(0);
+    });
+
+    it("draws the trap normally on a grid whose placeholder rolls both missed", () => {
+      /* The common case: `hallucinate` returns null and nothing changes. This
+       * is the control - it is the same expectation the non-hallucinating
+       * fixture produces, and it fails if the trap gate keys off the player's
+       * TMD_IMAGE rather than the per-grid verdict. */
+      const frame = projectLiveWorld(reads({ hallucinate: () => null }), { present: () => {} });
+      expect(frame.cells[0]!.overlays).toEqual([{ kind: "trap", id: 6 }, { kind: "object", id: 8 }]);
+    });
+
+    it("asks about a remembered grid with `sensed` set, and leaves the star alone", () => {
+      const asked: Array<{ object: boolean; sensed: boolean }> = [];
+      const frame = projectLiveWorld(reads({
+        rememberedObjectSensed: () => true,
+        hallucinate: (_g, present) => {
+          asked.push({ object: present.object, sensed: present.sensed });
+          /* map_info leaves first_kind at 0 for a sensed marker, so this grid
+           * is still eligible for a placeholder - but the resolver declines to
+           * substitute the object, because the star is drawn over it. */
+          return {};
+        },
+      }), { present: () => {} });
+      expect(asked).toContainEqual({ object: false, sensed: true });
+      expect(frame.cells[1]!.visual?.ch).toBe("!");
+    });
+
+    it("replaces the PLAYER'S OWN '@' with a phantom monster", () => {
+      /* The arm that is unreachable if the port paints the player last and
+       * unconditionally: map_info gives the player's grid m_idx = 0, so it
+       * enters the placeholder block, and grid_data_as_text tests `m_idx > 0`
+       * BEFORE `is_player` (ui-map.c L229, L282). */
+      const frame = projectLiveWorld(reads({
+        playerGrid: { x: 2, y: 1 },
+        hallucinate: (g) => (g.x === 2 && g.y === 1 ? { monster: fake("W", "monster") } : null),
+      }), { present: () => {} });
+      expect(frame.player?.visual.ch).toBe("W");
+    });
+
+    it("leaves the '@' alone when the player's grid does not hallucinate", () => {
+      const frame = projectLiveWorld(reads({
+        playerGrid: { x: 2, y: 1 }, hallucinate: () => null,
+      }), { present: () => {} });
+      expect(frame.player?.visual.ch).toBe("@");
+    });
+  });
+
   it("is the producer the live render path calls, rather than a test-only projection", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
     expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*glyphWorldFrameSink\(term\),/);
