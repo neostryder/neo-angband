@@ -112,7 +112,7 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
-- **A worked front-end mod you can copy** (`samples/frontend-blueprint/`, #234).
+- **A worked front-end mod you can copy** (`samples/blueprint-view/`, #234).
 
   The front-end seam's existing proofs are three test fixtures that push the
   frames they receive into a global so an assertion can read them back. That
@@ -142,6 +142,33 @@ digest in the game's catalogue and must never be moved.
   that wants to draw *inside* the existing layout has to guess the rectangle.
   The seam's motivating cases — isometric, 3D — take the whole window and never
   noticed. The sample takes the window too.
+
+  **Then it was run in the installed build**, which is the half a test cannot
+  do: deployed to a real mods folder beside the desktop game, enabled through
+  the manager's own consent prompt, applied by its own reload, and photographed
+  drawing a loaded character's level — against an unmodded control of the same
+  character, at the same position, in the same process. It drew. Its label reads
+  the frame back (`66x22 from WorldFrame (1452 cells)`), and the four floor
+  items the control shows as `? ? $ !` are its four object marks.
+
+  Two things only that trip could find. **The sample would not load at all** —
+  it shipped in a folder named `frontend-blueprint` while its manifest declared
+  the id `blueprint-view`, and the game refuses a folder whose name and id
+  disagree, because the enabled set, the load order and a save's provenance all
+  key off the id. Every test passed the whole time, because they reach the
+  plugin by *path* and the path is the entire subject of the rule. The folder is
+  now `samples/blueprint-view/`, and the first thing its test asserts is that
+  the two agree.
+
+  And **a front end covers the window, so it covers everything else on it.**
+  Core keeps its side of the bargain exactly — the map area of its canvas goes
+  blank while the sidebar, the status line and every menu keep being drawn — but
+  the mod has no way to stay inside the map, so it paints over all of them. With
+  one enabled you cannot read your hit points, see a message, or open the Mods
+  screen to switch it off again. So the remaining half of gap 9 is not polish:
+  **until viewport geometry is published, a `display:replace` mod is a
+  demonstration rather than a way to play**, and that is now said in
+  `PLUGINS.md`, in the sample's README, and in gap 9 itself.
 
 ### Changed
 

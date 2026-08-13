@@ -1,5 +1,5 @@
 /**
- * The `samples/frontend-blueprint` mod, exercised as a mod.
+ * The `samples/blueprint-view` mod, exercised as a mod.
  *
  * WHY THIS EXISTS AT ALL. A sample in a docs folder is code nobody runs, and
  * this repository has now shipped three seams whose tests were green while the
@@ -12,9 +12,19 @@
  * What this canNOT prove is pixels in the installed build; that needs the
  * desktop build over CDP and is recorded separately in MOD_REACH gap 9. This is
  * the half that can fail in CI.
+ *
+ * The other half HAS since been run (2026-08-13, 0.19.0 desktop, character
+ * loaded, mod enabled through the manager's own consent flow): it drew, and it
+ * found two things this file could not. The folder-name rule is now the first
+ * test below. The second is not a bug in the sample and has no test here,
+ * because it is a hole in the seam: a front end covers the whole window, so it
+ * hides the sidebar, the message line and every menu the game is still drawing
+ * underneath - including the Mods screen you would use to turn it off. See
+ * MOD_REACH gap 9.
  */
 
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildWorldFrame, type WorldCell, type WorldFrame } from "./world-view";
@@ -26,7 +36,7 @@ import {
 } from "./frontend-runtime";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 
-const SAMPLE = fileURLToPath(new URL("../../../samples/frontend-blueprint/", import.meta.url));
+const SAMPLE = fileURLToPath(new URL("../../../samples/blueprint-view/", import.meta.url));
 
 const manifest = JSON.parse(readFileSync(`${SAMPLE}manifest.json`, "utf8")) as Record<
   string,
@@ -157,7 +167,21 @@ function context(doc: unknown): ModPluginContext {
   } as unknown as ModPluginContext;
 }
 
-describe("samples/frontend-blueprint, as the game would load it", () => {
+describe("samples/blueprint-view, as the game would load it", () => {
+  it("lives in a folder named for its own id", () => {
+    /* THE ONE THE SHIPPED PATH CAUGHT AND THIS FILE DID NOT (2026-08-13). The
+     * sample shipped in `samples/frontend-blueprint/` declaring id
+     * "blueprint-view", and readPack refuses that outright - `manifest says id
+     * "blueprint-view"; rename the folder to match` - because every other
+     * surface (the enabled set, the load order, a save's provenance) keys off
+     * the manifest id. Every test below passed while the game would not load
+     * the folder at all, because they reach the plugin by PATH and the path is
+     * exactly what the rule is about.
+     *
+     * A sample is the folder people copy, so the rule has to hold here first. */
+    expect(basename(SAMPLE.replace(/[\\/]$/u, ""))).toBe(manifest.id);
+  });
+
   it("declares the capability its own frontend() requires", () => {
     /* The gate refuses a mod that declares frontend without display:replace,
      * and a sample that tripped its own gate would teach the wrong lesson. */

@@ -11,16 +11,18 @@ sidebar, every menu — is still the game's own screen.
 ## Try it
 
 Copy this folder into your mods folder, keeping the folder name
-`frontend-blueprint`:
+`blueprint-view` — a mod folder must be named for the `id` in its manifest, and
+the game refuses it outright otherwise (`manifest says id "…"; rename the folder
+to match`):
 
 - **Desktop:** `neo-angband-data/mods/` beside the game.
 - **Browser (Chrome/Edge):** the folder you picked with *Choose a mods folder…*
   on the Mods screen.
 
 Start the game, open **Mods**, enable **Blueprint View**, and approve the
-`display:replace` capability when asked. Reload when the manager offers to.
-Then load a character. The first frame is always glyph-drawn — see below — so
-take a step before judging it.
+`display:replace` capability when asked — it is the one that says *"Draw the
+dungeon itself"*. Answer **Reload now to apply** when the manager offers, and
+the blueprint is drawing by the time the character is back on screen.
 
 ## The three things it demonstrates
 
@@ -51,10 +53,17 @@ tolerate starting on a later repaint rather than assuming it owns frame one.
 `WorldFrame` and no way to learn where the map's pixels are — cell size, the
 letterbox offset and the grid dimensions are private to the terminal, and no
 `ctx` member exposes them. Drawing *inside* the terminal's map rectangle would
-mean guessing it, so this covers the window instead. That is what an isometric
-or 3D front end would do anyway, but it is a real gap for anything that wants
-to sit inside the existing layout, and it is recorded as such in
-`docs/modding/MOD_REACH.md` under gap 9.
+mean guessing it, so this covers the window instead.
+
+**And that costs you the rest of the game.** Running it in the installed build
+showed what the gap actually means: core does its half correctly — it stops
+drawing the map and keeps drawing the sidebar, the status line and every menu —
+but this canvas is opaque and covers the lot. With it on you cannot read your
+hit points, see a message, or open the Mods screen to turn it off again. So
+treat it as a demonstration, not a way to play, and expect to disable it by
+editing the enabled set rather than through a menu you can no longer see. The
+missing viewport geometry is recorded in `docs/modding/MOD_REACH.md` under
+gap 9; until it lands, every front end has this problem.
 
 ## Where the checks are
 
