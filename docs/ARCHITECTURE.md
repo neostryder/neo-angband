@@ -74,7 +74,13 @@ text (it cannot be imported — importing it boots a game):
   carving itself out, everything except the paint being pure functions over a
   seeded LCG so it can be tested without a clock or a canvas. It never draws from
   the game's RNG — it runs before a character exists, and a draw there would move
-  a stream position saves re-derive the world from.
+  a stream position saves re-derive the world from. The `@` is **not** the
+  digger: the digger is generation and is never drawn, while the `@` moves only
+  onto carved floor and plays a little — wanderers give chase, it fights or
+  flees, and it cannot die (there is no character to kill yet, so it escapes at
+  zero instead). Both turns are exported so tests can drive them with the map
+  frozen, which is the only way to tell a walker from a digger: the digger
+  carves the square it steps onto, so "standing on floor" is true of both.
 
 Deliberate in-command `render()` calls (targeting, locate, the level map) are
 untouched by all of this; only *background* repaints go through the gate.

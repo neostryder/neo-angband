@@ -18,6 +18,31 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The loading screen's `@` no longer walks through solid rock** (#252).
+
+  It was the digger. The animation had one moving thing — the tunneller that
+  carves the dungeon out — and drew an `@` on it, so the glyph advertising the
+  game was a character ignoring walls, on a screen whose entire subject is a
+  dungeon.
+
+  The two are separate now. The digger is generation and is never drawn; the `@`
+  is an actor that moves only onto floor that already exists. Since it is
+  obeying walls anyway it may as well play, so it does: wanderers that notice it
+  give chase, it fights what it can reach and runs when it is hurt, and it does
+  not die — there is no character to kill yet, so at zero hit points it escapes
+  somewhere else on the floor rather than leaving a tombstone on a loading
+  screen.
+
+  Two notes from testing it, because both assertions were wrong first time. "The
+  `@` is always standing on floor" **passes for the bug** — the digger carves the
+  square it steps onto — so the real test freezes the map and compares the cells
+  byte for byte: a walker changes nothing, a digger cannot help it. And "some
+  monster ends up next to the `@`" passed with chasing switched off entirely,
+  because the idle shuffle produces that on its own within a boot; the chase is
+  now driven down a staged corridor where only a pursuer arrives on schedule.
+
 ### Added
 
 - **The modding docs say which surfaces are finished, which are in progress, and
