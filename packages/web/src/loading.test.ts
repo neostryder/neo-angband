@@ -18,7 +18,9 @@ import {
   captionFor,
   isFloor,
   makeScene,
+  monsterTurn,
   paintScene,
+  playerTurn,
   startLoading,
 } from "./loading";
 import type { GridSurface } from "./term";
@@ -76,10 +78,10 @@ describe("the scene carves a dungeon and stays inside it", () => {
     const scene = makeScene(80, 22, 7);
     for (let i = 0; i < 600; i++) {
       advance(scene);
-      expect(scene.x, `frame ${i}`).toBeGreaterThanOrEqual(0);
-      expect(scene.y, `frame ${i}`).toBeLessThan(scene.rows);
-      expect(scene.x, `frame ${i}`).toBeLessThan(scene.cols);
-      expect(scene.y, `frame ${i}`).toBeGreaterThanOrEqual(0);
+      expect(scene.digX, `frame ${i}`).toBeGreaterThanOrEqual(0);
+      expect(scene.digY, `frame ${i}`).toBeLessThan(scene.rows);
+      expect(scene.digX, `frame ${i}`).toBeLessThan(scene.cols);
+      expect(scene.digY, `frame ${i}`).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -92,7 +94,7 @@ describe("the scene carves a dungeon and stays inside it", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 120; i++) {
       advance(scene);
-      seen.add(`${scene.x},${scene.y}`);
+      seen.add(`${scene.digX},${scene.digY}`);
     }
     expect(seen.size).toBeGreaterThan(30);
   });
@@ -129,9 +131,185 @@ describe("the scene carves a dungeon and stays inside it", () => {
      * that has not ticked, a missing option) that the still image is worth
      * ruling out directly. */
     const scene = makeScene(40, 12, 0);
-    const start = `${scene.x},${scene.y}`;
+    const start = `${scene.digX},${scene.digY}`;
     for (let i = 0; i < 40; i++) advance(scene);
-    expect(`${scene.x},${scene.y}`).not.toBe(start);
+    expect(`${scene.digX},${scene.digY}`).not.toBe(start);
+  });
+});
+
+describe("the `@` walks the dungeon rather than digging through it (#252)", () => {
+  /* The defect: `scene.x/y` WAS the digger, and the digger is the one thing in
+   * the scene that is allowed through rock - so the glyph advertising the game
+   * was a player ignoring walls, on a screen whose entire subject is a dungeon.
+   * Everything below is about the two being separate now. */
+
+  it("carves nothing: it walks the dungeon the digger made", () => {
+    /* THE regression test, and it took a second attempt to write. The obvious
+     * one - "the `@` is always standing on floor" - PASSES FOR THE BUG, because
+     * the digger carves the square it steps onto, so the old `@` was on floor
+     * every single frame while walking through solid rock.
+     *
+     * What separates them is who creates the floor. So the map is frozen (the
+     * digger is not run) and the cells are compared byte for byte: a `@` that
+     * digs cannot leave them alone, and a `@` that walks cannot help it. */
+    const scene = makeScene(60, 18, 7);
+    for (let i = 0; i < 80; i++) advance(scene);
+    scene.wanderers.length = 0;
+    for (let i = 0; i < 500; i++) {
+      const before = Uint8Array.from(scene.cells);
+      playerTurn(scene);
+      expect(scene.cells, `frame ${i}: the @ changed the map`).toEqual(before);
+      expect(isFloor(scene, scene.x, scene.y), `frame ${i} at ${scene.x},${scene.y}`).toBe(true);
+    }
+  });
+
+  it("moves one square at a time, so it never crosses a wall it could not walk through", () => {
+    /* Standing on floor is not the same as never crossing rock: a two-square
+     * hop can start and land on floor with a wall between. The map is frozen
+     * again, and the wanderers cleared - the one legitimate jump is the escape
+     * in hurtPlayer, and nothing here can land a blow. */
+    const scene = makeScene(70, 20, 31337);
+    for (let i = 0; i < 80; i++) advance(scene);
+    scene.wanderers.length = 0;
+    for (let i = 0; i < 500; i++) {
+      const from = { x: scene.x, y: scene.y };
+      playerTurn(scene);
+      const dx = Math.abs(scene.x - from.x);
+      const dy = Math.abs(scene.y - from.y);
+      expect(Math.max(dx, dy), `frame ${i}: ${from.x},${from.y} -> ${scene.x},${scene.y}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("stays on floor through a whole boot, with everything else running too", () => {
+    /* The frozen-map tests above are precise about the `@` alone. This one is
+     * the sloppy long run that catches a branch they do not reach - a flee into
+     * a corner, an escape landing, a dead end - over more frames than any boot
+     * that is not already broken. */
+    const scene = makeScene(80, 22, 7);
+    expect(isFloor(scene, scene.x, scene.y), "frame 0").toBe(true);
+    for (let i = 0; i < 900; i++) {
+      advance(scene);
+      expect(isFloor(scene, scene.x, scene.y), `frame ${i} at ${scene.x},${scene.y}`).toBe(true);
+    }
+  });
+
+  it("is not the digger: the two are in different places within a few frames", () => {
+    /* They start on the same square, which is correct - the `@` stands where
+     * the first spadeful was. What must not happen is that they stay welded. */
+    const scene = makeScene(60, 18, 909);
+    expect(`${scene.x},${scene.y}`).toBe(`${scene.digX},${scene.digY}`);
+    let apart = 0;
+    for (let i = 0; i < 60; i++) {
+      advance(scene);
+      if (scene.x !== scene.digX || scene.y !== scene.digY) apart++;
+    }
+    expect(apart).toBeGreaterThan(50);
+  });
+
+  it("gets somewhere: it explores rather than shuffling between two squares", () => {
+    const scene = makeScene(60, 18, 4242);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      advance(scene);
+      seen.add(`${scene.x},${scene.y}`);
+    }
+    expect(seen.size).toBeGreaterThan(20);
+  });
+
+  it("fights: a wanderer standing next to it does not stay there for long", () => {
+    const scene = makeScene(60, 18, 12);
+    /* Carve a room to fight in, then stage the fight rather than waiting for
+     * one - a test that waits for the scene to arrange its own encounter is
+     * measuring the spawn rate, not the combat. */
+    for (let i = 0; i < 40; i++) advance(scene);
+    scene.wanderers.length = 0;
+    const spot = { x: scene.x + 1, y: scene.y };
+    if (!isFloor(scene, spot.x, spot.y)) {
+      spot.x = scene.x;
+      spot.y = scene.y;
+    }
+    scene.wanderers.push({ x: spot.x, y: spot.y, glyph: "k", hp: 3 });
+    let killedBy = -1;
+    for (let i = 0; i < 30 && killedBy < 0; i++) {
+      advance(scene);
+      if (scene.wanderers.length === 0) killedBy = i;
+    }
+    expect(killedBy, "the kobold outlived thirty frames next to an unhurt @").toBeGreaterThanOrEqual(0);
+  });
+
+  it("runs when it is hurt instead of trading blows it cannot win", () => {
+    const scene = makeScene(60, 18, 77);
+    for (let i = 0; i < 40; i++) advance(scene);
+    scene.wanderers.length = 0;
+    scene.hp = 1;
+    const steps = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const;
+    const at = steps.map(([dx, dy]) => ({ x: scene.x + dx, y: scene.y + dy })).find((p) => isFloor(scene, p.x, p.y));
+    expect(at, "no floor next to the @ after 40 frames of digging").toBeDefined();
+    const bully = { x: (at as { x: number; y: number }).x, y: (at as { x: number; y: number }).y, glyph: "p", hp: 99 };
+    scene.wanderers.push(bully);
+    advance(scene);
+    /* Either it moved away, or it was hit and escaped. Both are "did not stand
+     * there swinging", which is the behaviour under test; asserting one exact
+     * square would be asserting the flee heuristic instead. */
+    expect(bully.hp, "a frightened @ attacked anyway").toBe(99);
+  });
+
+  it("never dies, because there is no character to kill yet", () => {
+    /* A tombstone on a loading screen would be a death notice for somebody who
+     * has not been rolled. The `@` escapes at zero instead, and this is the
+     * assertion that keeps that from quietly becoming a real death. */
+    const scene = makeScene(70, 20, 5150);
+    for (let i = 0; i < 1500; i++) {
+      advance(scene);
+      expect(scene.hp, `frame ${i}`).toBeGreaterThan(0);
+      expect(isFloor(scene, scene.x, scene.y), `frame ${i}`).toBe(true);
+    }
+  });
+
+  it("is chased: a wanderer that has noticed it closes the distance every step", () => {
+    /* THIS TEST WAS WRONG FIRST TIME and the control is why it is written this
+     * way. It used to run whole frames and wait for something to end up next to
+     * the `@` - which passed with chasing disabled entirely, because the idle
+     * shuffle produces an adjacency on its own within a boot. "Something touched
+     * me eventually" is not evidence of pursuit.
+     *
+     * So: dig a while, find a straight open run of floor leading away from the
+     * `@`, stand a monster at the far end of it, and hold everything else still.
+     * A chaser walks the corridor and arrives on schedule; a drunkard does not. */
+    const scene = makeScene(70, 20, 2024);
+    for (let i = 0; i < 150; i++) advance(scene);
+    scene.wanderers.length = 0;
+
+    const RUN = 4;
+    let start: { x: number; y: number } | null = null;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      let n = 0;
+      while (n < RUN && isFloor(scene, scene.x + dx * (n + 1), scene.y + dy * (n + 1))) n++;
+      if (n === RUN) {
+        start = { x: scene.x + dx * RUN, y: scene.y + dy * RUN };
+        break;
+      }
+    }
+    expect(start, "no straight run of floor to stage a chase down").not.toBeNull();
+
+    const hunter = { x: (start as { x: number; y: number }).x, y: (start as { x: number; y: number }).y, glyph: "k", hp: 99 };
+    scene.wanderers.push(hunter);
+    const distance = (): number => Math.max(Math.abs(hunter.x - scene.x), Math.abs(hunter.y - scene.y));
+    expect(distance()).toBe(RUN);
+    for (let step = RUN - 1; step >= 1; step--) {
+      monsterTurn(scene);
+      expect(distance(), `after ${RUN - step} step(s) of pursuit`).toBe(step);
+    }
   });
 });
 

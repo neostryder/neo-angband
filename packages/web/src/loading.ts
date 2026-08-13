@@ -17,6 +17,16 @@
  * It is a dungeon digging itself out, which is the one animation this game is
  * entitled to.
  *
+ * THE `@` IS NOT THE DIGGER (#252). It was, for one release, and it read as the
+ * player walking through solid rock - a game whose whole subject is a dungeon,
+ * advertising itself with a character that ignores walls. The two are separate
+ * now: the DIGGER is generation and is never drawn, and the `@` is an actor that
+ * moves only onto carved floor, under the movement rule the real game uses.
+ * Once it is obeying walls it may as well be playing, so it does: wanderers that
+ * notice it give chase, it fights what it can and runs from what it cannot, and
+ * it never dies (see hurtPlayer - a tombstone on a loading screen would be a
+ * lie about a character that does not exist yet).
+ *
  * EVERYTHING HERE IS PURE except paintScene. The scene is a value, advanced by a
  * function, seeded by a number - so a test drives a hundred frames without a
  * clock, a canvas or a random source, and the "does it ever stop moving" and
@@ -50,6 +60,38 @@ const CSS_DIM = "rgb(90,90,90)";
 const MONSTER_GLYPHS = ["r", "c", "k", "w", "S", "j", "p"] as const;
 
 /**
+ * The eight steps, in the order the scene picks them. Orthogonals first, which
+ * is only a taste in the digger and load-bearing in the chase: a pursuer that
+ * tries the diagonal first hugs corners and looks like it is sliding.
+ */
+const DIRS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+] as const;
+
+/**
+ * How far a wanderer notices the `@`. Short on purpose: something that beelines
+ * from across the screen reads as a homing missile rather than a resident.
+ */
+const MONSTER_SIGHT = 9;
+
+/** The `@`'s hit points, and the level at which it stops fighting and runs. */
+const PLAYER_MAX_HP = 12;
+const PLAYER_FLEES_BELOW = 5;
+
+/** A wanderer's hit points - two or three blows, so a fight is readable. */
+const MONSTER_HP = 3;
+
+/** Frames between the `@` recovering a point while nothing is near it. */
+const REGEN_FRAMES = 24;
+
+/**
  * The lines under the scene. They cycle; none of them claims to know how much
  * longer this will take, because nothing here knows that.
  */
@@ -68,6 +110,8 @@ interface Wanderer {
   x: number;
   y: number;
   glyph: string;
+  /** Down to zero and it is gone. The `@` is the only thing that lowers it. */
+  hp: number;
 }
 
 /** The whole animation, as a value. */
@@ -76,10 +120,27 @@ export interface LoadingScene {
   readonly rows: number;
   /** Row-major carve map: 0 = untouched rock, 1 = floor, 2 = wall face. */
   readonly cells: Uint8Array;
-  /** The digger, which is also where the `@` is drawn. */
+  /**
+   * The `@`. It is drawn; it is not the digger; and every move it makes is onto
+   * a cell `isFloor` already returns true for.
+   */
   x: number;
   y: number;
-  /** Its heading, as a step in each axis; changed by turnChance, never zero. */
+  /** Its heading, so exploring reads as walking a corridor rather than jittering. */
+  pdx: number;
+  pdy: number;
+  /** Where it came from, so it does not shuffle between two squares forever. */
+  lastX: number;
+  lastY: number;
+  /** Hit points. Never reaches zero - see hurtPlayer. */
+  hp: number;
+  /**
+   * The DIGGER: what makes the dungeon appear. Never drawn, and deliberately
+   * not bound by the floor rule, because it is the thing that creates floor.
+   */
+  digX: number;
+  digY: number;
+  /** The digger's heading, as a step in each axis; changed on a turn, never zero. */
   dx: number;
   dy: number;
   readonly wanderers: Wanderer[];
@@ -115,6 +176,13 @@ export function makeScene(cols: number, rows: number, seed: number): LoadingScen
     cells: new Uint8Array(w * h),
     x: w >> 1,
     y: h >> 1,
+    pdx: 0,
+    pdy: 0,
+    lastX: w >> 1,
+    lastY: h >> 1,
+    hp: PLAYER_MAX_HP,
+    digX: w >> 1,
+    digY: h >> 1,
     dx: 1,
     dy: 0,
     wanderers: [],
@@ -155,32 +223,22 @@ export function isFloor(scene: LoadingScene, x: number, y: number): boolean {
  */
 export function step(scene: LoadingScene): void {
   if (below(scene, 100) < 22) {
-    const dirs = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-      [1, 1],
-      [-1, -1],
-      [1, -1],
-      [-1, 1],
-    ] as const;
-    const d = dirs[below(scene, dirs.length)] ?? dirs[0];
+    const d = DIRS[below(scene, DIRS.length)] ?? DIRS[0];
     scene.dx = d[0];
     scene.dy = d[1];
   }
-  let nx = scene.x + scene.dx;
-  let ny = scene.y + scene.dy;
+  let nx = scene.digX + scene.dx;
+  let ny = scene.digY + scene.dy;
   if (nx < 1 || nx >= scene.cols - 1) {
     scene.dx = -scene.dx;
-    nx = scene.x + scene.dx;
+    nx = scene.digX + scene.dx;
   }
   if (ny < 1 || ny >= scene.rows - 1) {
     scene.dy = -scene.dy;
-    ny = scene.y + scene.dy;
+    ny = scene.digY + scene.dy;
   }
-  scene.x = nx;
-  scene.y = ny;
+  scene.digX = nx;
+  scene.digY = ny;
   carve(scene, nx, ny);
 
   /* A room, now and then: the corridors alone read as scribble. */
@@ -191,20 +249,179 @@ export function step(scene: LoadingScene): void {
       for (let rx = nx - w; rx <= nx + w; rx++) carve(scene, rx, ry);
     }
     /* Something moves into the room it just found. Capped, because a wanderer
-     * per room over a slow boot ends up as a wall of letters. */
-    if (scene.wanderers.length < 7) {
+     * per room over a slow boot ends up as a wall of letters. Not on top of the
+     * `@`: a monster appearing in its face is a jump scare, not a dungeon. */
+    if (scene.wanderers.length < 7 && chebyshev(nx, ny, scene.x, scene.y) > 3) {
       scene.wanderers.push({
         x: nx,
         y: ny,
         glyph: MONSTER_GLYPHS[below(scene, MONSTER_GLYPHS.length)] ?? "r",
+        hp: MONSTER_HP,
       });
     }
   }
 }
 
-/** Shuffle the wanderers one square, staying on carved floor. */
-function moveWanderers(scene: LoadingScene): void {
+/** Chebyshev distance - the one that matches an eight-way step. */
+function chebyshev(ax: number, ay: number, bx: number, by: number): number {
+  return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+
+/** The carved squares one step from here. The whole of the movement rule. */
+function floorSteps(scene: LoadingScene, x: number, y: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const [dx, dy] of DIRS) {
+    if (isFloor(scene, x + dx, y + dy)) out.push({ x: x + dx, y: y + dy });
+  }
+  return out;
+}
+
+/** How far the nearest wanderer is, or Infinity while the `@` has the place to itself. */
+function nearestMonster(scene: LoadingScene): number {
+  let best = Infinity;
+  for (const w of scene.wanderers) best = Math.min(best, chebyshev(w.x, w.y, scene.x, scene.y));
+  return best;
+}
+
+/**
+ * Take a hit.
+ *
+ * THE `@` DOES NOT DIE HERE. There is no character yet - that is the entire
+ * reason this screen exists - so a tombstone would be a death notice for
+ * somebody who has not been rolled, and "the game killed me before it started"
+ * is a poor first impression to have engineered on purpose. It escapes instead,
+ * which is at least a thing Angband characters really do, and comes back
+ * somewhere else on the floor with its wind back.
+ */
+function hurtPlayer(scene: LoadingScene): void {
+  scene.hp -= 1;
+  if (scene.hp > 0) return;
+  scene.hp = PLAYER_MAX_HP;
+  /* Twenty tries rather than a scan: the scene is mostly rock early on, and a
+   * scan taking the FIRST floor cell would blink to the same corner every time. */
+  for (let i = 0; i < 20; i++) {
+    const x = below(scene, scene.cols);
+    const y = below(scene, scene.rows);
+    if (!isFloor(scene, x, y)) continue;
+    if (scene.wanderers.some((w) => chebyshev(w.x, w.y, x, y) <= 3)) continue;
+    scene.lastX = scene.x;
+    scene.lastY = scene.y;
+    scene.x = x;
+    scene.y = y;
+    return;
+  }
+  /* Nowhere to go - very early, or a crowded little dungeon. Standing and
+   * breathing is better than blinking into rock. */
+}
+
+/** Move the `@` off the square it is on, and remember where it came from. */
+function walkTo(scene: LoadingScene, x: number, y: number): void {
+  scene.pdx = x - scene.x;
+  scene.pdy = y - scene.y;
+  scene.lastX = scene.x;
+  scene.lastY = scene.y;
+  scene.x = x;
+  scene.y = y;
+}
+
+/**
+ * The `@`'s turn: fight what is next to it, run from what it cannot fight, and
+ * otherwise get on with exploring.
+ *
+ * Exported so a test can drive it with the digger held still. That matters more
+ * than it looks: the digger CARVES the square it steps onto, so "the `@` is
+ * standing on floor" is true of the old, broken version too, and a test built
+ * on it would pass while the bug was back. With the map frozen, "it only moves
+ * onto floor" and "it changes no cell" are statements about the `@` alone.
+ */
+export function playerTurn(scene: LoadingScene): void {
+  const afraid = scene.hp <= PLAYER_FLEES_BELOW;
+  const adjacent = scene.wanderers.find((w) => chebyshev(w.x, w.y, scene.x, scene.y) <= 1);
+
+  if (adjacent !== undefined && !afraid) {
+    adjacent.hp -= below(scene, 3) === 0 ? 2 : 1;
+    if (adjacent.hp <= 0) scene.wanderers.splice(scene.wanderers.indexOf(adjacent), 1);
+    return;
+  }
+
+  const steps = floorSteps(scene, scene.x, scene.y);
+  if (steps.length === 0) return;
+
+  if (afraid && nearestMonster(scene) <= MONSTER_SIGHT) {
+    /* Away from the nearest one, which is not the same as away from all of them
+     * - but a fleeing `@` that solves an optimisation problem does not look
+     * like one. */
+    let best = steps[0] as { x: number; y: number };
+    let bestGap = -1;
+    for (const s of steps) {
+      let gap = Infinity;
+      for (const w of scene.wanderers) gap = Math.min(gap, chebyshev(w.x, w.y, s.x, s.y));
+      if (gap > bestGap) {
+        bestGap = gap;
+        best = s;
+      }
+    }
+    walkTo(scene, best.x, best.y);
+    return;
+  }
+
+  /* Keep going the way it was going, most of the time: a walk that re-rolls
+   * every frame reads as a fly in a jar rather than somebody exploring. */
+  const ahead = { x: scene.x + scene.pdx, y: scene.y + scene.pdy };
+  if ((scene.pdx !== 0 || scene.pdy !== 0) && isFloor(scene, ahead.x, ahead.y) && below(scene, 100) < 72) {
+    walkTo(scene, ahead.x, ahead.y);
+    return;
+  }
+  /* Anywhere but back, unless back is the only way - which in a dead end it is. */
+  const forward = steps.filter((s) => s.x !== scene.lastX || s.y !== scene.lastY);
+  const from = forward.length > 0 ? forward : steps;
+  const pick = (from[below(scene, from.length)] ?? from[0]) as { x: number; y: number };
+  walkTo(scene, pick.x, pick.y);
+}
+
+/**
+ * The wanderers' turn: chase the `@` if they have noticed it, swing at it if
+ * they are on top of it, and otherwise shuffle about as they always did.
+ *
+ * Exported for the same reason as playerTurn, and the reason is sharper here. A
+ * test that runs whole frames and waits for something to end up next to the `@`
+ * measures NOTHING: the idle shuffle produces that on its own within a boot, so
+ * the assertion passed with chasing switched off entirely (control run, #252).
+ * Driving this directly against a staged corridor is what separates a pursuer
+ * from a drunkard.
+ */
+export function monsterTurn(scene: LoadingScene): void {
   for (const w of scene.wanderers) {
+    const d = chebyshev(w.x, w.y, scene.x, scene.y);
+    if (d <= 1) {
+      /* Not every frame. Three of them adjacent, each landing a blow per frame,
+       * empties the `@` in four - which is a mugging, not a fight. */
+      if (below(scene, 3) === 0) hurtPlayer(scene);
+      continue;
+    }
+    if (d <= MONSTER_SIGHT) {
+      const sx = Math.sign(scene.x - w.x);
+      const sy = Math.sign(scene.y - w.y);
+      /* Straight at it, then either axis alone. The cheapest thing that gets
+       * around a corner without a pathfinder, and a chase that sometimes loses
+       * its quarry to a wall is the correct amount of clever for a loading
+       * screen. */
+      for (const [dx, dy] of [
+        [sx, sy],
+        [sx, 0],
+        [0, sy],
+      ] as const) {
+        if ((dx !== 0 || dy !== 0) && isFloor(scene, w.x + dx, w.y + dy)) {
+          w.x += dx;
+          w.y += dy;
+          break;
+        }
+      }
+      continue;
+    }
+    /* Every third frame while it has noticed nothing: the residents are meant
+     * to look slower than the digging. */
+    if (scene.frame % 3 !== 0) continue;
     const dx = below(scene, 3) - 1;
     const dy = below(scene, 3) - 1;
     if (isFloor(scene, w.x + dx, w.y + dy)) {
@@ -217,8 +434,11 @@ function moveWanderers(scene: LoadingScene): void {
 /** Advance one animation frame. */
 export function advance(scene: LoadingScene): void {
   for (let i = 0; i < STEPS_PER_FRAME; i++) step(scene);
-  /* Every third frame: the digger is meant to look faster than the residents. */
-  if (scene.frame % 3 === 0) moveWanderers(scene);
+  playerTurn(scene);
+  monsterTurn(scene);
+  if (scene.frame % REGEN_FRAMES === 0 && scene.hp < PLAYER_MAX_HP && nearestMonster(scene) > MONSTER_SIGHT) {
+    scene.hp += 1;
+  }
   scene.frame++;
 }
 
