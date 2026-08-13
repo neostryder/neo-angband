@@ -388,8 +388,13 @@ them**. There are no release notes and no changelog entry, and only the newest
 one exists at any moment. Saves are still saves: a build that changes the save
 format ships the conversion for it like any other.
 
-Moving from `early` to a slower channel means going *backwards* to that
-channel's newest build, and the screen says so rather than calling it an update.
+**Changing channel never moves you backwards.** The channel decides where the
+game *looks*, not what it runs. If you drop from `early` to `beta` or `stable`
+you keep the build you have, and the update screen says so - it tells you which
+channel you are ahead of and that you will be offered the next build that
+channel publishes once it overtakes you. Nothing happens in the meantime, on
+purpose: a character is saved by the version that made it, the save format only
+ever moves forward, and an older engine cannot always read a newer save.
 
 ### What the desktop build adds
 

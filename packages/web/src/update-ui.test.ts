@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  aheadOfChannel,
   checkPhase,
   elidePath,
   humanBytes,
@@ -238,7 +239,7 @@ describe("a check that got no answer, which is not the same as being current", (
     expect(
       checkPhase({
         ok: true,
-        update: { version: "0.17.0", tag: "v0.17.0", url: "u", asset: null, older: false },
+        update: { version: "0.17.0", tag: "v0.17.0", url: "u", asset: null },
       }),
     ).toEqual({ phase: "offer", error: undefined });
   });
@@ -269,15 +270,49 @@ describe("channels on the screen", () => {
     expect(updateFooter(idle)).toContain("C to change channel");
   });
 
-  it("calls a move back to a slower channel what it is", () => {
-    /* 0.16.0 offered to someone running 0.16.1-edge.9 is not an update, and an
-     * unlabelled "is available" would read as a bug. */
-    const back: UpdateView = { ...base, current: "0.16.1-edge.9", version: "0.16.0", older: true };
-    const t = text(back);
-    expect(t).toContain("Moving back to 0.16.0");
-    expect(t).toMatch(/which is newer/u);
-    expect(t).not.toContain("0.16.0 is available");
-    expect(updateFooter(back)).toContain("move back and restart");
+  it("explains standing still on a slower channel instead of rolling back", () => {
+    /*
+     * THE RULE CHANGED (#250) AND THIS TEST IS THE RECORD OF IT. It used to
+     * assert the screen said "Moving back to 0.16.0" to someone running
+     * 0.16.1-edge.9 who had chosen `beta` - an offer that was honestly
+     * labelled and should never have been made at all: a save is written by
+     * the engine that made it, SAVE_VERSION only goes up, and migration only
+     * runs forwards. Accepting that offer handed a character to an engine
+     * older than the format it was stored in.
+     *
+     * So the screen now has one job in this situation - say why nothing is
+     * happening - and the assertions are that it does that AND that the old
+     * offer is gone from every surface, including the footer.
+     */
+    const ahead: UpdateView = { ...base, current: "0.16.1-edge.9", phase: "uptodate" };
+    const t = text(ahead);
+    expect(t).toContain("Nothing newer on your channel yet.");
+    expect(t).toContain("0.16.1-edge.9, which is ahead of beta");
+    expect(t).toMatch(/until beta publishes something newer/u);
+    /* And the reason, which is the part a player would otherwise report as a
+     * bug: the game is declining to do something it could do. */
+    expect(t).toMatch(/will not move you back/u);
+
+    expect(t).not.toContain("Moving back");
+    expect(t).not.toMatch(/newest build on your channel/u);
+    expect(updateFooter(ahead)).not.toContain("move back");
+  });
+
+  it("still says plain currency to someone whose build IS on their channel", () => {
+    /* The other half of the branch. Only an edge build can be ahead of a
+     * channel, so a plain version must not collect the explanation. */
+    const level: UpdateView = { ...base, current: "0.16.0", phase: "uptodate" };
+    expect(text(level)).toContain("This is the newest build on your channel.");
+    expect(text(level)).not.toMatch(/ahead of/u);
+  });
+
+  it("aheadOfChannel is about the CHANNEL, not about being a prerelease", () => {
+    /* Staying on `early` with an edge build is the normal case and must not
+     * trip the explanation; the same build on either slower channel must. */
+    expect(aheadOfChannel({ current: "0.16.1-edge.9", channel: "early" })).toBe(false);
+    expect(aheadOfChannel({ current: "0.16.1-edge.9", channel: "beta" })).toBe(true);
+    expect(aheadOfChannel({ current: "0.16.1-edge.9", channel: "stable" })).toBe(true);
+    expect(aheadOfChannel({ current: "0.16.0", channel: "stable" })).toBe(false);
   });
 
   it("offers no channel in a browser, which has none to offer", () => {
@@ -335,17 +370,17 @@ describe("the footer fits the terminal it is painted on", () => {
       const tooLong: string[] = [];
       for (const how of HOWS) {
         for (const phase of PHASES) {
-          for (const older of [false, true]) {
+          for (const current of ["0.16.0", "0.16.1-edge.9"]) {
             for (const modUpdates of MODS) {
               const v: UpdateView = {
                 ...base,
                 how,
                 phase,
-                older,
+                current,
                 modUpdates: modUpdates as never,
               };
               const f = updateFooter(v, cols);
-              if (f.length > cols - 1) tooLong.push(`${how}/${phase}/older=${String(older)}/mods=${String(modUpdates.length)}: ${String(f.length)} "${f}"`);
+              if (f.length > cols - 1) tooLong.push(`${how}/${phase}/${current}/mods=${String(modUpdates.length)}: ${String(f.length)} "${f}"`);
             }
           }
         }
