@@ -28,6 +28,39 @@ mechanisms this port preserves as its public API:
 Everything that talks to the engine - the web UI, the CLI, the future Borg,
 scripted plugins - speaks through these two seams.
 
+## The screen, by name
+
+Upstream's two seams get data OUT of the engine. They say nothing about how it
+is arranged, and for most of the port's life the arrangement was private: the
+map, the vitals, the message line and the status line were drawn by closures in
+`main.ts`, so "where is the map" and "what are the player's hit points" had no
+answer anything outside could ask. Three modules now answer, in the same shape:
+
+- `regions.ts` names the parts of the screen - `messages`, `sidebar`, `map`,
+  `status` - and publishes each one's rectangle in grid cells AND CSS pixels.
+  **The names are roles, not places:** `sidebar` is "the vitals", which is a
+  13-column column in one layout, a one-line header in another, and absent in a
+  third.
+- `world-view.ts` describes what is IN the map: a `WorldFrame` of cells carrying
+  both their semantic layers and the terminal's resolved glyph, handed to a sink
+  the selected front end owns (`frontend-runtime.ts`).
+- `hud-view.ts` does the same for everything around it: a `HudFrame` of named
+  sections, each a list of keyed entries (`hp`, `depth`, `state`) whose runs
+  carry the engine's `COLOUR_*` attribute beside the css the terminal resolves.
+
+The pattern is the same in all three, and it is worth stating once: **each
+publishes the semantic answer and the faithful terminal's projection of it side
+by side.** A replacement reads the first and ignores the second; the glyph grid
+reads the second and ignores the first. Neither has to reverse-engineer the
+other, which is what makes a tile, isometric or sprite renderer possible without
+core losing the exact 4.2.6 screen.
+
+A section also carries the region it plays the role of, which is what makes "core
+draws its furniture inside the rectangles core publishes" a test rather than a
+convention. The one deliberate exception is the '?' help overlay of the targeting
+loop, which takes as many rows as it needs above the status row - upstream's
+behaviour, and a fact a replacement needs told rather than hidden.
+
 ## What changes from upstream (the five chokepoints)
 
 The C original locks behavior behind compiled code. The port dissolves each

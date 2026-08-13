@@ -18,6 +18,45 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Changed
+
+- **The HUD is a frame now, not three closures** (#253, MOD_REACH gap 21,
+  step 1).
+
+  The vitals, the message line and the status line were drawn by
+  `renderSidebar`, `renderCompactVitals` and `renderStatusLine` — functions
+  inside `main.ts`'s module body, which boots a whole game against a canvas on
+  import. They were correct and they were unreachable, in two ways that matter.
+  A mod asking "what are the player's hit points, and where does this layout put
+  them" had nowhere to ask, because the only thing that knew had already
+  flattened the answer into coloured cells. And every rule they carried — which
+  fields survive a short screen, where the compact header's separators fall, how
+  far a run may reach, what the targeting loop takes over — could only be checked
+  by a human looking at a screenshot.
+
+  `packages/web/src/hud-view.ts` gives them the `WorldFrame` treatment: a frame
+  of named sections, each a list of keyed entries whose runs carry the engine's
+  own `COLOUR_*` attribute beside the css the terminal resolves it to. What is
+  left in `main.ts` is an adapter that reads core's models and one sink that
+  consumes the frame, so no HUD cell has a second draw path.
+
+  Two things this bought. The layout rules are now pure functions over values,
+  driven by `hud-view.test.ts` across three layouts and four sizes. And the
+  region table published by #234 finally has something to check against: each
+  section carries the region it plays the role of, so "core draws its own
+  furniture inside the rectangles core publishes" is an assertion rather than an
+  argument. The one deliberate exception is the targeting loop's `?` help
+  overlay, which takes as many rows as it needs above the status row — upstream's
+  behaviour, and now stated in the frame instead of being silently cropped.
+
+  No pixel moved, and that was measured rather than assumed: the new path was
+  diffed against the four deleted draw loops over 4000 randomized frames, and
+  both negative controls failed it — widening the reserved last column, and
+  dropping the separator column that a blank field still charges for.
+
+  This does not yet let a mod replace the HUD; per-region ownership is the next
+  step, and it was blocked on exactly this.
+
 ### Fixed
 
 - **The loading screen's `@` no longer walks through solid rock** (#252).

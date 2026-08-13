@@ -181,6 +181,7 @@ import {
   playerCanCast,
 } from "@rpgm-tools/neo-angband-core";
 import type {
+  DisplayRun,
   GamePack,
   GameObject,
   InterruptResponse,
@@ -331,6 +332,13 @@ import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./con
 import { GlyphTerm, setActiveCellTap } from "./term";
 import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
+import {
+  buildHudFrame,
+  glyphHudFrameSink,
+  renderHudFrame,
+  type HudFrame,
+  type HudModel,
+} from "./hud-view";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import {
@@ -1588,6 +1596,12 @@ let dead = false;
  * loaded plugins below.
  */
 const coreWorldSink = glyphWorldFrameSink(term);
+/**
+ * The HUD's consumer. Core's glyph terminal holds it outright today: #253 step 1
+ * makes the vitals, the message line and the status line a MODEL, and per-region
+ * ownership - who gets to be the one that consumes it - is the step after.
+ */
+const coreHudSink = glyphHudFrameSink(term);
 const coreFrontend = coreFrontendCandidate(coreWorldSink);
 const coreFrontendSlot: InstalledFrontend = coreOnlyFrontend(coreWorldSink);
 let installedFrontend: InstalledFrontend = coreFrontendSlot;
@@ -7155,61 +7169,97 @@ function displayDeps() {
 }
 
 /**
- * Render the left status sidebar from the engine's sidebarModel (ui-display.c).
- * WHERE each field goes is sidebarLayout, the port of update_sidebar (L844):
- * it culls by priority at short heights and counts the four blank grouping rows
- * of side_handlers[], which is what produces the classic gaps.
+ * THE HUD IS A FRAME NOW (#253, MOD_REACH gap 21).
  *
- * This used to walk the model top to bottom, hand-placing the spacers from a
- * set of key names and stopping when it ran off the screen - correct at 24 rows
- * and backwards below them, since it dropped depth, speed and the monster
- * health bar while keeping `class`, the least important row upstream has.
+ * There used to be three functions here that walked a model and called
+ * `term.print` - `renderSidebar`, `renderCompactVitals`, `renderStatusLine`.
+ * They were correct and they were unreachable: a mod asking for the player's
+ * hit points, or for where THIS layout puts them, had nowhere to ask, because
+ * the only thing that knew had already flattened the answer into coloured
+ * cells. Their rules now live in `hud-view.ts` as pure functions over values,
+ * and the terminal is one consumer of what those produce - exactly as
+ * `projectLiveWorld` made the map a frame the glyph grid merely happens to
+ * paint.
+ *
+ * The clipping moved with them and is unchanged: the last column of a section
+ * is reserved (SCREEN_WID, ui-term.h) and an entry placed off the section's
+ * rows is dropped, which is the guard a mod-supplied side_handlers[] with a
+ * from-bottom priority needs. What changed is that it is now written once, in
+ * `paintHudSection`, instead of four times.
+ *
+ * Colours are resolved HERE because the colour table is the shell's: a run
+ * carries the engine's own COLOUR_* attribute alongside the css it resolves to,
+ * so a replacement can re-resolve it against a palette of its own.
  */
-function renderSidebar(rows: number): void {
-  const fields = new Map(sidebarModel(state, displayDeps()).map((f) => [f.key, f]));
-  // sidebarLayout starts at row 1 (ui-display.c:866 `for (i = 0, row = 1; ...)`),
-  // leaving row 0 as the full-width message line and aligning the first field
-  // with the map's top row (ROW_MAP = row_top_map[SIDEBAR_LEFT] = 1, ui-term.c).
-  for (const { key, row: y } of sidebarLayout(rows)) {
-    if (y < 1 || y >= rows) continue;
-    const f = fields.get(key);
-    if (!f) continue;
-    let x = 0;
-    for (const run of f.runs) {
-      if (x >= SIDEBAR_W - 1) break;
-      const text = run.text.slice(0, SIDEBAR_W - 1 - x);
-      term.print(x, y, text, colorToCss(run.color));
-      x += run.text.length;
-    }
-  }
+function hudModel(model: { key: string; runs: readonly DisplayRun[] }): HudModel {
+  return {
+    key: model.key,
+    runs: model.runs.map((run) => ({
+      text: run.text,
+      color: run.color,
+      css: colorToCss(run.color),
+    })),
+  };
 }
 
 /**
- * Render the bottom status line from statusLineModel (ui-display.c), the active
- * indicators (level feeling, timed effects, DTrap, terrain, ...) laid left to
- * right in status_handlers[] order. Segments render back-to-back with NO extra
- * gap: each segment's text already bakes exactly one trailing gap column, so
- * its width equals the reference handler's return value (update_statusline_aux
- * advances col by that width). Idle prt_state reserves one blank column, which
- * statusLineModel emits as a single-space run.
+ * Selected sidebar fields shown inline on the compact-layout vitals row.
  *
- * update_statusline (ui-display.c:1316) is the event handler that picks the row
- * and calls update_statusline_aux; here the caller passes the row. KNOWN
- * DIVERGENCE, recorded not fixed by W1-CITED
- * (parity/phase3-2026-07-25/findings/W1-CITED.md): upstream moves the status
- * line to row 3 when Term->sidebar_mode is SIDEBAR_TOP; the only call site here
- * always passes rows - 1, including in the "top" sidebar layout.
+ * `health` is here because upstream's own compact layout carries it: update_topbar
+ * calls prt_health_short (ui-display.c:795) between SP and Speed. This layout is
+ * auto-selected whenever cols < 48, so leaving it out meant the monster health bar
+ * was absent on a narrow or phone viewport even once tracking worked.
  */
-function renderStatusLine(originX: number, row: number, maxCols: number): void {
-  let x = originX;
-  for (const ind of statusLineModel(state, displayDeps())) {
-    for (const run of ind.runs) {
-      if (x - originX >= maxCols - 1) return;
-      const text = run.text.slice(0, maxCols - 1 - (x - originX));
-      term.print(x, row, text, colorToCss(run.color));
-      x += run.text.length;
-    }
-  }
+const COMPACT_VITALS_KEYS = ["level", "hp", "sp", "health", "ac", "gold", "depth"];
+
+/**
+ * Everything core draws that is not the map, for the frame being rendered.
+ *
+ * A thin adapter and nothing more: it reads the live models and hands them to
+ * buildHudFrame, which owns every layout rule. That split is the point of #253's
+ * first step - the rules used to live in this module body, where the only way to
+ * exercise them was to boot the game against a canvas, so they were never tested
+ * and could never be reached by a mod. They are now pure functions over values in
+ * hud-view.ts, and hud-view.test.ts drives them at sizes and layouts a running
+ * game would take an afternoon to reproduce.
+ */
+function currentHudFrame(
+  vp: ReturnType<typeof viewport>,
+  cols: number,
+  rows: number,
+  regions: ScreenRegions,
+  targeting: TargetingOverlay | undefined,
+): HudFrame {
+  /* One deps read for the whole HUD. It is a pure function of the game state,
+   * so the sidebar and the status line cannot disagree about the frame they are
+   * describing - and asking twice was only ever an accident of their having been
+   * two separate draw calls. */
+  const deps = displayDeps();
+  return buildHudFrame({
+    layout: vp.layout,
+    cols,
+    rows,
+    sidebarWidth: SIDEBAR_W,
+    mapOriginX: vp.mapOriginX,
+    mapCols: vp.mapCols,
+    vitals: sidebarModel(state, deps).map(hudModel),
+    placements: sidebarLayout(rows),
+    compactKeys: COMPACT_VITALS_KEYS,
+    indicators: statusLineModel(state, deps).map(hudModel),
+    message: { text: message, css: messageColor },
+    ...(targeting
+      ? {
+          targeting: {
+            desc: targeting.desc,
+            descCss: UI_GOLD,
+            helpLines: targeting.help ? targeting.helpLines : null,
+            helpCss: UI_TEXT,
+            promptCss: UI_DIM,
+          },
+        }
+      : {}),
+    regions,
+  });
 }
 
 /**
@@ -7356,35 +7406,6 @@ function verifyPanel(): void {
 }
 
 /**
- * Selected sidebar fields shown inline on the compact-layout vitals row.
- *
- * `health` is here because upstream's own compact layout carries it: update_topbar
- * calls prt_health_short (ui-display.c:795) between SP and Speed. This layout is
- * auto-selected whenever cols < 48, so leaving it out meant the monster health bar
- * was absent on a narrow or phone viewport even once tracking worked.
- */
-const COMPACT_VITALS_KEYS = ["level", "hp", "sp", "health", "ac", "gold", "depth"];
-
-/** The one-line vitals header for the compact layout (reuses sidebarModel). */
-function renderCompactVitals(row: number, maxCols: number): void {
-  const byKey = new Map(
-    sidebarModel(state, displayDeps()).map((f) => [f.key, f]),
-  );
-  let x = 0;
-  for (const key of COMPACT_VITALS_KEYS) {
-    const f = byKey.get(key);
-    if (!f) continue;
-    for (const run of f.runs) {
-      if (x >= maxCols - 1) return;
-      const text = run.text.slice(0, maxCols - 1 - x);
-      term.print(x, row, text, colorToCss(run.color));
-      x += run.text.length;
-    }
-    x += 1; // gap between fields
-  }
-}
-
-/**
  * The '*'/'l' interactive loop's overlay: a cursor grid the camera follows,
  * the projected path to it (drawn in TARGET_KILL mode), the current look
  * description (shown on the message row in place of `message`), and the
@@ -7416,7 +7437,12 @@ function render(targeting?: TargetingOverlay): void {
   term.clear();
 
   const vp = viewport(targeting?.cursor);
-  const { layout, mapOriginX, mapTop, mapCols, mapRows, camX, camY } = vp;
+  const { mapOriginX, mapTop, mapCols, mapRows, camX, camY } = vp;
+  /* ONE region table per frame, read by both halves of the screen: the world
+   * frame carries it to whoever owns the map, and the HUD sections are the
+   * roles it names. A second currentScreenRegions(vp) call here would let a
+   * mid-frame layout change put the two descriptions of one screen at odds. */
+  const regions = currentScreenRegions(vp);
   /* do_animation runs once per frame, BEFORE the glyphs are resolved, exactly
    * as upstream's animation timer fires before the redraw it triggers. */
   doAnimation();
@@ -7452,7 +7478,7 @@ function render(targeting?: TargetingOverlay): void {
     /* Where this frame sits on the screen, and what core is still drawing
      * around it. The one thing a replacement front end could not previously
      * learn, and the reason the sample covered the window (#234). */
-    regions: currentScreenRegions(vp),
+    regions,
     playerGrid: state.actor.grid,
     ...(targeting ? { cursor: targeting.cursor } : {}),
     cursorBackground: CURSOR_BG,
@@ -7503,30 +7529,13 @@ function render(targeting?: TargetingOverlay): void {
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
 
-  if (layout === "top") renderCompactVitals(1, cols);
-  else if (layout === "left") renderSidebar(rows);
-  // layout === "none": no vitals furniture at all - a full-width, full-height
-  // map (vitals still reachable via the 'C' character screen / status line).
+  /* The rest of the screen, through the same shape the map goes through: a
+   * frame of named sections, presented to a sink. The vitals, the message line
+   * and the status line all live in it, including the two rows the targeting
+   * loop takes over while it runs (target_set_interactive owns both). */
+  renderHudFrame(currentHudFrame(vp, cols, rows, regions, targeting), coreHudSink);
 
-  if (targeting) {
-    // The look description takes the message row; the bottom status row
-    // becomes the help prompt/text, exactly as target_set_interactive owns
-    // both while it runs.
-    term.print(0, 0, targeting.desc.slice(0, cols - 1), UI_GOLD);
-    if (targeting.help) {
-      const n = targeting.helpLines.length;
-      targeting.helpLines.forEach((line, i) => {
-        term.print(mapOriginX, rows - n + i, line.slice(0, mapCols - 1), UI_TEXT);
-      });
-    } else {
-      term.print(mapOriginX, rows - 1, "Press '?' for help.".slice(0, mapCols - 1), UI_DIM);
-    }
-  } else {
-    // The message line owns the full width of row 0 from col 0 (c_prt at 0,0),
-    // above the sidebar (which starts at row 1) - not indented to the map.
-    term.print(0, 0, message.slice(0, cols - 1), messageColor);
-    renderStatusLine(mapOriginX, rows - 1, mapCols);
-
+  if (!targeting) {
     // show_target / highlight_player: the between-turns map cursor. Upstream
     // places it just before waiting for a command and repeats the same block at
     // four sites (ui-display.c:2486 refresh, ui-game.c:678 pre_turn_refresh,
