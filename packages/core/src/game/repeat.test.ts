@@ -32,7 +32,9 @@ import { ActionRegistry, processPlayer } from "./player-turn.js";
 import {
   cmdDisableRepeat,
   cmdDisableRepeatFloorItem,
+  repeatDirSlots,
   repeatPrevAllowed,
+  withRepeatDir,
 } from "./repeat.js";
 
 /** A minimal distinguishable object; the tests only ever compare identity. */
@@ -225,6 +227,83 @@ describe("cmd_disable_repeat_floor_item, and the wrong object it prevents", () =
     );
 
     expect(repeatPrevAllowed(state.actor.player)).toBe(false);
+  });
+});
+
+describe("cmd_get_target's re-validation, which a repeat has to run again", () => {
+  /*
+   * Reported from play: "Firing an arrow when my target leaves my view should
+   * ask for another target or a direction, but instead, it just fires and
+   * misses." Upstream never stores an answer to that question - cmd_get_target
+   * re-asks it every execution (cmd-core.c:955-969) - so a repeat of an aimed
+   * command re-prompts once the target stops validating. The port replayed the
+   * stored 5, and rangedHelper's non-target branch aims at DDX[5]/DDY[5], which
+   * are both 0: an arrow into the player's own grid.
+   *
+   * The prompt is the shell's, so what is testable here is which slots a repeat
+   * would have to ask about, and that the answer is written back without
+   * touching the remembered command.
+   */
+  it("finds a stored DIR_TARGET wherever the three command shapes keep it", () => {
+    /* cmd.dir: the plain aimed commands. */
+    expect(repeatDirSlots({ code: "fire", dir: 5 })).toEqual(["dir"]);
+    /* args.dir: the item verbs (dispatchItemVerb). */
+    expect(repeatDirSlots({ code: "aim-wand", args: { handle: 3, dir: 5 } })).toEqual([
+      "args.dir",
+    ]);
+    /* args.tgtdir: a get_aim_dir a HANDLER asks inside an effect. */
+    expect(repeatDirSlots({ code: "cast", args: { tgtdir: 5 } })).toEqual([
+      "args.tgtdir",
+    ]);
+    /* All at once - a command may carry more than one, and upstream re-asks
+     * about each argument separately. */
+    expect(
+      repeatDirSlots({ code: "cast", dir: 5, args: { dir: 5, tgtdir: 5 } }),
+    ).toEqual(["dir", "args.dir", "args.tgtdir"]);
+  });
+
+  it("says nothing about a compass direction, which never needed a target", () => {
+    /* `if (dir != DIR_TARGET || target_okay())` - a real direction short-circuits
+     * before target_okay is ever consulted, so repeating a throw to the north
+     * must not open a prompt. */
+    for (const dir of [1, 2, 3, 4, 6, 7, 8, 9]) {
+      expect(repeatDirSlots({ code: "fire", dir })).toEqual([]);
+      expect(repeatDirSlots({ code: "fire", args: { dir } })).toEqual([]);
+    }
+    expect(repeatDirSlots({ code: "walk", dir: 5 })).toEqual(["dir"]);
+    expect(repeatDirSlots({ code: "quaff", args: { handle: 1 } })).toEqual([]);
+    expect(repeatDirSlots({ code: "hold" })).toEqual([]);
+  });
+
+  it("writes the new direction back WITHOUT editing the remembered command", () => {
+    /* The remembered command outlives the prompt. Editing it in place would mean
+     * a re-prompt the player escaped had still changed what 'n' does next time -
+     * upstream's cmd_set_arg_target writes to the queued COPY. */
+    const remembered = Object.freeze({
+      code: "fire",
+      dir: 5,
+      args: Object.freeze({ handle: 7, dir: 5, tgtdir: 5 }),
+    });
+
+    const byDir = withRepeatDir(remembered, "dir", 4);
+    expect(byDir.dir).toBe(4);
+    expect(byDir.args).toEqual({ handle: 7, dir: 5, tgtdir: 5 });
+
+    const byArg = withRepeatDir(remembered, "args.dir", 6);
+    expect(byArg.dir).toBe(5);
+    expect(byArg.args).toEqual({ handle: 7, dir: 6, tgtdir: 5 });
+
+    const byTgt = withRepeatDir(remembered, "args.tgtdir", 2);
+    expect(byTgt.args).toEqual({ handle: 7, dir: 5, tgtdir: 2 });
+
+    /* The original is untouched by all three. */
+    expect(remembered.dir).toBe(5);
+    expect(remembered.args).toEqual({ handle: 7, dir: 5, tgtdir: 5 });
+  });
+
+  it("gives an args-less command an args bag rather than dropping the answer", () => {
+    const filled = withRepeatDir({ code: "aim-wand", dir: 5 }, "args.dir", 8);
+    expect(filled.args).toEqual({ dir: 8 });
   });
 });
 

@@ -434,7 +434,17 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(
       /tileForShownObject\(tileMap, kind,[\s\S]*?\),\s*gx,\s*gy,/,
     );
-    expect(main).toMatch(/objectKindCell\(o\.kind, o\.grid\.x, o\.grid\.y\)/);
+    /* The live pile arm draws whatever floorDisplay picked - the top object's
+     * kind, or `<pile>` when a second displayable object shares the grid
+     * (ui-map.c:216-219) - at the grid floorDisplay handed back. Pinned as the
+     * pile-aware shape on purpose: this arm used to read `o.kind` straight off
+     * the first object, which is how a visible pile drew its top item while the
+     * remembered draw four lines up drew `&`. */
+    expect(main).toMatch(/const shown = floorDisplay\(pile, state\.isIgnored\)/);
+    expect(main).toMatch(
+      /const kind = shown\.multiple \? \(pileKind \?\? shown\.obj\.kind\) : shown\.obj\.kind/,
+    );
+    expect(main).toMatch(/objectKindCell\(kind, grid\.x, grid\.y\)/);
   });
 
   /**

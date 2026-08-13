@@ -75,6 +75,58 @@ export function floorPile(
   return state.floor.get(gridIdx(state, grid)) ?? [];
 }
 
+/** What a draw needs to know about a pile it can see. */
+export interface FloorDisplay {
+  /** g->first_kind's object: the one whose glyph or tile a single item draws. */
+  readonly obj: GameObject;
+  /** g->multiple_objects: a SECOND displayable object is here, so draw the pile. */
+  readonly multiple: boolean;
+}
+
+/**
+ * map_info's object loop (cave-map.c:155-169), for a pile the player can see,
+ * reduced to the two facts a draw reads back out of it (ui-map.c:200-224):
+ * which object supplies the picture, and whether there is more than one.
+ *
+ *     if (!ignore_known_item_ok(p, obj)) {
+ *             if (!g->first_kind) g->first_kind = obj->kind;
+ *             else { g->multiple_objects = true; break; }
+ *     }
+ *
+ * TWO THINGS THAT LOOK LIKE DETAIL AND ARE NOT. An ignored object is skipped
+ * and NOT counted, so a grid holding one wanted item under one ignored item is
+ * a single item, not a pile - the C's `continue` is inside the same test that
+ * chooses first_kind. And the loop BREAKS at the second: it answers "more than
+ * one", never "how many", so nothing downstream can start counting.
+ *
+ * THIS EXISTS BECAUSE THE DRAW WAS SPLIT IN TWO. Upstream has one map_info,
+ * reading the player's shadow pile whether the grid is lit or remembered. The
+ * port grew a live path off state.floor and a remembered path off state.known,
+ * and only the remembered one (known.ts knownObject) implemented
+ * multiple_objects - so a pile in sight drew its top item and became the pile
+ * glyph the moment it dimmed out of view. A named function both halves call is
+ * what stops that from being possible again.
+ */
+export function floorDisplay(
+  pile: readonly GameObject[],
+  isIgnored?: (obj: GameObject) => boolean,
+): FloorDisplay | null {
+  let first: GameObject | null = null;
+  for (const obj of pile) {
+    /* The port's piles can hold an object whose grid has been cleared; it is
+     * off the floor and has no cell to draw in. */
+    if (!obj.grid) continue;
+    /* "Item stays hidden" (cave-map.c:159). */
+    if (isIgnored?.(obj)) continue;
+    if (first === null) {
+      first = obj;
+      continue;
+    }
+    return { obj: first, multiple: true };
+  }
+  return first === null ? null : { obj: first, multiple: false };
+}
+
 /**
  * pile_contains (obj-pile.c L268). The pile is an array here, so the walk down
  * obj->next is indexOf; kept as a named function so the intent (and the C

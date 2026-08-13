@@ -138,7 +138,10 @@ import {
   ignoreDrop,
   liveUiEntryDeps,
   ignoreDropQueue,
+  floorDisplay,
+  repeatDirSlots,
   repeatPrevAllowed,
+  withRepeatDir,
   projectPath,
   PROJECT,
   initTargetLoopUi,
@@ -6077,7 +6080,7 @@ state.checkInterrupt = (): InterruptResponse => {
  * last command with its stored arguments. Does nothing (like cmdq_push's silent
  * error) when there is no remembered command. C: ui-game.c:223.
  */
-function repeatLastCommand(): void {
+async function repeatLastCommand(): Promise<void> {
   if (!lastRepeatCmd) return;
   /* cmdq_push_copy's CMD_REPEAT gate (cmd-core.c:296-297): the command that
    * ran last gets to say it must not be repeated, and seven `cmd_disable_repeat`
@@ -6089,7 +6092,22 @@ function repeatLastCommand(): void {
    * the pile under the player, so re-dispatching after the pile changed or the
    * player stepped away acted on a DIFFERENT object rather than failing. */
   if (!repeatPrevAllowed(state.actor.player)) return;
-  commandBuffer.push({ ...lastRepeatCmd });
+  /* cmd_get_target (cmd-core.c:955-969) runs on EVERY execution of an aimed
+   * command, so a repeat re-validates its stored DIR_TARGET and re-opens the aim
+   * prompt when the target has gone. This replayed the answer instead, and
+   * rangedHelper's non-target branch aims at DDX[5]/DDY[5] - both 0 - so
+   * repeating a shot at a monster that had walked out of view fired an arrow
+   * into the player's own grid. See repeatDirSlots for why there are three. */
+  let cmd: PlayerCommand = { ...lastRepeatCmd };
+  for (const slot of repeatDirSlots(cmd)) {
+    if (targetOkay(state)) break; // the stored target still validates: dir stands
+    const dir = await aimDir();
+    /* !get_aim_dir -> CMD_ARG_ABORTED -> the handler returns (cmd-obj.c:305):
+     * no command, no turn. */
+    if (dir === null) return;
+    cmd = withRepeatDir(cmd, slot, dir);
+  }
+  commandBuffer.push(cmd);
   advance();
 }
 
@@ -6575,14 +6593,23 @@ function rememberedObjectCell(
 // top exactly as upstream lists the first object).
 function objectIndex(): Map<number, CellGlyph> {
   const map = new Map<number, CellGlyph>();
+  const pileKind = booted.registries.objects.pileKind;
   for (const pile of state.floor.values()) {
-    // map_info's object loop (cave-map.c:156-170) skips an ignored object
+    // map_info's object loop (cave-map.c:155-169), shared with the remembered
+    // draw so the two halves cannot drift again: it skips an ignored object
     // ("Item stays hidden") and takes the first one that is NOT ignored, so a
     // kind the player has ignored disappears from the map instead of being
     // dropped from the pack and left visible on the ground.
-    const o = pile.find((obj) => obj.grid && !state.isIgnored?.(obj));
-    if (!o || !o.grid) continue;
-    map.set(gridIndex(o.grid.x, o.grid.y), objectKindCell(o.kind, o.grid.x, o.grid.y));
+    const shown = floorDisplay(pile, state.isIgnored);
+    const grid = shown?.obj.grid;
+    if (!shown || !grid) continue;
+    /* g->multiple_objects -> the `<pile>` glyph instead of the top item's
+     * (ui-map.c:216-219). rememberedObjectCell has always applied this rule and
+     * THIS half of the same draw never had it, so a pile in sight showed
+     * whatever lay on top and turned into `&` the moment it dimmed out of view -
+     * an asymmetry a player can see by taking one step backwards. */
+    const kind = shown.multiple ? (pileKind ?? shown.obj.kind) : shown.obj.kind;
+    map.set(gridIndex(grid.x, grid.y), objectKindCell(kind, grid.x, grid.y));
   }
   return map;
 }
@@ -8118,7 +8145,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Stand still (numpad)", cat: null, o: "5", r: "5", act: () => holdCmd() },
     { desc: "Start exploring", cat: "Hidden", o: "p", act: () => exploreCmd() },
     // Repeat: 'n' in the original keyset; roguelike uses ^V (handled above).
-    { desc: "Repeat previous command", cat: "Hidden", o: "n", r: null, act: () => repeatLastCommand() },
+    { desc: "Repeat previous command", cat: "Hidden", o: "n", r: null, act: () => void repeatLastCommand() },
     // Center map: roguelike '@' (original uses ^L, handled above).
     { desc: "Center map", cat: "Hidden", o: null, r: "@", act: () => centerMapCmd() },
     /* cmd_hidden's last row (ui-game.c:225): a PLACEHOLDER whose cmd and hook
@@ -8407,7 +8434,7 @@ inputEvents.addEventListener("keydown", (ev) => {
     // 'n' is a movement key, so repeat moves to ^V; original-keyset ^V is unbound.
     if (roguelike && (ev.key === "v" || ev.key === "V")) {
       ev.preventDefault();
-      repeatLastCommand();
+      void repeatLastCommand();
       return;
     }
     // Save and quit (^X, textui_quit / cmd_util:199). The browser reserves some

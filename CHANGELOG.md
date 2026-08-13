@@ -151,6 +151,51 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **Repeating a shot at a monster that had walked out of view fired the arrow
+  into the player's own grid** (#245, reported from a playtest as "firing an
+  arrow when my target leaves my view should ask for another target or a
+  direction, but instead, it just fires and misses").
+
+  Upstream's aimed commands never read their direction argument directly. They
+  read it through `cmd_get_target` (`cmd-core.c:955-969`), which re-validates a
+  stored `DIR_TARGET` against `target_okay()` on **every** execution and
+  re-opens `get_aim_dir` when the target has stopped being reachable. The port
+  asked once, in the shell, and the repeat key replayed the answer — so a
+  `DIR_TARGET` whose monster had gone reached `rangedHelper`'s non-target
+  branch, where `DDX[5]` and `DDY[5]` are both 0: a zero-length path at the
+  player's own feet. That branch's own comment named this hole and said the fix
+  belonged in the caller; it does, and this is it.
+
+  The re-validation now runs before a repeat is queued, for all three places a
+  command keeps a direction — `dir` on the plain aimed commands, `args.dir` on
+  the item verbs, `args.tgtdir` on a `get_aim_dir` a handler asks from inside an
+  effect. Escaping the re-prompt abandons the repeat without spending a turn,
+  which is upstream's `CMD_ARG_ABORTED`.
+
+  This one was already **adjudicated, and adjudicated wrong**: `PORT_TODO.md`
+  called the retry a "divergence by construction" because "repeat is a boolean
+  gate, not a replayed argument". The boolean gate is `repeatPrevAllowed`; the
+  replayed argument is the `commandBuffer.push({ ...lastRepeatCmd })` twenty
+  lines below it in the same function. That row is corrected rather than
+  deleted.
+
+- **A pile of items you could SEE drew its top item; the same pile drew `&` as
+  soon as it dimmed out of view** (#246, reported from a playtest).
+
+  Upstream runs one loop and one draw whether a grid is lit or remembered
+  (`cave-map.c:155-169`, `ui-map.c:200-224`). This port grew two arms — a live
+  one over `state.floor` and a remembered one over `state.known` — and only the
+  remembered arm ever computed `multiple_objects`, which is why the pile glyph
+  appeared exactly when the pile stopped being in front of you. Both arms now
+  go through one `floorDisplay`, which is `map_info`'s loop: it skips an ignored
+  entry without consuming the `first_kind` slot (so one wanted item under one
+  ignored item is still one item, not a pile) and breaks at the second
+  displayable object, answering "more than one" and never "how many".
+
+  The test that matters compares the two arms against **each other** over the
+  same pile, rather than each against the rule written twice — the shape that
+  let the halves drift for a release. Removing the mechanism fails it.
+
 - **No neo-linoleum pack ever drew a double-height tile, so every tall Shockbolt
   monster was squashed into one cell** (#243, reported from a playtest as
   "Guardian Naga is squat").
