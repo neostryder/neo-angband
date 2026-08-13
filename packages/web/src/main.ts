@@ -207,6 +207,7 @@ import {
   getGraphicsMode,
   GlyphTable,
   GRAPHICS_NONE,
+  isDoubleHeightTile,
   LIGHTING,
   monsterGlyph,
   monsterIsCamouflaged,
@@ -1500,6 +1501,16 @@ function tileDrawFor(
     kind: "canvas-tile",
     key: `${String(code)}@${String(x)},${String(y)}${dimmed ? "~" : ""}`,
     data: { blitter: ts, code, grid: { x, y }, dimScale: dimmed ? DIM_SCALE : 1 },
+    /* is_dh_tile (grafmode.c L241). THE call that had no caller until #241 -
+     * without it every double-height Shockbolt tile was cropped into one cell.
+     * It reads the raw attr, not the resolved code, because the double-height
+     * band is a property of the tileset ROW. */
+    ...(isDoubleHeightTile(
+      currentGrafID === GRAPHICS_NONE ? undefined : getGraphicsMode(currentGrafID),
+      atlas.attr,
+    )
+      ? { tall: true }
+      : {}),
   };
 }
 

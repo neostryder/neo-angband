@@ -371,6 +371,18 @@ export class LinoleumPack implements TileBlitter {
    * Blit the tile a synthetic code addresses, or return false so the caller
    * keeps the cell's ASCII glyph. The whole asset is scaled into the cell rect,
    * so a pack may mix tile sizes freely.
+   *
+   * `tall` is a double-height tile and is BOTTOM-ANCHORED: the asset covers two
+   * cells and the one it is queued at is the lower half, so it is drawn one
+   * cell higher and twice as tall. The converter already preserves Shockbolt's
+   * tall assets whole, as bottom-anchored 64x128 images (docs/LINOLEUM.md), and
+   * scaling one of those into a single cell is what squashed them.
+   *
+   * The flag comes from the MODE's double-height band (is_dh_tile) and not from
+   * the asset, which is why no per-asset metadata is needed here: a pack whose
+   * mode declares no overdraw row can never be passed `tall`, so its drawing is
+   * unchanged. Aspect-sniffing the loaded image was considered and rejected -
+   * it guesses at what the mode already states.
    */
   drawTile(
     ctx: CanvasRenderingContext2D,
@@ -380,13 +392,20 @@ export class LinoleumPack implements TileBlitter {
     dh: number,
     code: TileCode,
     grid?: { x: number; y: number },
+    tall = false,
   ): boolean {
     const asset = this.assetFor(atlasToSlot(code), grid);
     if (asset === null) return false;
     const cached = this.request(asset);
     if (!cached.loaded || cached.image === null) return false;
     try {
-      ctx.drawImage(cached.image, dx, dy, dw, dh);
+      ctx.drawImage(
+        cached.image,
+        dx,
+        tall ? dy - dh : dy,
+        dw,
+        tall ? dh * 2 : dh,
+      );
       return true;
     } catch {
       return false;

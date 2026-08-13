@@ -18,7 +18,12 @@ import { inputEvents } from "./input-door";
 import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
-import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
+import {
+  setActiveCellTap,
+  type GridPointerInput,
+  type GridSurface,
+  type RenderAssetRef,
+} from "./term";
 import type { Overview, OverviewGlyph } from "./mapview";
 import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 import { menuRegistry } from "./menu-registry";
@@ -224,9 +229,24 @@ function drawOverviewCell(
   term.put(x, y, {
     ch: g.ch,
     fg: g.css,
-    tile: g.tile,
-    ...(g.bgTile ? { bgTile: g.bgTile } : {}),
+    tile: flat(g.tile),
+    ...(g.bgTile ? { bgTile: flat(g.bgTile) } : {}),
   });
+}
+
+/**
+ * The miniature is ONE cell per dungeon grid, so a double-height tile must not
+ * overdraw here - a tall monster would eat the map row above it, which on a
+ * compressed overview is a different part of the dungeon entirely.
+ *
+ * The reference does the same thing by swapping in a one-by-one tilesheet for
+ * the overview (main-sdl.c ~L5245). Dropping the flag is that swap: same
+ * picture, cropped to its own cell, which is exactly what the overview wants.
+ */
+function flat(ref: RenderAssetRef): RenderAssetRef {
+  if (!ref.tall) return ref;
+  const { tall: _tall, ...rest } = ref;
+  return rest;
 }
 
 export function showLevelMap(term: GridSurface & GridPointerInput, overview: Overview): Promise<void> {
