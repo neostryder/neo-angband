@@ -207,6 +207,10 @@ import {
   getGraphicsMode,
   GlyphTable,
   GRAPHICS_NONE,
+  hallucinateGrid,
+  hallucinatoryMonster,
+  hallucinatoryObject,
+  type HallucinationRandom,
   isDoubleHeightTile,
   LIGHTING,
   monsterGlyph,
@@ -240,6 +244,8 @@ import {
 } from "./frontend-runtime";
 import {
   projectLiveWorld,
+  type HallucinatedCell,
+  type HallucinationPresence,
   type ResolvedGlyph,
 } from "./world-render-data";
 import type { WorldLayer } from "./world-view";
@@ -362,7 +368,7 @@ import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
-import type { Overview } from "./mapview";
+import type { Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import type { TitleChoice } from "./news";
@@ -6800,13 +6806,133 @@ function composeMonster(under: CellGlyph, cell: MonsterCell): CellGlyph {
 }
 
 /**
+ * The stream every hallucination roll comes from, and it is deliberately NOT
+ * the game's.
+ *
+ * Upstream rolls these on the main RNG inside grid_data_as_text, which is safe
+ * in a program whose only repaint trigger is a game event. Here the map also
+ * repaints on a window resize, on returning from a menu and on the animation
+ * timer, so binding the rolls to `state.rng` would make the dungeon a function
+ * of how often the screen was painted. Owner ruling 2026-08-09 accepts a
+ * different stream where the rules and the odds are unchanged, which is exactly
+ * this: same 1/128, same rejection loops, same distribution. It is seeded from
+ * wall-clock entropy and never saved - hallucination is not reproducible from a
+ * savefile, and nothing about the game depends on it being so.
+ */
+const hallucinationRng = new Rng((Date.now() ^ Math.floor(Math.random() * 0x100000000)) >>> 0);
+const hallucinationRandom: HallucinationRandom = {
+  oneIn: (n) => hallucinationRng.oneIn(n),
+  randint0: (n) => hallucinationRng.randint0(n),
+};
+
+/**
+ * A hallucinated monster's cell: the selected race's glyph and tile assigned
+ * DIRECTLY, with none of composeMonster's clear/unique/animated resolution -
+ * upstream's hallucinate arm returns before any of that (ui-map.c L232-235).
+ */
+function fakeMonsterCell(gx: number, gy: number): CellGlyph | null {
+  const races = booted.registries.monsters.races;
+  const ridx = hallucinatoryMonster(
+    { count: races.length, named: (i) => !!races[i]?.name },
+    hallucinationRandom,
+  );
+  if (ridx === null) return null;
+  const race = races[ridx]!;
+  const g = glyphs.monsterGlyph(ridx) ?? { attr: race.dAttr, char: race.dChar };
+  const tile = tileMap ? tileDrawFor(tileForMonster(tileMap, ridx), gx, gy) : undefined;
+  return {
+    ch: g.char,
+    attr: g.attr,
+    css: colorToCss(g.attr),
+    ...(tile ? { tile } : {}),
+    layer: { kind: "monster", id: ridx },
+  };
+}
+
+/**
+ * A hallucinated object's cell. Note the `null` flavour: upstream takes the
+ * KIND glyph and says so ("HACK - without flavors", ui-map.c L71), so a
+ * hallucinated potion shows the unflavoured kind colour rather than the one its
+ * flavour rolled this game.
+ */
+function fakeObjectCell(gx: number, gy: number): CellGlyph | null {
+  const kinds = booted.registries.objects.kinds;
+  const kidx = hallucinatoryObject(
+    {
+      count: kinds.length,
+      named: (i) => !!kinds[i]?.name,
+      glyph: (i) => glyphs.kindGlyph(i) ?? null,
+    },
+    hallucinationRandom,
+  );
+  if (kidx === null) return null;
+  const kind = kinds[kidx]!;
+  const g = glyphs.kindGlyph(kidx) ?? { attr: colorCharToAttr(kind.dAttr), char: kind.dChar };
+  const tile = tileMap ? tileDrawFor(tileForShownObject(tileMap, kind, null), gx, gy) : undefined;
+  return {
+    ch: g.char,
+    attr: g.attr,
+    css: colorToCss(g.attr),
+    ...(tile ? { tile } : {}),
+    layer: { kind: "object", id: kidx },
+  };
+}
+
+/**
+ * One frame's hallucination resolver, or undefined when the player is not
+ * hallucinating at all (so a normal frame does no extra work and consumes no
+ * randomness).
+ *
+ * MEMOISED PER FRAME, by grid. Upstream resolves each panel grid exactly once
+ * per refresh; this renderer resolves the player's grid twice (as a cell and as
+ * the player) and the overview resolves every grid twice more for its priority
+ * pass. Without the memo those extra visits would each roll again, so the
+ * player's own square could show a monster in one pass and an '@' in the other
+ * - a flicker with no upstream counterpart.
+ */
+function hallucinationResolver():
+  | ((grid: { x: number; y: number }, present: HallucinationPresence) => HallucinatedCell | null)
+  | undefined {
+  if ((state.actor.player.timed[TMD.IMAGE] ?? 0) <= 0) return undefined;
+  const frame = new Map<number, HallucinatedCell | null>();
+  return (grid, present) => {
+    const key = gridIndex(grid.x, grid.y);
+    const cached = frame.get(key);
+    if (cached !== undefined) return cached;
+    const verdict = hallucinateGrid(
+      {
+        image: true,
+        monster: present.monster,
+        object: present.object,
+        sensed: present.sensed,
+        /* g->f_idx is the KNOWN, mimic-resolved feature at L181; knownFeat is
+         * the port's read of exactly that square. */
+        permanentWall: knownFeat(state, loc(grid.x, grid.y)) === FEAT.PERM,
+      },
+      hallucinationRandom,
+    );
+    let cell: HallucinatedCell | null = null;
+    if (verdict.hallucinate) {
+      /* Upstream's object arm runs before its monster arm, so the two draws
+       * happen in that order on a grid that substitutes both. */
+      const object = verdict.objectGlyph ? fakeObjectCell(grid.x, grid.y) : null;
+      const monster = verdict.monsterGlyph ? fakeMonsterCell(grid.x, grid.y) : null;
+      cell = { ...(object ? { object } : {}), ...(monster ? { monster } : {}) };
+    }
+    frame.set(key, cell);
+    return cell;
+  };
+}
+
+/**
  * do_cmd_view_map's data ('M', ui-map.c display_map): the priority-resolved
  * whole-level miniature, scaled to fit the current terminal (minus the
  * 1-cell box border on each side). Reuses exactly the map-knowledge helpers
  * render() itself reads (knownFeat/knownObject/features/monsterIndex/
  * trapIndex) - buildOverview (mapview.ts) only does the scan/scale/priority
- * arithmetic; no parallel glyph pipeline is built here. A pure read: no RNG,
- * no state mutation.
+ * arithmetic; no parallel glyph pipeline is built here. No state mutation, and
+ * no GAME RNG: while the player is hallucinating this does draw, but from the
+ * display-only stream (see hallucinationRng), never from state.rng.
  */
 function buildOverviewForShell(): Overview {
   const { cols, rows } = term.size();
@@ -6814,6 +6940,12 @@ function buildOverviewForShell(): Overview {
   const mapH = Math.min(rows - 2, state.chunk.height);
   const monsterAt = monsterIndex();
   const trapAt = trapIndex();
+  /* Its own resolver, not the live map's: display_map is a separate refresh,
+   * and upstream rolls afresh in each one. */
+  const hallucinate = hallucinationResolver();
+  const playerCell = hallucinate?.({ ...state.actor.grid }, {
+    object: false, sensed: false, monster: false,
+  })?.monster;
   return buildOverview({
     width: state.chunk.width,
     height: state.chunk.height,
@@ -6870,8 +7002,28 @@ function buildOverviewForShell(): Overview {
     /* The SAME cell the live map draws the player with. display_map has no
      * player special case - map_info reports the player's grid like any other
      * (ui-map.c:184) - so a hard-coded white '@' here was the one cell on the
-     * miniature guaranteed to disagree with the map it summarises. */
-    playerGlyph: playerMapGlyph(),
+     * miniature guaranteed to disagree with the map it summarises. That extends
+     * to hallucination: display_map re-resolves the player's grid through
+     * map_info at L864, so the phantom-monster arm reaches the miniature too. */
+    playerGlyph: playerCell
+      ? { ch: playerCell.ch, css: playerCell.css, ...(playerCell.tile ? { tile: playerCell.tile } : {}) }
+      : playerMapGlyph(),
+    ...(hallucinate
+      ? {
+          hallucinateAt: (x, y, present) => {
+            const cell = hallucinate({ x, y }, present);
+            if (!cell) return null;
+            const flat = (g: ResolvedGlyph): OverviewGlyph => ({
+              ch: g.ch, css: g.css, ...(g.tile ? { tile: g.tile } : {}),
+            });
+            return {
+              ...(cell.object ? { object: flat(cell.object) } : {}),
+              ...(cell.monster ? { monster: flat(cell.monster) } : {}),
+            };
+          },
+          sensedObjectAt: (x, y) => knownObjectShown(x, y)?.seen === false,
+        }
+      : {}),
   });
 }
 
@@ -7135,6 +7287,9 @@ function render(targeting?: TargetingOverlay): void {
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
   const trapAt = trapIndex();
+  /* One resolver per frame, so a grid visited twice answers the same both
+   * times and rolls only once (see hallucinationResolver). */
+  const hallucinate = hallucinationResolver();
 
   // draw_path (ui-target.c): the projection path's per-grid colour, only in
   // TARGET_KILL mode. Folded into the same per-cell pass below rather than a
@@ -7189,6 +7344,8 @@ function render(targeting?: TargetingOverlay): void {
     },
     rememberedObjectAt: ({ x, y }) => knownObjectShown(x, y) ?? undefined,
     rememberedObjectGlyph: (memory, { x, y }) => rememberedObjectCell(memory, x, y),
+    rememberedObjectSensed: (memory) => !memory.seen,
+    ...(hallucinate ? { hallucinate } : {}),
     terrainAt: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
     traps: trapAt,
     objects: objectAt,

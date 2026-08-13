@@ -11,10 +11,11 @@
  * player branch, which takes its colour from the x_attr table's race-0 slot.
  * Everything here is pure, so both are directly testable.
  *
- * What upstream does that the port's layered loop still cannot express is
- * recorded in parity/CENSUS_PUNCHLIST.md (block O: map_info has no port, so
- * hallucination glyphs, the multi-object pile kind and the unknown-item/gold
- * kinds are absent) - it is measured there rather than excused here.
+ * The rest of map_info now has a home even without a single map_info function.
+ * The multi-object pile kind and the unknown-item/gold kinds resolve in the
+ * web shell's object arms (main.ts rememberedObjectCell), and the two
+ * hallucination substitutions live in hallucination.ts, injected into the same
+ * layered loop. What is left here is only what reads the glyph underneath.
  *
  * Determinism: no RNG. ATTR_RAND's per-monster colour is rolled once at birth
  * (mon-make.c place_new_monster_one), and the flicker/multi frame colour is the

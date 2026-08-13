@@ -454,3 +454,60 @@ describe("buildOverview wired to a real GameState (knownFeat/knownObject)", () =
     expect(state.rng.randint0(1_000_000)).toBe(expectedNext);
   });
 });
+
+/**
+ * display_map resolves every grid through grid_data_as_text (ui-map.c L825,
+ * L837), so the level miniature hallucinates exactly as the live panel does.
+ * That is the whole reason `hallucinateAt` exists on BuildOverviewParams: the
+ * effect was reaching the map and stopping at 'M'.
+ */
+describe("buildOverview hallucination (map_info L179-188 via display_map)", () => {
+  const base = (extra: Partial<Parameters<typeof buildOverview>[0]> = {}) =>
+    buildOverview({
+      width: 4,
+      height: 4,
+      mapW: 4,
+      mapH: 4,
+      knownFeatAt: () => 7,
+      featureGlyph: () => ({ ch: ".", css: "#333", priority: 5 }),
+      playerGrid: { x: 0, y: 0 },
+      ...extra,
+    });
+
+  it("wins the priority contest on an otherwise-empty grid", () => {
+    /* Terrain here is priority 5. An invented monster has to reach priority 20
+     * like a real one, or the scaled cell keeps the floor and the phantom is
+     * invisible on any map that scales down. */
+    const overview = base({
+      hallucinateAt: (x, y) => (x === 2 && y === 1 ? { monster: { ch: "W", css: "#f0f" } } : null),
+    });
+    expect(overview.cells[1]![2]).toEqual({ ch: "W", css: "#f0f" });
+    expect(overview.cells[0]![0]).toEqual({ ch: ".", css: "#333" });
+  });
+
+  it("suppresses the trap on a hallucinating grid and keeps it otherwise", () => {
+    const trapAt = () => ({ ch: "^", css: "#red" });
+    expect(base({ trapGlyphAt: trapAt }).cells[0]![0]).toEqual({ ch: "^", css: "#red" });
+    /* An empty object means "this grid hallucinates but invented nothing" -
+     * upstream's g->hallucinate stays true, which is what gates the trap. */
+    expect(base({ trapGlyphAt: trapAt, hallucinateAt: () => ({}) }).cells[0]![0])
+      .toEqual({ ch: ".", css: "#333" });
+  });
+
+  it("reports a sensed marker as `sensed`, not as an object", () => {
+    const asked: Array<{ object: boolean; sensed: boolean }> = [];
+    base({
+      objectGlyphAt: () => ({ ch: "*", css: "#8a8a94" }),
+      sensedObjectAt: () => true,
+      hallucinateAt: (_x, _y, p) => { asked.push({ object: p.object, sensed: p.sensed }); return null; },
+    });
+    expect(asked[0]).toEqual({ object: false, sensed: true });
+  });
+
+  it("draws exactly nothing extra when no resolver is supplied", () => {
+    /* The control: every caller but the live shell omits `hallucinateAt`, and
+     * for them this module stays the pure scan it has always been. */
+    const overview = base({ trapGlyphAt: () => ({ ch: "^", css: "#red" }) });
+    expect(overview.cells[0]![0]).toEqual({ ch: "^", css: "#red" });
+  });
+});
