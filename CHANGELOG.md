@@ -151,6 +151,52 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **No neo-linoleum pack ever drew a double-height tile, so every tall Shockbolt
+  monster was squashed into one cell** (#243, reported from a playtest as
+  "Guardian Naga is squat").
+
+  #241 taught both tile engines to draw a bottom-anchored double-height tile and
+  taught the frame diff to repaint the cell above it. What it did not fix was
+  who gets ASKED. The render call looked the answer up itself, in core's
+  graphics-mode catalog, keyed by the live mode id — and a tile pack
+  contributed by a mod claims an id of its own (neo-linoleum's Shockbolt packs
+  are 105 and 106), which that catalog has never heard of. The lookup returned
+  nothing and the test short-circuited to `false` for every tile in the game.
+
+  It was worse than a missing entry. A loose pack's tile code is a synthetic
+  SLOT number, not a tileset row, so the row-band test the tilesheet engine uses
+  is not merely unavailable on that engine — it is meaningless. The
+  authority was wrong, not absent.
+
+  **`TileBlitter.isTall` is the fix**: the engine answers, because only the
+  engine knows what a code means. The tilesheet tests its own mode's overdraw
+  band (`is_dh_tile`, `grafmode.c` L241) exactly as before; a loose pack reads
+  its own new **`maps/tall.txt`**, which the converter writes naming every asset
+  it cropped two cells tall. Per asset rather than per row, because a loose pack
+  addresses pictures by name and the source row does not survive conversion
+  — which also means a hand-authored pack can declare a tall tile with no
+  overdraw band and no source tilesheet at all.
+
+  Sniffing the loaded image's shape instead would have been wrong, not merely
+  unavailable: Nomad's cells are 8 wide by 16 high, so every ordinary asset in
+  that pack is exactly twice as tall as it is wide.
+
+  The population is now enumerated rather than asserted. Shockbolt is the only
+  source mode with an overdraw band, and it holds **247 tall monsters in both
+  packs, plus five shop entrances that are tall in the DARK pack only** —
+  Light maps them a row outside the band. `linoleum-equivalence.test.ts` runs the
+  real converter over all six shipped packs and requires both engines to call the
+  same entities double-height, with the counts pinned; removing the mechanism
+  fails it on exactly the two Shockbolt packs and nothing else. Shockbolt Light
+  was missing from that test's pack list until now, which is also why the one
+  pixel proof of #241 — it photographs those five shop entrances — was
+  a proof about the dark pack and about the tilesheet engine, and nothing more.
+
+  Reaching a player needs a neo-linoleum release: the truth lives in the pack
+  bytes and the six shipped packs predate the file. Until then a linoleum pack
+  behaves as it does today, which is exactly what an absent `maps/tall.txt`
+  means.
+
 - **A typed message never played its sound, so most of the sound pack was
   unreachable.** Upstream has two entry points: `msg()` logs and stops, `msgt()`
   logs *and* calls `sound(type)` (`message.c:405-445`). The port split that

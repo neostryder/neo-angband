@@ -13,10 +13,11 @@
  * readable text maps, addressed by name instead of by pixel coordinate:
  *
  *   manifest.txt          pack:<id>:<display>, format:png, resolution:<n>,
- *                         map:targets|families|pools:<relative path>
+ *                         map:targets|families|pools|tall:<relative path>
  *   maps/targets.txt      target:<type>:<selector>:asset|family|pool:<value>
  *   maps/pools.txt        pool:<id>:selection:stable|index, pool:<id>:member:<asset>
  *   maps/families.txt     family:<id>:asset:<asset> (+ effect metadata)
+ *   maps/tall.txt         tall:<asset>, the double-height (overdraw) assets
  *   images/<res>/<asset>.png
  *
  * The point of the format is authoring: a set can be edited one file at a time,
@@ -61,8 +62,14 @@
  * KNOWN LIMITS, all shared with the tilesheet engine so the two agree:
  * - `family` effect metadata (glow/tint/pulse) is parsed but not applied; a
  *   family draws its base asset, which is what the tilesheet shows.
- * - Double-height (overdraw) tiles are not drawn above their cell by either
- *   engine; the asset is scaled into the cell.
+ *
+ * Double-height tiles USED TO be on that list and are not any more, in two
+ * steps that are worth keeping apart. #241 taught both engines to draw one;
+ * #243 found this one was still never told it had any, because the flag was
+ * computed from the core graphics catalog and a pack contributed by a mod holds
+ * a grafID the catalog has never heard of. The answer now comes from the pack
+ * itself (maps/tall.txt, isTall below), which is the only authority that can
+ * speak for a pack the game does not ship.
  *
  * Nothing here can crash the game: every parse and fetch failure returns null
  * or degrades to ASCII, and a missing asset simply leaves that cell as its
@@ -93,8 +100,31 @@ export interface LinoleumManifest {
   format: string;
   /** Nominal tile resolution - also the images/<res>/ directory name. */
   resolution: number;
-  /** Pack-relative paths of the text maps, by kind (targets/pools/families). */
+  /** Pack-relative paths of the text maps, by kind (targets/pools/families/tall). */
   maps: ReadonlyMap<string, string>;
+}
+
+/**
+ * Parse maps/tall.txt: the assets whose image is two cells tall and
+ * bottom-anchored (`tall:<asset>` per line).
+ *
+ * A pack converted from a mode with no overdraw band writes no such file, and a
+ * hand-authored pack need not either - an absent map means no asset is tall,
+ * which is the right answer for both. Declared per ASSET rather than by tileset
+ * row because a loose pack has no rows: the picture is addressed by name, and
+ * the runtime's slot number is synthetic.
+ */
+export function parseTallFile(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const line of text.split(/\r\n|\n|\r/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+    const parts = trimmed.split(":");
+    if (parts.length < 2 || parts[0] !== "tall") continue;
+    const asset = parts.slice(1).join(":");
+    if (asset.length > 0) out.add(asset);
+  }
+  return out;
 }
 
 /** What one slot draws: a single asset, or a pool resolved per grid. */
@@ -123,6 +153,13 @@ export interface LinoleumIndex {
    * current character - the count is diagnostics, not a shortfall.
    */
   conditional: number;
+  /**
+   * The assets maps/tall.txt declared double-height. Empty for a pack converted
+   * from a mode with no overdraw band, and for every hand-authored pack that
+   * says nothing - both of which mean "no asset overdraws", so the empty set is
+   * the correct default rather than a missing answer.
+   */
+  tall: ReadonlySet<string>;
 }
 
 /**
@@ -292,12 +329,13 @@ export function buildLinoleumIndex(input: {
   rules: readonly TargetRule[];
   pools?: readonly PoolDefinition[] | undefined;
   families?: ReadonlyMap<string, string> | undefined;
+  tall?: ReadonlySet<string> | undefined;
   deps: TilePrefsDeps;
 }): LinoleumIndex {
   const { lines, slots, skipped, conditional } = linoleumPrefLines(input);
   const map = new TileMap();
   parseTilePrefsInto(map, lines.join("\n"), input.deps);
-  return { map, slots, skipped, conditional };
+  return { map, slots, skipped, conditional, tall: input.tall ?? new Set() };
 }
 
 /** One cached asset image and its load state. */
@@ -365,6 +403,25 @@ export class LinoleumPack implements TileBlitter {
     if (!entry) return null;
     if (entry.kind === "asset") return entry.asset;
     return selectPoolMember(entry.pool, { x: grid?.x ?? 0, y: grid?.y ?? 0 });
+  }
+
+  /**
+   * Does the asset this slot draws overdraw the cell above (TileBlitter.isTall)?
+   *
+   * Answered from the pack's OWN declaration, per asset, because a loose pack's
+   * code is a synthetic slot with no tileset row in it - the mode-band test the
+   * tilesheet engine uses has nothing to read here. It is also per asset rather
+   * than per slot so a POOL of mixed heights answers correctly, which is why
+   * `grid` is taken: the member depends on the cell.
+   *
+   * Sniffing the loaded image's aspect instead was considered and is WRONG, not
+   * merely unavailable: Nomad's cells are 8 wide by 16 high (list.txt), so every
+   * normal asset in that pack is exactly twice as tall as it is wide.
+   */
+  isTall(code: TileCode, grid?: { x: number; y: number }): boolean {
+    if (this.index.tall.size === 0) return false;
+    const asset = this.assetFor(atlasToSlot(code), grid);
+    return asset !== null && this.index.tall.has(asset);
   }
 
   /**
@@ -541,7 +598,15 @@ export async function loadLinoleumPack(input: {
     familiesPath === undefined ? null : await readPackText(input.resolve, familiesPath);
   const families = familiesText === null ? new Map<string, string>() : parseFamiliesFile(familiesText);
 
-  const index = buildLinoleumIndex({ rules, pools, families, deps: input.deps });
+  /* Absent in every pack converted before 2026-08-13 and in every pack whose
+   * source mode has no overdraw band, so a missing file is ordinary rather than
+   * a failure: the set is empty and nothing overdraws. */
+  const tallPath = manifest.maps.get("tall");
+  const tallText =
+    tallPath === undefined ? null : await readPackText(input.resolve, tallPath);
+  const tall = tallText === null ? new Set<string>() : parseTallFile(tallText);
+
+  const index = buildLinoleumIndex({ rules, pools, families, tall, deps: input.deps });
   if (index.slots.length === 0) return null;
   return new LinoleumPack({
     menuname: input.menuname,

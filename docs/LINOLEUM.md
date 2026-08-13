@@ -79,8 +79,15 @@ difference. Packs you convert yourself are yours.
 
 Known limits, shared by BOTH engines so they agree: conditional (`?:` /
 `:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is
-parsed but not applied, so a family draws its base asset; double-height
-(overdraw) tiles are not drawn above their cell.
+parsed but not applied, so a family draws its base asset.
+
+Double-height (overdraw) tiles used to be on that list. They are drawn over the
+cell above now, by both engines - but the two learn about them differently, and
+that difference is the whole of #243. A tilesheet reads the graphics mode's
+overdraw band, which is core data. A loose pack has no rows to test and no mode
+in the core catalog to read a band from: its grafID is its own. So the pack says
+so itself, in `maps/tall.txt`, and until it did, every Shockbolt monster in a
+neo-linoleum pack was squashed into one cell.
 
 Everything below describes the pack format itself.
 
@@ -95,6 +102,8 @@ A converted pack directory looks like this:
     targets.txt             selector -> asset/family/pool mappings
     families.txt            family effect metadata (only when authored)
     pools.txt               variant-pool definitions (only when authored)
+    tall.txt                double-height assets (only when the source mode
+                            has an overdraw band)
   images/<resolution>/      one PNG per asset, deterministic names
   graf-*.prf, xtra-*.prf,   the original legacy pref files, mirrored so the
   flvr-*.prf                mode keeps loading local legacy mapping truth
@@ -109,10 +118,26 @@ resolution:8
 map:targets:maps/targets.txt
 map:families:maps/families.txt
 map:pools:maps/pools.txt
+map:tall:maps/tall.txt
 ```
 
 `map:families:` and `map:pools:` lines are present only when the pack actually
-authors that kind of metadata; a legacy-only export omits both.
+authors that kind of metadata; a legacy-only export omits both. `map:tall:` is
+present only when the source mode declares an overdraw band - of the six the
+game ships, that is Shockbolt Dark and Shockbolt Light and nothing else.
+
+`maps/tall.txt` is one `tall:<asset>` line per double-height asset:
+
+```
+tall:monster_guardian_naga_0
+tall:monster_spirit_naga_0
+```
+
+Such an asset's PNG is two cells tall and BOTTOM-ANCHORED: it is drawn over the
+cell above the one it occupies. A pack that declares none - which is every pack
+that says nothing - has no tiles that overdraw, and a runtime treats an absent
+file as exactly that. Authoring by hand, you may declare any asset tall; nothing
+requires an overdraw band or even a source tilesheet.
 
 ## Target map and selector syntax
 
@@ -228,7 +253,8 @@ The converter:
 
 - parses each pack's `graf`/`xtra`/`flvr` pref files into selectors;
 - extracts one PNG per selector from the source tilesheet (Shockbolt's
-  overdraw rows 27-31 become bottom-anchored double-height 64x128 assets);
+  overdraw rows 27-31 become bottom-anchored double-height 64x128 assets, and
+  each is named in `maps/tall.txt`);
 - skips and counts selectors that point outside the sheet;
 - mirrors the pref files into the pack;
 - writes `manifest.txt`, `maps/targets.txt`, and `maps/families.txt`;
