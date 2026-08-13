@@ -112,6 +112,35 @@ digest in the game's catalogue and must never be moved.
 
 ### Changed
 
+- **Choosing a slower update channel no longer rolls the engine backwards**
+  (#250, asked as "wouldn't moving to an earlier build potentially wreck a
+  save?").
+
+  It could, and that is why this changed. `decideUpdate` had one deliberate
+  exception to its refuse-all-downgrades rule: an edge build was offered the
+  chosen channel's newest release the moment somebody moved from `early` to
+  `beta` or `stable`, on the reasoning that the channel they picked would
+  otherwise report "nothing to install" forever. The reasoning was sound; the
+  consequence was not. A character is written by the engine that made it,
+  `SAVE_VERSION` only ever goes up, and migration runs forwards — so accepting
+  that offer handed a save to an engine older than the format it was stored in,
+  and the failure would not present as a refusal but as a corrupted character.
+
+  The rule is now the one Windows Insider uses: **the channel decides where the
+  game looks, not what it runs.** You keep the build you have until the channel
+  you chose publishes something genuinely newer, and then you take it like any
+  other update — no special case, just the version comparison. `AvailableUpdate`
+  loses `older`, `UpdateView` loses `older`, and the "Moving back to 0.16.0" /
+  "move back and restart" screen and footer are gone with them.
+
+  The wait is explained rather than left blank, because silence here is
+  indistinguishable from a broken check: the up-to-date screen now has two ways
+  of saying "nothing to install", and the new one names the channel you are
+  ahead of, says you will be offered its next build once it overtakes you, and
+  says why the game will not put you back. `aheadOfChannel` is the predicate,
+  and it is the same test `decideUpdate` retired — kept as a reason to explain
+  standing still rather than a reason to move.
+
 - **The customised-options reader is 4.2.6's again.** `options_restore_custom`
   hand-rolls its own read loop, and 4.2.6 says why in a comment of its own: "Could
   use `run_parser()`, but that exits the application if there are syntax errors"

@@ -276,23 +276,39 @@ describe("channels", () => {
     expect(defaultChannel("2.3.4")).toBe("stable");
   });
 
-  it("lets someone leave early, even though that means going backwards", () => {
-    /* The one case where a lower version is offered: an edge build cannot be
-     * reached from stable or beta, so refusing would leave the channel the
-     * player just picked reporting "nothing to install" forever. */
-    const got = decideUpdate("1.1.1-edge.4", all, WIN, "beta");
+  it("leaves someone who dropped off early on the build they already have", () => {
+    /*
+     * THE REVERSAL (#250). This used to assert the opposite - that 1.1.0 WAS
+     * offered to someone running 1.1.1-edge.4 who had just chosen `beta`, so
+     * the channel they picked would have something in it. One question retired
+     * it - would that wreck a save? It would: a save is written by the engine
+     * that made it and
+     * SAVE_VERSION only ever goes up, so accepting that offer hands a character
+     * to an engine that predates the format it is stored in. Migration runs
+     * forwards only; there is no route back and the failure presents as a
+     * corrupted character rather than as a refusal.
+     *
+     * The Windows Insider rule replaces it: the channel decides where the game
+     * LOOKS, not what it runs. Nothing is offered until `beta` publishes
+     * something genuinely newer, and update-ui.ts says so on the screen so the
+     * wait is not mistaken for a broken check.
+     */
+    expect(decideUpdate("1.1.1-edge.4", all, WIN, "beta")).toBeNull();
+    expect(decideUpdate("1.1.1-edge.4", all, WIN, "stable")).toBeNull();
+  });
+
+  it("takes the same build the moment that channel really is ahead", () => {
+    /* The other half, and the reason this is a WAIT rather than a dead end:
+     * `all` holds 1.1.0 on beta, so an edge build from before it is offered it
+     * like any other upgrade - no special case, just the version comparison. */
+    const got = decideUpdate("1.0.1-edge.7", all, WIN, "beta");
     expect(got?.version).toBe("1.1.0");
-    expect(got?.older).toBe(true);
   });
 
   it("still refuses a plain downgrade, which is the older and separate rule", () => {
     expect(decideUpdate("2.0.0", all, WIN, "beta")).toBeNull();
     /* ...and staying ON early does not go backwards either. */
     expect(decideUpdate("1.1.1-edge.9", all, WIN, "early")).toBeNull();
-  });
-
-  it("marks a genuine upgrade as not-older, since only that may shimmer", () => {
-    expect(decideUpdate("0.9.0", all, WIN, "early")?.older).toBe(false);
   });
 
   it("remembers a choice and ignores a corrupted one", () => {

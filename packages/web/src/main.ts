@@ -9134,15 +9134,13 @@ async function maybeTitle(): Promise<TitleChoice | null> {
            * because there is no channel to choose there. */
           canUpdate:
             desktopBridge === null ? update !== null : updateHow !== "none",
-          updateReady: update !== null && !update.older,
+          updateReady: update !== null,
         },
         {
           randint1: titleRandint1,
           /* The answer that did not make it in time. The row is already drawn
            * and in its final place, so this only ever lights it up. */
-          updateReadyLater: updateProbe.then(
-            (c) => c.ok && c.update !== null && !c.update.older,
-          ),
+          updateReadyLater: updateProbe.then((c) => c.ok && c.update !== null),
         },
       ),
     );
@@ -9258,7 +9256,7 @@ async function updateOffer(): Promise<UpdateCheck> {
      * so the screen says "a newer version" rather than inventing one. */
     return {
       ok: true,
-      update: { version: "a newer version", tag: "", url: "", asset: null, older: false },
+      update: { version: "a newer version", tag: "", url: "", asset: null },
     };
   }
   return updateProbe;
@@ -9472,7 +9470,6 @@ async function showUpdatePage(): Promise<void> {
       version: o?.version ?? ENGINE_VERSION,
       channel: updateChannel,
       buildId: WEB_BUILD_ID,
-      older: o?.older ?? false,
       installRoot: updateRoot,
       assetName: o?.asset?.name,
       /* THREE OUTCOMES, THREE PHASES, decided in update-ui.ts where a test can

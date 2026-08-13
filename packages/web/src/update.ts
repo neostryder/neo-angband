@@ -85,14 +85,6 @@ export interface AvailableUpdate {
   readonly url: string;
   /** The archive for THIS machine, or null if this release has none. */
   readonly asset: ReleaseAsset | null;
-  /**
-   * True when this channel's newest build is BEHIND what is installed, which
-   * happens after moving from a faster channel to a slower one. It is still
-   * offered, because the alternative is a player who picked `stable` sitting on
-   * an `early` build forever while the game says there is nothing to do - but
-   * it must never shimmer, and the screen has to call it what it is.
-   */
-  readonly older: boolean;
 }
 
 /**
@@ -336,25 +328,29 @@ export function decideUpdate(
   const newest = newestRelease(releasesIn(channel, releases));
   if (!newest) return null;
   const cmp = compareSemver(newest.version, current);
-  if (cmp === null || cmp === 0) return null;
-  if (cmp < 0) {
-    /*
-     * Going BACKWARDS, which is refused by default and always has been: a
-     * development build running against the released feed must not be offered
-     * the last release as though it were an upgrade.
-     *
-     * Channels add exactly one case that rule did not contemplate. Someone on
-     * `early` is deliberately ahead of every published release, so moving them
-     * to `stable` or `beta` can only ever be a step back - and refusing it would
-     * mean the channel they just chose reports "nothing to install" forever
-     * while the game stays on a build that channel does not contain. Narrowed
-     * to that: the installed build must be an edge build, and the chosen channel
-     * must be one that excludes edge builds. A plain 0.18.0 dev version is still
-     * never offered 0.17.0.
-     */
-    const leavingEarly = current.includes(EDGE_MARKER) && channel !== "early";
-    if (!leavingEarly) return null;
-  }
+  /*
+   * NOTHING GOES BACKWARDS, EVER. Not a development build against the released
+   * feed, and - since 0.19.1 - not a player moving from `early` to a slower
+   * channel either.
+   *
+   * That second case used to be an exception: an edge build was offered the
+   * slower channel's newest release the moment it was chosen, on the reasoning
+   * that the channel they picked would otherwise report "nothing to install"
+   * forever. The reasoning was sound and the consequence was not. A save is
+   * written by the engine that made it and read by the engine that opens it,
+   * and a SAVE_VERSION only ever goes up - so an accepted "move back" hands the
+   * player's characters to an engine that predates the format they are stored
+   * in. Migration runs forwards. There is no path back, and the failure does
+   * not look like a refusal; it looks like a corrupted character.
+   *
+   * The rule now is the one Windows Insider uses, and that is the name the
+   * report which retired this arrived under: choosing
+   * a slower channel changes where the game LOOKS, not what it runs. You keep
+   * the build you have until that channel publishes something genuinely newer,
+   * and then you take it like any other update. `updateLines` says exactly this
+   * on the up-to-date screen so the wait is never mistaken for a broken check.
+   */
+  if (cmp === null || cmp <= 0) return null;
   const asset = pickAsset(newest.assets, machine);
   if (!asset) return null;
   return {
@@ -362,7 +358,6 @@ export function decideUpdate(
     tag: newest.tag,
     url: newest.url,
     asset,
-    older: cmp < 0,
   };
 }
 

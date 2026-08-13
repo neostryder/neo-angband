@@ -9,7 +9,7 @@
  * so the text is the part worth asserting.
  */
 
-import type { UpdateChannel, UpdateCheck } from "./update";
+import { EDGE_MARKER, type UpdateChannel, type UpdateCheck } from "./update";
 
 /** Tones, resolved to this shell's palette by the caller. */
 import { upgradeNotice, type ModUpgrade } from "./mod-refresh";
@@ -28,6 +28,21 @@ export const CHANNEL_BLURB: Record<UpdateChannel, string> = {
   beta: "pre-releases too - where every 0.x version lives",
   early: "every commit, minutes after it lands - expect breakage",
 };
+
+/**
+ * Is the installed build one this channel could not have published?
+ *
+ * The same test `decideUpdate` retired as a reason to go BACKWARDS, kept here
+ * as a reason to EXPLAIN standing still. Only edge builds can be ahead of a
+ * channel: every other version is reachable from every channel that is a
+ * superset of it, so a plain 0.19.0 on `stable` is simply up to date.
+ */
+export function aheadOfChannel(v: {
+  readonly current: string;
+  readonly channel: UpdateChannel;
+}): boolean {
+  return v.current.includes(EDGE_MARKER) && v.channel !== "early";
+}
 
 export interface UpdateLine {
   readonly text: string;
@@ -85,12 +100,6 @@ export interface UpdateView {
   readonly version: string;
   /** Which channel produced `version`, and the one the player can change. */
   readonly channel: UpdateChannel;
-  /**
-   * The offered build is BEHIND the installed one - only reachable by moving
-   * from `early` to a slower channel. The screen must say so: an unlabelled
-   * "0.16.0 is available" to someone running 0.16.1-edge.9 reads as a bug.
-   */
-  readonly older?: boolean | undefined;
   /**
    * The build this page was compiled from, for the web, where there is no
    * version to quote: every deploy of a release carries the same version
@@ -252,7 +261,27 @@ export function updateLines(v: UpdateView): UpdateLine[] {
   if (v.phase === "uptodate") {
     say(`Neo Angband ${v.current}`, "head");
     say("");
-    say("This is the newest build on your channel.", "good");
+    if (aheadOfChannel(v)) {
+      /* The Windows Insider case, and the ONLY reason this screen has two
+       * ways of saying "nothing to install". Somebody who moved off `early`
+       * is running a build their channel does not contain and will not
+       * contain until it catches up, so "this is the newest build on your
+       * channel" would be false - the channel's newest is older than what
+       * they have. Saying nothing would be worse: a player who just chose
+       * `stable` and then sees no updates for a fortnight concludes the
+       * check is broken. */
+      say("Nothing newer on your channel yet.", "good");
+      say("");
+      say(`You are running ${v.current}, which is ahead of ${v.channel}. You keep`, "body");
+      say(`it until ${v.channel} publishes something newer, and then that arrives`, "body");
+      say("like any other update.", "body");
+      say("");
+      say("The game will not move you back to an older build. A character is", "dim");
+      say("saved by the version that made it, and older engines cannot always", "dim");
+      say("read it.", "dim");
+    } else {
+      say("This is the newest build on your channel.", "good");
+    }
     say("");
     say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
     say("");
@@ -298,12 +327,6 @@ export function updateLines(v: UpdateView): UpdateLine[] {
      */
     say("A newer version of the game is ready.", "head");
     say(`This page is running build ${v.buildId ?? "unknown"}.`, "dim");
-  } else if (v.older) {
-    /* Leaving `early`. Calling this an update would be false, and saying
-     * nothing at all would leave the player wondering why the channel they just
-     * chose has no build in it. */
-    say(`Moving back to ${v.version}.`, "head");
-    say(`You are running ${v.current}, which is newer.`, "dim");
   } else {
     say(`Neo Angband ${v.version} is available.`, "head");
     say(`You are running ${v.current}.`, "dim");
@@ -397,7 +420,7 @@ export function updateFooter(v: UpdateView, cols = 80): string {
     else if (v.phase === "uptodate") {
       /* Nothing to install, so there is no ENTER to describe. */
     } else if (v.how === "swap") {
-      out.push(`ENTER to ${v.older ? "move back and restart" : "update and restart"}`);
+      out.push("ENTER to update and restart");
     } else if (v.how === "web") out.push("ENTER to reload onto the new version");
     else if (v.how === "manual") out.push("ENTER to open the releases page");
 
