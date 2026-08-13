@@ -86,7 +86,15 @@ describe("screenRegions", () => {
   it("never gives one cell to two regions, in any layout", () => {
     /* The invariant that makes "draw in your region" mean anything: if two
      * regions could claim the same cell, a front end honouring its own would
-     * still be drawing over somebody else's. */
+     * still be drawing over somebody else's.
+     *
+     * Scope, so this is not read as a promise it is not: it is about the BASE
+     * LAYOUT — the four regions that tile the terminal. It is deliberately NOT
+     * a global invariant on regions, and gap 21 is decided in the direction
+     * that breaks it: a full screen becomes composed of regions rather than
+     * covering them, so a floating window will sit over a map that is still
+     * being drawn. When overlapping regions arrive they arrive with a stacking
+     * order, and this test keeps its meaning by keeping its subject. */
     for (const layout of [LEFT, TOP, NONE]) {
       expect(overlaps(screenRegions(layout), layout)).toEqual([]);
     }

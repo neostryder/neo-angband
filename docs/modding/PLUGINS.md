@@ -375,6 +375,15 @@ Three things worth knowing:
 - **The map is one column narrower than the screen.** That is upstream's own
   rule (`SCREEN_WID` reserves the rightmost column), not a rounding error.
 
+**Two properties the four regions have today that will not hold forever.** They
+tile the screen without overlapping, and the set is closed. Neither is a promise:
+the UI seam (`MOD_REACH.md` gap 21) is decided to make a full screen **composed
+of** regions rather than covering them, which means regions will overlap, gain a
+stacking order, and be creatable by a mod — a floating window over a map that is
+still being drawn is the whole point of it. Nothing in the code above changes
+when that lands; code that *infers* disjointness does. Read `regions.map` and
+draw in it; do not compute your rectangle by subtracting the others.
+
 **Covering the window costs the player everything else on it.** Before regions
 existed, running the sample in the installed build made this plain:
 `display:replace` really does replace the map only — core stops drawing the

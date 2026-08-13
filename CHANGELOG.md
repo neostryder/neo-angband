@@ -20,6 +20,22 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The modding docs say which surfaces are finished, which are in progress, and
+  which have no seam at all.**
+
+  `docs/modding/README.md` opens with a status index: one row per thing an author
+  might want to do, marked **Complete**, **WIP** or **Not yet**, each pointing at
+  the row in `MOD_REACH.md` where it is measured. That directory has always held
+  both built-today pages and design-of-record pages, and nothing on the way in
+  told an author which was which — so "the design says X" and "X works" read the
+  same.
+
+  A summary table of statuses is the most rot-prone thing a docs directory can
+  contain, because it is read first and edited last. This one is held to the
+  measurement by `modding-status.test.ts`, which parses both files and fails if a
+  status here stops matching the gap list there — in both directions, including
+  the one that catches a NEW gap being opened without the index mentioning it.
+
 - **A replacement front end is told where the map is, so it stops covering the
   rest of the game** (#234, MOD_REACH gap 9).
 
