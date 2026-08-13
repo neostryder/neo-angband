@@ -297,11 +297,13 @@ export default {
 };
 ```
 
-A complete worked example lives in **`samples/frontend-blueprint/`** — a folder
-you can copy straight into a mods folder. It draws a blueprint of the dungeon
-from the frame's semantic layers, and `packages/web/src/sample-blueprint.node.test.ts`
+A complete worked example lives in **`samples/blueprint-view/`** — a folder you
+can copy straight into a mods folder. It draws a blueprint of the dungeon from
+the frame's semantic layers, and `packages/web/src/sample-blueprint.node.test.ts`
 loads that folder by path and records what it draws, so the sample is checked
-code rather than an illustration.
+code rather than an illustration. It has also been run in the installed desktop
+build, which is where the limitation in the next paragraph stopped being
+theoretical.
 
 The manifest must request **`display:replace`**, and the player must approve it:
 
@@ -343,6 +345,16 @@ would have to guess the rectangle. The seam's own cases — isometric, 3D — ta
 the window, which is what the sample does. Anything that wants to sit inside the
 terminal's map area needs viewport geometry the seam does not yet publish; see
 `MOD_REACH.md` gap 9.
+
+**Taking the window costs the player everything else on it**, which running the
+sample in the installed build made plain. `display:replace` really does replace
+the map only: core stops drawing the dungeon and goes on drawing the sidebar,
+the message line and every menu. But a front end that covers the window paints
+over all of it, so with one enabled you cannot read your hit points, see a
+message, or open the Mods screen to turn it off — you would have to edit the
+enabled set by hand. **Until gap 9's second half lands, a `display:replace` mod
+is a demonstration rather than something to play**, and a mod that ships one
+should say so where its players will read it.
 
 ## Capabilities
 
