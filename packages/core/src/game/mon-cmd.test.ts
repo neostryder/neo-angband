@@ -10,6 +10,8 @@ import type { GameObject } from "../obj/object.js";
 import { monsterCarry } from "../mon/make.js";
 import { floorPile } from "./floor.js";
 import { distance, loc, locEq } from "../loc.js";
+import { messageSound } from "../msg.js";
+import type { MessageType } from "../msg.js";
 import { Rng } from "../rng.js";
 import { RSF_SIZE } from "../mon/types.js";
 import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
@@ -385,8 +387,13 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
 
     const typed: Array<{ text: string; type?: string | number }> = [];
     const sounds: number[] = [];
-    state.msg = (text, type) => {
+    /* The host's sink IS msgt (#239): carrying the type is what asks for the
+     * sound, and core's `messageSound` is that rule - run it rather than
+     * restating it, so this stays a test of the blow site and not of a copy. */
+    state.msg = (text, type?: MessageType) => {
       typed.push(type === undefined ? { text } : { text, type });
+      const cue = messageSound(type);
+      if (cue !== null) state.sound?.(cue);
     };
     state.sound = (t) => {
       sounds.push(t);

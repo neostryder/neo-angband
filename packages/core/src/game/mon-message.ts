@@ -476,7 +476,6 @@ function showMessage(state: GameState, msg: MonRaceMessage): void {
     }
   }
   state.msg?.(line, msgType);
-  state.sound?.(msgType);
 }
 
 /**

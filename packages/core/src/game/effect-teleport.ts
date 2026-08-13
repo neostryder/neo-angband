@@ -601,16 +601,14 @@ export function teleportPlayerLevel(
   }
 
   if (up) {
-    /* msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:2909): the type is the
-     * message's, the sound is msgt's other half. */
+    /* msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:2909): the typed sink is
+     * msgt, so it carries the sound. */
     say("You rise up through the ceiling.", "TPLEVEL");
-    state.sound?.(MSG.TPLEVEL);
     targetDepth = getNext(depth, -1);
     tp.changeLevel?.(targetDepth);
   } else if (down) {
     /* msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:2915). */
     say("You sink through the floor.", "TPLEVEL");
-    state.sound?.(MSG.TPLEVEL);
     targetDepth = forceDescend
       ? getNext(maxPlayerDepth, 1)
       : getNext(depth, 1);

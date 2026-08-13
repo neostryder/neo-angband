@@ -84,7 +84,6 @@ export function makeTakeHitHooks(
         state.pendingDeath = undefined;
         if (die) {
           state.msg?.("You die.", "DEATH");
-          state.sound?.(MSG.DEATH);
           state.isDead = true;
           recordDeath(killer);
           return;
@@ -112,16 +111,10 @@ export function makeTakeHitHooks(
   return {
     /* The bloodlust death-save flavour roll (player-util.c L232). */
     rng: state.rng,
-    onMessage: (text: string, msgt?: string): void => {
-      state.msg?.(text, msgt);
-      /* msgt() also plays the message-type sound (death, low-hp warning). Sound
-       * is a pure UI sink - it draws no RNG - so this restores the audible cue
-       * without perturbing the deterministic stream. */
-      if (msgt !== undefined) {
-        const code = (MSG as Record<string, number>)[msgt];
-        if (code !== undefined) state.sound?.(code);
-      }
-    },
+    /* msgt() also plays the message-type sound (death, low-hp warning), and the
+     * typed sink is where that happens now - this used to spell the second half
+     * out here, one of thirteen sites doing so (#239). */
+    onMessage: (text: string, msgt?: string): void => state.msg?.(text, msgt),
     onDisturb: (): void => disturb(state),
     /* bell() on the first low-hitpoint notice (player-util.c L270). */
     bell: (): void => state.sound?.(MSG.BELL),

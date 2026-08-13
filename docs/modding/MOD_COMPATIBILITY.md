@@ -130,6 +130,18 @@ cap. A plugin calling it for its own diagnostics gets a type error at build and
 a different array at runtime. Recorded here rather than aliased: there is no
 honest alias for "the same call now answers a different question."
 
+`msgt(sinks, type, text)` likewise **keeps its name and signature but no longer
+touches `sinks.sound`** (#239, unreleased 2026-08-13). It used to call both
+halves by hand; the host's `msg` sink is now `msgt` itself, so calling both
+would play the sound twice. Nothing breaks at build time and the common case is
+unchanged - a plugin that calls `msgt(ctx.state, "HUNGRY", "...")` still gets
+message *and* sound, because the state's sink supplies it. What changed is a
+plugin that binds its **own** non-sounding `msg` into a `MessageSinks` and
+relied on `msgt` to reach `sound` separately: that now goes quiet, and the fix
+is to make its sink typed-aware with the exported `messageSound(type)`, the same
+one-line rule `web/src/main.ts` uses. Not aliasable: two functions differing only
+in whether they double-fire is worse than one rule.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed

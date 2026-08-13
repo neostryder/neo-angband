@@ -24,7 +24,7 @@
  * attack projections are rare and resolve to a bare source.
  */
 
-import { EF, MSG, PROJ, TMD } from "../generated/index.js";
+import { EF, PROJ, TMD } from "../generated/index.js";
 import type { Loc } from "../loc.js";
 import { monsterIsPowerful } from "../mon/predicate.js";
 import { MDESC_DIED_FROM, monsterDesc } from "../mon/desc.js";
@@ -239,7 +239,6 @@ const handleBREATH: EffectHandler = (ctx) => {
     const proj = env.cast.projections[ctx.subtype];
     if (proj) {
       ctx.env.messages?.msg(`You breathe ${proj.desc}.`, proj.msgt ?? undefined);
-      if (proj.msgt) env.state.sound?.((MSG as Record<string, number>)[proj.msgt] ?? 0);
     }
   }
 

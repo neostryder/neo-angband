@@ -52,6 +52,26 @@ digest in the game's catalogue and must never be moved.
   therefore photographs the one subject in the game that cannot show the
   difference, which is exactly what the first run of this tool did.
 
+- **`tools/sound-probe.mjs`**, a third CDP driver, for the claims a screenshot
+  cannot settle: it patches `HTMLMediaElement.play` through
+  `Page.addScriptToEvaluateOnNewDocument` — before the bundle's first module
+  evaluates — and reports every sample the game asked for, with the filename and
+  whether the browser rejected the promise. That last part matters: Chromium's
+  autoplay policy can refuse a `play()` the game correctly made, and "the engine
+  never asked" is a different bug from "the browser said no".
+
+  It always fires a **known-good sound first**, by a route that shares nothing
+  with the subject: `MSG_DROP` comes straight from `obj-pile`'s drop with no
+  message sink involved. A run whose control is silent reports INCONCLUSIVE
+  rather than a result, because sound is off by default, the pack may be missing,
+  and an option toggle driven blind may simply have missed.
+
+  Two traps it cost a run each to learn, both recorded in the tool: `auto_more`
+  has to be turned on before anything prints, or the first `-more-` pager
+  swallows the next four keystrokes and the run ends somewhere else entirely;
+  and `player_timed.txt`'s FOOD grades read like percentages but are scaled by
+  `z_info->food_value` (`player-timed.c:263`), so Full is 10000, not 100.
+
 ### Changed
 
 - **The customised-options reader is 4.2.6's again.** `options_restore_custom`
@@ -92,6 +112,30 @@ digest in the game's catalogue and must never be moved.
   formatter and remains.
 
 ### Fixed
+
+- **A typed message never played its sound, so most of the sound pack was
+  unreachable.** Upstream has two entry points: `msg()` logs and stops, `msgt()`
+  logs *and* calls `sound(type)` (`message.c:405-445`). The port split that
+  second half off into a separate `state.sound` seam, leaving every caller to
+  remember both — and the ones that forgot were silent with nothing to notice
+  them. All 27 `msgt:` types in `player_timed.txt` were in that set, so no timed
+  effect in the game ever made a sound: not hunger, not poison, blindness,
+  confusion, fear, stunning, cuts, speed or any resist.
+
+  Reported from play as "I'm not sure I heard the full sound when I got full",
+  and hedged, because "I did not hear it" and "it did not fire" are different
+  claims. It is settled now by measurement rather than by listening: the new
+  `tools/sound-probe.mjs` patches `HTMLMediaElement.play` before the bundle
+  loads, drives the installed desktop build over CDP to both FOOD grade
+  transitions, and reports every sample the game asked for. Before the fix the
+  two transitions were silent while a control sound played in the same run; after
+  it, both play `pls_man_sob.mp3` and the control is byte-identical.
+
+  The fix is one line in the host's message sink, which *is* `msgt` — plus the
+  deletion of thirteen hand-written `state.sound` calls that now duplicate it.
+  Only a message carrying a type sounds, so `msg()` stays silent exactly as
+  upstream, and the standalone `sound()` calls (the drop thud, the ambient
+  timer, teleports, the bell) are untouched. Sound draws no RNG; no stream moves.
 
 - **Hallucination had no visual effect at all.** `hallucinatory_monster` and
   `hallucinatory_object` (`ui-map.c:41-80`) were never ported, and neither was

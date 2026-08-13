@@ -9,6 +9,8 @@ import {
 import type { EffectContext } from "../effects/interpreter.js";
 import { registerCoreHandlers } from "../effects/handlers.js";
 import { distance, loc, locEq } from "../loc.js";
+import { messageSound } from "../msg.js";
+import type { MessageType } from "../msg.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { addMon, makeState, monReg } from "./harness.js";
@@ -475,6 +477,16 @@ describe("teleportMonster (project_m backing)", () => {
 function sounds(state: GameState): number[] {
   const out: number[] = [];
   state.sound = (type: number): void => void out.push(type);
+  /* The host's sink IS msgt (#239): a TYPED message plays its type's sound, so
+   * a site that once called state.sound by hand now only has to carry the type.
+   * Chain the same rule production uses (core messageSound) rather than
+   * restating it, and keep whatever msg the state already had. */
+  const inner = state.msg;
+  state.msg = (text: string, type?: MessageType): void => {
+    inner?.(text, type);
+    const cue = messageSound(type);
+    if (cue !== null) state.sound?.(cue);
+  };
   return out;
 }
 
@@ -532,7 +544,15 @@ describe("teleport sounds (PORT_TODO 3.26)", () => {
     const typed: (string | undefined)[] = [];
     const base: EffectContext = {
       rng: state.rng,
-      messages: { msg: (_t, msgt) => void typed.push(msgt) },
+      /* An EffectContext sink bypasses state.msg, so it has to run the same
+       * rule the host's sink does: a typed message plays its type (#239). */
+      messages: {
+        msg: (_t, msgt): void => {
+          typed.push(msgt);
+          const cue = messageSound(msgt);
+          if (cue !== null) state.sound?.(cue);
+        },
+      },
     };
     registry().effectSimple(
       EF.TELEPORT_LEVEL,
@@ -590,7 +610,12 @@ describe("the teleport helpers PROJ_NEXUS dispatches to", () => {
     teleportPlayerLevel(
       state,
       { maxDepth: 6, changeLevel: () => {} },
-      (t, msgt) => void said.push([t, msgt]),
+      /* The message sink is msgt: carrying the type is what plays it (#239). */
+      (t, msgt): void => {
+        said.push([t, msgt]);
+        const cue = messageSound(msgt);
+        if (cue !== null) state.sound?.(cue);
+      },
       false,
     );
     expect(said).toEqual([["You rise up through the ceiling.", "TPLEVEL"]]);

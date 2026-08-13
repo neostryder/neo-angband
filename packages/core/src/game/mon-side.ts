@@ -22,7 +22,7 @@
  * comment that used to cite that path as an open gap outlived it.
  */
 
-import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated/index.js";
+import { ELEM, ORIGIN, OF, PROJ, STAT, TMD } from "../generated/index.js";
 import { PN, SKILL } from "../player/types.js";
 import type { Loc } from "../loc.js";
 import type { Monster } from "../mon/monster.js";
@@ -191,11 +191,9 @@ export function makeMonBlowEnv(
         return deps.actor.isDead;
       },
 
-      msg(text: string, msgt?: string): void {
-        msg(text, msgt);
-        /* msgt(method->msgt, ...) sound channel (mon-blows.c L206). */
-        if (msgt) state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
-      },
+      /* msgt(method->msgt, ...) (mon-blows.c L206): the typed sink carries the
+       * sound channel, so this is the plain forward it looks like. */
+      msg,
 
     /* monster_desc(mon, MDESC_STANDARD) (mon-attack.c L561): computed once for
      * the attack's blow messages ("The kobold hits you."). No RNG. */

@@ -39,7 +39,7 @@ import type { CastContext } from "./project-cast.js";
 import type { GameState } from "./context.js";
 import { spellMessageText } from "./mon-message.js";
 import { disturb } from "./player-path.js";
-import { ELEM, MSG, OF, PF, TMD } from "../generated/index.js";
+import { ELEM, OF, PF, TMD } from "../generated/index.js";
 import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
 import { playerIncCheck } from "../player/timed.js";
 import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed.js";
@@ -313,11 +313,9 @@ export function buildMonSpellHooks(
         ...(state.panelContains ? { panelContains: state.panelContains } : {}),
         ...(deps.lashDesc ? { lashDesc: deps.lashDesc } : {}),
       });
-      if (out) {
-        state.msg?.(out.text, out.msgt);
-        /* msgt(spell->msgt, ...) sound channel (mon-spell.c spell_message). */
-        state.sound?.((MSG as Record<string, number>)[out.msgt] ?? 0);
-      }
+      /* msgt(spell->msgt, ...) (mon-spell.c spell_message): the typed sink plays
+       * the spell's sound channel too. */
+      if (out) state.msg?.(out.text, out.msgt);
     },
     /* The save message (L382). */
     saveMessage: (text): void => state.msg?.(text),
