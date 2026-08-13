@@ -42,10 +42,26 @@ function functionBody(src: string, name: string): string {
 }
 
 describe("background repaints stand down while an overlay owns the terminal", () => {
-  it("defines renderBackground as render() gated on modalDepth", () => {
+  it("defines renderBackground as render() gated on modalDepth AND gameScreenLive", () => {
+    /* The second gate is the one this file's own bug taught, applied a level
+     * further back. modalDepth answers "is something else using the terminal", so
+     * it says yes to a background repaint the moment nothing is - which during
+     * boot is most of the time, and the thing repainted is a town belonging to a
+     * character the player has not chosen. That is how the title art painted at
+     * the top of maybeTitle got covered again a moment later by a ResizeObserver
+     * settle: right function, right gate, wrong question. gameScreenLive answers
+     * "is there a game to draw at all" (#249). */
     expect(MAIN).toMatch(
-      /function renderBackground\(\): void \{\s*if \(modalDepth > 0\) return;\s*render\(\);\s*\}/,
+      /function renderBackground\(\): void \{\s*if \(modalDepth > 0 \|\| !gameScreenLive\) return;\s*render\(\);\s*\}/,
     );
+  });
+
+  it("starts with the map NOT drawable, and turns it on once boot lands", () => {
+    /* Both halves matter and neither implies the other: a flag that starts true
+     * gates nothing, and a flag nothing ever sets leaves the map permanently
+     * blank after the title. */
+    expect(MAIN).toMatch(/let gameScreenLive = false;/);
+    expect(MAIN).toMatch(/gameScreenLive = true;\s*render\(\);/);
   });
 
   it("routes the graphics-pack repaints through it (the title-screen bug)", () => {

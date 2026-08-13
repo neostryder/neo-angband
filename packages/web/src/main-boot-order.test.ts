@@ -5,7 +5,29 @@ import { describe, expect, it } from "vitest";
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("main boot order", () => {
-  it("initializes the frontend slot before the module's first render reads it", async () => {
+  it("does not paint the map at module scope (#249)", () => {
+    /* There used to be a bare top-level `render()` here, and this file's other
+     * test was built around it. What it actually drew was the map of whichever
+     * character boot had loaded - measured on the shipped Windows build,
+     * 2026-08-13, a generated town was on screen from 6.9s to 12.7s after launch,
+     * over startup work that had not finished and a character nobody had chosen.
+     *
+     * The loading screen replaced it. This asserts the replacement did not get
+     * quietly undone, which is the only way the town comes back. */
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const topLevelRender = source.statements.find(
+      (statement) =>
+        ts.isExpressionStatement(statement) &&
+        ts.isCallExpression(statement.expression) &&
+        ts.isIdentifier(statement.expression.expression) &&
+        statement.expression.expression.text === "render",
+    );
+    expect(topLevelRender, "main.ts paints the map at module scope again").toBeUndefined();
+    /* And what stands in its place. */
+    expect(mainSource).toMatch(/const stopLoading = startLoading\(term, \{/u);
+  });
+
+  it("initializes the frontend slot before anything that will read it", async () => {
     const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
     const render = source.statements.find(
       (statement): statement is ts.FunctionDeclaration =>
@@ -48,37 +70,34 @@ describe("main boot order", () => {
     /* The whole chain the slot is built from: candidate zero, then the
      * selection over it, then the slot. Each link is a real TDZ edge. */
     const chain = ["coreWorldSink", "coreFrontendSlot"].map(declOf);
-    const bootRender = source.statements.find(
-      (statement) =>
-        ts.isExpressionStatement(statement) &&
-        ts.isCallExpression(statement.expression) &&
-        ts.isIdentifier(statement.expression.expression) &&
-        statement.expression.expression.text === "render",
-    );
 
     expect(slot).toBeDefined();
     expect(chain.every((statement) => statement !== undefined)).toBe(true);
-    expect(bootRender).toBeDefined();
     for (const link of chain) {
       expect(link!.getStart(source)).toBeLessThan(slot!.getStart(source));
     }
-    expect(slot!.getStart(source)).toBeLessThan(bootRender!.getStart(source));
 
     /*
      * This is deliberately an ES-module evaluation, not a call to a helper.
-     * Keep the statements in their exact source order, but replace the
-     * renderer's large browser-only body with its relevant live read.  If the
-     * boot render is moved above the initialized slot - or the slot above the
-     * candidate it is built from - importing this module throws the same
-     * temporal-dead-zone ReferenceError as the shipped module.
+     * Keep the statements in their exact source order, and append the read that
+     * used to be a top-level `render()` in main.ts itself. If the slot is moved
+     * above the candidate it is built from, importing this module throws the same
+     * temporal-dead-zone ReferenceError the shipped module would.
+     *
+     * The anchor moved because the reader did (#249): boot no longer paints the
+     * map, so there is no top-level render() to sit below the slot. The TDZ edge
+     * between the slot and the chain it is built from is unchanged and still
+     * live, and the reader is written here so a re-added boot render inherits a
+     * test that was already about it.
      *
      * The stubs stand in for what the slice CALLS, never for what it ORDERS:
      * every declaration whose position this test is about comes from main.ts's
      * own text, so a reordering there reaches here.
      */
-    const bootSlice = [...chain.map((statement) => statement!), slot!, bootRender!]
+    const bootSlice = [...chain.map((statement) => statement!), slot!]
       .sort((a, b) => a.getStart(source) - b.getStart(source))
       .map((statement) => statement.getText(source))
+      .concat("render();")
       .join("\n");
     const stubs = [
       "type InstalledFrontend = unknown;",

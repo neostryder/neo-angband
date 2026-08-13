@@ -376,6 +376,7 @@ import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
+import { startLoading } from "./loading";
 import type { TitleChoice } from "./news";
 import type { BirthDeps } from "./birth";
 import {
@@ -1740,6 +1741,25 @@ state.onMelee = (mon, result): void => {
 let modalDepth = 0;
 
 /**
+ * Whether the MAP is what should be on screen.
+ *
+ * False from module scope until boot settles on a game, and it is what stops
+ * the player's town being painted over the loading screen and then over the
+ * title art. Measured on the shipped Windows build (2026-08-13): a generated
+ * town sat on screen from 6.9s to 12.7s after launch, belonging to a character
+ * nobody had chosen yet.
+ *
+ * A SEPARATE gate from modalDepth, not a bigger one. modalDepth answers "is
+ * something else using the terminal right now", which is a question about the
+ * next few keystrokes; this answers "is there a game to draw at all", which is
+ * a question about the whole session. Boot's earlier attempt at this painted
+ * the title art first and lost, because a ResizeObserver settle came through
+ * renderBackground a moment later with modalDepth still 0 and put the map
+ * straight back.
+ */
+let gameScreenLive = false;
+
+/**
  * A BACKGROUND repaint: a redraw nothing the player just did asked for, arriving
  * asynchronously - a graphics pack's atlas finishing its fetch, its prefs
  * resolving, a layout/ResizeObserver settle, the idle animation tick.
@@ -1758,7 +1778,7 @@ let modalDepth = 0;
  * background frame is caught up as soon as the overlay closes.
  */
 function renderBackground(): void {
-  if (modalDepth > 0) return;
+  if (modalDepth > 0 || !gameScreenLive) return;
   render();
 }
 
@@ -2878,6 +2898,33 @@ async function wieldPrompts(
 }
 
 /**
+ * The item verbs that reach use_aux (cmd-obj.c:407), which is the ONLY place
+ * upstream asks for a direction on an item command.
+ *
+ * do_cmd_wield, do_cmd_takeoff and do_cmd_drop never aim. This shell asked
+ * obj_needs_aim for WHATEVER code it was dispatching, so an item whose effect
+ * happens to be aimed made every verb aim: putting on a Ring of Flames
+ * (`effect:BALL:FIRE:2` in object.txt, with no `act:` line) opened
+ * "Direction ('*' or <click> to target...)" before the ring would go on a hand.
+ * Acid, Ice, Lightning, Open Wounds and Digging are the same shape, and taking
+ * one off or dropping it asked as well.
+ *
+ * A SET rather than a `code !== "wield"` test: the direction question belongs to
+ * a known list of commands, and everything outside it - including whatever verb
+ * is added next - is outside it by default. do_cmd_use (cmd-obj.c:938) is not a
+ * code here; it picks one of these by tval before use_aux is reached.
+ */
+const AIMED_VERBS = new Set([
+  "read",
+  "quaff",
+  "eat",
+  "use-staff",
+  "aim-wand",
+  "zap-rod",
+  "activate",
+]);
+
+/**
  * Dispatch `code` on an already-chosen item (aim direction if needed,
  * pre-resolve any item-target effect, then queue). Shared by useItem's own
  * picker and the context menu's per-item action, which already knows the
@@ -2885,7 +2932,7 @@ async function wieldPrompts(
  */
 async function dispatchItemVerb(code: string, handle: number, obj: GameObject | null): Promise<void> {
   const args: Record<string, unknown> = { handle };
-  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+  if (obj && AIMED_VERBS.has(code) && objNeedsAim(obj, { flavor: game.flavor })) {
     const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
@@ -2909,7 +2956,7 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
   const obj = targetRefObject(ref);
   const args: Record<string, unknown> =
     "handle" in ref ? { handle: ref.handle } : { floor: ref.floor };
-  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+  if (obj && AIMED_VERBS.has(code) && objNeedsAim(obj, { flavor: game.flavor })) {
     const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
@@ -3065,6 +3112,8 @@ async function activateItem(): Promise<void> {
   if (handle === undefined) return;
   const obj = gearGet(state.gear, handle);
   const args: Record<string, unknown> = { handle };
+  /* No AIMED_VERBS gate: this screen IS do_cmd_activate, one of the seven that
+   * reach use_aux, so the question is owed unconditionally here. */
   if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
     const dir = await aimDir();
     if (dir === null) return;
@@ -8815,7 +8864,18 @@ state.chunk.onlyPartial = false;
 // fires once on observe, and again whenever the embed's layout settles), so it
 // must not paint the map over a boot overlay - see renderBackground.
 term.onSizeChanged(() => renderBackground());
-render();
+
+/*
+ * NOT render(). The map belongs to a character the player has not chosen yet,
+ * and boot has work left to do - mod resources, a tile atlas, a version check -
+ * so what a top-level render() actually shows is somebody else's town for as
+ * long as that work takes. See gameScreenLive.
+ *
+ * The seed is the clock rather than the game's RNG: this runs before a
+ * character exists, and drawing from the game's stream here would move a
+ * position the save re-derives the world from.
+ */
+const stopLoading = startLoading(term, { seed: Date.now() >>> 0 });
 
 // Boot the persisted/URL-selected graphics mode (ASCII if none). Async and
 // best-effort: fetches the pack image + prefs and repaints when ready, leaving
@@ -8980,6 +9040,38 @@ function resumeSelected(id: string): void {
  * cleared - maybeBirth still owns clearing it), and New/Switch/resume-a-slot
  * (SKIP_TITLE, set by those actions and cleared here).
  */
+/**
+ * How long the title screen will wait for the update check before painting
+ * without its shimmer. Long enough that a warm check (2-5ms) always wins;
+ * short enough that a cold one is not something the player sits through.
+ */
+const TITLE_CHECK_WAIT_MS = 400;
+
+/**
+ * The update answer if it arrives promptly, otherwise "not yet".
+ *
+ * The late value is `ok: false` rather than `ok: true, update: null`, because
+ * those mean different things and this port has already shipped the bug where
+ * they did not (#247). "I did not wait long enough" is not "there is nothing
+ * there", and the title screen must not shimmer on either - so the distinction
+ * costs nothing here and stays true.
+ */
+async function updateOfferSoon(): Promise<UpdateCheck> {
+  const probe = updateOffer();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<UpdateCheck>((resolve) => {
+    timer = setTimeout(
+      () => resolve({ ok: false, reason: "The check has not answered yet." }),
+      TITLE_CHECK_WAIT_MS,
+    );
+  });
+  try {
+    return await Promise.race([probe, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function maybeTitle(): Promise<TitleChoice | null> {
   if (params.get("agent")) return null;
   try {
@@ -8991,22 +9083,30 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   } catch {
     /* sessionStorage unavailable: fall through and show the title */
   }
-  /* The art goes up BEFORE the two checks below, because they are the reason a
-   * player saw their own town for a moment on every launch: boot paints the
-   * loaded character's map, and this function then awaited a network round trip
-   * before it could paint anything. The art needs no answer from either check,
-   * so it costs nothing to draw first. See paintTitleArt for why the menu row
-   * still waits. */
+  /* The loading screen has had the terminal until now; the title art replaces
+   * it in the same frame. Boot's tail calls this again and it is free. */
+  stopLoading();
   paintTitleArt(term);
   /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
    * with something to exit; desktopQuit reports whether there is one. */
   const living = livingRoster().length > 0;
-  /* The check was started at boot and is bounded by its own timeout, so this
-   * await is the tail of a request that has had the whole of startup to finish.
-   * Waiting for it HERE rather than painting and then adding a row is the point:
-   * a row that appears under the player's cursor a second after the screen does
-   * is how a menu gets mis-clicked. */
-  const updateCheck = await updateOffer();
+  /* A ROW MUST NOT APPEAR UNDER THE PLAYER'S CURSOR, which is why this used to
+   * wait for the answer outright. It cost too much: measured on the shipped
+   * build, the first api.github.com request a fresh process makes took 6.1s
+   * (later ones in the same process: 2-5ms), and the title sat unfinished for
+   * every millisecond of it.
+   *
+   * Bounded instead. What the answer decides differs by shell, and that is what
+   * makes the bound safe under a desktop shell: canUpdate below reads updateHow,
+   * not the answer, so the (U)pdate ROW is there either way and only its shimmer
+   * is waiting. Nothing moves. In a browser the row's presence really does
+   * depend on the answer - so the browser waits, and can afford to, because its
+   * probe asks the service worker rather than the network (5ms, measured).
+   *
+   * The probe is not abandoned. It keeps running, the (U)pdate screen awaits the
+   * same promise, and updateReadyLater lights the shimmer if it arrives late. */
+  const updateCheck =
+    desktopBridge === null ? await updateOffer() : await updateOfferSoon();
   /* A check that never got an answer must not shimmer and must not hide the
    * row: the row is the only door to the update screen, which is where the
    * failure is now reported and where it can be retried. */
@@ -9036,7 +9136,14 @@ async function maybeTitle(): Promise<TitleChoice | null> {
             desktopBridge === null ? update !== null : updateHow !== "none",
           updateReady: update !== null && !update.older,
         },
-        { randint1: titleRandint1 },
+        {
+          randint1: titleRandint1,
+          /* The answer that did not make it in time. The row is already drawn
+           * and in its final place, so this only ever lights it up. */
+          updateReadyLater: updateProbe.then(
+            (c) => c.ok && c.update !== null && !c.update.older,
+          ),
+        },
       ),
     );
   } finally {
@@ -10300,6 +10407,17 @@ void applyModResources()
     reportModFault("mods", `resources could not be applied (${faultMessage(e)})`);
   })
   .then(bootMenus)
+  .then(() => {
+    /* A game is in play: the map is now the honest thing to draw, and every
+     * background repaint from here (atlas, prefs, resize, animation tick) is
+     * allowed through. Belt and braces on the loading screen - maybeTitle stops
+     * it before it paints - because this is the one line every boot route
+     * passes through, including the ones that never see a title at all.
+     * stopLoading is idempotent for exactly that reason. */
+    stopLoading();
+    gameScreenLive = true;
+    render();
+  })
   .then(resetVisualsForCharacter)
   .then(maybeShowGraphics);
 
