@@ -491,7 +491,13 @@ describe("the game does not know or expect any particular mod", () => {
      * tests execute this path; these checks keep main routed to it. */
     const producer = read("world-render-data.ts");
     expect(producer).toMatch(/visual = read\.rememberedObjectGlyph\(object, grid\);/);
-    expect(main).toMatch(/projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*glyphWorldFrameSink\(term\),/);
+    /* The glyph sink is no longer named here: since phase 5 it is candidate
+     * zero of the front-end selection, so what main routes the frame to is
+     * whoever holds the slot (`installedFrontend`), which is core's own
+     * renderer unless a mod outranked it. */
+    expect(main).toMatch(/projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*installedFrontend,/);
+    expect(main).toMatch(/const coreWorldSink = glyphWorldFrameSink\(term\);/);
+    expect(main).toMatch(/coreFrontendCandidate\(coreWorldSink\)/);
   });
 
   /**

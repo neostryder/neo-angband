@@ -20,6 +20,44 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A mod front end now needs the player's permission, and the game's own
+  renderer competes for the slot on equal terms** (#140, the last phase of the
+  front-end replacement seam).
+
+  `ModPlugin.frontend` shipped able to take over everything the player sees of
+  the dungeon while its manifest declared nothing at all. It now requires
+  **`display:replace`** — a capability kind of its own, deliberately not a
+  `registry:` domain and deliberately **not covered by `registry:*`**: an
+  override wildcard grants every named game system, which is not the same thing
+  as owning the screen. Declaring `frontend` without it is reported against that
+  mod by name and the game keeps drawing, the same shape as `controller`
+  requiring `command:add`. The consent prompt describes it in plain language and
+  flags it as elevated.
+
+  The second half is structural. Core's glyph renderer used to be a distinguished
+  argument threaded through the render path — the special case every other front
+  end worked around. It is now **candidate zero of the same list**, declaring
+  `frontend` and `display:replace` exactly as a mod does, and it wins by the
+  ordinary last-in-load-order rule when no mod outranks it. That deleted the
+  null selection and the fallback parameter, and it is what makes the seam's
+  claim checkable rather than aspirational: a seam that could not express the
+  front end the game already ships would be a promise about a shape nobody had
+  ever built through it. Core stays the recovery target — a replacement that
+  faults hands the map back to it for the rest of the session — and that property
+  now follows from core being first in the list rather than from a special
+  argument.
+
+  Measured with three plugin folders loaded from disk through the shipped
+  loader. The third asks for `registry:*`, declares `frontend`, sorts **last**,
+  and throws from its factory: under last-wins alone it would be holding the
+  map, so a gate that silently stopped working fails there rather than passing
+  quietly. The control got stronger too — it used to pass `null` for the
+  selection, which cannot demonstrate anything about the default; it now runs
+  core through selection and construction like any candidate and asserts the
+  glyph output is unchanged.
+
+  No shipped mod declares `frontend`, so nothing in the curated list goes dark.
+
 - **CI plays the game now.** `tools/play-smoke.mjs` boots the built desktop shell
   over the DevTools protocol and plays a player's first minute — title, (N)ew
   game, a random character, the character sheet, town, a staircase, the dungeon,

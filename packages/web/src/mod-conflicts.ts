@@ -34,6 +34,7 @@ import {
   type NameOf,
   type PackManifest,
 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { frontendClaimants } from "./frontend-runtime";
 import { activeModCode } from "./mod-code";
 import { enabledModHookContributions } from "./mod-hooks";
 import {
@@ -240,9 +241,11 @@ export function liveConflictLines(): ConflictReportLines {
     controllers: activeModCode()
       .plugins.filter((p) => typeof p.plugin.controller === "function")
       .map((p) => p.id),
-    frontends: activeModCode()
-      .plugins.filter((p) => typeof p.plugin.frontend === "function")
-      .map((p) => p.id),
+    /* Eligible claimants only: a mod that declares frontend() without
+     * `display:replace` is refused and reported as its own fault, and counting
+     * it here as well would tell the player two mods are fighting over the
+     * display when only one of them can ever hold it. */
+    frontends: frontendClaimants(activeModCode().plugins),
   });
 }
 

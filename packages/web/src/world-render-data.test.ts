@@ -135,7 +135,11 @@ describe("the production live-world data producer", () => {
 
   it("is the producer the live render path calls, rather than a test-only projection", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
-    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*glyphWorldFrameSink\(term\),/);
+    /* Since phase 5 the glyph sink is candidate zero of the front-end
+     * selection rather than a name main passes here, so the route is via
+     * whoever holds the slot - core's own renderer unless a mod outranked it. */
+    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*installedFrontend,/);
+    expect(main).toMatch(/const coreWorldSink = glyphWorldFrameSink\(term\);/);
     expect(main).toContain("seen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y))");
     expect(main).toContain("terrainAt: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS)");
     expect(main).toContain("monsterGlyph: composeMonster");

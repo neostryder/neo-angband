@@ -240,8 +240,10 @@ export function glyphWorldFrameSink(surface: Pick<GridSurface, "put">): WorldFra
  *
  * This deliberately fans out the object it is given rather than rebuilding a
  * frame per consumer: a debugger, recorder, or future alternate renderer must
- * observe the exact same world snapshot as the glyph terminal. `main.ts`
- * still installs only the glyph sink until Phase 5 selects another owner.
+ * observe the exact same world snapshot as the glyph terminal. `main.ts` no
+ * longer installs the glyph sink directly: since phase 5 it is candidate zero
+ * of the front-end selection (`frontend-runtime.ts`), so whoever owns the map
+ * is whoever won that selection.
  */
 export function teeWorldFrameSink(...sinks: readonly WorldFrameSink[]): WorldFrameSink {
   return { present: (frame) => { for (const sink of sinks) sink.present(frame); } };

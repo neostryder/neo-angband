@@ -166,6 +166,13 @@ a cosmetic pack gone) degrades gracefully via quarantine.
 The `capabilities` list applies only to `shape: plugin` mods and is the
 consent surface (section 4). Content and tile packs request none.
 
+The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`,
+`network:<host>`, `registry:<domain>` and **`display:replace`**. The last of
+those is what `ModPlugin.frontend` requires - everything the player sees of the
+dungeon drawn by the mod. It stands outside `registry:` deliberately, and
+`registry:*` does not cover it: an override wildcard grants every named game
+system, which is not the same thing as owning the screen.
+
 ### From a git repository (today)
 
 The user pastes a repository URL (or picks a ref). The app:

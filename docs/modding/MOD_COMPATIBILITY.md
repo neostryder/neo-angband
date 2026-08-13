@@ -142,6 +142,15 @@ is to make its sink typed-aware with the exported `messageSound(type)`, the same
 one-line rule `web/src/main.ts` uses. Not aliasable: two functions differing only
 in whether they double-fire is worse than one rule.
 
+One more shape change, in the SDK rather than in `ctx.core`: `ParsedCapability`
+gained a `{ kind: "display"; action: "replace" }` variant (#140, unreleased
+2026-08-13), because `ModPlugin.frontend` now requires `display:replace`. Nothing
+that *builds* a capability string breaks; what breaks is a plugin that
+`switch`es exhaustively over `parseCapability`'s result in TypeScript, which
+gets a compile error naming the new arm. That is the intended outcome - a mod
+rendering the capability list to its own UI should be told a kind exists that it
+does not describe. Additive at runtime: an older build simply never emits it.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed

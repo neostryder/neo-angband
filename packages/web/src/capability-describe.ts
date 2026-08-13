@@ -146,6 +146,12 @@ export function describeCapability(cap: string): CapabilityDescription {
       const r = describeRegistry(parsed.domain);
       return { cap, text: r.text, elevated: r.elevated };
     }
+    case "display":
+      return {
+        cap,
+        text: "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
+        elevated: true,
+      };
   }
 }
 

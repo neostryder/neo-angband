@@ -72,6 +72,14 @@
  *                             "registry:menu" rewrites the semantic rows of
  *                             one stable front-end menu id. It is distinct from
  *                             a future full front-end selection capability.
+ *  - "display:replace"     - become the game's FRONT END: everything the
+ *                             player sees of the dungeon is drawn by this
+ *                             plugin (ModPlugin.frontend). Its own kind
+ *                             rather than a registry domain, and NOT
+ *                             covered by "registry:*" - an override
+ *                             wildcard grants every named game system,
+ *                             which is not the same thing as owning the
+ *                             screen.
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -89,7 +97,8 @@ export type ParsedCapability =
   | { kind: "event"; name: string }
   | { kind: "state"; domain: string; access: "read" }
   | { kind: "network"; host: string }
-  | { kind: "registry"; domain: string };
+  | { kind: "registry"; domain: string }
+  | { kind: "display"; action: "replace" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
@@ -108,6 +117,14 @@ const REGISTRY_RE =
 export function parseCapability(cap: string): ParsedCapability {
   if (cap === "command:add") {
     return { kind: "command", action: "add" };
+  }
+  /* NOT a registry domain, deliberately. A registry:* grant means "override
+   * one named game system among many"; this one means "everything the player
+   * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
+   * has no domain to name and no wildcard to sit under - `registry:*` must not
+   * carry it, which is exactly what a separate kind buys. */
+  if (cap === "display:replace") {
+    return { kind: "display", action: "replace" };
   }
   const event = EVENT_RE.exec(cap);
   if (event) {
@@ -155,6 +172,11 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
         grant.kind === "registry" &&
         (grant.domain === "*" || grant.domain === request.domain)
       );
+    case "display":
+      /* Exact match only. See parseCapability: `registry:*` does not reach
+       * here, so a mod holding the override wildcard still cannot take the
+       * display without asking for it by name. */
+      return grant.kind === "display";
   }
 }
 
