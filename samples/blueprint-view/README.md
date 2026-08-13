@@ -78,7 +78,11 @@ legitimately holds. So with this mod on, those screens are clipped where its
 canvas sits: legible and usable (you can reach Mods and turn it off, which is
 the part that used to be impossible), but half of each row is behind the
 blueprint. Both sides are doing the right thing; what is missing is that a full
-screen has no region of its own. That is `MOD_REACH.md` gap 21, the UI seam.
+screen has no region of its own. That is `MOD_REACH.md` gap 21, the UI seam,
+and it has been decided rather than left open: a screen will be **composed of
+regions** rather than covering them, so a floating window can sit over a map
+that is still being drawn. When that lands, this sample keeps doing exactly what
+it does now — the fix is on the screens' side, not this one's.
 
 ## Where the checks are
 
