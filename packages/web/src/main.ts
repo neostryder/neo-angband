@@ -330,6 +330,7 @@ import {
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
 import { GlyphTerm, setActiveCellTap } from "./term";
 import type { RenderAssetRef } from "./term";
+import { screenRegions, type ScreenRegions } from "./regions";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import {
@@ -7291,6 +7292,37 @@ function viewport(focus?: Loc): {
 }
 
 /**
+ * The named regions of the screen, from the numbers viewport() just computed.
+ *
+ * ONE PRODUCER, and this is the join that makes it one: every rectangle here
+ * comes from the same call render() draws with, so a region cannot describe a
+ * layout the frame was not drawn in. Writing "the status line is the last row"
+ * a second time beside renderStatusLine's caller is the copy that goes stale -
+ * `regions.test.ts` and `main-regions.test.ts` hold the two ends together.
+ *
+ * The metrics are the terminal's own cell size and letterbox offset, published
+ * for the first time here (#234). Before that a replacement front end had no
+ * way to find the map's pixels and covered the whole window instead, taking the
+ * sidebar, the messages and every menu with it.
+ */
+function currentScreenRegions(vp: ReturnType<typeof viewport>): ScreenRegions {
+  const { cols, rows } = term.size();
+  return screenRegions(
+    {
+      cols,
+      rows,
+      sidebar: vp.layout,
+      sidebarWidth: SIDEBAR_W,
+      mapOriginX: vp.mapOriginX,
+      mapTop: vp.mapTop,
+      mapCols: vp.mapCols,
+      mapRows: vp.mapRows,
+    },
+    term.metrics(),
+  );
+}
+
+/**
  * verify_panel (ui-output.c L563-670): keep the map offset (panelCam) so the
  * player stays on screen. center_player=OFF (normal) panel-scrolls - the offset
  * only moves once the player is within 3 grids of an edge, then re-centres by
@@ -7383,8 +7415,8 @@ function render(targeting?: TargetingOverlay): void {
   const { cols, rows } = term.size();
   term.clear();
 
-  const { layout, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
-    viewport(targeting?.cursor);
+  const vp = viewport(targeting?.cursor);
+  const { layout, mapOriginX, mapTop, mapCols, mapRows, camX, camY } = vp;
   /* do_animation runs once per frame, BEFORE the glyphs are resolved, exactly
    * as upstream's animation timer fires before the redraw it triggers. */
   doAnimation();
@@ -7417,6 +7449,10 @@ function render(targeting?: TargetingOverlay): void {
     origin: { x: camX, y: camY },
     size: { width: mapCols, height: mapRows },
     screenOrigin: { x: mapOriginX, y: mapTop },
+    /* Where this frame sits on the screen, and what core is still drawing
+     * around it. The one thing a replacement front end could not previously
+     * learn, and the reason the sample covered the window (#234). */
+    regions: currentScreenRegions(vp),
     playerGrid: state.actor.grid,
     ...(targeting ? { cursor: targeting.cursor } : {}),
     cursorBackground: CURSOR_BG,

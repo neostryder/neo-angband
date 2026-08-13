@@ -195,6 +195,11 @@ export type {
 export { ModProject, modProject } from "./project.js";
 export type { EmittedFile, ProjectBuild } from "./project.js";
 export type {
+  RegionCells,
+  RegionPixels,
+  ScreenRegion,
+  ScreenRegionName,
+  ScreenRegions,
   WorldCell,
   WorldFrame,
   WorldFrameSink,

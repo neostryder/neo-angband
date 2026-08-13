@@ -20,6 +20,43 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A replacement front end is told where the map is, so it stops covering the
+  rest of the game** (#234, MOD_REACH gap 9).
+
+  Every `WorldFrame` now carries `regions` — the named parts of the screen
+  (`messages`, `sidebar`, `map`, `status`), each with a rectangle in grid cells
+  **and** in CSS pixels. `map` is the front end's; the others are core's and are
+  published so a mod can stay off them, or cover them knowing what it covers.
+
+  **What this fixes.** A front end draws with its own canvas, and cell size and
+  the letterbox offset were private to the terminal — so `samples/blueprint-view`
+  could only cover the whole window, and with it enabled you could not read your
+  hit points, see a message, or open the Mods screen to turn it off again. The
+  sample now positions itself on `regions.map.pixels` every frame. Photographed
+  in the installed desktop build: its own label reads back `map region: 66x22
+  cells at 13,1`, the sidebar and the status line are core's and readable, and
+  the game menu opens with `j) Mods` legible.
+
+  **The names are roles, not places.** `sidebar` is the 13-column left column in
+  the classic layout, a one-line header under the messages in the compact one,
+  and *absent* when the player has turned the vitals off — so a mod that asks
+  for `sidebar` is right in all three, where one that had asked for "columns
+  0–12" would have drawn over the map in two of them. Read them from the frame
+  rather than caching them: they move on a resize and on a sidebar-mode change.
+
+  `regions` being absent means **draw nothing**, not "fall back to the window" —
+  a fallback puts the old defect back intermittently, which is worse than always.
+  The sample hides its canvas instead, and a test asserts it.
+
+  Adding an optional field is not an ABI bump, so plugins written against api 1
+  are unaffected; a front end that ignores `regions` behaves exactly as before.
+
+  **Still open, and it is the UI seam's** (gap 21, #253): a full-screen overlay
+  — the game menu, inventory, the character sheet — is painted across the whole
+  terminal, *including* the map region a front end holds, so those screens are
+  clipped where its canvas sits. Usable, and wrong. Full screens have no region
+  of their own yet.
+
 - **A mod front end now needs the player's permission, and the game's own
   renderer competes for the slot on equal terms** (#140, the last phase of the
   front-end replacement seam).

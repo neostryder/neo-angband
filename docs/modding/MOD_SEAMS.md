@@ -79,6 +79,15 @@ owned frame snapshot on each real repaint, so retaining it cannot retain or
 mutate `state.actor.grid`; a throwing frontend falls back to the glyph sink and
 is reported on that mod's row.
 
+The frame also carries `regions` — the named parts of the screen (`map`,
+`messages`, `sidebar`, `status`) in grid cells and in CSS pixels, computed by
+`packages/web/src/regions.ts` from the same `viewport()` numbers `render()`
+draws with, and projected through `GlyphTerm.metrics()`. `map` is the selected
+front end's; the others are core's. This is what lets a replacement draw inside
+the map rectangle instead of over the window, and it is optional on the frame
+only because a host with no fitted surface has none to give — absent means draw
+nothing. See `PLUGINS.md` for the author-facing version.
+
 At startup, `main.ts` performs its boot `render()` before it installs a selected
 `ModPlugin.frontend`. Consequently, the first frame is always glyph-drawn, even
 when a disk-loaded mod frontend will own later display renders. This is an

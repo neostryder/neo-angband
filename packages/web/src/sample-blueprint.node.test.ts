@@ -16,11 +16,12 @@
  * The other half HAS since been run (2026-08-13, 0.19.0 desktop, character
  * loaded, mod enabled through the manager's own consent flow): it drew, and it
  * found two things this file could not. The folder-name rule is now the first
- * test below. The second is not a bug in the sample and has no test here,
- * because it is a hole in the seam: a front end covers the whole window, so it
- * hides the sidebar, the message line and every menu the game is still drawing
- * underneath - including the Mods screen you would use to turn it off. See
- * MOD_REACH gap 9.
+ * test below. The second was a hole in the seam rather than a bug in the sample:
+ * a front end covered the whole window, hiding the sidebar, the message line and
+ * every menu the game was still drawing underneath - including the Mods screen
+ * you would use to turn it off. `frame.regions` closed it (#234), and the two
+ * tests at the end of this file are what hold it closed: the sample is placed on
+ * the region it was given, and draws NOTHING when it is given none.
  */
 
 import { readFileSync } from "node:fs";
@@ -28,6 +29,7 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildWorldFrame, type WorldCell, type WorldFrame } from "./world-view";
+import { screenRegions, type ScreenRegions } from "./regions";
 import {
   coreFrontendCandidate,
   installFrontend,
@@ -51,6 +53,7 @@ interface Draw {
 
 function recordingDocument(draws: Draw[]): {
   readonly doc: unknown;
+  readonly element: { readonly style: Record<string, string> };
   readonly created: string[];
 } {
   const created: string[] = [];
@@ -69,13 +72,14 @@ function recordingDocument(draws: Draw[]): {
       },
     },
   );
+  /* No clientWidth/clientHeight: since #234 the sample takes its size from the
+   * region the frame carries, and leaving a plausible element size here would
+   * let a regression back to "fill whatever the canvas happens to be" pass. */
   const element = {
     id: "",
     style: {} as Record<string, string>,
     width: 0,
     height: 0,
-    clientWidth: 1200,
-    clientHeight: 800,
     getContext: (kind: string) => (kind === "2d" ? ctx2d : null),
   };
   return {
@@ -86,6 +90,7 @@ function recordingDocument(draws: Draw[]): {
       },
       body: { appendChild: () => undefined },
     },
+    element,
     created,
   };
 }
@@ -97,7 +102,33 @@ function recordingDocument(draws: Draw[]): {
  * change to the frame's shape breaks this rather than leaving the sample
  * reading fields that no longer exist.
  */
-function frame(): WorldFrame {
+/**
+ * A screen with the classic Left sidebar, small enough to reason about: an
+ * 18x5 terminal, so the map is 4x3 at column 13 row 1 - `18 - 13 - 1` wide by
+ * `5 - 1 - 1` high, which is the map the frame below actually carries. Cells
+ * are 12x20 CSS pixels at a letterbox offset of (4, 6), so the map region lands
+ * at (160, 26) and is 48x60. Built by the SAME producer main.ts calls, so a
+ * change to how the screen is divided reaches the sample rather than only
+ * reaching a copy of the numbers written out here.
+ */
+const REGIONS = screenRegions(
+  {
+    cols: 18,
+    rows: 5,
+    sidebar: "left",
+    sidebarWidth: 13,
+    mapOriginX: 13,
+    mapTop: 1,
+    mapCols: 4,
+    mapRows: 3,
+  },
+  { cellWidth: 12, cellHeight: 20, originX: 4, originY: 6 },
+);
+
+/* `null` for "this host published none", not `undefined` - passing undefined to
+ * a defaulted parameter selects the DEFAULT, so the no-region test would have
+ * quietly run with regions and passed for the wrong reason. */
+function frame(regions: ScreenRegions | null = REGIONS): WorldFrame {
   const GRANITE = 21;
   const FLOOR = 1;
   return buildWorldFrame({
@@ -105,7 +136,8 @@ function frame(): WorldFrame {
     height: 3,
     origin: { x: 0, y: 0 },
     size: { width: 4, height: 3 },
-    screenOrigin: { x: 0, y: 0 },
+    screenOrigin: { x: 13, y: 1 },
+    ...(regions ? { regions } : {}),
     resolveCell: (grid, screen): WorldCell => {
       if (grid.y === 0) {
         return { grid, screen, visibility: "seen", terrain: { kind: "terrain", id: GRANITE }, overlays: [], cursor: false };
@@ -134,7 +166,7 @@ function frame(): WorldFrame {
     },
     player: {
       grid: { x: 2, y: 1 },
-      screen: { x: 2, y: 1 },
+      screen: { x: 15, y: 2 },
       layer: { kind: "player" },
       visual: { ch: "@", fg: "w" },
       cursor: false,
@@ -238,6 +270,69 @@ describe("samples/blueprint-view, as the game would load it", () => {
     const label = draws.find((d) => d.op === "fillText");
     expect(String(label?.args[0])).toContain("4x3");
     expect(String(label?.args[0])).toContain("12 cells");
+  });
+
+  it("puts its canvas on the map region, and nowhere else (#234)", async () => {
+    /* THE DEFECT THIS IS ABOUT. Before regions, this sample was `position:
+     * fixed; inset: 0` - it covered the window, so the sidebar, the message row,
+     * the status line and every menu the game was still drawing went with it,
+     * and the player could not reach the Mods screen to turn it off again.
+     *
+     * The numbers are the region's own, not a repeat of them: REGIONS is built
+     * by the producer main.ts uses, so if the screen is divided differently
+     * tomorrow this test follows it. What is pinned is that the canvas is placed
+     * from the frame at all - `inset` and a percentage size are what it must
+     * never go back to. */
+    const draws: Draw[] = [];
+    const { doc, element } = recordingDocument(draws);
+    const plugin = await loadSample();
+    const installed = installFrontend(
+      [
+        coreFrontendCandidate({ present: () => undefined }),
+        { id: "blueprint-view", manifest: manifest as never, plugin },
+      ],
+      () => context(doc),
+      () => undefined,
+    );
+
+    installed.sink.present(frame());
+
+    const box = REGIONS.map.pixels!;
+    expect(element.style.left).toBe(`${box.x}px`);
+    expect(element.style.top).toBe(`${box.y}px`);
+    expect(element.style.width).toBe(`${box.width}px`);
+    expect(element.style.height).toBe(`${box.height}px`);
+    expect(element.style.display).toBe("block");
+    expect(element.style.inset).toBeUndefined();
+
+    /* And it drew inside it: the paper fill is the region's size, not the
+     * window's. A canvas placed correctly and then filled at 100vw would look
+     * right in the style assertions above and still cover the game. */
+    const paper = draws.find((d) => d.op === "fillRect");
+    expect(paper?.args).toEqual([0, 0, box.width, box.height]);
+  });
+
+  it("draws nothing at all when the host publishes no region (#234)", async () => {
+    /* A front end that fell back to the window whenever geometry was missing
+     * would have the covering defect back on every host that has no fitted
+     * surface - and it would have it INTERMITTENTLY, which is worse. The sample
+     * hides its canvas instead, and this is the assertion that says so. */
+    const draws: Draw[] = [];
+    const { doc, element } = recordingDocument(draws);
+    const plugin = await loadSample();
+    const installed = installFrontend(
+      [
+        coreFrontendCandidate({ present: () => undefined }),
+        { id: "blueprint-view", manifest: manifest as never, plugin },
+      ],
+      () => context(doc),
+      () => undefined,
+    );
+
+    installed.sink.present(frame(null));
+
+    expect(draws).toEqual([]);
+    expect(element.style.display).toBe("none");
   });
 
   it("reads the SEMANTIC layers, never the terminal's glyph projection", () => {
