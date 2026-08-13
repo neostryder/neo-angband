@@ -3,5 +3,6 @@
   "name": "Late view",
   "version": "1.0.0",
   "shape": "plugin",
-  "modApi": 1
+  "modApi": 1,
+  "capabilities": ["display:replace"]
 }

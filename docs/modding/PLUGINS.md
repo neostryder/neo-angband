@@ -297,15 +297,34 @@ export default {
 };
 ```
 
+The manifest must request **`display:replace`**, and the player must approve it:
+
+```json
+{ "shape": "plugin", "capabilities": ["display:replace"] }
+```
+
+Declaring `frontend` without it is reported by name and the game keeps drawing.
+It is deliberately not a `registry:` domain and **`registry:*` does not cover
+it**: an override grant changes one named game system among many, while this one
+means everything the player sees of the dungeon comes from the mod. That is the
+same reasoning that makes `controller` require `command:add`.
+
 For TypeScript, import the public data contract type-only from the SDK:
 `import type { WorldFrame, WorldFrameSink } from
 "@rpgm-tools/neo-angband-mod-sdk"`. The build erases that import, so a folder
 plugin still has no bare runtime dependency. There is one slot and the **last
-enabled mod in load order wins**; earlier frontend factories are not called.
+eligible mod in load order wins**; earlier frontend factories are not called.
 The host hands the winner a frozen, structurally owned snapshot per real map
 repaint. It is safe to retain for an animation frame, but cannot expose or
 mutate the live player-grid object. A frontend that throws loses its display
-attempt and the glyph renderer resumes.
+attempt and the game's own renderer resumes.
+
+**The game's renderer competes in that same list, as candidate zero.** It
+declares `frontend` and `display:replace` exactly as a mod does, and it wins
+whenever no mod outranks it - it is not a fallback the selection falls through
+to. That is what makes the seam's claim checkable rather than aspirational: if
+it could not express the front end the game already ships, "a mod can replace
+the front end" would be a claim about a shape nobody had built through it.
 
 This replaces the map display only. Menus still use `registry:menu`, and input
 still enters through the host's device-neutral input door; gamepad bindings and
@@ -315,7 +334,8 @@ whole-screen ownership are later seams.
 
 The `GridSurface` rendering contract is host infrastructure, not a registry
 capability. `frontend` is a direct `ModPlugin` member because it selects one
-display owner rather than registering an independent game behaviour.
+display owner rather than registering an independent game behaviour - and it is
+gated by `display:replace`, its own capability kind, for the same reason.
 
 The live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` invokes the extracted

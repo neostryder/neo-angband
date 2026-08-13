@@ -339,6 +339,18 @@ export interface ModPlugin {
    * a frozen, structurally owned snapshot on every real map repaint; it may
    * retain that frame, but cannot retain or mutate the player's live grid.
    *
+   * Requires the `display:replace` capability in the manifest, and the player's
+   * consent to it. Not a `registry:` domain, and not covered by `registry:*`: a
+   * registry grant overrides one named game system among many, while this one
+   * means everything the player sees of the dungeon is drawn by the mod. A mod
+   * that declares this member without asking is reported by name and the game
+   * keeps drawing.
+   *
+   * CORE'S OWN RENDERER DECLARES THIS TOO, as candidate zero of the same list
+   * (frontend-runtime.ts). It is not a fallback the selection falls through to;
+   * it is what wins when no mod outranks it, and what a faulting replacement
+   * hands the map back to.
+   *
    * This is a front-end seam, not a registry capability. It replaces display
    * only; input remains at the host's one input door until a later input-binding
    * seam lets a replacement front end submit intents.

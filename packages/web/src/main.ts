@@ -239,6 +239,8 @@ import {
   glyphWorldFrameSink,
 } from "./world-view";
 import {
+  coreFrontendCandidate,
+  coreOnlyFrontend,
   frontendWorldFrameSink,
   installFrontend,
   type InstalledFrontend,
@@ -1578,8 +1580,16 @@ const sidebarModeMenu: SidebarModeMenu = {
 let message = loadedNote;
 let messageColor = UI_TEXT;
 let dead = false;
-/** The selected ModPlugin.frontend, or null while the glyph renderer owns the map. */
-let installedFrontend: InstalledFrontend | null = null;
+/**
+ * The selected front end. Never absent: core's glyph renderer is candidate zero
+ * and holds the slot from module init - through the title screen and every
+ * frame before mod code loads - until `installFrontend` re-selects over the
+ * loaded plugins below.
+ */
+const coreWorldSink = glyphWorldFrameSink(term);
+const coreFrontend = coreFrontendCandidate(coreWorldSink);
+const coreFrontendSlot: InstalledFrontend = coreOnlyFrontend(coreWorldSink);
+let installedFrontend: InstalledFrontend = coreFrontendSlot;
 
 // The message log: every message the engine emits this session, for the top
 // status line and the scrollable history (Ctrl-P). state.msg is the core's
@@ -7376,7 +7386,6 @@ function render(targeting?: TargetingOverlay): void {
     playerGlyph: playerMapGlyph,
     playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
   }, frontendWorldFrameSink(
-    glyphWorldFrameSink(term),
     installedFrontend,
     (id, message, error) => {
       reportModFault(id, `${message}: ${faultMessage(error)}`);
@@ -9137,7 +9146,10 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     controller: installedController,
   });
   installedController = null;
-  installedFrontend = null;
+  /* Back to candidate zero, not to nothing: the page has not re-composed yet
+   * and the autosave below can still repaint, so the map needs an owner the
+   * whole way down. A departing mod's sink must not be that owner. */
+  installedFrontend = coreFrontendSlot;
   try {
     autosave(true); // keep the live hero before the page re-composes
     if (opts?.resume !== false) sessionStorage.setItem(SKIP_TITLE_KEY, "1");
@@ -10706,11 +10718,30 @@ for (const loaded of activeModCode().plugins) {
 
 /* The display slot is last-load-wins, unlike the autoplayer's historical
  * first-claim guard. Select BEFORE invoking: a lower front end never gets a
- * chance to mount anything when a later mod replaces it. */
+ * chance to mount anything when a later mod replaces it.
+ *
+ * CORE'S RENDERER IS CANDIDATE ZERO, in the same list and under the same rule.
+ * It is not a fallback the selection falls through to - it is what wins when no
+ * mod outranks it, and what a faulting replacement hands the map back to. A mod
+ * must hold `display:replace` to be eligible at all; declaring frontend()
+ * without it is reported against that mod and leaves core drawing. */
 installedFrontend = installFrontend(
-  activeModCode().plugins,
+  [coreFrontend, ...activeModCode().plugins],
   (id) => {
-    const loaded = activeModCode().plugins.find((plugin) => plugin.id === id)!;
+    const loaded = activeModCode().plugins.find((plugin) => plugin.id === id);
+    /* Candidate zero has no pack behind it, so there are no own-files and no
+     * folder rules to hand it - but it goes through the same call, with the
+     * same session facts, because a candidate invoked differently would be the
+     * special case this list exists to remove. */
+    if (!loaded) {
+      return modPluginContext(
+        id,
+        {},
+        state,
+        {},
+        sessionFacts,
+      );
+    }
     return modPluginContext(
       id,
       folderRuleFlags.get(id) ?? {},
