@@ -297,6 +297,12 @@ export default {
 };
 ```
 
+A complete worked example lives in **`samples/frontend-blueprint/`** — a folder
+you can copy straight into a mods folder. It draws a blueprint of the dungeon
+from the frame's semantic layers, and `packages/web/src/sample-blueprint.node.test.ts`
+loads that folder by path and records what it draws, so the sample is checked
+code rather than an illustration.
+
 The manifest must request **`display:replace`**, and the player must approve it:
 
 ```json
@@ -329,6 +335,14 @@ the front end" would be a claim about a shape nobody had built through it.
 This replaces the map display only. Menus still use `registry:menu`, and input
 still enters through the host's device-neutral input door; gamepad bindings and
 whole-screen ownership are later seams.
+
+**A front end is not told where the map's pixels are.** Cell size, the letterbox
+offset and the grid dimensions belong to the terminal and no `ctx` member
+exposes them, so a replacement that wanted to draw *inside* the existing layout
+would have to guess the rectangle. The seam's own cases — isometric, 3D — take
+the window, which is what the sample does. Anything that wants to sit inside the
+terminal's map area needs viewport geometry the seam does not yet publish; see
+`MOD_REACH.md` gap 9.
 
 ## Capabilities
 
