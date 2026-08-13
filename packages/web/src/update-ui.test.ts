@@ -9,7 +9,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { elidePath, humanBytes, percent, progressBar, updateFooter, updateLines } from "./update-ui";
+import {
+  checkPhase,
+  elidePath,
+  humanBytes,
+  percent,
+  progressBar,
+  updateFooter,
+  updateLines,
+} from "./update-ui";
 import type { UpdateHow, UpdatePhase, UpdateView } from "./update-ui";
 
 /**
@@ -171,6 +179,78 @@ describe("when it fails", () => {
   });
 });
 
+/**
+ * THE SENTENCE THIS SCREEN USED TO SAY OVER A CHECK THAT NEVER HAPPENED.
+ *
+ * checkForUpdate returned `AvailableUpdate | null`, and null meant four things:
+ * nothing newer, GitHub unreachable, GitHub refusing, GitHub too slow. The
+ * screen printed "This is the newest build on your channel" for all four, and
+ * the check ran once at boot - so a transient failure at launch became a
+ * permanent, confident, wrong answer for the rest of the session.
+ *
+ * The same mistake was found and fixed on the MOD half of this very screen
+ * (mod-refresh.test.ts: "NEVER says up to date - the phrase this screen shipped
+ * a lie in"). It was never carried across to the game half. These tests are
+ * that lesson, applied to the other side of the seam.
+ */
+describe("a check that got no answer, which is not the same as being current", () => {
+  const unchecked: UpdateView = {
+    ...base,
+    phase: "unchecked",
+    error: "GitHub did not answer in time.",
+  };
+
+  it("does NOT claim currency - the whole reason the phase exists", () => {
+    expect(text(unchecked)).not.toMatch(/newest build/iu);
+  });
+
+  it("says what went wrong, in the words the check itself reported", () => {
+    expect(text(unchecked)).toContain("GitHub did not answer in time.");
+  });
+
+  it("offers the retry, because restarting the game was the only one before", () => {
+    expect(text(unchecked)).toContain("ENTER asks again.");
+    expect(updateFooter(unchecked)).toMatch(/check again/u);
+  });
+
+  it("keeps the channel reachable, since this screen is still its only door", () => {
+    expect(text(unchecked)).toContain("Channel: beta");
+    expect(updateFooter(unchecked)).toContain("C to change channel");
+  });
+
+  it("still says something when no reason travelled with the failure", () => {
+    /* `error` is optional on the view, and a blank line where the explanation
+     * should be reads as a rendering bug rather than a network one. */
+    expect(text({ ...base, phase: "unchecked" })).toMatch(/could not be reached/iu);
+  });
+
+  it("is what a failed check maps to, and a successful empty one is not", () => {
+    /* The wiring, not the wording. main.ts is the only file here no test runs,
+     * and the two-way collapse this replaces lived in exactly that blind spot. */
+    expect(checkPhase({ ok: false, reason: "GitHub could not be reached." })).toEqual({
+      phase: "unchecked",
+      error: "GitHub could not be reached.",
+    });
+    expect(checkPhase({ ok: true, update: null })).toEqual({
+      phase: "uptodate",
+      error: undefined,
+    });
+    expect(
+      checkPhase({
+        ok: true,
+        update: { version: "0.17.0", tag: "v0.17.0", url: "u", asset: null, older: false },
+      }),
+    ).toEqual({ phase: "offer", error: undefined });
+  });
+
+  it("leaves the currency claim to the ONE phase that earned it", () => {
+    for (const phase of ["offer", "unchecked", "downloading", "installing", "failed"] as const) {
+      expect(text({ ...base, phase }), phase).not.toMatch(/newest build/iu);
+    }
+    expect(text({ ...base, phase: "uptodate" })).toMatch(/newest build/iu);
+  });
+});
+
 describe("channels on the screen", () => {
   it("names the channel and says what it means, not what GitHub calls it", () => {
     /* "pre-release" is release-engineering vocabulary and tells a player
@@ -244,7 +324,7 @@ describe("the arithmetic", () => {
  */
 describe("the footer fits the terminal it is painted on", () => {
   const HOWS: UpdateHow[] = ["swap", "manual", "web", "none"];
-  const PHASES: UpdatePhase[] = ["offer", "uptodate", "downloading", "installing", "failed"];
+  const PHASES: UpdatePhase[] = ["offer", "uptodate", "unchecked", "downloading", "installing", "failed"];
   const MODS = [
     [],
     [{ mod: { name: "Quality of Life" } as never, from: "v0.11.0", to: "v0.13.0" }],

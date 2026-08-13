@@ -352,6 +352,34 @@ flagged pre-release. `defaultChannel()` therefore starts new installs on `beta`
 and switches to `stable` on its own at `1.0.0`. A default of `stable` today
 would mean a fresh install never offers an update and never explains why.
 
+### A check that FAILED is not a check that found nothing
+
+The game asks GitHub once at boot and again whenever the player opens the update
+screen, and those two requests can end four ways: nothing newer, GitHub
+unreachable, GitHub refusing, GitHub too slow. `checkForUpdate` returns
+`UpdateCheck` — `{ ok: true, update }` or `{ ok: false, reason }` — precisely so
+the screen can tell the first apart from the other three.
+
+It used to return `AvailableUpdate | null`, and the screen read a null as
+currency: **"This is the newest build on your channel"**, printed over a check
+that had timed out or never left the machine. The check ran once, at boot, so a
+transient failure at launch was a confident wrong answer for the whole session,
+with no way to ask again short of restarting the game. When triaging "the
+updater says there is nothing", that sentence is now a real claim: it means
+GitHub answered.
+
+The one to keep in mind when you touch either half:
+
+- **The boot check races startup.** It is issued during page load, alongside mod
+  loading and tile decoding, and its six-second abort runs on wall-clock time
+  whether or not the main thread was free to read a response GitHub already
+  sent. A big install can lose a check it won. Opening the update screen asks
+  again for exactly this reason, and ENTER on a failed check asks a third time.
+- **403 and 429 are the rate limit,** not a permissions problem. The game ships
+  no credential on purpose, so it gets the unauthenticated sixty-an-hour budget
+  shared with everything else on that address. The screen says so in those words,
+  because "403" reads as something the player did wrong.
+
 ### `early`: a release per commit, and only ever one
 
 `edge.yml` builds master on every push and publishes it as a pre-release tagged

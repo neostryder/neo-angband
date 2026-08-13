@@ -9,7 +9,7 @@
  * so the text is the part worth asserting.
  */
 
-import type { UpdateChannel } from "./update";
+import type { UpdateChannel, UpdateCheck } from "./update";
 
 /** Tones, resolved to this shell's palette by the caller. */
 import { upgradeNotice, type ModUpgrade } from "./mod-refresh";
@@ -46,7 +46,38 @@ export type UpdateHow = "swap" | "manual" | "web" | "none";
  * this screen and the door only appeared when you did not need it. On desktop
  * the row is now always there and shimmers only when a build is waiting.
  */
-export type UpdatePhase = "offer" | "uptodate" | "downloading" | "installing" | "failed";
+/*
+ * `unchecked` is the one that was missing, and its absence was a bug rather
+ * than a gap: a check that failed produced the same `null` as a check that
+ * found nothing, so the screen said "This is the newest build on your channel"
+ * to a player whose game had never managed to ask. See UpdateCheck in
+ * update.ts for the four outcomes that used to share one value.
+ */
+export type UpdatePhase =
+  | "offer"
+  | "uptodate"
+  | "unchecked"
+  | "downloading"
+  | "installing"
+  | "failed";
+
+/**
+ * A check's outcome, turned into the phase that describes it.
+ *
+ * A THREE-WAY MAPPING THAT USED TO BE TWO-WAY, and it lives here rather than
+ * inline in main.ts because main.ts is the one file in this package no test
+ * runs. The collapse it replaces - `phase: offer ? "offer" : "uptodate"` - was
+ * three lines of shell code that no assertion could see, sitting under a screen
+ * whose every sentence is asserted. Being unreachable by test is how it stayed
+ * wrong through a whole release cycle.
+ */
+export function checkPhase(c: UpdateCheck): {
+  readonly phase: UpdatePhase;
+  readonly error: string | undefined;
+} {
+  if (!c.ok) return { phase: "unchecked", error: c.reason };
+  return { phase: c.update ? "offer" : "uptodate", error: undefined };
+}
 
 export interface UpdateView {
   readonly how: UpdateHow;
@@ -196,6 +227,28 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     return out;
   }
 
+  if (v.phase === "unchecked") {
+    say(`Neo Angband ${v.current}`, "head");
+    say("");
+    say("The check for a new version did not get an answer.", "warn");
+    say("");
+    say(v.error ?? "GitHub could not be reached.", "body");
+    say("");
+    /* Says nothing either way ON PURPOSE, and does not contain the currency
+     * sentence even to deny it: a failed check knows nothing about what is
+     * published, and the reassuring guess is the one that hides an update.
+     * update-ui.test.ts holds this branch to that, by the same phrase
+     * mod-refresh.test.ts holds the mod half to. */
+    say("The game does not know whether anything is waiting for you, so it is", "body");
+    say("not going to tell you either way. A reassuring guess here is exactly", "body");
+    say("the guess that hides an update.", "body");
+    say("");
+    say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
+    say("");
+    say("ENTER asks again.", "good");
+    return [...out, ...modUpdateLines(v)];
+  }
+
   if (v.phase === "uptodate") {
     say(`Neo Angband ${v.current}`, "head");
     say("");
@@ -204,8 +257,8 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say(`Channel: ${v.channel} - ${CHANNEL_BLURB[v.channel]}`, "dim");
     say("");
     say("A faster channel gets you newer builds sooner and tests them less.", "body");
-    say("The game checks once when it starts, and the title screen row", "body");
-    say("shimmers when something is waiting.", "body");
+    say("The game checks when it starts and again when you open this screen,", "body");
+    say("and the title screen row shimmers when something is waiting.", "body");
     return [...out, ...modUpdateLines(v)];
   }
 
@@ -340,6 +393,7 @@ export function updateFooter(v: UpdateView, cols = 80): string {
   const parts = (short: boolean): string[] => {
     const out: string[] = [];
     if (v.phase === "failed") out.push("ENTER to try again");
+    else if (v.phase === "unchecked") out.push("ENTER to check again");
     else if (v.phase === "uptodate") {
       /* Nothing to install, so there is no ENTER to describe. */
     } else if (v.how === "swap") {
