@@ -9,9 +9,15 @@
  *
  * main.ts's render() is a closure-heavy module body that boots the whole game
  * against a canvas, so this reads its SOURCE - the same instrument
- * display-wiring.test.ts uses on renderSidebar, and for the same reason. What is
- * pinned is that the four call sites use the same expressions the region table
- * is built from, not that they contain particular numbers.
+ * display-wiring.test.ts uses on the sidebar, and for the same reason. What is
+ * pinned is that the call sites use the same expressions the region table is
+ * built from, not that they contain particular numbers.
+ *
+ * Since #253 the HUD's half of this is checkable rather than merely pinned: each
+ * section carries the region it plays the role of, so `hud-view.test.ts` can
+ * compare the rectangle core draws in against the rectangle core published. What
+ * still needs source text is that main.ts builds those sections from THE SAME
+ * viewport call the map was drawn with.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,12 +38,18 @@ function bodyOf(name: string): string {
 
 describe("main.ts and the region table describe the same screen", () => {
   it("hands every frame the regions built from the viewport it was drawn with", () => {
-    /* One viewport() call, one region table, one frame. If render() built its
-     * regions from a SECOND viewport() call, a mid-frame layout change would
-     * put the map somewhere the frame's own cells are not. */
+    /* One viewport() call, ONE region table, and both halves of the screen read
+     * it. The map's frame carries it to whoever owns the map; the HUD's sections
+     * are the roles it names (#253). A second currentScreenRegions(vp) call for
+     * the HUD would let a mid-frame layout change put the two descriptions of
+     * one screen at odds - and each would look self-consistent. */
     const render = bodyOf("render");
     expect(render).toMatch(/const vp = viewport\(/u);
-    expect(render).toMatch(/regions: currentScreenRegions\(vp\)/u);
+    expect(render).toMatch(/const regions = currentScreenRegions\(vp\)/u);
+    /* Anchored on `= currentScreenRegions(` so the prose in render()'s own
+     * comment about not calling it twice does not count as calling it twice. */
+    expect(render.match(/=\s*currentScreenRegions\(/gu)?.length).toBe(1);
+    expect(render).toMatch(/currentHudFrame\(vp, cols, rows, regions, targeting\)/u);
   });
 
   it("builds the regions from the live layout and the surface's own metrics", () => {
@@ -54,30 +66,34 @@ describe("main.ts and the region table describe the same screen", () => {
     expect(build).toContain("term.metrics()");
   });
 
-  it("draws the status line exactly where the status region says it is", () => {
-    /* screenRegions() gives `status` the last row, starting at the map's own
-     * column and as wide as the map. This is the call it is describing. */
-    expect(bodyOf("render")).toMatch(/renderStatusLine\(mapOriginX, rows - 1, mapCols\)/u);
+  it("builds the HUD from the same viewport numbers the regions came from", () => {
+    /* WHERE the sections go is hud-view.ts's, and hud-view.test.ts drives it at
+     * four sizes in three layouts - including the comparison against the region
+     * rectangles, which no source-text guard could ever make. What is left for
+     * this file is the wiring that a pure test cannot see: that main.ts feeds
+     * that producer the LIVE geometry rather than a second opinion about it.
+     * `mapOriginX` is the one that would silently ruin the status line - it is
+     * 13 in the Left layout and 0 in the other two, so a hard-coded 0 looks
+     * right in exactly the layout most people test in. */
+    const hud = bodyOf("currentHudFrame");
+    expect(hud).toContain("layout: vp.layout");
+    expect(hud).toContain("mapOriginX: vp.mapOriginX");
+    expect(hud).toContain("mapCols: vp.mapCols");
+    expect(hud).toContain("sidebarWidth: SIDEBAR_W");
+    /* And the region table itself, which is what makes "core draws inside what
+     * it publishes" checkable at all: without the regions reaching the sections,
+     * that claim is about two numbers that never meet. */
+    expect(hud).toContain("regions,");
   });
 
-  it("draws the message line across the full width of row 0, above the sidebar", () => {
-    /* The one people reimplement wrongly: the message row is NOT indented to
-     * the map, so the `messages` region starts at column 0 and is `cols` wide. */
-    expect(bodyOf("render")).toMatch(/term\.print\(0, 0, message/u);
-  });
-
-  it("puts the compact vitals on row 1, which is where the Top sidebar region is", () => {
-    /* The sidebar region is a ROLE. In the Top layout the role is this one-line
-     * header, and the region has to follow it there rather than describing a
-     * left column that this layout does not have. */
-    expect(bodyOf("render")).toMatch(/renderCompactVitals\(1, cols\)/u);
-  });
-
-  it("keeps the left sidebar inside the width the sidebar region publishes", () => {
-    /* renderSidebar truncates each field at SIDEBAR_W, and the region is
-     * SIDEBAR_W wide. Two numbers that must agree, from one constant. */
-    const sidebar = bodyOf("renderSidebar");
-    expect(sidebar).toContain("SIDEBAR_W");
-    expect(sidebar).toMatch(/for \(const \{ key, row: y \} of sidebarLayout\(rows\)\)/u);
+  it("feeds the HUD the engine's own display models, not a copy of them", () => {
+    /* The sidebar's placement is core's update_sidebar port, and its fields are
+     * core's ui-display port. A shell that recomputed either would be a second
+     * transcription of the C, which is what display-wiring.test.ts exists to
+     * prevent and what this keeps true through the frame. */
+    const hud = bodyOf("currentHudFrame");
+    expect(hud).toContain("sidebarModel(state, deps)");
+    expect(hud).toContain("sidebarLayout(rows)");
+    expect(hud).toContain("statusLineModel(state, deps)");
   });
 });
