@@ -27,6 +27,65 @@ describe("main boot order", () => {
     expect(mainSource).toMatch(/const stopLoading = startLoading\(term, \{/u);
   });
 
+  it("takes the loading screen down at the menu stack's one entry (#251)", () => {
+    /* The loading screen repaints the whole terminal every 90ms. Whoever stops
+     * it therefore decides whether the NEXT screen is visible at all, and for
+     * one release that decision sat inside maybeTitle - which has four returns
+     * and reached the stop on one of them. (N)ew game takes one of the other
+     * three: birth ran, took keys, and was erased eleven times a second, so no
+     * character could be created on the shipped build.
+     *
+     * What is pinned here is the SHAPE that made it impossible, not the fix's
+     * text: the stop is an unconditional statement of bootMenus itself - one
+     * entry, no branch to hide behind - and it is not back inside maybeTitle,
+     * where a fourth exit could be added tomorrow and inherit the same bug. */
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const decl = (name: string): ts.FunctionDeclaration | undefined =>
+      source.statements.find(
+        (statement): statement is ts.FunctionDeclaration =>
+          ts.isFunctionDeclaration(statement) && statement.name?.text === name,
+      );
+
+    const bootMenus = decl("bootMenus");
+    expect(bootMenus?.body, "main.ts no longer declares bootMenus()").toBeDefined();
+    const body = bootMenus!.body!.statements;
+
+    /* A DIRECT child of the function body: nested in an `if`, a `try` or the
+     * loop, it is conditional again and this test has to fail. */
+    const stopAt = body.findIndex(
+      (statement) =>
+        ts.isExpressionStatement(statement) &&
+        ts.isCallExpression(statement.expression) &&
+        ts.isIdentifier(statement.expression.expression) &&
+        statement.expression.expression.text === "stopLoading",
+    );
+    expect(stopAt, "bootMenus() does not stop the loading screen unconditionally").toBeGreaterThan(
+      -1,
+    );
+
+    /* And before the menu loop, because a screen painted inside it is exactly
+     * what the animation was erasing. */
+    const loopAt = body.findIndex((statement) => ts.isForStatement(statement));
+    expect(loopAt, "bootMenus() no longer runs its menu loop").toBeGreaterThan(-1);
+    expect(stopAt).toBeLessThan(loopAt);
+
+    const maybeTitle = decl("maybeTitle");
+    expect(maybeTitle, "main.ts no longer declares maybeTitle()").toBeDefined();
+    let inMaybeTitle = false;
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "stopLoading"
+      ) {
+        inMaybeTitle = true;
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(maybeTitle!, visit);
+    expect(inMaybeTitle, "the stop is back behind one of maybeTitle's exits").toBe(false);
+  });
+
   it("initializes the frontend slot before anything that will read it", async () => {
     const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
     const render = source.statements.find(

@@ -286,6 +286,15 @@ export type StopLoading = () => void;
  * thrown mod resource, a shell with no title at all - and every one of them ends
  * with this call. A second stop must be free rather than a crash on a cleared
  * timer.
+ *
+ * WHO IS MEANT TO CALL IT. This screen clears and repaints the WHOLE terminal
+ * eleven times a second, so for as long as it runs, nothing else on that
+ * terminal can be seen - a live screen underneath takes keys and is erased
+ * before the player reads a word of it. Whoever stops it therefore decides
+ * whether the next screen exists at all, and that has to be ONE unconditional
+ * caller at the point the terminal changes hands, never a call sitting behind
+ * one of several early returns. main.ts's bootMenus owns it; #251 is what it
+ * cost to learn that, and the note there is the long version.
  */
 export function startLoading(
   term: GridSurface,

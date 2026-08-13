@@ -240,6 +240,37 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **(N)ew game never left the loading screen, so no character could be created**
+  (#251, found while proving #234 on the desktop build).
+
+  The loading screen added in #249 clears and repaints the whole terminal every
+  90ms. It was taken down inside `maybeTitle`, one line above the title art —
+  and that function has **four** returns, only one of which reached the stop.
+  `?agent=`, `SKIP_TITLE` and `BIRTH_DONE` all answer `null` before it, and two
+  of those three go on to paint a real screen. `newGame()` sets `SKIP_TITLE`
+  before its reload, so (N)ew game took one of the exits that never stopped the
+  animation: **birth was running the whole time** — mid-prompt, taking keys —
+  and was erased eleven times a second. Switch character sets the same flag and
+  lost the character roster the same way.
+
+  Measured on the shipped Windows build, 2026-08-13, and confirmed by killing
+  the interval from outside the game: the race menu appeared exactly where it
+  should have been, with the quickstart prompt already answered. Nothing was
+  hung, and nothing was slow — the screen was simply being painted over.
+
+  The stop now happens **once, unconditionally, at the top of `bootMenus`** —
+  the single entry to the pre-game menu stack, rather than one of `maybeTitle`'s
+  exits. Everything the loading screen covers for has finished by then, and every
+  route out of `bootMenus` hands the terminal to a screen, so there is no exit
+  left for the stop to hide behind. `main-boot-order.test.ts` pins that shape:
+  the call must be a direct, unconditional statement of `bootMenus` ahead of its
+  menu loop, and must **not** be back inside `maybeTitle`, where a fifth exit
+  added later would inherit the same bug.
+
+  Both routes were then re-driven end to end on a portable built from the fix —
+  title → (N)ew game → birth → a live level-1 Dwarf Paladin in the town, and
+  Switch character → the roster with that character in it.
+
 - **Putting on a Ring of Flames asked which way to point it** (#248, reported
   from a playtest as "I tried to equip a ring and it asked for a target").
 
