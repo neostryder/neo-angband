@@ -212,7 +212,6 @@ import {
   hallucinatoryMonster,
   hallucinatoryObject,
   type HallucinationRandom,
-  isDoubleHeightTile,
   LIGHTING,
   monsterGlyph,
   monsterIsCamouflaged,
@@ -1510,16 +1509,13 @@ function tileDrawFor(
     kind: "canvas-tile",
     key: `${String(code)}@${String(x)},${String(y)}${dimmed ? "~" : ""}`,
     data: { blitter: ts, code, grid: { x, y }, dimScale: dimmed ? DIM_SCALE : 1 },
-    /* is_dh_tile (grafmode.c L241). THE call that had no caller until #241 -
-     * without it every double-height Shockbolt tile was cropped into one cell.
-     * It reads the raw attr, not the resolved code, because the double-height
-     * band is a property of the tileset ROW. */
-    ...(isDoubleHeightTile(
-      currentGrafID === GRAPHICS_NONE ? undefined : getGraphicsMode(currentGrafID),
-      atlas.attr,
-    )
-      ? { tall: true }
-      : {}),
+    /* Double-height (is_dh_tile, grafmode.c L241): without it every such tile is
+     * cropped into one cell, which is what #241 fixed and #243 found still true
+     * on the other engine. THE ENGINE IS ASKED, because only the engine knows
+     * what a code means. This used to run the core catalog lookup itself, and
+     * that answered "never" for every mod-supplied mode - so no linoleum pack
+     * ever drew a tall tile, Guardian naga included. */
+    ...(ts.isTall(code, { x, y }) ? { tall: true } : {}),
   };
 }
 

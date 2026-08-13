@@ -3,7 +3,7 @@
  *
  * The requirement for the loose-pack engine was that a Linoleum pack "work just
  * the same as the original tilesheet versions". This test is that claim,
- * mechanically, over all four bundled packs:
+ * mechanically, over every bundled pack:
  *
  *   1. take a tile set the game ships (public/tiles/<dir>, drawn by the
  *      TILESHEET engine from its atlas PNG + graf-*.prf);
@@ -17,7 +17,12 @@
  *      engines resolve to the SAME PICTURE: the sheet's crop of the atlas at
  *      (row, col) and the loose pack's asset PNG must be pixel-identical;
  *   5. assert the loose pack covers everything the sheet covers, so no cell
- *      that used to draw a tile silently falls back to ASCII.
+ *      that used to draw a tile silently falls back to ASCII;
+ *   6. assert both engines call the same entities DOUBLE-HEIGHT. The pixel
+ *      comparison in step 4 cannot see this - it compares the art and never
+ *      asks how many cells that art covers - and the two engines reach the
+ *      answer by different routes, which is the point: the sheet tests the
+ *      mode's overdraw band, the loose pack reads its own maps/tall.txt.
  *
  * It has already earned its keep: it caught an asset-name collision that made
  * two different scrolls share one file (so one drew the other's tile) and the
@@ -50,6 +55,7 @@ import { PNG } from "pngjs";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   bindCore,
+  GRAPHICS_MODE_CATALOG,
   LIGHTING,
   parseTilePrefsInto,
   TileMap,
@@ -59,9 +65,17 @@ import type { TileAtlas, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { ALL_PACKS, buildPackExport } from "@rpgm-tools/neo-angband-linoleum";
 import type { PackConfig } from "@rpgm-tools/neo-angband-linoleum";
 import { parseTargetsFile } from "@rpgm-tools/neo-angband-linoleum/targets";
-import { atlasToSlot, buildLinoleumIndex, parseFamiliesFile } from "./linoleum-pack";
+import {
+  atlasToSlot,
+  buildLinoleumIndex,
+  LinoleumPack,
+  parseFamiliesFile,
+  parseLinoleumManifest,
+  parseTallFile,
+} from "./linoleum-pack";
 import type { LinoleumIndex } from "./linoleum-pack";
-import { isTile, tileCode } from "./tiles";
+import { createTileRenderer, isTile, tileCode } from "./tiles";
+import type { TileBlitter } from "./tiles";
 import { loadGamePack } from "./pack";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -80,17 +94,37 @@ const deps: TilePrefsDeps = {
  * Every pack whose art ships (BUNDLED_TILE_DIRECTORIES), with how many of its
  * pref lines assign an ASCII pair rather than a tile - see `ascii` below.
  */
-const PACKS: readonly { key: string; ascii: number }[] = [
-  { key: "original-tiles", ascii: 0 },
-  { key: "adam-bolt", ascii: 0 },
-  { key: "gervais", ascii: 0 },
+const PACKS: readonly {
+  key: string;
+  ascii: number;
+  tall: number;
+  tallEntities: number;
+}[] = [
+  { key: "original-tiles", ascii: 0, tall: 0, tallEntities: 0 },
+  { key: "adam-bolt", ascii: 0, tall: 0, tallEntities: 0 },
+  { key: "gervais", ascii: 0, tall: 0, tallEntities: 0 },
   // nomad's graf-nmd.prf gives its two joke monsters (Red-Hatted Elf, Father
   // Christmas) a plain colour/char pair instead of a tile.
-  { key: "nomad", ascii: 2 },
+  { key: "nomad", ascii: 2, tall: 0, tallEntities: 0 },
   // Shockbolt was missing from this list until 2026-07-31, and it is the pack
   // that matters most for the conditional rules: its xtra-shb.prf carries 132
   // `monster:<player>` remaps, more than the other four packs put together.
-  { key: "shockbolt-dark", ascii: 0 },
+  //
+  // It is also the ONLY source mode with an overdraw band (list.txt
+  // `extra:1:27:31` on both Shockbolt rows, `extra:0:0:0` on every other), so
+  // `tall` is the whole double-height population of the game: 247 monsters in
+  // both packs, plus five shop entrances the DARK pack alone puts in the band -
+  // light maps STORE_BOOK/ALCHEMY/MAGIC/BLACK/HOME at 0x99, a row outside it.
+  // That asymmetry is why the light pack has to be here too. It was missing,
+  // and tools/tall-tile-probe.mjs photographs exactly those five entrances, so
+  // the one pixel proof of #241 was a proof about dark and nothing else.
+  //
+  // `tall` counts distinct ASSETS (one per selector in the band).
+  // `tallEntities` counts entity SLOTS, which is what a map render draws: a
+  // monster is one, a feature is one PER LIGHTING VARIANT, so dark's five shop
+  // entrances are 247 + 5 * LIGHTING.MAX = 267.
+  { key: "shockbolt-dark", ascii: 0, tall: 252, tallEntities: 267 },
+  { key: "shockbolt-light", ascii: 0, tall: 247, tallEntities: 247 },
 ];
 
 function readText(path: string): string {
@@ -130,6 +164,10 @@ interface Subject {
   config: PackConfig;
   sheetMap: TileMap;
   loose: LinoleumIndex;
+  /** The TILESHEET engine itself, so isTall is asked through production code. */
+  sheetEngine: TileBlitter;
+  /** The LOOSE engine itself, built over the converter's real output. */
+  looseEngine: TileBlitter;
   sheetPixels(atlas: TileAtlas): string | null;
   loosePixels(atlas: TileAtlas): string | null;
 }
@@ -164,10 +202,41 @@ function prepare(key: string): Subject {
   const families = existsSync(familiesPath)
     ? parseFamiliesFile(readText(familiesPath))
     : new Map<string, string>();
+  /* Read the way loadLinoleumPack reads it: the manifest names the map, and a
+   * pack with no overdraw band writes none. Going through the manifest rather
+   * than straight to the path is the point - a converter that stopped listing
+   * `map:tall:` would leave the file on disk and every tall tile would quietly
+   * go flat again, which is exactly the failure this is here to catch. */
+  const manifest = parseLinoleumManifest(readText(join(packRoot, "manifest.txt")));
+  if (manifest === null) throw new Error(`unreadable manifest for ${key}`);
+  const tallPath = manifest.maps.get("tall");
+  const tall =
+    tallPath === undefined
+      ? new Set<string>()
+      : parseTallFile(readText(join(packRoot, tallPath)));
+
   const loose = buildLinoleumIndex({
     rules: targets,
     families,
+    tall,
     deps: { ...deps, vars: EQUIV_VARS },
+  });
+
+  /* Both engines as the shell holds them. The tilesheet's resolver answers null
+   * so no atlas image is fetched - this asks only what a code MEANS, which the
+   * mode settles before any pixel arrives. */
+  const mode = GRAPHICS_MODE_CATALOG.find(
+    (m) => m.directory === config.sourceDirectory && m.pref === config.primaryPref,
+  );
+  if (mode === undefined) throw new Error(`no catalog mode for ${key}`);
+  const noArt = (): Promise<string | null> => Promise.resolve(null);
+  const sheetEngine = createTileRenderer({ resolve: noArt, grafID: mode.grafID });
+  if (sheetEngine === null) throw new Error(`no tilesheet renderer for ${key}`);
+  const looseEngine = new LinoleumPack({
+    menuname: config.displayName,
+    resolve: noArt,
+    manifest,
+    index: loose,
   });
 
   const assetPixels = new Map<string, string | null>();
@@ -175,6 +244,8 @@ function prepare(key: string): Subject {
     config,
     sheetMap,
     loose,
+    sheetEngine,
+    looseEngine,
     sheetPixels: (atlas: TileAtlas): string | null => {
       const code = tileCode(atlas.attr, atlas.char);
       /* sourceTileRectangle (convert.ts L224-241): a row inside a pack's legacy
@@ -266,7 +337,7 @@ function drawsATile(atlas: TileAtlas): boolean {
   return isTile(atlas.attr, atlas.char);
 }
 
-for (const { key, ascii } of PACKS) {
+for (const { key, ascii, tall, tallEntities } of PACKS) {
   describe(`${key}: a converted loose pack draws what its tilesheet draws`, () => {
     let subject: Subject;
 
@@ -343,6 +414,52 @@ for (const { key, ascii } of PACKS) {
       expect(subject.loose.skipped.unresolved).toBe(0);
       expect(subject.loose.skipped.overflow).toBe(0);
       expect(subject.loose.conditional).toBeGreaterThan(0);
+    });
+
+    it("both engines call the SAME entities double-height", () => {
+      /* #243. Each engine is asked through the object the shell holds, and each
+       * reads its OWN authority: the tilesheet reads the mode's overdraw band
+       * (is_dh_tile over the atlas row), the loose pack reads maps/tall.txt,
+       * which the converter wrote from the rectangle it actually cropped. Two
+       * independent derivations of one fact, so a converter that stops
+       * extending a crop and an engine that stops reporting the flag are both
+       * caught - and neither can be caught by the pixel comparison above, which
+       * compares the ART and never asks how many cells it covers.
+       *
+       * This is also the check that would have failed the day the linoleum
+       * engine was asked `getGraphicsMode(105)` and answered "nothing is ever
+       * tall": every entity below would disagree. */
+      const disagreements: string[] = [];
+      let tallCount = 0;
+      for (const { label, atlas } of entitiesOf(subject.sheetMap)) {
+        if (!drawsATile(atlas)) continue;
+        const looseAtlas = atlasByLabel(subject.loose.map, label);
+        if (looseAtlas === undefined) continue; // reported by the coverage test
+        const bySheet = subject.sheetEngine.isTall(tileCode(atlas.attr, atlas.char));
+        const byPack = subject.looseEngine.isTall(
+          tileCode(looseAtlas.attr, looseAtlas.char),
+        );
+        if (bySheet) tallCount += 1;
+        if (bySheet !== byPack) {
+          disagreements.push(`${label}: sheet ${String(bySheet)}, loose ${String(byPack)}`);
+        }
+      }
+      expect(disagreements.slice(0, 20)).toEqual([]);
+      /* Entity SLOTS, not selectors: a feat is counted once per lighting
+       * variant, so shockbolt-dark's five shop entrances contribute twenty. A
+       * bare "they agree" would pass just as well with both engines answering
+       * `false` everywhere, which is the exact bug, so the population is pinned
+       * too - and pinned at zero for the four packs that must have none. */
+      expect(tallCount).toBe(tallEntities);
+    });
+
+    it("declares double-height assets only where the source mode has a band", () => {
+      /* The pack's own record, straight from maps/tall.txt, in distinct ASSETS -
+       * one per selector in the band for these packs. Zero for the four modes
+       * list.txt gives `extra:0:0:0`, and a zero is a real assertion here: the
+       * converter must not invent a band, and the reader must not conjure one
+       * out of an absent file. */
+      expect(subject.loose.tall.size).toBe(tall);
     });
 
     it("both engines pick the SAME player tile for this race and class", () => {

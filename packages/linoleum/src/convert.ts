@@ -85,6 +85,10 @@ export interface PackResult {
   familyMapPath: string;
   /** Path of maps/pools.txt (written only when the pack authors pools). */
   poolMapPath: string;
+  /** Path of maps/tall.txt (written only when the source mode has overdraw rows). */
+  tallMapPath: string;
+  /** How many assets were cropped two cells tall (0 for a mode with no band). */
+  tallAssetCount: number;
   /** Count of authored variant pools emitted (0 when none authored). */
   poolCount: number;
   /** Count of authored per-object / pooled target rules (0 when none). */
@@ -158,7 +162,7 @@ interface Rect {
 const PARITY_NOTES: readonly string[] = [
   "Legacy pref files are mirrored locally into the Linoleum pack folder so the mode still loads its own pref corpus.",
   "Stateful feat/trap selectors are preserved as exact loose-pack selector values with suffixes such as <selector>:lit.",
-  "When a source mode uses legacy overdraw rows, the exporter keeps the bottom-anchored double-height source rectangle instead of clipping it back to one base cell.",
+  "When a source mode uses legacy overdraw rows, the exporter keeps the bottom-anchored double-height source rectangle instead of clipping it back to one base cell, and names every such asset in maps/tall.txt so a runtime can draw it over the cell above.",
   "Conditional xtra remaps are preserved as exact selector values with :when:<query> suffixes and also receive one compatibility alias for the current runtime.",
   "Any source selector that points outside the original sheet is counted in the inventory and skipped rather than crashing the export.",
 ];
@@ -343,6 +347,7 @@ export function buildPackExport(
   const targetMapPath = join(mapsDir, "targets.txt");
   const familyMapPath = join(mapsDir, "families.txt");
   const poolMapPath = join(mapsDir, "pools.txt");
+  const tallMapPath = join(mapsDir, "tall.txt");
   const prefMirrorPaths: Record<string, string> = {};
 
   const authoredPools = authoring?.pools ?? [];
@@ -355,6 +360,8 @@ export function buildPackExport(
   const compatibilityRules: ExportEntry[] = [];
   const compatibilitySeen = new Set<string>();
   const uniqueAssets = new Set<string>();
+  /** Assets cropped two cells tall, for maps/tall.txt. Empty for most packs. */
+  const tallAssets = new Set<string>();
   const legacyTypeCounts: Record<string, number> = {};
   const exactTypeCounts: Record<string, number> = {};
   const compatibilityAliasCounts: Record<string, number> = {};
@@ -490,6 +497,12 @@ export function buildPackExport(
     exportableEntries.push(exportEntry);
     addUniqueExportEntry(exactRules, exactSeen, exportEntry);
     uniqueAssets.add(assetName);
+    /* The crop that just landed is TWO cells tall (sourceTileRectangle grew it
+     * upward for an overdraw row), so the asset is bottom-anchored and a runtime
+     * has to draw it over the cell above. Recorded per ASSET because that is the
+     * only form the reader can use: a loose pack addresses pictures by name, and
+     * the tileset row this came from does not survive into the pack. */
+    if (rect.height > tileHeight) tallAssets.add(assetName);
     bumpCount(exactTypeCounts, entry.type);
 
     const typeLower = entry.type.toLowerCase();
@@ -571,7 +584,41 @@ export function buildPackExport(
   if (authoredPools.length > 0) {
     manifestLines.push("map:pools:maps/pools.txt");
   }
+  if (tallAssets.size > 0) {
+    manifestLines.push("map:tall:maps/tall.txt");
+  }
   writeTextFile(manifestPath, manifestLines);
+
+  /**
+   * The double-height assets, by name.
+   *
+   * Written only when the source mode HAS an overdraw band, so the four packs
+   * without one are byte-identical to before and a hand-authored pack that
+   * declares nothing is unaffected. The reader treats an absent file as "no
+   * asset is tall", which is the same answer.
+   *
+   * A NAME, not a row. The pack's whole point is that pictures are addressed by
+   * name rather than by sheet coordinate, so the tileset row this was cropped
+   * from does not survive conversion - and the runtime's synthetic slot number
+   * is not a row either. Nothing but this file can tell the loose-pack engine
+   * which pictures overdraw, which is why its absence made every Shockbolt
+   * monster squat under neo-linoleum (#243).
+   */
+  if (tallAssets.size > 0) {
+    const tallLines: string[] = [
+      GENERATED_BY,
+      "# Double-height (overdraw) assets: each image is two cells tall and",
+      "# BOTTOM-ANCHORED, so a runtime draws it over the cell above the one it",
+      "# is placed in (is_dh_tile, grafmode.c L241; docs/LINOLEUM.md).",
+      "",
+    ];
+    for (const asset of [...tallAssets].sort((a, b) => collator.compare(a, b))) {
+      tallLines.push(`tall:${asset}`);
+    }
+    writeTextFile(tallMapPath, tallLines);
+  } else if (existsSync(tallMapPath)) {
+    rmSync(tallMapPath, { force: true });
+  }
 
   if (authoredPools.length > 0) {
     const poolMapLines: string[] = [
@@ -658,6 +705,8 @@ export function buildPackExport(
     targetMapPath,
     familyMapPath,
     poolMapPath,
+    tallMapPath,
+    tallAssetCount: tallAssets.size,
     poolCount: authoredPools.length,
     authoredTargetCount: authoredTargets.length,
     prefFiles: packConfig.prefFiles,

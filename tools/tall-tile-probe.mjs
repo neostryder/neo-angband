@@ -22,6 +22,13 @@
  * every new character stands in a town that draws five of them on the first
  * frame after birth. The subject is reached deterministically.
  *
+ * WHAT THAT SUBJECT DOES NOT COVER, found while chasing #243. Those five
+ * entrances are tall in Shockbolt DARK only: the LIGHT pack maps them at 0x99,
+ * outside the band, and its 247 tall tiles are all monsters. So `--shot` on
+ * grafID 5 proves the dark pack and nothing else, and it proves the TILESHEET
+ * engine and nothing else - a neo-linoleum pack is grafID 105+, drawn by the
+ * loose engine, and has never been photographed at all.
+ *
  * THE MEASUREMENT IS A DIFFERENCE, NOT A LOOK. A screenshot of the fixed build
  * on its own proves nothing - a tall tile drawn wrongly still looks like a
  * monster. So this runs the SAME seed through TWO bundles and diffs them:

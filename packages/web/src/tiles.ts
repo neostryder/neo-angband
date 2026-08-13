@@ -29,6 +29,7 @@
 import {
   getGraphicsMode,
   GRAPHICS_NONE,
+  isDoubleHeightTile,
   parseTilePrefsInto,
   TileMap,
 } from "@rpgm-tools/neo-angband-core";
@@ -93,6 +94,22 @@ export interface TileBlitter {
     code: TileCode,
     grid?: { x: number; y: number },
   ): boolean;
+  /**
+   * Does this code's picture occupy TWO cells, bottom-anchored - upstream's
+   * double-height overdraw (is_dh_tile, grafmode.c L241)?
+   *
+   * THE ENGINE HAS TO ANSWER THIS, not the caller. A code means whatever the
+   * engine that minted it says it means: for a tilesheet it is an atlas
+   * (row, col) and the answer is the MODE's overdraw band, exactly as the C
+   * reads it; for a loose pack it is a synthetic SLOT (slotToAtlas) with no
+   * tileset row in it at all, and the row test is not merely unavailable but
+   * meaningless. main.ts used to compute this itself from the core catalog,
+   * which silently answered "never" for every mod-supplied mode - see #243.
+   *
+   * `grid` is passed for the same reason drawTile takes it: a pool resolves to a
+   * different member per cell, and members may differ in height.
+   */
+  isTall(code: TileCode, grid?: { x: number; y: number }): boolean;
 }
 
 /**
@@ -163,6 +180,19 @@ export class TileSet implements TileBlitter {
   /** The mode's menu label (TileBlitter, for diagnostics). */
   get menuname(): string {
     return this.mode.menuname;
+  }
+
+  /**
+   * is_dh_tile against THIS tileset's own mode (TileBlitter.isTall).
+   *
+   * The mode is held, not looked up: a tilesheet pack contributed by a mod
+   * re-skins a row of the core catalog and so is constructed from a real
+   * GraphicsMode, while a lookup by the live grafID answers `undefined` for any
+   * id the catalog does not list. `code.row` is the attr's low seven bits, so
+   * the high bit goes back on for the C's `!(a & 0x80)` guard.
+   */
+  isTall(code: TileCode): boolean {
+    return isDoubleHeightTile(this.mode, 0x80 | code.row);
   }
 
   /**
