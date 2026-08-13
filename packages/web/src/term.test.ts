@@ -25,6 +25,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   blitCellAssets,
+  expandTallDirty,
+  glyphIsTall,
   setActiveCellTap,
   type Glyph,
   type GridPointerInput,
@@ -402,5 +404,82 @@ describe("blitCellAssets (Term_pict's terrain-then-foreground pass)", () => {
     log = [];
     expect(blitCellAssets(renderer(), CTX, cell({}), 0, 0, 16, 24)).toBe(false);
     expect(blitCellAssets(renderer(), CTX, null, 0, 0, 16, 24)).toBe(false);
+  });
+});
+
+/**
+ * pr_drw (ui-term.c L915-960): a double-height tile paints into the cell ABOVE
+ * its anchor, so the frame diff cannot treat cells as independent.
+ *
+ * THE TWO SMEARS THIS PREVENTS, and each rule exists for exactly one of them:
+ *
+ *  - a tall tile LEAVES. Painting only its anchor clears only the anchor, and
+ *    the upper half stays on the canvas over whatever is there now.
+ *  - the cell ABOVE a tall tile changes. Painting it clears the rect the tall
+ *    tile's upper half occupies, and the anchor's own glyph did not change, so
+ *    nothing repaints it - the monster loses its head.
+ *
+ * Asserted on the pure expansion rather than through the canvas because there is
+ * no jsdom here (see term-overdraw.test.ts) and because a pixel assertion would
+ * pass on a renderer that simply repainted everything.
+ */
+describe("expandTallDirty (pr_drw's two-directional dependency)", () => {
+  const COLS = 4;
+  const ROWS = 4;
+  const k = (x: number, y: number): number => y * COLS + x;
+  const tallAt = (...cells: [number, number][]) => {
+    const set = new Set(cells.map(([x, y]) => k(x, y)));
+    return (x: number, y: number): boolean => set.has(k(x, y));
+  };
+  const run = (dirty: [number, number][], isTall: (x: number, y: number) => boolean) => {
+    const set = new Set(dirty.map(([x, y]) => k(x, y)));
+    expandTallDirty(set, COLS, ROWS, isTall);
+    return [...set].sort((a, b) => a - b);
+  };
+
+  it("leaves a frame with no tall tile in it completely alone", () => {
+    /* The guard on the paint-count budget in term-overdraw.test.ts: an ASCII or
+     * one-cell-tile frame must not pay anything for this. */
+    expect(run([[1, 2], [3, 0]], () => false)).toEqual([k(3, 0), k(1, 2)].sort((a, b) => a - b));
+  });
+
+  it("dirties the cell above a changed tall anchor", () => {
+    expect(run([[1, 2]], tallAt([1, 2]))).toEqual([k(1, 1), k(1, 2)].sort((a, b) => a - b));
+  });
+
+  it("dirties an UNCHANGED tall anchor when the cell above it repainted", () => {
+    /* The rule that is easy to forget: the anchor's own glyph did not change, so
+     * the plain diff never names it, and repainting (1,1) erases its top half. */
+    expect(run([[1, 1]], tallAt([1, 2]))).toEqual([k(1, 1), k(1, 2)].sort((a, b) => a - b));
+  });
+
+  it("propagates through a stack of tall tiles to a fixed point", () => {
+    /* Rule two pulls in (1,2), which is tall, so rule one pulls in (1,1), which
+     * is tall, so rule one pulls in (1,0). A single pass would stop short. */
+    expect(run([[1, 3]], tallAt([1, 3], [1, 2], [1, 1]))).toEqual([
+      k(1, 0),
+      k(1, 1),
+      k(1, 2),
+      k(1, 3),
+    ]);
+  });
+
+  it("does not walk off the top of the grid", () => {
+    expect(run([[2, 0]], tallAt([2, 0]))).toEqual([k(2, 0)]);
+  });
+});
+
+describe("glyphIsTall", () => {
+  const ref = (tall: boolean): RenderAssetRef => ({ kind: "test", data: null, tall });
+
+  it("is true when EITHER layer overdraws - a tall terrain tile counts", () => {
+    expect(glyphIsTall({ ch: " ", fg: "#fff", bgTile: ref(true) })).toBe(true);
+    expect(glyphIsTall({ ch: " ", fg: "#fff", tile: ref(true) })).toBe(true);
+  });
+
+  it("is false for a short tile, a bare glyph, and nothing at all", () => {
+    expect(glyphIsTall({ ch: " ", fg: "#fff", tile: ref(false) })).toBe(false);
+    expect(glyphIsTall({ ch: "@", fg: "#fff" })).toBe(false);
+    expect(glyphIsTall(null)).toBe(false);
   });
 });

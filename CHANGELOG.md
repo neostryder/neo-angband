@@ -95,6 +95,23 @@ digest in the game's catalogue and must never be moved.
   two streams that must never move are unaffected — `randartSeed` and
   `seedFlavor` are stored in the save and re-derived from there.
 
+- **Double-height tiles were squashed into one cell.** `isDoubleHeightTile`
+  (the port of `is_dh_tile`, grafmode.c L241) was correct, exported, documented —
+  and had no caller, so both tile engines cropped or scaled a two-cell-tall
+  Shockbolt tile into a single cell. A tall tile is bottom-anchored: the cell it
+  is queued at is its LOWER half, and the upper half overdraws the cell above,
+  which is what the reference renderer does (main-sdl.c L5191-5193).
+  Blitting it correctly is only half the fix — the terminal repaints only cells
+  whose glyph changed, so it now grows the dirty set the way upstream's `pr_drw`
+  does (ui-term.c L915-960), in both directions: a changed tall anchor drags in
+  the cell above it, and a repainted cell drags in the tall anchor below it.
+  Without the first, an upper half survives after the tile leaves; without the
+  second, clearing the upper cell decapitates a tile that is still there. The
+  level-map miniature deliberately does NOT overdraw — one cell per dungeon
+  grid, matching the reference's one-by-one overview tilesheet. Frames with no
+  tall tile in them pay nothing: the expansion adds no cells and the paint count
+  is unchanged.
+
 - **A revealed mimic went on being drawn as the item it was pretending to be.**
   `become_aware` (mon-util.c L777) calls `square_note_spot` on the monster's
   grid at the END of the function, outside its camouflage block; the port

@@ -36,6 +36,67 @@ export interface RenderAssetRef {
   readonly kind: string;
   readonly key?: string;
   readonly data: unknown;
+  /**
+   * This asset also paints into the cell ABOVE its own - a double-height tile
+   * (is_dh_tile, grafmode.c L241). Bottom-anchored: the cell it is queued at is
+   * the LOWER half, and the upper half overdraws (x, y-1).
+   *
+   * It lives on the ref rather than inside `data` because the terminal has to
+   * answer "does this asset draw above itself?" without knowing what a tile is
+   * - the frame diff needs it (expandTallDirty below) and so does any
+   * replacement front end.
+   */
+  readonly tall?: boolean;
+}
+
+/** Does this cell's content overdraw the cell above it? Either layer can. */
+export function glyphIsTall(g: Glyph | null | undefined): boolean {
+  return (g?.tile?.tall ?? false) || (g?.bgTile?.tall ?? false);
+}
+
+/**
+ * pr_drw (ui-term.c L915-960): grow a dirty set so a double-height tile and the
+ * cell it overdraws stay consistent. Pure, so it is testable without a canvas.
+ *
+ * Two rules, and BOTH are needed - each covers a smear the other leaves:
+ *
+ *  - `(x,y)` is dirty and is tall in the OLD or the NEW frame -> `(x, y-1)`
+ *    joins. Without this an upper half survives after the tall tile leaves,
+ *    because painting `(x,y)` only clears `(x,y)`.
+ *  - `(x, y-1)` is dirty and `(x,y)` is tall in either frame -> `(x,y)` joins.
+ *    Without this, clearing the upper cell erases a still-current tall tile's
+ *    upper half and nothing repaints it, the anchor's own glyph not having
+ *    changed.
+ *
+ * The second rule can dirty a new anchor whose own upper cell was clean, which
+ * re-triggers the first, so this iterates to a fixed point. The chain is
+ * bounded by the column height and in practice settles in one pass.
+ */
+export function expandTallDirty(
+  dirty: Set<number>,
+  cols: number,
+  rows: number,
+  isTall: (x: number, y: number) => boolean,
+): void {
+  const key = (x: number, y: number): number => y * cols + x;
+  let frontier = [...dirty];
+  while (frontier.length > 0) {
+    const next: number[] = [];
+    const add = (x: number, y: number): void => {
+      if (y < 0 || y >= rows || x < 0 || x >= cols) return;
+      const k = key(x, y);
+      if (dirty.has(k)) return;
+      dirty.add(k);
+      next.push(k);
+    };
+    for (const k of frontier) {
+      const x = k % cols;
+      const y = (k - x) / cols;
+      if (isTall(x, y)) add(x, y - 1);
+      if (isTall(x, y + 1)) add(x, y + 1);
+    }
+    frontier = next;
+  }
 }
 
 export interface Glyph {
@@ -170,6 +231,7 @@ const canvasAssetRenderer: CanvasAssetRenderer = {
           h: number,
           code: { row: number; col: number },
           grid?: { x: number; y: number },
+          tall?: boolean,
         ) => boolean;
       };
       code?: { row: number; col: number };
@@ -180,7 +242,7 @@ const canvasAssetRenderer: CanvasAssetRenderer = {
     const alpha = ctx.globalAlpha;
     ctx.globalAlpha = alpha * (data.dimScale ?? 1);
     try {
-      return data.blitter.drawTile(ctx, px, py, w, h, data.code, data.grid);
+      return data.blitter.drawTile(ctx, px, py, w, h, data.code, data.grid, asset.tall);
     } finally {
       ctx.globalAlpha = alpha;
     }
@@ -543,14 +605,44 @@ export class GlyphTerm
       this.shownCursor = null;
       this.redraws++;
     }
+    /*
+     * Collect the diff BEFORE painting, because a double-height tile makes a
+     * cell's paint depend on its neighbour's (expandTallDirty). `view` is
+     * updated here and not in the paint loop so `isTall` below can still see
+     * BOTH frames: the old glyph in `view`, the new one in `model`.
+     */
+    const dirty = new Set<number>();
+    const oldGlyphs = new Map<number, Glyph | null>();
     for (let y = 0; y < this.rows; y++) {
       const model = this.grid[y];
       const view = this.shown[y];
       if (!model || !view) continue;
       for (let x = 0; x < this.cols; x++) {
         const g = model[x] ?? null;
-        if (sameGlyph(g, view[x] ?? null)) continue;
-        view[x] = g;
+        const was = view[x] ?? null;
+        if (sameGlyph(g, was)) continue;
+        dirty.add(y * this.cols + x);
+        oldGlyphs.set(y * this.cols + x, was);
+      }
+    }
+    /* Tall in EITHER frame: a tile that just left still has an upper half on
+     * the canvas, and one that just arrived is about to draw one. */
+    const isTall = (x: number, y: number): boolean => {
+      const k = y * this.cols + x;
+      const now = this.grid[y]?.[x] ?? null;
+      const before = oldGlyphs.has(k) ? (oldGlyphs.get(k) ?? null) : (this.shown[y]?.[x] ?? null);
+      return glyphIsTall(now) || glyphIsTall(before);
+    };
+    expandTallDirty(dirty, this.cols, this.rows, isTall);
+    /* Top-to-bottom, so an anchor's upward overdraw lands AFTER the cell above
+     * it has been cleared and painted with its own content. */
+    for (let y = 0; y < this.rows; y++) {
+      const model = this.grid[y];
+      const view = this.shown[y];
+      if (!model || !view) continue;
+      for (let x = 0; x < this.cols; x++) {
+        if (!dirty.has(y * this.cols + x)) continue;
+        view[x] = model[x] ?? null;
         this.paintCell(x, y);
       }
     }

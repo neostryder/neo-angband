@@ -169,6 +169,15 @@ export class TileSet implements TileBlitter {
    * Blit one tile onto a 2D context at (dx, dy), scaled to (dw, dh). A no-op
    * (returns false) until the atlas is ready, so the caller can fall back to
    * ASCII. Tiles outside the atlas simply draw nothing (canvas clips).
+   *
+   * `tall` is a double-height tile (is_dh_tile, grafmode.c L241), and it is
+   * BOTTOM-ANCHORED: `code.row` is the LOWER half and row-1 is the upper one,
+   * so both the source and the destination grow upward. That is exactly what
+   * the reference renderer does - main-sdl.c L5191/L5193 subtracts one source
+   * cell height and one destination cell height, then doubles both.
+   *
+   * Drawing upward writes over the cell above, so the caller is responsible for
+   * having painted that cell FIRST; GlyphTerm.flush does it via expandTallDirty.
    */
   drawTile(
     ctx: CanvasRenderingContext2D,
@@ -177,6 +186,8 @@ export class TileSet implements TileBlitter {
     dw: number,
     dh: number,
     code: TileCode,
+    _grid?: { x: number; y: number },
+    tall = false,
   ): boolean {
     if (!this.ready || this.image === null) return false;
     const sx = code.col * this.cellWidth;
@@ -185,13 +196,13 @@ export class TileSet implements TileBlitter {
       ctx.drawImage(
         this.image,
         sx,
-        sy,
+        tall ? sy - this.cellHeight : sy,
         this.cellWidth,
-        this.cellHeight,
+        tall ? this.cellHeight * 2 : this.cellHeight,
         dx,
-        dy,
+        tall ? dy - dh : dy,
         dw,
-        dh,
+        tall ? dh * 2 : dh,
       );
       return true;
     } catch {
