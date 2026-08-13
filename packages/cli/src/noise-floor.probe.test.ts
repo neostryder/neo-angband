@@ -72,8 +72,6 @@ describe.skipIf(!cbase || !ENABLED)("noise floor of the generation distribution 
   const common = {
     depthMin: base.meta.depthMin,
     depthMax: DEPTH_MAX,
-    race: "Human",
-    class: "Warrior",
     randarts: false,
   } as const;
 

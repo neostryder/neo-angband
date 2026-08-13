@@ -7,7 +7,7 @@
  * on a live CLI entry path (W2-017…W2-022; cmd-core.c:132-133).
  *
  * Usage: node dist/main-stats.js [--runs N] [--depth-min N] [--depth-max N]
- *          [--seed N] [--race NAME] [--class NAME] [--randarts]
+ *          [--seed N] [--randarts]
  *          [--out FILE] [--summary]
  *          [--wiz-objmon] [--wiz-pits] [--wiz-disconnect]
  *          [--nsim N] [--simtype N] [--pittype N] [--depth N]
@@ -67,8 +67,6 @@ function parseArgs(argv: string[]): {
       case "--depth-min": params.depthMin = Number(next()); break;
       case "--depth-max": params.depthMax = Number(next()); break;
       case "--seed": params.baseSeed = Number(next()); break;
-      case "--race": params.race = next(); break;
-      case "--class": params.class = next(); break;
       case "--randarts": params.randarts = true; break;
       case "--out": out = next(); break;
       case "--summary": summary = true; break;

@@ -95,6 +95,17 @@ digest in the game's catalogue and must never be moved.
   two streams that must never move are unaffected — `randartSeed` and
   `seedFlavor` are stored in the save and re-derived from there.
 
+- **A revealed mimic went on being drawn as the item it was pretending to be.**
+  `become_aware` (mon-util.c L777) calls `square_note_spot` on the monster's
+  grid at the END of the function, outside its camouflage block; the port
+  returned early instead, so the player's map memory kept the pile it held
+  before the fake object was removed. Nothing re-synced the grid until an action
+  that runs the field-of-view pass, and looking at a mimic to reveal it is not
+  one. `square_note_spot` now has a single port definition, `noteSpot`, called
+  both by the per-turn pass and out of band here. The upkeep half is ported too:
+  revealing a monster that carries its own light recomputes the view, since it
+  was contributing nothing to lighting while it was masked.
+
 - **`Your & Leather Shield~ is damaged!`** — acid damaging a worn armour piece
   printed the raw `object.txt` template instead of a name. `minus_ac`'s naming
   hook defaulted to `obj.kind.name` when a caller forgot to supply one, and the
