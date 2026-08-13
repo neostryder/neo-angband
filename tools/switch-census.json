@@ -45,12 +45,6 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/cli/src/main-stats.ts",
-      "cases": 18,
-      "hasDefault": true,
-      "verdict": "HOST - argument parsing for the stats tool. Not shipped to players."
-    },
-    {
       "file": "packages/core/src/game/char-sheet.ts",
       "cases": 18,
       "hasDefault": true,
@@ -61,6 +55,12 @@
       "cases": 17,
       "hasDefault": true,
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
+    },
+    {
+      "file": "packages/cli/src/main-stats.ts",
+      "cases": 16,
+      "hasDefault": true,
+      "verdict": "HOST - argument parsing for the stats tool. Not shipped to players."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",

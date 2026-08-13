@@ -19,9 +19,10 @@
 >
 > 1. **The harness.** `bindForGeneration` (packages/cli/src/stats.ts) is now the
 >    one door every headless generation harness binds through: `bindCore` +
->    `registerBookKinds`, plus the `obj_kind_can_browse` foil main-stats' Human
->    Warrior implies. Four call sites needed the same two lines and all four were
->    missing them, which is why the fix is a door and not four patches.
+>    `registerBookKinds`, plus the `obj_kind_can_browse` foil main-stats' player
+>    implies (**which class that is** turned out to be its own bug — see #242
+>    below). Four call sites needed the same two lines and all four were missing
+>    them, which is why the fix is a door and not four patches.
 > 2. **Core, a real defect the harness exposed.** `registerBookKinds` never
 >    applied init.c L269-275, so dungeon spellbooks carried neither `KF_GOOD` nor
 >    `EL_INFO_IGNORE`. Without `KF_GOOD` no dungeon book can be in the GREAT
@@ -42,8 +43,40 @@
 > which asserted the instrument had been cleared and had cleared only one way it
 > could be wrong.
 >
-> **What is left open:** shadow books alone still run at about a third of
-> upstream's rate (task #242). The other three book tvals now match to under 2%.
+> **And then the instrument was wrong a second way (#242, closed 2026-08-12).**
+> Shadow books were left running at a third of upstream's rate. The cause was
+> the same class of error as the first: main-stats.c L435-436 sets
+> `player->class = classes`, and its own comment on that line says
+> `/* Warrior */`. **It is not a Warrior.** `parse_class_name` (init.c
+> L3356-3362) builds the list by PREPENDING, and `finish_parse_class`
+> (L4128-4139) numbers it head-first from `num - 1` down — so `classes` is the
+> LAST class in class.txt, carrying the HIGHEST cidx. In 4.2.6 that is cidx 8,
+> **Blackguard**, whose three books are shadow books. (The race is likewise the
+> last in p_race.txt — a Kobold, not a Human.)
+>
+> That is the whole asymmetry. `obj_kind_can_browse` sends every book the class
+> cannot read through make_object's three-try gauntlet, so only the `one_in_(5)`
+> escape reaches the floor; a Blackguard's shadow books skip it. All four book
+> tvals have identical allocation profiles, and at depth 1 — where exactly one
+> book per tval is in the table — the oracle's per-kind counts over 1000 levels
+> are magic 95, nature 99, prayer 99, **shadow 469**. 97/469 = 0.207 is
+> `one_in_(5)` reading straight back off the data.
+>
+> | objects/level vs the C oracle, 20 000 levels | magic | prayer | nature | shadow |
+> | -------------------------------------------- | ----- | ------ | ------ | ------ |
+> | reading `classes[0]` (Warrior, reads nothing) | −0.9% | −1.1%  | +1.7%  | **−70.6%** |
+> | reading the real head (Blackguard)            | −0.0% | +0.2%  | +0.5%  | **−0.4%** |
+>
+> Total objects/level closed to **−0.08%**. It barely moved from −0.10% because
+> the rejection loop conserves the count — it re-rolls rather than dropping,
+> and only loses an object when all three tries fail. What changed is the
+> COMPOSITION, which is what the per-tval table was there to show.
+>
+> The harness no longer takes a race or a class parameter. It used to, defaulted
+> to `"Human"` / `"Warrior"`, and those strings were both wrong AND inert —
+> nothing consumed them, they were only stamped into the report. The report now
+> stamps what the binding actually is, read off the binding. **A label is not a
+> measurement, and this file has now paid for that twice.**
 
 **Task #150, step 1. Measured 2026-08-12** with
 [`tools/c-vs-c-objcount.mjs`](tools/c-vs-c-objcount.mjs) over **eighteen**

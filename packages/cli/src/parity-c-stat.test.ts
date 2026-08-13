@@ -167,8 +167,6 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     depthMin: base.meta.depthMin,
     depthMax: DEPTH_MAX,
     baseSeed: BASE_SEED,
-    race: "Human",
-    class: "Warrior",
     randarts: false,
   });
 

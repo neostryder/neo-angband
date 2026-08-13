@@ -1043,13 +1043,41 @@ export function updateMon(
  *
  * RF_MIMIC_INV's "give the monster a copy of the object before deleting it"
  * (mon-util.c L740-758) is now ported via obj/object.ts objectCopy (memcpy, no
- * RNG); only the known twin is DEFERRED with the knowledge subsystem. The
- * upkeep/redraw bits (PU_UPDATE_VIEW | PU_MONSTERS, PR_MONLIST | PR_ITEMLIST,
- * square_note_spot, square_light_spot) are presentation (#25), matching the
- * redraw deferral already noted for updateMon above.
+ * RNG); only the known twin is DEFERRED with the knowledge subsystem.
+ *
+ * square_note_spot IS ported, as of #238 - see the note on the call below for
+ * why leaving it out was a bug a player could see and not presentation. The
+ * other three bits (PU_UPDATE_VIEW | PU_MONSTERS, PR_MONLIST | PR_ITEMLIST,
+ * square_light_spot) need no counterpart, for the reason given there.
  */
 export function becomeAware(state: GameState, mon: Monster): void {
-  if (!monsterIsCamouflaged(mon)) return;
+  if (monsterIsCamouflaged(mon)) becomeAwareCamouflaged(state, mon);
+
+  /*
+   * square_note_spot + square_light_spot on the monster's grid (mon-util.c
+   * L777-778). These sit OUTSIDE the `if (mflag_has(MFLAG_CAMOUFLAGE))` block
+   * upstream, so they run even when the monster was already revealed - and the
+   * port used to skip them entirely via an early return.
+   *
+   * This is #238. Without the note, the grid keeps the known-map pile it had
+   * BEFORE the fake object was excised, so a revealed mimic goes on being drawn
+   * as the item it was pretending to be until something else happens to re-note
+   * the grid. The noteSpots pass would eventually do it, but only after an
+   * action that runs updateView - and revealing a mimic by looking at it
+   * (cave-cmd.ts becomeAware call site) is not one.
+   *
+   * square_light_spot itself has no port counterpart and needs none: it signals
+   * EVENT_MAP so a C front end repaints one cell, and the port's renderers diff
+   * the composed grid every frame. Its other half, the PR_ITEMLIST redraw, is
+   * covered the same way. Same for the PU_UPDATE_VIEW | PU_MONSTERS and
+   * PR_MONLIST | PR_ITEMLIST bits at L770-773: the port has no upkeep flag word
+   * (see the module note above), it re-derives those views each turn.
+   */
+  noteSpot(state, mon.grid);
+}
+
+/** The `if (mflag_has(mon->mflag, MFLAG_CAMOUFLAGE))` arm of become_aware. */
+function becomeAwareCamouflaged(state: GameState, mon: Monster): void {
   mon.mflag.off(MFLAG.CAMOUFLAGE);
 
   const lore = getLore(state.lore, mon.race);
@@ -1088,6 +1116,20 @@ export function becomeAware(state: GameState, mon: Monster): void {
       updateMon(state, mon, false);
     }
   }
+
+  /*
+   * PU_UPDATE_VIEW | PU_MONSTERS when the revealed race carries its own light
+   * (mon-util.c L770-772). A monster that emits or absorbs light was, until it
+   * was unmasked, contributing nothing to calc_lighting - so the lit radius
+   * around it is wrong until the view is recomputed.
+   *
+   * Upstream sets the bits and lets the next update_stuff do the work; the port
+   * has no upkeep word, so it calls the recompute directly. That is the shape
+   * monsterSwap already uses for the same reason (context.ts, `if (lightChanged)
+   * state.updateFov?.(state)`), and updateFov ends in noteSpots -> updateMonsters,
+   * which is PU_MONSTERS.
+   */
+  if ((mon.race.light ?? 0) !== 0) state.updateFov?.(state);
 }
 
 /**
@@ -1187,6 +1229,39 @@ export function monsterLightSources(state: GameState): LightSource[] {
 }
 
 /**
+ * square_note_spot (cave-map.c L226-246) for ONE grid: re-sync what the player
+ * knows about it.
+ *
+ * Factored out of the noteSpots pass below so there is exactly one definition.
+ * The pass runs after every action and so covers the ordinary case; this door
+ * exists for the sites upstream notes a single grid OUT of band, which is any
+ * site that changes what is on a grid and cannot wait for the next pass -
+ * becomeAware being the one that was measurably broken (#238).
+ *
+ * Two deliberate departures from the C, both pre-existing in the pass and both
+ * outcome-identical:
+ *
+ *  - order. Upstream is know_pile -> traps -> memorize; this is memorize ->
+ *    know_pile -> traps. None of the three reads what another writes.
+ *  - upstream memorizes only `if (square_ismemorybad(c, grid))`, an early-out
+ *    over an idempotent write. Memorizing unconditionally reaches the same
+ *    state.
+ *
+ * The guard IS upstream's, and it is why this is safe to call from anywhere:
+ * a grid that is neither seen nor the player's own is left alone.
+ */
+export function noteSpot(state: GameState, grid: Loc): void {
+  if (!squareIsSeen(state.chunk, grid) && !locEq(grid, state.actor.grid)) {
+    return;
+  }
+  squareMemorize(state, grid);
+  squareKnowPile(state, grid);
+  /* Notice secret traps on the newly-seen grid (cave-map.c square_note_spot
+   * L236-238 / cave-view.c update_one L840-842). */
+  noteSpotRevealTrap(state, grid);
+}
+
+/**
  * note_spot pass: memorize every currently seen grid with its floor pile,
  * then refresh all monster visibility via update_mon.
  *
@@ -1220,11 +1295,7 @@ export function noteSpots(state: GameState): void {
     for (let x = 0; x < c.width; x++) {
       const grid = { x, y };
       if (!squareIsSeen(c, grid)) continue;
-      squareMemorize(state, grid);
-      squareKnowPile(state, grid);
-      /* Notice secret traps on the newly-seen grid (cave-map.c square_note_spot
-       * L236-238 / cave-view.c update_one L840-842). */
-      noteSpotRevealTrap(state, grid);
+      noteSpot(state, grid);
     }
   }
 

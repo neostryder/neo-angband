@@ -1241,6 +1241,7 @@
     "nextGrid",
     "noLight",
     "noscoreInvalidatesScore",
+    "noteSpot",
     "noteSpotRevealTrap",
     "noteSpots",
     "numberCharging",

@@ -69,10 +69,13 @@ export interface StatsParams {
   depthMax: number;
   /** Base seed every per-cell seed is derived from. Default 1. */
   baseSeed: number;
-  /** Player race name recorded in meta (inert for generation). Default first. */
-  race: string;
-  /** Player class name recorded in meta (inert for generation). Default first. */
-  class: string;
+  /*
+   * There is deliberately no race/class parameter. There used to be, defaulted
+   * to "Human"/"Warrior" and carried straight into the report - and both were
+   * wrong AND inert: main-stats' player is whatever heads the parsed lists
+   * (a Blackguard in 4.2.6, see bindForGeneration), and nothing here consumed
+   * the strings anyway. The report now stamps what the binding actually is.
+   */
   /** OPT(player, birth_randarts): swap in a random artifact set per run. */
   randarts: boolean;
 }
@@ -162,8 +165,6 @@ export const DEFAULT_STATS_PARAMS: StatsParams = {
   depthMin: 1,
   depthMax: 10,
   baseSeed: 1,
-  race: "Human",
-  class: "Warrior",
   randarts: false,
 };
 
@@ -178,8 +179,6 @@ export const BASELINE_PARAMS: StatsParams = {
   depthMin: 1,
   depthMax: 8,
   baseSeed: 1337,
-  race: "Human",
-  class: "Warrior",
   randarts: false,
 };
 
@@ -351,6 +350,12 @@ export interface GenerationBinding {
   reg: CoreRegistries;
   /** The make_object foils main-stats' player implies. */
   foils: { canBrowseBook: (kind: { tval: number; sval: number }) => boolean };
+  /**
+   * The race and class that player actually IS, read off the binding rather
+   * than asserted. Stamped into the report so a reader never has to trust a
+   * label - which is the mistake #242 cost a week to.
+   */
+  head: { race: string; class: string };
 }
 
 /**
@@ -371,14 +376,41 @@ export interface GenerationBinding {
  * call registerBookKinds is the same bug again.
  *
  * The foils mirror main-stats.c L435-436, which sets `player->race = races;
- * player->class = classes` -- the head of each list, a Human Warrior. The only
- * generation foil a fresh player makes non-trivial is obj_kind_can_browse
- * (obj-make.c L1185-1195): make_object rejects a book the class cannot read,
- * re-rolls up to three times and loses the object entirely if all three fail.
- * A Warrior reads nothing, so every book pick runs that gauntlet and only the
- * one-in-five escape survives -- which is why the C's book count is well under
- * what the allocation table alone would predict. Reading the set off classes[0]
- * rather than hardcoding `false` keeps this right if class.txt is reordered.
+ * player->class = classes` -- the head of each list. The only generation foil a
+ * fresh player makes non-trivial is obj_kind_can_browse (obj-make.c L1185-1195):
+ * make_object rejects a book the class cannot read, re-rolls up to three times
+ * and loses the object entirely if all three fail. Only the one-in-five escape
+ * gets an unreadable book onto the floor, which is why the C's book count is
+ * about a fifth of what the allocation table alone would predict.
+ *
+ * WHICH class is the head is the whole of it, and main-stats.c's own comment on
+ * those two lines -- `/ * Human * /` and `/ * Warrior * /` -- is WRONG.
+ * parse_class_name (init.c L3356-3362) builds the list by PREPENDING
+ * (`c->next = h`), so `classes` is the LAST class in class.txt, not the first.
+ * finish_parse_class (L4128-4139) then numbers the list head-first from num-1
+ * down, so the head carries the HIGHEST cidx: in 4.2.6 that is cidx 8,
+ * Blackguard, whose three books are shadow books. A Blackguard reads
+ * [Into the Shadows], [Fear and Torment] and [Deadly Powers], so those three
+ * kinds skip the rejection gauntlet entirely while every magic, prayer and
+ * nature book runs it.
+ *
+ * That is exactly the asymmetry #242 measured. Against the 4.2.6 oracle over
+ * 20 000 levels, with the harness reading classes[0] (Warrior, reads nothing):
+ *
+ *     tval 30 magic  C 0.242  port 0.240      tval 32 nature C 0.111  port 0.113
+ *     tval 31 prayer C 0.195  port 0.193      tval 33 shadow C 0.370  port 0.109
+ *
+ * Three tvals matched because all four allocation profiles are identical
+ * (40/40/20/15/10 at levels 1/10/30/40/60) and all four were being suppressed;
+ * shadow was 3.4x short because in the C it is not suppressed. At depth 1, where
+ * exactly one book per tval is in the table, the C's per-kind counts over 1000
+ * levels are magic 95, nature 99, prayer 99, shadow 469 -- and 97/469 = 0.207,
+ * which is one_in_(5) reading back off the data.
+ *
+ * So take the LAST class, and take it by position rather than by name: the port
+ * indexes classes by cidx, so classes[length - 1] is upstream's list head under
+ * any reordering of class.txt. A mod that appends a class changes which class
+ * this is -- correctly, because it changes it in the C too.
  *
  * The other two foils stay absent, as before: append_object_curse's TIMED_INC
  * foil is a no-op against a fresh player's all-zero timed table, and
@@ -390,11 +422,12 @@ export function bindForGeneration(pack: GamePack): GenerationBinding {
   /* Must run before genDeps, which builds ObjAllocState from reg.objects. */
   registerBookKinds(reg.objects, players.classes);
   /* Read AFTER registerBookKinds, which stamps the numeric tval/sval onto each
-   * ClassBook. Empty for a Warrior, which is the point. */
+   * ClassBook. The LAST class, not the first - see the note above on upstream's
+   * prepended list and its comment that says otherwise. */
+  const cls = players.classes[players.classes.length - 1];
+  const race = players.races[players.races.length - 1];
   const readable = new Set(
-    (players.classes[0]?.magic.books ?? []).map(
-      (b) => `${b.tvalIdx},${b.sval}`,
-    ),
+    (cls?.magic.books ?? []).map((b) => `${b.tvalIdx},${b.sval}`),
   );
   return {
     reg,
@@ -402,6 +435,7 @@ export function bindForGeneration(pack: GamePack): GenerationBinding {
       canBrowseBook: (kind): boolean =>
         readable.has(`${kind.tval},${kind.sval}`),
     },
+    head: { race: race?.name ?? "?", class: cls?.name ?? "?" },
   };
 }
 
@@ -427,8 +461,13 @@ export function runStatsBatch(
   const depths: Record<string, DepthMetrics> = {};
   for (let d = p.depthMin; d <= p.depthMax; d++) depths[String(d)] = emptyDepth();
 
+  /* Every run rebinds the same pack, so the head is the same each time; capture
+   * it once so the report states the player it actually generated against. */
+  let headNames = { race: "?", class: "?" };
+
   for (let run = 0; run < p.runs; run++) {
-    const { reg, foils } = bindForGeneration(pack);
+    const { reg, foils, head } = bindForGeneration(pack);
+    headNames = head;
     if (p.randarts) applyRandarts(reg, deriveRandartSeed(p.baseSeed, run));
     const artifacts = new ArtifactState(reg.objects.artifacts.length);
 
@@ -461,8 +500,8 @@ export function runStatsBatch(
       depthMin: p.depthMin,
       depthMax: p.depthMax,
       baseSeed: p.baseSeed,
-      race: p.race,
-      class: p.class,
+      race: headNames.race,
+      class: headNames.class,
       randarts: p.randarts,
       note: PORT_BASELINE_NOTE,
     },

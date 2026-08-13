@@ -22,6 +22,7 @@ import {
   caveKnown,
   knownFeat,
   knownObject,
+  knownPile,
   noteSpots,
   squareApparentLookInPreposition,
   squareApparentLookPrefix,
@@ -740,6 +741,47 @@ describe("becomeAware (mon-util.c become_aware, L711)", () => {
     expect(floorPile(state, mon.grid)).not.toContain(obj);
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toMatch(/^The .+ was really a monster!$/);
+  });
+
+  it("re-notes the grid, so the known map drops the fake object (#238)", () => {
+    /* mon-util.c L777: square_note_spot runs at the END of become_aware,
+     * OUTSIDE the camouflage block. Without it the player's known map keeps the
+     * pile it had before the fake object was excised and the revealed mimic
+     * goes on being drawn as the item it was pretending to be. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+
+    /* The player has looked at the grid, so the disguise is in map memory. */
+    squareKnowPile(state, mon.grid);
+    expect(knownPile(state, mon.grid)).toHaveLength(1);
+
+    becomeAware(state, mon);
+
+    expect(floorPile(state, mon.grid)).not.toContain(obj);
+    expect(knownPile(state, mon.grid)).toHaveLength(0);
+  });
+
+  it("notes the grid even when the monster was already revealed", () => {
+    /* The note is outside the `if (mflag_has(MFLAG_CAMOUFLAGE))` block, so a
+     * second call still re-syncs the grid. The port used to early-return. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+
+    expect(mon.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
+    expect(knownPile(state, mon.grid)).toHaveLength(0);
+
+    becomeAware(state, mon);
+
+    expect(knownPile(state, mon.grid)).toHaveLength(1);
   });
 
   it("still clears the mimicry link when the square is not seen, but sends no message", () => {

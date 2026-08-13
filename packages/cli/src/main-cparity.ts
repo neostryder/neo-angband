@@ -61,8 +61,6 @@ function main(): void {
     depthMin: cbase.meta.depthMin,
     depthMax,
     baseSeed: 1337,
-    race: "Human",
-    class: "Warrior",
     randarts: false,
   });
 
