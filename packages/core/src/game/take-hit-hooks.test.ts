@@ -18,6 +18,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MON_TMD, MSG, PF, RF, SQUARE } from "../generated/index.js";
 import { loc, locEq } from "../loc.js";
+import { messageSound } from "../msg.js";
+import type { MessageType } from "../msg.js";
 import type { Monster } from "../mon/monster.js";
 import { startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
@@ -89,8 +91,13 @@ function startCaptured(seed: number, depth: number): {
   const game = startGame(pack, { seed, depth, className: "Warrior" });
   const messages: string[] = [];
   const sounds: number[] = [];
-  game.state.msg = (t: string): void => {
+  /* The host's sink IS msgt: a typed message plays its type's sound (#239), and
+   * that rule is core's `messageSound` so a fake can run it instead of copying
+   * it. Capture both halves the way web/src/main.ts wires them. */
+  game.state.msg = (t: string, type?: MessageType): void => {
     messages.push(t);
+    const cue = messageSound(type);
+    if (cue !== null) game.state.sound?.(cue);
   };
   game.state.sound = (code: number): void => {
     sounds.push(code);

@@ -115,6 +115,7 @@ import {
   animateMonsterAttr,
   RF,
   MSG,
+  messageSound,
   PF,
   spellNeedsAim,
   spellBookCountSpells,
@@ -1625,6 +1626,27 @@ state.msg = (raw: string, type?: MessageType): void => {
   // (early boot) the emit is simply skipped.
   state.events?.emit("message", { msg: text, type: code });
   say(text, type);
+  /* msgt's OTHER HALF (message.c:428-445): a typed message plays the sound bound
+   * to its type. This sink is the port's msgt, and it is the only place that can
+   * be, because it is the one point every msg()/msgt() in core and the shell
+   * passes through.
+   *
+   * ONLY WHEN A TYPE WAS GIVEN. msg() (message.c:405-419) does message_add plus
+   * EVENT_MESSAGE and stops; sound() is reached from msgt() alone. So an untyped
+   * line stays silent here, which keeps `state.msg(text)` next to a separate
+   * `state.sound(MSG_X)` - obj-pile's drop, the ambient timer - meaning exactly
+   * what it means upstream.
+   *
+   * Without this, EVERY message whose only sound was its type was silent: all 27
+   * msgt types in player_timed.txt among them, which is what #239 measured. The
+   * sites that did sound did it by hand, one paired `state.sound` call at a time,
+   * and a site that forgot the pair had nothing to notice it. Sound draws no RNG,
+   * so this changes no stream.
+   *
+   * The msg-vs-msgt decision is core's `messageSound`, not a condition written
+   * here, because nothing can import this file to check it. */
+  const cue = messageSound(type);
+  if (cue !== null) state.sound?.(cue);
 };
 
 // BIRTH_MESSAGE_RECALL_BANNER (player-birth.c L1245-1249, 1.11/WP-7 handoff):

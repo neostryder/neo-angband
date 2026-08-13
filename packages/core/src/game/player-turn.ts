@@ -26,7 +26,6 @@ import {
   FEAT,
   MON_MSG,
   MON_TMD,
-  MSG,
   OF,
   PF,
   SQUARE,
@@ -522,7 +521,6 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
         `You are too afraid to attack ${monsterDesc(target, MDESC.DEFAULT)}!`,
         "AFRAID",
       );
-      state.sound?.(MSG.AFRAID);
       equipLearnFlag(state.actor.player, state.runeEnv, OF.AFRAID);
       return confused ? state.z.moveEnergy : 0;
     }

@@ -132,6 +132,26 @@ export interface MessageSinks {
 }
 
 /**
+ * THE MESSAGE SINK'S SOUND RULE: which sound a message plays, or null for none.
+ *
+ * A TYPED message plays its type's sound; an UNTYPED one is silent. That is the
+ * whole difference between upstream's two entry points - msgt (message.c:428)
+ * calls sound(type), msg (message.c:405) does not - and it is the reason this
+ * is a function rather than a line inside the host's binding. The host binds
+ * `state.msg` (web/src/main.ts), which nothing can import, so a rule written
+ * there could only be re-stated in a test rather than exercised. Here, the
+ * binding and its tests call the same code.
+ *
+ * MSG_GENERIC is NOT the same answer as "no type". Both resolve to code 0 and
+ * code 0 has no samples in sound.prf, so today they sound alike - but a pack
+ * that binds `generic` would make an explicitly-typed GENERIC message audible
+ * and a bare msg() still silent, exactly as upstream.
+ */
+export function messageSound(type?: MessageType): number | null {
+  return type === undefined ? null : messageTypeCode(type);
+}
+
+/**
  * msgt (message.c:428): print a message AND play the sound its type names.
  *
  * The pair is the whole reason upstream has this function - `msg()` is the
@@ -150,6 +170,15 @@ export interface MessageSinks {
  * event; the port's `state.msg` does the add and the event together, so sound
  * cannot land between them. It goes after, which keeps the log order (what
  * Ctrl-P shows) exact and moves the sound event one slot later on the bus.
+ *
+ * BOTH HALVES NOW LIVE IN THE SINK (#239). Spelling the pair out per call site
+ * was the bug, not the cure: the thirteen sites that remembered were a list
+ * nobody could complete, and the ones that forgot - every grade message of every
+ * timed effect, measured silent in a running game - had nothing to notice them.
+ * A typed `sinks.msg` plays the type's sound by itself, so this is one call now.
+ * It stays a function rather than being inlined at its callers because a typed
+ * message is worth naming, and because `MessageType` is where the string-or-code
+ * union is resolved.
  */
 export function msgt(
   sinks: MessageSinks,
@@ -157,7 +186,6 @@ export function msgt(
   text: string,
 ): void {
   sinks.msg?.(text, type);
-  sinks.sound?.(messageTypeCode(type));
 }
 
 /**

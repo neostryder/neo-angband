@@ -10,6 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import { MSG, ORIGIN, TMD, TV } from "../generated/index.js";
 import { STAT } from "../generated/index.js";
 import { loc } from "../loc.js";
+import { messageSound } from "../msg.js";
+import type { MessageType } from "../msg.js";
 import { Rng } from "../rng.js";
 import { SKILL } from "../player/types.js";
 import { bindConstants } from "../constants.js";
@@ -145,8 +147,14 @@ function buildEnvWithMsgs(
     packSize: opts.packSize ?? constants.packSize,
     makeDeps,
     earthquake: (): void => {},
-    msg: (t: string): void => {
+    /* The host binds this to state.msg, and that sink IS msgt (#239): a typed
+     * message plays its type's sound. The fake dropped the type on the floor,
+     * so run core's own `messageSound` rather than restating the rule - the
+     * blow site's whole job now is to carry the type this far. */
+    msg: (t: string, msgt?: MessageType): void => {
       msgs.push(t);
+      const cue = messageSound(msgt);
+      if (cue !== null) state.sound?.(cue);
     },
   });
   return factory(mon);

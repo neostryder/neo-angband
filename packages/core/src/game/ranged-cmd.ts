@@ -213,8 +213,6 @@ function rangedHelper(
       } else {
         state.msg?.(`Your ${oName} ${result.verb} ${mName}${dmgText}.`, MSG.SHOOT_HIT);
       }
-      state.sound?.(MSG.SHOOT_HIT);
-
       /* health_track (player-attack.c:1183-1187): an OBVIOUS hit - not merely a
        * visible one - makes the victim the tracked monster. Covers fire AND
        * throw, since both route through here. Upstream's order is after the
@@ -242,8 +240,12 @@ function rangedHelper(
           /* get_message_type (mon-msg.c:450): a unique's death plays
            * MSG_KILL_UNIQUE (MSG_KILL_KING for Morgoth's base). */
           const type = monMessageSoundType(dieMsg, mon.race);
+          /* The typed sink sounds; the bare `else` keeps the sound for the
+           * empty-text case, which upstream still reaches - mon-msg.c msgt()s
+           * the empty string rather than skipping the message (mon-message.ts
+           * L105 records the same divergence). */
           if (text) state.msg?.(text, type);
-          state.sound?.(type);
+          else state.sound?.(type);
           state.onPlayerKill?.(mon);
           deleteMonster(state, mon.midx);
         }

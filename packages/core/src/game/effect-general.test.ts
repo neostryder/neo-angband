@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EF, MFLAG, MON_TMD, MSG, OF, RF, TMD, TV } from "../generated/index.js";
 import { loc, locEq } from "../loc.js";
+import { messageSound } from "../msg.js";
+import type { MessageType } from "../msg.js";
 import {
   EffectRegistry,
   sourceMonster,
@@ -873,7 +875,13 @@ describe("the level-change messages carry MSG_TPLEVEL (PORT_TODO 3.26)", () => {
     const heard: number[] = [];
     const said: [string, unknown][] = [];
     state.sound = (t: number): void => void heard.push(t);
-    state.msg = (t: string, type?: unknown): void => void said.push([t, type]);
+    /* The host's sink IS msgt (#239): a typed message plays its type's sound.
+     * Run core's own `messageSound` rather than restating the rule here. */
+    state.msg = (t: string, type?: MessageType): void => {
+      said.push([t, type]);
+      const cue = messageSound(type);
+      if (cue !== null) state.sound?.(cue);
+    };
     return { heard, said };
   }
 
@@ -886,7 +894,14 @@ describe("the level-change messages carry MSG_TPLEVEL (PORT_TODO 3.26)", () => {
     const typed: (string | undefined)[] = [];
     const base: EffectContext = {
       rng: state.rng,
-      messages: { msg: (_t, msgt) => void typed.push(msgt) },
+      /* The sink is msgt: carrying the type IS asking for the sound (#239). */
+      messages: {
+        msg: (_t, msgt): void => {
+          typed.push(msgt);
+          const cue = messageSound(msgt);
+          if (cue !== null) state.sound?.(cue);
+        },
+      },
     };
     registry().effectSimple(
       EF.DEEP_DESCENT,
@@ -909,7 +924,16 @@ describe("the level-change messages carry MSG_TPLEVEL (PORT_TODO 3.26)", () => {
     registry().effectSimple(
       EF.DEEP_DESCENT,
       attachGameEnv(
-        { rng: bottom.rng, messages: { msg: (_t, m) => void typed2.push(m) } },
+        {
+          rng: bottom.rng,
+          messages: {
+            msg: (_t, m): void => {
+              typed2.push(m);
+              const cue = messageSound(m);
+              if (cue !== null) bottom.sound?.(cue);
+            },
+          },
+        },
         {
           state: bottom,
           cast: {

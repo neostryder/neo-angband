@@ -84,3 +84,8 @@ smoke-shots/
 # to compare them, so its output is a working artefact, not a fixture: 13 MB of
 # PNGs per pair of runs.
 tall-tile-shots/
+
+# tools/sound-probe.mjs writes one PNG per mark plus a JSON of every play()
+# call. Same reasoning: a working artefact of a hand-run comparison, and the
+# JSON carries wall-clock timestamps so it would never diff cleanly anyway.
+sound-shots/

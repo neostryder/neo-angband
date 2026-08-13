@@ -26,7 +26,7 @@
  * squareIsDecoyed / monsterIsDecoyed).
  */
 
-import { EF, MON_TMD, MSG, OF, PROJ, TMD } from "../generated/index.js";
+import { EF, MON_TMD, OF, PROJ, TMD } from "../generated/index.js";
 import { DDGRID, distance, loc, locSum } from "../loc.js";
 import { PROJECT } from "../world/project.js";
 import { GLYPH_DECOY } from "../effects/effect.js";
@@ -152,8 +152,10 @@ interface GameEffectEnvLike {
 
 /**
  * msg() over the effect context's optional message sink. `msgt` is a MSG_*
- * name and supplies msgt's message half; the sound half is state.sound at the
- * call site (this helper has no state).
+ * name, and passing one makes this the whole of msgt(): the sink plays the
+ * type's sound as well (#239). It used to supply only the message half, with
+ * every caller expected to add a `state.sound` of its own - which is why the
+ * ones that did not were silent.
  */
 function say(ctx: EffectHandlerContext, text: string, msgt?: string): void {
   ctx.env.messages?.msg(text, msgt);
@@ -780,10 +782,10 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
 
   /* Both arms are msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:1171,
    * :1178) - the message carries the type, and msgt's other half is the
-   * sound. Neither half existed here (PORT_TODO 3.26). */
+   * sound. Neither half existed here (PORT_TODO 3.26); the second half is the
+   * typed sink's job now (#239). */
   if (targetDepth > state.chunk.depth) {
     say(ctx, "The air around you starts to swirl...", "TPLEVEL");
-    state.sound?.(MSG.TPLEVEL);
     p.deepDescent = 3 + state.rng.randint1(4);
   } else {
     say(
@@ -791,7 +793,6 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
       "You sense a malevolent presence blocking passage to the levels below.",
       "TPLEVEL",
     );
-    state.sound?.(MSG.TPLEVEL);
   }
   ctx.ident = true;
   return true;

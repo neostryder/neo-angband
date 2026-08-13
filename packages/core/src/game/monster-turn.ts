@@ -1371,7 +1371,6 @@ function monsterTurnGrabObjects(
       /* Crush it (mon-move.c L1466-1468). */
       if (squareIsSeen(state.chunk, next) && notIgnored) {
         state.msg?.(`${monMoveName(mon)} crushes ${oName()}.`, MSG.DESTROY);
-        state.sound?.(MSG.DESTROY);
       }
       floorExcise(state, next, obj);
     }

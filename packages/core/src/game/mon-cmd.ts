@@ -17,7 +17,7 @@
  * drop branch empties one item from the monster's held pile (PORT_TODO 2.18).
  */
 
-import { EF, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated/index.js";
+import { EF, MON_MSG, MON_TMD, RF, TMD } from "../generated/index.js";
 import { EffectRegistry, sourceMonster } from "../effects/interpreter.js";
 import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
 import type { BlowMethod } from "../mon/types.js";
@@ -115,12 +115,9 @@ function displayBlowMessageVsMonster(
   }
   const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
   const text = `${mName} ${act}${fullstop}`;
-  /* msgt(method->msgt, ...) (mon-blows.c L236): type + sound. */
-  const msgt = method.msgt || undefined;
-  state.msg?.(text, msgt);
-  if (msgt) {
-    state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
-  }
+  /* msgt(method->msgt, ...) (mon-blows.c L236): type + sound, both from the
+   * typed sink. A blow with no msgt stays an untyped msg(), and silent. */
+  state.msg?.(text, method.msgt || undefined);
 }
 
 /**
