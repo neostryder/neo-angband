@@ -626,6 +626,128 @@ describe("the shimmer is a multi-hued monster's", () => {
     expect(scheduled).toBe(0);
   });
 
+  it("lights up when the answer arrives AFTER the screen is painted", async () => {
+    /* The title used to wait for the update check outright, on the rule that a
+     * row must not appear under the player's cursor. The rule stands; the wait
+     * did not - a cold api.github.com request cost 6.1s on the shipped build and
+     * the screen sat unfinished for all of it. So the screen paints on time and
+     * the answer, when it comes, lights a row that is already there. */
+    let scheduled = 0;
+    let ready: ((v: boolean) => void) | undefined;
+    const grid = renderTitle(
+      { canUpdate: true, updateReady: false },
+      {
+        randint1: () => 4,
+        setInterval: () => {
+          scheduled++;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        updateReadyLater: new Promise<boolean>((resolve) => {
+          ready = resolve;
+        }),
+      },
+    );
+    const before = rowText(grid, 23);
+    expect(before).toContain("(U)pdate"); // the row is there without the answer
+    expect(scheduled).toBe(0);
+
+    ready?.(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scheduled).toBe(1);
+    /* NOTHING MOVED - the row is in the same place it was painted in. A late
+     * answer that shifted the menu would be the mis-click this design avoids. */
+    expect(rowText(grid, 23)).toBe(before);
+  });
+
+  it("a late answer of 'nothing there' schedules nothing", async () => {
+    let scheduled = 0;
+    renderTitle(
+      { canUpdate: true, updateReady: false },
+      {
+        randint1: () => 4,
+        setInterval: () => {
+          scheduled++;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        updateReadyLater: Promise.resolve(false),
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scheduled).toBe(0);
+  });
+
+  it("a late answer with no (U)pdate row on screen changes nothing", async () => {
+    /* In a browser the row's presence really does depend on the answer, so this
+     * is the case where honouring a late one WOULD move the layout. It does not
+     * get honoured: no row, no shimmer. */
+    let scheduled = 0;
+    const grid = renderTitle(
+      { canUpdate: false, updateReady: false },
+      {
+        randint1: () => 4,
+        setInterval: () => {
+          scheduled++;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        updateReadyLater: Promise.resolve(true),
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scheduled).toBe(0);
+    expect(rowText(grid, 23)).not.toContain("(U)pdate");
+  });
+
+  it("does not start a second timer over one that is already shimmering", async () => {
+    let scheduled = 0;
+    renderTitle(
+      { canUpdate: true, updateReady: true },
+      {
+        randint1: () => 4,
+        setInterval: () => {
+          scheduled++;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        updateReadyLater: Promise.resolve(true),
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scheduled).toBe(1);
+  });
+
+  it("is what main.ts hands the still-running check to", () => {
+    /* The other half of the arrangement, and the half that only exists as a call
+     * site: showTitleScreen can honour a late answer all it likes if nobody
+     * passes it one. main.ts is the shell and cannot be imported (it boots a real
+     * game at module scope), so this is read as text. */
+    const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    expect(main).toMatch(/updateReadyLater: updateProbe\.then\(/u);
+    /* Bounded, and bounded SHORT - the point is that the screen no longer waits
+     * out a network round trip. A cold api.github.com request measured 6.1s on
+     * the shipped build; anything near that is the old behaviour with a number
+     * on it. */
+    const wait = /const TITLE_CHECK_WAIT_MS = (\d+);/u.exec(main);
+    expect(wait?.[1], "TITLE_CHECK_WAIT_MS not found in main.ts").toBeTruthy();
+    expect(Number(wait?.[1])).toBeLessThanOrEqual(1000);
+    /* And only where a bound is safe: under a desktop shell the (U)pdate row is
+     * drawn from updateHow rather than from the answer, so nothing moves. A
+     * browser's row really does depend on the answer, and its probe is local. */
+    expect(main).toMatch(
+      /desktopBridge === null \? await updateOffer\(\) : await updateOfferSoon\(\)/u,
+    );
+    /* The late value says "did not answer", not "nothing there". Those are
+     * different and this codebase has already shipped the bug where they were
+     * not (#247). */
+    expect(main).toMatch(/resolve\(\{ ok: false, reason: "The check has not answered yet\." \}\)/u);
+  });
+
   it("runs on the same cadence as the game's own animation timer", () => {
     /* main.ts's ANIM_INTERVAL_MS. Stated in two files because main.ts imports
      * this one; asserted so the duplication cannot drift. */

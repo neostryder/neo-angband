@@ -151,6 +151,60 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **Putting on a Ring of Flames asked which way to point it** (#248, reported
+  from a playtest as "I tried to equip a ring and it asked for a target").
+
+  Upstream asks for a direction in exactly one place — `use_aux`
+  (`cmd-obj.c:431`), reached from reading, quaffing, eating, staves, wands, rods
+  and activations. `do_cmd_wield`, `do_cmd_takeoff` and `do_cmd_drop` never ask.
+  The shell had the question a level too high: `dispatchItemVerb` and
+  `dispatchItemRef` consulted `obj_needs_aim` for **whatever verb they were
+  dispatching**, and `obj_needs_aim` is a question about the OBJECT — so an item
+  whose effect happens to be aimed made every verb aim. Flames, Acid, Ice,
+  Lightning, Open Wounds and Digging all carry an `effect:` line and no `act:`
+  (`object.txt`), so wearing one opened the targeting prompt before the ring
+  would go on a hand; taking it off or dropping it asked too.
+
+  The aim question is now gated on `AIMED_VERBS`, the seven commands that reach
+  `use_aux`. A verb added later is outside the set by default, which is the safe
+  direction. The (A)ctivate screen keeps its unconditional ask — it *is*
+  `do_cmd_activate` — and that asymmetry is now written down where someone would
+  otherwise "fix" it.
+
+- **Startup showed a town map for six seconds, and it belonged to nobody**
+  (#249, reported from a playtest as "startup seemed to recently go from
+  extremely snappy to very laggy… there seem to be two points at which it pauses
+  for a few seconds", and "loading the game still paints a town map seemingly as
+  a placeholder").
+
+  Measured on the shipped Windows build rather than guessed at. From launch: a
+  dark window until **6.9s**, a generated town from **6.9s to 12.7s**, the title
+  screen at **13.1s**. Three separate things, only two of them the game's:
+
+  1. `main.ts` painted the map at module scope. That map is a real, generated
+     level belonging to the default character boot builds — it reads as "the game
+     has started" when nothing has. `gameScreenLive` now gates every background
+     repaint until boot settles on a game, and a **loading screen** fills the gap
+     instead: a dungeon carving itself out, with the residents wandering the
+     corridors it opens. An earlier attempt at this painted the title art first
+     and still lost the screen, because a `ResizeObserver` settle came back
+     through `renderBackground` a moment later and put the map straight back.
+  2. The title screen awaited the update check before painting its menu row. The
+     first `api.github.com` request a fresh process makes measured **6.1s**;
+     every later one in the same process took **2–5ms**. It now waits 400ms and
+     paints regardless — safe under the desktop shell because the `(U)pdate` row
+     is drawn from `updateHow`, not from the answer, so nothing moves — and a
+     late answer lights the shimmer on the row that is already there.
+  3. The first ~6.2s is **not the game**: an AdGuard-injected content-script
+     request (`local.adguard.org`) blocks the document before any of the game's
+     own code runs. Confirmed by removal — blackholing that host on a cold launch
+     took the game's first fetch from 6340ms to **136ms**. Nothing the game draws
+     can cover a stall that happens before it is running; excluding the app in
+     AdGuard is the fix, and it is the player's to make.
+
+  Net on the same machine and the same measurement: title screen at **7.9s**
+  instead of 13.1s, and no town map at any point.
+
 - **An update check that failed said "This is the newest build on your channel",
   and there was no way to ask again** (#247, reported from a playtest as "my edge
   game is supposed to update to the latest pushed commit, but it doesn't see

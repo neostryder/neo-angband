@@ -493,6 +493,20 @@ export interface TitleDeps {
   /** Injected so a test can drive frames without a real clock. */
   readonly setInterval?: (fn: () => void, ms: number) => unknown;
   readonly clearInterval?: (handle: unknown) => void;
+  /**
+   * An update answer that had not arrived when the screen was painted.
+   *
+   * The title used to wait outright for the check, on the rule that a row must
+   * not appear under the player's cursor. The rule is right; waiting was the
+   * wrong way to keep it, because a cold check costs seconds (6.1s measured on
+   * the shipped build) and the screen sat unfinished for all of them.
+   *
+   * This lights the shimmer late WITHOUT moving anything: it starts the same
+   * animation on a row that is already drawn and already in its final place, and
+   * does nothing at all when there is no enabled (U)pdate row to light - which is
+   * exactly the case where honouring it would move the layout.
+   */
+  readonly updateReadyLater?: Promise<boolean>;
 }
 
 /**
@@ -590,7 +604,15 @@ export function showTitleScreen(
       clearInterval(h as ReturnType<typeof setInterval>);
     });
     let shimmerTimer: unknown = null;
+    let closed = false;
+    /** Start the shimmer, at most once, on a row that is already on screen. */
+    const beginShimmer = (): void => {
+      if (shimmerTimer !== null) return;
+      paintShimmer();
+      shimmerTimer = every(paintShimmer, TITLE_SHIMMER_MS);
+    };
     const finish = (choice: TitleChoice): void => {
+      closed = true;
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       /* The title screen is a promise that resolves once; a timer left running
@@ -616,9 +638,24 @@ export function showTitleScreen(
       if (hit?.row.enabled) finish(hit.row.choice);
     });
     paint();
-    if (opts.updateReady) {
-      paintShimmer();
-      shimmerTimer = every(paintShimmer, TITLE_SHIMMER_MS);
-    }
+    if (opts.updateReady) beginShimmer();
+    /* THE ANSWER CAN ARRIVE AFTER THE SCREEN DOES - see TitleDeps.updateReadyLater.
+     *
+     * Three guards, each for a way this could reach past its own screen: `closed`
+     * because a promise that settles after the player has already pressed a key
+     * would start a timer repainting row 23 over whatever comes next, forever;
+     * the enabled-row check because lighting a row that is not there would be the
+     * layout change this whole arrangement exists to avoid; and beginShimmer's
+     * own once-only guard, because a title that was ALREADY shimmering must not
+     * end up with two timers on it. */
+    void deps?.updateReadyLater
+      ?.then((ready) => {
+        if (!ready || closed) return;
+        if (!spans.some((s) => s.row.choice === "update" && s.row.enabled)) return;
+        beginShimmer();
+      })
+      .catch(() => {
+        /* A check that threw is not an update. The (U)pdate screen reports it. */
+      });
   });
 }

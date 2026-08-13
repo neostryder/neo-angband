@@ -379,6 +379,18 @@ The one to keep in mind when you touch either half:
   no credential on purpose, so it gets the unauthenticated sixty-an-hour budget
   shared with everything else on that address. The screen says so in those words,
   because "403" reads as something the player did wrong.
+- **The title screen no longer waits for it.** The first `api.github.com` request
+  a fresh process makes measured **6.1s** on the shipped Windows build; every
+  later one in the same process took 2–5ms. The title used to await the answer
+  outright, so that whole cold cost was dead air on the launch screen. It now
+  waits `TITLE_CHECK_WAIT_MS` (400ms) and paints regardless, and the answer, if
+  it arrives late, lights the shimmer on the `(U)pdate` row that is already
+  there. This is safe under the desktop shell **only because** `canUpdate` reads
+  `updateHow` rather than the answer, so no row moves. In a browser the row's
+  presence really does depend on the answer — and there the probe asks the
+  service worker, not the network, so it is not a wait worth bounding. If you
+  ever make the desktop row conditional on the check, this bound has to go with
+  it.
 
 ### `early`: a release per commit, and only ever one
 
