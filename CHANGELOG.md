@@ -37,6 +37,21 @@ digest in the game's catalogue and must never be moved.
   dispatch disabled, which fails at step 1 saying the game is not responding to
   input.
 
+- **`tools/tall-tile-probe.mjs`**, a second CDP driver whose job is comparing two
+  builds rather than smoking one. It plays to a fixed seed, optionally summons a
+  named monster through the debug menu, screenshots, and diffs two frames by row
+  band. It is run by hand — point it at the current bundle, then at a bundle
+  built from another commit, and diff. `--diff` fails loudly when the two frames
+  are identical, because "the images match" is the result that means the change
+  under test never reached a running game.
+
+  It carries one finding worth keeping: of the 252 entries in Shockbolt's
+  overdraw band (rows 27-31), 247 have real art in the cell above them and
+  **five do not** — and those five are the town's store entrances, the only tall
+  tiles a new character can reach without wizard mode. A town-only comparison
+  therefore photographs the one subject in the game that cannot show the
+  difference, which is exactly what the first run of this tool did.
+
 ### Changed
 
 - **The customised-options reader is 4.2.6's again.** `options_restore_custom`
@@ -111,6 +126,14 @@ digest in the game's catalogue and must never be moved.
   grid, matching the reference's one-by-one overview tilesheet. Frames with no
   tall tile in them pay nothing: the expansion adds no cells and the paint count
   is unchanged.
+
+  **Verified in pixels**, not only in unit tests: `tools/tall-tile-probe.mjs`
+  drives the built desktop shell over the DevTools protocol, summons a Fire
+  giant (Shockbolt row 29) beside the player at a fixed seed, and photographs
+  it. The same seed and the same key sequence were then run against a bundle
+  built from the parent commit — the mechanism removed, not merely fed inert
+  input — and the giant is drawn from the waist down, head and arms cropped off.
+  Side by side it is unmistakable.
 
 - **A revealed mimic went on being drawn as the item it was pretending to be.**
   `become_aware` (mon-util.c L777) calls `square_note_spot` on the monster's

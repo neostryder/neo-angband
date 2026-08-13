@@ -79,3 +79,8 @@ parity/PARITY_REMEDIATION_2026-07-21.md
 # tools/play-smoke.mjs writes its frames here; the CI job uploads them as an
 # artifact rather than committing them.
 smoke-shots/
+
+# tools/tall-tile-probe.mjs does the same. It is run by hand against two builds
+# to compare them, so its output is a working artefact, not a fixture: 13 MB of
+# PNGs per pair of runs.
+tall-tile-shots/
