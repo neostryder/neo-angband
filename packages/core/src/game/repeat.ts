@@ -43,6 +43,7 @@
  * in game/gear.ts, which cannot see a GameState).
  */
 
+import { DIR_TARGET } from "../effects/interpreter.js";
 import type { Player } from "../player/player.js";
 import type { PlayerCommand } from "./context.js";
 
@@ -89,4 +90,58 @@ export function cmdDisableRepeatFloorItem(p: Player): void {
  */
 export function repeatPrevAllowed(p: Player): boolean {
   return p.upkeep.repeatPrevAllowed;
+}
+
+/**
+ * Which stored direction a repeated command would re-ask about, if any.
+ *
+ * WHY A REPEAT HAS TO ASK AGAIN. Upstream's aimed commands do not read their
+ * direction argument; they read it THROUGH cmd_get_target (cmd-core.c:955-969):
+ *
+ *     if (cmd_get_arg_direction(cmd, arg, &dir) == CMD_OK) {
+ *             if (dir != DIR_TARGET || target_okay()) { ... return CMD_OK; }
+ *     }
+ *     if (get_aim_dir(&dir)) { cmd_set_arg_target(cmd, arg, dir); ... }
+ *     return CMD_ARG_ABORTED;
+ *
+ * That runs on EVERY execution, so a stored DIR_TARGET is re-validated each time
+ * and the aim prompt re-opens whenever the target has stopped being reachable.
+ * The port asks once, in the shell, and the repeat key replayed the answer -
+ * so firing at a monster that then walked out of view sent the missile into
+ * rangedHelper's non-target branch, where DDX[5] and DDY[5] are both 0: a
+ * zero-length path at the player's own feet. "It just fires and misses."
+ *
+ * THREE SLOTS, because three command shapes carry a direction: `dir` on a plain
+ * aimed command, `args.dir` on the item verbs, and `args.tgtdir` on a
+ * get_aim_dir a handler asks from INSIDE an effect (obj-cmd.ts:1310). They are
+ * the same question and upstream re-asks all of them; a list rather than one
+ * answer because a command can hold more than one.
+ *
+ * Pure on purpose: the prompt belongs to the shell, and this is the part of
+ * cmd_get_target that can be tested without one.
+ */
+export type RepeatDirSlot = "dir" | "args.dir" | "args.tgtdir";
+
+export function repeatDirSlots(cmd: PlayerCommand): readonly RepeatDirSlot[] {
+  const slots: RepeatDirSlot[] = [];
+  if (cmd.dir === DIR_TARGET) slots.push("dir");
+  if (cmd.args?.["dir"] === DIR_TARGET) slots.push("args.dir");
+  if (cmd.args?.["tgtdir"] === DIR_TARGET) slots.push("args.tgtdir");
+  return slots;
+}
+
+/**
+ * cmd_set_arg_target / cmd_set_arg_direction (cmd-core.c:967): write the answer
+ * back into the command, so the direction the player just gave is the one that
+ * executes. Returns a copy - the remembered command must not be edited in
+ * place, or a cancelled re-prompt would still have changed it.
+ */
+export function withRepeatDir(
+  cmd: PlayerCommand,
+  slot: RepeatDirSlot,
+  dir: number,
+): PlayerCommand {
+  if (slot === "dir") return { ...cmd, dir };
+  const key = slot === "args.dir" ? "dir" : "tgtdir";
+  return { ...cmd, args: { ...(cmd.args ?? {}), [key]: dir } };
 }

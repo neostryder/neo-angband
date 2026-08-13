@@ -12,6 +12,7 @@ import type { GameObject } from "../obj/object.js";
 import {
   dropNear,
   floorCarry,
+  floorDisplay,
   floorExcise,
   floorObjectForUse,
   floorPile,
@@ -23,6 +24,7 @@ import {
   USE_MODE,
 } from "./floor.js";
 import { invenCarry } from "./gear.js";
+import { knownObject, squareKnowPile } from "./known.js";
 import { GRANITE, makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
@@ -416,5 +418,95 @@ describe("drop_near's prefer_pile (obj-pile.c drop_find_grid)", () => {
     expect(first).toEqual(loc(12, 12));
     expect(second).not.toBeNull();
     expect(second).not.toEqual(loc(12, 12));
+  });
+});
+
+describe("floorDisplay: map_info's object loop for a pile in sight", () => {
+  /*
+   * Reported from play: "Pile doesn't render the pile image (instead shows one
+   * item's image) except when out-of-sight (dimmed)."
+   *
+   * Upstream runs ONE loop (cave-map.c:155-169) and one draw (ui-map.c:200-224)
+   * whether the grid is lit or remembered. This port grew two, and only the
+   * remembered one (knownObject) counted a second object - so `&` appeared
+   * exactly when the pile dimmed. These tests are on the shared function both
+   * halves now call; the last one is the one that would have caught the bug,
+   * because it compares the two paths against each other rather than each
+   * against a rule written twice.
+   */
+  const grid = loc(5, 5);
+
+  function stateWithPile(count: number): ReturnType<typeof makeState> {
+    const state = makeState({ playerGrid: loc(1, 1) });
+    for (let i = 0; i < count; i++) {
+      /* Distinct kinds, so nothing merges into one stack and turns a pile of
+       * two into a single object with number 2 - which is NOT multiple_objects
+       * upstream either, and would make the test pass for the wrong reason. */
+      expect(floorCarry(state, grid, makeObj(TV.POTION, i))).toBe(true);
+    }
+    return state;
+  }
+
+  it("one object supplies the glyph and is not a pile", () => {
+    const state = stateWithPile(1);
+    const shown = floorDisplay(floorPile(state, grid), state.isIgnored);
+    expect(shown?.multiple).toBe(false);
+    expect(shown?.obj).toBe(floorPile(state, grid)[0]);
+  });
+
+  it("a second displayable object makes it a pile", () => {
+    const state = stateWithPile(2);
+    expect(floorDisplay(floorPile(state, grid), state.isIgnored)?.multiple).toBe(
+      true,
+    );
+  });
+
+  it("takes the HEAD for the glyph - pile_insert prepends, newest first", () => {
+    const state = stateWithPile(3);
+    const pile = floorPile(state, grid);
+    const shown = floorDisplay(pile, state.isIgnored);
+    expect(shown?.obj).toBe(pile[0]);
+    expect(shown?.multiple).toBe(true);
+  });
+
+  it("does not COUNT an ignored object, so one wanted item stays one item", () => {
+    /* "Item stays hidden" is a `continue` inside the same test that chooses
+     * first_kind (cave-map.c:159), so an ignored entry is neither the glyph nor
+     * the second object. Filtering after counting would draw a pile here. */
+    const state = stateWithPile(2);
+    const pile = floorPile(state, grid);
+    const hidden = pile[0];
+    const shown = floorDisplay(pile, (o) => o === hidden);
+    expect(shown?.multiple).toBe(false);
+    expect(shown?.obj).toBe(pile[1]);
+  });
+
+  it("is null when every object is ignored, and when the pile is empty", () => {
+    const state = stateWithPile(2);
+    expect(floorDisplay(floorPile(state, grid), () => true)).toBeNull();
+    expect(floorDisplay([], state.isIgnored)).toBeNull();
+  });
+
+  it("agrees with the REMEMBERED draw about what is a pile", () => {
+    /*
+     * The seam itself. knownObject (game/known.ts) is the same loop over the
+     * player's shadow pile, and the bug was the two disagreeing: the remembered
+     * side said multiple, the live side had no opinion at all. Comparing them
+     * fails if either one drifts, which neither half's own test can do.
+     */
+    for (const count of [1, 2, 3]) {
+      const state = stateWithPile(count);
+      squareKnowPile(state, grid);
+      const live = floorDisplay(floorPile(state, grid), state.isIgnored);
+      const remembered = knownObject(state, grid);
+      expect(live, `count=${count}`).not.toBeNull();
+      /* Narrowing, not a second assertion: KnownObjectMemory's other arm is the
+       * sensed marker, which carries no kind to compare. */
+      if (remembered === null || !remembered.seen) {
+        throw new Error(`count=${count}: expected an exact memory of the pile`);
+      }
+      expect(live?.multiple, `count=${count}`).toBe(remembered.multiple);
+      expect(live?.obj.kind.kidx, `count=${count}`).toBe(remembered.kidx);
+    }
   });
 });

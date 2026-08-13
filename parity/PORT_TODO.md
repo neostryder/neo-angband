@@ -527,11 +527,24 @@ is reachable in play and a test constructs the case that used to be wrong.**
   guarding the order on the grounds that "a correct `wieldRingChoice()` that
   nothing calls reads exactly like a finished feature". `PROJECT_LOS_AWARE` and
   `BOLT_AWARE` both thread `PROJECT_AWARE`, so the two codes no longer apply the
-  same projection. And the `cmd_get_target` retry is a **divergence by
-  construction**: upstream needs it because the target is cached in the command
-  struct and can go stale; this port resolves the aim at prompt time every
-  command and repeat is a boolean gate, not a replayed argument, so the stale
-  case cannot arise.
+  same projection.
+
+  **The `cmd_get_target` retry was adjudicated WRONG here, and the reason given
+  was false about this port's own code** (corrected by #245, found from play).
+  This paragraph used to call it a "divergence by construction" on the grounds
+  that "repeat is a boolean gate, not a replayed argument, so the stale case
+  cannot arise". `repeatPrevAllowed` is the boolean gate; the repeat ITSELF is
+  `commandBuffer.push({ ...lastRepeatCmd })`, arguments and all, twenty lines
+  below the gate in the same function. So the stale case arose exactly as
+  upstream's retry anticipates: fire at a monster, let it walk out of view,
+  press `n`, and the stored `DIR_TARGET` went to rangedHelper's non-target
+  branch, where `DDX[5]`/`DDY[5]` are both 0 - an arrow into the player's own
+  grid. The retry is now ported (`repeatDirSlots` / `withRepeatDir` in
+  `game/repeat.ts`, driven by the shell's `repeatLastCommand`).
+
+  Worth the paragraph because of HOW it read as settled: the claim was about a
+  mechanism one function away from the one being described, and nothing in it
+  was hedged.
 
   **Both `#24` and `#25` are now clear, 40 rows between them, and on inspection
   NONE of them was owed.** The last candidate - `recharge_pow`'s failure RATE -
@@ -1302,6 +1315,14 @@ is reachable in play and a test constructs the case that used to be wrong.**
     to compute it from, and `ObjRegistry.pileKind` was bound, asserted in a test
     and read by **no production code** — shipped and unreachable. A grid holding
     two or more remembered items drew the top item instead of `&`.
+
+    **This closed the REMEMBERED half only**, which #246 found from play: the
+    draw is split in two here, and the live in-sight arm (`objectIndex`) still
+    took the first non-ignored object and drew its kind. A pile you were
+    standing next to showed the top item and turned into `&` the moment it
+    dimmed out of view - the fix above is what made the asymmetry visible. Both
+    arms now call one `floorDisplay` (`game/floor.ts`), and `floor.test.ts`
+    compares the two against each other rather than each against the rule.
   - **Ignore hid the wrong thing.** `"Item stays hidden"` (`cave-map.c:162`)
     SKIPS an ignored entry without consuming the `first_kind` slot, so upstream
     falls through to the object underneath. The port could only ask "is EVERY
