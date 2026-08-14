@@ -47,7 +47,7 @@ import {
   idbKeys,
   openDb,
 } from "./idb";
-import { checkMod, githubRepo } from "@rpgm-tools/neo-angband-mod-sdk";
+import { checkMod, githubRepo, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -137,7 +137,55 @@ export interface InstallProgress {
 
 export type InstallResult =
   | { readonly ok: true; readonly meta: InstalledModMeta }
-  | { readonly ok: false; readonly problem: string };
+  | {
+      readonly ok: false;
+      /**
+       * ONE SENTENCE, and a whole one. Every caller can log it, put it on a row, or
+       * show it as a paragraph without knowing which refusal it is.
+       */
+      readonly problem: string;
+      /**
+       * The requirements that failed, when this refusal is a standards inspection.
+       *
+       * WHY THE RECORDS TRAVEL. `checkMod` answers a LIST - `{ id, level, title,
+       * problem }` per unmet requirement - and this arm used to map it straight into
+       * `problem` with hand-typed `\n  - ` bullets, which is the only place that list
+       * existed. Downstream then split the string back apart on the newline and
+       * re-wrapped each fragment: the process re-parsed a rendering it had produced
+       * two frames earlier, and a screen that wanted "which requirement" had to find
+       * a colon in English first.
+       *
+       * Absent - not empty - on every other refusal, because "no requirements failed"
+       * and "requirements were never asked about" are different facts and a caller
+       * that says "0 requirements failed" about a zip-slip refusal is lying. The
+       * sentence in `problem` is the whole story for those.
+       */
+      readonly unmet?: readonly Finding[];
+    };
+
+/**
+ * What an author can do about a requirements refusal.
+ *
+ * A constant here rather than a line the screen types, because the wording of a
+ * refusal belongs to the code that refuses. It is not part of `problem`: `problem` is
+ * the summary, this is the advice that only makes sense beside the list in `unmet`,
+ * and gluing all three into one string is what this pass exists to undo.
+ */
+export const MOD_CHECK_ADVICE =
+  "The mod's author can check this themselves with `npx neo-angband-mod-check`.";
+
+/** One unmet requirement, worded exactly as the manager has always printed it. */
+export function requirementLine(f: Finding): string {
+  return `  - ${f.title}: ${f.problem}`;
+}
+
+/** The one-line summary of a requirements refusal, for a log or a row. */
+export function requirementsRefusal(id: string): string {
+  return (
+    `${id}: this mod does not meet the requirements, so installing it ` +
+    `would not give you a working mod.`
+  );
+}
 
 /**
  * The write half, shared by every way a mod can arrive.
@@ -205,14 +253,15 @@ async function storeMod(
       manifestText: manifestTextOf(files),
     });
     if (!inspection.ok) {
+      /* The FINDINGS travel, and `problem` is the summary rather than the whole
+       * report. This used to flatten the list into `problem` with hand-typed bullets
+       * and a trailing sentence of advice, which made the screen that shows it split
+       * the string back apart on "\n" - see InstallResult.unmet. The bullet's wording
+       * is still this module's (requirementLine) so there is one copy of it. */
       return {
         ok: false,
-        problem:
-          `${mod.id}: this mod does not meet the requirements, so installing it ` +
-          `would not give you a working mod.\n` +
-          inspection.errors.map((f) => `  - ${f.title}: ${f.problem}`).join("\n") +
-          `\nThe mod's author can check this themselves with ` +
-          `\`npx neo-angband-mod-check\`.`,
+        problem: requirementsRefusal(mod.id),
+        unmet: inspection.errors,
       };
     }
 

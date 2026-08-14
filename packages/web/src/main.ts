@@ -384,10 +384,17 @@ import {
   getQuantity,
   getString,
   setUiFaultReporter,
+  screenFault,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
-import { installScreen, setScreenPresenter } from "./screen-runtime";
+import {
+  installScreen,
+  setScreenPresenter,
+  showThroughPresenter,
+  ScreenAbandoned,
+} from "./screen-runtime";
+import type { ScreenHost, ScreenView } from "./screen-view";
 import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile } from "./userdir";
@@ -440,6 +447,13 @@ import {
   tombstoneScreen,
   winnerScreen,
   ctimeStamp,
+  storeKnowledgeScreen,
+  updateScreen,
+  reportScreen,
+  UPDATE_TITLE,
+  REPORT_TITLE,
+  UPDATE_ACTION_KEYS,
+  REPORT_ACTION_KEYS,
 } from "./screens";
 import { showCharacterSheet, dumpCharacterFile, dumpFileName } from "./charsheet";
 import {
@@ -4204,35 +4218,29 @@ async function openKnowledgeMenu(): Promise<void> {
  * store_display_frame layout - owner line, the "Store Inventory"/"Weight"/
  * "Price" header (Home shows "Home Inventory" with no Price), then the stock in
  * store_stock_list order with each item's weight and per-item buy price.
+ *
+ * The listing is a MODEL now (`storeKnowledgeScreen`, screens.ts) rather than a
+ * padded string per row: it is the same shape as `core:inventory`, so a mod that
+ * draws a pack listing as sprites draws a shop's shelves the same way. This
+ * function is left with the two facts only the shell knows - which feature this
+ * is, and what the game charges for each item.
  */
 async function showStoreKnowledge(store: Store): Promise<void> {
   const feat = features.get(store.feat);
   const featLabel = feat?.name ?? store.featName;
   const isHome = (feat?.code ?? store.featName).toUpperCase().includes("HOME");
   const stock = sortStoreStock(game, store);
-  const lines: ScreenLine[] = [];
-  lines.push({ text: isHome ? "Your Home" : store.owner.name });
-  lines.push({ text: "" });
-  lines.push({
-    text: isHome
-      ? `${"Home Inventory".padEnd(52)}Weight`
-      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
-  });
-  if (stock.length === 0) {
-    lines.push({ text: "" });
-    lines.push({ text: isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)" });
-  }
-  stock.forEach((obj, i) => {
-    const name = describeObject(state, obj);
-    const wgt = obj.weight;
-    const weightStr = `${Math.trunc(wgt / 10)}.${wgt % 10} lb`;
-    const priceStr = isHome ? "" : String(game.price(store, obj, false, 1));
-    const tag = String.fromCharCode(97 + (i % 26));
-    lines.push({
-      text: `${tag}) ${name.padEnd(46).slice(0, 46)} ${weightStr.padStart(8)}  ${priceStr.padStart(9)}`.trimEnd(),
-    });
-  });
-  await showTextScreen(term, featLabel, lines);
+  await showTextScreen(
+    term,
+    storeKnowledgeScreen(state, stock, {
+      title: featLabel,
+      owner: store.owner.name,
+      isHome,
+      /* price_item(store, obj, false, 1); the home sells nothing, and passing a
+       * pricer for it would put a column on the screen upstream does not draw. */
+      ...(isHome ? {} : { price: (obj: GameObject): number => game.price(store, obj, false, 1) }),
+    }),
+  );
 }
 
 /**
@@ -9414,10 +9422,16 @@ function modBrowseDeps(): ModUpgradeDeps {
 /**
  * The (U)pdate screen.
  *
- * Painted here rather than through showTextScreen for two reasons that both
- * matter: that viewer resolves on ESC, ENTER *and* SPACE alike, and this screen
- * has to tell "yes, replace my install" apart from "get me out of here"; and it
- * cannot repaint itself, which a progress bar is entirely made of.
+ * DRAWN HERE, BUT NOT HIDDEN FROM MODS. `showTextScreen` cannot serve this page:
+ * that viewer resolves on ESC, ENTER *and* SPACE alike, and this screen has to
+ * tell "yes, replace my install" apart from "get me out of here"; and it cannot
+ * repaint itself, which a progress bar is entirely made of. What used to follow
+ * from that - and does not - is that a presenter never saw the page at all. It is
+ * offered through `showThroughPresenter` like every other screen, its prose
+ * travelling as a `lines` block, and the keys the footer names travel with it as
+ * `actions` so `ScreenHost.invoke` runs the GAME's own update from a mod's own
+ * button. Prose the game already laid out is finished at `lines`; there is no
+ * table here to model.
  *
  * ONE PAINT PER PROGRESS EVENT WOULD BE 160 MB OF PAINTS. The download reports
  * every chunk, so the bar is redrawn only when the whole-percent figure changes
@@ -9473,10 +9487,17 @@ async function showUpdatePage(): Promise<void> {
 
   let view: UpdateView = viewFor(check);
 
+  /* True while a presenter is holding this screen. Every paint is gated on it,
+   * because a download reports progress about a hundred times and every one of
+   * those would otherwise be the game drawing the terminal underneath somebody
+   * else's overlay. */
+  let owned = false;
+
   const paint = (): void => {
+    if (owned) return;
     const { cols, rows } = term.size();
     term.clear();
-    term.print(0, 1, "Update".slice(0, cols - 1), UI_GOLD);
+    term.print(0, 1, UPDATE_TITLE.slice(0, cols - 1), UI_GOLD);
     const lines = updateLines(view);
     for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
       const line = lines[r];
@@ -9499,10 +9520,15 @@ async function showUpdatePage(): Promise<void> {
       inputEvents.addEventListener("keydown", onKey, true);
     });
 
-  for (;;) {
-    paint();
-    const pressed = await key();
-    if (pressed === "Escape") return;
+  /**
+   * ONE key press, whether it came from the terminal's own loop or from a
+   * presenter calling `host.invoke`. False means the screen is over.
+   *
+   * Extracted rather than duplicated because the alternative is two copies of
+   * "what ENTER does here", and the copy a mod drives is the one nobody plays.
+   */
+  const act = async (pressed: string): Promise<boolean> => {
+    if (pressed === "Escape") return false;
 
     /* Change channel, then ask again. The browser has no channels: what it runs
      * is whatever the site last deployed. */
@@ -9520,7 +9546,7 @@ async function showUpdatePage(): Promise<void> {
         offer = check.ok ? check.update : null;
         view = viewFor(check);
       }
-      continue;
+      return true;
     }
     /* M, and never ENTER. ENTER on this screen ends the session and replaces
      * the whole install; pulling a few KiB of mod is not that, and a player who
@@ -9534,11 +9560,11 @@ async function showUpdatePage(): Promise<void> {
        * screen is invisible - the same reasoning pwa.ts relies on. */
       if (touched) {
         reloadAfterModChange({ resume: false });
-        return;
+        return false;
       }
-      continue;
+      return true;
     }
-    if (pressed !== "Enter") continue;
+    if (pressed !== "Enter") return true;
     /* The retry the screen names in its footer. Without it the only way to ask
      * a second time was to restart the game, which is how a transient failure
      * at boot became a permanent "you are up to date". */
@@ -9547,9 +9573,9 @@ async function showUpdatePage(): Promise<void> {
       check = await updateProbe;
       offer = check.ok ? check.update : null;
       view = viewFor(check);
-      continue;
+      return true;
     }
-    if (!offer) continue;
+    if (!offer) return true;
 
     if (view.how === "web") {
       /* Awaited: it asks the worker to check and, if one is waiting, to take
@@ -9558,11 +9584,11 @@ async function showUpdatePage(): Promise<void> {
       view = { ...view, phase: "installing" };
       paint();
       await applyWebUpdate();
-      return;
+      return false;
     }
     if (view.how === "manual" || !bridge?.update || !offer.asset) {
       await bridge?.update?.("reveal", view.releaseUrl);
-      return;
+      return false;
     }
 
     /* Downloading. Progress is throttled to whole percents - see above. */
@@ -9585,18 +9611,60 @@ async function showUpdatePage(): Promise<void> {
 
     if (!res?.ok) {
       view = { ...view, phase: "failed", error: res?.error };
-      continue;
+      return true;
     }
     view = { ...view, phase: "installing" };
     paint();
     const applied = (await bridge.update("apply")) as { ok?: boolean; error?: string } | undefined;
     if (!applied?.ok) {
       view = { ...view, phase: "failed", error: applied?.error };
-      continue;
+      return true;
     }
     /* The main process is quitting and a swap script is waiting on our pid.
      * There is nothing left to draw. */
-    return;
+    return false;
+  };
+
+  /** The current page as a screen; `updateScreen` owns the shape, this the tone. */
+  const screenNow = (): ScreenView =>
+    updateScreen(
+      view,
+      updateLines(view).map((line) => ({ text: line.text, color: UPDATE_TONE[line.tone] })),
+      updateFooter(view, term.size().cols),
+      modPending.length,
+    );
+
+  const host: ScreenHost = {
+    invoke: async (id: string): Promise<ScreenView | undefined> => {
+      const pressed = UPDATE_ACTION_KEYS[id];
+      /* An unknown id is a no-op returning the current view, never an error: a
+       * presenter written against a later engine must not be able to close the
+       * player's update page by asking for a command this one has not got. */
+      if (pressed === undefined) return screenNow();
+      return (await act(pressed)) ? screenNow() : undefined;
+    },
+  };
+
+  owned = true;
+  const taken = showThroughPresenter(screenNow(), screenFault, host);
+  if (taken) {
+    try {
+      await taken;
+      return;
+    } catch (error: unknown) {
+      /* The presenter died with the page open. It is already reported and the
+       * seam is already out; all that is left is to show the player the page
+       * they asked for, which the terminal loop below does. */
+      if (!(error instanceof ScreenAbandoned)) throw error;
+      owned = false;
+    }
+  } else {
+    owned = false;
+  }
+
+  for (;;) {
+    paint();
+    if (!(await act(await key()))) return;
   }
 }
 
@@ -9775,9 +9843,12 @@ function reportInput(description: readonly string[]): ReportInput {
 /**
  * The "Report a problem" screen.
  *
- * Painted here rather than through showTextScreen for the same reason the update
- * screen is: that viewer resolves on ESC, ENTER and SPACE alike, and this screen
- * has to tell "write the file" apart from "get me out of here".
+ * DRAWN HERE, BUT NOT HIDDEN FROM MODS, for the same reason the update page is:
+ * `showTextScreen` resolves on ESC, ENTER and SPACE alike, and this screen has to
+ * tell "write the file" apart from "get me out of here". It is still offered
+ * through `showThroughPresenter` - prose as a `lines` block, and D / L / ENTER as
+ * `actions` a presenter runs through `ScreenHost.invoke`, so the game writes the
+ * game's file from a mod's own button.
  *
  * THE FILE IS NEVER WRITTEN WITHOUT THE PLAYER PRESSING ENTER, and the screen
  * lists what will be in it first. A menu row that silently dropped a file
@@ -9796,10 +9867,14 @@ async function showReportPage(): Promise<void> {
     logsDir: desktopLogsDir() ?? undefined,
   };
 
+  /* True while a presenter holds the page; see the update page's own `owned`. */
+  let owned = false;
+
   const paint = (): void => {
+    if (owned) return;
     const { cols, rows } = term.size();
     term.clear();
-    term.print(0, 1, "Report a problem".slice(0, cols - 1), UI_GOLD);
+    term.print(0, 1, REPORT_TITLE.slice(0, cols - 1), UI_GOLD);
     const lines = reportLines(view);
     for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
       const line = lines[r];
@@ -9822,10 +9897,10 @@ async function showReportPage(): Promise<void> {
       inputEvents.addEventListener("keydown", onKey, true);
     });
 
-  for (;;) {
-    paint();
-    const pressed = await key();
-    if (pressed === "Escape") return;
+  /** ONE key press, from the terminal's loop or from `host.invoke`; see the
+   * update page's `act` on why this is shared rather than copied. */
+  const act = async (pressed: string): Promise<boolean> => {
+    if (pressed === "Escape") return false;
 
     if (pressed === "d" || pressed === "D") {
       /*
@@ -9848,7 +9923,7 @@ async function showReportPage(): Promise<void> {
         description.push(typed);
       }
       view = { ...view, description: [...description] };
-      continue;
+      return true;
     }
 
     if (pressed === "l" || pressed === "L") {
@@ -9860,11 +9935,11 @@ async function showReportPage(): Promise<void> {
         log.warn("report", `logging level set to ${next} by the player`);
         view = { ...view, level: next };
       }
-      continue;
+      return true;
     }
 
-    if (pressed !== "Enter") continue;
-    if (view.phase === "saved") return;
+    if (pressed !== "Enter") return true;
+    if (view.phase === "saved") return false;
 
     const text = reportText(reportInput(description));
     const bridge = updaterBridge() as (UpdaterBridge & {
@@ -9889,6 +9964,46 @@ async function showReportPage(): Promise<void> {
     /* Straight to disk, before anything else can go wrong - the log line about
      * having written it is the last thing a truncated log should be missing. */
     flushLog();
+    return true;
+  };
+
+  /** The current page as a screen; `reportScreen` owns the shape, this the tone. */
+  const screenNow = (): ScreenView =>
+    reportScreen(
+      view,
+      reportLines(view).map((line) => ({ text: line.text, color: REPORT_TONE[line.tone] })),
+      reportFooter(view),
+    );
+
+  const host: ScreenHost = {
+    invoke: async (id: string): Promise<ScreenView | undefined> => {
+      const pressed = REPORT_ACTION_KEYS[id];
+      /* An unknown id is a no-op returning the current view; see the update
+       * page's host on why it is never an error. */
+      if (pressed === undefined) return screenNow();
+      return (await act(pressed)) ? screenNow() : undefined;
+    },
+  };
+
+  owned = true;
+  const taken = showThroughPresenter(screenNow(), screenFault, host);
+  if (taken) {
+    try {
+      await taken;
+      return;
+    } catch (error: unknown) {
+      /* The presenter died with the page open; show the player the page they
+       * asked for, which the terminal loop below does. */
+      if (!(error instanceof ScreenAbandoned)) throw error;
+      owned = false;
+    }
+  } else {
+    owned = false;
+  }
+
+  for (;;) {
+    paint();
+    if (!(await act(await key()))) return;
   }
 }
 

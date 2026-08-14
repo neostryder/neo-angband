@@ -49,6 +49,13 @@ import {
   type MenuItem,
   type ScreenLine,
 } from "./overlay";
+import {
+  freezeView,
+  SCREEN_FOOTER,
+  type ScreenBlock,
+  type ScreenRow,
+  type ScreenView,
+} from "./screen-view";
 import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
@@ -66,7 +73,9 @@ import type { ConflictReportLines } from "./mod-conflicts";
 import {
   resolveSectionState,
   sortModOrder,
+  type ContestedSlot,
   type PackManifest,
+  type SortResult,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { wrapCssRuns } from "./shop";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
@@ -643,6 +652,16 @@ export function rowDetail(
  * Paragraphs are kept: a blank line in a manifest's description is the author
  * separating two ideas, and `wrapped()` on the whole string runs them together
  * into the wall of text this row exists to stop being the only option.
+ *
+ * LEFT AT `lines`, DELIBERATELY. This page is the canonical finished-at-`lines`
+ * case: it is one stranger's prose, already wrapped, and the three rows in front of
+ * it are not a repeated record - a name-and-id line, a version-and-shape line and an
+ * author-and-licence line, each a different shape and each present or not on its
+ * own. A table of three one-off rows is a table with no second row to line up
+ * against, and re-declaring the prose as a `text` block would hand the wrap from
+ * `wrapCssRuns` to `textblock_calculate_lines` and move the page under the player.
+ * The header's FIELDS are already reachable: every one of them comes off
+ * `CatalogMod`, which a presenter has before it has this screen.
  */
 export function fullDescription(m: CatalogMod, width = 80): ScreenLine[] {
   const w = width - 1;
@@ -698,37 +717,100 @@ async function gameplayNoscorePrompt(term: GridSurface & GridPointerInput, m: Ca
   return pick === 0;
 }
 
+/** The footer under the consent read, before the Yes/No pick that follows it. */
+const CONSENT_FOOTER = "[ Press ESC to review, then choose ]";
+
+/**
+ * The capability consent gate as a document: what is being asked for, as a LIST.
+ *
+ * `describeCapabilities` already answers `{ cap, text, elevated }` per grant, and
+ * the screen was flattening all three into `  - <text>   [elevated]`. So the one
+ * fact this screen exists to make impossible to miss - which grants are the
+ * powerful ones - was recoverable only by looking for a word in a sentence. Each
+ * grant is now a row: `elevated` is a boolean on `semantic.data`, `cap` is the raw
+ * capability string on `semantic.ref`, and a presenter draws the flag as whatever
+ * a warning looks like in its own vocabulary.
+ *
+ * The bullet is a CELL rather than the table's own `tagged` prefix, which would
+ * write `a) ` - a lettered row the player cannot choose, three columns wide by
+ * coincidence. As a cell it is the marker, and a presenter replaces it with an icon.
+ *
+ * The sentences around the list are prose and stay `lines`; the closing warnings are
+ * deliberately unwrapped single rows, and a `text` block would wrap them.
+ */
+export function capabilityConsentScreen(m: CatalogMod): ScreenView {
+  return freezeView({
+    id: "core:mod-capabilities",
+    title: `Consent - ${m.name}`,
+    footer: CONSENT_FOOTER,
+    blocks: [
+      {
+        kind: "lines",
+        lines: [
+          { text: `"${m.name}" requests these capabilities:`, color: C_TITLE },
+          { text: "", color: C_FG },
+        ],
+      },
+      {
+        kind: "table",
+        key: "capabilities",
+        tagged: false,
+        columns: [
+          { key: "bullet", width: 3, align: "right" },
+          /* Unpadded and unclamped: a capability blurb runs to 200 characters
+           * (registry:*) and padding the column to the longest would push the
+           * elevated flag off an 80-column terminal for every other row. */
+          { key: "text", pad: false },
+          /* Three columns of space before the flag, as the column's own gap rather
+           * than as three spaces on the front of the cell - a row with no flag then
+           * ends where it always did, because the renderer cuts the trailing run. */
+          { key: "elevated", gap: 3, pad: false },
+        ],
+        rows: describeCapabilities(m.capabilities).map((d) => ({
+          id: d.cap,
+          semantic: { kind: "capability", ref: d.cap, data: { elevated: d.elevated } },
+          color: d.elevated ? C_WARN : C_FG,
+          cells: {
+            bullet: { text: "-" },
+            text: { text: d.text },
+            elevated: { text: d.elevated ? "[elevated]" : "" },
+          },
+        })),
+      },
+      {
+        kind: "lines",
+        lines: [
+          { text: "", color: C_FG },
+          ...(hasElevatedCapability(m.capabilities)
+            ? [
+                {
+                  text: "This mod can change core game behavior in-process. Only enable mods you trust.",
+                  color: C_DANGER,
+                },
+              ]
+            : []),
+          ...(m.nondeterministic
+            ? [
+                {
+                  text: "It also marks your save permanently non-reproducible.",
+                  color: C_WARN,
+                },
+              ]
+            : []),
+          { text: "", color: C_FG },
+        ],
+      },
+    ],
+  });
+}
+
 /**
  * The capability consent gate: show every requested capability in plain terms,
  * flag elevated ones, and require an explicit Yes. Returns true if consented.
  */
 async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
-  const lines: ScreenLine[] = [
-    { text: `"${m.name}" requests these capabilities:`, color: C_TITLE },
-    { text: "", color: C_FG },
-  ];
-  for (const d of describeCapabilities(m.capabilities)) {
-    lines.push({
-      text: `  - ${d.text}${d.elevated ? "   [elevated]" : ""}`,
-      color: d.elevated ? C_WARN : C_FG,
-    });
-  }
-  lines.push({ text: "", color: C_FG });
-  if (hasElevatedCapability(m.capabilities)) {
-    lines.push({
-      text: "This mod can change core game behavior in-process. Only enable mods you trust.",
-      color: C_DANGER,
-    });
-  }
-  if (m.nondeterministic) {
-    lines.push({
-      text: "It also marks your save permanently non-reproducible.",
-      color: C_WARN,
-    });
-  }
-  lines.push({ text: "", color: C_FG });
   // A trailing read of the terms, then a Yes/No pick.
-  await showTextScreen(term, `Consent - ${m.name}`, lines, "[ Press ESC to review, then choose ]");
+  await showTextScreen(term, capabilityConsentScreen(m));
   const pick = await selectFromMenu(
     term,
     "core:mod-capability-consent",
@@ -865,6 +947,16 @@ async function confirmDeclaredConflicts(
     text: "This is the author's own warning. Nothing stops you running both.",
     color: C_DIM,
   });
+  /* LEFT AT `lines`, DELIBERATELY (see screen-view.ts's header for the rule).
+   *
+   * `claims` is a real array, but a claim does not render as a row: it is one
+   * UNWRAPPED headline - the screen lets a long mod name run to the edge rather
+   * than fold, which a `text` block would undo - followed by the author's own
+   * `because`, wrapped to the live terminal, followed by a blank. That is one to
+   * many rows per record, varying with the terminal's width and with what a
+   * stranger typed into their manifest, and a table row is one row. Both halves
+   * are also prose: the headline is a sentence this file generates and `because`
+   * is free author text, which is the case the model calls finished at `lines`. */
   await showTextScreen(term, `Enable ${m.name}?`, body);
 
   const pick = await selectFromMenu(
@@ -1078,45 +1170,7 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
   const nameOf = (id: string): string => byId.get(id)?.name ?? id;
   const unchanged = result.order.every((id, i) => current[i] === id);
 
-  const body: ScreenLine[] = [];
-  body.push({ text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE });
-  result.order.forEach((id, i) => {
-    const moved = current[i] !== id;
-    body.push({
-      text: `  ${String(i + 1).padStart(2)}. ${nameOf(id)}${moved ? "   <- moved" : ""}`,
-      color: moved ? C_WARN : C_FG,
-    });
-  });
-  body.push({ text: "", color: C_DIM });
-  body.push({ text: "Later mods win conflicts.", color: C_DIM });
-
-  if (result.dropped.length > 0) {
-    body.push({ text: "", color: C_DIM });
-    body.push({ text: "Suggestions it could not honour", color: C_WARN });
-    for (const d of result.dropped) {
-      /* The REASON, not just the pair: an author wrote it, and it is the only
-       * thing that tells the player whether the drop matters to them. */
-      body.push({ text: `  ${d.reason}`, color: C_FG });
-      body.push({
-        text: `    dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
-        color: C_DIM,
-      });
-    }
-  }
-
-  if (result.unresolvable.length > 0) {
-    body.push({ text: "", color: C_DIM });
-    body.push({ text: "These mods cannot all load", color: C_DANGER });
-    for (const cycle of result.unresolvable) {
-      body.push({
-        text: `  ${cycle.map(nameOf).join(" and ")} each require the other.`,
-        color: C_FG,
-      });
-    }
-    body.push({ text: "  Turn one of them off; no order can satisfy both.", color: C_DIM });
-  }
-
-  await showTextScreen(term, "Auto-sort", body);
+  await showTextScreen(term, autoSortScreen(result, current, nameOf));
   if (unchanged) return false;
 
   const pick = await selectFromMenu(
@@ -1132,6 +1186,138 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
   if (pick !== 0) return false;
   deps.store.setEnabled(result.order);
   return true;
+}
+
+/**
+ * The auto-sort proposal as a document: a RANKED LIST the player is being asked to
+ * accept, plus what the sorter had to give up to produce it.
+ *
+ * THE ORDER IS THE SCREEN, and it was the part least reachable. A proposed load
+ * order is the one listing in this manager a real mod-manager UI wants as rows it
+ * can drag: the rank belongs in `values`, the mod belongs on `semantic.ref`, and
+ * "this one moved" belongs beside them rather than inside a string that reads
+ * `  3. Quality of Life   <- moved`. `rank`'s width is 5 because that is the field
+ * the terminal writes - two columns of margin, two of number, and the point - which
+ * is also why it does not clamp until a player has ten thousand mods enabled, where
+ * the `padStart(2)` it replaces never clamped at all.
+ *
+ * THE MOVED FLAG IS A BOOLEAN ON `semantic.data`, NOT A NUMBER IN `values`, which is
+ * the one place this disagrees with the brief it was built from. `ScreenValues` is
+ * `Record<string, number>`, so a flag would have to go in as 0/1 - a boolean
+ * pretending to be a quantity, in the field the HUD's proportion convention reads.
+ * `semantic.data` takes booleans and is already where a presenter looks for what a
+ * row IS, so the flag goes there and the visible marker stays a cell.
+ *
+ * WHAT STAYS `lines`, and why it is not a shortcut. The dropped suggestions are TWO
+ * ROWS PER RECORD - the author's reason, then the cycle that forced the drop, at a
+ * deeper indent - and a table row is one row. Modelling it as two rows per record
+ * sharing a `semantic.ref` would be `lines` wearing a table's costume: a presenter
+ * would still have to know that odd rows continue even ones, which is exactly the
+ * positional knowledge the block model exists to remove. So that block is honest
+ * prose-plus-detail and is left as it is until a record can span rows.
+ */
+export function autoSortScreen(
+  result: SortResult,
+  current: readonly string[],
+  nameOf: (id: string) => string,
+): ScreenView {
+  const unchanged = result.order.every((id, i) => current[i] === id);
+  const blocks: ScreenBlock[] = [
+    {
+      kind: "table",
+      key: "order",
+      tagged: false,
+      caption: { text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE },
+      columns: [
+        { key: "rank", width: 5, align: "right" },
+        /* Unpadded: the names were never lined up under each other, and padding
+         * them would move the "<- moved" markers into a column of their own. */
+        { key: "name", pad: false },
+        { key: "moved", gap: 3, pad: false },
+      ],
+      rows: result.order.map((id, i) => {
+        const moved = current[i] !== id;
+        return {
+          id,
+          semantic: { kind: "mod", ref: id, data: { moved } },
+          color: moved ? C_WARN : C_FG,
+          values: { rank: i + 1 },
+          cells: {
+            rank: { text: `${String(i + 1)}.` },
+            name: { text: nameOf(id) },
+            moved: { text: moved ? "<- moved" : "" },
+          },
+        };
+      }),
+    },
+    {
+      kind: "lines",
+      lines: [
+        { text: "", color: C_DIM },
+        { text: "Later mods win conflicts.", color: C_DIM },
+      ],
+    },
+  ];
+
+  if (result.dropped.length > 0) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        { text: "", color: C_DIM },
+        { text: "Suggestions it could not honour", color: C_WARN },
+        ...result.dropped.flatMap((d) => [
+          /* The REASON, not just the pair: an author wrote it, and it is the only
+           * thing that tells the player whether the drop matters to them. */
+          { text: `  ${d.reason}`, color: C_FG },
+          {
+            text: `    dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
+            color: C_DIM,
+          },
+        ]),
+      ],
+    });
+  }
+
+  if (result.unresolvable.length > 0) {
+    blocks.push(
+      { kind: "lines", lines: [{ text: "", color: C_DIM }] },
+      {
+        kind: "table",
+        key: "unresolvable",
+        tagged: false,
+        caption: { text: "These mods cannot all load", color: C_DANGER },
+        columns: [
+          { key: "indent", width: 2 },
+          { key: "mods", gap: 0, pad: false },
+          /* The verdict is the same sentence on every row, and it is a cell rather
+           * than the tail of the names so that the NAMES are addressable on their
+           * own - a presenter listing an impossible set wants the mods, not a
+           * sentence it has to cut in half to get at them. */
+          { key: "note", pad: false },
+        ],
+        rows: result.unresolvable.map((cycle, i) => ({
+          id: `cycle:${String(i)}`,
+          semantic: { kind: "mod-cycle", data: { ids: cycle.join(",") } },
+          color: C_FG,
+          cells: {
+            mods: { text: cycle.map(nameOf).join(" and ") },
+            note: { text: "each require the other." },
+          },
+        })),
+      },
+      {
+        kind: "lines",
+        lines: [{ text: "  Turn one of them off; no order can satisfy both.", color: C_DIM }],
+      },
+    );
+  }
+
+  return freezeView({
+    id: "core:mod-auto-sort",
+    title: "Auto-sort",
+    footer: SCREEN_FOOTER,
+    blocks,
+  });
 }
 
 /**
@@ -1259,39 +1445,169 @@ async function manageSections(
  *    the group above.
  */
 async function viewConflicts(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
-  const { declared, contested, combined } = deps.conflictLines();
-  const body: ScreenLine[] = [];
+  await showTextScreen(term, modConflictsScreen(deps.conflictLines()));
+}
 
-  if (declared.length > 0) {
-    body.push({ text: "The authors said so themselves", color: C_WARN });
-    for (const t of declared) body.push({ text: t, color: C_FG });
-    body.push({ text: "", color: C_DIM });
-    body.push({
-      text: "Nothing here is blocked - you can play any combination you like.",
-      color: C_DIM,
+/**
+ * The conflicts viewer as a document: three groups, each a TABLE of records.
+ *
+ * WHAT CHANGED, AND WHERE. This screen was `lines` because its producer destroyed
+ * the structure one module earlier - `conflictLines` mapped every `ContestedSlot`
+ * through `describeContested` and handed over three `string[]`, so the slot, its
+ * fold, the winner and the mods that lost were gone before any screen saw them. They
+ * now travel beside the sentences (`ConflictRow`), and a group of one-row-per-record
+ * is exactly what a table is for.
+ *
+ * ONE VISIBLE COLUMN, AND THAT IS NOT A COSTUME. The sentence stays whole in `what`
+ * because it is the rendering that shipped and it must not move; everything a
+ * presenter would act on - which layer, which fold, who won, who lost - rides on
+ * `semantic.data` beside it, exactly as the update report carries `ModRefresh`. The
+ * sentence is DERIVED from `describeContested` rather than re-worded here: six folds'
+ * wording lives in the SDK and a second copy would rot.
+ *
+ * THE PROSE BETWEEN THE GROUPS STAYS `lines`, by the rule rather than for
+ * convenience. Those are hand-broken constants the screen has already laid out, and
+ * the blank rows between groups carry a colour that `gapAfter` does not emit.
+ *
+ * A CONTESTED ROW WITH NO RECORD IS MARKED AS ONE. The content layer's rows arrive
+ * as finished sentences from `modConflictLines` (pack.ts), the third producer, which
+ * flattens `computeConflictReport`'s field-granular records before this module runs.
+ * Those rows get `{ kind: "content-record" }` with NO `ref`, so a presenter can tell
+ * "this row is about a content record and the fields were not published" from "this
+ * row has nothing to say" - which an absent `semantic` would not.
+ */
+export function modConflictsScreen(report: ConflictReportLines): ScreenView {
+  const { declaredRows, contestedRows, combinedRows } = report;
+  const blocks: ScreenBlock[] = [];
+
+  /* One unpadded column: `pad: false` and no declared `width`, so a row renders as
+   * exactly the sentence it always was. A width would line the sentences up under
+   * each other, which is a change to the player's screen and not this pass's to
+   * make. */
+  const oneColumn = [{ key: "what", pad: false }] as const;
+
+  if (declaredRows.length > 0) {
+    blocks.push(
+      {
+        kind: "table",
+        key: "declared",
+        tagged: false,
+        caption: { text: "The authors said so themselves", color: C_WARN },
+        columns: [...oneColumn],
+        rows: declaredRows.map(({ text, record }) => ({
+          id: `${record.packId}->${record.with}`,
+          /* The CLAIMANT is what a presenter acts on: it is the mod whose author
+           * wrote this, and the one whose page a "tell me more" would open. */
+          semantic: {
+            kind: "mod-conflict",
+            ref: record.packId,
+            data: {
+              with: record.with,
+              because: record.because,
+              scope: record.scope?.join(",") ?? null,
+            },
+          },
+          color: C_FG,
+          cells: { what: { text } },
+        })),
+      },
+      {
+        kind: "lines",
+        lines: [
+          { text: "", color: C_DIM },
+          {
+            text: "Nothing here is blocked - you can play any combination you like.",
+            color: C_DIM,
+          },
+          { text: "", color: C_DIM },
+        ],
+      },
+    );
+  }
+
+  if (contestedRows.length > 0) {
+    blocks.push(
+      {
+        kind: "table",
+        key: "contested",
+        tagged: false,
+        caption: { text: "One of these wins, the rest are ignored", color: C_WARN },
+        columns: [...oneColumn],
+        rows: contestedRows.map(({ text, record }) => slotRow(text, record, C_FG)),
+      },
+      { kind: "lines", lines: [{ text: "", color: C_DIM }] },
+    );
+  }
+
+  if (combinedRows.length > 0) {
+    blocks.push(
+      {
+        kind: "table",
+        key: "combined",
+        tagged: false,
+        caption: { text: "These stack, and need nothing from you", color: C_ENABLED },
+        columns: [...oneColumn],
+        rows: combinedRows.map(({ text, record }) => slotRow(text, record, C_DIM)),
+      },
+      { kind: "lines", lines: [{ text: "", color: C_DIM }] },
+    );
+  }
+
+  if (blocks.length === 0) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        {
+          text: "Nothing among your enabled mods contests anything else.",
+          color: C_ENABLED,
+        },
+      ],
     });
-    body.push({ text: "", color: C_DIM });
   }
 
-  if (contested.length > 0) {
-    body.push({ text: "One of these wins, the rest are ignored", color: C_WARN });
-    for (const t of contested) body.push({ text: t, color: C_FG });
-    body.push({ text: "", color: C_DIM });
-  }
+  return freezeView({
+    id: "core:mod-conflicts",
+    title: "Mod conflicts",
+    footer: SCREEN_FOOTER,
+    blocks,
+  });
+}
 
-  if (combined.length > 0) {
-    body.push({ text: "These stack, and need nothing from you", color: C_ENABLED });
-    for (const t of combined) body.push({ text: t, color: C_DIM });
-    body.push({ text: "", color: C_DIM });
-  }
-
-  if (body.length === 0) {
-    body.push({
-      text: "Nothing among your enabled mods contests anything else.",
-      color: C_ENABLED,
-    });
-  }
-  await showTextScreen(term, "Mod conflicts", body);
+/**
+ * One contested or combining row.
+ *
+ * `losers` is published as well as `claims` because it is the question the screen
+ * exists to answer - "whose work is being thrown away" - and deriving it from
+ * `claims` minus `winner` is a rule about the fold that a presenter should not have
+ * to know. Empty for a combining fold, where nobody loses.
+ */
+function slotRow(text: string, record: ContestedSlot | null, color: string): ScreenRow {
+  const cells = { what: { text } };
+  if (record === null) return { semantic: { kind: "content-record" }, color, cells };
+  const claims = record.claims.map((c) => c.packId);
+  return {
+    id: record.key,
+    semantic: {
+      kind: "contested-slot",
+      ref: record.key,
+      data: {
+        layer: record.layer,
+        fold: record.fold,
+        what: record.what,
+        winner: record.winner ?? null,
+        claims: claims.join(","),
+        /* Empty when the fold picks nobody. Filtering `claims` against an undefined
+         * winner would keep every one of them and report a combining slot - where
+         * every contribution runs - as a slot where everybody lost. */
+        losers:
+          record.winner === undefined
+            ? ""
+            : claims.filter((id) => id !== record.winner).join(","),
+      },
+    },
+    color,
+    cells,
+  };
 }
 
 /** The profiles submenu: save current, apply, or delete a named config. */
@@ -1544,6 +1860,20 @@ async function showModSources(
    * plugin that failed validation, a hooks() that threw - was computed, carried all
    * the way here, and then fell down the one branch that never printed it. */
   lines.push(...problemBlock(status?.problems ?? []));
+  /* LEFT AT `lines`, DELIBERATELY, and the two lists here are why rather than an
+   * oversight.
+   *
+   * The extra-origin loop is one to THREE rows per origin - the count sentence, and
+   * two more only when the mods came from browser storage rather than a folder - so
+   * an origin is not a table row.
+   *
+   * `problemBlock` is a genuine one-line-per-record list and is the one thing on
+   * this screen that wants to be a table. It cannot become one without a lie: an
+   * attributed problem renders `  id: why` and an unattributed one renders `  why`,
+   * and no fixed column can produce both, because the separator is conditional. The
+   * only byte-identical table puts `"id: "` - colon, trailing space and all - inside
+   * the id cell, which is the rendering back in the data. It stays `lines` until the
+   * separator can be a fact about the column instead of a fact about the row. */
   await showTextScreen(term, "Where mods come from", lines);
 }
 
@@ -1553,8 +1883,16 @@ async function showModSources(
  * Exported and pure because the CAP is the interesting part. This used to
  * `slice(0, 8)` and print nothing about the rest, so nine problems looked like
  * eight - a truncation that reads as completeness is worse than a long list, and it
- * hid exactly the case where a lot has gone wrong. The cap stays (a text screen has
- * one page and no scroll) and now says what it dropped.
+ * hid exactly the case where a lot has gone wrong. The cap stays and now says what
+ * it dropped.
+ *
+ * WHY THE CAP IS KEPT IS NOT WHY IT WAS WRITTEN. This said "a text screen has one
+ * page and no scroll", and that is simply not true: `showViewOnTerminal` (overlay.ts)
+ * scrolls with the arrows, the numpad, PageUp/PageDown and Home/End, and prints its
+ * own `(1-23/57)` position footer. What the cap is actually worth is the sentence
+ * under it - a hundred problems on one page buries the mod list's own per-mod
+ * reasons, which are the ones a player can act on. Lifting it is a change to what
+ * this screen SHOWS and belongs to whoever wants that, not to a modelling pass.
  */
 export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
   if (problems.length === 0) return [];

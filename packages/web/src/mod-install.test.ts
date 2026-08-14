@@ -26,6 +26,7 @@ import {
   importedOrigin,
   installModFromZip,
   installedModSource,
+  MOD_CHECK_ADVICE,
   installedMods,
   isImported,
   loadInstalledMods,
@@ -1259,10 +1260,21 @@ describe("installModFromRepo: the standards inspection", () => {
 
     expect(r.ok).toBe(false);
     if (!r.ok) {
+      /* `problem` is the SUMMARY, one whole sentence, and nothing else. The
+       * requirements themselves ride beside it as records rather than as bullets
+       * flattened into it - which is what let the screen that shows them split the
+       * string back apart on "\n". */
       expect(r.problem).toMatch(/does not meet the requirements/u);
-      expect(r.problem).toMatch(/modApi/u);
-      /* And it tells the player who can fix it, with the command. */
-      expect(r.problem).toMatch(/neo-angband-mod-check/u);
+      expect(r.problem).not.toContain("\n");
+      expect(r.unmet?.map((f) => f.id)).toContain("plugin-declares-modapi");
+      /* The rule that failed, as a record: which requirement, and what about it. A
+       * screen reads these fields instead of finding a colon in English. */
+      expect(r.unmet?.find((f) => f.id === "plugin-declares-modapi")?.problem).toMatch(
+        /modApi/u,
+      );
+      /* And the game still tells the player who can fix it, with the command - said
+       * once, in the module that refuses, rather than glued onto every refusal. */
+      expect(MOD_CHECK_ADVICE).toMatch(/neo-angband-mod-check/u);
     }
     /* NOTHING stored. A refusal that has already written the files is not a refusal. */
     expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
@@ -1309,7 +1321,20 @@ describe("installModFromRepo: the standards inspection", () => {
       env,
     );
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.problem).toMatch(/modApi/u);
+    if (!r.ok) expect(r.unmet?.map((f) => f.id)).toContain("plugin-declares-modapi");
+  });
+
+  it("leaves `unmet` ABSENT on a refusal that is not a requirements failure", async () => {
+    /* Absent, not empty. A zip-slip refusal never asked about requirements, and a
+     * caller told "0 requirements failed" would report a mod as standards-clean on
+     * the strength of a check that never ran. */
+    const { env } = await envFor({});
+    const r = await installModFromZip(enc("not a zip at all"), env, false);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.unmet).toBeUndefined();
+      expect("unmet" in r).toBe(false);
+    }
   });
 });
 

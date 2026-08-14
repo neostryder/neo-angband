@@ -114,6 +114,7 @@ import type {
   ObjectBase,
   ObjectKind,
   ProjectionInfo,
+  WizItemDisplay,
 } from "@rpgm-tools/neo-angband-core";
 import { gearGet } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -125,6 +126,7 @@ import {
   getString,
   selectFromMenu,
   showTextScreen,
+  screenFault,
 } from "./overlay";
 import {
   userWrite,
@@ -136,6 +138,9 @@ import {
 import type { MenuItem, ScreenLine } from "./overlay";
 import { packMenu } from "./screens";
 import { UI_TEXT } from "./ui-colors";
+import { showThroughPresenter } from "./screen-runtime";
+import { freezeView, screenBodyLines, SCREEN_FOOTER } from "./screen-view";
+import type { ScreenView, ScreenColumn, ScreenRow, ScreenCell, ScreenTableBlock } from "./screen-view";
 
 /** One grid the shell should highlight for wiz_hack_map (cmd-wizard.c:319). */
 export interface WizHackMark {
@@ -1125,22 +1130,56 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
 const KEYLOG_SIZE = 8;
 
 /**
- * wiz_display_keylog (ui-wizard.c:96): the last KEYLOG_SIZE keypresses, most
- * recent first, each as `    %-12s (code=%lu mods=%u)`, padded out to a full
- * eight rows with the blanks upstream draws, then
- * "Press any key to continue.".
+ * wiz_display_keylog (ui-wizard.c:96) as a document: a `key`/`code`/`mods`
+ * table for the last KEYLOG_SIZE keypresses, most recent first, then the
+ * static "Press any key to continue." line.
+ *
+ * EVERY COLUMN IS `pad: false` WITH ITS OWN BAKED PUNCTUATION, rather than a
+ * declared `width` the table would centre columns on. Upstream's own row is
+ * `    %-12s (code=%lu mods=%u)` - a MINIMUM width on the key text, never a
+ * maximum, so a key logged with several modifiers (`{^SAM}[ArrowDown]`, 17
+ * characters) overruns the 12-column pad and is shown in FULL rather than
+ * lining up under the row above it. `ScreenColumn.width` is a CLAMP by this
+ * module's own design (screen-view.ts), so declaring one here would silently
+ * truncate that row instead of reproducing upstream's un-aligned overflow -
+ * baking the exact text per cell is the only way to keep both behaviours.
+ * `code` and `mods` are still published as `values`, which is the point of
+ * modelling this at all: a presenter reads the number without parsing "(code=5
+ * mods=3)" back out of a string.
  */
-async function runDisplayKeylog(ctx: WizardUiCtx): Promise<void> {
-  const log = [...(ctx.keylog?.() ?? [])].reverse(); // the ring, most recent first
-  const lines: ScreenLine[] = [];
+export function wizKeylogScreen(log: readonly (WizKeypress | undefined)[]): ScreenView {
+  const columns: ScreenColumn[] = [
+    { key: "key", pad: false },
+    { key: "code", pad: false, gap: 0 },
+    { key: "mods", pad: false, gap: 0 },
+  ];
+  const rows: ScreenRow[] = [];
   for (let i = 0; i < KEYLOG_SIZE; i++) {
     const k = log[i];
-    lines.push({
-      text: k ? `    ${k.text.padEnd(12)} (code=${k.code} mods=${k.mods})` : "",
+    rows.push({
+      cells: k
+        ? {
+            key: { text: `    ${k.text.padEnd(12)}` },
+            code: { text: ` (code=${k.code}`, values: { code: k.code } },
+            mods: { text: ` mods=${k.mods})`, values: { mods: k.mods } },
+          }
+        : {},
     });
   }
-  lines.push({ text: "Press any key to continue." });
-  await showTextScreen(ctx.term, "Previous keypresses (top most recent):", lines);
+  return freezeView({
+    id: "core:wizard-keylog",
+    title: "Previous keypresses (top most recent):",
+    footer: SCREEN_FOOTER,
+    blocks: [
+      { kind: "table", key: "keylog", tagged: false, columns, rows },
+      { kind: "lines", lines: [{ text: "Press any key to continue." }] },
+    ],
+  });
+}
+
+async function runDisplayKeylog(ctx: WizardUiCtx): Promise<void> {
+  const log = [...(ctx.keylog?.() ?? [])].reverse(); // the ring, most recent first
+  await showTextScreen(ctx.term, wizKeylogScreen(log));
 }
 
 /**
@@ -1787,54 +1826,30 @@ async function runCollectPitStats(ctx: WizardUiCtx): Promise<void> {
  * queues.
  * ------------------------------------------------------------------ */
 
+/** "%-5d"-style left-justified field padding for the wiz_display_item lines. */
+function pad(value: number, width: number): string {
+  const s = String(value);
+  return s.length >= width ? s : s + " ".repeat(width - s.length);
+}
+
 /**
- * wiz_display_item (cmd-wizard.c:189): the item's raw properties on their own
- * screen - the spoiled description at row 2, the combat / kind / number lines
- * at rows 4-6, then the FLAGS block: a ruled header at 16, five rows of
- * vertically-written flag labels at 17-21, and two prt_binary rows, '*' for the
- * object's own flags at 22 and '+' for the known twin's at 23.
+ * The "+---FLAGS---+" ruled header and the five rows of vertically-written
+ * flag-name letters (wiz_display_item, cmd-wizard.c:237-288), unchanged.
  *
- * The labels are list-object-flags.h's second field (the port's generated
- * `debugLabel`), written five characters down the column exactly as the C does,
- * blanking a column once its label runs out.
+ * LEFT AS `lines`, DELIBERATELY, not folded into the bits table below. This is
+ * ASCII art with one column per flag and no per-flag DATA in it (a letter is
+ * not a value a mod would read), and `ScreenColumn.label` renders as ONE
+ * header row above a table - it has no way to spell a label spread across
+ * five rows in a one-character-wide column. Forcing it through `label` would
+ * either print only the label's first letter (padding a 5-character string
+ * into a 1-wide column truncates) or hijack the bits table into emitting a
+ * header row neither `drawWizItem` nor the C ever drew. A presenter is still
+ * free to draw its own header from each bits-table column's `key` (the flag's
+ * real name, e.g. `SUST_STR`) - reskinning the frame is open, reimagining the
+ * banner just is not.
  */
-function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
-  const { term, state, deps } = ctx;
-  const disp = wizDisplayItem(obj, deps, { all });
-  term.clear();
-  if (!disp) return;
-  const fg = UI_TEXT;
-  const put = (row: number, text: string): void => {
-    const { cols } = term.size();
-    term.print(0, row, text.slice(0, cols - 1), fg);
-  };
-  const plus = (n: number): string => (n >= 0 ? `+${n}` : String(n));
-
-  put(2, describeObject(state, obj, ODESC.PREFIX | ODESC.FULL | ODESC.SPOIL));
-  put(
-    4,
-    `combat = (${disp.dd}d${disp.ds}) (${plus(disp.toH)},${plus(disp.toD)}) ` +
-      `[${disp.ac},${plus(disp.toA)}]`,
-  );
-  put(
-    5,
-    `kind = ${pad(disp.kidx, 5)}  tval = ${pad(disp.tval, 5)}  ` +
-      `sval = ${pad(disp.sval, 5)}  wgt = ${pad(disp.weight, 3)}     ` +
-      `timeout = ${disp.timeout}`,
-  );
-  put(
-    6,
-    `number = ${pad(disp.number, 3)}  pval = ${pad(disp.pval, 5)}  ` +
-      `name1 = ${pad(disp.name1, 4)}  egoidx = ${pad(disp.egoidx, 4)}  ` +
-      `cost = ${disp.cost}`,
-  );
-
-  /* nflg = MIN(OF_MAX - FLAG_START, 80) (L235). FLAG_START is 1, so this is
-   * every flag but the unused zeroth. */
-  const labels = OBJECT_FLAG_ENTRIES.map((e) => e.debugLabel);
-  const nflg = Math.min(labels.length, 80);
-
-  /* The ruled "+---FLAGS---+" header (L237-266). */
+function wizFlagBannerLines(labels: readonly string[]): ScreenLine[] {
+  const nflg = labels.length;
   const head: string[] = new Array<string>(nflg).fill(" ");
   let k = 0;
   if (nflg >= 6) {
@@ -1847,9 +1862,7 @@ function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
   });
   for (let i = k + 5; i < nflg - 1; i++) head[i] = "-";
   if (nflg >= 7) head[nflg - 1] = "+";
-  put(16, head.join("").slice(0, nflg >= 7 ? nflg : k + 5));
-
-  /* Five rows of vertically-written labels (L269-288). */
+  const lines: ScreenLine[] = [{ text: head.join("").slice(0, nflg >= 7 ? nflg : k + 5) }];
   const done: boolean[] = new Array<boolean>(nflg).fill(false);
   for (let row = 0; row < 5; row++) {
     let line = "";
@@ -1862,23 +1875,220 @@ function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
         line += label[row];
       }
     }
-    put(17 + row, line);
+    lines.push({ text: line });
   }
-
-  /* prt_binary (ui-output.c): one glyph per set flag (L291-295). */
-  const bits = (set: { has: (i: number) => boolean }, ch: string): string => {
-    let line = "";
-    for (let i = 0; i < nflg; i++) line += set.has(i + 1) ? ch : ".";
-    return line;
-  };
-  put(22, bits(disp.flags, "*"));
-  put(23, bits(disp.flagsKnown, "+"));
+  return lines;
 }
 
-/** "%-5d"-style left-justified field padding for the wiz_display_item lines. */
-function pad(value: number, width: number): string {
-  const s = String(value);
-  return s.length >= width ? s : s + " ".repeat(width - s.length);
+/**
+ * prt_binary (ui-output.c): one glyph per set flag, as a TABLE - one column
+ * per flag, keyed by the flag's own name (`SUST_STR`, not its 5-character
+ * `debugLabel`), two rows ('actual' flags, then the known twin's). This is
+ * the part of `wiz_display_item` a modding/debugging tool would actually
+ * want: "is SUST_STR set on this object" is a lookup by key rather than a
+ * count of characters into a 39-wide string.
+ */
+function wizFlagBitsTable(
+  entries: readonly { readonly name: string }[],
+  disp: WizItemDisplay,
+): ScreenTableBlock {
+  const columns: ScreenColumn[] = entries.map((e, i) => ({
+    key: e.name,
+    pad: false,
+    ...(i === 0 ? {} : { gap: 0 }),
+  }));
+  const cellsFor = (set: { has: (i: number) => boolean }, ch: string): Record<string, ScreenCell> => {
+    const cells: Record<string, ScreenCell> = {};
+    entries.forEach((e, i) => {
+      cells[e.name] = { text: set.has(i + 1) ? ch : "." };
+    });
+    return cells;
+  };
+  return {
+    kind: "table",
+    key: "flags-bits",
+    tagged: false,
+    columns,
+    rows: [
+      { id: "actual", cells: cellsFor(disp.flags, "*") },
+      { id: "known", cells: cellsFor(disp.flagsKnown, "+") },
+    ],
+  };
+}
+
+/**
+ * wiz_display_item (cmd-wizard.c:189) as a document: the spoiled description,
+ * the combat / kind / number lines, then the FLAGS block (see
+ * `wizFlagBannerLines` / `wizFlagBitsTable` above for why the banner and the
+ * bits are two different kinds of block).
+ *
+ * COMBAT / KIND / NUMBER ARE EACH A ONE-ROW TABLE whose columns are `pad:
+ * false` with their own baked punctuation, for the same reason
+ * `wizKeylogScreen` bakes its columns: `pad()` and upstream's `%-Nd` both
+ * guarantee a MINIMUM field width, never a maximum, and `ScreenColumn.width`
+ * is a CLAMP (screen-view.ts) - declaring one would truncate a value that
+ * overruns its usual digit count instead of reproducing the un-aligned
+ * overflow upstream itself would show. Every field still carries its raw
+ * number under `values`, which is the point of doing this as a table rather
+ * than leaving the whole readout as one opaque string.
+ */
+export function wizItemScreen(disp: WizItemDisplay, description: string): ScreenView {
+  const plus = (n: number): string => (n >= 0 ? `+${n}` : String(n));
+
+  const combatCols: ScreenColumn[] = [
+    { key: "dd", pad: false },
+    { key: "ds", pad: false, gap: 0 },
+    { key: "toH", pad: false, gap: 0 },
+    { key: "toD", pad: false, gap: 0 },
+    { key: "ac", pad: false, gap: 0 },
+    { key: "toA", pad: false, gap: 0 },
+  ];
+  const combatRow: ScreenRow = {
+    cells: {
+      dd: { text: `combat = (${disp.dd}d`, values: { dd: disp.dd } },
+      ds: { text: `${disp.ds}) (`, values: { ds: disp.ds } },
+      toH: { text: `${plus(disp.toH)},`, values: { toH: disp.toH } },
+      toD: { text: `${plus(disp.toD)}) [`, values: { toD: disp.toD } },
+      ac: { text: `${disp.ac},`, values: { ac: disp.ac } },
+      toA: { text: `${plus(disp.toA)}]`, values: { toA: disp.toA } },
+    },
+  };
+
+  const kindCols: ScreenColumn[] = [
+    { key: "kind", pad: false },
+    { key: "tval", pad: false, gap: 0 },
+    { key: "sval", pad: false, gap: 0 },
+    { key: "weight", pad: false, gap: 0 },
+    { key: "timeout", pad: false, gap: 0 },
+  ];
+  const kindRow: ScreenRow = {
+    cells: {
+      kind: { text: `kind = ${pad(disp.kidx, 5)}`, values: { kind: disp.kidx } },
+      tval: { text: `  tval = ${pad(disp.tval, 5)}`, values: { tval: disp.tval } },
+      sval: { text: `  sval = ${pad(disp.sval, 5)}`, values: { sval: disp.sval } },
+      weight: { text: `  wgt = ${pad(disp.weight, 3)}`, values: { weight: disp.weight } },
+      timeout: { text: `     timeout = ${disp.timeout}`, values: { timeout: disp.timeout } },
+    },
+  };
+
+  const numberCols: ScreenColumn[] = [
+    { key: "number", pad: false },
+    { key: "pval", pad: false, gap: 0 },
+    { key: "name1", pad: false, gap: 0 },
+    { key: "egoidx", pad: false, gap: 0 },
+    { key: "cost", pad: false, gap: 0 },
+  ];
+  const numberRow: ScreenRow = {
+    cells: {
+      number: { text: `number = ${pad(disp.number, 3)}`, values: { number: disp.number } },
+      pval: { text: `  pval = ${pad(disp.pval, 5)}`, values: { pval: disp.pval } },
+      name1: { text: `  name1 = ${pad(disp.name1, 4)}`, values: { name1: disp.name1 } },
+      egoidx: { text: `  egoidx = ${pad(disp.egoidx, 4)}`, values: { egoidx: disp.egoidx } },
+      cost: { text: `  cost = ${disp.cost}`, values: { cost: disp.cost } },
+    },
+  };
+
+  /* nflg = MIN(OF_MAX - FLAG_START, 80) (L235). FLAG_START is 1, so this is
+   * every flag but the unused zeroth. */
+  const entries = OBJECT_FLAG_ENTRIES.slice(0, Math.min(OBJECT_FLAG_ENTRIES.length, 80));
+  const labels = entries.map((e) => e.debugLabel);
+
+  return freezeView({
+    id: "core:wizard-item",
+    title: "Item properties",
+    footer: SCREEN_FOOTER,
+    blocks: [
+      { kind: "lines", lines: [{ text: description }, { text: "" }] },
+      { kind: "table", key: "combat", tagged: false, columns: combatCols, rows: [combatRow] },
+      { kind: "table", key: "kind", tagged: false, columns: kindCols, rows: [kindRow] },
+      /* gapAfter reproduces the nine blank rows between the number line (row 6)
+       * and the FLAGS header (row 16) - a layout fact beside the data, exactly
+       * as the character sheet's panel spacing is (screen-view.ts). */
+      {
+        kind: "table",
+        key: "number",
+        tagged: false,
+        columns: numberCols,
+        rows: [numberRow],
+        gapAfter: 9,
+      },
+      { kind: "lines", lines: wizFlagBannerLines(labels) },
+      wizFlagBitsTable(entries, disp),
+    ],
+  });
+}
+
+/**
+ * The faithful terminal's own paint of `wizItemScreen`, anchored at row 2
+ * exactly as the hand-drawn version was (rows 0-1 are the OUTER play-item
+ * loop's own `getCom` prompt, not this screen's).
+ *
+ * THIS IS NOT `showTextScreen`'s generic renderer, and that is deliberate:
+ * that renderer always draws a title at row 0 and a footer at the last row,
+ * and `wiz_display_item` draws neither (confirmed against
+ * reference/src/cmd-wizard.c:191-285 - upstream never calls `prt` for a
+ * title here). Reusing it would add two rows nothing in this screen ever
+ * had. What IS shared with every other screen is the one renderer,
+ * `screenBodyLines` - this differs only in WHERE the lines land, not in how
+ * they are computed, so the model and the pixels still cannot part.
+ */
+function paintWizItemOnTerminal(term: GridSurface & GridPointerInput, view: ScreenView): void {
+  term.clear();
+  const { cols } = term.size();
+  const fg = UI_TEXT;
+  screenBodyLines(view, cols).forEach((line, i) => {
+    if (line.runs) {
+      let x = 0;
+      for (const run of line.runs) {
+        if (x >= cols - 1) break;
+        const chunk = run.text.slice(0, cols - 1 - x);
+        term.print(x, 2 + i, chunk, run.color);
+        x += chunk.length;
+      }
+    } else {
+      term.print(0, 2 + i, line.text.slice(0, cols - 1), line.color ?? fg);
+    }
+  });
+}
+
+/**
+ * wiz_display_item (cmd-wizard.c:189): draw the item's raw properties.
+ *
+ * OFFERED TO A PRESENTER BUT NEVER AWAITED - the one call site in this file
+ * that differs from every other `showThroughPresenter` use. Every other
+ * caller (`showTextScreen`, `showMonsterList`, the character sheet) OWNS its
+ * dismissal: it shows one view and resolves when the player is done with it.
+ * `drawWizItem` does not - it paints one frame of `runPlayItem`'s own loop,
+ * which reads its NEXT command through `getCom` regardless of what this
+ * function does, so there is no "done" for this call to wait on. A presenter
+ * that takes the screen is expected to repaint on the very next call, exactly
+ * as the terminal fallback below repaints on every call; and a fault mid-open
+ * needs no recovery here either, because `showThroughPresenter` already
+ * reports it and flips `broken` (screen-runtime.ts) before the rejection
+ * reaches this `.catch`, so the NEXT redraw already falls through to the
+ * terminal path on its own.
+ *
+ * `term.clear()` runs UNCONDITIONALLY, before deciding disp/presenter/fallback
+ * at all - matching `wiz_display_item`'s own `Term_clear()` (cmd-wizard.c:212),
+ * which upstream also runs before its all/known branch. It has to: this is a
+ * REDRAW inside a loop, so the previous frame on screen is either the item
+ * picker that ran before the loop started or this same function's own prior
+ * paint, and a presenter that takes the view is still drawing over a clean
+ * terminal rather than whatever that leftover frame was.
+ */
+function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
+  const { term, state, deps } = ctx;
+  term.clear();
+  const disp = wizDisplayItem(obj, deps, { all });
+  if (!disp) return;
+  const description = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL | ODESC.SPOIL);
+  const view = wizItemScreen(disp, description);
+  const taken = showThroughPresenter(view, screenFault);
+  if (taken) {
+    void taken.catch(() => {});
+    return;
+  }
+  paintWizItemOnTerminal(term, view);
 }
 
 /**

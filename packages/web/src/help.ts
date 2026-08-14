@@ -29,6 +29,22 @@
  * mechanics: it only states things this port actually does - permadeath,
  * shops 1-8, stairs).
  *
+ * EACH PAGE IS A `ScreenView`, not a hand-laid `ScreenLine[]`. The two
+ * reference pages are LISTS - a key and what it does, a glyph and what it is -
+ * and a list on `lines` is work not yet done (see screen-view.ts's header). So
+ * each section is a `table` with a caption, the key or the glyph is its own
+ * cell, and a tileset mod can draw the sprite for `k` where the terminal draws
+ * the letter. Nothing about what the terminal prints moved: `help.test.ts`
+ * pins the commands and symbols pages against the bytes they printed before
+ * the model existed, because both are near-verbatim upstream and parity owns
+ * their layout.
+ *
+ * The two PORT-ADDITION pages went the other way. The playing guide and the
+ * community page have no upstream text to be faithful to, so their prose is
+ * published UNWRAPPED - which is the only form a presenter can lay out at its
+ * own width - and the faithful terminal now wraps it itself rather than
+ * printing breaks that were typed in by hand.
+ *
  * All content is inlined as TS data (no runtime fetch of the .txt files),
  * satisfying the offline-PWA / self-contained build. Pure display: no RNG,
  * no game-state mutation, no turn spent, no autosave.
@@ -37,6 +53,16 @@
 import type { GridPointerInput, GridSurface } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
+import {
+  freezeView,
+  linesScreen,
+  screenBodyLines,
+  SCREEN_FOOTER,
+  type ScreenBlock,
+  type ScreenColumn,
+  type ScreenTableBlock,
+  type ScreenView,
+} from "./screen-view";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
 import { ENGINE_VERSION, t } from "@rpgm-tools/neo-angband-core";
 
@@ -45,17 +71,48 @@ const DIM = UI_DIM;
 const LABEL = UI_TEXT;
 const GOLD = UI_GOLD;
 
-/** One row: `key` padded to a fixed column, then its description. */
-function keyLine(key: string, desc: string): ScreenLine {
-  return { text: `  ${key.padEnd(11)}${desc}`, color: FG };
+/**
+ * One blank row between two blocks.
+ *
+ * `gapAfter` is a TABLE's field, so a `text` block that upstream follows with a
+ * blank line has nowhere else to say so; `objectListScreen` separates its two
+ * sections with exactly this block for the same reason. A blank row is prose the
+ * page already laid out, which is what `lines` is for - it is a list or a table
+ * on `lines` that would be work not yet done.
+ */
+function blankRow(): ScreenBlock {
+  return { kind: "lines", lines: [{ text: "", color: FG }] };
 }
 
-/** A blank spacer line followed by a section header, matching commands.txt's grouping. */
-function header(text: string): ScreenLine[] {
-  return [
-    { text: "", color: FG },
-    { text, color: LABEL },
-  ];
+/* ------------------------------------------------------------------ */
+/* The command reference                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * commands.txt's row: two columns of indent, the key in a field eleven wide,
+ * then what it does.
+ *
+ * THE INDENT IS A COLUMN because a table's first column starts at column 0 -
+ * `gapBefore` ignores `gap` on it - and both alternatives lost something real.
+ * Two spaces baked into the key cell would hand a presenter `"  g"` where the
+ * key is `"g"`, which is the padded-field problem the whole model exists to
+ * end. `tagged: true` writes a three-column `"x) "` prefix, which is one column
+ * too many and offers a letter this page does not answer to.
+ */
+const COMMAND_COLUMNS: readonly ScreenColumn[] = [
+  { key: "indent", width: 2 },
+  { key: "key", width: 11, gap: 0 },
+  { key: "desc", gap: 0 },
+];
+
+/** One group of the reference: its heading, and the rows under it. */
+interface HelpSection {
+  /** Stable identity for the table within its screen; see `ScreenTableBlock.key`. */
+  readonly key: string;
+  /** The heading commands.txt prints above the group. */
+  readonly caption: string;
+  /** `[key, description]` pairs, in source reading order. */
+  readonly rows: readonly (readonly [string, string])[];
 }
 
 /**
@@ -64,69 +121,137 @@ function header(text: string): ScreenLine[] {
  * or keymap.ts's resolveKey - see help.test.ts's drift guard, which checks
  * this list against main.ts's source so the reference cannot silently rot.
  */
-export function helpCommandLines(): ScreenLine[] {
-  const lines: ScreenLine[] = [
-    { text: "Original keyset - only the commands this port implements.", color: DIM },
-  ];
+const COMMAND_SECTIONS: readonly HelpSection[] = [
+  {
+    key: "movement",
+    caption: "Movement",
+    rows: [
+      ["1-9", "Walk (numpad; diagonals need the numpad)"],
+      ["Arrows", "Walk orthogonally (up/down/left/right)"],
+      ["(walk in)", "Walking onto a shop entrance enters the store"],
+    ],
+  },
+  {
+    key: "items",
+    caption: "Items",
+    rows: [
+      ["g", "Get objects on the floor"],
+      ["i", "List contents of pack"],
+      ["e", "List equipped items"],
+      ["]", "List objects you can see"],
+      ["w", "Wear/wield equipment"],
+      ["t", "Take off equipment"],
+      ["d", "Drop an item"],
+      ["{", "Inscribe an object"],
+      ["}", "Uninscribe an object"],
+      ["F", "Fuel your lantern/torch"],
+      ["I", "Inspect an item"],
+      ["K", "Toggle ignoring off"],
+    ],
+  },
+  {
+    key: "magic",
+    caption: "Magic",
+    rows: [
+      ["m / p", "Cast a spell / recite a prayer"],
+      ["G", "Gain (study) new spells/prayers"],
+    ],
+  },
+  {
+    key: "devices",
+    caption: "Devices",
+    rows: [
+      ["q", "Quaff a potion"],
+      ["r", "Read a scroll"],
+      ["E", "Eat some food"],
+      ["u", "Use a staff"],
+      ["a", "Aim a wand"],
+      ["z", "Zap a rod"],
+      ["A", "Activate an item"],
+    ],
+  },
+  {
+    key: "combat",
+    caption: "Combat & targeting",
+    rows: [
+      ["f", "Fire ammo at a target"],
+      ["v", "Throw an item"],
+      ["o", "Open a door or chest"],
+      ["D", "Disarm a trap or lock a door"],
+      ["*", "Target a monster or location"],
+      ["'", "Target the closest monster"],
+      ["l / x", "Look around"],
+    ],
+  },
+  {
+    key: "meta",
+    caption: "Meta",
+    rows: [
+      ["=", "Options menu (interface/birth toggles, ignore setup)"],
+      ["M", "Display map of entire level"],
+      ["L", "Locate player on map"],
+      ["C", "Character description"],
+      ["S", "Save the game"],
+      ["N", "New character (also available after death)"],
+      ["V", "Display the hall of fame"],
+      ["Ctrl-P", "Show previous messages"],
+      ["Enter", "Browse every command by category"],
+      ["?", "Display this help"],
+      ["Escape", "Game menu (save / switch / new character)"],
+    ],
+  },
+];
 
-  lines.push(...header("Movement"));
-  lines.push(keyLine("1-9", "Walk (numpad; diagonals need the numpad)"));
-  lines.push(keyLine("Arrows", "Walk orthogonally (up/down/left/right)"));
-  lines.push(keyLine("(walk in)", "Walking onto a shop entrance enters the store"));
-
-  lines.push(...header("Items"));
-  lines.push(keyLine("g", "Get objects on the floor"));
-  lines.push(keyLine("i", "List contents of pack"));
-  lines.push(keyLine("e", "List equipped items"));
-  lines.push(keyLine("]", "List objects you can see"));
-  lines.push(keyLine("w", "Wear/wield equipment"));
-  lines.push(keyLine("t", "Take off equipment"));
-  lines.push(keyLine("d", "Drop an item"));
-  lines.push(keyLine("{", "Inscribe an object"));
-  lines.push(keyLine("}", "Uninscribe an object"));
-  lines.push(keyLine("F", "Fuel your lantern/torch"));
-  lines.push(keyLine("I", "Inspect an item"));
-  lines.push(keyLine("K", "Toggle ignoring off"));
-
-  lines.push(...header("Magic"));
-  lines.push(keyLine("m / p", "Cast a spell / recite a prayer"));
-  lines.push(keyLine("G", "Gain (study) new spells/prayers"));
-
-  lines.push(...header("Devices"));
-  lines.push(keyLine("q", "Quaff a potion"));
-  lines.push(keyLine("r", "Read a scroll"));
-  lines.push(keyLine("E", "Eat some food"));
-  lines.push(keyLine("u", "Use a staff"));
-  lines.push(keyLine("a", "Aim a wand"));
-  lines.push(keyLine("z", "Zap a rod"));
-  lines.push(keyLine("A", "Activate an item"));
-
-  lines.push(...header("Combat & targeting"));
-  lines.push(keyLine("f", "Fire ammo at a target"));
-  lines.push(keyLine("v", "Throw an item"));
-  lines.push(keyLine("o", "Open a door or chest"));
-  lines.push(keyLine("D", "Disarm a trap or lock a door"));
-  lines.push(keyLine("*", "Target a monster or location"));
-  lines.push(keyLine("'", "Target the closest monster"));
-  lines.push(keyLine("l / x", "Look around"));
-
-  lines.push(...header("Meta"));
-  lines.push(keyLine("=", "Options menu (interface/birth toggles, ignore setup)"));
-  lines.push(keyLine("M", "Display map of entire level"));
-  lines.push(keyLine("L", "Locate player on map"));
-  lines.push(keyLine("C", "Character description"));
-  lines.push(keyLine("S", "Save the game"));
-  lines.push(keyLine("N", "New character (also available after death)"));
-  lines.push(keyLine("V", "Display the hall of fame"));
-  lines.push(keyLine("Ctrl-P", "Show previous messages"));
-  lines.push(keyLine("Enter", "Browse every command by category"));
-  lines.push(keyLine("?", "Display this help"));
-  lines.push(keyLine("Escape", "Game menu (save / switch / new character)"));
-
-  lines.push({ text: "", color: FG });
-  lines.push({ text: "More commands online: angband.readthedocs.io", color: DIM });
-  return lines;
+/** One command group as a captioned table; `gapAfter` is the blank before the next. */
+function commandTable(section: HelpSection, gapAfter: number): ScreenTableBlock {
+  return {
+    kind: "table",
+    key: section.key,
+    tagged: false,
+    caption: { text: section.caption, color: LABEL },
+    columns: COMMAND_COLUMNS,
+    rows: section.rows.map(([key, desc]) => ({
+      cells: { key: { text: key }, desc: { text: desc } },
+    })),
+    ...(gapAfter === 0 ? {} : { gapAfter }),
+  };
 }
+
+/**
+ * The command reference as a screen (`core:help-commands`).
+ *
+ * The intro and the closing pointer are prose the port wrote, so they are `text`
+ * blocks and the terminal wraps them; both fit an 80-column line whole, which is
+ * why routing them through the wrap changed nothing the player sees.
+ */
+export function helpCommandsScreen(
+  title = t("help.commands.title", "Angband Help - Commands"),
+): ScreenView {
+  const blocks: ScreenBlock[] = [
+    {
+      kind: "text",
+      color: DIM,
+      paragraphs: [[{ text: "Original keyset - only the commands this port implements." }]],
+    },
+    blankRow(),
+  ];
+  for (const section of COMMAND_SECTIONS) blocks.push(commandTable(section, 1));
+  blocks.push({
+    kind: "text",
+    color: DIM,
+    paragraphs: [[{ text: "More commands online: angband.readthedocs.io" }]],
+  });
+  return freezeView({ id: "core:help-commands", title, footer: SCREEN_FOOTER, blocks });
+}
+
+/** The faithful terminal's rows for `helpCommandsScreen`. */
+export function helpCommandLines(cols = 80): ScreenLine[] {
+  return screenBodyLines(helpCommandsScreen(), cols);
+}
+
+/* ------------------------------------------------------------------ */
+/* The symbol legend                                                   */
+/* ------------------------------------------------------------------ */
 
 /** [glyph, description] pairs for one symbols.txt table, in source reading order. */
 type Glyphs = readonly (readonly [string, string])[];
@@ -239,56 +364,206 @@ const MONSTERS: Glyphs = [
   ["Z", "Zephyr Hound"],
 ];
 
-function glyphLines(table: Glyphs): ScreenLine[] {
-  return table.map(([glyph, desc]) => ({ text: `  ${glyph.padEnd(4)}${desc}`, color: FG }));
-}
-
-/** Near-verbatim symbols.txt (intro + the four glyph tables). */
-export function helpSymbolLines(): ScreenLine[] {
-  const lines: ScreenLine[] = [
-    { text: "Symbols on your map fall into three categories: features of the", color: FG },
-    { text: "dungeon such as walls, floors, doors, and traps; objects that can", color: FG },
-    { text: "be picked up such as treasure, weapons, and magical devices; and", color: FG },
-    { text: "monsters, which may or may not move about, and are mostly harmful.", color: FG },
-    { text: "", color: FG },
-    { text: 'The "@" symbol (by default) represents your character.', color: FG },
-  ];
-  lines.push(...header("Features that do not block line of sight"));
-  lines.push(...glyphLines(FEATURES_NO_LOS));
-  lines.push(...header("Features that block line of sight"));
-  lines.push(...glyphLines(FEATURES_BLOCK_LOS));
-  lines.push(...header("Objects"));
-  lines.push(...glyphLines(OBJECTS));
-  lines.push(...header("Monsters"));
-  lines.push(...glyphLines(MONSTERS));
-  return lines;
-}
-
 /**
- * A short orientation page. New prose (index.txt's own intro is a pointer to
- * the online docs, not a playing guide), but every claim here is something
- * this port actually does - no invented mechanics.
+ * symbols.txt's row: two columns of indent, the glyph in a field four wide,
+ * then what it is. See `COMMAND_COLUMNS` on why the indent is a column.
+ *
+ * THE GLYPH IS ITS OWN CELL, which is the whole reason this page was worth
+ * modelling. `cells.glyph.text` is one character, so a tileset mod draws the
+ * sprite it already draws on the map for that symbol and the legend stops being
+ * a page of letters. No colour is published on it: the terminal paints this page
+ * in one colour, and a cell colour would make the row emit per-run colours and
+ * change what the player sees on a page parity pins.
  */
-export function helpGuideLines(): ScreenLine[] {
-  return [
-    { text: "You are the @ on the map. Move with the numpad or arrow keys;", color: FG },
-    { text: "walking into a monster attacks it.", color: FG },
-    { text: "", color: FG },
-    { text: "The town has eight numbered shops (1-8, see the Symbols page).", color: FG },
-    { text: "Walk onto a shop's entrance tile to go inside and trade.", color: FG },
-    { text: "", color: FG },
-    { text: "'>' descends a staircase, '<' climbs back up. The dungeon gets", color: FG },
-    { text: "more dangerous with depth - explore carefully, and retreat when hurt.", color: FG },
-    { text: "", color: FG },
-    { text: "Death is permanent - there is no save-scumming. When your character", color: FG },
-    { text: "falls, 'N' rolls a new one into the same save slot.", color: FG },
-    { text: "", color: FG },
-    { text: "Press '?' any time to come back to this help.", color: FG },
-  ];
+const SYMBOL_COLUMNS: readonly ScreenColumn[] = [
+  { key: "indent", width: 2 },
+  { key: "glyph", width: 4, gap: 0 },
+  { key: "desc", gap: 0 },
+];
+
+const SYMBOL_SECTIONS: readonly { key: string; caption: string; glyphs: Glyphs }[] = [
+  {
+    key: "features-open",
+    caption: "Features that do not block line of sight",
+    glyphs: FEATURES_NO_LOS,
+  },
+  {
+    key: "features-wall",
+    caption: "Features that block line of sight",
+    glyphs: FEATURES_BLOCK_LOS,
+  },
+  { key: "objects", caption: "Objects", glyphs: OBJECTS },
+  { key: "monsters", caption: "Monsters", glyphs: MONSTERS },
+];
+
+/**
+ * symbols.txt's opening prose, on `lines` and staying there.
+ *
+ * UPSTREAM ALREADY LAID THIS OUT. lib/help/symbols.txt is a fixed-width file
+ * that show_file prints row by row, so its breaks are not a rendering of a
+ * paragraph - they ARE the document, and this port transcribes them. Publishing
+ * it as an unwrapped `text` block would hand a presenter something to re-flow at
+ * the price of moving every break on the faithful terminal, on the one page
+ * where parity owns the layout. That is the trade the guide and community pages
+ * are allowed to make (nothing upstream wrote them) and this one is not.
+ *
+ * The trailing blank belongs to the block for the same reason a table's
+ * `gapAfter` does: it is the separation before the first section, and a `lines`
+ * block passes its rows through untouched.
+ */
+const SYMBOL_INTRO: readonly ScreenLine[] = [
+  { text: "Symbols on your map fall into three categories: features of the", color: FG },
+  { text: "dungeon such as walls, floors, doors, and traps; objects that can", color: FG },
+  { text: "be picked up such as treasure, weapons, and magical devices; and", color: FG },
+  { text: "monsters, which may or may not move about, and are mostly harmful.", color: FG },
+  { text: "", color: FG },
+  { text: 'The "@" symbol (by default) represents your character.', color: FG },
+  { text: "", color: FG },
+];
+
+/** Near-verbatim symbols.txt (intro + the four glyph tables) as `core:help-symbols`. */
+export function helpSymbolsScreen(
+  title = t("help.symbols.title", "Angband Help - Symbols"),
+): ScreenView {
+  const blocks: ScreenBlock[] = [{ kind: "lines", lines: SYMBOL_INTRO }];
+  SYMBOL_SECTIONS.forEach((section, i) => {
+    blocks.push({
+      kind: "table",
+      key: section.key,
+      tagged: false,
+      caption: { text: section.caption, color: LABEL },
+      columns: SYMBOL_COLUMNS,
+      rows: section.glyphs.map(([glyph, desc]) => ({
+        cells: { glyph: { text: glyph }, desc: { text: desc } },
+      })),
+      /* The page ends on the last monster: no blank row after the last table. */
+      ...(i === SYMBOL_SECTIONS.length - 1 ? {} : { gapAfter: 1 }),
+    });
+  });
+  return freezeView({ id: "core:help-symbols", title, footer: SCREEN_FOOTER, blocks });
+}
+
+/** The faithful terminal's rows for `helpSymbolsScreen`. */
+export function helpSymbolLines(cols = 80): ScreenLine[] {
+  return screenBodyLines(helpSymbolsScreen(), cols);
+}
+
+/* ------------------------------------------------------------------ */
+/* The two port-addition pages                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A short orientation page (`core:help-guide`). New prose (index.txt's own intro
+ * is a pointer to the online docs, not a playing guide), but every claim here is
+ * something this port actually does - no invented mechanics.
+ *
+ * UNWRAPPED, unlike the symbols page above it, and the difference is whose text
+ * it is. There is no upstream file whose breaks this has to reproduce, so the
+ * paragraphs are published whole and the wrap belongs to whoever is drawing:
+ * `screenBodyLines` for the faithful terminal, a mod's own measurement for a
+ * panel of its own width. The visible cost is that the terminal's line breaks
+ * are no longer the ones typed in here - the words and their order are the same.
+ */
+export function helpGuideScreen(
+  title = t("help.guide.title", "Angband Help - Playing Guide"),
+): ScreenView {
+  return freezeView({
+    id: "core:help-guide",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "text",
+        color: FG,
+        paragraphs: [
+          [
+            {
+              text:
+                "You are the @ on the map. Move with the numpad or arrow keys; " +
+                "walking into a monster attacks it.",
+            },
+          ],
+          [],
+          [
+            {
+              text:
+                "The town has eight numbered shops (1-8, see the Symbols page). " +
+                "Walk onto a shop's entrance tile to go inside and trade.",
+            },
+          ],
+          [],
+          [
+            {
+              text:
+                "'>' descends a staircase, '<' climbs back up. The dungeon gets " +
+                "more dangerous with depth - explore carefully, and retreat when hurt.",
+            },
+          ],
+          [],
+          [
+            {
+              text:
+                "Death is permanent - there is no save-scumming. When your character " +
+                "falls, 'N' rolls a new one into the same save slot.",
+            },
+          ],
+          [],
+          [{ text: "Press '?' any time to come back to this help." }],
+        ],
+      },
+    ],
+  });
+}
+
+/** The faithful terminal's rows for `helpGuideScreen`. */
+export function helpGuideLines(cols = 80): ScreenLine[] {
+  return screenBodyLines(helpGuideScreen(), cols);
 }
 
 /**
- * Where to get help from a person, and where to say something is wrong.
+ * A way out of the game, as data: the address, and what is at the end of it.
+ *
+ * A TABLE rather than three more lines of prose, because three routes with an
+ * address each is a list, and a list on `lines` is work not yet done. A presenter
+ * reads `cells.address.text` and can draw a button; the terminal reads the same
+ * cell and indents it four columns, which is what this page has always printed.
+ * `what` is empty on two of the three, so its column collapses and the trailing
+ * gap is cut - the same rule an empty weight cell already relies on.
+ */
+const ROUTE_COLUMNS: readonly ScreenColumn[] = [
+  { key: "indent", width: 4 },
+  { key: "address", gap: 0 },
+  { key: "what", gap: 8 },
+];
+
+function routeTable(
+  key: string,
+  caption: string,
+  address: string,
+  what?: string,
+): ScreenTableBlock {
+  return {
+    kind: "table",
+    key,
+    tagged: false,
+    caption: { text: caption, color: GOLD },
+    columns: ROUTE_COLUMNS,
+    rows: [
+      {
+        id: key,
+        cells: {
+          address: { text: address },
+          ...(what === undefined ? {} : { what: { text: what } }),
+        },
+      },
+    ],
+    gapAfter: 1,
+  };
+}
+
+/**
+ * Where to get help from a person, and where to say something is wrong
+ * (`core:help-community`).
  *
  * A PORT ADDITION, like the playing guide above it, and for a plainer reason
  * than that one: this is an alpha whose whole point is that people report what
@@ -296,43 +571,106 @@ export function helpGuideLines(): ScreenLine[] {
  * downloaded a build has never opened. `?` is where someone goes when they are
  * stuck, so `?` is where the answer belongs.
  *
+ * The prose is unwrapped for the same reason the guide's is - nothing upstream
+ * wrote it, so the wrap is the renderer's. The three routes are a table; see
+ * `ROUTE_COLUMNS`.
+ *
  * The address is written the long way round on purpose - a person reads it, a
  * scraper walking the page does not.
  */
-export function helpCommunityLines(): ScreenLine[] {
-  return [
-    { text: `You are playing Neo Angband ${ENGINE_VERSION}, a port of Angband 4.2.6.`, color: FG },
-    { text: "", color: FG },
-    { text: "It is ALPHA. It plays start to finish and it is not finished, and", color: FG },
-    { text: "the things still wrong with it are mostly things only playing finds:", color: FG },
-    { text: "a message the original prints that this one does not, a screen laid", color: FG },
-    { text: "out a column off, a prompt that never appears.", color: FG },
-    { text: "", color: FG },
-    { text: "Ask anyone, about anything:", color: GOLD },
-    { text: "    discord.gg/YegtwbHTBQ        the RPGM Tools Discord", color: FG },
-    { text: "", color: FG },
-    { text: "Tell us something is wrong:", color: GOLD },
-    { text: "    github.com/neostryder/neo-angband/issues", color: FG },
-    { text: "", color: FG },
-    { text: "The most useful report says what the original does and what this", color: FG },
-    { text: "does. You do not need a copy of Angband to hand - describing what", color: FG },
-    { text: "you expected is plenty. Say which version (above), and whether any", color: FG },
-    { text: "mods were on; '=' shows them, and turning the game into something", color: FG },
-    { text: "else is what a mod is for, so that line saves a wasted round trip.", color: FG },
-    { text: "", color: FG },
-    { text: "Anything that should not be public, security included:", color: GOLD },
-    { text: "    strider-angband (at) rpgm.tools", color: FG },
-    { text: "", color: FG },
-    { text: "Your characters are safe across updates. Every change to the save", color: FG },
-    { text: "format ships the conversion that reads the one before it, and a save", color: FG },
-    { text: "the game cannot open is left alone rather than replaced.", color: FG },
-  ];
+export function helpCommunityScreen(
+  title = t("help.community.title", "Neo Angband - Help and reporting"),
+): ScreenView {
+  return freezeView({
+    id: "core:help-community",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "text",
+        color: FG,
+        paragraphs: [
+          [{ text: `You are playing Neo Angband ${ENGINE_VERSION}, a port of Angband 4.2.6.` }],
+          [],
+          [
+            {
+              text:
+                "It is ALPHA. It plays start to finish and it is not finished, and " +
+                "the things still wrong with it are mostly things only playing finds: " +
+                "a message the original prints that this one does not, a screen laid " +
+                "out a column off, a prompt that never appears.",
+            },
+          ],
+        ],
+      },
+      blankRow(),
+      routeTable(
+        "discord",
+        "Ask anyone, about anything:",
+        "discord.gg/YegtwbHTBQ",
+        "the RPGM Tools Discord",
+      ),
+      routeTable(
+        "issues",
+        "Tell us something is wrong:",
+        "github.com/neostryder/neo-angband/issues",
+      ),
+      {
+        kind: "text",
+        color: FG,
+        paragraphs: [
+          [
+            {
+              text:
+                "The most useful report says what the original does and what this " +
+                "does. You do not need a copy of Angband to hand - describing what " +
+                "you expected is plenty. Say which version (above), and whether any " +
+                "mods were on; '=' shows them, and turning the game into something " +
+                "else is what a mod is for, so that line saves a wasted round trip.",
+            },
+          ],
+        ],
+      },
+      blankRow(),
+      routeTable(
+        "private",
+        "Anything that should not be public, security included:",
+        "strider-angband (at) rpgm.tools",
+      ),
+      {
+        kind: "text",
+        color: FG,
+        paragraphs: [
+          [
+            {
+              text:
+                "Your characters are safe across updates. Every change to the save " +
+                "format ships the conversion that reads the one before it, and a save " +
+                "the game cannot open is left alone rather than replaced.",
+            },
+          ],
+        ],
+      },
+    ],
+  });
 }
+
+/** The faithful terminal's rows for `helpCommunityScreen`. */
+export function helpCommunityLines(cols = 80): ScreenLine[] {
+  return screenBodyLines(helpCommunityScreen(), cols);
+}
+
+/* ------------------------------------------------------------------ */
+/* The index                                                           */
+/* ------------------------------------------------------------------ */
 
 /** One page shown by the help index. */
 interface HelpPage {
-  title: string;
-  lines: () => ScreenLine[];
+  /**
+   * The whole screen, built PER OPEN rather than captured: a locale can be
+   * changed while the game runs, and the title lives inside the view.
+   */
+  view: () => ScreenView;
 }
 
 /**
@@ -377,6 +715,31 @@ export function helpLinesFromText(text: string): ScreenLine[] {
   return text.split("\n").map((line) => ({ text: line.replace(/\r$/u, ""), color: FG }));
 }
 
+/**
+ * A mod's page as a screen: `core:text`, the UNMODELLED id, even when it is
+ * sitting in the slot of a page core has modelled.
+ *
+ * WHY IT DOES NOT INHERIT CORE'S ID. What arrives is `helpLinesFromText`'s
+ * output - a `.txt` split on newlines, already wrapped by whoever wrote it, with
+ * no columns to address, no paragraph breaks to re-flow and no key or glyph to
+ * publish. Giving it `core:help-symbols` would promise a presenter the model
+ * that id stands for and then hand it a `lines` block: a tileset mod matching on
+ * `core:help-symbols` to draw sprites would find no glyph cells and draw an
+ * empty legend, and it would have no way to tell that from a legend with nothing
+ * in it. `core:text` states exactly what is true - pre-wrapped prose, a frame to
+ * reskin and nothing to reimagine - which is what `UNMODELLED_SCREEN` is for.
+ *
+ * The alternative that lost was core's id with a `lines` block inside it. It
+ * reads tidier from the index, and it makes the id stop predicting the blocks,
+ * which is the one thing a screen id is worth anything for.
+ *
+ * A mod that wants its page REIMAGINED already has the better route: its own
+ * `screen` presenter, which sees every view including this one.
+ */
+function modPageView(label: string, lines: readonly ScreenLine[]): ScreenView {
+  return linesScreen(label, lines, SCREEN_FOOTER);
+}
+
 /** Core's own pages, then a mod's, with a mod's replacement swapped in place. */
 function helpIndex(): readonly { label: string; page: HelpPage }[] {
   const core = coreHelpIndex();
@@ -389,7 +752,7 @@ function helpIndex(): readonly { label: string; page: HelpPage }[] {
     return {
       ...entry,
       label: supplied.label,
-      page: { title: supplied.label, lines: () => [...supplied.lines] },
+      page: { view: () => modPageView(supplied.label, supplied.lines) },
     };
   });
   for (const [slot, supplied] of modPages) {
@@ -397,7 +760,7 @@ function helpIndex(): readonly { label: string; page: HelpPage }[] {
     out.push({
       id: slot,
       label: supplied.label,
-      page: { title: supplied.label, lines: () => [...supplied.lines] },
+      page: { view: () => modPageView(supplied.label, supplied.lines) },
     });
   }
   return out;
@@ -429,40 +792,31 @@ export function helpIndexLabels(): string[] {
  * are `help.<page>.label` and `.title`, which is also why HELP_INDEX carries an
  * `id` - a mod REPLACING a page keys on that id, and keying on the label would
  * make "which page is this" depend on what language the player is reading.
+ *
+ * The title is not spelled here any more: it belongs to the VIEW, which carries
+ * its own, and a title written twice is two transcriptions.
  */
 function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }[] {
   return [
     {
       id: "commands",
       label: t("help.commands.label", "Available commands"),
-      page: {
-        title: t("help.commands.title", "Angband Help - Commands"),
-        lines: helpCommandLines,
-      },
+      page: { view: helpCommandsScreen },
     },
     {
       id: "symbols",
       label: t("help.symbols.label", "Symbols on your map"),
-      page: {
-        title: t("help.symbols.title", "Angband Help - Symbols"),
-        lines: helpSymbolLines,
-      },
+      page: { view: helpSymbolsScreen },
     },
     {
       id: "guide",
       label: t("help.guide.label", "Playing guide"),
-      page: {
-        title: t("help.guide.title", "Angband Help - Playing Guide"),
-        lines: helpGuideLines,
-      },
+      page: { view: helpGuideScreen },
     },
     {
       id: "community",
       label: t("help.community.label", "Help, and telling us something is wrong"),
-      page: {
-        title: t("help.community.title", "Neo Angband - Help and reporting"),
-        lines: helpCommunityLines,
-      },
+      page: { view: helpCommunityScreen },
     },
   ];
 }
@@ -488,6 +842,6 @@ export async function runHelp(term: GridSurface & GridPointerInput): Promise<voi
     if (pick === null) return;
     const entry = index[pick];
     if (!entry) continue;
-    await showTextScreen(term, entry.page.title, entry.page.lines());
+    await showTextScreen(term, entry.page.view());
   }
 }

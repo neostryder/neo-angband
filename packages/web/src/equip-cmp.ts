@@ -56,7 +56,14 @@ import type {
 } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
 import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
-import type { ScreenLine } from "./overlay";
+import {
+  freezeView,
+  SCREEN_FOOTER,
+  type ScreenColumn,
+  type ScreenRow,
+  type ScreenTableBlock,
+  type ScreenView,
+} from "./screen-view";
 import { dumpFileName } from "./charsheet";
 import { userTextLinesToFile, exportUserFile } from "./user-io";
 import { objectComparisonScreen, objectRecallScreen } from "./screens";
@@ -138,6 +145,192 @@ export interface EquipCmpDeps {
    * player_safe_name(p->full_name) + "_equip.txt" (ui-equip-cmp.c:770-772).
    */
   playerName: string;
+}
+
+/**
+ * The two help overlays' column shapes (ui-equip-cmp.c:377-414, :894-918).
+ *
+ * `HELP_PAIR_COLUMNS` is upstream's two-key-per-line layout, measured off the
+ * shipped strings rather than guessed: every paired line puts its second key
+ * at column 26 and its second description at column 35, regardless of which
+ * row it is, so `desc1`'s `width: 17` and `key2`'s `width: 9` are what put it
+ * there (`0 + 9 = 9`, the first column's own width; `9 + 17 = 26`; `26 + 9 =
+ * 35`), and `gap: 0` on every column after the first is what stops
+ * `screen-view.ts`'s default 1-space gap from sliding all three past those
+ * marks. A declared `width` is a CLAMP (see `screen-view.ts`'s `columnWidths`
+ * comment), which is exactly why this shape only fits a row whose first
+ * description is short: `HELP_SINGLE_COLUMNS` below is the other shape, for a
+ * row whose description is left to run - "cycle through sources of items" is
+ * 31 characters and would truncate to 17 if it shared this one.
+ */
+const HELP_PAIR_COLUMNS: readonly ScreenColumn[] = [
+  { key: "key1", width: 9 },
+  { key: "desc1", width: 17, gap: 0 },
+  { key: "key2", width: 9, gap: 0 },
+  { key: "desc2", gap: 0 },
+];
+
+/**
+ * The plain key/description shape both help screens also use: the browsing
+ * screen's single-key rows, and every row of the select-mode screen (which
+ * has no paired rows at all). `desc1` has no declared width because it is
+ * always the table's last column here, so any padding it does pick up is
+ * trailing whitespace `tableBlockLines` trims off before the row is final -
+ * safe regardless of how long a description in this table runs.
+ */
+const HELP_SINGLE_COLUMNS: readonly ScreenColumn[] = [
+  { key: "key1", width: 9 },
+  { key: "desc1", gap: 0 },
+];
+
+/** One help-table row: a key (or key pair) and its description(s), one colour. */
+function helpRow(key1: string, desc1: string, key2?: string, desc2?: string): ScreenRow {
+  return {
+    color: FG,
+    cells: {
+      key1: { text: key1 },
+      desc1: { text: desc1 },
+      ...(key2 !== undefined ? { key2: { text: key2 } } : {}),
+      ...(desc2 !== undefined ? { desc2: { text: desc2 } } : {}),
+    },
+  };
+}
+
+/**
+ * One help-table block. `caption`, given, reproduces one of the C's "---"
+ * section rules - a heading over the rows that follow, not a row of its own,
+ * which is why it is never addressed by column key and never counted among
+ * `rows`. Omitted, the block continues the section the previous block in the
+ * view opened: `screenBodyLines` stacks blocks with no gap between them
+ * unless `gapAfter` says otherwise, so two uncaptioned tables back to back
+ * read as one unbroken section, exactly as the C's `irow` counter does.
+ */
+function helpTable(
+  key: string,
+  columns: readonly ScreenColumn[],
+  rows: readonly ScreenRow[],
+  caption?: string,
+): ScreenTableBlock {
+  return {
+    kind: "table",
+    key,
+    tagged: false,
+    columns,
+    rows,
+    ...(caption !== undefined ? { caption: { text: caption, color: FG } } : {}),
+  };
+}
+
+/**
+ * display_equip_cmp_help (ui-equip-cmp.c:377-414), as a `ScreenView`. Used to
+ * be a `ScreenLine[]` transcription built inline in `showHelp` below; modelled
+ * now that `screen-view.ts`'s table block exists, so a mod's screen presenter
+ * can draw this as an actual command palette - one key (or key pair) and its
+ * description per entry - rather than reskin the frame around lines it cannot
+ * parse. `equip-cmp.test.ts` renders this through `screenBodyLines` and checks
+ * the result against `reference/src/ui-equip-cmp.c`'s own `prt()` calls, so the
+ * model is pinned to the same source the old transcription was.
+ *
+ * EIGHT BLOCKS rather than four (one per "---" section), for the reason the
+ * two column shapes above exist at all: a table's column widths are shared by
+ * every row in it, and a section can mix a paired row (needs `HELP_PAIR_COLUMNS`)
+ * with a standalone one (needs `HELP_SINGLE_COLUMNS`, or the long description
+ * truncates). So each run of same-shaped rows gets its own block, and only the
+ * first block of a section carries its caption - the rest follow bare, which is
+ * what makes several blocks read back as one section with no blank line in it.
+ *
+ * ONE ROW WITH FOUR CELLS, not two rows of a two-key table, for every paired
+ * line. Two rows would draw as two lines - correct for a presenter building its
+ * own palette, but not what this function promises: `screenBodyLines` must
+ * reproduce the C's SINGLE line "j, down  one line down    k, up    one line
+ * up" byte for byte, and only one row can render as one line. A presenter that
+ * wants the pair as two palette entries still gets that for free: `key1`/`desc1`
+ * and `key2`/`desc2` are separate cells on the row, so reading "one key and its
+ * description" never means splitting a string either way.
+ */
+export function equipCmpHelpScreen(): ScreenView {
+  return freezeView({
+    id: "core:equip-cmp-help",
+    title: "Equipment comparison - help",
+    footer: SCREEN_FOOTER,
+    blocks: [
+      helpTable(
+        "movement-pairs",
+        HELP_PAIR_COLUMNS,
+        [
+          helpRow("j, down", "one line down", "k, up", "one line up"),
+          helpRow("n, PgDn", "one page down", "p, PgUp", "one page up"),
+        ],
+        "Movement/scrolling ---------------------------------",
+      ),
+      helpTable("movement-space", HELP_SINGLE_COLUMNS, [helpRow("space", "one page down")]),
+      /*
+       * The port's own addition (see this file's header note on what is
+       * unported): the simplified paging scrolls the property columns where
+       * upstream reconfigures pages instead, so this key exists here and
+       * nowhere in the C. It cannot share `HELP_SINGLE_COLUMNS` - "left,
+       * right" is 11 characters, past that table's declared `key1` width of
+       * 9, which would clamp it to "left, rig" - so this one-row table
+       * declares no width on `key1` at all (it auto-sizes to its own single
+       * cell) and spells out the 2-space gap upstream's fixed-width rows
+       * never needed.
+       */
+      helpTable("movement-scroll", [{ key: "key1" }, { key: "desc1", gap: 2 }], [
+        helpRow("left, right", "scroll the property columns"),
+      ]),
+      helpTable(
+        "filter-pairs",
+        HELP_PAIR_COLUMNS,
+        [helpRow("q", "quick filter", "!", "use opposite quick")],
+        "Filtering/searching/sorting ------------------------",
+      ),
+      helpTable("filter-singles", HELP_SINGLE_COLUMNS, [
+        helpRow("c", "cycle through sources of items"),
+        helpRow("r", "reverse"),
+      ]),
+      helpTable(
+        "info",
+        HELP_SINGLE_COLUMNS,
+        [
+          helpRow("v", "cycle through attribute views"),
+          helpRow("I, x", "select one or two items for details"),
+        ],
+        "Information ----------------------------------------",
+      ),
+      helpTable(
+        "other-pairs",
+        HELP_PAIR_COLUMNS,
+        [helpRow("d", "dump to file", "R", "reset display")],
+        "Other ----------------------------------------------",
+      ),
+      helpTable("other-esc", HELP_SINGLE_COLUMNS, [helpRow("ESC", "exit")]),
+    ],
+  });
+}
+
+/**
+ * display_equip_cmp_sel_help (ui-equip-cmp.c:894-918), as a `ScreenView`. This
+ * screen was entirely absent before (select mode had no '?' at all); it needs
+ * only one table shape, because every row here is a bare key and description -
+ * no paired keys, and no "---" section captions to preserve.
+ */
+export function equipCmpSelectHelpScreen(): ScreenView {
+  return freezeView({
+    id: "core:equip-cmp-select-help",
+    title: "Equipment comparison - help",
+    footer: SCREEN_FOOTER,
+    blocks: [
+      helpTable("keys", [{ key: "key1", width: 10 }, { key: "desc1", gap: 0 }], [
+        helpRow("j, down", "move selection one line down"),
+        helpRow("k, up", "move selection one line up"),
+        helpRow("n, PgDn", "move selection one page up"),
+        helpRow("p, PgUp", "move selection one page up"),
+        helpRow("x", "stop selection; if first item, escapes"),
+        helpRow("return", "select current item"),
+        helpRow("ESC", "leave selection process"),
+      ]),
+    ],
+  });
 }
 
 /**
@@ -245,53 +438,14 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
       term.print(0, rows - 1, (selState !== null ? PROMPT_SELECT : PROMPT_GENERAL).slice(0, cols - 1), DIM);
     };
 
-    /**
-     * display_equip_cmp_help (ui-equip-cmp.c:377-414), transcribed. It had been
-     * PARAPHRASED into this shell's own wording, which is worse than an absence:
-     * a paraphrase fills the slot, so no census can see it, and a player reading
-     * it cannot tell which keys the screen really has. Every line below is one
-     * prt() call in the C, in its order, with its spacing.
-     *
-     * The only added line is Left/Right, because the port's simplified paging
-     * scrolls the property columns where upstream reconfigures pages instead
-     * (see this file's header note) - so that key exists here and nowhere in the
-     * C, and the help has to say so rather than leave it undiscoverable.
-     */
+    /** display_equip_cmp_help, modelled below as `equipCmpHelpScreen`. */
     const showHelp = async (): Promise<void> => {
-      await showTextScreen(term, "Equipment comparison - help", [
-        "Movement/scrolling ---------------------------------",
-        "j, down  one line down    k, up    one line up",
-        "n, PgDn  one page down    p, PgUp  one page up",
-        "space    one page down",
-        "left, right  scroll the property columns",
-        "Filtering/searching/sorting ------------------------",
-        "q        quick filter     !        use opposite quick",
-        "c        cycle through sources of items",
-        "r        reverse",
-        "Information ----------------------------------------",
-        "v        cycle through attribute views",
-        "I, x     select one or two items for details",
-        "Other ----------------------------------------------",
-        "d        dump to file     R        reset display",
-        "ESC      exit",
-      ].map((text) => ({ text, color: FG }) as ScreenLine));
+      await showTextScreen(term, equipCmpHelpScreen());
     };
 
-    /**
-     * display_equip_cmp_sel_help (ui-equip-cmp.c:894-918), transcribed. This
-     * screen was entirely absent: select mode had no '?' at all, so the one place
-     * a player is most likely to press it was the one place it did nothing.
-     */
+    /** display_equip_cmp_sel_help, modelled below as `equipCmpSelectHelpScreen`. */
     const showSelHelp = async (): Promise<void> => {
-      await showTextScreen(term, "Equipment comparison - help", [
-        "j, down   move selection one line down",
-        "k, up     move selection one line up",
-        "n, PgDn   move selection one page up",
-        "p, PgUp   move selection one page up",
-        "x         stop selection; if first item, escapes",
-        "return    select current item",
-        "ESC       leave selection process",
-      ].map((text) => ({ text, color: FG }) as ScreenLine));
+      await showTextScreen(term, equipCmpSelectHelpScreen());
     };
 
     /**

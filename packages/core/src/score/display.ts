@@ -12,7 +12,7 @@
 
 import { COLOUR_L_GREEN, COLOUR_WHITE } from "../color.js";
 import { SCORES_PER_PAGE } from "./types.js";
-import type { HighScore, ScoreRow } from "./types.js";
+import type { HighScore, ScoreRow, ScoreRowFields } from "./types.js";
 
 /**
  * Resolvers for the race/class name a record's indices map to
@@ -56,32 +56,53 @@ export function scoreRow(
   const highlighted = start === highlight;
   const color = highlighted ? COLOUR_L_GREEN : COLOUR_WHITE;
 
-  const race = names.raceName(score.pRace);
-  const cls = names.className(score.pClass);
-  const clev = score.curLev;
-  const mlev = score.maxLev;
-  const cdun = score.curDun;
-  const mdun = score.maxDun;
+  /* THE ONE EXTRACTION. Every value the three lines below are made of is read
+   * out of the record here, and the lines are then joined FROM these fields - so
+   * a front end drawing its own Hall of Fame reads `fields` instead of parsing
+   * "Frodo the Half-Troll Warrior, level 20" back apart. Publishing the fields
+   * as a second, independent read beside the strings was the alternative, and it
+   * is the two-transcriptions failure: the copy nobody looks at is the one that
+   * rots. See ScoreRowFields. */
+  const fields: ScoreRowFields = {
+    rank: start + 1,
+    rankText: padStart(String(start + 1), 3),
+    points: score.pts,
+    pointsText: padStart(String(score.pts), 9),
+    who: score.who,
+    /* player_id2race / player_id2class, with the C's own "<none>" for an index
+     * that resolves to nothing (display_score_page). */
+    race: names.raceName(score.pRace) ?? "<none>",
+    cls: names.className(score.pClass) ?? "<none>",
+    level: score.curLev,
+    maxLevel: score.maxLev,
+    depth: score.curDun,
+    maxDepth: score.maxDun,
+    how: score.how,
+    uid: score.uid,
+    date: formatWhen(score.day),
+    gold: score.gold,
+    turns: score.turns,
+  };
 
   // Line 1: "%3d.%9s  %s the %s %s, level %d" (+ " (Max %d)" if mlev > clev).
   let line1 =
-    `${padStart(String(start + 1), 3)}.${padStart(String(score.pts), 9)}` +
-    `  ${score.who} the ${race ?? "<none>"} ${cls ?? "<none>"}, level ${clev}`;
-  if (mlev > clev) line1 += ` (Max ${mlev})`;
+    `${fields.rankText}.${fields.pointsText}` +
+    `  ${fields.who} the ${fields.race} ${fields.cls}, level ${fields.level}`;
+  if (fields.maxLevel > fields.level) line1 += ` (Max ${fields.maxLevel})`;
 
   // Line 2: town vs dungeon death (+ " (Max %d)" if mdun > cdun).
-  let line2 = !cdun
-    ? `Killed by ${score.how} in the town`
-    : `Killed by ${score.how} on dungeon level ${cdun}`;
-  if (mdun > cdun) line2 += ` (Max ${mdun})`;
+  let line2 = !fields.depth
+    ? `Killed by ${fields.how} in the town`
+    : `Killed by ${fields.how} on dungeon level ${fields.depth}`;
+  if (fields.maxDepth > fields.depth) line2 += ` (Max ${fields.maxDepth})`;
 
   // Line 3: "(User %s, Date %s, Gold %s, Turn %s)." - the numeric fields are
   // the stripped (no leading space) decimal values.
   const line3 =
-    `(User ${score.uid}, Date ${formatWhen(score.day)}, ` +
-    `Gold ${score.gold}, Turn ${score.turns}).`;
+    `(User ${fields.uid}, Date ${fields.date}, ` +
+    `Gold ${fields.gold}, Turn ${fields.turns}).`;
 
-  return { rank: start + 1, highlighted, color, line1, line2, line3 };
+  return { rank: fields.rank, highlighted, color, fields, line1, line2, line3 };
 }
 
 /**

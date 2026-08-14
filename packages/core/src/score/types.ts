@@ -75,6 +75,56 @@ export interface ScoreStore {
 }
 
 /**
+ * One record's display fields, BEFORE display_score_page joins them into prose.
+ *
+ * WHY THIS EXISTS. The three lines are a rendering: "1.  1234  Frodo the
+ * Half-Troll Warrior, level 20" is one opaque string, and a front end that wants
+ * to sort a leaderboard by turns, colour a row by rank or draw a class glyph
+ * would have to parse it back apart - against a layout that a translation or a
+ * long name changes. So the fields the C reads out of the record are published
+ * beside the lines they were joined into.
+ *
+ * There is exactly ONE extraction: `scoreRow` builds this and then builds its
+ * three lines FROM it. The alternative was a second extraction in the front end
+ * beside the strings here, which is the two-transcriptions failure the screen
+ * model exists to prevent - and the one nobody looks at is the one that rots.
+ *
+ * `rankText` and `pointsText` are the printf fields ("%3d", "%9s") rather than
+ * bare numbers, because those widths are what makes the table line up on a
+ * faithful terminal; a presenter with its own font ignores them and reads `rank`
+ * and `points`.
+ */
+export interface ScoreRowFields {
+  /** 1-based rank (start + 1 in display_score_page). */
+  readonly rank: number;
+  /** The rank in its "%3d" field. */
+  readonly rankText: string;
+  /** total_points() (score.h pts). */
+  readonly points: number;
+  /** The points in their "%9s" field. */
+  readonly pointsText: string;
+  /** The record's `who` - player->full_name at death. */
+  readonly who: string;
+  /** Race name, or "<none>" where the index resolves to nothing (the C's own). */
+  readonly race: string;
+  /** Class name, or "<none>"; see `race`. */
+  readonly cls: string;
+  /** cur_lev / max_lev. Upstream prints "(Max M)" only when they differ. */
+  readonly level: number;
+  readonly maxLevel: number;
+  /** cur_dun / max_dun; depth 0 is the town, which upstream words differently. */
+  readonly depth: number;
+  readonly maxDepth: number;
+  /** Method of death; WINNING_HOW for a winner. */
+  readonly how: string;
+  readonly uid: number;
+  /** The stamp as display_score_page shows it ("2026-08-13", or "TODAY"). */
+  readonly date: string;
+  readonly gold: number;
+  readonly turns: number;
+}
+
+/**
  * One rendered score entry (the three text lines display_score_page draws per
  * record, plus its colour and rank). The Term paging/scroll loop is the
  * shell's; this is the front-end-agnostic row data.
@@ -86,6 +136,8 @@ export interface ScoreRow {
   highlighted: boolean;
   /** COLOUR_* attribute: L_GREEN when highlighted, else WHITE. */
   color: number;
+  /** The fields the three lines below were built from; see `ScoreRowFields`. */
+  fields: ScoreRowFields;
   /** Line 1: "  1.  <pts>  <name> the <race> <class>, level N (Max M)". */
   line1: string;
   /** Line 2: "Killed by X on dungeon level N (Max M)" / "... in the town". */

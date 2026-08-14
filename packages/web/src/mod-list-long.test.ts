@@ -291,7 +291,14 @@ function openManager(term: FakeTerm, mods: CatalogMod[]): Promise<void> {
   return runModManager(term, {
     store: new ModStore(fakeStorage()),
     listCatalog: () => mods,
-    conflictLines: () => ({ declared: [], contested: [], combined: [] }),
+    conflictLines: () => ({
+      declared: [],
+      contested: [],
+      combined: [],
+      declaredRows: [],
+      contestedRows: [],
+      combinedRows: [],
+    }),
     requestReload: () => {},
   });
 }

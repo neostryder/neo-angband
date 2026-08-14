@@ -649,19 +649,37 @@ under a table. A `text` block's `wrap` is the same idea for prose — the width
 a clamp and never a minimum. Ignore all four if you lay things out yourself.
 
 **Not every screen has a model yet.** `MODELLED_SCREENS`
-(`packages/web/src/screen-view.ts`) names the ones that do — today twenty-one: the
+(`packages/web/src/screen-view.ts`) names the ones that do — today thirty-seven: the
 inventory, the equipment, the quiver, the object list, the monster list, the
 message history, the
 player history, the object recall, the object comparison, the monster recall, the
 tombstone, the winner, the character sheet's two pages (`core:character` and
-`core:character-flags`), and the knowledge browser's seven recall pages
+`core:character-flags`), the knowledge browser's seven recall pages
 (`core:rune-recall`, `core:feature-recall`, `core:trap-recall`,
 `core:shape-recall`, `core:artifact-recall`, `core:ego-recall`,
-`core:object-kind-recall`). Everything else arrives under the shared id
-`core:text` with a single `lines` block of pre-wrapped rows: enough to reskin a
-frame, not enough to reimagine a listing. **Check `view.id`.** The remaining
-screens — the help pages, the spell lists and the equipment-comparison
-overlays — are the biggest open piece of `MOD_REACH.md` gap 21.
+`core:object-kind-recall`), the four help pages (`core:help-commands`,
+`core:help-symbols`, `core:help-guide`, `core:help-community`), the
+equipment-comparison screen's two help overlays (`core:equip-cmp-help`,
+`core:equip-cmp-select-help`), the mod manager's four listings
+(`core:mod-updates`, `core:mod-auto-sort`, `core:mod-capabilities`,
+`core:mod-conflicts`), the hall of fame (`core:hall-of-fame`), the knowledge
+menu's store view (`core:store-knowledge`), the update and report pages
+(`core:update`, `core:report`), and wizard mode's two debug readouts
+(`core:wizard-keylog`, `core:wizard-item`). Everything else arrives under the
+shared id `core:text` with a single `lines` block of pre-wrapped rows: enough to
+reskin a frame, not enough to reimagine a listing. **Check `view.id`.**
+
+What is left under `core:text` is now mostly there on purpose. Every
+`showTextScreen` call site in the mod manager was read one at a time in August
+2026 and twenty-four of the thirty-two were ruled **prose** — warnings, outcome
+reports, error explanations and a mod author's own description, which are
+sentences a human reads and which a presenter gains nothing by addressing field
+by field. The screens that are still genuinely unfinished are named in
+`MOD_REACH.md` gap 21 rather than left for you to discover: the spell lists,
+which belong to the menu seam; and the install-refusal screens, which are
+blocked on the block vocabulary rather than on their data — a `table` row is
+exactly one terminal row and cannot wrap, and those bullets are longer than the
+width the screen wraps to.
 
 The seven recall pages are all `text` blocks, and they are seven ids rather than
 one on purpose: a mod that draws an artifact's page as a plaque and a trap's as a

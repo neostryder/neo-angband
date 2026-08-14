@@ -20,6 +20,71 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **Sixteen more screens give up their models, and the screens a mod could not
+  reach at all get a seam** (#253, MOD_REACH gap 21, step 5b-vi).
+
+  `MODELLED_SCREENS` goes from twenty-one to **thirty-seven**: the four help
+  pages, the equipment-comparison screen's two help overlays, the mod manager's
+  four listings, the hall of fame, the knowledge menu's store view, the update
+  and report pages, and wizard mode's two debug readouts.
+
+  **Three of them were not unmodelled — they were unreachable.** `score.ts`,
+  `drawWizItem` and the two shell pages painted `term.clear()` / `term.print()`
+  directly and never called `showThroughPresenter` at all, so a mod could not
+  reskin their frames, never mind rebuild them. The hall of fame is the worst
+  of those to have lost, because a leaderboard is the first thing anybody
+  rebuilds: `HighScore` already carried a field per column and `scoreRow` joined
+  them into three prose strings, so a presenter got
+  `"  1.   123456  Frodo the Half-Troll Warrior, level 20"` as one opaque string
+  and could not sort by score or draw a class glyph without parsing a layout
+  that a long name or a translation moves. The fix went into **core**, where one
+  `ScoreRow.fields` extraction now feeds the three display lines, so the model
+  and the rendering cannot part; publishing the fields as a second independent
+  read beside the strings was the alternative, and that is the
+  two-transcriptions failure whose losing copy is always the one nobody reads.
+
+  **Two screens were prose only because a producer had destroyed their
+  structure.** `mod-install.ts` flattened `checkMod`'s `{title, problem}[]` into
+  one string with hand-typed bullets, and `mod-browse.ts` then split it back
+  apart and re-wrapped the fragments — the process re-parsing a rendering it had
+  produced two frames earlier. `mod-conflicts.ts` mapped every `ContestedSlot`
+  through a describe function and handed the pane three `string[]`. Both
+  producers now carry the records beside the sentences, with the sentences
+  **derived** from the records rather than composed alongside them, and
+  `core:mod-conflicts` is a table.
+
+  **What stayed at `lines`, and why, is the other half of the work.** All 32
+  `showTextScreen` call sites in the mod manager were read one at a time;
+  twenty-four are genuinely prose and say so in the source. The install-refusal
+  screens stay too, and their blocker **moved**: it is no longer the producer,
+  it is that a `table` row is exactly one terminal row and cannot wrap, while
+  four of five bullets the shipped requirement set can produce are longer than
+  the width the screen wraps to. That is the first screen in this gap blocked by
+  the block vocabulary rather than by its data, which is a different kind of gap
+  and is counted separately.
+
+  **Byte-identical rendering was the acceptance criterion throughout**, checked
+  against output captured from the real producers before each change, asserting
+  full `ScreenLine` objects rather than `.text` so that a coloured cell emitting
+  a `runs` array where a plain coloured line used to go would show. One check
+  was verified by **breaking it on purpose** — nudging a column's gap by one and
+  confirming the test failed — because a snapshot test that has never failed is
+  not a snapshot test. Two rows could not be reproduced and are reported rather
+  than adjusted: the store view's header, and the symbols page's hand-wrapped
+  intro, which stays on `lines` because upstream laid it out and reproducing its
+  breaks from a paragraph needed a wrap clamp chosen to fit the answer.
+
+  The playing guide and the community help page went the other way and now
+  publish their prose **unwrapped**, so a presenter lays them out at its own
+  width. Seven paragraphs re-break on the faithful terminal and no words change.
+  That trade is available only because both are port additions with no upstream
+  layout to be faithful to — the commands and symbols pages, which are
+  near-verbatim from `lib/help/`, print exactly the bytes they printed before.
+
+  A mod's own help page arrives under `core:text` rather than under the id of
+  the page it replaced: a `.txt` split on newlines has no columns to address,
+  and an id that does not predict its blocks is worse than no id at all.
+
 - **The visible-monster list gives up its model, and a screen with a command
   gets a seam that can be driven** (#253, MOD_REACH gap 21, step 5b-vi).
 
@@ -344,6 +409,29 @@ digest in the game's catalogue and must never be moved.
   vitals and cannot draw a proportional bar without parsing a rendering.
 
 ### Fixed
+
+- The comments above the update and report pages explained that they were
+  painted directly because `showTextScreen` resolves on ESC, ENTER and SPACE
+  alike, and stopped there — leaving a reader to conclude the pages could not
+  reach a mod at all. They can now, through `ScreenAction`, and the comments
+  say how.
+
+- `MOD_REACH.md`'s reach tally read "17 yes, 2 accidental, 9 no" while the table
+  three lines above it gave 18 yes: row 26 had been corrected in prose and never
+  added back to the arithmetic. Two rows were also labelled "accidental only —
+  exported mutable array" when both had been frozen under gap 15 five days
+  earlier. A stale "no" under-reports the work; a stale "accidental"
+  **advertises a seam that does not exist**, which an author could have planned
+  against. Now **18 yes, 10 no**, re-counted against the code row by row.
+
+- `problemBlock`'s doc comment gave the reason for its eight-row cap as "a text
+  screen has one page and no scroll". `showViewOnTerminal` scrolls with arrows,
+  the numpad, PageUp/PageDown and Home/End, and prints its own position footer.
+  The cap is a deliberate editorial limit — a hundred problems buries the
+  per-mod reasons a player can act on — and the comment now says that instead.
+
+- `packages/web/zz-dump.txt`, an 8 KB debug capture of the command-category
+  browser committed by accident in `f6676cc32`, is removed.
 
 - **The prose renderer implemented one of Angband's two wrap algorithms while
   citing the other, and the character sheet's history is the page that needed
