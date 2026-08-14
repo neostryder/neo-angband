@@ -126,6 +126,8 @@ export interface ScreenTextBlock {
   readonly paragraphs: readonly (readonly ScreenRun[])[];
   /** Columns of leading indent the faithful terminal uses. */
   readonly indent?: number;
+  /** The prose's default colour, for the parts no run speaks for (a break). */
+  readonly color?: string;
 }
 
 /**

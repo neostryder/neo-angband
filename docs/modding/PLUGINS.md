@@ -608,14 +608,24 @@ offset as `{dy, dx}` rather than only as `"2 N 0 W"`, the player history the
 character level it never prints. Those are exactly the numbers a presenter needs
 and a text screen cannot show.
 
+**Prose arrives UNWRAPPED, in a `text` block.** `paragraphs` is a run stream per
+paragraph, split where the game meant a break and nowhere else — so the object
+recall, the object comparison and the monster recall hand you the text and let
+*you* choose the width. That is the difference the block exists for: a `lines`
+block has already been broken into 79-character rows, and re-flowing those to a
+panel of your own size means undoing the game's wrap first and guessing which
+breaks were the game's and which were the sentence's. `block.color` is the
+prose's default, for the parts no run speaks for.
+
 **Not every screen has a model yet.** `MODELLED_SCREENS`
 (`packages/web/src/screen-view.ts`) names the ones that do — today the inventory,
-the equipment, the quiver, the object list, the message history and the player
-history. Everything else arrives under the shared id `core:text` with a single
-`lines` block of pre-wrapped rows: enough to reskin a frame, not enough to
-reimagine a listing. **Check `view.id`.** The remaining screens — the character
-sheet, the knowledge browser, the spell lists, the recall pages and the tombstone
-— are the biggest open piece of `MOD_REACH.md` gap 21.
+the equipment, the quiver, the object list, the message history, the player
+history, the object recall, the object comparison and the monster recall.
+Everything else arrives under the shared id `core:text` with a single `lines`
+block of pre-wrapped rows: enough to reskin a frame, not enough to reimagine a
+listing. **Check `view.id`.** The remaining screens — the character sheet, the
+knowledge browser, the spell lists and the tombstone — are the biggest open piece
+of `MOD_REACH.md` gap 21.
 
 **A screen is dismissed, not answered**, which is the one shape difference from
 `menu`. `show` declines by returning `undefined` **synchronously** and takes the
@@ -635,7 +645,8 @@ relaxed.
 reason a floating menu does.
 
 `samples/sprite-inventory/` is a complete worked example: it draws the inventory,
-the equipment and the quiver as item cards and declines every other screen.
+the equipment and the quiver as item cards, lays the recall pages out into a
+panel of its own width by measuring them, and declines every other screen.
 
 ## Capabilities
 

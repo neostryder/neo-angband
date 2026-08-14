@@ -424,16 +424,16 @@ import {
   spellBrowseLines,
   targetMenu,
   objectName,
-  objectColor,
-  wrapRuns,
+  objectColor,
+  objectRecallScreen,
   qualityIgnoreMenu,
   qualityLevelItems,
   egoIgnoreMenu,
   svalKindMenu,
   svalCategoryItems,
   SVAL_DEPENDENT,
-  objectListScreen,
-  monsterRecallLines,
+  objectListScreen,
+  monsterRecallScreen,
   knownMonsterEntries,
   monsterKnowledgeGroupViews,
   capRaceName,
@@ -2625,7 +2625,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
       const name = objectName(state, obj);
       const header = name.charAt(0).toUpperCase() + name.slice(1);
       const tb = objectInfoTextblock(state, obj, inspectExtras);
-      await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+      await showTextScreen(term, objectRecallScreen(header, tb));
       /* MENU_VALUE_INSPECT returns 2 (L821): the caller reopens this menu on the
        * same object, so reading an item's info does not throw you out of it. */
       return CTX_REOPEN;
@@ -2822,7 +2822,7 @@ async function inspectOnce(
   const name = objectName(state, obj);
   const header = name.charAt(0).toUpperCase() + name.slice(1); /* ODESC_CAPITAL */
   const tb = objectInfoTextblock(state, obj, inspectExtras);
-  await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+  await showTextScreen(term, objectRecallScreen(header, tb));
   return true;
 }
 
@@ -3957,12 +3957,11 @@ function recallDeps(): LoreDeps {
  * 'r' - ui-target.c aux_monster's recall toggle, L596-598): reads the
  * monster's REAL lore record (getLore(state.lore, race) - never a
  * fully-known override, so unlearned sections stay hidden) and renders
- * loreDescription's runs through the same showTextScreen + wrapRuns pattern
- * every other full-screen viewer uses.
+ * loreDescription's runs as a `text` block, so a presenter is offered the
+ * paragraphs unwrapped and the terminal draws the wrap it always had.
  */
 async function showRaceRecall(race: MonsterRace, lore: MonsterLore): Promise<void> {
-  const lines = monsterRecallLines(race, lore, recallDeps(), term.size().cols);
-  await showTextScreen(term, capRaceName(race), lines);
+  await showTextScreen(term, monsterRecallScreen(race, lore, recallDeps()));
 }
 
 async function showMonsterRecall(mon: Monster): Promise<void> {
@@ -4242,7 +4241,7 @@ async function showStoreKnowledge(store: Store): Promise<void> {
  * the ui_knowledge.txt categories on the left, the chosen category's known
  * races on the right with display_monster's Sym / Kills / Full columns and
  * mon_summary underneath. Picking one opens its recall through the SAME
- * monsterRecallLines + recallDeps path the look/target loop's 'r' uses
+ * monsterRecallScreen + recallDeps path the look/target loop's 'r' uses
  * (showRaceRecall).
  *
  * The screen itself is showMonsterKnowledge in knowledge.ts, on the shared
@@ -7834,7 +7833,7 @@ function enterStoreModal(store: Store): Promise<void> {
          * item's real effect even when its flavour is unknown, which is the
          * whole point of being able to read the shelf. */
         const tb = objectInfoTextblock(state, obj, { ...inspectExtras, inStore: true });
-        await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+        await showTextScreen(term, objectRecallScreen(header, tb));
       },
       sellPick: storeSellPick,
       // store_process_command_key (ui-store.c:823-863): wear/wield, take off, and

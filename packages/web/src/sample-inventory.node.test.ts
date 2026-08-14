@@ -26,8 +26,19 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { installScreen, setScreenPresenter } from "./screen-runtime";
 import type { ScreenPlugin } from "./screen-runtime";
-import { freezeView, SCREEN_FOOTER, type ScreenRow, type ScreenView } from "./screen-view";
-import { EQUIPMENT_COLUMNS, INVENTORY_COLUMNS, QUIVER_COLUMNS } from "./screens";
+import {
+  freezeView,
+  screenBodyLines,
+  SCREEN_FOOTER,
+  type ScreenRow,
+  type ScreenView,
+} from "./screen-view";
+import {
+  EQUIPMENT_COLUMNS,
+  INVENTORY_COLUMNS,
+  QUIVER_COLUMNS,
+  objectRecallScreen,
+} from "./screens";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -52,7 +63,17 @@ function recordingDocument(draws: Draw[]): { doc: unknown; fake: FakeDoc } {
   const ctx2d = new Proxy(
     {},
     {
-      get: (_t, prop: string) => (...args: unknown[]) => void draws.push({ op: String(prop), args }),
+      get: (_t, prop: string) =>
+        prop === "measureText"
+          ? (...args: unknown[]) => {
+              /* A real width, because the prose panel WRAPS on it: a stub that
+               * returned undefined would make the sample throw, and one that
+               * returned a constant would let it "wrap" without measuring. Seven
+               * pixels per character is this fake's monospace. */
+              draws.push({ op: "measureText", args });
+              return { width: String(args[0] ?? "").length * 7 };
+            }
+          : (...args: unknown[]) => void draws.push({ op: String(prop), args }),
       set(_t, prop: string, value: unknown) {
         draws.push({ op: `set:${prop}`, args: [value] });
         return true;
@@ -326,6 +347,51 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     expect(faults).toEqual([]);
   });
 
+  it("re-wraps a recall page to ITS width, which pre-wrapped lines could not do", async () => {
+    /* The proof that a `text` block gave up something a `lines` block never had.
+     * The view is built by the GAME's own builder from a core Textblock, so the
+     * paragraphs under test are the ones a player would see; the sample lays them
+     * out into a 360px panel by measuring, and the terminal would have laid the
+     * same paragraphs out at 80 columns. More rows out of a narrower panel is the
+     * observable difference - and it is a difference no amount of re-reading a
+     * pre-wrapped `ScreenLine[]` could produce without first undoing the game's
+     * own wrap. */
+    const tb = {
+      runs: [
+        {
+          text:
+            "It is a magical device that can be aimed at a monster to inflict damage.\n" +
+            "It cannot be harmed by acid, electricity, fire or frost, and it is far too " +
+            "heavy for a novice to use effectively in a single round of combat.",
+          attr: 1,
+        },
+      ],
+    };
+    const view = objectRecallScreen("A Wand of Magic Missile", tb);
+
+    const draws: Draw[] = [];
+    const { doc, fake } = recordingDocument(draws);
+    const faults: string[] = [];
+    await install(doc, faults);
+    const term = makeTerm();
+
+    const done = showTextScreen(term, view);
+    await tick();
+
+    expect(term.printed, "the game drew it as well as the mod").toEqual([]);
+    /* Every fillText after the title/footer is one of the panel's rows. */
+    const panelRows = texts(draws).filter(
+      (t) => t !== view.title && t !== view.footer,
+    ).length;
+    const terminalRows = screenBodyLines(view, 80).filter((l) => l.text !== "").length;
+    expect(terminalRows).toBeGreaterThan(0);
+    expect(panelRows).toBeGreaterThan(terminalRows);
+
+    press(fake, "Escape");
+    await expect(done).resolves.toBeUndefined();
+    expect(faults).toEqual([]);
+  });
+
   it("reads cells and values, never the rendered row", () => {
     /* Asserted against the SOURCE, because a sample that sliced the formatted
      * text would draw a correct-looking grid and prove the opposite of the point. */
@@ -334,8 +400,22 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     expect(source).toMatch(/cells\.name\.text/u);
     expect(source).toMatch(/values\.total/u);
     expect(source).toMatch(/semantic\.kind === "slot"/u);
-    /* No parsing of a rendered row, and no matching on the English wording. */
-    expect(source).not.toMatch(/\.text\.split\(/u);
+    /* And the prose panel MEASURES the paragraphs rather than trusting a wrap it
+     * did not choose - a sample that read `block.lines` here would look identical
+     * on an 80-column screen and fall apart on any other. */
+    expect(source).toMatch(/\.paragraphs/u);
+    expect(source).toMatch(/measureText/u);
+    expect(source).not.toMatch(/block\.lines/u);
+    /* No parsing of a rendered row, and no matching on the English wording.
+     *
+     * Narrowed from a blanket ban on `.text.split(` when the prose panel landed:
+     * splitting a PARAGRAPH's run on spaces is word-wrapping, which is the whole
+     * job the `text` block hands the presenter. Taking a formatted CELL apart is
+     * the thing that must stay banned, so the check now names cells. */
+    /* `slice` is deliberately absent: the card truncates a long name to fit its
+     * width, which is display, not extraction. */
+    expect(source).not.toMatch(/cells\.\w+\.text\.(split|match|replace|indexOf)\(/u);
+    expect(source).not.toMatch(/cells\.weight\.text/u);
     expect(source).not.toMatch(/"\(nothing\)"/u);
     expect(source).not.toMatch(/lb"/u);
     /* And no imports: a folder plugin gets the engine through ctx. */

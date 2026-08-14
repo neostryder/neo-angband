@@ -87,6 +87,9 @@ import {
   deviceFailColumn,
   deviceMenu,
   monsterRecallLines,
+  monsterRecallScreen,
+  objectRecallScreen,
+  objectComparisonScreen,
   knownMonsterEntries,
   autoinscriptionMenu,
   tombstoneLines,
@@ -107,7 +110,7 @@ import {
   objectName,
 } from "./screens";
 import { MessageLog } from "./messages";
-import type { ScreenTableBlock } from "./screen-view";
+import type { ScreenTableBlock, ScreenTextBlock, ScreenView } from "./screen-view";
 import { UI_DIM } from "./ui-colors";
 import type { Monster } from "@rpgm-tools/neo-angband-core";
 
@@ -1174,6 +1177,87 @@ describe("monsterRecallLines ('r' recall screen, ui-mon-lore.c lore_description)
     monsterRecallLines(breathingRace, lore, testRecallDeps(), 80); // a second width, in case wrapping hides a draw
 
     expect(rng.getState()).toEqual(before);
+  });
+});
+
+describe("the prose pages that gave up their models in step 5b-ii", () => {
+  /* The rendering-equivalence proof for these three is the ~30 tests above and in
+   * the wrapRuns block, which went through a `text` block unchanged. What is
+   * asserted here is only what the MODEL carries that the rendering does not. */
+
+  const recallScreen = (): ScreenView => {
+    const lore = newMonsterLore(breathingRace);
+    lore.spellFlags.on(RSF.BR_POIS);
+    lore.armourKnown = true;
+    return monsterRecallScreen(breathingRace, lore, testRecallDeps());
+  };
+
+  const textBlock = (view: ScreenView): ScreenTextBlock => {
+    const block = view.blocks[0];
+    expect(block?.kind).toBe("text");
+    return block as ScreenTextBlock;
+  };
+
+  it("publishes the recall UNWRAPPED, so the same model serves any width", () => {
+    /* The point of the block. `monsterRecallLines` has to take a column count
+     * because it renders; the screen does not, because the wrap is not part of
+     * what the game knows - and a presenter with a proportional font has to redo
+     * it anyway. Same paragraphs at any terminal size, and each one longer than
+     * the rows the terminal would cut it into. */
+    const view = recallScreen();
+    const paragraphs = textBlock(view).paragraphs;
+    const longest = Math.max(
+      ...paragraphs.map((p) => p.reduce((n, r) => n + r.text.length, 0)),
+    );
+    expect(longest).toBeGreaterThan(79);
+    expect(monsterRecallLines(breathingRace, newMonsterLore(breathingRace), testRecallDeps(), 80))
+      .not.toEqual(
+        monsterRecallLines(breathingRace, newMonsterLore(breathingRace), testRecallDeps(), 40),
+      );
+  });
+
+  it("keeps the engine's own colours on the runs, not just on the rendered row", () => {
+    /* loreDescription colours the parts that matter - the race name, the damage
+     * figures - and a presenter that had to recover those from a rendered line
+     * would be reading a rendering again. */
+    const runs = textBlock(recallScreen()).paragraphs.flat();
+    expect(new Set(runs.map((r) => r.color)).size).toBeGreaterThan(1);
+  });
+
+  it("splits ONLY where the core put a break, never where the terminal did", () => {
+    /* A paragraph is a logical break. If the split had followed the wrap instead,
+     * every paragraph would fit in a row - which is exactly the bug that would
+     * make a `text` block a `lines` block wearing a different name. */
+    const paragraphs = textBlock(recallScreen()).paragraphs;
+    const rows = monsterRecallLines(
+      breathingRace,
+      (() => {
+        const lore = newMonsterLore(breathingRace);
+        lore.spellFlags.on(RSF.BR_POIS);
+        lore.armourKnown = true;
+        return lore;
+      })(),
+      testRecallDeps(),
+      80,
+    );
+    expect(rows.length).toBeGreaterThan(paragraphs.length);
+  });
+
+  it("gives the object recall and the object COMPARISON different ids", () => {
+    /* One subject versus two. A presenter that wanted to draw the comparison as
+     * two columns could not tell it from an inspect page if they shared an id,
+     * and the title is a display string it must not have to parse. */
+    const tb: Textblock = { runs: [{ text: "A Dagger\nIt is sharp.", attr: WHITE }] };
+    expect(objectRecallScreen("A Dagger", tb).id).toBe("core:object-recall");
+    expect(objectComparisonScreen("Object comparison", tb).id).toBe("core:object-comparison");
+    expect(objectRecallScreen("A Dagger", tb).blocks[0]).toEqual({
+      kind: "text",
+      color: colorToCss(WHITE),
+      paragraphs: [
+        [{ text: "A Dagger", color: colorToCss(WHITE) }],
+        [{ text: "It is sharp.", color: colorToCss(WHITE) }],
+      ],
+    });
   });
 });
 
