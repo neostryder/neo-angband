@@ -20,7 +20,12 @@
 
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
-import { snapshotWorldFrame, type WorldFrameSink } from "./world-view";
+import {
+  restatableWorldFrameSink,
+  snapshotWorldFrame,
+  type RestatableWorldFrameSink,
+  type WorldFrameSink,
+} from "./world-view";
 
 /** Candidate zero's id: the game's own glyph renderer, as a front end. */
 export const CORE_FRONTEND_ID = "core";
@@ -193,6 +198,20 @@ export function installFrontend(
 }
 
 /**
+ * What the shell holds the map with: a sink, and - only when a MOD holds the
+ * display - the ability to show it a changed region stack with no repaint
+ * behind it (#261).
+ *
+ * `restate` IS OPTIONAL, AND ITS ABSENCE IS THE ANSWER FOR CORE. Core's renderer
+ * repaints the map from `render()` and from nowhere else; restating it would
+ * paint the dungeon over whichever screen had just opened, which is the defect
+ * the notification exists to stop with core committing it instead of the mod. So
+ * the unmodded path is handed core's own sink exactly as before - same object,
+ * no snapshot, no wrapper, and no `restate` to call.
+ */
+export type FrontendMapStream = WorldFrameSink & Partial<Pick<RestatableWorldFrameSink, "restate">>;
+
+/**
  * Route the live map producer to the selected front end. A plugin receives an
  * immutable, structurally owned snapshot, and a fault hands the map back to
  * core's renderer for the rest of the session rather than stranding the player
@@ -205,10 +224,10 @@ export function installFrontend(
 export function frontendWorldFrameSink(
   frontend: InstalledFrontend,
   reportFault: (id: string, message: string, error: unknown) => void,
-): WorldFrameSink {
+): FrontendMapStream {
   if (frontend.sink === frontend.recovery) return frontend.recovery;
   let active = true;
-  return {
+  return restatableWorldFrameSink({
     present(frame) {
       if (!active) {
         frontend.recovery.present(frame);
@@ -222,5 +241,5 @@ export function frontendWorldFrameSink(
         frontend.recovery.present(frame);
       }
     },
-  };
+  });
 }

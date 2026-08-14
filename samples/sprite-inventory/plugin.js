@@ -59,6 +59,75 @@
 /** The three listings this sample draws as cards. */
 const TAKES = ["core:inventory", "core:equipment", "core:quiver"];
 
+/* ------------------------------------------------------------------------- *
+ * THE REGION: furniture of this mod's OWN, beside the live map.
+ *
+ * WHAT IS DIFFERENT FROM EVERYTHING ELSE IN THIS FILE, and it is the whole
+ * point of `ModPlugin.regions`. `screen()` above takes screens the GAME already
+ * shows and shows them better - the inventory was always there, and this mod
+ * redraws it. A region is a rectangle that DID NOT EXIST until this mod asked
+ * for one, and it is on screen while the player is walking around rather than
+ * only while a screen is open. That is why it is a separate capability:
+ * `ui:screen.replace` says "you may draw the inventory instead of the game" and
+ * `ui:region.create` says "you may put something of your own on the player's
+ * screen", and a player agreeing to the first has not agreed to the second.
+ * `ui:*.replace` does not cover it either, for exactly that reason.
+ *
+ * WHAT IT DRAWS is the last listing this mod was shown - so after you have
+ * opened your pack once, what you are carrying stays readable beside the map
+ * instead of behind a keypress. Nothing here reaches into the game: the rows
+ * are the ones `show(view)` was already handed.
+ *
+ * WHY IT IS RIGHT-ANCHORED, and it is not a taste decision. A region whose
+ * right edge is not the terminal's needs a host that can bound an erase
+ * (`eraseSpan`), because the alternative is erasing with SPACES - and a space
+ * is a glyph that occludes, so a floating panel that erased with spaces would
+ * punch a white hole in the map it is meant to be floating over. A host without
+ * that call refuses such a region at the door rather than lying about what was
+ * drawn. Anchoring to the right edge means the unbounded erase IS the bounded
+ * one, so this panel works on every host. It is also what upstream's own
+ * `show_obj_list` does with an item list (ui-object.c:418-422).
+ *
+ * IT IS IN THE `overlay` BAND, not `modal`. Overlay is furniture that sits over
+ * the map and under anything that wants the player's attention; modal is for
+ * something that has taken it. A panel that outranked the game's own screens
+ * would still be sitting there over the middle of the knowledge browser.
+ * `system` is not offered to mods at all - see the SDK's `ModRegionLayer` - so
+ * that the mod manager can always be drawn above a mod that has gone wrong.
+ * ------------------------------------------------------------------------- */
+
+/** Widest the strip will ever be. Narrow enough to leave a usable map. */
+const STRIP_W = 24;
+/** Most rows of items it will show, before its own title row. */
+const STRIP_ROWS = 8;
+
+const STRIP_INK = "#d7dde8";
+const STRIP_DIM = "#78829a";
+
+/**
+ * The last listing this mod was shown, as `{ tag, name, color }` rows.
+ *
+ * Module-level rather than passed between the two hooks, because `screen()` and
+ * `regions()` are two calls on this one object and the host makes them
+ * independently. Kept SMALL and already-formatted: `paint()` runs once a frame,
+ * so anything it would have had to compute is computed here instead, once, when
+ * the listing actually changed.
+ */
+let carried = [];
+let carriedTitle = "Carried";
+
+/** Remember a listing this mod was just handed, for the strip to draw. */
+function rememberCarried(view) {
+  const block = tableOf(view);
+  if (!block) return;
+  carriedTitle = view.title || "Carried";
+  carried = block.rows.slice(0, STRIP_ROWS).map((row) => ({
+    tag: row.tag || "",
+    name: row.cells.name ? row.cells.name.text : "",
+    color: row.color || STRIP_INK,
+  }));
+}
+
 /**
  * The prose pages it draws as a panel, re-wrapped to its OWN width - the three
  * inspect pages plus the knowledge browser's seven recalls, which gave up their
@@ -552,6 +621,67 @@ function drawActions(g, view, x, y) {
 export default {
   api: 1,
 
+  /**
+   * A rectangle of this mod's own, for as long as the mod is enabled.
+   *
+   * Returns a LIST, because a mod may have several and one bad entry must cost
+   * only that entry. Returning `undefined` declines, which is the right answer
+   * on a host this cannot draw on - and unlike `screen()` there is nothing to
+   * check for here, because a region draws on the character grid rather than
+   * into a canvas, so there is no `document` to be missing.
+   */
+  regions() {
+    return [
+      {
+        id: "carried",
+        layer: "overlay",
+        /**
+         * RETURN A RECTANGLE AND DO NO WORK. This runs on every layout change,
+         * which in this shell means once per frame - so it is arithmetic on
+         * three numbers and nothing else. No loop over the items, no reading of
+         * anything that could have changed, no allocation beyond the object
+         * itself. An author who put a measurement in here would be paying for it
+         * on every step the player takes.
+         *
+         * TOTAL, which matters more than it looks: a rectangle that runs off the
+         * grid is refused with a named fault, so every branch here is clamped
+         * rather than assumed. The `rows > 2` guard is the one that earns its
+         * keep - on a terminal too short for a message line and a status line
+         * there is nowhere to be but the top.
+         */
+        place(grid) {
+          const width = Math.min(STRIP_W, grid.cols);
+          const top = grid.rows > 2 ? 1 : 0;
+          const wanted = Math.min(carried.length, STRIP_ROWS) + 1;
+          const rows = Math.max(1, Math.min(wanted, grid.rows - top));
+          return { col: grid.cols - width, row: top, cols: width, rows };
+        },
+        /**
+         * Draw. Coordinates are the REGION's, so (0, 0) is this panel's own
+         * top-left and `size()` answers this panel's size rather than the
+         * terminal's.
+         *
+         * IT CLEARS FIRST, and that is what makes it opaque. Transparency here
+         * is not a flag and not an alpha - it is a cell that was not written -
+         * so a panel that wants a background asks for one, and a panel that
+         * wants the map showing through simply does not draw those cells. The
+         * clear erases THIS RECTANGLE and nothing else; the map either side of
+         * it is untouched and is still being drawn by the game underneath.
+         */
+        paint(surface) {
+          const { cols, rows } = surface.size();
+          surface.clear();
+          surface.print(0, 0, carriedTitle.slice(0, cols), STRIP_DIM);
+          for (let i = 0; i < carried.length && i + 1 < rows; i++) {
+            const item = carried[i];
+            const label = (item.tag ? item.tag + ") " : "") + item.name;
+            surface.print(0, i + 1, label.slice(0, cols), item.color);
+          }
+        },
+      },
+    ];
+  },
+
   screen(ctx) {
     /* No DOM means no cards. Declining is the right answer on a host this cannot
      * draw on; THROWING would cost the mod the seam for the whole session. */
@@ -583,6 +713,11 @@ export default {
           v.id === "core:tombstone" ||
           (TAKES.includes(v.id) && tableOf(v) !== null);
         if (!takes(view)) return undefined;
+        /* The strip's data, taken from the listing this mod was ALREADY being
+         * handed. Done before the mount check on purpose: a host with no canvas
+         * declines the screen, and the region still works - it draws on the
+         * character grid and needs no DOM at all. */
+        if (TAKES.includes(view.id)) rememberCarried(view);
         if (!mount()) return undefined;
 
         const width = (typeof window !== "undefined" && window.innerWidth) || 960;

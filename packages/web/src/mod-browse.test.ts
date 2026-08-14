@@ -229,6 +229,15 @@ const UNMET: readonly Finding[] = [
   },
 ];
 
+/**
+ * The LINES a refusal renders. The SCREEN that carries them - `installFailureScreen`
+ * ("core:mod-install-failure") and `zipImportFailureScreen`
+ * ("core:mod-zip-import-failure"), both from this module - is asserted in
+ * `mod-screens.test.ts`, which checks the half this file cannot see: that each unmet
+ * requirement is a table row addressable by the finding's own id, with the problem in
+ * `ScreenRow.detail` rather than in a cell. Two files because there are two failures:
+ * a wording that stops being the producer's own, and a row a mod cannot reach.
+ */
 describe("installFailureLines", () => {
   it("gives each unmet requirement its own row, with the reason beneath it", () => {
     /* THIS TEST DELIBERATELY NO LONGER ASSERTS BYTE-IDENTITY, and the reason is

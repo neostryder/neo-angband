@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TV } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
 import { applyCurseAttributes, modifyWeightForCurse } from "./object.js";
 import { objectPower } from "./power.js";
+import { resetTvalRegistry, tvalRegistry } from "./tval-registry.js";
 import type { PowerObject } from "./power.js";
 import type { Curse, CurseObject, ObjPackJson } from "./types.js";
 import {
@@ -88,6 +89,71 @@ describe("object_power (obj-power.c)", () => {
     const ring = blankPower(TV.RING);
     ring.toA = 5;
     expect(objectPower(reg, ring)).toBe(9);
+  });
+});
+
+/** A tval beyond everything core defines - a mod's own. */
+const MOD_TVAL = 200;
+
+describe("bow_multiplier reaches a MOD's launcher class", () => {
+  afterEach(() => {
+    resetTvalRegistry();
+  });
+
+  /* WHAT THIS PROVES. `bowMultiplier` read `obj.tval !== TV.BOW` while this
+   * file's own header (L20-24) already documented the check as
+   * `tvalIsLauncher` - the comment was right and the code was the bug. A mod
+   * launcher therefore scored multiplier 1 no matter its pval, so it was
+   * undervalued in every shop and mis-weighted in randart balance.
+   *
+   * THE LEVER IS `pval`, and that is what makes this a proof of ONE site
+   * rather than of the widening in general. `obj.pval` is read in exactly one
+   * place in power.ts - inside `bowMultiplier` - so two objects that differ
+   * only in pval can differ in power only through that site. `tvalIsLauncher`
+   * is consulted five times in this module, and the other four are held
+   * constant by construction: `toDamagePower`'s second lot and
+   * `damageDicePower`'s non-weapon boost depend on toD/brands/slays/blows,
+   * which are identical here, `ammoDamagePower` returns 0 because the kind
+   * carries no KF_SHOOTS_* flag, and `rescaleBowPower` divides both sides
+   * alike. */
+  it("ignores pval on a mod launcher before the widening, and reads it after", () => {
+    const weak = blankPower(MOD_TVAL);
+    weak.toD = 4;
+    weak.pval = 2;
+    const strong = blankPower(MOD_TVAL);
+    strong.toD = 4;
+    strong.pval = 5;
+
+    /* BEFORE: pval is dead weight, because bow_multiplier bailed to 1. */
+    const beforeWeak = objectPower(reg, weak);
+    const beforeStrong = objectPower(reg, strong);
+    expect(beforeWeak).toBe(beforeStrong);
+
+    const inner = tvalRegistry().classes.handlerFor("tvalIsLauncher")!;
+    tvalRegistry().classes.set(
+      "tvalIsLauncher",
+      (tval) => tval === MOD_TVAL || inner(tval),
+    );
+
+    /* AFTER: the converted site answers yes, so the multiplier is the pval. */
+    const afterWeak = objectPower(reg, weak);
+    const afterStrong = objectPower(reg, strong);
+    expect(afterStrong).toBeGreaterThan(afterWeak);
+
+    /* And the numbers, spelled out, so a change that merely PERTURBS power
+     * cannot pass as this one. to_damage_power = 4*5/2 = 10 with no non-weapon
+     * second lot (it is a launcher now); damage dice 0; extra_might multiplies
+     * by the pval; rescale_bow_power divides by MAX_BLOWS (5). */
+    expect({ weak: afterWeak, strong: afterStrong }).toEqual({
+      weak: 4,
+      strong: 10,
+    });
+
+    /* Core's own bow is untouched by the wrapping. */
+    const bow = blankPower(TV.BOW);
+    bow.toD = 4;
+    bow.pval = 2;
+    expect(objectPower(reg, bow)).toBe(4);
   });
 });
 

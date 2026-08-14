@@ -30,6 +30,14 @@ import { activeModCode, loadModCode, PLUGIN_FILE, resetModCode, setModCode } fro
 import { modPluginContext } from "./mod-context";
 import { defaultModStore } from "./mod-store";
 import { enabledModIds } from "./pack";
+import { screenRegions } from "./regions";
+import {
+  liveRegionStack,
+  onStackChanged,
+  pushRegion,
+  relayoutStack,
+  resetRegionStack,
+} from "./ui-stack";
 import { projectLiveWorld, type LiveWorldRead, type ResolvedGlyph } from "./world-render-data";
 import { glyphWorldFrameSink, type WorldFrame } from "./world-view";
 
@@ -50,6 +58,10 @@ afterEach(() => {
   delete (globalThis as FrontendGlobal).__neoFrontendFrames;
   resetDiskPacks();
   resetModCode();
+  /* The stack is a module singleton and so are its listeners; a test that left
+   * one subscribed would have the NEXT test's stack changes re-presenting into
+   * a sink that belongs to this one. */
+  resetRegionStack();
 });
 
 /** A real filesystem implementation of the same disk-folder reader contract. */
@@ -246,6 +258,135 @@ describe("a disk-loaded frontend plugin", () => {
       frontendWorldFrameSink(bootSlot, () => { throw new Error("core cannot fault"); }),
     );
     expect(bootCalls).toEqual(calls);
+  });
+
+  /**
+   * An 18x5 terminal with the classic Left sidebar - the map is 4x3 at 13,1.
+   * Built by the producer main.ts calls, so the base band of the live stack here
+   * is the base band of the live stack there.
+   */
+  function layOutTheScreen(): void {
+    relayoutStack({
+      cols: 18,
+      rows: 5,
+      base: screenRegions({
+        cols: 18, rows: 5, sidebar: "left", sidebarWidth: 13,
+        mapOriginX: 13, mapTop: 1, mapCols: 4, mapRows: 3,
+      }),
+    });
+  }
+
+  it("is told a screen opened over it, with no repaint behind it (#261)", async () => {
+    /* THE LIVE DEFECT, end to end through the shipped loader. render() does not
+     * run while a core screen owns the terminal - a screen repaints from its own
+     * key loop - so at the moment a replacement front end most needs to hear
+     * "you are covered", no frame is coming to tell it. Its canvas stays over
+     * the middle of the inventory until the player closes it. `onStackChanged`
+     * re-presents the last frame with the new stack, which is the fact that
+     * changed and the only one that did. */
+    (globalThis as FrontendGlobal).__neoFrontendFrames = [];
+    const { code } = await bootDiskFrontendCode();
+    const faults: string[] = [];
+    const frontend = installFrontend(
+      [coreFrontendCandidate(glyphWorldFrameSink({ put: () => faults.push("core drew") })), ...code.plugins],
+      (id) => modPluginContext(id, {}),
+      (id, message) => faults.push(`${id}: ${message}`),
+    );
+    expect(frontend.id).toBe("late-view");
+    const sink = frontendWorldFrameSink(frontend, (id, message) => faults.push(`${id}: ${message}`));
+    onStackChanged((stack) => sink.restate?.(stack));
+
+    const received = (globalThis as FrontendGlobal).__neoFrontendFrames!;
+    /* A layout before any frame: the listener fires and there is nothing to
+     * re-present, which must be silence rather than an invented frame. */
+    layOutTheScreen();
+    expect(received).toHaveLength(0);
+
+    projectLiveWorld({ ...reads({ x: 1, y: 0 }), stack: liveRegionStack() }, sink);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.frame.stack?.map((r) => r.id)).toEqual([
+      "messages", "sidebar", "map", "status",
+    ]);
+
+    /* Now a screen opens. Nothing repaints the map - `projectLiveWorld` is not
+     * called again anywhere below this line. */
+    const screen = pushRegion({
+      id: "core:screen",
+      layer: "modal",
+      place: (grid) => ({ col: 0, row: 0, cols: grid.cols, rows: grid.rows }),
+    });
+    expect(screen.fault()).toBeUndefined();
+    expect(received).toHaveLength(2);
+    expect(received[1]?.frame.stack?.map((r) => r.id)).toEqual([
+      "messages", "sidebar", "map", "status", "core:screen",
+    ]);
+    /* The same dungeon, deliberately: what changed is the stack, and
+     * re-projecting the world from a shell that is not in a repaint would be
+     * inventing a frame nobody asked for. */
+    expect(received[1]?.frame.cells).toEqual(received[0]?.frame.cells);
+
+    /* And it is told when the screen closes, too - a front end that heard only
+     * the covering half would stand down once and never come back. */
+    screen.release();
+    expect(received).toHaveLength(3);
+    expect(received[2]?.frame.stack?.map((r) => r.id)).toEqual([
+      "messages", "sidebar", "map", "status",
+    ]);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("ungated-view");
+  });
+
+  it("does NOT re-present when the composite is recomputed unchanged (#261)", async () => {
+    /* `relayoutStack` runs once per frame. A notification on every recompose
+     * would double every repaint for news that had not changed - and the
+     * consumer of this notification re-presents a frame when it hears. */
+    (globalThis as FrontendGlobal).__neoFrontendFrames = [];
+    const { code } = await bootDiskFrontendCode();
+    const frontend = installFrontend(
+      [coreFrontendCandidate(glyphWorldFrameSink({ put: () => undefined })), ...code.plugins],
+      (id) => modPluginContext(id, {}),
+      () => undefined,
+    );
+    const sink = frontendWorldFrameSink(frontend, () => undefined);
+    onStackChanged((stack) => sink.restate?.(stack));
+    layOutTheScreen();
+    projectLiveWorld({ ...reads({ x: 1, y: 0 }), stack: liveRegionStack() }, sink);
+
+    const received = (globalThis as FrontendGlobal).__neoFrontendFrames!;
+    expect(received).toHaveLength(1);
+    layOutTheScreen();
+    layOutTheScreen();
+    expect(received).toHaveLength(1);
+  });
+
+  it("THE CONTROL: core is never restated, because core repaints from render()", () => {
+    /* Restating core's own sink would paint the dungeon over whichever screen
+     * had just opened - the exact defect the notification exists to end, with
+     * core committing it instead of the mod. So the unmodded stream has no
+     * `restate` to call, and it is still core's own sink object: no snapshot, no
+     * wrapper, the unmodded paint path unchanged. */
+    const painted: string[] = [];
+    const installed = installFrontend(
+      [coreFrontendCandidate(glyphWorldFrameSink({ put: (_x, _y, g) => painted.push(g.ch) }))],
+      (id) => modPluginContext(id, {}),
+      () => { throw new Error("core cannot fault its own slot"); },
+    );
+    const sink = frontendWorldFrameSink(installed, () => { throw new Error("core cannot fault"); });
+    expect(sink).toBe(installed.recovery);
+    expect(sink.restate).toBeUndefined();
+
+    onStackChanged((stack) => sink.restate?.(stack));
+    projectLiveWorld({ ...reads({ x: 1, y: 0 }), stack: liveRegionStack() }, sink);
+    expect(painted).toEqual([".", ".", "@"]);
+
+    layOutTheScreen();
+    pushRegion({
+      id: "core:screen",
+      layer: "modal",
+      place: (grid) => ({ col: 0, row: 0, cols: grid.cols, rows: grid.rows }),
+    });
+    /* Nothing was drawn a second time. */
+    expect(painted).toEqual([".", ".", "@"]);
   });
 
   it("refuses a candidate zero that is not core's", () => {

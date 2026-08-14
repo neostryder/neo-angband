@@ -355,7 +355,40 @@ function flat(ref: RenderAssetRef): RenderAssetRef {
   return rest;
 }
 
-export function showLevelMap(term: GridSurface & GridPointerInput, overview: Overview): Promise<void> {
+/**
+ * do_cmd_view_map ('M'): the whole level in miniature.
+ *
+ * A REGION, for the same reason `showViewOnTerminal` is one, and this is the
+ * site where the risk stopped being theoretical (#261 commit 5). 'M' takes the
+ * direct modal path to this function rather than going through `showTextScreen`,
+ * so before this it was the one full-screen erase a mod could not survive: the
+ * overview called `term.clear()`, and `renderBackground()` refuses to run
+ * `render()` while a modal owns the terminal - so `paintRegionStack()` could not
+ * repaint what had just been wiped until the player closed the map again. A
+ * mod's window was drawn, the player pressed 'M', and the window was gone with
+ * no exception, no console entry and nothing to search for.
+ *
+ * The split into a `show*`/`paint*` pair is the shape `showViewOnTerminal` and
+ * `paintViewOnTerminal` already use, and the painter's body is UNCHANGED - which
+ * is the property `clipSurface` exists to have. `term.clear()` inside it now
+ * erases the screen's own rectangle, which happens to be the whole terminal,
+ * because that is what a 4.2.6 screen is. The picture is byte-identical; what
+ * changed is that everything else on the display can see it happen.
+ */
+export function showLevelMap(
+  host: GridSurface & GridPointerInput,
+  overview: Overview,
+): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintLevelMapOnTerminal(regionSurface(host, handle.cells), overview).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintLevelMapOnTerminal(
+  term: GridSurface & GridPointerInput,
+  overview: Overview,
+): Promise<void> {
   return new Promise<void>((resolve) => {
     const paint = (): void => {
       const { cols, rows } = term.size();

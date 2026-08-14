@@ -347,8 +347,10 @@ export function monRestrict(
  * placement, and the mon_max - start > num*2 group rein). Clears the
  * restriction at the end.
  *
- * Not wired to a builder yet (room_of_chambers/cavern callers are deferred),
- * but reproduced faithfully so those builders can call it unchanged.
+ * Called by the lair and gauntlet cave builders (gen/cave.ts:1915 and :2059),
+ * each after `setPitType` has picked the pit and `monRestrict` has confirmed it
+ * resolves - upstream's placement ORDER, which this must keep: pick pit, then
+ * spread.
  */
 export function spreadMonsters(
   g: Gen,

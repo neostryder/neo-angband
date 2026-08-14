@@ -58,7 +58,17 @@ import { objectShortName } from "./bind.js";
 import type { ObjRegistry } from "./bind.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import type { CurseTimedFoil } from "./object.js";
-import { copyBrands, copySlays, curseTimedIncFoiled } from "./object.js";
+import {
+  copyBrands,
+  copySlays,
+  curseTimedIncFoiled,
+  tvalIsArmor,
+  tvalIsBodyArmor,
+  tvalIsHeadArmor,
+  tvalIsJewelry,
+  tvalIsLauncher,
+  tvalIsMeleeWeapon,
+} from "./object.js";
 import { INHIBIT_POWER, lookupObjProperty } from "./power.js";
 import type { ArtifactSetData } from "./randart-data.js";
 import { randartRegistry, seedRandart } from "./randart-registry.js";
@@ -298,7 +308,7 @@ export function getBaseItem(
   let start = 1;
 
   /* Restrict to appropriate kinds if jewellery. */
-  if (tval === TV.RING || tval === TV.AMULET) {
+  if (tvalIsJewelry(tval)) {
     let testKind = reg.lookupKind(tval, start);
     while (testKind && testKind.kidx < reg.ordinaryKindCount) {
       start++;
@@ -410,16 +420,12 @@ export function buildFreqTable(
   };
 
   /* Bow abilities. */
-  if (art.tval === TV.BOW) copyGroup(artIdxBow);
+  if (tvalIsLauncher(art.tval)) copyGroup(artIdxBow);
 
-  /* General weapon abilities. */
-  if (
-    art.tval === TV.BOW ||
-    art.tval === TV.DIGGING ||
-    art.tval === TV.HAFTED ||
-    art.tval === TV.POLEARM ||
-    art.tval === TV.SWORD
-  ) {
+  /* General weapon abilities. Upstream lists BOW plus the four melee tvals;
+   * that is `tvalIsLauncher || tvalIsMeleeWeapon`, and NOT `tvalIsWeapon`,
+   * which also answers yes for ammo. */
+  if (tvalIsLauncher(art.tval) || tvalIsMeleeWeapon(art.tval)) {
     copyGroup(artIdxWeapon);
   } else {
     /* General non-weapon abilities. */
@@ -427,46 +433,28 @@ export function buildFreqTable(
   }
 
   /* General melee abilities. */
-  if (
-    art.tval === TV.DIGGING ||
-    art.tval === TV.HAFTED ||
-    art.tval === TV.POLEARM ||
-    art.tval === TV.SWORD
-  ) {
+  if (tvalIsMeleeWeapon(art.tval)) {
     copyGroup(artIdxMelee);
   }
 
-  /* General armor abilities. */
-  if (
-    art.tval === TV.BOOTS ||
-    art.tval === TV.GLOVES ||
-    art.tval === TV.HELM ||
-    art.tval === TV.CROWN ||
-    art.tval === TV.SHIELD ||
-    art.tval === TV.CLOAK ||
-    art.tval === TV.SOFT_ARMOR ||
-    art.tval === TV.HARD_ARMOR ||
-    art.tval === TV.DRAG_ARMOR
-  ) {
+  /* General armor abilities. Upstream's nine tvals are exactly tvalIsArmor. */
+  if (tvalIsArmor(art.tval)) {
     copyGroup(artIdxAllarmor);
   }
 
-  /* Boot abilities. */
+  /* Boot abilities. Slot-specific: no class predicate covers "boots alone",
+   * and inventing one would be a randart SLOT registry, not registry:tval. */
   if (art.tval === TV.BOOTS) copyGroup(artIdxBoot);
-  /* Glove abilities. */
+  /* Glove abilities (slot-specific, as above). */
   if (art.tval === TV.GLOVES) copyGroup(artIdxGlove);
   /* Headgear abilities. */
-  if (art.tval === TV.HELM || art.tval === TV.CROWN) copyGroup(artIdxHeadgear);
-  /* Shield abilities. */
+  if (tvalIsHeadArmor(art.tval)) copyGroup(artIdxHeadgear);
+  /* Shield abilities (slot-specific). */
   if (art.tval === TV.SHIELD) copyGroup(artIdxShield);
-  /* Cloak abilities. */
+  /* Cloak abilities (slot-specific). */
   if (art.tval === TV.CLOAK) copyGroup(artIdxCloak);
   /* Armor abilities. */
-  if (
-    art.tval === TV.SOFT_ARMOR ||
-    art.tval === TV.HARD_ARMOR ||
-    art.tval === TV.DRAG_ARMOR
-  ) {
+  if (tvalIsBodyArmor(art.tval)) {
     copyGroup(artIdxArmor);
   }
 
@@ -511,12 +499,7 @@ export function trySupercharge(
   const aMax = reg.artifacts.length;
 
   /* Huge damage dice or max blows - melee weapon only. */
-  if (
-    art.tval === TV.DIGGING ||
-    art.tval === TV.HAFTED ||
-    art.tval === TV.POLEARM ||
-    art.tval === TV.SWORD
-  ) {
+  if (tvalIsMeleeWeapon(art.tval)) {
     if (rng.randint0(aMax) < data.artProbs[ART_IDX.MELEE_DICE_SUPER]!) {
       art.dd += 3 + rng.randint0(4);
       randartLogf(
@@ -532,7 +515,7 @@ export function trySupercharge(
   }
 
   /* Bows - max might or shots. */
-  if (art.tval === TV.BOW) {
+  if (tvalIsLauncher(art.tval)) {
     if (rng.randint0(aMax) < data.artProbs[ART_IDX.BOW_SHOTS_SUPER]!) {
       art.modifiers[OBJ_MOD.SHOTS] = INHIBIT_SHOTS - 1;
       randartLogf(
@@ -566,12 +549,7 @@ export function trySupercharge(
   }
 
   /* Big AC bonus. */
-  if (
-    art.tval === TV.DIGGING ||
-    art.tval === TV.HAFTED ||
-    art.tval === TV.POLEARM ||
-    art.tval === TV.SWORD
-  ) {
+  if (tvalIsMeleeWeapon(art.tval)) {
     if (rng.randint0(aMax) < data.artProbs[ART_IDX.MELEE_AC_SUPER]!) {
       art.toA += 19 + rng.randint1(11);
       if (rng.oneIn(2)) art.toA += rng.randint1(10);
@@ -581,7 +559,7 @@ export function trySupercharge(
       );
     }
   } else if (
-    art.tval !== TV.BOW &&
+    !tvalIsLauncher(art.tval) &&
     rng.randint0(aMax) < data.artProbs[ART_IDX.GEN_AC_SUPER]!
   ) {
     art.toA += 19 + rng.randint1(11);
@@ -594,13 +572,7 @@ export function trySupercharge(
 
   /* Aggravation. C short-circuits the && so target_power is only tested when
    * the randint0 roll succeeds. */
-  if (
-    art.tval === TV.BOW ||
-    art.tval === TV.DIGGING ||
-    art.tval === TV.HAFTED ||
-    art.tval === TV.POLEARM ||
-    art.tval === TV.SWORD
-  ) {
+  if (tvalIsLauncher(art.tval) || tvalIsMeleeWeapon(art.tval)) {
     if (
       rng.randint0(aMax) < data.artProbs[ART_IDX.WEAPON_AGGR]! &&
       targetPower > AGGR_POWER

@@ -1299,8 +1299,10 @@ export function monsterTurnMultiply(mon: Monster, state: GameState): boolean {
  * monster_turn_grab_objects (mon-move.c L1374): pick up (TAKE_ITEM) or crush
  * (KILL_ITEM) the floor objects at `next`. Gold, mimicked objects and artifacts
  * are left alone. Draws no RNG. The lore learn, the react_to_slay pickup-safety
- * check and the seen/ignore message gating are handled as noted (react_to_slay
- * is DEFERRED - it draws no RNG; messages ride presentation).
+ * check and the seen/ignore message gating are all handled here: react_to_slay
+ * is called at :1347 (mon-move.c L1420), alongside the artifact test, and the
+ * messages ride presentation. An earlier note called react_to_slay DEFERRED;
+ * it has a call site.
  */
 function monsterTurnGrabObjects(
   mon: Monster,
@@ -1709,7 +1711,10 @@ function monsterReduceSleep(mon: Monster, state: GameState): void {
 /**
  * process_monster_timed: decrement timed effects, wake sleepers. Returns
  * true if the monster skips its turn (asleep, held, commanded, or a stunned
- * miss). Message plumbing and lore are DEFERRED.
+ * miss). Message plumbing and lore are both live: the notifying decrements get
+ * a monsterTimedMessage sink (:1723, and :1695 for the sleep reduction), and
+ * the watched-sleeper lore counters update at :1700-1705. An earlier note here
+ * called both DEFERRED.
  */
 export function processMonsterTimed(mon: Monster, state: GameState): boolean {
   if (mon.mTimed[MON_TMD.SLEEP] ?? 0) {

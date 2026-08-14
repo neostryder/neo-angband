@@ -61,6 +61,25 @@ export interface InstalledModMeta {
   readonly id: string;
   readonly repo: string;
   readonly tag: string;
+  /**
+   * The commit `tag` resolved to at the moment this was installed, or absent.
+   *
+   * ABSENT MEANS UNKNOWN, NOT UNPINNED. A tag is a label its owner can move, so
+   * two installs both saying `tag: "v1.2.0"` can be different code - see
+   * mod-discover.ts's DiscoveredMod.sha, which this is copied from at install
+   * time. This field is what makes that visible: `classifyModPin` (mod-updates.ts)
+   * compares it against the SHA the tag resolves to NOW to notice a tag that has
+   * since been retargeted, even though its name never changed.
+   *
+   * Absent on a record written before this field existed, and on a mod installed
+   * from a repository whose tags call could not be read at the time (a pinned
+   * tag still installs on that failure - see discoverMod). Both cases mean "no
+   * SHA was ever recorded to compare against", which is UNKNOWN - the honest
+   * answer is "cannot tell if this has moved", never "confirmed unchanged" and
+   * never "flagged as moved". Treating an absent SHA as either would be a false
+   * signal manufactured from a gap in the data rather than read from it.
+   */
+  readonly sha?: string;
   /** Every path stored for this mod, relative to its folder. */
   readonly files: readonly string[];
   /**
@@ -214,7 +233,12 @@ function manifestTextOf(files: ReadonlyArray<readonly [string, Uint8Array]>): st
 }
 
 async function storeMod(
-  who: { readonly id: string; readonly repo: string; readonly tag: string },
+  who: {
+    readonly id: string;
+    readonly repo: string;
+    readonly tag: string;
+    readonly sha?: string;
+  },
   files: ReadonlyArray<readonly [string, Uint8Array]>,
   env: InstallEnv,
 ): Promise<InstallResult> {
@@ -284,6 +308,7 @@ async function storeMod(
       id: mod.id,
       repo: mod.repo,
       tag: mod.tag,
+      ...(mod.sha === undefined ? {} : { sha: mod.sha }),
       files: files.map(([p]) => p),
       installedAt: env.now(),
       digests,
@@ -438,7 +463,11 @@ export async function installModFromRepo(
       if (kept === 0) return { ok: false, problem: `${entry.path}: the archive is empty` };
     }
 
-    return await storeMod({ id: mod.id, repo: mod.repo, tag: mod.tag }, files, env);
+    return await storeMod(
+      { id: mod.id, repo: mod.repo, tag: mod.tag, ...(mod.sha == null ? {} : { sha: mod.sha }) },
+      files,
+      env,
+    );
   } catch (e) {
     return { ok: false, problem: message(e) };
   }
@@ -618,6 +647,11 @@ function asMeta(v: unknown): InstalledModMeta | null {
   if (typeof m.repo !== "string" || typeof m.tag !== "string") return null;
   if (!Array.isArray(m.files)) return null;
   if (typeof m.installedAt !== "string") return null;
+  /* Absent is the backward-compatible shape - a record written before this field
+   * existed - and stays UNKNOWN rather than being rejected or defaulted to a
+   * value. Only a value that is present and not a real string is a malformed
+   * record. */
+  if (m.sha !== undefined && (typeof m.sha !== "string" || m.sha === "")) return null;
   return m as InstalledModMeta;
 }
 

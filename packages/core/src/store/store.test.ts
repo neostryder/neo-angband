@@ -7,7 +7,7 @@ import { OBJ_NOTICE, learnBirthObviousFlags, makeRuneEnv } from "../obj/knowledg
 import { ODESC, objectDesc } from "../obj/desc.js";
 import { bindPlayer } from "../player/bind.js";
 import { blankPlayer } from "../player/player.js";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import { ArtifactState, ObjAllocState, applyMagic, objectPrep } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
@@ -19,6 +19,7 @@ import {
   massProduce,
   registerCoreStoreBehaviour,
   StoreBehaviourRegistry,
+  storeCreateRandom,
   storeMaint,
   storeReset,
   storeUpdate,
@@ -77,12 +78,12 @@ function context(): { ctx: StoreMaintContext; stores: Store[] } {
 
 describe("store maintenance (store.c store_reset/store_maint)", () => {
   /*
-   * history_lose_artifact (store.c:1091 inside store_delete_random, and :1307
+   * history_lose_artifact (store.c:1087 inside store_delete_random, and :1303
    * in the black-market purge). Store generation never makes an artifact, so
    * the only way one reaches a store's stock is the player selling it - and
-   * then the store's own turnover can destroy it. do_cmd_buy's two
-   * store_delete calls (L1754, L1847) deliberately do NOT log a loss, which is
-   * why the hook lives on the two maintenance sites and not inside
+   * then the store's own turnover can destroy it. do_cmd_buy's store_delete
+   * call (L1750) and do_cmd_retrieve's (L1843) deliberately do NOT log a loss,
+   * which is why the hook lives on the two maintenance sites and not inside
    * storeDelete.
    */
   it("logs an artifact the store turns over as LOST", () => {
@@ -508,5 +509,115 @@ describe("store behaviour registry (store_will_buy / mass_produce)", () => {
         empty,
       ),
     ).toBe(false);
+  });
+});
+
+/*
+ * The artifact invariant upstream states with an assert and the port states
+ * only in prose.
+ *
+ * store.c asserts !obj->artifact in BOTH stock creators - store_create_random
+ * at :1197, store_create_item at :1267 - immediately after apply_magic. The
+ * port has no equivalent: storeCreateRandom calls applyMagic with
+ * allowArtifacts=false (store.ts:743) and a comment says so, and nothing
+ * checks. That matters beyond tidiness, because the invariant is load-bearing
+ * for a seam that IS missing: session/game.ts's transaction context
+ * (makeStoreApi's storeCtx) omits onArtifactLost, while the town-return
+ * context at :2988 supplies it. storeBuy runs ten storeMaint passes when a
+ * purchase empties a shop (transact.ts), and each pass can storeDeleteRandom.
+ * The omission is harmless ONLY while generated stock can never be an
+ * artifact. So this pins the thing the missing field leans on.
+ */
+describe("store stock generation never produces an artifact (store.c:1197/:1267)", () => {
+  it("storeCreateRandom yields no artifact across many draws, in every store", () => {
+    const { ctx, stores } = context();
+    let made = 0;
+    for (const store of stores) {
+      if (store.feat === FEAT.HOME) continue;
+      /* The Bookseller's normal table is only populated when bindStoreRuntime
+       * is given the class list, which this harness does not do; storeGetChoice
+       * throws on an empty table. The black market draws from getObjNum
+       * instead, so it stays in. */
+      if (store.feat !== FEAT.STORE_BLACK && store.normalTable.length === 0) continue;
+      for (let i = 0; i < 200; i++) {
+        if (storeCreateRandom(ctx, store)) made++;
+      }
+      /* Assert over the whole resulting stock, not over a return value: the
+       * creator hands the object to storeCarry, so the stock IS the record of
+       * what it made. */
+      for (const obj of store.stock) {
+        expect(obj.artifact, `${store.featName} stocked an artifact`).toBeFalsy();
+      }
+    }
+    /* Guard against a vacuous pass: if nothing was created, the loop above
+     * asserts over an empty set and proves nothing. */
+    expect(made).toBeGreaterThan(0);
+  });
+
+  /*
+   * NEGATIVE CONTROL, built by REMOVING the mechanism rather than by feeding
+   * input assumed inert. The mechanism is applyMagic's allowArtifacts=false;
+   * removing it means calling applyMagic with allowArtifacts=true on the same
+   * kinds and levels. If artifacts still never appeared, the test above would
+   * be measuring the data (no eligible artifacts) rather than the guard, and
+   * would pass no matter what storeCreateRandom did.
+   */
+  it("CONTROL: with allowArtifacts=true the same generation DOES make artifacts", () => {
+    const rng = new Rng(99);
+    const deps: MakeDeps = {
+      reg,
+      alloc: new ObjAllocState(reg, constants),
+      constants,
+      artifacts: new ArtifactState(reg.artifacts.length),
+      noArtifacts: false,
+    };
+    let artifacts = 0;
+    for (let i = 0; i < 4000 && artifacts === 0; i++) {
+      const kind = deps.alloc.getObjNum(rng, constants, 60, false, 0);
+      if (!kind) continue;
+      const obj = objectPrep(rng, reg, constants, kind, 60, "randomise");
+      /* The one changed argument: allowArtifacts true instead of false. */
+      applyMagic(rng, deps, obj, 60, true, true, true, true, 60);
+      if (obj.artifact) artifacts++;
+    }
+    expect(
+      artifacts,
+      "control did not fire: applyMagic made no artifact even with allowArtifacts=true, so the invariant test above measures the data, not the guard",
+    ).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * The consequence of the missing onArtifactLost on the transaction context,
+ * measured at the seam rather than asserted about session/game.ts (which this
+ * package does not own). An artifact CAN be in a store's stock - the player
+ * sells one - and storeMaint deletes stock without complaint when no sink is
+ * supplied. This is what would go unlogged if the invariant above ever broke.
+ */
+describe("storeMaint without onArtifactLost drops the loss silently", () => {
+  it("removes a planted artifact from stock and reports nothing", () => {
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL);
+    if (!general) throw new Error("missing store");
+
+    const art = reg.artifacts.find((a) => a) as NonNullable<
+      (typeof reg.artifacts)[number]
+    >;
+    const sold = general.stock[0] as GameObject;
+    sold.artifact = art;
+
+    /* No onArtifactLost, exactly as makeStoreApi's storeCtx builds it. */
+    const noHook: StoreMaintContext = { ...ctx };
+    expect(noHook.onArtifactLost).toBeUndefined();
+
+    for (let i = 0; i < 40 && general.stock.includes(sold); i++) {
+      storeMaint(noHook, general);
+    }
+    /* The artifact is gone from the world and nothing recorded it. The paired
+     * test at the top of this file shows the same run DOES report when the
+     * sink is supplied, which is what makes this a measurement of the missing
+     * field rather than of storeMaint being inert. */
+    expect(general.stock.includes(sold)).toBe(false);
   });
 });

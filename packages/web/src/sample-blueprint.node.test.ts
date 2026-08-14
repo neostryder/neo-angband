@@ -29,9 +29,10 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildWorldFrame, type WorldCell, type WorldFrame } from "./world-view";
-import { screenRegions, type ScreenRegions } from "./regions";
+import { baseRegionStack, screenRegions, type LiveRegion, type ScreenRegions } from "./regions";
 import {
   coreFrontendCandidate,
+  frontendWorldFrameSink,
   installFrontend,
   CORE_FRONTEND_ID,
   type FrontendPlugin,
@@ -125,10 +126,16 @@ const REGIONS = screenRegions(
   { cellWidth: 12, cellHeight: 20, originX: 4, originY: 6 },
 );
 
+/** The four base tiles as the live stack carries them: map at 13,1 and 4x3. */
+const BASE_STACK = baseRegionStack(REGIONS);
+
 /* `null` for "this host published none", not `undefined` - passing undefined to
  * a defaulted parameter selects the DEFAULT, so the no-region test would have
  * quietly run with regions and passed for the wrong reason. */
-function frame(regions: ScreenRegions | null = REGIONS): WorldFrame {
+function frame(
+  regions: ScreenRegions | null = REGIONS,
+  stack: readonly LiveRegion[] | null = null,
+): WorldFrame {
   const GRANITE = 21;
   const FLOOR = 1;
   return buildWorldFrame({
@@ -138,6 +145,7 @@ function frame(regions: ScreenRegions | null = REGIONS): WorldFrame {
     size: { width: 4, height: 3 },
     screenOrigin: { x: 13, y: 1 },
     ...(regions ? { regions } : {}),
+    ...(stack ? { stack } : {}),
     resolveCell: (grid, screen): WorldCell => {
       if (grid.y === 0) {
         return { grid, screen, visibility: "seen", terrain: { kind: "terrain", id: GRANITE }, overlays: [], cursor: false };
@@ -349,6 +357,133 @@ describe("samples/blueprint-view, as the game would load it", () => {
     expect(source).toMatch(/\.terrain\b/u);
     /* And no imports: a folder plugin gets the engine through ctx. */
     expect(source).not.toMatch(/^\s*import\s/mu);
+  });
+
+  /* ----------------------------------------------------------------------- *
+   * #261: the sample stands its canvas down when a screen opens over the map.
+   *
+   * EVERY ASSERTION IN THIS BLOCK GOES THROUGH `frontendWorldFrameSink`, and
+   * that is the point rather than tidiness. The tests above call
+   * `installed.sink.present` directly, which is the ADAPTER - it does not
+   * snapshot. `snapshotWorldFrame` enumerates the frame's fields by hand, so the
+   * failure this commit is most likely to ship is a live frame that carries
+   * `stack` and a snapshot that quietly does not, with every live-frame test
+   * still green. Reading the stack through the sink a mod is really given is the
+   * only assertion that can see that, so this is where the defect is pinned.
+   * ----------------------------------------------------------------------- */
+
+  /** The sample, behind the exact sink the shipped path hands a mod. */
+  async function modFacingSample(): Promise<{
+    readonly present: (frame: WorldFrame) => void;
+    readonly restate: (stack: readonly LiveRegion[]) => void;
+    readonly element: { readonly style: Record<string, string> };
+    readonly draws: Draw[];
+    readonly faults: string[];
+  }> {
+    const draws: Draw[] = [];
+    const { doc, element } = recordingDocument(draws);
+    const plugin = await loadSample();
+    const faults: string[] = [];
+    const report = (id: string, message: string): void => void faults.push(`${id}: ${message}`);
+    const installed = installFrontend(
+      [
+        coreFrontendCandidate({ present: () => faults.push("core drew") }),
+        { id: "blueprint-view", manifest: manifest as never, plugin },
+      ],
+      () => context(doc),
+      report,
+    );
+    const sink = frontendWorldFrameSink(installed, report);
+    /* A MOD holds the display, so the stream is restatable. Core's is not, and
+     * asserting that here would be asserting the wrong branch - the control for
+     * it is in frontend-mod.node.test.ts. */
+    expect(typeof sink.restate).toBe("function");
+    return {
+      present: (f) => sink.present(f),
+      restate: (stack) => sink.restate!(stack),
+      element,
+      draws,
+      faults,
+    };
+  }
+
+  /** A screen that covers the whole 18x5 terminal, which core's do. */
+  const SCREEN: LiveRegion = {
+    id: "core:screen",
+    layer: "modal",
+    cells: { col: 0, row: 0, cols: 18, rows: 5 },
+  };
+  /* A region that is genuinely on screen and genuinely NOT over the map: the
+   * sidebar columns, 0..12, where the map starts at 13. Without this the "stand
+   * down" test would pass just as well against a sample that hid whenever the
+   * stack had more than four entries in it. */
+  const BESIDE: LiveRegion = {
+    id: "mod:vitals",
+    layer: "overlay",
+    cells: { col: 0, row: 1, cols: 13, rows: 3 },
+  };
+
+  it("keeps drawing while nothing is over the map (#261)", async () => {
+    const sample = await modFacingSample();
+    sample.present(frame(REGIONS, [...BASE_STACK, BESIDE]));
+
+    expect(sample.faults).toEqual([]);
+    expect(sample.element.style.display).toBe("block");
+    /* The same counts the ordinary draw test pins, so "it stood down" cannot be
+     * confused with "it drew nothing because the frame was broken". */
+    expect(sample.draws.filter((d) => d.op === "fillRect").length).toBe(5);
+    expect(sample.draws.filter((d) => d.op === "stroke").length).toBe(7);
+  });
+
+  it("draws nothing at all once a screen covers the map (#261)", async () => {
+    /* THE LIVE DEFECT. Placing the canvas on the map region (#234) stopped this
+     * mod covering the sidebar, the messages and the menus BESIDE the map. It
+     * did nothing about what covers the map itself: the inventory, the knowledge
+     * browser and the Mods screen you would use to turn this off all repaint the
+     * terminal underneath this canvas, so the last dungeon it drew stayed
+     * floating over the middle of every screen the player opened. */
+    const sample = await modFacingSample();
+    sample.present(frame(REGIONS, [...BASE_STACK, SCREEN]));
+
+    expect(sample.faults).toEqual([]);
+    expect(sample.draws).toEqual([]);
+    expect(sample.element.style.display).toBe("none");
+  });
+
+  it("is TOLD, with no repaint behind it, and stands down then (#261)", async () => {
+    /* The half a type cannot close. A world frame is produced by render(), and
+     * render() does not run while a screen owns the terminal - a screen repaints
+     * from its own key loop. So at the moment this mod most needs to hear "you
+     * are covered", no frame is coming. The host re-presents the last frame with
+     * the new stack instead, which is what makes this an event. */
+    const sample = await modFacingSample();
+    sample.present(frame(REGIONS, [...BASE_STACK]));
+    expect(sample.element.style.display).toBe("block");
+    const drawnBefore = sample.draws.length;
+    expect(drawnBefore).toBeGreaterThan(0);
+
+    sample.restate([...BASE_STACK, SCREEN]);
+    expect(sample.element.style.display).toBe("none");
+    expect(sample.draws.length).toBe(drawnBefore);
+
+    /* And back again when the screen closes, without a repaint either. */
+    sample.restate([...BASE_STACK]);
+    expect(sample.element.style.display).toBe("block");
+    expect(sample.draws.length).toBeGreaterThan(drawnBefore);
+    expect(sample.faults).toEqual([]);
+  });
+
+  it("stands down for a stack that does not describe the map at all (#261)", async () => {
+    /* `occludersOf` returns undefined rather than [] for an id that is not in
+     * the stack, because collapsing the two reports a misspelled name as good
+     * news. The sample takes the same side of that distinction the same way: a
+     * host that published a stack with no `map` in it has stopped describing the
+     * map, and a front end that read that as "nothing is covering me" would
+     * paint over whatever replaced it for ever. */
+    const sample = await modFacingSample();
+    sample.present(frame(REGIONS, [BESIDE]));
+    expect(sample.draws).toEqual([]);
+    expect(sample.element.style.display).toBe("none");
   });
 
   it("declines rather than throwing where there is no DOM", async () => {

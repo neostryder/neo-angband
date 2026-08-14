@@ -1,23 +1,36 @@
 # Every item that still needs porting
 
-**Dated 2026-08-04, last worked 2026-08-11.** The work list derived from
+**Dated 2026-08-04, last worked 2026-08-14.** The work list derived from
 [DEFERRALS.md](DEFERRALS.md), which is the accounting of what was found and how
 each verdict was reached. This one is the checklist, ordered so the things a
 player would notice come before the things only a developer sees, and so the
 items that unlock others come first of all.
 
-**68 items covering all 15 confirmed-absent citations** — **all 68 closed**, as
+**68 items covering all 13 confirmed-absent citations** — **all 68 closed**, as
 of 2026-08-07, when 5.5's last log line landed. That is a statement about this
 list and nothing wider: see [What "zero open" does and does not
 mean](#what-zero-open-does-and-does-not-mean) at the foot of this file, which
 names what is still deliberately divergent and what has never been measured.
+
+**All 68 re-verified item by item on 2026-08-14 (task #226), and every one held:
+64 `ported`, 2 meta (0.1 and 0.2, which adjudicate the list itself), and 2
+`unreachable-in-upstream` — 2.11 (`OSTACK_LIST`) and 2.16 (the store-purchase
+history entry).** The re-verification found no hidden backlog. What it did find
+is stale supporting prose: eight source comments beside closed items still
+asserted the absence the item had already removed, and those are corrected in the
+same pass. See [DEFERRALS.md](DEFERRALS.md) for the appendix re-verification that
+ran alongside it.
 
 **That citation count used to read 76, and every drop since has been closure,
 not narrowing.** The two censuses held 55 `real` + 21 `partial` when these 68
 items were written; re-adjudicating after the closure work left 5 `real` + 15
 `partial`, because most of those rows now describe code that exists. A second
 re-verification on 2026-08-11 retired five more `partial` rows the same way,
-leaving 5 `real` + 10 `partial`. The number is checked against the censuses by
+leaving 5 `real` + 10 `partial`. **On 2026-08-14 the appendix re-verification
+(#226/#228) closed the deferral census's last two `partial` rows** — one `ported`
+(monster light wiring, 7.4) and one `unreachable-in-upstream` (the store-purchase
+history entry, 2.16) — **leaving 5 `real` + 8 `partial`, all eight of them in the
+ledger tranche.** The number is checked against the censuses by
 `packages/cli/src/port-todo.test.ts`, which is the only reason it is current —
 every one of those passes moved the censuses and left this line behind, and the
 guard caught it each time.
@@ -1611,23 +1624,38 @@ is reachable in play and a test constructs the case that used to be wrong.**
 - [x] **2.16 `history_find_artifact` on a store purchase.** CLOSED — **there is
   no such call upstream, and the one that does exist is already ported.**
 
-  `store.c` contains exactly one `history_find_artifact`, at **L1928**, and
-  L1928 is inside **`do_cmd_sell`** (L1869–2008), not `do_cmd_buy` (L1650–1782).
+  `store.c` contains exactly one `history_find_artifact`, at **L1924**, and
+  L1924 is inside **`do_cmd_sell`** (L1865–2000), not `do_cmd_buy` (L1646–1774).
   Its own comment says so: *"Update the auto-history if selling an artifact that
   was previously un-IDed. (Ouch!)"*. This item asked for the call on the
   **purchase** path, where upstream does not make it.
 
-  And the sell path is wired: `session/game.ts:3162` (gear handle) and `:3207`
-  (floor object) both call `state.onArtifactFound`, citing `store.c L1928`, and
-  fire `onArtifactLost` when the store discards it (L1992).
+  And the sell path is wired: `session/game.ts:3621` (gear handle) and `:3666`
+  (floor object) both call `state.onArtifactFound`, and fire `onArtifactLost`
+  when the store discards it (`store.c:1988`).
 
   The whole-surface check, since a wrong path name is exactly the kind of error
   that hides a second one: `history_find_artifact` has **two** call sites
-  upstream — `store.c:1928` and `obj-knowledge.c:971` (inside `object_touch`).
+  upstream — `store.c:1924` and `obj-knowledge.c:967` (inside `object_touch`).
   `object_touch` is called from three places (`cave-square.c:1181`,
-  `obj-knowledge.c:1012`, `cmd-wizard.c:1707`); the first two are ported at
+  `obj-knowledge.c:1008`, `cmd-wizard.c:1757`); the first two are ported at
   `game/known.ts:461` and `game/pickup.ts:303`. **The third was not** — see
   the wizard finding below, which this check is what surfaced.
+
+  **Re-verified 2026-08-14 (task #228) and re-filed as
+  `unreachable-in-upstream`,** the third finished state, rather than as a closed
+  gap: `do_cmd_buy` runs `store.c:1646-1774` and makes **no history call of any
+  name**, and `store.c`'s only four history sites are `:1087` and `:1303`
+  (`history_lose_artifact`, turnover and black-market purge), `:1924` and
+  `:1988`. There is nothing on the purchase path to owe.
+
+  **Every upstream line number in this item was wrong when it was written**, and
+  the correction above is measured against `reference/` rather than transcribed.
+  The drift was not uniform — `store.c` and `obj-knowledge.c` were each four
+  lines late, `cmd-wizard.c` fifty lines early, `cave-square.c:1181` exactly
+  right — so it is transcription error, not a differently-versioned tree. Read
+  as a warning about the C citations in the rest of this file, which have not
+  had the same check.
   Sites: `packages/core/src/store/transact.ts:26`,
   `parity/ledger/player-history.yaml:160`
 
@@ -2469,7 +2497,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   pointed at a docblock making the same stale claim.** It said shapechange
   effects "have no lore chain" and that the port "greys the entry". Neither was
   true: `shapeLoreLines` has been a faithful port of `shape_lore`
-  (`ui-knowledge.c:3111`) driving the browser for a long time, and the row is
+  (`ui-knowledge.c:3035`) driving the browser for a long time, and the row is
   not greyed. *A deferral note is evidence about the day it was written.* The
   `main.ts` docblock it cited went further and was wrong about three greyed
   browsers, none of which is greyed for the reason it gave; rewritten.
@@ -2479,10 +2507,10 @@ is reachable in play and a test constructs the case that used to be wrong.**
   INERT, so no supplier means the section silently is not there. Every shape
   page stopped after the misc flags. A player reading about Bear form was told
   what it does to their stats and nothing about how to enter or leave it.
-  - `shape_lore_append_change_effects` (`:3043`) —
+  - `shape_lore_append_change_effects` (`:2968`, called at `:3055`) —
     `effect_describe(s->effect, "Changing into the shape ", 0, false)`. Bat form
     now says "Changing into the shape does 5 damage to the player."
-  - `shape_lore_append_triggering_spells` (`:3059`) — every class's every book's
+  - `shape_lore_append_triggering_spells` (`:2982`, called at `:3056`) — every class's every book's
     every spell, hunting an `EF_SHAPECHANGE` into this shape. Bear form now says
     "The Druid spell, Bear Form, from [Creature Dominion] triggers the
     shapechange." All eight shipped shapechange spells across three classes now
@@ -2518,6 +2546,16 @@ is reachable in play and a test constructs the case that used to be wrong.**
   constructs a spell which CURES something called "bear". One redundant line
   was deleted rather than tested: an early-out on an empty effect list that
   `describeEffect` already handles, and which nothing could distinguish.
+  **Re-verified 2026-08-14 (task #228), because `DEFERRALS.md` was still listing
+  this tail as owed a week after it landed.** All ten of `shape_lore`'s sections
+  (`ui-knowledge.c:3035`, its section calls at `:3047-3056`) map one-to-one onto
+  `player/shape-lore.ts:253-267`, and the two the row called a tail are supplied
+  by `makeShapeLoreEnv` at `game/shape-inspect.ts:163` (`changeEffectText`) and
+  `:164` (`triggeringSpells`). The live browser builds its env through that
+  function at `web/src/main.ts:4164`, and
+  `game/shape-inspect.test.ts:279-295` — *"makeShapeLoreEnv: the tails reach the
+  page the browser draws"* — asserts both tail lines appear in `shapeLoreLines`
+  for a real shipped shape. A call site **and** a test, which is the bar.
   Sites: `packages/core/src/game/shape-inspect.ts` (new),
   `packages/core/src/player/shape-lore.ts:70`, `:253`,
   `packages/core/src/obj/power.ts:216`, `packages/web/src/main.ts:3885`
@@ -3579,7 +3617,7 @@ description at all**, and it was the worst of the four.
 1. any file with a `real` or `partial` census row is not cited by a `Sites:`
    line here — so a confirmed gap cannot be adjudicated and then quietly left
    off the work list;
-2. the counts stated at the top (**68 items, 15 citations, 5 `real` + 10
+2. the counts stated at the top (**68 items, 13 citations, 5 `real` + 8
    `partial`**) disagree with the census — so a new `real` row in a file that
    already appears cannot hide inside an existing item. Note that the item count
    and the citation count are coupled here but are not the same measurement: 2.20
@@ -3594,7 +3632,9 @@ description at all**, and it was the worst of the four.
    would have missed it. **And again on 2026-08-11**, when re-verifying the
    appendix retired five more `partial` rows: the pass that moved the census left
    this line stating the old count, and the guard held the suite red until the
-   number was corrected rather than letting a stale total ship;
+   number was corrected rather than letting a stale total ship. **And once more
+   on 2026-08-14**, when the appendix re-verification emptied the deferral
+   census's `partial` column entirely (15 citations to 13);
 3. any path named in a `Sites:` line does not exist on disk — so a citation
    cannot rot into fiction after a rename;
 4. **any cited LINE has drifted off the note it points at** — the neighbourhood

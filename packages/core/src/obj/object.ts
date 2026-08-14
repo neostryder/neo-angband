@@ -897,17 +897,26 @@ export interface StackLimits {
 
 /**
  * object_similar: can one item like obj1 stack with one like obj2, ignoring
- * inscriptions? The equipped checks are deferred (no player gear here). The
- * OSTACK_LIST known-kind and fully-known comparisons behave as if everything
- * were known, which is exactly upstream's behaviour too, because nothing in
- * 4.2.6 passes OSTACK_LIST - see the note at the check below.
+ * inscriptions? The object_is_equipped checks are not ported: every caller
+ * that reaches this (objectPackTotal and objectStackable below, in turn called
+ * from store/transact.ts, store/store.ts, mon/make.ts, game/floor.ts,
+ * game/gear.ts and game/pickup.ts) passes OSTACK_PACK, OSTACK_QUIVER,
+ * OSTACK_MONSTER, OSTACK_STORE or OSTACK_FLOOR - pack, quiver, monster-drop,
+ * store and floor piles, none of which can ever hold an equipped item (that
+ * lives in a body slot, not a stack). The guard is unreachable for every
+ * 4.2.6 caller, not outstanding. The OSTACK_LIST known-kind and fully-known
+ * comparisons behave as if everything were known, which is exactly upstream's
+ * behaviour too, because nothing in 4.2.6 passes OSTACK_LIST - see the note at
+ * the check below.
  */
 export function objectSimilar(
   obj1: GameObject,
   obj2: GameObject,
   _mode: number,
 ): boolean {
-  /* DEFERRED: object_is_equipped checks (no player gear yet). */
+  /* object_is_equipped checks: unreachable for every 4.2.6 caller (pack,
+   * quiver, monster, store and floor piles never hold an equipped item) - not
+   * outstanding, see the header above. */
 
   /* Mimicked items do not stack */
   if (obj1.mimickingMIdx || obj2.mimickingMIdx) return false;

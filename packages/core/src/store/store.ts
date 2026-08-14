@@ -36,6 +36,7 @@ import {
   tvalHasVariablePower,
   tvalIsAmmo,
   tvalIsArmor,
+  tvalIsChest,
   tvalIsLauncher,
   tvalIsLight,
   tvalIsWeapon,
@@ -78,16 +79,17 @@ export interface StoreMaintContext {
   /** Every live store, for black_market_ok's cross-store check. */
   stores: Store[];
   /**
-   * store_update's cheat_xtra readouts (store.c:1424, :1444). The option is in
+   * store_update's cheat_xtra readouts (store.c:1420, :1440, :1458). The option is in
    * scope per the exact-parity mandate; the session supplies this sink only
    * when cheat_xtra is on, so faithful play stays silent.
    */
   cheatMsg?: (text: string) => void;
   /**
-   * history_lose_artifact (store.c:1091 inside store_delete_random, and :1307
+   * history_lose_artifact (store.c:1087 inside store_delete_random, and :1303
    * in the black-market purge). Those are the only two of upstream's four
-   * store_delete callers that log a loss - do_cmd_buy's two (L1754, L1847) do
-   * not, because the player is taking the artifact, not losing it.
+   * store_delete callers that log a loss - do_cmd_buy's (L1750) and
+   * do_cmd_retrieve's (L1843) do not, because the player is taking the
+   * artifact, not losing it.
    *
    * Reachable in this port only through an artifact the PLAYER sold into stock:
    * store generation never produces one (applyMagic is called with
@@ -106,10 +108,10 @@ export interface StoreMaintContext {
 const STORE_LIMITS: StackLimits = { quiverSlotSize: 1, thrownQuiverMult: 1 };
 
 /* ------------------------------------------------------------------ */
-/* Owners (store.c L1465)                                              */
+/* Owners (store.c L1474)                                              */
 /* ------------------------------------------------------------------ */
 
-/** store_choose_owner (L1478): a uniformly random proprietor. */
+/** store_choose_owner (L1474): a uniformly random proprietor. */
 export function storeChooseOwner(
   rng: Rng,
   store: { owners: StoreOwner[]; featName: string },
@@ -121,9 +123,9 @@ export function storeChooseOwner(
 }
 
 /**
- * store_shuffle (L1493): swap in a different proprietor.
+ * store_shuffle (L1489): swap in a different proprietor.
  *
- * C store.c:1497-1498 retries until the owner changes and assumes more than
+ * C store.c:1493-1494 retries until the owner changes and assumes more than
  * one owner. A one-owner table (accepted by the port's data model) would spin
  * forever. Keep the multi-owner draw loop identical to C; terminate cleanly
  * when there is only one owner (randint0(1) is a no-op on the WELL stream).
@@ -169,7 +171,7 @@ function townBooksOfTval(
  * Create a live Store from a bound definition. The proprietor is a provisional
  * placeholder (owners[0]); store_reset assigns the real owner with a single
  * randint0, matching C store_shuffle against a NULL initial owner (store.c
- * L340-357, L1493-1501). When `reg`/`classes` are supplied, the bookseller's
+ * L340-357, L1489-1497). When `reg`/`classes` are supplied, the bookseller's
  * deferred town-book `always:` lines (bound.alwaysBookTvals) are expanded into
  * the runtime alwaysTable so the shop stocks the town spellbooks
  * (parse_always, store.c:208-231).
@@ -638,7 +640,7 @@ function storeFindKind(
   return null;
 }
 
-/** store_delete_random (L1040): imitate a non-PC buyer taking some stock. */
+/** store_delete_random (L1036): imitate a non-PC buyer taking some stock. */
 function storeDeleteRandom(
   rng: Rng,
   store: Store,
@@ -665,18 +667,18 @@ function storeDeleteRandom(
     }
   }
 
-  /* store.c:1090-1092, AFTER num is settled and before the delete. */
+  /* store.c:1086-1091, AFTER num is settled and before the delete. */
   if (obj.artifact) onArtifactLost?.(obj.artifact);
 
   storeDelete(store, obj, num);
 }
 
 /* ------------------------------------------------------------------ */
-/* Random stock creation (store.c L1105)                               */
+/* Random stock creation (store.c L1101)                               */
 /* ------------------------------------------------------------------ */
 
 /**
- * black_market_ok (L1105): the black market only stocks items other stores
+ * black_market_ok (L1101): the black market only stocks items other stores
  * do not, unless they are ego or notably enchanted.
  */
 function blackMarketOk(
@@ -706,7 +708,7 @@ function storeGetChoice(rng: Rng, store: Store): ObjectKind {
   return kind;
 }
 
-/** store_create_random (L1156): make a random object and give it to the store. */
+/** store_create_random (L1152): make a random object and give it to the store. */
 export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean {
   const { rng, deps, maxDepth, stores } = ctx;
   const reg = deps.reg;
@@ -733,7 +735,7 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
         : storeGetChoice(rng, store);
 
     /* No chests in stores. */
-    if (!kind || kind.tval === TV.CHEST) continue;
+    if (!kind || tvalIsChest(kind.tval)) continue;
 
     const obj = objectPrep(rng, reg, constants, kind, level, "randomise");
     /* depth 0: store stock is generated at the player's town depth, so no
@@ -775,7 +777,7 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
   return false;
 }
 
-/** store_create_item (L1262): make a specific always-stocked kind. */
+/** store_create_item (L1258): make a specific always-stocked kind. */
 export function storeCreateItem(
   ctx: StoreMaintContext,
   store: Store,
@@ -791,10 +793,10 @@ export function storeCreateItem(
 }
 
 /* ------------------------------------------------------------------ */
-/* Maintenance (store.c L1294)                                         */
+/* Maintenance (store.c L1290)                                         */
 /* ------------------------------------------------------------------ */
 
-/** store_maint (L1294): keep a store's stock between its bounds. */
+/** store_maint (L1290): keep a store's stock between its bounds. */
 export function storeMaint(ctx: StoreMaintContext, store: Store): void {
   const { rng, deps } = ctx;
 
@@ -805,7 +807,7 @@ export function storeMaint(ctx: StoreMaintContext, store: Store): void {
   if (store.feat === FEAT.STORE_BLACK) {
     for (const obj of [...store.stock]) {
       if (!blackMarketOk(deps.reg, obj, ctx.stores)) {
-        /* store.c:1305-1310. */
+        /* store.c:1301-1306. */
         if (obj.artifact) ctx.onArtifactLost?.(obj.artifact);
         storeDelete(store, obj, obj.number);
       }

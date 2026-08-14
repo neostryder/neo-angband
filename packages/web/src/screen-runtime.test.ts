@@ -10,6 +10,7 @@
  * answers is a menu the game is still painting underneath.
  */
 
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -644,5 +645,90 @@ describe("taking the screen back", () => {
     await done;
     expect(await withTerminal(renameRequest(), () => 1)).toEqual({ held: true, value: 1 });
     expect(owner.received).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* TRIPWIRES: the halves of #258 that are NOT wired yet                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A MECHANISM WITH NO CALLER IS A MECHANISM THAT DOES NOTHING, and the tests
+ * above cannot tell the difference - every one of them calls `withTerminal`
+ * itself. `SCREEN_PROMPTS` names FOUR prompting actions across THREE hosts, and
+ * this file is where "who actually calls this" has to be answered, because it is
+ * the module the answer is about.
+ *
+ * These are TRIPWIRES, not skips: each records the state of an unfinished wire
+ * and goes RED the moment that wire lands, so the person who lands it is the one
+ * who deletes the tripwire. A skip would be silent in exactly the situation the
+ * whole design exists to make loud.
+ *
+ * Read from source text on purpose. The alternative is booting `main.ts` in a
+ * unit test to see whether a call happens, which is a canvas, a game and a
+ * network away from the question being asked.
+ */
+describe("#258 tripwires: the wiring that has not landed", () => {
+  const web = (name: string): string =>
+    readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
+
+  /**
+   * Every module that hosts a `SCREEN_PROMPTS` action, and whether it announces.
+   *
+   * `charsheet.ts` hosts `core:character` / `core:character-flags` (`rename`,
+   * `file`) and is wired. `main.ts` hosts `core:report` (`describe`, through
+   * `showReportPage`'s `act` -> `getString`) and `core:update` (`mods`, through
+   * `showUpdatePage`'s `act` -> `showModUpgrades`) and is NOT - both of those
+   * prompts still land under a presenter's overlay today.
+   *
+   * PER FILE rather than per action because that is the granularity the evidence
+   * has: a `withTerminal` call in `main.ts` proves one of its two sites is wired
+   * and says nothing about the other. When main.ts is touched, BOTH must land,
+   * and the row is deleted rather than flipped.
+   */
+  const PROMPT_HOSTS: ReadonlyArray<{ file: string; wired: boolean; sites: string[] }> = [
+    { file: "charsheet.ts", wired: true, sites: ["charsheet:rename", "charsheet:file"] },
+    { file: "main.ts", wired: false, sites: ["report:describe", "update:mods"] },
+  ];
+
+  for (const host of PROMPT_HOSTS) {
+    it(`${host.file} ${host.wired ? "announces" : "does NOT yet announce"} its prompts (${host.sites.join(", ")})`, () => {
+      expect(/\bwithTerminal\s*\(/u.test(web(host.file))).toBe(host.wired);
+    });
+  }
+
+  /**
+   * THE ABI MEMBER IS NOT PUBLISHED. `YieldingScreen` is declared privately in
+   * `screen-runtime.ts` and says so; the two copies that a mod author can
+   * actually reach - `ScreenShown` in `screen-view.ts` and its twin in
+   * `packages/mod-sdk/src/screen.ts` - still have only `dismissed`.
+   *
+   * WHAT THIS DOES AND DOES NOT COST, measured rather than assumed. It is NOT
+   * that a TypeScript mod cannot implement the member - `tsc` accepts
+   * `show: () => ({ dismissed, yieldTerminal })` against a `ScreenShown |
+   * undefined` return type with no cast and no excess-property error (probed,
+   * with a deliberate type error in the same file to prove it was compiled).
+   * What it costs is everything a published member buys: an author reading the
+   * SDK has no way to LEARN the member exists, and nothing checks the signature
+   * of the one they write - a `yieldTerminal(request: string)` compiles today
+   * and is handed a `PromptRequest` at runtime.
+   *
+   * When both copies gain the member this test goes RED. Deleting it is the
+   * signal to also delete `YieldingScreen` from `screen-runtime.ts` and use
+   * `ScreenShown` there, which is what that interface's own comment asks for.
+   */
+  it("has not published yieldTerminal on ScreenShown, in either copy", () => {
+    const live = web("screen-view.ts");
+    const sdk = readFileSync(
+      new URL("../../mod-sdk/src/screen.ts", import.meta.url),
+      "utf8",
+    );
+    /* Both, not either: a member on one copy and not the other is a mod compiled
+     * against a different game, which is worse than neither having it. */
+    expect(live.includes("yieldTerminal")).toBe(false);
+    expect(sdk.includes("yieldTerminal")).toBe(false);
+    /* And the private declaration is still where it says it is, so this cannot
+     * pass by the interface having quietly moved somewhere else. */
+    expect(web("screen-runtime.ts")).toContain("interface YieldingScreen");
   });
 });

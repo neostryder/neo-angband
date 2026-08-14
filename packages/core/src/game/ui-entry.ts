@@ -1478,7 +1478,9 @@ export function liveUiEntryDeps(state: GameState): UiEntryDeps {
      * race + class + shape intrinsics are merged (calcs.ts). The old default read
      * `p.pflags`, which does not exist, so it answered false for everything. */
     playerHas: (flag: number): boolean => ps?.pflags.has(flag) ?? false,
-    /* PORT_TODO 3.9: the launcher the PF_FAST_SHOT push needs. */
+    /* The player's equipped shooting-slot item - the live launcher PF_FAST_SHOT's
+     * bonus reads (ui-entry.c L974-984), via the shared accessor in
+     * obj/knowledge.ts. */
     launcher: equippedLauncher(p, state.runeEnv),
   };
 }

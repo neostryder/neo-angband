@@ -168,6 +168,24 @@ export function describeCapability(cap: string): CapabilityDescription {
        * ability to picture what changes. "Replace part of the interface" tells
        * them nothing; "your hit points, food and armour" tells them where to
        * look when it goes wrong. Elevated either way - it is their screen. */
+      /* CREATE IS A DIFFERENT SENTENCE FROM REPLACE, and it needs its own arm
+       * rather than a region name, because every name below is something the
+       * player can already see and point at. This one is furniture that does
+       * not exist yet.
+       *
+       * Until this landed the region arm fell through to the replace text and
+       * told the player a region mod would "Draw the region part of the
+       * interface instead of the game" - describing a takeover of something
+       * they own, for a mod that only ADDS. It compiled, because the switch is
+       * on `kind` and "region" is a legal region name, so nothing caught it:
+       * a consent string is only checked by reading it. #261 */
+      if (parsed.action === "create") {
+        return {
+          cap,
+          text: "Add furniture of its own to your screen - panels this mod draws itself, over the map and beside the game's own",
+          elevated: true,
+        };
+      }
       return parsed.region === "*"
         ? {
             cap,

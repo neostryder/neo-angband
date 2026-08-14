@@ -6,7 +6,7 @@
  * for a repaint before sending that same object to its caller's sink.
  */
 import type { RenderAssetRef } from "./term";
-import type { ScreenRegions } from "./regions";
+import type { LiveRegion, ScreenRegions } from "./regions";
 import {
   backgroundAssetForWorldCell,
   renderWorldFrame,
@@ -69,6 +69,13 @@ export interface LiveWorldRead<TMemory, TMonster> {
    * on a screen is the host's fact, not a projection of the dungeon.
    */
   readonly regions?: ScreenRegions;
+  /**
+   * Everything on screen for this frame, bottom to top (#261). Passed through
+   * untouched for the same reason `regions` is: what is drawn OVER the world is
+   * the host's fact, and a front end that cannot learn it keeps its canvas up
+   * over every screen the player opens.
+   */
+  readonly stack?: readonly LiveRegion[];
   readonly playerGrid: WorldGrid;
   readonly cursor?: WorldGrid;
   readonly cursorBackground: string;
@@ -124,6 +131,7 @@ export function projectLiveWorld<TMemory, TMonster>(
     size: read.size,
     screenOrigin: read.screenOrigin,
     ...(read.regions ? { regions: read.regions } : {}),
+    ...(read.stack ? { stack: read.stack } : {}),
     ...(player ? { player } : {}),
     resolveCell: (grid, screen) => projectCell(read, grid, screen),
   }, sink);

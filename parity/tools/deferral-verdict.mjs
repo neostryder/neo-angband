@@ -20,6 +20,19 @@
  *   real-dead     the function exists and NOTHING calls it (shipped is not reachable)
  *   partial       part is ported; the note must say which part is not
  *   n-a           not applicable to this port, with the mechanism named
+ *   unreachable-in-upstream
+ *                 no path in Angband 4.2.6 can execute it, so no player can
+ *                 observe its absence. The THIRD finished state, created by the
+ *                 owner ruling of 2026-08-09, and deliberately NOT spelled `n-a`:
+ *                 `n-a` is a claim about THIS PORT's platform or front end, and
+ *                 this one is a claim about UPSTREAM, measured in the C. Merging
+ *                 them makes the census unauditable - you can no longer tell
+ *                 which rows rest on a browser/layer argument and which rest on a
+ *                 measurement of 4.2.6. Two conditions, because this is the easy
+ *                 state to abuse: name the C `file:line` and what makes it
+ *                 unreachable (no caller, a constant-false guard, a `#define`
+ *                 nothing sets), and prove it is unreachable in UPSTREAM rather
+ *                 than merely unreached by the port. See parity/DEFERRALS.md.
  *   divergence    deliberately different, ratified, with the reason
  *   stale-doc     the note describes a state of the code that no longer holds
  *   not-a-deferral the census matched ordinary English, not a parity claim
@@ -48,6 +61,7 @@ const VERDICTS = new Set([
   "real-dead",
   "partial",
   "n-a",
+  "unreachable-in-upstream",
   "divergence",
   "stale-doc",
   "not-a-deferral",

@@ -266,6 +266,20 @@ export const REGION_LAYERS: readonly RegionLayer[] = ["base", "overlay", "modal"
 export type ModRegionLayer = Exclude<RegionLayer, "system">;
 
 /**
+ * The same set as a value, for the runtime check and for the error message.
+ *
+ * DERIVED FROM `REGION_LAYERS` rather than written out beside it, because a
+ * second hand-written list of the bands is the list that goes stale - and it
+ * would go stale in the direction that matters: a band added to the type and
+ * forgotten here is a band a mod is refused from with a message naming the
+ * bands it is allowed, which would then be wrong. The filter is the one place
+ * `system` is named, and it is named as the exclusion the type already makes.
+ */
+export const MOD_REGION_LAYERS: readonly ModRegionLayer[] = REGION_LAYERS.filter(
+  (layer): layer is ModRegionLayer => layer !== "system",
+);
+
+/**
  * A region as it exists in a live stack.
  *
  * `id` is a plain string and NOT `ScreenRegionName` - see that type's comment.

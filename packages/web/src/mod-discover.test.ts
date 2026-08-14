@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { discoverMod, listTags, type DiscoverEnv } from "./mod-discover";
+import { discoverMod, listTagRefs, listTags, type DiscoverEnv } from "./mod-discover";
 
 /** A fetch over a fixed URL->body map, counting what was asked for. */
 function fakeNet(
@@ -33,6 +33,11 @@ const RAW = (tag: string, path: string): string =>
 const tagList = (...names: string[]): string =>
   JSON.stringify(names.map((name) => ({ name })));
 
+/** A tags-API response the way GitHub actually shapes it: name plus the commit
+ * SHA it currently resolves to. */
+const tagListSha = (...entries: ReadonlyArray<readonly [string, string]>): string =>
+  JSON.stringify(entries.map(([name, sha]) => ({ name, commit: { sha } })));
+
 const tree = (
   entries: ReadonlyArray<readonly [string, number]>,
   dirs: readonly string[] = [],
@@ -63,6 +68,35 @@ describe("listTags", () => {
      * "it failed" would send them looking for a fault that is not theirs. */
     const { env } = fakeNet({ [TAGS]: 403 });
     return expect(listTags("a/b", env)).rejects.toThrow(/rate-limiting[\s\S]*try again/u);
+  });
+});
+
+describe("listTagRefs: the SHA GitHub already sends alongside every tag name", () => {
+  it("reads the commit each tag resolves to, newest first", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagListSha(["v0.9.0", "sha-old"], ["v1.0.0", "sha-new"]),
+    });
+    expect(await listTagRefs("a/b", env)).toEqual([
+      { name: "v1.0.0", sha: "sha-new" },
+      { name: "v0.9.0", sha: "sha-old" },
+    ]);
+  });
+
+  it("reads null, not a throw, when an entry has no commit at all", async () => {
+    /* The response `listTags` has always parsed: no `commit` field, the shape
+     * every existing fixture in this file uses. Backward compatible with the
+     * OLD shape of response this parsed before SHAs were read from it. */
+    const { env } = fakeNet({ [TAGS]: tagList("v1.0.0") });
+    expect(await listTagRefs("a/b", env)).toEqual([{ name: "v1.0.0", sha: null }]);
+  });
+
+  it("still returns exactly the names listTags always has", async () => {
+    /* listTags is now implemented in terms of this - a caller must not be able
+     * to tell (mod-refresh.ts's refreshOne calls it and expects string[]). */
+    const { env } = fakeNet({
+      [TAGS]: tagListSha(["v0.9.0", "s1"], ["v1.0.0", "s2"], ["latest", "s3"]),
+    });
+    expect(await listTags("a/b", env)).toEqual(["v1.0.0", "v0.9.0"]);
   });
 });
 
@@ -116,7 +150,41 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     const r = await discoverMod({ repo: "a/b", tag: "v1.0.0" }, env);
 
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.mod.tags).toEqual([]);
+    if (r.ok) {
+      expect(r.mod.tags).toEqual([]);
+      /* Nothing to learn a SHA from when the tags call itself could not be read -
+       * unknown, not a guess and not a refusal to install. */
+      expect(r.mod.sha).toBeNull();
+    }
+  });
+
+  it("carries the SHA the resolved tag currently points to", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagListSha(["v1.0.0", "sha-old"], ["v1.2.0", "sha-current"]),
+      [RAW("v1.2.0", "manifest.json")]: JSON.stringify(MANIFEST),
+      [TREE("v1.2.0")]: tree([["manifest.json", 400]]),
+    });
+
+    const r = await discoverMod({ repo: "a/b" }, env);
+
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.mod.tag).toBe("v1.2.0");
+      expect(r.mod.sha).toBe("sha-current");
+    }
+  });
+
+  it("carries null when the resolved tag's own entry has no SHA", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagList("v1.2.0"), // the old-shaped fixture: no commit field at all
+      [RAW("v1.2.0", "manifest.json")]: JSON.stringify(MANIFEST),
+      [TREE("v1.2.0")]: tree([["manifest.json", 400]]),
+    });
+
+    const r = await discoverMod({ repo: "a/b" }, env);
+
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.mod.sha).toBeNull();
   });
 
   it("refuses a repository with no version, and says a branch is not one", async () => {

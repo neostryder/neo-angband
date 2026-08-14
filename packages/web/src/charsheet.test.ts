@@ -38,17 +38,32 @@ import type {
   PlayerPackRecords,
   TerrainRecordJson,
 } from "@rpgm-tools/neo-angband-core";
-import { showCharacterSheet, characterFlagsScreen } from "./charsheet";
+import {
+  showCharacterSheet,
+  characterFlagsScreen,
+  CHARSHEET_PROMPT_LABELS,
+  MODE_VIEW_IDS,
+} from "./charsheet";
 import {
   characterScreen,
   characterSheetLines,
   historyBlockLines,
+  screenPromptFor,
   statHeaderLine,
   statRowLine,
   CHARACTER_ACTIONS,
+  SCREEN_PROMPTS,
 } from "./screens";
-import { setScreenPresenter } from "./screen-runtime";
-import { MODELLED_SCREENS, type ScreenHost, type ScreenTableBlock, type ScreenTextBlock, type ScreenView } from "./screen-view";
+import { setScreenPresenter, type YieldingScreen } from "./screen-runtime";
+import { promptRequest, type PromptRequest } from "./prompt-view";
+import { setUiFaultReporter } from "./overlay";
+import {
+  MODELLED_SCREENS,
+  type ScreenHost,
+  type ScreenTableBlock,
+  type ScreenTextBlock,
+  type ScreenView,
+} from "./screen-view";
 import { buildUiEntryConfig } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
@@ -473,6 +488,322 @@ describe("showCharacterSheet offers the sheet to a presenter", () => {
     void showCharacterSheet(term, state, "Fred", { uiEntryPacks });
     expect(rec.seen).toHaveLength(1);
     expect(term.snapshot()[0]).toContain("Fred");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* #258: the prompt inside invoke, and the overlay it lands under       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE DEFECT, AS AN OBSERVABLE.
+ *
+ * `host.invoke("rename")` runs the game's own `promptText` on the faithful
+ * terminal while the presenter's overlay is on top of it, and the input door
+ * goes on feeding it keystrokes. `askforAuxKeypress` clears the prefilled
+ * default on the first printable key, so 'c' B o b Enter renames the character
+ * and calls `onRename` - which in `main.ts` is `renamePlayer` -> `persistSave()`.
+ * A save written for a name the player never saw themselves type.
+ *
+ * So the assertion is not "yieldTerminal was called". It is WHAT WAS TRUE AT THE
+ * MOMENT THE SAVE WAS PERSISTED: the presenter's overlay was not covering the
+ * screen the question was asked on. `occluding()` models that as the one boolean
+ * a presenter genuinely controls, flipped by the announcement itself.
+ *
+ * The negative control for every test here is the wiring REMOVED - `invoke`
+ * calling `doRename` / `doFileDump` directly, which is what this file measured
+ * green before #258. Not a presenter fed input assumed to be inert.
+ */
+describe("a prompt inside invoke is announced before it lands (#258)", () => {
+  const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /**
+   * A presenter whose overlay COVERS the terminal until the game tells it to
+   * stand aside, and covers it again when the game gives it back.
+   *
+   * Typed as `YieldingScreen` because that is the only published spelling of
+   * `yieldTerminal` today - `ScreenShown` (screen-view.ts) and the SDK's copy
+   * still have only `dismissed`. MEASURED, not assumed: the handle is returned
+   * from `show` with NO cast and `tsc` accepts it, so this member is undeclared
+   * rather than unusable. `screen-runtime.test.ts` carries the tripwire for
+   * publishing it.
+   */
+  function occluding(): {
+    host: () => ScreenHost;
+    covering: () => boolean;
+    received: (PromptRequest | null)[];
+    dismiss: () => void;
+  } {
+    let held: ScreenHost | undefined;
+    let covering = true;
+    const received: (PromptRequest | null)[] = [];
+    let done = (): void => {};
+    const dismissed = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    const shown: YieldingScreen = {
+      dismissed,
+      yieldTerminal(request) {
+        received.push(request);
+        covering = request === null;
+      },
+    };
+    setScreenPresenter({
+      id: "test:overlay",
+      presenter: {
+        show: (_view, host) => {
+          held = host;
+          covering = true;
+          return shown;
+        },
+      },
+    });
+    return {
+      host: () => held!,
+      covering: () => covering,
+      received,
+      dismiss: () => done(),
+    };
+  }
+
+  it("does not persist a renamed save under the presenter's own overlay", async () => {
+    const { state, win, term } = setup();
+    const rec = occluding();
+    /* What `renamePlayer` -> `persistSave()` would have written, plus the one
+     * fact that makes it a defect: whether the player could see the question. */
+    const persisted: { name: string; occluded: boolean }[] = [];
+    const open = showCharacterSheet(term, state, "Fred", {
+      uiEntryPacks,
+      onRename: (n) => persisted.push({ name: n, occluded: rec.covering() }),
+    });
+
+    const running = rec.host().invoke("rename");
+    await tick();
+    /* The prompt is the GAME's, unchanged: the prefill is the current name and
+     * the first printable key replaces it (askfor_aux L765-771). */
+    for (const ch of "Bob") press(win, ch);
+    press(win, "Enter");
+    await running;
+
+    /* The rename STILL HAPPENED. The ruling is explicit that prompts inside
+     * `invoke` are not forbidden - a mod's actions must not be a strict subset
+     * of the game's - so "no save was written" would be the wrong green. */
+    expect(persisted).toEqual([{ name: "Bob", occluded: false }]);
+    expect(term.snapshot().join("\n")).not.toContain("Fred the");
+    /* And the presenter has its screen back, or the player is left staring at a
+     * finished prompt with their overlay gone for the rest of the session. */
+    expect(rec.covering()).toBe(true);
+    expect(rec.received).toEqual([rec.received[0], null]);
+
+    rec.dismiss();
+    await open;
+  });
+
+  it("writes the save on 'c' then ENTER alone - two keys, no typing", async () => {
+    /* HOW REACHABLE THIS IS, as a measurement rather than a reading of the code.
+     * `promptText` prefills the current name, and Enter on the first keypress
+     * accepts the buffer (askfor_aux L675-679), so `onRename` fires - and in
+     * `main.ts` that is `renamePlayer` -> `persistSave()`. TWO keystrokes write
+     * the save, and the name does not even have to change for that to be true.
+     * Escape is the ONLY key that gets out of the prompt without writing it.
+     *
+     * Kept because the severity answer must not rot into an impression: this is
+     * the number, and it fails if the prompt ever stops accepting a bare Enter. */
+    const { state, win, term } = setup();
+    const rec = occluding();
+    const persisted: { name: string; occluded: boolean }[] = [];
+    const open = showCharacterSheet(term, state, "Fred", {
+      uiEntryPacks,
+      onRename: (n) => persisted.push({ name: n, occluded: rec.covering() }),
+    });
+
+    const running = rec.host().invoke("rename");
+    await tick();
+    press(win, "Enter");
+    await running;
+    expect(persisted).toEqual([{ name: "Fred", occluded: false }]);
+
+    /* And the one key that does NOT write it. */
+    const second = rec.host().invoke("rename");
+    await tick();
+    press(win, "Escape");
+    await second;
+    expect(persisted).toHaveLength(1);
+
+    rec.dismiss();
+    await open;
+  });
+
+  it("announces what the CENSUS says and what the real producer builds", async () => {
+    const { state, win, term } = setup();
+    const rec = occluding();
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+
+    const running = rec.host().invoke("rename");
+    await tick();
+
+    /* Built here from `screenPromptFor` + `promptRequest` - the same two
+     * producers the wiring uses - rather than from a literal, which would only
+     * assert that this file and that file were typed by the same person. */
+    const fact = screenPromptFor("core:character", "rename")!;
+    const expected = promptRequest(
+      fact.promptId,
+      "rename",
+      fact.extent,
+      CHARSHEET_PROMPT_LABELS[fact.promptId]!,
+      term.size(),
+    );
+    expect(rec.received[0]).toEqual(expected);
+    /* KEY SETS as well: an added optional field is equal-by-deep-compare to an
+     * absent one, so a field dropped at the seam sails past `toEqual`. */
+    expect(Object.keys(rec.received[0]!).sort()).toEqual(Object.keys(expected).sort());
+    /* `screen` extent means the whole grid, and the game took the whole grid:
+     * `promptText` clears and draws its own title where the sheet's used to be. */
+    expect(rec.received[0]!.extent).toBe("screen");
+    expect(term.snapshot()[0]).toContain(CHARSHEET_PROMPT_LABELS["charsheet:rename"]);
+
+    press(win, "Escape");
+    await running;
+    rec.dismiss();
+    await open;
+  });
+
+  it("announces the dump as a LINE, and the game draws it on that line", async () => {
+    const { state, win, term } = setup();
+    const rec = occluding();
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+
+    const running = rec.host().invoke("file");
+    await tick();
+
+    expect(rec.received[0]!.id).toBe("charsheet:file");
+    expect(rec.received[0]!.extent).toBe("line");
+    expect(rec.received[0]!.clip).toEqual({ col: 0, row: 0, cols: 80, rows: 1 });
+    expect(rec.covering()).toBe(false);
+    /* The label is a SECOND SPELLING of `getFile`'s own un-exported prompt, so
+     * it is checked against the row `getFile` actually drew on - the rectangle
+     * the request promised - and not against another constant. */
+    expect(term.snapshot()[0]!.startsWith(CHARSHEET_PROMPT_LABELS["charsheet:file"]!)).toBe(true);
+
+    press(win, "Escape"); // cancel the dump
+    await running;
+    expect(rec.covering()).toBe(true);
+    rec.dismiss();
+    await open;
+  });
+
+  it("still announces from page 2, where the sheet is a different view", async () => {
+    const { state, win, term } = setup();
+    const rec = occluding();
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+
+    expect((await rec.host().invoke("page-next"))!.id).toBe("core:character-flags");
+    const running = rec.host().invoke("rename");
+    await tick();
+    expect(rec.received.map((r) => r?.id ?? null)).toEqual(["charsheet:rename"]);
+
+    press(win, "Escape");
+    await running;
+    rec.dismiss();
+    await open;
+  });
+
+  it("does NOT announce a page flip: the control, an action that never prompts", async () => {
+    /* `page-next` is in `SCREEN_NO_PROMPT`. Announcing it anyway would make a
+     * presenter fade its overlay out and back for a keystroke that touches no
+     * terminal - and is exactly what a wiring that wrapped every action in
+     * `withTerminal` would do. */
+    const { state, term } = setup();
+    const rec = occluding();
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+
+    await rec.host().invoke("page-next");
+    await rec.host().invoke("page-prev");
+    await rec.host().invoke("teleport-the-player");
+    expect(rec.received).toEqual([]);
+    expect(rec.covering()).toBe(true);
+
+    rec.dismiss();
+    await open;
+  });
+
+  it("reports BY NAME the presenter that cannot stand aside, and prompts anyway", async () => {
+    /* THE NEGATIVE CONTROL AS A SHIPPED CASE: every presenter that exists today
+     * - `samples/sprite-inventory` included - returns a handle with no
+     * `yieldTerminal` at all. The prompt must still run (the ruling), the player
+     * must still be able to answer it, and the mod must be named once. */
+    const faults: string[] = [];
+    setUiFaultReporter((id, message) => void faults.push(`${id}: ${message}`));
+    try {
+      const { state, win, term } = setup();
+      let done = (): void => {};
+      const dismissed = new Promise<void>((resolve) => {
+        done = resolve;
+      });
+      let held: ScreenHost | undefined;
+      setScreenPresenter({
+        id: "no-yield-mod",
+        presenter: {
+          show: (_view, host) => {
+            held = host;
+            return { dismissed };
+          },
+        },
+      });
+      const renames: string[] = [];
+      const open = showCharacterSheet(term, state, "Fred", {
+        uiEntryPacks,
+        onRename: (n) => renames.push(n),
+      });
+
+      const running = held!.invoke("rename");
+      await tick();
+      for (const ch of "Bob") press(win, ch);
+      press(win, "Enter");
+      await running;
+
+      expect(renames).toEqual(["Bob"]);
+      expect(faults).toHaveLength(1);
+      expect(faults[0]).toContain("no-yield-mod");
+      expect(faults[0]).toContain("yieldTerminal");
+      expect(faults[0]).toContain(CHARSHEET_PROMPT_LABELS["charsheet:rename"]);
+
+      done();
+      await open;
+    } finally {
+      setUiFaultReporter(() => {});
+    }
+  });
+
+  it("keys the census by the ids the view builders actually publish", () => {
+    /* `MODE_VIEW_IDS` is a second spelling of what `characterScreen` and
+     * `characterFlagsScreen` return. Untied, a renamed view id would leave the
+     * census lookup returning `undefined` and every prompt silently
+     * un-announced again - the original defect, restored, with every test above
+     * still green because they would all stop announcing together. */
+    const { state } = setup();
+    expect(MODE_VIEW_IDS[0]).toBe(characterScreen(state, "Fred").id);
+    expect(MODE_VIEW_IDS[1]).toBe(
+      characterFlagsScreen(state, "Fred", buildUiEntryConfig(uiEntryPacks)).id,
+    );
+  });
+
+  it("has a label for every prompt the census gives this screen", () => {
+    /* Totality, so a third prompting action added to the sheet cannot announce
+     * itself to mods by its bare id. */
+    for (const viewId of MODE_VIEW_IDS) {
+      const row = SCREEN_PROMPTS[viewId];
+      expect(row).toBeDefined();
+      for (const fact of Object.values(row!)) {
+        expect(CHARSHEET_PROMPT_LABELS[fact.promptId]).toBeTypeOf("string");
+      }
+    }
+    /* And no label for a prompt this screen does not open, which is what would
+     * be left behind if one were removed from the census. */
+    const known = new Set(
+      MODE_VIEW_IDS.flatMap((v) => Object.values(SCREEN_PROMPTS[v] ?? {}).map((f) => f.promptId)),
+    );
+    expect(Object.keys(CHARSHEET_PROMPT_LABELS).sort()).toEqual([...known].sort());
   });
 });
 

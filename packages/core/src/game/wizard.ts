@@ -65,11 +65,15 @@
  * stat/gold/exp apply). The NOSCORE_* cheat-flag model and the markNoscore seam
  * (15.3) live here as well.
  *
- * DEFERRED (see parity/ledger/wizard-debug.yaml): the wiz-spoil.c spoiler
- * generators and the three Monte-Carlo collectors (do_cmd_wiz_collect_*) are
- * dev-tooling ports that live in packages/cli (spoilers.ts, stats.ts,
- * wiz-stats.ts) alongside the other headless generation harnesses, not in this
- * engine module.
+ * NOT IN THIS MODULE (see parity/ledger/wizard-debug.yaml - nothing here is
+ * outstanding): the wiz-spoil.c spoiler generators (spoilObjDesc,
+ * spoilArtifact, spoilMonDesc, spoilMonInfo) are ported in game/spoil.ts and
+ * invoked by the wizard-mode "Create spoilers" menu in
+ * packages/web/src/wizard.ts:395-400 (also exposed headlessly via
+ * packages/cli/main-spoil.ts). The three Monte-Carlo collectors
+ * (do_cmd_wiz_collect_*) live in packages/cli (stats.ts, wiz-stats.ts)
+ * alongside the other headless generation harnesses, not in this engine
+ * module.
  */
 
 import { EF, KF, ORIGIN, PROJ, TMD } from "../generated/index.js";

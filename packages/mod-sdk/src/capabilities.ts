@@ -95,6 +95,19 @@
  *                             NOT covered by "display:replace" and it does not
  *                             cover it, in either direction: taking the map is
  *                             not taking the vitals.
+ *  - "ui:region.create"    - ADD a rectangle of your own to the player's screen
+ *                             (ModPlugin.regions), rather than take one of the
+ *                             game's. The only "ui:" capability whose ACTION is
+ *                             not "replace", and the distinction is the point:
+ *                             every name above is something the game already
+ *                             draws, so consenting to it is consenting to a
+ *                             handover, while this one is new furniture
+ *                             appearing. No wildcard - there is no set of
+ *                             region names to range over, because the region
+ *                             does not exist until the mod declares it. NOT
+ *                             covered by "ui:*.replace", which is why
+ *                             `grantCovers` compares the action as well as the
+ *                             region.
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -114,7 +127,7 @@ export type ParsedCapability =
   | { kind: "network"; host: string }
   | { kind: "registry"; domain: string }
   | { kind: "display"; action: "replace" }
-  | { kind: "ui"; region: string; action: "replace" };
+  | { kind: "ui"; region: string; action: "replace" | "create" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -131,6 +144,28 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
  * covers them all, as it covers the regions.
  */
 const UI_RE = /^ui:(\*|messages|sidebar|status|menu|screen)\.replace$/;
+/**
+ * `ui:region.create` - ADD a rectangle of your own to the screen, rather than
+ * take one of the game's.
+ *
+ * A SEPARATE ACTION, NOT A SEVENTH REGION NAME, and that distinction is the
+ * whole reason this is its own pattern. Every string `UI_RE` matches names
+ * something that already exists and is currently drawn by the game; consenting
+ * to one is consenting to a HANDOVER. This one names nothing - the region does
+ * not exist until the mod declares it - so what the player is consenting to is
+ * new furniture appearing, which is a different sentence and deserves a
+ * different string.
+ *
+ * THERE IS NO WILDCARD, deliberately. `ui:*.replace` is a wildcard over WHICH
+ * region changes hands, and it means something because the set of regions is
+ * closed and known. There is no set to range over here: a mod either may add
+ * regions or it may not.
+ *
+ * AND `ui:*.replace` MUST NOT COVER IT. That is enforced in `grantCovers` by
+ * comparing `action`, and it is the reason that comparison exists at all - see
+ * the note there.
+ */
+const UI_CREATE_RE = /^ui:region\.create$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
@@ -159,6 +194,12 @@ export function parseCapability(cap: string): ParsedCapability {
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
+  }
+  /* `region` is the region NAME here as much as `sidebar` is in the line above:
+   * it is the literal the author wrote, kept so that one `kind: "ui"` arm has
+   * one shape rather than two. What distinguishes it is `action`. */
+  if (UI_CREATE_RE.test(cap)) {
+    return { kind: "ui", region: "region", action: "create" };
   }
   const event = EVENT_RE.exec(cap);
   if (event) {
@@ -214,9 +255,25 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning
-       * the vitals are two consents, and a mod that wants both says both. */
+       * the vitals are two consents, and a mod that wants both says both.
+       *
+       * THE ACTION IS COMPARED TOO, and until #261 it was not - which was
+       * invisible only because every ui capability was a `.replace`, so the
+       * comparison would have been of a constant against itself. `ui:region
+       * .create` broke that: the wildcard is a wildcard over WHICH REGION
+       * changes hands, and reading it as a wildcard over what may be done to
+       * the interface let `ui:*.replace` carry the right to put new furniture
+       * on the player's screen. That is a grant the consent prompt never showed
+       * and the player never approved, and it would have escalated silently -
+       * there is no error, no report, and nothing on screen that says a region
+       * was created by a mod that was only ever allowed to redraw one.
+       *
+       * `region` is still compared as well: with two actions the pair is what
+       * identifies a grant, and dropping either half re-opens one of the two
+       * directions. */
       return (
         grant.kind === "ui" &&
+        grant.action === request.action &&
         (grant.region === "*" || grant.region === request.region)
       );
   }

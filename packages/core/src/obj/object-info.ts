@@ -976,7 +976,7 @@ function collectTotalBrandsSlays(
      * nonweap_slay when it adds something the object did not already have.
      * `append_brand` / `append_slay` return false for a brand already present,
      * which is why the flag is set INSIDE the guard and not for every active
-     * temporary. PORT_TODO 3.20. */
+     * temporary. */
     for (let i = 1; i < env.brands.length; i++) {
       if (deps.temp.hasBrand(i)) {
         const next = appendBrand(brands, i, env.brands);

@@ -30,6 +30,10 @@ const ORDER = [
   ["real-dead", "Present and unreachable"],
   ["divergence", "Deliberately different, with the mechanism named"],
   ["n-a", "Not applicable to this port, with the mechanism named"],
+  [
+    "unreachable-in-upstream",
+    "No path in 4.2.6 can execute it, measured in the C (the third finished state)",
+  ],
   ["ported", "Done; the note was stale and has been rewritten"],
   ["stale-doc", "The note described a state of the code that no longer holds"],
   ["note-is-fix", "The wording sits inside a record of a FIX, not a gap"],
@@ -64,6 +68,20 @@ function rows() {
 const all = rows();
 const counts = new Map();
 for (const r of all) counts.set(r.verdict || "(unadjudicated)", (counts.get(r.verdict || "(unadjudicated)") ?? 0) + 1);
+
+/* ORDER drives BOTH the tally table and the section list, so a verdict the
+ * census uses and this array does not name is not rendered anywhere - the total
+ * still counts it and every section omits it, which is a row deleted from the
+ * report by silence. The vocabulary lives in three places (here,
+ * deferral-verdict.mjs, and packages/cli/src/deferral-report.test.ts); this is
+ * what makes adding a token to only two of them fail loudly. */
+const unnamed = [...counts.keys()].filter(
+  (v) => v !== "(unadjudicated)" && !ORDER.some(([o]) => o === v),
+);
+if (unnamed.length > 0) {
+  console.error(`verdict(s) with no entry in ORDER, so no section would render: ${unnamed.join(", ")}`);
+  process.exit(1);
+}
 
 const md = [];
 md.push("## Appendix: every row, with its verdict");

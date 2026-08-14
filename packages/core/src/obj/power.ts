@@ -279,7 +279,7 @@ export function lookupObjProperty(
 /* ------------------------------------------------------------------ */
 
 function bowMultiplier(obj: PowerObject): number {
-  if (obj.tval !== TV.BOW) return 1;
+  if (!tvalIsLauncher(obj.tval)) return 1;
   const mult = obj.pval;
   randartLogf(() => `Base mult for this weapon is ${mult}\n`);
   return mult;

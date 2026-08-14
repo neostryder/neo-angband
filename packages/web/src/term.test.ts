@@ -283,8 +283,14 @@ describe("prt census: the sites that must NOT erase (put_str, ui-output.c:362-37
   it("showLevelMap's box border stays print (prt would erase across the border)", () => {
     /* window_make draws a bordered box; an erase-to-end-of-line on any interior
      * row would take the right-hand '|' with it. */
+    /* `paintLevelMapOnTerminal`, not `showLevelMap`: the overview became a
+     * REGION in #261 commit 5, so `showLevelMap` is now the two-line wrapper
+     * that pushes the rectangle and `paintLevelMapOnTerminal` is the painter -
+     * the same `show*`/`paint*` split `showViewOnTerminal` already had. The
+     * painter's body is UNCHANGED, which is what this assertion is about; only
+     * the name of the function enclosing it moved. */
     const src = WEB("overlay.ts");
-    const at = src.indexOf("export function showLevelMap(");
+    const at = src.indexOf("function paintLevelMapOnTerminal(");
     expect(at).toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf("\n}", at));
     expect(body).toContain("term.print(mapW + 1, r + 1,");

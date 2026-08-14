@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { classifyModTag, type ModTagStanding } from "./mod-updates";
+import { classifyModPin, classifyModTag, type ModPinStanding, type ModTagStanding } from "./mod-updates";
 
 describe("where an installed tag stands against the one on offer", () => {
   const cases: [string | null, string, ModTagStanding][] = [
@@ -43,6 +43,37 @@ describe("where an installed tag stands against the one on offer", () => {
     for (const [installed, offered] of offerable) {
       expect(installed).not.toBeNull();
       expect((compare(installed as string, offered) ?? 0) < 0).toBe(true);
+    }
+  });
+});
+
+describe("where an installed SHA stands against the one a tag resolves to now", () => {
+  const A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const cases: [string | null | undefined, string | null | undefined, ModPinStanding][] = [
+    [A, A, "confirmed"],
+    /* THE CASE THIS FUNCTION EXISTS FOR: the same tag, a different commit. */
+    [A, B, "moved"],
+    /* Missing on either side is UNKNOWN, never "moved" and never "confirmed" - a
+     * gap in what was recorded is not evidence either way. */
+    [undefined, B, "unknown"],
+    [A, null, "unknown"],
+    [undefined, undefined, "unknown"],
+    [null, null, "unknown"],
+  ];
+  for (const [recorded, current, expected] of cases) {
+    it(`${String(recorded)} recorded vs ${String(current)} now is ${expected}`, () => {
+      expect(classifyModPin(recorded, current)).toBe(expected);
+    });
+  }
+
+  it("never calls two DIFFERENT known SHAs anything but 'moved'", () => {
+    /* The property the table is for: 'confirmed' only when they are the SAME known
+     * value, so a table entry that quietly introduced a third way to reach
+     * 'confirmed' would be caught here rather than by inspection. */
+    const known = cases.filter(([r, c]) => r != null && c != null);
+    for (const [recorded, current, expected] of known) {
+      expect(expected).toBe(recorded === current ? "confirmed" : "moved");
     }
   });
 });

@@ -37,12 +37,12 @@ import {
   OF,
   RF,
   STAT_ENTRIES,
-  TV,
   TVAL_ENTRIES,
 } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import { attachExt } from "../mod/extension.js";
+import { tvalIsLight } from "./object.js";
 import type {
   Activation,
   ActivationRecordJson,
@@ -1176,7 +1176,7 @@ export class ObjRegistry {
       if (rec.act) {
         const act = this.findActivation(rec.act);
         /* Special light activations belong to the base object. */
-        if (tval === TV.LIGHT && special) {
+        if (tvalIsLight(tval) && special) {
           kind.activation = act;
           kind.time = parseRand(rec.time);
         } else {

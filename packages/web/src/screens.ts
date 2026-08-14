@@ -2406,26 +2406,61 @@ function hallOfFameRow(row: ScoreRow): ScreenRow {
 /**
  * The stock columns of the knowledge menu's store view.
  *
- * The name field is 46 and the weight 8 because that is what this screen has
- * always drawn; the price is upstream's own "%9ld" (store_display_entry,
+ * The weight is 8 and the price is upstream's own "%9ld" (store_display_entry,
  * ui-store.c L315) with two columns of gap, which is where the shop screen puts
- * it too.
+ * it too - neither of those changes with terminal width, so a declared width is
+ * faithful for them.
+ *
+ * The NAME width is not a free choice: it is the gap this screen must leave, at
+ * `tagged`'s 3-column prefix plus the columns' own 1-column default gap, for the
+ * weight column to land where `store_display_recalc` (ui-store.c L208-233) puts
+ * it. That function reads the LIVE terminal (`Term_get_size`), which this
+ * screen's fixed-width table cannot reproduce (see the function-level comment
+ * below) - so 52 is that formula evaluated at the one width this whole
+ * screen-model family already commits to elsewhere (`screenBodyLines`'s default
+ * `cols = 80`, and every existing test here renders at 80): at wid=80,
+ * `scr_places_x[LOC_WEIGHT]` is `wid - 14 - 10` = 56 for a store (L226, L229,
+ * L232-233 - the -10 makes room for the price column), so the name column must
+ * end 4 short of that (3-column prefix + 1-column gap) - 52. Task #264: this
+ * was 46 before, which put every column after it 6 short of where the shop
+ * screen (shop.ts's `geom()`) draws them, because 46 was chosen only to match
+ * what the pre-model code had always drawn, never checked against upstream's
+ * own arithmetic.
  */
-const STORE_NAME_WIDTH = 46;
+const STORE_NAME_WIDTH = 52;
 export const STORE_STOCK_COLUMNS: readonly ScreenColumn[] = [
   { key: "name", width: STORE_NAME_WIDTH },
   { key: "weight", width: 8, align: "right" },
   { key: "price", width: 9, align: "right", gap: 2 },
 ];
 /**
- * The home's columns: the same list WITHOUT a price.
+ * The home's columns: the same shape WITHOUT a price, but NOT the same name
+ * width.
  *
- * A real conditional rather than an empty column, because store_display_entry
- * skips the price entirely for FEAT_HOME (ui-store.c L303) - nothing there is for
- * sale, and a presenter handed a `price` cell full of blanks would have to guess
- * whether that meant free or unknown.
+ * `store_display_recalc` gives the home a wider name field than a store's, on
+ * purpose: `scr_places_x[LOC_WEIGHT]` only gets the `-10` that reserves room
+ * for a price column `if (store->feat != FEAT_HOME)` (ui-store.c L232-233), so
+ * a home's weight sits at plain `wid - 14` = 66 at wid=80, ten columns right of
+ * a store's 56 - there being no price column crowding it. Same subtraction as
+ * the store's comment above (3-column prefix + 1-column gap): 66 - 4 = 62.
+ *
+ * Before task #264 this reused `STORE_STOCK_COLUMNS`' name width (then 46, a
+ * store-shaped number applied to a screen with no price column at all), which
+ * put the home's weight header 16 columns left of where 4.2.6 draws it - a
+ * second, undiscovered instance of the same mistake, fixed alongside the
+ * store's because it is the identical derivation in the identical function.
+ *
+ * The price omission itself is unchanged and is its own real conditional,
+ * because store_display_entry skips the price entirely for FEAT_HOME
+ * (ui-store.c L303) - nothing there is for sale, and a presenter handed a
+ * `price` cell full of blanks would have to guess whether that meant free or
+ * unknown.
  */
-export const HOME_STOCK_COLUMNS: readonly ScreenColumn[] = STORE_STOCK_COLUMNS.slice(0, 2);
+const HOME_NAME_WIDTH = 62;
+export const HOME_STOCK_COLUMNS: readonly ScreenColumn[] = [
+  { key: "name", width: HOME_NAME_WIDTH },
+  { key: "weight", width: 8, align: "right" },
+];
 
 /** What `storeKnowledgeScreen` needs that a GameState cannot answer on its own. */
 export interface StoreKnowledgeDeps {
@@ -2451,7 +2486,7 @@ export interface StoreKnowledgeDeps {
  * THE HEADER LINE IS STILL A LINE, and it is the one row a table cannot
  * reproduce. A table's header sits on the DATA's column grid: the renderer
  * indents it by the tag's three columns and pads each label to its own column,
- * which would put "Store Inventory" at column 3 (it is at 0) and "Price" at 64
+ * which would put "Store Inventory" at column 3 (it is at 0) and "Price" at 70
  * (it is there now - see below). Both would be movements on the player's
  * screen, and byte identity outranks tidiness here - so the header travels as
  * prose the game already laid out and the column KEYS carry the contract
@@ -2463,12 +2498,26 @@ export interface StoreKnowledgeDeps {
  * "Price" WAS at column 62, two columns left of upstream's own
  * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368) - "Price".padStart(9) over
  * the price field, which the shop screen (shop.ts:564, `gm.priceX + 4`) always
- * got right. Column 64 is also where this screen's OWN data rows already put
- * it: the price cell is `priceStr.padStart(9)` starting two columns after an
- * 8-wide, space-led weight field that itself ends at column 57 - the same
- * column "Weight" above it ends at. "Price" ending at column 68 to match is
- * exactly this fix; column 62 ended at 66 and never lined up with its own
- * column. Fixed 2026-08-14 (task #257).
+ * got right. Column 64 was where task #257 moved it to, on 2026-08-14 - lined
+ * up with this screen's OWN data rows, whose price cell then started two
+ * columns after an 8-wide, space-led weight field ending at column 57.
+ *
+ * That fix was real but incomplete, and #257's own writeup said so: the two
+ * store screens still disagreed on Price, "for a different reason" (filed as
+ * #264), because column 64 was only self-consistent - the data row it matched
+ * was never checked against upstream's own arithmetic, only against the
+ * literal 46/8/9 column widths this screen had always used. Those widths are
+ * fixed (`screen-view.ts`'s table renderer does not read the terminal's live
+ * width for a declared column - see `STORE_NAME_WIDTH`'s comment above), where
+ * `store_display_recalc` (ui-store.c L208-233) computes `scr_places_x` from
+ * the LIVE terminal every repaint, same as the shop screen's `geom()` does.
+ * At the one width this whole screen family already renders at (80, see
+ * `STORE_NAME_WIDTH`'s comment), that live computation puts the price field at
+ * column 66, six columns right of where this screen's old 46-wide name column
+ * put it (60) - the "six columns" of #264. Column 70 is `scr_places_x[LOC_PRICE]
+ * + 4` at wid=80, and the price field it labels now really does end there,
+ * matching the shop screen exactly rather than only matching itself. Fixed
+ * 2026-08-14 (task #264).
  */
 export function storeKnowledgeScreen(
   state: GameState,
@@ -2480,9 +2529,12 @@ export function storeKnowledgeScreen(
     { text: isHome ? "Your Home" : deps.owner },
     { text: "" },
     {
+      // padEnd amounts derived in STORE_NAME_WIDTH / HOME_NAME_WIDTH's own
+      // comments above: they put "Weight" and "Price" where store_display_recalc
+      // (ui-store.c L208-233) puts them at wid=80, matching the data rows below.
       text: isHome
-        ? `${"Home Inventory".padEnd(52)}Weight`
-        : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
+        ? `${"Home Inventory".padEnd(68)}Weight`
+        : `${"Store Inventory".padEnd(58)}${"Weight".padEnd(12)}Price`,
     },
   ];
   /* A blank row between the header and the empty notice, and ONLY when the

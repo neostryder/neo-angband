@@ -178,6 +178,9 @@ export class SoundEngine {
   private soundHandler: ((type: "sound", data: MessageEventData) => void) | null =
     null;
 
+  /** Teardown callbacks registered by the owner; see onClose. */
+  private closeCallbacks: Array<() => void> = [];
+
   constructor(opts: SoundEngineOptions = {}) {
     this.hooks = opts.hooks ?? {};
     this.randint0 = opts.randint0 ?? defaultRandint0;
@@ -342,6 +345,24 @@ export class SoundEngine {
   }
 
   /**
+   * Run this on `close()`, after the event handler is detached.
+   *
+   * NOT UPSTREAM, and it exists for one reason: `close_sound` frees everything
+   * the C engine owns, but this engine can be SUBSCRIBED to something that
+   * outlives it. `soundPrefRegistry` is module-level (it has to be - the engine
+   * is per front end, not per character), so an engine that registered an
+   * `onAdd` listener keeps being handed prefs for the life of the process
+   * unless the unsubscribe is run. The front end holds that unsubscribe and
+   * nothing else knows when the engine dies, so the two have to be joined here.
+   *
+   * Callbacks run once and are then dropped, so a second `close()` is a no-op
+   * and a re-`init`ed engine does not double-unsubscribe.
+   */
+  onClose(fn: () => void): void {
+    this.closeCallbacks.push(fn);
+  }
+
+  /**
    * close_sound (sound-core.c, L392): unload every pooled sound, free the
    * pool, and close platform audio. Detaches the event handler too.
    */
@@ -350,6 +371,11 @@ export class SoundEngine {
       events.off("sound", this.soundHandler);
     }
     this.soundHandler = null;
+
+    /* Drained BEFORE the pool is freed, so a listener cannot re-fill it on the
+     * way past - which is the exact failure this seam was added for. */
+    const callbacks = this.closeCallbacks.splice(0);
+    for (const fn of callbacks) fn();
 
     if (this.nextSoundId !== 0 && this.hooks.unloadSound) {
       for (let i = 0; i < this.nextSoundId; i++) {

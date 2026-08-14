@@ -62,9 +62,9 @@ export interface ShapeLoreEnv {
 /**
  * lookup_obj_property(type, propIndex). This USED TO BE a second, incomplete
  * copy of that C function: it matched on (type, index) and left out upstream's
- * "special case - stats count as mods" (obj-properties.c:207). The stat
+ * "special case - stats count as mods" (obj-properties.c:36). The stat
  * modifier section looks stats up as MODs, exactly as upstream does
- * (shape_lore_append_stat_modifiers, ui-knowledge.c:2874), so without the
+ * (shape_lore_append_stat_modifiers, ui-knowledge.c:2800), so without the
  * special case every stat line rendered with an empty name - "Adds -3 to ."
  * on the fox, "Adds +4 to  and +4 to ." on the Pukel-man. obj/power.ts had the
  * correct copy the whole time; only one of the two ever learned.
@@ -77,7 +77,7 @@ function lookupProp(
   return lookupObjPropertyIn(env.properties, type, propIndex);
 }
 
-/** skill_index_to_name (ui-knowledge.c L2721-2767); STEALTH has no case. */
+/** skill_index_to_name (ui-knowledge.c L2644-2691); STEALTH has no case. */
 function skillIndexToName(i: number): string {
   switch (i) {
     case 0:
@@ -109,7 +109,7 @@ function plus(n: number): string {
 }
 
 /**
- * shape_lore_append_list (ui-knowledge.c L2770-2782): " a", " a and b",
+ * shape_lore_append_list (ui-knowledge.c L2694-2706): " a", " a and b",
  * " a, b and c". Returns the fragment (leading space included) or "".
  */
 function appendList(list: readonly string[]): string {
@@ -226,7 +226,7 @@ function miscFlags(shape: Shape, env: ShapeLoreEnv): string | null {
 
 /**
  * The fixed intro paragraph shape_lore prints before the field summaries
- * (ui-knowledge.c L3121-3128).
+ * (ui-knowledge.c L3040-3046).
  */
 const SHAPE_LORE_INTRO =
   "Like all shapes, the equipment at the time of the shapechange sets the " +
@@ -237,7 +237,7 @@ const SHAPE_LORE_INTRO =
   "instance).";
 
 /**
- * shape_lore (ui-knowledge.c L3116-3140): the full description of one shape,
+ * shape_lore (ui-knowledge.c L3035-3060): the full description of one shape,
  * returned as display lines (one per emitted textblock paragraph). Line 0 is
  * the shape name, line 1 the fixed intro, then each field summary that has
  * content, then the change-effect and triggering-spell tails from the env.
@@ -255,13 +255,16 @@ export function shapeLoreLines(shape: Shape, env: ShapeLoreEnv): string[] {
   push(protection(shape, env));
   push(sustains(shape, env));
   push(miscFlags(shape, env));
-  /* PORT_TODO 3.21: the last two sections of the shape-lore textblock chain,
-   * and the only two of the ten that are still seams rather than code. Both
-   * defaults are INERT - absent, the section is silently not there - so no
-   * supplier means a player reading about Bear form is told what it does to
-   * their stats and nothing about how to enter or leave it. Nothing supplies
-   * either today (main.ts's shapeEnv). See the 3.4 note: an unsupplied
-   * optional is a gap only when its default is inert, and these are. */
+  /* The last two of shape_lore's ten sections (shape_lore_append_change_effects
+   * and _triggering_spells, ui-knowledge.c L3055-3056). They stay seams rather
+   * than code because both reach outside the shape data - into the effect
+   * describer and the class registry - but they ARE supplied: game/shape-inspect.ts
+   * makeShapeLoreEnv sets changeEffectText at :163 and triggeringSpells at :164,
+   * and the live shape browser builds its env through it (web/src/main.ts:4165).
+   * Covered by game/shape-inspect.test.ts:282. An earlier note here said
+   * "nothing supplies either today"; that stopped being true when
+   * makeShapeLoreEnv landed, and the defaults are still inert, so the only
+   * warning of a regression is that test. */
   const change = env.changeEffectText?.(shape);
   if (change) lines.push(`${change}.`);
   for (const l of env.triggeringSpells?.(shape) ?? []) lines.push(l);

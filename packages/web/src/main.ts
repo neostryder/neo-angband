@@ -240,13 +240,13 @@ import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
 import {
   glyphWorldFrameSink,
-  type WorldFrameSink,
 } from "./world-view";
 import {
   coreFrontendCandidate,
   coreOnlyFrontend,
   frontendWorldFrameSink,
   installFrontend,
+  type FrontendMapStream,
   type InstalledFrontend,
 } from "./frontend-runtime";
 import {
@@ -341,7 +341,7 @@ import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./con
 import { GlyphTerm } from "./term";
 import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
-import { paintRegionStack, relayoutStack } from "./ui-stack";
+import { liveRegionStack, onStackChanged, paintRegionStack, relayoutStack } from "./ui-stack";
 import {
   buildHudFrame,
   glyphHudSectionSink,
@@ -395,6 +395,7 @@ import {
   showThroughPresenter,
   ScreenAbandoned,
 } from "./screen-runtime";
+import { installRegions } from "./region-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
 import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
@@ -1660,7 +1661,7 @@ function reportDisplayFault(id: string, problem: string, error: unknown): void {
  * be re-entered - and re-reported - on every single frame. These are reassigned
  * where the selection is, and nowhere else.
  */
-let liveWorldSink: WorldFrameSink = frontendWorldFrameSink(coreFrontendSlot, reportDisplayFault);
+let liveWorldSink: FrontendMapStream = frontendWorldFrameSink(coreFrontendSlot, reportDisplayFault);
 let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
 
 // The message log: every message the engine emits this session, for the top
@@ -7214,6 +7215,10 @@ function currentHudFrame(
         }
       : {}),
     regions,
+    /* What is drawn over this HUD, for a mod that has taken one of its regions
+     * and draws it outside the terminal (#261). Same composite the world frame
+     * carries, from the same relayout at the top of render(). */
+    stack: liveRegionStack(),
   });
 }
 
@@ -7440,6 +7445,10 @@ function render(targeting?: TargetingOverlay): void {
      * around it. The one thing a replacement front end could not previously
      * learn, and the reason the sample covered the window (#234). */
     regions,
+    /* And what is drawn OVER it (#261). `relayoutStack` ran at the top of this
+     * same render(), so this is the composite this frame is being drawn into
+     * rather than the previous frame's. */
+    stack: liveRegionStack(),
     playerGrid: state.actor.grid,
     ...(targeting ? { cursor: targeting.cursor } : {}),
     cursorBackground: CURSOR_BG,
@@ -8891,6 +8900,21 @@ term.onSizeChanged(() => {
   relayoutStack({ cols, rows, base: currentScreenRegions(viewport()), metrics: term.metrics() });
 });
 term.onSizeChanged(() => renderBackground());
+
+/* TELL A REPLACEMENT FRONT END WHEN SOMETHING OPENS OVER IT (#261).
+ *
+ * A world frame is produced by render(), and render() does not run while a core
+ * screen owns the terminal - a screen repaints itself from its own key loop. So
+ * the one moment a mod front end most needs to hear "you are covered" is the one
+ * moment no frame is coming to tell it, and its canvas sits over the middle of
+ * the inventory until the player closes it. This re-presents its LAST frame with
+ * the new stack, which is exactly the fact that changed.
+ *
+ * `restate` is absent when CORE holds the display, and that is the answer rather
+ * than an oversight: core repaints the map from render() and nowhere else, so
+ * restating it would paint the dungeon over the screen that had just opened.
+ * See `FrontendMapStream`. */
+onStackChanged((stack) => liveWorldSink.restate?.(stack));
 
 /*
  * NOT render(). The map belongs to a character the player has not chosen yet,
@@ -11136,6 +11160,30 @@ setMenuPresenter(
  * a document of blocks, so an inventory can be drawn as sprites. */
 setScreenPresenter(
   installScreen([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
+);
+
+/* THE REGIONS - furniture of a mod's OWN, rather than any of the game's changing
+ * hands. The fifth owner seam, and the only one with no selection in it: the
+ * map, a HUD region, the menus and the screens are each one thing that exactly
+ * one owner can hold, and two mods adding a panel are not in contention at all.
+ * So every eligible mod's regions go up, in load order, each at the band it
+ * asked for - and "last in load order wins" appears here only in its ordinary
+ * form, deciding which of two overlapping panels is on top.
+ *
+ * `ui:region.create`, which `ui:*.replace` deliberately does NOT cover: taking
+ * the vitals and adding furniture are two different sentences for a player to
+ * agree to. `system` is refused, by the type and again at the door, so the mod
+ * manager and a fault report can always be drawn ABOVE a mod - including above
+ * the mod that has gone wrong, which is the only recovery path there is.
+ *
+ * Pushed with the terminal as it stands right now, because the first relayout
+ * may not have happened yet and a region faulted against a 0x0 grid would be
+ * blamed on its author for the host's timing. */
+installRegions(
+  [...activeModCode().plugins],
+  displayCandidateContext,
+  reportDisplayFault,
+  term.size(),
 );
 
 /* The controller() half: an autoplayer mod takes over state.nextCommand.

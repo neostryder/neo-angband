@@ -68,7 +68,7 @@ function statName(state: GameState, statIndex: number): string {
 }
 
 /**
- * shape_lore_append_change_effects (ui-knowledge.c:3043):
+ * shape_lore_append_change_effects (ui-knowledge.c:2968):
  * `effect_describe(s->effect, "Changing into the shape ", 0, false)`. Null when
  * the shape has no effect records, which is upstream's `if (tbe)` - a shape
  * with no effect prints nothing rather than an empty sentence.
@@ -79,7 +79,7 @@ export function shapeChangeEffectText(
   extras: ShapeLoreExtras,
 ): string | null {
   /* No early-out on an empty effect list: describeEffect walks a null chain and
-   * returns null on its own, which is upstream's `if (tbe)` (L3048) and the one
+   * returns null on its own, which is upstream's `if (tbe)` (L2974) and the one
    * guard here. A second one in front of it read like a separate rule and was
    * untestable - nothing can distinguish the two paths. */
   const chain = buildObjectEffectChain(
@@ -99,7 +99,7 @@ export function shapeChangeEffectText(
 }
 
 /**
- * shape_lore_append_triggering_spells (ui-knowledge.c:3059): every class, every
+ * shape_lore_append_triggering_spells (ui-knowledge.c:2982): every class, every
  * book, every spell, every effect in that spell's chain - anything that is an
  * EF_SHAPECHANGE into THIS shape gets a line naming the class, the spell and
  * the book it lives in.

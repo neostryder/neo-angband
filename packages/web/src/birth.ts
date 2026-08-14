@@ -96,9 +96,11 @@ import {
   toCombatState,
 } from "@rpgm-tools/neo-angband-core";
 import type {
+  Chunk,
   GameState,
   HistoryChart,
   Player,
+  PlayerActor,
   PlayerBody,
   PlayerClass,
   PlayerProperty,
@@ -434,29 +436,77 @@ function drawScreenLine(term: GridSurface & GridPointerInput, x: number, y: numb
 }
 
 /**
+ * The exact GameState fields a birth preview supplies, mirrored from the real
+ * interfaces (GameState / PlayerActor / Chunk) via `Pick` rather than retyped
+ * by hand, so that renaming or dropping any one of them - upstream's job, not
+ * this file's - is a COMPILE ERROR at this declaration.
+ *
+ * `Required<...>` strips whatever optionality the source interface happens to
+ * carry on these keys (GameState.playerState is `?`, for the worldless
+ * harness). previewState always supplies a concrete value for every field
+ * named here regardless, so this deliberately does NOT let the object literal
+ * below quietly omit one just because upstream would tolerate `undefined` -
+ * that is the specific trap a plain `Pick` misses: an optional field on both
+ * sides passes a same-shape check while the two have actually parted, because
+ * "optional" on the mirror type would silently permit the omission too. See
+ * PreviewGameState's use as the `state` declaration's type below.
+ */
+type PreviewActor = Required<
+  Pick<
+    PlayerActor,
+    "player" | "combat" | "knownCombat" | "speed" | "totalEnergy" | "weapon"
+  >
+>;
+type PreviewChunk = Required<Pick<Chunk, "depth">>;
+type PreviewGameState = Required<Pick<GameState, "turn" | "playerState" | "runeEnv">> & {
+  chunk: PreviewChunk;
+  actor: PreviewActor;
+};
+
+/**
  * A minimal GameState wrapping a derived preview character. The birth flow has
  * no live GameState yet, so this feeds statTable / characterPanels /
  * characterSheetLines the same real, calc_bonuses-derived values a played
- * character would show. Cast because a preview needs none of the world state.
+ * character would show. A preview needs none of the rest of the world - no
+ * rng, gear, monsters, floor, traps, known map, target, ignore settings, lore,
+ * brands/slays or curse tables - so it can never be a REAL GameState; some
+ * cast to the full interface is unavoidable.
  *
- * THE CAST IS THE HAZARD, and it has already cost a shipped release. This used
- * to claim it carried "exactly the fields the character-sheet renderers read",
- * which is a promise about OTHER people's code that nothing checks. On
- * 2026-08-06, 0b2c72530 gave core the known-state twin: char-sheet.ts started
- * reading `state.actor.knownCombat` and `state.runeEnv`, this object was not
- * updated, and `as unknown as GameState` silenced both. (N)ew game threw
- * "Cannot read properties of undefined" and died at the crash reporter for five
- * days, on the green suite, because no test supplied `deps` and buildPreview
- * returns null without them - so the whole path was never executed.
+ * THE CAST WAS THE HAZARD, and it has already cost a shipped release. This used
+ * to build the object below and go straight to `as unknown as GameState`,
+ * which claimed "carries exactly the fields the character-sheet renderers
+ * read" without anything checking that claim - a promise about OTHER code that
+ * `unknown` let this file break for free. On 2026-08-06, 0b2c72530 gave core
+ * the known-state twin: char-sheet.ts started reading `state.actor.knownCombat`
+ * and `state.runeEnv`, this object was not updated, and the double cast
+ * silenced both. (N)ew game threw "Cannot read properties of undefined" and
+ * died at the crash reporter for five days, on the green suite, because no
+ * test supplied `deps` and buildPreview returns null without them - so the
+ * whole path was never executed.
  *
- * So: when a sheet renderer starts reading a new GameState field, it must be
- * added here too, and birth-preview.test.ts is what makes that failure land in
- * CI rather than on a player's first keypress. Do not restore a comment that
- * enumerates the fields as though the list were authoritative.
+ * Declaring `state: PreviewGameState` is what changed: every field below is
+ * checked against the REAL GameState/PlayerActor/Chunk shapes by name (via the
+ * Pick types above), so a rename or removal fails HERE, at compile time,
+ * rather than through the `unknown` hole. What it does NOT do: catch a field
+ * the real GameState gains ELSEWHERE (one PreviewGameState never names) that a sheet
+ * renderer starts reading - the exact 0b2c72530 shape. Nothing at this
+ * declaration can know a field it has never heard of exists, so that class of
+ * regression is still the runtime test's job (the "sheet preview builds a
+ * usable GameState" describe block in birth.test.ts) - this is narrower than
+ * that test, not a replacement for it.
  */
 function previewState(player: Player, ps: PlayerState): GameState {
   const combat = toCombatState(ps);
-  return {
+  /* The declared `: PreviewGameState` annotation (not `satisfies`) is load-
+   * bearing: `satisfies` checks the literal against PreviewGameState but
+   * leaves `state`'s own type as the anonymous literal, and casting FROM that
+   * anonymous literal straight to GameState fails ("neither type sufficiently
+   * overlaps with the other") even though the two are perfectly compatible -
+   * measured against this file's own tsconfig (see the note below). Declaring
+   * the NAMED alias as the variable's type gets the identical field-by-field
+   * check (missing/excess property, wrong type) and leaves `state` typed AS
+   * PreviewGameState, which the single-step cast below accepts. */
+  const state: PreviewGameState = {
     turn: 0,
     chunk: { depth: 0 },
     actor: {
@@ -478,7 +528,13 @@ function previewState(player: Player, ps: PlayerState): GameState {
       () => null,
       () => false,
     ),
-  } as unknown as GameState;
+  };
+  /* The one cast this file cannot avoid (see the doc above): PreviewGameState
+   * is a genuine, checked narrowing of GameState, so this needs no `unknown`
+   * intermediate to get there - a rename/removal in the source already failed
+   * above, at the `state: PreviewGameState` declaration, before this line
+   * runs. */
+  return state as GameState;
 }
 
 /**

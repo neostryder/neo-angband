@@ -183,8 +183,17 @@ export function installWebSound(
    * registry once here would have read it before every mod that can write to
    * it: a seam that looks right and works for nobody, which is precisely the
    * failure MOD_REACH.md:440-460 records for the projection override fields.
-   * With the subscription the order of the two stops mattering. */
-  soundPrefRegistry.onAdd((added) => engine.loadPrefs(added));
+   * With the subscription the order of the two stops mattering.
+   *
+   * THE UNSUBSCRIBE IS NOT OPTIONAL, and discarding it was a real leak rather
+   * than untidiness. `soundPrefRegistry` is module-level and outlives any
+   * engine, so a listener that is never removed keeps a CLOSED engine on the
+   * fan-out list for the rest of the process: a later registration re-fills the
+   * pool `close()` just freed and, with `preload`, issues a fetch for a message
+   * nothing can signal any more. Install twice and every sample loads twice.
+   * `onAdd`'s own doc has always said the engine's owner runs this on teardown;
+   * this call site is that owner, and it did not. */
+  engine.onClose(soundPrefRegistry.onAdd((added) => engine.loadPrefs(added)));
   engine.init(events);
   return engine;
 }

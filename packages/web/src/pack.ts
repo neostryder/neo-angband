@@ -763,6 +763,23 @@ function records(name: string): unknown[] {
 }
 
 /**
+ * A record file that a pack is allowed NOT to ship.
+ *
+ * `records` throws, and that is right for the ~41 files the game cannot boot
+ * without: a missing object.json is a broken pack and the loudest possible
+ * failure is the kindest one. But an OPTIONAL file is a different question, and
+ * answering it with the mandatory function is how #266's wire took 23 test
+ * packs down on 2026-08-14 - `CorePack.messageTypes` is declared `?`, the
+ * composer only emits a key for a file some pack actually shipped, and the very
+ * first pack without one threw before it could reach the optional field it was
+ * being loaded into. A type saying "optional" and a loader saying "required"
+ * cannot both be right.
+ */
+function optionalRecords(name: string): unknown[] | undefined {
+  return composition().composed.records[name];
+}
+
+/**
  * Every composed file with its record array, for the `__neo.mods()` probe.
  *
  * The composed OUTPUT, not the manifests: a count that came out of composition
@@ -919,6 +936,12 @@ export function loadGamePack(): GamePack {
     dungeonProfiles: records("dungeon_profile"),
     projection: records("projection"),
     trap: records("trap"),
+    /* #266: message types a pack coins, composed like any other record file so
+     * they exist before bindCore binds a record that names one. A plugin's
+     * register() runs long after bindCore, and a content-only pack has no
+     * register() at all, so composition is the ONLY route that reaches every
+     * pack that would want one. */
+    messageTypes: optionalRecords("message_type"),
     names: records("names"),
     store: records("store"),
     quest: records("quest"),

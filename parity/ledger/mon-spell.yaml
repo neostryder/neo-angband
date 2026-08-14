@@ -34,6 +34,27 @@ notes: >-
   they live in mon/ below game/. MON_SPELL_TYPES is evaluated once at module
   load from the generated string expressions, aligned to RSF value so the
   lookups mirror mon_spell_types[index] exactly.
+
+
+  RSF_BR_MANA is declared (list-mon-spells.h:38) and used by no monster
+  (measured 2026-08-14, task #228). 93 RSF( lines minus NONE and MAX give 91 real
+  spells, and every spells: directive in lib/gamedata/monster.txt uses 90 of them
+  - BR_MANA is the only one absent. packages/content/pack/monster.json matches
+  exactly: the same 90, nothing undeclared. So this is UNREACHABLE IN UPSTREAM
+  rather than unreached by the port, and only the DATA fact is the third finished
+  state.
+
+  THE ENUM ENTRY MUST STAY. RSF is a bit position that is PERSISTED
+  (docs/modding/MOD_REACH.md, row 22), so removing generated/mon-spells.ts:130
+  (BR_MANA: 25, which is list-mon-spells.h:38 minus the first RSF( at :13) would
+  shift BOULDER from 26 and every RSF above it, silently corrupting the monster
+  spell flagsets in every existing save. A SAVE_VERSION bump cannot repair a
+  renumbered bit - the old bytes would still decode against the new numbering.
+  The entry is load-bearing padding that also happens to be faithful; a
+  "close it out" pass must not touch it. The other faithful sites are the spoiler
+  record (packages/content/pack/monster_spell.json:720, from monster_spell.txt:425)
+  and a borg case at packages/borg/dist/danger/danger.js:718, mirroring
+  reference/src/borg/borg-danger.c:931 and borg-update.c:933 - dead in both trees.
 deferred:
   - CLOSED (2026-08-07). The follow-up increment landed: game/mon-cast.ts
     doMonSpell runs the chain through the effect stack with a monster source,
@@ -58,3 +79,9 @@ verified-by:
     categories; test_spells / ignore_spells / create_mon_spell_mask operate on an
     RSF flagset; the hit chance is MAX(level,1)*3 + hit and drops with confusion;
     breath_dam is hp/divisor capped at the damage cap (integer division).
+  - packages/content/src/data-exactness.test.ts is the ratchet for the BR_MANA
+    fact above: it re-parses reference/lib/gamedata/monster.txt and diffs it
+    field by field against packages/content/pack/monster.json (specs registered
+    at content/src/specs/mon-init.ts:99 and :62), so a spells:BR_MANA appearing
+    on the port side alone fails it today. No separate ratchet is needed or
+    wanted, and none was written - there is nothing left for one to assert.
