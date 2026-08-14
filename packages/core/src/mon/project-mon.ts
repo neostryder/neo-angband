@@ -794,9 +794,12 @@ function hMonCrush(ctx: MonProjectContext): void {
  * disabled mod's patches do not exist. Frozen, the attempt throws in strict mode
  * instead of silently succeeding.
  *
- * A mod that wants to change what a projection does to a monster asks for a
- * hook in `core/src/mod/hooks.ts`, where contributions compose, order and
- * disable properly.
+ * A mod that wants to change what a projection does to a monster goes through
+ * `MONSTER_HANDLERS_BY_CODE` below - the same table, rekeyed by projection
+ * code - reached at runtime as `host.projections.mon` over the per-game
+ * `ProjectionHandlerRegistry` (2026-08-14, gap row 7). That is where
+ * contributions compose per code, order, and stop existing when the mod is
+ * disabled; this array stays frozen for exactly the reasons above.
  */
 export const MONSTER_HANDLERS: readonly (MonHandler | null)[] = (() => {
   const t: Array<MonHandler | null> = new Array<MonHandler | null>(56).fill(
@@ -862,12 +865,70 @@ export const MONSTER_HANDLERS: readonly (MonHandler | null)[] = (() => {
 })();
 
 /**
+ * The same 56 handlers, REKEYED BY PROJECTION CODE - the fourth projection
+ * side, and the one #159 left out.
+ *
+ * `project_f`, `project_o` and `project_p` all became code-keyed registries on
+ * 2026-08-08/09 and got their producer (`registry:projection`) on 2026-08-09.
+ * `project_m` did not, so a mod adding `PROJ.SOULFIRE` could burn terrain,
+ * items and the player and did literally nothing to a monster - the projection
+ * bound fine, the code resolved fine, and the monster arm silently fell off the
+ * end of a 56-slot ARRAY because a mod's projection is appended at index 56 and
+ * up.
+ *
+ * The key is the CODE for the same reason it is on the other three tables: the
+ * numeric PROJ value of a mod's projection is assigned by `bindProjections` at
+ * bind time and is not in the generated enum, so a numeric key looks in the
+ * wrong place. Built from `Object.entries(PROJ)` so it cannot disagree with the
+ * indexed table it is derived from; `project-mon-registry.test.ts` asserts the
+ * two agree in both directions, slot for slot.
+ *
+ * All 56 slots are non-null (see `runMonsterHandler` below), so this map has
+ * exactly 56 entries and every core code a mod might want to wrap answers.
+ */
+export const MONSTER_HANDLERS_BY_CODE: ReadonlyMap<string, MonHandler> = (() => {
+  const out = new Map<string, MonHandler>();
+  for (const [code, index] of Object.entries(PROJ)) {
+    const handler = MONSTER_HANDLERS[index];
+    if (handler) out.set(code, handler);
+  }
+  return out;
+})();
+
+/**
+ * The dispatch seam for project_m's type handler, supplied by `wireGame` from
+ * `GameState.projectionHandlers.mon.table` BY IDENTITY - so a handler a plugin
+ * installs after the wiring is dispatched to on the next projection.
+ */
+export interface MonHandlerEnv {
+  /**
+   * The projection CODE for `ctx.type`, resolved by the caller through
+   * `projectionCodeFor` (world/projection.ts). `mon/` must not depend on
+   * `world/`'s bound table, so the caller resolves and passes it.
+   */
+  code?: string | undefined;
+  /** The LIVE code-keyed table. Absent means core's, by index, unchanged. */
+  monHandlers?: ReadonlyMap<string, MonHandler> | undefined;
+}
+
+/**
  * Run the monster handler for the projection type recorded in the context,
  * mutating it with the accumulated effect. A type with no handler (there are
  * none in the 56-entry space) leaves the context unchanged, matching upstream's
  * `if (monster_handler != NULL)` guard.
+ *
+ * With no `env.monHandlers` this is byte-for-byte the indexed dispatch it has
+ * always been, which is what keeps the parity vectors valid.
  */
-export function runMonsterHandler(ctx: MonProjectContext): void {
+export function runMonsterHandler(
+  ctx: MonProjectContext,
+  env: MonHandlerEnv = {},
+): void {
+  if (env.monHandlers) {
+    const handler = env.code === undefined ? undefined : env.monHandlers.get(env.code);
+    if (handler) handler(ctx);
+    return;
+  }
   const handler = MONSTER_HANDLERS[ctx.type];
   if (handler) handler(ctx);
 }

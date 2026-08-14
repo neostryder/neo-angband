@@ -25,7 +25,13 @@ import {
   resolveSectionState,
   sectionFlag,
 } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import type {
+  LoadedPack,
+  PackContent,
+  PackManifest,
+  RecordConflict,
+} from "@rpgm-tools/neo-angband-mod-sdk";
+import type { ConflictRow } from "./mod-conflicts";
 import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import { activeModCode } from "./mod-code";
@@ -251,14 +257,35 @@ export function discoverContentModManifests(): PackManifest[] {
 }
 
 /**
- * The human-readable conflict lines (P7.6) for a chosen enabled CONTENT set,
- * for the mod-manager conflicts pane. Builds the ordered LoadedPack set for the
- * given ids (core + enabled content mods), resolves load order, and runs
- * computeConflictReport, returning its prebuilt humanLines. Add-only mods and a
- * single contributor produce none. Returns the error text (not a throw) when a
- * dependency is missing or the order cannot resolve, so the UI can show it.
+ * The content layer's rows (P7.6) for the mod-manager conflicts pane, for a
+ * chosen enabled CONTENT set: one row per computeConflictReport humanLine, its
+ * RecordConflict carried beside it as `record` - the same `ConflictRow<T>`
+ * shape mod-conflicts.ts's other four layers use (mod-conflicts.ts, commit
+ * 85d87e283), so a presenter can act on the fields a mod actually touched
+ * without parsing the sentence.
+ *
+ * THIS USED TO FLATTEN THE RECORD AWAY. `computeConflictReport(...).records`
+ * is field-granular - which fields, whose writes, who wins - and this function
+ * turned it into `.flatMap(r => r.humanLines)` before mod-conflicts.ts ever saw
+ * it: the content layer's rows arrived as prose while the other four layers
+ * (mod-conflicts.ts, layerSlots) carried their ContestedSlot beside the
+ * sentence. That was the ONE thing that forced `ConflictRow.record` to stay
+ * nullable; see the note on the error path below for what still does.
+ *
+ * Builds the ordered LoadedPack set for the given ids (core + enabled content
+ * mods), resolves load order, and runs computeConflictReport. Add-only mods and
+ * a single contributor produce none.
+ *
+ * `record` is null for exactly one reason now, not "every content row": when
+ * resolveLoadOrder throws before a single RecordConflict could be gathered - a
+ * duplicate pack id, a missing dependency, an incompatible version range. There
+ * is genuinely no record to attach, because composition never ran; the row
+ * carries the thrown message alone, same as it always has (not a throw itself,
+ * so the UI can show it).
  */
-export function modConflictLines(enabledIds: readonly string[]): string[] {
+export function modConflictLines(
+  enabledIds: readonly string[],
+): readonly ConflictRow<RecordConflict | null>[] {
   const mods = discoverMods();
   const packs: LoadedPack[] = [coreLoadedPack()];
   for (const id of enabledIds) {
@@ -284,9 +311,11 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
       const p = byId.get(m.id) as LoadedPack;
       return { manifest: p.manifest, files: p.files } as unknown as PackContent;
     });
-    return computeConflictReport(contents).records.flatMap((r) => r.humanLines);
+    return computeConflictReport(contents).records.flatMap((r) =>
+      r.humanLines.map((text) => ({ text, record: r })),
+    );
   } catch (e) {
-    return [e instanceof Error ? e.message : String(e)];
+    return [{ text: e instanceof Error ? e.message : String(e), record: null }];
   }
 }
 

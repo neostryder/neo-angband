@@ -341,6 +341,7 @@ import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./con
 import { GlyphTerm } from "./term";
 import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
+import { paintRegionStack, relayoutStack } from "./ui-stack";
 import {
   buildHudFrame,
   glyphHudSectionSink,
@@ -7397,6 +7398,12 @@ function render(targeting?: TargetingOverlay): void {
    * roles it names. A second currentScreenRegions(vp) call here would let a
    * mid-frame layout change put the two descriptions of one screen at odds. */
   const regions = currentScreenRegions(vp);
+  /* The base band of the live stack is the same four tiles, so a mod asking
+   * "what is covering the map" is asking about the rectangle THIS frame was
+   * drawn with. Re-placing here rather than in a resize handler alone is what
+   * keeps that true when the sidebar layout changes without the grid doing so
+   * ('=' -> (o) moves every rectangle at a constant cols x rows). */
+  relayoutStack({ cols, rows, base: regions, metrics: term.metrics() });
   /* do_animation runs once per frame, BEFORE the glyphs are resolved, exactly
    * as upstream's animation timer fires before the redraw it triggers. */
   doAnimation();
@@ -7515,6 +7522,15 @@ function render(targeting?: TargetingOverlay): void {
       term.hideCursor();
     }
   }
+
+  /* THE STACK IS PAINTED LAST, and the ordering is the whole point rather than
+   * tidiness. render() opens with term.clear(), so a stack painted before it -
+   * or by anything that runs before it - is erased by the very frame that was
+   * supposed to carry it. The symptom would be a mod's window flickering only
+   * while the player is moving, which reads as the mod being broken and is
+   * reproducible nowhere else. Nothing in core registers a painter today; this
+   * is the seam being put in the one place it can be correct in. */
+  paintRegionStack(term);
 }
 
 /**
@@ -8860,6 +8876,20 @@ state.chunk.onlyPartial = false;
 // A resize/reflow is a background repaint (the ResizeObserver in term.ts also
 // fires once on observe, and again whenever the embed's layout settles), so it
 // must not paint the map over a boot overlay - see renderBackground.
+/* Re-place the region stack BEFORE the repaint below is decided, and as its own
+ * listener rather than folded into that one.
+ *
+ * SEPARATE BECAUSE THE TWO ANSWER DIFFERENT QUESTIONS. renderBackground declines
+ * to repaint while a modal owns the terminal - correctly; that is the guard that
+ * keeps a ResizeObserver settle from painting the town over the title screen -
+ * and a full-screen modal is now itself a region. Folding the relayout into that
+ * callback would make the one case where a screen is open across a resize the
+ * one case where its rectangle keeps describing the terminal it opened on.
+ * Registered first, so the stack is placed before anything is drawn on it. */
+term.onSizeChanged(() => {
+  const { cols, rows } = term.size();
+  relayoutStack({ cols, rows, base: currentScreenRegions(viewport()), metrics: term.metrics() });
+});
 term.onSizeChanged(() => renderBackground());
 
 /*

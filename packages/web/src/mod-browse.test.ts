@@ -230,12 +230,32 @@ const UNMET: readonly Finding[] = [
 ];
 
 describe("installFailureLines", () => {
-  it("renders a requirements refusal byte for byte as the flattened string did", () => {
-    /* THE BYTE CHECK FOR THE PRODUCER FIX. `storeMod` used to glue the summary, the
-     * bullets and the author's advice into one `problem` with hand-typed "\n  - ",
-     * and this function split it back apart. The records now travel instead - and
-     * these are the rows the flattened version emitted, captured before the change.
-     * Full ScreenLine objects, so a colour that moved would show here too. */
+  it("gives each unmet requirement its own row, with the reason beneath it", () => {
+    /* THIS TEST DELIBERATELY NO LONGER ASSERTS BYTE-IDENTITY, and the reason is
+     * the point of the change rather than an exception to it.
+     *
+     * It used to be "renders a requirements refusal byte for byte as the
+     * flattened string did", pinning the rows the hand-glued `problem` string
+     * emitted. The screen is now a table: one row per `Finding`, addressable by
+     * the finding's own id, with the reason as that row's `detail`.
+     *
+     * The bytes MOVED, once, at exactly one boundary. The old rendering flowed
+     * "title: problem" as a single sentence and wrapped it wherever it landed,
+     * so three of these five findings had part of their REASON sitting on the
+     * title's line. A detail is prose belonging to the row and cannot be cut
+     * into row fragments - that is the block model's own rule - so the reason
+     * starts on its own line. Five findings therefore render as ten rows rather
+     * than eight.
+     *
+     * That movement was allowed rather than worked around because this is the
+     * mod manager's own screen and nothing upstream pins it: there is no C to
+     * disagree with. A shim that reproduced the old wrap would have had to
+     * split a detail into fragments, which is the shape `ScreenRow.detail`
+     * exists to stop.
+     *
+     * Full ScreenLine objects, so a colour that moved would show here too - and
+     * note the detail rows carry a `runs` array where a plain coloured line
+     * does not. */
     const lines = installFailureLines(
       "Demo",
       "demo: this mod does not meet the requirements, so installing it would not give you a working mod.",
@@ -249,20 +269,38 @@ describe("installFailureLines", () => {
         color: UI_GOLD,
       },
       { text: "give you a working mod.", color: UI_GOLD },
-      { text: "  - Say where the mod lives, in `repository`: no repository declared", color: UI_GOLD },
-      { text: "  - Name the author: no author declared", color: UI_GOLD },
+      { text: "  - Say where the mod lives, in `repository`", color: UI_GOLD },
       {
-        text: "  - Declare the engine range the mod was written against: no engine range",
+        text: "  no repository declared",
         color: UI_GOLD,
+        runs: [{ text: "  no repository declared", color: UI_GOLD }],
       },
-      { text: "  declared", color: UI_GOLD },
-      { text: "  - Declare modApi if the mod ships plugin.js: ships plugin.js but", color: UI_GOLD },
-      { text: "  declares no modApi", color: UI_GOLD },
+      { text: "  - Name the author", color: UI_GOLD },
       {
-        text: "  - Say the mod contains code, if it ships plugin.js: ships plugin.js but",
+        text: "  no author declared",
         color: UI_GOLD,
+        runs: [{ text: "  no author declared", color: UI_GOLD }],
       },
-      { text: '  neither shape nor facets says "plugin"', color: UI_GOLD },
+      { text: "  - Declare the engine range the mod was written against", color: UI_GOLD },
+      {
+        text: "  no engine range declared",
+        color: UI_GOLD,
+        runs: [{ text: "  no engine range declared", color: UI_GOLD }],
+      },
+      { text: "  - Declare modApi if the mod ships plugin.js", color: UI_GOLD },
+      {
+        text: "  ships plugin.js but declares no modApi",
+        color: UI_GOLD,
+        runs: [{ text: "  ships plugin.js but declares no modApi", color: UI_GOLD }],
+      },
+      { text: "  - Say the mod contains code, if it ships plugin.js", color: UI_GOLD },
+      {
+        text: '  ships plugin.js but neither shape nor facets says "plugin"',
+        color: UI_GOLD,
+        runs: [
+          { text: '  ships plugin.js but neither shape nor facets says "plugin"', color: UI_GOLD },
+        ],
+      },
       { text: "The mod's author can check this themselves with `npx", color: UI_GOLD },
       { text: "neo-angband-mod-check`.", color: UI_GOLD },
       { text: "", color: UI_TEXT },
@@ -270,11 +308,20 @@ describe("installFailureLines", () => {
     ]);
   });
 
-  it("words each bullet with the producer's own line, not a second copy of it", () => {
-    /* Derived, for the reason the update report's status column is: the bullet's
-     * shape belongs to the module that refuses, and a copy here would rot. */
+  it("words each row from the finding itself, not from a second copy of it", () => {
+    /* Derived, for the reason the update report's status column is: the wording
+     * belongs to the module that refuses, and a copy here would rot.
+     *
+     * Both HALVES are checked, because the row and its detail come from
+     * different fields now and a producer that dropped one would still satisfy
+     * the other. Taken from the Finding rather than from a literal, so a
+     * reworded requirement cannot make this pass while the screen goes wrong. */
+    const found = UNMET[1]!;
     const texts = installFailureLines("Demo", "summary", UNMET).map((l) => l.text);
-    expect(texts).toContain(requirementLine(UNMET[1]!));
+    expect(texts).toContain(`  - ${found.title}`);
+    expect(texts).toContain(`  ${found.problem}`);
+    /* And the composed spelling is GONE - it is what the table replaced. */
+    expect(texts).not.toContain(requirementLine(found));
   });
 
   it("shows nothing but the sentence when no requirements were asked about", () => {

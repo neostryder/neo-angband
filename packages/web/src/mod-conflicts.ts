@@ -33,6 +33,7 @@ import {
   type Fold,
   type NameOf,
   type PackManifest,
+  type RecordConflict,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { frontendClaimants } from "./frontend-runtime";
 import { hudClaimants } from "./hud-runtime";
@@ -52,8 +53,14 @@ import { discoverEnabledTileModeClaims } from "./tile-mods";
 export interface ConflictInputs {
   /** Enabled manifests, in load order. */
   manifests: readonly PackManifest[];
-  /** The content report's own lines (pack.ts's modConflictLines). */
-  recordLines: readonly string[];
+  /**
+   * The content layer's own rows (pack.ts's modConflictLines): the sentence and
+   * the RecordConflict it was drawn from, travelling together the same way every
+   * other layer's rows do. `record` is null on exactly the rows modConflictLines
+   * itself could not attach one to - see its own doc comment for the one case
+   * that remains.
+   */
+  recordRows: readonly ConflictRow<RecordConflict | null>[];
   /** Every grafID every enabled tiles mod claims, losers included, in load order. */
   tileClaims: readonly { modId: string; grafID: number; menuname: string }[];
   /** What each enabled mod's hooks factory returned, in load order. */
@@ -318,15 +325,14 @@ export interface ConflictReportLines {
    */
   readonly declaredRows: readonly ConflictRow<DeclaredConflict>[];
   /**
-   * `record` is null on exactly the rows that came from `inputs.recordLines`.
-   *
-   * That is the one producer this pass did not reach: `modConflictLines` (pack.ts)
-   * flattens `computeConflictReport(...).records` into `humanLines` before this
-   * module is called, so the field-granular records for the CONTENT layer are
-   * already gone by then. Null rather than a fabricated record, because "we have no
-   * record for this row" and "this row's record is empty" must not look alike.
+   * The content layer's rows (`inputs.recordRows`) and this layer's own discarding
+   * ContestedSlots, in that order. A row's `record` is a RecordConflict for a
+   * content row, a ContestedSlot for the rest, or null for the one case
+   * `modConflictLines` itself still cannot attach a record to (see its doc
+   * comment) - null rather than a fabricated record, because "we have no record
+   * for this row" and "this row's record is empty" must not look alike.
    */
-  readonly contestedRows: readonly ConflictRow<ContestedSlot | null>[];
+  readonly contestedRows: readonly ConflictRow<ContestedSlot | RecordConflict | null>[];
   readonly combinedRows: readonly ConflictRow<ContestedSlot>[];
 }
 
@@ -343,7 +349,7 @@ export function liveConflictLines(): ConflictReportLines {
   const byId = new Map(discovered.map((m) => [m.id, m]));
   return conflictLines({
     manifests: enabled.map((id) => byId.get(id)).filter((m): m is PackManifest => !!m),
-    recordLines: modConflictLines(enabled),
+    recordRows: modConflictLines(enabled),
     tileClaims: discoverEnabledTileModeClaims().map((t) => ({
       modId: t.modId,
       grafID: t.grafID,
@@ -381,8 +387,8 @@ export function conflictLines(inputs: ConflictInputs): ConflictReportLines {
       record: c,
     }),
   );
-  const contestedRows: ConflictRow<ContestedSlot | null>[] = [
-    ...inputs.recordLines.map((text) => ({ text, record: null })),
+  const contestedRows: ConflictRow<ContestedSlot | RecordConflict | null>[] = [
+    ...inputs.recordRows,
     ...slots.filter((s) => foldDiscards(s.fold)).map(slotRow),
   ];
   const combinedRows = slots.filter((s) => !foldDiscards(s.fold)).map(slotRow);

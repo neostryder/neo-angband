@@ -20,7 +20,10 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { bindCore, ContentIdResolver, PROVENANCE_KEY } from "@rpgm-tools/neo-angband-core";
-import { PROVENANCE_KEY as SDK_PROVENANCE_KEY } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  PROVENANCE_KEY as SDK_PROVENANCE_KEY,
+  stampProvenance,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 
 import { loadGamePack, resetComposition } from "./pack";
 import { resetDiskPacks, setDiskPacks } from "./disk-packs";
@@ -89,10 +92,13 @@ describe("a mod's records reach the game carrying its name", () => {
   it("stamps a record the mod PATCHED as core's, modified by the mod", () => {
     install(demoModtest());
     /* The mod renames Grip, so the patched record is found under the new name -
-     * which is also the proof that the patch landed at all. */
+     * which is also the proof that the patch landed at all. `was` carries
+     * core's own values for every field the patch overwrote (name, color,
+     * hit-points) - see the task #233 guarantee test below for why. */
     expect(monsterNamed("Grip, the Cyber-Hound")?.[PROVENANCE_KEY]).toEqual({
       owner: "core",
       modifiedBy: [MOD_ID],
+      was: { name: "Grip, Farmer Maggot's Dog", color: "y", "hit-points": 25 },
     });
   });
 
@@ -136,15 +142,22 @@ describe("the id a savefile stores names the pack that supplied the content", ()
     const reg = bindCore(loadGamePack());
     const ids = new ContentIdResolver(reg);
     const grip = reg.monsters.races.find((r) => r.name === "Grip, the Cyber-Hound");
-    expect(grip?.from).toEqual({ owner: "core", modifiedBy: [MOD_ID] });
+    expect(grip?.from).toEqual({
+      owner: "core",
+      modifiedBy: [MOD_ID],
+      was: { name: "Grip, Farmer Maggot's Dog", color: "y", "hit-points": 25 },
+    });
     expect(ids.raceId(grip?.ridx ?? -1).startsWith("core:")).toBe(true);
   });
 
   it("does not move any core id a mod did not rename", () => {
     /* The parity half, over the whole registry rather than one record: adding a
      * mod must not renumber or reorder anything core supplies, because every id
-     * in every existing save is one of these strings. The one exception is the
-     * record demo-modtest RENAMES, which the next test is about. */
+     * in every existing save is one of these strings. Task #233 removed the one
+     * exception this used to carry - the record demo-modtest RENAMES no longer
+     * moves either, because its id is now fixed by the pack that DEFINED it
+     * rather than by whatever a patch left the name reading. See the
+     * task #233 guarantee test below for that record specifically. */
     const before = new ContentIdResolver(bindCore(loadGamePack()));
     const beforeIds = bindCore(loadGamePack()).monsters.races.map((r) => before.raceId(r.ridx));
 
@@ -156,27 +169,146 @@ describe("the id a savefile stores names the pack that supplied the content", ()
 
     expect(afterIds).toHaveLength(beforeIds.length + 1);
     const moved = beforeIds.filter((id, i) => afterIds[i] !== id);
-    expect(moved).toEqual(["core:grip-farmer-maggot-s-dog"]);
+    expect(moved).toEqual([]);
   });
 
-  it("A KNOWN DEFECT, pinned: renaming a core record moves core's id", () => {
-    /* NOT a consequence of provenance - this is how the id scheme has always
-     * behaved, and provenance is what made it visible. A localid is derived from
-     * the record's NAME, so a mod that patches the name of a record it does not
-     * own moves that record's id out from under every save ever written without
-     * the mod. Install demo-modtest and a character who has met Grip reloads to
-     * find `core:grip-farmer-maggot-s-dog` resolves to nothing.
+  it("THE GUARANTEE: a patch cannot move the id of a record it does not own", () => {
+    /* Task #233. A localid is derived from the record's NAME, so a mod that
+     * patches the name of a record it does not own moves that record's id out
+     * from under every save written without the mod: install demo-modtest and,
+     * without this wire, a character who has met Grip reloads to find
+     * `core:grip-farmer-maggot-s-dog` resolves to nothing.
      *
-     * The rule it needs is "a record's id is fixed by the pack that DEFINED it,
-     * and a patch cannot move it", which needs the composer to keep the
-     * pre-patch identity - a design decision of its own, tracked separately.
-     * This test asserts the CURRENT behaviour on purpose, so the fix has
-     * something that flips and this note is what the next reader finds. */
+     * THIS TEST'S OWN HISTORY, so the record survives the fix. First landed as a
+     * KNOWN DEFECT, pinned with both assertions below asserting the BROKEN
+     * state (`was` absent, the id moved). Turned into a TRIPWIRE once both ends
+     * existed - the SDK's `stampProvenance` accepting the definer's record, and
+     * core's `ContentIdResolver` minting from `$from.was` with a `movedToIndex`
+     * fallback - but the wire between them was still missing:
+     * `composeContentPacks` did not pass each record as its OWNER supplied it
+     * as `stampProvenance`'s fifth argument, so the composer's real output
+     * still carried the pre-fix stamp. The tripwire asserted that absence
+     * directly, with a comment naming the exact edit that would turn it red:
+     * a `defined` field on `ComposedRecord` (mod-sdk/src/compose.ts) plus both
+     * `stampProvenance` call sites in mod-sdk/src/loader.ts passing it through.
+     *
+     * That edit landed 2026-08-14, in the same change that rewrote this test.
+     * This is now the GUARANTEE the wire provides, asserted through the real
+     * composeContentPacks -> bindCore -> ContentIdResolver path a save actually
+     * uses - not through stampProvenance called directly, which is what the
+     * "a patch cannot move the id..." block below does as the two-halves
+     * version of the same rule. */
     install(demoModtest());
+    const stamp = monsterNamed("Grip, the Cyber-Hound")?.[PROVENANCE_KEY] as
+      | Record<string, unknown>
+      | undefined;
+    expect(stamp).toEqual({
+      owner: "core",
+      modifiedBy: [MOD_ID],
+      was: { name: "Grip, Farmer Maggot's Dog", color: "y", "hit-points": 25 },
+    });
+
+    /* ...and this is the save-integrity guarantee that buys: the id a
+     * pre-mod save would have written for Grip still resolves, and it resolves
+     * to the very race object the rename produced - identity, not merely a
+     * string that happens to still be present. The renamed spelling also keeps
+     * resolving (movedToIndex), which is what lets a save written between
+     * 0.19.0 and this fix - already holding the moved id - still load. */
     const reg = bindCore(loadGamePack());
     const ids = new ContentIdResolver(reg);
     const grip = reg.monsters.races.find((r) => r.name === "Grip, the Cyber-Hound");
-    expect(ids.raceId(grip?.ridx ?? -1)).toBe("core:grip-the-cyber-hound");
-    expect(ids.raceIndex("core:grip-farmer-maggot-s-dog")).toBeUndefined();
+    expect(ids.raceId(grip?.ridx ?? -1)).toBe("core:grip-farmer-maggot-s-dog");
+    const at = ids.raceIndex("core:grip-farmer-maggot-s-dog");
+    expect(at).toBeDefined();
+    expect(reg.monsters.races[at ?? -1]).toBe(grip);
+    expect(ids.raceIndex("core:grip-the-cyber-hound")).toBe(at);
+  });
+});
+
+/**
+ * The two halves of the task #233 rule, each against the REAL implementation.
+ *
+ * Separate from the demo-modtest block above because they deliberately do not go
+ * through `composeContentPacks` - that is the wire that is missing, and a test
+ * that waited for it would leave both halves unmeasured. What they do instead is
+ * the next best thing and not a simulation of either side: the SDK's own
+ * `stampProvenance` produces the stamp, and core's own binder and resolver
+ * consume it.
+ */
+describe("a patch cannot move the id of a record it does not own", () => {
+  const GRIP = "Grip, Farmer Maggot's Dog";
+  const GRIP_ID = "core:grip-farmer-maggot-s-dog";
+  const CYBER = "Grip, the Cyber-Hound";
+
+  /** Core's monsters with Grip renamed and stamped by the SDK's real stamper. */
+  function stampedRename(carryDefiner: boolean): Rec[] {
+    const monsters = loadGamePack().mon as unknown as { monsters: Rec[] };
+    const list = [...monsters.monsters];
+    const at = list.findIndex((m) => m["name"] === GRIP);
+    const before = list[at];
+    if (before === undefined) throw new Error(`fixture: core ships no monster named ${GRIP}`);
+    const after = { ...before, name: CYBER };
+    /* THE NEGATIVE CONTROL REMOVES THE MECHANISM and nothing else: the same
+     * stamper, the same record, the same rename - only the definer's record is
+     * withheld, which is exactly what loader.ts does today. */
+    list[at] = stampProvenance(
+      after,
+      "core",
+      ["cyber"],
+      "core",
+      carryDefiner ? before : undefined,
+    ) as Rec;
+    return list;
+  }
+
+  function resolverOver(monsters: Rec[]) {
+    const pack = loadGamePack() as unknown as { mon: Record<string, unknown> };
+    const spliced = { ...pack, mon: { ...pack.mon, monsters } };
+    const reg = bindCore(spliced as unknown as Parameters<typeof bindCore>[0]);
+    const race = reg.monsters.races.find((r) => r.name === CYBER);
+    if (race === undefined) throw new Error("fixture: the renamed race did not bind");
+    return { reg, ids: new ContentIdResolver(reg), race };
+  }
+
+  it("the composer's stamp carries the definer's spelling", () => {
+    const grip = stampedRename(true).find((m) => m["name"] === CYBER);
+    expect(grip?.[PROVENANCE_KEY]).toEqual({
+      owner: "core",
+      modifiedBy: ["cyber"],
+      was: { name: GRIP },
+    });
+  });
+
+  it("records only what the patch actually changed", () => {
+    /* `was` is a delta, not a second copy of the record. If it ever stopped
+     * being one, every patched record in a modded game would carry its own
+     * duplicate and nothing would say so. */
+    const grip = stampedRename(true).find((m) => m["name"] === CYBER);
+    const was = (grip?.[PROVENANCE_KEY] as { was: Record<string, unknown> }).was;
+    expect(Object.keys(was)).toEqual(["name"]);
+  });
+
+  it("THE CONTROL: without the definer's record the stamp is what it always was", () => {
+    /* Also the no-regression assertion for every existing caller: omit the new
+     * argument and `stampProvenance` produces the pre-#233 stamp exactly. */
+    const grip = stampedRename(false).find((m) => m["name"] === CYBER);
+    expect(grip?.[PROVENANCE_KEY]).toEqual({ owner: "core", modifiedBy: ["cyber"] });
+  });
+
+  it("THE SAVE STILL RESOLVES: the pre-patch id finds the same entity", () => {
+    /* The failure that matters is a save that will not load, so this resolves
+     * the id a pre-mod character carries and checks it lands on the very race
+     * object the rename produced - not merely that some string held still. */
+    const { reg, ids, race } = resolverOver(stampedRename(true));
+    const at = ids.raceIndex(GRIP_ID);
+    expect(at).toBeDefined();
+    expect(reg.monsters.races[at ?? -1]).toBe(race);
+    expect(ids.raceId(race.ridx)).toBe(GRIP_ID);
+  });
+
+  it("THE CONTROL: the same rename without it loses the save", () => {
+    const { ids, race } = resolverOver(stampedRename(false));
+    expect(ids.raceIndex(GRIP_ID)).toBeUndefined();
+    expect(ids.raceId(race.ridx)).toBe("core:grip-the-cyber-hound");
   });
 });

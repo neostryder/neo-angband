@@ -313,6 +313,15 @@ export function castProjection(
       charm: source.charm ?? false,
     },
     hooks: hooks.monster ?? {},
+    /* project_m's fourth table, BY IDENTITY. `wireGame` publishes the per-game
+     * ProjectionHandlerRegistry on the state, and `.table` is the registry's
+     * own live Map - so a handler a plugin's register() installs after the
+     * wiring is dispatched to on the very next projection. A game booted
+     * without the registry (the headless parity harnesses) gets the field
+     * omitted and the unchanged indexed dispatch. */
+    ...(state.projectionHandlers
+      ? { monHandlers: state.projectionHandlers.mon.table }
+      : {}),
   };
 
   const plCtx = {

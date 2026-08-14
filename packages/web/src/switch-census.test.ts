@@ -13,10 +13,39 @@
  * regenerating stamps it UNADJUDICATED, which breaks the verdict gate; the
  * only way to green is to write a verdict.
  *
- * All 38 now carry one, and the distribution is the finding: 9 are content
- * dispatch a mod would want, and 29 are not. That number is asserted here
- * rather than described in a document, because "we looked at all of them" is
- * exactly the sort of claim that is true on the day it is written.
+ * task #260: a switch can leave a SWITCH-only census two ways, and until now
+ * they read identically. A conversion to a registry removes the dispatch
+ * entirely - nothing of that shape or size is left anywhere in the file. A
+ * RESHAPE just changes the switch's clothes: an if/else chain over one
+ * discriminant, or a module-level array searched by key, is exactly as closed
+ * to a mod as the switch was, and scored zero either way. ui-entry.ts is the
+ * proof: its 32-case switch (MOD_REACH row 18) is gone, and the file is not a
+ * registry - `COMBINERS` (a 9-entry lookup array) and `applyRenderer` (a
+ * 6-arm `if (backend === ...)` chain) are what replaced it, and nobody wrote
+ * either down, because the tool that would have noticed only ever looked for
+ * `switch`.
+ *
+ * So this census now also counts IF_CHAIN (an if/else chain of >= threshold
+ * arms testing one discriminant) and ARRAY_LOOKUP (a module-level const array
+ * of >= threshold elements, searched by a field match rather than indexed by
+ * position) - see tools/switch-census.mjs for exactly what each requires. All
+ * three kinds share one `cases` field: case labels for a SWITCH, arms for an
+ * IF_CHAIN, elements for an ARRAY_LOOKUP - it is a size metric for whichever
+ * shape the row is, not a literal case count in the other two.
+ *
+ * The precision claim is measured, not assumed: an earlier version of the
+ * array-lookup heuristic asked only "is this array indexed by a variable
+ * anywhere" and lit up on RNG tables, MD5 constants, XP tables and colour
+ * palettes - EVERY sizeable array in the tree, because that is what arrays
+ * are for. Requiring a field comparison (`.prop ===`) or `.find`/`.findIndex`
+ * - a linear SEARCH for a matching key, not a read by position - cut that to
+ * zero false positives across the whole source tree, hand-checked one by one
+ * below.
+ *
+ * All 39 rows now carry a verdict, and the distribution is the finding: ZERO
+ * are content dispatch a mod would want. That number is asserted here rather
+ * than described in a document, because "we looked at all of them" is exactly
+ * the sort of claim that is true on the day it is written.
  *
  * It was 51 and 22 until project_p became a registry, and the count moving on
  * its own is the point of a census: the row left because the switch did. It
@@ -27,6 +56,11 @@
  * consent-prompt row back on the bench for a third time; registry:randart took
  * four more, including the 87-case add_ability_aux, the biggest in the tree -
  * which is why the "biggest switch" assertion below now names a different file.
+ * Widening the census for task #260 then found five more real dispatch points
+ * (three IF_CHAIN/ARRAY_LOOKUP reshapes the tool could not see before, plus a
+ * second array-lookup already sitting beside an existing switch in
+ * host/args.ts) - the count moving DOWN on a conversion and UP on a wider lens
+ * are the same honesty in both directions.
  *
  * Lives in packages/web because that is where the other repo-wide ratchets run
  * (mod-core-surface.test.ts); it reads the source tree, not this package.
@@ -39,11 +73,13 @@ import { describe, expect, it } from "vitest";
 
 const root = new URL("../../../", import.meta.url);
 const manifestPath = fileURLToPath(new URL("tools/switch-census.json", root));
+const censusScriptPath = fileURLToPath(new URL("tools/switch-census.mjs", root));
 
 interface Row {
   file: string;
   cases: number;
   hasDefault: boolean;
+  kind: string;
   verdict: string;
 }
 interface Manifest {
@@ -51,31 +87,51 @@ interface Manifest {
   switches: Row[];
 }
 
+interface Finding {
+  line: number;
+  cases: number;
+  hasDefault: boolean;
+  kind: string;
+}
+
+interface CensusModule {
+  THRESHOLD: number;
+  switchesIn: (text: string) => Finding[];
+  ifChainsIn: (text: string) => Finding[];
+  arrayLookupsIn: (text: string) => Finding[];
+}
+
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
 
+/* Imported directly (not shelled out to) so the detector fixtures below run
+ * against the SAME functions the tree-wide census uses, with no risk of the
+ * two drifting apart. Importing must not walk the tree or touch the manifest
+ * - tools/switch-census.mjs guards its CLI body behind an isMain check for
+ * exactly this reason. */
+const census = (await import(censusScriptPath)) as unknown as CensusModule;
+
 /** Re-run the census over the CURRENT tree. */
-function live(): { file: string; cases: number }[] {
-  const out = execFileSync(
-    process.execPath,
-    [fileURLToPath(new URL("tools/switch-census.mjs", root))],
-    { encoding: "utf8" },
-  );
+function live(): { file: string; cases: number; kind: string }[] {
+  const out = execFileSync(process.execPath, [censusScriptPath], { encoding: "utf8" });
   return out
     .split("\n")
     .slice(1)
     .filter((l) => l.trim().length > 0)
     .map((l) => {
-      const [cases, file] = l.trim().split(/\s+/);
-      return { file: file as string, cases: Number(cases) };
+      const [cases, kind, file] = l.trim().split(/\s+/);
+      return { file: file as string, cases: Number(cases), kind: kind as string };
     });
 }
 
 describe("the switch census", () => {
   it("matches the tree (run `node tools/switch-census.mjs --update`)", () => {
-    const now = live().map((r) => `${r.file} ${String(r.cases)}`);
-    const was = manifest.switches.map((r) => `${r.file} ${String(r.cases)}`);
-    /* Both directions in one compare: a switch added, removed, grown or shrunk
-     * all surface here. */
+    const now = live().map((r) => `${r.file} ${String(r.cases)} ${r.kind}`);
+    const was = manifest.switches.map((r) => `${r.file} ${String(r.cases)} ${r.kind}`);
+    /* Both directions in one compare: a dispatch point added, removed, grown,
+     * shrunk, or RESHAPED into a different kind at the same file+size all
+     * surface here - `kind` is part of the key precisely so a SWITCH turning
+     * into an IF_CHAIN of the same file and case count cannot look like "no
+     * change" to this compare. */
     expect(now).toEqual(was);
   });
 
@@ -98,12 +154,12 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 34 into a CLOSED vocabulary", () => {
+  it("classifies all 39 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 34 switches, ZERO are content dispatch a mod
-     * would want. That is the finish line MOD_REACH gap list set - every one
-     * of the eighteen candidates the 2026-08-09 census opened with is now a
-     * registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
+     * than written in prose: of 39 dispatch points, ZERO are content dispatch a
+     * mod would want. That is the finish line MOD_REACH gap list set - every
+     * one of the eighteen candidates the 2026-08-09 census opened with is now
+     * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
      * parsers, host wiring, the mod system's own vocabulary, localization
      * strings, or plain control flow - and saying so is a claim that can be
      * checked against the file.
@@ -119,31 +175,32 @@ describe("the switch census", () => {
     expect(Object.fromEntries([...byClass].sort())).toEqual({
       "CONTROL FLOW": 3,
       DEBUG: 2,
-      HOST: 3,
-      INTERNAL: 2,
+      HOST: 4,
+      INTERNAL: 3,
       LOCALIZATION: 3,
       PARSER: 3,
       REACHABLE: 6,
-      UI: 12,
+      UI: 15,
     });
     /* The counts have to add up to the census, or a class went missing. */
     expect([...byClass.values()].reduce((a, b) => a + b, 0)).toBe(
       manifest.switches.length,
     );
-    /* The biggest switch left is the wizard/debug menu, which is DEBUG - the
-     * 87-case randart one that used to head this list became a registry. */
+    /* The biggest dispatch point left is the wizard/debug menu, which is DEBUG
+     * - the 87-case randart one that used to head this list became a
+     * registry. */
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 34 switches, 463 case labels", () => {
+  it("is measuring something: 39 dispatch points, 520 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
     expect(manifest.threshold).toBe(8);
-    expect(manifest.switches.length).toBeGreaterThanOrEqual(32);
+    expect(manifest.switches.length).toBeGreaterThanOrEqual(37);
     expect(
       manifest.switches.reduce((sum, r) => sum + r.cases, 0),
-    ).toBeGreaterThanOrEqual(460);
+    ).toBeGreaterThanOrEqual(515);
     /* And it finds the biggest one we know about by name. */
     expect(manifest.switches[0]?.file).toBe("packages/web/src/wizard.ts");
   });
@@ -163,7 +220,14 @@ describe("the switch census", () => {
      *
      * This assertion is what makes the denominator honest in BOTH directions.
      * A census that only notices switches APPEARING would let a conversion be
-     * claimed without being made; this fails if a glyph switch comes back. */
+     * claimed without being made; this fails if a glyph switch comes back.
+     *
+     * task #260 strengthens what "absent" proves: `manifest.switches` now
+     * carries IF_CHAIN and ARRAY_LOOKUP rows alongside SWITCH ones, so a file
+     * missing from this set is missing ALL THREE shapes, not merely
+     * switch-free. Before the widening, a project_p reshaped into an if-chain
+     * would have passed this exact assertion; see the FIXED-vs-RESHAPED test
+     * below for the file that actually happened to. */
     const files = new Set(manifest.switches.map((r) => r.file));
     expect(files.has("packages/core/src/game/project-feat.ts")).toBe(false);
     expect(files.has("packages/core/src/game/project-obj.ts")).toBe(false);
@@ -190,6 +254,60 @@ describe("the switch census", () => {
     expect(files.has("packages/core/src/obj/knowledge.ts")).toBe(false);
   });
 
+  it("distinguishes a dispatch that was FIXED from one that was RESHAPED", () => {
+    /* This is the actual bug task #260 was opened for. Before the census could
+     * see an IF_CHAIN or an ARRAY_LOOKUP, "the file has no rows left" was the
+     * ONLY signal, and it meant two different things that read identically:
+     * the dispatch was converted to a registry (gone, provably), or it was
+     * merely reshaped into a form this tool didn't know to look for yet (still
+     * there, just invisible). ui-entry.ts is a real instance of the second
+     * case that had already happened silently - MOD_REACH row 18's 32-case
+     * switch left this census with no row, a verdict, or a mention in the
+     * "became registries" list above, because nobody adjudicated a reshape
+     * that the tool could not see. */
+    const rowsFor = (file: string) => manifest.switches.filter((r) => r.file === file);
+
+    /* FIXED: project-feat.ts's projection handlers moved into
+     * PROJECT_FEAT_HANDLERS, a registry keyed by projection `code` - a Map,
+     * not a const array searched by field, and not an if/else chain either.
+     * Zero rows of ANY kind is what a genuine conversion looks like. */
+    expect(rowsFor("packages/core/src/game/project-feat.ts")).toEqual([]);
+
+    /* RESHAPED: ui-entry.ts's switch did NOT become a registry. COMBINERS (a
+     * 9-entry const array) plus combinerLookup's manual linear search is the
+     * same closed door in a different syntax, and it is still exactly one row
+     * here - tagged ARRAY_LOOKUP instead of SWITCH, with its own verdict,
+     * rather than silently absent. */
+    const uiEntryRows = rowsFor("packages/core/src/game/ui-entry.ts");
+    expect(uiEntryRows.map((r) => r.kind)).toEqual(["ARRAY_LOOKUP"]);
+    expect(uiEntryRows[0]?.cases).toBe(9);
+    expect(uiEntryRows[0]?.verdict).toContain("UI");
+
+    /* ui-entry.ts's OTHER reshape, applyRenderer, is the honest limit of even
+     * the widened tool: a 6-arm `if (backend === UI_ENTRY_RENDERER.X)` chain
+     * is exactly as closed to a mod as the old switch was, and it stays below
+     * this census's 8-arm threshold - the same shape of gap as the rune.variety
+     * union noted in the "became registries" test above. It is not a row here,
+     * and MOD_REACH.md is where that remainder is recorded (see the draft note
+     * added to its row 18). */
+  });
+
+  it("finds the reshapes task #260 widened the census to see", () => {
+    /* A positive ratchet to match the negative one two tests up: these five
+     * rows are the actual delta this widening produced across the WHOLE tree,
+     * hand-verified one by one (see the task report). If a future edit to the
+     * detectors stops finding one of these, that is exactly the silent-absence
+     * failure mode this file exists to catch - so the find is asserted by
+     * name, not just by count. */
+    const key = (r: Row) => `${r.kind}|${r.file}|${String(r.cases)}`;
+    const keys = new Set(manifest.switches.map(key));
+    expect(keys.has("ARRAY_LOOKUP|packages/core/src/game/ui-entry.ts|9")).toBe(true);
+    expect(keys.has("ARRAY_LOOKUP|packages/core/src/host/args.ts|13")).toBe(true);
+    expect(keys.has("ARRAY_LOOKUP|packages/mcp/src/tools.ts|19")).toBe(true);
+    expect(keys.has("IF_CHAIN|packages/core/src/game/target-loop.ts|9")).toBe(true);
+    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|9")).toBe(true);
+  });
+
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {
     /* Stated separately from the distribution above so it fails by NAME. The
      * census opened at 47 switches / 723 cases / 18 candidates on the morning
@@ -203,5 +321,205 @@ describe("the switch census", () => {
       r.verdict.startsWith("CANDIDATE"),
     );
     expect(candidates.map((r) => r.file)).toEqual([]);
+  });
+});
+
+describe("the widened detectors, against literal fixtures", () => {
+  /* Unit-level positive and negative controls for IF_CHAIN and ARRAY_LOOKUP,
+   * run directly against the exported pure functions rather than through
+   * files on disk - so a control belongs to no other agent's package and
+   * cannot be mistaken for real source later. A detector shown only positives
+   * is not calibrated; every positive below has a negative sibling that
+   * differs by exactly the trait the heuristic is supposed to require. */
+
+  it("flags an if/else chain of >= threshold arms over one discriminant", () => {
+    const eightArms = `
+      function route(mode: string): number {
+        if (mode === "a") { return 1; }
+        else if (mode === "b") { return 2; }
+        else if (mode === "c") { return 3; }
+        else if (mode === "d") { return 4; }
+        else if (mode === "e") { return 5; }
+        else if (mode === "f") { return 6; }
+        else if (mode === "g") { return 7; }
+        else if (mode === "h") { return 8; }
+        return 0;
+      }
+    `;
+    const found = census.ifChainsIn(eightArms);
+    expect(found).toEqual([{ line: expect.any(Number) as number, cases: 8, hasDefault: false, kind: "IF_CHAIN" }]);
+  });
+
+  it("negative control: a short if/else chain under threshold is NOT flagged", () => {
+    /* This is the common, legitimate shape the brief warned about: a three-arm
+     * chain over a closed set is ordinary control flow, not a closed-door
+     * dispatch, and the census should stay silent about it exactly as it
+     * stays silent about a four-case switch. */
+    const threeArms = `
+      function classify(kind: string): string {
+        if (kind === "a") return "alpha";
+        else if (kind === "b") return "beta";
+        else if (kind === "c") return "gamma";
+        return "other";
+      }
+    `;
+    expect(census.ifChainsIn(threeArms)).toEqual([]);
+  });
+
+  it("negative control: sibling ifs on DIFFERING discriminants do not chain", () => {
+    /* Eight ifs, but each tests its OWN variable - never a real dispatch, and
+     * exactly the case a naive "any run of adjacent ifs" heuristic would have
+     * wrongly counted as one 8-arm chain. */
+    const differingIdents = `
+      function f(a: number, b: number, c: number, d: number, e: number, g: number, h: number, i: number): number {
+        if (a === 1) { return 1; }
+        if (b === 2) { return 2; }
+        if (c === 3) { return 3; }
+        if (d === 4) { return 4; }
+        if (e === 5) { return 5; }
+        if (g === 6) { return 6; }
+        if (h === 7) { return 7; }
+        if (i === 8) { return 8; }
+        return 0;
+      }
+    `;
+    expect(census.ifChainsIn(differingIdents)).toEqual([]);
+  });
+
+  it("flags applyRenderer's actual shape ONLY once it reaches 8 arms", () => {
+    /* ui-entry.ts's applyRenderer is genuinely 6 arms (six separate `if
+     * (backend === UI_ENTRY_RENDERER.X) { ... return ...; }` blocks, no
+     * `else`), which is below THRESHOLD and correctly invisible - the brief's
+     * framing of it as "the same shape as COMBINERS" is about closedness to a
+     * mod, not about crossing this tool's size cutoff. Adding two more arms of
+     * the identical shape is what pushes it over. */
+    const sixArms = `
+      function applyRenderer(backend: number): string {
+        if (backend === 1) { return "a"; }
+        if (backend === 2) { return "b"; }
+        if (backend === 3) { return "c"; }
+        if (backend === 4) { return "d"; }
+        if (backend === 5) { return "e"; }
+        if (backend === 6) { return "f"; }
+        return "default";
+      }
+    `;
+    expect(census.ifChainsIn(sixArms)).toEqual([]);
+
+    const eightArms = `
+      function applyRenderer(backend: number): string {
+        if (backend === 1) { return "a"; }
+        if (backend === 2) { return "b"; }
+        if (backend === 3) { return "c"; }
+        if (backend === 4) { return "d"; }
+        if (backend === 5) { return "e"; }
+        if (backend === 6) { return "f"; }
+        if (backend === 7) { return "g"; }
+        if (backend === 8) { return "h"; }
+        return "default";
+      }
+    `;
+    const found = census.ifChainsIn(eightArms);
+    expect(found.length).toBe(1);
+    expect(found[0]?.cases).toBe(8);
+  });
+
+  it("flags a module-level lookup array searched by field (the COMBINERS shape)", () => {
+    const combinerLike = `
+      const HANDLERS: ReadonlyArray<{ name: string; run: () => number }> = [
+        { name: "A", run: () => 1 },
+        { name: "B", run: () => 2 },
+        { name: "C", run: () => 3 },
+        { name: "D", run: () => 4 },
+        { name: "E", run: () => 5 },
+        { name: "F", run: () => 6 },
+        { name: "G", run: () => 7 },
+        { name: "H", run: () => 8 },
+      ];
+
+      function lookup(name: string): number {
+        for (let i = 0; i < HANDLERS.length; i++) {
+          if (HANDLERS[i]!.name === name) return i;
+        }
+        return -1;
+      }
+    `;
+    expect(census.arrayLookupsIn(combinerLike)).toEqual([
+      { line: expect.any(Number) as number, cases: 8, hasDefault: false, kind: "ARRAY_LOOKUP" },
+    ]);
+  });
+
+  it("flags the same shape spelled with .find(...)", () => {
+    const findLike = `
+      const HANDLERS: ReadonlyArray<{ name: string }> = [
+        { name: "A" }, { name: "B" }, { name: "C" }, { name: "D" },
+        { name: "E" }, { name: "F" }, { name: "G" }, { name: "H" },
+      ];
+      function lookup(name: string) {
+        return HANDLERS.find((h) => h.name === name);
+      }
+    `;
+    expect(census.arrayLookupsIn(findLike).length).toBe(1);
+  });
+
+  it("negative control: a plain data array, never searched by field, is NOT flagged", () => {
+    /* This is the false-positive mode the first cut of this heuristic actually
+     * hit: RAND_NORMAL_TABLE, MD5's constant tables, experience tables and
+     * colour palettes are all sizeable module-level arrays that get indexed
+     * SOMEWHERE - that alone cannot be the signal, or every data table in the
+     * tree lights up. */
+    const plainData = `
+      const NAMES: readonly string[] = ["a", "b", "c", "d", "e", "f", "g", "h"];
+      function listNames(): string {
+        return NAMES.join(", ");
+      }
+    `;
+    expect(census.arrayLookupsIn(plainData)).toEqual([]);
+  });
+
+  it("negative control: indexing by POSITION (not searching by field) is NOT flagged", () => {
+    /* The RAND_NORMAL_TABLE[mid] shape exactly: a variable index, but read
+     * directly rather than compared field-by-field to a key. This is what a
+     * plain lookup table looks like, and it is not a dispatch. */
+    const positional = `
+      const LEVELS: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+      function atLevel(i: number): number {
+        return LEVELS[i]!;
+      }
+    `;
+    expect(census.arrayLookupsIn(positional)).toEqual([]);
+  });
+
+  it("negative control: a function-local lookup array is NOT flagged", () => {
+    /* Same field-search shape as the COMBINERS fixture above, but declared
+     * inside a function rather than at module scope - one call's own private
+     * table, not a mod-facing dispatch point. */
+    const localLookup = `
+      function lookupLocal(name: string): number {
+        const HANDLERS: ReadonlyArray<{ name: string }> = [
+          { name: "A" }, { name: "B" }, { name: "C" }, { name: "D" },
+          { name: "E" }, { name: "F" }, { name: "G" }, { name: "H" },
+        ];
+        for (let i = 0; i < HANDLERS.length; i++) {
+          if (HANDLERS[i]!.name === name) return i;
+        }
+        return -1;
+      }
+    `;
+    expect(census.arrayLookupsIn(localLookup)).toEqual([]);
+  });
+
+  it("negative control: an array under threshold is NOT flagged even when searched", () => {
+    const sevenElements = `
+      const HANDLERS: ReadonlyArray<{ name: string }> = [
+        { name: "A" }, { name: "B" }, { name: "C" }, { name: "D" },
+        { name: "E" }, { name: "F" }, { name: "G" },
+      ];
+      function lookup(name: string) {
+        return HANDLERS.find((h) => h.name === name);
+      }
+    `;
+    expect(census.arrayLookupsIn(sevenElements)).toEqual([]);
+    expect(census.THRESHOLD).toBe(8);
   });
 });

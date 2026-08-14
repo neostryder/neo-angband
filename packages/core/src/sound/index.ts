@@ -11,3 +11,5 @@
 export * from "./types.js";
 export * from "./engine.js";
 export * from "./sound-prefs-data.js";
+export * from "./sound-registry.js";
+export * from "./message-types.js";

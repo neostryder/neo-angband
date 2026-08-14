@@ -51,6 +51,14 @@
  *   it, whether the player knows it, how it is learned, and the line a modifier
  *   prints on wield. Plus `contribute`, which is how a mod's rune gets into the
  *   list every consumer enumerates. Gated by "registry:rune".
+ * - messages (MessageTypeRegistry + SoundPrefRegistry, sound/): declare a new
+ *   MESSAGE TYPE (a `msgt:`) and bind sample names to it. One domain because
+ *   they are one thing - a message type and the sound it plays - and because a
+ *   mod's new spell needs both halves or neither. Gated by "registry:message".
+ *   Additive only, and no game logic: this is vocabulary, like registry:vocab.
+ *   Note the message half is not a missing feature but a CRASH - `checkMsgt`
+ *   throws PARSE_ERROR_INVALID_MESSAGE for an unknown `msgt:`, and composition
+ *   delivers a mod's record to the binder intact, so trying took the bind down.
  * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
  *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
  *   values for them - extending the game's vocabulary, not just recombining it
@@ -107,6 +115,16 @@ import type {
 import type { ProjectFeatHandler } from "../game/project-feat.js";
 import type { ProjectObjHandler } from "../game/project-obj.js";
 import type { PlayerSideHandler } from "../game/player-side.js";
+import type { MonHandler } from "../mon/project-mon.js";
+import { messageLookupByName } from "../sound/engine.js";
+import { messageTypes } from "../sound/message-types.js";
+import type {
+  MessageTypeEntry,
+  MessageTypeRegistryTarget,
+} from "../sound/message-types.js";
+import { soundPrefRegistry } from "../sound/sound-registry.js";
+import type { SoundPrefRegistryTarget } from "../sound/sound-registry.js";
+import type { SoundPrefEntry } from "../sound/sound-prefs-data.js";
 import type { JsonValue } from "./save-blocks.js";
 import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary.js";
 import type {
@@ -162,6 +180,7 @@ export const REGISTRY_CAPABILITIES = {
   tval: "registry:tval",
   rune: "registry:rune",
   vocab: "registry:vocab",
+  message: "registry:message",
   /** Web-owned screen rows; kept here so the capability vocabulary has one source. */
   menu: "registry:menu",
 } as const;
@@ -206,6 +225,19 @@ export interface RegistryTargets {
   rune?: RuneRegistry | null;
   /** This mod's vocabulary registry (declared terms + per-entity values). */
   vocab?: VocabularyRegistry | null;
+  /**
+   * Mod-supplied MSG_ types and `sound:` directives.
+   *
+   * These two default to core's module-level singletons when the field is
+   * omitted, which the other targets do not. That is not laxity: both are
+   * process-wide by construction - `messageLookupByName` is a free function
+   * every BINDER calls before any game exists, and the sound engine is built
+   * once per front end and outlives every character - so there is exactly one
+   * of each and a host has nothing else it could pass. Passing `null`
+   * explicitly still means "not available here" and still throws.
+   */
+  messages?: MessageTypeRegistryTarget | null;
+  sounds?: SoundPrefRegistryTarget | null;
   /** The front end's menu transformer registry (web owns the live implementation). */
   menus?: MenuRegistryTarget | null;
 }
@@ -425,6 +457,17 @@ export interface ProjectionFacade {
   readonly obj: ProjectionSideFacade<ProjectObjHandler>;
   /** project_p: what a projection does to the player. */
   readonly player: ProjectionSideFacade<PlayerSideHandler>;
+  /**
+   * project_m: what a projection does to a MONSTER - the resist / damage /
+   * timed-effect computation, before the driver applies it.
+   *
+   * The fourth side, added 2026-08-14. Until then a mod's own projection could
+   * burn terrain, burn floor items and hurt the player, and did literally
+   * nothing to a monster: `MONSTER_HANDLERS` was a frozen 56-slot ARRAY indexed
+   * by PROJ value, and a mod's projection is appended past the end of it. Rides
+   * on `registry:projection` with the other three - it is the same consent.
+   */
+  readonly mon: ProjectionSideFacade<MonHandler>;
 }
 
 /**
@@ -668,6 +711,44 @@ export interface VocabFacade {
 }
 
 /**
+ * The message-vocabulary facade (gated by registry:message).
+ *
+ * Two halves of one thing. `define` appends a MSG_ type after the 153 compiled
+ * ones, so a mod's spell / blow method / summon / projection may carry its own
+ * `msgt:` instead of taking the bind down with PARSE_ERROR_INVALID_MESSAGE.
+ * `addSounds` appends `sound:` directives after the compiled 149, so that
+ * message type - or a core one - actually plays something.
+ *
+ * ORDER MATTERS, and only one way round: register the type before the sound
+ * pref that names it, and both before the front end loads prefs. A pref naming
+ * an unknown type is DROPPED, silently, exactly as upstream drops such a prf
+ * line - so a mod that gets the order wrong loses its sound rather than
+ * crashing, and `addSounds` is deliberately not the place that reports it.
+ */
+export interface MessageFacade {
+  /**
+   * Declare a new MSG_ type; returns the index it was appended at. Throws on a
+   * name that is already compiled in (case-insensitively), a name that parses
+   * as a decimal number, or a duplicate - all three are registrations that
+   * could never be reached, not preferences.
+   */
+  define(name: string, sound?: string): number;
+  /** The MSG index for any name, core's or a mod's - message_lookup_by_name. */
+  lookup(name: string): number;
+  /** Every mod-supplied message type so far, in registration order. */
+  types(): readonly MessageTypeEntry[];
+  /**
+   * Append `sound:` directives. Last writer wins PER MESSAGE, because
+   * message_sound_define clears a message's sample list before assigning - so
+   * this is how a sound-pack mod re-points a core message, and a mod that means
+   * to ADD to core's samples repeats core's names alongside its own.
+   */
+  addSounds(entries: readonly SoundPrefEntry[]): void;
+  /** Every mod-supplied `sound:` directive so far, in registration order. */
+  sounds(): readonly SoundPrefEntry[];
+}
+
+/**
  * The capability-gated registry host handed to a trusted in-process plugin.
  * Each facade throws AgentCapabilityError on first use if the corresponding
  * registry:<domain> capability was not granted, and a plain Error if the host
@@ -688,6 +769,7 @@ export interface ModRegistryHost {
   readonly tval: TvalFacade;
   readonly rune: RuneFacade;
   readonly vocab: VocabFacade;
+  readonly messages: MessageFacade;
   readonly menus: MenuFacade;
 }
 
@@ -727,6 +809,25 @@ function requireTarget<T>(target: T | null | undefined, domain: RegistryDomain):
  * The target is resolved per call, like every other facade here, so a host that
  * wired no registry fails at the call the mod made rather than at construction.
  */
+/**
+ * The message / sound targets, defaulting to core's module-level singletons.
+ * Only `undefined` defaults; an explicit `null` is still "the host did not wire
+ * it" and throws through requireTarget. See RegistryTargets.messages.
+ */
+function messageTarget(targets: RegistryTargets): MessageTypeRegistryTarget {
+  return requireTarget(
+    targets.messages === undefined ? messageTypes : targets.messages,
+    "message",
+  );
+}
+
+function soundTarget(targets: RegistryTargets): SoundPrefRegistryTarget {
+  return requireTarget(
+    targets.sounds === undefined ? soundPrefRegistry : targets.sounds,
+    "message",
+  );
+}
+
 function projectionSide<H>(
   capabilities: AgentCapabilities | undefined,
   targets: RegistryTargets,
@@ -998,6 +1099,7 @@ export function createModRegistryHost(
       feat: projectionSide(capabilities, targets, (r) => r.feat),
       obj: projectionSide(capabilities, targets, (r) => r.obj),
       player: projectionSide(capabilities, targets, (r) => r.player),
+      mon: projectionSide(capabilities, targets, (r) => r.mon),
     },
     glyphs: {
       set(kind, glyph, handler): void {
@@ -1071,6 +1173,28 @@ export function createModRegistryHost(
       valuesOf(entity): { [term: string]: JsonValue } {
         requireCap(capabilities, "vocab");
         return requireTarget(targets.vocab, "vocab").valuesOf(entity);
+      },
+    },
+    messages: {
+      define(name, sound): number {
+        requireCap(capabilities, "message");
+        return messageTarget(targets).add(name, sound);
+      },
+      lookup(name): number {
+        requireCap(capabilities, "message");
+        return messageLookupByName(name);
+      },
+      types(): readonly MessageTypeEntry[] {
+        requireCap(capabilities, "message");
+        return messageTarget(targets).added();
+      },
+      addSounds(entries): void {
+        requireCap(capabilities, "message");
+        soundTarget(targets).add(entries);
+      },
+      sounds(): readonly SoundPrefEntry[] {
+        requireCap(capabilities, "message");
+        return soundTarget(targets).added();
       },
     },
     menus: {

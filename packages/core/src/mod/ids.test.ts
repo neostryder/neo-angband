@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { TVAL_ENTRIES } from "../generated/index.js";
 import { bindCore } from "../session/boot.js";
 import type { CorePack } from "../session/boot.js";
 import {
@@ -173,5 +174,23 @@ describe("ContentIdResolver over pack zero", () => {
   it("reports an unknown id as undefined, not a throw", () => {
     expect(ids.kindIndex("core:does-not-exist")).toBeUndefined();
     expect(ids.raceIndex("frost:frost-wyrm")).toBeUndefined();
+  });
+});
+
+describe("an object record's `type` names a tval entry", () => {
+  it("holds for every record in the shipped pack", () => {
+    /* mod/ids.ts recovers the DEFINER's tval by looking its `type` string up in
+     * TVAL_ENTRIES, which is only sound if `type` is exactly a `textName` and
+     * TVAL_ENTRIES is indexed BY tval. Both are data facts, and a silent miss
+     * would leave a patched kind's id where the patch moved it - the failure
+     * this whole mechanism exists to stop, and invisible from inside it. */
+    const byText = new Map<string, number>(
+      TVAL_ENTRIES.map((e, tval) => [e.textName as string, tval]),
+    );
+    expect(byText.size).toBe(TVAL_ENTRIES.length);
+    const unknown = loadRecords<{ type: string }>("object")
+      .map((r) => r.type)
+      .filter((t) => !byText.has(t));
+    expect(unknown).toEqual([]);
   });
 });

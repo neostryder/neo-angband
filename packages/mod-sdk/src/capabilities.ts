@@ -135,7 +135,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|rune|tval|vocab|menu)$/;
+  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|rune|tval|vocab|menu|message)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

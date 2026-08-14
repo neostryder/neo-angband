@@ -73,6 +73,34 @@ describe("composeContentPacks", () => {
     expect(kobold?.hp).toBe(99);
   });
 
+  it("keeps a mod-defined record's owner fixed when a LATER mod renames it", () => {
+    /* The mod-to-mod half of task #233, at the real composeContentPacks wire
+     * rather than at a hand-built stamp (core's mod/provenance.test.ts already
+     * proves the minting side of this with a hand-built fixture). A fix that
+     * only protected `core:` ids would pass every test above - which patches
+     * core's own monsters - and still let `cyber` steal `beasts`' namespace for
+     * a record `beasts` defined, because `defined` is set once at the ADD site
+     * in compose.ts regardless of which pack owns the record being patched. */
+    const beasts: LoadedPack = {
+      manifest: manifest("beasts", { core: "*" }),
+      files: { monster: { records: [{ name: "Frost Wyrm", hp: 400 }] } },
+    };
+    const cyber: LoadedPack = {
+      manifest: manifest("cyber", { beasts: "*" }),
+      files: { monster: { patches: { "beasts:frost-wyrm": { name: "Cyber Wyrm" } } } },
+    };
+    const composed = composeContentPacks([corePack(), beasts, cyber]);
+    expect(composed.problems).toEqual([]);
+    const wyrm = (composed.records["monster"] as Record<string, unknown>[]).find(
+      (m) => m["name"] === "Cyber Wyrm",
+    );
+    expect(wyrm?.[PROVENANCE_KEY]).toEqual({
+      owner: "beasts",
+      modifiedBy: ["cyber"],
+      was: { name: "Frost Wyrm" },
+    });
+  });
+
   it("applies a mod's field patch to a core record", () => {
     const mod: LoadedPack = {
       manifest: manifest("tweak", { core: "*" }),
@@ -399,7 +427,10 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
         store: "STORE_ARMOR",
         slots: { min: 6, max: 18 },
         turnover: 40,
-        [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["shops"] },
+        /* The definer's (core's) own turnover survives under `was`, which is
+         * what keeps this record's localid fixed if a later pack ever patches
+         * its identity field instead - see provenance.ts RecordProvenance.was. */
+        [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["shops"], was: { turnover: 9 } },
       },
     ]);
   });
@@ -422,7 +453,14 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
     expect(recordsOf(composed, "constants")).toEqual([
       {
         "level-max": [{ label: "monsters", value: 2048 }],
-        [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["deeper"] },
+        /* `was` carries the definer's original `level-max` array, compared by
+         * value rather than by reference - the whole point being that a field
+         * this changed can be restored even though fieldPatch deep-clones. */
+        [PROVENANCE_KEY]: {
+          owner: "core",
+          modifiedBy: ["deeper"],
+          was: { "level-max": [{ label: "monsters", value: 1024 }] },
+        },
       },
     ]);
   });
@@ -451,8 +489,10 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
       cost: 1,
       /* A wholesale replace still leaves the record core's - the mod did not
        * add a scroll, it overwrote one - so `owner` stays core and `edit`
-       * appears as a modifier. */
-      [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["edit"] },
+       * appears as a modifier. `was` carries core's original `cost`: a replace
+       * is a brand-new object, so without it the definer's pre-replace values
+       * would be unrecoverable. */
+      [PROVENANCE_KEY]: { owner: "core", modifiedBy: ["edit"], was: { cost: 150 } },
     });
     expect(recordsOf(composed, "store").map((r) => r["store"])).toEqual([
       "STORE_ARMOR",

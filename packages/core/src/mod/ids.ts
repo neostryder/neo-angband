@@ -44,6 +44,18 @@
  * in a string embedded in the player's save. The namespace now comes from the
  * record's own provenance (mod/extension.ts), which is what this paragraph has
  * claimed all along. IdTable.index carries the compatibility half.
+ *
+ * "IDS NEVER MOVE" HAD ONE MORE HOLE IN IT, and it was a PATCH rather than a
+ * reorder (task #233, measured 2026-08-10). A localid is derived from the
+ * record's own name or code, so a mod that patched the NAME of a record it does
+ * not own moved that record's id: install a mod that renames Grip and
+ * `core:grip-farmer-maggot-s-dog` - the string in every save written before the
+ * mod - resolved to nothing, while turning the mod off left the newly minted id
+ * dangling instead. The rule now is that a record's id is fixed by the pack that
+ * DEFINED it and a patch cannot move it, in whatever namespace: it protects a
+ * mod's records from a LATER mod's rename exactly as it protects core's, because
+ * nothing in the mechanism mentions `core`. See `definedAt` below for how the
+ * definer's spelling survives composition.
  */
 
 import { TVAL_ENTRIES } from "../generated/index.js";
@@ -152,6 +164,61 @@ function packOf(entity: ModExtensible): string | undefined {
   return entity.from?.owner;
 }
 
+/* ------------------------------------------------------------------ *
+ * The definer's spelling (task #233).
+ *
+ * A LOCALID IS DERIVED FROM A NAME, so before this a mod that patched the name
+ * of a record it does not own MOVED that record's id: install a mod that
+ * renames Grip and `core:grip-farmer-maggot-s-dog` - a string sitting in every
+ * save written before the mod - resolved to nothing. The rule is that a
+ * record's id is fixed by the pack that DEFINED it and a patch cannot move it,
+ * which needs the definer's value to still be reachable after composition.
+ *
+ * `from.was` is where it is reachable: the composer records the definer's value
+ * for every top-level field a patch changed (mod-sdk/provenance.ts), keyed by
+ * the pack JSON's own field names. So the minters below ask for the definer's
+ * `name` / `code` / `type` and fall back to the record in front of them, which
+ * is what an unpatched record - and the entire base game - takes.
+ *
+ * THE MOVED ID STILL RESOLVES, as an alias. A save written by 0.19.x WITH a
+ * renaming mod installed holds the moved spelling, and a fix that made those
+ * saves unresolvable would be the same defect pointed the other way. See
+ * IdTable.movedToIndex.
+ * ------------------------------------------------------------------ */
+
+/** The definer's value at a dot path within `was`, or undefined. */
+function definedAt(entity: ModExtensible, path: string): unknown {
+  let cur: unknown = entity.from?.was;
+  for (const part of path.split(".")) {
+    if (typeof cur !== "object" || cur === null || Array.isArray(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/**
+ * The definer's string at `path`, or `live` when no pack changed that field -
+ * which is every record of an unmodded game, so this is a no-op for the whole
+ * base game.
+ */
+function asDefined(entity: ModExtensible, path: string, live: string): string {
+  const was = definedAt(entity, path);
+  return typeof was === "string" ? was : live;
+}
+
+/**
+ * The tval a pack's `type` string names, or undefined when it names none.
+ *
+ * TVAL_ENTRIES is indexed BY tval, and an object record's `type` is exactly the
+ * `textName` of its entry - both asserted over the shipped pack in ids.test.ts,
+ * because this is a lookup by a string in a data file and a silent miss would
+ * simply leave the id where the patch put it.
+ */
+function tvalOfTypeName(type: string): number | undefined {
+  const at = TVAL_ENTRIES.findIndex((e) => e.textName === type);
+  return at < 0 ? undefined : at;
+}
+
 /** One bidirectional index<->id table for a single entity kind. */
 class IdTable {
   private readonly toId: (string | null)[] = [];
@@ -163,6 +230,20 @@ class IdTable {
    * `index` for why this is a reproduction rather than a heuristic.
    */
   private readonly legacyToIndex = new Map<string, number>();
+  /**
+   * The id an engine between 0.19.0 and the task #233 fix would have minted for
+   * each PATCHED record: the same namespace, but the localid derived from the
+   * patched name rather than the definer's. Only populated where a patch
+   * actually moved the spelling, so it is empty for an unmodded game and for
+   * every mod that does not rename.
+   *
+   * A SEPARATE MAP FROM `legacyToIndex`, not extra entries in it, because that
+   * one is a REPRODUCTION of the pre-0.19.0 algorithm including its suffix
+   * sequence - inserting a second family of keys into it would let a moved id
+   * take a suffix out from under a record whose legacy id has been in savefiles
+   * since before any of this existed.
+   */
+  private readonly movedToIndex = new Map<string, number>();
 
   constructor(private readonly namespace: string) {}
 
@@ -180,7 +261,12 @@ class IdTable {
    * in what order, embedded in the player's save. It is now `frost:kobold`,
    * which says who supplied it and is the same string whatever else is loaded.
    */
-  add(index: number, base: string, namespace: string = this.namespace): void {
+  add(
+    index: number,
+    base: string,
+    namespace: string = this.namespace,
+    moved?: string,
+  ): void {
     let id = makeId(namespace, base);
     if (this.toIndex.has(id)) {
       let n = 2;
@@ -197,6 +283,16 @@ class IdTable {
       legacy = makeId(this.namespace, `${base}-${n}`);
     }
     this.legacyToIndex.set(legacy, index);
+
+    if (moved !== undefined && moved !== base) {
+      let at = makeId(namespace, moved);
+      if (this.movedToIndex.has(at)) {
+        let n = 2;
+        while (this.movedToIndex.has(makeId(namespace, `${moved}-${n}`))) n++;
+        at = makeId(namespace, `${moved}-${n}`);
+      }
+      this.movedToIndex.set(at, index);
+    }
   }
 
   /** The id for an index, or null when the index is unbound (e.g. slot 0). */
@@ -227,7 +323,9 @@ class IdTable {
    * shadow it.
    */
   index(id: string): number | undefined {
-    return this.toIndex.get(id) ?? this.legacyToIndex.get(id);
+    return (
+      this.toIndex.get(id) ?? this.legacyToIndex.get(id) ?? this.movedToIndex.get(id)
+    );
   }
 }
 
@@ -254,20 +352,41 @@ export class ContentIdResolver {
   constructor(reg: ContentIdRegistries, namespace: string = CORE_NS) {
     const { objects } = reg;
 
+    /* Every `add` below passes the localid the DEFINER's fields mint and, as the
+     * fourth argument, the one the record's CURRENT fields mint. They are the
+     * same string for every record no pack patched, which is the whole base game
+     * and every mod record nobody else touched. */
     this.kinds = new IdTable(namespace);
     for (const kind of objects.kinds) {
-      this.kinds.add(kind.kidx, kindLocalId(kind.tval, kind.name), packOf(kind));
+      /* An object kind's id is tval + name, so BOTH halves have to come from the
+       * definer: `type` is a top-level field a patch can overwrite exactly like
+       * `name`, and moving a dagger to a different tval would move its id even
+       * with the name held still. */
+      const wasType = definedAt(kind, "type");
+      const tval =
+        (typeof wasType === "string" ? tvalOfTypeName(wasType) : undefined) ?? kind.tval;
+      this.kinds.add(
+        kind.kidx,
+        kindLocalId(tval, asDefined(kind, "name", kind.name)),
+        packOf(kind),
+        kindLocalId(kind.tval, kind.name),
+      );
     }
 
     this.egos = new IdTable(namespace);
-    for (const ego of objects.egos) this.egos.add(ego.eidx, slug(ego.name), packOf(ego));
+    for (const ego of objects.egos) {
+      this.egos.add(ego.eidx, slug(asDefined(ego, "name", ego.name)), packOf(ego), slug(ego.name));
+    }
 
     /* Artifacts, curses, brands, slays are 1-based with a null at slot 0. */
     this.artifacts = new IdTable(namespace);
     for (let i = 1; i < objects.artifacts.length; i++) {
       const a = objects.artifacts[i];
       if (a) {
-        this.artifacts.add(i, slug(a.name), packOf(a));
+        this.artifacts.add(i, slug(asDefined(a, "name", a.name)), packOf(a), slug(a.name));
+        /* The artifact NAME, unlike its id, is the one a player's history line
+         * prints and the save round-trips - so it stays the live name a mod
+         * chose, not the definer's. */
         this.artifactNames.set(i, a.name);
       }
     }
@@ -275,44 +394,72 @@ export class ContentIdResolver {
     this.curses = new IdTable(namespace);
     for (let i = 1; i < objects.curses.length; i++) {
       const c = objects.curses[i];
-      if (c) this.curses.add(i, slug(c.name), packOf(c));
+      if (c) this.curses.add(i, slug(asDefined(c, "name", c.name)), packOf(c), slug(c.name));
     }
 
     this.brands = new IdTable(namespace);
     for (let i = 1; i < objects.brands.length; i++) {
       const b = objects.brands[i];
-      if (b) this.brands.add(i, slug(b.code), packOf(b));
+      if (b) this.brands.add(i, slug(asDefined(b, "code", b.code)), packOf(b), slug(b.code));
     }
 
     this.slays = new IdTable(namespace);
     for (let i = 1; i < objects.slays.length; i++) {
       const s = objects.slays[i];
-      if (s) this.slays.add(i, slug(s.code), packOf(s));
+      if (s) this.slays.add(i, slug(asDefined(s, "code", s.code)), packOf(s), slug(s.code));
     }
 
     this.races = new IdTable(namespace);
     for (const race of reg.monsters?.races ?? []) {
-      this.races.add(race.ridx, slug(race.name), packOf(race));
+      this.races.add(
+        race.ridx,
+        slug(asDefined(race, "name", race.name)),
+        packOf(race),
+        slug(race.name),
+      );
     }
 
     this.traps = new IdTable(namespace);
     for (const trap of reg.traps ?? []) {
-      this.traps.add(trap.tidx, slug(trap.name), packOf(trap));
+      /* `name.name`, not `name`: a trap's pack record spells its identity as the
+       * composite `{name, desc}` upstream's `name:<name>:<desc>` line carries,
+       * and the binder takes the display half. */
+      this.traps.add(
+        trap.tidx,
+        slug(asDefined(trap, "name.name", trap.name)),
+        packOf(trap),
+        slug(trap.name),
+      );
     }
 
     this.feats = new IdTable(namespace);
     for (const feat of reg.features?.allFeatures() ?? []) {
-      this.feats.add(feat.fidx, slug(feat.code), packOf(feat));
+      this.feats.add(
+        feat.fidx,
+        slug(asDefined(feat, "code", feat.code)),
+        packOf(feat),
+        slug(feat.code),
+      );
     }
 
     this.playerRaces = new IdTable(namespace);
     for (const race of reg.playerRaces ?? []) {
-      this.playerRaces.add(race.ridx, slug(race.name), packOf(race));
+      this.playerRaces.add(
+        race.ridx,
+        slug(asDefined(race, "name", race.name)),
+        packOf(race),
+        slug(race.name),
+      );
     }
 
     this.playerClasses = new IdTable(namespace);
     for (const cls of reg.playerClasses ?? []) {
-      this.playerClasses.add(cls.cidx, slug(cls.name), packOf(cls));
+      this.playerClasses.add(
+        cls.cidx,
+        slug(asDefined(cls, "name", cls.name)),
+        packOf(cls),
+        slug(cls.name),
+      );
     }
   }
 

@@ -17,8 +17,12 @@ import {
   installScreen,
   screenClaimants,
   setScreenPresenter,
+  showThroughPresenter,
+  terminalIsYielded,
+  withTerminal,
 } from "./screen-runtime";
-import type { ScreenPlugin } from "./screen-runtime";
+import type { ScreenPlugin, YieldingScreen } from "./screen-runtime";
+import { promptRequest, type PromptRequest } from "./prompt-view";
 import { SCREEN_FOOTER, freezeView, type ScreenPresenter, type ScreenView } from "./screen-view";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -323,5 +327,322 @@ describe("a presenter that misbehaves loses the seam, and the player still sees 
     await tick();
     expect(calls).toBe(1);
     expect(faults).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Standing aside for the game's own prompt                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WHY THESE TESTS LOOK THE WAY THEY DO.
+ *
+ * The defect is that a prompt runs UNDER a presenter's overlay: the player is
+ * asked a question they cannot see, and `charsheet:rename` writes the save at
+ * the end of it. The mechanism is an announcement, so the only assertions worth
+ * making are made through what the PRESENTER received, and against what the real
+ * producer built - never against an object literal spelled out here, which would
+ * be an assertion about this file.
+ *
+ * The negative control is the presenter with NO `yieldTerminal` AT ALL, not one
+ * that does nothing when called. The likeliest wrong implementation treats a
+ * missing member as consent - it runs the work and reports `held: true` - and
+ * every test that supplied an inert-but-present member would still pass.
+ */
+
+const RENAME = { id: "charsheet:rename", action: "rename", label: "Enter your character's name" };
+const SIZE = { cols: 80, rows: 24 };
+
+/** The request the game would actually announce, from the one real producer. */
+function renameRequest(): PromptRequest {
+  return promptRequest(RENAME.id, RENAME.action, "screen", RENAME.label, SIZE);
+}
+
+interface Standing {
+  presenter: ScreenPresenter;
+  /** Everything that happened, in one list, so ORDER is asserted not inferred. */
+  log: string[];
+  received: (PromptRequest | null)[];
+  dismiss: () => void;
+}
+
+/** A presenter whose screen CAN stand aside; `onYield` is what it does about it. */
+function standsAside(
+  onYield: (request: PromptRequest | null) => void | Promise<void> = () => undefined,
+): Standing {
+  const log: string[] = [];
+  const received: (PromptRequest | null)[] = [];
+  let resolve: () => void = () => {};
+  const shown: YieldingScreen = {
+    dismissed: new Promise<void>((r) => (resolve = r)),
+    yieldTerminal(request) {
+      received.push(request);
+      log.push(request === null ? "release" : `aside:${request.id}`);
+      return onYield(request);
+    },
+  };
+  return { log, received, dismiss: () => resolve(), presenter: { show: () => shown } };
+}
+
+/**
+ * THE NEGATIVE CONTROL: the mechanism REMOVED. A handle with no `yieldTerminal`
+ * property at all - a presenter written before any of this existed, which is
+ * every presenter that exists today.
+ */
+function cannotStandAside(): { presenter: ScreenPresenter; dismiss: () => void } {
+  let resolve: () => void = () => {};
+  const shown = { dismissed: new Promise<void>((r) => (resolve = r)) };
+  return { dismiss: () => resolve(), presenter: { show: () => shown } };
+}
+
+/** Open one screen through the runtime, so the live holder knows about it. */
+function open(presenter: ScreenPresenter, id = "sprites", view = VIEW): Promise<void> | null {
+  setScreenPresenter({ id, presenter });
+  return showThroughPresenter(view, () => undefined);
+}
+
+describe("the game announces a prompt, and the presenter stands aside", () => {
+  it("announces BEFORE the work and releases AFTER it, in that order", async () => {
+    const owner = standsAside();
+    expect(open(owner.presenter)).not.toBeNull();
+
+    const out = await withTerminal(renameRequest(), () => {
+      owner.log.push("prompt");
+      return "Bob";
+    });
+
+    expect(owner.log).toEqual(["aside:charsheet:rename", "prompt", "release"]);
+    expect(out).toEqual({ held: true, value: "Bob" });
+  });
+
+  it("AWAITS what yieldTerminal returns before anything is drawn", async () => {
+    /* A presenter animating itself out is legitimate, and the whole point of the
+     * design is that the prompt does not land until it has finished. */
+    let letGo: () => void = () => {};
+    const owner = standsAside((request) =>
+      request === null ? undefined : new Promise<void>((r) => (letGo = r)),
+    );
+    expect(open(owner.presenter)).not.toBeNull();
+
+    const running = withTerminal(renameRequest(), () => void owner.log.push("prompt"));
+    await tick();
+    expect(owner.log).toEqual(["aside:charsheet:rename"]); // the fade is still running
+    letGo();
+    await running;
+    expect(owner.log).toEqual(["aside:charsheet:rename", "prompt", "release"]);
+  });
+
+  it("hands the presenter what the REAL producer built, field for field", async () => {
+    /* Asserted through the mod-facing sink against `promptRequest`'s own output.
+     * A literal here would be an assertion about this test file, and a field
+     * added to the producer and dropped at the boundary would sail past it. */
+    const owner = standsAside();
+    expect(open(owner.presenter)).not.toBeNull();
+
+    await withTerminal(renameRequest(), () => undefined);
+
+    const got = owner.received[0];
+    expect(got).toEqual(renameRequest());
+    /* KEY SETS too: `toEqual` treats `{a:1}` and `{a:1,b:undefined}` as equal,
+     * and with `exactOptionalPropertyTypes` an absent optional is the normal
+     * shape, so a new field can drift past a deep-equal unnoticed. */
+    expect(Object.keys(got!).sort()).toEqual(Object.keys(renameRequest()).sort());
+    expect(Object.keys(got!.clip).sort()).toEqual(Object.keys(renameRequest().clip).sort());
+    /* And it arrives frozen, so the presenter cannot edit the announcement. */
+    expect(Object.isFrozen(got)).toBe(true);
+    expect(owner.received[1]).toBeNull(); // the release, and nothing else
+    expect(owner.received).toHaveLength(2);
+  });
+
+  it("says the terminal is yielded WHILE the prompt runs, and not after", async () => {
+    const owner = standsAside();
+    expect(open(owner.presenter)).not.toBeNull();
+    expect(terminalIsYielded()).toBe(false);
+
+    let during = false;
+    await withTerminal(renameRequest(), () => {
+      during = terminalIsYielded();
+    });
+
+    expect(during).toBe(true);
+    expect(terminalIsYielded()).toBe(false);
+  });
+
+  it("releases from a FINALLY when the prompt throws", async () => {
+    /* One exception must not leave the player's overlay hidden for the rest of
+     * the session. `getFile` reaches the file system; this is not hypothetical. */
+    const owner = standsAside();
+    expect(open(owner.presenter)).not.toBeNull();
+
+    await expect(
+      withTerminal(renameRequest(), () => {
+        throw new Error("the file system said no");
+      }),
+    ).rejects.toThrow("the file system said no");
+
+    expect(owner.log).toEqual(["aside:charsheet:rename", "release"]);
+    expect(terminalIsYielded()).toBe(false);
+  });
+
+  it("costs unmodded play one branch: no presenter, no announcement, no fault", async () => {
+    const faults: string[] = [];
+    expect(await withTerminal(renameRequest(), () => 7, (id) => void faults.push(id))).toEqual({
+      held: true,
+      value: 7,
+    });
+    expect(faults).toEqual([]);
+    expect(terminalIsYielded()).toBe(false);
+  });
+});
+
+describe("a presenter that cannot stand aside hands the screen back", () => {
+  it("NEGATIVE CONTROL: a presenter with no yieldTerminal surrenders, and is told what to add", async () => {
+    /* The control is built by REMOVING the mechanism. The likeliest shortcut -
+     * treating a missing member as consent - passes every test that supplies an
+     * inert member and fails this one, which is why this one exists. */
+    const faults: { id: string; message: string }[] = [];
+    const owner = cannotStandAside();
+    expect(open(owner.presenter, "old-mod")).not.toBeNull();
+
+    const out = await withTerminal(
+      renameRequest(),
+      () => "Bob",
+      (id, message) => void faults.push({ id, message }),
+    );
+
+    expect(out).toEqual({ held: false, value: "Bob" }); // the work STILL runs
+    expect(faults).toHaveLength(1);
+    expect(faults[0]!.id).toBe("old-mod");
+    expect(faults[0]!.message).toContain("yieldTerminal");
+    expect(faults[0]!.message).toContain("add");
+    expect(faults[0]!.message).toContain(RENAME.label);
+  });
+
+  it("reports it ONCE, however many prompts the action opens", async () => {
+    /* `report:describe` opens up to three prompts in a row; a fault per line is
+     * worse than one report and out, which is the rule the seam already uses. */
+    const faults: string[] = [];
+    const owner = cannotStandAside();
+    expect(open(owner.presenter, "old-mod")).not.toBeNull();
+    const report = (id: string): void => void faults.push(id);
+
+    for (let i = 0; i < 3; i++) {
+      expect((await withTerminal(renameRequest(), () => i, report)).held).toBe(false);
+    }
+    expect(faults).toEqual(["old-mod"]);
+  });
+
+  it("surrenders when yieldTerminal THROWS, and when it REJECTS", async () => {
+    for (const failing of [
+      (): void => {
+        throw new Error("no canvas");
+      },
+      (): Promise<void> => Promise.reject(new Error("no canvas")),
+    ]) {
+      const faults: unknown[] = [];
+      const owner = standsAside(failing);
+      expect(open(owner.presenter, "fragile")).not.toBeNull();
+
+      const out = await withTerminal(
+        renameRequest(),
+        () => "Bob",
+        (_id, _message, error) => void faults.push(error),
+      );
+
+      expect(out).toEqual({ held: false, value: "Bob" });
+      expect((faults[0] as Error).message).toBe("no canvas");
+      /* Surrendered, not merely un-yielded: the game is drawing over that screen
+       * and nothing has told the presenter otherwise. */
+      expect(terminalIsYielded()).toBe(true);
+      setScreenPresenter(null);
+    }
+  });
+
+  it("refuses a yieldTerminal that is present and is not callable", () => {
+    /* The same `typeof … === "function"` treatment `dismissed?.then` gets: a
+     * lying member reads as "can stand aside" and takes the seam down mid-prompt. */
+    const faults: string[] = [];
+    setScreenPresenter({
+      id: "sloppy",
+      presenter: {
+        show: () =>
+          ({
+            dismissed: new Promise<void>(() => undefined),
+            yieldTerminal: true,
+          }) as unknown as YieldingScreen,
+      },
+    });
+    expect(showThroughPresenter(VIEW, (_id, message) => void faults.push(message))).toBeNull();
+    expect(faults[0]).toContain("yieldTerminal");
+  });
+});
+
+describe("a presenter standing aside is not offered the screen the prompt is drawing", () => {
+  it("returns null to the yielded owner, and STILL serves a different presenter", async () => {
+    /* Site 4: `core:update`'s `mods` action opens `showModUpgrades`, whose own
+     * screens come back through `showThroughPresenter` while the SAME presenter
+     * is still holding `core:update`. Re-offering asks it to draw over the very
+     * terminal it just cleared. */
+    const owner = standsAside();
+    expect(open(owner.presenter, "sprites")).not.toBeNull();
+    const nested = freezeView({
+      id: "core:mod-updates",
+      title: "Mod updates",
+      footer: SCREEN_FOOTER,
+      blocks: [{ kind: "lines", lines: [{ text: "one waiting" }] }],
+    });
+    const other = standsAside();
+    let reoffered: Promise<void> | null | undefined;
+    let toOther: Promise<void> | null | undefined;
+
+    await withTerminal(renameRequest(), () => {
+      reoffered = showThroughPresenter(nested, () => undefined);
+      /* A DIFFERENT presenter has done nothing wrong and is served normally -
+       * refusing everybody would take the seam away from a bystander. */
+      setScreenPresenter({ id: "other", presenter: other.presenter });
+      toOther = showThroughPresenter(nested, () => undefined);
+    });
+
+    expect(reoffered).toBeNull();
+    expect(toOther).not.toBeNull();
+    expect(other.received).toEqual([]); // it was shown the screen, not a prompt
+  });
+
+  it("offers the owner screens again once it has been released", async () => {
+    const owner = standsAside();
+    expect(open(owner.presenter, "sprites")).not.toBeNull();
+    await withTerminal(renameRequest(), () => undefined);
+    expect(showThroughPresenter(VIEW, () => undefined)).not.toBeNull();
+  });
+});
+
+describe("taking the screen back", () => {
+  it("reports a release that fails, and still gives the caller the prompt's answer", async () => {
+    /* The work is done and its result is what the player is owed; the screen is
+     * the presenter's problem now, and it has been told. */
+    const faults: string[] = [];
+    const owner = standsAside((request) => {
+      if (request === null) throw new Error("gone");
+    });
+    expect(open(owner.presenter, "fragile")).not.toBeNull();
+
+    const out = await withTerminal(
+      renameRequest(),
+      () => "Bob",
+      (_id, message) => void faults.push(message),
+    );
+
+    expect(out).toEqual({ held: true, value: "Bob" });
+    expect(faults[0]).toContain("yieldTerminal(null)");
+    expect(terminalIsYielded()).toBe(false);
+  });
+
+  it("forgets a screen once it is dismissed, so the next prompt has nobody to tell", async () => {
+    const owner = standsAside();
+    const done = open(owner.presenter);
+    owner.dismiss();
+    await done;
+    expect(await withTerminal(renameRequest(), () => 1)).toEqual({ held: true, value: 1 });
+    expect(owner.received).toEqual([]);
   });
 });

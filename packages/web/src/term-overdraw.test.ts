@@ -230,3 +230,62 @@ describe("the terminal paints the difference, not the screen", () => {
     });
   });
 });
+
+/**
+ * Bounded erase. It lives in this file rather than in term.test.ts because this
+ * is the suite with a live GlyphTerm: term.test.ts can only read the method's
+ * source, and "erases exactly len cells" is an off-by-one question that source
+ * reading is the wrong instrument for.
+ */
+describe("eraseSpan blanks exactly the cells asked for (Term_erase x, y, len)", () => {
+  it("clears len cells and leaves the cell on either side alone", () => {
+    /* The call upstream already has and the port had not needed until regions:
+     * askfor_aux (ui-input.c:891) edits a field mid-row and must not wipe what
+     * is to its right. eraseToEol is the wrong tool there, and its own comment
+     * has said so all along. */
+    const term = makeTerm();
+    const { cols } = term.size();
+    term.print(0, 2, "#".repeat(cols), "#c8c8d4");
+    term.eraseSpan(10, 2, 5);
+    const row = term.snapshot()[2] ?? "";
+    expect(row.slice(8, 17)).toBe("##     ##");
+  });
+
+  it("blanks to nothing, not to a space glyph, so an erased cell does not occlude", () => {
+    /* A space is a glyph that happens to look blank; the grid's own "nothing
+     * here" is null. A region erasing with spaces would punch a white hole in
+     * whatever it floats over, so the two must not be the same operation.
+     *
+     * NEITHER READBACK SPELLS IT DIRECTLY - `snapshot()` renders both as " ",
+     * and `snapshotColored()` renders a null cell as `{ ch: " ", fg: "" }`
+     * rather than as null. The distinction is still observable, in the fg: a
+     * written space carries the colour its caller asked for, and an erased cell
+     * has no colour to carry. So this is an A/B of the two operations rather
+     * than an assertion about one. */
+    const term = makeTerm();
+    term.print(0, 3, "#####", "#c8c8d4");
+    term.print(1, 3, " ", "#c8c8d4"); // a space that was WRITTEN
+    term.eraseSpan(2, 3, 1); // a cell that was ERASED
+    const row = term.snapshotColored()[3] ?? [];
+    expect(row[1]).toEqual({ ch: " ", fg: "#c8c8d4" });
+    expect(row[2]).toEqual({ ch: " ", fg: "" });
+    expect(row[1]).not.toEqual(row[2]);
+  });
+
+  it("clips at the terminal edge instead of running past it", () => {
+    const term = makeTerm();
+    const { cols } = term.size();
+    term.print(0, 4, "#".repeat(cols), "#c8c8d4");
+    /* A length that would run well past the right-hand edge. */
+    expect(() => term.eraseSpan(cols - 3, 4, 500)).not.toThrow();
+    /* snapshot() trims the trailing blanks, so the row's LENGTH is the
+     * assertion: exactly three cells went, and an over-run would take more. */
+    expect(term.snapshot()[4] ?? "").toBe("#".repeat(cols - 3));
+  });
+
+  it("does nothing at all for a row that is off the grid", () => {
+    const term = makeTerm();
+    expect(() => term.eraseSpan(0, -1, 5)).not.toThrow();
+    expect(() => term.eraseSpan(0, 9999, 5)).not.toThrow();
+  });
+});

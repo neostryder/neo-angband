@@ -40,7 +40,14 @@
  */
 
 import { promptText, selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
-import { freezeView, SCREEN_FOOTER, type ScreenView } from "./screen-view";
+import {
+  freezeView,
+  screenBodyLines,
+  SCREEN_FOOTER,
+  type ScreenBlock,
+  type ScreenRow,
+  type ScreenView,
+} from "./screen-view";
 import type { GridPointerInput, GridSurface } from "./term";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 import { authorFor, displayName, standingNote, type AuthorRegister } from "./mod-authors";
@@ -52,7 +59,6 @@ import type { DiscoveredMod } from "./mod-discover";
 import { parseRepoRef, repoPageUrl, type RepoRef } from "./mod-source";
 import {
   MOD_CHECK_ADVICE,
-  requirementLine,
   type InstallProgress,
   type InstallResult,
 } from "./mod-install";
@@ -313,54 +319,167 @@ function wrapMessage(line: string, width: number): string[] {
 }
 
 /**
- * A refusal's body rows: the summary, then one bullet per unmet requirement, then
- * what the author can do about it.
+ * One unmet requirement as a table row: `title` is the row's own line, so a
+ * presenter can read it without finding a colon in English; `problem` is the
+ * paragraph under it, in `detail`.
+ *
+ * WHY THE ROW SPLITS WHERE IT DOES. `requirementLine` used to compose "- title:
+ * problem" as ONE string and wrap it as one flowing paragraph - which is exactly
+ * why this used to be unable to become a table at all: a `table` row is one
+ * terminal line, and that flowing wrap could break anywhere inside "problem",
+ * with no seam a row could stand on. `Requirement.title` is contracted to be
+ * "one line, in the imperative" (mod-sdk/standards.ts), so it is the one part of
+ * the old bullet a row CAN own outright; `problem` is arbitrary-length free text
+ * naming the field or file that is wrong, so it is what `detail` exists for.
+ *
+ * `wrap` is DERIVED, not typed in: `MESSAGE_WIDTH` (74) stays the one authority
+ * on how wide a refusal is wrapped, and `detail`'s own width comes out as
+ * `MESSAGE_WIDTH - indent`, matching what `textblockCalculatedLines` computes
+ * internally (`min(wrap, cols - indent)`) at an 80-column terminal.
+ */
+function findingRow(f: Finding, color: string): ScreenRow {
+  return {
+    id: f.id,
+    semantic: { kind: "mod-requirement", ref: f.id, data: { level: f.level } },
+    color,
+    cells: {
+      bullet: { text: "-" },
+      title: { text: f.title },
+    },
+    detail: {
+      indent: 2,
+      wrap: MESSAGE_WIDTH - 2,
+      paragraphs: [[{ text: f.problem }]],
+      color,
+    },
+  };
+}
+
+/**
+ * A refusal's body blocks: the summary as prose, one row per unmet requirement
+ * as a table, then the author's advice as prose - never rows themselves, because
+ * neither is a record with a stable identity, they are sentences this file (or
+ * `checkMod`) composed.
  *
  * THE RE-PARSE IS GONE. This used to split `problem` on "\n" and re-wrap each
  * fragment, because `storeMod` had flattened `checkMod`'s `{ title, problem }[]` into
  * that one string with hand-typed bullets - the process re-parsing a rendering it had
  * produced two frames earlier. The findings now arrive as records (`InstallResult.unmet`)
- * and each bullet is composed by `requirementLine`, in the module that owns the
- * wording, so there is one copy of it and nothing here reads a colon out of English.
+ * and each row's wording is `f.title`/`f.problem` straight off the `Finding`, so
+ * there is one copy of it and nothing here reads a colon out of English.
  *
  * The split that REMAINS is on `problem` alone, and it is not the old one: a refusal
  * whose text came from `message(e)` is an Error's own message, which can legitimately
  * carry a newline, and swallowing it would put a literal "\n" on the player's screen.
  */
-function refusalRows(problem: string, unmet: readonly Finding[]): string[] {
-  const rows = problem.split("\n").flatMap((line) => wrapMessage(line, MESSAGE_WIDTH));
-  if (unmet.length === 0) return rows;
-  for (const f of unmet) rows.push(...wrapMessage(requirementLine(f), MESSAGE_WIDTH));
-  rows.push(...wrapMessage(MOD_CHECK_ADVICE, MESSAGE_WIDTH));
-  return rows;
+function refusalBlocks(problem: string, unmet: readonly Finding[], color: string): ScreenBlock[] {
+  const blocks: ScreenBlock[] = [
+    {
+      kind: "lines",
+      lines: problem
+        .split("\n")
+        .flatMap((line) => wrapMessage(line, MESSAGE_WIDTH))
+        .map((text) => ({ text, color })),
+    },
+  ];
+  if (unmet.length > 0) {
+    blocks.push({
+      kind: "table",
+      key: "unmet",
+      tagged: false,
+      columns: [
+        { key: "bullet", width: 3, align: "right" },
+        { key: "title", pad: false },
+      ],
+      rows: unmet.map((f) => findingRow(f, color)),
+    });
+    blocks.push({
+      kind: "lines",
+      lines: wrapMessage(MOD_CHECK_ADVICE, MESSAGE_WIDTH).map((text) => ({ text, color })),
+    });
+  }
+  return blocks;
 }
 
 /**
  * What to show when an install was refused. Never a bare "it failed".
  *
- * STILL `lines`, AND THE CAUSE HAS MOVED. It is no longer the producer: `unmet`
- * carries `checkMod`'s findings all the way here, so "which requirement failed" is a
- * record rather than a substring. What stops this becoming a table is the BLOCK MODEL
- * itself - a `table` row is one terminal line and cannot wrap, and these rows do:
- * measured on the shipped requirement set, four of five bullets are longer than
- * MESSAGE_WIDTH and break onto a second line. Rendering them as unwrapped table rows
- * would push the end of each bullet off an 80-column terminal, and the end of a
- * refusal is where the instruction lives. The alternatives were both worse: rows that
- * are wrapped FRAGMENTS are `lines` wearing a costume, and a wrapping table block is a
- * change to screen-view.ts, which is where this belongs and is not this pass's to make.
+ * NOW MODELLED: `unmet` used to be flattened straight into `lines` because a
+ * `table` row is one terminal line and the old bullet ("- title: problem") wrapped
+ * as one flowing paragraph that could break anywhere inside `problem` - there was
+ * no seam a row could stand on. Splitting the row at `title` (contracted to be one
+ * line by `Requirement.title` itself) and letting `problem` be the row's `detail`
+ * is what removes that blocker; see `findingRow`.
+ */
+export function installFailureScreen(
+  name: string,
+  problem: string,
+  unmet: readonly Finding[] = [],
+): ScreenView {
+  return freezeView({
+    id: "core:mod-install-failure",
+    title: name,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "lines",
+        lines: [
+          { text: `${name} was not installed.`, color: C_BAD },
+          { text: "", color: C_FG },
+        ],
+      },
+      ...refusalBlocks(problem, unmet, C_WARN),
+      {
+        kind: "lines",
+        lines: [
+          { text: "", color: C_FG },
+          { text: "Nothing was stored, so your other mods are untouched.", color: C_DIM },
+        ],
+      },
+    ],
+  });
+}
+
+/**
+ * `installFailureScreen`'s body, flattened to `ScreenLine[]` for a caller that has
+ * not moved onto `showTextScreen(term, view)` yet. Exported and kept alongside the
+ * view builder rather than folded away, because it is what `mod-browse.test.ts`
+ * pins byte-for-byte and this pass does not own that file.
  */
 export function installFailureLines(
   name: string,
   problem: string,
   unmet: readonly Finding[] = [],
 ): ScreenLine[] {
-  return [
-    { text: `${name} was not installed.`, color: C_BAD },
-    { text: "", color: C_FG },
-    ...refusalRows(problem, unmet).map((line) => ({ text: line, color: C_WARN })),
-    { text: "", color: C_FG },
-    { text: "Nothing was stored, so your other mods are untouched.", color: C_DIM },
-  ];
+  return screenBodyLines(installFailureScreen(name, problem, unmet), 80);
+}
+
+/**
+ * What to show when a .zip import was refused - the same shape as
+ * `installFailureScreen`, in this door's own colour (`C_BAD` rather than
+ * `C_WARN`) and its own closing line ("has not been installed or changed"
+ * rather than "was not stored"), because a zip that failed its check was never
+ * accepted in the first place.
+ */
+export function zipImportFailureScreen(
+  problem: string,
+  unmet: readonly Finding[] = [],
+): ScreenView {
+  return freezeView({
+    id: "core:mod-zip-import-failure",
+    title: "That zip was not imported",
+    footer: SCREEN_FOOTER,
+    blocks: [
+      ...refusalBlocks(problem, unmet, C_BAD),
+      {
+        kind: "lines",
+        lines: [
+          { text: "", color: C_FG },
+          { text: "Nothing has been installed or changed.", color: C_DIM },
+        ],
+      },
+    ],
+  });
 }
 
 const ABOUT: readonly ScreenLine[] = [
@@ -499,7 +618,7 @@ async function installOne(
   });
 
   if (!result.ok) {
-    await showTextScreen(term, m.name, installFailureLines(m.name, result.problem, result.unmet));
+    await showTextScreen(term, installFailureScreen(m.name, result.problem, result.unmet));
     return false;
   }
 
@@ -837,17 +956,7 @@ async function importOne(
     zip.install(bytes),
   );
   if (!result.ok) {
-    /* The same rows the install refusal shows, in this screen's own colours - and
-     * `lines` for the same reason it is (see installFailureLines): the bullets wrap,
-     * and a table row cannot. */
-    await showTextScreen(term, "That zip was not imported", [
-      ...refusalRows(result.problem, result.unmet ?? []).map((line) => ({
-        text: line,
-        color: C_BAD,
-      })),
-      { text: "", color: C_FG },
-      { text: "Nothing has been installed or changed.", color: C_DIM },
-    ]);
+    await showTextScreen(term, zipImportFailureScreen(result.problem, result.unmet ?? []));
     return false;
   }
 
@@ -1181,7 +1290,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
        * design exists to avoid. */
       const entry = await deps.discover({ repo: u.repo, tag: u.to });
       if (!entry.ok) {
-        await showTextScreen(term, u.id, installFailureLines(u.id, entry.problem));
+        await showTextScreen(term, installFailureScreen(u.id, entry.problem));
         continue;
       }
       const origin: ModOrigin = curated.has(u.repo.toLowerCase()) ? "curated" : "third-party";

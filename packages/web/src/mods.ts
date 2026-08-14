@@ -75,6 +75,7 @@ import {
   sortModOrder,
   type ContestedSlot,
   type PackManifest,
+  type RecordConflict,
   type SortResult,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { wrapCssRuns } from "./shop";
@@ -1208,13 +1209,11 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
  * `semantic.data` takes booleans and is already where a presenter looks for what a
  * row IS, so the flag goes there and the visible marker stays a cell.
  *
- * WHAT STAYS `lines`, and why it is not a shortcut. The dropped suggestions are TWO
- * ROWS PER RECORD - the author's reason, then the cycle that forced the drop, at a
- * deeper indent - and a table row is one row. Modelling it as two rows per record
- * sharing a `semantic.ref` would be `lines` wearing a table's costume: a presenter
- * would still have to know that odd rows continue even ones, which is exactly the
- * positional knowledge the block model exists to remove. So that block is honest
- * prose-plus-detail and is left as it is until a record can span rows.
+ * THE DROPPED SUGGESTIONS ARE A TABLE NOW TOO, with `ScreenRow.detail`: the
+ * author's reason is a cell, and the cycle that forced the drop - "A -> B -> A" -
+ * is the row's paragraph rather than a second row at a deeper indent sharing the
+ * first row's identity. The ids behind that cycle are on `semantic.data`, exactly
+ * as the unresolvable table below already publishes them.
  */
 export function autoSortScreen(
   result: SortResult,
@@ -1260,22 +1259,48 @@ export function autoSortScreen(
   ];
 
   if (result.dropped.length > 0) {
-    blocks.push({
-      kind: "lines",
-      lines: [
-        { text: "", color: C_DIM },
-        { text: "Suggestions it could not honour", color: C_WARN },
-        ...result.dropped.flatMap((d) => [
+    blocks.push(
+      {
+        kind: "lines",
+        lines: [
+          { text: "", color: C_DIM },
+          { text: "Suggestions it could not honour", color: C_WARN },
+        ],
+      },
+      {
+        kind: "table",
+        key: "dropped",
+        tagged: false,
+        columns: [
+          { key: "indent", width: 2 },
+          /* gap:0 for the same reason the unresolvable table's `mods` column is:
+           * the indent column already put two spaces in front, and a second gap
+           * would put three. */
+          { key: "reason", gap: 0, pad: false },
+        ],
+        rows: result.dropped.map((d, i) => ({
+          id: `dropped:${String(i)}`,
+          /* The ids a presenter would otherwise have to read out of "A -> B -> A" -
+           * exactly as the unresolvable table already publishes them. */
+          semantic: { kind: "mod-cycle-dropped", data: { ids: d.cycle.join(",") } },
+          color: C_FG,
           /* The REASON, not just the pair: an author wrote it, and it is the only
            * thing that tells the player whether the drop matters to them. */
-          { text: `  ${d.reason}`, color: C_FG },
-          {
-            text: `    dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
+          cells: { reason: { text: d.reason } },
+          detail: {
+            indent: 4,
+            paragraphs: [
+              [
+                {
+                  text: `dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
+                },
+              ],
+            ],
             color: C_DIM,
           },
-        ]),
-      ],
-    });
+        })),
+      },
+    );
   }
 
   if (result.unresolvable.length > 0) {
@@ -1469,12 +1494,22 @@ async function viewConflicts(term: GridSurface & GridPointerInput, deps: ModMana
  * convenience. Those are hand-broken constants the screen has already laid out, and
  * the blank rows between groups carry a colour that `gapAfter` does not emit.
  *
- * A CONTESTED ROW WITH NO RECORD IS MARKED AS ONE. The content layer's rows arrive
- * as finished sentences from `modConflictLines` (pack.ts), the third producer, which
- * flattens `computeConflictReport`'s field-granular records before this module runs.
- * Those rows get `{ kind: "content-record" }` with NO `ref`, so a presenter can tell
- * "this row is about a content record and the fields were not published" from "this
- * row has nothing to say" - which an absent `semantic` would not.
+ * THE CONTENT LAYER NOW CARRIES ITS OWN RECORD. `modConflictLines` (pack.ts) used
+ * to flatten `computeConflictReport`'s field-granular records into plain sentences
+ * before this module ever ran, so every content row arrived here as `{ kind:
+ * "content-record" }` with NO `ref` - the stopgap that told a presenter "the fields
+ * were not published" apart from "this row has nothing to say". That producer now
+ * carries the RecordConflict beside the sentence the same way every other layer
+ * does, so a content row is `record-conflict` like any other and the stopgap kind
+ * is retired.
+ *
+ * A ROW CAN STILL ARRIVE WITH NO RECORD AT ALL, and is still marked rather than
+ * left with an absent `semantic`: `modConflictLines` returns one when
+ * resolveLoadOrder throws before a single RecordConflict could be gathered (a
+ * duplicate pack id, a missing dependency, an incompatible version range). There
+ * is genuinely nothing to attach there, which `{ kind: "unresolved-load-order" }`
+ * says plainly rather than reusing the retired content-record kind for a different
+ * reason.
  */
 export function modConflictsScreen(report: ConflictReportLines): ScreenView {
   const { declaredRows, contestedRows, combinedRows } = report;
@@ -1580,10 +1615,51 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
  * exists to answer - "whose work is being thrown away" - and deriving it from
  * `claims` minus `winner` is a rule about the fold that a presenter should not have
  * to know. Empty for a combining fold, where nobody loses.
+ *
+ * THREE SHAPES OF `record` NOW, not two: a `ContestedSlot` for the four layers
+ * `layerSlots` derives, a `RecordConflict` for the content layer's own rows
+ * (pack.ts's modConflictLines), and `null` for the one row that producer still
+ * cannot attach anything to. Discriminated on a field unique to each - `file` is
+ * on every `RecordConflict` and no `ContestedSlot` - rather than by which array the
+ * row came from, so this stays correct regardless of how the caller assembled
+ * `contestedRows`/`combinedRows`.
  */
-function slotRow(text: string, record: ContestedSlot | null, color: string): ScreenRow {
+function slotRow(
+  text: string,
+  record: ContestedSlot | RecordConflict | null,
+  color: string,
+): ScreenRow {
   const cells = { what: { text } };
-  if (record === null) return { semantic: { kind: "content-record" }, color, cells };
+  if (record === null) {
+    /* modConflictLines could not even attempt composition: resolveLoadOrder threw
+     * (a duplicate pack id, a missing dependency, an incompatible version range)
+     * before a single RecordConflict existed to gather. Marked rather than left
+     * with no semantic at all, so a presenter can tell "the game could not compose
+     * this set" from "this row has nothing to say". */
+    return { semantic: { kind: "unresolved-load-order" }, color, cells };
+  }
+  if ("file" in record) {
+    return {
+      id: record.ref,
+      semantic: {
+        kind: "record-conflict",
+        ref: record.ref,
+        data: {
+          file: record.file,
+          contributingPacks: record.contributingPacks.join(","),
+          /* Only the fields that actually COLLIDED - two packs writing the same
+           * field with an order-dependent op - not every field any contributor
+           * merely touched, which would bury the one question this row answers
+           * under every additive field a mod added alongside it. */
+          collidingFields: record.collisions.map((c) => c.path).join(","),
+          overriddenBy: record.override?.pack ?? null,
+          overrideKind: record.override?.kind ?? null,
+        },
+      },
+      color,
+      cells,
+    };
+  }
   const claims = record.claims.map((c) => c.packId);
   return {
     id: record.key,

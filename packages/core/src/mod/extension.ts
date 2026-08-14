@@ -74,6 +74,26 @@ export interface RecordProvenance {
    * Absent when none did.
    */
   readonly modifiedBy?: readonly string[];
+  /**
+   * The values the DEFINING pack gave to every top-level field a later pack
+   * changed, keyed exactly as they appear in the pack's JSON. Absent when
+   * nothing was changed.
+   *
+   * READ BY ONE PLACE: `mod/ids.ts`, which mints a record's content id from the
+   * definer's spelling rather than the one in front of it. A localid comes from
+   * a record's own name or code, so without this a mod that renames a record it
+   * does not own MOVES that record's id - and every save written before the mod
+   * was installed loses the entity (task #233). Restoring the definer's value
+   * is what makes "a record's id is fixed by the pack that DEFINED it, and a
+   * patch cannot move it" true rather than aspirational.
+   *
+   * KEYED BY THE JSON's FIELD NAMES, not the bound record's. `attachExt` copies
+   * the stamp onto the bound value verbatim, and rewriting the keys per binder
+   * would be fifteen chances to translate one wrong. The reader walks the JSON
+   * shape it needs - `name.name` for a trap, `type` for an object kind - which
+   * is the same shape core's own binder for that file already reads.
+   */
+  readonly was?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -103,12 +123,27 @@ export const PROVENANCE_KEY = "$from";
 export function provenanceOf(record: object): RecordProvenance | undefined {
   const raw = (record as Record<string, unknown>)[PROVENANCE_KEY];
   if (typeof raw !== "object" || raw === null) return undefined;
-  const { owner, modifiedBy } = raw as { owner?: unknown; modifiedBy?: unknown };
+  const { owner, modifiedBy, was } = raw as {
+    owner?: unknown;
+    modifiedBy?: unknown;
+    was?: unknown;
+  };
   if (typeof owner !== "string" || owner === "") return undefined;
   const mods = Array.isArray(modifiedBy)
     ? modifiedBy.filter((m): m is string => typeof m === "string")
     : [];
-  return Object.freeze(mods.length === 0 ? { owner } : { owner, modifiedBy: Object.freeze(mods) });
+  /* Shape-checked for the same reason `owner` is: `"was": 7` from a hand-written
+   * pack would otherwise reach the id minter as a bag of fields to restore
+   * from, and the savefile would be where that was discovered. */
+  const defined =
+    typeof was === "object" && was !== null && !Array.isArray(was)
+      ? Object.freeze({ ...(was as Record<string, unknown>) })
+      : undefined;
+  return Object.freeze({
+    owner,
+    ...(mods.length === 0 ? {} : { modifiedBy: Object.freeze(mods) }),
+    ...(defined === undefined ? {} : { was: defined }),
+  });
 }
 
 /**

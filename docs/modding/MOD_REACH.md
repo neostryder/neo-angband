@@ -163,6 +163,17 @@ sides arrived with `registry:projection`.
 | `MONSTER_HANDLERS` (projection -> monster, `project-mon.c`) | `packages/core/src/mon/project-mon.ts:770` | 56 slots, 56 assigned | no (fixed length, `PROJ`-indexed) | **accidentally yes** | accidentally yes |
 | `HANDLERS` (pref-file directives) | `packages/core/src/visuals/prefs.ts:484` | 12 | no | no | no |
 
+**SUPERSEDED TWICE — read this before the paragraph below it.** What follows was
+written when `MONSTER_HANDLERS` was a mutable exported array. It was frozen under
+gap 15 on 2026-08-08 (`Object.freeze` at `project-mon.ts:861`), so the
+"accidental seam" it describes has not existed since; and on 2026-08-14 it became
+a REAL seam, seeded into `MONSTER_HANDLERS_BY_CODE` and reached as
+`host.projections.mon` under the existing `registry:projection` grant — the
+fourth projection side, after feat, obj and player. The historical text is kept
+because the measurement it belongs to was taken at a particular date and
+rewriting it would falsify the record; the row in the current table above is the
+one to believe.
+
 `MONSTER_HANDLERS` is the one accidental override seam in the port: it is
 `export const … : Array<MonHandler | null>` - `const` binds the reference, the
 array itself is mutable - and it is re-exported publicly
@@ -261,6 +272,19 @@ to a mod as an eighty-case switch, and this page, not that tool, is where the
 remainder is tracked. Gap row 29 (the 108 raw `tval === TV.X` comparisons) is the
 current example.
 
+**Third instance, 2026-08-14 (#260), and the nastiest of the three, because it
+made the census's denominator drift DOWNWARD with nobody writing it down.** The
+tool asserts that converted files are ABSENT from `switch-census.json`, which
+correctly catches a conversion that was claimed but never made. It could not
+catch a dispatch that was merely RESHAPED — an if/else chain over an enum, or a
+lookup into a module-level const array, is exactly as shut as a switch and
+scored zero. So a file could leave the census by being FIXED or by being
+RESHAPED and the two looked identical. It now counts all three shapes, tagged
+`SWITCH` / `IF_CHAIN` / `ARRAY_LOOKUP`, and the ratchet asserts the difference
+directly: `project-feat.ts` has zero rows of any kind (a real conversion), while
+`ui-entry.ts` has exactly one, under a different kind (a reshape). Row 18 above
+is the worked example, including the edge that is still out of reach.
+
 The other thing gap 16 turned up is a CALLER, not a dispatch. `runeGroupIndex`
 (`packages/web/src/knowledge.ts:545`) grouped runes for the knowledge browser and
 was exhaustive by construction over the closed union, so it needed no `default`.
@@ -346,7 +370,9 @@ mod, and two are worth naming because they are what a UI mod would want:
   the closure even to a bundled mod. It is scanned linearly at `main.ts:7430`.
 - `DEBUG_MENU`, `packages/web/src/wizard.ts:463` (9 categories / 41 items):
   exported and not `readonly`, so a bundled mod could mutate it. Same
-  accidental-seam caveat as `MONSTER_HANDLERS`.
+  accidental-seam caveat as `MONSTER_HANDLERS`. **Both claims are stale:** both
+  were frozen under gap 15 on 2026-08-08 (`deepFreezeMenu` at `wizard.ts:520`,
+  `Object.freeze` at `project-mon.ts:861`).
 - The game menu and death menu are FUNCTIONS that build rows
   (`packages/web/src/game-menu.ts:56`, `:166`), not tables, so there is nothing to
   register into.
@@ -370,7 +396,7 @@ mod would reach through records, not code.
 | 4 | `GameState.monsterTurnHook` (1, all-or-nothing) | **yes**, from disk (re-measured 2026-08-08) |
 | 5 | `VocabularyRegistry` (mod-owned) | **yes**, from disk (re-measured 2026-08-08) |
 | 6 | `DungeonProfiles` builders (9) + profiles (9) | **yes** (`registry:profile`, 2026-08-08) |
-| 7 | `MONSTER_HANDLERS` (56) | accidental only - exported mutable array |
+| 7 | `MONSTER_HANDLERS` (56) | **yes** (`registry:projection`, 4th side, 2026-08-14) |
 | 8 | prefs `HANDLERS` (12) | no - module-private |
 | 9 | monster blow effects, recording path (30) | **yes** (`registry:blow`, 2026-08-08) |
 | 10 | monster blow effects, live path (30) | **yes** — the SAME registry entry, which is the point |
@@ -381,19 +407,23 @@ mod would reach through records, not code.
 | 15 | object naming: `obj_desc_get_basename` (34) | **yes** (`registry:tval`, 2026-08-09) |
 | 16 | object knowledge: `modMessage` (11) **plus five `rune.variety` switches the census could not see** | **yes** (`registry:rune`, 2026-08-09) |
 | 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
-| 18 | UI entry type switch (32) | no |
-| 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap` |
-| 20 | `MESSAGE_ENTRIES` / `MSG` (154) | no |
-| 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | no |
+| 18 | UI entry dispatch (**was** a 32-case switch) | no - **reshaped, not converted**; see below |
+| 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today** |
+| 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
+| 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
 | 22 | `MON_SPELL_ENTRIES` (93) | no |
-| 23 | web keypress `COMMANDS` (62) | no - inside a closure |
-| 24 | web context-menu `switch (action)` routing (6 sites) | no |
-| 25 | web `DEBUG_MENU` (41) | accidental only - exported mutable |
+| 23 | web keypress `COMMANDS` (62) | no - module-level but unexported (**was** "inside a closure"; stale) |
+| 24 | web context-menu `switch (action)` routing (6 sites) | **half**: rows yes (`registry:menu`), behaviour no |
+| 25 | web `DEBUG_MENU` (41) | no - **deep-frozen on purpose**; struck from the count, see below |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
 | 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` + the base NAME | **yes** (`registry:tval`, 2026-08-09) |
 
-**18 yes, 10 no** (re-counted 2026-08-14 against the code, row by row). This is
+**21 yes, 1 half, 5 no, of 27 counted** (re-counted 2026-08-14 against the code,
+row by row; 28 rows are listed and row 25 is struck from the count — see the
+corrections below). Rows 7, 20 and 21 closed on 2026-08-14 and the tally was
+re-run in the same commit, which is the whole point of the corrections below.
+This is
 a count of the ROWS above, which is the only
 form of the tally anyone can check by reading the column; earlier versions mixed
 rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
@@ -427,6 +457,108 @@ computed when the tally said 17, it counts merged capabilities rather than rows,
 and nobody has worked it out again. It is left as written rather than adjusted
 to match, because a number nudged to agree with a corrected total is worse than
 one openly marked as unverified. See #259.
+
+**Rows 7, 20 and 21 closed on 2026-08-14, and each carried a lesson worth more
+than the row.**
+
+*Row 21 (`SOUND_PREF_ENTRIES`) was not only a producer problem — it was an
+ORDERING problem, and that half was invisible to inspection.* `installWebSound`
+runs at `main.ts:8821`; a plugin's `register()` runs at `:10985`. A registry read
+only at install time would have been read BEFORE every mod that can write to it —
+correct-looking code that works for nobody. That is the second of #159's two
+documented failure modes, and `soundPrefRegistry.onAdd(...)` is what makes the
+engine take later contributions.
+
+*Row 20 (`MESSAGE_ENTRIES`) was a crash, not a missing feature.* A `msgt:` naming
+a type core had not heard of threw `PARSE_ERROR_INVALID_MESSAGE` and took the
+whole bind down. `MSG` is now closed as a TABLE and open as a LOOKUP — the same
+split `PROJ` has — so a registered name resolves at index 154 and up and all five
+consumers widen at once. **No save impact, and it was verified rather than
+assumed:** `checkMsgt` returns the NAME, every consumer types it `string`, and
+resolution to a number happens at message time, so nothing a save holds is
+renumbered and disabling the mod cannot corrupt one. That is exactly what makes
+these two rows different in kind from row 22, where `RSF` is a bit position that
+IS persisted.
+
+*Row 7 (`MONSTER_HANDLERS`) — and the ticket's own description of it was wrong.*
+It said a mod's projection "does literally nothing to a monster". Measured, the
+monster took 34 damage: `project_m`'s driver applies `ctx.dam` whether or not a
+handler ran. What had no way to happen was everything TYPE-SPECIFIC — resistance,
+immunity, scaled damage, fear, stun, confusion, polymorph, teleport, the
+"unaffected" line, obviousness. A mod's projection could only ever be an untyped
+hit for exactly its dice. The corrected claim is narrower and the control that
+proves it is stronger.
+
+**One gap opened by closing these** (#266): a plugin's `register()` runs after
+`bootGame()`, so a mod can declare a message type and bind sounds to it, but
+cannot declare it early enough for its OWN records — a spell, a blow, a summon —
+to carry that `msgt` at bind time. The capability is real for a sound pack and
+does not yet reach the case that motivated it.
+
+**Row 25 is struck from the count, and kept in the table.** `DEBUG_MENU` is the
+wizard-mode menu. `wizard.ts:508-518` says in the source that the table must
+match the C exactly because parity tests count its letters, `switch-census.json`
+already classes both `wizard.ts` rows as DEBUG, and a mod extends wizard mode
+through the command seam instead. So the "gap" consists entirely of the project
+having deliberately closed a hole it had named — counting that as an open gap
+dilutes the ones that are real. Struck rather than deleted, because a row that
+vanishes from a denominator is indistinguishable from a row nobody looked at:
+the three finished states are *closed*, *not applicable* and *deliberately
+shut*, and "removed from the table" is not one of them.
+
+**Row 23's stated blocker was stale, and the row is much cheaper than it read.**
+It said the command table is "declared INSIDE the keydown callback, re-created
+per keypress, unreachable from outside the closure" at `main.ts:7337`. That code
+is gone. It is now module-level and memoised — `buildCommandTable` at
+`packages/web/src/main.ts:8104`, `commandTable` at `:8288`, with a header
+comment at `:8095-8102` saying so. The row is still "no", but for a different
+and smaller reason: neither symbol is exported, and `chooseCommand`
+(`command-menu.ts:259`) uses its own `runMenu` rather than the `selectFromMenu`
+choke point, so `registry:menu` does not reach the command browser either. That
+is an export-plus-registry job, not a refactor.
+
+**Row 24 was reading as "nothing", and it is half closed.** `registry:menu`
+ships, is capability-gated (`REGISTRY_CAPABILITIES.menu`,
+`packages/core/src/mod/registry-host.ts:166`; `MenuRegistry` at
+`packages/web/src/menu-registry.ts:47`) and reaches all six sites through
+`selectFromMenu`'s stable ids: add, reorder, relabel, retag and remove all work
+today. What does NOT work is attaching BEHAVIOUR to a row a mod invented —
+`overlay.ts:1511-1513` maps the chosen row's stable id back through
+`originalIndex` and returns SILENTLY for a row the transformer invented, while
+the presenter path refuses out loud at `:1805-1810`. Gap 21 further down states
+this correctly, so until now table (a) and the gap list contradicted each other.
+
+**Row 18 was reshaped rather than converted, and that is why the census stopped
+seeing it** (#260). The 32-case switch this row was written about no longer
+exists, and `ui-entry.ts` was absent from `switch-census.json` entirely — which
+read exactly like a conversion until somebody checked. It was not one:
+`COMBINERS` (`packages/core/src/game/ui-entry.ts:460`) is a 9-entry module const
+that `combinerLookup` (`:473`) linear-scans by name, and it is as shut to a mod
+as the switch it replaced. Worse than inert: `combinerLookup` returns 0 for an
+unknown name and `combinerFuncs` (`:480`) then indexes `COMBINERS[-1]` and
+throws `bad combiner index 0` — the same "not a missing feature but a crash"
+shape the projection bind had. The census now counts lookup arrays and if/else
+chains as well as switches, so this row has a successor row again.
+
+**And there is an edge the widened census still cannot reach, stated rather
+than left true.** `applyRenderer` sits beside `COMBINERS` in the same file
+(`:1747-1914`) and is a **6**-arm `if (backend === UI_ENTRY_RENDERER.X)` chain,
+not 8. It is exactly as closed to a mod as an 87-case switch and it stays
+invisible, because dropping the threshold below 8 reopens a false-positive flood
+— the naive version of the detector fired on 122 rows of ordinary control flow,
+RNG tables and colour palettes. So this row is now half-derived and half read by
+hand, and it should be read as such.
+
+**Row 19 is a parity artefact, not a gap a player can observe.** `COMMAND_INFO`
+(`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue`
+has NO production caller — the web shell drives `commandBuffer`
+(`main.ts:6053`) into the `ActionRegistry`, which row 3 already scores yes.
+Extending `COMMAND_INFO` today changes nothing anyone can see. It is NOT struck,
+because `game/display.ts:293` carries PORT_TODO 3.11 pointing at
+`CommandQueue.getNRepeats`: if that lands, the row becomes sharp, and a
+`registry:command` mod's code is silently dropped at `cmd.ts:479-480`
+(`if (!info) return;`) and refused at `:424`. Counted as "no" so that it stays
+visible, and labelled so nobody scopes it as urgent.
 
 **Row 26 was stale for a day, and this is what that looks like.** The glyph
 decoders became a registry on 2026-08-09 and gap row 17 below said so, while

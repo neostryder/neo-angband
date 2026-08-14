@@ -676,10 +676,70 @@ reports, error explanations and a mod author's own description, which are
 sentences a human reads and which a presenter gains nothing by addressing field
 by field. The screens that are still genuinely unfinished are named in
 `MOD_REACH.md` gap 21 rather than left for you to discover: the spell lists,
-which belong to the menu seam; and the install-refusal screens, which are
-blocked on the block vocabulary rather than on their data — a `table` row is
-exactly one terminal row and cannot wrap, and those bullets are longer than the
-width the screen wraps to.
+which belong to the menu seam; and the install-refusal screens, which are no
+longer blocked by the model but are not yet wired to it (see the next section).
+
+### Regions are stacked, and a screen is one of them
+
+`ui-stack.ts` holds the live stack. `pushRegion` adds a region, the returned
+handle's `release()` removes it, `relayoutStack` re-places every region when the
+terminal changes shape, and `paintRegionStack` draws the ones that want a
+painter — bottom band to top, each through a surface clipped to its own
+rectangle.
+
+`place(grid)` is called on **every** layout change, so its contract is narrow:
+**return a rectangle and do no work.** Do not paint in it, do not read the game
+in it, and do not throw from it — a resize can arrive between any two
+keystrokes. It runs inside a try/catch so one author's mistake cannot take down
+the relayout for every other region, and a region whose `place()` throws or
+whose rectangle runs off the grid is recorded in `regionStackFaults()` rather
+than silently omitted. A silently omitted region is a window that is simply not
+there, with nothing to search for.
+
+`paint(surface)` is optional, and its absence is the normal case for core: a
+screen that owns the keyboard repaints itself when a key arrives. Give your
+region a painter when you want it redrawn every frame — a HUD window over a
+live map.
+
+A core screen occupies `core:screen` on the `modal` band and its rectangle is
+the whole terminal. **That is not a placeholder and it will not shrink.** A mod
+that wants a panel declares its own region rather than asking core to make room;
+shrinking core's screens would move pictures that upstream-cited parity tests
+pin byte for byte, for the benefit of no mod. Ask
+`occludersOf(stack, "map")` to find out whether anything is over the map before
+you draw on it — and note that answer is `undefined`, not `[]`, if you name a
+region that is not in the stack, so a typo reads as a question you cannot answer
+rather than as good news.
+
+### A row with a paragraph
+
+`ScreenRow.detail` is prose attached to one row of a table. It is a
+`ScreenProse` — the same `{ paragraphs, indent?, wrap?, flow?, color? }` a
+`text` block is made of — so a presenter that can already draw a prose block can
+draw a detail, and one that only wants the record can ignore it.
+
+The rule for telling the two apart has not changed, and it is why `detail` is
+shaped this way: **structure is what has keys; prose is what has paragraphs.**
+Anything you need to reach by name is a cell, addressed by its column key. A
+detail has no key and is not addressable, and that is deliberate — if you find
+yourself parsing a detail, the thing you are parsing is a column the screen has
+not declared yet, and that is a bug to report rather than a string to split. The
+ids behind a dependency cycle like `A -> B -> A` are on `semantic.data`, where
+`autoSortScreen` already puts them.
+
+A detail never affects layout beyond its own row. It is not consulted when
+column widths are computed, so a long paragraph cannot widen a column or move
+the row above it, and a row without a detail is laid out identically whether or
+not its neighbours have one. It also introduces no third wrapping rule: it is
+laid out by the same function a `text` block is, and says which of Angband's two
+algorithms it wants through the same `flow` field.
+
+This was added because three screens — the install refusal, a dropped auto-sort
+suggestion, a declared-conflict claim — are each **a record with a paragraph
+attached**, and had been stuck at `lines` because there was nowhere to put the
+paragraph. Cutting it into row fragments would have made them `lines` wearing a
+costume: a presenter would still have had to know that some rows continue
+others.
 
 The seven recall pages are all `text` blocks, and they are seven ids rather than
 one on purpose: a mod that draws an artifact's page as a plaque and a trap's as a

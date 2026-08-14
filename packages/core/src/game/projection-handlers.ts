@@ -39,6 +39,8 @@ import { PROJECT_OBJ_HANDLERS } from "./project-obj.js";
 import type { ProjectObjHandler } from "./project-obj.js";
 import { PLAYER_SIDE_HANDLERS } from "./player-side.js";
 import type { PlayerSideHandler } from "./player-side.js";
+import { MONSTER_HANDLERS_BY_CODE } from "../mon/project-mon.js";
+import type { MonHandler } from "../mon/project-mon.js";
 
 /**
  * One handler table, keyed by projection CODE.
@@ -91,8 +93,13 @@ export class ProjectionHandlerTable<H> {
 }
 
 /**
- * The three projection tables a mod can reach, seeded with core's 69 handlers.
+ * The FOUR projection tables a mod can reach, seeded with core's 125 handlers.
  * Built per game in `wireGame` and published on `GameState.projectionHandlers`.
+ *
+ * `mon` joined on 2026-08-14 and closes the asymmetry #159 left: terrain,
+ * objects and the player were all reachable, and a mod's own projection did
+ * nothing at all to a MONSTER - the one target a combat mod is actually aimed
+ * at. Same shape, same identity contract, same per-code composition.
  */
 export class ProjectionHandlerRegistry {
   /** project_f: what a projection does to TERRAIN. */
@@ -106,5 +113,9 @@ export class ProjectionHandlerRegistry {
   /** project_p: what a projection does to the PLAYER. */
   readonly player = new ProjectionHandlerTable<PlayerSideHandler>(
     PLAYER_SIDE_HANDLERS,
+  );
+  /** project_m: what a projection does to a MONSTER (the effect computation). */
+  readonly mon = new ProjectionHandlerTable<MonHandler>(
+    MONSTER_HANDLERS_BY_CODE,
   );
 }

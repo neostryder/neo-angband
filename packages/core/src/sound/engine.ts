@@ -22,6 +22,7 @@ import type { GameEvents, MessageEventData } from "../events.js";
 import { MESSAGE_ENTRIES, MSG } from "../generated/message.js";
 import { SoundStatus, MAX_SOUNDS_PER_MESSAGE } from "./types.js";
 import type { SoundData, SoundHooks } from "./types.js";
+import { FIRST_MOD_MESSAGE_INDEX, messageTypes } from "./message-types.js";
 
 /** djb2_hash (z-util.c): hash * 33 + c, seeded at 5381, in uint32. */
 export function djb2Hash(str: string): number {
@@ -83,7 +84,12 @@ export function messageLookupByName(name: string): number {
   for (let i = 0; i < MESSAGE_ENTRIES.length; i++) {
     if (MESSAGE_ENTRIES[i]!.name.toLowerCase() === lower) return i;
   }
-  return -1;
+  /* Mod-supplied message types, appended AFTER the compiled slots (the
+   * bindProjections pattern - see sound/message-types.ts). The compiled scan
+   * above runs first and a duplicate name is refused at registration, so this
+   * can only ever answer for a name upstream returns -1 for. With nothing
+   * registered the fall-through is a Map miss and the answer is still -1. */
+  return messageTypes.lookup(lower);
 }
 
 /**
@@ -93,7 +99,14 @@ export function messageLookupByName(name: string): number {
  * caller must distinguish "no name" from "out of range".
  */
 export function messageSoundName(message: number): string | null {
-  if (message < MSG.GENERIC || message >= MSG.MAX) return null;
+  if (message < MSG.GENERIC || message >= MSG.MAX) {
+    /* Outside the compiled range, one case is not "out of range": a
+     * mod-supplied message type sits at FIRST_MOD_MESSAGE_INDEX and up, and it
+     * carries its own sound.prf name. Everything else still answers null. */
+    return message >= FIRST_MOD_MESSAGE_INDEX
+      ? (messageTypes.entryAt(message)?.sound ?? null)
+      : null;
+  }
   return MESSAGE_ENTRIES[message]!.sound;
 }
 
@@ -212,8 +225,24 @@ export class SoundEngine {
    * MAX_SOUNDS_PER_MESSAGE - 1 cap.
    */
   messageSoundDefine(messageId: number, soundsStr: string): void {
-    const msg = this.messageSounds[messageId];
-    if (!msg) return;
+    let msg = this.messageSounds[messageId];
+    if (!msg) {
+      /* message_sounds[] is MSG_MAX long in the C and there is nothing past
+       * it. A mod-supplied message type lives past it, so grow the array to
+       * cover exactly the ones the registry knows about - an id outside both
+       * ranges still no-ops, as the C's fixed array makes it. */
+      if (
+        !Number.isInteger(messageId) ||
+        messageId < FIRST_MOD_MESSAGE_INDEX ||
+        messageTypes.entryAt(messageId) === null
+      ) {
+        return;
+      }
+      for (let i = this.messageSounds.length; i <= messageId; i++) {
+        this.messageSounds[i] = { numSounds: 0, soundIds: [] };
+      }
+      msg = this.messageSounds[messageId]!;
+    }
 
     // Delete any existing mapping of message id to sound ids.
     msg.numSounds = 0;

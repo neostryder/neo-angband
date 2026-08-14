@@ -8,9 +8,9 @@
  * that does not say who loses is a line nobody can act on).
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ModHooks } from "@rpgm-tools/neo-angband-core";
-import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { PackManifest, RecordConflict } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   conflictLines,
   declaredConflicts,
@@ -18,6 +18,9 @@ import {
   nameFromManifests,
   type ConflictInputs,
 } from "./mod-conflicts";
+import { modConflictLines } from "./pack";
+import { resetDiskPacks, setDiskPacks } from "./disk-packs";
+import type { DiskPack } from "./disk-packs";
 
 function manifest(id: string, extra: Partial<PackManifest> = {}): PackManifest {
   return { id, name: id, version: "1.0.0", shape: "content", ...extra };
@@ -26,7 +29,7 @@ function manifest(id: string, extra: Partial<PackManifest> = {}): PackManifest {
 function inputs(over: Partial<ConflictInputs> = {}): ConflictInputs {
   return {
     manifests: [],
-    recordLines: [],
+    recordRows: [],
     tileClaims: [],
     hookContributions: [],
     ruleDecls: [],
@@ -267,8 +270,30 @@ describe("declared conflicts", () => {
 
 describe("the whole report", () => {
   it("keeps the content report's own lines in the contested group", () => {
-    const { contested } = conflictLines(inputs({ recordLines: ["frost and runes both set x"] }));
+    const { contested } = conflictLines(
+      inputs({ recordRows: [{ text: "frost and runes both set x", record: null }] }),
+    );
     expect(contested).toEqual(["frost and runes both set x"]);
+  });
+
+  it("carries the content row's own record through untouched, not just its text", () => {
+    /* THE DERIVATION CHECK for the widened producer: conflictLines must not rebuild
+     * or discard the row modConflictLines handed it - a record travelling through
+     * here is the whole point of ConflictRow. Before pack.ts's modConflictLines
+     * carried a record, every one of these rows was forced through
+     * `.map((text) => ({ text, record: null }))`, so a supplied non-null record
+     * would have been silently replaced with null; this fails against that shape. */
+    const record: RecordConflict = {
+      ref: "core:kobold",
+      file: "monster",
+      contributingPacks: ["frost", "runes"],
+      fields: [{ path: "speed", owners: ["frost", "runes"], winner: "runes" }],
+      collisions: [{ path: "speed", owners: ["frost", "runes"] }],
+      humanLines: ["frost and runes both set kobold.speed; runes wins - drag to reorder."],
+    };
+    const row = { text: record.humanLines[0]!, record };
+    const { contestedRows } = conflictLines(inputs({ recordRows: [row] }));
+    expect(contestedRows[0]).toEqual(row);
   });
 
   it("is empty for a mod set with nothing in common", () => {
@@ -296,7 +321,7 @@ describe("the whole report", () => {
   it("reports every layer at once without them interfering", () => {
     const all = inputs({
       manifests: [manifest("a"), manifest("b")],
-      recordLines: ["a record line"],
+      recordRows: [{ text: "a record line", record: null }],
       tileClaims: [
         { modId: "a", grafID: 2, menuname: "m" },
         { modId: "b", grafID: 2, menuname: "m" },
@@ -323,5 +348,101 @@ describe("nameFromManifests", () => {
     const nameOf = nameFromManifests([manifest("a", { name: "Alpha" })]);
     expect(nameOf("a")).toBe("Alpha");
     expect(nameOf("ghost")).toBe("ghost");
+  });
+});
+
+/**
+ * modConflictLines (pack.ts): the content layer's OWN producer.
+ *
+ * These drive the real function end to end - through discoverMods, resolveLoadOrder
+ * and computeConflictReport - rather than constructing a ConflictInputs by hand, because
+ * the thing under test is exactly what that producer attaches to a row, not what
+ * conflictLines does with what it is handed (covered above). Two disk packs writing the
+ * same field of the same ref is enough to force a real RecordConflict without needing
+ * the bundled game content to cooperate; computeConflictReport never checks that the ref
+ * they are fighting over is a record anything actually owns.
+ */
+describe("modConflictLines (pack.ts): the content layer's own producer", () => {
+  afterEach(() => {
+    resetDiskPacks();
+  });
+
+  function diskPack(over: Partial<DiskPack> & { manifest: DiskPack["manifest"] }): DiskPack {
+    return { files: {}, code: [], assets: [], ...over };
+  }
+
+  it("attaches the real RecordConflict beside the sentence, not just the text", () => {
+    /* NEGATIVE CONTROL (see the report): before this pass modConflictLines returned
+     * `string[]`, so every row here would be a bare string with no `.record` at all -
+     * this assertion throws on that shape rather than merely failing it. */
+    setDiskPacks({
+      packs: [
+        diskPack({
+          manifest: { id: "mod-a", name: "Mod A", version: "1.0.0", shape: "content" } as PackManifest,
+          files: { monster: { fieldPatches: { "core:kobold": [{ op: "set", path: "speed", value: 10 }] } } },
+        }),
+        diskPack({
+          manifest: { id: "mod-b", name: "Mod B", version: "1.0.0", shape: "content" } as PackManifest,
+          files: { monster: { fieldPatches: { "core:kobold": [{ op: "set", path: "speed", value: 20 }] } } },
+        }),
+      ],
+      problems: [],
+      available: true,
+      dir: "mods",
+      order: [],
+      kind: "app",
+      codeUrl: null,
+      assetUrl: null,
+      origins: [{ kind: "app", dir: "mods", count: 2 }],
+    });
+
+    const rows = modConflictLines(["mod-a", "mod-b"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.text).toBe(
+      "mod-a and mod-b both set kobold.speed; mod-b wins - drag to reorder.",
+    );
+    const record: RecordConflict = {
+      ref: "core:kobold",
+      file: "monster",
+      contributingPacks: ["mod-a", "mod-b"],
+      fields: [{ path: "speed", owners: ["mod-a", "mod-b"], winner: "mod-b" }],
+      collisions: [{ path: "speed", owners: ["mod-a", "mod-b"] }],
+      humanLines: ["mod-a and mod-b both set kobold.speed; mod-b wins - drag to reorder."],
+    };
+    expect(rows[0]).toEqual({ text: record.humanLines[0], record });
+  });
+
+  it("still returns a null record when resolveLoadOrder cannot resolve the set", () => {
+    /* THIS IS THE ONE PRODUCER LEFT that the ConflictRow.record nullability exists
+     * for: a pack whose dependency is missing never reaches computeConflictReport at
+     * all, so there is no RecordConflict to attach - only the thrown message.
+     * NEGATIVE CONTROL: before this pass the row was a bare string; `.record` would
+     * be `undefined`, not `null`, so `toBeNull()` fails against that shape too. */
+    setDiskPacks({
+      packs: [
+        diskPack({
+          manifest: {
+            id: "needs-ghost",
+            name: "Needs Ghost",
+            version: "1.0.0",
+            shape: "content",
+            dependencies: { ghost: "^1.0.0" },
+          } as PackManifest,
+        }),
+      ],
+      problems: [],
+      available: true,
+      dir: "mods",
+      order: [],
+      kind: "app",
+      codeUrl: null,
+      assetUrl: null,
+      origins: [{ kind: "app", dir: "mods", count: 1 }],
+    });
+
+    const rows = modConflictLines(["needs-ghost"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.record).toBeNull();
+    expect(rows[0]!.text).toContain("requires missing pack ghost");
   });
 });

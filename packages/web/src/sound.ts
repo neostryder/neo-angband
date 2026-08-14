@@ -18,7 +18,8 @@
 import {
   SoundEngine,
   SoundStatus,
-  SOUND_PREF_ENTRIES,
+  allSoundPrefEntries,
+  soundPrefRegistry,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GameEvents,
@@ -166,7 +167,24 @@ export function installWebSound(
     ...(options.randint0 ? { randint0: options.randint0 } : {}),
     preload: options.preload ?? false,
   });
-  engine.loadPrefs(SOUND_PREF_ENTRIES);
+  /* The compiled-in 149 `sound:` directives FIRST, then whatever mods
+   * registered, in registration order (core/sound/sound-registry.ts). This one
+   * expression is the producer half row 21 was missing: loadPrefs has always
+   * accepted arbitrary entries and always skipped a message name it does not
+   * know, and this call site handed it the compiled constant and nothing else.
+   *
+   * Read at INSTALL time, so a mod's `register()` must have run by now - it
+   * has: plugins load before the front end installs sound, and the mod manager
+   * forces a reload when a mod is enabled or disabled, which is the same reason
+   * a module-level registry is legitimate elsewhere. */
+  engine.loadPrefs(allSoundPrefEntries());
+  /* AND subscribe, because this install runs at module scope (main.ts:8821) and
+   * a plugin's register() runs ~2,100 lines later (main.ts:10985). Reading the
+   * registry once here would have read it before every mod that can write to
+   * it: a seam that looks right and works for nobody, which is precisely the
+   * failure MOD_REACH.md:440-460 records for the projection override fields.
+   * With the subscription the order of the two stops mattering. */
+  soundPrefRegistry.onAdd((added) => engine.loadPrefs(added));
   engine.init(events);
   return engine;
 }

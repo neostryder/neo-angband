@@ -35,12 +35,13 @@ import {
   monsterIsVisible,
 } from "../mon/predicate.js";
 import { newMonProjectContext, runMonsterHandler } from "../mon/project-mon.js";
-import type { MonProjectContext } from "../mon/project-mon.js";
+import type { MonHandler, MonProjectContext } from "../mon/project-mon.js";
 import { monsterWake, monTakeHit } from "../mon/take-hit.js";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
 import type { MonTimedMessageSink } from "../mon/timed.js";
 import { PROJECT } from "../world/project.js";
 import type { MonsterHitResult } from "../world/project.js";
+import { projectionCodeFor } from "../world/projection.js";
 import type { ProjectionInfo } from "../world/projection.js";
 import { arenaInterceptDeath, deleteMonster, gameTakeHitHooks } from "./context.js";
 import type { GameState } from "./context.js";
@@ -131,6 +132,15 @@ export interface ProjectMonsterCtx {
   projections: readonly ProjectionInfo[];
   origin: ProjectMonsterSource;
   hooks: ProjectMonsterHooks;
+  /**
+   * project_m's type-handler table, keyed by projection CODE.
+   *
+   * SUPPLIED BY wireGame, by identity, from `GameState.projectionHandlers` -
+   * exactly as `featHandlers`, `objHandlers` and `playerHandlers` are on the
+   * other three sides. Absent means core's `MONSTER_HANDLERS`, dispatched by
+   * PROJ index as it always was, which is what every parity vector replays.
+   */
+  monHandlers?: ReadonlyMap<string, MonHandler>;
 }
 
 const NO_HIT: MonsterHitResult = { didHit: false, wasObvious: false };
@@ -213,8 +223,19 @@ export function projectMonster(
   const info = pctx.projections[typ];
   if (info && info.obvious && ctx.seen) ctx.obvious = true;
 
-  /* Run the type handler (accumulates damage / timers / poly / teleport). */
-  runMonsterHandler(ctx);
+  /* Run the type handler (accumulates damage / timers / poly / teleport).
+   * With a wired registry the dispatch is by projection CODE, so a mod's own
+   * projection - appended past the 56 compiled PROJ slots - reaches a handler
+   * at all, and a core code can be replaced or wrapped. */
+  runMonsterHandler(
+    ctx,
+    pctx.monHandlers
+      ? {
+          code: projectionCodeFor(typ, pctx.projections),
+          monHandlers: pctx.monHandlers,
+        }
+      : {},
+  );
 
   /* PROJ_FORCE thrust happens in the handler upstream, before wake / damage. */
   if (ctx.thrustGridsAway > 0) {
