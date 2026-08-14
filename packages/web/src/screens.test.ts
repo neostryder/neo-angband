@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   colorToCss,
   loc,
@@ -56,6 +56,7 @@ import {
   objCanCastFrom,
   objCanStudy,
   bindConstants,
+  getMonName,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   Textblock,
@@ -98,6 +99,7 @@ import {
   winnerScreen,
   ctimeStamp,
   monsterListScreenLines,
+  monsterListScreen,
   magicBooks,
   packMenu,
   quiverMenu,
@@ -112,7 +114,10 @@ import {
   objectName,
 } from "./screens";
 import { MessageLog } from "./messages";
-import { screenBodyLines } from "./screen-view";
+import { showMonsterList } from "./monster-list";
+import { setScreenPresenter } from "./screen-runtime";
+import type { GridPointerInput, GridSurface } from "./term";
+import { screenBodyLines, MODELLED_SCREENS } from "./screen-view";
 import type {
   ScreenArtField,
   ScreenTableBlock,
@@ -1626,6 +1631,210 @@ describe("monsterListScreenLines ([, ui-mon-list.c)", () => {
     const lines = monsterListScreenLines(state, 80);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.text).toContain("hallucinations are too wild");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The model (#253 step 5b-vi): the monster list as a document         */
+/* ------------------------------------------------------------------ */
+
+describe("the visible-monster list gave up its model in step 5b-vi", () => {
+  const kobold = monReg.races.find(
+    (r) => r.name === "kobold" && !r.flags.has(RF.UNIQUE),
+  ) as MonsterRace;
+
+  const withOne = (): GameState => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const m = fakeVisibleMon(kobold, loc(23, 15)); // 3 E, 3 S
+    m.mTimed[MON_TMD.SLEEP] = 500;
+    state.monsters.push(m);
+    return state;
+  };
+
+  it("is listed as modelled, and is a table rather than a page of lines", () => {
+    expect(MODELLED_SCREENS).toContain("core:monster-list");
+    const view = monsterListScreen(withOne(), 80);
+    expect(view.id).toBe("core:monster-list");
+    expect(view.blocks.some((b) => b.kind === "lines")).toBe(false);
+    const table = view.blocks.find((b) => b.kind === "table") as ScreenTableBlock;
+    expect(table.key).toBe("in-view");
+    expect(table.caption?.text).toBe("You can see 1 monster:");
+  });
+
+  it("publishes the offset and the sleepers as NUMBERS, not as '3 S 3 E'", () => {
+    /* The whole argument for `values` on this screen: an arrow on a minimap can
+     * be drawn from a vector and cannot be recovered from a compass string
+     * without parsing one back. */
+    const view = monsterListScreen(withOne(), 80);
+    const table = view.blocks.find((b) => b.kind === "table") as ScreenTableBlock;
+    const row = table.rows[0]!;
+    expect(row.values).toEqual({ count: 1, asleep: 1, dy: 3, dx: 3 });
+    /* The game's own label, pluralisation and all, minus the terminal's "%3d "
+     * right-justification - which is a column, not part of the name. */
+    expect(row.semantic).toEqual({ kind: "monster", ref: "kobold", data: { name: "1 kobold" } });
+    /* The glyph carries the RACE's colour, which is not the row's line colour -
+     * that one encodes danger. Two facts, published apart. */
+    expect(row.cells.glyph!.text).toBe(kobold.dChar);
+    expect(row.cells.glyph!.color).toBeTypeOf("string");
+    expect(row.cells.glyph!.color).not.toBe(row.color);
+    /* And the terminal's own cell is still exactly what it always drew. */
+    expect(row.cells.name!.text).toBe("  1 kobold (asleep)");
+    expect(row.cells.location!.text).toBe(" 3 S 3 E");
+  });
+
+  it("names the sort toggle as an ACTION, so a presenter can reach it", () => {
+    /* Left in the footer prose, 'x' would be a command a mod that took this
+     * screen silently removed from the player. */
+    const view = monsterListScreen(withOne(), 80);
+    expect(view.actions).toEqual([{ id: "sort-exp", key: "x", label: "sort by exp" }]);
+    expect(view.footer).toContain("turn ON 'sort by exp'");
+    expect(monsterListScreen(withOne(), 80, true).footer).toContain("turn OFF");
+  });
+
+  it("keeps the name column clear of every name the pack can produce at 80 cols", () => {
+    /* The one place the model and the C part: the C clips a name at THAT row's
+     * own `full_width`, which is more generous on a row whose location is
+     * shorter than the section's longest, while a column width is a fact about
+     * the column. Measured rather than argued - the widest name+tag the shipped
+     * pack can generate against the narrowest name column an 80-column terminal
+     * can produce (a section holding the longest possible offset). A mod
+     * re-rendering narrow clips a column class earlier than the C would, which
+     * is recorded rather than hidden. */
+    const widest = Math.max(
+      ...monReg.races.map((r) => getMonName(r, 2).length + " (99 asleep)".length),
+    );
+    const narrowestNameColumn = 79 - 3 - " 99 N 99 W".length;
+    expect(widest).toBeLessThan(narrowestNameColumn);
+    /* 14 columns of margin when this was measured. Asserted loosely because the
+     * number is a property of the CONTENT PACK - a mod that adds a monster with
+     * a very long name moves it, and should fail here rather than silently start
+     * clipping a name the C would have shown. */
+    expect(narrowestNameColumn - widest).toBeGreaterThan(8);
+  });
+
+  it("draws exactly the rows it drew before the model, at every width", () => {
+    /* The layout did not move: a right-aligned location column reproduces the
+     * C's `"%-*s%s"` byte for byte, because the total is `max_width - 1` on
+     * every row either way. Trailing spaces are the one difference and they
+     * paint nothing. */
+    /* A second RACE, so the section holds a grouped row (no offset) beside the
+     * lone one (offset): the case where the C's per-row `full_width` and this
+     * model's fixed column have to agree, and the one a same-race fixture would
+     * have missed by merging everything into a single entry. */
+    const rat = monReg.races.find(
+      (r) => r.name !== "kobold" && !r.flags.has(RF.UNIQUE),
+    ) as MonsterRace;
+    const state = withOne();
+    state.monsters.push(fakeVisibleMon(rat, loc(21, 12)));
+    state.monsters.push(fakeVisibleMon(rat, loc(22, 12)));
+    for (const cols of [40, 60, 80, 120]) {
+      const rows = monsterListScreenLines(state, cols).map((l) => l.text);
+      for (const row of rows) expect(row.length).toBeLessThanOrEqual(cols - 1);
+      expect(rows.some((r) => /3 S 3 E$/u.test(r))).toBe(true);
+    }
+  });
+});
+
+describe("samples/sprite-inventory draws the monster list from the numbers", () => {
+  const kobold = monReg.races.find(
+    (r) => r.name === "kobold" && !r.flags.has(RF.UNIQUE),
+  ) as MonsterRace;
+
+  /** A canvas that records the strings drawn on it and nothing else. */
+  function recordingDocument(drawn: string[]): {
+    doc: unknown;
+    press: (key: string) => void;
+  } {
+    const keys: ((ev: { key: string }) => void)[] = [];
+    const g = {
+      fillRect: () => undefined,
+      fillText: (text: string) => drawn.push(String(text)),
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      beginPath: () => undefined,
+      arc: () => undefined,
+      fill: () => undefined,
+      stroke: () => undefined,
+      strokeRect: () => undefined,
+      moveTo: () => undefined,
+      lineTo: () => undefined,
+      closePath: () => undefined,
+      save: () => undefined,
+      restore: () => undefined,
+      set fillStyle(_v: string) {},
+      set strokeStyle(_v: string) {},
+      set font(_v: string) {},
+      set lineWidth(_v: number) {},
+    };
+    return {
+      doc: {
+        createElement: () => ({ style: {}, getContext: () => g }),
+        body: { appendChild: () => undefined },
+        addEventListener: (_t: string, fn: (ev: { key: string }) => void) => keys.push(fn),
+        removeEventListener: (_t: string, fn: (ev: { key: string }) => void) => {
+          const i = keys.indexOf(fn);
+          if (i >= 0) keys.splice(i, 1);
+        },
+      },
+      press: (key) => {
+        for (const fn of [...keys]) fn({ key });
+      },
+    };
+  }
+
+  /** A terminal that records nothing but whether it was written to. */
+  function makeListTerm(): GridSurface & GridPointerInput & { printed: string[] } {
+    const printed: string[] = [];
+    return {
+      printed,
+      size: () => ({ cols: 80, rows: 24 }),
+      clear: () => undefined,
+      print: (_x: number, _y: number, text: string) => void printed.push(text),
+    } as unknown as GridSurface & GridPointerInput & { printed: string[] };
+  }
+
+  afterEach(() => {
+    setScreenPresenter(null);
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it("draws an arrow from dy/dx and flips the sort through the HOST", async () => {
+    const drawn: string[] = [];
+    const { doc, press } = recordingDocument(drawn);
+    (globalThis as { document?: unknown }).document = doc;
+    (globalThis as { window?: unknown }).window = { innerWidth: 960, innerHeight: 600 };
+    const url = new URL("../../../samples/sprite-inventory/plugin.js", import.meta.url);
+    const mod = (await import(url.href)) as { default: { screen: (ctx: unknown) => unknown } };
+    const presenter = mod.default.screen({ id: "sprite-inventory", api: 1, log: () => undefined });
+    setScreenPresenter({ id: "sprite-inventory", presenter: presenter as never });
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.monsters.push(fakeVisibleMon(kobold, loc(23, 15))); // 3 E, 3 S
+    const term = makeListTerm();
+    const open = showMonsterList(term, state);
+
+    expect(term.printed, "the game drew it as well as the mod").toEqual([]);
+    /* The arrow is the proof: "↘ 3" cannot be sliced out of " 3 S 3 E" without
+     * turning a compass back into a vector, and the sample never sees that
+     * string. The name is the game's own, unclipped. */
+    expect(drawn).toContain("↘ 3");
+    expect(drawn).toContain("1 kobold");
+    expect(drawn).toContain("You can see 1 monster:");
+    expect(drawn.some((t) => t.startsWith("[x] sort by exp"))).toBe(true);
+    /* Not one padded terminal row reached the canvas. */
+    const composite = monsterListScreenLines(state, 80).map((l) => l.text);
+    for (const row of composite) if (row.includes("  ")) expect(drawn).not.toContain(row);
+
+    /* 'x' goes through the host, so the GAME re-sorts and hands back the new
+     * view - the mod never learns what "by experience" means. */
+    const before = drawn.length;
+    press("x");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drawn.length).toBeGreaterThan(before);
+    expect(drawn.slice(before).some((t) => t.includes("turn OFF"))).toBe(true);
+
+    press("Escape");
+    await expect(open).resolves.toBeUndefined();
+    delete (globalThis as { window?: unknown }).window;
   });
 });
 

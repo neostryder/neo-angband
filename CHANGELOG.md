@@ -20,6 +20,47 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The visible-monster list gives up its model, and a screen with a command
+  gets a seam that can be driven** (#253, MOD_REACH gap 21, step 5b-vi).
+
+  `core:monster-list` takes `MODELLED_SCREENS` from twenty to twenty-one. It is
+  the screen where publishing numbers instead of text pays most obviously: a row
+  carries `values.dy` / `values.dx`, so a presenter can draw an **arrow** at the
+  monster on a minimap. There is no way to get an arrow out of `" 3 N 2 W"`
+  without parsing a compass back into the vector it was made from.
+  `values.asleep` is a count where the terminal has the sentence `"(2 asleep)"`,
+  `semantic.ref` is the race a tileset mod looks a sprite up by, and
+  `semantic.data.name` carries the game's own pluralisation (`get_mon_name`) so a
+  card can say "3 kobolds" without a mod reimplementing English.
+
+  **The layout question it had to answer.** Upstream pads the name with
+  `"%-*s%s"` at a width computed per row —
+  `full_width = max_width - 2 - len(location) - 1` (ui-mon-list.c L123). That
+  looks per-row and is not: the total comes to `max_width - 1` on every row,
+  because the width shrinks by exactly what the location adds. Upstream's own
+  comment says what it is for — "the left-aligned and padded monster name which
+  will align the location to the right" (L156). So the model is a fixed name
+  column plus a **right-aligned location column**, which reproduces the C byte
+  for byte while the name cell arrives unpadded.
+
+  The one place the two part is clipping: the C clips at that row's own
+  `full_width`, which is more generous on a row whose location is shorter than
+  the section's longest. Measured rather than argued — the widest name-plus-tag
+  the shipped pack can generate clears the narrowest 80-column name column by 14,
+  and a test fails if a content mod ever closes that gap.
+
+  **The seam moved out of `main.ts`.** This screen has an action — `sort-exp`,
+  the `x` toggle (ui-mon-list.c L410, L456) — so it needs a `ScreenHost`, and a
+  seam that exists only inside the game's entry point is a seam nothing can
+  drive. `packages/web/src/monster-list.ts` now holds both ways of showing it.
+
+  `samples/sprite-inventory` takes it and draws the list as cards with a compass
+  arrow, and the check loads that folder by path, drives the real
+  `showMonsterList` through the real seam against a real `GameState` with a real
+  monster, and asserts `"↘ 3"` reached the canvas — a string the game never
+  produces. Then it presses `x` and checks the footer changed, so the **game**
+  re-sorted and handed back the new view.
+
 - **The knowledge browser's seven recall pages give up their model — and two
   things the player could see are fixed on the way** (#253, MOD_REACH gap 21,
   step 5b-v).

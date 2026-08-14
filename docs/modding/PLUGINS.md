@@ -649,8 +649,9 @@ under a table. A `text` block's `wrap` is the same idea for prose — the width
 a clamp and never a minimum. Ignore all four if you lay things out yourself.
 
 **Not every screen has a model yet.** `MODELLED_SCREENS`
-(`packages/web/src/screen-view.ts`) names the ones that do — today twenty: the
-inventory, the equipment, the quiver, the object list, the message history, the
+(`packages/web/src/screen-view.ts`) names the ones that do — today twenty-one: the
+inventory, the equipment, the quiver, the object list, the monster list, the
+message history, the
 player history, the object recall, the object comparison, the monster recall, the
 tombstone, the winner, the character sheet's two pages (`core:character` and
 `core:character-flags`), and the knowledge browser's seven recall pages
@@ -659,7 +660,7 @@ tombstone, the winner, the character sheet's two pages (`core:character` and
 `core:object-kind-recall`). Everything else arrives under the shared id
 `core:text` with a single `lines` block of pre-wrapped rows: enough to reskin a
 frame, not enough to reimagine a listing. **Check `view.id`.** The remaining
-screens — the help pages, the monster list and the equipment-comparison
+screens — the help pages, the spell lists and the equipment-comparison
 overlays — are the biggest open piece of `MOD_REACH.md` gap 21.
 
 The seven recall pages are all `text` blocks, and they are seven ids rather than
@@ -680,7 +681,8 @@ the player cannot get back to.
 are only dismissed. The character sheet is not: upstream offers renaming, a
 character dump and the page cycle from the same modal, and a presenter that took
 the sheet without being able to reach them would quietly take those commands away
-from the player. So `view.actions` publishes them as data — a stable `id`
+from the player. The visible-monster list is the other one — a single action,
+`sort-exp` (`x`), which flips the sort between depth and experience. So `view.actions` publishes them as data — a stable `id`
 (`rename`, `file`, `page-next`, `page-prev`), the `key` the *faithful terminal*
 listens for, and the game's own `label` — and `show(view, host)` hands you a
 `ScreenHost` whose `invoke(id)` runs one.

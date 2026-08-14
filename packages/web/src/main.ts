@@ -338,7 +338,7 @@ import {
   routeContextClick,
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
-import { GlyphTerm, setActiveCellTap } from "./term";
+import { GlyphTerm } from "./term";
 import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
 import {
@@ -378,7 +378,6 @@ import {
   AIM_CLOSEST,
   showFloorList,
   showLevelMap,
-  menuNav,
   MENU_CLOSE,
   getChar,
   getFile,
@@ -389,6 +388,7 @@ import {
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
 import { installScreen, setScreenPresenter } from "./screen-runtime";
+import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
@@ -440,7 +440,6 @@ import {
   tombstoneScreen,
   winnerScreen,
   ctimeStamp,
-  monsterListScreenLines,
 } from "./screens";
 import { showCharacterSheet, dumpCharacterFile, dumpFileName } from "./charsheet";
 import {
@@ -2333,7 +2332,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "monsters":
-      await showMonsterList();
+      await showMonsterList(term, state);
       break;
     case "objects":
       await showTextScreen(term, objectListScreen(state));
@@ -4264,85 +4263,6 @@ async function showMonsterKnowledge(): Promise<void> {
       await showRaceRecall(row.race, getLore(state.lore, row.race));
     },
   );
-}
-
-/**
- * do_cmd_monlist ('[', ui-mon-list.c monster_list_show_interactive L388): the
- * "list visible monsters" screen. Renders monsterListScreenLines (the faithful
- * LOS/ESP sections with counts, asleep tags, and single-monster offsets), and
- * loops on 'x' to toggle sort-by-experience (L410,456); scrolls with the
- * arrows / PageUp-Down; ESC/Enter/Space (or a footer tap) closes. Pure display.
- */
-function showMonsterList(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let sortExp = false;
-    let top = 0;
-    const HEADER_ROW = 0;
-    const BODY_TOP = 1;
-    const paint = (): void => {
-      const { cols, rows } = term.size();
-      term.clear();
-      const lines = monsterListScreenLines(state, cols, sortExp);
-      term.print(0, HEADER_ROW, "Visible monsters".slice(0, cols - 1), UI_TEXT);
-      const bodyRows = rows - BODY_TOP - 1;
-      const maxTop = Math.max(0, lines.length - bodyRows);
-      if (top > maxTop) top = maxTop;
-      for (let r = 0; r < bodyRows; r++) {
-        const line = lines[top + r];
-        if (!line) break;
-        if (line.runs) {
-          let x = 0;
-          for (const run of line.runs) {
-            if (x >= cols - 1) break;
-            const chunk = run.text.slice(0, cols - 1 - x);
-            term.print(x, BODY_TOP + r, chunk, run.color);
-            x += chunk.length;
-          }
-        } else {
-          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? UI_TEXT);
-        }
-      }
-      const toggle = sortExp
-        ? "Press 'x' to turn OFF 'sort by exp'"
-        : "Press 'x' to turn ON 'sort by exp'";
-      term.print(0, rows - 1, `[ ${toggle}  ESC: back ]`.slice(0, cols - 1), UI_DIM);
-    };
-    const finish = (): void => {
-      inputEvents.removeEventListener("keydown", onKey, true);
-      setActiveCellTap(term, null);
-      resolve();
-    };
-    const onKey = (ev: KeyboardEvent): void => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      const { rows } = term.size();
-      const page = Math.max(1, rows - BODY_TOP - 2);
-      if (ev.key === "Escape" || ev.key === "Enter" || ev.key === " ") {
-        finish();
-        return;
-      }
-      if (ev.key === "x" || ev.key === "X") {
-        sortExp = !sortExp;
-        top = 0;
-        paint();
-        return;
-      }
-      // Arrows AND numpad digits scroll (menuNav), so the numpad is not dead
-      // in this list when NumLock is on.
-      const nav = menuNav(ev);
-      if (!nav) return;
-      if (nav === "up") top = Math.max(0, top - 1);
-      else if (nav === "down") top += 1;
-      else if (nav === "pageup") top = Math.max(0, top - page);
-      else if (nav === "pagedown") top += page;
-      else if (nav === "home") top = 0;
-      else if (nav === "end") top += page; // clamped in paint()
-      paint();
-    };
-    inputEvents.addEventListener("keydown", onKey, true);
-    setActiveCellTap(term, () => finish());
-    paint();
-  });
 }
 
 /**
@@ -8236,7 +8156,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
     { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, objectListScreen(state))) },
-    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(showMonsterList) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => showMonsterList(term, state)) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
