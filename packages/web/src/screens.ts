@@ -166,8 +166,14 @@ function equipMention(slot: { type: string; name: string }): string {
  * (obj-info.c stays width-agnostic) and the wrap is the RENDERING, so a presenter
  * with its own font gets the paragraphs and lays them out itself, while the
  * faithful terminal gets the same wrap it always had from `screenBodyLines`.
+ *
+ * `trimLeading` drops the empty paragraphs object_info emits before its first
+ * real line. The knowledge browser's fake recalls have always dropped them (the
+ * overlay already puts the body under a title) and step 5b-v moved those pages
+ * onto this builder rather than rewriting what they show, so the option exists to
+ * PRESERVE that rather than to introduce it.
  */
-function proseBlock(tb: Textblock): ScreenTextBlock {
+export function proseBlock(tb: Textblock, trimLeading = false): ScreenTextBlock {
   const paragraphs: { text: string; color: string }[][] = [[]];
   for (const run of tb.runs) {
     const color = colorToCss(run.attr);
@@ -181,7 +187,25 @@ function proseBlock(tb: Textblock): ScreenTextBlock {
       else para.push({ text: piece, color });
     });
   }
+  if (trimLeading) while (paragraphs.length > 1 && paragraphs[0]!.length === 0) paragraphs.shift();
   return { kind: "text", color: FG, paragraphs };
+}
+
+/**
+ * Plain unstyled prose as a `text` block - one entry per PARAGRAPH, unwrapped.
+ *
+ * The knowledge browser's rune / feature / trap / shape recalls all have this
+ * shape: upstream builds a textblock of whole paragraphs and lets
+ * textui_textblock_show wrap it, so the paragraph is the datum and the wrap is
+ * the rendering. Empty entries are dropped rather than becoming blank
+ * paragraphs, because upstream's textblock has no line to emit for them.
+ */
+export function textParagraphs(paragraphs: readonly string[]): ScreenTextBlock {
+  return {
+    kind: "text",
+    color: FG,
+    paragraphs: paragraphs.filter((p) => p !== "").map((text) => [{ text }]),
+  };
 }
 
 /**

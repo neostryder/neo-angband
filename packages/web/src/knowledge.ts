@@ -46,7 +46,6 @@ import {
   knownDescOf,
   blankObjKnowledge,
   playerLearnAllRunes,
-  textblockToString,
   OINFO,
   ODESC,
   OBJ_NOTICE,
@@ -84,8 +83,9 @@ import {
   showTextScreen,
   menuNav,
   type MenuNav,
-  type ScreenLine,
 } from "./overlay";
+import { freezeView, SCREEN_FOOTER, type ScreenView } from "./screen-view";
+import { proseBlock, textParagraphs } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 
 const FG = UI_TEXT;
@@ -635,25 +635,64 @@ export interface RuneNoteHooks {
 }
 
 /**
- * rune_lore (ui-knowledge.c L2216-2230): the recall for one rune - its
- * capitalized name (my_strcap) on the first line, then rune_desc(oid) on the
- * next. rune_desc is now ported in core (obj/knowledge.ts), computed per
- * variety, so the description matches the oracle exactly.
+ * THE ADJUDICATION BEHIND EVERY RECALL SCREEN IN THIS FILE (step 5b-v).
+ *
+ * All seven of the knowledge browser's recall pages - rune, feature, trap,
+ * shape, artifact, ego and object-kind - end at the same upstream call:
+ * `textui_textblock_show(tb, SCREEN_REGION, header)` (ui-output.c L155). That
+ * call does two things the port was not doing, and each was visible to the
+ * player:
+ *
+ * 1. **It WRAPS.** `textblock_calculate_lines` (z-textblock.c L238) breaks the
+ *    run stream at the region width. The port pushed each description as ONE
+ *    `ScreenLine`, and `showTextScreen` slices a line at `cols - 1`, so any
+ *    description longer than the terminal was TRUNCATED - the end of the
+ *    sentence simply did not exist. A `text` block wraps instead, through the
+ *    renderer every other prose page in the port already uses.
+ * 2. **It KEEPS COLOUR.** `display_area` (ui-output.c L100) writes
+ *    `attrs[...]` per character. The three fake recalls flattened their
+ *    textblock through `textblockToString` and painted the result one colour,
+ *    which is why the browser's object recall was monochrome where the 'I'
+ *    inspect of the same object was not. `proseBlock` carries each run's attr.
+ *
+ * A third, smaller one comes out in the wash. The rune / feature / trap / shape
+ * lores pass `header = NULL` and put the capitalised name in the BODY, in
+ * L_BLUE. The port's overlay draws a title row on every screen AND kept the
+ * name as body line 0, so the player read it twice. The name is the title, so
+ * it is the title here and the body is the description alone - one row shorter,
+ * and one row closer to upstream. (The three fake recalls always passed a real
+ * header and never had the duplicate.)
+ *
+ * Not fixed here, and recorded rather than waved past: upstream wraps at the
+ * region width (80) while the port's renderer wraps at `cols - 1` (79). That is
+ * a PRE-EXISTING difference - `wrapRuns` has laid out the inspect and monster
+ * recall pages that way since the port had them - so it applies to pages that
+ * were already modelled and is not this step's to change blind. See
+ * MOD_REACH.md row 21.
  */
-function runeRecallLines(
+
+/**
+ * rune_lore (ui-knowledge.c L2216-2230): the recall for one rune - its
+ * capitalized name (my_strcap), then rune_desc(oid). rune_desc is now ported in
+ * core (obj/knowledge.ts), computed per variety, so the description matches the
+ * oracle exactly.
+ */
+export function runeRecallScreen(
   rune: Rune,
   runeEnv: Parameters<typeof buildRuneList>[0],
-): ScreenLine[] {
-  /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2219-2220). */
-  const full = runeName(rune);
-  const cap = full.charAt(0).toUpperCase() + full.slice(1);
-  const desc = runeDesc(runeEnv, rune);
-  const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
-  if (desc) {
-    lines.push({ text: "", color: FG });
-    lines.push({ text: desc, color: FG });
-  }
-  return lines;
+): ScreenView {
+  return freezeView({
+    id: "core:rune-recall",
+    /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2219-2220). */
+    title: capitalise(runeName(rune)),
+    footer: SCREEN_FOOTER,
+    blocks: [textParagraphs([runeDesc(runeEnv, rune) ?? ""])],
+  });
+}
+
+/** my_strcap on the first character only, as every *_lore title does. */
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export async function showRuneKnowledge(
@@ -664,9 +703,7 @@ export async function showRuneKnowledge(
 ): Promise<void> {
   const allRunes = buildRuneList(runeEnv);
   const recall = async (rune: Rune): Promise<void> => {
-    const full = runeName(rune);
-    const cap = full.charAt(0).toUpperCase() + full.slice(1);
-    await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
+    await showTextScreen(term, runeRecallScreen(rune, runeEnv));
   };
   if (!notes) {
     const { title, groups } = runeKnowledgeGroups(allRunes, player);
@@ -772,15 +809,24 @@ export function featureKnowledgeGroups(reg: FeatureRegistry): KnowledgeGroup<Fea
   return groups;
 }
 
+/**
+ * feat_lore (ui-knowledge.c L2326-2343): the capitalised feature name, then
+ * feat->desc. Upstream only opens the recall at all when the feature HAS a
+ * description (L2329); the port shows the title with an empty body instead,
+ * which is the same information and keeps the browser's row selectable.
+ */
+export function featureRecallScreen(feat: Feature): ScreenView {
+  return freezeView({
+    id: "core:feature-recall",
+    title: capitalise(feat.name),
+    footer: SCREEN_FOOTER,
+    blocks: [textParagraphs([feat.desc ?? ""])],
+  });
+}
+
 export async function showFeatureKnowledge(term: GridSurface & GridPointerInput, reg: FeatureRegistry): Promise<void> {
   await runGroupedBrowser(term, "features", featureKnowledgeGroups(reg), async (feat) => {
-    const cap = feat.name.charAt(0).toUpperCase() + feat.name.slice(1);
-    const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
-    if (feat.desc) {
-      lines.push({ text: "", color: FG });
-      lines.push({ text: feat.desc, color: FG });
-    }
-    await showTextScreen(term, cap, lines);
+    await showTextScreen(term, featureRecallScreen(feat));
   });
 }
 
@@ -823,18 +869,24 @@ export function trapKnowledgeGroups(traps: readonly TrapKind[]): KnowledgeGroup<
   return groups;
 }
 
+/**
+ * trap_lore (ui-knowledge.c L2511-2528): the capitalised trap DESC (not its
+ * name), then trap->text. Upstream only opens the recall when trap->text is
+ * non-empty (L2513); a trap with no paragraph shows just the title, matching
+ * that guard.
+ */
+export function trapRecallScreen(trap: TrapKind): ScreenView {
+  return freezeView({
+    id: "core:trap-recall",
+    title: capitalise(trap.desc),
+    footer: SCREEN_FOOTER,
+    blocks: [textParagraphs([trap.text ?? ""])],
+  });
+}
+
 export async function showTrapKnowledge(term: GridSurface & GridPointerInput, traps: readonly TrapKind[]): Promise<void> {
   await runGroupedBrowser(term, "traps", trapKnowledgeGroups(traps), async (trap) => {
-    const cap = trap.desc.charAt(0).toUpperCase() + trap.desc.slice(1);
-    // trap_lore (ui-knowledge.c L2588-2605): capitalized desc then trap->text.
-    // Upstream only opens the recall when trap->text is non-empty (L2590); a
-    // trap with no paragraph shows just the title, matching that guard.
-    const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
-    if (trap.text) {
-      lines.push({ text: "", color: FG });
-      lines.push({ text: trap.text, color: FG });
-    }
-    await showTextScreen(term, cap, lines);
+    await showTextScreen(term, trapRecallScreen(trap));
   });
 }
 
@@ -921,8 +973,6 @@ export interface ArtifactKnowledgeDeps {
   seedRandart?: number;
 }
 
-const RECALL_TITLE = UI_CURSOR;
-
 /**
  * desc_art_fake (ui-knowledge.c L1610-1654): the artifact-knowledge recall.
  * Upstream builds a fake artifact object (make_fake_artifact), points its known
@@ -952,7 +1002,7 @@ const RECALL_TITLE = UI_CURSOR;
 export function artifactFakeRecall(
   deps: ArtifactKnowledgeDeps,
   art: Artifact,
-): { title: string; lines: ScreenLine[] } {
+): ScreenView {
   const { state, reg, constants, player, runeEnv, inspectExtras } = deps;
 
   /* THE GAME STREAM, as upstream. desc_art_fake calls make_fake_artifact
@@ -965,12 +1015,12 @@ export function artifactFakeRecall(
   const obj = makeFakeArtifact(reg, constants, art, state.rng);
   if (!obj) {
     /* No base kind: make_fake_artifact returns false (L737); show the name. */
-    const lines: ScreenLine[] = [{ text: art.name, color: RECALL_TITLE }];
-    if (art.text) {
-      lines.push({ text: "", color: FG });
-      lines.push({ text: art.text, color: FG });
-    }
-    return { title: art.name, lines };
+    return freezeView({
+      id: "core:artifact-recall",
+      title: art.name,
+      footer: SCREEN_FOOTER,
+      blocks: [textParagraphs([art.text ?? ""])],
+    });
   }
 
   const fullyKnown = historyIsArtifactKnown(player, art);
@@ -1019,21 +1069,23 @@ export function artifactFakeRecall(
   };
 
   const tb = objectInfo(obj, OINFO.NONE, makeObjectInfoDeps(scratchState, obj, inspectExtras));
-  const bodyText = textblockToString(tb);
 
-  const lines: ScreenLine[] = [];
-  /* Base branch: the artifact flavour paragraph (known_obj->artifact set). */
-  if (!fullyKnown && art.text) {
-    lines.push({ text: art.text, color: FG });
-    lines.push({ text: "", color: FG });
-  }
-  for (const raw of bodyText.split("\n")) {
-    lines.push({ text: raw.replace(/\s+$/u, ""), color: FG });
-  }
-  /* Trim leading blank lines object_info emits before the first real line. */
-  while (lines.length > 1 && lines[0]!.text === "") lines.shift();
+  /* Base branch: the artifact flavour paragraph (known_obj->artifact set). Its
+   * own block rather than a paragraph spliced onto the object_info one, because
+   * it is a different thing - the artifact's PROSE, where the rest is its
+   * mechanics - and a presenter that wants to set the two apart can. */
+  const flavour = !fullyKnown && art.text ? textParagraphs([art.text]) : null;
 
-  return { title, lines };
+  return freezeView({
+    id: "core:artifact-recall",
+    title,
+    footer: SCREEN_FOOTER,
+    /* object_info opens with a blank line. It is trimmed when the body starts
+     * the page (the overlay's title row already separates it) and KEPT when the
+     * flavour paragraph is above, where it is the blank between the two - which
+     * is where upstream's own blank comes from, since upstream trims nothing. */
+    blocks: [...(flavour ? [flavour] : []), proseBlock(tb, flavour === null)],
+  });
 }
 
 /**
@@ -1059,8 +1111,7 @@ export async function showArtifactKnowledge(
       ? `artifacts (seed ${(seed >>> 0).toString(16).padStart(8, "0")})`
       : "artifacts";
   await runGroupedBrowser(term, title, groups, async (art) => {
-    const recall = artifactFakeRecall(deps, art);
-    await showTextScreen(term, recall.title, recall.lines);
+    await showTextScreen(term, artifactFakeRecall(deps, art));
   });
 }
 
@@ -1120,31 +1171,6 @@ export interface FakeRecallDeps {
 }
 
 /**
- * A textblock's flat text as screen lines: trailing whitespace stripped (the
- * run stream ends sections with two spaces) and the leading blanks object_info
- * emits before its first real line dropped, since the overlay already puts the
- * body under a title.
- *
- * LOOKED AT AND LEFT, step 5b-ii, and recorded rather than fixed. This is a THIRD
- * rendering of the same `Textblock` the object-inspect page renders: it flattens
- * through `textblockToString` and so drops every run colour, which is why the
- * knowledge browser's object recall is monochrome where the 'I' inspect of the
- * same object is not. Converting it to a `text` block would give it colours AND a
- * wrap it does not have today - two visible changes to what the player sees - so
- * it wants its own adjudication against upstream rather than a drive-by. Same
- * verdict for the rune, feature, trap and shape recalls just above and below:
- * they push their description as ONE line, so a long one is TRUNCATED at
- * `cols - 1` by `showTextScreen` instead of wrapping. See MOD_REACH.md row 21.
- */
-function recallBodyLines(text: string): ScreenLine[] {
-  const lines: ScreenLine[] = text
-    .split("\n")
-    .map((raw) => ({ text: raw.replace(/\s+$/u, ""), color: FG }));
-  while (lines.length > 1 && lines[0]!.text === "") lines.shift();
-  return lines;
-}
-
-/**
  * desc_obj_fake (ui-knowledge.c L1938-1981): the known-objects recall. Upstream
  * preps a throwaway object of the kind on the EXTREMIFY aspect, points its
  * known twin at either a full object_copy (when the kind is aware, or has no
@@ -1169,7 +1195,7 @@ function recallBodyLines(text: string): ScreenLine[] {
 export function objectFakeRecall(
   deps: ObjectRecallDeps,
   kind: ObjectKind,
-): { title: string; lines: ScreenLine[] } {
+): ScreenView {
   const { state, reg, constants, player, runeEnv, inspectExtras } = deps.recall;
   /* `kind->aware || !kind->flavor` (L1958). */
   const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
@@ -1197,20 +1223,20 @@ export function objectFakeRecall(
     knownDescOf(scratchState),
   );
 
-  if (!aware) {
-    return {
-      title,
-      lines: [{ text: "You do not know what this is.", color: FG }],
-    };
-  }
+  const body = aware
+    ? /* object_info ORs in OINFO_SUBJ (obj-info.c L2394). */
+      proseBlock(
+        objectInfo(obj, OINFO.FAKE | OINFO.SUBJ, makeObjectInfoDeps(scratchState, obj, inspectExtras)),
+        true,
+      )
+    : textParagraphs(["You do not know what this is."]);
 
-  /* object_info ORs in OINFO_SUBJ (obj-info.c L2394). */
-  const tb = objectInfo(
-    obj,
-    OINFO.FAKE | OINFO.SUBJ,
-    makeObjectInfoDeps(scratchState, obj, inspectExtras),
-  );
-  return { title, lines: recallBodyLines(textblockToString(tb)) };
+  return freezeView({
+    id: "core:object-kind-recall",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [body],
+  });
 }
 
 /** o_cmp_tval within-group order (ui-knowledge.c L1984-2024). */
@@ -1286,8 +1312,7 @@ export async function showObjectKnowledge(
 ): Promise<void> {
   const groups = objectKnowledgeGroups(kinds, bases, deps);
   const recall = async (kind: ObjectKind): Promise<void> => {
-    const { title, lines } = objectFakeRecall(deps, kind);
-    await showTextScreen(term, title, lines);
+    await showTextScreen(term, objectFakeRecall(deps, kind));
   };
 
   /* `{` is object_xtra_act (ui-knowledge.c:2101-2123: "Inscribe with: " sets the
@@ -1376,7 +1401,7 @@ export function egoFakeRecall(
   deps: FakeRecallDeps,
   ego: EgoItem,
   groupName: string,
-): { title: string; lines: ScreenLine[] } {
+): ScreenView {
   const { state, reg, player, runeEnv, inspectExtras } = deps;
   const title = `${groupName} ${ego.name}`;
 
@@ -1393,7 +1418,12 @@ export function egoFakeRecall(
     return makeObjectInfoDeps(scratchState, obj, inspectExtras);
   });
 
-  return { title, lines: recallBodyLines(textblockToString(tb)) };
+  return freezeView({
+    id: "core:ego-recall",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [proseBlock(tb, true)],
+  });
 }
 
 export async function showEgoKnowledge(
@@ -1409,8 +1439,7 @@ export async function showEgoKnowledge(
    * ego->name)` (L1801) - the group the highlighted row sits under, which is
    * why one ego browsed from two groups gets two different headers. */
   await runGroupedBrowser(term, "ego items", groups, async (ego, groupName) => {
-    const { title, lines } = egoFakeRecall(recallDeps, ego, groupName);
-    await showTextScreen(term, title, lines);
+    await showTextScreen(term, egoFakeRecall(recallDeps, ego, groupName));
   });
 }
 
@@ -1542,6 +1571,25 @@ export function shapeKnowledgeRows(shapes: readonly Shape[]): Shape[] {
     .sort((a, b) => strcmp(a.name.toLowerCase(), b.name.toLowerCase()));
 }
 
+/**
+ * shape_lore (ui-knowledge.c L3035-3060): the shape's name, the fixed intro
+ * paragraph, then each field summary that has content. `shapeLoreLines` already
+ * returns one string per emitted PARAGRAPH - core stays width-agnostic exactly
+ * as upstream's textblock does - so the block takes them unwrapped and the
+ * renderer breaks them.
+ *
+ * Line 0 is the name, which upstream prints in the body because it passes no
+ * header. It is the title here instead; see the adjudication above `runeRecallScreen`.
+ */
+export function shapeRecallScreen(shape: Shape, env: ShapeLoreEnv): ScreenView {
+  return freezeView({
+    id: "core:shape-recall",
+    title: shape.name,
+    footer: SCREEN_FOOTER,
+    blocks: [textParagraphs(shapeLoreLines(shape, env).slice(1))],
+  });
+}
+
 export async function showShapeKnowledge(
   term: GridSurface & GridPointerInput,
   shapes: readonly Shape[],
@@ -1553,10 +1601,6 @@ export async function showShapeKnowledge(
     { name: "Shapes", rows: rows.map((s) => ({ label: s.name, color: FG, member: s })) },
   ];
   await runGroupedBrowser(term, "shapes", groups, async (shape) => {
-    const lines = shapeLoreLines(shape, env).map((text, i) => ({
-      text,
-      color: i === 0 ? UI_CURSOR : FG,
-    }));
-    await showTextScreen(term, shape.name, lines);
+    await showTextScreen(term, shapeRecallScreen(shape, env));
   });
 }

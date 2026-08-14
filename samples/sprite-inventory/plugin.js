@@ -59,8 +59,24 @@
 /** The three listings this sample draws as cards. */
 const TAKES = ["core:inventory", "core:equipment", "core:quiver"];
 
-/** The prose pages it draws as a panel, re-wrapped to its OWN width. */
-const READS = ["core:object-recall", "core:object-comparison", "core:monster-recall"];
+/**
+ * The prose pages it draws as a panel, re-wrapped to its OWN width - the three
+ * inspect pages plus the knowledge browser's seven recalls, which gave up their
+ * model in step 5b-v. Nothing in the panel changed to take them: a `text` block
+ * is a `text` block, which is the point of a model with a small vocabulary.
+ */
+const READS = [
+  "core:object-recall",
+  "core:object-comparison",
+  "core:monster-recall",
+  "core:rune-recall",
+  "core:feature-recall",
+  "core:trap-recall",
+  "core:shape-recall",
+  "core:artifact-recall",
+  "core:ego-recall",
+  "core:object-kind-recall",
+];
 
 /** The character sheet's two pages, which it draws as panels AND acts on. */
 const SHEET = ["core:character", "core:character-flags"];

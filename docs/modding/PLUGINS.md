@@ -640,15 +640,24 @@ under a table. A `text` block's `wrap` is the same idea for prose — the width
 a clamp and never a minimum. Ignore all four if you lay things out yourself.
 
 **Not every screen has a model yet.** `MODELLED_SCREENS`
-(`packages/web/src/screen-view.ts`) names the ones that do — today the inventory,
-the equipment, the quiver, the object list, the message history, the player
-history, the object recall, the object comparison, the monster recall, the
-tombstone, the winner, and the character sheet's two pages (`core:character` and
-`core:character-flags`). Everything else arrives under the shared id `core:text`
-with a single `lines` block of pre-wrapped rows: enough to reskin a frame, not
-enough to reimagine a listing. **Check `view.id`.** The remaining screens — the
-knowledge browser, the help pages and the monster list — are the biggest open
-piece of `MOD_REACH.md` gap 21.
+(`packages/web/src/screen-view.ts`) names the ones that do — today twenty: the
+inventory, the equipment, the quiver, the object list, the message history, the
+player history, the object recall, the object comparison, the monster recall, the
+tombstone, the winner, the character sheet's two pages (`core:character` and
+`core:character-flags`), and the knowledge browser's seven recall pages
+(`core:rune-recall`, `core:feature-recall`, `core:trap-recall`,
+`core:shape-recall`, `core:artifact-recall`, `core:ego-recall`,
+`core:object-kind-recall`). Everything else arrives under the shared id
+`core:text` with a single `lines` block of pre-wrapped rows: enough to reskin a
+frame, not enough to reimagine a listing. **Check `view.id`.** The remaining
+screens — the help pages, the monster list and the equipment-comparison
+overlays — are the biggest open piece of `MOD_REACH.md` gap 21.
+
+The seven recall pages are all `text` blocks, and they are seven ids rather than
+one on purpose: a mod that draws an artifact's page as a plaque and a trap's as a
+warning card has to be able to tell them apart, and a shared id cannot. If you
+only want to restyle prose, match on all seven (or on `block.kind === "text"`)
+and you are done — nothing in a prose panel needs to know which of them it has.
 
 **A screen is dismissed, not answered**, which is the one shape difference from
 `menu`. `show` declines by returning `undefined` **synchronously** and takes the
