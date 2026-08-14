@@ -45,3 +45,22 @@ reference/** -text
 *.dll binary
 *.node binary
 *.pdf binary
+
+# LAST MATCH WINS, and that is the whole reason this line is repeated here.
+#
+# The `reference/** -text` rule above was defeated by `*.bat text eol=crlf`
+# three lines below it: a bare `*.bat` pattern matches at ANY depth, so it
+# re-applied `eol=crlf` to `reference/docs/make.bat` and put that file back
+# under normalisation. `git check-attr -a` said `text: set`, and the comment on
+# the `*.bat` rule ("any that are ever added outside reference/") described an
+# intent the pattern did not express.
+#
+# The symptom was remote and looked unrelated: on CI's Linux checkout the file
+# came out differing from the index, and `reference-tree.test.ts` - the guard
+# that proves reference/ is still blob-identical to the 4.2.6 tag - failed with
+# "reference/ differs between the working tree and the index". Every local gate
+# was green, because on Windows the conversion is a no-op.
+#
+# Repeating the exemption last is deliberate rather than tidy: any future rule
+# added above this line cannot silently start rewriting upstream's bytes.
+reference/** -text
