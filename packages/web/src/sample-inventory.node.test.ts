@@ -38,6 +38,7 @@ import {
   INVENTORY_COLUMNS,
   QUIVER_COLUMNS,
   objectRecallScreen,
+  tombstoneScreen,
 } from "./screens";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
@@ -386,6 +387,53 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     const terminalRows = screenBodyLines(view, 80).filter((l) => l.text !== "").length;
     expect(terminalRows).toBeGreaterThan(0);
     expect(panelRows).toBeGreaterThan(terminalRows);
+
+    press(fake, "Escape");
+    await expect(done).resolves.toBeUndefined();
+    expect(faults).toEqual([]);
+  });
+
+  it("draws the tombstone's epitaph without drawing one character of the stone", async () => {
+    /* The proof for the `art` block. Upstream's tombstone is one picture with the
+     * character burned into it, so a presenter handed only the picture would have
+     * to know that the name lives in columns 8-39 of row 7. Here the sample draws
+     * its own stone and writes "Frodo" onto it - and the assertion is that not one
+     * of the ASCII rows it was also handed reached the canvas. */
+    const view = tombstoneScreen({
+      fullName: "Frodo",
+      title: "Rookie",
+      className: "Warrior",
+      level: 3,
+      exp: 42,
+      gold: 100,
+      depth: 5,
+      diedFrom: "a giant white mouse",
+      totalWinner: false,
+      deathTime: "Wed Jun 30 21:49:08 1993",
+    });
+
+    const draws: Draw[] = [];
+    const { doc, fake } = recordingDocument(draws);
+    const faults: string[] = [];
+    await install(doc, faults);
+    const term = makeTerm();
+
+    const done = showTextScreen(term, view);
+    await tick();
+
+    expect(term.printed, "the game drew it as well as the mod").toEqual([]);
+    const drawn = texts(draws);
+    expect(drawn).toContain("Frodo");
+    /* The stone as ASCII never appears. Compared against the block's OWN lines
+     * rather than against a guess at what the art looks like. */
+    const block = view.blocks[0]!;
+    if (block.kind !== "art") throw new Error("the tombstone stopped being art");
+    for (const row of block.lines) {
+      if (row.trim() === "") continue;
+      expect(drawn).not.toContain(row);
+    }
+    /* And the level came from `values`, not from re-reading "Level: 3". */
+    expect(drawn.some((t) => t.includes("lvl 3") && t.includes("100 au"))).toBe(true);
 
     press(fake, "Escape");
     await expect(done).resolves.toBeUndefined();

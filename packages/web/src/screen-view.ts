@@ -167,16 +167,61 @@ export interface ScreenTextBlock {
 }
 
 /**
+ * One piece of text the game writes ON TOP of the art.
+ *
+ * The tombstone is the case this exists for. Upstream draws `dead.txt` and then
+ * overwrites the character's name, class, level, experience, gold and the blow
+ * that killed them into a band down the middle of the stone
+ * (`put_str_centred`, ui-death.c L40-56). The result is one picture with the
+ * epitaph BURNED INTO it, and a mod handed only that picture would have to know
+ * that the name lives in columns 8-39 of row 7 to get it back out.
+ *
+ * So the art and the writing are published apart. `row`/`x1`/`x2` are where the
+ * faithful terminal puts this - the renderer needs them and a presenter drawing
+ * a real gravestone ignores them, reading `key`, `text` and `values` instead.
+ */
+export interface ScreenArtField {
+  /** Stable: `name`, `title`, `class`, `level`, `exp`, `gold`, `death`, `date`. */
+  readonly key: string;
+  readonly text: string;
+  /** The number behind the text, where the text is a formatted number. */
+  readonly values?: ScreenValues;
+  /** Row of `lines` this is centred over; a row past the end extends the art. */
+  readonly row: number;
+  /**
+   * The column band it is centred in. Both absent means the full terminal width,
+   * which is `put_str_centred(row, 0, wid, ...)` - what upstream does for the
+   * winner's banner, and the reason the band is optional rather than always given.
+   */
+  readonly x1?: number;
+  readonly x2?: number;
+}
+
+/**
  * Decorative ASCII the game draws as a picture: the tombstone, the winner's crown.
  *
  * Genuinely a rendering, and named so a presenter can swap the whole thing for an
- * image rather than try to read it.
+ * image rather than try to read it - which is why anything that is DATA rather
+ * than picture leaves through `fields` instead of being drawn into `lines`.
  */
 export interface ScreenArtBlock {
   readonly kind: "art";
   readonly key: string;
   readonly lines: readonly string[];
   readonly color?: string;
+  /** Text the game writes over the art; see `ScreenArtField`. */
+  readonly fields?: readonly ScreenArtField[];
+  /**
+   * Whether the whole picture is centred in the terminal rather than drawn from
+   * column 0. The crown is; the tombstone is not.
+   */
+  readonly center?: boolean;
+  /**
+   * The art's own declared width, where the file states one - `crown.txt`'s
+   * first line is a width hint, and upstream centres by THAT rather than by the
+   * longest row, so a picture with a short bottom row does not drift.
+   */
+  readonly width?: number;
 }
 
 /**
@@ -251,6 +296,8 @@ export const MODELLED_SCREENS = [
   "core:object-recall",
   "core:object-comparison",
   "core:monster-recall",
+  "core:tombstone",
+  "core:winner",
 ] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */
@@ -323,7 +370,22 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
         ...(block.color === undefined ? {} : { color: block.color }),
       });
     case "art":
-      return Object.freeze({ ...block, lines: Object.freeze([...block.lines]) });
+      return Object.freeze({
+        ...block,
+        lines: Object.freeze([...block.lines]),
+        ...(block.fields === undefined
+          ? {}
+          : {
+              fields: Object.freeze(
+                block.fields.map((f) =>
+                  Object.freeze({
+                    ...f,
+                    ...(f.values === undefined ? {} : { values: Object.freeze({ ...f.values }) }),
+                  }),
+                ),
+              ),
+            }),
+      });
     case "lines":
       return Object.freeze({
         kind: "lines" as const,
@@ -382,9 +444,7 @@ export function screenBodyLines(view: ScreenView, cols = 80): ScreenLine[] {
         out.push(...block.lines);
         break;
       case "art":
-        for (const line of block.lines) {
-          out.push(block.color === undefined ? { text: line } : { text: line, color: block.color });
-        }
+        out.push(...artBlockLines(block, cols));
         break;
       case "text":
         out.push(...textBlockLines(block, cols));
@@ -395,6 +455,58 @@ export function screenBodyLines(view: ScreenView, cols = 80): ScreenLine[] {
     }
   }
   return out;
+}
+
+/**
+ * put_str_centred (ui-death.c L40-56): centre `text` in the column band
+ * [x1, x2] over `line`, overwriting whatever art is beneath it and extending
+ * the row with spaces where it is short. `x = x1 + ((x2 - x1) / 2 - len / 2)`,
+ * integer arithmetic exactly as the C.
+ *
+ * THIS IS THE GAME'S OWN PRIMITIVE, moved rather than written. It laid out the
+ * tombstone from `screens.ts` before the tombstone had a model, and it lays it
+ * out from here now, so the picture on the player's screen did not move when
+ * the epitaph became data.
+ */
+function overwriteCentred(line: string, x1: number, x2: number, text: string): string {
+  const x = x1 + (Math.trunc((x2 - x1) / 2) - Math.trunc(text.length / 2));
+  const col = Math.max(0, x);
+  const padded = line.length < col ? line + " ".repeat(col - line.length) : line;
+  return padded.slice(0, col) + text + padded.slice(col + text.length);
+}
+
+/** The faithful terminal's rows for an `art` block: the picture, then the writing. */
+function artBlockLines(block: ScreenArtBlock, cols: number): ScreenLine[] {
+  /* Centred art shifts as a BLOCK, by its declared width, so its internal shape
+   * survives; centring each row on its own length would bend the picture. */
+  const pad =
+    block.center === true
+      ? " ".repeat(
+          Math.max(
+            0,
+            Math.trunc(cols / 2) -
+              Math.trunc((block.width ?? Math.max(0, ...block.lines.map((r) => r.length))) / 2),
+          ),
+        )
+      : "";
+  const rows = block.lines.map((l) => (pad !== "" && l !== "" ? pad + l : l));
+  /* Fields are placed AFTER the shift, in absolute terminal columns - which is
+   * what `put_str_centred` does in the C, and what makes an unbanded field the
+   * full-width case rather than a special one. */
+  for (const field of block.fields ?? []) {
+    /* A field may sit one row PAST the picture - display_winner's banner does -
+     * so the art grows to meet it rather than the field being dropped. */
+    while (rows.length <= field.row) rows.push("");
+    rows[field.row] = overwriteCentred(
+      rows[field.row] ?? "",
+      field.x1 ?? 0,
+      field.x2 ?? cols,
+      field.text,
+    );
+  }
+  return rows.map((text) =>
+    block.color === undefined ? { text } : { text, color: block.color },
+  );
 }
 
 /**

@@ -20,6 +20,32 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The tombstone publishes the epitaph apart from the stone** (#253, MOD_REACH
+  gap 21, step 5b-iii).
+
+  `core:tombstone` and `core:winner` are modelled, and the `art` block — declared
+  since step 5 with no producer — gets its first one. The point is what the
+  conversion had to separate. Upstream's tombstone is one picture with the
+  character *burned into* it: the name, class, level, experience, gold and
+  killing blow are overwritten into columns 8–39 of the ASCII stone by
+  `put_str_centred` (ui-death.c L40–56). A mod handed the finished picture would
+  have to know that band and those row numbers to get a name back.
+
+  So an art block now carries `fields` beside `lines`: each with a stable `key`
+  (`name`, `title`, `class`, `level`, `exp`, `gold`, `death`, `killer`, `date`),
+  its text, `values` where the text is a formatted number, and the row and band
+  the *faithful terminal* uses — published beside the data rather than baked into
+  it, exactly as a table column publishes its width. A field with no band is
+  centred on the full width, which is not a special case but literally what
+  `display_winner` does for its banner.
+
+  `samples/sprite-inventory/` now draws its own gravestone with the character
+  written onto it, and the test asserts that **not one** of the ASCII rows it was
+  also handed reached the canvas — compared against the block's own lines, so
+  redrawing the art cannot quietly retire the check. `put_str_centred` moved into
+  the one renderer, and both death screens' existing upstream-cited parity tests
+  passed unchanged, which is the evidence the picture did not move.
+
 - **The recall pages give up their models, and hand a mod the prose unwrapped**
   (#253, MOD_REACH gap 21, step 5b-ii).
 
