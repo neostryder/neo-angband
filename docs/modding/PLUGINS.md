@@ -580,11 +580,15 @@ Gated by the single `ui:screen.replace` capability (or the wildcard
 and the fine choice made per screen by declining.
 
 **A list is a `table`, and cells are addressed by column key.** Columns have
-stable keys — `name`, `slot`, `weight`, `fail` — so you read `row.cells.name.text`
-and never count characters. `column.width` is the faithful terminal's field width
-where upstream fixed one; ignore it if you lay columns out yourself. It is
-published *beside* the data rather than baked into it as padding, which is what
-makes both renderings possible from one model.
+stable keys — `name`, `slot`, `weight`, `turn` — so you read `row.cells.name.text`
+and never count characters. A column publishes three facts about the *terminal's*
+layout, all of which you are free to ignore: `width` (the field width where
+upstream fixed one), `gap` (columns of space before it — the history screen writes
+`"%10ld%7d'  %s"`, no gap before the depth and two before the note) and `pad`
+(false where the game does **not** line the column up, as the object list's
+location simply follows the name). They are published *beside* the data rather
+than baked into it as padding, which is what makes both renderings possible from
+one model.
 
 **A row means something.** `row.semantic` is the same `{kind, ref}` a `MenuChoice`
 carries, so an item is one thing to you whether the game is listing it or asking
@@ -597,12 +601,21 @@ exactly: `current` + `max` *together* mean a proportion; every other key is a
 named quantity; absent means the game does not know it. A weight cell publishes
 `{each, total, number}` in tenths of a pound, so you format it your own way.
 
+**Check `row.values` as well as `cell.values`.** The model is allowed to carry
+*more* than the rendering, never less, so a number the terminal has no column for
+lives on the row: the quiver publishes its weight that way, the object list its
+offset as `{dy, dx}` rather than only as `"2 N 0 W"`, the player history the
+character level it never prints. Those are exactly the numbers a presenter needs
+and a text screen cannot show.
+
 **Not every screen has a model yet.** `MODELLED_SCREENS`
-(`packages/web/src/screen-view.ts`) names the ones that do — today the inventory
-and the equipment. Everything else arrives under the shared id `core:text` with a
-single `lines` block of pre-wrapped rows: enough to reskin a frame, not enough to
-reimagine a listing. **Check `view.id`.** The remaining screens are the biggest
-open piece of `MOD_REACH.md` gap 21.
+(`packages/web/src/screen-view.ts`) names the ones that do — today the inventory,
+the equipment, the quiver, the object list, the message history and the player
+history. Everything else arrives under the shared id `core:text` with a single
+`lines` block of pre-wrapped rows: enough to reskin a frame, not enough to
+reimagine a listing. **Check `view.id`.** The remaining screens — the character
+sheet, the knowledge browser, the spell lists, the recall pages and the tombstone
+— are the biggest open piece of `MOD_REACH.md` gap 21.
 
 **A screen is dismissed, not answered**, which is the one shape difference from
 `menu`. `show` declines by returning `undefined` **synchronously** and takes the
@@ -621,8 +634,8 @@ relaxed.
 **A screen has no published region either.** It covers the window, for the same
 reason a floating menu does.
 
-`samples/sprite-inventory/` is a complete worked example: it draws the inventory
-and the equipment as item cards and declines every other screen.
+`samples/sprite-inventory/` is a complete worked example: it draws the inventory,
+the equipment and the quiver as item cards and declines every other screen.
 
 ## Capabilities
 

@@ -56,10 +56,39 @@ digest in the game's catalogue and must never be moved.
   from disk through the real `showTextScreen` by
   `sample-inventory.node.test.ts`.
 
-  **Two screens have models so far**, named in `MODELLED_SCREENS` and derived
-  from the source by a test: the inventory and the equipment. Every other screen
-  arrives under the shared id `core:text` with pre-wrapped lines — enough to
-  reskin a frame, not enough to reimagine a listing.
+  **Six screens have models so far**, named in `MODELLED_SCREENS` and derived
+  from the source by a test: the inventory, the equipment, the quiver, the object
+  list, the message history and the player history — every screen that is a
+  *listing*. Every other screen arrives under the shared id `core:text` with
+  pre-wrapped lines — enough to reskin a frame, not enough to reimagine a
+  listing.
+
+- **Every listing gives up its model, and a column publishes its whole layout**
+  (#253, MOD_REACH gap 21, step 5b).
+
+  Four more screens are modelled: the quiver, the object list, the message
+  history and the player history. Reproducing upstream's layouts from a generic
+  renderer needed two more published facts per column beside `width` — `gap`
+  (columns of space before it; `history_display` writes `"%10ld%7d'  %s"`, none
+  before the depth and two before the note) and `pad` (false where the game does
+  not line the column up at all, as the object list's location simply follows the
+  name). Without them the choice was to change the rendering or leave the screens
+  unmodelled, and bending the rendering to suit the model would be the port
+  adding something.
+
+  **The model may carry more than the rendering, never less.** The quiver
+  publishes its weight as row `values` although its listing has no weight column;
+  the object list publishes its offset as `{dy, dx}` as well as `"2 N 0 W"`,
+  because a compass string cannot be turned back into a map marker without
+  parsing English; the player history publishes the character level it never
+  prints. `samples/sprite-inventory/` now draws the quiver too, which is what
+  proves the row-level path is reachable.
+
+  Fixed on the way: a table's column **header** was emitted after the empty-rows
+  check, so a character with no history lost the `Turn / Depth / Note` header
+  that upstream prints unconditionally. Same lesson as the `tagged` regression —
+  a table's columns are a fact about the table, not about the rows it holds
+  today.
 
 - **A mod can ask the game's questions its own way** (#253, MOD_REACH gap 21,
   step 4).

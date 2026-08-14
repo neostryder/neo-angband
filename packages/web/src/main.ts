@@ -409,10 +409,11 @@ import {
 } from "./game-menu";
 import { MessageLog, messageTypeCode, paginateMessages, pushTypedMessage } from "./messages";
 import {
-  inventoryLines,
-  equipmentLines,
-  messageHistoryLines,
-  historyLines,
+  inventoryScreen,
+  equipmentScreen,
+  quiverScreen,
+  messageHistoryScreen,
+  playerHistoryScreen,
   packMenu,
   quiverMenu,
   deviceMenu,
@@ -431,7 +432,7 @@ import {
   svalKindMenu,
   svalCategoryItems,
   SVAL_DEPENDENT,
-  objectListLines,
+  objectListScreen,
   monsterRecallLines,
   knownMonsterEntries,
   monsterKnowledgeGroupViews,
@@ -2329,13 +2330,13 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await showLevelMap(term, buildOverviewForShell());
       break;
     case "messages":
-      await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "monsters":
       await showMonsterList();
       break;
     case "objects":
-      await showTextScreen(term, "Objects in view", objectListLines(state));
+      await showTextScreen(term, objectListScreen(state));
       break;
     case "toggle-ignore":
       // textui_cmd_toggle_ignore (the K command): flip unignoring, then run the
@@ -2399,7 +2400,7 @@ async function runContextMenuPlayer(): Promise<void> {
       }
       break;
     case "inventory":
-      await showTextScreen(term, "Inventory", inventoryLines(state));
+      await showTextScreen(term, inventoryScreen(state));
       break;
     case "floor":
     case "pickup":
@@ -4180,7 +4181,7 @@ async function openKnowledgeMenu(): Promise<void> {
   // Post-store block (post_store_actions[], ui-knowledge.c:3609-3613).
   add("Display hall of fame", () => openHallOfFame());
   add("Display character history", () =>
-    showTextScreen(term, "Player history", historyLines(state)),
+    showTextScreen(term, playerHistoryScreen(state)),
   );
   add("Display equippable comparison", () => showEquipCmp(term, state, equipCmpDeps()));
 
@@ -4853,25 +4854,6 @@ function showPrevMessageCmd(): void {
   const latest = msglog.latest();
   message = latest ? `> ${latest}` : "> ";
   render();
-}
-
-/**
- * Display quiver listing (|, do_cmd_quiver, ui-game.c:163): show the quiver
- * slots and their ammo. The quiver is the real computed gear.quiver view (the
- * WP-4 quiver subsystem); each slot is tagged by its digit, exactly as
- * upstream's quiver tags.
- */
-function quiverLines(): ScreenLine[] {
-  const lines: ScreenLine[] = [];
-  const quiver = state.gear.quiver ?? [];
-  quiver.forEach((handle, slot) => {
-    if (!handle) return;
-    const obj = gearGet(state.gear, handle);
-    if (!obj) return;
-    lines.push({ text: `${slot}) ${objectName(state, obj)}`, color: UI_TEXT });
-  });
-  if (lines.length === 0) lines.push({ text: "(quiver empty)", color: UI_DIM });
-  return lines;
 }
 
 /**
@@ -5695,13 +5677,13 @@ async function gameMenuOnce(): Promise<boolean> {
       await showCharacterSheet(term, state, playerName, charSheetOpts());
       break;
     case "inventory":
-      await showTextScreen(term, "Inventory", inventoryLines(state));
+      await showTextScreen(term, inventoryScreen(state));
       break;
     case "equipment":
-      await showTextScreen(term, "Equipment", equipmentLines(state));
+      await showTextScreen(term, equipmentScreen(state));
       break;
     case "messages":
-      await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "knowledge":
       await openKnowledgeMenu();
@@ -5891,11 +5873,11 @@ async function runDeathMenu(): Promise<void> {
         // OLIST_DEATH gear walk (equipment, inventory) as press-to-continue
         // screens. Quiver/home pages are the remaining pieces of L227-275.
         await showCharacterSheet(term, state, playerName, charSheetOpts());
-        await showTextScreen(term, "You are using:", equipmentLines(state));
-        await showTextScreen(term, "You are carrying:", inventoryLines(state));
+        await showTextScreen(term, equipmentScreen(state, "You are using:"));
+        await showTextScreen(term, inventoryScreen(state, "You are carrying:"));
         break;
       case "messages":
-        await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+        await showTextScreen(term, messageHistoryScreen(msglog));
         break;
       case "dump": {
         // death_file (ui-death.c L162-188): get_file over the suggested
@@ -5942,7 +5924,7 @@ async function runDeathMenu(): Promise<void> {
         break;
       case "history":
         // death_history (ui-death.c L331): history_display.
-        await showTextScreen(term, "Player history", historyLines(state));
+        await showTextScreen(term, playerHistoryScreen(state));
         break;
       case "spoilers":
         // death_spoilers (ui-death.c L339): do_cmd_spoilers, the same four-row
@@ -7886,9 +7868,9 @@ function enterStoreModal(store: Store): Promise<void> {
           if (ref === null || !("handle" in ref)) return null;
           return runStoreItemCmd("takeoff", { handle: ref.handle });
         },
-        inventory: () => showTextScreen(term, "Inventory", inventoryLines(state)),
-        equipment: () => showTextScreen(term, "Equipment", equipmentLines(state)),
-        quiver: () => showTextScreen(term, "Quiver", quiverLines()),
+        inventory: () => showTextScreen(term, inventoryScreen(state)),
+        equipment: () => showTextScreen(term, equipmentScreen(state)),
+        quiver: () => showTextScreen(term, quiverScreen(state)),
       },
     }),
   ).then(() => {
@@ -8259,7 +8241,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Cast a spell", cat: "Information", o: "m", act: () => void openModal(castSpell) },
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
-    { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))) },
+    { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, objectListScreen(state))) },
     { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(showMonsterList) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
@@ -8460,7 +8442,7 @@ inputEvents.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && (ev.key === "p" || ev.key === "P")) {
     ev.preventDefault();
     void openModal(() =>
-      showTextScreen(term, "Message history", messageHistoryLines(msglog)),
+      showTextScreen(term, messageHistoryScreen(msglog)),
     );
     return;
   }
@@ -8798,15 +8780,15 @@ function installTouchActionBar(): void {
       message = "Tap a direction (or yourself) to disarm.";
       render();
     }],
-    ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
-    ["Objs", () => { void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))); }],
+    ["Inv", () => { void openModal(() => showTextScreen(term, inventoryScreen(state))); }],
+    ["Objs", () => { void openModal(() => showTextScreen(term, objectListScreen(state))); }],
     ["Map", () => { void openModal(() => showLevelMap(term, buildOverviewForShell())); }],
     ["Locate", () => { void openModal(() => runLocate()); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
-    ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
+    ["Hist", () => { void openModal(() => showTextScreen(term, playerHistoryScreen(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
     ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],

@@ -1,8 +1,8 @@
 # Sprite Inventory
 
-A worked example of `ModPlugin.screen`: the inventory and equipment drawn as a
-grid of item cards instead of a lettered list, built from the screen's **rows**
-rather than from its rendered text.
+A worked example of `ModPlugin.screen`: the inventory, equipment and quiver drawn
+as a grid of item cards instead of a lettered list, built from the screen's
+**rows** rather than from its rendered text.
 
 Its three siblings reimagine the map (`blueprint-view`), one HUD region
 (`vitals-panel`) and one menu (`command-dial`). This one reimagines the *content*
@@ -11,8 +11,8 @@ of a full screen — the thing none of the other three could reach.
 ## Try it
 
 Copy this folder into your `neo-angband-data/mods/` folder, enable it in the mod
-manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
-or `e` in game.
+manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`,
+`e` or `|` in game.
 
 ## What it demonstrates
 
@@ -23,15 +23,18 @@ or `e` in game.
   file changed a colour or a translation changed a width.
 - **The numbers are published beside the text.** `cells.weight.values.total` is
   the stack weight in tenths of a pound, the figure the column was formatted
-  from, so the card prints `0.4 lb` its own way and could sort by it.
+  from, so the card prints `0.4 lb` its own way and could sort by it. Check
+  `row.values` too: the quiver has no weight *column* (upstream's listing shows
+  none) and publishes the number on the row instead, so a presenter that only
+  read cells would lose the weight on the one screen a card grid most improves.
 - **A row means something.** An empty equipment slot is `{kind: "slot"}` rather
   than an item, so it is drawn as an outline instead of as gear. Filled rows
   carry `{kind: "item", ref: <handle>}` — the *same* identity a pack picker's
   choices carry, so an item is one thing to you whether the game is listing it or
   asking you to pick one.
-- **It takes two screens and declines the rest.** The character sheet, the
-  knowledge browser, the message history and every prose page are still the
-  game's own — and still work.
+- **It takes three screens and declines the rest.** The character sheet, the
+  knowledge browser and every prose page are still the game's own — and still
+  work.
 - **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
   card keeps whatever the player's pref file chose.
 
@@ -52,12 +55,13 @@ be relaxed about.
 
 ## What this seam cannot do yet
 
-**Only two screens have given up their models.** `MODELLED_SCREENS` in
-`packages/web/src/screen-view.ts` names them. Everything else arrives under the
+**Only the listings have given up their models.** `MODELLED_SCREENS` in
+`packages/web/src/screen-view.ts` names the six: inventory, equipment, quiver,
+object list, message history, player history. Everything else arrives under the
 shared id `core:text` with a single `lines` block of pre-wrapped rows — enough to
 reskin a frame, not enough to reimagine a listing. The character sheet, the
-knowledge browser, the spell lists and the rest are the same gap's biggest
-remaining piece.
+knowledge browser, the spell lists, the recall pages and the tombstone are the
+same gap's biggest remaining piece.
 
 **A screen has no published region.** It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap

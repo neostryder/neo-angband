@@ -10,7 +10,8 @@
  * the proof that it no longer has to.
  *
  * WHAT IT READS, and nothing else:
- *   - `view.id` to recognise the screen (`core:inventory`, `core:equipment`).
+ *   - `view.id` to recognise the screen (`core:inventory`, `core:equipment`,
+ *     `core:quiver`).
  *   - the `table` block's `rows`, and each row's `cells.name.text` - addressed by
  *     COLUMN KEY. It never counts characters and never sees a padded field.
  *   - `row.cells.weight.values.total`, the number the weight column was formatted
@@ -31,7 +32,7 @@
  * `dismissed`, because a screen that never resolves is a game that never comes
  * back.
  *
- * IT TAKES TWO SCREENS AND DECLINES THE REST. The character sheet, the knowledge
+ * IT TAKES THREE SCREENS AND DECLINES THE REST. The character sheet, the knowledge
  * browser, the message history and every prose page are still the game's own -
  * and still work. That is the seam working: a card grid is a good shape for
  * things you own and a poor one for a wall of text.
@@ -40,8 +41,8 @@
  * `ctx` and nothing else is resolvable from a mods folder.
  */
 
-/** The two screens this sample has a better way to show. */
-const TAKES = ["core:inventory", "core:equipment"];
+/** The three screens this sample has a better way to show. */
+const TAKES = ["core:inventory", "core:equipment", "core:quiver"];
 
 const BACKDROP = "rgba(8, 10, 16, 0.94)";
 const CARD = "#151a24";
@@ -67,9 +68,18 @@ function tableOf(view) {
   return null;
 }
 
-/** The stack weight in pounds, from the NUMBER rather than from the text. */
+/**
+ * The stack weight in pounds, from the NUMBER rather than from the text.
+ *
+ * Checked on the CELL first and then on the ROW, because those are two different
+ * statements: the inventory has a weight column and publishes the number behind
+ * it, while the quiver has no weight column at all and publishes the number
+ * anyway. A presenter that only looked at cells would silently lose the weight on
+ * the one screen where the terminal cannot show it either.
+ */
 function poundsOf(row) {
-  const values = row.cells.weight ? row.cells.weight.values : undefined;
+  const cell = row.cells.weight ? row.cells.weight.values : undefined;
+  const values = cell && typeof cell.total === "number" ? cell : row.values;
   if (!values || typeof values.total !== "number") return null;
   return values.total / 10;
 }

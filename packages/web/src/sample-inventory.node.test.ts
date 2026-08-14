@@ -13,8 +13,8 @@
  * already runs the real producer against one). The hazard that creates is precise:
  * a fixture saying `cells.name` would go on passing after the game renamed the
  * key, and the sample would draw blank cards in the shipped build. So the fixture
- * is built from `INVENTORY_COLUMNS` and `EQUIPMENT_COLUMNS` - the game's own
- * exported column contract - and a renamed key fails here too.
+ * is built from `INVENTORY_COLUMNS`, `EQUIPMENT_COLUMNS` and `QUIVER_COLUMNS` -
+ * the game's own exported column contract - and a renamed key fails here too.
  *
  * What it canNOT prove is pixels in the installed build; that needs the desktop
  * build over CDP and is recorded separately in MOD_REACH gap 21.
@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { installScreen, setScreenPresenter } from "./screen-runtime";
 import type { ScreenPlugin } from "./screen-runtime";
 import { freezeView, SCREEN_FOOTER, type ScreenRow, type ScreenView } from "./screen-view";
-import { EQUIPMENT_COLUMNS, INVENTORY_COLUMNS } from "./screens";
+import { EQUIPMENT_COLUMNS, INVENTORY_COLUMNS, QUIVER_COLUMNS } from "./screens";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -271,6 +271,46 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     await done;
   });
 
+  it("finds the quiver's weight on the ROW, where that screen publishes it", async () => {
+    /* The quiver has no weight COLUMN - upstream's listing does not show one - so
+     * the number is published on the row instead. A presenter that only ever
+     * looked at cells would silently lose it on the one screen where the terminal
+     * cannot show it either, which is the screen a card grid most improves on. */
+    const draws: Draw[] = [];
+    const { doc, fake } = recordingDocument(draws);
+    await install(doc);
+    const view = freezeView({
+      id: "core:quiver",
+      title: "Quiver",
+      footer: SCREEN_FOOTER,
+      blocks: [
+        {
+          kind: "table",
+          key: "quiver",
+          tagged: true,
+          columns: QUIVER_COLUMNS,
+          rows: [
+            {
+              id: "core:gear:9",
+              semantic: { kind: "item", ref: 9, data: { source: "quiver", slot: 0 } },
+              tag: "0",
+              values: { each: 2, total: 40, number: 20 },
+              cells: { name: { text: "20 Arrows (+0,+0)" } },
+            },
+          ],
+        },
+      ],
+    });
+
+    const done = showTextScreen(makeTerm(), view);
+    await tick();
+    const drawn = texts(draws);
+    expect(drawn).toContain("20 Arrows (+0,+0)");
+    expect(drawn).toContain("4.0 lb");
+    press(fake, "Escape");
+    await done;
+  });
+
   it("DECLINES every other screen, and the game shows those itself", async () => {
     const draws: Draw[] = [];
     const { doc, fake } = recordingDocument(draws);
@@ -278,7 +318,7 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     await install(doc, faults);
     const term = makeTerm();
 
-    void showTextScreen(term, "Message history", [{ text: "You feel less confused." }]);
+    void showTextScreen(term, "Mods folder", [{ text: "You feel less confused." }]);
     await tick();
     expect(fake.keys).toEqual([]);
     expect(texts(draws)).toEqual([]);
