@@ -20,6 +20,8 @@ import {
   blankObjKnowledge,
   makeFakeArtifact,
   Rng,
+  buildRuneList,
+  makeShapeLoreEnv,
   type GamePack,
   type GameState,
   type ObjectKind,
@@ -30,10 +32,15 @@ import {
   objectFakeRecall,
   egoFakeRecall,
   artifactFakeRecall,
+  runeRecallScreen,
+  featureRecallScreen,
+  trapRecallScreen,
+  shapeRecallScreen,
   type FakeRecallDeps,
   type ObjectRecallDeps,
   type ArtifactKnowledgeDeps,
 } from "./knowledge";
+import { screenBodyLines, MODELLED_SCREENS, type ScreenView } from "./screen-view";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -87,7 +94,7 @@ const pack: GamePack = {
   },
 };
 
-const { state, booted, flavor } = startGame(pack, { seed: 4242, depth: 1 });
+const { state, booted, flavor, players } = startGame(pack, { seed: 4242, depth: 1 });
 const reg = booted.registries.objects;
 
 const extras: ObjectInfoExtras = {
@@ -127,16 +134,23 @@ const sword = reg.kinds.find((k) => k.name.includes("Short Sword"))!;
 /** A flavoured kind, so the unaware branch is reachable. */
 const potion = reg.kinds.find((k) => hasFlavor(k) && k.name.includes("Cure Light Wounds"))!;
 
-const body = (lines: { text: string }[]): string => lines.map((l) => l.text).join("\n");
+/* The page as the faithful terminal lays it out: the model through the ONE
+ * renderer, at the 80 columns showTextScreen gives it. Asserting on the view's
+ * paragraphs instead would stop measuring what the player reads - and the wrap
+ * is exactly what step 5b-v changed here, from a truncation to a wrap. */
+const body = (view: ScreenView): string =>
+  screenBodyLines(view, 80)
+    .map((l) => l.text)
+    .join("\n");
 
 describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1938)", () => {
   it("shows the computed object_info body, not just a name and a blurb", () => {
     /* The gap this closes: the recall used to be the kind name plus kind.text.
      * These lines all come from object_info and none of them are in the record
      * - the flavour paragraph is, so assert on the COMPUTED ones. */
-    const { title, lines } = objectFakeRecall(browserDeps(() => true), sword);
-    const text = body(lines);
-    expect(title).toMatch(/short sword/iu);
+    const view = objectFakeRecall(browserDeps(() => true), sword);
+    const text = body(view);
+    expect(view.title).toMatch(/short sword/iu);
     expect(text).toMatch(/blows\/round/u);
     expect(text).toMatch(/Average damage\/round/u);
     expect(text).not.toBe("");
@@ -150,7 +164,7 @@ describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1938)", () => {
       (k) => k.name.includes("Digging") && k.modifiers.some((m) => m.dice > 0),
     );
     expect(digger, "no Ring of Digging with a dice modifier in the pack").toBeTruthy();
-    const text = body(objectFakeRecall(browserDeps(() => true), digger!).lines);
+    const text = body(objectFakeRecall(browserDeps(() => true), digger!));
     expect(text).toContain("Affects your tunneling.");
     expect(text).not.toMatch(/[+-]\d+ tunneling/u);
   });
@@ -160,25 +174,24 @@ describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1938)", () => {
      * returns at its very first branch. The port's shadow always mirrors
      * obj.kind, so this branch is the call site's job - and if it were missing,
      * an unidentified potion would leak its full effect list. */
-    const { title, lines } = objectFakeRecall(browserDeps(() => false), potion);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]!.text).toBe("You do not know what this is.");
-    expect(title).not.toMatch(/Cure Light Wounds/u);
-    expect(title.length).toBeGreaterThan(0);
+    const view = objectFakeRecall(browserDeps(() => false), potion);
+    expect(body(view)).toBe("You do not know what this is.");
+    expect(view.title).not.toMatch(/Cure Light Wounds/u);
+    expect(view.title.length).toBeGreaterThan(0);
   });
 
   it("treats an UNFLAVOURED kind as known even when isAware says no", () => {
     /* `kind->aware || !kind->flavor` (L1958). A sword has no flavour to be
      * unaware of, so dropping the second half would blank the recall for every
      * weapon and every piece of armour in the browser. */
-    const { lines } = objectFakeRecall(browserDeps(() => false), sword);
-    expect(body(lines)).toMatch(/blows\/round/u);
+    const view = objectFakeRecall(browserDeps(() => false), sword);
+    expect(body(view)).toMatch(/blows\/round/u);
   });
 
   it("shows the effect once the same kind is aware", () => {
     /* The pair: same kind, awareness flipped. Without this the negative test
      * above would also pass on a recall that never printed anything. */
-    const text = body(objectFakeRecall(browserDeps(() => true), potion).lines);
+    const text = body(objectFakeRecall(browserDeps(() => true), potion));
     expect(text).toMatch(/heals/iu);
   });
 
@@ -207,7 +220,7 @@ describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1789)", () => {
 
   it("shows object_info_ego's computed lines", () => {
     const e = reg.egos.find((x) => x.name === "(Holy Avenger)")!;
-    const text = body(egoFakeRecall(recallDeps(), e, "Sword").lines);
+    const text = body(egoFakeRecall(recallDeps(), e, "Sword"));
     expect(text).toContain("It provides one random sustain.");
     expect(text).toContain("Slays undead");
   });
@@ -217,12 +230,12 @@ describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1789)", () => {
      * function of the browsing player's runes. Compare a fresh player against
      * a rune-complete one through the SAME entry point. */
     const e = reg.egos.find((x) => x.name === "(Holy Avenger)")!;
-    const fresh = body(egoFakeRecall(recallDeps(), e, "Sword").lines);
+    const fresh = body(egoFakeRecall(recallDeps(), e, "Sword"));
 
     const learned = { ...state.actor.player, objKnown: blankObjKnowledge() };
     playerLearnAllRunes(learned, state.runeEnv);
     const knowing = body(
-      egoFakeRecall({ ...recallDeps(), player: learned }, e, "Sword").lines,
+      egoFakeRecall({ ...recallDeps(), player: learned }, e, "Sword"),
     );
     expect(fresh).toBe(knowing);
     expect(fresh).not.toBe("");
@@ -279,5 +292,115 @@ describe("artifactFakeRecall (desc_art_fake, ui-knowledge.c L1610)", () => {
     const before = JSON.stringify(state.rng.getState());
     makeFakeArtifact(reg, booted.registries.constants, cursed, new Rng(1));
     expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+});
+
+describe("the knowledge browser gave up its model in step 5b-iv/v", () => {
+  const runes = buildRuneList(state.runeEnv);
+  const features = booted.registries.features;
+  const traps = booted.registries.traps;
+  const shapes = players.shapes;
+  /* The real env, built exactly as main.ts builds it. A stub {} would leave
+   * shapeLoreLines reading undefined tables and the page would be empty for a
+   * reason that has nothing to do with what these tests measure. */
+  const shapeEnv = makeShapeLoreEnv(state, {
+    properties: reg.properties,
+    playerAbilities: [],
+    classes: players.classes,
+    bookKindName: () => null,
+    inspect: extras,
+  });
+
+  /** The longest record description in the pack, so the wrap is exercised. */
+  const longestFeature = features
+    .allFeatures()
+    .filter((f) => f.name && !f.mimic && f.desc)
+    .sort((a, b) => (b.desc ?? "").length - (a.desc ?? "").length)[0]!;
+  const longestTrap = [...(traps ?? [])]
+    .filter((t) => t.name && t.text)
+    .sort((a, b) => (b.text ?? "").length - (a.text ?? "").length)[0]!;
+
+  it("gives every recall page its own id, and none of them a `lines` block", () => {
+    /* Seven ids rather than one, because a mod that wants to draw an artifact's
+     * page as a plaque and a trap's as a warning card has to be able to tell
+     * them apart - and `core:text` cannot. */
+    const views = [
+      runeRecallScreen(runes[0]!, state.runeEnv),
+      featureRecallScreen(longestFeature),
+      trapRecallScreen(longestTrap),
+      shapeRecallScreen(shapes[0]!, shapeEnv),
+      artifactFakeRecall(
+        {
+          ...recallDeps(),
+          artState: { isFound: () => false } as unknown as ArtifactKnowledgeDeps["artState"],
+        },
+        reg.artifacts.find((a) => a)!,
+      ),
+      egoFakeRecall(recallDeps(), reg.egos.find((e) => e.firstPossItem >= 0)!, "Sword"),
+      objectFakeRecall(browserDeps(() => true), sword),
+    ];
+    for (const view of views) {
+      expect(MODELLED_SCREENS).toContain(view.id);
+      expect(view.blocks.map((b) => b.kind)).not.toContain("lines");
+    }
+    expect(new Set(views.map((v) => v.id)).size).toBe(views.length);
+  });
+
+  it("WRAPS a long description instead of cutting the end off", () => {
+    /* The defect this closes, and the reason the fixture is the LONGEST record
+     * in the pack rather than a hand-written string: the port pushed each
+     * description as one ScreenLine and showTextScreen slices a line at
+     * cols - 1, so the tail of any description past the terminal width simply
+     * did not exist on the player's screen. Upstream's textblock_calculate_lines
+     * (z-textblock.c L238) breaks it into lines instead. */
+    expect(longestFeature.desc!.length).toBeGreaterThan(80);
+
+    const lines = screenBodyLines(featureRecallScreen(longestFeature), 80);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const l of lines) expect(l.text.length).toBeLessThan(80);
+
+    /* Every word survives, in order. Comparing the joined text to the source
+     * directly would fail on the spaces the wrap consumes, so compare WORDS -
+     * which is what a truncation loses and a wrap does not. */
+    expect(lines.map((l) => l.text).join(" ").split(/\s+/u).filter(Boolean)).toEqual(
+      longestFeature.desc!.split(/\s+/u).filter(Boolean),
+    );
+  });
+
+  it("keeps the run colours object_info computed, as display_area does", () => {
+    /* The second defect: the three fake recalls flattened their textblock
+     * through textblockToString and painted the whole page one colour, which is
+     * why the browser's object recall was monochrome where the 'I' inspect of
+     * the SAME object was not. upstream's display_area (ui-output.c L100) writes
+     * attrs[i] per character. */
+    const lines = screenBodyLines(objectFakeRecall(browserDeps(() => true), sword), 80);
+    const colours = new Set(lines.flatMap((l) => (l.runs ?? []).map((r) => r.color)));
+    expect(colours.size).toBeGreaterThan(1);
+  });
+
+  it("does not print the page's name twice", () => {
+    /* rune_lore / feat_lore / trap_lore / shape_lore pass header = NULL and put
+     * the capitalised name in the BODY. The port's overlay draws a title row on
+     * every screen AND kept the name as body line 0, so the player read it
+     * twice; the name is the title, so it is only the title now. */
+    for (const view of [
+      runeRecallScreen(runes[0]!, state.runeEnv),
+      featureRecallScreen(longestFeature),
+      trapRecallScreen(longestTrap),
+      shapeRecallScreen(shapes[0]!, shapeEnv),
+    ]) {
+      const first = screenBodyLines(view, 80)[0]?.text ?? "";
+      expect(first).not.toBe(view.title);
+    }
+  });
+
+  it("still shows the shape lore's intro, so slicing line 0 dropped only the name", () => {
+    /* The pair for the test above: dropping body line 0 must remove the
+     * DUPLICATE and nothing else. shapeLoreLines[1] is the fixed intro
+     * paragraph, and it has to survive. */
+    const view = shapeRecallScreen(shapes[0]!, shapeEnv);
+    expect(screenBodyLines(view, 80).map((l) => l.text).join(" ")).toContain(
+      "Like all shapes",
+    );
   });
 });

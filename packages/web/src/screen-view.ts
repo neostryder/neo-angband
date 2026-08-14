@@ -386,6 +386,13 @@ export const MODELLED_SCREENS = [
   "core:winner",
   "core:character",
   "core:character-flags",
+  "core:rune-recall",
+  "core:feature-recall",
+  "core:trap-recall",
+  "core:shape-recall",
+  "core:artifact-recall",
+  "core:ego-recall",
+  "core:object-kind-recall",
 ] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */

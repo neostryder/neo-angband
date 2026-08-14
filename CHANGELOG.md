@@ -20,6 +20,47 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The knowledge browser's seven recall pages give up their model — and two
+  things the player could see are fixed on the way** (#253, MOD_REACH gap 21,
+  step 5b-v).
+
+  `core:rune-recall`, `core:feature-recall`, `core:trap-recall`,
+  `core:shape-recall`, `core:artifact-recall`, `core:ego-recall` and
+  `core:object-kind-recall` take `MODELLED_SCREENS` from thirteen to twenty.
+  Seven ids rather than one because a mod that draws an artifact's page as a
+  plaque and a trap's as a warning card has to be able to tell them apart.
+
+  All seven end at the same upstream call — `textui_textblock_show`
+  (ui-output.c L155) — and it does two things the port was not doing:
+
+  - **It wraps.** `textblock_calculate_lines` (z-textblock.c L238) breaks the run
+    stream at the region width. The port pushed each description as ONE line and
+    `showTextScreen` slices a line at `cols - 1`, so **any description longer
+    than the terminal had its tail cut off** — the end of the sentence simply did
+    not exist. The rune, feature, trap and shape recalls all did this.
+  - **It keeps colour.** `display_area` (ui-output.c L100) writes `attrs[]` per
+    character. The artifact, ego and object-kind recalls flattened their textblock
+    through `textblockToString` and painted the page one colour, which is why the
+    browser's object recall was monochrome where the `I` inspect of the same
+    object was not.
+
+  A third, smaller correction comes out in the wash: the rune / feature / trap /
+  shape lores pass `header = NULL` upstream and put the capitalised name in the
+  BODY, but the port's overlay draws a title row on every screen AND kept the
+  name as body line 0, so the player read it twice. The name is the title now,
+  and only the title — one row shorter, and one row closer to upstream.
+
+  `recallBodyLines` is gone; every one of the seven is `proseBlock` or
+  `textParagraphs` through the one renderer. `samples/sprite-inventory` takes all
+  seven, and **nothing in its prose panel changed to accept them** — adding them
+  was seven strings in a list, which is what a model with a small vocabulary buys.
+
+  Recorded and NOT changed here: upstream wraps at the region width (80) where
+  the port's renderer wraps at `cols - 1` (79). That difference is pre-existing —
+  `wrapRuns` has laid out the inspect and monster-recall pages that way since the
+  port had them — so it belongs to its own measurement, not to a drive-by in this
+  step. See `MOD_REACH.md` row 21.
+
 - **The character sheet is offered to a presenter, and it publishes what the
   player can DO on it** (#253, MOD_REACH gap 21, step 5b-iv).
 

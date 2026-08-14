@@ -57,8 +57,13 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
   rename opens the *game's* prompt and the dump writes the *game's* file, and
   the promise hands back the view the player should see next. A presenter that
   took the sheet without this would have quietly taken three commands away.
-- **It takes nine screens and declines the rest.** The knowledge browser, the
-  help pages and the message history are still the game's own — and still work.
+- **A model with a small vocabulary pays off later.** The knowledge browser's
+  seven recall pages — rune, feature, trap, shape, artifact, ego, object-kind —
+  reach the same prose panel as the inspect pages, and *nothing in the panel
+  changed to take them*. Adding them was seven strings in a list, because a
+  `text` block is a `text` block whatever screen produced it.
+- **It takes sixteen screens and declines the rest.** The help pages, the monster
+  list and the message history are still the game's own — and still work.
 - **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
   card keeps whatever the player's pref file chose.
 
@@ -79,15 +84,16 @@ be relaxed about.
 
 ## What this seam cannot do yet
 
-**The listings, the recall pages, the death screens and the character sheet have
-given up their models; the rest have not.** `MODELLED_SCREENS` in
-`packages/web/src/screen-view.ts` names the thirteen: inventory, equipment,
-quiver, object list, message history, player history, object recall, object
-comparison, monster recall, tombstone, winner, and the character sheet's two
-pages. Everything else arrives under the shared id `core:text` with a single
-`lines` block of pre-wrapped rows — enough to reskin a frame, not enough to
-reimagine a listing. The knowledge browser, the help pages and the spell lists
-are the same gap's biggest remaining piece.
+**The listings, the recall pages, the death screens, the character sheet and the
+knowledge browser's recalls have given up their models; the rest have not.**
+`MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names the twenty:
+inventory, equipment, quiver, object list, message history, player history,
+object recall, object comparison, monster recall, tombstone, winner, the
+character sheet's two pages, and the knowledge browser's seven recalls (rune,
+feature, trap, shape, artifact, ego, object-kind). Everything else arrives under
+the shared id `core:text` with a single `lines` block of pre-wrapped rows —
+enough to reskin a frame, not enough to reimagine a listing. The help pages, the
+monster list and the spell lists are the same gap's biggest remaining piece.
 
 **A screen has no published region.** It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap
