@@ -384,8 +384,10 @@ import {
   getFile,
   getQuantity,
   getString,
+  setMenuFaultReporter,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
+import { installMenu, setMenuPresenter } from "./menu-runtime";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
@@ -11074,6 +11076,16 @@ installedHud = installHud(
   reportDisplayFault,
 );
 liveHudSink = hudFrameSink(installedHud, reportDisplayFault);
+
+/* THE MENUS. One grant for all of them (`ui:menu.replace`) rather than one per
+ * menu id, which would be a consent list nobody could read; the finer choice is
+ * made per question, where a presenter declines whatever it has no better way to
+ * ask. Installed into a module-level holder because `selectFromMenu` is called
+ * from ~50 sites, and a mod being disabled takes effect on reload anyway. */
+setMenuFaultReporter(reportDisplayFault);
+setMenuPresenter(
+  installMenu([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
+);
 
 /* The controller() half: an autoplayer mod takes over state.nextCommand.
  *

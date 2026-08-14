@@ -86,7 +86,7 @@ import type {
 /* Type-only, like every other import here: a mod's source imports this module,
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
-import type { HudOwnership, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { HudOwnership, MenuPresenter, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The renderer-neutral map snapshot a selected front end receives. */
 export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -390,6 +390,35 @@ export interface ModPlugin {
    */
   hud?(ctx: ModPluginContext): HudOwnership | undefined;
   /**
+   * Ask the game's questions your own way: a console-RPG frame, a radial command
+   * dial, a floating window with a detail pane.
+   *
+   * The third owner seam, after `frontend` (the dungeon) and `hud` (everything
+   * drawn around it). Return a presenter, or `undefined` to decline - which is
+   * the right answer on a host you cannot draw on. Gated by the single
+   * `ui:menu.replace` capability, or the wildcard "ui:*.replace".
+   *
+   * ONE GRANT, AND THE FINE CHOICE IS PER QUESTION. There are ~50 menus in the
+   * game; a capability per menu id would be a consent list nobody could read. So
+   * your presenter is offered EVERY menu and returns `undefined` from `ask` for
+   * the ones you have no better way to present - a dial for the six command
+   * verbs has no opinion about the mod manager's thirty-row list, and the game
+   * asks those in its own way. Declining costs nothing and is expected.
+   *
+   * A MENU IS ASKED, NOT DRAWN, which is what makes this different from `hud`:
+   * taking a question means taking its input too, and you resolve it by naming a
+   * choice's stable `id` - never an index, because an index is a fact about a
+   * layout and yours is not the game's. Read `choice.semantic` for what a choice
+   * MEANS (`{kind, ref}`, independent of its wording), and `question.id` to
+   * recognise which question you are being asked.
+   *
+   * Throwing costs you the seam for the rest of the session, on every menu and
+   * not just the one - unlike `hud`, where a fault costs one region. A presenter
+   * that throws on one question generally throws on all of them, and reporting
+   * that once beats reporting it every time the player opens anything.
+   */
+  menu?(ctx: ModPluginContext): MenuPresenter | undefined;
+  /**
    * Teardown, called when the mod set changes and the page is about to re-compose.
    *
    * The re-compose is what actually removes the mod - a plugin that is not
@@ -457,6 +486,9 @@ export function validateModPlugin(
   if (p.hud !== undefined && typeof p.hud !== "function") {
     return "plugin.js: hud is not a function";
   }
+  if (p.menu !== undefined && typeof p.menu !== "function") {
+    return "plugin.js: menu is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
@@ -465,7 +497,8 @@ export function validateModPlugin(
     p.register === undefined &&
     p.controller === undefined &&
     p.frontend === undefined &&
-    p.hud === undefined
+    p.hud === undefined &&
+    p.menu === undefined
   ) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
@@ -475,7 +508,7 @@ export function validateModPlugin(
      * to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register, controller, frontend or hud, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend, hud or menu, so it would do nothing";
   }
   return null;
 }

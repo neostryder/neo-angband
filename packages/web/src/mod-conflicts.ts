@@ -36,6 +36,7 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { frontendClaimants } from "./frontend-runtime";
 import { hudClaimants } from "./hud-runtime";
+import { menuClaimants } from "./menu-runtime";
 import { activeModCode } from "./mod-code";
 import { enabledModHookContributions } from "./mod-hooks";
 import {
@@ -71,6 +72,12 @@ export interface ConflictInputs {
    * contest between a vitals mod and a status-line mod that never had one.
    */
   hudRegions: readonly { region: string; ids: readonly string[] }[];
+  /**
+   * Enabled mods claiming the MENUS, in load order. One list rather than one per
+   * menu id: the seam grants every menu together, so two presenters are in
+   * conflict even though each will end up declining questions the other takes.
+   */
+  menus: readonly string[];
 }
 
 /** A pack's display name from its manifest, falling back to its id. */
@@ -189,6 +196,21 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
     );
   }
 
+  /* The menus, one slot for the lot. A presenter declining a question is the
+   * winner choosing, not a conflict resolving, so the contest is over the seam
+   * itself and is reported once. */
+  slots.push(
+    ...contestedSlots(
+      "menu",
+      "single-slot",
+      inputs.menus.map((id) => ({
+        key: "menu",
+        what: "a replacement way of asking the game's menus",
+        claim: { packId: id } as Claim,
+      })),
+    ),
+  );
+
   return slots;
 }
 
@@ -285,6 +307,7 @@ export function liveConflictLines(): ConflictReportLines {
     frontends: frontendClaimants(activeModCode().plugins),
     /* Same rule, per region: only mods that could actually hold one are listed. */
     hudRegions: hudClaimants(activeModCode().plugins),
+    menus: menuClaimants(activeModCode().plugins),
   });
 }
 

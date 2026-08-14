@@ -41,7 +41,8 @@ export type ContestedLayer =
   | "rule" // a player-facing flag name
   | "controller" // the single autoplayer slot
   | "frontend" // the single selected display sink
-  | "hud"; // one named HUD region's selected sink
+  | "hud" // one named HUD region's selected sink
+  | "menu"; // the single selected menu presenter
 
 /**
  * How a layer resolves several claims on one slot.

@@ -67,11 +67,11 @@ describe("the host and the builder implement the same plugin ABI", () => {
      * this broke. Comparing the strings catches a rule change that forgets the
      * message and a message change that forgets the rule. */
     const sentence =
-      "declares no hooks, register, controller, frontend or hud, so it would do nothing";
+      "declares no hooks, register, controller, frontend, hud or menu, so it would do nothing";
     expect(hostSrc).toContain(sentence);
     expect(builderSrc).toContain(sentence);
 
-    const members = ["hooks", "register", "controller", "frontend", "hud"];
+    const members = ["hooks", "register", "controller", "frontend", "hud", "menu"];
     for (const m of members) {
       expect(hostSrc).toContain(`p.${m} === undefined`);
       expect(builderSrc).toContain(`plugin.${m} === undefined`);
