@@ -99,8 +99,14 @@ import {
   inventoryScreen,
   equipmentScreen,
   equipmentLines,
+  objectListScreen,
+  playerHistoryScreen,
+  messageHistoryScreen,
+  quiverScreen,
+  quiverLines,
   objectName,
 } from "./screens";
+import { MessageLog } from "./messages";
 import type { ScreenTableBlock } from "./screen-view";
 import { UI_DIM } from "./ui-colors";
 import type { Monster } from "@rpgm-tools/neo-angband-core";
@@ -760,6 +766,109 @@ describe("the inventory and equipment screens, and the lines they still render t
   it("says '(nothing carried)' with nothing carried", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     expect(inventoryLines(state)).toEqual([{ text: "(nothing carried)", color: UI_DIM }]);
+  });
+});
+
+describe("the four listings that gave up their models in step 5b", () => {
+  /* The RENDERING of these four is already pinned by the describes above, which
+   * is the point: they went through a model without moving a pixel. What is new
+   * and needs its own tests is what the model carries BEYOND the rendering, and
+   * the two layout facts that are now declared rather than inferred. */
+
+  it("puts the quiver's weight in the row's numbers, and NOT in the text", () => {
+    /* Upstream's quiver listing has no weight field, so growing one would be the
+     * port adding something. A presenter can still draw it, because the model is
+     * allowed to carry more than the rendering - never less. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const arrow = objReg.kinds.find((k) => k.tval === TV.ARROW) as ObjectKind;
+    const obj = addPack(state, arrow.name, 20);
+    /* calcInventory routes ammo to the quiver, so read the handle off the master
+     * gear list rather than off `inven`, which is empty for an arrow. */
+    state.gear.quiver = [state.gear.pack[state.gear.pack.length - 1]!];
+
+    const block = quiverScreen(state).blocks[0] as ScreenTableBlock;
+    const row = block.rows[0]!;
+    expect(row.tag).toBe("0"); // a DIGIT, not a letter
+    expect(row.values).toEqual({ each: obj.weight, total: 20 * obj.weight, number: 20 });
+    expect(Object.keys(row.cells)).toEqual(["name"]);
+    expect(quiverLines(state)[0]!.text).toBe(`0) ${objectName(state, obj)}`);
+  });
+
+  it("publishes the object list's offset as NUMBERS, not as a compass string", () => {
+    /* "2 N 0 W" cannot be turned back into a map marker without parsing English
+     * and guessing the sign convention, which is exactly the parsing this seam
+     * exists to remove. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    putRealFloor(state, loc(20, 10), "& Wooden Torch~");
+    const block = objectListScreen(state).blocks[0] as ScreenTableBlock;
+    const row = block.rows[0]!;
+    expect(row.values).toEqual({ dy: -2, dx: 0 });
+    expect(row.cells.location!.text).toBe("2 N 0 W");
+  });
+
+  it("does NOT line the object list's locations up into a column", () => {
+    /* Upstream writes "%s %s   %s" - the location FOLLOWS the name. A generic
+     * table renderer would pad every name to the widest and quietly align them,
+     * which looks tidier and is the port adding something. Two entries of
+     * different name lengths keep exactly three spaces each. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    putRealFloor(state, loc(22, 12), "& Ration~ of Food");
+    putRealFloor(state, loc(21, 12), "& Wooden Torch~");
+    const rows = objectListLines(state).slice(1);
+    expect(rows).toHaveLength(2);
+    const names = new Set(rows.map((l) => l.text.length));
+    expect(names.size).toBe(2); // the two rows really are different lengths
+    for (const line of rows) expect(line.text).toMatch(/[^ ] {3}\d+ [NS] \d+ [EW]$/u);
+  });
+
+  it("keeps the player history's Note column where the header says it is", () => {
+    /* Derived from the header rather than from a copy of the output: the two are
+     * the same layout seen twice, and a `gap` that drifts must break one of them. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.hist.push({
+      type: 1 << HIST.PLAYER_BIRTH,
+      dlev: 0,
+      clev: 1,
+      aIdx: 0,
+      turn: 0,
+      event: "Began the quest to destroy Morgoth.",
+    });
+    const lines = historyLines(state);
+    expect(lines[1]!.text.indexOf("Began")).toBe(lines[0]!.text.indexOf("Note"));
+  });
+
+  it("carries the character level the history screen never prints", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.hist.push({
+      type: 1 << HIST.PLAYER_BIRTH,
+      dlev: 3,
+      clev: 7,
+      aIdx: 0,
+      turn: 1234,
+      event: "Reached level 7",
+    });
+    const block = playerHistoryScreen(state).blocks[0] as ScreenTableBlock;
+    expect(block.rows[0]!.values).toEqual({ turn: 1234, depth: 150, dlev: 3, clev: 7 });
+    expect(historyLines(state)[1]!.text).not.toContain("7 ");
+  });
+
+  it("shows the history's column header even with no history at all", () => {
+    /* The regression `tagged` taught, in its other form: a table's COLUMNS are a
+     * fact about the table, so the header cannot be conditional on there being
+     * rows under it. A character who has done nothing still has a Turn column. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const block = playerHistoryScreen(state).blocks[0] as ScreenTableBlock;
+    expect(block.rows).toHaveLength(0);
+    expect(historyLines(state)[0]!.text).toBe("      Turn   Depth  Note");
+  });
+
+  it("publishes a message's repeat count as a number as well as in its text", () => {
+    const log = new MessageLog();
+    log.push("You hit it.");
+    log.push("You hit it.");
+    const block = messageHistoryScreen(log).blocks[0] as ScreenTableBlock;
+    expect(block.rows[0]!.values).toEqual({ count: 2 });
+    expect(block.rows[0]!.cells.message!.text).toBe("You hit it. (x2)");
   });
 });
 

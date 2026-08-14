@@ -65,6 +65,24 @@ export interface ScreenColumn {
   readonly label?: string;
   readonly width?: number;
   readonly align?: "left" | "right";
+  /**
+   * Columns of space between this column and the one before it; 1 by default,
+   * ignored on the first column.
+   *
+   * Upstream's field layouts are not all single-spaced - the history screen writes
+   * `"%10ld%7d'  %s"`, no gap before the depth and two before the note - so a
+   * renderer that assumes one space cannot reproduce them.
+   */
+  readonly gap?: number;
+  /**
+   * Whether cells in this column are padded out to the column's width; true by
+   * default. `false` renders each cell at its natural length, which is what the
+   * object list does: its location field FOLLOWS the name rather than lining up
+   * under one, and padding it into a column would be the port adding something.
+   *
+   * A declared `width` still clamps, and `align` has nothing to do when false.
+   */
+  readonly pad?: boolean;
 }
 
 /** One cell. Its own `color` overrides the row's; `values` are its numbers. */
@@ -100,8 +118,12 @@ export interface ScreenTableBlock {
   readonly kind: "table";
   /** Stable identity for the table within its screen (`pack`, `slots`, `stats`). */
   readonly key: string;
-  /** A heading above the table, where the screen has one. */
-  readonly caption?: string;
+  /**
+   * A heading above the table, where the screen has one - the object list's
+   * "You can see 3 objects:". A run rather than a string because the game colours
+   * it, exactly as it colours `empty`.
+   */
+  readonly caption?: ScreenRun;
   /**
    * Whether rows in this table are lettered - a fact about the TABLE, never about
    * the rows it happens to hold today.
@@ -211,7 +233,14 @@ export interface ScreenShown {
  * adding an id here without building it fails, and modelling a screen without
  * listing it fails too.
  */
-export const MODELLED_SCREENS = ["core:inventory", "core:equipment"] as const;
+export const MODELLED_SCREENS = [
+  "core:inventory",
+  "core:equipment",
+  "core:quiver",
+  "core:objects-in-view",
+  "core:messages",
+  "core:player-history",
+] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */
 export const UNMODELLED_SCREEN = "core:text";
@@ -268,7 +297,7 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
         kind: "table" as const,
         key: block.key,
         tagged: block.tagged,
-        ...(block.caption === undefined ? {} : { caption: block.caption }),
+        ...(block.caption === undefined ? {} : { caption: Object.freeze({ ...block.caption }) }),
         columns: Object.freeze(block.columns.map((c) => Object.freeze({ ...c }))),
         rows: Object.freeze(block.rows.map(freezeRow)),
         ...(block.empty === undefined ? {} : { empty: Object.freeze({ ...block.empty }) }),
@@ -423,29 +452,28 @@ function trimTrailingSpace(runs: { text: string; color: string }[]): void {
  */
 function tableBlockLines(block: ScreenTableBlock): ScreenLine[] {
   const out: ScreenLine[] = [];
-  if (block.caption !== undefined) out.push({ text: block.caption });
-  if (block.rows.length === 0) {
-    if (block.empty) {
-      out.push(
-        block.empty.color === undefined
-          ? { text: block.empty.text }
-          : { text: block.empty.text, color: block.empty.color },
-      );
-    }
-    return out;
-  }
+  if (block.caption !== undefined) out.push(runLine(block.caption));
   const widths = columnWidths(block);
   const tagWidth = block.tagged ? 3 : 0;
   const cell = (c: ScreenColumn, i: number, text: string): string =>
-    pad(text, widths[i]!, c.align, c.width !== undefined);
+    pad(text, widths[i]!, c.align, c.width !== undefined, c.pad !== false);
+  /* The header comes BEFORE the empty state, and for the reason `tagged` is a
+   * required field: a table's columns are a fact about the table, not about the
+   * rows it holds today. The player history of a character who has done nothing
+   * yet still has a Turn column, and upstream still prints its header. */
   if (block.columns.some((c) => c.label !== undefined)) {
-    const header = " ".repeat(tagWidth) + joinCells(block.columns.map((c, i) => cell(c, i, c.label ?? "")));
+    const header =
+      " ".repeat(tagWidth) + joinCells(block, block.columns.map((c, i) => cell(c, i, c.label ?? "")));
     out.push({ text: header.replace(/\s+$/u, "") });
+  }
+  if (block.rows.length === 0) {
+    if (block.empty) out.push(runLine(block.empty));
+    return out;
   }
   for (const row of block.rows) {
     const prefix = tagWidth === 0 ? "" : row.tag === undefined ? "   " : `${row.tag}) `;
     const parts = block.columns.map((c, i) => cell(c, i, row.cells[c.key]?.text ?? ""));
-    const text = (prefix + joinCells(parts)).replace(/\s+$/u, "");
+    const text = (prefix + joinCells(block, parts)).replace(/\s+$/u, "");
     out.push(rowLine(text, prefix, block, row, parts));
   }
   return out;
@@ -473,19 +501,37 @@ function rowLine(
   const base = row.color ?? "";
   if (prefix !== "") runs.push({ text: prefix, color: base });
   block.columns.forEach((c, i) => {
-    if (i > 0) appendRun(runs, " ", base);
+    const gap = gapBefore(block, i);
+    if (gap !== "") appendRun(runs, gap, base);
     appendRun(runs, parts[i]!, row.cells[c.key]?.color ?? base);
   });
   trimTrailingSpace(runs);
   return { text, ...(row.color === undefined ? {} : { color: row.color }), runs };
 }
 
-function joinCells(parts: readonly string[]): string {
-  return parts.join(" ");
+/** One standalone run - a caption, an empty state - as a line. */
+function runLine(run: ScreenRun): ScreenLine {
+  return run.color === undefined ? { text: run.text } : { text: run.text, color: run.color };
 }
 
-function pad(text: string, width: number, align: ScreenColumn["align"], clamp: boolean): string {
+/** The spaces before column `i`: its own `gap`, one by default, none on the first. */
+function gapBefore(block: ScreenTableBlock, i: number): string {
+  return i === 0 ? "" : " ".repeat(block.columns[i]?.gap ?? 1);
+}
+
+function joinCells(block: ScreenTableBlock, parts: readonly string[]): string {
+  return parts.map((part, i) => gapBefore(block, i) + part).join("");
+}
+
+function pad(
+  text: string,
+  width: number,
+  align: ScreenColumn["align"],
+  clamp: boolean,
+  padded: boolean,
+): string {
   const kept = clamp && text.length > width ? text.slice(0, width) : text;
+  if (!padded) return kept;
   return align === "right" ? kept.padStart(width) : kept.padEnd(width);
 }
 

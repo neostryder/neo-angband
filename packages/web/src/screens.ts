@@ -107,6 +107,7 @@ import {
   freezeView,
   screenBodyLines,
   SCREEN_FOOTER,
+  type ScreenBlock,
   type ScreenCell,
   type ScreenColumn,
   type ScreenRow,
@@ -548,6 +549,54 @@ export function inventoryLines(state: GameState): ScreenLine[] {
 /** The equipment viewer lines; see `inventoryLines` on why this is a one-liner. */
 export function equipmentLines(state: GameState): ScreenLine[] {
   return screenBodyLines(equipmentScreen(state));
+}
+
+/**
+ * The quiver (|) as a screen: the occupied slots, tagged by their digit.
+ *
+ * One column, because that is what the game draws. The weight is published as row
+ * `values` rather than as a column, so a presenter can show it without the terminal
+ * growing a field upstream does not have here - the rule the whole seam runs on is
+ * that the model may carry MORE than the rendering, never less.
+ */
+/** The quiver's one field. Exported so a mod's fixture derives from it, not a copy. */
+export const QUIVER_COLUMNS: readonly ScreenColumn[] = [{ key: "name" }];
+
+export function quiverScreen(state: GameState, title = "Quiver"): ScreenView {
+  const rows: ScreenRow[] = [];
+  (state.gear.quiver ?? []).forEach((handle, slot) => {
+    if (!handle) return;
+    const obj = gearGet(state.gear, handle);
+    if (!obj) return;
+    rows.push({
+      id: `core:gear:${handle}`,
+      semantic: { kind: "item", ref: handle, data: { source: "quiver", slot } },
+      /* The quiver's tags are its slot DIGITS, not letters (ui-object.c L340). */
+      tag: String(slot),
+      values: { each: obj.weight, total: obj.number * obj.weight, number: obj.number },
+      cells: { name: { text: objectName(state, obj) } },
+    });
+  });
+  return freezeView({
+    id: "core:quiver",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "table",
+        key: "quiver",
+        tagged: true,
+        columns: QUIVER_COLUMNS,
+        rows,
+        empty: { text: "(quiver empty)", color: DIM },
+      },
+    ],
+  });
+}
+
+/** The quiver viewer lines; see `inventoryLines` on why this is a one-liner. */
+export function quiverLines(state: GameState): ScreenLine[] {
+  return screenBodyLines(quiverScreen(state));
 }
 
 /** Equipment-slot menu for takeoff: the filled slots only, with body index. */
@@ -1131,11 +1180,23 @@ export function lookLines(state: GameState): ScreenLine[] {
  * every entry is shown; behaviour-preserving since all upstream information
  * still surfaces, just without the fixed-height cutoff.
  */
-export function objectListLines(state: GameState): ScreenLine[] {
+/**
+ * The object list's three fields. NONE of them is padded, because upstream does not
+ * line them up either: the location follows the name (`"%s %s   %s"`,
+ * ui-obj-list.c L131-141) rather than sitting under a column stop, and padding the
+ * names into a column would be the port adding something the game never had.
+ */
+const OBJECT_LIST_COLUMNS: readonly ScreenColumn[] = [
+  { key: "glyph", pad: false },
+  { key: "name", pad: false },
+  { key: "location", pad: false, gap: 3 },
+];
+
+export function objectListScreen(state: GameState, title = "Objects in view"): ScreenView {
   const list = objectListCollect(state);
   objectListSort(list, objectListStandardCompare(state));
 
-  const entryLine = (entry: (typeof list.entries)[number]): ScreenLine => {
+  const entryRow = (entry: (typeof list.entries)[number]): ScreenRow => {
     /* ui-obj-list.c:131-141: the glyph is object_kind_char in the KIND's own
      * colour, and an unknown entry is a RED asterisk - only the NAME takes the
      * line attribute. The port painted the glyph the line colour and read the
@@ -1144,65 +1205,103 @@ export function objectListLines(state: GameState): ScreenLine[] {
     const g = entry.object ? objectKindAttrChar(state, entry.object.kind) : null;
     const glyph = g ? g.char : "*";
     const glyphColor = colorToCss(g ? g.attr : COLOUR_RED);
-    const name = objectListEntryName(entry, state);
     const dirY = entry.dy <= 0 ? "N" : "S";
     const dirX = entry.dx <= 0 ? "W" : "E";
-    const loc = `${Math.abs(entry.dy)} ${dirY} ${Math.abs(entry.dx)} ${dirX}`;
-    const lineColor = colorToCss(objectListEntryLineAttribute(entry, state));
     return {
-      text: `${glyph} ${name}   ${loc}`,
-      color: lineColor,
-      runs: [
-        { text: `${glyph} `, color: glyphColor },
-        { text: `${name}   ${loc}`, color: lineColor },
-      ],
+      ...(entry.object ? { semantic: { kind: "object-kind", ref: entry.object.kind.name } } : {}),
+      color: colorToCss(objectListEntryLineAttribute(entry, state)),
+      /* The offset is the thing a presenter most wants as numbers rather than as
+       * "3 N 2 W": a map marker cannot be drawn from the compass string. */
+      values: { dy: entry.dy, dx: entry.dx },
+      cells: {
+        glyph: { text: glyph, color: glyphColor },
+        name: { text: objectListEntryName(entry, state) },
+        location: { text: `${Math.abs(entry.dy)} ${dirY} ${Math.abs(entry.dx)} ${dirX}` },
+      },
     };
   };
 
   const losTotal = list.totalEntries[OBJECT_LIST_SECTION_LOS]!;
   const noLosTotal = list.totalEntries[OBJECT_LIST_SECTION_NO_LOS]!;
-
-  const lines: ScreenLine[] = [];
+  const blocks: ScreenBlock[] = [];
 
   /* "You can see" section (object_list_format_section, prefix "You can see",
    * show_others always false). */
-  if (losTotal === 0) {
-    lines.push({ text: "You can see no objects.", color: DIM });
-  } else {
-    lines.push({
-      text: `You can see ${losTotal} object${losTotal === 1 ? "" : "s"}:`,
-      color: LABEL,
-    });
-    for (const entry of list.entries) {
-      if (entry.count[OBJECT_LIST_SECTION_LOS]! > 0) lines.push(entryLine(entry));
-    }
-  }
+  blocks.push({
+    kind: "table",
+    key: "in-view",
+    tagged: false,
+    ...(losTotal === 0
+      ? {}
+      : { caption: { text: `You can see ${losTotal} object${losTotal === 1 ? "" : "s"}:`, color: LABEL } }),
+    columns: OBJECT_LIST_COLUMNS,
+    rows:
+      losTotal === 0
+        ? []
+        : list.entries.filter((e) => e.count[OBJECT_LIST_SECTION_LOS]! > 0).map(entryRow),
+    empty: { text: "You can see no objects.", color: DIM },
+  });
 
   /* "You are aware of" section: printed whenever any out-of-view entries
    * exist, regardless of whether the LOS section was empty (matches
    * object_list_format_textblock's unconditional second call). "other " is
    * inserted only when LOS objects also exist (show_others). */
   if (noLosTotal > 0) {
-    const showOthers = list.totalObjects[OBJECT_LIST_SECTION_LOS]! > 0;
-    const others = showOthers ? "other " : "";
-    lines.push({ text: "", color: FG });
-    lines.push({
-      text: `You are aware of ${noLosTotal} ${others}object${noLosTotal === 1 ? "" : "s"}:`,
-      color: LABEL,
+    const others = list.totalObjects[OBJECT_LIST_SECTION_LOS]! > 0 ? "other " : "";
+    blocks.push({ kind: "lines", lines: [{ text: "", color: FG }] });
+    blocks.push({
+      kind: "table",
+      key: "remembered",
+      tagged: false,
+      caption: {
+        text: `You are aware of ${noLosTotal} ${others}object${noLosTotal === 1 ? "" : "s"}:`,
+        color: LABEL,
+      },
+      columns: OBJECT_LIST_COLUMNS,
+      rows: list.entries.filter((e) => e.count[OBJECT_LIST_SECTION_NO_LOS]! > 0).map(entryRow),
     });
-    for (const entry of list.entries) {
-      if (entry.count[OBJECT_LIST_SECTION_NO_LOS]! > 0) lines.push(entryLine(entry));
-    }
   }
 
-  return lines;
+  return freezeView({ id: "core:objects-in-view", title, footer: SCREEN_FOOTER, blocks });
 }
 
-/** The message-history lines (Ctrl-P): whole log, newest last. */
+/** The object-list lines; see `inventoryLines` on why this is a one-liner. */
+export function objectListLines(state: GameState): ScreenLine[] {
+  return screenBodyLines(objectListScreen(state));
+}
+
+/**
+ * The message history (Ctrl-P) as a screen: the whole log, oldest first.
+ *
+ * The repeat count is BOTH in the text (upstream's "you hit it. (x3)") and in the
+ * row's `values`, because a presenter that wants to draw the count as a badge
+ * should not have to parse it back out of a sentence.
+ */
+export function messageHistoryScreen(log: MessageLog, title = "Message history"): ScreenView {
+  return freezeView({
+    id: "core:messages",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "table",
+        key: "log",
+        tagged: false,
+        columns: [{ key: "message", pad: false }],
+        rows: log.all().map((m) => ({
+          ...(m.color === undefined ? {} : { color: m.color }),
+          values: { count: m.count },
+          cells: { message: { text: formatMessage(m) } },
+        })),
+        empty: { text: "(no messages yet)", color: DIM },
+      },
+    ],
+  });
+}
+
+/** The message-history lines; see `inventoryLines` on why this is a one-liner. */
 export function messageHistoryLines(log: MessageLog): ScreenLine[] {
-  const all = log.all();
-  if (all.length === 0) return [{ text: "(no messages yet)", color: DIM }];
-  return all.map((m) => ({ text: formatMessage(m), color: m.color ?? FG }));
+  return screenBodyLines(messageHistoryScreen(log));
 }
 
 /** ARTIFACT_KNOWN entries get a gold highlight (a web-native enhancement). */
@@ -1216,22 +1315,54 @@ const HIST_KNOWN_GOLD = UI_GOLD;
  * showTextScreen supplies scrolling/ESC and the "[Player history]" title, so
  * this only needs to build the header + entry lines.
  */
-export function historyLines(state: GameState): ScreenLine[] {
+/**
+ * history_display's three fields (`"%10ld%7d'  %s"`, ui-history.c L38-73), as
+ * columns: the turn right-justified to 10, the depth in feet right-justified with
+ * its apostrophe, and the note two columns further on. No gap before the depth and
+ * two before the note is exactly the layout `gap` exists to express.
+ */
+const PLAYER_HISTORY_COLUMNS: readonly ScreenColumn[] = [
+  { key: "turn", label: "Turn", width: 10, align: "right" },
+  { key: "depth", label: "Depth", width: 8, align: "right", gap: 0 },
+  { key: "note", label: "Note", gap: 2, pad: false },
+];
+
+export function playerHistoryScreen(state: GameState, title = "Player history"): ScreenView {
   const list = historyGetList(state.actor.player);
-  const lines: ScreenLine[] = [
-    { text: "      Turn   Depth  Note", color: LABEL },
-  ];
-  if (list.length === 0) {
-    lines.push({ text: "(no history yet)", color: DIM });
-    return lines;
-  }
-  for (const e of list) {
-    const lost = histHas(e.type, HIST.ARTIFACT_LOST);
-    const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
-    const text = `${String(e.turn).padStart(10)}${String(e.dlev * 50).padStart(7)}'  ${e.event}${lost ? " (LOST)" : ""}`;
-    lines.push({ text, color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG });
-  }
-  return lines;
+  return freezeView({
+    id: "core:player-history",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "table",
+        key: "history",
+        tagged: false,
+        columns: PLAYER_HISTORY_COLUMNS,
+        rows: list.map((e) => {
+          const lost = histHas(e.type, HIST.ARTIFACT_LOST);
+          const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
+          return {
+            color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG,
+            /* clev never reaches the terminal's three fields, and is exactly the
+             * kind of thing a timeline drawn as a graph wants. */
+            values: { turn: e.turn, depth: e.dlev * 50, dlev: e.dlev, clev: e.clev },
+            cells: {
+              turn: { text: String(e.turn) },
+              depth: { text: `${e.dlev * 50}'` },
+              note: { text: `${e.event}${lost ? " (LOST)" : ""}` },
+            },
+          };
+        }),
+        empty: { text: "(no history yet)", color: DIM },
+      },
+    ],
+  });
+}
+
+/** The player-history lines; see `inventoryLines` on why this is a one-liner. */
+export function historyLines(state: GameState): ScreenLine[] {
+  return screenBodyLines(playerHistoryScreen(state));
 }
 
 /* ------------------------------------------------------------------ */

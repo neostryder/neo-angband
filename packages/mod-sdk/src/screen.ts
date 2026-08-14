@@ -60,6 +60,20 @@ export interface ScreenColumn {
   readonly label?: string;
   readonly width?: number;
   readonly align?: "left" | "right";
+  /**
+   * Columns of space between this column and the one before it; 1 by default,
+   * ignored on the first column. Upstream's field layouts are not all
+   * single-spaced - the history screen writes `"%10ld%7d'  %s"` - so a faithful
+   * terminal needs this. Ignore it if you lay columns out yourself.
+   */
+  readonly gap?: number;
+  /**
+   * Whether cells in this column are padded out to the column's width; true by
+   * default. `false` means the game does NOT line this column up - the object
+   * list's location field follows the name rather than sitting under a column
+   * stop. Another fact about the terminal that a presenter is free to ignore.
+   */
+  readonly pad?: boolean;
 }
 
 /** One cell. Its own `color` overrides the row's; `values` are its numbers. */
@@ -89,7 +103,8 @@ export interface ScreenTableBlock {
   readonly kind: "table";
   /** Stable identity for the table within its screen (`pack`, `slots`, `stats`). */
   readonly key: string;
-  readonly caption?: string;
+  /** A heading above the table ("You can see 3 objects:"), with the game's colour. */
+  readonly caption?: ScreenRun;
   /**
    * Whether rows in this table are lettered - a fact about the TABLE, not about
    * the rows it holds today. An equipment list on a character wearing nothing is

@@ -238,7 +238,11 @@ describe("the unmodelled path is honest about being unmodelled", () => {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith(".ts") || name.endsWith(".test.ts")) continue;
       const src = readFileSync(`${dir}${name}`, "utf8");
-      for (const m of src.matchAll(/freezeView\(\{\s*\n\s*id:\s*"(core:[^"]+)"/gu)) {
+      /* Whitespace-tolerant on purpose: pinned to a newline after `freezeView({`,
+       * it silently missed the object list, whose call fits on one line. A
+       * derived check that a reformat can blind is a declared check wearing a
+       * disguise. */
+      for (const m of src.matchAll(/freezeView\(\s*\{\s*id:\s*"(core:[^"]+)"/gu)) {
         built.add(m[1]!);
       }
     }
