@@ -62,8 +62,20 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
   reach the same prose panel as the inspect pages, and *nothing in the panel
   changed to take them*. Adding them was seven strings in a list, because a
   `text` block is a `text` block whatever screen produced it.
-- **It takes sixteen screens and declines the rest.** The help pages, the monster
-  list and the message history are still the game's own — and still work.
+- **A vector is not a compass string.** The visible-monster list publishes
+  `values.dy`/`values.dx`, so the card panel draws an **arrow** pointing at the
+  monster and prints its range. There is no way to get an arrow out of
+  `" 3 N 2 W"` without parsing a compass back into the numbers it was made from —
+  and `values.asleep` is a count where the terminal has the sentence
+  `"(2 asleep)"`. `semantic.data.name` carries the game's own pluralisation, so
+  the card says "3 kobolds" without this mod reimplementing English.
+- **A screen with one command is still a screen with a command.** The monster
+  list publishes `sort-exp` (`x`) as an action; pressing it calls
+  `host.invoke("sort-exp")` and the **game** re-sorts and hands back the new
+  view. A presenter that drew this list without it would silently take the
+  sort toggle away.
+- **It takes seventeen screens and declines the rest.** The help pages and the
+  message history are still the game's own — and still work.
 - **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
   card keeps whatever the player's pref file chose.
 
@@ -86,14 +98,14 @@ be relaxed about.
 
 **The listings, the recall pages, the death screens, the character sheet and the
 knowledge browser's recalls have given up their models; the rest have not.**
-`MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names the twenty:
-inventory, equipment, quiver, object list, message history, player history,
-object recall, object comparison, monster recall, tombstone, winner, the
+`MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names the twenty-one:
+inventory, equipment, quiver, object list, monster list, message history, player
+history, object recall, object comparison, monster recall, tombstone, winner, the
 character sheet's two pages, and the knowledge browser's seven recalls (rune,
 feature, trap, shape, artifact, ego, object-kind). Everything else arrives under
 the shared id `core:text` with a single `lines` block of pre-wrapped rows —
-enough to reskin a frame, not enough to reimagine a listing. The help pages, the
-monster list and the spell lists are the same gap's biggest remaining piece.
+enough to reskin a frame, not enough to reimagine a listing. The help pages and
+the spell lists are the same gap's biggest remaining piece.
 
 **A screen has no published region.** It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap
@@ -119,6 +131,14 @@ draws `"Frodo"`, and not one of the `art` block's own ASCII rows appears among
 the strings it drew. The rows are taken from the block under test rather than
 from a guess at what the stone looks like, so redrawing the art cannot quietly
 retire the assertion.
+
+For the monster list the check is in `packages/web/src/screens.test.ts`, because
+that is where a real `GameState` with real monsters lives: it loads **this
+folder** by path, drives the real `showMonsterList` through the real seam, and
+asserts that `"↘ 3"` reached the canvas — a string the game never produces, and
+one this sample could only have drawn from `values.dy`/`values.dx`. Then it
+presses `x` and checks the footer changed, so the sort moved **through the host**
+rather than by the mod deciding for itself what "by experience" means.
 
 For the character sheet the check is in `packages/web/src/charsheet.test.ts`,
 because that is where a real `GameState` lives: it loads **this folder** by path,

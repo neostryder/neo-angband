@@ -399,6 +399,7 @@ export const MODELLED_SCREENS = [
   "core:equipment",
   "core:quiver",
   "core:objects-in-view",
+  "core:monster-list",
   "core:messages",
   "core:player-history",
   "core:object-recall",

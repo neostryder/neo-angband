@@ -81,6 +81,21 @@ const READS = [
 /** The character sheet's two pages, which it draws as panels AND acts on. */
 const SHEET = ["core:character", "core:character-flags"];
 
+/**
+ * The visible-monster list, drawn as a radar rather than as a list.
+ *
+ * It is here because it is the screen where reading NUMBERS instead of text pays
+ * most obviously: `values.dy`/`values.dx` are the offset, so this draws an arrow
+ * pointing at the monster, and no arrow can be recovered from the string "3 N 2
+ * W" without parsing a compass back into a vector. `values.asleep` is a count
+ * where the terminal has the sentence "(2 asleep)".
+ *
+ * It also has an ACTION - 'x' flips the sort between depth and experience - and a
+ * presenter that took this screen without reaching it would quietly take the
+ * command away from the player. The same `host.invoke` the character sheet uses.
+ */
+const WATCH = ["core:monster-list"];
+
 const BACKDROP = "rgba(8, 10, 16, 0.94)";
 const CARD = "#151a24";
 const CARD_EDGE = "#39415a";
@@ -131,8 +146,8 @@ function textOf(view) {
  * One paragraph laid out to a PIXEL width, carrying each run's colour.
  *
  * This is the thing `lines` could not give and `paragraphs` can. A `lines` block
- * arrives already broken into 79-character rows, so a panel of a different width
- * - or a proportional font, where "79 characters" is not a width at all - can
+ * arrives already broken at the terminal's width, so a panel of a different width
+ * - or a proportional font, where "80 characters" is not a width at all - can
  * only re-flow it by undoing the game's wrap first and hoping no sentence
  * genuinely ended at a row boundary. Given the paragraph, there is nothing to
  * undo: measure and break.
@@ -272,6 +287,91 @@ function drawCard(g, x, y, row) {
   }
 }
 
+/** Every `table` block of a view, in order. The monster list has two sections. */
+function tablesOf(view) {
+  const out = [];
+  for (const block of view.blocks) if (block.kind === "table") out.push(block);
+  return out;
+}
+
+/** The eight-point arrow for an offset, from the NUMBERS rather than "3 N 2 W". */
+function arrowFor(dy, dx) {
+  const v = Math.abs(dy) > Math.abs(dx) / 2 ? (dy <= 0 ? -1 : 1) : 0;
+  const h = Math.abs(dx) > Math.abs(dy) / 2 ? (dx <= 0 ? -1 : 1) : 0;
+  if (v === -1) return h === -1 ? "↖" : h === 1 ? "↗" : "↑";
+  if (v === 1) return h === -1 ? "↙" : h === 1 ? "↘" : "↓";
+  return h === -1 ? "←" : h === 1 ? "→" : "●";
+}
+
+/**
+ * One monster as a card: the glyph in its own colour, the game's OWN pluralised
+ * name, and the offset as an arrow with its range.
+ *
+ * The name comes from `semantic.data.name`, not from `cells.name.text`. The cell
+ * is what the terminal draws - clipped to the column, right-justified into a
+ * 3-wide count field and with "(2 asleep)" appended - and this panel is a
+ * different width with a separate place to show the sleepers, so it wants the
+ * label the game generated rather than the one the terminal cut down.
+ * `semantic.ref` is the race, which is what a real tileset mod looks a sprite
+ * up by, and the label still carries the game's own pluralisation.
+ */
+function drawMonsterCard(g, x, y, row) {
+  const v = row.values || {};
+  g.fillStyle = CARD;
+  g.fillRect(x, y, CARD_W, CARD_H);
+  g.strokeStyle = CARD_EDGE;
+  g.lineWidth = 1;
+  g.strokeRect(x + 0.5, y + 0.5, CARD_W - 1, CARD_H - 1);
+
+  /* The glyph cell has a colour of its OWN - the race's attr, which is not the
+   * row's line colour (that one encodes danger). Both survive the seam. */
+  const glyph = row.cells.glyph;
+  g.font = "22px monospace";
+  g.fillStyle = (glyph && glyph.color) || row.color || INK;
+  g.fillText(glyph ? glyph.text : "?", x + 12, y + 32);
+
+  g.font = "12px monospace";
+  g.fillStyle = row.color || INK;
+  const name = (row.semantic && row.semantic.data && row.semantic.data.name) || "";
+  g.fillText(String(name).slice(0, 20), x + 42, y + 26);
+
+  g.fillStyle = INK_DIM;
+  if (typeof v.dy === "number" && typeof v.dx === "number") {
+    const range = Math.max(Math.abs(v.dy), Math.abs(v.dx));
+    g.fillText(`${arrowFor(v.dy, v.dx)} ${range}`, x + 42, y + 46);
+  }
+  if (v.asleep) g.fillText(`${v.asleep} asleep`, x + 42, y + 64);
+}
+
+/** Both sections of the monster list, each captioned, as grids of cards. */
+function drawMonsters(g, view, x, y, width) {
+  let cy = y;
+  for (const block of tablesOf(view)) {
+    g.font = "13px monospace";
+    if (block.rows.length === 0) {
+      g.fillStyle = (block.empty && block.empty.color) || INK_DIM;
+      g.fillText(block.empty ? block.empty.text : "", x, cy);
+      cy += 28;
+      continue;
+    }
+    if (block.caption) {
+      g.fillStyle = block.caption.color || INK;
+      g.fillText(block.caption.text, x, cy);
+      cy += 20;
+    }
+    const perRow = Math.max(1, Math.floor((width - x) / (CARD_W + GAP)));
+    block.rows.forEach((row, i) => {
+      drawMonsterCard(
+        g,
+        x + (i % perRow) * (CARD_W + GAP),
+        cy + Math.floor(i / perRow) * (CARD_H + GAP),
+        row,
+      );
+    });
+    cy += Math.ceil(block.rows.length / perRow) * (CARD_H + GAP) + 8;
+  }
+}
+
 /**
  * The character sheet, as panels rather than as a page of columns.
  *
@@ -385,6 +485,7 @@ export default {
         const takes = (v) =>
           READS.includes(v.id) ||
           SHEET.includes(v.id) ||
+          WATCH.includes(v.id) ||
           v.id === "core:tombstone" ||
           (TAKES.includes(v.id) && tableOf(v) !== null);
         if (!takes(view)) return undefined;
@@ -416,6 +517,13 @@ export default {
             drawTomb(g, tomb, Math.max(24, width / 2 - 130), TOP, 260);
           } else if (SHEET.includes(v.id)) {
             drawSheet(g, v, 24, TOP, Math.min(420, width - 48));
+            drawActions(g, v, 24, height - 44);
+          } else if (WATCH.includes(v.id)) {
+            /* Hallucination arrives as a `text` block and no table at all, so the
+             * prose panel draws it - the same branch the recall pages use. */
+            const raving = textOf(v);
+            if (raving) drawProse(g, raving, 24, TOP, Math.min(360, width - 48), 17);
+            else drawMonsters(g, v, 24, TOP, width);
             drawActions(g, v, 24, height - 44);
           } else if (block && block.rows.length === 0 && block.empty) {
             g.font = "13px monospace";

@@ -2009,95 +2009,184 @@ function clipTo(s: string, n: number): string {
   return n <= 0 ? "" : s.slice(0, n);
 }
 
+/** The header `showMonsterList` paints, spelled once so the view cannot disagree. */
+export const MONSTER_LIST_TITLE = "Visible monsters";
+
 /**
- * monster_list_format_section (ui-mon-list.c L57-190): one section (LOS or ESP)
- * as a header line plus per-race rows. `prefix` is "You can see" / "You are
- * aware of"; `others` inserts "other " for the ESP header when the LOS section
- * had monsters. Rows show the race glyph, the "N race(s)" name, an (asleep) tag,
- * and - for a lone monster - the "dy N/S dx E/W" offset right-aligned.
+ * The one thing this screen can DO besides close: 'x' flips the sort between
+ * depth and experience (monster_list_show_interactive, ui-mon-list.c L410,456).
+ *
+ * Published as an action rather than left in the footer prose for the reason the
+ * character sheet's three are: a presenter that took the screen without being
+ * able to reach it would quietly take the command away from the player.
  */
-function monsterListSectionLines(
+export const MONSTER_LIST_ACTIONS: readonly ScreenAction[] = [
+  { id: "sort-exp", key: "x", label: "sort by exp" },
+];
+
+/** The key legend, which names the state the toggle is IN, as upstream's does. */
+export function monsterListFooter(sortExp: boolean): string {
+  const toggle = sortExp
+    ? "Press 'x' to turn OFF 'sort by exp'"
+    : "Press 'x' to turn ON 'sort by exp'";
+  return `[ ${toggle}  ESC: back ]`;
+}
+
+/** The " dy N/S dx E/W" offset upstream prints for a LONE monster, else "". */
+function monsterListLocation(
+  entry: ReturnType<typeof monsterListCollect>["entries"][number],
+  section: number,
+): string {
+  if ((entry.count[section] ?? 0) !== 1) return "";
+  const dy = entry.dy[section] ?? 0;
+  const dx = entry.dx[section] ?? 0;
+  return ` ${Math.abs(dy)} ${dy <= 0 ? "N" : "S"} ${Math.abs(dx)} ${dx <= 0 ? "W" : "E"}`;
+}
+
+/**
+ * monster_list_format_section (ui-mon-list.c L57-190) as a table.
+ *
+ * `prefix` is "You can see" / "You are aware of"; `others` inserts "other " into
+ * the ESP caption when the LOS section had monsters. A row is the race glyph in
+ * its own colour, the "N race(s)" name with its "(asleep)" tag, and - for a lone
+ * monster - the offset.
+ *
+ * WHY THE LOCATION IS A RIGHT-ALIGNED COLUMN rather than text appended to a
+ * padded name. The C pads the name with `"%-*s%s"` at a width computed per row
+ * (`full_width = max_width - 2 - len(location) - 1`), which LOOKS per-row but is
+ * not: the total is `max_width - 1` on every row, because the width shrinks by
+ * exactly what the location adds. Upstream's own comment says so - "the
+ * left-aligned and padded monster name which will align the location to the
+ * right" (L156). So a fixed name width plus a right-aligned location is the same
+ * layout said the way the model can express it, and the name arrives UNPADDED,
+ * which is the whole point of a cell.
+ *
+ * The one place the two part is clipping: the C clips a name at that row's own
+ * `full_width`, which is more generous on a row whose location is shorter than
+ * the section's longest. `monster-list.test.ts` measures the gap - no name the
+ * pack ships comes within 30 columns of it at 80 - and a narrower re-render
+ * clips a column class earlier than the C would. A column fact that changed with
+ * the row's data would not be a column fact.
+ */
+function monsterListSectionBlock(
   list: ReturnType<typeof monsterListCollect>,
   section: number,
+  key: string,
   prefix: string,
   others: boolean,
   maxWidth: number,
   playerDepth: number,
-): ScreenLine[] {
-  const out: ScreenLine[] = [];
+  gapAfter: number,
+): ScreenTableBlock {
   const total = list.totalMonsters[section] ?? 0;
-  if (total === 0) {
-    out.push({ text: `${prefix} no monsters.`, color: FG });
-    return out;
-  }
-  const otherWord = others ? "other " : "";
-  const plural = total === 1 ? "" : "s";
-  out.push({
-    text: `${prefix} ${total} ${otherWord}monster${plural}:`,
-    color: FG,
-  });
+  const entries = list.entries.filter((e) => (e.count[section] ?? 0) > 0);
+  const locWidth = Math.max(0, ...entries.map((e) => monsterListLocation(e, section).length));
+  /* 2 for the glyph and its space, then the C's own trailing "-1 for some
+   * reason?" (L123). The floor keeps a name column at a silly terminal width. */
+  const nameWidth = Math.max(1, maxWidth - 3 - locWidth);
 
-  for (const entry of list.entries) {
+  const row = (entry: (typeof entries)[number]): ScreenRow => {
     const count = entry.count[section] ?? 0;
-    if (count === 0) continue;
-
-    let location = "";
-    if (count === 1) {
-      const dy = entry.dy[section] ?? 0;
-      const dx = entry.dx[section] ?? 0;
-      const d1 = dy <= 0 ? "N" : "S";
-      const d2 = dx <= 0 ? "W" : "E";
-      location = ` ${Math.abs(dy)} ${d1} ${Math.abs(dx)} ${d2}`;
-    }
-
-    /* full_width = max_width - 2 (glyph+space) - loc - 1 (upstream fudge). */
+    const location = monsterListLocation(entry, section);
     const fullWidth = Math.max(1, maxWidth - 2 - location.length - 1);
-
     const asleepN = entry.asleep[section] ?? 0;
-    let asleep = "";
-    if (asleepN > 0 && count > 1) asleep = ` (${asleepN} asleep)`;
-    else if (asleepN === 1 && count === 1) asleep = " (asleep)";
+    const asleep =
+      asleepN > 0 && count > 1
+        ? ` (${asleepN} asleep)`
+        : asleepN === 1 && count === 1
+          ? " (asleep)"
+          : "";
+    const name = getMonName(entry.race, count);
+    return {
+      /* `ref` is the race, which is what a presenter matches a sprite on. The
+       * label rides along because get_mon_name is the game's pluralisation
+       * ("3 kobolds", "[U] Grip") and a mod should not reimplement English to
+       * caption a card - only the "%3d " right-justification goes, since that is
+       * the terminal's column and not part of the name. */
+      semantic: { kind: "monster", ref: entry.race.name, data: { name: name.trim() } },
+      color: colorToCss(monsterListEntryLineColor(entry, playerDepth)),
+      /* The offset as numbers: a map marker cannot be drawn from "3 N 2 W", and
+       * "(2 asleep)" is a sentence where a presenter wants a count. */
+      values: {
+        count,
+        asleep: asleepN,
+        ...(count === 1 ? { dy: entry.dy[section] ?? 0, dx: entry.dx[section] ?? 0 } : {}),
+      },
+      cells: {
+        glyph: {
+          text: entry.race.dChar,
+          color: colorToCss(entry.attr || entry.race.dAttr),
+        },
+        name: { text: clipTo(name, Math.max(0, fullWidth - asleep.length)) + asleep },
+        location: { text: location },
+      },
+    };
+  };
 
-    let name = getMonName(entry.race, count);
-    name = clipTo(name, Math.max(0, fullWidth - asleep.length)) + asleep;
-
-    const lineColor = colorToCss(monsterListEntryLineColor(entry, playerDepth));
-    const glyphColor = colorToCss(entry.attr || entry.race.dAttr);
-    const paddedName = name.padEnd(fullWidth, " ");
-    out.push({
-      text: `${entry.race.dChar} ${paddedName}${location}`,
-      color: lineColor,
-      runs: [
-        { text: entry.race.dChar, color: glyphColor },
-        { text: " ", color: lineColor },
-        { text: paddedName, color: lineColor },
-        { text: location, color: lineColor },
-      ],
-    });
-  }
-  return out;
+  const plural = total === 1 ? "" : "s";
+  return {
+    kind: "table",
+    key,
+    tagged: false,
+    ...(total === 0
+      ? {}
+      : {
+          caption: {
+            text: `${prefix} ${total} ${others ? "other " : ""}monster${plural}:`,
+            color: FG,
+          },
+        }),
+    columns: [
+      { key: "glyph", width: 1 },
+      { key: "name", width: nameWidth },
+      /* No gap: the C's location string carries its own leading space. */
+      { key: "location", width: locWidth, align: "right", gap: 0 },
+    ],
+    rows: total === 0 ? [] : entries.map(row),
+    empty: { text: `${prefix} no monsters.`, color: FG },
+    ...(gapAfter === 0 ? {} : { gapAfter }),
+  };
 }
 
 /**
- * monster_list_format_textblock (ui-mon-list.c L249-312): the whole visible-
- * monster list - the LOS section always, the ESP section when any monster is
- * known only by telepathy. Hallucination replaces the list wholesale
- * (monster_list_format_special L209-228). Sort is by depth, or by experience
- * when `sortExp` (the 'x' toggle, L410).
+ * monster_list_format_textblock (ui-mon-list.c L249-312) as a screen: the LOS
+ * section always, the ESP section when any monster is known only by telepathy.
+ * Hallucination replaces the list wholesale (monster_list_format_special L209-
+ * 228). Sort is by depth, or by experience when `sortExp` (the 'x' toggle, L410).
+ *
+ * WHY THIS ONE TAKES `cols` when no other screen builder does: upstream's does
+ * too. `max_width` is a parameter of `monster_list_format_section`, and the name
+ * field is whatever is left of the terminal after the glyph and the offset - so
+ * a view built for 80 columns states 80 columns' worth of column widths. A
+ * presenter reads the cells and the values and ignores the widths, which is why
+ * this is honest rather than a leak: the only width-dependent DATUM is where a
+ * very long name is clipped, and at 80 columns nothing the pack ships reaches it.
  */
-export function monsterListScreenLines(
+export function monsterListScreen(
   state: GameState,
   cols = 80,
   sortExp = false,
-): ScreenLine[] {
+): ScreenView {
   const p = state.actor.player;
+  const view = (blocks: ScreenBlock[]): ScreenView =>
+    freezeView({
+      id: "core:monster-list",
+      title: MONSTER_LIST_TITLE,
+      footer: monsterListFooter(sortExp),
+      blocks,
+      actions: MONSTER_LIST_ACTIONS,
+    });
+
   if ((p.timed[TMD.IMAGE] ?? 0) > 0) {
-    return [
+    /* A textblock upstream too (`textblock_append_c`, L222), so it wraps by the
+     * same rule as any other prose and a `text` block is not an approximation. */
+    return view([
       {
-        text: "Your hallucinations are too wild to see things clearly.",
+        kind: "text",
+        paragraphs: [[{ text: "Your hallucinations are too wild to see things clearly." }]],
         color: colorToCss(COLOUR_ORANGE),
       },
-    ];
+    ]);
   }
 
   const list = monsterListCollect(state);
@@ -2108,30 +2197,44 @@ export function monsterListScreenLines(
 
   const maxWidth = Math.max(20, cols - 1);
   const depth = state.chunk.depth;
-  const lines = monsterListSectionLines(
-    list,
-    MONSTER_LIST_SECTION_LOS,
-    "You can see",
-    false,
-    maxWidth,
-    depth,
-  );
+  const hasEsp = (list.totalEntries[MONSTER_LIST_SECTION_ESP] ?? 0) > 0;
+  const blocks: ScreenBlock[] = [
+    monsterListSectionBlock(
+      list,
+      MONSTER_LIST_SECTION_LOS,
+      "in-view",
+      "You can see",
+      false,
+      maxWidth,
+      depth,
+      hasEsp ? 1 : 0,
+    ),
+  ];
 
-  if ((list.totalEntries[MONSTER_LIST_SECTION_ESP] ?? 0) > 0) {
-    const showOthers = (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0;
-    lines.push({ text: "", color: FG });
-    lines.push(
-      ...monsterListSectionLines(
+  if (hasEsp) {
+    blocks.push(
+      monsterListSectionBlock(
         list,
         MONSTER_LIST_SECTION_ESP,
+        "detected",
         "You are aware of",
-        showOthers,
+        (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0,
         maxWidth,
         depth,
+        0,
       ),
     );
   }
-  return lines;
+  return view(blocks);
+}
+
+/** The faithful terminal's rows for `monsterListScreen`. */
+export function monsterListScreenLines(
+  state: GameState,
+  cols = 80,
+  sortExp = false,
+): ScreenLine[] {
+  return screenBodyLines(monsterListScreen(state, cols, sortExp), cols);
 }
 
 /**
