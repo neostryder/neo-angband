@@ -20,6 +20,28 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The recall pages give up their models, and hand a mod the prose unwrapped**
+  (#253, MOD_REACH gap 21, step 5b-ii).
+
+  Three more screens are modelled: `core:object-recall` (the 'I' inspect, the
+  context menu's Inspect, the store's Examine and one side of the equipment
+  comparison — the same page of the same object seen from four places),
+  `core:object-comparison` and `core:monster-recall`. They arrive as a `text`
+  block: paragraphs of coloured runs, **unwrapped**, split where the core emitted
+  a break and nowhere else.
+
+  That is not a cosmetic difference from `lines`. A `lines` block is already
+  broken into 79-character rows, so re-flowing it into a panel of another width —
+  or into a proportional font, where "79 characters" is not a width at all —
+  means undoing the game's wrap first and guessing which breaks were the game's
+  and which were the sentence's. `samples/sprite-inventory/` now lays those
+  pages out into a 360px panel by *measuring* them, and its test asserts the
+  narrower panel produced more rows than the terminal's 80-column wrap of the
+  same view — which a presenter quietly reusing the game's wrap could not.
+
+  **Nine screens have models so far**, named in `MODELLED_SCREENS` and derived
+  from the source by a test.
+
 - **A mod can show the game's full screens — the inventory as sprites, if it
   likes** (#253, MOD_REACH gap 21, step 5).
 
@@ -56,12 +78,11 @@ digest in the game's catalogue and must never be moved.
   from disk through the real `showTextScreen` by
   `sample-inventory.node.test.ts`.
 
-  **Six screens have models so far**, named in `MODELLED_SCREENS` and derived
-  from the source by a test: the inventory, the equipment, the quiver, the object
-  list, the message history and the player history — every screen that is a
-  *listing*. Every other screen arrives under the shared id `core:text` with
-  pre-wrapped lines — enough to reskin a frame, not enough to reimagine a
-  listing.
+  Which screens have models is data rather than a claim: `MODELLED_SCREENS` names
+  them and a test derives the list from the source, so adding an id without
+  building it fails and building one without listing it fails too. Every screen
+  not on that list arrives under the shared id `core:text` with pre-wrapped
+  lines — enough to reskin a frame, not enough to reimagine a listing.
 
 - **Every listing gives up its model, and a column publishes its whole layout**
   (#253, MOD_REACH gap 21, step 5b).
@@ -169,6 +190,22 @@ digest in the game's catalogue and must never be moved.
   vitals and cannot draw a proportional bar without parsing a rendering.
 
 ### Fixed
+
+- **Prose wrapped one word early whenever a line ended exactly at the wrap
+  column** — every recall page, object description and lore paragraph.
+
+  Upstream wraps on `(x >= wrap - 1) && (ch != ' ')` (ui-output.c L301): a space
+  landing *on* the boundary is written rather than wrapped on, and only the
+  following non-space takes the break. The port scanned backwards from the
+  character before the boundary and so never looked at that space, pushing a word
+  that fit exactly onto the next line — "one two three four five" at width 10
+  broke as "three" / "four five" where 4.2.6 gives "three four" / "five".
+
+  Found by moving the wrapper into the screen model (step 5b-ii above) and
+  finding it disagreed with the model's own renderer, then traced against 4.2.6
+  rather than argued about. It had been invisible since the port had recall
+  pages: the whole suite passed both before and after the fix, because no fixture
+  had ever put a word on the boundary.
 
 - **A faulting front end was re-entered on every repaint** (found while building
   the HUD's copy of the mechanism).

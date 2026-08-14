@@ -1124,6 +1124,17 @@ export interface FakeRecallDeps {
  * run stream ends sections with two spaces) and the leading blanks object_info
  * emits before its first real line dropped, since the overlay already puts the
  * body under a title.
+ *
+ * LOOKED AT AND LEFT, step 5b-ii, and recorded rather than fixed. This is a THIRD
+ * rendering of the same `Textblock` the object-inspect page renders: it flattens
+ * through `textblockToString` and so drops every run colour, which is why the
+ * knowledge browser's object recall is monochrome where the 'I' inspect of the
+ * same object is not. Converting it to a `text` block would give it colours AND a
+ * wrap it does not have today - two visible changes to what the player sees - so
+ * it wants its own adjudication against upstream rather than a drive-by. Same
+ * verdict for the rune, feature, trap and shape recalls just above and below:
+ * they push their description as ONE line, so a long one is TRUNCATED at
+ * `cols - 1` by `showTextScreen` instead of wrapping. See MOD_REACH.md row 21.
  */
 function recallBodyLines(text: string): ScreenLine[] {
   const lines: ScreenLine[] = text

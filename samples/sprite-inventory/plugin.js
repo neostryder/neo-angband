@@ -32,17 +32,27 @@
  * `dismissed`, because a screen that never resolves is a game that never comes
  * back.
  *
- * IT TAKES THREE SCREENS AND DECLINES THE REST. The character sheet, the knowledge
- * browser, the message history and every prose page are still the game's own -
- * and still work. That is the seam working: a card grid is a good shape for
- * things you own and a poor one for a wall of text.
+ * IT ALSO READS THE PROSE PAGES, and differently on purpose. `core:object-recall`
+ * and its two siblings arrive as a `text` block - paragraphs of coloured runs,
+ * UNWRAPPED - so this sample lays them out into a 360px panel by MEASURING them,
+ * which is the one thing a pre-wrapped `ScreenLine[]` cannot be asked to do: a
+ * row broken at 79 characters cannot be re-flowed to a different width without
+ * first undoing the game's wrap and guessing which breaks were the game's and
+ * which were the sentence's.
+ *
+ * IT DECLINES THE REST. The character sheet, the knowledge browser and the
+ * message history are still the game's own - and still work. That is the seam
+ * working: this mod says what it has a better way to draw, and nothing else.
  *
  * NO IMPORTS, deliberately. A folder plugin gets the engine passed in through
  * `ctx` and nothing else is resolvable from a mods folder.
  */
 
-/** The three screens this sample has a better way to show. */
+/** The three listings this sample draws as cards. */
 const TAKES = ["core:inventory", "core:equipment", "core:quiver"];
+
+/** The prose pages it draws as a panel, re-wrapped to its OWN width. */
+const READS = ["core:object-recall", "core:object-comparison", "core:monster-recall"];
 
 const BACKDROP = "rgba(8, 10, 16, 0.94)";
 const CARD = "#151a24";
@@ -82,6 +92,65 @@ function poundsOf(row) {
   const values = cell && typeof cell.total === "number" ? cell : row.values;
   if (!values || typeof values.total !== "number") return null;
   return values.total / 10;
+}
+
+/** The first `text` block of a view, or null. Same rule as `tableOf`. */
+function textOf(view) {
+  for (const block of view.blocks) if (block.kind === "text") return block;
+  return null;
+}
+
+/**
+ * One paragraph laid out to a PIXEL width, carrying each run's colour.
+ *
+ * This is the thing `lines` could not give and `paragraphs` can. A `lines` block
+ * arrives already broken into 79-character rows, so a panel of a different width
+ * - or a proportional font, where "79 characters" is not a width at all - can
+ * only re-flow it by undoing the game's wrap first and hoping no sentence
+ * genuinely ended at a row boundary. Given the paragraph, there is nothing to
+ * undo: measure and break.
+ */
+function layOut(g, paragraph, maxPx) {
+  const out = [];
+  let line = [];
+  let used = 0;
+  for (const run of paragraph) {
+    for (const word of run.text.split(" ")) {
+      if (word === "") continue;
+      const piece = (line.length === 0 ? "" : " ") + word;
+      const w = g.measureText(piece).width;
+      if (line.length > 0 && used + w > maxPx) {
+        out.push(line);
+        line = [];
+        used = 0;
+        used += g.measureText(word).width;
+        line.push({ text: word, color: run.color });
+        continue;
+      }
+      used += w;
+      const last = line[line.length - 1];
+      if (last && last.color === run.color) last.text += piece;
+      else line.push({ text: piece, color: run.color });
+    }
+  }
+  if (line.length > 0) out.push(line);
+  return out.length > 0 ? out : [[]];
+}
+
+function drawProse(g, block, x, y, maxPx, lineH) {
+  let row = y;
+  for (const paragraph of block.paragraphs) {
+    for (const line of layOut(g, paragraph, maxPx)) {
+      let px = x;
+      for (const run of line) {
+        g.fillStyle = run.color || block.color || INK;
+        g.fillText(run.text, px, row);
+        px += g.measureText(run.text).width;
+      }
+      row += lineH;
+    }
+  }
+  return row;
 }
 
 function drawCard(g, x, y, row) {
@@ -145,9 +214,9 @@ export default {
 
     return {
       show(view) {
-        if (!TAKES.includes(view.id)) return undefined;
-        const block = tableOf(view);
-        if (!block) return undefined;
+        const prose = READS.includes(view.id) ? textOf(view) : null;
+        const block = prose ? null : TAKES.includes(view.id) ? tableOf(view) : null;
+        if (!prose && !block) return undefined;
         if (!mount()) return undefined;
 
         const width = (typeof window !== "undefined" && window.innerWidth) || 960;
@@ -162,7 +231,12 @@ export default {
         g.fillStyle = INK;
         g.fillText(view.title, 24, 32);
 
-        if (block.rows.length === 0 && block.empty) {
+        if (prose) {
+          /* A panel, not the window - so the wrap is this mod's, at a width the
+           * game never chose and could not have pre-wrapped for. */
+          g.font = "13px monospace";
+          drawProse(g, prose, 24, TOP, Math.min(360, width - 48), 17);
+        } else if (block.rows.length === 0 && block.empty) {
           g.font = "13px monospace";
           g.fillStyle = block.empty.color || INK_DIM;
           g.fillText(block.empty.text, 24, TOP);

@@ -191,6 +191,58 @@ describe("a text block publishes prose, and the wrapping is the rendering", () =
     });
     expect(screenBodyLines(view, 80).map((l) => l.text)).toEqual(["one", "", "two"]);
   });
+
+  it("keeps a word that ends exactly AT the wrap column", () => {
+    /* Upstream wraps on `(x >= wrap - 1) && (ch != ' ')` (ui-output.c L301), so a
+     * space landing on the boundary is written rather than wrapped on and the
+     * word before it stays. The port scanned backwards from `end - 1` and never
+     * saw that space, so it pushed a word that fit exactly onto the next line.
+     * Traced against 4.2.6 rather than reasoned about: at wrap 11 the C breaks at
+     * column 8 for "three", then writes the space after "four" at column 10 and
+     * takes the wrap on the following 'f' with `x == wrap`, which skips the
+     * backward scan entirely and carries nothing down. */
+    const view = freezeView({
+      id: "test:text",
+      title: "T",
+      footer: SCREEN_FOOTER,
+      blocks: [{ kind: "text", paragraphs: [[{ text: "one two three four five" }]] }],
+    });
+    expect(screenBodyLines(view, 11).map((l) => l.text)).toEqual([
+      "one two",
+      "three four",
+      "five",
+    ]);
+  });
+
+  it("still breaks early for a word that does NOT fit exactly", () => {
+    /* The negative control for the rule above: move the boundary by one and the
+     * backward scan has to do its job again, or the fix would just be "never
+     * wrap", which passes the test above for the wrong reason. */
+    const view = freezeView({
+      id: "test:text",
+      title: "T",
+      footer: SCREEN_FOOTER,
+      blocks: [{ kind: "text", paragraphs: [[{ text: "one two threex four" }]] }],
+    });
+    expect(screenBodyLines(view, 11).map((l) => l.text)).toEqual(["one two", "threex", "four"]);
+  });
+
+  it("a blank paragraph speaks with the block's own colour", () => {
+    /* `color` is what the parts no run speaks for are drawn in - a paragraph
+     * break has no runs at all, and a line with no colour at all would be the
+     * terminal's default rather than the prose's. */
+    const view = freezeView({
+      id: "test:text",
+      title: "T",
+      footer: SCREEN_FOOTER,
+      blocks: [
+        { kind: "text", color: "#abcdef", paragraphs: [[{ text: "one" }], [], [{ text: "two" }]] },
+      ],
+    });
+    const lines = screenBodyLines(view, 80);
+    expect(lines[1]).toEqual({ text: "", color: "#abcdef" });
+    expect(lines[0]!.runs).toEqual([{ text: "one", color: "#abcdef" }]);
+  });
 });
 
 describe("what crosses the boundary is frozen", () => {

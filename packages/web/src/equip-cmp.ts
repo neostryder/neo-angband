@@ -59,7 +59,7 @@ import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { dumpFileName } from "./charsheet";
 import { userTextLinesToFile, exportUserFile } from "./user-io";
-import { wrapRuns } from "./screens";
+import { objectComparisonScreen, objectRecallScreen } from "./screens";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_CURSOR } from "./ui-colors";
 
 const FG = UI_TEXT;
@@ -365,9 +365,9 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
             ...tb1.runs,
           ],
         };
-        await showTextScreen(term, "Object comparison", wrapRuns(combined, term.size().cols));
+        await showTextScreen(term, objectComparisonScreen("Object comparison", combined));
       } else {
-        await showTextScreen(term, a.shortName, wrapRuns(tb0, term.size().cols));
+        await showTextScreen(term, objectRecallScreen(a.shortName, tb0));
       }
     };
 

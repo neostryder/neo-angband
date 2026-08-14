@@ -107,10 +107,12 @@ import {
   freezeView,
   screenBodyLines,
   SCREEN_FOOTER,
+  UNMODELLED_SCREEN,
   type ScreenBlock,
   type ScreenCell,
   type ScreenColumn,
   type ScreenRow,
+  type ScreenTextBlock,
   type ScreenView,
 } from "./screen-view";
 import { MessageLog, format as formatMessage } from "./messages";
@@ -151,66 +153,86 @@ function equipMention(slot: { type: string; name: string }): string {
   return entry.named ? entry.mention.replace("%s", slot.name) : entry.mention;
 }
 
-/** Coalesce a run of coloured chars into a ScreenLine with per-run colours. */
-function charsToLine(chars: { ch: string; color: string }[]): ScreenLine {
-  const runs: { text: string; color: string }[] = [];
-  for (const c of chars) {
-    const last = runs[runs.length - 1];
-    if (last && last.color === c.color) last.text += c.ch;
-    else runs.push({ text: c.ch, color: c.color });
+/**
+ * A core Textblock as a `text` BLOCK: the run stream split into paragraphs on its
+ * literal '\n', with each run's COLOUR_* attr resolved to css.
+ *
+ * The split is the whole point of the block. Core emits logical lines only
+ * (obj-info.c stays width-agnostic) and the wrap is the RENDERING, so a presenter
+ * with its own font gets the paragraphs and lays them out itself, while the
+ * faithful terminal gets the same wrap it always had from `screenBodyLines`.
+ */
+function proseBlock(tb: Textblock): ScreenTextBlock {
+  const paragraphs: { text: string; color: string }[][] = [[]];
+  for (const run of tb.runs) {
+    const color = colorToCss(run.attr);
+    run.text.split("\n").forEach((piece, i) => {
+      /* Every '\n' the core emitted is a paragraph break and nothing else is. */
+      if (i > 0) paragraphs.push([]);
+      if (piece === "") return;
+      const para = paragraphs[paragraphs.length - 1]!;
+      const last = para[para.length - 1];
+      if (last && last.color === color) last.text += piece;
+      else para.push({ text: piece, color });
+    });
   }
-  const text = chars.map((c) => c.ch).join("");
-  return runs.length > 0 ? { text, color: FG, runs } : { text: "", color: FG };
+  return { kind: "text", color: FG, paragraphs };
 }
 
 /**
- * Turn a core object-info Textblock (a run-stream with literal '\n' and
- * COLOUR_* attrs) into wrapped, per-run-coloured ScreenLine[] sized to the
- * terminal. Splits on '\n' into paragraphs, then greedily word-wraps each to
- * `cols - 1`, carrying run colours across the wrap boundary. The core emits
- * logical lines only (obj-info.c stays width-agnostic); this is where display
- * wrapping happens.
+ * Turn a core object-info Textblock into wrapped, per-run-coloured ScreenLine[]
+ * sized to the terminal.
+ *
+ * Now the model's renderer rather than a second one: this is `screenBodyLines`
+ * applied to a `text` block, exactly as `inventoryLines` is `screenBodyLines`
+ * applied to `inventoryScreen`. Callers that show a whole page of prose should
+ * build the SCREEN instead (`objectRecallScreen` and friends below) so a
+ * presenter is offered the paragraphs; this stays for the places that genuinely
+ * want lines - a menu's detail panel, which is not a screen.
  */
 export function wrapRuns(tb: Textblock, cols: number): ScreenLine[] {
-  const width = Math.max(1, cols - 1);
-  type C = { ch: string; color: string };
-  const out: ScreenLine[] = [];
+  return screenBodyLines(
+    freezeView({
+      id: UNMODELLED_SCREEN,
+      title: "",
+      footer: SCREEN_FOOTER,
+      blocks: [proseBlock(tb)],
+    }),
+    cols,
+  );
+}
 
-  /* Flatten to a coloured char stream split into paragraphs on '\n'. */
-  const paragraphs: C[][] = [[]];
-  for (const run of tb.runs) {
-    const color = colorToCss(run.attr);
-    for (const ch of run.text) {
-      if (ch === "\n") paragraphs.push([]);
-      else (paragraphs[paragraphs.length - 1] as C[]).push({ ch, color });
-    }
-  }
+/**
+ * The object recall page (object_info under an ODESC_CAPITAL header): the 'I'
+ * inspect, the context menu's Inspect, the store's Examine, and one side of the
+ * equipment comparison. One id for all four because they are the same page of
+ * the same object seen from four places - a presenter that can draw an item's
+ * mechanics can draw them wherever the player asked.
+ */
+export function objectRecallScreen(title: string, tb: Textblock): ScreenView {
+  return freezeView({
+    id: "core:object-recall",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [proseBlock(tb)],
+  });
+}
 
-  for (const para of paragraphs) {
-    if (para.length === 0) {
-      out.push({ text: "", color: FG });
-      continue;
-    }
-    let start = 0;
-    while (start < para.length) {
-      let end = Math.min(start + width, para.length);
-      if (end < para.length) {
-        let brk = -1;
-        for (let i = end - 1; i > start; i--) {
-          if ((para[i] as C).ch === " ") {
-            brk = i;
-            break;
-          }
-        }
-        if (brk > start) end = brk;
-      }
-      out.push(charsToLine(para.slice(start, end)));
-      start = end;
-      /* Skip the single break space so the next line does not start with it. */
-      if (start < para.length && (para[start] as C).ch === " ") start++;
-    }
-  }
-  return out;
+/**
+ * display_object_comparison (ui-equip-cmp.c L1440): two items' object_info
+ * textblocks back to back under their own headers.
+ *
+ * A separate id from `core:object-recall` because it is a COMPARISON - two
+ * subjects, which is exactly the screen a presenter would want to draw as two
+ * columns, and it could not tell that from the recall page if they shared an id.
+ */
+export function objectComparisonScreen(title: string, tb: Textblock): ScreenView {
+  return freezeView({
+    id: "core:object-comparison",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [proseBlock(tb)],
+  });
 }
 
 /**
@@ -942,6 +964,12 @@ function highlightDigitRuns(text: string): TextRun[] {
  * itself - no dice/grammar logic is reimplemented here - and wrapRuns for
  * the wrap + per-run colouring, exactly like the object-inspect viewer.
  * Pure and RNG-safe: nothing here (or in spellDamageSummary) reads the RNG.
+ *
+ * ADJUDICATED, step 5b-ii: this stays `ScreenLine[]` and is NOT a screen. It is
+ * `selectFromMenu`'s `detail(i)` panel inside the cast/browse menu, so it belongs
+ * to the MENU seam - modelling it as a `ScreenView` would publish an id no screen
+ * presenter is ever offered. That a menu's detail panel is still pre-wrapped rows
+ * is a real gap and it is the menu seam's; recorded in MOD_REACH.md row 21.
  */
 export function spellBrowseLines(
   state: GameState,
@@ -1014,13 +1042,28 @@ function loreTextToTextblock(text: LoreText): Textblock {
  * damage renders as 0. loreDescription draws no RNG; this only wraps its
  * runs to the terminal width, exactly like objectInfoTextblock's callers.
  */
+export function monsterRecallScreen(
+  race: MonsterRace,
+  lore: MonsterLore,
+  deps: LoreDeps,
+  title = capRaceName(race),
+): ScreenView {
+  return freezeView({
+    id: "core:monster-recall",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [proseBlock(loreTextToTextblock(loreDescription(race, lore, deps)))],
+  });
+}
+
+/** The faithful terminal's rows for `monsterRecallScreen`. */
 export function monsterRecallLines(
   race: MonsterRace,
   lore: MonsterLore,
   deps: LoreDeps,
   cols: number,
 ): ScreenLine[] {
-  return wrapRuns(loreTextToTextblock(loreDescription(race, lore, deps)), cols);
+  return screenBodyLines(monsterRecallScreen(race, lore, deps), cols);
 }
 
 /** A race the player has memory of, paired with its live lore record. */

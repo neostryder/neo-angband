@@ -156,6 +156,14 @@ export interface ScreenTextBlock {
   readonly paragraphs: readonly (readonly ScreenRun[])[];
   /** Columns of leading indent the faithful terminal uses. */
   readonly indent?: number;
+  /**
+   * The prose's default colour, for the parts no run speaks for: a paragraph
+   * break, and the line-level fallback a consumer that ignores `runs` reads.
+   *
+   * The same field `art` carries, for the same reason - a block that is one
+   * voice throughout should not have to repeat itself on every run.
+   */
+  readonly color?: string;
 }
 
 /**
@@ -240,6 +248,9 @@ export const MODELLED_SCREENS = [
   "core:objects-in-view",
   "core:messages",
   "core:player-history",
+  "core:object-recall",
+  "core:object-comparison",
+  "core:monster-recall",
 ] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */
@@ -309,6 +320,7 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
           block.paragraphs.map((p) => Object.freeze(p.map((r) => Object.freeze({ ...r })))),
         ),
         ...(block.indent === undefined ? {} : { indent: block.indent }),
+        ...(block.color === undefined ? {} : { color: block.color }),
       });
     case "art":
       return Object.freeze({ ...block, lines: Object.freeze([...block.lines]) });
@@ -385,47 +397,75 @@ export function screenBodyLines(view: ScreenView, cols = 80): ScreenLine[] {
   return out;
 }
 
-/** Greedy word-wrap of a run stream, carrying colours across the break. */
+/**
+ * Greedy wrap of a run stream at `cols - 1`, carrying colours across the break.
+ *
+ * THIS IS THE GAME'S OWN WRAPPER, moved rather than written. `wrapRuns` in
+ * `screens.ts` has laid out every recall page since the port had recall pages,
+ * and `screens.ts` now calls THIS through a `text` block. Reimplementing the wrap
+ * here - word-greedy rather than character-greedy, say - would have been a second
+ * transcription of the same rendering, and the one nobody looks at is the one
+ * that rots; it would also have moved prose on the player's screen, which is the
+ * port adding something. So the algorithm is preserved exactly: measure in
+ * CHARACTERS, break at the last space strictly inside the run, hard-split a word
+ * with no space in it at all, and drop the single space the break landed on.
+ */
 function textBlockLines(block: ScreenTextBlock, cols: number): ScreenLine[] {
   const indent = " ".repeat(block.indent ?? 0);
   const width = Math.max(1, cols - 1 - (block.indent ?? 0));
+  const base = block.color;
+  const blank: ScreenLine = base === undefined ? { text: "" } : { text: "", color: base };
   const out: ScreenLine[] = [];
   for (const paragraph of block.paragraphs) {
-    let runs: { text: string; color: string }[] = [];
-    let used = 0;
-    const flush = (): void => {
-      if (runs.length === 0) {
-        out.push({ text: "" });
-        return;
-      }
-      const text = indent + runs.map((r) => r.text).join("");
-      out.push({ text, runs: [{ text: indent, color: runs[0]!.color }, ...runs] });
-      runs = [];
-      used = 0;
-    };
+    const chars: { ch: string; color: string }[] = [];
     for (const run of paragraph) {
-      const color = run.color ?? "";
-      for (const word of run.text.split(/(\s+)/u)) {
-        if (word === "") continue;
-        if (/^\s+$/u.test(word)) {
-          if (used > 0) {
-            appendRun(runs, " ", color);
-            used += 1;
-          }
-          continue;
-        }
-        if (used > 0 && used + word.length > width) {
-          trimTrailingSpace(runs);
-          flush();
-        }
-        appendRun(runs, word, color);
-        used += word.length;
-      }
+      const color = run.color ?? base ?? "";
+      for (const ch of run.text) chars.push({ ch, color });
     }
-    trimTrailingSpace(runs);
-    flush();
+    if (chars.length === 0) {
+      out.push({ ...blank });
+      continue;
+    }
+    let start = 0;
+    while (start < chars.length) {
+      let end = Math.min(start + width, chars.length);
+      /* A line that ends exactly AT the wrap column keeps its last word, because
+       * upstream's wrap is `(x >= wrap - 1) && (ch != ' ')` (ui-output.c L301):
+       * the space landing on the boundary is written rather than wrapped on, and
+       * only the next non-space triggers the break. The port scanned backwards
+       * from `end - 1` and so never saw that space, which pushed a word that fit
+       * exactly onto the next line - "one two three four five" at width 10 broke
+       * as "three" / "four five" where 4.2.6 gives "three four" / "five". */
+      if (end < chars.length && chars[end]!.ch !== " ") {
+        let brk = -1;
+        for (let i = end - 1; i > start; i--) {
+          if (chars[i]!.ch === " ") {
+            brk = i;
+            break;
+          }
+        }
+        if (brk > start) end = brk;
+      }
+      out.push(proseLine(chars.slice(start, end), indent, base));
+      start = end;
+      /* Skip the single break space so the next line does not start with it. */
+      if (start < chars.length && chars[start]!.ch === " ") start++;
+    }
   }
   return out;
+}
+
+/** One wrapped prose line: adjacent same-colour chars coalesced back into runs. */
+function proseLine(
+  chars: readonly { ch: string; color: string }[],
+  indent: string,
+  base: string | undefined,
+): ScreenLine {
+  const runs: { text: string; color: string }[] = [];
+  if (indent !== "") runs.push({ text: indent, color: base ?? chars[0]?.color ?? "" });
+  for (const c of chars) appendRun(runs, c.ch, c.color);
+  const text = indent + chars.map((c) => c.ch).join("");
+  return { text, ...(base === undefined ? {} : { color: base }), runs };
 }
 
 function appendRun(runs: { text: string; color: string }[], text: string, color: string): void {
