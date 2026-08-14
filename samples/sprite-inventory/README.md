@@ -37,8 +37,8 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
 - **Prose is a paragraph, not a row.** The recall pages arrive as a `text` block
   whose paragraphs are unwrapped, so the card panel wraps them by **measuring**
   them at 360px — a width the game never chose and could not have pre-wrapped
-  for. A `lines` block is already broken at 79 characters; re-flowing that means
-  undoing the game's wrap and guessing which breaks were the game's.
+  for. A `lines` block is already broken at the terminal's width; re-flowing that
+  means undoing the game's wrap and guessing which breaks were the game's.
 - **Art and the writing on it are separate.** The tombstone arrives as an `art`
   block whose `lines` are the picture and whose `fields` are the epitaph — name,
   class, `level.values.level`, `gold.values.gold`, the killing blow. Upstream

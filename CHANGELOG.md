@@ -304,6 +304,51 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **The prose renderer implemented one of Angband's two wrap algorithms while
+  citing the other, and the character sheet's history is the page that needed
+  the other one** (#255).
+
+  4.2.6 wraps prose two different ways. `textblock_calculate_lines`
+  (z-textblock.c L238) lays out every page shown by `textui_textblock_show` —
+  the inspect pages, monster recall, object comparison, the knowledge browser's
+  seven recalls. `text_out_to_screen` (ui-output.c L279) lays out exactly one
+  modelled page: the character sheet's history, which
+  `display_player_xtra_info` (ui-player.c L862-871) pushes through it with
+  `text_out_wrap = 72` and `text_out_indent = 1`.
+
+  `textBlockLines` implemented the first and named the second in its comment.
+  That miscitation was invisible in the output — the two rules agree on every
+  line that contains a space, and **1041 of the 1041 descriptions the pack ships
+  render identically either way** — so it survived until someone tried to reason
+  from the comment. Three things came out of measuring instead:
+
+  - **The wrap width was one short.** The region is the terminal's full width
+    (`region_calculate` on `{0,0,0,0}`), so the wrap is at `cols`, not
+    `cols - 1`. The two agree unless a line has no space strictly inside it,
+    where upstream packs `cols` characters and the port packed one fewer. The
+    longest unbroken token in the pack is 18 characters, so no page a player
+    reads at 80 columns could show it — but a mod re-rendering a view in a
+    narrow panel can, and at 16 columns four of the pack's descriptions already
+    differ.
+  - **A paragraph ending exactly on a break lost its blank row.** Upstream opens
+    the next line before it sees the paragraph end and emits it, trimming only
+    the very last one. The port emitted nothing. An upstream wart, so it stays.
+  - **The character sheet's history was two columns too wide and re-flowed.**
+    `text_out_to_screen` writes a non-space only while `x < wrap - 1`, so its
+    rightmost glyph sits at column 70; declaring `wrap: 72` and wrapping with
+    the textblock rule put glyphs in columns 71 and 72 and fitted an extra word
+    on a line. `ScreenTextBlock.flow` now names which rule laid a block out —
+    absent for the textblock rule, `"text-out"` for the history — because the
+    two also disagree about whether the second space of a sentence break
+    survives at the head of the next line (5 of the pack's 1041 descriptions).
+
+  `packages/web/src/prose-wrap.upstream.test.ts` transcribes **both** C
+  functions independently of the renderer and requires the renderer to match the
+  one it claims: over every description in the shipped pack, at seven terminal
+  widths, and over random prose generated to contain the long tokens and double
+  spaces the pack has none of. A comment saying two things agree does not keep
+  them agreeing; the differential test does.
+
 - **Prose wrapped one word early whenever a line ended exactly at the wrap
   column** — every recall page, object description and lore paragraph.
 

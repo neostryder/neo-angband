@@ -730,10 +730,15 @@ export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
  * the indent and the 72-column wrap published beside it.
  *
  * `null` for a character with no history, so a headless or pre-birth character
- * contributes no block at all rather than an empty one. The wrap moved from a
- * plain greedy one to the renderer's upstream-faithful rule here
- * (`text_out_to_screen`, ui-output.c L301), which is where every other prose page
- * already wraps.
+ * contributes no block at all rather than an empty one.
+ *
+ * This is the ONE modelled page upstream does not lay out with a textblock:
+ * display_player_xtra_info (ui-player.c L862-871) parks the cursor at column 1
+ * and pushes the history through `text_out_to_screen` with `text_out_wrap = 72`
+ * and `text_out_indent = 1`. Hence `flow`. Saying only `wrap: 72` left the page
+ * two columns wide of 4.2.6 - `text_out_to_screen` writes a non-space only
+ * while `x < wrap - 1`, so its rightmost glyph is at column 70 - and re-flowed
+ * the paragraph, which a player can see.
  */
 function historyTextBlock(state: GameState): ScreenTextBlock | null {
   const history = state.actor.player.history.trim();
@@ -743,6 +748,7 @@ function historyTextBlock(state: GameState): ScreenTextBlock | null {
     paragraphs: [[{ text: history }]],
     indent: 1,
     wrap: 72,
+    flow: "text-out",
     color: colorToCss(COLOUR_WHITE),
   };
 }

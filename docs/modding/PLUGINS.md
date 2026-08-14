@@ -612,10 +612,19 @@ and a text screen cannot show.
 paragraph, split where the game meant a break and nowhere else — so the object
 recall, the object comparison and the monster recall hand you the text and let
 *you* choose the width. That is the difference the block exists for: a `lines`
-block has already been broken into 79-character rows, and re-flowing those to a
+block has already been broken into terminal-width rows, and re-flowing those to a
 panel of your own size means undoing the game's wrap first and guessing which
 breaks were the game's and which were the sentence's. `block.color` is the
 prose's default, for the parts no run speaks for.
+
+`block.flow` names **which** of Angband's two wraps laid the prose out, for a
+presenter that wants to reproduce the terminal rather than re-flow. Absent means
+`textblock_calculate_lines`, which is every page but one; `"text-out"` means
+`text_out_to_screen`, which is the character sheet's history and nothing else.
+They differ by two columns and by whether a sentence's second space survives a
+break, so a renderer that assumed one rule for both was wrong on one of them.
+Most presenters can ignore this entirely — it matters only if you are wrapping
+*as the terminal would* rather than at a width of your own.
 
 **Art and the writing on it are separate.** An `art` block's `lines` are the
 picture — the tombstone, the winner's crown — and its `fields` are the text the
