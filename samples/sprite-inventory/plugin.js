@@ -62,6 +62,9 @@ const TAKES = ["core:inventory", "core:equipment", "core:quiver"];
 /** The prose pages it draws as a panel, re-wrapped to its OWN width. */
 const READS = ["core:object-recall", "core:object-comparison", "core:monster-recall"];
 
+/** The character sheet's two pages, which it draws as panels AND acts on. */
+const SHEET = ["core:character", "core:character-flags"];
+
 const BACKDROP = "rgba(8, 10, 16, 0.94)";
 const CARD = "#151a24";
 const CARD_EDGE = "#39415a";
@@ -253,6 +256,90 @@ function drawCard(g, x, y, row) {
   }
 }
 
+/**
+ * The character sheet, as panels rather than as a page of columns.
+ *
+ * WHAT MAKES THIS DIFFERENT FROM THE LISTINGS. A stat row is not a line of text
+ * with a number somewhere in it: `cells.eb.values.bonus` is the equipment bonus
+ * as an INTEGER, so this draws it as a bar whose length is the number - something
+ * no amount of re-reading "STR!  18/100  +1  +0  +2" could have given. A panel row
+ * answers to `row.id` (`level`, `hp`, `turns-used`), so the label and the value
+ * arrive apart and this never looks for a colon.
+ *
+ * On the flag page the COLUMNS are the equipment slots, each carrying the worn
+ * item's glyph in `column.glyph` - so the header of this grid is gear, and a mod
+ * with real art would draw the item's icon there.
+ */
+function drawSheet(g, view, x, y, w) {
+  let cy = y;
+  for (const block of view.blocks) {
+    if (block.kind === "text") {
+      g.font = "13px monospace";
+      cy = drawProse(g, block, x, cy + 6, w, 17) + 10;
+      continue;
+    }
+    if (block.kind !== "table") continue;
+
+    if (block.caption) {
+      g.font = "13px monospace";
+      g.fillStyle = block.caption.color || INK;
+      g.fillText(block.caption.text, x, cy);
+      cy += 18;
+    }
+    /* The slot glyphs, drawn from the COLUMNS - the one place a presenter learns
+     * what the character is wearing without being handed an equipment listing. */
+    const glyphs = block.columns.filter((c) => c.glyph);
+    if (glyphs.length > 0) {
+      g.font = "12px monospace";
+      glyphs.forEach((c, i) => {
+        g.fillStyle = c.glyph.color || INK_DIM;
+        g.fillText(c.glyph.text, x + 70 + i * 10, cy);
+      });
+      cy += 16;
+    }
+    g.font = "12px monospace";
+    for (const row of block.rows) {
+      const label = row.cells.label || row.cells.stat;
+      if (label) {
+        g.fillStyle = (label.color || row.color) || INK;
+        g.fillText(label.text.trim(), x, cy);
+      }
+      const value = row.cells.value || row.cells.self;
+      if (value && value.text) {
+        g.fillStyle = row.color || INK;
+        g.fillText(value.text, x + 100, cy);
+      }
+      /* A bar as long as the bonus IS the number. There is no way to draw this
+       * from a rendered row, which is the whole argument for `values`. */
+      const eb = row.cells.eb && row.cells.eb.values;
+      if (eb && typeof eb.bonus === "number" && eb.bonus !== 0) {
+        g.fillStyle = eb.bonus > 0 ? "#4f9d69" : "#a64b4b";
+        g.fillRect(x + 170, cy - 8, Math.abs(eb.bonus) * 8, 8);
+      }
+      const num = row.cells.value && row.cells.value.values;
+      if (num && typeof num.value === "number") {
+        g.fillStyle = INK_DIM;
+        g.fillText(String(num.value), x + 170, cy);
+      }
+      if (label || value) cy += 15;
+    }
+    cy += 6 + (block.gapAfter || 0) * 6;
+  }
+  return cy;
+}
+
+/** The screen's own commands as buttons: `actions` is the game telling us. */
+function drawActions(g, view, x, y) {
+  if (!view.actions) return;
+  g.font = "12px monospace";
+  let cx = x;
+  for (const action of view.actions) {
+    g.fillStyle = INK_DIM;
+    g.fillText(`[${action.key}] ${action.label}`, cx, y);
+    cx += 150;
+  }
+}
+
 export default {
   api: 1,
 
@@ -278,61 +365,96 @@ export default {
     };
 
     return {
-      show(view) {
-        const prose = READS.includes(view.id) ? textOf(view) : null;
-        const tomb = view.id === "core:tombstone" ? artOf(view) : null;
-        const block = prose || tomb ? null : TAKES.includes(view.id) ? tableOf(view) : null;
-        if (!prose && !tomb && !block) return undefined;
+      show(view, host) {
+        const takes = (v) =>
+          READS.includes(v.id) ||
+          SHEET.includes(v.id) ||
+          v.id === "core:tombstone" ||
+          (TAKES.includes(v.id) && tableOf(v) !== null);
+        if (!takes(view)) return undefined;
         if (!mount()) return undefined;
 
         const width = (typeof window !== "undefined" && window.innerWidth) || 960;
         const height = (typeof window !== "undefined" && window.innerHeight) || 600;
-        canvas.width = width;
-        canvas.height = height;
-        canvas.style.display = "block";
 
-        g.fillStyle = BACKDROP;
-        g.fillRect(0, 0, width, height);
-        g.font = "16px monospace";
-        g.fillStyle = INK;
-        g.fillText(view.title, 24, 32);
+        const paint = (v) => {
+          canvas.width = width;
+          canvas.height = height;
+          canvas.style.display = "block";
 
-        if (prose) {
-          /* A panel, not the window - so the wrap is this mod's, at a width the
-           * game never chose and could not have pre-wrapped for. */
-          g.font = "13px monospace";
-          drawProse(g, prose, 24, TOP, Math.min(360, width - 48), 17);
-        } else if (tomb) {
-          drawTomb(g, tomb, Math.max(24, width / 2 - 130), TOP, 260);
-        } else if (block.rows.length === 0 && block.empty) {
-          g.font = "13px monospace";
-          g.fillStyle = block.empty.color || INK_DIM;
-          g.fillText(block.empty.text, 24, TOP);
-        } else {
-          const perRow = Math.max(1, Math.floor((width - 24) / (CARD_W + GAP)));
-          block.rows.forEach((row, i) => {
-            const x = 24 + (i % perRow) * (CARD_W + GAP);
-            const y = TOP + Math.floor(i / perRow) * (CARD_H + GAP);
-            drawCard(g, x, y, row);
-          });
-        }
+          g.fillStyle = BACKDROP;
+          g.fillRect(0, 0, width, height);
+          g.font = "16px monospace";
+          g.fillStyle = INK;
+          g.fillText(v.title, 24, 32);
 
-        g.font = "12px monospace";
-        g.fillStyle = INK_DIM;
-        g.fillText(view.footer, 24, height - 20);
+          const prose = READS.includes(v.id) ? textOf(v) : null;
+          const tomb = v.id === "core:tombstone" ? artOf(v) : null;
+          const block = TAKES.includes(v.id) ? tableOf(v) : null;
+          if (prose) {
+            /* A panel, not the window - so the wrap is this mod's, at a width the
+             * game never chose and could not have pre-wrapped for. */
+            g.font = "13px monospace";
+            drawProse(g, prose, 24, TOP, Math.min(360, width - 48), 17);
+          } else if (tomb) {
+            drawTomb(g, tomb, Math.max(24, width / 2 - 130), TOP, 260);
+          } else if (SHEET.includes(v.id)) {
+            drawSheet(g, v, 24, TOP, Math.min(420, width - 48));
+            drawActions(g, v, 24, height - 44);
+          } else if (block && block.rows.length === 0 && block.empty) {
+            g.font = "13px monospace";
+            g.fillStyle = block.empty.color || INK_DIM;
+            g.fillText(block.empty.text, 24, TOP);
+          } else if (block) {
+            const perRow = Math.max(1, Math.floor((width - 24) / (CARD_W + GAP)));
+            block.rows.forEach((row, i) => {
+              const x = 24 + (i % perRow) * (CARD_W + GAP);
+              const y = TOP + Math.floor(i / perRow) * (CARD_H + GAP);
+              drawCard(g, x, y, row);
+            });
+          }
+
+          g.font = "12px monospace";
+          g.fillStyle = INK_DIM;
+          g.fillText(v.footer, 24, height - 20);
+        };
+
+        let shown = view;
+        paint(shown);
 
         /* Resolving this is the whole contract. A presenter that forgets is a
          * game the player cannot get back to, which is worse than one that never
          * took the screen at all. */
         let done = () => {};
         const dismissed = new Promise((resolve) => (done = resolve));
-        const onKey = (ev) => {
-          if (ev.key !== "Escape" && ev.key !== "Enter" && ev.key !== " ") return;
-          if (ev.preventDefault) ev.preventDefault();
-          if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+        const close = () => {
           document.removeEventListener("keydown", onKey, true);
           canvas.style.display = "none";
           done();
+        };
+        const onKey = (ev) => {
+          /* A screen's own commands, run through the host: the rename still opens
+           * the GAME's prompt and the dump still writes the game's file. Without
+           * this a mod that took the character sheet would quietly take renaming
+           * away from the player. `undefined` back means the game wants it. */
+          const action =
+            shown.actions && host
+              ? shown.actions.find((a) => a.key === ev.key)
+              : undefined;
+          if (action) {
+            if (ev.preventDefault) ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            host.invoke(action.id).then((next) => {
+              if (!next) return close();
+              shown = next;
+              paint(shown);
+            });
+            return;
+          }
+          if (ev.key !== "Escape" && ev.key !== "Enter" && ev.key !== " ") return;
+          if (ev.preventDefault) ev.preventDefault();
+          if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+          close();
         };
         document.addEventListener("keydown", onKey, true);
         ctx.log("showing " + view.id + " as cards");

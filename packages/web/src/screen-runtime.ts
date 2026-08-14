@@ -29,7 +29,7 @@
 
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
-import type { ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
+import type { ScreenHost, ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
 
 /** What a mod must hold in its manifest before it may show the game's screens. */
 export const SCREEN_CAPABILITY = "ui:screen.replace";
@@ -115,7 +115,10 @@ export function installScreen(
   const presenter = returned;
   /* The SDK owns the public types; the live view is structurally identical and
    * this adapter keeps the runtime boundary local. */
-  return { id: winner.id, presenter: { show: (view) => presenter.show(view) } };
+  /* `host` is forwarded, not dropped: it is the only way a presenter reaches a
+   * screen's `actions`, and an adapter that silently ate it would leave the
+   * character sheet's rename and dump unreachable with no error anywhere. */
+  return { id: winner.id, presenter: { show: (view, host) => presenter.show(view, host) } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,12 +156,13 @@ export function currentScreenPresenter(): InstalledScreen | null {
 export function showThroughPresenter(
   view: ScreenView,
   reportFault: ReportFault = () => {},
+  host?: ScreenHost,
 ): Promise<void> | null {
   const owner = currentScreenPresenter();
   if (!owner) return null;
   let shown: ScreenShown | undefined;
   try {
-    shown = owner.presenter.show(view);
+    shown = owner.presenter.show(view, host);
   } catch (error) {
     broken = true;
     reportFault(owner.id, `showing "${view.id}" failed; the game has resumed showing its own screens`, error);

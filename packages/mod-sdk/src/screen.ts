@@ -74,6 +74,15 @@ export interface ScreenColumn {
    * stop. Another fact about the terminal that a presenter is free to ignore.
    */
   readonly pad?: boolean;
+  /**
+   * A picture at the head of the column, above `label`.
+   *
+   * The character sheet's flag grid has one column per equipment slot and draws
+   * the WORN ITEM'S glyph over each. That is a fact about the column - what is in
+   * this slot - not a row of data, so you get it here rather than as a first row
+   * you would have to know to skip. Draw the item's icon instead.
+   */
+  readonly glyph?: ScreenRun;
 }
 
 /** One cell. Its own `color` overrides the row's; `values` are its numbers. */
@@ -113,6 +122,14 @@ export interface ScreenTableBlock {
   readonly tagged: boolean;
   readonly columns: readonly ScreenColumn[];
   readonly rows: readonly ScreenRow[];
+  /** The header row's colour as CSS, where the game colours it. */
+  readonly headerColor?: string;
+  /**
+   * Blank rows the faithful terminal leaves after this table; none by default.
+   * A layout fact, like `width` - the character sheet's panels are separated by
+   * one. Ignore it if you lay the blocks out yourself.
+   */
+  readonly gapAfter?: number;
   /** What the terminal shows when there are no rows ("(nothing carried)"). */
   readonly empty?: ScreenRun;
 }
@@ -126,6 +143,12 @@ export interface ScreenTextBlock {
   readonly paragraphs: readonly (readonly ScreenRun[])[];
   /** Columns of leading indent the faithful terminal uses. */
   readonly indent?: number;
+  /**
+   * The width upstream wraps this prose at, where it fixes one - a CLAMP on the
+   * terminal's width, never a minimum. The character sheet's history is 72 on an
+   * 80-column screen. Ignore it; you are measuring your own font.
+   */
+  readonly wrap?: number;
   /** The prose's default colour, for the parts no run speaks for (a break). */
   readonly color?: string;
 }
@@ -197,6 +220,46 @@ export interface ScreenView {
   /** The game's own key legend. Wrong for a presenter with different keys. */
   readonly footer: string;
   readonly blocks: readonly ScreenBlock[];
+  /**
+   * What the player can DO here beyond leaving. Absent on every screen that is
+   * only dismissed, which is most of them; see `ScreenAction`.
+   */
+  readonly actions?: readonly ScreenAction[];
+}
+
+/**
+ * Something the player can do on a screen, as data rather than as prose in the
+ * footer.
+ *
+ * The character sheet is the screen this exists for: the game offers renaming,
+ * a character dump and the page cycle from the same modal, and a presenter that
+ * took the sheet without being able to reach them would quietly take those
+ * commands away from the player. Run one with `ScreenHost.invoke`.
+ *
+ * `key` is what the faithful terminal listens for - a fact about the GAME, not
+ * an instruction. Offer a button and never read it.
+ */
+export interface ScreenAction {
+  /** Stable: `rename`, `file`, `page-next`, `page-prev`. */
+  readonly id: string;
+  readonly key: string;
+  /** The game's own wording, lower case ("change name", "to file"). */
+  readonly label: string;
+}
+
+/**
+ * The way back in, handed to `show` alongside a view that has `actions`.
+ *
+ * `invoke` runs one - the GAME's own code, so a rename still goes through the
+ * game's prompt - and resolves with what the player should be looking at next:
+ * usually the same screen with new content, or the next page. `undefined` means
+ * the game has taken the screen back; resolve `dismissed` when you see it.
+ *
+ * An id this engine does not have is a no-op that hands the current view back,
+ * so asking for a newer command cannot close the player's screen.
+ */
+export interface ScreenHost {
+  invoke(id: string): Promise<ScreenView | undefined>;
 }
 
 /** A screen you have taken. Resolve `dismissed` when the player is done with it. */
@@ -214,5 +277,11 @@ export interface ScreenShown {
  * match on `view.id`.
  */
 export interface ScreenPresenter {
-  show(view: ScreenView): ScreenShown | undefined;
+  /**
+   * `host` arrives only where `view.actions` does. A presenter written before
+   * actions existed ignores the argument - which is why it is a parameter rather
+   * than a field of the view: the view is frozen data, and a way back into the
+   * game cannot be.
+   */
+  show(view: ScreenView, host?: ScreenHost): ScreenShown | undefined;
 }

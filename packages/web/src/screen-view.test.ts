@@ -301,6 +301,126 @@ describe("an art block draws the picture, then writes on it", () => {
   });
 });
 
+describe("a column can carry a picture, and a table can space itself", () => {
+  it("draws the glyph row above the labels, each glyph in its own colour", () => {
+    /* The flag grid's equippy row: what is WORN in each slot, published on the
+     * column rather than as a first row a presenter would have to skip. */
+    const view = table({
+      tagged: false,
+      columns: [
+        { key: "label", label: "", width: 3 },
+        { key: "a", label: "a", width: 1, gap: 0, glyph: { text: "|", color: "#f00" } },
+        { key: "b", label: "b", width: 1, gap: 0, glyph: { text: "=", color: "#0f0" } },
+      ],
+      rows: [ROW({ label: { text: "rAci" }, a: { text: "+" }, b: { text: "." } })],
+    });
+    const lines = screenBodyLines(view);
+    expect(lines[0]!.text).toBe("   |=");
+    expect(lines[0]!.runs).toEqual([
+      { text: "   ", color: "" },
+      { text: "|", color: "#f00" },
+      { text: "=", color: "#0f0" },
+    ]);
+    // The label row: the label column's own header is blank, so 3 spaces then
+    // the two slot letters - the same stops the glyph row above it uses.
+    expect(lines[1]!.text).toBe("   ab");
+  });
+
+  it("emits no glyph row at all when no column has one", () => {
+    const lines = screenBodyLines(
+      table({ tagged: false, columns: [{ key: "a", label: "A" }], rows: [ROW({ a: { text: "x" } })] }),
+    );
+    expect(lines.map((l) => l.text)).toEqual(["A", "x"]);
+  });
+
+  it("colours the header only where the game colours it", () => {
+    const plain = screenBodyLines(
+      table({ tagged: false, columns: [{ key: "a", label: "A" }], rows: [] }),
+    );
+    expect(plain[0]!.color).toBeUndefined();
+    const coloured = screenBodyLines(
+      table({ tagged: false, headerColor: "#abc", columns: [{ key: "a", label: "A" }], rows: [] }),
+    );
+    expect(coloured[0]).toEqual({ text: "A", color: "#abc" });
+  });
+
+  it("leaves gapAfter blank rows under the table, empty or not", () => {
+    const withRows = screenBodyLines(
+      table({ tagged: false, gapAfter: 2, columns: [{ key: "a" }], rows: [ROW({ a: { text: "x" } })] }),
+    );
+    expect(withRows.map((l) => l.text)).toEqual(["x", "", ""]);
+    /* A panel with nothing in it still ends where upstream ends it - otherwise
+     * the blocks below it slide up by exactly as much as is missing. */
+    const empty = screenBodyLines(table({ tagged: false, gapAfter: 1, columns: [{ key: "a" }], rows: [] }));
+    expect(empty.map((l) => l.text)).toEqual([""]);
+  });
+
+  it("cuts EVERY trailing blank run, not just the last one", () => {
+    /* The stat table's Cur column is empty unless the stat is drained, so the run
+     * stream ends "gap, empty cell". Popping one run leaves `runs` a space longer
+     * than `text`, which nothing paints and everything that measures trips over. */
+    const view = table({
+      tagged: false,
+      columns: [
+        { key: "a", width: 2 },
+        { key: "cur", width: 4, align: "right" },
+      ],
+      rows: [ROW({ a: { text: "hi", color: "#f00" }, cur: { text: "" } })],
+    });
+    const line = screenBodyLines(view)[0]!;
+    expect(line.text).toBe("hi");
+    expect(line.runs!.map((r) => r.text).join("")).toBe(line.text);
+  });
+
+  it("clamps prose to the width upstream wraps it at, never widens to it", () => {
+    const prose = (wrap: number | undefined, cols: number): string[] =>
+      screenBodyLines(
+        freezeView({
+          id: "test:prose",
+          title: "",
+          footer: SCREEN_FOOTER,
+          blocks: [
+            {
+              kind: "text",
+              paragraphs: [[{ text: "alpha beta gamma delta epsilon" }]],
+              ...(wrap === undefined ? {} : { wrap }),
+            },
+          ],
+        }),
+        cols,
+      ).map((l) => l.text);
+    expect(prose(undefined, 80)).toEqual(["alpha beta gamma delta epsilon"]);
+    expect(prose(12, 80)).toEqual(["alpha beta", "gamma delta", "epsilon"]);
+    /* A narrow terminal still wins: `wrap` is a clamp, not a minimum. */
+    expect(prose(72, 12).every((l) => l.length <= 11)).toBe(true);
+  });
+});
+
+describe("a screen can publish what the player may DO on it", () => {
+  const acted = (): ScreenView =>
+    freezeView({
+      id: "test:acted",
+      title: "T",
+      footer: SCREEN_FOOTER,
+      blocks: [],
+      actions: [{ id: "rename", key: "c", label: "change name" }],
+    });
+
+  it("freezes the actions, and drops the field entirely when there are none", () => {
+    const view = acted();
+    expect(Object.isFrozen(view.actions)).toBe(true);
+    expect(Object.isFrozen(view.actions![0])).toBe(true);
+    const plain = freezeView({ id: "test:plain", title: "T", footer: SCREEN_FOOTER, blocks: [] });
+    expect("actions" in plain).toBe(false);
+  });
+
+  it("renders nothing for them - they are for a presenter, not for the terminal", () => {
+    /* The faithful terminal already tells the player about 'c' in the footer, and
+     * a second legend built from `actions` would be the port adding something. */
+    expect(screenBodyLines(acted())).toEqual([]);
+  });
+});
+
 describe("what crosses the boundary is frozen", () => {
   it("freezes the rows and the cells a presenter is most likely to keep", () => {
     /* A presenter may hold a view while it animates it in; what it holds must not

@@ -1883,7 +1883,14 @@ export function setUiFaultReporter(
   reportUiFault = report;
 }
 
-const screenFault = (id: string, message: string, error: unknown): void =>
+/**
+ * The one way a screen presenter's fault reaches the player.
+ *
+ * Exported because `showCharacterSheet` offers its own view to the presenter
+ * rather than going through `showTextScreen` - the sheet is a modal with its own
+ * keys - and a second reporter beside this one is a second policy about mods.
+ */
+export const screenFault = (id: string, message: string, error: unknown): void =>
   reportUiFault(id, message, error);
 
 

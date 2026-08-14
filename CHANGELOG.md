@@ -20,6 +20,52 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The character sheet is offered to a presenter, and it publishes what the
+  player can DO on it** (#253, MOD_REACH gap 21, step 5b-iv).
+
+  `core:character` (the stat table, the five panels, the history) and
+  `core:character-flags` (the four resist / ability / hindrance / modifier
+  regions and the sustains block) are modelled, taking `MODELLED_SCREENS` from
+  eleven to thirteen. Two parts of this were not a builder swap.
+
+  **The seam.** `showCharacterSheet` is a hand-painted modal with two display
+  modes and its own key handling that never reached `showTextScreen`, so no
+  presenter had ever been offered the character sheet at all. It now offers its
+  view directly and falls back to the terminal on a decline or a fault, exactly
+  as `showTextScreen` does.
+
+  **Actions.** Upstream's `do_cmd_change_name` offers renaming, a character dump
+  and the page cycle from inside the same modal, so a presenter that took the
+  sheet without being able to reach them would quietly take three commands away
+  from the player. `ScreenView.actions` publishes them as data — a stable `id`,
+  the key the *faithful terminal* listens for, the game's own label — and
+  `show(view, host)` hands over a `ScreenHost` whose `invoke(id)` runs one and
+  resolves with what the player should see next: the renamed sheet, the other
+  page, or `undefined` for "the game has taken it back". An id this engine has
+  not got is a no-op that returns the current view, so a presenter built against
+  a later engine cannot close the player's character sheet by asking for a
+  command that does not exist yet.
+
+  Four model additions, each a layout fact published *beside* the data rather
+  than baked into it: `ScreenColumn.glyph` (the flag grid's columns *are* the
+  equipment slots, and upstream draws the worn item's glyph over each — a fact
+  about the column, not a first row to skip), `ScreenTableBlock.headerColor`,
+  `ScreenTableBlock.gapAfter`, and `ScreenTextBlock.wrap` (`text_out_wrap = 72`
+  for the history, a clamp on the terminal's width and never a minimum).
+
+  One renderer again: `characterSheetLines`, `characterGridLines`,
+  `statHeaderLine`, `statRowLine`, `historyBlockLines` and the wide layout's
+  per-panel blits are all now the model through `screenBodyLines` or the new
+  `screenBlockLines`, and `wrapPlain` is deleted. The existing upstream-cited
+  suite for the sheet passed unchanged, which is the evidence the picture did not
+  move on the player's screen.
+
+  `samples/sprite-inventory` takes both pages, drawing the equipment bonus as a
+  bar whose length *is* `cells.eb.values.bonus` — a thing no re-reading of
+  `"STR!  18/100  +1"` could have given — and the test asserts that not one
+  composite row the faithful terminal would have produced reached the canvas,
+  then presses `h` and checks the page moved *through the host*.
+
 - **The tombstone publishes the epitaph apart from the stone** (#253, MOD_REACH
   gap 21, step 5b-iii).
 

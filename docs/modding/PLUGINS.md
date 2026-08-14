@@ -628,14 +628,26 @@ would have to know that to get the name back. Instead each field carries a stabl
 ignore them and draw a real gravestone. A field with no band is centred on the
 full width, which is what upstream does for the winner's banner.
 
+**A column can carry a picture, and a table can space itself.** The character
+sheet's flag grid has one column per equipment slot, and upstream draws the *worn
+item's* glyph over each. That is a fact about the column — what is in this slot —
+so it arrives as `column.glyph` rather than as a first row you would have to know
+to skip; draw the item's icon there. Two more layout facts published beside the
+data rather than baked into it: `headerColor` is the header row's colour where the
+game colours it, and `gapAfter` is the blank rows the faithful terminal leaves
+under a table. A `text` block's `wrap` is the same idea for prose — the width
+*upstream* wraps at (72 for the character history on an 80-column screen), always
+a clamp and never a minimum. Ignore all four if you lay things out yourself.
+
 **Not every screen has a model yet.** `MODELLED_SCREENS`
 (`packages/web/src/screen-view.ts`) names the ones that do — today the inventory,
 the equipment, the quiver, the object list, the message history, the player
 history, the object recall, the object comparison, the monster recall, the
-tombstone and the winner. Everything else arrives under the shared id `core:text`
+tombstone, the winner, and the character sheet's two pages (`core:character` and
+`core:character-flags`). Everything else arrives under the shared id `core:text`
 with a single `lines` block of pre-wrapped rows: enough to reskin a frame, not
 enough to reimagine a listing. **Check `view.id`.** The remaining screens — the
-character sheet, the knowledge browser and the spell lists — are the biggest open
+knowledge browser, the help pages and the monster list — are the biggest open
 piece of `MOD_REACH.md` gap 21.
 
 **A screen is dismissed, not answered**, which is the one shape difference from
@@ -645,6 +657,41 @@ it. There is no answer value left to decline with once the promise means "they
 closed it", and deciding never needs to be async anyway — you match on `view.id`.
 Resolving `dismissed` is the whole contract: a presenter that forgets is a game
 the player cannot get back to.
+
+**Some screens can be acted on, and those hand you a way back in.** Most screens
+are only dismissed. The character sheet is not: upstream offers renaming, a
+character dump and the page cycle from the same modal, and a presenter that took
+the sheet without being able to reach them would quietly take those commands away
+from the player. So `view.actions` publishes them as data — a stable `id`
+(`rename`, `file`, `page-next`, `page-prev`), the `key` the *faithful terminal*
+listens for, and the game's own `label` — and `show(view, host)` hands you a
+`ScreenHost` whose `invoke(id)` runs one.
+
+```js
+show(view, host) {
+  if (view.id !== "core:character") return undefined;
+  let shown = view;
+  const onKey = (ev) => {
+    const action = shown.actions && shown.actions.find((a) => a.key === ev.key);
+    if (!action) return;
+    host.invoke(action.id).then((next) => {
+      if (!next) return close();   // the game has taken the screen back
+      shown = next;                // the same sheet renamed, or the other page
+      paint(shown);
+    });
+  };
+  ...
+}
+```
+
+`invoke` runs the **game's** code — a rename still opens the game's prompt, a dump
+still writes the game's file — and resolves with what the player should be looking
+at next: usually the same screen with new content, or the next page. `undefined`
+means the game has taken the screen back; resolve `dismissed` when you see it. An
+id this engine has not got is a no-op that hands the current view back, so asking
+for a newer command can never close the player's screen. `host` arrives only where
+`actions` does, and it is a second parameter rather than a field of the view
+because a view is frozen data and a way back into the game cannot be.
 
 **Throwing costs you the seam for the session**, as with `menu`. If you throw
 while a screen is *open*, or reject `dismissed`, the game reports you by name and

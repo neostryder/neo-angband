@@ -24,6 +24,14 @@
  * ui-player.c:222-232 / 379-443); narrow mode stacks them into a scroll list.
  * Only when no ui_entry packs are supplied does it fall back to a notice.
  *
+ * A MOD MAY TAKE THE WHOLE THING. Both pages have models - `characterScreen`
+ * and `characterFlagsScreen` - and `showCharacterSheet` offers the current one
+ * to the installed screen presenter before the terminal draws anything, falling
+ * back to the layouts above on a decline or a fault. The three commands the
+ * footer names travel with the view as `actions`, and `ScreenHost.invoke` runs
+ * them here, so a presenter's rename still opens the game's prompt and its dump
+ * still writes the game's file.
+ *
  * Pure display: no game mutation, no RNG. Renaming flows OUT through
  * opts.onRename (the shell persists it); nothing here touches state.
  */
@@ -63,14 +71,30 @@ import {
   type SurfaceSizeEvents,
 } from "./term";
 import {
+  characterScreen,
   characterSheetLines,
+  characterTitle,
   charSheetDeps,
   historyBlockLines,
   historyLines,
   statHeaderLine,
   statRowLine,
+  CHARACTER_ACTIONS,
+  CHARACTER_FOOTER,
 } from "./screens";
-import { promptText, menuNav, getFile } from "./overlay";
+import {
+  freezeView,
+  screenBlockLines,
+  screenBodyLines,
+  type ScreenCell,
+  type ScreenColumn,
+  type ScreenHost,
+  type ScreenRow,
+  type ScreenTableBlock,
+  type ScreenView,
+} from "./screen-view";
+import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
+import { promptText, menuNav, getFile, screenFault } from "./overlay";
 import { argForceName } from "./launch";
 import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
 import type { ScreenLine } from "./overlay";
@@ -201,109 +225,127 @@ const RES_LABEL_WIDTH = 6;
  * whatever (x, y) the layout wants - wide mode tiles four of these across the
  * screen, narrow mode stacks them.
  */
-function buildGridBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
+function gridPanelBlock(
+  state: GameState,
+  panel: UiGridPanel,
+  opts: { labels: boolean; caption?: string; gapAfter?: number },
+): ScreenTableBlock {
   const p = state.actor.player;
-  const out: ScreenLine[] = [];
-
-  /* Equippy row FIRST (display_resistance_panel L399: equippy at row++, then
-   * the letter header): 6-char label pad, the item glyph in each slot (a BLANK
-   * when empty, matching display_player_equippy's L' '), blank under '@'. */
-  const equippy: { text: string; color: string }[] = [
-    { text: " ".repeat(RES_LABEL_WIDTH), color: LABEL },
-  ];
+  const columns: ScreenColumn[] = [];
+  /* The 6-char label column, absent on the sustains block: upstream calls
+   * ui_entry_renderer_apply there with label = NULL (L541-563). */
+  if (opts.labels) columns.push({ key: "label", label: "", width: RES_LABEL_WIDTH });
   for (let i = 0; i < p.body.count; i++) {
     const obj = gearGet(state.gear, p.equipment[i] ?? 0);
     /* object_attr / object_char, not the kind record and not a fixed colour
      * (ui-player.c:365-367). This row used to paint every slot FG, so a Long
      * Sword and a Ring of Speed were the same white; and it read kind.dChar
-     * directly, so a flavoured item ignored its flavour. */
-    if (obj) {
-      const g = objectAttrChar(state, obj);
-      equippy.push({ text: g.char, color: colorToCss(g.attr) });
-    } else {
-      equippy.push({ text: " ", color: FG });
-    }
+     * directly, so a flavoured item ignored its flavour. An EMPTY slot still
+     * carries a glyph - upstream's L' ' - so the equippy row is drawn even for a
+     * character wearing nothing, rather than the panel sliding up a line. */
+    const g = obj ? objectAttrChar(state, obj) : null;
+    columns.push({
+      key: `s${i}`,
+      label: ALL_LETTERS_NOHJKL[i] ?? "",
+      width: 1,
+      gap: 0,
+      ...(opts.labels
+        ? { glyph: g ? { text: g.char, color: colorToCss(g.attr) } : { text: " ", color: FG } }
+        : {}),
+    });
   }
-  equippy.push({ text: " ", color: FG });
-  out.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });
+  columns.push({ key: "player", label: "@", width: 1, gap: 0 });
 
-  /* Slot-letter header (L401: "      abcdefgimnop@"): 6-char pad, one
-   * all_letters_nohjkl letter per body slot, then '@'. */
-  let hdr = " ".repeat(RES_LABEL_WIDTH);
-  for (let i = 0; i < p.body.count; i++) hdr += ALL_LETTERS_NOHJKL[i] ?? "";
-  hdr += "@";
-  out.push({ text: hdr, color: LABEL });
-
-  /* One row per entry: 6-char label (own colour) + a cell per slot + player. */
-  panel.rows.forEach((row) => {
-    const label = (row.label || "").padEnd(RES_LABEL_WIDTH).slice(0, RES_LABEL_WIDTH);
-    const runs: { text: string; color: string }[] = [
-      { text: label, color: colorToCss(row.labelColor) },
-    ];
-    for (const cell of row.cells) {
-      runs.push({ text: cell.symbol, color: colorToCss(cell.color) });
-    }
-    out.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
+  const rows: ScreenRow[] = panel.rows.map((row) => {
+    const cells: Record<string, ScreenCell> = {};
+    if (opts.labels) cells["label"] = { text: row.label, color: colorToCss(row.labelColor) };
+    row.cells.forEach((cell, ci) => {
+      /* Player column (last cell) carries only the sustain state; L563 forces
+       * its stat-modifier value to 0, so it renders as the empty symbol. */
+      const isPlayer = ci === p.body.count;
+      const symbol =
+        !opts.labels && isPlayer && /[0-9+-]/u.test(cell.symbol) ? "." : cell.symbol;
+      cells[isPlayer ? "player" : `s${ci}`] = { text: symbol, color: colorToCss(cell.color) };
+    });
+    /* The ui_entry name ("resist_ui_compact_0<ACID>") is the row's identity, and
+     * the only handle a presenter has on WHICH resistance a row is. */
+    return { id: row.name, color: FG, cells };
   });
-  return out;
+
+  return {
+    kind: "table",
+    key: panel.key,
+    tagged: false,
+    columns,
+    headerColor: LABEL,
+    rows,
+    ...(opts.caption === undefined ? {} : { caption: { text: opts.caption, color: TITLE } }),
+    ...(opts.gapAfter === undefined ? {} : { gapAfter: opts.gapAfter }),
+  };
+}
+
+/** One flag region's rows, for the wide layout that blits it at its own anchor. */
+function buildGridBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
+  return screenBlockLines(gridPanelBlock(state, panel, { labels: true }));
 }
 
 /**
  * buildSustainBlock: the stat-modifier / sustain block (display_player_sust_info,
  * ui-player.c:521-568). Unlike a resist region it has NO equippy row and NO
- * row labels (ui_entry_renderer_apply is called with label=NULL): just the
- * "abcdefgimnop@" header (no 6-char pad) and one cell-only row per stat, the
- * player '@' column blanked (L563: vals[body.count] = 0).
+ * row labels: just the "abcdefgimnop@" header (no 6-char pad) and one cell-only
+ * row per stat, the player '@' column blanked (L563: vals[body.count] = 0).
  */
 function buildSustainBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
-  const p = state.actor.player;
-  const out: ScreenLine[] = [];
-  let hdr = "";
-  for (let i = 0; i < p.body.count; i++) hdr += ALL_LETTERS_NOHJKL[i] ?? "";
-  hdr += "@";
-  out.push({ text: hdr, color: LABEL });
-  panel.rows.forEach((row) => {
-    const runs: { text: string; color: string }[] = [];
-    row.cells.forEach((cell, ci) => {
-      /* Player column (last cell) carries only the sustain state; L563 forces
-       * its stat-modifier value to 0, so it renders as the empty symbol. */
-      const isPlayer = ci === p.body.count;
-      runs.push({
-        text: isPlayer && /[0-9+-]/u.test(cell.symbol) ? "." : cell.symbol,
-        color: colorToCss(cell.color),
-      });
-    });
-    out.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
-  });
-  return out;
+  return screenBlockLines(gridPanelBlock(state, panel, { labels: false }));
 }
 
 /**
- * characterGridLines: the NARROW (phone) mode-1 layout - the flag regions and
- * the sustains block stacked vertically into one scrollable column. Wide mode
- * does not use this; it tiles the same buildGridBlock blocks side by side.
+ * The character sheet's SECOND page (display_player mode 1): the four
+ * resist / ability / hindrance / modifier regions and the sustains block.
+ *
+ * Every region is a table whose columns ARE the equipment slots - each headed by
+ * its `all_letters_nohjkl` letter and carrying the worn item's glyph - and whose
+ * rows are the ui_entries, addressed by the entry name. So "does this character
+ * resist acid, and which item gives it" is a lookup rather than a search through
+ * a wall of one-character cells.
  */
-function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
-  /* liveUiEntryDeps (PORT_TODO 3.6/3.7/3.8): this call, and the two below,
-   * passed NO deps - so the timed-flag column, the temporary-resist row and every
-   * PF_* intrinsic read as absent on the character sheet in every game. */
-  const { resistPanels, statModPanel } = characterGrid(
-    state,
-    config,
-    liveUiEntryDeps(state),
-  );
-  const lines: ScreenLine[] = [];
-  // NARROW (phone) mode only: a section title precedes each block so the
-  // stacked scroll list stays legible. The wide layout (the upstream screen)
-  // draws no such titles - upstream shows them only in the character dump.
-  for (const panel of resistPanels) {
-    lines.push({ text: PANEL_TITLES[panel.key] ?? panel.key, color: TITLE });
-    for (const l of buildGridBlock(state, panel)) lines.push(l);
-    lines.push({ text: "", color: FG });
-  }
-  lines.push({ text: "Sustains", color: TITLE });
-  for (const l of buildSustainBlock(state, statModPanel)) lines.push(l);
-  return lines;
+export function characterFlagsScreen(
+  state: GameState,
+  name: string,
+  config: UiEntryConfig,
+): ScreenView {
+  /* liveUiEntryDeps (PORT_TODO 3.6/3.7/3.8): this call passed NO deps - so the
+   * timed-flag column, the temporary-resist row and every PF_* intrinsic read as
+   * absent on the character sheet in every game. */
+  const { resistPanels, statModPanel } = characterGrid(state, config, liveUiEntryDeps(state));
+  return freezeView({
+    id: "core:character-flags",
+    title: characterTitle(state, name),
+    footer: CHARACTER_FOOTER,
+    actions: CHARACTER_ACTIONS,
+    /* A section title precedes each block so the STACKED list stays legible. The
+     * wide layout tiles the same blocks side by side and draws no titles, which
+     * is upstream's screen - it shows them only in the character dump. */
+    blocks: [
+      ...resistPanels.map((panel) =>
+        gridPanelBlock(state, panel, {
+          labels: true,
+          caption: PANEL_TITLES[panel.key] ?? panel.key,
+          gapAfter: 1,
+        }),
+      ),
+      gridPanelBlock(state, statModPanel, { labels: false, caption: "Sustains" }),
+    ],
+  });
+}
+
+/**
+ * characterGridLines: the NARROW (phone) mode-1 layout - the faithful terminal's
+ * rows for `characterFlagsScreen`. Wide mode does not use this; it tiles the same
+ * blocks side by side.
+ */
+function characterGridLines(state: GameState, name: string, config: UiEntryConfig): ScreenLine[] {
+  return screenBodyLines(characterFlagsScreen(state, name, config));
 }
 
 /**
@@ -608,294 +650,337 @@ export function showCharacterSheet(
   opts: CharSheetOpts = {},
 ): Promise<void> {
   let curName = name;
-  const mkDeps = () => ({
-    ...charSheetDeps(state, curName),
+  /* Hoisted out of the terminal's own painting loop because the PRESENTER moves
+   * it too, through `invoke("page-next")`. */
+  let mode = 0; // 0 = skills/history, 1 = resist/ability/sustain grid
+  const extraDeps = () => ({
     ...(opts.numShots !== undefined ? { numShots: opts.numShots } : {}),
     ...(opts.launcher !== undefined ? { launcher: opts.launcher } : {}),
   });
+  const mkDeps = () => ({ ...charSheetDeps(state, curName), ...extraDeps() });
   /* Build the ui_entry config once (mode 1 grid); null without packs. */
   const gridConfig = opts.uiEntryPacks ? buildUiEntryConfig(opts.uiEntryPacks) : null;
   const modeOneLines = (): ScreenLine[] =>
-    gridConfig ? characterGridLines(state, gridConfig) : modeOnePlaceholder();
+    gridConfig ? characterGridLines(state, curName, gridConfig) : modeOnePlaceholder();
 
-  return new Promise<void>((resolve) => {
-    let top = 0; // scroll offset for the narrow list / mode-1 grid
-    let mode = 0; // 0 = skills/history, 1 = resist/ability/sustain grid
-    let narrow = false; // what the last paint drew, for the tap handler
+  /**
+   * 'c' (do_cmd_change_name L1249-1250): with the name pinned from the command
+   * line the rename is refused outright and the prompt never opens.
+   */
+  const doRename = async (): Promise<void> => {
+    if (argForceName()) {
+      opts.msg?.("You are not allowed to change your name!");
+      return;
+    }
+    const entered = await promptText(term, "Enter your character's name", curName);
+    if (entered !== null && entered.trim()) {
+      curName = entered.trim();
+      opts.onRename?.(curName);
+    }
+  };
 
-    /** Paint one ScreenLine's runs (or plain text) at (x, y). */
-    const printLine = (x: number, y: number, line: ScreenLine): void => {
-      if (line.runs) {
-        let cx = x;
-        for (const run of line.runs) {
-          term.print(cx, y, run.text, run.color);
-          cx += run.text.length;
-        }
-      } else {
-        term.print(x, y, line.text, line.color ?? FG);
-      }
-    };
+  /** 'f' (L1263-1278): get_file over the suggested name, dump_save, then msg. */
+  const doFileDump = async (): Promise<void> => {
+    const file = await getFile(term, dumpFileName(curName));
+    if (file === null) return;
+    const ok = dumpCharacterFile(
+      state,
+      curName,
+      file,
+      {
+        ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
+        ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
+        ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
+      },
+      opts.msg,
+    );
+    opts.msg?.(ok ? "Character dump successful." : "Character dump failed!");
+  };
 
-    const title = (): string => {
-      const p = state.actor.player;
-      return `Character  -  ${curName || "(unnamed)"} the ${p.race.name} ${p.cls.name}, Level ${p.lev}`;
-    };
+  /**
+   * The view for whichever page is showing, or `null` for the mode-1 placeholder
+   * a character with no ui_entry packs gets - there is no model for a notice
+   * saying the data is missing, and publishing one under `core:character-flags`
+   * would be a lie about what a presenter is holding.
+   */
+  const viewFor = (): ScreenView | null =>
+    mode === 0
+      ? characterScreen(state, curName, extraDeps())
+      : gridConfig === null
+        ? null
+        : characterFlagsScreen(state, curName, gridConfig);
 
-    // do_cmd_change_name prompt (ui-player.c:1229), verbatim and identical in
-    // both display modes; 'h' cycles the pages.
-    const wideFooter = (): string =>
-      "['c' to change name, 'f' to file, 'h' to change mode, or ESC]";
+  /**
+   * THE SEAM. A presenter is offered the sheet before the terminal draws it, and
+   * `host` is how it reaches the three commands the footer names: the rename and
+   * the dump still run the GAME's code (its prompt, its file), and the page keys
+   * hand back the other page's view.
+   *
+   * An unknown id is a no-op that returns the current view rather than an error,
+   * because a presenter written against a later engine must not be able to close
+   * the player's character sheet by asking for a command this one has not got.
+   */
+  const host: ScreenHost = {
+    invoke: async (id: string): Promise<ScreenView | undefined> => {
+      if (id === "page-next") mode = (mode + 1) % INFO_SCREENS;
+      else if (id === "page-prev") mode = (mode - 1 + INFO_SCREENS) % INFO_SCREENS;
+      else if (id === "rename") await doRename();
+      else if (id === "file") await doFileDump();
+      return viewFor() ?? undefined;
+    },
+  };
 
-    const paintWide = (): void => {
-      term.clear();
-      const { cols, rows } = term.size();
-      term.print(0, 0, title().slice(0, cols - 1), TITLE);
-      const deps = mkDeps();
+  const opening = viewFor();
+  if (opening !== null) {
+    const taken = showThroughPresenter(opening, screenFault, host);
+    if (taken) {
+      return taken.catch((error: unknown) => {
+        /* The presenter died with the sheet open. It is already reported and the
+         * seam is already out; all that is left is to show the player the screen
+         * they asked for, which the terminal path below does. */
+        if (!(error instanceof ScreenAbandoned)) throw error;
+        return showSheetOnTerminal();
+      });
+    }
+  }
+  return showSheetOnTerminal();
 
-      // Stat table at the upstream column stops, shared with the narrow list
-      // (statHeaderLine/statRowLine carry the per-column colours).
-      printLine(STAT_COL, STAT_HEADER_ROW, statHeaderLine());
-      let sy = STAT_HEADER_ROW + 1;
-      for (const row of statTable(state, deps)) {
-        printLine(STAT_COL, sy++, statRowLine(row));
-      }
+  /** The faithful terminal's own character sheet; see `showCharacterSheet`. */
+  function showSheetOnTerminal(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let top = 0; // scroll offset for the narrow list / mode-1 grid
+      let narrow = false; // what the last paint drew, for the tap handler
 
-      const panels = characterPanels(state, deps);
-      const byKey = (k: string) => panels.find((p) => p.key === k)?.lines ?? [];
-
-      if (mode === 0) {
-        drawPlayerXtraInfo(term, characterPanels(state, deps), historyBlockLines(state, cols));
-      } else if (!gridConfig) {
-        // No ui_entry packs: a labelled notice instead of a faked grid.
-        let y = 2;
-        for (const line of modeOnePlaceholder()) printLine(0, y++, line);
-      } else {
-        // Mode 1 (display_player mode 1, ui-player.c:905-914): the topleft
-        // Name/Race/Class/Title/HP/SP panel, the stat table (already drawn
-        // above), the sustains block, and the four flag regions - each at its
-        // exact upstream anchor, with NO on-screen region titles (upstream
-        // shows those only in the character dump).
-        paintPanel(term, ANCHOR.topleft, byKey("topleft"));
-        const { resistPanels, statModPanel } = characterGrid(
-          state,
-          gridConfig,
-          liveUiEntryDeps(state),
-        );
-        const blit = (block: ScreenLine[], x: number, y0: number): void => {
-          let y = y0;
-          for (const line of block) {
-            if (y >= rows - 1) break;
-            printLine(x, y, line);
-            y += 1;
-          }
-        };
-        // Sustains (display_player_sust_info, col 26): the "abcdefgimnop@"
-        // header on the stat-header row, its five stat rows on the stat rows,
-        // just left of the stat table.
-        blit(buildSustainBlock(state, statModPanel), SUST_COL, STAT_HEADER_ROW);
-        // Four flag regions tiled left-to-right (cols 0/20/40/60), each with an
-        // equippy row / letter header / data rows from row 2+STAT_MAX.
-        resistPanels.forEach((panel, i) => {
-          blit(buildGridBlock(state, panel), i * RES_REGION_STRIDE, RES_REGION_ROW);
-        });
-      }
-
-      term.print(2, rows - 1, wideFooter().slice(0, cols - 3), DIM);
-    };
-
-    const narrowLines = (): ScreenLine[] => {
-      const { cols } = term.size();
-      if (mode === 1) return modeOneLines();
-      return characterSheetLines(state, curName, cols);
-    };
-
-    const paintNarrow = (): void => {
-      const { cols, rows } = term.size();
-      const lines = narrowLines();
-      term.clear();
-      term.print(0, 0, "Character".slice(0, cols - 1), TITLE);
-      const bodyRows = rows - 3;
-      const maxTop = Math.max(0, lines.length - bodyRows);
-      if (top > maxTop) top = maxTop;
-      for (let r = 0; r < bodyRows; r++) {
-        const line = lines[top + r];
-        if (!line) break;
+      /** Paint one ScreenLine's runs (or plain text) at (x, y). */
+      const printLine = (x: number, y: number, line: ScreenLine): void => {
         if (line.runs) {
-          let x = 0;
+          let cx = x;
           for (const run of line.runs) {
-            if (x >= cols - 1) break;
-            const chunk = run.text.slice(0, cols - 1 - x);
-            term.print(x, 2 + r, chunk, run.color);
-            x += chunk.length;
+            term.print(cx, y, run.text, run.color);
+            cx += run.text.length;
           }
         } else {
-          term.print(0, 2 + r, line.text.slice(0, cols - 1), line.color ?? FG);
+          term.print(x, y, line.text, line.color ?? FG);
         }
-      }
-      const more =
-        maxTop > 0
-          ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})`
-          : "";
-      term.print(
-        0,
-        rows - 1,
-        `['c' to change name, 'f' to file, 'h' to change mode, or ESC]${more}`.slice(0, cols - 1),
-        DIM,
-      );
-    };
+      };
 
-    const paint = (): void => {
-      narrow = term.size().cols < WIDE_COLS;
-      if (narrow) paintNarrow();
-      else paintWide();
-    };
+      const title = (): string => characterTitle(state, curName);
 
-    const finish = (): void => {
-      inputEvents.removeEventListener("keydown", onKey, true);
-      setActiveCellTap(term, null);
-      stopSizeChanged();
-      resolve();
-    };
+      // do_cmd_change_name prompt (ui-player.c:1229), verbatim and identical in
+      // both display modes; 'h' cycles the pages. The same string the views
+      // publish as their footer, spelled once in `screens.ts`.
+      const wideFooter = (): string => CHARACTER_FOOTER;
 
-    const cycleMode = (delta: number): void => {
-      mode = (mode + delta + INFO_SCREENS) % INFO_SCREENS;
-      top = 0;
-      paint();
-    };
+      const paintWide = (): void => {
+        term.clear();
+        const { cols, rows } = term.size();
+        term.print(0, 0, title().slice(0, cols - 1), TITLE);
+        const deps = mkDeps();
 
-    /** 'c' (change name): detach our listeners, run promptText, reattach. */
-    const changeName = (): void => {
-      /* ui-player.c:1249-1250. With the name pinned from the command line the
-       * rename is refused outright - the prompt never opens, so there is nothing
-       * to detach for. */
-      if (argForceName()) {
-        opts.msg?.("You are not allowed to change your name!");
-        return;
-      }
-      inputEvents.removeEventListener("keydown", onKey, true);
-      setActiveCellTap(term, null);
-      void promptText(term, "Enter your character's name", curName).then((entered) => {
-        if (entered !== null && entered.trim()) {
-          curName = entered.trim();
-          opts.onRename?.(curName);
+        // Stat table at the upstream column stops, shared with the narrow list
+        // (statHeaderLine/statRowLine carry the per-column colours).
+        printLine(STAT_COL, STAT_HEADER_ROW, statHeaderLine());
+        let sy = STAT_HEADER_ROW + 1;
+        for (const row of statTable(state, deps)) {
+          printLine(STAT_COL, sy++, statRowLine(row));
         }
-        inputEvents.addEventListener("keydown", onKey, true);
-        installTap();
-        paint();
-      });
-    };
 
-    /**
-     * 'f' (do_cmd_change_name L1263-1278): get_file over the suggested
-     * player_safe_name + ".txt", then dump_save, then its result message. Same
-     * detach/reattach as changeName - get_file's own prompts listen in the
-     * capture phase and would otherwise be starved by ours.
-     */
-    const fileDump = (): void => {
-      inputEvents.removeEventListener("keydown", onKey, true);
-      setActiveCellTap(term, null);
-      void (async () => {
-        const file = await getFile(term, dumpFileName(curName));
-        if (file !== null) {
-          const ok = dumpCharacterFile(
+        const panels = characterPanels(state, deps);
+        const byKey = (k: string) => panels.find((p) => p.key === k)?.lines ?? [];
+
+        if (mode === 0) {
+          drawPlayerXtraInfo(term, characterPanels(state, deps), historyBlockLines(state, cols));
+        } else if (!gridConfig) {
+          // No ui_entry packs: a labelled notice instead of a faked grid.
+          let y = 2;
+          for (const line of modeOnePlaceholder()) printLine(0, y++, line);
+        } else {
+          // Mode 1 (display_player mode 1, ui-player.c:905-914): the topleft
+          // Name/Race/Class/Title/HP/SP panel, the stat table (already drawn
+          // above), the sustains block, and the four flag regions - each at its
+          // exact upstream anchor, with NO on-screen region titles (upstream
+          // shows those only in the character dump).
+          paintPanel(term, ANCHOR.topleft, byKey("topleft"));
+          const { resistPanels, statModPanel } = characterGrid(
             state,
-            curName,
-            file,
-            {
-              ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
-              ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
-              ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
-            },
-            opts.msg,
+            gridConfig,
+            liveUiEntryDeps(state),
           );
-          opts.msg?.(ok ? "Character dump successful." : "Character dump failed!");
+          const blit = (block: ScreenLine[], x: number, y0: number): void => {
+            let y = y0;
+            for (const line of block) {
+              if (y >= rows - 1) break;
+              printLine(x, y, line);
+              y += 1;
+            }
+          };
+          // Sustains (display_player_sust_info, col 26): the "abcdefgimnop@"
+          // header on the stat-header row, its five stat rows on the stat rows,
+          // just left of the stat table.
+          blit(buildSustainBlock(state, statModPanel), SUST_COL, STAT_HEADER_ROW);
+          // Four flag regions tiled left-to-right (cols 0/20/40/60), each with an
+          // equippy row / letter header / data rows from row 2+STAT_MAX.
+          resistPanels.forEach((panel, i) => {
+            blit(buildGridBlock(state, panel), i * RES_REGION_STRIDE, RES_REGION_ROW);
+          });
         }
-        inputEvents.addEventListener("keydown", onKey, true);
-        installTap();
+
+        term.print(2, rows - 1, wideFooter().slice(0, cols - 3), DIM);
+      };
+
+      const narrowLines = (): ScreenLine[] => {
+        const { cols } = term.size();
+        if (mode === 1) return modeOneLines();
+        return characterSheetLines(state, curName, cols);
+      };
+
+      const paintNarrow = (): void => {
+        const { cols, rows } = term.size();
+        const lines = narrowLines();
+        term.clear();
+        term.print(0, 0, "Character".slice(0, cols - 1), TITLE);
+        const bodyRows = rows - 3;
+        const maxTop = Math.max(0, lines.length - bodyRows);
+        if (top > maxTop) top = maxTop;
+        for (let r = 0; r < bodyRows; r++) {
+          const line = lines[top + r];
+          if (!line) break;
+          if (line.runs) {
+            let x = 0;
+            for (const run of line.runs) {
+              if (x >= cols - 1) break;
+              const chunk = run.text.slice(0, cols - 1 - x);
+              term.print(x, 2 + r, chunk, run.color);
+              x += chunk.length;
+            }
+          } else {
+            term.print(0, 2 + r, line.text.slice(0, cols - 1), line.color ?? FG);
+          }
+        }
+        const more =
+          maxTop > 0
+            ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})`
+            : "";
+        term.print(0, rows - 1, `${CHARACTER_FOOTER}${more}`.slice(0, cols - 1), DIM);
+      };
+
+      const paint = (): void => {
+        narrow = term.size().cols < WIDE_COLS;
+        if (narrow) paintNarrow();
+        else paintWide();
+      };
+
+      const finish = (): void => {
+        inputEvents.removeEventListener("keydown", onKey, true);
+        setActiveCellTap(term, null);
+        stopSizeChanged();
+        resolve();
+      };
+
+      const cycleMode = (delta: number): void => {
+        mode = (mode + delta + INFO_SCREENS) % INFO_SCREENS;
+        top = 0;
         paint();
-      })();
-    };
+      };
 
-    const onKey = (ev: KeyboardEvent): void => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      const { rows } = term.size();
-      const page = Math.max(1, rows - 4);
-      switch (ev.key) {
-        case "Escape":
-        case "Enter":
-          finish();
-          return;
-        // do_cmd_change_name (L1280-1289): h/Space/ArrowLeft cycle FORWARD,
-        // l/ArrowRight cycle BACKWARD. On the narrow list Space keeps its
-        // close behaviour and the arrows scroll, so only 'h'/'l' cycle there.
-        case "h":
-          cycleMode(+1);
-          return;
-        case "l":
-          cycleMode(-1);
-          return;
-        case " ":
-          if (narrow) finish();
-          else cycleMode(+1);
-          return;
-        case "ArrowLeft":
-          if (!narrow) cycleMode(+1);
-          return;
-        case "ArrowRight":
-          if (!narrow) cycleMode(-1);
-          return;
-        case "c":
-          changeName();
-          return;
-        case "f":
-          fileDump();
-          return;
-        default: {
-          // Arrows AND numpad digits scroll (menuNav), so the numpad is not
-          // dead here when NumLock is on. ArrowLeft/Right (cycle) are handled
-          // above; menuNav only reports vertical intent (4/6 stay page cycles).
-          const nav = menuNav(ev);
-          if (!nav) return;
-          if (nav === "up") top = Math.max(0, top - 1);
-          else if (nav === "down") top += 1;
-          else if (nav === "pageup") top = Math.max(0, top - page);
-          else if (nav === "pagedown") top += page;
-          else if (nav === "home") top = 0;
-          else if (nav === "end") top += page; // clamped in paint()
-          break;
-        }
-      }
-      paint();
-    };
 
-    /** Tap: on the wide sheet a body tap flips the page (upstream's mouse
-     * button 1) and a footer tap closes; on the narrow list a tap scrolls
-     * (upper half up, lower half down) and the footer closes. */
-    const installTap = (): void => {
-      setActiveCellTap(term, (cell) => {
+      /**
+       * Run one of the sheet's commands with OUR listeners detached: `promptText`
+       * and `getFile` listen in the capture phase and would otherwise be starved by
+       * ours. The command bodies themselves are shared with the presenter's `host`,
+       * which needs no detaching because it never installed anything.
+       */
+      const detached = (run: () => Promise<void>): void => {
+        inputEvents.removeEventListener("keydown", onKey, true);
+        setActiveCellTap(term, null);
+        void run().then(() => {
+          inputEvents.addEventListener("keydown", onKey, true);
+          installTap();
+          paint();
+        });
+      };
+
+      const onKey = (ev: KeyboardEvent): void => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
         const { rows } = term.size();
-        if (cell.row === rows - 1) {
-          finish();
-          return;
-        }
-        if (!narrow) {
-          cycleMode(+1);
-          return;
-        }
         const page = Math.max(1, rows - 4);
-        if (cell.row < Math.floor(rows / 2)) top = Math.max(0, top - page);
-        else top += page;
+        switch (ev.key) {
+          case "Escape":
+          case "Enter":
+            finish();
+            return;
+          // do_cmd_change_name (L1280-1289): h/Space/ArrowLeft cycle FORWARD,
+          // l/ArrowRight cycle BACKWARD. On the narrow list Space keeps its
+          // close behaviour and the arrows scroll, so only 'h'/'l' cycle there.
+          case "h":
+            cycleMode(+1);
+            return;
+          case "l":
+            cycleMode(-1);
+            return;
+          case " ":
+            if (narrow) finish();
+            else cycleMode(+1);
+            return;
+          case "ArrowLeft":
+            if (!narrow) cycleMode(+1);
+            return;
+          case "ArrowRight":
+            if (!narrow) cycleMode(-1);
+            return;
+          case "c":
+            detached(doRename);
+            return;
+          case "f":
+            detached(doFileDump);
+            return;
+          default: {
+            // Arrows AND numpad digits scroll (menuNav), so the numpad is not
+            // dead here when NumLock is on. ArrowLeft/Right (cycle) are handled
+            // above; menuNav only reports vertical intent (4/6 stay page cycles).
+            const nav = menuNav(ev);
+            if (!nav) return;
+            if (nav === "up") top = Math.max(0, top - 1);
+            else if (nav === "down") top += 1;
+            else if (nav === "pageup") top = Math.max(0, top - page);
+            else if (nav === "pagedown") top += page;
+            else if (nav === "home") top = 0;
+            else if (nav === "end") top += page; // clamped in paint()
+            break;
+          }
+        }
         paint();
-      });
-    };
+      };
 
-    // Repaint on resize so crossing the wide/narrow threshold re-lays out.
-    const stopSizeChanged = term.onSizeChanged(() => paint());
-    inputEvents.addEventListener("keydown", onKey, true);
-    installTap();
-    paint();
-  });
+      /** Tap: on the wide sheet a body tap flips the page (upstream's mouse
+       * button 1) and a footer tap closes; on the narrow list a tap scrolls
+       * (upper half up, lower half down) and the footer closes. */
+      const installTap = (): void => {
+        setActiveCellTap(term, (cell) => {
+          const { rows } = term.size();
+          if (cell.row === rows - 1) {
+            finish();
+            return;
+          }
+          if (!narrow) {
+            cycleMode(+1);
+            return;
+          }
+          const page = Math.max(1, rows - 4);
+          if (cell.row < Math.floor(rows / 2)) top = Math.max(0, top - page);
+          else top += page;
+          paint();
+        });
+      };
+
+      // Repaint on resize so crossing the wide/narrow threshold re-lays out.
+      const stopSizeChanged = term.onSizeChanged(() => paint());
+      inputEvents.addEventListener("keydown", onKey, true);
+      installTap();
+      paint();
+    });
+  }
 }
 
 /**
