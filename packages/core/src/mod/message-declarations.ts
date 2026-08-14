@@ -41,6 +41,12 @@
  * samples ride the same record: a content-only sound pack that could name a
  * message type and never bind a sample to it would be half a capability.
  *
+ * AND IT WAS HALF A CAPABILITY UNTIL 2026-08-14, because the samples were
+ * registered inside the branch that COINED a type. So a pack could bind samples
+ * to a message it had invented and to none of upstream's 153 - a sound pack
+ * that cannot re-point MSG_HIT. `bindSounds` below is that branch lifted out;
+ * the type declaration's own outcome is unchanged.
+ *
  * NO CAPABILITY GATE, deliberately. `registry:*` gates trusted in-process CODE.
  * These are records, and a content pack can already add a projection, a
  * monster, an artifact and an ego item with no capability at all; gating one
@@ -55,6 +61,7 @@
  * it binds or fails on its own merits either way.
  */
 
+import { messageLookupByName } from "../sound/engine.js";
 import { messageTypes } from "../sound/message-types.js";
 import type { MessageTypeRegistryTarget } from "../sound/message-types.js";
 import { soundPrefRegistry } from "../sound/sound-registry.js";
@@ -105,10 +112,9 @@ export interface MessageDeclarationResult {
   readonly declared: readonly DeclaredMessageType[];
   /**
    * Names that already resolved - a second bind in the same process, or a
-   * second pack declaring a name the first one already did. Neither the type
-   * nor its samples are registered again: `message_sound_define` clears a
-   * message's list before assigning, so re-adding samples on a reload would
-   * silently re-point the message at whichever pack happened to bind last.
+   * second pack declaring a name the first one already did. The TYPE is not
+   * appended again; the record's `sounds` still bind, once per (owner, type),
+   * which is the whole of the sound-pack door - see `bindSounds`.
    */
   readonly already: readonly ExistingMessageType[];
   readonly refused: readonly RefusedMessageType[];
@@ -121,6 +127,94 @@ export interface MessageDeclarationTargets {
 }
 
 const EMPTY: MessageDeclarationResult = { declared: [], already: [], refused: [] };
+
+/**
+ * The (owner, type) pairs whose samples this process has already registered.
+ *
+ * MODULE SCOPE, matching the registry it guards. `soundPrefRegistry` is
+ * module-level because the sound engine is per FRONT END and outlives every
+ * game, and `bindCore` runs on BOTH the new-game and the load path - so without
+ * this a player starting a second character re-registers every pack's samples,
+ * and `message_sound_define` CLEARS a message's list before assigning
+ * (sound-core.c:190). The growth would be harmless; the re-pointing would not.
+ *
+ * KEYED BY OWNER AS WELL AS TYPE, so that two packs binding the SAME message
+ * both land and load order decides the winner - which is upstream's own answer
+ * for a second `sound:HIT:` line and the reason a sound pack works at all. A
+ * key of type alone would silently hand the message to whichever pack loaded
+ * first, i.e. exactly backwards.
+ *
+ * The cost of the owner in the key: one pack listing the same type twice with
+ * different samples in one file gets its FIRST list, where upstream's two prf
+ * lines would give the second. That is a pack contradicting itself in one file,
+ * and taking the first is at least stable; the cross-pack case is the one a
+ * player can actually assemble.
+ *
+ * Nothing in production clears this - a reload is a new module instance. Tests
+ * that clear `soundPrefRegistry` must call `resetModSoundBindings` with it, or
+ * the guard outlives the registry it is guarding and the next test sees a
+ * silent skip.
+ */
+const boundSounds = new Set<string>();
+
+/** Test / session teardown, paired with `soundPrefRegistry.clear()`. */
+export function resetModSoundBindings(): void {
+  boundSounds.clear();
+}
+
+/**
+ * Register a record's `sounds` list, whatever became of its type DECLARATION.
+ *
+ * THIS IS THE SOUND-PACK DOOR, and until 2026-08-14 it was inside the branch
+ * that coined a new type - so a pack could bind samples to a message it had
+ * invented and to nothing else, which is the opposite of what a sound pack is.
+ * The two branches that dropped it are the only two a sound pack ever takes:
+ * naming one of upstream's 153 (`messages.add` throws, the record lands in
+ * `refused`) and naming a type an earlier pack coined (the `already` path).
+ *
+ * The type declaration's outcome is left exactly as it was. A record naming
+ * `HIT` is still `refused`, because the thing being refused is real - a pack
+ * cannot change a compiled message's `sound.prf` KEY - and callers already
+ * report on that list. What changes is only that its samples are no longer
+ * thrown away with it.
+ *
+ * A NAME THAT RESOLVES NOWHERE IS STILL DROPPED. `loadPrefs` would drop such an
+ * entry anyway (engine.ts: `if (idx < 0) continue`), so registering it would be
+ * dead weight carried through every `allSoundPrefEntries()` call. Resolution
+ * goes through the injected `messages` target FIRST so a caller-supplied
+ * registry is honoured, then through `messageLookupByName`, which is the single
+ * chokepoint that sees the compiled 153, the numeric path and the mod table.
+ *
+ * The key's separator is `|` rather than the NUL a pair-key usually gets: a mod
+ * id is a slug and a MSG_ name is an identifier, so neither can contain one,
+ * and a NUL in a source file makes git classify it as BINARY - which is the
+ * `i/-text` defect CLAUDE.md's line-endings rule is about.
+ */
+function bindSounds(
+  rec: MessageTypeRecordJson,
+  owner: string | null,
+  messages: MessageTypeRegistryTarget,
+  sounds: SoundPrefRegistryTarget,
+  refused: RefusedMessageType[],
+): void {
+  if (typeof rec.sounds !== "string" || rec.sounds.length === 0) return;
+  if (messages.lookup(rec.name) < 0 && messageLookupByName(rec.name) < 0) return;
+  const key = `${owner ?? ""}|${rec.name.toLowerCase()}`;
+  if (boundSounds.has(key)) return;
+  try {
+    sounds.add([{ type: rec.name, sounds: rec.sounds }], owner ?? undefined);
+  } catch (err) {
+    refused.push({
+      name: rec.name,
+      owner,
+      why: `message_type: ${rec.name}: sounds rejected: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    });
+    return;
+  }
+  boundSounds.add(key);
+}
 
 /**
  * Append a pack's declared message types, before anything binds a record that
@@ -174,6 +268,7 @@ export function declareModMessageTypes(
     const seen = messages.lookup(rec.name);
     if (seen >= 0) {
       already.push({ name: rec.name, at: seen });
+      bindSounds(rec, owner, messages, sounds, refused);
       continue;
     }
     let at: number;
@@ -185,27 +280,14 @@ export function declareModMessageTypes(
         owner,
         why: err instanceof Error ? err.message : String(err),
       });
+      bindSounds(rec, owner, messages, sounds, refused);
       continue;
     }
     declared.push({ name: rec.name, at, owner });
-    /* The `sound:` half, registered only for a type this pass actually coined.
-     * `loadPrefs` drops a directive naming an unknown MSG_ exactly as upstream
-     * drops such a prf line, and `soundPrefRegistry.onAdd` is what carries a
-     * batch registered after the engine was installed - so this half was never
-     * the one with an ordering problem, and it stays where the type is. */
-    if (typeof rec.sounds === "string" && rec.sounds.length > 0) {
-      try {
-        sounds.add([{ type: rec.name, sounds: rec.sounds }], owner ?? undefined);
-      } catch (err) {
-        refused.push({
-          name: rec.name,
-          owner,
-          why: `message_type: ${rec.name}: sounds rejected: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        });
-      }
-    }
+    /* The `sound:` half. `soundPrefRegistry.onAdd` is what carries a batch
+     * registered after the engine was installed, so this half never had the
+     * ordering problem the type declaration had - what it had was a branch. */
+    bindSounds(rec, owner, messages, sounds, refused);
   }
   return { declared, already, refused };
 }

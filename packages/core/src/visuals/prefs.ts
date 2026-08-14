@@ -35,6 +35,7 @@ import {
 } from "../obj/bind.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { messageLookupByName } from "../sound/engine.js";
+import { soundPrefRegistry } from "../sound/sound-registry.js";
 import { lookupTrap } from "../world/trap.js";
 import type { TrapKind } from "../world/trap.js";
 import type { FeatureRegistry } from "../world/feature.js";
@@ -93,6 +94,17 @@ export interface PrefSink {
   keymapInput?(mode: number, key: string, act: string): void;
   /** parse_prefs_message -> message_color_define(msg_index, attr). */
   messageColor?(msgIndex: number, attr: number): void;
+  /**
+   * parse_prefs_sound -> message_sound_define(msg_index, sounds).
+   *
+   * The message arrives as its NAME, not as the index the handler resolved it
+   * to, because the port's destination - `SoundPrefEntry` - is name-keyed: the
+   * sound engine is per FRONT END and outlives every bind, so an index taken at
+   * parse time would be stale the moment a mod appended a message type. The
+   * handler still resolves the name, and still reports upstream's
+   * PARSE_ERROR_INVALID_MESSAGE for one that does not.
+   */
+  sound?(type: string, sounds: string): void;
   /** parse_prefs_color -> angband_color_table[idx] = {k,r,g,b}. */
   colorTable?(idx: number, k: number, r: number, g: number, b: number): void;
   /** parse_prefs_window: the subwindow flag set finish_parse_prefs applies. */
@@ -397,6 +409,35 @@ const parseMessage: Handler = (fields, sink) => {
   return null;
 };
 
+/**
+ * parse_prefs_sound (sound-core.c L273-295), registered into the SAME pref
+ * parser as every directive above it by `register_sound_pref_parser`
+ * (ui-prefs.c:1157). Its format is `SOUND_PRF_FORMAT` - "sound sym type str
+ * sounds" (sound.h:52) - so the type is one symbol and the samples are the REST
+ * of the line, colons included.
+ *
+ * WHY IT WAS MISSING, and why that stopped being a reason. The directive was
+ * left out when the parse loop was ported because the port had no mixer, and
+ * the comment at the loop's unknown-directive branch still said the bundled prf
+ * files carry `sound:` lines it had to stay quiet about. Both halves are now
+ * false: `SoundEngine` has been the consumer since it was ported, `sound:` has
+ * a producer a mod can reach (`soundPrefRegistry`), and no `.prf` this port
+ * ships carries a `sound:` line at all - the 447 of them live in
+ * `reference/lib/customize/sound.prf`, which is a BUILD input to
+ * `gen-sound-prefs.mjs` and is never parsed at runtime. So the only files this
+ * directive can appear in are a mod's `prefs` resource and a player's own pref
+ * file, and in both of those it was being dropped in silence.
+ */
+const parseSound: Handler = (fields, sink) => {
+  const type = fields[0];
+  /* parser_getsym("type") then parser_getstr("sounds"): both required, and the
+   * str token is the remainder of the line rather than one colon-free field. */
+  if (type === undefined || fields.length < 2) return PARSE_ERROR.MISSING_FIELD;
+  if (messageLookupByName(type) < 0) return PARSE_ERROR.INVALID_MESSAGE;
+  sink.sound?.(type, fields.slice(1).join(":"));
+  return null;
+};
+
 /** parse_prefs_color (ui-prefs.c L1025-1052). */
 const parseColor: Handler = (fields, sink) => {
   const idx = parsePrefNum(fields[0] ?? "");
@@ -465,6 +506,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   flavor: parseFlavor,
   inscribe: parseInscribe,
   message: parseMessage,
+  sound: parseSound,
   color: parseColor,
   window: parseWindow,
   "entry-renderer": parseEntryRenderer,
@@ -569,10 +611,26 @@ export function processPrefText(
     }
 
     const handler = HANDLERS[dir];
-    /* An unknown directive is upstream's PARSE_ERROR_UNDEFINED_DIRECTIVE; the
+    /* An unknown directive is upstream's PARSE_ERROR_UNDEFINED_DIRECTIVE, and
+     * this stays SILENT about one rather than reporting it.
+     *
+     * The reason it used to give was checked and both halves were false: "the
      * sound parser registers its own, so an unhandled one is only an error when
-     * it is not a sound line. Keep it quiet, as the bundled prf files carry
-     * `sound:` lines this port has no mixer for. */
+     * it is not a sound line" - `sound` is a HANDLER now (parseSound) - and
+     * "the bundled prf files carry `sound:` lines this port has no mixer for" -
+     * no `.prf` this port ships carries one. Measured: the shipped packs use
+     * only `%`, `?`, `object`, `monster`, `feat`, `trap`, `GF` and `flavor`,
+     * and the 447 `sound:` lines are in `reference/lib/customize/sound.prf`,
+     * which `gen-sound-prefs.mjs` reads at BUILD time and nothing parses at
+     * runtime.
+     *
+     * With `sound` added, HANDLERS plus `%`, `?` and the two keymap directives
+     * covers all 16 registrations of `init_parse_prefs` (ui-prefs.c L1141-1156
+     * plus register_sound_pref_parser at :1157), so the branch can now only be
+     * reached by a directive upstream does not define either. Kept silent
+     * anyway, deliberately: this is a KNOWN divergence rather than a leftover -
+     * making it an error is a behaviour change to every converted graphics pack
+     * and belongs to whoever measures that, not to this line. */
     if (!handler) continue;
     const e = handler(fields, sink, deps);
     if (e !== null) {
@@ -605,9 +663,37 @@ export function prefErrorMessage(name: string, e: PrefError): string {
  * ------------------------------------------------------------------------ */
 
 /**
+ * The `sound:` half of a PrefSink, writing into the module-level sound-pref
+ * registry - which the front end reads at install AND subscribes to, so a batch
+ * registered after `installWebSound` reaches the live engine.
+ *
+ * `owner` is the mod whose pref file the line came from, and supplying it is
+ * what lets the conflict report name a pack when two of them bind the same
+ * message. A host that has the id (the mod pref loop does) should pass it; the
+ * default below cannot know it, so it registers unattributed.
+ */
+export function soundPrefSink(owner?: string): Pick<PrefSink, "sound"> {
+  return {
+    sound: (type, sounds) => soundPrefRegistry.add([{ type, sounds }], owner),
+  };
+}
+
+/**
  * A PrefSink that writes the six glyph directives into a GlyphTable, turning
  * each numeric char field into the string the table stores. The non-glyph
  * directives are the caller's to supply (spread `...extra` over the result).
+ *
+ * `sound:` IS DEFAULTED HERE, and it is the one non-glyph directive that is,
+ * because it is the one with no host decision left in it. Every other optional
+ * sink member names a destination the front end owns and could reasonably not
+ * have - an autoinscription store, a colour table, a subwindow. `sound:` has
+ * exactly one destination in this port, `soundPrefRegistry` is module-level for
+ * the same reason `messageLookupByName` is a free function, and a host that
+ * left it out would get a directive that parses cleanly and does nothing -
+ * which is the state this door was already in, and the whole defect.
+ *
+ * `...extra` still spreads AFTER, so a host that wants attribution passes
+ * `soundPrefSink(modId)` and a host that wants none passes `sound: () => {}`.
  */
 export function glyphTableSink(table: GlyphTable, extra: Partial<PrefSink> = {}): PrefSink {
   const ch = (code: number): string => {
@@ -635,6 +721,7 @@ export function glyphTableSink(table: GlyphTable, extra: Partial<PrefSink> = {})
      * projection glyph table - the bolt animation draws its own character), so
      * a GF line has nothing to write here. */
     setProjection: () => {},
+    ...soundPrefSink(),
     ...extra,
   };
 }

@@ -38,9 +38,10 @@
  *                                    ported - mon/lore-file.ts - and is laid
  *                                    over this on load, exactly as upstream's
  *                                    startup order does. The save keeps carrying
- *                                    the whole record because narrowing it is a
- *                                    SAVE_VERSION change, and a bump reads as
- *                                    corruption to an existing character.)
+ *                                    the whole record; narrowing it would be a
+ *                                    SAVE_VERSION change with nothing to gain.
+ *                                    The observed SPELL set is written by NAME
+ *                                    as of version 5 - see SavedLore.spellsKnown.)
  *   wr_object_memory (save.c:377)  -> flavor.aware / .tried, everseen.kinds,
  *                                    ignore.kindAware / .kindUnaware
  *   wr_quests        (save.c:405)  -> player.quests
@@ -91,6 +92,9 @@ import type { IgnoreSettingsData } from "../obj/ignore.js";
 import { blankMonster, GROUP_MAX } from "../mon/monster.js";
 import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
 import type { MonsterLore } from "../mon/lore.js";
+import { RSF_FLAG_NAMES } from "../mon/lore-file.js";
+import { RSF } from "../generated/index.js";
+import { RSF_SIZE } from "../mon/types.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
@@ -129,7 +133,11 @@ import type {
  * load-bearing rule of the mod substrate (MOD_LIFECYCLE decision 1). Version 3
  * finished that job: `flavor`, `everseen` and `ignore` were the last blocks
  * still keyed by raw kidx/eidx, and the rune-autoinscription block of wr_ignore
- * (save.c:586-605) arrived with them.
+ * (save.c:586-605) arrived with them. Version 5 did the same for the last
+ * POSITION a save held: monster lore recorded which spells the player had seen
+ * as RSF bit positions, so `MON_SPELL_ENTRIES` could never grow without
+ * renumbering an existing character's memory. It is written by name now
+ * (`SavedLore.spellsKnown`).
  *
  * OLDER SAVES ARE MIGRATED, NOT REJECTED. Every version below this one has a
  * conversion step in session/save-migrate.ts, and `saveMigrationsAreComplete()`
@@ -139,7 +147,7 @@ import type {
  * character into "Could not read the save; starting a new game", which in a
  * permadeath game reads as "your character is gone".
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /* ------------------------------------------------------------------ *
  * Objects.
@@ -1321,13 +1329,70 @@ export interface SavedLore {
   blowTimesSeen: number[];
   blowKnown: boolean[];
   flags: number[];
-  spellFlags: number[];
+  /**
+   * RSF_ NAMES of the spells the player has observed, not the bit vector.
+   *
+   * Version 4 and below wrote `spellFlags: number[]`, the raw bytes of the
+   * lore FlagSet - i.e. the save recorded RSF BIT POSITIONS. That made
+   * `MON_SPELL_ENTRIES` the one generated table that could never be opened by
+   * appending (MOD_REACH row 22): a new RSF slot shifts nothing by itself, but
+   * a mod removed or reordered renumbers what an existing save already holds,
+   * and the player's monster memory silently becomes memory of other spells.
+   * `PROJ` and `MSG` could be opened precisely because nothing persisted
+   * indexes them by position.
+   *
+   * Names have no position. A build whose RSF table is larger, smaller or in a
+   * different order reads exactly the spells that were written, and a name it
+   * no longer has is dropped rather than mis-resolved - the same rule
+   * `deserializeLore` already applies to a race whose mod is gone. lore.txt has
+   * always written this line by name (`writeLoreEntries`, mon/lore-file.ts);
+   * this is the savefile half catching up.
+   */
+  spellsKnown: string[];
   allKnown: boolean;
   armourKnown: boolean;
   dropKnown: boolean;
   sleepKnown: boolean;
   spellFreqKnown: boolean;
   innateFreqKnown: boolean;
+}
+
+/**
+ * The observed spell set as RSF_ names, ascending by flag number so the save is
+ * byte-stable for an unchanged record.
+ *
+ * The bound is RSF.MAX, not "has a name": RSF_SIZE rounds up to 12 bytes, so
+ * the set has 96 addressable bits for 91 spells, and RSF_FLAG_NAMES is the
+ * INVERTED ENUM - which means index 92 reads back as the sentinel `"MAX"`.
+ * Writing that would put a non-spell in the save (and, on the way back, set a
+ * bit no spell owns), so everything at or above RSF.MAX is skipped.
+ */
+export function serializeLoreSpells(spellFlags: FlagSet): string[] {
+  const out: string[] = [];
+  for (const flag of spellFlags) {
+    if (flag >= RSF.MAX) break;
+    const name = RSF_FLAG_NAMES[flag];
+    if (name !== undefined) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * The inverse: a lore-sized FlagSet with exactly the named spells on. A name
+ * this build does not have (a mod's spell, uninstalled - or the `"MAX"`
+ * sentinel) is dropped, which is how the whole scheme stays safe: an unknown
+ * NAME cannot land on some other spell's bit the way an out-of-range index
+ * would.
+ */
+export function deserializeLoreSpells(
+  names: readonly string[] | undefined,
+): FlagSet {
+  const set = new FlagSet(RSF_SIZE);
+  for (const name of names ?? []) {
+    const flag = RSF_FLAG_NAMES.indexOf(name);
+    if (flag > 0 && flag < RSF.MAX) set.on(flag);
+  }
+  return set;
 }
 
 /** Build the feature legend for every fidx appearing in the terrain grids. */
@@ -1611,7 +1676,7 @@ export function serializeGame(
         blowTimesSeen: [...l.blowTimesSeen],
         blowKnown: [...l.blowKnown],
         flags: Array.from(l.flags.bits),
-        spellFlags: Array.from(l.spellFlags.bits),
+        spellsKnown: serializeLoreSpells(l.spellFlags),
         allKnown: l.allKnown,
         armourKnown: l.armourKnown,
         dropKnown: l.dropKnown,
@@ -1648,7 +1713,7 @@ export function deserializeLore(
       blowTimesSeen: [...l.blowTimesSeen],
       blowKnown: [...l.blowKnown],
       flags: new FlagSet(Uint8Array.from(l.flags)),
-      spellFlags: new FlagSet(Uint8Array.from(l.spellFlags)),
+      spellFlags: deserializeLoreSpells(l.spellsKnown),
       allKnown: l.allKnown,
       armourKnown: l.armourKnown,
       dropKnown: l.dropKnown,

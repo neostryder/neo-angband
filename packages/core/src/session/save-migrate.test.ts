@@ -28,8 +28,14 @@ import type { PlayerCommand } from "../game/context.js";
 import { runGameLoop } from "../game/loop.js";
 import { loadGame, saveGame, startGame } from "./game.js";
 import type { GamePack, StartedGame } from "./game.js";
-import { SAVE_VERSION, deserializeIgnore } from "./save.js";
+import {
+  SAVE_VERSION,
+  deserializeIgnore,
+  deserializeLoreSpells,
+} from "./save.js";
 import type { SavedGame } from "./save.js";
+import { RSF } from "../generated/index.js";
+import { getLore } from "../mon/lore.js";
 import {
   OLDEST_READABLE_SAVE,
   SAVE_MIGRATIONS,
@@ -153,6 +159,29 @@ function idsToDense(idList: unknown, index: (id: string) => number | undefined):
   const dense: boolean[] = new Array<boolean>(Math.max(1, ...idxs) + 1).fill(false);
   for (const i of idxs) dense[i] = true;
   return dense;
+}
+
+/**
+ * The current document as version 4 wrote it: the observed spell set on every
+ * lore record goes back to the RAW FlagSet BYTES - the persisted RSF bit
+ * positions that V4_TO_V5 exists to get rid of.
+ *
+ * `deserializeLoreSpells` is the forward step's own inverse, used here for the
+ * same reason toV2 calls `deserializeIgnore`: two hand-written halves of one
+ * mapping can disagree, and then the round trip proves nothing.
+ */
+function toV4(save: SavedGame): Json {
+  const doc = JSON.parse(JSON.stringify(save)) as Json;
+  const back = mapNodes(doc, (node) => {
+    if (!Array.isArray(node.spellsKnown) || !Array.isArray(node.blowKnown)) {
+      return node;
+    }
+    const { spellsKnown, ...rest } = node;
+    const set = deserializeLoreSpells(spellsKnown as string[]);
+    return { ...rest, spellFlags: Array.from(set.bits) };
+  }) as Json;
+  back.version = 4;
+  return back;
 }
 
 /** The version-3 document as version 2 wrote it. */
@@ -412,21 +441,65 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
    * remembers the same kind - so that is what this asserts, on the widened
    * shape, rather than pretending at an equality the formats cannot support.
    */
+  /**
+   * The one that matters for MOD_REACH row 22: a character saved under the
+   * BIT-POSITION shape must load under the NAME shape knowing exactly the same
+   * spells. Written end to end - a real game, a real save, the real loader -
+   * because the thing at risk is a player's monster memory, not a mapping.
+   */
+  it("survives version 4 -> 5, keeping exactly the spells the player had seen", () => {
+    const game = startGame(pack, { seed: 4242, depth: 2 });
+    playTurns(game, 12);
+
+    const race = game.state.monsters.find((m) => m && m.race.ridx > 0)!.race;
+    const seen = getLore(game.state.lore, race).spellFlags;
+    seen.on(RSF.BR_FIRE);
+    seen.on(RSF.BA_COLD);
+    seen.on(RSF.HASTE);
+    const expected = Array.from(seen.bits);
+
+    const v5 = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const entry = v5.lore!.find(([, l]) => l.spellsKnown.length > 0)!;
+    expect(new Set(entry[1].spellsKnown)).toEqual(
+      new Set(["BR_FIRE", "BA_COLD", "HASTE"]),
+    );
+
+    /* Back to what version 4 actually wrote: raw bytes, no names anywhere. */
+    const v4 = toV4(v5);
+    const record = (v4.lore as Array<[string, Json]>).find(
+      ([id]) => id === entry[0],
+    )![1];
+    expect(record.spellsKnown).toBeUndefined();
+    expect(record.spellFlags).toEqual(expected);
+    expect(JSON.stringify(v4)).not.toContain("BR_FIRE");
+
+    const loaded = loadGame(pack, v4 as never);
+    expect(loaded.saveMigration?.applied).toHaveLength(1);
+    expect(loaded.saveMigration?.notes).toEqual([]);
+    expect(Array.from(loaded.state.lore.get(race.ridx)!.spellFlags.bits)).toEqual(
+      expected,
+    );
+
+    /* And every OTHER lore record came through too - a step that quietly ate
+     * the records with nothing known would still pass the assertion above. */
+    expect(saveGame(loaded).lore).toHaveLength(v5.lore!.length);
+  });
+
   it("survives version 3 -> 4, keeping every remembered kind", () => {
     const save = currentSave();
     const ids = resolver();
-    const back = toV3(save, ids);
+    const back = toV3(toV4(save) as unknown as SavedGame, ids);
     expect(back.version).toBe(3);
     /* The down-converter has to have actually collapsed something, or the
      * assertion below passes vacuously. */
     expect(JSON.stringify(back)).not.toEqual(JSON.stringify(save));
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(1);
+    expect(forward.applied).toHaveLength(2);
     expect(forward.notes).toEqual([]);
 
     const widened = (forward.save as unknown as SavedGame).known!.objects;
-    const before = toV3(save, resolver()).known as {
+    const before = toV3(toV4(save) as unknown as SavedGame, resolver()).known as {
       objects: Array<[number, { kindId?: string }]>;
     };
     expect(widened).toHaveLength(before.objects.length);
@@ -438,21 +511,30 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     }
   });
 
-  it("survives version 2 -> 3 -> 4", () => {
+  it("survives version 2 -> 3 -> 4 -> 5", () => {
     const ids = resolver();
     const save = currentSave();
-    const back = toV2(toV3(save, ids) as unknown as SavedGame, ids);
+    const back = toV2(
+      toV3(toV4(save) as unknown as SavedGame, ids) as unknown as SavedGame,
+      ids,
+    );
     expect(back.version).toBe(2);
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(2);
+    expect(forward.applied).toHaveLength(3);
     expect(forward.notes).toEqual([]);
   });
 
-  it("survives version 1 -> 2 -> 3 -> 4", () => {
+  it("survives version 1 -> 2 -> 3 -> 4 -> 5", () => {
     const ids = resolver();
     const save = currentSave();
-    const back = toV1(toV2(toV3(save, ids) as unknown as SavedGame, ids), ids);
+    const back = toV1(
+      toV2(
+        toV3(toV4(save) as unknown as SavedGame, ids) as unknown as SavedGame,
+        ids,
+      ),
+      ids,
+    );
     expect(back.version).toBe(1);
     /* Proof the down-converter actually undid something, so an equality that
      * passes cannot be passing vacuously. */
@@ -460,17 +542,23 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(back)).toContain('"kidx"');
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(3);
+    expect(forward.applied).toHaveLength(4);
     expect(forward.notes).toEqual([]);
   });
 
   it("the migrated version-1 document actually loads and plays", () => {
     const ids = resolver();
     const original = currentSave();
-    const back = toV1(toV2(toV3(original, ids) as unknown as SavedGame, ids), ids);
+    const back = toV1(
+      toV2(
+        toV3(toV4(original) as unknown as SavedGame, ids) as unknown as SavedGame,
+        ids,
+      ),
+      ids,
+    );
 
     const game = loadGame(pack, back as never);
-    expect(game.saveMigration?.applied).toHaveLength(3);
+    expect(game.saveMigration?.applied).toHaveLength(4);
     expect(game.saveMigration?.notes).toEqual([]);
     /* It is a real game, not just a document that parsed. */
     playTurns(game, 3);

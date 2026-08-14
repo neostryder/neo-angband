@@ -22,6 +22,12 @@
  * able to be about an ancestor. lore-file.ts is both halves of that file; the
  * JSON save still carries the whole record (narrowing it would be a
  * SAVE_VERSION change) and the file is laid over it on load.
+ *
+ * `spellFlags` is a bit vector IN MEMORY and a list of RSF_ NAMES in both
+ * stores: lore.txt has always written it by name, and the savefile joined it at
+ * SAVE_VERSION 5 (session/save.ts, SavedLore.spellsKnown). That is what stops a
+ * future RSF entry from renumbering an existing character's memory - MOD_REACH
+ * row 22.
  */
 
 import { FlagSet } from "../bitflag.js";

@@ -23,8 +23,8 @@
  * find, because the knowledge was being persisted - just to the wrong place.
  *
  * THE SPLIT, KEPT EXACTLY. This module is the file. The save keeps carrying the
- * full record (no SAVE_VERSION change: a bump reads as corruption to an existing
- * character), and the front end overlays lore.txt on top of a loaded game for the
+ * full record (narrowing it would be a SAVE_VERSION change with nothing to gain),
+ * and the front end overlays lore.txt on top of a loaded game for the
  * seven counters plus the flags and blows that the file carries - which is
  * precisely the set `write_lore_entries` writes. pkills and thefts are never in
  * the file and so are never overlaid, exactly as upstream has them.

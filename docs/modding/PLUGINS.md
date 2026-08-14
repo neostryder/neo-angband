@@ -634,10 +634,10 @@ anything. Answers that cannot be honoured (an unknown choice id, a choice on a
 browse-only question, a command key that was never offered) cost you *that menu
 only*, and are reported.
 
-**A menu has no published region yet.** `regions.ts` names the four parts of the
-screen that tile it, and a floating menu is by definition one that overlaps —
-overlapping, ordered, mod-created regions are the next increment of
-`MOD_REACH.md` gap 21. Until then, `question.style` tells you whether the game
+**A menu still has no published region of its own**, though overlapping, ordered,
+mod-created regions have since landed — see [`regions(ctx)`](#regionsctx--put-furniture-of-your-own-on-the-screen).
+`regions.ts` names the four parts of the screen that tile it, and a floating menu
+is by definition one that overlaps. `question.style` tells you whether the game
 would have cleared the screen (`"screen"`) or drawn a box over a still-visible
 map (`"overlay"`).
 
@@ -956,6 +956,69 @@ reason a floating menu does.
 `samples/sprite-inventory/` is a complete worked example: it draws the inventory,
 the equipment and the quiver as item cards, lays the recall pages out into a
 panel of its own width by measuring them, and declines every other screen.
+
+## `regions(ctx)` — put furniture of your own on the screen
+
+The fifth owner seam, and **the only one nobody wins.**
+
+The other four each answer *who gets it*, because the map, a HUD region, the menu
+seam and the screen seam are each one thing and two mods cannot both have it. A
+region is not one thing. Two mods that both declare a region are not in
+contention at all — they are two pieces of furniture, and they **coexist**, each
+at its own band, in load order. "Last load wins" appears here only in its
+ordinary form: within a band, the later-loaded region draws on top.
+
+```js
+export default {
+  api: 1,
+  regions(ctx) {
+    return [{
+      id: "carried",
+      layer: "overlay",
+      place: (grid) => ({ x: grid.cols - 18, y: 1, w: 17, h: 1 }),
+      paint: (surface) => surface.put(0, 0, `Carried ${weight()} lb`),
+    }];
+  },
+};
+```
+
+Requires **`ui:region.create`**. Note that `ui:*.replace` does **not** grant it:
+the wildcard ranges over which of the *game's* regions changes hands, and adding
+one of your own is a different sentence for the player to agree to. Declaring
+`regions()` without the capability is reported by name with the fix in the
+sentence, rather than silently drawing nothing.
+
+**Your id is namespaced.** Declare `"carried"` and the live stack carries
+`my-mod:carried`. That is a correctness rule rather than tidiness — a mod naming
+its region `map` would put a second `map` in the stack, and `occludersOf` answers
+about the **first** match, so a front end's one question would quietly start
+being answered about somebody else's rectangle.
+
+**The unit of failure is the declaration, not the mod.** A rectangle with no
+`paint`, a band that does not exist, a duplicate name, a `paint` that throws on
+its first frame — each costs exactly that one region, is reported once, and
+leaves your others and every other mod's alone.
+
+**A faulting region is withdrawn, not left empty.** This is the one place the
+mechanical answer is wrong: `ui-stack.ts` leaves a faulted core screen in the
+composite, which is right for something that still owns the keyboard. Your
+decorative panel has no such claim — left in the stack it is a phantom
+**occluder**, and a replacement front end asking `occludersOf(stack, "map")`
+would stand its canvas down for a region that has drawn nothing since the first
+frame. So the handle is released and the region vanishes *with* a message rather
+than persisting without one.
+
+**`place(grid)` must be cheap, total and pure.** It runs for every open region on
+every frame and on every resize. No game reads, no painting, no allocation you
+can avoid. Return the rectangle for a terminal of that size; one that runs off
+the grid is recorded in `regionStackFaults()` rather than drawn.
+
+**The `system` layer is reserved to the game** and asking for it is refused with
+its own sentence rather than a generic bad-band one — it is a real band, it is
+the top one, and the reason you may not have it is a reason rather than a typo.
+The mod manager and a fault report have to be drawable *above* a mod, including
+above one that has gone wrong. Use `"overlay"` for furniture, or `"modal"` for
+something that takes the player's attention.
 
 ## Capabilities
 

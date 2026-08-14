@@ -89,6 +89,7 @@ import type { ModPrefs } from "./mod-prefs";
 import type {
   HudOwnership,
   MenuPresenter,
+  RegionDeclaration,
   ScreenPresenter,
   WorldFrameSink,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -455,6 +456,40 @@ export interface ModPlugin {
    */
   screen?(ctx: ModPluginContext): ScreenPresenter | undefined;
   /**
+   * Put furniture of your OWN on the screen: a carried-weight readout, a compass,
+   * a threat meter - a rectangle beside the game's, not instead of it.
+   *
+   * THE FIFTH OWNER SEAM, AND THE ONLY ONE NOBODY WINS. The other four each
+   * answer "who gets it", because the map, the HUD, the menu seam and the screen
+   * seam are each ONE THING and two mods cannot both have it. A region is not one
+   * thing. Two mods that both declare a region are not in contention - they are
+   * two pieces of furniture, and they coexist, each at its own band, in load
+   * order. "Last load wins" appears here only in its ordinary form: within a
+   * band, the later-loaded region draws on top.
+   *
+   * Requires `ui:region.create`. Note that `ui:*.replace` does NOT grant it: the
+   * wildcard ranges over which of the GAME's regions changes hands, and adding
+   * one of your own is a different sentence for the player to agree to.
+   *
+   * THE UNIT OF FAILURE IS THE DECLARATION, not the mod. A rectangle with no
+   * `paint`, a band that does not exist, a duplicate name, a `paint` that throws
+   * on its first frame - each costs exactly that one region, is reported once
+   * with the fix in the sentence, and leaves your others and everyone else's
+   * alone. A region that faults is WITHDRAWN rather than left as an empty
+   * rectangle, because a region left in the stack is a phantom occluder and a
+   * replacement front end would stand its canvas down for something that has
+   * drawn nothing since the first frame.
+   *
+   * Your id is namespaced: declare `"carried"` and the live stack carries
+   * `my-mod:carried`. That is a correctness rule rather than tidiness - a mod
+   * naming its region `map` would otherwise put a second `map` in the stack, and
+   * `occludersOf` answers about the FIRST match.
+   *
+   * The `system` layer is reserved to the game, so the mod manager and a fault
+   * report can always draw ABOVE a mod - including above one that has gone wrong.
+   */
+  regions?(ctx: ModPluginContext): readonly RegionDeclaration[] | undefined;
+  /**
    * Teardown, called when the mod set changes and the page is about to re-compose.
    *
    * The re-compose is what actually removes the mod - a plugin that is not
@@ -528,6 +563,9 @@ export function validateModPlugin(
   if (p.screen !== undefined && typeof p.screen !== "function") {
     return "plugin.js: screen is not a function";
   }
+  if (p.regions !== undefined && typeof p.regions !== "function") {
+    return "plugin.js: regions is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
@@ -538,17 +576,22 @@ export function validateModPlugin(
     p.frontend === undefined &&
     p.hud === undefined &&
     p.menu === undefined &&
-    p.screen === undefined
+    p.screen === undefined &&
+    p.regions === undefined
   ) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
      * loading it and having nothing happen. `controller` counts because an
      * autoplayer is a mod whose entire contribution is playing the game: the
-     * Borg registers nothing and hooks nothing. Deliberately still NOT widened
-     * to include migrateBag: a plugin whose only member is a bag migrator
+     * Borg registers nothing and hooks nothing. `regions` counts for the same
+     * reason and was missing for the same reason: a mod whose entire
+     * contribution is a carried-weight readout beside the map declares nothing
+     * else, and until #267 both validators refused it as doing nothing - so the
+     * seam existed for every mod except the one it was built for. Deliberately
+     * still NOT widened to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register, controller, frontend, hud, menu or screen, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend, hud, menu, screen or regions, so it would do nothing";
   }
   return null;
 }
