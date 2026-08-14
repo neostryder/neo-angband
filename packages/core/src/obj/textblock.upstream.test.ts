@@ -109,7 +109,7 @@ describe("z-textblock/textblock upstream", () => {
     /*
      * The SOURCE is left intact. Upstream's callers (obj-info.c L2135,
      * effects-info.c L262/L296/L367, ui-equip-cmp.c L1457/L1462,
-     * ui-knowledge.c L3052) all textblock_free the source right after
+     * ui-knowledge.c L3059) all textblock_free the source right after
      * appending it, which is only correct because the merge copies.
      */
     expect(textblockToString(tb2)).toBe(" you");

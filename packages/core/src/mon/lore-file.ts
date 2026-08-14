@@ -9,8 +9,8 @@
  *   - the SAVEFILE carries `pkills` and `thefts` - "in this life" counters;
  *   - `lore.txt` in the USER directory carries everything else, and the user
  *     directory belongs to the PLAYER, not to a character. `lore_save` is
- *     called from `save_game_checked` (ui-game.c:1089) and the file is read back
- *     by `lore_parser` at startup (mon-init.c:2672), before any savefile is
+ *     called from `save_game_checked` (ui-game.c:1076) and the file is read back
+ *     by `lore_parser` at startup (mon-init.c:2646), before any savefile is
  *     touched.
  *
  * So upstream's monster knowledge SURVIVES DEATH. `tkills` is commented "Count

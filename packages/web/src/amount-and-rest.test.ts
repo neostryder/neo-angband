@@ -76,7 +76,7 @@ describe("do_cmd_drop (cmd-obj.c:360-388)", () => {
     expect(body).toMatch(/getQuantity\(term, null, obj\.number\)/);
   });
 
-  it("aborts on a 0 answer, before queuing anything (cmd-core.c:1119)", () => {
+  it("aborts on a 0 answer, before queuing anything (cmd-core.c:1097)", () => {
     const abort = body.indexOf("quantity <= 0) return");
     const queue = body.indexOf("commandBuffer.push");
     expect(abort).toBeGreaterThan(-1);

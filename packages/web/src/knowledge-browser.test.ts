@@ -1,5 +1,5 @@
 /**
- * The two-pane knowledge browser (display_knowledge, ui-knowledge.c L1050-1240).
+ * The two-pane knowledge browser (display_knowledge, ui-knowledge.c L733-1080).
  *
  * WHAT THIS EXISTS TO STOP COMING BACK. The port used to flatten every group into
  * one lettered menu. Known objects is several hundred rows; the alphabet runs out
@@ -179,11 +179,11 @@ describe("runGroupedBrowser: the screen upstream draws", () => {
     press(win, "ArrowRight"); // into its names
     press(win, "Enter"); // read the row under the cursor
     await tick();
-    /* o_cur = 0 on a group change (L1153-1160), so this is the Amulet group's
+    /* o_cur = 0 on a group change (L885), so this is the Amulet group's
      * FIRST row and not whatever index the cursor held in the Ring group. */
     /* Second argument: the group the row was chosen from. desc_ego_fake heads
      * its page with `ego_grp_name(default_group_id(oid))` + the ego name
-     * (ui-knowledge.c L1801), so the browser has to hand it along - an ego
+     * (ui-knowledge.c L1725-1727), so the browser has to hand it along - an ego
      * listed under two groups gets two different headers. */
     expect(recall).toHaveBeenCalledWith("amulet", "Amulet");
     press(win, "Escape");
@@ -200,7 +200,7 @@ describe("runGroupedBrowser: the screen upstream draws", () => {
     press(win, "ArrowUp"); // Ring -> wraps to Potion, the last group
     press(win, "ArrowRight");
     press(win, "ArrowUp"); // row 0 -> wraps to row 59
-    press(win, "r"); // 'r'ecall, from ui-knowledge.c:1072
+    press(win, "r"); // 'r'ecall, from ui-knowledge.c:1011
     await tick();
     expect(recall).toHaveBeenCalledWith("potion-59", "Potion");
     press(win, "Escape");
@@ -271,7 +271,7 @@ describe("runGroupedBrowser: the screen upstream draws", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The monster browser (do_cmd_knowledge_monsters, ui-knowledge.c L1382-1454)
+// The monster browser (do_cmd_knowledge_monsters, ui-knowledge.c L1309-1378)
 // ---------------------------------------------------------------------------
 
 /**
@@ -349,7 +349,7 @@ describe("showMonsterKnowledge (do_cmd_knowledge_monsters)", () => {
     const term = makeTerm();
     /* Every group name here is shorter than eight, so a renderer that sized the
      * pane on the longest name alone would slide the Name column left.
-     * g_name_len starts at 8 (ui-knowledge.c:808) and only grows. */
+     * g_name_len starts at 8 (ui-knowledge.c:745) and only grows. */
     const done = showMonsterKnowledge(
       term,
       [{ name: "Ants", rows: [kobold] }],
@@ -377,7 +377,7 @@ describe("showMonsterKnowledge (do_cmd_knowledge_monsters)", () => {
     expect(shot[7]!.slice(75, 78)).toBe("yes");
     press(win, "ArrowUp"); // back to Uniques, whose first row is a DEAD one
     await tick();
-    /* max_num == 0 -> " dead", leading space and all (ui-knowledge.c:1206). */
+    /* max_num == 0 -> " dead", leading space and all (ui-knowledge.c:1140). */
     expect(term.snapshot()[6]!.slice(68, 73)).toBe(" dead");
     press(win, "Escape");
     await done;
@@ -388,7 +388,7 @@ describe("showMonsterKnowledge (do_cmd_knowledge_monsters)", () => {
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = showMonsterKnowledge(term, views(), false, async () => undefined);
-    /* Group 0, first member a unique -> the uniques form (ui-knowledge.c:1316). */
+    /* Group 0, first member a unique -> the uniques form (ui-knowledge.c:1247-1250). */
     expect(term.snapshot()[22]).toContain("2 known uniques, 4 slain.");
     press(win, "ArrowDown");
     await tick();

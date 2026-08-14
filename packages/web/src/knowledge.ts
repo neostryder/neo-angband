@@ -1,7 +1,7 @@
 /**
  * The "display current knowledge" sub-browsers (ui-knowledge.c do_cmd_knowledge_*,
  * reached from the '~' master menu). These are drawn with upstream's own two-pane
- * group/member navigator (display_knowledge, ui-knowledge.c L1050-1240) - see
+ * group/member navigator (display_knowledge, ui-knowledge.c L733-1080) - see
  * runGroupedBrowser.
  *
  * THEY USED NOT TO BE, and this header said so: the web platform "substitutes the
@@ -104,7 +104,7 @@ function strcmp(a: string, b: string): number {
 }
 
 /**
- * object_text_order[] (ui-knowledge.c L1465-1502): the fixed tval -> display
+ * object_text_order[] (ui-knowledge.c L1388-1426): the fixed tval -> display
  * group table shared by the object, artifact and ego browsers. `name === null`
  * means the tval folds into the preceding named group (e.g. TV_BOLT / TV_SHOT
  * join TV_ARROW's "Ammunition"). This is gap 13.1's object-side grouping;
@@ -153,7 +153,7 @@ const OBJECT_TEXT_ORDER: ReadonlyArray<{ tval: number; name: string | null }> = 
 ];
 
 /**
- * obj_group_order[] (ui-knowledge.c L3720-3734): map each tval to the index in
+ * obj_group_order[] (ui-knowledge.c L3610-3625): map each tval to the index in
  * OBJECT_TEXT_ORDER of its display group. Groups whose base has no svals are
  * skipped (kb_info[tval].num_svals == 0), and a null-name entry inherits the
  * preceding named group's id. Returns tval -> gid (or -1 for "not grouped").
@@ -171,7 +171,7 @@ export function buildObjGroupOrder(bases: readonly (ObjectBase | undefined)[]): 
   return order;
 }
 
-/** kind_name(gid) (ui-knowledge.c L1675): the display name of group `gid`. */
+/** kind_name(gid) (ui-knowledge.c L1598): the display name of group `gid`. */
 export function objGroupName(gid: number): string {
   return OBJECT_TEXT_ORDER[gid]?.name ?? "";
 }
@@ -188,7 +188,7 @@ export interface KnowledgeRow<T> {
   /**
    * Extra fields the member renderer writes at FIXED columns, in its own
    * colours - upstream's member display callback after the name: display_rune's
-   * yellow autoinscription at column 47 (ui-knowledge.c:2201-2202),
+   * yellow autoinscription at column 47 (ui-knowledge.c:2124-2125),
    * display_monster's symbol / kills / fully-known at 64 / 68 / 75
    * (`:1200-1213`). A list rather than one annotation because that is what the
    * callbacks do; the header above them is the browser's `otherfields`.
@@ -196,7 +196,7 @@ export interface KnowledgeRow<T> {
   cells?: readonly { text: string; color: string; col: number }[];
   /**
    * The row's own prompt line, i.e. an xtra_prompt hook (rune_xtra_prompt,
-   * ui-knowledge.c:2238-2244 returns a DIFFERENT string per row depending on
+   * rune_xtra_prompt (ui-knowledge.c:2158-2169) returns a DIFFERENT string per row depending on
    * whether that rune carries a note).
    */
   hint?: string;
@@ -217,14 +217,14 @@ export interface KnowledgeGroup<T> {
 /** Optional hooks a browser can add, mirroring member_funcs' xtra_* callbacks. */
 export interface GroupedBrowserHooks<T> {
   /**
-   * rune_xtra_act (ui-knowledge.c L2247): a key the member pane handles itself.
+   * rune_xtra_act (ui-knowledge.c L2170): a key the member pane handles itself.
    * Return true if the key was consumed. Async because the port's version of
    * "type an inscription" is an await, where upstream's is a blocking
    * get_string.
    */
   xtraAct?: (key: string, member: T) => Promise<boolean>;
   /**
-   * display_knowledge's `otherfields` (ui-knowledge.c:931-932): one header
+   * display_knowledge's `otherfields` (ui-knowledge.c:867-868): one header
    * string printed at column 46 of the label row, naming whatever extra columns
    * that browser's member renderer writes. It is passed VERBATIM by the caller
    * because upstream's is a literal with its own leading padding - monsters
@@ -232,7 +232,7 @@ export interface GroupedBrowserHooks<T> {
    */
   otherfields?: string;
   /**
-   * g_funcs.summary (ui-knowledge.c:997-1001): one line for the CURRENT group,
+   * g_funcs.summary (ui-knowledge.c:933-935): one line for the CURRENT group,
    * drawn at the member column just under the member list. Only the monster
    * browser supplies one (mon_summary, `:1303`); every other g_funcs leaves the
    * field NULL and the row stays blank.
@@ -248,7 +248,7 @@ const BROWSER_RULE_ROW = 5;
 const BROWSER_TOP = 6;
 
 /**
- * display_knowledge (ui-knowledge.c L1050-1240): the real two-pane knowledge
+ * display_knowledge (ui-knowledge.c L733-1080): the real two-pane knowledge
  * browser - Group on the left, Name on the right, a `|` between them and a rule
  * of `=` above.
  *
@@ -301,7 +301,7 @@ export async function runGroupedBrowser<T>(
     const wanted = await browsePanels();
     if (wanted === null) return;
     /* desc_ego_fake's header names the group the row was chosen from
-     * (ego_grp_name(default_group_id(oid)), ui-knowledge.c L1801), so hand the
+     * (ego_grp_name(default_group_id(oid)), ui-knowledge.c L1725-1727), so hand the
      * highlighted group's name along with the member. */
     await recall(wanted, live[group]?.name ?? "");
   }
@@ -316,7 +316,7 @@ export async function runGroupedBrowser<T>(
         term.print(0, BROWSER_TITLE_ROW, `Knowledge - ${title}`.slice(0, cols - 1), UI_CURSOR);
         term.print(0, BROWSER_LABEL_ROW, "Group", UI_DIM);
         term.print(memberCol, BROWSER_LABEL_ROW, "Name", UI_DIM);
-        /* prt(otherfields, 4, 46) (ui-knowledge.c:931-932) - the same row as the
+        /* prt(otherfields, 4, 46) (ui-knowledge.c:867-868) - the same row as the
          * Group/Name labels, at a column upstream hard-codes. */
         if (hooks.otherfields && OTHERFIELDS_COL < cols - 1) {
           term.print(
@@ -365,7 +365,7 @@ export async function runGroupedBrowser<T>(
           }
         }
         /* g_funcs.summary(..., object_menu.active.row + active.page_rows,
-         * object_region.col) (ui-knowledge.c:997-1001): the row immediately
+         * object_region.col) (ui-knowledge.c:933-935): the row immediately
          * below the member list, at the member column. */
         const sum = hooks.summary?.(group);
         if (sum && sum.text) {
@@ -536,14 +536,14 @@ function moveIn(nav: MenuNav, cursor: number, count: number, page: number): numb
 }
 
 // ---------------------------------------------------------------------------
-// Rune knowledge (14.10) - do_cmd_knowledge_runes, ui-knowledge.c L2291
+// Rune knowledge (14.10) - do_cmd_knowledge_runes, ui-knowledge.c L2214
 // ---------------------------------------------------------------------------
 
-/** rune_group_text[] (ui-knowledge.c L2178-2188), indexed by RuneVariety. */
+/** rune_group_text[] (ui-knowledge.c L2101-2115), indexed by RuneVariety. */
 const RUNE_GROUP_TEXT = ["Combat", "Modifiers", "Resists", "Brands", "Slays", "Curses", "Other"];
 
 /**
- * The variety -> group index used by rune_var (ui-knowledge.c L2211-2214).
+ * The variety -> group index used by rune_var (ui-knowledge.c L2134-2137).
  *
  * THE CALLER HOLE gap 16 turned up. `RuneVariety` used to be a closed union of
  * seven string literals, so this switch was exhaustive by construction and
@@ -581,7 +581,7 @@ function runeGroupIndex(variety: Rune["variety"]): number {
 }
 
 /**
- * do_cmd_knowledge_runes (ui-knowledge.c L2291-2319): collect every rune the
+ * do_cmd_knowledge_runes (ui-knowledge.c L2214-2242): collect every rune the
  * player knows (player_knows_rune, L2309), group by variety (rune_var), and
  * title the screen "runes (N unknown)" where N = max_runes - known. Members keep
  * their init_rune order within each group (rune_var_f has no member comparator).
@@ -598,7 +598,7 @@ export function runeKnowledgeGroups(
     if (!playerKnowsRune(player, rune)) continue;
     known++;
     const gid = runeGroupIndex(rune.variety);
-    /* display_rune (ui-knowledge.c:2198) prints rune_name(oid), which carries
+    /* display_rune (ui-knowledge.c:2121) prints rune_name(oid), which carries
      * the variety decoration ("<x> brand", "slay <x>", "<x> curse",
      * "resist <x>") - not the bare rune->name. */
     const note = runeNote?.(i);
@@ -606,13 +606,13 @@ export function runeKnowledgeGroups(
       label: runeName(rune),
       color: FG,
       member: rune,
-      /* display_rune (ui-knowledge.c:2200-2202): the autoinscription, yellow,
+      /* display_rune (ui-knowledge.c:2123-2125): the autoinscription, yellow,
        * at column 47. `col` counts from screen column 0 exactly as upstream
        * does; the label already sits at the same offset via the menu prefix. */
       ...(note !== undefined
         ? { cells: [{ text: note, color: UI_YELLOW, col: 47 }] }
         : {}),
-      /* rune_xtra_prompt (ui-knowledge.c:2238-2244): the '}' uninscribe key is
+      /* rune_xtra_prompt (ui-knowledge.c:2158-2169): the '}' uninscribe key is
        * offered only for a rune that already carries a note. */
       hint: note !== undefined ? ", 'r'ecall, '{', '}'" : ", 'r'ecall, '{'",
     });
@@ -672,7 +672,7 @@ export interface RuneNoteHooks {
  */
 
 /**
- * rune_lore (ui-knowledge.c L2216-2230): the recall for one rune - its
+ * rune_lore (ui-knowledge.c L2139-2153): the recall for one rune - its
  * capitalized name (my_strcap), then rune_desc(oid). rune_desc is now ported in
  * core (obj/knowledge.ts), computed per variety, so the description matches the
  * oracle exactly.
@@ -683,7 +683,7 @@ export function runeRecallScreen(
 ): ScreenView {
   return freezeView({
     id: "core:rune-recall",
-    /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2219-2220). */
+    /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2142-2143). */
     title: capitalise(runeName(rune)),
     footer: SCREEN_FOOTER,
     blocks: [textParagraphs([runeDesc(runeEnv, rune) ?? ""])],
@@ -714,7 +714,7 @@ export async function showRuneKnowledge(
    * The inscribable form. This used to be a second copy of the browser driven
    * straight off selectFromMenu, with a comment saying runGroupedBrowser had no
    * seam for upstream's xtra_prompt / xtra_act pair (rune_xtra_prompt
-   * ui-knowledge.c:2238, rune_xtra_act :2247). It has one now - it is the same
+   * ui-knowledge.c:2158, rune_xtra_act :2170). It has one now - it is the same
    * pair, under the same names - so the copy is gone rather than being ported to
    * two panels twice.
    *
@@ -733,7 +733,7 @@ export async function showRuneKnowledge(
         const i = allRunes.indexOf(rune);
         if (i < 0) return true;
         if (key === "}") {
-          /* rune_set_note(oid, NULL) (ui-knowledge.c:2252). */
+          /* rune_set_note(oid, NULL) (ui-knowledge.c:2174). */
           notes.set(i, null);
           again = true;
           return true;
@@ -756,10 +756,10 @@ export async function showRuneKnowledge(
 }
 
 // ---------------------------------------------------------------------------
-// Feature knowledge (14.13) - do_cmd_knowledge_features, ui-knowledge.c L2460
+// Feature knowledge (14.13) - do_cmd_knowledge_features, ui-knowledge.c L2383
 // ---------------------------------------------------------------------------
 
-/** feature_group_text[] (ui-knowledge.c L2329-2340), indexed by feat_order. */
+/** feature_group_text[] (ui-knowledge.c L2252-2268), indexed by feat_order. */
 const FEATURE_GROUP_TEXT = [
   "Floors",
   "Doors",
@@ -789,7 +789,7 @@ export function featOrder(reg: FeatureRegistry, feat: Feature): number {
 }
 
 /**
- * do_cmd_knowledge_features (ui-knowledge.c L2460-2486): every feature with a
+ * do_cmd_knowledge_features (ui-knowledge.c L2383-2409): every feature with a
  * name that is not a mimic (L2474-2477), grouped by feat_order, sorted within a
  * group by name (f_cmp_fkind, L2368-2385). The name is shown in the feature's
  * display colour so the terrain's symbol colour is conveyed in the flat list.
@@ -831,14 +831,14 @@ export async function showFeatureKnowledge(term: GridSurface & GridPointerInput,
 }
 
 // ---------------------------------------------------------------------------
-// Trap knowledge (14.13) - do_cmd_knowledge_traps, ui-knowledge.c L2641
+// Trap knowledge (14.13) - do_cmd_knowledge_traps, ui-knowledge.c L2564
 // ---------------------------------------------------------------------------
 
-/** trap_group_text[] (ui-knowledge.c L2496-2503), indexed by trap_order. */
+/** trap_group_text[] (ui-knowledge.c L2419-2431), indexed by trap_order. */
 const TRAP_GROUP_TEXT = ["Runes", "Locks", "Traps", "Other"];
 
 /**
- * trap_order (ui-knowledge.c L2530-2542): GLYPH -> 0, LOCK -> 1, TRAP -> 2,
+ * trap_order (ui-knowledge.c L2453-2465): GLYPH -> 0, LOCK -> 1, TRAP -> 2,
  * everything else -> 3.
  */
 export function trapOrder(trap: TrapKind): number {
@@ -849,7 +849,7 @@ export function trapOrder(trap: TrapKind): number {
 }
 
 /**
- * do_cmd_knowledge_traps (ui-knowledge.c L2641-2664): every trap kind with a
+ * do_cmd_knowledge_traps (ui-knowledge.c L2564-2587): every trap kind with a
  * name (L2656), grouped by trap_order, sorted within a group by description
  * name (t_cmp_tkind, L2544-2566, which compares on the desc field). The desc is
  * shown in the trap's colour to convey its symbol colour.
@@ -891,11 +891,11 @@ export async function showTrapKnowledge(term: GridSurface & GridPointerInput, tr
 }
 
 // ---------------------------------------------------------------------------
-// Artifact knowledge (14.11) - do_cmd_knowledge_artifacts, ui-knowledge.c L1740
+// Artifact knowledge (14.11) - do_cmd_knowledge_artifacts, ui-knowledge.c L1663
 // ---------------------------------------------------------------------------
 
 /**
- * artifact_is_known (ui-knowledge.c L1687-1707): the oracle lists an artifact
+ * artifact_is_known (ui-knowledge.c L1611-1630): the oracle lists an artifact
  * when it is_artifact_created AND no unidentified copy exists live in the world
  * (find_artifact + object_is_known_artifact). That exact gate is now ported in
  * core (obj/artifact-known.ts); pass its `exact` env (a world-object scan +
@@ -918,7 +918,7 @@ export function artifactIsKnown(
 }
 
 /**
- * do_cmd_knowledge_artifacts (ui-knowledge.c L1740-1763): the known artifacts,
+ * do_cmd_knowledge_artifacts (ui-knowledge.c L1663-1687): the known artifacts,
  * grouped by obj_group_order[tval] and sorted within a group by sval then name
  * (a_cmp_tval, L1656-1673). Membership is artifactIsKnown (see the note there);
  * pass `exact` for the exact created-and-not-live-unidentified gate.
@@ -974,7 +974,7 @@ export interface ArtifactKnowledgeDeps {
 }
 
 /**
- * desc_art_fake (ui-knowledge.c L1610-1654): the artifact-knowledge recall.
+ * desc_art_fake (ui-knowledge.c L1533-1577): the artifact-knowledge recall.
  * Upstream builds a fake artifact object (make_fake_artifact), points its known
  * twin at either a base twin (kind + artifact only) or - when the character's
  * history records the artifact as fully known (history_is_artifact_known,
@@ -1006,7 +1006,7 @@ export function artifactFakeRecall(
   const { state, reg, constants, player, runeEnv, inspectExtras } = deps;
 
   /* THE GAME STREAM, as upstream. desc_art_fake calls make_fake_artifact
-   * (ui-knowledge.c:1629) with no stream of its own, so copy_curses' timeout
+   * (ui-knowledge.c:1552) with no stream of its own, so copy_curses' timeout
    * roll (obj-curse.c:67) comes off the global RNG and browsing an artifact
    * DOES advance Angband's stream. This used to pass a throwaway Rng at a fixed
    * seed so browsing could not perturb a run - which was an improvement, and
@@ -1089,7 +1089,7 @@ export function artifactFakeRecall(
 }
 
 /**
- * do_cmd_knowledge_artifacts (ui-knowledge.c L1740): the grouped artifact
+ * do_cmd_knowledge_artifacts (ui-knowledge.c L1663): the grouped artifact
  * browser with the desc_art_fake recall wired in. Membership + grouping come
  * from artifactKnowledgeGroups; the recall is the full faithful object_info
  * dump (artifactFakeRecall).
@@ -1116,7 +1116,7 @@ export async function showArtifactKnowledge(
 }
 
 // ---------------------------------------------------------------------------
-// Object knowledge (14.9) - textui_browse_object_knowledge, ui-knowledge.c L2139
+// Object knowledge (14.9) - textui_browse_object_knowledge, ui-knowledge.c L2062
 // ---------------------------------------------------------------------------
 
 /**
@@ -1171,7 +1171,7 @@ export interface FakeRecallDeps {
 }
 
 /**
- * desc_obj_fake (ui-knowledge.c L1938-1981): the known-objects recall. Upstream
+ * desc_obj_fake (ui-knowledge.c L1862-1905): the known-objects recall. Upstream
  * preps a throwaway object of the kind on the EXTREMIFY aspect, points its
  * known twin at either a full object_copy (when the kind is aware, or has no
  * flavour to be unaware of) or a blank OBJECT_NULL, and dumps
@@ -1239,7 +1239,7 @@ export function objectFakeRecall(
   });
 }
 
-/** o_cmp_tval within-group order (ui-knowledge.c L1984-2024). */
+/** o_cmp_tval within-group order (ui-knowledge.c L1907-1949). */
 function objCmpTval(a: ObjectKind, b: ObjectKind, deps: ObjectBrowserDeps): number {
   /* aware has low sort weight: aware kinds sort first (return -c). */
   const c = (deps.isAware(a) ? 1 : 0) - (deps.isAware(b) ? 1 : 0);
@@ -1266,7 +1266,7 @@ function objCmpTval(a: ObjectKind, b: ObjectKind, deps: ObjectBrowserDeps): numb
 }
 
 /**
- * textui_browse_object_knowledge (ui-knowledge.c L2139-2168): every kind that
+ * textui_browse_object_knowledge (ui-knowledge.c L2062-2099): every kind that
  * is everseen OR flavoured (so an unfound flavour still lists by its flavour
  * name), excluding INSTA_ART special-artifact dummies and kinds whose tval has
  * no display group. Grouped by obj_group_order, sorted within a group by
@@ -1315,7 +1315,7 @@ export async function showObjectKnowledge(
     await showTextScreen(term, objectFakeRecall(deps, kind));
   };
 
-  /* `{` is object_xtra_act (ui-knowledge.c:2101-2123: "Inscribe with: " sets the
+  /* `{` is o_xtra_act (ui-knowledge.c:1999-2061: "Inscribe with: " sets the
    * highlighted kind's autoinscription) - a key the MEMBER pane handles itself,
    * which is exactly the xtra_act hook. Absent when the host does not offer
    * autoinscription, and then the browser runs with no extra keys at all. */
@@ -1324,7 +1324,7 @@ export async function showObjectKnowledge(
     await runGroupedBrowser(term, "known objects", groups, recall);
     return;
   }
-  /* o_xtra_prompt (ui-knowledge.c:2057-2071) offers 's' to toggle ignore and '}'
+  /* o_xtra_prompt (ui-knowledge.c:1980-1998) offers 's' to toggle ignore and '}'
    * to uninscribe as well; neither is wired in this port yet, so the prompt names
    * what this build can actually do rather than what the C's string says. */
   const withPrompt = groups.map((g) => ({
@@ -1341,11 +1341,11 @@ export async function showObjectKnowledge(
 }
 
 // ---------------------------------------------------------------------------
-// Ego item knowledge (14.12) - do_cmd_knowledge_ego_items, ui-knowledge.c L1827
+// Ego item knowledge (14.12) - do_cmd_knowledge_ego_items, ui-knowledge.c L1750
 // ---------------------------------------------------------------------------
 
 /**
- * do_cmd_knowledge_ego_items (ui-knowledge.c L1827-1875): every ego the player
+ * do_cmd_knowledge_ego_items (ui-knowledge.c L1750-1808): every ego the player
  * has everseen, expanded into one entry per object-group its poss_items span
  * (default_join), grouped by obj_group_order and sorted by group then name
  * (e_cmp_tval L1810-1824). Membership is ego->everseen (L1847).
@@ -1386,7 +1386,7 @@ export function egoKnowledgeGroups(
 }
 
 /**
- * desc_ego_fake (ui-knowledge.c L1789-1804): the ego-knowledge recall - the
+ * desc_ego_fake (ui-knowledge.c L1714-1729): the ego-knowledge recall - the
  * object_info_ego textblock under a "<group name> <ego name>" header.
  *
  * The ego's own flavour text is NOT prepended here: object_info_out reaches
@@ -1444,18 +1444,18 @@ export async function showEgoKnowledge(
 }
 
 // ---------------------------------------------------------------------------
-// Monster knowledge - do_cmd_knowledge_monsters, ui-knowledge.c L1382
+// Monster knowledge - do_cmd_knowledge_monsters, ui-knowledge.c L1309
 // ---------------------------------------------------------------------------
 
-/** display_knowledge's `otherfields` for monsters (ui-knowledge.c:1451). */
+/** display_knowledge's `otherfields` for monsters (ui-knowledge.c:1374-1375). */
 export const MONSTER_OTHERFIELDS = "                 Sym  Kills  Full";
 
-/** The absolute columns display_monster writes (ui-knowledge.c:1200-1213). */
+/** The absolute columns display_monster writes (ui-knowledge.c:1130-1143). */
 const MON_SYM_COL = 64;
 const MON_KILLS_COL = 68;
 const MON_FULL_COL = 75;
 
-/** display_monster's kills field (ui-knowledge.c:1202-1210). */
+/** display_monster's kills field (ui-knowledge.c:1136-1143). */
 export function monsterKillsCell(race: MonsterRace, pkills: number): string {
   if (!race.rarity) return "shape";
   if (race.flags.has(RF.UNIQUE)) return race.maxNum === 0 ? " dead" : "alive";
@@ -1465,7 +1465,7 @@ export function monsterKillsCell(race: MonsterRace, pkills: number): string {
 }
 
 /**
- * mon_summary (ui-knowledge.c:1303-1328). Two forms: the uniques group (gid 0,
+ * mon_summary (ui-knowledge.c:1234-1259). Two forms: the uniques group (gid 0,
  * when its first member is a unique) counts known uniques and how many are
  * slain; every other group reports its own kills against the total.
  *
@@ -1488,7 +1488,7 @@ export function monsterSummaryLine(
 }
 
 /**
- * do_cmd_knowledge_monsters' browser (ui-knowledge.c L1382-1454). The thematic
+ * do_cmd_knowledge_monsters' browser (ui-knowledge.c L1309-1378). The thematic
  * ui_knowledge.txt categories on the left, their members on the right with
  * display_monster's Sym / Kills / Full columns and mon_summary underneath.
  *
@@ -1560,7 +1560,7 @@ export async function showMonsterKnowledge(
 // ---------------------------------------------------------------------------
 
 /**
- * do_cmd_knowledge_shapechange (ui-knowledge.c L3142-3260): every shape except
+ * do_cmd_knowledge_shapechange (ui-knowledge.c L3063-3192): every shape except
  * "normal" (count_interesting_shapes L2675), sorted alphabetically by name
  * (compare_shape_names, my_stricmp - case-insensitive L2696). Each recall is
  * the ported shape_lore textblock (core shapeLoreLines).

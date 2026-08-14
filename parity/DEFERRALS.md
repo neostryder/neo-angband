@@ -681,7 +681,7 @@ same claim to be re-derived. Each line names the evidence that closed it.
   `ui_knowledge.txt` categories via `bindMonsterCategories`, and
   `web/main.ts:4060` passes `registries.monsterCategories` into
   `monsterKnowledgeGroupViews`. `web/knowledge.ts:1431` is
-  `do_cmd_knowledge_monsters`' browser (`ui-knowledge.c:1382-1454`).
+  `do_cmd_knowledge_monsters`' browser (`ui-knowledge.c:1309-1378`).
 - ~~The high-score entry cannot name the real killer~~ - `score/types.ts:60`
   carries `died_from` as `how[32]` and `score/score.ts:266` gates it as upstream does.
 - ~~The character sheet's launcher contribution is 0~~ - `game/ui-entry.ts:1482`
@@ -775,7 +775,7 @@ tally, which is generated and therefore always current.
 - **`Rand_init`'s time/pid seeding** is deliberately replaced: the port seeds at
   the host and stores the seed in the save, which is what makes a run
   reproducible.
-- **Upstream's `look` is a UI function with `CMD_NULL`** (`ui-knowledge.c:4169`),
+- **Upstream's `look` is a UI function with `CMD_NULL`** (bound at `ui-game.c:143`; the function is `ui-knowledge.c:4057`),
   and **4.2.6 has no search command at all** — no `do_cmd_search`, no
   `CMD_SEARCH`. Those two of the twenty stub codes are correctly never replaced.
 - **`monster_index_move`** exists only to serve `arena_gen`'s `memcpy`;

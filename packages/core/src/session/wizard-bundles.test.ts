@@ -135,7 +135,7 @@ describe("StartedGame.wizardBundles (WP-14 seam)", () => {
     const deps = wizardDeps(game);
     // Pick a trap index and a clear floor grid the player stands on; the
     // dungeon start spot is floor, so create_trap should succeed (a town-only
-    // or occupied grid would refuse per cmd-wizard.c L904).
+    // or occupied grid would refuse per cmd-wizard.c L905).
     const tidx = 1;
     const ok = wizCreateTrap(game.state, { index: tidx }, deps);
     // The command dispatched to the engine (not a no-op refusal); it returns

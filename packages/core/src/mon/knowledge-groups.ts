@@ -74,7 +74,7 @@ function strcmp(a: string, b: string): number {
 }
 
 /**
- * m_cmp_race within a single group (ui-knowledge.c:1234-1262): base position
+ * m_cmp_race within a single group (ui-knowledge.c:1147-1194): base position
  * first (members outside the listed bases sort last), then level, then name.
  */
 function compareInGroup(

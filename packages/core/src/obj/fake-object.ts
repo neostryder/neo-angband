@@ -2,7 +2,7 @@
  * The two throwaway objects the KNOWLEDGE browser builds purely to describe a
  * class of item rather than an item the player owns:
  *
- * - make_fake_kind: the object half of desc_obj_fake (ui-knowledge.c L1938),
+ * - make_fake_kind: the object half of desc_obj_fake (ui-knowledge.c L1862),
  *   an object_prep of the kind on the EXTREMIFY aspect, whose object_info
  *   (OINFO_FAKE) run stream is the "known objects" recall body.
  * - object_info_ego (obj-info.c L2402), which builds a bare object of the
@@ -56,7 +56,7 @@ import type { EgoItem, ObjectKind } from "./types.js";
 export const FAKE_OBJECT_SEED = 1;
 
 /**
- * The object half of desc_obj_fake (ui-knowledge.c L1946):
+ * The object half of desc_obj_fake (ui-knowledge.c L1879):
  * `object_prep(obj, kind, 0, EXTREMIFY)`. EXTREMIFY takes whichever of the
  * minimum and maximum is larger in absolute value, so a browsed kind shows its
  * most extreme legal roll - which is why a Ring of Damage reads as its best

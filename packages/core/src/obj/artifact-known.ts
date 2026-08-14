@@ -1,6 +1,6 @@
 /**
  * Artifact-knowledge gating for the "known artifacts" browser, ported from
- * find_artifact (reference/src/ui-knowledge.c L1537-1610), object_is_known_
+ * find_artifact (reference/src/ui-knowledge.c L1460-1528), object_is_known_
  * artifact (obj-knowledge.c L552-556) and artifact_is_known (ui-knowledge.c
  * L1687-1707) of Angband 4.2.6.
  *
@@ -30,7 +30,7 @@ export function liveObjectIsKnownArtifact(obj: GameObject): boolean {
 /** The world-scan + created-flags view artifact_is_known needs. */
 export interface ArtifactKnownEnv {
   /**
-   * Every live object find_artifact scans (ui-knowledge.c L1537): floor piles,
+   * Every live object find_artifact scans (ui-knowledge.c L1460): floor piles,
    * player gear, monster-held objects, store stock and stored (cached) level
    * chunks. Order does not matter - a fixed artifact has at most one live copy.
    */
@@ -42,7 +42,7 @@ export interface ArtifactKnownEnv {
 }
 
 /**
- * find_artifact (ui-knowledge.c L1537-1610): the live object that is this
+ * find_artifact (ui-knowledge.c L1460-1528): the live object that is this
  * artifact, or null if no copy exists in the world right now.
  */
 export function findArtifact(env: ArtifactKnownEnv, aidx: number): GameObject | null {
@@ -53,7 +53,7 @@ export function findArtifact(env: ArtifactKnownEnv, aidx: number): GameObject | 
 }
 
 /**
- * artifact_is_known (ui-knowledge.c L1687-1707): should the browser list this
+ * artifact_is_known (ui-knowledge.c L1611-1630): should the browser list this
  * artifact? Requires a name; wizard mode always yes; otherwise it must be
  * created, and if a live copy exists it must already be identified as an
  * artifact (else the copy is a not-yet-found artifact and listing it would

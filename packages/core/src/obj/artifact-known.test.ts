@@ -40,7 +40,7 @@ describe("liveObjectIsKnownArtifact (obj-knowledge.c L552, shadow L512)", () => 
   });
 });
 
-describe("findArtifact (ui-knowledge.c L1537)", () => {
+describe("findArtifact (ui-knowledge.c L1460)", () => {
   it("returns the live object bearing the artifact, else null", () => {
     const art = artOf(4);
     const obj = objOf(art, false);
@@ -50,7 +50,7 @@ describe("findArtifact (ui-knowledge.c L1537)", () => {
   });
 });
 
-describe("artifactIsKnown (ui-knowledge.c L1687)", () => {
+describe("artifactIsKnown (ui-knowledge.c L1611)", () => {
   it("requires a name", () => {
     const art = artOf(1, "");
     expect(artifactIsKnown(art, makeEnv([], new Set([1])))).toBe(false);

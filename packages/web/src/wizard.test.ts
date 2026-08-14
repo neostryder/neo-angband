@@ -261,7 +261,7 @@ describe("runWizardToggle (15.1 / cmd-misc.c L37-68)", () => {
     expect(next).toBe(true);
     expect(player.noscore & NOSCORE.WIZARD).toBe(NOSCORE.WIZARD);
     expect(said).toContain(WIZARD_ON_MSG);
-    // The noscore chain: a wizard character no longer scores (score.c L289).
+    // The noscore chain: a wizard character no longer scores (score.c L263).
     expect(noscoreInvalidatesScore(player.noscore)).toBe(true);
   });
 
@@ -337,7 +337,7 @@ describe("runWizardDebugMenu debug gate (15.2 / player-util.c L1296)", () => {
   });
 });
 
-describe("edit-player (do_cmd_wiz_edit_player_start, cmd-wizard.c:1202)", () => {
+describe("edit-player (do_cmd_wiz_edit_player_start, cmd-wizard.c:1252)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
   });
@@ -368,7 +368,7 @@ describe("edit-player (do_cmd_wiz_edit_player_start, cmd-wizard.c:1202)", () => 
     await tick();
     /* Upstream walks straight into the first stat - there is no field menu.
      * The prompt is "%s (3-118): " over stat_idx_to_name, defaulted to
-     * player->stat_max[stat] (cmd-wizard.c:1276-1279). */
+     * player->stat_max[stat] (cmd-wizard.c:1326-1329). */
     expect(row0(ctx)).toContain("STR (3-118): 10");
     expect(row0(ctx)).not.toContain("Strength");
     press(win, "Escape"); // EDIT_PLAYER_BREAK: nothing else is asked

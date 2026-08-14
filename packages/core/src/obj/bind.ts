@@ -567,7 +567,7 @@ export class ObjRegistry {
    * lookup_artifact_name (obj-util.c L520): the artifact whose name EQUALS
    * `name`, else the first artifact whose name CONTAINS `name`
    * case-insensitively (only when `name` is at least 3 characters). Backs the
-   * wizard-mode "Enter new artifact:" prompt's name branch (cmd-wizard.c L2798),
+   * wizard-mode "Enter new artifact:" prompt's name branch (cmd-wizard.c L2840),
    * so `narthanc` and `hanc` both resolve.
    *
    * Two upstream warts are reproduced deliberately:
@@ -597,7 +597,7 @@ export class ObjRegistry {
   /**
    * lookup_ego_item (obj-util.c L549): the ego of exactly this `name` that can
    * be applied to the kind with `tval`/`sval`. Backs the wizard-mode "Enter ego
-   * item:" prompt's name branch (cmd-wizard.c L2752). Unlike the artifact
+   * item:" prompt's name branch (cmd-wizard.c L2801). Unlike the artifact
    * lookup this is EXACT-name only, and an ego whose poss_items list does not
    * hold the kind is skipped even when the name matches.
    */

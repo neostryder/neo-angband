@@ -233,8 +233,9 @@ export const MODE_VIEW_IDS = ["core:character", "core:character-flags"] as const
 const RENAME_PROMPT = "Enter your character's name";
 
 /**
- * `get_file`'s own prompt (ui-player.c:1338 -> get_string("File name: ")),
- * without its separator.
+ * `get_file`'s own prompt (get_file_text, ui-input.c:1359 -> get_string(
+ * "File name: ")), without its separator. ui-player.c:1269 is the call site
+ * this screen's `f` row ports; the prompt itself lives behind get_file_hook.
  *
  * THIS ONE IS A SECOND SPELLING and cannot be anything else: the string lives
  * inside `getFile` (overlay.ts) and is not exported. `charsheet.test.ts` reads

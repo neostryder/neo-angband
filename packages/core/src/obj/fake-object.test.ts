@@ -1,7 +1,7 @@
 /**
  * PORT_TODO 3.3: the two knowledge recalls that used to print a name and the
  * record's blurb where upstream prints computed lines - desc_obj_fake's
- * object_info(OINFO_FAKE) body (ui-knowledge.c L1938) and desc_ego_fake's
+ * object_info(OINFO_FAKE) body (ui-knowledge.c L1889) and desc_ego_fake's
  * object_info_ego (obj-info.c L2402), plus describe_ego (L2281), which had
  * never been ported because the only mode bit that reaches it is the one only
  * object_info_ego sets.
@@ -114,7 +114,7 @@ function egoText(e: EgoItem): string {
   );
 }
 
-describe("makeFakeKind (desc_obj_fake's object_prep, ui-knowledge.c L1946)", () => {
+describe("makeFakeKind (desc_obj_fake's object_prep, ui-knowledge.c L1879)", () => {
   it("preps on EXTREMIFY - the end with the larger absolute value, not the max", () => {
     /* Derived, and chosen so the assertion can DISCRIMINATE: pick a kind whose
      * modifiers actually differ under extremify and maximise (a negative

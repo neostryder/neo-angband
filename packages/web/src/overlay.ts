@@ -996,16 +996,16 @@ export async function getChar(
 }
 
 /**
- * get_file (get_file_text, ui-input.c:1335-1383): ask where to write a dump.
+ * get_file (get_file_text, ui-input.c:1350-1398): ask where to write a dump.
  *
  *   File name: <suggested>          get_string over the untouched screen
- *   <empty or leading space>        -> cancel (L1347)
+ *   <empty or leading space>        -> cancel (L1362)
  *   Replace existing file?          only when the user directory has that name
  *   Saving as user/<name>.          prt + anykey + prt("", 0, 0)
  *
  * Resolves the file name, or null on any of the three cancels.
  *
- * Under arg_force_name (L1348-1368) the prompt is replaced: the host has pinned
+ * Under arg_force_name (L1363-1383) the prompt is replaced: the host has pinned
  * the name, so the ".txt" is overwritten with a timestamp and the player is
  * asked to confirm the result rather than type it. Reachable only with `-f`,
  * which means only on a front end that has a command line.
@@ -1014,14 +1014,14 @@ export async function getFile(
   term: GridSurface & GridPointerInput,
   suggestedName: string,
 ): Promise<string | null> {
-  /* char buf[160] (L1337). */
+  /* char buf[160] (L1352). */
   let name: string;
   if (argForceName()) {
-    /* prt("File name: ", 0, 0) (L1358) - drawn, then left for the get_check
+    /* prt("File name: ", 0, 0) (L1372) - drawn, then left for the get_check
      * below to overwrite, exactly as upstream leaves it. */
     term.prt(0, 0, "File name: ", FG);
     /* strftime("-%Y-%m-%d-%H-%M.txt") over the last four characters, which are
-     * the ".txt" the caller appended (L1360-1364, with its assert that they are
+     * the ".txt" the caller appended (L1375-1377, with its assert that they are
      * there to overwrite). */
     const stem =
       suggestedName.length >= 4 ? suggestedName.slice(0, -4) : suggestedName;
@@ -1030,14 +1030,14 @@ export async function getFile(
   } else {
     const typed = await getString(term, "File name: ", suggestedName, 160);
     if (typed === null) return null;
-    /* "Make sure it's actually a filename" (L1346-1347). */
+    /* "Make sure it's actually a filename" (L1361-1362). */
     if (typed === "" || typed.startsWith(" ")) return null;
     name = typed;
   }
   if (userExists(name) && !(await getCheck(term, "Replace existing file? "))) {
     return null;
   }
-  /* "Tell the user where it's saved to." (L1377-1380). */
+  /* "Tell the user where it's saved to." (L1392-1395). */
   await getKeyInline(term, `Saving as ${userPath(name)}.`);
   return name;
 }
@@ -1197,7 +1197,7 @@ export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
   hint?: string;
   /**
    * A right-hand annotation drawn at a fixed column in its OWN colour, after
-   * the label. This is display_rune's second field (ui-knowledge.c:2201-2202:
+   * the label. This is display_rune's second field (ui-knowledge.c:2124-2125:
    * `c_put_str(COLOUR_YELLOW, inscrip, row, 47)`) - the rune's autoinscription
    * beside its name. Rows without one paint exactly as before.
    */

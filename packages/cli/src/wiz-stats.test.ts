@@ -1,7 +1,7 @@
 /**
  * Guard for the in-game Monte-Carlo collectors (wiz-stats.ts), the port's
  * answer to reference/src/wiz-stats.c behind the do_cmd_wiz_collect_* commands
- * (cmd-wizard.c L585 / L622 / L671). It checks STRUCTURAL invariants and pins
+ * (cmd-wizard.c L586 / L623 / L672). It checks STRUCTURAL invariants and pins
  * determinism (decision-22: the engine is a function of the seed), keeping the
  * batches tiny so CI stays fast.
  */

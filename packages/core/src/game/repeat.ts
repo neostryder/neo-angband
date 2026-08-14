@@ -13,7 +13,7 @@
  *  - all SEVEN `cmd_disable_repeat` sites were unported: taking the last of a
  *    stack (obj-gear.c:613), wielding (L1020), a full combine_pack (L1321),
  *    taking the last of a floor pile (obj-pile.c:856), accepting a character
- *    (player-birth.c:1309), creating a trap in wizard mode (cmd-wizard.c:932),
+ *    (player-birth.c:1309), creating a trap in wizard mode (cmd-wizard.c:933),
  *    and a store transaction (ui-store.c:1317, which is the shell's);
  *  - all FOUR `cmd_disable_repeat_floor_item` sites were too: leaving a level
  *    (game-world.c:1068), a monster dying or being deleted (mon-util.c:624,

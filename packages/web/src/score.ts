@@ -52,7 +52,7 @@ export interface ScoreStorage {
 export interface ScoreStoreDeps {
   /**
    * msg(). highscore_write REPORTS every failure to the player (score.c
-   * L126-190) - eight distinct messages - so the writer needs the message line.
+   * L126-169) - eight distinct messages - so the writer needs the message line.
    * Omitted, the failures are silent, which is what this module used to do.
    */
   msg?: ((text: string) => void) | undefined;
@@ -167,7 +167,7 @@ export function createLocalStorageScoreStore(
       return scores.slice(0, MAX_HISCORES);
     },
 
-    /** highscore_write (score.c L98-198), step for step. */
+    /** highscore_write (score.c L98-176), step for step. */
     write(scores: HighScore[]): void {
       const json = JSON.stringify(scores.slice(0, MAX_HISCORES));
 

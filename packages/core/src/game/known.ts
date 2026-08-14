@@ -299,10 +299,10 @@ export function caveIlluminateKnown(state: GameState, daytime: boolean): void {
 }
 
 /**
- * cave_known (cave-map.c:633-660): memorize town terrain except interior
+ * cave_known (cave-map.c:633-659): memorize town terrain except interior
  * wall/lava regions.
  *
- * MUST run BEFORE caveIlluminateKnown, as generate.c:1547-1550 does. The order
+ * MUST run BEFORE caveIlluminateKnown, as generate.c:1541-1543 does. The order
  * is load-bearing and not interchangeable: cave_illuminate writes player memory
  * too -- square_memorize at cave-map.c:582 and, at night, square_forget on
  * boring floor grids at :586-587. So upstream deliberately memorizes the whole

@@ -2058,7 +2058,7 @@ function itemCmdKey(code: string): string | undefined {
  * `isHarmless` is get_item's IS_HARMLESS flag: set on the pickers that only look
  * at an item (inscribe, examine, browse, the context menu, the visuals editor -
  * cmd-obj.c:196, ui-object.c:1680, ui-spell.c:341, ui-context.c:237,
- * ui-knowledge.c:4020), and it suppresses a blanket `!*` while still honouring
+ * ui-knowledge.c:3908 GET_ITEM_PARAMS), and it suppresses a blanket `!*` while still honouring
  * the command's own `!<key>`.
  */
 async function selectItemFrom(
@@ -2073,7 +2073,7 @@ async function selectItemFrom(
   /**
    * Which listing to OPEN in - upkeep->command_wrk, which do_cmd_inven /
    * do_cmd_equip / do_cmd_quiver each set before the shared get_item
-   * (ui-knowledge.c:4036, 4082, 4131). It selects the starting tab only; every
+   * (ui-knowledge.c:3924, 3970, 4019). It selects the starting tab only; every
    * source in `mode` stays reachable from inside the picker.
    */
   startIn?: "inven" | "equip" | "quiver" | "floor",
@@ -2724,7 +2724,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
 }
 
 /**
- * do_cmd_inven / do_cmd_equip / do_cmd_quiver (ui-knowledge.c:4025, 4071, 4120).
+ * do_cmd_inven / do_cmd_equip / do_cmd_quiver (ui-knowledge.c:3913, 3959, 4008).
  *
  * These three keys - i, e and | - are not passive listings upstream. Each one
  * opens the listing as a get_item PICKER and runs the chosen object's context
@@ -3233,7 +3233,7 @@ async function takeOffItem(): Promise<void> {
  * obj->number) at L383, i.e. get_quantity(NULL, obj->number) ->
  * "Quantity (0-N, *=all): " over the current screen. A max of 1 answers 1
  * silently (ui-input.c L1211), so a single item never prompts. An answer of 0 -
- * which ESCAPE gives - is CMD_ARG_ABORTED (cmd-core.c L1119): no drop, no
+ * which ESCAPE gives - is CMD_ARG_ABORTED (cmd-core.c L1097): no drop, no
  * message, and no energy.
  *
  * Ordering note: upstream's stuck-item check (L378) runs BEFORE the quantity
@@ -3269,7 +3269,7 @@ async function dropItem(): Promise<void> {
 // picker (USE_EQUIP|USE_INVEN|USE_QUIVER|USE_FLOOR upstream); the quiver
 // rides the pack in this gear model. Autoinscribe has no default key
 // upstream ships it only from the object-knowledge browser's `{` action
-// (ui-knowledge.c:2101-2123, wired via ObjectBrowserDeps.setAutoinscription),
+// (o_xtra_act, ui-knowledge.c:1999-2061, wired via ObjectBrowserDeps.setAutoinscription),
 // and applyAutoinscription then applies the registered notes on the
 // do_cmd_autoinscribe pass.
 
@@ -4018,7 +4018,7 @@ async function showAbilitiesScreen(): Promise<void> {
  * object browser.
  */
 /**
- * Every live object find_artifact scans (ui-knowledge.c L1537): floor piles,
+ * Every live object find_artifact scans (ui-knowledge.c L1460): floor piles,
  * player gear, monster-held objects, store stock and stored (cached) level
  * chunks. Feeds the artifact browser's exact created-and-not-live-unidentified
  * gate (obj/artifact-known.ts).
@@ -4036,7 +4036,7 @@ function* allWorldObjects(): Iterable<GameObject> {
 
 async function openKnowledgeMenu(): Promise<void> {
   const p = state.actor.player;
-  // Entries are built in the exact reference order (ui-knowledge.c:3597-3676):
+  // Entries are built in the exact reference order (ui-knowledge.c:3487-3503):
   // the fixed pre-store block, then one "Display <store>'s contents" entry per
   // store, then the fixed post-store block. Each label/handler is pushed in
   // lockstep so the dynamic store entries never desync the dispatch.
@@ -4046,7 +4046,7 @@ async function openKnowledgeMenu(): Promise<void> {
     items.push(disabled ? { label, disabled: true } : { label });
     actions.push(run);
   };
-  // Grayed unless something is known (ui-knowledge.c:3751-3799 MN_ACT_GRAYED).
+  // Grayed unless something is known (ui-knowledge.c:3646-3689 MN_ACT_GRAYED).
   const monKnown =
     knownMonsterEntries(booted.registries.monsters.races, state.lore).length > 0;
   const egoKnown = booted.registries.objects.egos.some((e) => game.everseen.egoSeen(e));
@@ -4062,9 +4062,9 @@ async function openKnowledgeMenu(): Promise<void> {
     runeEnv: state.runeEnv,
   });
 
-  // Pre-store block (pre_store_actions[], ui-knowledge.c:3597-3606).
+  // Pre-store block (pre_store_actions[], ui-knowledge.c:3487-3496).
   add("Display object knowledge", async () => {
-    // textui_browse_object_knowledge (ui-knowledge.c L2139): everseen ||
+    // textui_browse_object_knowledge (ui-knowledge.c L2062): everseen ||
     // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
     // leaking an unidentified flavoured kind's real name.
     const objDeps: ObjectRecallDeps = {
@@ -4076,7 +4076,7 @@ async function openKnowledgeMenu(): Promise<void> {
         !aware && (state.hasFlavor?.(k) ?? false)
           ? (state.flavorText?.(k) ?? "")
           : k.name.replace(/[~&]/g, " ").trim(),
-      // `{` inside the browser (ui-knowledge.c:2101-2123): "Inscribe with: "
+      // `{` inside the browser (o_xtra_act, ui-knowledge.c:1999-2061): "Inscribe with: "
       // sets/updates the kind's autoinscription (empty clears). Default note is
       // get_autoinscription(k, k->aware); the write is add_autoinscription with
       // the kind's aware bit.
@@ -4094,7 +4094,7 @@ async function openKnowledgeMenu(): Promise<void> {
         if (text === null) return; // ESC: leave the kind's note unchanged
         registry.set(k.kidx, text, aware);
       },
-      // desc_obj_fake's object_info(OINFO_FAKE) body (ui-knowledge.c L1968).
+      // desc_obj_fake's object_info(OINFO_FAKE) body (ui-knowledge.c L1889).
       recall: fakeRecallDeps(),
     };
     await showObjectKnowledge(
@@ -4105,7 +4105,7 @@ async function openKnowledgeMenu(): Promise<void> {
     );
   });
   add("Display rune knowledge", () =>
-    /* do_cmd_knowledge_runes (ui-knowledge.c:2291) with its xtra_prompt /
+    /* do_cmd_knowledge_runes (ui-knowledge.c:2214) with its xtra_prompt /
      * xtra_act pair: '{' sets rune_list[i].note and runs rune_autoinscribe
      * (:2275), '}' clears it (:2252). */
     showRuneKnowledge(term, state.runeEnv, p, {
@@ -4115,7 +4115,7 @@ async function openKnowledgeMenu(): Promise<void> {
     }),
   );
   add("Display artifact knowledge", () =>
-    // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
+    // do_cmd_knowledge_artifacts (ui-knowledge.c L1663). The exact
     // artifact_is_known gate (L1687): created AND no live unidentified copy.
     showArtifactKnowledge(term, {
       state,
@@ -4137,14 +4137,14 @@ async function openKnowledgeMenu(): Promise<void> {
   add(
     "Display ego item knowledge",
     () =>
-      // do_cmd_knowledge_ego_items (ui-knowledge.c L1827): everseen egos.
+      // do_cmd_knowledge_ego_items (ui-knowledge.c L1750): everseen egos.
       showEgoKnowledge(
         term,
         booted.registries.objects.egos,
         booted.registries.objects.kinds,
         booted.registries.objects.bases,
         game.everseen,
-        // desc_ego_fake's object_info_ego body (ui-knowledge.c L1798).
+        // desc_ego_fake's object_info_ego body (ui-knowledge.c L1723).
         fakeRecallDeps(),
       ),
     !egoKnown,
@@ -4157,7 +4157,7 @@ async function openKnowledgeMenu(): Promise<void> {
     if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
   });
   add("Display shapechange effects", () => {
-    // do_cmd_knowledge_shapechange (ui-knowledge.c L3142).
+    // do_cmd_knowledge_shapechange (ui-knowledge.c L3063).
     /* makeShapeLoreEnv rather than an object literal: the three table fields
      * are trivial and the two tails are not, and hand-assembly here is exactly
      * what left shape_lore_append_change_effects and
@@ -4178,7 +4178,7 @@ async function openKnowledgeMenu(): Promise<void> {
     return showShapeKnowledge(term, players.shapes, shapeEnv);
   });
 
-  // Per-store block (ui-knowledge.c:3662-3676): "Display <store>'s contents",
+  // Per-store block (reset_main_knowledge_menu, ui-knowledge.c:3483-3598): "Display <store>'s contents",
   // one entry per store, with a " (N)" shortcut suffix for the first nine.
   const stores = state.stores ?? [];
   const storeStart = items.length;
@@ -4192,7 +4192,7 @@ async function openKnowledgeMenu(): Promise<void> {
     if (j < 9) storeCommands[String(j + 1)] = () => storeStart + j;
   });
 
-  // Post-store block (post_store_actions[], ui-knowledge.c:3609-3613).
+  // Post-store block (post_store_actions[], ui-knowledge.c:3499-3503).
   add("Display hall of fame", () => openHallOfFame());
   add("Display character history", () =>
     showTextScreen(term, playerHistoryScreen(state)),
@@ -4215,7 +4215,7 @@ async function openKnowledgeMenu(): Promise<void> {
 }
 
 /**
- * do_cmd_knowledge_store (ui-knowledge.c:3522 -> textui_store_knowledge,
+ * do_cmd_knowledge_store (ui-knowledge.c:3412 -> textui_store_knowledge,
  * ui-store.c:1217): a read-only view of a store's stock. Reproduces the
  * store_display_frame layout - owner line, the "Store Inventory"/"Weight"/
  * "Price" header (Home shows "Home Inventory" with no Price), then the stock in
@@ -4246,7 +4246,7 @@ async function showStoreKnowledge(store: Store): Promise<void> {
 }
 
 /**
- * do_cmd_knowledge_monsters (ui-knowledge.c L1382-1454): the thematic browser -
+ * do_cmd_knowledge_monsters (ui-knowledge.c L1309-1378): the thematic browser -
  * the ui_knowledge.txt categories on the left, the chosen category's known
  * races on the right with display_monster's Sym / Kills / Full columns and
  * mon_summary underneath. Picking one opens its recall through the SAME
@@ -4670,7 +4670,7 @@ async function jumpCmd(): Promise<void> {
 }
 
 /**
- * Identify symbol (/, do_cmd_query_symbol, ui-knowledge.c:4467): prompt for a
+ * Identify symbol (/, do_cmd_query_symbol, ui-knowledge.c:4283): prompt for a
  * display character (or a special list key), collect every monster race the
  * player has memory of whose glyph matches (char_matches_key), then browse the
  * matching races' recall sorted by level or kills. A free action (no turn).
@@ -4678,7 +4678,7 @@ async function jumpCmd(): Promise<void> {
  */
 async function querySymbolCmd(): Promise<void> {
   // get_com_ex: one keypress. control+A/N/U select the full / unique-only /
-  // non-unique-only lists (ui-knowledge.c:4490-4498); any other key is a
+  // non-unique-only lists (ui-knowledge.c:4306-4314); any other key is a
   // literal symbol to match. Captured directly so a control combo is readable.
   const sym = await new Promise<{ all: boolean; uniq: boolean; norm: boolean; ch: string } | null>(
     (resolve) => {
@@ -4775,7 +4775,7 @@ function feelingCmd(): void {
 }
 
 /**
- * Show previous message (^O, do_cmd_message_one, ui-knowledge.c:3819): print the
+ * Show previous message (^O, do_cmd_message_one, ui-knowledge.c:3709): print the
  * single most recent message, prefixed "> ", on the top line. A free action.
  * C: ui-game.c:187.
  */
@@ -5045,7 +5045,7 @@ async function driveRest(nArg: number): Promise<void> {
 // A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
 // owns the scoring/ordering/gating. `scoresOpen` gates the main keyhandler
 // while the Hall of Fame screen owns the keyboard.
-// highscore_write's eight failure messages (score.c L126-190) go to the
+// highscore_write's eight failure messages (score.c L126-169) go to the
 // message line, exactly as upstream: a table that could not be written says so.
 const scoreStore = createLocalStorageScoreStore(undefined, {
   msg: (text) => say(text),
@@ -5145,7 +5145,7 @@ function wizardCtx(): WizardUiCtx {
       state.generateLevel = false;
       panelCam = null; // new level: recentre the camera on the player
     },
-    /* quit("user choice") (cmd-wizard.c L2150). Deliberately NOT exitToTitle:
+    /* quit("user choice") (cmd-wizard.c L2203). Deliberately NOT exitToTitle:
      * that one saves first, and the whole point of this command is that nothing
      * is written. On desktop the process exits, as upstream's does. In a tab
      * there is no process, so the analogue is a reload with the continuation
@@ -5178,7 +5178,7 @@ function wizardCtx(): WizardUiCtx {
       );
       return ok ? targetGet(state) : null;
     },
-    // wiz_hack_map (cmd-wizard.c:319): the debug query commands hand us the
+    // wiz_hack_map (cmd-wizard.c:320): the debug query commands hand us the
     // grids their probe selected, each with the colour that probe chose, and we
     // overlay one glyph per grid on the visible panel exactly as print_rel
     // does - '@' on the player, '*' where the grid is passable, '#' otherwise.
@@ -5736,10 +5736,10 @@ async function showTombstone(diedFrom: string): Promise<void> {
 }
 
 /**
- * death_screen's menu (ui-death.c L374-421), routed through the same shared menu
+ * death_screen's menu (ui-death.c L374-416), routed through the same shared menu
  * component, with upstream's rows and tag letters.
  *
- * Its loop (L401-418) has four exits, and they do NOT agree on confirming:
+ * Its loop (L401-413) has four exits, and they do NOT agree on confirming:
  * KTRL('X') breaks out at once, KTRL('N') restarts at once, while both the Quit
  * row (an EVT_SELECT, reaching death_screen only because Quit's action pointer
  * is NULL - menu_action_handle, ui-menu.c:98-112) and EVT_ESCAPE ask
@@ -6311,7 +6311,7 @@ function redrawCmd(): void {
  *
  * Upstream asks NOTHING. textui_quit's entire body is `playing = false`; the loop
  * unwinds through close_game (which saves), and every front end then calls quit()
- * (main.c:581-586, main-win.c:3511-3512). There is no get_check anywhere on the
+ * (main.c:546-557, main-win.c:3511-3512). There is no get_check anywhere on the
  * path.
  *
  * The port used to open a "Save and quit?" confirmation. That prompt exists
@@ -7970,7 +7970,7 @@ function advance(): void {
     // back only if the engine never set it.
     const player = state.actor.player;
     const diedFrom = player.diedFrom || "the dungeon";
-    // enter_score gating (score.c L272-302): a cheater (any OP_SCORE option
+    // enter_score gating (score.c L246-292): a cheater (any OP_SCORE option
     // set), a wizard/debug character (noscore bits, 15.3/WP-10), and a
     // non-winning interrupted/retiring death are not scored. noscoreInvalidates-
     // Score reads the persisted Player.noscore bits; fullName feeds the score's
@@ -7986,13 +7986,13 @@ function advance(): void {
           noscoreInvalidatesScore(player.noscore),
           game.manifest.modNoscore,
         ),
-        /* score.c:291: the Borg gets its own line. The bit is set by the borg
+        /* score.c:268: the Borg gets its own line. The bit is set by the borg
          * mod's activation gate (cmd-misc.c:140) when that mod is mounted. */
         borg: (player.noscore & NOSCORE.BORG) !== 0,
         totalWinner: player.totalWinner,
       },
     );
-    /* score.c:282/289/292/300/303: each rejection tells the player which rule
+    /* score.c:257/264/269/274/277: each rejection tells the player which rule
      * cost them the entry, msg() then EVENT_MESSAGE_FLUSH - so it is read
      * before the tombstone below. The reason was computed and discarded. */
     if (!outcome.entered) {
@@ -8171,7 +8171,7 @@ function buildCommandTable(): CommandRow[] {
     // Item management (cmd_item_manage, ui-game.c:161-165).
     /* do_cmd_equip / do_cmd_inven / do_cmd_quiver open with an emptiness
      * check that says why rather than showing an empty screen
-     * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123). */
+     * (ui-knowledge.c:3932-3934, :3978-3980, :4027-4029). */
     /* do_cmd_equip / do_cmd_inven / do_cmd_quiver: each opens its listing as a
      * PICKER into context_menu_object, not as a read-only screen. */
     { desc: "Display equipment listing", cat: "Manage items", o: "e", act: () => void openModal(() => doCmdItemListing("equip")) },
@@ -8238,7 +8238,7 @@ function buildCommandTable(): CommandRow[] {
 }
 
 /**
- * key_confirm_command (ui-input.c:1995) at ui-game.c:562-565's exact position:
+ * key_confirm_command (ui-input.c:1923) at ui-game.c:544-547's exact position:
  * the key has resolved to a real command, and the WORN equipment's `^*` /
  * `^<key>` inscriptions get to veto it before the command runs. Refusing drops
  * the key entirely - upstream sets cmd to NULL, so nothing is queued and no
@@ -8553,7 +8553,7 @@ inputEvents.addEventListener("keydown", (ev) => {
       const key = roguelike ? (c.r === undefined ? c.o : c.r) : c.o;
       if (key != null && ev.key === key) {
         ev.preventDefault();
-        /* key_confirm_command (ui-input.c:1995) at ui-game.c:562-565's exact
+        /* key_confirm_command (ui-input.c:1923) at ui-game.c:544-547's exact
          * position: the key has resolved to a real command, and the WORN
          * equipment's `^*` / `^<key>` inscriptions get to veto it before the
          * command runs. Refusing drops the key entirely - upstream sets cmd to

@@ -165,7 +165,7 @@ export function lightRoom(state: GameState, grid: Loc, light: boolean): void {
  * - `full` picks square_know_pile over square_sense_pile (cave-map.c:448-452 /
  *   :519-523), threaded from context->value.base by both effect handlers
  *   (effect-handler-general.c:3005 / :3016) and true for the wizard command
- *   (cmd-wizard.c:2909);
+ *   (cmd-wizard.c:2968);
  * - then `!square_ismark(grid) && square_ismemorybad(grid) ->
  *   square_forget(grid)` (cave-map.c:456-459 / :527-530);
  * - then a square_unmark sweep over 1..h-2 / 1..w-2 only (cave-map.c:463-470 /

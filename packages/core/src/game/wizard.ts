@@ -19,7 +19,7 @@
  *     changes six display / knowledge behaviours and nothing in this module.
  *     Its 15 upstream call sites are the toggle itself, cheat death
  *     (player-util.c L246), the "[=-WIZARD-=]" title (ui-display.c L178,
- *     ui-player.c L628), all-artifacts-known (ui-knowledge.c L1695), the seven
+ *     ui-player.c L628), all-artifacts-known (ui-knowledge.c L1618), the seven
  *     look/target coordinate+noise+scent lines (ui-target.c), the headless
  *     stats build (main-stats.c L435) and the borg's cheat-death check.
  *
@@ -243,7 +243,7 @@ export function wizardEnabled(deps: WizardDeps): boolean {
  * (player.h L92-100). Stored on player->noscore (a uint16), persisted in the
  * savefile (save.c L622 wr_u16b / load.c L965 rd_u16b) and re-asserted from the
  * savefile's own wizard flag on load (savefile.c L650). A set cheat bit
- * invalidates the high-score entry (score.c L289). The bit values match
+ * invalidates the high-score entry (score.c L263). The bit values match
  * upstream exactly so a loaded uint16 is interpreted identically.
  */
 export const NOSCORE = {
@@ -251,7 +251,7 @@ export const NOSCORE = {
   WIZARD: 0x0002,
   /** Character used a debug command / debug options (player-util.c L1303). */
   DEBUG: 0x0008,
-  /** Character jumped levels (cmd-wizard.c L1366); transient, cleared after
+  /** Character jumped levels (cmd-wizard.c L1416); transient, cleared after
    * the jump completes (generate.c L824-828). Does NOT invalidate the score. */
   JUMPING: 0x0010,
   /** Character was played by the Borg (cmd-misc.c L140, main-win.c L3396). */
@@ -261,7 +261,7 @@ export const NOSCORE = {
 /**
  * The two upstream build switches that decide whether NOSCORE_BORG exists and
  * whether it disqualifies a score. Upstream expresses these as #ifdefs
- * (player.h L97-99 wraps the bit in ALLOW_BORG; score.c L292-297 skips the borg
+ * (player.h L98-100 wraps the bit in ALLOW_BORG; score.c L266-272 skips the borg
  * branch when SCORE_BORGS is defined), so the port records the configuration it
  * builds under as named constants instead of leaving the choice implicit.
  *
@@ -274,7 +274,7 @@ export const ALLOW_BORG = true;
 export const SCORE_BORGS = false;
 
 /**
- * The cheat bits that invalidate a high-score entry (score.c L289-298).
+ * The cheat bits that invalidate a high-score entry (score.c L263-278).
  * NOSCORE_WIZARD | NOSCORE_DEBUG always disqualify; NOSCORE_BORG additionally
  * does so only under ALLOW_BORG && !SCORE_BORGS, which is this port's
  * configuration. NOSCORE_JUMPING is deliberately absent: it is a transient
@@ -291,7 +291,7 @@ export function markNoscore(current: number, bits: number): number {
 }
 
 /**
- * noscoreInvalidatesScore (score.c L289): true when the character's cheat flags
+ * noscoreInvalidatesScore (score.c L263): true when the character's cheat flags
  * disqualify it from the high-score table.
  */
 export function noscoreInvalidatesScore(noscore: number): boolean {
@@ -347,11 +347,11 @@ function runSimple(
 }
 
 /* ------------------------------------------------------------------ *
- * Shared object-creation building blocks (cmd-wizard.c L139-L302).
+ * Shared object-creation building blocks (cmd-wizard.c L140-L303).
  * ------------------------------------------------------------------ */
 
 /**
- * wiz_create_object_from_kind (cmd-wizard.c L169): a fresh instance of a kind,
+ * wiz_create_object_from_kind (cmd-wizard.c L170): a fresh instance of a kind,
  * money made as gold, everything else prepped and given plain magic (no
  * messages, no artifacts).
  */
@@ -378,7 +378,7 @@ export function wizCreateObjectFromKind(
 }
 
 /**
- * wiz_create_object_from_artifact (cmd-wizard.c L139): instantiate an artifact
+ * wiz_create_object_from_artifact (cmd-wizard.c L140): instantiate an artifact
  * on its base kind and mark it created in the shared registry (L157), so the
  * normal generation paths will not spawn it again.
  */
@@ -405,7 +405,7 @@ export function wizCreateObjectFromArtifact(
 }
 
 /**
- * wiz_drop_object (cmd-wizard.c L292): mark the object as a cheat and drop it
+ * wiz_drop_object (cmd-wizard.c L293): mark the object as a cheat and drop it
  * from heaven near the player.
  */
 export function wizDropObject(state: GameState, obj: GameObject | null): void {
@@ -630,7 +630,7 @@ export function wizCreateTrap(
     return false;
   }
   placeTrap(state, grid, tidx, 0, deps.trapDeps);
-  /* "Can not repeat since there's now a trap here" (cmd-wizard.c:932). */
+  /* "Can not repeat since there's now a trap here" (cmd-wizard.c:933). */
   cmdDisableRepeat(state.actor.player);
   return true;
 }
@@ -683,7 +683,7 @@ export function wizCureAll(state: GameState, deps: WizardDeps): boolean {
   return true;
 }
 
-/** The affliction timers cure_all clears (cmd-wizard.c L972-981). */
+/** The affliction timers cure_all clears (cmd-wizard.c L973-982). */
 const CURE_ALL_TIMED: readonly number[] = [
   TMD.BLIND,
   TMD.CONFUSED,
@@ -721,15 +721,15 @@ export function wizCurseItem(
 }
 
 /**
- * wiz_play_item_standard_upkeep (cmd-wizard.c L370): "the typical updates needed
+ * wiz_play_item_standard_upkeep (cmd-wizard.c L371): "the typical updates needed
  * to upkeep flags after playing with an item". Of PU_BONUS | PU_INVEN |
  * PN_COMBINE | PR_INVEN | PR_EQUIP - or PR_ITEMLIST for an uncarried object -
  * only the notice bit is owed; the rest is the ratified update/redraw divergence
  * (game/known.ts:153). Since only the carried branch raises it, an object being
  * edited on the floor asks for nothing.
  *
- * Six C call sites, one per editing command (L568, L1057, L1715, L2351, L2783,
- * and twice inside the WIZ_TWEAK macro at L2828/L2847). All are wired; the
+ * Seven C call sites, one per editing command (L569, L1058, L1765, L2403,
+ * L2842, L2906, and the one inside the WIZ_TWEAK macro at L2887). All are wired; the
  * WIZ_TWEAK pair collapses into wizTweakItem's single tail because the macro's
  * two expansions are the same statement on the same object.
  */
@@ -873,7 +873,7 @@ export function wizJumpLevel(
   if (!debugEnabled(deps)) return false;
   const level = params.level;
   if (level < 0 || level >= state.z.maxDepth) return false;
-  /* player->noscore |= NOSCORE_JUMPING (cmd-wizard.c L1366). */
+  /* player->noscore |= NOSCORE_JUMPING (cmd-wizard.c L1416). */
   if (params.chooseGen) deps.markNoscore?.(NOSCORE.JUMPING);
   deps.msg?.(`You jump to dungeon level ${level}.`);
   state.targetDepth = level;
@@ -1163,7 +1163,7 @@ export function wizSummonNamed(
       deps.msg?.("Could not place monster.");
       return false;
     }
-    /* wiz_create_monster (cmd-wizard.c L2614-2615): ORIGIN_DROP_WIZARD. */
+    /* place_new_monster with ORIGIN_DROP_WIZARD (cmd-wizard.c L2666-2667). */
     if (
       placeNewMonster(
         state,
@@ -1252,7 +1252,7 @@ export function wizPushObject(
  */
 export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
   if (!debugEnabled(deps)) return false;
-  /* wiz_light(cave, player, true) (cmd-wizard.c:2909): the wizard command is
+  /* wiz_light(cave, player, true) (cmd-wizard.c:2968): the wizard command is
    * always the `full` form, so it square_know_piles rather than sense_piles. */
   wizLightLevel(state, true, true);
   return true;
@@ -1335,7 +1335,7 @@ const CHEAT_DEATH_TIMED: readonly number[] = [
  * ------------------------------------------------------------------ */
 
 /**
- * The DATA half of wiz_display_item (cmd-wizard.c L190-283): the scalar item
+ * The DATA half of wiz_display_item (cmd-wizard.c L191-285): the scalar item
  * facts the debug panel prints. The Term_clear / prt line layout and the
  * vertical prt_binary flag grid are the shell's; this returns the values.
  *
@@ -1466,7 +1466,7 @@ export function wizChangeItemQuantity(
   const { obj, handle } = params;
   const p = state.actor.player;
 
-  /* cmd-wizard.c L494-497: an explicitly supplied equipped item is refused. */
+  /* cmd-wizard.c L498-500: an explicitly supplied equipped item is refused. */
   if (handle !== undefined && p.equipment.includes(handle)) {
     deps.msg?.("Can not change the quantity of an equipped item.");
     return null;
@@ -1515,7 +1515,7 @@ export function wizChangeItemQuantity(
 }
 
 /**
- * wizPlayItemBegin (do_cmd_wiz_play_item, cmd-wizard.c L1642-1645): snapshot the
+ * wizPlayItemBegin (do_cmd_wiz_play_item, cmd-wizard.c L1692-1695): snapshot the
  * object so the [t]weak / [r]eroll / [c]urse edits can be rejected. Upstream
  * allocates a fresh object and object_copy()s the working item into it; the port
  * uses objectCopy (obj/object.ts) which produces the same value snapshot.
@@ -1570,7 +1570,7 @@ function restoreItemFields(dst: GameObject, src: GameObject): void {
 }
 
 /**
- * wizPlayItemReject (do_cmd_wiz_play_item, cmd-wizard.c L1822-1843): the play
+ * wizPlayItemReject (do_cmd_wiz_play_item, cmd-wizard.c L1872-1893): the play
  * session was abandoned with changes; copy the preserved original back onto the
  * working object in place. Upstream restores the pile links after object_copy;
  * the port mutates the existing object (its pile membership is by array position
@@ -1587,16 +1587,16 @@ export function wizPlayItemReject(
 }
 
 /**
- * wizPlayItemAccept (do_cmd_wiz_play_item, cmd-wizard.c L1679-1718): commit the
+ * wizPlayItemAccept (do_cmd_wiz_play_item, cmd-wizard.c L1729-1768): commit the
  * changes.
  *
  * Upstream does FOUR things under `if (object_changed)`, in this order:
- *   1. L1685-1706 — if the object is carried AND either its number or its
+ *   1. L1734-1756 — if the object is carried AND either its number or its
  *      object_weight_one has changed, subtract the old stack's weight from
  *      upkeep->total_weight and add the new one's.
- *   2. L1707 — object_touch(player, obj), which marks the object assessed and
+ *   2. L1757 — object_touch(player, obj), which marks the object assessed and
  *      logs an artifact find.
- *   3. L1708-1714 — if it is EQUIPPED, clear the known WORN notice and re-run
+ *   3. L1758-1764 — if it is EQUIPPED, clear the known WORN notice and re-run
  *      object_learn_on_wield.
  *   4. wiz_play_item_standard_upkeep (redraws; the shell's job here).
  *
@@ -1622,7 +1622,7 @@ export function wizPlayItemAccept(
   if (!params.changed) return true;
 
   const p = state.actor.player;
-  /* (1) L1685-1706. The `carried` gate is upstream's: an object being edited
+  /* (1) L1734-1756. The `carried` gate is upstream's: an object being edited
    * off the floor has no weight in the player's total to correct. */
   if (objectIsCarried(state.gear, obj)) {
     const wasOne = objectWeightOne(original, state.gear.curses);
@@ -1671,7 +1671,7 @@ export interface WizStatItemResult {
 }
 
 /**
- * do_cmd_wiz_stat_item (cmd-wizard.c L2386-2562): roll `nRolls` items with
+ * do_cmd_wiz_stat_item (cmd-wizard.c L2438-2620): roll `nRolls` items with
  * make_object at `level` and classify each as match / better / worse / other
  * against the target object. `roll` is 0 normal, 1 good, 2 excellent (good +
  * great). The interrupt polling and the running Term readout are UI and are
@@ -1743,11 +1743,11 @@ export function wizStatItem(
   return { rolls: i, matches, better, worse, other };
 }
 
-/** TEST_ROLL (cmd-wizard.c L2385): the default sample size. */
+/** TEST_ROLL (cmd-wizard.c L2437): the default sample size. */
 const TEST_ROLL = 100000;
 
 /**
- * do_cmd_wiz_edit_player_start (cmd-wizard.c L1202-1239): the batch player
+ * do_cmd_wiz_edit_player_start (cmd-wizard.c L1252-1295): the batch player
  * editor. Upstream chains a queued CMD_WIZ_EDIT_PLAYER_STAT per stat plus a
  * gold and an exp edit through the edit_player_state machine; the queue
  * plumbing is UI. The engine effect is: apply the six stat edits, the gold

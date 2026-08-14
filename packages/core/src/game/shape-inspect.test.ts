@@ -1,7 +1,7 @@
 /**
  * PORT_TODO 3.21: the last two sections of the shape-lore chain, which were
  * seams no host supplied - shape_lore_append_change_effects
- * (ui-knowledge.c:3043) and shape_lore_append_triggering_spells (:3059).
+ * (ui-knowledge.c:3055) and shape_lore_append_triggering_spells (:3056).
  *
  * shape-lore.test.ts already proved the chain RENDERS both tails when they are
  * handed to it. That is the trap this file exists to close: a seam whose own
@@ -127,7 +127,7 @@ function expectedTriggers(name: string): { cls: string; spell: string }[] {
   return out;
 }
 
-describe("shapeTriggeringSpells (shape_lore_append_triggering_spells, :3059)", () => {
+describe("shapeTriggeringSpells (shape_lore_append_triggering_spells, :3056)", () => {
   it("names every class spell that reaches a shape, derived from class.txt", () => {
     /* Pick a shape the shipped data actually has a spell for; asserting on one
      * with no spell would pass against a function that returns nothing. */
@@ -248,7 +248,7 @@ describe("shapeTriggeringSpells (shape_lore_append_triggering_spells, :3059)", (
   });
 });
 
-describe("shapeChangeEffectText (shape_lore_append_change_effects, :3043)", () => {
+describe("shapeChangeEffectText (shape_lore_append_change_effects, :3055)", () => {
   it("describes the change effect under upstream's prefix", () => {
     const withEffect = players.shapes.find(
       (s) => s.name !== "normal" && s.effects.length > 0,
@@ -314,7 +314,7 @@ describe("makeShapeLoreEnv: the tails reach the page the browser draws", () => {
     /* Found by reading the rendered page, not by reasoning about the code:
      * every shape with a stat modifier printed "Adds -3 to ." because
      * shape-lore had its own copy of lookup_obj_property without upstream's
-     * "special case - stats count as mods" (obj-properties.c:207). The stat
+     * "special case - stats count as mods" (obj-properties.c:36). The stat
      * section looks stats up as MODs, exactly as upstream does. */
     const withStat = players.shapes.find(
       (s) =>

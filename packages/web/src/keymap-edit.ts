@@ -170,7 +170,7 @@ export async function runKeymapEditor(term: GridSurface & GridPointerInput, rogu
       }
       const action = await captureAction(term, "Action ('=' when done, Ctrl-U resets): ");
       if (action === null || action.length === 0) continue;
-      /* ui_options.c:692 verbatim. The port used to interpolate the trigger and
+      /* ui-options.c:689 verbatim. The port used to interpolate the trigger and
        * action into this prompt, which reads better but is not what upstream
        * asks - and both are on screen already, having just been entered. */
       const keep = await confirm(term, "Keep this keymap? ");

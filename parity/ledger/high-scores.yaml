@@ -89,7 +89,7 @@ seams-and-defaults:
   - cheat/debug gating source: EnterScoreGating { cheated, noscore, totalWinner,
     diedFrom }. The port's Player has no options table or noscore flags yet, so
     these arrive explicitly; the web defaults to a clean, scored character
-    (cheated/noscore = false). This is the faithful seam for score.c L277-304.
+    (cheated/noscore = false). This is the faithful seam for score.c L246-292.
   - death-cause (died_from): the engine surfaces the killer only through
     take-hit.ts's onDeath(target, killer) hook, not onto GameState after
     LOOP_STATUS.DEAD. main.ts therefore defaults died_from to "the dungeon" on

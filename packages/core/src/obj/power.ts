@@ -235,9 +235,9 @@ function powerClone(obj: PowerObject): PowerObject {
 /* ------------------------------------------------------------------ */
 
 /**
- * lookup_obj_property (obj-properties.c:196) over a bare property table: the
+ * lookup_obj_property (obj-properties.c:24) over a bare property table: the
  * property whose type and stored index match, PLUS upstream's "special case -
- * stats count as mods" (:207), which is the half that is easy to leave out and
+ * stats count as mods" (:36), which is the half that is easy to leave out and
  * costs a NAME when you do.
  *
  * THE ONE IMPLEMENTATION. player/shape-lore.ts had a second copy that omitted
@@ -253,7 +253,7 @@ export function lookupObjPropertyIn(
   for (const prop of properties) {
     if (!prop) continue;
     if (prop.type === type && prop.propIndex === index) return prop;
-    /* Special case - stats count as mods (obj-properties.c:207). */
+    /* Special case - stats count as mods (obj-properties.c:36). */
     if (
       type === OBJ_PROPERTY.MOD &&
       prop.type === OBJ_PROPERTY.STAT &&

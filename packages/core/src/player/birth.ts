@@ -639,7 +639,7 @@ export function flavorSetAllAware(
 }
 
 /* ------------------------------------------------------------------ */
-/* Roman-numeral dynastic suffixes (player-birth.c:1329-1481)          */
+/* Roman-numeral dynastic suffixes (player-birth.c:1321-1479)          */
 /* ------------------------------------------------------------------ */
 
 /** int_to_roman symbol labels, largest first (player-birth.c:1371-1373). */
@@ -692,7 +692,7 @@ export function intToRoman(n: number, bufSize = 64): string | null {
 }
 
 /**
- * roman_to_int (player-birth.c:1428-1481): the integer value of a roman
+ * roman_to_int (player-birth.c:1426-1479): the integer value of a roman
  * numeral, or -1 when the string is empty or contains a non-roman character.
  * The upstream quirk of parsing certain nonsense strings (e.g. "IVXCCCVIII")
  * is preserved deliberately.

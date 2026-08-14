@@ -990,7 +990,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
     `mon-ranged.ts:91`, `project-feat.ts:298`, `wizard.ts:1122`,
     `dump-level.ts:95`. Every one mirrors a genuine `square_isempty` call in the
     C (`effect-handler-general.c:2949`/`:2964`, `effect-handler-attack.c:1496`,
-    `mon-attack.c:260`, `project-feat.c:283`, `cmd-wizard.c:2608`), so all seven
+    `mon-attack.c:260`, `project-feat.c:283`, `cmd-wizard.c:2660`), so all seven
     wanted the strict test and none wanted the weak one.
   - The weak definition is **deleted**, not repaired: `squareIsEmptyLive` was
     already the faithful port, and the answer to a predicate with two definitions
@@ -2322,7 +2322,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
 
   **What was actually still wrong: monsters had a SECOND browser.** Every other
   knowledge screen goes through `runGroupedBrowser`, the faithful
-  `display_knowledge` (`ui-knowledge.c:795`); monsters had a bespoke renderer in
+  `display_knowledge` (`ui-knowledge.c:733`); monsters had a bespoke renderer in
   `main.ts`, and being the only copy that never learned what the shared one
   learned, it was missing:
   - the **`Group` label**, the `=` rule at row 5 and the `|` divider — the three
@@ -2528,7 +2528,7 @@ is reachable in play and a test constructs the case that used to be wrong.**
   rather than the code.** Every shape's stat line read `Adds -3 to .` — an
   empty name. `shape-lore.ts` had its own copy of `lookup_obj_property` that
   omitted upstream's *"special case - stats count as mods"*
-  (`obj-properties.c:207`), and the stat section looks stats up as MODs exactly
+  (`obj-properties.c:36`), and the stat section looks stats up as MODs exactly
   as upstream does. `obj/power.ts` had the correct copy the whole time; only
   one of the two ever learned. There is now one implementation
   (`lookupObjPropertyIn`) and both call it. Fox reads "Adds -3 to strength",

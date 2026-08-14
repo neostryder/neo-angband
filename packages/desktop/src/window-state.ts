@@ -104,7 +104,7 @@ export interface Rect {
 
 export interface WindowState {
   /**
-   * SDL_FULLSCREEN (main-sdl.c L5905), `Fullscreen` in save_prefs (L4198).
+   * SDL_FULLSCREEN (main-sdl.c L5572), `Fullscreen` in save_prefs (L4021).
    * Upstream's fullscreen is a video mode with no window furniture at all, which
    * is what "borderless" means here: Electron's own full-screen state drops the
    * frame and the title bar, and the menu bar is hidden with it.

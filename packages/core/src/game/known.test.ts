@@ -170,7 +170,7 @@ describe("cave_illuminate (cave-map.c L555, runtime)", () => {
   });
 });
 
-describe("cave_known (cave-map.c:633-660)", () => {
+describe("cave_known (cave-map.c:633-659)", () => {
   /** A 3x3 granite block, so its centre is a wall fully surrounded by wall. */
   const withInteriorWall = (state: ReturnType<typeof makeState>): void => {
     for (let y = 9; y <= 11; y++) {
