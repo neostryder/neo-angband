@@ -275,6 +275,25 @@ export function declaredConflicts(
   return out;
 }
 
+/**
+ * One row of the report: the sentence a player reads, beside the record it was
+ * composed from.
+ *
+ * THE PAIR IS THE POINT. `describeContested` and `describeDeclaredConflict` turn a
+ * record into a sentence, and this module used to hand the pane nothing but the
+ * sentences - so the slot, its fold, the winner and the mods that lost were gone one
+ * module before any screen saw them, and a viewer that wanted to sort by layer or act
+ * on the losing mod had to parse English. Carrying both means no consumer has to
+ * choose: the terminal prints `text`, a presenter reads `record`.
+ *
+ * A PAIR RATHER THAN TWO PARALLEL ARRAYS, because two arrays that must agree
+ * index-for-index are two arrays that will one day not.
+ */
+export interface ConflictRow<T> {
+  readonly text: string;
+  readonly record: T;
+}
+
 /** The pane's full text: what authors declared, then what was measured. */
 export interface ConflictReportLines {
   /**
@@ -290,6 +309,25 @@ export interface ConflictReportLines {
    * complete, and kept apart so they do not bury the ones needing a decision.
    */
   combined: string[];
+  /**
+   * The same three groups with their records attached; see `ConflictRow`.
+   *
+   * The three `string[]` above are DERIVED from these rather than composed beside
+   * them, so a sentence and its record cannot part. They stay because a caller that
+   * only wants to print does not have to learn a new shape to keep working.
+   */
+  readonly declaredRows: readonly ConflictRow<DeclaredConflict>[];
+  /**
+   * `record` is null on exactly the rows that came from `inputs.recordLines`.
+   *
+   * That is the one producer this pass did not reach: `modConflictLines` (pack.ts)
+   * flattens `computeConflictReport(...).records` into `humanLines` before this
+   * module is called, so the field-granular records for the CONTENT layer are
+   * already gone by then. Null rather than a fabricated record, because "we have no
+   * record for this row" and "this row's record is empty" must not look alike.
+   */
+  readonly contestedRows: readonly ConflictRow<ContestedSlot | null>[];
+  readonly combinedRows: readonly ConflictRow<ContestedSlot>[];
 }
 
 /**
@@ -332,16 +370,32 @@ export function liveConflictLines(): ConflictReportLines {
 export function conflictLines(inputs: ConflictInputs): ConflictReportLines {
   const nameOf = nameFromManifests(inputs.manifests);
   const slots = layerSlots(inputs);
+  const slotRow = (s: ContestedSlot): ConflictRow<ContestedSlot> => ({
+    text: describeContested(s, nameOf),
+    record: s,
+  });
+
+  const declaredRows = declaredConflicts(inputs.manifests).map(
+    (c): ConflictRow<DeclaredConflict> => ({
+      text: describeDeclaredConflict(c, nameOf),
+      record: c,
+    }),
+  );
+  const contestedRows: ConflictRow<ContestedSlot | null>[] = [
+    ...inputs.recordLines.map((text) => ({ text, record: null })),
+    ...slots.filter((s) => foldDiscards(s.fold)).map(slotRow),
+  ];
+  const combinedRows = slots.filter((s) => !foldDiscards(s.fold)).map(slotRow);
+
+  /* The sentences are read OFF the rows rather than built again beside them. Two
+   * loops producing the same strings is the split seam that ends with a screen whose
+   * rows and whose lines disagree about how many conflicts there are. */
   return {
-    declared: declaredConflicts(inputs.manifests).map((c) =>
-      describeDeclaredConflict(c, nameOf),
-    ),
-    contested: [
-      ...inputs.recordLines,
-      ...slots.filter((s) => foldDiscards(s.fold)).map((s) => describeContested(s, nameOf)),
-    ],
-    combined: slots
-      .filter((s) => !foldDiscards(s.fold))
-      .map((s) => describeContested(s, nameOf)),
+    declared: declaredRows.map((r) => r.text),
+    contested: contestedRows.map((r) => r.text),
+    combined: combinedRows.map((r) => r.text),
+    declaredRows,
+    contestedRows,
+    combinedRows,
   };
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   runWizardToggle,
@@ -12,11 +13,37 @@ import {
   DEBUG_CONFIRM_MSG_1,
   DEBUG_CONFIRM_MSG_2,
   DEBUG_CONFIRM,
+  wizKeylogScreen,
+  wizItemScreen,
 } from "./wizard";
-import type { DebugCategory, DebugCommand, WizardUiCtx } from "./wizard";
-import { NOSCORE, markNoscore, noscoreInvalidatesScore } from "@rpgm-tools/neo-angband-core";
-import type { GameState, WizardDeps } from "@rpgm-tools/neo-angband-core";
+import type { DebugCategory, DebugCommand, WizardUiCtx, WizKeypress } from "./wizard";
+import {
+  NOSCORE,
+  markNoscore,
+  noscoreInvalidatesScore,
+  ObjRegistry,
+  objectNew,
+  newGear,
+  calcInventory,
+  bindConstants,
+  ObjAllocState,
+  ArtifactState,
+  Rng,
+  TV,
+  makeRuneEnv,
+  wizDisplayItem,
+} from "@rpgm-tools/neo-angband-core";
+import type {
+  GameState,
+  WizardDeps,
+  ObjPackJson,
+  ConstantsJson,
+  WizItemDisplay,
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
+import { setScreenPresenter } from "./screen-runtime";
+import { screenBodyLines, MODELLED_SCREENS } from "./screen-view";
+import type { ScreenView, ScreenTableBlock } from "./screen-view";
 
 // The wizard UI drives the repo's keydown-listener modal pattern (selectFromMenu
 // / promptNumber from overlay.ts). No jsdom is installed (see overlay.test.ts),
@@ -387,6 +414,394 @@ describe("edit-player (do_cmd_wiz_edit_player_start, cmd-wizard.c:1202)", () => 
     await tick();
     /* Row 0 is cleared and nothing further is asked - WIS never appears. */
     expect(row0(ctx)).toBe("");
+    await done;
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The two screens that were tables in a text costume: "Previous
+ * keypresses" (wiz_display_keylog) and the item-properties dump
+ * (wiz_display_item). Both regression suites below assert against bytes
+ * CAPTURED off the unmodified code before it was modelled - see the task
+ * notes for how (a throwaway harness driving dispatchDebug and reading
+ * term.snapshot(), deleted once the capture was in hand) - so a table that
+ * cannot reproduce a row exactly would show up here as a literal mismatch
+ * rather than a hand-adjusted expectation.
+ * ------------------------------------------------------------------ */
+
+describe("wizKeylogScreen (wiz_display_keylog, ui-wizard.c:96)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+    setScreenPresenter(null);
+  });
+
+  /* Most-recent-first: what `wizKeylogScreen` itself consumes, and what
+   * `runDisplayKeylog` produces by reversing the ring. */
+  const FULL_RING: readonly WizKeypress[] = [
+    { text: "5", code: 53, mods: 0 },
+    { text: "{^SAM}[ArrowDown]", code: 0, mods: 15 }, // 17 chars: overruns the 12-col pad
+    { text: "^A", code: 0, mods: 1 },
+    { text: "a", code: 97, mods: 0 },
+  ];
+  /* Oldest-first: what `ctx.keylog()` itself hands back (WizardUiCtx's own
+   * doc comment - "most recent LAST"), which `runDisplayKeylog` reverses. */
+  const RING_OLDEST_FIRST: readonly WizKeypress[] = [...FULL_RING].reverse();
+
+  const CAPTURED_FULL = [
+    "Previous keypresses (top most recent):",
+    "",
+    "    5            (code=53 mods=0)",
+    "    {^SAM}[ArrowDown] (code=0 mods=15)",
+    "    ^A           (code=0 mods=1)",
+    "    a            (code=97 mods=0)",
+    "",
+    "",
+    "",
+    "",
+    "Press any key to continue.",
+  ];
+
+  const CAPTURED_EMPTY = [
+    "Previous keypresses (top most recent):",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Press any key to continue.",
+  ];
+
+  it("screenBodyLines(view, 80) reproduces the captured byte grid, full ring", () => {
+    const view = wizKeylogScreen(FULL_RING);
+    expect(view.id).toBe("core:wizard-keylog");
+    const lines = screenBodyLines(view, 80).map((l) => l.text);
+    /* screenBodyLines is the BODY only (no title/footer, see screen-view.ts);
+     * showTextScreen's own renderer draws the title at row 0 and the body
+     * from row 2, which is why the captured title leads this array here even
+     * though it never passes through screenBodyLines itself. */
+    expect([CAPTURED_FULL[0], "", ...lines]).toEqual(CAPTURED_FULL);
+  });
+
+  it("screenBodyLines(view, 80) reproduces the captured byte grid, empty ring", () => {
+    const view = wizKeylogScreen([]);
+    const lines = screenBodyLines(view, 80).map((l) => l.text);
+    expect([CAPTURED_EMPTY[0], "", ...lines]).toEqual(CAPTURED_EMPTY);
+  });
+
+  it("exposes code/mods as numeric values, not just the formatted string", () => {
+    const view = wizKeylogScreen(FULL_RING);
+    const table = view.blocks[0] as ScreenTableBlock;
+    expect(table.kind).toBe("table");
+    expect(table.rows[0]!.cells["code"]!.values).toEqual({ code: 53 });
+    expect(table.rows[0]!.cells["mods"]!.values).toEqual({ mods: 0 });
+    /* The long modified key: unpadded, not truncated to 12 - see the "why"
+     * comment on wizKeylogScreen for the ScreenColumn.width clamp trap this
+     * dodges by baking the text instead of declaring a width. */
+    expect(table.rows[1]!.cells["key"]!.text).toBe("    {^SAM}[ArrowDown]");
+  });
+
+  it("drives the same bytes end to end through dispatchDebug(\"keylog\")", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 30); // same dimensions as the pre-model capture
+    const ctx: WizardUiCtx = {
+      term,
+      state: {} as unknown as GameState,
+      deps: { wizard: true, debug: true } as WizardDeps,
+      say: () => {},
+      refresh: () => {},
+      keylog: () => RING_OLDEST_FIRST,
+    };
+    const done = dispatchDebug(ctx, "keylog");
+    await tick();
+    /* Rows past the footer stay blank in the capture too - the footer itself
+     * sits far below row 10 on an 80x30 terminal, so this slice never sees it. */
+    expect(term.snapshot().slice(0, 11)).toEqual(CAPTURED_FULL);
+    press(win, "Escape");
+    await done;
+  });
+
+  it("offers core:wizard-keylog to a presenter and paints nothing when it is taken", async () => {
+    const seen: ScreenView[] = [];
+    setScreenPresenter({
+      id: "test-presenter",
+      presenter: { show: (view) => (seen.push(view), { dismissed: Promise.resolve() }) },
+    });
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 30);
+    const ctx: WizardUiCtx = {
+      term,
+      state: {} as unknown as GameState,
+      deps: { wizard: true, debug: true } as WizardDeps,
+      say: () => {},
+      refresh: () => {},
+      keylog: () => RING_OLDEST_FIRST,
+    };
+    await dispatchDebug(ctx, "keylog");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.id).toBe("core:wizard-keylog");
+    expect(term.snapshot().every((r) => r === "")).toBe(true);
+  });
+
+  it("falls back to the faithful terminal when the presenter declines", async () => {
+    setScreenPresenter({ id: "test-presenter", presenter: { show: () => undefined } });
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 30);
+    const ctx: WizardUiCtx = {
+      term,
+      state: {} as unknown as GameState,
+      deps: { wizard: true, debug: true } as WizardDeps,
+      say: () => {},
+      refresh: () => {},
+      keylog: () => RING_OLDEST_FIRST,
+    };
+    const done = dispatchDebug(ctx, "keylog");
+    await tick();
+    expect(term.snapshot().slice(0, 11)).toEqual(CAPTURED_FULL);
+    press(win, "Escape");
+    await done;
+  });
+});
+
+describe("wizItemScreen / drawWizItem (wiz_display_item, cmd-wizard.c:189)", () => {
+  function load(name: string): unknown {
+    return JSON.parse(
+      readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8"),
+    );
+  }
+  const objReg = new ObjRegistry({
+    objectBase: load("object_base"),
+    object: load("object"),
+    egoItem: load("ego_item"),
+    artifact: load("artifact"),
+    curse: load("curse"),
+    brand: load("brand"),
+    slay: load("slay"),
+    activation: load("activation"),
+    objectProperty: load("object_property"),
+    flavor: load("flavor"),
+  } as ObjPackJson);
+  const constants = bindConstants(load("constants") as ConstantsJson);
+
+  /** A real potion via play-item, the same fixture W2-007 (wizard-wiring.test.ts)
+   * uses for the same command surface. */
+  function potionCtx(): { ctx: WizardUiCtx; term: GlyphTerm & { snapshot(): string[] } } {
+    const term = makeTerm(80, 30);
+    const kind = objReg.kinds.find((k) => k.tval === TV.POTION)!;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.weight = kind.weight;
+    const gear = newGear();
+    gear.store.set(1, obj);
+    gear.pack.push(1);
+    calcInventory(gear, constants);
+    const player = {
+      equipment: [],
+      objKnown: { dd: 1, ds: 1, ac: 1, toA: 1, toH: 1, toD: 1 },
+      upkeep: { playing: true, newSpells: 0, totalWeight: 0, notice: 0, dropping: false },
+    };
+    const state = {
+      actor: { player },
+      gear,
+      chunk: { depth: 1 },
+      rng: new Rng(4242),
+      runeEnv: makeRuneEnv(() => null, () => false, {
+        brands: objReg.brands,
+        slays: objReg.slays,
+        curses: objReg.curses,
+        properties: objReg.properties,
+      }),
+    } as unknown as GameState;
+    const deps: WizardDeps = {
+      wizard: true,
+      debug: true,
+      makeDeps: {
+        reg: objReg,
+        alloc: new ObjAllocState(objReg, constants),
+        constants,
+        artifacts: new ArtifactState(objReg.artifacts.length),
+        noArtifacts: false,
+      },
+      egos: objReg.egos,
+      artifacts: objReg.artifacts,
+      curses: objReg.curses,
+    } as WizardDeps;
+    const ctx: WizardUiCtx = { term, state, deps, say: () => {}, refresh: () => {} };
+    return { ctx, term };
+  }
+
+  /* Trimmed (trailing whitespace stripped), matching makeTerm's own
+   * snapshot() - used against term.snapshot() below. */
+  const CAPTURED = [
+    "[a]ccept [s]tatistics [r]eroll [t]weak [c]urse [q]uantity [k]nown?",
+    "",
+    "a Potion of Strength",
+    "",
+    "combat = (0d0) (+0,+0) [0,+0]",
+    "kind = 224    tval = 26     sval = 1      wgt = 4       timeout = 0",
+    "number = 1    pval = 0      name1 = 0     egoidx = -1    cost = 8000",
+    "", "", "", "", "", "", "", "", "",
+    "+---------------FLAGS-----------------+",
+    "     ppppSFR SFHI BTNII NADSFLL   ETTM",
+    "sssssFBCS.ee .rLmBuFFmmFogrtrggDDDxrhu",
+    "SIWDCelotDagEIAiplOuuppeTgEiahhiiipprl",
+    "tnieoannuiteSncfceueeHSaerxcgttggglIoW",
+    "rtsxnrdfnghnPvtetstllPPrlvpkl23123dmwg",
+    ".......................................",
+    ".......................................",
+    "", "", "", "", "", "",
+  ];
+
+  /* UNTRIMMED: `screenBodyLines` returns each block's lines exactly as built,
+   * with no snapshot-style trailing-whitespace trim - and the five
+   * vertically-written label rows above legitimately END in a space (the last
+   * of 39 flags, OBJECT_FLAG_ENTRIES' "MAX" sentinel, has an empty
+   * `debugLabel`, so every row blanks that column on its first pass). Trimming
+   * that space, the way `CAPTURED` above and `makeTerm().snapshot()` both do,
+   * throws away real content rather than padding - exactly the trap
+   * memory/evidence-rules-index.md files under "a sliced row loses its
+   * warning". `CAPTURED.slice(2)` with those five rows patched back to 39
+   * characters is what `wizItemScreen` must reproduce byte for byte. */
+  /* Rows 2-23 only (22 lines): `wizItemScreen`'s own content, matching what
+   * `screenBodyLines` returns. Rows 24-29 in the captured 30-row grid are not
+   * this screen's content either, before or after modelling it - they were
+   * always just term.clear()'s blank tail below the last painted row, so they
+   * belong in a full-grid snapshot comparison, not in a check of the view's
+   * own lines. */
+  const CAPTURED_RAW_BODY = CAPTURED.slice(2, 24).map((row, i) =>
+    i >= 15 && i <= 19 ? `${row} ` : row,
+  );
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+    setScreenPresenter(null);
+  });
+
+  it("MODELLED_SCREENS lists core:wizard-item and core:wizard-keylog", () => {
+    expect(MODELLED_SCREENS).toContain("core:wizard-item");
+    expect(MODELLED_SCREENS).toContain("core:wizard-keylog");
+  });
+
+  it("paints exactly the captured pre-model bytes, via the real play-item path", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx, term } = potionCtx();
+    const done = dispatchDebug(ctx, "play-item");
+    await tick();
+    press(win, "a"); // get_item: the pack potion
+    await tick();
+    expect(term.snapshot()).toEqual(CAPTURED);
+    press(win, "Escape"); // reject and close the play session
+    await tick();
+    await done;
+  });
+
+  it("wizItemScreen + screenBodyLines(view, 80) reproduces the same rows 2-23", () => {
+    const kind = objReg.kinds.find((k) => k.tval === TV.POTION)!;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.weight = kind.weight;
+    const deps: WizardDeps = {
+      wizard: true,
+      debug: true,
+      makeDeps: {
+        reg: objReg,
+        alloc: new ObjAllocState(objReg, constants),
+        constants,
+        artifacts: new ArtifactState(objReg.artifacts.length),
+        noArtifacts: false,
+      },
+      curses: objReg.curses,
+    } as WizardDeps;
+    const disp = wizDisplayItem(obj, deps, { all: true }) as WizItemDisplay;
+    const view = wizItemScreen(disp, "a Potion of Strength");
+    expect(view.id).toBe("core:wizard-item");
+    const lines = screenBodyLines(view, 80).map((l) => l.text);
+    /* CAPTURED_RAW_BODY's body starts at row 2; rows 0-1 are the OUTER
+     * play-item loop's own getCom prompt, never drawn by this screen. */
+    expect(lines).toEqual(CAPTURED_RAW_BODY);
+  });
+
+  it("bakes the flags-bits table by flag NAME, not the 5-char debugLabel", () => {
+    const kind = objReg.kinds.find((k) => k.tval === TV.POTION)!;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.weight = kind.weight;
+    const deps: WizardDeps = {
+      wizard: true,
+      debug: true,
+      makeDeps: {
+        reg: objReg,
+        alloc: new ObjAllocState(objReg, constants),
+        constants,
+        artifacts: new ArtifactState(objReg.artifacts.length),
+        noArtifacts: false,
+      },
+      curses: objReg.curses,
+    } as WizardDeps;
+    const disp = wizDisplayItem(obj, deps, { all: true }) as WizItemDisplay;
+    const view = wizItemScreen(disp, "a Potion of Strength");
+    const bits = view.blocks[view.blocks.length - 1] as ScreenTableBlock;
+    expect(bits.key).toBe("flags-bits");
+    expect(bits.columns.map((c) => c.key)).toContain("SUST_STR");
+    expect(bits.columns.some((c) => c.label !== undefined)).toBe(false); // no auto-header
+    expect(bits.rows).toHaveLength(2);
+    expect(bits.rows[0]!.id).toBe("actual");
+    expect(bits.rows[1]!.id).toBe("known");
+  });
+
+  it("offers core:wizard-item to a presenter and paints nothing on the terminal", async () => {
+    const seen: ScreenView[] = [];
+    setScreenPresenter({
+      id: "test-presenter",
+      /* Never resolves - drawWizItem does not await this, unlike every other
+       * showThroughPresenter call site (see its own comment for why: it paints
+       * one frame of a loop that reads its next command through getCom, not
+       * through this screen's dismissal). */
+      presenter: { show: (view) => (seen.push(view), { dismissed: new Promise(() => {}) }) },
+    });
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx, term } = potionCtx();
+    const done = dispatchDebug(ctx, "play-item");
+    await tick();
+    press(win, "a");
+    await tick();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.id).toBe("core:wizard-item");
+    /* Rows 2+ (this screen's own content) stay blank; row 0 still carries the
+     * OUTER loop's getCom prompt, which is not this screen's to withhold. */
+    expect(term.snapshot().slice(2).every((r) => r === "")).toBe(true);
+    /* And the loop is NOT blocked waiting on the presenter's never-resolving
+     * dismissal: the outer getCom still answers the next keypress. */
+    press(win, "Escape");
+    await done;
+  });
+
+  it("falls back to its own paint when the presenter declines", async () => {
+    setScreenPresenter({ id: "test-presenter", presenter: { show: () => undefined } });
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx, term } = potionCtx();
+    const done = dispatchDebug(ctx, "play-item");
+    await tick();
+    press(win, "a");
+    await tick();
+    expect(term.snapshot()).toEqual(CAPTURED);
+    press(win, "Escape");
+    await tick();
     await done;
   });
 });

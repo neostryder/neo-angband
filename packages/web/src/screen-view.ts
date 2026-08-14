@@ -416,6 +416,22 @@ export const MODELLED_SCREENS = [
   "core:artifact-recall",
   "core:ego-recall",
   "core:object-kind-recall",
+  "core:equip-cmp-help",
+  "core:equip-cmp-select-help",
+  "core:help-commands",
+  "core:help-symbols",
+  "core:help-guide",
+  "core:help-community",
+  "core:mod-updates",
+  "core:mod-auto-sort",
+  "core:mod-capabilities",
+  "core:mod-conflicts",
+  "core:hall-of-fame",
+  "core:store-knowledge",
+  "core:update",
+  "core:report",
+  "core:wizard-keylog",
+  "core:wizard-item",
 ] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */

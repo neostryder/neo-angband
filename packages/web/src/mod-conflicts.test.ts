@@ -276,6 +276,9 @@ describe("the whole report", () => {
       declared: [],
       contested: [],
       combined: [],
+      declaredRows: [],
+      contestedRows: [],
+      combinedRows: [],
     });
   });
 

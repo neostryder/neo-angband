@@ -25,6 +25,9 @@ import {
 } from "./mod-browse";
 import { parseAuthors, type AuthorRegister } from "./mod-authors";
 import type { DiscoveredMod } from "./mod-discover";
+import { requirementLine } from "./mod-install";
+import type { Finding } from "@rpgm-tools/neo-angband-mod-sdk";
+import { UI_BAD, UI_DIM, UI_GOLD, UI_TEXT } from "./ui-colors";
 
 const mod = (over: Partial<DiscoveredMod> = {}): DiscoveredMod => ({
   repo: "neostryder/neo-angband-mod-qol",
@@ -190,14 +193,101 @@ describe("browseDetail", () => {
   });
 });
 
+/**
+ * The unmet requirements of the mod the capture was taken from: a manifest with no
+ * repository, author or engine range, shipping a plugin.js it does not admit to.
+ *
+ * Copied from what `checkMod` actually answers rather than invented, because the
+ * assertion below is that the RENDERING did not move when the flattening stopped -
+ * and a fixture that is not what the producer emits would pin the wrong thing.
+ */
+const UNMET: readonly Finding[] = [
+  {
+    id: "declare-a-repository",
+    level: "required",
+    title: "Say where the mod lives, in `repository`",
+    problem: "no repository declared",
+  },
+  { id: "name-the-author", level: "required", title: "Name the author", problem: "no author declared" },
+  {
+    id: "engine-range",
+    level: "required",
+    title: "Declare the engine range the mod was written against",
+    problem: "no engine range declared",
+  },
+  {
+    id: "plugin-declares-modapi",
+    level: "required",
+    title: "Declare modApi if the mod ships plugin.js",
+    problem: "ships plugin.js but declares no modApi",
+  },
+  {
+    id: "plugin-declares-facet",
+    level: "required",
+    title: "Say the mod contains code, if it ships plugin.js",
+    problem: 'ships plugin.js but neither shape nor facets says "plugin"',
+  },
+];
+
 describe("installFailureLines", () => {
-  it("keeps a multi-line refusal readable, one requirement per line", () => {
-    /* The standards inspection returns several lines. Joining them would produce one
-     * unreadable paragraph out of the most important message this screen shows. */
-    const lines = installFailureLines("Demo", "does not meet the requirements\n  - a: b\n  - c: d");
-    const texts = lines.map((l) => l.text);
-    expect(texts).toContain("  - a: b");
-    expect(texts).toContain("  - c: d");
+  it("renders a requirements refusal byte for byte as the flattened string did", () => {
+    /* THE BYTE CHECK FOR THE PRODUCER FIX. `storeMod` used to glue the summary, the
+     * bullets and the author's advice into one `problem` with hand-typed "\n  - ",
+     * and this function split it back apart. The records now travel instead - and
+     * these are the rows the flattened version emitted, captured before the change.
+     * Full ScreenLine objects, so a colour that moved would show here too. */
+    const lines = installFailureLines(
+      "Demo",
+      "demo: this mod does not meet the requirements, so installing it would not give you a working mod.",
+      UNMET,
+    );
+    expect(lines).toEqual([
+      { text: "Demo was not installed.", color: UI_BAD },
+      { text: "", color: UI_TEXT },
+      {
+        text: "demo: this mod does not meet the requirements, so installing it would not",
+        color: UI_GOLD,
+      },
+      { text: "give you a working mod.", color: UI_GOLD },
+      { text: "  - Say where the mod lives, in `repository`: no repository declared", color: UI_GOLD },
+      { text: "  - Name the author: no author declared", color: UI_GOLD },
+      {
+        text: "  - Declare the engine range the mod was written against: no engine range",
+        color: UI_GOLD,
+      },
+      { text: "  declared", color: UI_GOLD },
+      { text: "  - Declare modApi if the mod ships plugin.js: ships plugin.js but", color: UI_GOLD },
+      { text: "  declares no modApi", color: UI_GOLD },
+      {
+        text: "  - Say the mod contains code, if it ships plugin.js: ships plugin.js but",
+        color: UI_GOLD,
+      },
+      { text: '  neither shape nor facets says "plugin"', color: UI_GOLD },
+      { text: "The mod's author can check this themselves with `npx", color: UI_GOLD },
+      { text: "neo-angband-mod-check`.", color: UI_GOLD },
+      { text: "", color: UI_TEXT },
+      { text: "Nothing was stored, so your other mods are untouched.", color: UI_DIM },
+    ]);
+  });
+
+  it("words each bullet with the producer's own line, not a second copy of it", () => {
+    /* Derived, for the reason the update report's status column is: the bullet's
+     * shape belongs to the module that refuses, and a copy here would rot. */
+    const texts = installFailureLines("Demo", "summary", UNMET).map((l) => l.text);
+    expect(texts).toContain(requirementLine(UNMET[1]!));
+  });
+
+  it("shows nothing but the sentence when no requirements were asked about", () => {
+    /* A zip-slip or quota refusal carries no findings, and must not grow the advice
+     * paragraph that only makes sense beside a list of them. */
+    const texts = installFailureLines("Demo", "a/b: escapes the mod folder").map((l) => l.text);
+    expect(texts).toEqual([
+      "Demo was not installed.",
+      "",
+      "a/b: escapes the mod folder",
+      "",
+      "Nothing was stored, so your other mods are untouched.",
+    ]);
   });
 
   it("says nothing was stored, because nothing was", () => {

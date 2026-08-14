@@ -19,6 +19,7 @@ import { inputEvents } from "./input-door";
 import {
   highscoreRegularize,
   scorePageRows,
+  scoreRows,
   buildScore,
   predictScore,
   MAX_HISCORES,
@@ -27,6 +28,9 @@ import {
   colorToCss,
 } from "@rpgm-tools/neo-angband-core";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
+import { hallOfFameFooter, hallOfFameScreen, hallOfFameTitle } from "./screens";
+import { screenFault } from "./overlay";
+import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
 import type {
   HighScore,
   ScoreStore,
@@ -36,9 +40,6 @@ import type {
   BuildScoreDeps,
 } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
-
-/** Version-name shown in the page title (ui-score.c VERSION_NAME). */
-const VERSION_NAME = "Neo Angband";
 
 /** The Storage subset the score store uses (localStorage in the browser). */
 export interface ScoreStorage {
@@ -243,9 +244,22 @@ export function registryNameResolver(reg: {
 }
 
 /**
- * The score screen: renders the Hall of Fame to the terminal and runs the
- * paging/scroll loop of display_scores_aux (ui-score.c L117). Resolves when the
- * user presses Escape. `highlight` is the index to draw in light green (or -1).
+ * The score screen: the Hall of Fame, offered to the installed screen presenter
+ * first and drawn on the faithful terminal otherwise. Resolves when the user
+ * presses Escape. `highlight` is the index to draw in light green (or -1).
+ *
+ * THE SEAM. This was the highest-value screen in the game for a UI-replacing mod
+ * and the one screen a mod could not reach at all: `paint` called `term.clear()`
+ * and `term.print()` directly and `showThroughPresenter` appeared nowhere in the
+ * file, so a leaderboard - the first thing anybody rebuilds - could not even have
+ * its frame reskinned. The model is `hallOfFameScreen` in `screens.ts`; this file
+ * is the two ways of showing it.
+ *
+ * NO HOST AND NO ACTIONS, unlike the monster list and the character sheet: there
+ * is no command on this screen, only paging, and the view a presenter is handed
+ * carries EVERY record rather than the five the terminal has room for. Paging is
+ * the terminal's answer to fitting three-line records onto 24 rows, not something
+ * the game does on a mod's behalf.
  *
  * Faithful behaviour preserved:
  *  - 5 entries per page (SCORES_PER_PAGE), each 3 lines + a blank (4 rows).
@@ -275,71 +289,84 @@ export function showScoreScreen(
   let count = Math.min(scores.length, MAX_HISCORES);
   if (count > to && !allowScrolling) count = to;
 
-  return new Promise<void>((resolve) => {
-    let k = from;
+  const view = hallOfFameScreen(scoreRows(scores, 0, count, highlight, names), {
+    from,
+    allowScrolling,
+  });
+  const taken = showThroughPresenter(view, screenFault);
+  if (taken) {
+    return taken.catch((error: unknown) => {
+      /* The presenter died with the table open. It is already reported and the
+       * seam is already out; all that is left is to show the player the screen
+       * they asked for. */
+      if (!(error instanceof ScreenAbandoned)) throw error;
+      return showScoresOnTerminal();
+    });
+  }
+  return showScoresOnTerminal();
 
-    const paint = (): void => {
-      term.clear();
-      // Title (display_scores_aux L146).
-      if (k > 0) {
-        term.print(
-          21,
-          0,
-          `${VERSION_NAME} Hall of Fame (from position ${k + 1})`,
-          UI_TEXT,
-        );
-      } else {
-        term.print(30, 0, `${VERSION_NAME} Hall of Fame`, UI_TEXT);
-      }
+  /** The faithful terminal's own Hall of Fame; see `showScoreScreen`. */
+  function showScoresOnTerminal(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let k = from;
 
-      const rows: ScoreRow[] = scorePageRows(scores, k, count, highlight, names);
-      rows.forEach((row, n) => {
-        const css = colorToCss(row.color);
-        term.print(0, n * 4 + 2, row.line1, css);
-        term.print(SCORE_DETAIL_INDENT, n * 4 + 3, row.line2, css);
-        term.print(SCORE_DETAIL_INDENT, n * 4 + 4, row.line3, css);
-      });
-
-      const prompt = allowScrolling
-        ? "[Press ESC to exit, up for prior page, any other key for next page.]"
-        : "[Press ESC to exit, any other key to page forward till done.]";
-      term.print(allowScrolling ? 6 : 9, 23, prompt, UI_DIM);
-    };
-
-    const onKey = (ev: KeyboardEvent): void => {
-      ev.preventDefault();
-      if (ev.key === "Escape") {
-        inputEvents.removeEventListener("keydown", onKey);
-        resolve();
-        return;
-      }
-      if (ev.key === "ArrowUp" && allowScrolling) {
-        if (k === 0) {
-          k = count - SCORES_PER_PAGE;
-          while (k % SCORES_PER_PAGE) k++;
-        } else if (k < SCORES_PER_PAGE) {
-          k = 0;
+      const paint = (): void => {
+        term.clear();
+        /* Title (display_scores_aux L146). Its two forms are `hallOfFameTitle`, the
+         * same string the view publishes, so the two cannot disagree about the
+         * wording; the COLUMN each is centred at is the C's own literal. */
+        if (k > 0) {
+          term.print(21, 0, hallOfFameTitle(k), UI_TEXT);
         } else {
-          k = k - SCORES_PER_PAGE;
+          term.print(30, 0, hallOfFameTitle(0), UI_TEXT);
         }
-      } else {
-        k += SCORES_PER_PAGE;
-        if (k >= count) {
-          if (allowScrolling) {
+
+        const rows: ScoreRow[] = scorePageRows(scores, k, count, highlight, names);
+        rows.forEach((row, n) => {
+          const css = colorToCss(row.color);
+          term.print(0, n * 4 + 2, row.line1, css);
+          term.print(SCORE_DETAIL_INDENT, n * 4 + 3, row.line2, css);
+          term.print(SCORE_DETAIL_INDENT, n * 4 + 4, row.line3, css);
+        });
+
+        term.print(allowScrolling ? 6 : 9, 23, hallOfFameFooter(allowScrolling), UI_DIM);
+      };
+
+      const onKey = (ev: KeyboardEvent): void => {
+        ev.preventDefault();
+        if (ev.key === "Escape") {
+          inputEvents.removeEventListener("keydown", onKey);
+          resolve();
+          return;
+        }
+        if (ev.key === "ArrowUp" && allowScrolling) {
+          if (k === 0) {
+            k = count - SCORES_PER_PAGE;
+            while (k % SCORES_PER_PAGE) k++;
+          } else if (k < SCORES_PER_PAGE) {
             k = 0;
           } else {
-            inputEvents.removeEventListener("keydown", onKey);
-            resolve();
-            return;
+            k = k - SCORES_PER_PAGE;
+          }
+        } else {
+          k += SCORES_PER_PAGE;
+          if (k >= count) {
+            if (allowScrolling) {
+              k = 0;
+            } else {
+              inputEvents.removeEventListener("keydown", onKey);
+              resolve();
+              return;
+            }
           }
         }
-      }
-      paint();
-    };
+        paint();
+      };
 
-    inputEvents.addEventListener("keydown", onKey);
-    paint();
-  });
+      inputEvents.addEventListener("keydown", onKey);
+      paint();
+    });
+  }
 }
 
 /**

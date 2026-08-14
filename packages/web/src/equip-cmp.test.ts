@@ -15,6 +15,8 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { equipCmpHelpScreen, equipCmpSelectHelpScreen } from "./equip-cmp";
+import { MODELLED_SCREENS, screenBodyLines, type ScreenTableBlock } from "./screen-view";
 
 const SRC = readFileSync(new URL("./equip-cmp.ts", import.meta.url), "utf8");
 
@@ -71,6 +73,13 @@ describe("the equip-cmp quick filter keys", () => {
  * proves only that I copied it twice. Every prt() literal in the two help
  * functions and every menu_display_state prompt has to appear verbatim.
  *
+ * The two help screens are now `ScreenView` tables (`equipCmpHelpScreen` /
+ * `equipCmpSelectHelpScreen`, in equip-cmp.ts), not a `ScreenLine[]` built
+ * inline, so "appears verbatim" is checked by RENDERING the view through the
+ * one renderer (`screenBodyLines`) and comparing the actual terminal rows it
+ * produces to the C's own `prt()` calls - the whole reason the table model is
+ * allowed to replace the transcription is that this comparison holds.
+ *
  * This whole block exists because "is `?` wired?" turned out to be the wrong
  * question: it WAS wired, and everything it showed was invented.
  */
@@ -95,16 +104,26 @@ function prtLiterals(fn: string): string[] {
 }
 
 describe("the help screens are transcribed, not paraphrased", () => {
-  it("shows every line of display_equip_cmp_help (L377-414)", () => {
-    for (const line of prtLiterals("display_equip_cmp_help")) {
-      expect(SRC, `missing help line: ${line}`).toContain(`"${line}"`);
-    }
+  it("renders display_equip_cmp_help byte-identical to the C's prt() calls (L377-414)", () => {
+    /* The port's own added "left, right" line (see equip-cmp.ts's header note
+     * and equipCmpHelpScreen's comment) is the one line in this screen the C
+     * never draws, so it is spliced into the expected sequence at the same
+     * spot the model puts it - right after "space    one page down" - rather
+     * than pulled from prtLiterals, which only sees what the C actually wrote. */
+    const upstream = prtLiterals("display_equip_cmp_help");
+    const spliceAt = upstream.indexOf("space    one page down") + 1;
+    const expected = [
+      ...upstream.slice(0, spliceAt),
+      "left, right  scroll the property columns",
+      ...upstream.slice(spliceAt),
+    ];
+    const rendered = screenBodyLines(equipCmpHelpScreen(), 80).map((l) => l.text);
+    expect(rendered).toEqual(expected);
   });
 
-  it("shows every line of display_equip_cmp_sel_help (L894-918)", () => {
-    for (const line of prtLiterals("display_equip_cmp_sel_help")) {
-      expect(SRC, `missing select-help line: ${line}`).toContain(`"${line}"`);
-    }
+  it("renders display_equip_cmp_sel_help byte-identical to the C's prt() calls (L894-918)", () => {
+    const rendered = screenBodyLines(equipCmpSelectHelpScreen(), 80).map((l) => l.text);
+    expect(rendered).toEqual(prtLiterals("display_equip_cmp_sel_help"));
   });
 
   it("does not keep the old invented wording", () => {
@@ -133,6 +152,43 @@ describe("the help screens are transcribed, not paraphrased", () => {
     expect(SRC).toContain('"Unknown key pressed; ? will list available keys"');
     /* prt() on row 0 never writes a screen title (L347-363). */
     expect(SRC).not.toMatch(/HEADER_ROW,\s*dlgMsg \|\| "Equipment comparison"/);
+  });
+});
+
+describe("the two help screens are separate ScreenView documents", () => {
+  it("carry different ids, both listed in MODELLED_SCREENS", () => {
+    /* One title ("Equipment comparison - help") covers both, but the browsing
+     * screen's help and select mode's are different CONTENT with different
+     * commands available - a presenter drawing a tailored command palette
+     * needs to tell them apart, which a shared id would hide. */
+    expect(equipCmpHelpScreen().id).toBe("core:equip-cmp-help");
+    expect(equipCmpSelectHelpScreen().id).toBe("core:equip-cmp-select-help");
+    expect(MODELLED_SCREENS).toContain("core:equip-cmp-help");
+    expect(MODELLED_SCREENS).toContain("core:equip-cmp-select-help");
+  });
+
+  it("gives a paired line's second key and description as their own cells, not a substring", () => {
+    /* The upstream line "j, down  one line down    k, up    one line up" is ONE
+     * row (screenBodyLines must reproduce it as one line - see the byte-identical
+     * test above), but a presenter reading it never has to split a string to get
+     * "k, up" and its description: they are cells `key2` / `desc2` on the row. */
+    const block = equipCmpHelpScreen().blocks.find(
+      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "movement-pairs",
+    );
+    const row = block?.rows[0];
+    expect(row?.cells.key1?.text).toBe("j, down");
+    expect(row?.cells.desc1?.text).toBe("one line down");
+    expect(row?.cells.key2?.text).toBe("k, up");
+    expect(row?.cells.desc2?.text).toBe("one line up");
+  });
+
+  it("treats the '---' section rules as table captions, never as a row", () => {
+    const block = equipCmpHelpScreen().blocks.find(
+      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "movement-pairs",
+    );
+    expect(block?.caption?.text).toBe("Movement/scrolling ---------------------------------");
+    /* Only two rows - the caption is not a third one wearing a dashed disguise. */
+    expect(block?.rows.length).toBe(2);
   });
 });
 

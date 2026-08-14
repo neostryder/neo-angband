@@ -96,6 +96,36 @@ const SHEET = ["core:character", "core:character-flags"];
  */
 const WATCH = ["core:monster-list"];
 
+/**
+ * The four help pages, drawn as a legend rather than as a page of text.
+ *
+ * THE GLYPH IS A CELL, and that is why this page was worth taking. The symbols
+ * legend publishes `cells.glyph.text` as ONE character, which is exactly the key
+ * a tileset mod already indexes its atlas by for the map - so a mod with art
+ * draws the same sprite here that the player sees on the floor, and the legend
+ * stops being a list of letters. This sample ships no art, so it prints the
+ * lookup key itself (`U+006B` for `k`), which is a string the game writes
+ * nowhere and which nothing but a one-character cell could have produced.
+ *
+ * The commands page is the same shape with `cells.key`, so a keycap can be drawn
+ * where the terminal pads a field eleven wide; the community page's three routes
+ * are one-row tables whose `cells.address` a presenter with a browser would hang
+ * a link on; and the playing guide is prose, so it reaches the same panel the
+ * recall pages do.
+ *
+ * WHAT IT DOES NOT TAKE, on the same page. symbols.txt's opening paragraphs stay
+ * on `lines` because upstream hand-wrapped that file and the port prints it
+ * verbatim - so this sample skips them, which is precisely what a `lines` block
+ * means. Nothing here can reimagine rows that arrived already broken at the
+ * terminal's width.
+ */
+const HELP = [
+  "core:help-commands",
+  "core:help-symbols",
+  "core:help-guide",
+  "core:help-community",
+];
+
 const BACKDROP = "rgba(8, 10, 16, 0.94)";
 const CARD = "#151a24";
 const CARD_EDGE = "#39415a";
@@ -444,6 +474,69 @@ function drawSheet(g, view, x, y, w) {
   return cy;
 }
 
+/** The key a tileset mod would look a symbol's sprite up by. */
+function spriteKey(glyph) {
+  return "U+" + glyph.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0");
+}
+
+/**
+ * A help page: prose through the panel, every table as a legend.
+ *
+ * The caption carries a COUNT the terminal cannot show, because the terminal
+ * never computed one - `block.rows.length` is a fact about the section that only
+ * a table publishes. Rows are matched on which cell they carry rather than on
+ * which page they came from, so all four pages take the same walk.
+ */
+function drawHelp(g, view, x, y, maxPx) {
+  let cy = y;
+  for (const block of view.blocks) {
+    if (block.kind === "text") {
+      g.font = "13px monospace";
+      cy = drawProse(g, block, x, cy, maxPx, 17) + 12;
+      continue;
+    }
+    if (block.kind !== "table") continue;
+    if (block.caption) {
+      g.font = "13px monospace";
+      g.fillStyle = block.caption.color || INK;
+      g.fillText(block.caption.text + " · " + block.rows.length, x, cy);
+      cy += 20;
+    }
+    for (const row of block.rows) {
+      const glyph = row.cells.glyph;
+      const key = row.cells.key;
+      const address = row.cells.address;
+      if (glyph) {
+        /* The sprite goes here in a mod that has one; the character and its
+         * lookup key stand in, so the sample stays free of assets. */
+        g.font = "16px monospace";
+        g.fillStyle = INK;
+        g.fillText(glyph.text, x, cy);
+        g.font = "12px monospace";
+        g.fillStyle = INK_DIM;
+        g.fillText(spriteKey(glyph.text), x + 22, cy);
+      } else if (key) {
+        g.font = "12px monospace";
+        g.fillStyle = INK_DIM;
+        g.fillText("[" + key.text + "]", x, cy);
+      } else if (address) {
+        g.font = "12px monospace";
+        g.fillStyle = INK;
+        g.fillText(address.text, x, cy);
+      }
+      const desc = row.cells.desc || row.cells.what;
+      if (desc && desc.text) {
+        g.font = "12px monospace";
+        g.fillStyle = INK;
+        g.fillText(desc.text, x + 96, cy);
+      }
+      cy += 16;
+    }
+    cy += 8;
+  }
+  return cy;
+}
+
 /** The screen's own commands as buttons: `actions` is the game telling us. */
 function drawActions(g, view, x, y) {
   if (!view.actions) return;
@@ -486,6 +579,7 @@ export default {
           READS.includes(v.id) ||
           SHEET.includes(v.id) ||
           WATCH.includes(v.id) ||
+          HELP.includes(v.id) ||
           v.id === "core:tombstone" ||
           (TAKES.includes(v.id) && tableOf(v) !== null);
         if (!takes(view)) return undefined;
@@ -515,6 +609,8 @@ export default {
             drawProse(g, prose, 24, TOP, Math.min(360, width - 48), 17);
           } else if (tomb) {
             drawTomb(g, tomb, Math.max(24, width / 2 - 130), TOP, 260);
+          } else if (HELP.includes(v.id)) {
+            drawHelp(g, v, 24, TOP, Math.min(420, width - 48));
           } else if (SHEET.includes(v.id)) {
             drawSheet(g, v, 24, TOP, Math.min(420, width - 48));
             drawActions(g, v, 24, height - 44);

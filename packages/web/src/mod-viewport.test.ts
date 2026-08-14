@@ -147,7 +147,14 @@ function openManager(term: FakeTerm, mods: CatalogMod[]): Promise<void> {
   return runModManager(term, {
     store: new ModStore(fakeStorage()),
     listCatalog: () => mods,
-    conflictLines: () => ({ declared: [], contested: [], combined: [] }),
+    conflictLines: () => ({
+      declared: [],
+      contested: [],
+      combined: [],
+      declaredRows: [],
+      contestedRows: [],
+      combinedRows: [],
+    }),
     requestReload: () => {},
     /* The rows under test ("Install a mod", "Update installed mods") are gated on
      * this being wired, so a manager with no browse deps paints neither and the

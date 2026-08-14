@@ -102,8 +102,14 @@ import type {
   MonsterLore,
   MonsterRace,
   MonsterCategory,
+  ScoreRow,
 } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine, MenuItem } from "./overlay";
+/* TYPE-ONLY, and deliberately: `updateScreen` and `reportScreen` read two fields
+ * off these views to decide which actions the page offers, and a runtime import
+ * would drag the updater and the log into every module that draws a screen. */
+import type { UpdateView } from "./update-ui";
+import type { ReportView } from "./report";
 import {
   freezeView,
   screenBlockLines,
@@ -2252,4 +2258,408 @@ export function svalCategoryItems(
     tvals.push(cat.tval);
   }
   return { items, tvals };
+}
+
+/* ------------------------------------------------------------------ */
+/* The Hall of Fame, and a store's stock in the knowledge menu          */
+/* ------------------------------------------------------------------ */
+
+/** VERSION_NAME (ui-score.c L26), which the Hall of Fame's heading is built on. */
+const HALL_OF_FAME_NAME = "Neo Angband";
+
+/**
+ * display_scores_aux's heading (ui-score.c L146): the plain banner, or the
+ * "(from position N)" form once the player has paged in.
+ *
+ * Spelled here rather than in `score.ts` so the view's title and the string the
+ * faithful terminal centres cannot part - the same reason `MONSTER_LIST_TITLE`
+ * lives beside its model.
+ */
+export function hallOfFameTitle(from = 0): string {
+  return from > 0
+    ? `${HALL_OF_FAME_NAME} Hall of Fame (from position ${from + 1})`
+    : `${HALL_OF_FAME_NAME} Hall of Fame`;
+}
+
+/** The prompt display_scores_aux prints at the foot (ui-score.c L180-186). */
+export function hallOfFameFooter(allowScrolling: boolean): string {
+  return allowScrolling
+    ? "[Press ESC to exit, up for prior page, any other key for next page.]"
+    : "[Press ESC to exit, any other key to page forward till done.]";
+}
+
+/**
+ * The Hall of Fame's columns - the CONTRACT, exported for the same reason
+ * `INVENTORY_COLUMNS` is: a presenter reads `row.cells.points`, so renaming that
+ * key breaks every mod that draws a leaderboard, and would break it silently.
+ *
+ * `rank` and `points` carry upstream's own printf field widths ("%3d" and "%9s",
+ * display_score_page L66); the rest are as wide as their widest cell, because
+ * upstream never lines them up - they are words inside a sentence there.
+ */
+export const HALL_OF_FAME_COLUMNS: readonly ScreenColumn[] = [
+  { key: "rank", width: 3, align: "right" },
+  { key: "points", width: 9, align: "right" },
+  { key: "who" },
+  { key: "race" },
+  { key: "class" },
+  { key: "level", align: "right" },
+  { key: "depth", align: "right" },
+  { key: "how" },
+  { key: "date" },
+  { key: "gold", align: "right" },
+  { key: "turns", align: "right" },
+  { key: "uid", align: "right" },
+];
+
+/**
+ * The Hall of Fame (ui-score.c display_scores_aux) as a screen: one ROW PER
+ * RECORD, every field addressed by a stable key and every number published.
+ *
+ * A LEADERBOARD IS THE THING A MOD REBUILDS FIRST, and until now it could not:
+ * `scoreRow` joins the record into three prose-shaped strings, so a presenter got
+ * `"  1.   123456  Frodo the Half-Troll Warrior, level 20"` as one opaque string
+ * and could not sort by score, colour by rank or draw a class glyph without
+ * parsing a layout that a long name or a translation moves. The strings and these
+ * cells now come from ONE extraction - `ScoreRow.fields`, built in core - so the
+ * model cannot drift from the lines the terminal draws.
+ *
+ * EVERY RECORD IS PUBLISHED, not the five the terminal has room for. Paging is
+ * the faithful terminal's answer to fitting three-line records onto 24 rows; a
+ * presenter that has taken the screen scrolls its own way, and a leaderboard it
+ * can only see five rows of at a time is not a leaderboard. That is also why this
+ * screen carries no `actions`: there is no command here, only a listing that is
+ * dismissed, exactly like the inventory.
+ *
+ * THIS TABLE IS NOT WHAT THE TERMINAL DRAWS, and that is deliberate rather than
+ * an oversight. display_score_page writes THREE lines and a blank per record at
+ * absolute rows (n*4+2, n*4+3, n*4+4, the last two indented to column 15), which
+ * `screenBodyLines` - one line per row - cannot express; a table shaped to
+ * reproduce it would need three rows per record and would hand a mod back the
+ * parsing problem this exists to remove. The character sheet's wide layout is the
+ * precedent: it too is painted at upstream's own anchors rather than stacked. So
+ * `score.ts` keeps display_score_page's positioned paint, and both it and this
+ * model read the same `ScoreRow`.
+ */
+export function hallOfFameScreen(
+  rows: readonly ScoreRow[],
+  opts: { from?: number; allowScrolling?: boolean } = {},
+): ScreenView {
+  return freezeView({
+    id: "core:hall-of-fame",
+    title: hallOfFameTitle(opts.from ?? 0),
+    footer: hallOfFameFooter(opts.allowScrolling ?? true),
+    blocks: [
+      {
+        kind: "table",
+        key: "scores",
+        tagged: false,
+        columns: HALL_OF_FAME_COLUMNS,
+        rows: rows.map(hallOfFameRow),
+        empty: { text: "(no scores yet)", color: DIM },
+      },
+    ],
+  });
+}
+
+/** One record as a table row; see `hallOfFameScreen`. */
+function hallOfFameRow(row: ScoreRow): ScreenRow {
+  const f = row.fields;
+  return {
+    id: `core:score:${f.rank}`,
+    /* The rank is the record's only stable handle - the port stores a compact
+     * list with no per-record id, exactly as score.c's fixed-size records have
+     * none. */
+    semantic: { kind: "score", ref: f.rank, data: { who: f.who, how: f.how } },
+    color: colorToCss(row.color),
+    /* `highlighted` is the "this row is you" fact predict_score exists to show.
+     * Published as a number rather than left to the L_GREEN colour, because a
+     * presenter reading a colour to find itself is parsing a rendering. */
+    values: {
+      rank: f.rank,
+      points: f.points,
+      gold: f.gold,
+      turns: f.turns,
+      uid: f.uid,
+      highlighted: row.highlighted ? 1 : 0,
+    },
+    cells: {
+      rank: { text: f.rankText, values: { rank: f.rank } },
+      points: { text: f.pointsText, values: { points: f.points } },
+      who: { text: f.who },
+      race: { text: f.race },
+      class: { text: f.cls },
+      /* `current` + `max` together mean a proportion under the HUD's convention,
+       * which is exactly what "level 20 (Max 21)" is. */
+      level: { text: String(f.level), values: { current: f.level, max: f.maxLevel } },
+      depth: { text: String(f.depth), values: { current: f.depth, max: f.maxDepth } },
+      how: { text: f.how },
+      date: { text: f.date },
+      gold: { text: String(f.gold), values: { gold: f.gold } },
+      turns: { text: String(f.turns), values: { turns: f.turns } },
+      uid: { text: String(f.uid), values: { uid: f.uid } },
+    },
+  };
+}
+
+/**
+ * The stock columns of the knowledge menu's store view.
+ *
+ * The name field is 46 and the weight 8 because that is what this screen has
+ * always drawn; the price is upstream's own "%9ld" (store_display_entry,
+ * ui-store.c L315) with two columns of gap, which is where the shop screen puts
+ * it too.
+ */
+const STORE_NAME_WIDTH = 46;
+export const STORE_STOCK_COLUMNS: readonly ScreenColumn[] = [
+  { key: "name", width: STORE_NAME_WIDTH },
+  { key: "weight", width: 8, align: "right" },
+  { key: "price", width: 9, align: "right", gap: 2 },
+];
+/**
+ * The home's columns: the same list WITHOUT a price.
+ *
+ * A real conditional rather than an empty column, because store_display_entry
+ * skips the price entirely for FEAT_HOME (ui-store.c L303) - nothing there is for
+ * sale, and a presenter handed a `price` cell full of blanks would have to guess
+ * whether that meant free or unknown.
+ */
+export const HOME_STOCK_COLUMNS: readonly ScreenColumn[] = STORE_STOCK_COLUMNS.slice(0, 2);
+
+/** What `storeKnowledgeScreen` needs that a GameState cannot answer on its own. */
+export interface StoreKnowledgeDeps {
+  /** f_info[store->feat].name - the screen's heading. */
+  readonly title: string;
+  /** The proprietor's name; ignored for the home, which says "Your Home". */
+  readonly owner: string;
+  /** store->feat == FEAT_HOME: no owner, no prices. */
+  readonly isHome: boolean;
+  /** price_item(store, obj, false, 1); absent for the home. */
+  readonly price?: (obj: GameObject) => number;
+}
+
+/**
+ * do_cmd_knowledge_store (ui-knowledge.c L3522 -> textui_store_knowledge,
+ * ui-store.c L1217) as a screen: the owner line, the column header, then one row
+ * per stocked item with its weight and per-item buy price.
+ *
+ * Same shape as `core:inventory` and `core:objects-in-view`, and modelled the
+ * same way - a lettered table whose cells are addressed by key, so a mod that
+ * draws sprites for a pack listing already knows how to draw a shop's shelves.
+ *
+ * THE HEADER LINE IS STILL A LINE, and it is the one row a table cannot
+ * reproduce. A table's header sits on the DATA's column grid: the renderer
+ * indents it by the tag's three columns and pads each label to its own column,
+ * which would put "Store Inventory" at column 3 (it is at 0) and "Price" at 64
+ * (it is at 62). Both would be movements on the player's screen, and byte
+ * identity outranks tidiness here - so the header travels as prose the game
+ * already laid out and the column KEYS carry the contract instead. Moving the
+ * header onto the data grid is a real fix and belongs with the other one it
+ * would take: "Price" at column 62 is two columns left of upstream's own
+ * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368), which the shop screen gets
+ * right and this one does not.
+ */
+export function storeKnowledgeScreen(
+  state: GameState,
+  stock: readonly GameObject[],
+  deps: StoreKnowledgeDeps,
+): ScreenView {
+  const { isHome } = deps;
+  const heading: ScreenLine[] = [
+    { text: isHome ? "Your Home" : deps.owner },
+    { text: "" },
+    {
+      text: isHome
+        ? `${"Home Inventory".padEnd(52)}Weight`
+        : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
+    },
+  ];
+  /* A blank row between the header and the empty notice, and ONLY when the
+   * shelves are bare. A layout that changes with the data is normally the bug
+   * `ScreenTableBlock.tagged` exists to prevent; this one is what the screen has
+   * always drawn, so it is kept as a wart rather than quietly regularised. */
+  if (stock.length === 0) heading.push({ text: "" });
+
+  const rows: ScreenRow[] = stock.map((obj, i) => {
+    const w = obj.weight;
+    const price = deps.price?.(obj) ?? 0;
+    return {
+      id: `core:store-stock:${i}`,
+      semantic: {
+        kind: "item",
+        ref: obj.kind.name,
+        data: { source: isHome ? "home" : "store", slot: i },
+      },
+      /* all_letters is what this screen has always lettered with, and it wraps at
+       * 26 rather than running out - a home can hold more than 26 items. */
+      tag: String.fromCharCode(97 + (i % 26)),
+      values: { number: obj.number, weight: w, ...(isHome ? {} : { price }) },
+      cells: {
+        name: { text: describeObject(state, obj) },
+        /* "%3d.%d lb" without the leading pad, which the column's width supplies
+         * (store_display_entry, ui-store.c L299-301). `each` is one item's
+         * weight, as upstream's object_weight_one is. */
+        weight: { text: `${Math.trunc(w / 10)}.${w % 10} lb`, values: { each: w } },
+        ...(isHome ? {} : { price: { text: String(price), values: { price } } }),
+      },
+    };
+  });
+
+  return freezeView({
+    id: "core:store-knowledge",
+    title: deps.title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      { kind: "lines", lines: heading },
+      {
+        kind: "table",
+        key: "stock",
+        tagged: true,
+        columns: isHome ? HOME_STOCK_COLUMNS : STORE_STOCK_COLUMNS,
+        rows,
+        empty: { text: isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)" },
+      },
+    ],
+  });
+}
+
+/** The knowledge store view's rows; see `inventoryLines` on why this is a one-liner. */
+export function storeKnowledgeLines(
+  state: GameState,
+  stock: readonly GameObject[],
+  deps: StoreKnowledgeDeps,
+): ScreenLine[] {
+  return screenBodyLines(storeKnowledgeScreen(state, stock, deps));
+}
+
+/* ------------------------------------------------------------------ */
+/* The two shell pages that keep a command: (U)pdate and report        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The update page and the report page as screens.
+ *
+ * WHAT THESE TWO HAVE THAT NO OTHER PROSE PAGE HAS. Their CONTENT is prose the
+ * game already laid out, so it is finished at `lines` - there is no table here
+ * and modelling one would be inventing structure the page has not got. What they
+ * do have is a COMMAND: ENTER starts an update, or writes a report file, and
+ * `showTextScreen` treats ESC, ENTER and SPACE alike as dismissal. That is why
+ * they were painted directly, and why they were invisible to a presenter - the
+ * whole page, not just its command. `ScreenAction` / `ScreenHost` is exactly the
+ * answer to that, and the character sheet was already using it.
+ *
+ * TAKEN AS TYPES, NOT AS MODULES. Both builders read only the fields the action
+ * list depends on, through a type-only import, and are handed the prose and the
+ * footer their callers have already computed. So `screens.ts` gains no runtime
+ * dependency on the updater or the log, and both are testable from a two-field
+ * object literal rather than from a live shell.
+ */
+
+/** The heading the update page draws, spelled once so the view cannot disagree. */
+export const UPDATE_TITLE = "Update";
+
+/**
+ * Which key each of the update page's actions is, so `ScreenHost.invoke` and the
+ * terminal's own loop run the same code rather than two copies of it.
+ *
+ * The keys are the faithful terminal's, and a fact about the GAME rather than an
+ * instruction: a presenter with a mouse draws a button and never reads them.
+ */
+export const UPDATE_ACTION_KEYS: Readonly<Record<string, string>> = {
+  confirm: "Enter",
+  channel: "c",
+  mods: "m",
+};
+
+/**
+ * The update page as a screen: its prose, its footer, and the keys it names.
+ *
+ * ACTIONS ARE OFFERED ONLY WHERE THEY WOULD DO SOMETHING, on the same conditions
+ * `updateFooter` names them - a button a presenter draws that does nothing when
+ * clicked is how a player learns to distrust the interface, which is the
+ * reasoning the footer itself already carries.
+ */
+export function updateScreen(
+  view: Pick<UpdateView, "phase" | "how">,
+  lines: readonly ScreenLine[],
+  footer: string,
+  modCount: number,
+): ScreenView {
+  const actions: ScreenAction[] = [];
+  const confirm = updateConfirmLabel(view);
+  if (confirm !== null) actions.push({ id: "confirm", key: "ENTER", label: confirm });
+  if (view.how !== "web" && view.phase !== "downloading") {
+    actions.push({ id: "channel", key: "C", label: "change channel" });
+  }
+  if (modCount > 0 && view.phase !== "downloading") {
+    actions.push({ id: "mods", key: "M", label: "mod updates" });
+  }
+  return freezeView({
+    id: "core:update",
+    title: UPDATE_TITLE,
+    footer,
+    ...(actions.length === 0 ? {} : { actions }),
+    blocks: [{ kind: "lines", lines }],
+  });
+}
+
+/**
+ * What ENTER does on the update page right now, or null where it does nothing.
+ *
+ * The phase/how ladder here is `updateFooter`'s (update-ui.ts L415-426) read a
+ * SECOND TIME, which is a transcription and should not stay one: the fix is an
+ * `updateConfirm(view)` in update-ui.ts that both the footer and this read from.
+ * It is not made here because this stream does not own that file; the symptom if
+ * they part is a button whose label disagrees with the footer beside it, which
+ * `screens.test.ts` pins for every phase.
+ */
+function updateConfirmLabel(view: Pick<UpdateView, "phase" | "how">): string | null {
+  if (view.phase === "downloading" || view.phase === "installing") return null;
+  if (view.phase === "failed") return "try again";
+  if (view.phase === "unchecked") return "check again";
+  if (view.phase === "uptodate") return null;
+  if (view.how === "swap") return "update and restart";
+  if (view.how === "web") return "reload onto the new version";
+  return "open the releases page";
+}
+
+/** The heading the report page draws, spelled once so the view cannot disagree. */
+export const REPORT_TITLE = "Report a problem";
+
+/** Which key each report action is; see `UPDATE_ACTION_KEYS`. */
+export const REPORT_ACTION_KEYS: Readonly<Record<string, string>> = {
+  describe: "d",
+  "log-level": "l",
+  confirm: "Enter",
+};
+
+/**
+ * The report page as a screen: its prose, its footer, and the keys it names.
+ *
+ * The actions are exactly the ones `reportFooter` offers, on the same conditions
+ * - a saved report has nothing left but the way out, and a failed one offers the
+ * retry and nothing else.
+ */
+export function reportScreen(
+  view: Pick<ReportView, "phase">,
+  lines: readonly ScreenLine[],
+  footer: string,
+): ScreenView {
+  const actions: ScreenAction[] =
+    view.phase === "saved"
+      ? []
+      : view.phase === "failed"
+        ? [{ id: "confirm", key: "ENTER", label: "try again" }]
+        : [
+            { id: "describe", key: "D", label: "describe" },
+            { id: "log-level", key: "L", label: "logging level" },
+            { id: "confirm", key: "ENTER", label: "write it" },
+          ];
+  return freezeView({
+    id: "core:report",
+    title: REPORT_TITLE,
+    footer,
+    ...(actions.length === 0 ? {} : { actions }),
+    blocks: [{ kind: "lines", lines }],
+  });
 }

@@ -57,6 +57,9 @@ import {
   objCanStudy,
   bindConstants,
   getMonName,
+  describeObject,
+  scorePageRows,
+  scoreRows,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   Textblock,
@@ -76,6 +79,8 @@ import type {
   MonsterRace,
   MonsterLore,
   LoreDeps,
+  HighScore,
+  ScoreNameResolver,
 } from "@rpgm-tools/neo-angband-core";
 import {
   wrapRuns,
@@ -112,8 +117,17 @@ import {
   quiverScreen,
   quiverLines,
   objectName,
+  storeKnowledgeScreen,
+  hallOfFameScreen,
+  hallOfFameTitle,
+  hallOfFameFooter,
+  updateScreen,
+  reportScreen,
+  UPDATE_ACTION_KEYS,
+  REPORT_ACTION_KEYS,
 } from "./screens";
 import { MessageLog } from "./messages";
+import { showScoreScreen } from "./score";
 import { showMonsterList } from "./monster-list";
 import { setScreenPresenter } from "./screen-runtime";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -1934,5 +1948,451 @@ describe("characterGrid knowledge gate (object_flag_is_known / object_element_is
     const grid = characterGrid(state, uiConfig);
     const acidRow = grid.resistPanels[0]!.rows.find((r) => r.label === " Acid:")!;
     expect(acidRow.cells[0]!.symbol).toBe("?");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The four screens a mod presenter could not reach                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * showStoreKnowledge's row formatting EXACTLY as main.ts wrote it before the
+ * model existed (main.ts L4213-4234 at 0.19.0).
+ *
+ * The point of keeping the dead expression here is that it is the CAPTURE: the
+ * assertions below say "the table renders what the padded strings rendered", not
+ * "the table renders what I expected the padded strings to render". A hand-typed
+ * expectation would only ever have agreed with whichever of the two I typed it
+ * from.
+ */
+function storeKnowledgeLinesBefore(
+  state: GameState,
+  stock: readonly GameObject[],
+  o: { owner: string; isHome: boolean; price: (obj: GameObject) => number },
+): string[] {
+  const { isHome } = o;
+  const lines: string[] = [];
+  lines.push(isHome ? "Your Home" : o.owner);
+  lines.push("");
+  lines.push(
+    isHome
+      ? `${"Home Inventory".padEnd(52)}Weight`
+      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
+  );
+  if (stock.length === 0) {
+    lines.push("");
+    lines.push(isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)");
+  }
+  stock.forEach((obj, i) => {
+    const name = describeObject(state, obj);
+    const wgt = obj.weight;
+    const weightStr = `${Math.trunc(wgt / 10)}.${wgt % 10} lb`;
+    const priceStr = isHome ? "" : String(o.price(obj));
+    const tag = String.fromCharCode(97 + (i % 26));
+    lines.push(
+      `${tag}) ${name.padEnd(46).slice(0, 46)} ${weightStr.padStart(8)}  ${priceStr.padStart(9)}`.trimEnd(),
+    );
+  });
+  return lines;
+}
+
+describe("the knowledge menu's store view is a table (core:store-knowledge)", () => {
+  /** A price that varies with the item, so a column of one repeated number
+   *  could not pass by accident. */
+  const price = (obj: GameObject): number => obj.weight * 7 + 3;
+
+  function shopStock(state: GameState): GameObject[] {
+    return [
+      addPack(state, "& Ration~ of Food", 3),
+      addPack(state, "& Flask~ of oil", 1),
+      addPack(state, "& Wooden Torch~", 2),
+    ];
+  }
+
+  it("renders byte for byte what the padded strings rendered - shop", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = shopStock(state);
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "General Store",
+      owner: "Bilbo the Friendly",
+      isHome: false,
+      price,
+    });
+    expect(screenBodyLines(view, 80).map((l) => l.text)).toEqual(
+      storeKnowledgeLinesBefore(state, stock, {
+        owner: "Bilbo the Friendly",
+        isHome: false,
+        price,
+      }),
+    );
+  });
+
+  it("renders byte for byte what the padded strings rendered - home, no price", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = shopStock(state);
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "Home",
+      owner: "ignored",
+      isHome: true,
+    });
+    expect(screenBodyLines(view, 80).map((l) => l.text)).toEqual(
+      storeKnowledgeLinesBefore(state, stock, { owner: "ignored", isHome: true, price }),
+    );
+  });
+
+  it("renders byte for byte what the padded strings rendered - both empty states", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    for (const isHome of [false, true]) {
+      const view = storeKnowledgeScreen(state, [], {
+        title: "Alchemy shop",
+        owner: "Ga-nat the Greedy",
+        isHome,
+        ...(isHome ? {} : { price }),
+      });
+      expect(screenBodyLines(view, 80).map((l) => l.text)).toEqual(
+        storeKnowledgeLinesBefore(state, [], {
+          owner: "Ga-nat the Greedy",
+          isHome,
+          price,
+        }),
+      );
+    }
+  });
+
+  it("publishes the price as a CELL, and the home has no price column at all", () => {
+    /* The whole point of the model: "what does this cost" is a lookup rather than
+     * a substring of a padded row. And the home's missing price is a real
+     * conditional - store_display_entry skips it for FEAT_HOME (ui-store.c L303)
+     * - so a presenter never has to decide whether a blank means free or
+     * unknown. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = shopStock(state);
+    const shop = storeKnowledgeScreen(state, stock, {
+      title: "General Store",
+      owner: "Bilbo",
+      isHome: false,
+      price,
+    }).blocks[1] as ScreenTableBlock;
+    expect(shop.tagged).toBe(true);
+    expect(shop.columns.map((c) => c.key)).toEqual(["name", "weight", "price"]);
+    expect(shop.rows[0]!.cells.price!.text).toBe(String(price(stock[0]!)));
+    expect(shop.rows[0]!.cells.price!.values).toEqual({ price: price(stock[0]!) });
+    expect(shop.rows[0]!.tag).toBe("a");
+    expect(shop.rows[0]!.semantic).toMatchObject({ kind: "item" });
+
+    const home = storeKnowledgeScreen(state, stock, {
+      title: "Home",
+      owner: "x",
+      isHome: true,
+    }).blocks[1] as ScreenTableBlock;
+    expect(home.columns.map((c) => c.key)).toEqual(["name", "weight"]);
+    expect(home.rows[0]!.cells.price).toBeUndefined();
+    expect(home.rows[0]!.values).toEqual({
+      number: stock[0]!.number,
+      weight: stock[0]!.weight,
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The Hall of Fame                                                    */
+/* ------------------------------------------------------------------ */
+
+const HOF_NAMES: ScoreNameResolver = {
+  raceName: (i) => ["Half-Troll", "Human", "Dwarf"][i] ?? null,
+  className: (i) => ["Warrior", "Mage"][i] ?? null,
+};
+
+/* One record of each shape display_score_page branches on: a dungeon death with
+ * both "(Max N)" arms, a town death whose race and class do not resolve, and a
+ * winner. */
+const HOF_SCORES: HighScore[] = [
+  { what: "4.2.6", pts: 123456, gold: 9876, turns: 54321, day: "@20260813", who: "Frodo",
+    uid: 1000, pRace: 0, pClass: 0, curLev: 20, curDun: 12, maxLev: 21, maxDun: 15,
+    how: "a Cave Orc" },
+  { what: "4.2.6", pts: 12, gold: 0, turns: 7, day: "TODAY", who: "Bo",
+    uid: 7, pRace: 9, pClass: 9, curLev: 1, curDun: 0, maxLev: 1, maxDun: 0,
+    how: "a Fruit Bat" },
+  { what: "4.2.6", pts: 5000, gold: 120, turns: 900, day: "@20250101", who: "Cee",
+    uid: 42, pRace: 1, pClass: 1, curLev: 5, curDun: 3, maxLev: 5, maxDun: 3,
+    how: "Ripe Old Age" },
+];
+
+describe("display_score_page's three lines did not move (ui-score.c L30)", () => {
+  /**
+   * The capture, taken off the shipped build BEFORE `scoreRow` was refactored to
+   * compose from `ScoreRow.fields`. Every character of the Hall of Fame the
+   * player reads is in here.
+   */
+  it("builds the same strings it always did", () => {
+    const rows = scorePageRows(HOF_SCORES, 0, 3, 1, HOF_NAMES);
+    expect(rows.map((r) => [r.line1, r.line2, r.line3])).toEqual([
+      [
+        "  1.   123456  Frodo the Half-Troll Warrior, level 20 (Max 21)",
+        "Killed by a Cave Orc on dungeon level 12 (Max 15)",
+        "(User 1000, Date 2026-08-13, Gold 9876, Turn 54321).",
+      ],
+      [
+        "  2.       12  Bo the <none> <none>, level 1",
+        "Killed by a Fruit Bat in the town",
+        "(User 7, Date TODAY, Gold 0, Turn 7).",
+      ],
+      [
+        "  3.     5000  Cee the Human Mage, level 5",
+        "Killed by Ripe Old Age on dungeon level 3",
+        "(User 42, Date 2025-01-01, Gold 120, Turn 900).",
+      ],
+    ]);
+    expect(rows[1]!.color).toBe(COLOUR_L_GREEN);
+    expect(rows[0]!.color).toBe(COLOUR_WHITE);
+  });
+
+  /**
+   * THE ANTI-DRIFT CHECK. The lines and the table cells come from ONE extraction
+   * (`ScoreRow.fields`), and this is what holds them to it: if the fields ever
+   * stop being what the lines are made of, the strings above still pass and this
+   * does not. That is the whole reason the fields live beside the lines instead
+   * of being read a second time in the front end.
+   */
+  it("makes each line out of the fields it publishes", () => {
+    for (const row of scorePageRows(HOF_SCORES, 0, 3, -1, HOF_NAMES)) {
+      const f = row.fields;
+      expect(
+        row.line1.startsWith(`${f.rankText}.${f.pointsText}  ${f.who} the ${f.race} ${f.cls},`),
+      ).toBe(true);
+      expect(row.line1).toContain(`level ${String(f.level)}`);
+      expect(row.line2).toContain(`Killed by ${f.how}`);
+      expect(row.line3).toBe(
+        `(User ${String(f.uid)}, Date ${f.date}, Gold ${String(f.gold)}, Turn ${String(f.turns)}).`,
+      );
+    }
+  });
+});
+
+describe("the Hall of Fame is a table now (core:hall-of-fame)", () => {
+  it("gives a mod every record, addressed by key, with the numbers beside them", () => {
+    const view = hallOfFameScreen(scoreRows(HOF_SCORES, 0, 3, 1, HOF_NAMES));
+    expect(view.id).toBe("core:hall-of-fame");
+    /* No actions: a listing is dismissed, not answered. Paging is the terminal's
+     * answer to three-line records on a 24-row screen, not a game command. */
+    expect(view.actions).toBeUndefined();
+    const table = view.blocks[0] as ScreenTableBlock;
+    /* EVERY record, not the five the terminal has room for - a leaderboard a mod
+     * can only see one page of is not a leaderboard. */
+    expect(table.rows).toHaveLength(3);
+    expect(table.rows[0]!.cells).toMatchObject({
+      rank: { text: "  1" },
+      points: { text: "   123456" },
+      who: { text: "Frodo" },
+      race: { text: "Half-Troll" },
+      class: { text: "Warrior" },
+      how: { text: "a Cave Orc" },
+      date: { text: "2026-08-13" },
+    });
+    /* current + max together mean a proportion, which is what "(Max 21)" is. */
+    expect(table.rows[0]!.cells.level!.values).toEqual({ current: 20, max: 21 });
+    expect(table.rows[0]!.cells.depth!.values).toEqual({ current: 12, max: 15 });
+    /* Sortable without parsing anything - the failure this screen was. */
+    expect(table.rows.map((r) => r.values!.points)).toEqual([123456, 12, 5000]);
+    expect(table.rows.map((r) => r.values!.turns)).toEqual([54321, 7, 900]);
+    /* "Which row is me" as a number, not as a colour a presenter has to match. */
+    expect(table.rows.map((r) => r.values!.highlighted)).toEqual([0, 1, 0]);
+    expect(table.rows[1]!.color).toBe(colorToCss(COLOUR_L_GREEN));
+    expect(table.rows[0]!.semantic).toEqual({
+      kind: "score",
+      ref: 1,
+      data: { who: "Frodo", how: "a Cave Orc" },
+    });
+  });
+
+  it("titles and foots itself with the strings display_scores_aux prints", () => {
+    expect(hallOfFameTitle(0)).toBe("Neo Angband Hall of Fame");
+    expect(hallOfFameTitle(5)).toBe("Neo Angband Hall of Fame (from position 6)");
+    expect(hallOfFameFooter(true)).toBe(
+      "[Press ESC to exit, up for prior page, any other key for next page.]",
+    );
+    expect(hallOfFameFooter(false)).toBe(
+      "[Press ESC to exit, any other key to page forward till done.]",
+    );
+    expect(hallOfFameScreen([], { from: 5, allowScrolling: false })).toMatchObject({
+      title: "Neo Angband Hall of Fame (from position 6)",
+      footer: "[Press ESC to exit, any other key to page forward till done.]",
+    });
+  });
+});
+
+/** A terminal that remembers WHERE each string landed, for a positioned paint. */
+function makeGridTerm(): GridSurface & GridPointerInput & { grid: () => string[] } {
+  const rows: string[] = Array.from({ length: 24 }, () => "");
+  return {
+    grid: () => rows.map((r) => r.replace(/\s+$/u, "")),
+    size: () => ({ cols: 80, rows: 24 }),
+    clear: () => {
+      rows.fill("");
+    },
+    print: (x: number, y: number, text: string) => {
+      const row = (rows[y] ?? "").padEnd(x, " ");
+      rows[y] = row.slice(0, x) + text + row.slice(x + text.length);
+    },
+  } as unknown as GridSurface & GridPointerInput & { grid: () => string[] };
+}
+
+describe("showScoreScreen: the seam, and the terminal underneath it", () => {
+  afterEach(() => setScreenPresenter(null));
+
+  /**
+   * The byte-for-byte capture, taken off the shipped build before the seam was
+   * cut: three-line records at rows n*4+2..4 with the detail lines indented to
+   * column 15, the banner centred at column 30, the prompt at column 6 of row 23.
+   *
+   * `screenBodyLines` is NOT the renderer here and cannot be - it emits one row
+   * per table row and display_score_page writes three and a blank - so what is
+   * measured is the paint itself, which is what the player looks at. See
+   * `hallOfFameScreen` for why the model is one row per record anyway.
+   */
+  it("paints exactly what it painted before", () => {
+    const term = makeGridTerm();
+    /* Never resolves - the screen is waiting for a key - which is why nothing
+     * awaits it and why the assertion is on the FIRST paint. */
+    void showScoreScreen(term, HOF_SCORES, HOF_NAMES, { highlight: 1 });
+    expect(term.grid()).toEqual([
+      "                              Neo Angband Hall of Fame",
+      "",
+      "  1.   123456  Frodo the Half-Troll Warrior, level 20 (Max 21)",
+      "               Killed by a Cave Orc on dungeon level 12 (Max 15)",
+      "               (User 1000, Date 2026-08-13, Gold 9876, Turn 54321).",
+      "",
+      "  2.       12  Bo the <none> <none>, level 1",
+      "               Killed by a Fruit Bat in the town",
+      "               (User 7, Date TODAY, Gold 0, Turn 7).",
+      "",
+      "  3.     5000  Cee the Human Mage, level 5",
+      "               Killed by Ripe Old Age on dungeon level 3",
+      "               (User 42, Date 2025-01-01, Gold 120, Turn 900).",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "      [Press ESC to exit, up for prior page, any other key for next page.]",
+    ]);
+  });
+
+  it("offers the whole table to a presenter, and does not paint when it is taken", () => {
+    const seen: ScreenView[] = [];
+    setScreenPresenter({
+      id: "test-presenter",
+      presenter: {
+        show: (view) => {
+          seen.push(view);
+          return { dismissed: Promise.resolve() };
+        },
+      },
+    });
+    const term = makeGridTerm();
+    void showScoreScreen(term, HOF_SCORES, HOF_NAMES, { highlight: 1 });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.id).toBe("core:hall-of-fame");
+    expect((seen[0]!.blocks[0] as ScreenTableBlock).rows).toHaveLength(3);
+    /* The game drew NOTHING. This screen used to be term.clear()/term.print()
+     * with showThroughPresenter nowhere in the file. */
+    expect(term.grid().every((r) => r === "")).toBe(true);
+  });
+
+  it("falls back to its own paint when the presenter declines", () => {
+    setScreenPresenter({ id: "test-presenter", presenter: { show: () => undefined } });
+    const term = makeGridTerm();
+    void showScoreScreen(term, HOF_SCORES, HOF_NAMES, { highlight: 1 });
+    expect(term.grid()[0]).toBe("                              Neo Angband Hall of Fame");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The two shell pages that keep a command                             */
+/* ------------------------------------------------------------------ */
+
+describe("the update page travels with its keys (core:update)", () => {
+  const lines = [{ text: "Neo Angband 0.19.0", color: "#fff" }];
+
+  it("keeps the prose as lines and names ENTER by what it will do", () => {
+    const view = updateScreen({ phase: "offer", how: "swap" }, lines, "[ x ]", 0);
+    expect(view.id).toBe("core:update");
+    expect(view.blocks).toEqual([{ kind: "lines", lines }]);
+    expect(view.actions).toEqual([
+      { id: "confirm", key: "ENTER", label: "update and restart" },
+      { id: "channel", key: "C", label: "change channel" },
+    ]);
+  });
+
+  it("offers M only when a mod update is waiting, as the footer does", () => {
+    expect(updateScreen({ phase: "offer", how: "swap" }, lines, "", 2).actions).toContainEqual({
+      id: "mods",
+      key: "M",
+      label: "mod updates",
+    });
+    expect(
+      updateScreen({ phase: "offer", how: "swap" }, lines, "", 0).actions?.some(
+        (a) => a.id === "mods",
+      ),
+    ).toBe(false);
+  });
+
+  it("offers nothing at all mid-download, and no ENTER when up to date", () => {
+    /* A button a presenter draws that does nothing when clicked is how a player
+     * learns to distrust the interface - the footer's own reasoning. */
+    expect(
+      updateScreen({ phase: "downloading", how: "swap" }, lines, "", 3).actions,
+    ).toBeUndefined();
+    expect(
+      updateScreen({ phase: "uptodate", how: "swap" }, lines, "", 0).actions?.map((a) => a.id),
+    ).toEqual(["channel"]);
+    expect(updateScreen({ phase: "failed", how: "swap" }, lines, "", 0).actions?.[0]).toEqual({
+      id: "confirm",
+      key: "ENTER",
+      label: "try again",
+    });
+    expect(updateScreen({ phase: "unchecked", how: "web" }, lines, "", 0).actions).toEqual([
+      { id: "confirm", key: "ENTER", label: "check again" },
+    ]);
+  });
+
+  it("names a key for every action, so invoke() can run one", () => {
+    for (const phase of ["offer", "uptodate", "failed", "unchecked", "downloading"] as const) {
+      for (const how of ["swap", "web", "manual"] as const) {
+        for (const action of updateScreen({ phase, how }, lines, "", 1).actions ?? []) {
+          expect(UPDATE_ACTION_KEYS[action.id], action.id).toBeDefined();
+        }
+      }
+    }
+  });
+});
+
+describe("the report page travels with its keys (core:report)", () => {
+  const lines = [{ text: "logging level: info", color: "#fff" }];
+
+  it("keeps the prose as lines and offers D / L / ENTER while composing", () => {
+    const view = reportScreen({ phase: "compose" }, lines, "[ x ]");
+    expect(view.id).toBe("core:report");
+    expect(view.blocks).toEqual([{ kind: "lines", lines }]);
+    expect(view.actions).toEqual([
+      { id: "describe", key: "D", label: "describe" },
+      { id: "log-level", key: "L", label: "logging level" },
+      { id: "confirm", key: "ENTER", label: "write it" },
+    ]);
+    for (const action of view.actions ?? []) {
+      expect(REPORT_ACTION_KEYS[action.id], action.id).toBeDefined();
+    }
+  });
+
+  it("has nothing left to do once it is saved, and retries after a failure", () => {
+    expect(reportScreen({ phase: "saved" }, lines, "").actions).toBeUndefined();
+    expect(reportScreen({ phase: "failed" }, lines, "").actions).toEqual([
+      { id: "confirm", key: "ENTER", label: "try again" },
+    ]);
   });
 });
