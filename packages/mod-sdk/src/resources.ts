@@ -398,7 +398,7 @@ export function chooseResources(contributions: readonly ContributedResource[]): 
     }
     const key =
       spec.merge === "slot"
-        ? `${contribution.resource.kind} ${contribution.resource.slot ?? ""}`
+        ? `${contribution.resource.kind}\u0000${contribution.resource.slot ?? ""}`
         : contribution.resource.kind;
     const seen = at.get(key);
     if (seen === undefined) {

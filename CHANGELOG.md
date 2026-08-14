@@ -218,6 +218,29 @@ digest in the game's catalogue and must never be moved.
 
 ### Changed
 
+- **Every text file is LF, and `.gitattributes` now enforces it** (#254).
+  Repository hygiene; no effect on the game.
+
+  "Every source file here is LF" had been written down as a fact for months.
+  It was not one: 69 tracked files were CRLF, 12 were mixed, and three source
+  files carried a byte that made git classify them as **binary** —
+  `packages/web/src/main.ts` had two lone CRs left behind by a scripted edit,
+  and `mod-sdk/src/resources.ts` and `parity/tools/ledger-deferred-items.mjs`
+  each embedded a raw NUL as a compound-key separator (deliberate, and now
+  written `\u0000`, which is the same character and says so).
+
+  A file git calls binary is never diffed as text, never normalised, and never
+  reviewed line by line, so the invisible byte survives every pass. That is the
+  cost worth naming: the hazard is not the line ending, it is that a scripted
+  edit meeting one of these files rewrites all of it and buries the real change.
+
+  `* text=auto eol=lf`, with `reference/**` exempt because those are upstream
+  Angband's own bytes at the 4.2.6 tag and seven of them ship CRLF. 79 files
+  changed, of which 74 are line endings only — `git diff --ignore-cr-at-eol`
+  over the commit shows exactly the five substantive ones. The suite is
+  unchanged at 10,221 passing, which is the evidence that nothing depended on
+  a carriage return.
+
 - **The HUD is a frame now, not three closures** (#253, MOD_REACH gap 21,
   step 1).
 

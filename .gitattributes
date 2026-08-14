@@ -1,0 +1,47 @@
+# Line endings.
+#
+# Every text file in this repository is LF, in the index and on disk, on every
+# platform. Before this file existed that was only a convention, and the
+# convention had already lost: 69 tracked files were CRLF, 12 were mixed, and
+# three source files carried a byte that made git classify them as binary. A
+# scripted edit that met one of those files quietly rewrote all of it, which
+# buries a two-line change in a whole-file diff.
+#
+# `eol=lf` rather than plain `text=auto` on purpose: `text=auto` alone leaves the
+# working tree to `core.autocrlf`, which is a per-machine setting, so two
+# developers would still disagree about what is on disk.
+* text=auto eol=lf
+
+# Upstream Angband's own bytes, at the 4.2.6 tag. A few of these ship CRLF from
+# upstream (Makefile.nmake, docs/make.bat, three Shockbolt/Nomad .prf files) and
+# normalising them would make the parity baseline differ from the baseline.
+reference/** -text
+
+# Windows batch files are only reliably CRLF, so any that are ever added outside
+# reference/ keep it.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Detected correctly by `text=auto` anyway, but stated so that a truncated or
+# unusual header can never make one of them look like text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.bmp binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.exe binary
+*.dll binary
+*.node binary
+*.pdf binary
