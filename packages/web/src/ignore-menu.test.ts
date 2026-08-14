@@ -2,7 +2,7 @@
  * Tests for the per-item ignore menu (ui-object.c:1701-1837
  * textui_cmd_ignore_menu). buildIgnoreItemMenu is asserted against the exact
  * upstream labels and row order for representative items; applyIgnoreItemChoice
- * against the resulting ignore-engine mutation (obj-ignore.c:1801-1818);
+ * against the resulting ignore-engine mutation (ui-object.c:1801-1818);
  * ignoreItemMenuCtx against the row guards, including the jewelry special-case
  * (ui-object.c:1774-1777).
  */

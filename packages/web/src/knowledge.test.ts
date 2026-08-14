@@ -37,7 +37,7 @@ function basesWith(tvals: number[]): (ObjectBase | undefined)[] {
   return bases;
 }
 
-describe("buildObjGroupOrder (obj_group_order, ui-knowledge.c L3720-3734)", () => {
+describe("buildObjGroupOrder (obj_group_order, ui-knowledge.c L3610-3625)", () => {
   it("maps a tval to its own named group index", () => {
     const order = buildObjGroupOrder(basesWith([TV["RING"]]));
     expect(objGroupName(order[TV["RING"]]!)).toBe("Ring");
@@ -77,7 +77,7 @@ describe("featOrder (feat_order, ui-knowledge.c L178-192)", () => {
   });
 });
 
-describe("featureKnowledgeGroups (do_cmd_knowledge_features, ui-knowledge.c L2460)", () => {
+describe("featureKnowledgeGroups (do_cmd_knowledge_features, ui-knowledge.c L2383)", () => {
   it("skips nameless and mimic features, groups + sorts by name", () => {
     const feats: Feature[] = [
       { fidx: 1, name: "granite wall", mimic: 0, desc: "", dAttr: "w" } as unknown as Feature,
@@ -107,7 +107,7 @@ function trapKind(desc: string, flags: number[]): TrapKind {
   return { name: desc, desc, color: "w", flags: { has: (f: number) => set.has(f) } } as unknown as TrapKind;
 }
 
-describe("trapOrder + trapKnowledgeGroups (do_cmd_knowledge_traps, ui-knowledge.c L2530,2641)", () => {
+describe("trapOrder + trapKnowledgeGroups (do_cmd_knowledge_traps, ui-knowledge.c L2453,2564)", () => {
   it("orders GLYPH->Runes, LOCK->Locks, TRAP->Traps, else Other", () => {
     expect(trapOrder(trapKind("glyph", [TRF["GLYPH"]]))).toBe(0);
     expect(trapOrder(trapKind("lock", [TRF["LOCK"]]))).toBe(1);
@@ -148,7 +148,7 @@ function kind(
   } as unknown as ObjectKind;
 }
 
-describe("objectKnowledgeGroups (textui_browse_object_knowledge, ui-knowledge.c L2139)", () => {
+describe("objectKnowledgeGroups (textui_browse_object_knowledge, ui-knowledge.c L2062)", () => {
   const rings = () => basesWith([TV["RING"], TV["POTION"]]);
 
   it("lists everseen OR flavoured kinds, excludes INSTA_ART, never leaks unaware names", () => {
@@ -202,7 +202,7 @@ describe("objectKnowledgeGroups (textui_browse_object_knowledge, ui-knowledge.c 
   });
 });
 
-describe("egoKnowledgeGroups (do_cmd_knowledge_ego_items, ui-knowledge.c L1827)", () => {
+describe("egoKnowledgeGroups (do_cmd_knowledge_ego_items, ui-knowledge.c L1750)", () => {
   const egoOf = (eidx: number, name: string, possKidx: number[]): EgoItem =>
     ({ eidx, name, text: "", possItems: new Set(possKidx) }) as unknown as EgoItem;
 
@@ -229,7 +229,7 @@ describe("egoKnowledgeGroups (do_cmd_knowledge_ego_items, ui-knowledge.c L1827)"
   });
 });
 
-describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", () => {
+describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2214)", () => {
   /** Two runes the player knows: the +AC combat rune and one brand. */
   const runes: Rune[] = [
     { variety: "combat", index: 0, name: "enchantment to armor" },
@@ -248,7 +248,7 @@ describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", (
     },
   } as unknown as Player;
 
-  it("labels rows with rune_name, not the bare name (ui-knowledge.c:2198)", () => {
+  it("labels rows with rune_name, not the bare name (ui-knowledge.c:2121)", () => {
     const { groups } = runeKnowledgeGroups(runes, player);
     const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
     expect(labels).toContain("enchantment to armor");

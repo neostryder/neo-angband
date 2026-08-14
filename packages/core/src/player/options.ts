@@ -187,7 +187,7 @@ export class OptionState {
 
   /**
    * Whether any OP_SCORE option is set (enter_score's "cheating" gate, score.c
-   * L277). A cheat_* option forces its score_* twin, so a cheated game trips
+   * L251). A cheat_* option forces its score_* twin, so a cheated game trips
    * this even after the cheat option itself is turned back off.
    */
   anyScoreSet(): boolean {

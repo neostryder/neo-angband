@@ -1,6 +1,6 @@
 /**
  * do_cmd_inven / do_cmd_equip / do_cmd_quiver - the i, e and | keys
- * (ui-knowledge.c:4025, 4071, 4120).
+ * (ui-knowledge.c:3913, 3959, 4008).
  *
  * These are not read-only screens upstream. Each opens its listing as a get_item
  * PICKER and runs the chosen object's context menu, looping on the return code:

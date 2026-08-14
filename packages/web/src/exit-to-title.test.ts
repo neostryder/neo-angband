@@ -190,7 +190,7 @@ describe("exitToTitle goes to the title on BOTH front ends", () => {
   it("^X is the faithful quit, and asks NOTHING", () => {
     /* textui_quit (ui-command.c:228-231) is three lines - `playing = false` - with
      * no get_check anywhere on the path. The loop then unwinds through close_game
-     * (which saves) and every front end calls quit() (main.c:581-586,
+     * (which saves) and every front end calls quit() (main.c:546-557,
      * main-win.c:3511-3512). A tab has no OS to quit to and falls back to the
      * title, the nearest thing that exists there.
      *

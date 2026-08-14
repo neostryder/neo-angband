@@ -12,7 +12,7 @@
  * table, which merely STARTS at the gamedata default. Three things write to it
  * after that - a pref file (`process_pref_file`'s parse_prefs_monster and
  * friends, L602-928), the knowledge browser's glyph picker (`glyph_command`,
- * ui-knowledge.c L597-752), and the graphics pref of the active tile mode -
+ * ui-knowledge.c L513-690), and the graphics pref of the active tile mode -
  * and four things read it back out (the map, the knowledge screens, the
  * monster-list sidebar, and the `dump_*` pref writers). A port that reads
  * `race.dAttr` at the draw site cannot express any of that, which is why the
@@ -25,7 +25,7 @@
  * holds the ASCII one. That is behaviourally equivalent because upstream only
  * ever has one of the two interpretations live at a time (`use_graphics`
  * gates it, and display_knowledge picks the tile picker or the glyph picker on
- * the same flag, ui-knowledge.c L1052-1070) - but it means the glyph picker
+ * the same flag, ui-knowledge.c L945-958) - but it means the glyph picker
  * edits this table and the tile picker edits the TileMap, rather than both
  * editing one array.
  *

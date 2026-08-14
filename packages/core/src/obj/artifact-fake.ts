@@ -1,7 +1,7 @@
 /**
  * make_fake_artifact (obj-make.c L728-745): build a throwaway artifact object
  * directly from a blank object, used purely to DESCRIBE an artifact - the
- * artifact-knowledge recall (desc_art_fake, ui-knowledge.c L1610-1654) and the
+ * artifact-knowledge recall (desc_art_fake, ui-knowledge.c L1533-1577) and the
  * spoiler dumps. As upstream warns, the result is in no way marked "fake", so
  * it must NEVER become a live game object.
  *

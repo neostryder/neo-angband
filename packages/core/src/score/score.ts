@@ -39,7 +39,7 @@ export function totalPoints(p: Player): number {
 }
 
 /**
- * The non-Player state build_score reads (score.c build_score, L216). Upstream
+ * The non-Player state build_score reads (score.c build_score, L194). Upstream
  * pulls these from globals (turn, player_uid, buildid) or the live world
  * (p->depth is the current cave depth, distinct from p->max_depth). The port
  * keeps them off Player, so buildScore takes them as deps, matching the
@@ -65,7 +65,7 @@ export interface BuildScoreDeps {
   deathTime?: Date | null;
 }
 
-/** strftime "@%Y%m%d" in LOCAL time (build_score L235 uses localtime). */
+/** strftime "@%Y%m%d" in LOCAL time (build_score L213 uses localtime). */
 function formatDay(deathTime: Date | null | undefined): string {
   if (!deathTime) return "TODAY";
   const y = String(deathTime.getFullYear()).padStart(4, "0");
@@ -75,7 +75,7 @@ function formatDay(deathTime: Date | null | undefined): string {
 }
 
 /**
- * build_score (score.c L216): fill a score record from the player plus the
+ * build_score (score.c L194): fill a score record from the player plus the
  * death-time and cause. The C truncates who to 15 chars ("%-.15s") and how to
  * 31 (my_strcpy into how[32]); reproduced here. `what` marks the record in
  * use (a non-empty build id).
@@ -246,24 +246,24 @@ export type EnterScoreOutcome =
     };
 
 /**
- * The gating inputs enter_score checks (score.c L272). The port has no options
+ * The gating inputs enter_score checks (score.c L246). The port has no options
  * table or noscore flags on Player yet, so they arrive as an explicit seam
  * (defaults = a clean, scored character).
  */
 export interface EnterScoreGating {
-  /** Any OP_SCORE ("cheating") option is on (score.c L277 loop). */
+  /** Any OP_SCORE ("cheating") option is on (score.c L251 loop). */
   cheated?: boolean;
   /** p->noscore & (NOSCORE_WIZARD | NOSCORE_DEBUG): a wizard/debug character. */
   noscore?: boolean;
   /**
-   * p->noscore & NOSCORE_BORG (score.c:291, the !SCORE_BORGS branch): played by
+   * p->noscore & NOSCORE_BORG (score.c:268, the !SCORE_BORGS branch): played by
    * the Borg. Checked AFTER the wizard bits, so a character that is both is
    * reported as a wizard, matching the C's else-if chain.
    */
   borg?: boolean;
   /** p->total_winner: a winner is scored even when interrupted/retiring. */
   totalWinner?: boolean;
-  /** p->died_from (score.c L299/L302): "Interrupting" / "Retiring" are gated. */
+  /** p->died_from (score.c L273/L276): "Interrupting" / "Retiring" are gated. */
   diedFrom: string;
 }
 
@@ -273,7 +273,7 @@ export function scoreGateNoscore(playerNoscore: boolean, modNoscore: boolean): b
 }
 
 /**
- * enter_score (score.c L272): enter a character on the high-score table "if
+ * enter_score (score.c L246): enter a character on the high-score table "if
  * legal". Cheaters, wizards/debug characters, and non-winning interrupted or
  * retiring deaths are not scored (in that priority order). Otherwise the entry
  * is built and added to the store's list.

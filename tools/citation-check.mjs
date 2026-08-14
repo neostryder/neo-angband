@@ -452,6 +452,19 @@ function resolveFile(refIndex, prefixedFull, basename) {
   if (candidates.length === 0) return { status: "MISSING", candidates: [] };
   if (candidates.length === 1) return { status: "OK", entry: candidates[0] };
 
+  /* Longest FULL path actually written in the citation wins. `message.c` is
+   * ambiguous between `src/message.c` and `src/tests/message/message.c`, and
+   * the `src/` test below picks the former for BOTH - so a correct citation to
+   * `reference/src/tests/message/message.c:521` was resolved to a 452-line
+   * file and reported OUT OF RANGE. Only an exact relPath suffix counts, so
+   * this can never resolve a path the citation did not spell out. */
+  let best = null;
+  for (const c of candidates) {
+    if (!prefixedFull.endsWith(c.relPath)) continue;
+    if (!best || c.relPath.length > best.relPath.length) best = c;
+  }
+  if (best) return { status: "OK", entry: best };
+
   /* Try to disambiguate using any path prefix present in the citation. */
   if (prefixedFull.includes("lib/gamedata/")) {
     const hit = candidates.find((c) => c.relPath.startsWith("lib/gamedata/"));

@@ -1,5 +1,5 @@
 /**
- * The `!` / `^` inscription safety net (key_confirm_command, ui-input.c:1995;
+ * The `!` / `^` inscription safety net (key_confirm_command, ui-input.c:1923;
  * get_item_allow, ui-object.c:634). Neither existed in the port before; the text
  * census saw only "Are you sure? " because get_item_allow's prompt is assembled
  * from fragments below the anchor floor.
@@ -45,7 +45,7 @@ function wearing(...worn: (GameObject | null)[]): { player: Player; gear: Gear }
   return { player, gear };
 }
 
-describe("key_confirm_command (ui-input.c:1995-2020)", () => {
+describe("key_confirm_command (ui-input.c:1923-1948)", () => {
   it("asks nothing for uninscribed equipment", () => {
     const { player, gear } = wearing(inscribed(""), null, inscribed("of Doom"));
     expect(keyConfirmCount(player, gear, "T")).toBe(0);

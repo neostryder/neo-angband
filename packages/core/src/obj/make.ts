@@ -782,7 +782,7 @@ export class ArtifactState {
     this.seen[aidx] = seen;
   }
 
-  /** is_artifact_everseen / mark_artifact_everseen (obj-util.c:1206-1238). */
+  /** is_artifact_everseen / mark_artifact_everseen (obj-util.c:1206-1237). */
   isEverseen(aidx: number): boolean {
     return this.everseen[aidx] ?? false;
   }

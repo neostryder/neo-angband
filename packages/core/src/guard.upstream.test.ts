@@ -289,7 +289,7 @@ describe("myStristr (z-util.c:441)", () => {
  *    buffer, reporting how many were converted, refusing surrogates
  *    (0xD800-0xDFFF) and anything above 0x10FFFF, and stopping cleanly when the
  *    output buffer is 0 or 1 bytes. Upstream needs it because its Term events
- *    carry a uint32 keycode (ui-event.c L335/L355, ui-knowledge.c L4378); the
+ *    carry a uint32 keycode (ui-event.c L335/L355, ui-knowledge.c L4410); the
  *    port's front end receives a KeyboardEvent whose `key` is already a string,
  *    so no encode step exists.
  *  - test_hex_str_to_int: "1Ba0" -> 0x1ba0, "5z2" -> -1. Its ONLY caller in the

@@ -437,7 +437,7 @@ describe("history override (generatePlayer historyOverride, do_cmd_choose_histor
   });
 });
 
-describe("roman-numeral dynastic suffixes (player-birth.c:1329-1481)", () => {
+describe("roman-numeral dynastic suffixes (player-birth.c:1321-1479)", () => {
   it("int_to_roman matches upstream for representative values", () => {
     expect(intToRoman(1)).toBe("I");
     expect(intToRoman(4)).toBe("IV");

@@ -14,11 +14,19 @@
  * The error limit is the reason this file was written. `visuals/prefs.ts` had
  * carried `const limit = opts.errorLimit ?? 0` under a comment reading
  * "Upstream's default is 0 (ui-init.c / z-util), so every error is reported".
- * It is 20 (parser.c:38), it is not in either of those files, and the
- * difference is behavioural rather than cosmetic: ui-prefs.c:1222's loop
- * `break`s out of the FILE when the limit is reached, so upstream stops
- * applying a pref file after its twentieth bad line and the port applied every
- * line to the end. See getParserErrorLimit.
+ * That was wrong, and so is the replacement it was given.
+ *
+ * WARNING - THE LIMIT HAS NO 4.2.6 COUNTERPART (citation sweep, #268). There is
+ * no `PARSE_ERROR_LIMIT`, no `get_parser_error_limit` and no error COUNT
+ * anywhere in Angband 4.2.6: `process_pref_file_named` (ui-prefs.c L1225-1231)
+ * `break`s out of the file on the FIRST bad line, and `print_error`
+ * (datafile.c L45-51) reports one error and `quit_fmt`s. The citations that
+ * used to sit on the declarations below pointed at the `PARSE_T_*` enum
+ * (parser.c L38) and at a range past the end of that 617-line file. So the
+ * 20-error cap and its env override are a port
+ * EXTENSION, not a port; they are recorded here rather than quietly deleted,
+ * because removing them is a behaviour change and this file is a comment
+ * sweep. See getParserErrorLimit.
  */
 
 import { PARSER_ERROR_ENTRIES } from "./generated/index.js";
@@ -37,7 +45,7 @@ export interface ParserState {
 }
 
 /**
- * parser_error_str[] (parser.c L36-100), generated straight from
+ * parser_error_str[] (datafile.c L34-37), generated straight from
  * list-parser-errors.h - the codegen'd table, NOT a hand-typed copy. Upstream
  * spells several of these differently from the handler names ("invalid colour",
  * "unrecognized tval"), which is exactly the sort of thing a transcription gets
@@ -48,13 +56,13 @@ export function parserErrorText(code: number): string {
 }
 
 /**
- * PARSE_ERROR_LIMIT (parser.c L30-39): the compile-time cap on how many parse
- * errors are reported for one file. Zero means "no limit" — which is what the
- * port used to assume the DEFAULT was.
+ * PARSE_ERROR_LIMIT: the port's cap on how many parse errors are reported for
+ * one file. Zero means "no limit". NO 4.2.6 COUNTERPART - upstream stops at the
+ * first error (ui-prefs.c L1225-1231); see the file header.
  */
 export const PARSE_ERROR_LIMIT = 20;
 
-/** C's INT_MAX, the clamp get_parser_error_limit applies to the env value. */
+/** C's INT_MAX, the clamp the env value is held to. */
 const INT_MAX = 2147483647;
 
 let overrideLimit: number | null | undefined;
@@ -81,11 +89,12 @@ function getenvParseErrorLimit(): string | undefined {
 }
 
 /**
- * get_parser_error_limit (parser.c L637-658): the environment's value if it is
- * a whole non-negative decimal integer, else the compile-time 20. Zero means no
- * limit.
+ * getParserErrorLimit: the environment's value if it is a whole non-negative
+ * decimal integer, else the compile-time 20. Zero means no limit. NO 4.2.6
+ * COUNTERPART (`get_parser_error_limit` is in no reference/ file); see the
+ * file header.
  *
- * Computed ONCE and cached, as upstream's function-static `elimit` is — a limit
+ * Computed ONCE and cached — a limit
  * that changed mid-run would report a different number of errors for two
  * identical files.
  */
@@ -132,7 +141,7 @@ function strtol10(s: string): { value: number; end: number } {
 }
 
 /**
- * The env half of get_parser_error_limit: `PARSE_ERROR_LIMIT` must be a whole
+ * The env half of getParserErrorLimit: `PARSE_ERROR_LIMIT` must be a whole
  * non-negative decimal integer with nothing after it, or it is ignored
  * (`envlimit && *envlimit && strtol(...) >= 0 && !*end`). Returns the limit to
  * install, or null to keep the compile-time default.
@@ -151,7 +160,7 @@ export function parseParserErrorLimitEnv(raw: string | undefined): number | null
  * C's `strtok` over one line, with the state it keeps between calls.
  *
  * Reproduced rather than approximated because `parser_parse` (parser.c
- * L246-296) leans on three behaviours a `String.split(":")` does not have, and
+ * L210-348) leans on three behaviours a `String.split(":")` does not have, and
  * all three are reachable from a hand-edited options or pref file:
  *
  *   1. **Leading delimiters are skipped.** `::option:x:yes` parses, because the

@@ -6,9 +6,9 @@
  *
  * Two upstream functions, both of which the port was missing entirely:
  *
- * - `key_confirm_command` (ui-input.c:1995-2020) scans the WORN EQUIPMENT for
+ * - `key_confirm_command` (ui-input.c:1923-1948) scans the WORN EQUIPMENT for
  *   `^*` and `^<key>` and asks "Are you sure? " once per occurrence found, before
- *   the command key is turned into a command at all (ui-game.c:565; also
+ *   the command key is turned into a command at all (ui-game.c:547; also
  *   ui-context.c:155, :349, :353, :585 for the context menus).
  * - `get_item_allow` (ui-object.c:634-679) scans the SELECTED OBJECT for
  *   `!<key>` - plus `!*` unless the command is harmless - and asks
@@ -33,7 +33,7 @@ import type { CommandCode } from "../cmd.js";
 import { cmdVerb } from "../cmd.js";
 import { checkForInscrip } from "./pickup.js";
 
-/** get_check's prompt in key_confirm_command (ui-input.c:2014), verbatim. */
+/** get_check's prompt in key_confirm_command (ui-input.c:1942), verbatim. */
 export const KEY_CONFIRM_PROMPT = "Are you sure? ";
 
 /** cmd_verb's fallback when a command has no verb (ui-object.c:664-665). */
@@ -51,7 +51,7 @@ export function unKtrlCap(key: string): string {
 }
 
 /**
- * key_confirm_command (ui-input.c:1995-2020): how many times "Are you sure? "
+ * key_confirm_command (ui-input.c:1923-1948): how many times "Are you sure? "
  * must be answered before command key `key` may run. Zero almost always.
  *
  * Upstream asks per equipment slot and aborts on the first refusal, so a total

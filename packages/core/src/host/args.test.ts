@@ -38,7 +38,7 @@ describe("parseLaunchArgs: the plain switches", () => {
     expect(run(["-c"]).selectGame).toBe(true);
     expect(run(["-n"]).newGame).toBe(true);
     /* Both are recorded; "overrides -n" is the caller's business - upstream
-     * resolves it at the play_game call (main.c:581), not while parsing. */
+     * resolves it at the play_game call (main.c:546), not while parsing. */
     const both = run(["-n", "-c"]);
     expect(both.newGame).toBe(true);
     expect(both.selectGame).toBe(true);

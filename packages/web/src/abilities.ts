@@ -42,7 +42,7 @@ function rowLabelAndColor(row: AbilityRow): { label: string; color: string } {
  * arrows move the cursor and update the description pane; ESC is the only
  * way out.
  *
- * This is also the port of view_ability_menu (game-input.c:334): upstream's
+ * This is also the port of view_ability_menu (game-input.c:317): upstream's
  * core calls it and it forwards to view_abilities_hook, i.e. to
  * textui_view_ability_menu. The port drops that hook indirection - the web
  * layer calls this directly - so the trampoline has no separate counterpart.

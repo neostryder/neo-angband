@@ -225,7 +225,7 @@ describe("the debug-consent gate (player_can_debug_prereq, player-util.c L1296)"
   });
 });
 
-describe("do_cmd_wiz_create_obj (cmd-wizard.c L873)", () => {
+describe("do_cmd_wiz_create_obj (cmd-wizard.c L874)", () => {
   it("drops the requested kind on the floor near the player", () => {
     const state = makeState({ playerGrid: loc(8, 8) });
     const ind = ordinaryKindIndex(TV.POTION);
@@ -332,7 +332,7 @@ describe("do_cmd_wiz_curse_item (L1004)", () => {
   });
 });
 
-describe("do_cmd_wiz_change_item_quantity (cmd-wizard.c L484)", () => {
+describe("do_cmd_wiz_change_item_quantity (cmd-wizard.c L485)", () => {
   /** An ordinary wand (charge-carrying, stackable) prepped at depth 5. */
   function wand(state: GameState): GameObject {
     const kind = objReg.kinds.find(
@@ -550,7 +550,7 @@ describe("effect-backed wizard commands", () => {
 describe("do_cmd_wiz_wizard_light (L2907)", () => {
   it("lights the level and memorizes only its non-floor terrain", () => {
     /*
-     * wiz_light(cave, player, true) (cmd-wizard.c:2909). Every non-wall grid is
+     * wiz_light(cave, player, true) (cmd-wizard.c:2968). Every non-wall grid is
      * perma-lit, but a neighbour is MEMORIZED only when
      * `!square_isfloor(a_grid) || square_isvisibletrap(a_grid)`
      * (cave-map.c:439-440), so open floor stays unremembered - it is the walls
@@ -566,7 +566,7 @@ describe("do_cmd_wiz_wizard_light (L2907)", () => {
     expect(squareIsKnown(state, loc(0, 10))).toBe(true);
   });
 
-  it("is the `full` form: square_know_pile, not sense_pile (cmd-wizard.c:2909)", () => {
+  it("is the `full` form: square_know_pile, not sense_pile (cmd-wizard.c:2968)", () => {
     /* wiz_light(cave, player, true): `full` is TRUE for the wizard command, so
      * the floor piles are KNOWN (the real glyph) rather than merely SENSED (the
      * "something is here" null-glyph marker, cave-map.c:445-452). */
@@ -640,7 +640,7 @@ describe("map-query DATA commands", () => {
     ).toBe(0);
     /*
      * wiz_light memorizes only non-floor neighbours (cave-map.c:439-440), and
-     * wiz_hack_map scans square_in_bounds_fully grids only (cmd-wizard.c:333) -
+     * wiz_hack_map scans square_in_bounds_fully grids only (cmd-wizard.c:334) -
      * the same 1..h-2 range - so an open field has NOTHING to report. Put a
      * granite pillar inside the field and it is the pillar that is known.
      */
@@ -673,7 +673,7 @@ function makeSword(state: GameState): GameObject {
   return objectPrep(state.rng, objReg, constants, kind, 5, "average");
 }
 
-describe("wiz_display_item DATA half (cmd-wizard.c L190)", () => {
+describe("wiz_display_item DATA half (cmd-wizard.c L191)", () => {
   it("returns the scalar item facts the debug panel prints", () => {
     const state = makeState();
     const obj = makeSword(state);
@@ -697,7 +697,7 @@ describe("wiz_display_item DATA half (cmd-wizard.c L190)", () => {
   });
 });
 
-describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", () => {
+describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1646)", () => {
   it("reject restores the snapshotted item after an edit", () => {
     const state = makeState();
     const obj = makeSword(state);
@@ -744,7 +744,7 @@ describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", ()
   });
 
   /**
-   * The total_weight correction (cmd-wizard.c L1685-1706).
+   * The total_weight correction (cmd-wizard.c L1734-1756).
    *
    * This was excused as "the total_weight / redraw upkeep is UI (the shell's)",
    * which was a true reading when it was written and stopped being one the
@@ -807,7 +807,7 @@ describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", ()
   });
 });
 
-describe("do_cmd_wiz_stat_item (cmd-wizard.c L2386)", () => {
+describe("do_cmd_wiz_stat_item (cmd-wizard.c L2438)", () => {
   it("classifies every same-tval roll as match/better/worse/other", () => {
     const state = makeState();
     const obj = makeSword(state);
@@ -825,7 +825,7 @@ describe("do_cmd_wiz_stat_item (cmd-wizard.c L2386)", () => {
   });
 });
 
-describe("do_cmd_wiz_edit_player_start (cmd-wizard.c L1202)", () => {
+describe("do_cmd_wiz_edit_player_start (cmd-wizard.c L1252)", () => {
   it("applies the batch stat / gold / exp edits with their clamps", () => {
     const state = makeState();
     const p = state.actor.player;
@@ -841,7 +841,7 @@ describe("do_cmd_wiz_edit_player_start (cmd-wizard.c L1202)", () => {
   });
 });
 
-describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
+describe("NOSCORE cheat-flag model (player.h L95-100, score.c L263)", () => {
   it("mirrors the upstream bit values exactly", () => {
     expect(NOSCORE.WIZARD).toBe(0x0002);
     expect(NOSCORE.DEBUG).toBe(0x0008);
@@ -867,7 +867,7 @@ describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
   });
 
   it("wizJumpLevel marks NOSCORE_JUMPING only when a profile was asked for", () => {
-    /* cmd-wizard.c:1360-1367: the bit is set inside `if (choose_gen)`, i.e. only
+    /* cmd-wizard.c:1415-1417: the bit is set inside `if (choose_gen)`, i.e. only
      * when "Choose cave profile? " was answered yes. It is not really a cheat
      * marker - choose_profile (generate.c:824) consumes it as the one-shot
      * signal to ask which profile to build - so setting it unconditionally, as

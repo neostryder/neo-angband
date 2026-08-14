@@ -1291,7 +1291,7 @@ export interface MonsterKnowledgeGroupView {
 }
 
 /**
- * do_cmd_knowledge_monsters (ui-knowledge.c L1382): the two-pane thematic
+ * do_cmd_knowledge_monsters (ui-knowledge.c L1309): the two-pane thematic
  * browser's data - the ui_knowledge.txt categories, each holding the known
  * races it matches (a race joins EVERY category it matches, per the C), in
  * m_cmp_race order, with empty categories dropped. Falls back to the flat
@@ -2265,7 +2265,7 @@ export function svalCategoryItems(
 /* The Hall of Fame, and a store's stock in the knowledge menu          */
 /* ------------------------------------------------------------------ */
 
-/** VERSION_NAME (ui-score.c L26), which the Hall of Fame's heading is built on. */
+/** VERSION_NAME (ui-score.c L148), which the Hall of Fame's heading is built on. */
 const HALL_OF_FAME_NAME = "Neo Angband";
 
 /**
@@ -2282,7 +2282,7 @@ export function hallOfFameTitle(from = 0): string {
     : `${HALL_OF_FAME_NAME} Hall of Fame`;
 }
 
-/** The prompt display_scores_aux prints at the foot (ui-score.c L180-186). */
+/** The prompt display_scores_aux prints at the foot (ui-score.c L155-160). */
 export function hallOfFameFooter(allowScrolling: boolean): string {
   return allowScrolling
     ? "[Press ESC to exit, up for prior page, any other key for next page.]"
@@ -2475,7 +2475,7 @@ export interface StoreKnowledgeDeps {
 }
 
 /**
- * do_cmd_knowledge_store (ui-knowledge.c L3522 -> textui_store_knowledge,
+ * do_cmd_knowledge_store (ui-knowledge.c L3412 -> textui_store_knowledge,
  * ui-store.c L1217) as a screen: the owner line, the column header, then one row
  * per stocked item with its weight and per-item buy price.
  *

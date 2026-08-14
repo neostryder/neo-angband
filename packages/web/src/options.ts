@@ -594,7 +594,7 @@ export async function runBirthOptionsEditor(
  * page. Turning any cheat option ON forces its score_* twin ON in the core
  * OptionState (option_set, option.c L162-164), which trips anyScoreSet() so the
  * character is no longer eligible for the high-score table (enter_score's
- * "cheating" gate, score.c L277) - the same score invalidation upstream
+ * "cheating" gate, score.c L251) - the same score invalidation upstream
  * applies. That coupling lives in OptionState.set, so this screen just calls it.
  *
  * NO s/r/x HERE, and that is upstream: option_toggle_menu gives the cheat page

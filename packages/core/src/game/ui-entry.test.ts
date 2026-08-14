@@ -684,7 +684,7 @@ describe("PF_FAST_SHOT reads the equipped launcher (ui-entry.c L974-984)", () =>
  * ui_entry_base.txt contain ZERO priority-after-category lines, so nothing in
  * the shipped data can tell the two behaviours apart.
  */
-describe("per-category priority overrides (ui-entry.c:2211-2221, :2389)", () => {
+describe("per-category priority overrides (ui-entry.c:2167-2179, :2315-2318)", () => {
   const build = (uiEntry: unknown[]) =>
     buildUiEntryConfig({
       uiEntry: uiEntry as never,

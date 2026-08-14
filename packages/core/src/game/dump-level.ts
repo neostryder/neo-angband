@@ -3,7 +3,7 @@
  *
  * The post-mortem level dump: one HTML page holding an ASCII map of a chunk, one
  * character per grid, in upstream's own precedence order. Two commands use it -
- * the wizard's "dump level map" (cmd-wizard.c:1112) and wiz-stats' disconnect
+ * the wizard's "dump level map" (cmd-wizard.c:1162) and wiz-stats' disconnect
  * report (disconnect.html) - and the `dist` argument is what the latter needs:
  * where the distance array is negative, the grid is written as '*' instead of
  * its own glyph, which is how an unreachable region shows up on the page.

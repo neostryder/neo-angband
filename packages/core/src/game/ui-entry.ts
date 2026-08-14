@@ -934,10 +934,11 @@ function buildEntries(
     }
     fillOutShortened(entry);
     /*
-     * finish_parse (ui-entry.c L2389): categories with NO explicit per-category
-     * priority inherit the entry's final default. That `priority_set` test used
-     * to be missing here, because the compiler flattened `priority` to a record
-     * scalar and no category could ever carry one of its own (PORT_TODO 3.25).
+     * finish_parse_ui_entry (ui-entry.c L2315-2318): categories with NO
+     * explicit per-category priority inherit the entry's final default. That
+     * `priority_set` test used to be missing here, because the compiler
+     * flattened `priority` to a record scalar and no category could ever
+     * carry one of its own (PORT_TODO 3.25).
      * The shipped files still never set one - every `priority` line precedes
      * any `category` line, so it sets the default - which is what makes a
      * priority seen after a template's categories still order the row right.
@@ -2181,10 +2182,10 @@ export function equipCmpFilterLabel3(entry: UiEntry): string {
 }
 
 /**
- * compute_player_and_equipment_values's per-property accumulation (ui-equip-
- * cmp.c L2279), condensed to the vectorized form combineValues already uses:
- * combine the player's own value with every equipped item's value for one
- * property entry into the equip-cmp "@" row's single combined (val, auxval).
+ * compute_player_and_equipment_values's per-property accumulation
+ * (ui-equip-cmp.c L2334-2362), condensed to the vectorized form combineValues
+ * already uses: combine the player's own value with every equipped item's value
+ * for one property entry into the equip-cmp "@" row's combined (val, auxval).
  * Uses the entry's own (already-resolved) combinerIndex rather than looking
  * it up via the renderer - computePlayerValues (:1543) does the same. An entry
  * whose combiner never resolved yields NOT_PRESENT here rather than throwing;

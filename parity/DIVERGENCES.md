@@ -191,7 +191,7 @@ A `B` row stood here. `make_fake_artifact` rolls a curse timeout through
 `copy_curses`, and that roll draws; the knowledge browser passed a fresh `Rng` at a
 fixed seed instead of the game stream, so browsing could not perturb a run and an
 artifact previewed identically every time. Both of those are nicer than Angband and
-neither is Angband — `desc_art_fake` (ui-knowledge.c:1629) hands
+neither is Angband — `desc_art_fake` (ui-knowledge.c:1552) hands
 `make_fake_artifact` no stream of its own, so browsing an artifact **does** advance
 upstream's RNG.
 
@@ -200,7 +200,7 @@ and `FAKE_ARTIFACT_SEED` is deleted. The `rng` parameter stays required with no
 default even though the answer is now uniform, because a default is how the browser
 acquired a private stream in the first place. Measured before changing it: the recall
 fires once per explicit selection (`runGroupedBrowser` resolves only when a member is
-chosen), matching upstream's `if (recall)` gate at ui-knowledge.c:1129 — an
+chosen), matching upstream's `if (recall)` gate at ui-knowledge.c:1063 — an
 immediate-mode renderer calling it per repaint would have made the game stream far
 worse than the private one.
 

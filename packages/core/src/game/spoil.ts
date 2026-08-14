@@ -430,7 +430,7 @@ export function spoilArtifact(pack: GamePack): string {
 }
 
 /* ================================================================== *
- * Monster ordering (cmp_monsters, ui-knowledge.c L4351 -> cmp_level):
+ * Monster ordering (cmp_monsters, ui-knowledge.c L4197 -> cmp_level):
  * by level, then experience, then race index.
  * ================================================================== */
 

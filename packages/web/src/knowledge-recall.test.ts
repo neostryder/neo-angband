@@ -1,6 +1,6 @@
 /**
  * PORT_TODO 3.3: the assembly half of the two object-side knowledge recalls -
- * desc_obj_fake (ui-knowledge.c L1938) and desc_ego_fake (L1789). The
+ * desc_obj_fake (ui-knowledge.c L1862) and desc_ego_fake (L1714). The
  * PRODUCERS (make_fake_kind / object_info_ego / describe_ego) are tested in
  * core; what is tested here is what the browser actually shows: the header
  * object_desc builds, the body object_info produces, and the one branch the
@@ -143,7 +143,7 @@ const body = (view: ScreenView): string =>
     .map((l) => l.text)
     .join("\n");
 
-describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1938)", () => {
+describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1862)", () => {
   it("shows the computed object_info body, not just a name and a blurb", () => {
     /* The gap this closes: the recall used to be the kind name plus kind.text.
      * These lines all come from object_info and none of them are in the record
@@ -209,7 +209,7 @@ describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1938)", () => {
   });
 });
 
-describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1789)", () => {
+describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1714)", () => {
   const anyEgo = (): EgoItem => reg.egos.find((e) => e.firstPossItem >= 0)!;
 
   it("heads the page with '<group name> <ego name>' (L1801)", () => {
@@ -250,7 +250,7 @@ describe("egoFakeRecall (desc_ego_fake, ui-knowledge.c L1789)", () => {
   });
 });
 
-describe("artifactFakeRecall (desc_art_fake, ui-knowledge.c L1610)", () => {
+describe("artifactFakeRecall (desc_art_fake, ui-knowledge.c L1533)", () => {
   /**
    * Browsing an artifact ADVANCES the game RNG, because upstream's does.
    *

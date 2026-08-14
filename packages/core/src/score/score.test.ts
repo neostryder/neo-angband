@@ -80,7 +80,7 @@ describe("totalPoints (score.c L28)", () => {
   });
 });
 
-describe("buildScore (score.c build_score, L216)", () => {
+describe("buildScore (score.c build_score, L194)", () => {
   it("stamps the ENGINE version into `what` when the caller names no buildid", () => {
     /* score.c stamps the global `buildid`. The port's default used to be its own
      * "0.1.0" literal, so when the engine went to 0.9.0 every score kept claiming
@@ -266,7 +266,7 @@ describe("highscoreRegularize (score-util.c L199)", () => {
   });
 });
 
-describe("enterScore (score.c L272): gating", () => {
+describe("enterScore (score.c L246): gating", () => {
   it("does NOT enter a cheater", () => {
     const store = memStore();
     const r = enterScore(store, stubPlayer(), { diedFrom: "orc", turn: 1, depth: 1 }, {
@@ -277,7 +277,7 @@ describe("enterScore (score.c L272): gating", () => {
     expect(store.data.length).toBe(0);
   });
 
-  it("the option store's anyScoreSet() feeds the cheated gate (score.c L277)", () => {
+  it("the option store's anyScoreSet() feeds the cheated gate (score.c L251)", () => {
     /* A game that never cheated is scored; one that tripped a score_* option
      * (via the cheat->score coupling) is gated out - the wired seam. */
     const clean = new OptionState();

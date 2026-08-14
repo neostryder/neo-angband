@@ -1,7 +1,7 @@
 /**
  * The in-game Monte-Carlo statistics collectors - the port's answer to
  * reference/src/wiz-stats.c, driven upstream by the do_cmd_wiz_collect_*
- * commands (cmd-wizard.c L585 / L622 / L671). Three headless dev tools:
+ * commands (cmd-wizard.c L586 / L623 / L672). Three headless dev tools:
  *
  *   - objMonStats  <- stats_collect (wiz-stats.c L1666) / diving_stats (L1525) /
  *                     clearing_stats (L1561): object + monster distributions per
@@ -54,7 +54,7 @@ export interface ObjMonStatsParams {
   /** Number of simulations (main-stats -n / wiz-stats `tries`). Default 5. */
   nsim: number;
   /**
-   * Simulation type (cmd-wizard.c L619): 1 = diving, 2 = clearing, 3 = clearing
+   * Simulation type (cmd-wizard.c L647): 1 = diving, 2 = clearing, 3 = clearing
    * with a random-artifact regeneration per simulation. Default 1.
    */
   simtype: number;

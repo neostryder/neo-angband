@@ -855,7 +855,7 @@ describe("alter's remaining branches (do_cmd_alter_aux L974-997)", () => {
 
     expect(run({ code: "alter", dir: 6 })).toBe(state.z.moveEnergy);
 
-    /* obj-chest.c:747 negates pval on a successful disarm; a successful OPEN
+    /* obj-chest.c:711 negates pval on a successful disarm; a successful OPEN
      * would have unlocked it to 0 and then emptied it. */
     expect(chest.pval, "disarmed, not opened").toBe(-3);
     expect(msgs).toContain("You have disarmed the chest.");

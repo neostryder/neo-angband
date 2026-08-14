@@ -764,9 +764,9 @@ const handleRECALL: EffectHandler = (ctx) => {
 };
 
 /**
- * EF_DEEP_DESCENT: a delayed drop of several levels (effect-handler-
- * general.c L1166), counted down by process_world. The target increment is
- * (4 / stair_skip) + 1 from the deepest reached depth.
+ * EF_DEEP_DESCENT: a delayed drop of several levels
+ * (effect-handler-general.c L1162-1181), counted down by process_world. The
+ * target increment is (4 / stair_skip) + 1 from the deepest reached depth.
  */
 const handleDEEP_DESCENT: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -1158,9 +1158,9 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.DRAIN_LIGHT, handleDRAIN_LIGHT],
   /* effect_handler_DRAIN_MANA (effect-handler-general.c:956) */
   [EF.DRAIN_MANA, handleDRAIN_MANA],
-  /* effect_handler_SCRAMBLE_STATS (effect-handler-general.c:3634) */
+  /* effect_handler_SCRAMBLE_STATS (effect-handler-general.c:3630) */
   [EF.SCRAMBLE_STATS, handleSCRAMBLE_STATS],
-  /* effect_handler_UNSCRAMBLE_STATS (effect-handler-general.c:3646) */
+  /* effect_handler_UNSCRAMBLE_STATS (effect-handler-general.c:3642) */
   [EF.UNSCRAMBLE_STATS, handleUNSCRAMBLE_STATS],
   /* effect_handler_TIMED_INC (effect-handler-general.c:576) */
   [EF.TIMED_INC, handleTIMED_INC],

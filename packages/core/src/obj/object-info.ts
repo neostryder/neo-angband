@@ -158,7 +158,7 @@ export function tbAppendC(tb: Textblock, attr: number, text: string): void {
  * its attribute from `tba` onto `tb`, leaving `tba` UNTOUCHED so the caller can
  * keep using or free it independently (upstream's callers at obj-info.c L2135,
  * effects-info.c L262/L296/L367, ui-equip-cmp.c L1457/L1462 and
- * ui-knowledge.c L3052 all free the source afterwards, which is only safe
+ * ui-knowledge.c L3059 all free the source afterwards, which is only safe
  * because this copies).
  *
  * The runs are copied rather than aliased for the same reason: a later append to

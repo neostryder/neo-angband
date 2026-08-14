@@ -1264,8 +1264,8 @@ export class FlavorKnowledge {
  * aware, and obj->ego->everseen once the ego is identified (obj-desc.c
  * L633-637), plus player-birth.c L658 marks each bought start-item's kind. The
  * object-knowledge browser lists a kind when it is everseen OR flavoured
- * (ui-knowledge.c L2157); the ego browser lists an ego when it is everseen
- * (L1847).
+ * (ui-knowledge.c L2080); the ego browser lists an ego when it is everseen
+ * (L1770).
  *
  * Marking is a pure Set insert: it draws no RNG and does not depend on draw
  * order, so wiring it into object_desc/generation cannot perturb determinism.

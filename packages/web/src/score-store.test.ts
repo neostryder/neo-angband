@@ -1,5 +1,5 @@
 /**
- * THE RATCHET on highscore_write (score.c L98-198).
+ * THE RATCHET on highscore_write (score.c L98-176).
  *
  * Census block E, host-io. The store used to be `try { setItem } catch {}` with
  * the comment "scores are a nicety, never fatal", which meant upstream's eight
@@ -89,7 +89,7 @@ function make(storage: ScoreStorage): { msgs: string[]; store: ReturnType<typeof
   return { msgs, store };
 }
 
-describe("highscore_write, ported (score.c L98-198)", () => {
+describe("highscore_write, ported (score.c L98-176)", () => {
   it("writes through scores.new and rotates the old table into place", () => {
     const fs = fakeStorage({ [CUR]: JSON.stringify([score(10)]) });
     const { msgs, store } = make(fs);

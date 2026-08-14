@@ -14,7 +14,8 @@
  * that spends no energy, and the installers replace all of them before play
  * (obj-cmd, cave-cmd, ranged-cmd, spell-cmd, pickup, player-path). Only "look"
  * and "search" stay stubs, correctly: upstream's look is a UI function with
- * CMD_NULL (ui-knowledge.c:4169) and 4.2.6 has no search command at all.
+ * CMD_NULL - the binding is ui-game.c:143, the function ui-knowledge.c:4057 -
+ * and 4.2.6 has no search command at all.
  *
  * process_player() reads queued commands through the injected provider
  * (state.nextCommand) so the loop never blocks on real input, and drains free

@@ -32,7 +32,7 @@ export interface TrapKind extends ModExtensible {
   desc: string;
   /**
    * trap->text (trap.c parse_trap_desc / init.c L1887): the long recall
-   * paragraph shown by trap_lore (ui-knowledge.c L2588). Compiled from the
+   * paragraph shown by trap_lore (ui-knowledge.c L2511). Compiled from the
    * JSON `desc` lines; empty when the record has none.
    */
   text: string;

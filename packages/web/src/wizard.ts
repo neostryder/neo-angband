@@ -142,7 +142,7 @@ import { showThroughPresenter } from "./screen-runtime";
 import { freezeView, screenBodyLines, SCREEN_FOOTER } from "./screen-view";
 import type { ScreenView, ScreenColumn, ScreenRow, ScreenCell, ScreenTableBlock } from "./screen-view";
 
-/** One grid the shell should highlight for wiz_hack_map (cmd-wizard.c:319). */
+/** One grid the shell should highlight for wiz_hack_map (cmd-wizard.c:320). */
 export interface WizHackMark {
   grid: Loc;
   /** The COLOUR_* index the C's probe hands print_rel. */
@@ -202,7 +202,7 @@ export interface WizardUiCtx {
   /** dungeon_change_level: regenerate at the pending targetDepth (jump-level). */
   changeLevel?: (depth: number) => void;
   /**
-   * quit("user choice") (do_cmd_wiz_quit_no_save, cmd-wizard.c L2150): abandon
+   * quit("user choice") (do_cmd_wiz_quit_no_save, cmd-wizard.c L2203): abandon
    * the session WITHOUT writing a save. The shell owns what "quit" means on each
    * front end, so the command asks and this performs. Never resolves on desktop
    * (the process is going away).
@@ -216,7 +216,7 @@ export interface WizardUiCtx {
    */
   pickGrid?: () => Promise<Loc | null>;
   /**
-   * wiz_hack_map (cmd-wizard.c:319) hosted: overlay one glyph per highlighted
+   * wiz_hack_map (cmd-wizard.c:320) hosted: overlay one glyph per highlighted
    * grid on the visible panel - '@' on the player, '*' where passable, '#'
    * otherwise, in the colour the C's probe hands print_rel. The panel geometry
    * lives in the shell, so the query commands hand it marks and it paints.
@@ -299,7 +299,7 @@ function runWizEffect(
  * ------------------------------------------------------------------ */
 
 /**
- * get_int_from_string (cmd-wizard.c:67): strtol base 10, rejecting an empty
+ * get_int_from_string (cmd-wizard.c:68): strtol base 10, rejecting an empty
  * string, anything but trailing whitespace after the number, and INT_MIN /
  * INT_MAX themselves (L77-79, so callers need not check errno). Returns null
  * where the C returns false.
@@ -313,7 +313,7 @@ function intFromString(s: string): number | null {
 }
 
 /**
- * get_long_from_string (cmd-wizard.c:95): as intFromString without the int
+ * get_long_from_string (cmd-wizard.c:96): as intFromString without the int
  * bound - the C rejects LONG_MIN / LONG_MAX instead, which no prompt here can
  * reach, so only the parse strictness carries over.
  */
@@ -724,13 +724,13 @@ function unavailable(ctx: WizardUiCtx): void {
 /**
  * stat_idx_to_name (player.c L122): the list-stats.h macro names verbatim, in
  * list order. These, not long words, are what do_cmd_wiz_edit_player_stat puts
- * in its prompts - the stat-picker default (cmd-wizard.c:1259) and the value
- * prompt "%s (3-118): " (cmd-wizard.c:1276).
+ * in its prompts - the stat-picker default (cmd-wizard.c:1309) and the value
+ * prompt "%s (3-118): " (cmd-wizard.c:1326).
  */
 const STAT_NAMES = ["STR", "INT", "WIS", "DEX", "CON"];
 
 /**
- * do_cmd_wiz_query_feature's letter -> feature set (cmd-wizard.c L1935-2049).
+ * do_cmd_wiz_query_feature's letter -> feature set (cmd-wizard.c L1987-2101).
  * The comment in the C is "OMG hax"; the sets are verbatim, including 't'
  * covering both staircases and 'd' covering all four door states.
  */
@@ -784,11 +784,11 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runCreateItem(ctx, false);
       break;
     case "create-artifact":
-      /* wiz_create_artifact (ui-wizard.c:456) -> wiz_create_item(true). */
+      /* wiz_create_artifact (ui-wizard.c:394) -> wiz_create_item(true). */
       await runCreateItem(ctx, true);
       break;
     case "create-all-tval":
-      /* wiz_create_all_for_tval (ui-wizard.c:495) presets choice = 1, so
+      /* wiz_create_all_for_tval (ui-wizard.c:433) presets choice = 1, so
        * instant artifacts are included without asking. */
       await runCreateAllObjFromTval(ctx, true);
       break;
@@ -804,7 +804,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
 
     /* ---- Player ---- */
     case "cure-all":
-      /* do_cmd_wiz_cure_all (cmd-wizard.c:941) says "You feel *much* better!"
+      /* do_cmd_wiz_cure_all (cmd-wizard.c:942) says "You feel *much* better!"
        * itself (L991), through the engine. Nothing is added here. */
       if (!deps.effect) return unavailable(ctx);
       wizCureAll(state, deps);
@@ -828,7 +828,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runEditPlayer(ctx);
       break;
     case "learn-kinds":
-      /* wiz_learn_all_object_kinds (ui-wizard.c:505) presets level = 100, so
+      /* wiz_learn_all_object_kinds (ui-wizard.c:443) presets level = 100, so
        * the menu asks nothing. The engine says "You now know about many
        * items!". */
       await runLearnObjectKinds(ctx, 100);
@@ -845,11 +845,11 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runTeleportTo(ctx);
       break;
     case "tele-near":
-      /* wiz_phase_door (ui-wizard.c:515) presets range 10. */
+      /* wiz_phase_door (ui-wizard.c:453) presets range 10. */
       await runTeleportRandom(ctx, 10);
       break;
     case "tele-far":
-      /* wiz_teleport (ui-wizard.c:525) presets range 100. */
+      /* wiz_teleport (ui-wizard.c:463) presets range 100. */
       await runTeleportRandom(ctx, 100);
       break;
     case "jump-level":
@@ -885,7 +885,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runSummonNamed(ctx);
       break;
     case "summon-random": {
-      /* do_cmd_wiz_summon_random (cmd-wizard.c:2629). */
+      /* do_cmd_wiz_summon_random (cmd-wizard.c:2681). */
       const n = await getQuantity(term, "How many monsters? ", 40);
       if (!deps.effect) return unavailable(ctx);
       wizSummonRandom(state, { quantity: n < 1 ? 1 : n }, deps);
@@ -936,7 +936,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runCreateTrap(ctx);
       break;
     case "banish": {
-      /* do_cmd_wiz_banish (cmd-wizard.c:449): default z_info->max_sight, and
+      /* do_cmd_wiz_banish (cmd-wizard.c:450): default z_info->max_sight, and
        * no message afterwards. */
       const range = await getQuantity(term, "Zap within what distance? ", state.z.maxSight);
       wizBanish(state, { range }, deps);
@@ -951,7 +951,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
     case "quit-no-save":
       /* wiz_confirm_quit_no_save (ui-wizard.c L432-436) asks, then pushes
        * CMD_WIZ_QUIT_NO_SAVE, whose handler is do_cmd_wiz_quit_no_save
-       * (cmd-wizard.c L2150): quit("user choice") - end the program, writing
+       * (cmd-wizard.c L2203): quit("user choice") - end the program, writing
        * nothing.
        *
        * The port used to ask the question and then TELL THE PLAYER to reload the
@@ -1233,7 +1233,7 @@ async function runProjDemo(ctx: WizardUiCtx): Promise<void> {
  * dead code waiting for a keymap layer.
  * ------------------------------------------------------------------ */
 
-/** do_cmd_wiz_create_obj (cmd-wizard.c:873). */
+/** do_cmd_wiz_create_obj (cmd-wizard.c:874). */
 async function runCreateObj(ctx: WizardUiCtx, index?: number): Promise<void> {
   const { term, state, deps } = ctx;
   if (!deps.makeDeps) return unavailable(ctx);
@@ -1250,7 +1250,7 @@ async function runCreateObj(ctx: WizardUiCtx, index?: number): Promise<void> {
   wizCreateObj(state, { index: ind }, deps);
 }
 
-/** do_cmd_wiz_create_artifact (cmd-wizard.c:842). */
+/** do_cmd_wiz_create_artifact (cmd-wizard.c:843). */
 async function runCreateArtifact(ctx: WizardUiCtx, index?: number): Promise<void> {
   const { term, state, deps } = ctx;
   if (!deps.makeDeps || !deps.artifacts) return unavailable(ctx);
@@ -1267,7 +1267,7 @@ async function runCreateArtifact(ctx: WizardUiCtx, index?: number): Promise<void
   wizCreateArtifact(state, { index: ind }, deps);
 }
 
-/** do_cmd_wiz_acquire (cmd-wizard.c:389). */
+/** do_cmd_wiz_acquire (cmd-wizard.c:390). */
 async function runAcquire(ctx: WizardUiCtx, great?: boolean): Promise<void> {
   const { term, state, deps } = ctx;
   let isGreat = great;
@@ -1284,7 +1284,7 @@ async function runAcquire(ctx: WizardUiCtx, great?: boolean): Promise<void> {
   wizAcquire(state, { quantity: n, great: isGreat }, deps);
 }
 
-/** do_cmd_wiz_create_all_obj_from_tval (cmd-wizard.c:803). */
+/** do_cmd_wiz_create_all_obj_from_tval (cmd-wizard.c:804). */
 async function runCreateAllObjFromTval(
   ctx: WizardUiCtx,
   art?: boolean,
@@ -1312,7 +1312,7 @@ async function runCreateAllObjFromTval(
   wizCreateAllObjFromTval(state, { tval, art: withArt }, deps);
 }
 
-/** do_cmd_wiz_learn_object_kinds (cmd-wizard.c:1386). */
+/** do_cmd_wiz_learn_object_kinds (cmd-wizard.c:1436). */
 async function runLearnObjectKinds(ctx: WizardUiCtx, level?: number): Promise<void> {
   const { term, state, deps } = ctx;
   let lvl = level;
@@ -1327,7 +1327,7 @@ async function runLearnObjectKinds(ctx: WizardUiCtx, level?: number): Promise<vo
   wizLearnObjectKinds(state, { level: lvl }, deps);
 }
 
-/** do_cmd_wiz_teleport_random (cmd-wizard.c:2651). */
+/** do_cmd_wiz_teleport_random (cmd-wizard.c:2703). */
 async function runTeleportRandom(ctx: WizardUiCtx, range?: number): Promise<void> {
   const { term, state, deps } = ctx;
   let r = range;
@@ -1343,7 +1343,7 @@ async function runTeleportRandom(ctx: WizardUiCtx, range?: number): Promise<void
 }
 
 /**
- * do_cmd_wiz_create_trap (cmd-wizard.c:904): "Create which trap? " takes an
+ * do_cmd_wiz_create_trap (cmd-wizard.c:905): "Create which trap? " takes an
  * index OR a trap name (lookup_trap); an unknown name becomes trap_max, which
  * the command reports as "Trap not found.". All three refusals come from the
  * engine.
@@ -1362,7 +1362,7 @@ async function runCreateTrap(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_jump_level (cmd-wizard.c:1339): the level, then
+ * do_cmd_wiz_jump_level (cmd-wizard.c:1389): the level, then
  * "Choose cave profile? " - answering yes sets NOSCORE_JUMPING (L1366). The
  * engine says "You jump to dungeon level %d.".
  */
@@ -1396,7 +1396,7 @@ async function runJumpLevel(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_teleport_to (cmd-wizard.c L2673): pick a destination grid, and if
+ * do_cmd_wiz_teleport_to (cmd-wizard.c L2725): pick a destination grid, and if
  * it is passable, effect_simple(EF_TELEPORT_TO) to it; otherwise report it is
  * impassable ("The square you are aiming for is impassable.", from the engine).
  * The grid comes from the shell's targeting UI (ctx.pickGrid) - upstream's
@@ -1413,7 +1413,7 @@ async function runTeleportTo(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_perform_effect (cmd-wizard.c L1524): the effect (name or index),
+ * do_cmd_wiz_perform_effect (cmd-wizard.c L1574): the effect (name or index),
  * its dice, its subtype, and the radius / other / y / x parameters, then
  * effect_simple() from a player source.
  *
@@ -1472,7 +1472,7 @@ async function runPerformEffect(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_edit_player_start (cmd-wizard.c:1202): upstream queues one
+ * do_cmd_wiz_edit_player_start (cmd-wizard.c:1252): upstream queues one
  * CMD_WIZ_EDIT_PLAYER_STAT per stat, then GOLD, then EXP, and walks them in
  * order - there is no field picker. Each stage's prompt carries the current
  * value as its default: "STR (3-118): " ... "Gold: ", "Experience: ".
@@ -1504,7 +1504,7 @@ async function runEditPlayer(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_edit_player_stat (cmd-wizard.c:1247). Called per stat by the edit
+ * do_cmd_wiz_edit_player_stat (cmd-wizard.c:1297). Called per stat by the edit
  * sequence with the stat preset; called with `stat` absent it asks upstream's
  * own picker, "Edit which stat (name or 0-%d): ", which takes an index or a
  * stat_name_to_idx name and defaults to stat_idx_to_name(0). Returns false where
@@ -1546,7 +1546,7 @@ async function runEditPlayerStat(ctx: WizardUiCtx, stat?: number): Promise<boole
 }
 
 /**
- * do_cmd_wiz_recall_monster (cmd-wizard.c:2161) and do_cmd_wiz_wipe_recall
+ * do_cmd_wiz_recall_monster (cmd-wizard.c:2213) and do_cmd_wiz_wipe_recall
  * (L2860). Both open with a get_com over all monsters or one, and the specific
  * branch takes an index OR a monster name (lookup_monster). An index outside
  * [0, r_max) - which is where an unresolved name lands - prints
@@ -1595,7 +1595,7 @@ async function runRecall(ctx: WizardUiCtx, wipe: boolean): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_summon_named (cmd-wizard.c:2569): "Summon which monster? " takes
+ * do_cmd_wiz_summon_named (cmd-wizard.c:2621): "Summon which monster? " takes
  * an index or a name; nothing resolved prints "No monster found." and returns.
  * "Could not place monster." comes from the engine's ten placement tries.
  */
@@ -1619,7 +1619,7 @@ async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_dump_level_map (cmd-wizard.c:1112-1130): get_file("level.html"),
+ * do_cmd_wiz_dump_level_map (cmd-wizard.c:1162-1186): get_file("level.html"),
  * then "Title for map: " defaulted to "Map of level %d", then dump_level writes
  * the HTML page and file_close's success reports "Level dumped to %s.".
  *
@@ -1652,7 +1652,7 @@ async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
  * ------------------------------------------------------------------ */
 
 /**
- * wiz_hack_map + "Press any key." (cmd-wizard.c:2057-2066): paint the marks,
+ * wiz_hack_map + "Press any key." (cmd-wizard.c:2109-2118): paint the marks,
  * wait for one keypress, clear row 0 and redraw the map. `msg("Press any
  * key.")` puts the line in the message log, so it is said rather than printed.
  */
@@ -1676,7 +1676,7 @@ function featColor(ctx: WizardUiCtx, grid: Loc): number {
 }
 
 /**
- * do_cmd_wiz_query_feature (cmd-wizard.c:1930): one key picks a feature class,
+ * do_cmd_wiz_query_feature (cmd-wizard.c:1982): one key picks a feature class,
  * the matching grids are highlighted (yellow where passable, red otherwise),
  * and an unlisted key prints the invalid-selection line.
  */
@@ -1694,7 +1694,7 @@ async function runQueryFeature(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_query_square_flag (cmd-wizard.c:2105): one key picks a SQUARE
+ * do_cmd_wiz_query_square_flag (cmd-wizard.c:2157): one key picks a SQUARE
  * flag; anything unlisted leaves flag 0, which highlights the KNOWN grids
  * instead of refusing (L2088). Colours are the same passable/impassable pair.
  */
@@ -1708,7 +1708,7 @@ async function runQuerySquareFlag(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_peek_noise_scent (cmd-wizard.c:1477): step depth 0..99 over the
+ * do_cmd_wiz_peek_noise_scent (cmd-wizard.c:1527): step depth 0..99 over the
  * noise map, then 0..49 over the scent map, highlighting each depth's grids and
  * waiting on get_com(format("Depth %d: ", i)) between them; ESCAPE breaks out
  * of that loop. Noise is red, scent yellow.
@@ -1747,12 +1747,12 @@ function statsAreEnabled(ctx: WizardUiCtx): WizStatsCollectors | null {
 }
 
 /* The C's `static int default_nsim` values, which persist between invocations
- * (cmd-wizard.c:586, :623-624). */
+ * (cmd-wizard.c:586, :623). */
 let defaultDisconnectNsim = 50;
 let defaultObjMonNsim = 50;
 let defaultObjMonSimtype = 1;
 
-/** do_cmd_wiz_collect_disconnect_stats (cmd-wizard.c:584). */
+/** do_cmd_wiz_collect_disconnect_stats (cmd-wizard.c:586). */
 async function runCollectDisconnectStats(ctx: WizardUiCtx): Promise<void> {
   const { term } = ctx;
   const stats = statsAreEnabled(ctx);
@@ -1766,7 +1766,7 @@ async function runCollectDisconnectStats(ctx: WizardUiCtx): Promise<void> {
   stats.disconnectStats(nsim, stop);
 }
 
-/** do_cmd_wiz_collect_obj_mon_stats (cmd-wizard.c:622). */
+/** do_cmd_wiz_collect_obj_mon_stats (cmd-wizard.c:623). */
 async function runCollectObjMonStats(ctx: WizardUiCtx): Promise<void> {
   const { term } = ctx;
   const stats = statsAreEnabled(ctx);
@@ -1793,7 +1793,7 @@ async function runCollectObjMonStats(ctx: WizardUiCtx): Promise<void> {
   stats.statsCollect(nsim, simtype);
 }
 
-/** do_cmd_wiz_collect_pit_stats (cmd-wizard.c:668). */
+/** do_cmd_wiz_collect_pit_stats (cmd-wizard.c:672). */
 async function runCollectPitStats(ctx: WizardUiCtx): Promise<void> {
   const { term, state } = ctx;
   const stats = statsAreEnabled(ctx);
@@ -1822,7 +1822,7 @@ async function runCollectPitStats(ctx: WizardUiCtx): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ *
- * do_cmd_wiz_play_item (cmd-wizard.c:1600-1864) and the four commands it
+ * do_cmd_wiz_play_item (cmd-wizard.c:1646-1914) and the four commands it
  * queues.
  * ------------------------------------------------------------------ */
 
@@ -1834,7 +1834,7 @@ function pad(value: number, width: number): string {
 
 /**
  * The "+---FLAGS---+" ruled header and the five rows of vertically-written
- * flag-name letters (wiz_display_item, cmd-wizard.c:237-288), unchanged.
+ * flag-name letters (wiz_display_item, cmd-wizard.c:263-278), unchanged.
  *
  * LEFT AS `lines`, DELIBERATELY, not folded into the bits table below. This is
  * ASCII art with one column per flag and no per-flag DATA in it (a letter is
@@ -2092,7 +2092,7 @@ function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
 }
 
 /**
- * do_cmd_wiz_play_item (cmd-wizard.c:1600): snapshot the object, then loop -
+ * do_cmd_wiz_play_item (cmd-wizard.c:1646): snapshot the object, then loop -
  * draw wiz_display_item and ask the one-line get_com menu. [a]ccept keeps the
  * changes silently, ESCAPE rejects them and says "Changes ignored." only when
  * something was changed, and any unrecognised key just asks again (L1791-1796).
@@ -2180,7 +2180,7 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_reroll_item (cmd-wizard.c:2254), as queued by the play session:
+ * do_cmd_wiz_reroll_item (cmd-wizard.c:2306), as queued by the play session:
  * one get_com for the roll quality, then the reroll. Artifacts are left alone
  * by the command itself (L2306).
  */
@@ -2202,7 +2202,7 @@ function rollChoice(ch: string): number | null {
 }
 
 /**
- * do_cmd_wiz_stat_item (cmd-wizard.c:2386): the treasure quality, then the
+ * do_cmd_wiz_stat_item (cmd-wizard.c:2438): the treasure quality, then the
  * depth, then TEST_ROLL rolls compared against the target item, reported as
  * "Rolls: ..., Matches: ..., Better: ..., Worse: ..., Other: ...".
  *
@@ -2240,7 +2240,7 @@ async function runStatItem(ctx: WizardUiCtx, obj: GameObject): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_curse_item (cmd-wizard.c:1004), as queued by the play session:
+ * do_cmd_wiz_curse_item (cmd-wizard.c:1005), as queued by the play session:
  * the curse (name or index), then its power, where 0 removes the curse.
  */
 async function runCurseItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean> {
@@ -2260,7 +2260,7 @@ async function runCurseItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean>
 }
 
 /**
- * do_cmd_wiz_change_item_quantity (cmd-wizard.c:484), as queued by the play
+ * do_cmd_wiz_change_item_quantity (cmd-wizard.c:485), as queued by the play
  * session: "Quantity (1-%d): " where the bound is the ceiling the command
  * computes, defaulted to the current number. The two refusals (equipped item,
  * artifact) come from the engine.
@@ -2283,7 +2283,7 @@ async function runChangeQuantity(
 }
 
 /**
- * do_cmd_wiz_tweak_item (cmd-wizard.c:2698): the ego, then the artifact, then
+ * do_cmd_wiz_tweak_item (cmd-wizard.c:2757): the ego, then the artifact, then
  * every object modifier by its list-object-modifiers.h name, then AC bonus,
  * to-hit and to-dam. Every prompt takes a name OR an index, carries the
  * current value as its default, and ESCAPE at any of them stops there and

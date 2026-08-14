@@ -708,7 +708,7 @@ export function appendObjectCurse(
  * curse, so a caller that announces on its own would announce for a curse the
  * object did not have. uncurse_object (effect-handler-general.c L194-195) calls
  * this twice - once on obj->known with false, once on the object with true - and
- * cmd-wizard.c:1051 passes false.
+ * cmd-wizard.c:1052 passes false.
  *
  * The name comes from the global curses[] registry upstream reads directly;
  * object.ts sits below the registry, so the caller supplies the sink.

@@ -15,7 +15,7 @@
  * inline with a // DEFERRED: note):
  * - ODESC_CAPITAL: accepted and ignored, as upstream. Not "a caller concern" -
  *   the flag is DEAD in 4.2.6. Seven sites set it (ui-store.c:764,
- *   ui-death.c:320, ui-equip-cmp.c:1450/1459, ui-knowledge.c:1646/1968,
+ *   ui-death.c:320, ui-equip-cmp.c:1450/1459, ui-knowledge.c:1568/1890,
  *   ui-object.c:1689) and `mode & ODESC_CAPITAL` appears nowhere; obj-desc.c
  *   mentions it only in a doc comment at L595. Ignoring it here is parity, and
  *   applying it would be a divergence.
