@@ -92,6 +92,8 @@ export interface ComposedRecord {
   /** Every pack that patched or replaced it, in load order. */
   modifiedBy: string[];
   value: JsonRecord;
+  /** The record exactly as its OWNER supplied it, before any patch landed. */
+  readonly defined: JsonRecord;
 }
 
 export class ComposeError extends Error {}
@@ -312,7 +314,7 @@ export function composePacks(
           );
           return;
         }
-        table.set(ref, { ref, owner: pid, modifiedBy: [], value: rec });
+        table.set(ref, { ref, owner: pid, modifiedBy: [], value: rec, defined: rec });
 
         /* Every other ref this record answers to becomes an alias - EXCEPT one
          * that is some record's real name. "*Healing*"'s legacy ref is plain

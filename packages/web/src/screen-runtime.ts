@@ -29,6 +29,7 @@
 
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
+import type { PromptRequest } from "./prompt-view";
 import type { ScreenHost, ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
 
 /** What a mod must hold in its manifest before it may show the game's screens. */
@@ -132,6 +133,10 @@ let broken = false;
 export function setScreenPresenter(next: InstalledScreen | null): void {
   installed = next;
   broken = false;
+  /* Whatever the outgoing presenter was holding is not open any more, and a
+   * record left behind would make the NEXT presenter's first prompt consult a
+   * screen that no longer exists. */
+  openScreens.length = 0;
 }
 
 /** The installed presenter, or null when the game is showing its own screens. */
@@ -160,6 +165,21 @@ export function showThroughPresenter(
 ): Promise<void> | null {
   const owner = currentScreenPresenter();
   if (!owner) return null;
+  /*
+   * RE-ENTRANCY. This presenter has already stood aside (or been stood aside)
+   * for a prompt the game is running right now, and the game is asking it to
+   * take ANOTHER screen while that is happening. Re-offering would ask it to
+   * draw over the very terminal it just cleared - which is site 4 exactly:
+   * `core:update`'s `mods` action opens `showModUpgrades`, whose own screens go
+   * back through here while the same presenter is still holding `core:update`.
+   *
+   * The whole stack is scanned rather than just its top, because a DIFFERENT
+   * presenter's nested screen sitting on top must not hide the fact that this
+   * one has stood aside. And it is keyed on the presenter OBJECT, not on the mod
+   * id, so a different presenter is served normally - refusing everybody would
+   * take the seam away from a mod that has done nothing wrong.
+   */
+  if (openScreens.some((o) => o.presenter === owner.presenter && standingAside(o))) return null;
   let shown: ScreenShown | undefined;
   try {
     shown = owner.presenter.show(view, host);
@@ -178,9 +198,43 @@ export function showThroughPresenter(
     );
     return null;
   }
+  /* The same `typeof … === "function"` treatment `dismissed?.then` gets, and for
+   * the same reason: a member that is present and is not callable reads as "this
+   * presenter can stand aside" and then takes the seam down at the worst possible
+   * moment - mid-prompt, with the player waiting. Absent is fine and is the
+   * ordinary shape; present-and-lying is not. */
+  const stepAside = (shown as YieldingScreen).yieldTerminal;
+  if (stepAside !== undefined && typeof stepAside !== "function") {
+    broken = true;
+    reportFault(
+      owner.id,
+      `took "${view.id}" with a yieldTerminal that is not a function, so the game has no way to tell it ` +
+        `when to stand aside for a prompt; the game has resumed showing its own screens`,
+      shown,
+    );
+    return null;
+  }
+  const open: OpenScreen = {
+    presenter: owner.presenter,
+    modId: owner.id,
+    screenId: view.id,
+    shown: shown as YieldingScreen,
+    yielded: false,
+    surrendered: false,
+    reported: false,
+  };
+  openScreens.push(open);
+  const close = (): void => {
+    const at = openScreens.indexOf(open);
+    if (at >= 0) openScreens.splice(at, 1);
+  };
   return shown.dismissed.then(
-    () => undefined,
+    () => {
+      close();
+      return undefined;
+    },
     (error: unknown) => {
+      close();
       broken = true;
       reportFault(
         owner.id,
@@ -193,6 +247,189 @@ export function showThroughPresenter(
       throw new ScreenAbandoned(owner.id, view.id);
     },
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Standing aside for the game's own prompt                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ABI member a presenter grows to be told about a prompt - TYPED LOCALLY,
+ * on purpose and temporarily.
+ *
+ * The public shape belongs to `screen-view.ts` and to the SDK's `screen.ts`, and
+ * those two must agree with each other or a mod compiled against the SDK is
+ * compiled against a different game. Declaring it here as a structural interface
+ * keeps the runtime boundary local while the two published copies are added -
+ * exactly what `installScreen` already does when it re-wraps `show` rather than
+ * importing the SDK's presenter type. When both copies exist, this becomes
+ * `ScreenShown` and this interface goes.
+ *
+ * The declaration to add to BOTH, verbatim, is in this module's report.
+ */
+export interface YieldingScreen {
+  readonly dismissed: Promise<void>;
+  /**
+   * The game is about to write on the terminal under this screen; stand aside
+   * for `request`, or take the screen back when it is `null`.
+   *
+   * Awaited before anything is drawn, so a presenter may animate itself out.
+   */
+  yieldTerminal?(request: PromptRequest | null): void | Promise<void>;
+}
+
+/** One screen a presenter is holding right now. */
+interface OpenScreen {
+  readonly presenter: ScreenPresenter;
+  readonly modId: string;
+  readonly screenId: string;
+  readonly shown: YieldingScreen;
+  /** Announced, and not yet released. */
+  yielded: boolean;
+  /** It could not be told, so the game took the terminal anyway. Permanent. */
+  surrendered: boolean;
+  reported: boolean;
+}
+
+/**
+ * The screens a presenter is holding, innermost last. A STACK rather than one
+ * slot because a prompt can open a whole nested screen (`update:mods` does), and
+ * whoever is holding THAT is who the next prompt has to be announced to.
+ */
+const openScreens: OpenScreen[] = [];
+
+/** Standing aside, whether it was told to or the game gave up on telling it. */
+function standingAside(open: OpenScreen): boolean {
+  return open.yielded || open.surrendered;
+}
+
+/**
+ * Whether the game currently holds the terminal out from under a presenter.
+ *
+ * TRUE IN BOTH SHAPES OF STANDING ASIDE - announced and awaited, or surrendered
+ * because it could not be told - because from the terminal's point of view they
+ * are the same situation: the game is drawing where the presenter's screen is.
+ * Collapsing them is what makes the re-entrancy guard one condition instead of
+ * two that could disagree.
+ *
+ * FALSE when nobody is holding a screen at all. There is nothing to yield in
+ * unmodded play, and reporting "yielded" for it would make every caller test the
+ * one case that never needed testing.
+ */
+export function terminalIsYielded(): boolean {
+  const open = openScreens[openScreens.length - 1];
+  return open !== undefined && standingAside(open);
+}
+
+/** The screen is the game's now, and the presenter is told once why. */
+function surrender(
+  open: OpenScreen,
+  request: PromptRequest,
+  reportFault: ReportFault,
+  message: string,
+  error: unknown,
+): void {
+  open.yielded = false;
+  open.surrendered = true;
+  /* ONCE. The failure mode is a presenter that cannot stand aside for ANY
+   * prompt, and a fault report per keystroke of a three-line description is
+   * worse than one report and out - the same rule the seam's other faults use. */
+  if (open.reported) return;
+  open.reported = true;
+  reportFault(open.modId, message, error);
+}
+
+/**
+ * Run one piece of the game's own terminal work - a prompt - with whoever is
+ * holding the screen standing aside for it.
+ *
+ * THE ORDER IS THE FIX, so it is worth spelling out:
+ *
+ * 1. Nobody is holding a screen. Run the work; `held: true`. This is unmodded
+ *    play and it costs exactly one branch.
+ * 2. The holder has no `yieldTerminal`. Report ONCE, naming the mod and the
+ *    member to add, mark the screen surrendered, run the work anyway;
+ *    `held: false`. The player sees the prompt drawn over the mod's overlay,
+ *    which is ugly and is enormously better than answering an invisible
+ *    question - and this is the case a shortcut would get wrong, because
+ *    treating a missing member as consent looks identical until you look.
+ * 3. Otherwise announce, and AWAIT WHATEVER COMES BACK BEFORE DRAWING ANYTHING.
+ *    A throw or a rejection is case 2.
+ * 4. Run the work.
+ * 5. In a `finally`, release with `null`.
+ *
+ * NO TIMEOUT, deliberately. A presenter animating a fade out is legitimate and
+ * a deadline would cut it off mid-frame; a presenter that never resolves is
+ * already the `dismissed`-that-never-settles hazard this module reports through
+ * the same machinery, and it does not need a second, differently-behaved
+ * answer here.
+ *
+ * THE RELEASE IS IN A `finally` for one specific reason: a prompt can throw -
+ * `getFile` reaches the filesystem, `showModUpgrades` reaches the network - and
+ * a release that only ran on the happy path would leave the player's overlay
+ * hidden for the rest of the session after one exception. One `finally` against
+ * a permanently invisible interface is a good trade.
+ */
+export async function withTerminal<T>(
+  request: PromptRequest,
+  work: () => T | Promise<T>,
+  reportFault: ReportFault = () => {},
+): Promise<{ held: boolean; value: T }> {
+  const open = openScreens[openScreens.length - 1];
+  /* (1) */
+  if (open === undefined) return { held: true, value: await work() };
+  /* Already given up on for an earlier prompt: no second report, no second try. */
+  if (open.surrendered) return { held: false, value: await work() };
+  /* (2) */
+  const stepAside = open.shown.yieldTerminal;
+  if (typeof stepAside !== "function") {
+    surrender(
+      open,
+      request,
+      reportFault,
+      `is holding "${open.screenId}" and cannot stand aside for the game's own "${request.label}" prompt, ` +
+        `so the game has drawn it over that screen; add yieldTerminal(request) to what show() returns - ` +
+        `stand the screen aside while request is a PromptRequest, and take it back when request is null`,
+      undefined,
+    );
+    return { held: false, value: await work() };
+  }
+  /* (3) Announced and AWAITED before anything is drawn. */
+  open.yielded = true;
+  try {
+    await stepAside.call(open.shown, request);
+  } catch (error) {
+    surrender(
+      open,
+      request,
+      reportFault,
+      `is holding "${open.screenId}" and its yieldTerminal() failed on the game's "${request.label}" prompt, ` +
+        `so the game has drawn it over that screen; yieldTerminal(request) must stand the screen aside and ` +
+        `resolve, never throw`,
+      error,
+    );
+    return { held: false, value: await work() };
+  }
+  /* (4) */
+  try {
+    return { held: true, value: await work() };
+  } finally {
+    /* (5) */
+    open.yielded = false;
+    try {
+      await stepAside.call(open.shown, null);
+    } catch (error) {
+      /* Reported, not rethrown: the work is already done and its own result -
+       * or its own exception - is what the player is owed. The screen is the
+       * presenter's problem now, and it has been told about it. */
+      reportFault(
+        open.modId,
+        `is holding "${open.screenId}" and its yieldTerminal(null) failed, so its screen may not have come ` +
+          `back after the game's "${request.label}" prompt`,
+        error,
+      );
+    }
+  }
 }
 
 /** A presenter's screen died while the player was reading it. */

@@ -497,7 +497,9 @@ function applyPassthroughOps(
   const out: unknown[] = [];
   working.forEach((r, i) => {
     if (removed.has(i)) return;
-    out.push(stampProvenance(r === null ? records[i] : r, providerId, modifiers[i] ?? [], baseId));
+    out.push(
+      stampProvenance(r === null ? records[i] : r, providerId, modifiers[i] ?? [], baseId, records[i]),
+    );
   });
   return out;
 }
@@ -571,7 +573,7 @@ export function composeContentPacks(
   const out: Record<string, unknown[]> = {};
   for (const [file, table] of game) {
     out[file] = [...table.values()].map((r) =>
-      stampProvenance(r.value, r.owner, r.modifiedBy, baseId),
+      stampProvenance(r.value, r.owner, r.modifiedBy, baseId, r.defined),
     );
   }
 

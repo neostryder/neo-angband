@@ -35,6 +35,7 @@ import {
 } from "./menu-runtime";
 import { linesScreen, screenBodyLines, SCREEN_FOOTER, type ScreenView } from "./screen-view";
 import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
+import { popRegion, pushRegion, regionSurface, type RegionSpec } from "./ui-stack";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
 export interface ScreenLine {
@@ -169,8 +170,60 @@ export async function showTextScreen(
   return showViewOnTerminal(term, view.title, screenBodyLines(view, term.size().cols), view.footer);
 }
 
-/** The faithful terminal's own way of showing a screen; see `showTextScreen`. */
+/**
+ * The id a core screen occupies the modal band under while it is open.
+ *
+ * Deliberately a plain string and deliberately NOT a member of
+ * `SCREEN_REGION_NAMES` - that constant means "the regions that tile the
+ * terminal", and a screen is not one of those (see `regions.ts`).
+ */
+export const SCREEN_REGION_ID = "core:screen";
+
+/**
+ * A core screen's rectangle: THE WHOLE TERMINAL, and that is not a placeholder.
+ *
+ * 4.2.6 shows a screen as screen_save / full repaint / screen_load, and the
+ * parity suite pins those pictures byte for byte. Shrinking core's tombstone
+ * would move a picture upstream's own tests describe, for the benefit of no mod:
+ * a mod that wants a panel declares its own region rather than asking core to
+ * make room. What the screen did not have - and now does - is a rectangle at
+ * all, so everything else on the display can learn it is being covered.
+ */
+function screenRegionSpec(): RegionSpec {
+  return {
+    id: SCREEN_REGION_ID,
+    layer: "modal",
+    place: (g) => ({ col: 0, row: 0, cols: g.cols, rows: g.rows }),
+  };
+}
+
+/**
+ * The faithful terminal's own way of showing a screen; see `showTextScreen`.
+ *
+ * Declares the screen's region for as long as it is open and hands the painting
+ * a surface clipped to it. `paintViewOnTerminal` below is the painter, and it is
+ * UNCHANGED from before it had a region - which is the property `clipSurface`
+ * exists to have: region-local coordinates and a `size()` that answers the
+ * rectangle mean a painter written against the terminal needs no edit at all.
+ */
 function showViewOnTerminal(
+  host: GridSurface & GridPointerInput,
+  title: string,
+  lines: readonly ScreenLine[],
+  footer: string,
+): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintViewOnTerminal(
+    regionSurface(host, handle.cells),
+    title,
+    lines,
+    footer,
+  ).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintViewOnTerminal(
   term: GridSurface & GridPointerInput,
   title: string,
   lines: readonly ScreenLine[],

@@ -126,6 +126,7 @@ import {
   type ScreenTextBlock,
   type ScreenView,
 } from "./screen-view";
+import type { PromptExtent } from "./prompt-view";
 import { MessageLog, format as formatMessage } from "./messages";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
 
@@ -2451,13 +2452,23 @@ export interface StoreKnowledgeDeps {
  * reproduce. A table's header sits on the DATA's column grid: the renderer
  * indents it by the tag's three columns and pads each label to its own column,
  * which would put "Store Inventory" at column 3 (it is at 0) and "Price" at 64
- * (it is at 62). Both would be movements on the player's screen, and byte
- * identity outranks tidiness here - so the header travels as prose the game
- * already laid out and the column KEYS carry the contract instead. Moving the
- * header onto the data grid is a real fix and belongs with the other one it
- * would take: "Price" at column 62 is two columns left of upstream's own
- * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368), which the shop screen gets
- * right and this one does not.
+ * (it is there now - see below). Both would be movements on the player's
+ * screen, and byte identity outranks tidiness here - so the header travels as
+ * prose the game already laid out and the column KEYS carry the contract
+ * instead. Moving the header onto the data grid is a real fix, but it is a
+ * SEPARATE one from the column below and is not done here (task #257): it
+ * would move "Store Inventory" too, and needs a `tagged` table's header to sit
+ * off the data grid, which `screen-view.ts` does not offer today.
+ *
+ * "Price" WAS at column 62, two columns left of upstream's own
+ * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368) - "Price".padStart(9) over
+ * the price field, which the shop screen (shop.ts:564, `gm.priceX + 4`) always
+ * got right. Column 64 is also where this screen's OWN data rows already put
+ * it: the price cell is `priceStr.padStart(9)` starting two columns after an
+ * 8-wide, space-led weight field that itself ends at column 57 - the same
+ * column "Weight" above it ends at. "Price" ending at column 68 to match is
+ * exactly this fix; column 62 ended at 66 and never lined up with its own
+ * column. Fixed 2026-08-14 (task #257).
  */
 export function storeKnowledgeScreen(
   state: GameState,
@@ -2471,7 +2482,7 @@ export function storeKnowledgeScreen(
     {
       text: isHome
         ? `${"Home Inventory".padEnd(52)}Weight`
-        : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
+        : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
     },
   ];
   /* A blank row between the header and the empty notice, and ONLY when the
@@ -2662,4 +2673,125 @@ export function reportScreen(
     ...(actions.length === 0 ? {} : { actions }),
     blocks: [{ kind: "lines", lines }],
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* WHICH ACTIONS PROMPT: the census                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THIS TABLE IS THE ARTEFACT WHOSE ABSENCE CAUSED THE DEFECT.
+ *
+ * `ScreenHost.invoke(id)` runs the GAME's code for an action while a mod's
+ * presenter is drawing that screen. Some of those actions put a question on the
+ * faithful terminal and wait for an answer - underneath the presenter's overlay.
+ * The player is asked something they cannot see, and the worst of them
+ * (`charsheet:rename`) reaches `persistSave()`, so a character can be renamed
+ * and the save written with nothing at all visible.
+ *
+ * Nothing in this tree enumerated "which actions prompt". That is why two of
+ * them shipped broken and two more were added afterwards without anybody
+ * noticing they were the same shape. The fix is not a rule against prompting -
+ * that would make the actions a mod can offer a strict subset of the game's -
+ * it is the game ANNOUNCING the prompt so a presenter can stand aside. This
+ * table is what it announces FROM, and its totality test (`screens.test.ts`) is
+ * what turns a fifth site into a build failure instead of a bug report.
+ *
+ * HERE, BESIDE `CHARACTER_ACTIONS` / `UPDATE_ACTION_KEYS` / `REPORT_ACTION_KEYS`,
+ * because that is already where an action's facts live: its key, its label, and
+ * now whether running it takes the terminal. A census in the runtime that drives
+ * the prompt would be a second place to update and the one that goes stale.
+ */
+
+/** What `withTerminal` announces for one action: its stable id and its shape. */
+export interface ScreenPromptFact {
+  /** Stable prompt identity, `<host>:<action>` - `charsheet:rename`. */
+  readonly promptId: string;
+  readonly extent: PromptExtent;
+}
+
+/**
+ * View id -> action id -> the prompt running it opens. VERIFIED BY FOLLOWING
+ * EACH HOST'S `invoke` INTO WHAT IT CALLS, not by reading the footers. Named by
+ * symbol rather than by line, because these three files move under each other:
+ *
+ * - `core:character` / `core:character-flags` `rename`: `showCharacterSheet`'s
+ *   host -> `doRename` -> `promptText` (overlay.ts), which calls `term.clear()`
+ *   and draws a title, a field and a footer, so the whole screen. Its answer
+ *   runs `opts.onRename` -> main.ts's `renamePlayer` -> `persistSave()`. This is
+ *   the worst of the four: a character renamed and the save written with nothing
+ *   visible on the screen at all.
+ * - the same two, `file`: the same host -> `doFileDump` -> `getFile`
+ *   (overlay.ts), which is `get_string` at row 0 and then up to two more row-0
+ *   prompts (`get_check`, `getKeyInline`): a line each, so `line`.
+ * - `core:report` `describe`: `showReportPage`'s `act` -> `getString`, up to
+ *   `REPORT_DESCRIPTION_LINES` times, each of them `prt(prompt, 0, 0)` and a
+ *   line edit on row 0.
+ * - `core:update` `mods`: `showUpdatePage`'s `act` -> `showModUpgrades`
+ *   (mod-browse.ts), a whole nested screen with its own loop - and the site that
+ *   needs the re-entrancy guard, because today it re-enters the SAME presenter
+ *   while that presenter is still holding `core:update`.
+ */
+export const SCREEN_PROMPTS: Readonly<
+  Record<string, Readonly<Record<string, ScreenPromptFact>>>
+> = {
+  "core:character": {
+    rename: { promptId: "charsheet:rename", extent: "screen" },
+    file: { promptId: "charsheet:file", extent: "line" },
+  },
+  "core:character-flags": {
+    rename: { promptId: "charsheet:rename", extent: "screen" },
+    file: { promptId: "charsheet:file", extent: "line" },
+  },
+  "core:report": {
+    describe: { promptId: "report:describe", extent: "line" },
+  },
+  "core:update": {
+    mods: { promptId: "update:mods", extent: "screen" },
+  },
+};
+
+/**
+ * The actions PROVEN not to reach the terminal, screen by screen.
+ *
+ * A LIST OF WHAT IS SAFE rather than "everything not above", because the pair of
+ * tables is what makes the totality test possible: an action in neither is a new
+ * action nobody has looked at, and an action in both is a contradiction. Silence
+ * is exactly what let four prompting sites accumulate unnoticed, so silence is
+ * the one answer this pair does not accept.
+ *
+ * What each of them does, followed the same way:
+ *
+ * - `page-next` / `page-prev` set `mode` and return the other page's view
+ *   (`showCharacterSheet`'s host). No terminal.
+ * - `sort-exp` flips a boolean and rebuilds the view (`showMonsterList`'s host).
+ *   It is the CONTROL for this whole design: an action that goes through
+ *   `invoke`, does real work, and never touches the terminal.
+ * - `confirm` / `channel` on `core:update` do call `paint()`, but `paint()`
+ *   returns immediately while `owned` is true - which is precisely the case a
+ *   presenter is holding the page in. What is left is the network and the
+ *   updater bridge.
+ * - `log-level` cycles the logging level and logs it; `confirm` on `core:report`
+ *   writes the file or offers a download. Neither asks the player anything.
+ */
+export const SCREEN_NO_PROMPT: Readonly<Record<string, readonly string[]>> = {
+  "core:character": ["page-next", "page-prev"],
+  "core:character-flags": ["page-next", "page-prev"],
+  "core:monster-list": ["sort-exp"],
+  "core:update": ["confirm", "channel"],
+  "core:report": ["log-level", "confirm"],
+};
+
+/**
+ * The prompt one action opens, or undefined where it opens none.
+ *
+ * The one reader of `SCREEN_PROMPTS`, so a host asks a question rather than
+ * indexing a table of tables and getting the nesting wrong in the one branch
+ * nobody exercises.
+ */
+export function screenPromptFor(
+  viewId: string,
+  actionId: string,
+): ScreenPromptFact | undefined {
+  return SCREEN_PROMPTS[viewId]?.[actionId];
 }

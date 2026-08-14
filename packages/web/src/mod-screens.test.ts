@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { modUpdateReportScreen } from "./mod-browse";
+import { installFailureScreen, modUpdateReportScreen, zipImportFailureScreen } from "./mod-browse";
 import { autoSortScreen, capabilityConsentScreen, modConflictsScreen } from "./mods";
 import { conflictLines, type ConflictInputs } from "./mod-conflicts";
 import { refreshRow, type ModRefresh } from "./mod-refresh";
@@ -35,7 +35,9 @@ import type { ModHooks } from "@rpgm-tools/neo-angband-core";
 import {
   describeContested,
   describeDeclaredConflict,
+  type Finding,
   type PackManifest,
+  type RecordConflict,
   type SortResult,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { UI_BAD, UI_DIM, UI_GOLD, UI_GOOD, UI_TEXT } from "./ui-colors";
@@ -307,7 +309,14 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
       "",
       "Suggestions it could not honour",
       "  Quality of Life asks to load before Bug Fixes",
-      "    dropped - it would need Quality of Life -> Bug Fixes (unofficial patch set) -> Quality of Life",
+      /* WRAPPED, where the hand-laid `lines` version ran 100 characters off an
+       * 80-column terminal unbroken: `detail`'s indent (4) leaves a 76-column
+       * wrap, and this cycle sentence is the one real fixture in this file long
+       * enough to hit it. A cycle rarely names two mods this verbose, so this is
+       * the one line in this pass that did not survive byte-identical - see the
+       * task report for the measurement. */
+      "    dropped - it would need Quality of Life -> Bug Fixes (unofficial patch set)",
+      "    -> Quality of Life",
       "",
       "These mods cannot all load",
       "  Shockbolt Tiles and The Borg each require the other.",
@@ -344,6 +353,65 @@ describe("the auto-sort proposal is a list a manager could reorder", () => {
     );
     expect(table.rows[0]!.cells.mods!.text).toBe("Shockbolt Tiles and The Borg");
     expect(table.rows[0]!.semantic).toEqual({ kind: "mod-cycle", data: { ids: "tiles,borg" } });
+  });
+
+  it("names a dropped suggestion's mods apart from the reason and the cycle", () => {
+    /* The ids behind "A -> B -> A" are on `semantic.data`, exactly as the
+     * unresolvable table's already are - what task #265 asked this table for.
+     * Ids outside NAMES on purpose (nameOf falls back to the id itself), so the
+     * cycle sentence stays short enough not to wrap and this test is only about
+     * shape, not the wrap this file's OTHER test already pins. */
+    const table = tableOf(
+      autoSortScreen(
+        sorted({
+          order: ["a", "b"],
+          dropped: [
+            {
+              from: "a",
+              to: "b",
+              tier: "author",
+              reason: "a asks to load before b",
+              cycle: ["a", "b"],
+            },
+          ],
+        }),
+        ["a", "b"],
+        nameOf,
+      ),
+      "dropped",
+    );
+    expect(table.rows[0]!.cells.reason!.text).toBe("a asks to load before b");
+    expect(table.rows[0]!.semantic).toEqual({ kind: "mod-cycle-dropped", data: { ids: "a,b" } });
+    expect(table.rows[0]!.detail).toEqual({
+      indent: 4,
+      paragraphs: [[{ text: "dropped - it would need a -> b -> a" }]],
+      color: UI_DIM,
+    });
+  });
+
+  it("renders the reason and its detail as full ScreenLine objects, not just text", () => {
+    /* THE FULL ScreenLine, not the string - a detail's line carries `runs` where
+     * the hand-laid version emitted a plain coloured line, and only asserting
+     * `.text` here would miss that shape entirely (see the task report). */
+    const view = autoSortScreen(
+      sorted({
+        order: ["a"],
+        dropped: [
+          { from: "a", to: "b", tier: "author", reason: "short reason", cycle: ["a", "b"] },
+        ],
+      }),
+      ["a"],
+      nameOf,
+    );
+    const lines = screenBodyLines(view, 80);
+    const reasonLine = lines.find((l) => l.text === "  short reason");
+    expect(reasonLine).toEqual({ text: "  short reason", color: UI_TEXT });
+    const detailLine = lines.find((l) => l.text.startsWith("    dropped"));
+    expect(detailLine).toEqual({
+      text: "    dropped - it would need a -> b -> a",
+      color: UI_DIM,
+      runs: [{ text: "    dropped - it would need a -> b -> a", color: UI_DIM }],
+    });
   });
 });
 
@@ -433,7 +501,7 @@ function hooksOf(...keys: (keyof ModHooks)[]): ModHooks {
 
 const NO_CONFLICT_INPUTS: ConflictInputs = {
   manifests: [],
-  recordLines: [],
+  recordRows: [],
   tileClaims: [],
   hookContributions: [],
   ruleDecls: [],
@@ -445,12 +513,25 @@ const NO_CONFLICT_INPUTS: ConflictInputs = {
 };
 
 /**
- * Every group at once: an author's declaration, a content-record line with no record
- * behind it, one discarding slot per layer, and one combining slot.
+ * The content layer's own record for the one contested row this fixture carries,
+ * matching the sentence text below exactly - the text is unchanged from before this
+ * pass; only the record now travels beside it (modConflictLines, pack.ts).
+ */
+const FROST_KOBOLD_RECORD: RecordConflict = {
+  ref: "core:kobold",
+  file: "monster",
+  contributingPacks: ["frost", "runes"],
+  fields: [{ path: "speed", owners: ["frost", "runes"], winner: "runes" }],
+  collisions: [{ path: "speed", owners: ["frost", "runes"] }],
+  humanLines: ["frost and runes both set kobold.speed"],
+};
+
+/**
+ * Every group at once: an author's declaration, a content-record row carrying
+ * FROST_KOBOLD_RECORD, one discarding slot per layer, and one combining slot.
  *
  * Deliberately maximal - the screen's three groups are only distinguishable when all
- * three are present, and the record line is the one row whose fields this pass could
- * not recover.
+ * three are present.
  */
 const EVERY_CONFLICT: ConflictInputs = {
   ...NO_CONFLICT_INPUTS,
@@ -463,7 +544,7 @@ const EVERY_CONFLICT: ConflictInputs = {
     }),
     pack("runes", { name: "Rune Magic" }),
   ],
-  recordLines: ["frost and runes both set kobold.speed"],
+  recordRows: [{ text: "frost and runes both set kobold.speed", record: FROST_KOBOLD_RECORD }],
   tileClaims: [
     { modId: "frost", grafID: 2, menuname: "Adam Bolt" },
     { modId: "runes", grafID: 2, menuname: "Adam Bolt" },
@@ -569,7 +650,9 @@ describe("the conflicts viewer is a table a presenter could act on", () => {
     const contested = tableOf(view, "contested").rows;
     contested.forEach((row, i) => {
       const record = report.contestedRows[i]!.record;
-      if (record === null) return; // a content-record line; see below
+      // A content-layer row (RecordConflict) or a truly recordless one (null):
+      // describeContested only knows ContestedSlot, so skip both; see below.
+      if (record === null || !("layer" in record)) return;
       expect(row.cells.what!.text).toBe(describeContested(record, nameOf));
     });
     const declared = tableOf(view, "declared").rows;
@@ -614,20 +697,46 @@ describe("the conflicts viewer is a table a presenter could act on", () => {
     });
   });
 
-  it("marks the ONE row whose record was destroyed before this module ran", () => {
-    /* pack.ts's modConflictLines flattens computeConflictReport's field-granular
-     * records into humanLines, so the content layer arrives here as prose. The row
-     * says so - a kind with no `ref` - rather than arriving with no semantic at all,
-     * which a presenter would read as "nothing to say about this row". */
+  it("carries the content layer's real record now, retiring the content-record stopgap", () => {
+    /* Before this pass, pack.ts's modConflictLines flattened computeConflictReport's
+     * field-granular records into plain sentences, so this row arrived here as
+     * `{ kind: "content-record" }` with no `ref` - a stopgap marking "the record
+     * was not published" apart from "nothing to say". modConflictLines now carries
+     * the RecordConflict beside the sentence like any other layer, so this row is
+     * `record-conflict`, with the fields FROST_KOBOLD_RECORD actually contains. */
     const row = tableOf(view, "contested").rows[0]!;
-    expect(row.semantic).toEqual({ kind: "content-record" });
-    expect(row.semantic?.ref).toBeUndefined();
-    expect(row.id).toBeUndefined();
-    /* And it is the only one. If this ever counts more than one, a producer has
-     * regressed rather than a fixture having grown. */
+    expect(row.id).toBe("core:kobold");
+    expect(row.semantic).toEqual({
+      kind: "record-conflict",
+      ref: "core:kobold",
+      data: {
+        file: "monster",
+        contributingPacks: "frost,runes",
+        collidingFields: "speed",
+        overriddenBy: null,
+        overrideKind: null,
+      },
+    });
+    /* The retired stopgap kind no longer appears anywhere on this screen. */
     expect(
       tableOf(view, "contested").rows.filter((r) => r.semantic?.kind === "content-record"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+  });
+
+  it("still marks a row distinctly when modConflictLines truly has no record to give it", () => {
+    /* The one case left: resolveLoadOrder threw before a RecordConflict existed
+     * (pack.ts's modConflictLines). Built directly rather than through EVERY_CONFLICT,
+     * since that fixture's one content row now carries a real record. */
+    const nullRecordView = modConflictsScreen(
+      conflictLines({
+        ...NO_CONFLICT_INPUTS,
+        recordRows: [{ text: "pack needs-ghost requires missing pack ghost", record: null }],
+      }),
+    );
+    const row = tableOf(nullRecordView, "contested").rows[0]!;
+    expect(row.semantic).toEqual({ kind: "unresolved-load-order" });
+    expect(row.semantic?.ref).toBeUndefined();
+    expect(row.id).toBeUndefined();
   });
 
   it("keeps the sentences and the records in step", () => {
@@ -639,10 +748,108 @@ describe("the conflicts viewer is a table a presenter could act on", () => {
   });
 });
 
-describe("the four screens are declared as modelled", () => {
+/* ------------------------------------------------------------------ */
+/* The install/zip-import refusal screens (task #265)                  */
+/* ------------------------------------------------------------------ */
+
+const REFUSAL_UNMET: readonly Finding[] = [
+  {
+    id: "declare-a-repository",
+    level: "required",
+    title: "Say where the mod lives, in `repository`",
+    problem: "no repository declared",
+  },
+  {
+    id: "engine-range",
+    level: "required",
+    title: "Declare the engine range the mod was written against",
+    problem:
+      "engine range cannot be read: not a valid semver range at all, which is longer than the wrap width on purpose",
+  },
+];
+
+describe("the install-refusal screens put one row per requirement, title as the row", () => {
+  it("carries the finding's identity and puts the problem in detail, not the cell", () => {
+    const view = installFailureScreen("Demo", "demo: refused.", REFUSAL_UNMET);
+    const table = tableOf(view, "unmet");
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows[0]!.id).toBe("declare-a-repository");
+    expect(table.rows[0]!.semantic).toEqual({
+      kind: "mod-requirement",
+      ref: "declare-a-repository",
+      data: { level: "required" },
+    });
+    expect(table.rows[0]!.cells.title!.text).toBe("Say where the mod lives, in `repository`");
+    /* wrap is DERIVED - MESSAGE_WIDTH (74) minus the detail's own indent (2) - not
+     * a second 72 typed in beside it; see mod-browse.ts's findingRow. */
+    expect(table.rows[0]!.detail).toEqual({
+      indent: 2,
+      wrap: 72,
+      paragraphs: [[{ text: "no repository declared" }]],
+      color: UI_GOLD,
+    });
+  });
+
+  it("renders the title as a plain coloured row and the problem as a wrapped detail", () => {
+    /* FULL ScreenLine objects: the detail line carries `runs` where the hand-laid
+     * bullet used to be a plain string, and only checking `.text` would miss it. */
+    const lines = screenBodyLines(installFailureScreen("Demo", "demo: refused.", REFUSAL_UNMET), 80);
+    expect(lines).toContainEqual({
+      text: "  - Say where the mod lives, in `repository`",
+      color: UI_GOLD,
+    });
+    expect(lines).toContainEqual({
+      text: "  no repository declared",
+      color: UI_GOLD,
+      runs: [{ text: "  no repository declared", color: UI_GOLD }],
+    });
+    /* The long problem DOES wrap - at 72, not at the terminal's own 80 - because
+     * MESSAGE_WIDTH stays the refusal's own authority regardless of the block model. */
+    expect(lines).toContainEqual({
+      text: "  engine range cannot be read: not a valid semver range at all, which is",
+      color: UI_GOLD,
+      runs: [
+        { text: "  engine range cannot be read: not a valid semver range at all, which is", color: UI_GOLD },
+      ],
+    });
+    expect(lines).toContainEqual({
+      text: "  longer than the wrap width on purpose",
+      color: UI_GOLD,
+      runs: [{ text: "  longer than the wrap width on purpose", color: UI_GOLD }],
+    });
+  });
+
+  it("uses the door's own colour for a zip import refusal, and its own closing line", () => {
+    const lines = screenBodyLines(zipImportFailureScreen("bad zip", REFUSAL_UNMET.slice(0, 1)), 80);
+    expect(lines).toContainEqual({
+      text: "  - Say where the mod lives, in `repository`",
+      color: UI_BAD,
+    });
+    expect(lines.at(-1)).toEqual({
+      text: "Nothing has been installed or changed.",
+      color: UI_DIM,
+    });
+  });
+
+  it("shows nothing but the sentence when no requirements were asked about", () => {
+    /* No `unmet` table block at all - `refusalBlocks` skips it, exactly as the
+     * flattened version used to skip the bullets and the advice paragraph. */
+    const view = installFailureScreen("Demo", "a/b: escapes the mod folder");
+    expect(view.blocks.some((b) => b.kind === "table")).toBe(false);
+    expect(screenBodyLines(view, 80).map((l) => l.text)).toEqual([
+      "Demo was not installed.",
+      "",
+      "a/b: escapes the mod folder",
+      "",
+      "Nothing was stored, so your other mods are untouched.",
+    ]);
+  });
+});
+
+describe("the six screens are declared as modelled", () => {
   it("names each id in MODELLED_SCREENS", () => {
     /* screen-view.test.ts derives the same list from the `freezeView` calls that
-     * exist; this states which four this file is responsible for, so a screen
+     * exist; this states which six this file is responsible for, so a screen
      * quietly reverting to `showTextScreen(term, title, lines)` fails here too. */
     expect(modUpdateReportScreen([]).id).toBe("core:mod-updates");
     expect(autoSortScreen(sorted({ order: ["qol"] }), ["qol"], nameOf).id).toBe(
@@ -652,11 +859,15 @@ describe("the four screens are declared as modelled", () => {
     expect(modConflictsScreen(conflictLines(NO_CONFLICT_INPUTS)).id).toBe(
       "core:mod-conflicts",
     );
+    expect(installFailureScreen("x", "y").id).toBe("core:mod-install-failure");
+    expect(zipImportFailureScreen("y").id).toBe("core:mod-zip-import-failure");
     for (const id of [
       "core:mod-updates",
       "core:mod-auto-sort",
       "core:mod-capabilities",
       "core:mod-conflicts",
+      "core:mod-install-failure",
+      "core:mod-zip-import-failure",
     ]) {
       expect(MODELLED_SCREENS).toContain(id);
     }

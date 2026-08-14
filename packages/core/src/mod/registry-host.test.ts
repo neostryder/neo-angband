@@ -5,7 +5,7 @@
  * throws AgentCapabilityError for the domains it omits, at call time.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentCapabilityError } from "../agent/types.js";
 import { EffectRegistry } from "../effects/interpreter.js";
 import { ActionRegistry } from "../game/player-turn.js";
@@ -120,6 +120,8 @@ function recordingBlowEnv(player: Player, applied: string[]): MonBlowEnv {
 import { createModRegistryHost } from "./registry-host.js";
 import { ProjectionHandlerRegistry } from "../game/projection-handlers.js";
 import { VocabularyRegistry } from "./vocabulary.js";
+import { messageTypes } from "../sound/message-types.js";
+import { soundPrefRegistry } from "../sound/sound-registry.js";
 
 /** An exact-match capability set (mirrors CapabilitySet's has()). */
 function grant(...caps: string[]): { has: (c: string) => boolean } {
@@ -479,5 +481,70 @@ describe("createModRegistryHost - the store facade", () => {
     expect(t._stores.massProduceFor(999)).not.toBeNull();
     host.stores.setWillBuy(42, () => true);
     expect(t._stores.willBuyFor(42)).not.toBeNull();
+  });
+});
+
+/**
+ * Gap rows 20 and 21: the message-vocabulary facade.
+ *
+ * Two closed tables with no producer - MESSAGE_ENTRIES (154) and
+ * SOUND_PREF_ENTRIES (149) - behind one capability, because a mod's new spell
+ * needs a message type AND the sound it plays or neither is any use. The
+ * mechanics of each are proved in sound/message-types.test.ts and
+ * sound/sound-registry.test.ts; what is proved HERE is the facade: that a
+ * plugin can reach them at all, and cannot without consent.
+ */
+describe("createModRegistryHost - the message facade", () => {
+  afterEach(() => {
+    messageTypes.clear();
+    soundPrefRegistry.clear();
+  });
+
+  it("defines a message type and binds a sound to it, through the facade", () => {
+    const host = createModRegistryHost(targets(), grant("registry:message"));
+    const idx = host.messages.define("SOULFIRE", "soulfire");
+    expect(idx).toBe(154);
+    expect(host.messages.lookup("SOULFIRE")).toBe(154);
+    /* And core's own names still resolve through the same door. */
+    expect(host.messages.lookup("HIT")).toBe(2);
+    expect(host.messages.lookup("XYZZY")).toBe(-1);
+
+    host.messages.addSounds([{ type: "SOULFIRE", sounds: "sf_one sf_two" }]);
+    expect(host.messages.sounds()).toEqual([
+      { type: "SOULFIRE", sounds: "sf_one sf_two" },
+    ]);
+    expect(host.messages.types()).toEqual([
+      { name: "SOULFIRE", sound: "soulfire", owner: null },
+    ]);
+  });
+
+  it("defaults to core's module-level registries when the host wires none", () => {
+    /* Deliberate, and documented on RegistryTargets: both are process-wide, so
+     * there is exactly one of each and a host has nothing else to pass. */
+    const host = createModRegistryHost({}, grant("registry:message"));
+    host.messages.define("SOULFIRE", "soulfire");
+    expect(messageTypes.lookup("SOULFIRE")).toBe(154);
+  });
+
+  it("honours an explicit null as 'not available here'", () => {
+    const host = createModRegistryHost({ messages: null }, grant("registry:message"));
+    expect(() => host.messages.define("SOULFIRE")).toThrow(/host did not wire it/);
+  });
+
+  it("refuses every method without registry:message", () => {
+    const host = createModRegistryHost(targets(), grant("registry:effect"));
+    for (const call of [
+      (): void => void host.messages.define("SOULFIRE"),
+      (): void => void host.messages.lookup("HIT"),
+      (): void => void host.messages.types(),
+      (): void => void host.messages.addSounds([{ type: "HIT", sounds: "x" }]),
+      (): void => void host.messages.sounds(),
+    ]) {
+      expect(call).toThrow(AgentCapabilityError);
+      expect(call).toThrow(/registry:message/);
+    }
+    /* And nothing was registered on the way to the throw. */
+    expect(messageTypes.size).toBe(0);
+    expect(soundPrefRegistry.added()).toEqual([]);
   });
 });

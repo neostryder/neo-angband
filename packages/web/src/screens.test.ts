@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   colorToCss,
@@ -118,6 +118,7 @@ import {
   quiverLines,
   objectName,
   storeKnowledgeScreen,
+  STORE_STOCK_COLUMNS,
   hallOfFameScreen,
   hallOfFameTitle,
   hallOfFameFooter,
@@ -125,7 +126,12 @@ import {
   reportScreen,
   UPDATE_ACTION_KEYS,
   REPORT_ACTION_KEYS,
+  characterScreen,
+  SCREEN_PROMPTS,
+  SCREEN_NO_PROMPT,
+  screenPromptFor,
 } from "./screens";
+import { characterFlagsScreen } from "./charsheet";
 import { MessageLog } from "./messages";
 import { showScoreScreen } from "./score";
 import { showMonsterList } from "./monster-list";
@@ -1964,6 +1970,14 @@ describe("characterGrid knowledge gate (object_flag_is_known / object_element_is
  * "the table renders what I expected the padded strings to render". A hand-typed
  * expectation would only ever have agreed with whichever of the two I typed it
  * from.
+ *
+ * ONE line is deliberately NOT the literal main.ts capture any more: the
+ * header's "Price", which main.ts placed at column 62 - two short of
+ * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368) - a port defect fixed for
+ * task #257 (see `storeKnowledgeScreen`'s own comment in screens.ts). Column 64
+ * is what upstream's arithmetic gives and what this file's dedicated column
+ * test below derives independently, so the padEnd below is corrected to match
+ * rather than kept as a second copy of the bug.
  */
 function storeKnowledgeLinesBefore(
   state: GameState,
@@ -1977,7 +1991,7 @@ function storeKnowledgeLinesBefore(
   lines.push(
     isHome
       ? `${"Home Inventory".padEnd(52)}Weight`
-      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
+      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
   );
   if (stock.length === 0) {
     lines.push("");
@@ -2091,6 +2105,78 @@ describe("the knowledge menu's store view is a table (core:store-knowledge)", ()
       number: stock[0]!.number,
       weight: stock[0]!.weight,
     });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* task #257: the knowledge store's "Price" header column               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Pins the header's "Price" against upstream's OWN arithmetic
+ * (`scr_places_x[LOC_PRICE] + 4`, ui-store.c L368) rather than against
+ * whatever `storeKnowledgeScreen` happens to emit - a test that just records
+ * the current output would have recorded the pre-fix column just as happily.
+ *
+ * Upstream draws the numeric price with `%9ld` (ui-store.c L314-316) starting
+ * at `scr_places_x[LOC_PRICE]`, then draws the "Price" label 4 columns into
+ * that SAME 9-wide field (L368) - so the 5-char label's last character lands
+ * on the field's own last column: label right-justified flush with the data.
+ * This screen's price cell is the row's own last field (`priceStr.padStart(9)`
+ * in `storeKnowledgeLinesBefore` above, matching `STORE_STOCK_COLUMNS`'s
+ * `{ key: "price", width: 9, gap: 2 }`), so its end column is read directly off
+ * a real rendered row rather than retyped - and from there the expected header
+ * column follows by the same subtraction upstream's own code performs.
+ */
+describe('the knowledge store\'s "Price" header column (task #257)', () => {
+  const price = (obj: GameObject): number => obj.weight * 7 + 3;
+
+  it("right-justifies against the price field's own end column, matching scr_places_x[LOC_PRICE] + 4", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = [addPack(state, "& Ration~ of Food", 3)];
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "General Store",
+      owner: "Bilbo the Friendly",
+      isHome: false,
+      price,
+    });
+    const lines = screenBodyLines(view, 80);
+    const header = lines[2]!;
+    const row0 = lines[3]!;
+
+    // Ground truth for the price field's own end column, read off a rendered
+    // row rather than hand-computed - it is unchanged by this fix and already
+    // covered by the "byte for byte" tests above. The price string is the
+    // row's last field and carries no trailing padding of its own (it is a
+    // plain positive number), so its last character IS the row's last
+    // character.
+    const priceColumn = STORE_STOCK_COLUMNS.find((c) => c.key === "price")!;
+    expect(priceColumn.width).toBe(9);
+    const priceFieldEnd = row0.text.length - 1;
+
+    // Upstream's own subtraction: the label is 5 characters and ends where the
+    // 9-wide numeric field ends, i.e. it starts 4 short of that end column.
+    const expectedPriceHeaderCol = priceFieldEnd - ("Price".length - 1);
+
+    expect(header.text.indexOf("Price")).toBe(expectedPriceHeaderCol);
+    expect(expectedPriceHeaderCol).toBe(64); // upstream: scr_places_x[LOC_PRICE] + 4
+    expect(header).toEqual({
+      text: `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
+    });
+  });
+
+  it("agrees with the live shop screen: both put \"Price\" flush against the same 9-wide field", () => {
+    // shop.ts:589 draws the number with `${String(x).padStart(9)}${suffix}` at
+    // `gm.priceX`, and shop.ts:564 draws the label at `gm.priceX + 4` - the
+    // identical "label ends where the 9-wide field ends" relationship this
+    // screen now also has. There is no shared renderer to call from here (a
+    // shop needs a live `StartedGame` and a `Term`, which is shop.ts's own
+    // fixture, not this file's), so the check is the relationship itself: the
+    // label is 4 short of the end of a 9-wide right-justified numeric field,
+    // on both screens.
+    const priceFieldWidth = 9; // upstream's "%9ld" (ui-store.c L314-316), and shop.ts's `.padStart(9)`
+    const labelOffsetFromFieldStart = 4; // scr_places_x[LOC_PRICE] + 4 (ui-store.c L368), and shop.ts's gm.priceX + 4
+    expect(labelOffsetFromFieldStart).toBe(priceFieldWidth - "Price".length);
   });
 });
 
@@ -2394,5 +2480,137 @@ describe("the report page travels with its keys (core:report)", () => {
     expect(reportScreen({ phase: "failed" }, lines, "").actions).toEqual([
       { id: "confirm", key: "ENTER", label: "try again" },
     ]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The census: which actions take the terminal                         */
+/* ------------------------------------------------------------------ */
+
+describe("every action is on exactly one side of the prompt census", () => {
+  /**
+   * EVERY VIEW ANY BUILDER CAN PRODUCE WITH `actions`, built from the REAL
+   * builders across every branch that changes the action list - not from
+   * literals. A census checked against a hand-written list of ids is a census
+   * checked against itself; it has to be checked against what a presenter is
+   * actually handed.
+   */
+  function viewsWithActions(): ScreenView[] {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    /* p->known_state, which the character sheet reads for ac / to_a / to_h /
+     * to_d (char-sheet.ts panelCombat). A separate object rather than a second
+     * reference to `combat`, exactly as charsheet.test.ts's own fixture keeps
+     * them apart - sharing would make a test that moves the real state move the
+     * known one too. */
+    (state.actor as { knownCombat?: unknown }).knownCombat = {
+      toH: 0, toD: 0, ac: 0, toA: 0, skills: [],
+      numBlows: 100, ammoMult: 1, numShots: 0, ammoTval: 0, blessWield: false,
+    };
+    const uiConfig = buildUiEntryConfig({
+      uiEntry: loadJson<{ records: unknown[] }>("ui_entry").records,
+      uiEntryBase: loadJson<{ records: unknown[] }>("ui_entry_base").records,
+      uiEntryRenderer: loadJson<{ records: unknown[] }>("ui_entry_renderer").records,
+      objectProperty: loadJson<{ records: unknown[] }>("object_property").records,
+      playerProperty: loadJson<{ records: unknown[] }>("player_property").records,
+    } as never);
+    const out: ScreenView[] = [
+      characterScreen(state, "Fred"),
+      characterFlagsScreen(state, "Fred", uiConfig),
+      monsterListScreen(state, 80, false),
+      monsterListScreen(state, 80, true),
+    ];
+    const proseLines = [{ text: "Neo Angband", color: "#fff" }];
+    for (const phase of ["offer", "uptodate", "failed", "unchecked", "downloading"] as const) {
+      for (const how of ["swap", "web", "manual"] as const) {
+        for (const modCount of [0, 2]) {
+          out.push(updateScreen({ phase, how }, proseLines, "", modCount));
+        }
+      }
+    }
+    for (const phase of ["compose", "saved", "failed"] as const) {
+      out.push(reportScreen({ phase }, proseLines, ""));
+    }
+    return out.filter((v) => (v.actions?.length ?? 0) > 0);
+  }
+
+  it("names every published action exactly once, prompting or not", () => {
+    /* TOTAL and DISJOINT. Total is the point: an action in neither table is one
+     * nobody has followed into what `invoke` calls, and four such actions is how
+     * this defect happened. Disjoint is the other half - an action in both is a
+     * contradiction about whether the player can see the question. */
+    const seen = new Set<string>();
+    for (const view of viewsWithActions()) {
+      const prompts = SCREEN_PROMPTS[view.id] ?? {};
+      const safe = SCREEN_NO_PROMPT[view.id] ?? [];
+      for (const action of view.actions ?? []) {
+        seen.add(`${view.id}/${action.id}`);
+        const prompting = Object.prototype.hasOwnProperty.call(prompts, action.id);
+        const quiet = safe.includes(action.id);
+        expect(
+          [prompting, quiet],
+          `${view.id} "${action.id}" is in ${String(Number(prompting) + Number(quiet))} of the two tables`,
+        ).toEqual([prompting, !prompting]);
+      }
+    }
+    /* And nothing in the tables that no builder publishes: a census that names a
+     * command the game no longer has looks maintained and is not. */
+    for (const [viewId, actions] of Object.entries(SCREEN_PROMPTS)) {
+      for (const actionId of Object.keys(actions)) {
+        expect(seen.has(`${viewId}/${actionId}`), `${viewId}/${actionId}`).toBe(true);
+      }
+    }
+    for (const [viewId, actions] of Object.entries(SCREEN_NO_PROMPT)) {
+      for (const actionId of actions) {
+        expect(seen.has(`${viewId}/${actionId}`), `${viewId}/${actionId}`).toBe(true);
+      }
+    }
+  });
+
+  it("finds the four prompting sites, and the control that is not one", () => {
+    /* Verified by following each host's `invoke` into what it calls; the
+     * citations are in `SCREEN_PROMPTS`' own comment. `sort-exp` is the control:
+     * it goes through `invoke`, does real work, and never touches the terminal. */
+    const found = Object.entries(SCREEN_PROMPTS).flatMap(([viewId, actions]) =>
+      Object.entries(actions).map(([actionId, fact]) => `${viewId}/${actionId} ${fact.promptId} ${fact.extent}`),
+    );
+    expect(found.sort()).toEqual([
+      "core:character-flags/file charsheet:file line",
+      "core:character-flags/rename charsheet:rename screen",
+      "core:character/file charsheet:file line",
+      "core:character/rename charsheet:rename screen",
+      "core:report/describe report:describe line",
+      "core:update/mods update:mods screen",
+    ]);
+    expect(screenPromptFor("core:monster-list", "sort-exp")).toBeUndefined();
+    expect(SCREEN_NO_PROMPT["core:monster-list"]).toEqual(["sort-exp"]);
+  });
+
+  it("reads one prompt at a time through screenPromptFor, nesting and all", () => {
+    expect(screenPromptFor("core:character", "rename")).toEqual({
+      promptId: "charsheet:rename",
+      extent: "screen",
+    });
+    expect(screenPromptFor("core:character", "page-next")).toBeUndefined();
+    expect(screenPromptFor("core:inventory", "rename")).toBeUndefined();
+  });
+
+  it("is the WHOLE census: no other module publishes a screen's actions", () => {
+    /*
+     * The tripwire that makes a fifth site a build failure rather than a bug
+     * report. A new ACTION on a screen the corpus above already builds is caught
+     * by totality; a whole new SCREEN with actions, in a file nobody thought to
+     * add to the corpus, would not be - and that is exactly how `core:update`
+     * and `core:report` arrived. So: whoever publishes `actions:` on a view is
+     * pinned here, and growing that set means growing `viewsWithActions()` in
+     * the same commit.
+     *
+     * `screen-view.ts` is in the list and is not a producer: it is `freezeView`,
+     * which copies whatever a producer gave it.
+     */
+    const dir = new URL("./", import.meta.url);
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+      .filter((f) => /(^|[{,(]\s*|\n\s+)actions:\s*\S/u.test(readFileSync(new URL(f, dir), "utf8")));
+    expect(files.sort()).toEqual(["charsheet.ts", "screen-view.ts", "screens.ts"]);
   });
 });

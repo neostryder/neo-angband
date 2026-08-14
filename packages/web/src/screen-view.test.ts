@@ -19,10 +19,12 @@ import {
   freezeView,
   linesScreen,
   MODELLED_SCREENS,
+  screenBlockLines,
   screenBodyLines,
   SCREEN_FOOTER,
   UNMODELLED_SCREEN,
   type ScreenArtBlock,
+  type ScreenProse,
   type ScreenRow,
   type ScreenTableBlock,
   type ScreenView,
@@ -393,6 +395,173 @@ describe("a column can carry a picture, and a table can space itself", () => {
     expect(prose(12, 80)).toEqual(["alpha beta", "gamma delta", "epsilon"]);
     /* A narrow terminal still wins: `wrap` is a clamp, not a minimum. */
     expect(prose(72, 12).every((l) => l.length <= 11)).toBe(true);
+  });
+});
+
+describe("a row can carry a paragraph, and the paragraph is prose", () => {
+  /* The gap this closes: a refusal, a dropped auto-sort suggestion and a declared
+   * conflict are each a RECORD with a paragraph attached, and a table row is one
+   * terminal row. All three sat on `lines` for that reason and no other. */
+  const detailed = (detail: ScreenProse, rest: Partial<ScreenTableBlock> = {}): ScreenView =>
+    table({
+      tagged: false,
+      columns: [{ key: "what" }],
+      rows: [ROW({ what: { text: "Name the author" } }, { id: "r", detail })],
+      ...rest,
+    });
+
+  it("draws the paragraph UNDER its own row, wrapped to the terminal", () => {
+    const view = detailed({ indent: 4, paragraphs: [[{ text: "no author is named" }]] });
+    /* Full objects rather than `.text`: the row is a plain line and the detail is
+     * prose, which always emits `runs` - and the indent is part of the first run
+     * rather than a run of its own, because prose coalesces adjacent same-colour
+     * characters exactly as `proseLine` has always done. */
+    expect(screenBodyLines(view, 14)).toEqual([
+      { text: "Name the author" },
+      { text: "    no author", runs: [{ text: "    no author", color: "" }] },
+      { text: "    is named", runs: [{ text: "    is named", color: "" }] },
+    ]);
+  });
+
+  it("follows ITS OWN row rather than collecting under the table", () => {
+    /* A paragraph gathered at the foot of the table is a footnote, and the record
+     * it explains is however many rows back the reader can count. */
+    const view = table({
+      tagged: false,
+      columns: [{ key: "what" }],
+      rows: [
+        ROW({ what: { text: "one" } }, { detail: { indent: 2, paragraphs: [[{ text: "first" }]] } }),
+        ROW({ what: { text: "two" } }, { detail: { indent: 2, paragraphs: [[{ text: "second" }]] } }),
+      ],
+    });
+    expect(screenBodyLines(view, 40).map((l) => l.text)).toEqual([
+      "one",
+      "  first",
+      "two",
+      "  second",
+    ]);
+  });
+
+  it("is laid out by the SAME function a text block is, for both flows", () => {
+    /* The load-bearing assertion of the whole addition. `screen-view.ts` owns two
+     * transcribed wraps and #255 was a renderer running one while its comment cited
+     * the other; a detail that folded text its own way would be that defect with a
+     * longer fuse. So a detail's rows are asserted to be the `text` block's rows,
+     * byte for byte, rather than to be some expected strings that happen to agree
+     * with them today. */
+    const prose = (flow: ScreenProse["flow"]): ScreenProse => ({
+      paragraphs: [[{ text: "abcdefghijkl" }]],
+      ...(flow === undefined ? {} : { flow }),
+    });
+    for (const flow of [undefined, "textblock", "text-out"] as const) {
+      expect(screenBodyLines(detailed(prose(flow)), 10).slice(1)).toEqual(
+        screenBlockLines({ ...prose(flow), kind: "text" }, 10),
+      );
+    }
+  });
+
+  it("and the two flows really do disagree on that fixture", () => {
+    /* The control for the assertion above, which would pass on any fixture the two
+     * algorithms agree about - and they agree on almost everything, which is
+     * exactly how the #255 miscitation survived: 1041 of 1041 shipped descriptions
+     * came out identical either way. A word with no space in it is where they part,
+     * because one packs `width` characters and the other stops two columns short. */
+    const paragraphs = [[{ text: "abcdefghijkl" }]];
+    const rows = (flow: "textblock" | "text-out"): string[] =>
+      screenBodyLines(detailed({ paragraphs, flow }), 10)
+        .slice(1)
+        .map((l) => l.text);
+    expect(rows("textblock")).toEqual(["abcdefghij", "kl"]);
+    expect(rows("text-out")).toEqual(["abcdefghi", "jkl"]);
+  });
+
+  it("clamps to its own wrap, and the terminal still wins", () => {
+    /* `wrap` on a detail is `ScreenProse.wrap`: a clamp on the terminal, never a
+     * minimum - the same rule a column's width and a prose block's wrap follow. */
+    const prose: ScreenProse = { wrap: 12, paragraphs: [[{ text: "alpha beta gamma delta" }]] };
+    expect(screenBodyLines(detailed(prose), 80).slice(1).map((l) => l.text)).toEqual([
+      "alpha beta",
+      "gamma delta",
+    ]);
+    expect(
+      screenBodyLines(detailed(prose), 8)
+        .slice(1)
+        .every((l) => l.text.length <= 7),
+    ).toBe(true);
+  });
+
+  it("never widens a column or moves the row above it", () => {
+    /* A detail is not a cell, so `columnWidths` must never see it. If it did, the
+     * longest paragraph on the screen would set the width of a column it is not in
+     * - and every row of a table would move because one of them had something to
+     * explain. */
+    const long = { paragraphs: [[{ text: "x".repeat(300) }]] };
+    const plain = table({
+      tagged: false,
+      columns: [{ key: "what", label: "What" }, { key: "who" }],
+      rows: [ROW({ what: { text: "Name the author" }, who: { text: "nobody" } })],
+    });
+    const withDetail = table({
+      tagged: false,
+      columns: [{ key: "what", label: "What" }, { key: "who" }],
+      rows: [ROW({ what: { text: "Name the author" }, who: { text: "nobody" } }, { detail: long })],
+    });
+    expect(screenBodyLines(withDetail, 80).slice(0, 2)).toEqual(screenBodyLines(plain, 80));
+  });
+
+  it("leaves gapAfter's blank rows under the LAST detail, not under the last row", () => {
+    /* `gapAfter` is the space between this table and the block below it. A blank
+     * row emitted before the last record's paragraph would put the separator inside
+     * the table and the paragraph outside it. */
+    const view = detailed({ paragraphs: [[{ text: "why" }]] }, { gapAfter: 1 });
+    expect(screenBodyLines(view, 40).map((l) => l.text)).toEqual(["Name the author", "why", ""]);
+  });
+
+  it("keeps a row's own colours while the detail speaks in its own", () => {
+    /* Full objects, not `.text`: a coloured cell emits a `runs` array where a plain
+     * coloured row emits one colour, and a detail emits `runs` always, because that
+     * is what prose does. The two must not borrow each other's voice. */
+    const view = table({
+      tagged: false,
+      columns: [{ key: "a", width: 3 }, { key: "b" }],
+      rows: [
+        ROW(
+          { a: { text: "req" }, b: { text: "unmet", color: "#f00" } },
+          { color: "#ccc", detail: { color: "#888", paragraphs: [[{ text: "because" }]] } },
+        ),
+      ],
+    });
+    expect(screenBodyLines(view, 40)).toEqual([
+      {
+        text: "req unmet",
+        color: "#ccc",
+        runs: [
+          { text: "req ", color: "#ccc" },
+          { text: "unmet", color: "#f00" },
+        ],
+      },
+      { text: "because", color: "#888", runs: [{ text: "because", color: "#888" }] },
+    ]);
+  });
+
+  it("freezes the detail as deeply as it freezes the cells", () => {
+    const view = detailed({ paragraphs: [[{ text: "why" }]] });
+    const row = (view.blocks[0] as ScreenTableBlock).rows[0]!;
+    expect(Object.isFrozen(row.detail)).toBe(true);
+    expect(Object.isFrozen(row.detail!.paragraphs)).toBe(true);
+    expect(Object.isFrozen(row.detail!.paragraphs[0])).toBe(true);
+    expect(Object.isFrozen(row.detail!.paragraphs[0]![0])).toBe(true);
+  });
+
+  it("drops an absent detail rather than carrying it as undefined", () => {
+    /* Same rule every other optional on a row follows, and the same reason: a
+     * presenter asking `"detail" in row` has to get the answer `row.detail !==
+     * undefined` gives. Also the byte-identity guarantee in key form - a row built
+     * before details existed is the object it always was. */
+    const view = table({ columns: [{ key: "name" }], rows: [ROW({ name: { text: "x" } })] });
+    const row = (view.blocks[0] as ScreenTableBlock).rows[0]!;
+    expect("detail" in row).toBe(false);
+    expect(Object.keys(row)).toEqual(["cells"]);
   });
 });
 

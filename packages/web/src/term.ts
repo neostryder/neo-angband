@@ -198,6 +198,25 @@ export interface GridHitTest {
   cellAt(clientX: number, clientY: number): GridCell | null;
 }
 
+/**
+ * A BOUNDED erase: `Term_erase(x, y, len)`, blanking `len` cells and no more.
+ *
+ * NOT AN INVENTION - it is the call upstream already has and the port had not
+ * needed until now. `eraseToEol`'s own comment names it: `askfor_aux`
+ * (ui-input.c:891) edits a field in the middle of a row and must not wipe what
+ * is to its right, and says in as many words that eraseToEol/prt is the wrong
+ * tool there.
+ *
+ * OPTIONAL, like `GridReadback` and `GridGeometry`, and for a concrete reason
+ * rather than symmetry: two dozen test doubles implement `GridSurface` by hand,
+ * and adding a required method would break every one of them for no benefit -
+ * they are all full-width, which is exactly the case that does not need it.
+ * `region-surface.ts` says what a surface without it can and cannot bound.
+ */
+export interface GridSpanErase {
+  eraseSpan(x: number, y: number, len: number): void;
+}
+
 /** Logical-grid readback is optional: 3D renderers need not retain a character buffer. */
 export interface GridReadback {
   snapshot(): string[];
@@ -1026,6 +1045,28 @@ export class GlyphTerm
     const row = this.grid[y];
     if (!row) return;
     for (let cx = Math.max(0, x); cx < this.cols; cx++) row[cx] = null;
+    this.schedule();
+  }
+
+  /**
+   * Term_erase(x, y, len) (ui-term.c): blank exactly `len` cells from `x`.
+   *
+   * The bounded sibling of eraseToEol, which is `Term_erase(col, row, 255)` -
+   * 255 being clamped to the terminal width. See `GridSpanErase` for why the
+   * port needs it now and why it is optional on the interface.
+   *
+   * BLANKS TO null, NOT TO SPACES, which is the same distinction eraseToEol
+   * draws. `null` is the grid's own spelling of "nothing here" and is what
+   * `carryGrid` preserves across a resize; a space is a glyph that happens to
+   * be blank, and it OCCLUDES - a region erasing with spaces would punch a
+   * white hole in whatever it was meant to be floating over.
+   */
+  eraseSpan(x: number, y: number, len: number): void {
+    if (y < 0 || y >= this.rows || y >= this.grid.length) return;
+    const row = this.grid[y];
+    if (!row) return;
+    const to = Math.min(this.cols, x + len);
+    for (let cx = Math.max(0, x); cx < to; cx++) row[cx] = null;
     this.schedule();
   }
 

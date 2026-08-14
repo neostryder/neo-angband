@@ -33,12 +33,15 @@ import { PROJECT_FEAT_HANDLERS } from "../game/project-feat.js";
 import { PROJECT_OBJ_HANDLERS } from "../game/project-obj.js";
 import { PLAYER_SIDE_HANDLERS } from "../game/player-side.js";
 import { ProjectionHandlerRegistry } from "../game/projection-handlers.js";
-import { castProjection, monsterCastSource } from "../game/project-cast.js";
+import { castProjection, monsterCastSource, playerCastSource } from "../game/project-cast.js";
 import type { CastContext } from "../game/project-cast.js";
 import { createModRegistryHost } from "../mod/registry-host.js";
 import type { ModRegistryHost } from "../mod/registry-host.js";
 import { AgentCapabilityError } from "../agent/types.js";
 import { PROJECT } from "../world/project.js";
+import { MONSTER_HANDLERS_BY_CODE } from "../mon/project-mon.js";
+import type { Monster } from "../mon/monster.js";
+import { MON_MSG } from "../generated/index.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -345,5 +348,215 @@ describe("the tables the engine holds are the registry's own", () => {
     const mine: ProjectFeatHandler = () => true;
     reg.feat.set("late", mine);
     expect(handed.get("late")).toBe(mine);
+  });
+});
+
+/**
+ * THE FOURTH SIDE (gap row 7, 2026-08-14).
+ *
+ * project_m was the one #159 left out: terrain, floor objects and the player
+ * were all reachable, and a mod's own projection did nothing at all to a
+ * MONSTER - the target a combat mod is actually aimed at. The table was a
+ * frozen 56-slot ARRAY indexed by PROJ value, and a mod's projection is
+ * appended at index 56, so the lookup fell off the end and `if (handler)` ate
+ * it silently. Same tests as the other three sides, for the same reason: a
+ * table that has been converted is not a table a mod can reach.
+ */
+
+/** Fire a real player-sourced projection at a monster's own grid. */
+function blastMonster(s: Started, typ: number, dam: number): Monster {
+  const midx = s.state.monsters.findIndex((m, i) => i > 0 && !!m);
+  expect(midx, "the generated level should contain a monster").toBeGreaterThan(0);
+  const mon = s.state.monsters[midx]!;
+  castProjection(
+    s.state,
+    s.cast,
+    { ...playerCastSource(s.state), grid: mon.grid },
+    mon.grid,
+    dam,
+    typ,
+    PROJECT.KILL,
+    0,
+  );
+  return mon;
+}
+
+describe("a handler installed after the game is wired reaches project_m", () => {
+  it("seeds the fourth table with core's 56, and leaves the original alone", () => {
+    const s = started(9501, 3);
+    const reg = s.state.projectionHandlers!;
+    expect(reg.mon.codes()).toEqual([...MONSTER_HANDLERS_BY_CODE.keys()]);
+    const before = MONSTER_HANDLERS_BY_CODE.size;
+    reg.mon.set("leak-check", () => {});
+    expect(MONSTER_HANDLERS_BY_CODE.size).toBe(before);
+    expect(started(9502, 3).state.projectionHandlers!.mon.has("leak-check")).toBe(
+      false,
+    );
+  });
+
+  it("CONTROL: with no mod, core's own ACID handler runs and does core's job", () => {
+    const s = started(9503, 3);
+    const seen: { code: string; dam: number }[] = [];
+    for (const code of s.state.projectionHandlers!.mon.codes()) {
+      const core = s.state.projectionHandlers!.mon.handlerFor(code)!;
+      s.state.projectionHandlers!.mon.set(code, (ctx) => {
+        seen.push({ code, dam: ctx.dam });
+        core(ctx);
+      });
+    }
+    const mon = blastMonster(s, projOf(s.cast, "ACID"), 40);
+    expect(seen.map((e) => e.code)).toEqual(["ACID"]);
+    expect(seen[0]!.dam).toBeGreaterThan(0);
+    expect(mon).toBeTruthy();
+  });
+
+  it("a mod's handler replaces core's for a CORE code, and mutates the context", () => {
+    const s = started(9503, 3);
+    const calls: { hp: number; dam: number }[] = [];
+    s.host.projections.mon.set("ACID", (ctx) => {
+      calls.push({ hp: ctx.mon.hp, dam: ctx.dam });
+      /* What a mod's handler is FOR: change the outcome. Skipping the effect
+       * entirely is the most visible thing it can do, and it is observable
+       * from outside as the monster taking no damage at all. */
+      ctx.dam = 0;
+      ctx.skipped = true;
+    });
+    const mon = s.state.monsters.find((m, i) => i > 0 && !!m)!;
+    const hpBefore = mon.hp;
+    blastMonster(s, projOf(s.cast, "ACID"), 40);
+    expect(calls.length).toBe(1);
+    expect(calls[0]!.dam).toBeGreaterThan(0);
+    expect(mon.hp).toBe(hpBefore);
+  });
+
+  it("mod B wraps mod A's monster handler, per code", () => {
+    const s = started(9504, 3);
+    const order: string[] = [];
+    s.host.projections.mon.set("ACID", (ctx) => {
+      order.push("A");
+      ctx.skipped = true;
+    });
+    const previous = s.host.projections.mon.handlerFor("ACID");
+    expect(previous).toBeTruthy();
+    s.host.projections.mon.set("ACID", (ctx) => {
+      order.push("B-before");
+      previous!(ctx);
+      order.push("B-after");
+    });
+    blastMonster(s, projOf(s.cast, "ACID"), 40);
+    expect(order).toEqual(["B-before", "A", "B-after"]);
+  });
+
+  it("is gated by registry:projection like the other three sides", () => {
+    const s = started(9505, 3);
+    const gated = createModRegistryHost(
+      { projections: s.state.projectionHandlers ?? null },
+      { has: (c: string) => c === "registry:effect" },
+    );
+    for (const call of [
+      (): void => {
+        gated.projections.mon.set("ACID", () => {});
+      },
+      (): void => void gated.projections.mon.handlerFor("ACID"),
+      (): void => void gated.projections.mon.codes(),
+    ]) {
+      expect(call).toThrow(AgentCapabilityError);
+      expect(call).toThrow(/registry:projection/);
+    }
+    expect(s.state.projectionHandlers!.mon.handlerFor("ACID")).toBe(
+      MONSTER_HANDLERS_BY_CODE.get("ACID"),
+    );
+  });
+});
+
+describe("a MOD'S OWN projection finally does something to a monster", () => {
+  /* THE POINT OF ROW 7. Everything above could be satisfied by a table keyed
+   * on core's 56 codes. This is the case that could not work at all before:
+   * a projection.json record with a code the enum never heard of binds at
+   * index 56, and the old dispatch was `MONSTER_HANDLERS[56]` - undefined,
+   * guarded, silent. Terrain, objects and the player all handled it. */
+  const moddedPack: GamePack = {
+    ...pack,
+    projection: [
+      ...(pack.projection ?? []),
+      {
+        code: "SOULFIRE",
+        name: "soulfire",
+        type: "environs",
+        desc: "soulfire",
+        "player-desc": "soulfire",
+        "blind-desc": "something",
+        "lash-desc": "soulfire",
+        color: "r",
+        obvious: 1,
+      },
+    ],
+  };
+
+  function startedModded(seed: number): Started {
+    const game = startGame(moddedPack, { seed, depth: 3, className: "Warrior" });
+    const state = game.state;
+    const messages: string[] = [];
+    state.msg = (t: string): void => {
+      messages.push(t);
+    };
+    const effect = game.wizardBundles.effect;
+    expect(effect).toBeTruthy();
+    return {
+      game,
+      state,
+      cast: effect!.cast,
+      messages,
+      host: createModRegistryHost({ projections: state.projectionHandlers ?? null }),
+    };
+  }
+
+  it("binds past the 56 compiled slots and has no core monster handler", () => {
+    const s = startedModded(9601);
+    expect(projOf(s.cast, "SOULFIRE")).toBe(56);
+    expect(s.state.projectionHandlers!.mon.has("SOULFIRE")).toBe(false);
+  });
+
+  /* WHAT "does nothing to a monster" ACTUALLY MEANT, measured rather than
+   * assumed. A mod's projection with no monster handler is NOT inert: project_m
+   * still runs its driver, so the raw damage lands through mon_take_hit. What
+   * has no way to happen is everything TYPE-SPECIFIC - resistance, immunity,
+   * the damage the type would have been scaled to, fear / stun / confusion,
+   * polymorph, teleport, the "it is unaffected" line, obviousness. The handler
+   * is the only thing that computes any of it, so a mod's projection could only
+   * ever be an untyped hit for exactly its dice. This pair measures that: the
+   * control takes the raw damage and cannot be stopped, and the registered
+   * handler stops it. */
+  it("NEGATIVE CONTROL: with no handler, the damage lands raw and unmodifiable", () => {
+    const s = startedModded(9602);
+    const mon = s.state.monsters.find((m, i) => i > 0 && !!m)!;
+    const hpBefore = mon.hp;
+    blastMonster(s, projOf(s.cast, "SOULFIRE"), 40);
+    /* Damaged - so the projection is not silently dropped - and the amount is
+     * the undiminished blast, because nothing resisted, scaled or capped it. */
+    expect(mon.hp).toBeLessThan(hpBefore);
+    expect(s.state.projectionHandlers!.mon.has("SOULFIRE")).toBe(false);
+  });
+
+  it("a registered handler for the mod's own code RUNS and decides the outcome", () => {
+    const s = startedModded(9602);
+    const calls: number[] = [];
+    s.host.projections.mon.set("SOULFIRE", (ctx) => {
+      calls.push(ctx.dam);
+      /* The thing the negative control had no way to do: this monster is
+       * IMMUNE to soulfire. Nothing but a project_m handler can express it. */
+      ctx.dam = 0;
+      ctx.skipped = true;
+      ctx.hurtMsg = MON_MSG.UNAFFECTED;
+    });
+    const mon = s.state.monsters.find((m, i) => i > 0 && !!m)!;
+    const hpBefore = mon.hp;
+    blastMonster(s, projOf(s.cast, "SOULFIRE"), 40);
+    expect(calls.length).toBe(1);
+    expect(calls[0]).toBeGreaterThan(0);
+    /* Same seed, same level, same monster, same grid as the control above -
+     * the ONLY difference is the registration, and the monster now survives
+     * untouched where the control lost hit points. */
+    expect(mon.hp).toBe(hpBefore);
   });
 });

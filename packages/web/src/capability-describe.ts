@@ -101,6 +101,17 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Add new vocabulary - flags, stats, and other terms",
         elevated: false,
       };
+    case "message":
+      /* Additive vocabulary, same class as `vocab`: a mod appends its own MSG_
+       * types after the compiled 153 and binds sample names to them. It can
+       * also re-point a CORE message's samples, which is upstream's own
+       * last-writer-wins behaviour for a second `sound:HIT:` line rather than
+       * anything this seam invented - so a sound pack is the ordinary use, not
+       * an elevated one. */
+      return {
+        text: "Add new message types, and choose which sounds play for them",
+        elevated: false,
+      };
     default:
       return { text: `Override the "${domain}" game system`, elevated: true };
   }

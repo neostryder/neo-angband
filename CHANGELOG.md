@@ -20,6 +20,163 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **Regions can overlap, and they are ordered** (#253, MOD_REACH gap 21,
+  milestone 6, commits 1-2).
+
+  Until now a region was one of four tiles that divided the terminal between
+  them, and the invariant was "no cell is claimed twice". A screen is COMPOSED
+  of regions and does not cover them, so a floating window has to be able to sit
+  over a map that is still being drawn — which breaks that invariant on purpose.
+
+  The tiling rule is **kept**, scoped to the base layout where it is still true.
+  What replaces it globally is the stronger claim: overlap is legal, but a cell
+  claimed more than once has **exactly one visible owner, and it is the top of
+  the stack**. The composite has to be a function of the region set, not of the
+  order some `Map` happened to iterate in.
+
+  Ordering is by BAND — `base`, `overlay`, `modal`, `system` — and within a band
+  the later-declared region is on top, which for a mod is load order: the same
+  last-load-wins rule that already decides the front end, the HUD, the screen
+  presenter and the menu transform, wearing a different hat rather than being a
+  second rule. A free numeric z-index was declined because it is a coordination
+  problem with no coordinator: every mod picks a large number, and the first one
+  to out-bid the mod manager takes away the player's way to turn it off. A mod
+  cannot ask for the `system` band, so whatever the player uses to regain
+  control can always be drawn above a mod — including above the one that has
+  gone wrong.
+
+  **Transparent means a cell that is not written** — not a per-region alpha, not
+  a null-glyph sentinel. The grid already spells "nothing here" as `null` and a
+  second spelling would be a second rule; a cell holds one glyph, so there is no
+  blend of `k` and `#`, and alpha is a pixel concept already available at the
+  pixel projection through CSS. The corollary is the whole implementation:
+  `clipSurface` gives a region a surface whose `clear()` erases only its own
+  rectangle and whose outside writes are **dropped, not clamped**. Clamping
+  would put a mod's overflow onto somebody else's cell, turning an author's
+  off-by-one into a corruption of a neighbour neither of them can trace.
+
+  `GlyphTerm` gained `eraseSpan(x, y, len)`, which is not an invention:
+  `eraseToEol`'s own comment already named `Term_erase(x, y, len)` as the
+  bounded call upstream has and the port had not needed, citing `askfor_aux`
+  editing a field mid-row. It is optional on the interface, like `GridReadback`
+  and `GridGeometry`, because two dozen test doubles implement `GridSurface` by
+  hand and every one of them is full-width — which is exactly the case that does
+  not need it.
+
+  No production consumer yet, and that is deliberate: these two commits are the
+  model and the primitive, reviewable on their own.
+
+- **A screen now declares a rectangle** (#253 gap 21, #261 commit 3). The
+  rectangle is the whole terminal and **the picture is unchanged** — 4.2.6 shows
+  a screen as `screen_save` / full repaint / `screen_load`, and the parity suite
+  pins those pictures byte for byte. What is new is that a screen *has* a
+  rectangle at all, so a front end can learn it is being covered instead of
+  finding out when its window disappears. Shrinking any screen was declined: a
+  mod that wants a panel declares its own region.
+
+  `showViewOnTerminal`'s painting body did not change by one character — it is
+  now a push/pop wrapper around the original, painting through a surface clipped
+  to the region, which is the evidence that the clipped surface works.
+
+  Also added a source guard: **`term.clear()` is now an enumerated allow-list of
+  33 sites across 16 files.** One is the compositor and one is converted, so
+  **31 screens remain to become regions** — work that was always there and had
+  never been counted. The list may shrink freely; adding to it fails the build.
+  The failure it prevents: a mod's window is drawn, the player presses `M` for
+  the level map, and the window is gone with no error anywhere.
+
+- **A mod's screen presenter is told when the game is about to use the terminal
+  underneath it** (#258, mechanism only — the four call sites are not yet
+  wired). Four actions a presenter can run through `ScreenHost.invoke` open a
+  prompt on the faithful terminal, and until now those were drawn *under* the
+  mod's overlay: the player was asked a question they could not see. The
+  character sheet's rename **writes the save at the end of it**.
+
+  The game now announces the prompt, a presenter that can stand aside does, and
+  one that cannot hands the screen back and is told once what to add. Prompts
+  inside `invoke` remain allowed — forbidding them would make the actions a mod
+  can offer a strict subset of the game's, which is the seam being given up.
+
+  `SCREEN_PROMPTS` / `SCREEN_NO_PROMPT` enumerate, for every published screen
+  action, whether running it takes the terminal, and a test makes the pair total
+  and disjoint against the real view builders. **That table is the artefact
+  whose absence caused the defect** — nothing enumerated which actions prompt,
+  which is why two shipped broken and two more were added without anyone
+  noticing the pattern. A fifth prompting site is now a build failure.
+
+- **Mods can add message types, and choose the sounds for them** (#259 census
+  rows 20 and 21, new `registry:message` capability).
+
+  A `msgt:` naming a message type core had never heard of used to throw
+  `PARSE_ERROR_INVALID_MESSAGE` and take the whole bind down — **a crash, not a
+  missing feature.** A mod may now declare its own `MSG_` types, appended after
+  the 153 compiled-in ones, bind sample names to them, or re-point a core
+  message's samples. `MSG` is closed as a table and open as a lookup, the same
+  split `PROJ` has, so all five consumers widen at once. An unregistered name
+  still fails exactly as it did.
+
+  Last writer wins per message, because `message_sound_define` clears a
+  message's sample list before assigning — upstream's own behaviour for a second
+  `sound:HIT:` line, and what lets a sound-pack mod re-point a core message.
+
+  **No save impact, verified rather than asserted:** `checkMsgt` keeps the NAME
+  as a string and resolves to a number only at message time, so nothing a save
+  holds is renumbered and disabling the mod cannot corrupt one.
+
+  One limitation is recorded rather than papered over (#266): a plugin's
+  `register()` runs after `bootGame()`, so a mod cannot yet declare a message
+  type early enough for its own records to bind against it.
+
+- **A mod's own projection can now affect monsters** (#259 census row 7).
+  `project_m` was the fourth projection side and the one left out: a mod adding a
+  new projection could set the terrain alight, burn floor objects and hurt the
+  player, and a monster in the blast got an untyped hit for exactly the dice.
+
+  Not nothing, which is what the ticket claimed — the driver applies the damage
+  whether or not a handler runs. What could not happen was everything
+  type-specific: resistance, immunity, the scaled damage, fear, stun, confusion,
+  polymorph, teleport, the "unaffected" line, and whether the player learns
+  anything from watching. `host.projections.mon` completes the set under the
+  existing `registry:projection` grant, composing per code like the other three.
+
+- **A table row can carry a paragraph** (#263). `ScreenRow.detail` is prose that
+  belongs to one record and is not a column of it — a refused requirement's
+  explanation, a mod author's reason for declaring a conflict, the dependency
+  cycle that forced a load-order suggestion to be dropped.
+
+  Three screens were stuck rendering as flat text for want of it. Their data was
+  already structured, but a row's own cells render as exactly one terminal row,
+  so the only ways to draw them were to cut the paragraph into row fragments —
+  which a presenter would still have to reassemble by counting, making them
+  `lines` in a costume — or to lose the record.
+
+  A detail introduces **no new wrapping rule**: it is a `ScreenProse`, factored
+  out of `ScreenTextBlock` unchanged, so it goes through the same discriminator
+  a text block does and declares which of the two transcribed algorithms it uses
+  with the same `flow` field. That is deliberate — this file already owned two
+  wrap algorithms and implementing one while citing the other was the defect
+  fixed in #255. It is also not consulted when column widths are computed, so a
+  long paragraph cannot widen a column or move the row above it.
+
+  The rule for telling the halves apart, now written into the model: **structure
+  is what has keys; prose is what has paragraphs.** A detail is deliberately not
+  addressable — if you find yourself parsing one, the thing you are parsing is a
+  column the screen has not declared yet.
+
+- **The content layer's conflict rows carry their real record** (#262). The
+  conflicts pane became a table three commits ago, but `modConflictLines` in
+  `pack.ts` still did `computeConflictReport(contents).records.flatMap(r =>
+  r.humanLines)` — the records existed and were field-granular, and the
+  flattening was one line. The content layer now joins the same table with its
+  own `RecordConflict` attached, and the `{ kind: "content-record" }` stopgap
+  that marked those rows as recordless is retired.
+
+  `ConflictRow.record` stays nullable, narrowed to one honest case: when
+  `resolveLoadOrder` throws, composition never ran, so there is no record to
+  attach and only a thrown message — "could not ask", not "found nothing". That
+  arm is now named `unresolved-load-order` rather than reusing the old marker
+  for a different meaning.
+
 - **Sixteen more screens give up their models, and the screens a mod could not
   reach at all get a seam** (#253, MOD_REACH gap 21, step 5b-vi).
 
@@ -409,6 +566,118 @@ digest in the game's catalogue and must never be moved.
   vitals and cannot draw a proportional bar without parsing a rendering.
 
 ### Fixed
+
+- **A mod can no longer move the id of a record it does not own** (#233,
+  MOD_REACH gap 10). A content id's localid is derived from the record's own
+  name or code, so a mod that patched the **name** of a record it did not own
+  moved that record's id out from under every save written before the mod was
+  installed. Install a mod that renames Grip, and a character who had met him
+  reloaded to find `core:grip-farmer-maggot-s-dog` resolving to nothing.
+  Provenance did not cause this; provenance is what made it visible.
+
+  The rule now is that **a record's id is fixed by the pack that DEFINED it, and
+  a patch cannot move it** — in whatever namespace, so a mod's records are
+  protected from a later mod's rename exactly as core's are. The composer
+  records the definer's value for every top-level field a patch overwrote, and
+  the resolver mints from those.
+
+  Ids that an engine between 0.19.0 and this fix minted for a renamed record
+  **still resolve, as a separate fallback family**. Repairing the defect without
+  that would have traded one unresolvable-save defect for another. It is kept
+  apart from the pre-0.19.0 legacy map on purpose: that one reproduces the old
+  algorithm *including its suffix sequence*, and mixing the two would let a
+  moved id take a suffix from an id that has been in savefiles far longer. No
+  `SAVE_VERSION` bump — the format did not change, only which spelling the
+  writer chooses.
+
+  The alternative design — deriving an alias from the composer's own record key
+  — was rejected on measurement, not taste: **the composer's key and core's
+  localid disagree for 446 of 1,377 id-bearing records** (object kinds differ on
+  a separator, terrain uses `name` on one side and `code` on the other, traps
+  use a composite), so that alias would have been a guard that could not fire
+  for objects, traps or terrain at all. The two schemes were never meant to
+  agree and nothing had ever checked.
+
+- **Three refusal screens gained addressable rows** (#265). An install, update
+  or zip-import refusal now lists each unmet requirement as a row readable by
+  the finding's own id rather than parsed out of a sentence, with the reason as
+  that row's `detail`; auto-sort's dropped suggestions carry the blocking
+  cycle's mod ids as data instead of a second unaddressable line.
+
+  One deliberate movement, disclosed rather than worked around: the old
+  rendering flowed `title: problem` as one sentence and wrapped it wherever it
+  landed, so three of five findings had part of their *reason* sitting on the
+  title's line. A detail is prose belonging to a row and cannot be cut into row
+  fragments, so five findings now render as ten rows instead of eight. This is
+  the mod manager's own screen and nothing upstream pins it.
+
+  **`confirmDeclaredConflicts` was measured against the same change and left
+  alone.** It wraps an author's `because` with `wrapCssRuns`, and that algorithm
+  disagrees with the block model's on two enumerable cases: a hard-split token
+  immediately followed by more content, and a tail landing exactly on the wrap
+  boundary with an internal space. It wraps at `cols - 1`, a width the player
+  controls by resizing, so a boundary-exact tail is reachable with ordinary
+  prose. The warning already in that file — that swapping the algorithms "would
+  move the page under the player" — is correct and stands.
+
+- **Port defect: the knowledge menu's store view drew its `Price` header two
+  columns left of upstream** (#257). It sat at column 62; 4.2.6 draws it at
+  `scr_places_x[LOC_PRICE] + 4` (`ui-store.c:368`), four columns into the same
+  nine-wide field the price itself fills — so the label ends flush with the
+  number's field, at column 64. The proof that this was a slip rather than a
+  considered divergence is inside this repo: `shop.ts:564` draws the same header
+  on the live shop screen and gets it right, so two screens showing the same
+  data disagreed and only one of them agreed with the C.
+
+  This is core's to correct rather than the `bug-fixes` mod's, because it is a
+  place the PORT disagrees with 4.2.6 rather than a wart 4.2.6 has.
+
+  The two screens still differ in absolute column — the shop computes from the
+  live terminal width and the knowledge table uses fixed literals — for a
+  different reason, which is filed as #264 rather than papered over by making
+  the numbers match. Agreeing with each other is not the requirement; agreeing
+  with 4.2.6 is.
+
+- **The switch census could not see a dispatch that was reshaped instead of
+  converted** (#260). `tools/switch-census.mjs` found `switch` statements, and
+  the ratchet asserts that converted files are ABSENT from the manifest — which
+  correctly catches a conversion that was claimed but never made, and cannot
+  catch one that never happened. An if/else chain over an enum, or a lookup into
+  a module-level const array, is exactly as shut to a mod as a switch and scored
+  zero, so a file could leave the census by being **fixed** or by being
+  **reshaped** and the two looked identical. The denominator was drifting
+  downward for a reason nobody had written down.
+
+  It now counts all three shapes, tagged `SWITCH`, `IF_CHAIN` and
+  `ARRAY_LOOKUP`, and the ratchet asserts the difference rather than the
+  absence: a real conversion has zero rows of any kind, a reshape has a row
+  under a different kind.
+
+  Five reshaped dispatches came back, each hand-verified — including
+  `ui-entry.ts`'s `COMBINERS`, which is MOD_REACH row 18's 32-case switch and
+  had no successor row at all. **Precision was the whole difficulty:** asking
+  only "is this array indexed by a variable" fired on 122 rows of ordinary
+  control flow, RNG tables and colour palettes. Requiring a search BY FIELD —
+  a `.prop ===` comparison or a `.find`, which is the shape a dispatch table
+  actually has — cut it to five, with seven negative-control fixtures pinning
+  the shapes that must stay clean.
+
+  One edge is now written down rather than left silently true: `applyRenderer`
+  in the same file is a **six**-arm chain, below the threshold of eight, and
+  dropping the threshold to catch it would reopen the flood. Row 18 is
+  half-derived and half read by hand, and says so.
+
+- **The reach table's own rows contradicted the corrections printed beneath
+  them** (#259). The arithmetic was fixed on 2026-08-13 and the explanation
+  written, and the table rows themselves were left saying the old thing — the
+  same failure the document apologises for, committed again in the commit that
+  apologised. Rows 7 and 25 still read "accidental only - exported mutable
+  array" when both are frozen (`project-mon.ts:861` is `Object.freeze`,
+  `wizard.ts:520` is `deepFreezeMenu`); row 23's blocker still described a
+  closure that no longer exists; and row 24 read as "nothing reachable" when
+  `registry:menu` ships and reaches all six sites. A stale "no" under-reports
+  the work, but a stale "accidental" **advertises a seam that was deliberately
+  shut**, and an author could have planned a mod against it.
 
 - The comments above the update and report pages explained that they were
   painted directly because `showTextScreen` resolves on ESC, ENTER and SPACE

@@ -35,6 +35,20 @@
  * description, an error) is finished at `lines`; a list or a table on `lines` is
  * work not yet done.
  *
+ * AND A RECORD MAY HAVE A PARAGRAPH ATTACHED. `ScreenRow.detail` is prose that
+ * belongs to one row and is not a column of it - a refused requirement's
+ * explanation, an author's `because` under a conflict headline, the cycle that
+ * forced a suggestion to be dropped. Three screens were stuck at `lines` for the
+ * want of it, and not because their data was missing: the record was already a
+ * record and the paragraph was already a paragraph, but a table row is exactly one
+ * terminal row, so the only ways to draw them were to cut the paragraph into row
+ * FRAGMENTS - `lines` in a table's costume, since a presenter would still have to
+ * know that some rows continue others - or to leave the whole thing prose and lose
+ * the record. `detail` does not blur the rule above it, because it is not a second
+ * kind of cell: it is the same currency a `text` block deals in, UNWRAPPED
+ * paragraphs of runs with no keys, and everything a presenter must address by name
+ * is still a cell. Structure is what has keys; prose is what has paragraphs.
+ *
  * PURE. Nothing here reads a terminal or a game state, so a view can be built and
  * rendered by a test with no canvas.
  */
@@ -121,6 +135,34 @@ export interface ScreenRow {
   readonly values?: ScreenValues;
   /** Addressed by column key. A column with no cell here renders empty. */
   readonly cells: Readonly<Record<string, ScreenCell>>;
+  /**
+   * Prose that belongs to this row and is not a column of it - the paragraph under
+   * a record. See the module header for what it is FOR; this is what it does.
+   *
+   * IT USES NO NEW WRAP, and that is the point of its type. A detail is a
+   * `ScreenProse`, so the renderer lays it out by handing it to the same function a
+   * `text` block goes through, and it carries the same `flow` discriminator: absent
+   * means `textblock_calculate_lines`, `"text-out"` means `text_out_to_screen`.
+   * This file already owned two transcribed wraps and the bug that cost task #255
+   * was a renderer implementing one of them while citing the other. A third wrap
+   * living quietly under a table row would be that defect again, with a longer fuse.
+   *
+   * IT IS NOT A COLUMN AND IT IS NOT A TABLE-LEVEL FACT. `columnWidths` never sees
+   * it, so a long detail cannot widen a column or move the row above it, and a row
+   * WITHOUT one is laid out identically whether or not its siblings have one. That
+   * is why there is no `detailed` flag beside `tagged`: `tagged` had to be declared
+   * because deriving it from the rows collapsed the indent of a table whose rows
+   * happened to have no tags today, and a detail changes nothing about any row but
+   * its own.
+   *
+   * WHAT GOES HERE AND WHAT DOES NOT. Free text, or a sentence the game composed:
+   * an author's `because`, a refused requirement's problem. Anything a presenter
+   * has to reach by name stays a cell - the ids behind "A -> B -> A" belong on
+   * `semantic.data` exactly as the auto-sort screen's cycles already put them
+   * there, and a detail that a presenter would want to parse is a column that has
+   * not been declared yet.
+   */
+  readonly detail?: ScreenProse;
 }
 
 /** A list or a listing: columns with stable keys, rows addressed by them. */
@@ -176,9 +218,14 @@ export interface ScreenTableBlock {
  * The wrapping is the rendering, which is exactly what a presenter with its own
  * font has to redo. `paragraphs` are logical: a run stream per paragraph, split
  * where the game meant a break and nowhere else.
+ *
+ * A SHAPE RATHER THAN A BLOCK, so that the one place prose is described is the one
+ * place prose is described. A `text` block is this plus `kind`, and a row's
+ * `detail` is this on its own - which is what makes a detail laid out by the same
+ * function, with the same `flow` discriminator, and not by a third wrap this file
+ * would then own. See `ScreenRow.detail`.
  */
-export interface ScreenTextBlock {
-  readonly kind: "text";
+export interface ScreenProse {
   readonly paragraphs: readonly (readonly ScreenRun[])[];
   /** Columns of leading indent the faithful terminal uses. */
   readonly indent?: number;
@@ -222,6 +269,11 @@ export interface ScreenTextBlock {
    * voice throughout should not have to repeat itself on every run.
    */
   readonly color?: string;
+}
+
+/** A block that is nothing but prose. See `ScreenProse` for every field it has. */
+export interface ScreenTextBlock extends ScreenProse {
+  readonly kind: "text";
 }
 
 /**
@@ -426,6 +478,8 @@ export const MODELLED_SCREENS = [
   "core:mod-auto-sort",
   "core:mod-capabilities",
   "core:mod-conflicts",
+  "core:mod-install-failure",
+  "core:mod-zip-import-failure",
   "core:hall-of-fame",
   "core:store-knowledge",
   "core:update",
@@ -507,16 +561,7 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
         ...(block.empty === undefined ? {} : { empty: Object.freeze({ ...block.empty }) }),
       });
     case "text":
-      return Object.freeze({
-        kind: "text" as const,
-        paragraphs: Object.freeze(
-          block.paragraphs.map((p) => Object.freeze(p.map((r) => Object.freeze({ ...r })))),
-        ),
-        ...(block.indent === undefined ? {} : { indent: block.indent }),
-        ...(block.wrap === undefined ? {} : { wrap: block.wrap }),
-        ...(block.flow === undefined ? {} : { flow: block.flow }),
-        ...(block.color === undefined ? {} : { color: block.color }),
-      });
+      return Object.freeze({ kind: "text" as const, ...proseFields(block) });
     case "art":
       return Object.freeze({
         ...block,
@@ -542,6 +587,23 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
   }
 }
 
+/**
+ * One `ScreenProse`'s fields, deeply frozen, WITHOUT freezing the object holding
+ * them - so a `text` block can put `kind` in front of them and a row's `detail` can
+ * take them as they are, and neither has its own copy of what a paragraph is.
+ */
+function proseFields(prose: ScreenProse): ScreenProse {
+  return {
+    paragraphs: Object.freeze(
+      prose.paragraphs.map((p) => Object.freeze(p.map((r) => Object.freeze({ ...r })))),
+    ),
+    ...(prose.indent === undefined ? {} : { indent: prose.indent }),
+    ...(prose.wrap === undefined ? {} : { wrap: prose.wrap }),
+    ...(prose.flow === undefined ? {} : { flow: prose.flow }),
+    ...(prose.color === undefined ? {} : { color: prose.color }),
+  };
+}
+
 function freezeRow(row: ScreenRow): ScreenRow {
   const cells: Record<string, ScreenCell> = {};
   for (const [key, cell] of Object.entries(row.cells)) {
@@ -559,6 +621,7 @@ function freezeRow(row: ScreenRow): ScreenRow {
     ...(row.disabled === undefined ? {} : { disabled: row.disabled }),
     ...(row.values === undefined ? {} : { values: Object.freeze({ ...row.values }) }),
     cells: Object.freeze(cells),
+    ...(row.detail === undefined ? {} : { detail: Object.freeze(proseFields(row.detail)) }),
   });
 }
 
@@ -608,7 +671,7 @@ export function screenBlockLines(block: ScreenBlock, cols = 80): ScreenLine[] {
     case "text":
       return textBlockLines(block, cols);
     case "table":
-      return tableBlockLines(block);
+      return tableBlockLines(block, cols);
   }
 }
 
@@ -886,8 +949,13 @@ function trimTrailingSpace(runs: { text: string; color: string }[]): void {
  * slot has no weight, and padding it out to the weight column would put 12 spaces
  * of "row" where upstream ends the line. Nothing paints differently, but a test
  * that reads the row back sees the difference, and so does anything that measures.
+ *
+ * `cols` is the terminal's width and is here for one reason: a row's `detail` is
+ * prose and prose is wrapped to the terminal. No column consults it - a table's
+ * stops come from `columnWidths` and are the same at any width, exactly as they
+ * were before this argument existed.
  */
-function tableBlockLines(block: ScreenTableBlock): ScreenLine[] {
+function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
   const out: ScreenLine[] = [];
   if (block.caption !== undefined) out.push(runLine(block.caption));
   const widths = columnWidths(block);
@@ -926,8 +994,28 @@ function tableBlockLines(block: ScreenTableBlock): ScreenLine[] {
     const parts = block.columns.map((c, i) => cell(c, i, row.cells[c.key]?.text ?? ""));
     const text = (prefix + joinCells(block, parts)).replace(/\s+$/u, "");
     out.push(rowLine(text, prefix, block, row, parts));
+    /* The detail follows ITS OWN row, not the table: a paragraph collected under
+     * the last row would be a footnote, and the record it explains would be
+     * however many rows back the reader can count. */
+    if (row.detail !== undefined) out.push(...detailLines(row.detail, cols));
   }
   return withGap(out, block);
+}
+
+/**
+ * A row's `detail`, laid out by whichever of 4.2.6's two wraps it declares.
+ *
+ * ONE LINE OF BODY, DELIBERATELY. It would have been shorter to inline this at the
+ * call site and shorter still to write a wrap here that "just" folds a string at
+ * `cols`, and that is the trap: this file transcribes two of upstream's algorithms
+ * and #255 was a renderer running one while its comment cited the other. Routing a
+ * detail through `textBlockLines` means the discriminator is checked in exactly one
+ * place, so a detail and a `text` block cannot come to disagree about what
+ * `flow: "text-out"` means - and there is nothing here that could quietly become a
+ * third rule, because there is nothing here.
+ */
+function detailLines(detail: ScreenProse, cols: number): ScreenLine[] {
+  return textBlockLines({ ...detail, kind: "text" }, cols);
 }
 
 /** `gapAfter` blank rows under a table. */
