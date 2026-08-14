@@ -232,10 +232,12 @@ export type {
   MenuSemantics,
 } from "./menu.js";
 export type {
+  ScreenAction,
   ScreenArtBlock,
   ScreenBlock,
   ScreenCell,
   ScreenColumn,
+  ScreenHost,
   ScreenLinesBlock,
   ScreenPresenter,
   ScreenRow,

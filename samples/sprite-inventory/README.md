@@ -44,9 +44,21 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
   class, `level.values.level`, `gold.values.gold`, the killing blow. Upstream
   burns those into columns 8–39 of the ASCII stone; this sample draws its own
   stone, writes the character onto it, and never reads `lines` at all.
-- **It takes seven screens and declines the rest.** The character sheet, the
-  knowledge browser and the message history are still the game's own — and still
-  work.
+- **A number can be drawn as a shape.** The character sheet's stat rows publish
+  `cells.eb.values.bonus` as an integer, so the card panel draws the equipment
+  bonus as a **bar as long as the bonus**. There is no way to get that from
+  `"STR!  18/100  +1  +0  +2"` — which is the whole argument for `values` in one
+  picture. On the flag page the *columns* are the equipment slots and each
+  carries the worn item's glyph in `column.glyph`, so the header of that grid is
+  gear.
+- **A screen can be acted on, and the game still does the acting.** The sheet
+  publishes `view.actions` — rename, dump, page forward, page back — and `show`
+  is handed a `host`. Pressing one of their keys calls `host.invoke(id)`, so the
+  rename opens the *game's* prompt and the dump writes the *game's* file, and
+  the promise hands back the view the player should see next. A presenter that
+  took the sheet without this would have quietly taken three commands away.
+- **It takes nine screens and declines the rest.** The knowledge browser, the
+  help pages and the message history are still the game's own — and still work.
 - **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
   card keeps whatever the player's pref file chose.
 
@@ -67,15 +79,15 @@ be relaxed about.
 
 ## What this seam cannot do yet
 
-**The listings, the recall pages and the death screens have given up their
-models; the rest have not.** `MODELLED_SCREENS` in
-`packages/web/src/screen-view.ts` names the eleven: inventory, equipment,
+**The listings, the recall pages, the death screens and the character sheet have
+given up their models; the rest have not.** `MODELLED_SCREENS` in
+`packages/web/src/screen-view.ts` names the thirteen: inventory, equipment,
 quiver, object list, message history, player history, object recall, object
-comparison, monster recall, tombstone, winner. Everything else arrives under the
-shared id `core:text` with a single `lines` block of pre-wrapped rows — enough to
-reskin a frame, not enough to reimagine a listing. The character sheet, the
-knowledge browser and the spell lists are the same gap's biggest remaining
-piece.
+comparison, monster recall, tombstone, winner, and the character sheet's two
+pages. Everything else arrives under the shared id `core:text` with a single
+`lines` block of pre-wrapped rows — enough to reskin a frame, not enough to
+reimagine a listing. The knowledge browser, the help pages and the spell lists
+are the same gap's biggest remaining piece.
 
 **A screen has no published region.** It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap
@@ -101,3 +113,11 @@ draws `"Frodo"`, and not one of the `art` block's own ASCII rows appears among
 the strings it drew. The rows are taken from the block under test rather than
 from a guess at what the stone looks like, so redrawing the art cannot quietly
 retire the assertion.
+
+For the character sheet the check is in `packages/web/src/charsheet.test.ts`,
+because that is where a real `GameState` lives: it loads **this folder** by path,
+drives the real `showCharacterSheet` through the real seam, and asserts that not
+one *composite* row the faithful terminal would have produced — a label joined to
+its value, or a padded multi-field line — reached the canvas. Then it presses
+`h` and checks that the page moved **through the host** rather than by the mod
+deciding for itself what page two is.

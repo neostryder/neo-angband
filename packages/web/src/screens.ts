@@ -83,6 +83,7 @@ import {
   weightRemaining,
 } from "@rpgm-tools/neo-angband-core";
 import type {
+  CharSheetDeps,
   GameState,
   GameObject,
   Monster,
@@ -105,14 +106,17 @@ import type {
 import type { ScreenLine, MenuItem } from "./overlay";
 import {
   freezeView,
+  screenBlockLines,
   screenBodyLines,
   SCREEN_FOOTER,
   UNMODELLED_SCREEN,
+  type ScreenAction,
   type ScreenArtField,
   type ScreenBlock,
   type ScreenCell,
   type ScreenColumn,
   type ScreenRow,
+  type ScreenTableBlock,
   type ScreenTextBlock,
   type ScreenView,
 } from "./screen-view";
@@ -685,22 +689,6 @@ export function charSheetDeps(
   };
 }
 
-/** Greedy word-wrap of plain text to `width` columns (history paragraphs). */
-function wrapPlain(text: string, width: number): string[] {
-  const out: string[] = [];
-  let line = "";
-  for (const word of text.split(/\s+/u).filter((w) => w.length > 0)) {
-    if (line.length === 0) line = word;
-    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
-    else {
-      out.push(line);
-      line = word;
-    }
-  }
-  if (line) out.push(line);
-  return out;
-}
-
 /**
  * The player-history block (display_player_xtra_info, ui-player.c L858):
  * player->history wrapped (upstream text_out_wrap = 72) and indented one
@@ -709,13 +697,30 @@ function wrapPlain(text: string, width: number): string[] {
  * still renders nothing so a headless / pre-birth character degrades cleanly.
  */
 export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
+  const block = historyTextBlock(state);
+  return block === null ? [] : screenBlockLines(block, cols);
+}
+
+/**
+ * The same history as PROSE rather than as rows: one paragraph, unwrapped, with
+ * the indent and the 72-column wrap published beside it.
+ *
+ * `null` for a character with no history, so a headless or pre-birth character
+ * contributes no block at all rather than an empty one. The wrap moved from a
+ * plain greedy one to the renderer's upstream-faithful rule here
+ * (`text_out_to_screen`, ui-output.c L301), which is where every other prose page
+ * already wraps.
+ */
+function historyTextBlock(state: GameState): ScreenTextBlock | null {
   const history = state.actor.player.history.trim();
-  if (!history) return [];
-  const width = Math.max(10, Math.min(72, cols - 2));
-  return wrapPlain(history, width).map((text) => ({
-    text: ` ${text}`,
+  if (!history) return null;
+  return {
+    kind: "text",
+    paragraphs: [[{ text: history }]],
+    indent: 1,
+    wrap: 72,
     color: colorToCss(COLOUR_WHITE),
-  }));
+  };
 }
 
 /**
@@ -726,7 +731,13 @@ export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
  * cols 12/16/20 ("%+3d", L_BLUE), Best at col 24 (L_GREEN), and - only when
  * drained - the current value at col 31 in YELLOW. No Cur column otherwise.
  */
-export function statRowLine(row: {
+export function statRowLine(row: StatSheetRow): ScreenLine {
+  /* Index 1: the header the block always emits, then the one row. */
+  return screenBlockLines(statTableBlock([row]))[1]!;
+}
+
+/** One `statTable` row, as both of the sheet's layouts take it. */
+export interface StatSheetRow {
   label: string;
   natural: string;
   raceBonus: string;
@@ -736,23 +747,6 @@ export function statRowLine(row: {
   reduced: string | null;
   naturalMax: boolean;
   drained: boolean;
-}): ScreenLine {
-  const label = row.naturalMax
-    ? `${row.label.slice(0, 3)}!${row.label.slice(4)}`
-    : row.label;
-  const runs: { text: string; color: string }[] = [
-    { text: label.padEnd(5).slice(0, 5), color: colorToCss(COLOUR_WHITE) },
-    { text: row.natural.padStart(6), color: colorToCss(COLOUR_L_GREEN) },
-    {
-      text: ` ${row.raceBonus.padStart(3)} ${row.classBonus.padStart(3)} ${row.equipBonus.padStart(3)}`,
-      color: colorToCss(COLOUR_L_BLUE),
-    },
-    { text: ` ${row.best.padStart(6)}`, color: colorToCss(COLOUR_L_GREEN) },
-  ];
-  if (row.drained && row.reduced !== null) {
-    runs.push({ text: ` ${row.reduced.padStart(6)}`, color: colorToCss(COLOUR_YELLOW) });
-  }
-  return { text: runs.map((r) => r.text).join(""), color: FG, runs };
 }
 
 /** The stat-table header, on the same column stops as statRowLine (the
@@ -760,50 +754,196 @@ export function statRowLine(row: {
  * col+5/+12/+16/+20/+24 - both width-6 headers padded like the data, fixing
  * the classic 5-wide header misalignment; there is no Cur header). */
 export function statHeaderLine(): ScreenLine {
-  const text =
-    `${" ".repeat(5)}${"Self".padStart(6)} ${"RB".padStart(3)} ` +
-    `${"CB".padStart(3)} ${"EB".padStart(3)} ${"Best".padStart(6)}`;
-  return { text, color: LABEL };
+  return screenBlockLines(statTableBlock([]))[0]!;
 }
 
 /**
- * The character-sheet lines (C): the six-stat table then the five panels
- * (name/class, misc, level/exp, combat, skills), faithful to characterPanels /
- * statTable, then the player-history block. Laid out as a scrollable single
- * column so it reads at any width (the narrow / phone layout).
+ * The stat table's columns on the exact upstream stops (display_player_stat_info,
+ * ui-player.c L460-507): the stat name at col 0, Self at col 5 with NO gap before
+ * it, the three bonus fields and Best single-spaced after.
+ *
+ * `cur` carries no label because upstream prints no Cur header, and it renders as
+ * nothing at all on a stat that is not drained - the table's trailing-space cut,
+ * not a special case here.
+ */
+const STAT_COLUMNS: readonly ScreenColumn[] = [
+  { key: "stat", label: "", width: 5 },
+  { key: "self", label: "Self", width: 6, align: "right", gap: 0 },
+  { key: "rb", label: "RB", width: 3, align: "right" },
+  { key: "cb", label: "CB", width: 3, align: "right" },
+  { key: "eb", label: "EB", width: 3, align: "right" },
+  { key: "best", label: "Best", width: 6, align: "right" },
+  { key: "cur", label: "", width: 6, align: "right" },
+];
+
+/** A bonus field ("+1", "-1", "+0") with the number it was formatted from. */
+function bonusCell(text: string): ScreenCell {
+  const n = Number(text.trim());
+  return {
+    text,
+    color: colorToCss(COLOUR_L_BLUE),
+    ...(Number.isFinite(n) ? { values: { bonus: n } } : {}),
+  };
+}
+
+function statScreenRow(row: StatSheetRow): ScreenRow {
+  /* '!' REPLACES the colon on a stat at its natural maximum (L480-481). */
+  const label = row.naturalMax ? `${row.label.slice(0, 3)}!${row.label.slice(4)}` : row.label;
+  const green = colorToCss(COLOUR_L_GREEN);
+  const drained = row.drained && row.reduced !== null;
+  return {
+    id: row.label.replace(/[^A-Za-z]/gu, "").toLowerCase(),
+    color: FG,
+    cells: {
+      stat: { text: label, color: colorToCss(COLOUR_WHITE) },
+      self: { text: row.natural, color: green },
+      rb: bonusCell(row.raceBonus),
+      cb: bonusCell(row.classBonus),
+      eb: bonusCell(row.equipBonus),
+      best: { text: row.best, color: green },
+      /* An undrained stat's Cur cell is EMPTY and uncoloured rather than absent,
+       * so the column exists on every row - the `tagged` lesson, one field over. */
+      cur: drained
+        ? { text: row.reduced ?? "", color: colorToCss(COLOUR_YELLOW) }
+        : { text: "" },
+    },
+  };
+}
+
+function statTableBlock(rows: readonly StatSheetRow[], gapAfter = 0): ScreenTableBlock {
+  return {
+    kind: "table",
+    key: "stats",
+    tagged: false,
+    columns: STAT_COLUMNS,
+    headerColor: LABEL,
+    rows: rows.map(statScreenRow),
+    ...(gapAfter === 0 ? {} : { gapAfter }),
+  };
+}
+
+/** One `characterPanels` line, as core publishes it. */
+interface PanelLine {
+  label: string;
+  value: string;
+  color: number;
+}
+
+function panelScreenRow(line: PanelLine): ScreenRow {
+  if (!line.label && !line.value) return { cells: {} };
+  /* Some model labels already carry a trailing colon; normalise so a row never
+   * renders "Turns used::". A label-only line is a section header and shows bare. */
+  const label = line.label.replace(/:\s*$/u, "");
+  const id = label
+    .replace(/[^A-Za-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .toLowerCase();
+  if (!line.value) {
+    return {
+      ...(id === "" ? {} : { id }),
+      color: colorToCss(line.color),
+      cells: { label: { text: label } },
+    };
+  }
+  /* The number BEHIND the text, and only where the whole field is one: "18/100"
+   * and "+3, +5" are not quantities and publishing a half-parse of them would be
+   * worse than publishing nothing. */
+  const n = Number(line.value.replace(/,/gu, ""));
+  return {
+    ...(id === "" ? {} : { id }),
+    color: colorToCss(line.color),
+    cells: {
+      label: { text: `${label}:` },
+      value: {
+        text: line.value,
+        ...(Number.isFinite(n) ? { values: { value: n } } : {}),
+      },
+    },
+  };
+}
+
+/**
+ * One `characterPanels` panel as a label/value table: neither column is padded,
+ * because the phone list writes "Level: 12" and never lines the values up.
+ */
+function panelBlock(panel: { key: string; lines: readonly PanelLine[] }): ScreenTableBlock {
+  return {
+    kind: "table",
+    key: panel.key,
+    tagged: false,
+    columns: [
+      { key: "label", pad: false },
+      { key: "value", pad: false },
+    ],
+    rows: panel.lines.map(panelScreenRow),
+    gapAfter: 1,
+  };
+}
+
+/**
+ * `do_cmd_change_name`'s commands (ui-player.c L1219-1289) as data, so a
+ * presenter that takes the sheet can still offer them.
+ *
+ * Both page keys are published even though the footer names only 'h': 'l' cycles
+ * BACKWARD (L1285-1288) and is as real a command as the other three.
+ */
+export const CHARACTER_ACTIONS: readonly ScreenAction[] = [
+  { id: "page-next", key: "h", label: "change mode" },
+  { id: "page-prev", key: "l", label: "change mode" },
+  { id: "rename", key: "c", label: "change name" },
+  { id: "file", key: "f", label: "to file" },
+];
+
+/** do_cmd_change_name's prompt (ui-player.c:1229), verbatim. */
+export const CHARACTER_FOOTER =
+  "['c' to change name, 'f' to file, 'h' to change mode, or ESC]";
+
+/** display_player's own heading: who this is, at what level. */
+export function characterTitle(state: GameState, name?: string): string {
+  const p = state.actor.player;
+  return `Character  -  ${name || "(unnamed)"} the ${p.race.name} ${p.cls.name}, Level ${p.lev}`;
+}
+
+/**
+ * The character sheet's first page (display_player mode 0): the six-stat table,
+ * the five panels (name/class, misc, level/exp, combat, skills) and the history.
+ *
+ * A TABLE per panel rather than a page of rows, because a panel is label/value
+ * pairs and a presenter wants the pairs: `row.id` is a slug of the label (`hp`,
+ * `turns-used`) and `cells.value.values.value` is the number where the whole
+ * field is one, so a card can print the level without finding the colon.
+ */
+export function characterScreen(
+  state: GameState,
+  name?: string,
+  deps: CharSheetDeps = {},
+): ScreenView {
+  const d = { ...charSheetDeps(state, name), ...deps };
+  const history = historyTextBlock(state);
+  return freezeView({
+    id: "core:character",
+    title: characterTitle(state, name),
+    footer: CHARACTER_FOOTER,
+    actions: CHARACTER_ACTIONS,
+    blocks: [
+      statTableBlock(statTable(state, d), 1),
+      ...characterPanels(state, d).map(panelBlock),
+      ...(history === null ? [] : [history]),
+    ],
+  });
+}
+
+/**
+ * The character-sheet lines (C): the faithful terminal's rows for
+ * `characterScreen`, laid out as a scrollable single column so it reads at any
+ * width (the narrow / phone layout).
  */
 export function characterSheetLines(
   state: GameState,
   name?: string,
   cols = 80,
 ): ScreenLine[] {
-  const deps = charSheetDeps(state, name);
-  const lines: ScreenLine[] = [];
-  // Stat block: same 6-wide Self/Best fields as the wide sheet, blank Cur
-  // column unless drained (upstream shows nothing there otherwise).
-  lines.push(statHeaderLine());
-  for (const row of statTable(state, deps)) lines.push(statRowLine(row));
-  lines.push({ text: "", color: FG });
-  // Panels.
-  for (const panel of characterPanels(state, deps)) {
-    for (const line of panel.lines) {
-      if (!line.label && !line.value) {
-        lines.push({ text: "", color: FG });
-        continue;
-      }
-      // Some model labels already carry a trailing colon; normalize so we never
-      // render "Turns used::". Label-only lines (section headers) show bare.
-      const label = line.label.replace(/:\s*$/u, "");
-      lines.push({
-        text: line.value ? `${label}: ${line.value}` : label,
-        color: colorToCss(line.color),
-      });
-    }
-    lines.push({ text: "", color: FG });
-  }
-  // History (display_player_xtra_info row 19): degrades to nothing when empty.
-  lines.push(...historyBlockLines(state, cols));
-  return lines;
+  return screenBodyLines(characterScreen(state, name), cols);
 }
 
 /**

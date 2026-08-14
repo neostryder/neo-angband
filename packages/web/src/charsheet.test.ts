@@ -38,13 +38,18 @@ import type {
   PlayerPackRecords,
   TerrainRecordJson,
 } from "@rpgm-tools/neo-angband-core";
-import { showCharacterSheet } from "./charsheet";
+import { showCharacterSheet, characterFlagsScreen } from "./charsheet";
 import {
+  characterScreen,
   characterSheetLines,
   historyBlockLines,
   statHeaderLine,
   statRowLine,
+  CHARACTER_ACTIONS,
 } from "./screens";
+import { setScreenPresenter } from "./screen-runtime";
+import { MODELLED_SCREENS, type ScreenHost, type ScreenTableBlock, type ScreenTextBlock, type ScreenView } from "./screen-view";
+import { buildUiEntryConfig } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 /* ------------------------------------------------------------------ */
@@ -271,6 +276,294 @@ function setup(history = ""): { state: GameState; win: FakeWindow; term: SheetTe
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
+  setScreenPresenter(null);
+});
+
+/** The blocks of a view, by kind, so a test names what it is reading. */
+function tableOf(view: ScreenView, key: string): ScreenTableBlock {
+  const block = view.blocks.find((b) => b.kind === "table" && b.key === key);
+  if (!block || block.kind !== "table") throw new Error(`no ${key} table on ${view.id}`);
+  return block;
+}
+
+/* ------------------------------------------------------------------ */
+/* The model (#253 step 5b-iv): both pages as documents                */
+/* ------------------------------------------------------------------ */
+
+describe("the character sheet gave up its model in step 5b-iv", () => {
+  it("is listed as modelled, both pages, and neither is a page of lines", () => {
+    expect(MODELLED_SCREENS).toContain("core:character");
+    expect(MODELLED_SCREENS).toContain("core:character-flags");
+    const { state } = setup("You are the only child of a Serf.");
+    const view = characterScreen(state, "Fred");
+    expect(view.id).toBe("core:character");
+    expect(view.blocks.some((b) => b.kind === "lines")).toBe(false);
+    expect(view.title).toContain("Fred");
+  });
+
+  it("publishes the stat table as columns with the bonus NUMBERS beside them", () => {
+    const { state } = setup();
+    const stats = tableOf(characterScreen(state, "Fred"), "stats");
+    expect(stats.columns.map((c) => c.key)).toEqual([
+      "stat", "self", "rb", "cb", "eb", "best", "cur",
+    ]);
+    const str = stats.rows[0]!;
+    expect(str.id).toBe("str");
+    /* The "!" is upstream's natural-maximum flag REPLACING the colon, and it
+     * belongs to the text; the bonus columns carry real integers. */
+    expect(str.cells.stat!.text).toBe("STR! ");
+    expect(str.cells.self!.text).toBe("18/100");
+    expect(typeof str.cells.rb!.values!.bonus).toBe("number");
+    /* An undrained stat's Cur cell EXISTS and is empty - the column is a fact
+     * about the table, never about the rows it holds today. */
+    expect(str.cells.cur).toEqual({ text: "" });
+    const con = stats.rows[4]!;
+    expect(con.cells.cur!.text.trim()).not.toBe("");
+  });
+
+  it("publishes each panel as label/value rows addressed by a slug", () => {
+    const { state } = setup();
+    const view = characterScreen(state, "Fred");
+    const panels = ["topleft", "misc", "midleft", "combat", "skills"].map((k) => tableOf(view, k));
+    const rows = panels.flatMap((p) => p.rows);
+    /* A presenter that wants the level should not have to find a colon in
+     * "Level: 1" - the row answers to `level` and the number is beside it. */
+    const level = rows.find((r) => r.id === "level");
+    expect(level).toBeDefined();
+    expect(level!.cells.label!.text).toBe("Level:");
+    expect(level!.cells.value!.values!.value).toBe(state.actor.player.lev);
+    /* Every panel ends with the blank row upstream leaves between them, as a
+     * gap published beside the table rather than as a row that says nothing. */
+    expect(panels.every((p) => p.gapAfter === 1)).toBe(true);
+    /* "18/100" is not a quantity, and half-parsing it would be worse than
+     * publishing nothing. */
+    const fraction = rows.find((r) => (r.cells.value?.text ?? "").includes("/"));
+    if (fraction) expect(fraction.cells.value!.values).toBeUndefined();
+  });
+
+  it("publishes the history as prose, not as rows the terminal already cut", () => {
+    const history = "You are the only child of a Serf. You have blue eyes and a fair complexion.";
+    const { state } = setup(history);
+    const view = characterScreen(state, "Fred");
+    const block = view.blocks.find((b) => b.kind === "text") as ScreenTextBlock | undefined;
+    expect(block).toBeDefined();
+    expect(block!.paragraphs[0]![0]!.text).toBe(history);
+    expect(block!.wrap).toBe(72); // text_out_wrap, ui-player.c L858
+    /* A character with no history contributes no block at all - not a blank one. */
+    const { state: none } = setup("");
+    expect(characterScreen(none, "Fred").blocks.some((b) => b.kind === "text")).toBe(false);
+  });
+
+  it("makes the flag grid's COLUMNS the equipment slots, glyphs and all", () => {
+    const { state } = setup();
+    const view = characterFlagsScreen(state, "Fred", buildUiEntryConfig(uiEntryPacks));
+    expect(view.id).toBe("core:character-flags");
+    const resist = view.blocks[0]!;
+    if (resist.kind !== "table") throw new Error("the flag grid stopped being a table");
+    expect(resist.caption!.text).toBe("Resistances");
+    /* One column per body slot plus the player's '@', each slot headed by its
+     * all_letters_nohjkl letter and carrying what is worn there. */
+    expect(resist.columns).toHaveLength(state.actor.player.body.count + 2);
+    expect(resist.columns[0]!.key).toBe("label");
+    expect(resist.columns.at(-1)!.label).toBe("@");
+    expect(resist.columns[1]!.glyph).toBeDefined();
+    /* A row is addressed by the ui_entry name, which is the only handle a
+     * presenter has on WHICH resistance it is looking at. */
+    expect(resist.rows[0]!.id).toMatch(/</u);
+    /* The sustains block is the same table minus its label column, exactly as
+     * upstream calls the renderer there with label = NULL. */
+    const sustains = view.blocks.at(-1)!;
+    if (sustains.kind !== "table") throw new Error("the sustains block stopped being a table");
+    expect(sustains.columns.map((c) => c.key)).not.toContain("label");
+  });
+
+  it("did not move the player's screen: the same rows come out of the model", () => {
+    /* The narrow list is now `screenBodyLines(characterScreen(...))`. If the
+     * model and the renderer disagree about a column stop, the phone layout is
+     * what breaks - so the upstream-cited assertions above this file's fold are
+     * the parity check, and this one pins that the wrapper is the same function. */
+    const { state } = setup("Some history for the block.");
+    expect(characterSheetLines(state, "Fred", 80)[0]).toEqual(statHeaderLine());
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The seam: a presenter is OFFERED the sheet, and can run its commands */
+/* ------------------------------------------------------------------ */
+
+describe("showCharacterSheet offers the sheet to a presenter", () => {
+  /** Install a presenter that records what it is shown and keeps the host. */
+  function record(take: boolean): {
+    seen: ScreenView[];
+    host: () => ScreenHost | undefined;
+    dismiss: () => void;
+  } {
+    const seen: ScreenView[] = [];
+    let held: ScreenHost | undefined;
+    let done = (): void => {};
+    const dismissed = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    setScreenPresenter({
+      id: "test:presenter",
+      presenter: {
+        show: (view, host) => {
+          seen.push(view);
+          held = host;
+          return take ? { dismissed } : undefined;
+        },
+      },
+    });
+    return { seen, host: () => held, dismiss: () => done() };
+  }
+
+  it("hands over the view and its actions, and never paints the terminal", async () => {
+    const { state, term } = setup();
+    const rec = record(true);
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    expect(rec.seen[0]!.id).toBe("core:character");
+    expect(rec.seen[0]!.actions).toEqual(CHARACTER_ACTIONS);
+    /* Nothing of the game's own sheet reached the screen - that is the whole
+     * point of taking it, and a presenter drawing over a painted terminal would
+     * look identical until the mod's overlay had a transparent pixel. */
+    expect(term.snapshot().join("")).toBe("");
+    rec.dismiss();
+    await open;
+  });
+
+  it("cycles pages through invoke, and hands back the OTHER page's view", async () => {
+    const { state, term } = setup();
+    const rec = record(true);
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    const host = rec.host()!;
+    expect((await host.invoke("page-next"))!.id).toBe("core:character-flags");
+    expect((await host.invoke("page-next"))!.id).toBe("core:character");
+    expect((await host.invoke("page-prev"))!.id).toBe("core:character-flags");
+    rec.dismiss();
+    await open;
+  });
+
+  it("treats an unknown action as a no-op rather than as a way out", async () => {
+    /* A presenter built against a later engine asking for a command this one has
+     * not got must not be able to close the player's character sheet. */
+    const { state, term } = setup();
+    const rec = record(true);
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    const back = await rec.host()!.invoke("teleport-the-player");
+    expect(back!.id).toBe("core:character");
+    rec.dismiss();
+    await open;
+  });
+
+  it("takes the sheet back when the page it is asked for has no model", async () => {
+    /* No ui_entry packs: page 2 is a notice saying the data is missing, and
+     * publishing that under `core:character-flags` would be a lie about what the
+     * presenter is holding. `undefined` says so. */
+    const { state, term } = setup();
+    const rec = record(true);
+    const open = showCharacterSheet(term, state, "Fred");
+    expect(await rec.host()!.invoke("page-next")).toBeUndefined();
+    rec.dismiss();
+    await open;
+  });
+
+  it("paints its own sheet when the presenter declines", () => {
+    const { state, term } = setup();
+    const rec = record(false);
+    void showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    expect(rec.seen).toHaveLength(1);
+    expect(term.snapshot()[0]).toContain("Fred");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The SAMPLE takes it: a real plugin, from disk, through the real seam */
+/* ------------------------------------------------------------------ */
+
+describe("samples/sprite-inventory draws the character sheet from the model", () => {
+  /** A canvas that records the strings drawn on it and nothing else. */
+  function recordingDocument(drawn: string[]): {
+    doc: unknown;
+    press: (key: string) => void;
+  } {
+    const keys: ((ev: { key: string }) => void)[] = [];
+    const g = {
+      fillRect: () => undefined,
+      fillText: (text: string) => drawn.push(String(text)),
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      beginPath: () => undefined,
+      arc: () => undefined,
+      fill: () => undefined,
+      stroke: () => undefined,
+      strokeRect: () => undefined,
+      moveTo: () => undefined,
+      lineTo: () => undefined,
+      closePath: () => undefined,
+      save: () => undefined,
+      restore: () => undefined,
+      set fillStyle(_v: string) {},
+      set strokeStyle(_v: string) {},
+      set font(_v: string) {},
+      set lineWidth(_v: number) {},
+    };
+    return {
+      doc: {
+        createElement: () => ({ style: {}, getContext: () => g }),
+        body: { appendChild: () => undefined },
+        addEventListener: (_t: string, fn: (ev: { key: string }) => void) => keys.push(fn),
+        removeEventListener: (_t: string, fn: (ev: { key: string }) => void) => {
+          const i = keys.indexOf(fn);
+          if (i >= 0) keys.splice(i, 1);
+        },
+      },
+      press: (key) => {
+        for (const fn of [...keys]) fn({ key });
+      },
+    };
+  }
+
+  it("reads the sheet's cells and captions, never a rendered row", async () => {
+    const drawn: string[] = [];
+    const { doc, press } = recordingDocument(drawn);
+    (globalThis as { document?: unknown }).document = doc;
+    const url = new URL("../../../samples/sprite-inventory/plugin.js", import.meta.url);
+    const mod = (await import(url.href)) as { default: { screen: (ctx: unknown) => unknown } };
+    const presenter = mod.default.screen({ id: "sprite-inventory", api: 1, log: () => undefined });
+    setScreenPresenter({ id: "sprite-inventory", presenter: presenter as never });
+
+    const { state, term } = setup("You are the only child of a Serf.");
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+
+    /* The game's own terminal drew nothing: the mod has the screen. */
+    expect(term.snapshot().join("")).toBe("");
+    expect(drawn).toContain("18/100"); // the Self field, from the cell
+    expect(drawn.some((t) => t.startsWith("[c] change name"))).toBe(true);
+    /* Not one COMPOSITE row the faithful terminal would have produced reached the
+     * canvas - a composite being a label joined to its value ("Level: 1") or a
+     * padded multi-field line ("STR!  18/100  +1..."), which are exactly the rows
+     * a presenter would otherwise have had to take apart again. Taken from the
+     * view under test rather than from a guess at its layout, so changing a column
+     * stop cannot quietly retire this.
+     *
+     * A bare section header ("Turns used") is deliberately NOT in the set: the
+     * game's row and the mod's label are the same string because there is nothing
+     * to split, and asserting on it would fail for being right. */
+    const composite = characterSheetLines(state, "Fred", 80)
+      .map((l) => l.text.trim())
+      .filter((t) => /(: \S)|(\S {2,}\S)/u.test(t));
+    expect(composite.length).toBeGreaterThan(5);
+    for (const row of composite) expect(drawn).not.toContain(row);
+
+    /* 'h' goes through the HOST, so the game moves the page and hands back the
+     * other one - the mod never decides what page 2 is. */
+    press("h");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drawn).toContain("Resistances");
+
+    press("Escape");
+    await expect(open).resolves.toBeUndefined();
+    delete (globalThis as { document?: unknown }).document;
+  });
 });
 
 /* ------------------------------------------------------------------ */

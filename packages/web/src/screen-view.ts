@@ -83,6 +83,16 @@ export interface ScreenColumn {
    * A declared `width` still clamps, and `align` has nothing to do when false.
    */
   readonly pad?: boolean;
+  /**
+   * A picture at the head of the column, above `label`.
+   *
+   * The character sheet's flag grid has one column per equipment slot and draws
+   * the WORN ITEM'S glyph over each (display_player_equippy, ui-player.c L365).
+   * That is a fact about the column - what is in this slot - and not a row of
+   * data, so it is published here rather than as a first row a presenter would
+   * have to know to skip. A presenter with real art draws the item's icon.
+   */
+  readonly glyph?: ScreenRun;
 }
 
 /** One cell. Its own `color` overrides the row's; `values` are its numbers. */
@@ -138,6 +148,22 @@ export interface ScreenTableBlock {
   readonly columns: readonly ScreenColumn[];
   readonly rows: readonly ScreenRow[];
   /**
+   * The colour of the header row as CSS, where the game colours it. Absent means
+   * the screen's default, which is what every listing uses; the character sheet's
+   * stat table is the one that does not.
+   */
+  readonly headerColor?: string;
+  /**
+   * Blank rows the faithful terminal leaves after this table; none by default.
+   *
+   * A layout fact published BESIDE the data, for the same reason a column
+   * publishes `width` and an art field publishes its row: the character sheet's
+   * five panels are separated by a blank line, and the alternatives were to
+   * append a fake all-empty row - data that says nothing is there - or to let the
+   * one renderer guess a separator, which would move every other screen.
+   */
+  readonly gapAfter?: number;
+  /**
    * What the terminal shows when there are no rows ("(nothing carried)"). A
    * presenter is free to draw its own empty state instead.
    */
@@ -156,6 +182,16 @@ export interface ScreenTextBlock {
   readonly paragraphs: readonly (readonly ScreenRun[])[];
   /** Columns of leading indent the faithful terminal uses. */
   readonly indent?: number;
+  /**
+   * The width upstream wraps this prose at, where it fixes one - a CLAMP on the
+   * terminal's own width, never a minimum, exactly as `ScreenColumn.width` is.
+   *
+   * The character sheet's history block is `text_out_wrap = 72`
+   * (display_player_xtra_info, ui-player.c L858) on an 80-column screen, so a
+   * renderer that only knew the terminal width would lay it out eight columns
+   * too wide. Absent - the usual case - means the prose fills the terminal.
+   */
+  readonly wrap?: number;
   /**
    * The prose's default colour, for the parts no run speaks for: a paragraph
    * break, and the line-level fallback a consumer that ignores `runs` reads.
@@ -239,6 +275,45 @@ export type ScreenBlock =
   | ScreenArtBlock
   | ScreenLinesBlock;
 
+/**
+ * Something the player can DO on a screen, as data rather than as prose in the
+ * footer.
+ *
+ * Most screens have none: a listing is dismissed, not answered, and that is the
+ * whole of its contract. The character sheet is the first that does - upstream's
+ * `do_cmd_change_name` offers renaming, a file dump and the page cycle from the
+ * same modal (ui-player.c L1219) - and a presenter that took the screen without
+ * being able to reach them would quietly take those commands away from the
+ * player.
+ *
+ * `key` is the faithful terminal's key and is a fact about the GAME, not an
+ * instruction: a presenter with a mouse offers a button and never reads it.
+ */
+export interface ScreenAction {
+  /** Stable: `rename`, `file`, `page-next`, `page-prev`. */
+  readonly id: string;
+  /** The key the faithful terminal listens for. */
+  readonly key: string;
+  /** The game's own wording for it, lower case ("change name", "to file"). */
+  readonly label: string;
+}
+
+/**
+ * The way back in, for a presenter that has taken a screen with `actions`.
+ *
+ * `invoke` runs one of them - the game's own code, so a rename still goes through
+ * the game's prompt and a dump still writes the game's file - and resolves with
+ * what the player should be looking at NEXT. Usually that is the same screen with
+ * new content (a renamed character's sheet) or the next page; `undefined` means
+ * the game has taken the screen back and the presenter should resolve `dismissed`.
+ *
+ * One verb, because the alternative is a callback per action and a seam that has
+ * to grow every time a screen learns a new command.
+ */
+export interface ScreenHost {
+  invoke(id: string): Promise<ScreenView | undefined>;
+}
+
 /** One full screen the game is showing. */
 export interface ScreenView {
   /**
@@ -254,6 +329,11 @@ export interface ScreenView {
   /** The game's own key legend. Wrong for a presenter with different keys. */
   readonly footer: string;
   readonly blocks: readonly ScreenBlock[];
+  /**
+   * What the player can do here beyond leaving; see `ScreenAction`. Absent on
+   * every screen that is only dismissed, which is most of them.
+   */
+  readonly actions?: readonly ScreenAction[];
 }
 
 /**
@@ -270,7 +350,13 @@ export interface ScreenView {
  * on `view.id` - and drawing obviously does, which is what the handle is for.
  */
 export interface ScreenPresenter {
-  show(view: ScreenView): ScreenShown | undefined;
+  /**
+   * `host` is present only where `view.actions` is, and is how a presenter runs
+   * one; a presenter written before actions existed ignores the argument, which
+   * is why it is a second parameter rather than a field of the view. A view's
+   * actions are data and can be frozen; a way back into the game cannot.
+   */
+  show(view: ScreenView, host?: ScreenHost): ScreenShown | undefined;
 }
 
 /** A screen a presenter has taken. */
@@ -298,6 +384,8 @@ export const MODELLED_SCREENS = [
   "core:monster-recall",
   "core:tombstone",
   "core:winner",
+  "core:character",
+  "core:character-flags",
 ] as const;
 
 /** The id every unmodelled prose page shares. See `ScreenView.id`. */
@@ -345,6 +433,9 @@ export function freezeView(view: ScreenView): ScreenView {
     title: view.title,
     footer: view.footer,
     blocks: Object.freeze(view.blocks.map(freezeBlock)),
+    ...(view.actions === undefined
+      ? {}
+      : { actions: Object.freeze(view.actions.map((a) => Object.freeze({ ...a }))) }),
   });
 }
 
@@ -356,8 +447,17 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
         key: block.key,
         tagged: block.tagged,
         ...(block.caption === undefined ? {} : { caption: Object.freeze({ ...block.caption }) }),
-        columns: Object.freeze(block.columns.map((c) => Object.freeze({ ...c }))),
+        columns: Object.freeze(
+          block.columns.map((c) =>
+            Object.freeze({
+              ...c,
+              ...(c.glyph === undefined ? {} : { glyph: Object.freeze({ ...c.glyph }) }),
+            }),
+          ),
+        ),
         rows: Object.freeze(block.rows.map(freezeRow)),
+        ...(block.headerColor === undefined ? {} : { headerColor: block.headerColor }),
+        ...(block.gapAfter === undefined ? {} : { gapAfter: block.gapAfter }),
         ...(block.empty === undefined ? {} : { empty: Object.freeze({ ...block.empty }) }),
       });
     case "text":
@@ -367,6 +467,7 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
           block.paragraphs.map((p) => Object.freeze(p.map((r) => Object.freeze({ ...r })))),
         ),
         ...(block.indent === undefined ? {} : { indent: block.indent }),
+        ...(block.wrap === undefined ? {} : { wrap: block.wrap }),
         ...(block.color === undefined ? {} : { color: block.color }),
       });
     case "art":
@@ -438,23 +539,30 @@ function freezeLine(line: ScreenLine): ScreenLine {
  */
 export function screenBodyLines(view: ScreenView, cols = 80): ScreenLine[] {
   const out: ScreenLine[] = [];
-  for (const block of view.blocks) {
-    switch (block.kind) {
-      case "lines":
-        out.push(...block.lines);
-        break;
-      case "art":
-        out.push(...artBlockLines(block, cols));
-        break;
-      case "text":
-        out.push(...textBlockLines(block, cols));
-        break;
-      case "table":
-        out.push(...tableBlockLines(block));
-        break;
-    }
-  }
+  for (const block of view.blocks) out.push(...screenBlockLines(block, cols));
   return out;
+}
+
+/**
+ * ONE block's rows.
+ *
+ * Exported because the character sheet's wide layout draws the same blocks at
+ * upstream's own anchors rather than stacked - four flag regions tiled across the
+ * screen at cols 0/20/40/60 - so it needs a block at a time. Rendering those by
+ * hand beside the model is exactly the second transcription this file exists to
+ * prevent.
+ */
+export function screenBlockLines(block: ScreenBlock, cols = 80): ScreenLine[] {
+  switch (block.kind) {
+    case "lines":
+      return [...block.lines];
+    case "art":
+      return artBlockLines(block, cols);
+    case "text":
+      return textBlockLines(block, cols);
+    case "table":
+      return tableBlockLines(block);
+  }
 }
 
 /**
@@ -524,7 +632,7 @@ function artBlockLines(block: ScreenArtBlock, cols: number): ScreenLine[] {
  */
 function textBlockLines(block: ScreenTextBlock, cols: number): ScreenLine[] {
   const indent = " ".repeat(block.indent ?? 0);
-  const width = Math.max(1, cols - 1 - (block.indent ?? 0));
+  const width = Math.max(1, Math.min(block.wrap ?? cols, cols - 1 - (block.indent ?? 0)));
   const base = block.color;
   const blank: ScreenLine = base === undefined ? { text: "" } : { text: "", color: base };
   const out: ScreenLine[] = [];
@@ -586,11 +694,23 @@ function appendRun(runs: { text: string; color: string }[], text: string, color:
   else runs.push({ text, color });
 }
 
+/**
+ * Cut the trailing spaces off a run stream, run by run until one has content.
+ *
+ * A LOOP rather than a single pass because the last run is not the only one that
+ * can be blank: the stat table's Cur column is empty on a stat that is not
+ * drained, so dropping it leaves the single space of column gap before it as the
+ * last run - and `runs` would then be one space longer than the `text` beside it,
+ * which is the kind of disagreement nothing paints but everything that measures
+ * trips over.
+ */
 function trimTrailingSpace(runs: { text: string; color: string }[]): void {
-  const last = runs[runs.length - 1];
-  if (!last) return;
-  last.text = last.text.replace(/\s+$/u, "");
-  if (last.text === "") runs.pop();
+  while (runs.length > 0) {
+    const last = runs[runs.length - 1]!;
+    last.text = last.text.replace(/\s+$/u, "");
+    if (last.text !== "") return;
+    runs.pop();
+  }
 }
 
 /**
@@ -613,14 +733,28 @@ function tableBlockLines(block: ScreenTableBlock): ScreenLine[] {
    * required field: a table's columns are a fact about the table, not about the
    * rows it holds today. The player history of a character who has done nothing
    * yet still has a Turn column, and upstream still prints its header. */
+  /* The glyph row sits ABOVE the labels, which is the order upstream draws the
+   * flag grid in: the equippy row, then the slot letters (ui-player.c L399-401). */
+  if (block.columns.some((c) => c.glyph !== undefined)) {
+    const runs: { text: string; color: string }[] = [];
+    if (tagWidth !== 0) runs.push({ text: " ".repeat(tagWidth), color: "" });
+    block.columns.forEach((c, i) => {
+      const gap = gapBefore(block, i);
+      if (gap !== "") appendRun(runs, gap, "");
+      appendRun(runs, cell(c, i, c.glyph?.text ?? ""), c.glyph?.color ?? "");
+    });
+    trimTrailingSpace(runs);
+    out.push({ text: runs.map((r) => r.text).join(""), runs });
+  }
   if (block.columns.some((c) => c.label !== undefined)) {
     const header =
       " ".repeat(tagWidth) + joinCells(block, block.columns.map((c, i) => cell(c, i, c.label ?? "")));
-    out.push({ text: header.replace(/\s+$/u, "") });
+    const text = header.replace(/\s+$/u, "");
+    out.push(block.headerColor === undefined ? { text } : { text, color: block.headerColor });
   }
   if (block.rows.length === 0) {
     if (block.empty) out.push(runLine(block.empty));
-    return out;
+    return withGap(out, block);
   }
   for (const row of block.rows) {
     const prefix = tagWidth === 0 ? "" : row.tag === undefined ? "   " : `${row.tag}) `;
@@ -628,6 +762,12 @@ function tableBlockLines(block: ScreenTableBlock): ScreenLine[] {
     const text = (prefix + joinCells(block, parts)).replace(/\s+$/u, "");
     out.push(rowLine(text, prefix, block, row, parts));
   }
+  return withGap(out, block);
+}
+
+/** `gapAfter` blank rows under a table. */
+function withGap(out: ScreenLine[], block: ScreenTableBlock): ScreenLine[] {
+  for (let i = 0; i < (block.gapAfter ?? 0); i++) out.push({ text: "" });
   return out;
 }
 
@@ -696,7 +836,7 @@ function pad(
 function columnWidths(block: ScreenTableBlock): number[] {
   return block.columns.map((c) => {
     if (c.width !== undefined) return c.width;
-    let width = c.label?.length ?? 0;
+    let width = Math.max(c.label?.length ?? 0, c.glyph?.text.length ?? 0);
     for (const row of block.rows) width = Math.max(width, row.cells[c.key]?.text.length ?? 0);
     return width;
   });
