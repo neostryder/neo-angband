@@ -116,6 +116,24 @@ describe("parseCapability: valid forms", () => {
     expect(() => parseCapability("ui:sidebar")).toThrow(CapabilityError);
     expect(() => parseCapability("ui:*")).toThrow(CapabilityError);
   });
+
+  it("parses ui:region.create as the ui kind with a different ACTION (#261)", () => {
+    expect(parseCapability("ui:region.create")).toEqual({
+      kind: "ui",
+      region: "region",
+      action: "create",
+    });
+  });
+
+  it("has no create wildcard and no replace/create crossovers (#261)", () => {
+    /* There is no set of region names to range over - the region does not exist
+     * until the mod declares it - so a wildcard here would be a wildcard over
+     * nothing. And the six replaceable names are not creatable: `ui:sidebar
+     * .create` is not "make me a sidebar", it is a typo. */
+    expect(() => parseCapability("ui:*.create")).toThrow(CapabilityError);
+    expect(() => parseCapability("ui:sidebar.create")).toThrow(CapabilityError);
+    expect(() => parseCapability("ui:region.replace")).toThrow(CapabilityError);
+  });
 });
 
 describe("parseCapability: rejects garbage", () => {
@@ -287,6 +305,48 @@ describe("CapabilitySet: has / check", () => {
     expect(set.has("ui:messages.replace")).toBe(true);
     expect(set.has("ui:sidebar.replace")).toBe(true);
     expect(set.has("ui:status.replace")).toBe(true);
+  });
+
+  /* ----------------------------------------------------------------------- *
+   * THE ACTION IS PART OF THE GRANT (#261).
+   *
+   * `grantCovers`' ui arm compared only `region`, which was invisible for as
+   * long as `action` had one value: every ui capability was a `.replace`, so
+   * comparing it would have been comparing a constant to itself. The moment
+   * `ui:region.create` existed, `ui:*.replace` covered it - a mod granted "draw
+   * the vitals instead of the game" silently inherited "put new furniture of
+   * your own on the player's screen", which is a grant nobody showed them and
+   * nobody approved.
+   *
+   * THIS IS WHY IT NEEDS ITS OWN TEST RATHER THAN RIDING ON A REAL MOD. There
+   * is no manifest in the repository that would fail: the escalation is only
+   * reachable from a capability string that did not exist until this commit, so
+   * the subject has to be CONSTRUCTED. A fix with no failing subject behind it
+   * is a claim, and this file is where the claim is made checkable.
+   * ----------------------------------------------------------------------- */
+  it("ui:*.replace does NOT cover ui:region.create - the wildcard is over regions, not actions (#261)", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:*.replace"] }),
+    );
+    /* The control: the wildcard still does the job it was granted for, so a
+     * "false" below cannot be a wildcard that stopped working altogether. */
+    expect(set.has("ui:sidebar.replace")).toBe(true);
+    expect(set.has("ui:region.create")).toBe(false);
+  });
+
+  it("ui:region.create does not cover any replace, wildcard or named (#261)", () => {
+    /* The other direction, which the region-name comparison alone WOULD have
+     * caught for the named regions and would not have caught if the create
+     * string had ever been spelled with a "*". Asserted so that the two halves
+     * of the arm are both pinned rather than only the half that broke. */
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:region.create"] }),
+    );
+    expect(set.has("ui:region.create")).toBe(true);
+    expect(set.has("ui:sidebar.replace")).toBe(false);
+    expect(set.has("ui:menu.replace")).toBe(false);
+    expect(set.has("ui:screen.replace")).toBe(false);
+    expect(set.has("display:replace")).toBe(false);
   });
 
   it("the map and the HUD are two consents, in BOTH directions", () => {

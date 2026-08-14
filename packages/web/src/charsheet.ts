@@ -32,6 +32,20 @@
  * them here, so a presenter's rename still opens the game's prompt and its dump
  * still writes the game's file.
  *
+ * AND TWO OF THOSE COMMANDS PROMPT, which is the defect #258 names: `rename`
+ * and `file` put a question on the faithful terminal and wait for an answer,
+ * UNDERNEATH the presenter's overlay, while the input door goes on feeding them
+ * keystrokes. `askforAuxKeypress` clears the prefilled default on the first
+ * printable key, so 'c' then three letters then Enter renames the character and
+ * writes the save with nothing visible on the screen at all.
+ *
+ * The fix is NOT to forbid a prompt inside `invoke` - that would make a mod's
+ * actions a strict subset of the game's, which is the seam being given up
+ * (owner ruling). It is `withTerminal`: the game ANNOUNCES the prompt from the
+ * `SCREEN_PROMPTS` census, whoever is holding the screen stands aside for it,
+ * and one that cannot stand aside is reported once by name and has the prompt
+ * drawn over it - ugly, and enormously better than an invisible question.
+ *
  * Pure display: no game mutation, no RNG. Renaming flows OUT through
  * opts.onRename (the shell persists it); nothing here touches state.
  */
@@ -77,6 +91,7 @@ import {
   charSheetDeps,
   historyBlockLines,
   historyLines,
+  screenPromptFor,
   statHeaderLine,
   statRowLine,
   CHARACTER_ACTIONS,
@@ -93,7 +108,8 @@ import {
   type ScreenTableBlock,
   type ScreenView,
 } from "./screen-view";
-import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
+import { ScreenAbandoned, showThroughPresenter, withTerminal } from "./screen-runtime";
+import { promptRequest } from "./prompt-view";
 import { promptText, menuNav, getFile, screenFault } from "./overlay";
 import { argForceName } from "./launch";
 import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
@@ -192,6 +208,56 @@ const ALL_LETTERS_NOHJKL =
 
 /** History block row (display_player_xtra_info L872: Term_gotoxy(1, 19)). */
 const HISTORY_ROW = 19;
+
+/**
+ * The view id of each page, in `mode` order - the key the `SCREEN_PROMPTS`
+ * census is indexed by.
+ *
+ * A SECOND SPELLING of what `characterScreen` / `characterFlagsScreen` already
+ * publish, and it exists because the census has to be consulted on a keypress
+ * without building a whole view first (and because `viewFor()` answers `null`
+ * for the mode-1 page of a character with no ui_entry packs, which would leave
+ * the rename with nothing to announce from - the exact silence #258 is about).
+ * Exported and PINNED to the builders' own ids by `charsheet.test.ts`, because
+ * two spellings of the same fact with nothing tying them together is how a
+ * prompt goes back to being un-announced without anybody noticing.
+ */
+export const MODE_VIEW_IDS = ["core:character", "core:character-flags"] as const;
+
+/**
+ * do_cmd_change_name's own prompt (ui-player.c:1229 -> get_string). Spelled ONCE
+ * and used twice: `promptText` draws it, and `withTerminal` announces it as the
+ * request's `label`, so a presenter captioning its own standing-aside says what
+ * the player would have read.
+ */
+const RENAME_PROMPT = "Enter your character's name";
+
+/**
+ * `get_file`'s own prompt (ui-player.c:1338 -> get_string("File name: ")),
+ * without its separator.
+ *
+ * THIS ONE IS A SECOND SPELLING and cannot be anything else: the string lives
+ * inside `getFile` (overlay.ts) and is not exported. `charsheet.test.ts` reads
+ * it back off the terminal the prompt actually drew on, so the two are tied
+ * together by a measurement rather than by this comment.
+ */
+const FILE_PROMPT = "File name";
+
+/**
+ * The game's own wording for each prompt this screen opens, by the census's
+ * `promptId`.
+ *
+ * BESIDE THE CODE THAT OPENS THEM rather than in the census, because the census
+ * is the answer to "does this action take the terminal" and the wording is the
+ * answer to "what does the player see" - the second is this file's to know.
+ * Exported so `charsheet.test.ts` can check it is TOTAL over the census's rows
+ * for both pages: a third prompt added here with no label would otherwise
+ * announce itself by its id, which is a mod-facing string nobody wrote.
+ */
+export const CHARSHEET_PROMPT_LABELS: Readonly<Record<string, string>> = {
+  "charsheet:rename": RENAME_PROMPT,
+  "charsheet:file": FILE_PROMPT,
+};
 
 /** Mode-1 placeholder, only used when no ui_entry packs were supplied. */
 function modeOnePlaceholder(): ScreenLine[] {
@@ -672,7 +738,7 @@ export function showCharacterSheet(
       opts.msg?.("You are not allowed to change your name!");
       return;
     }
-    const entered = await promptText(term, "Enter your character's name", curName);
+    const entered = await promptText(term, RENAME_PROMPT, curName);
     if (entered !== null && entered.trim()) {
       curName = entered.trim();
       opts.onRename?.(curName);
@@ -720,12 +786,51 @@ export function showCharacterSheet(
    * because a presenter written against a later engine must not be able to close
    * the player's character sheet by asking for a command this one has not got.
    */
+  /**
+   * Run one command of the sheet with whoever is holding the screen TOLD FIRST.
+   *
+   * The census (`screenPromptFor`) is what decides, not a list spelled again
+   * here: an action it has no row for never reaches the terminal, so there is
+   * nothing to stand aside for and announcing anyway would make a presenter fade
+   * its overlay out for a page flip. An action it DOES have a row for is
+   * announced with that row's own `promptId` and `extent`, so "how much of the
+   * screen does this need" is answered once, where it was verified.
+   *
+   * `withTerminal`'s answer is deliberately dropped. `held: false` means the
+   * holder could not stand aside; it has already been reported BY NAME through
+   * `screenFault`, and the prompt has already run over its overlay. There is
+   * nothing this screen would do differently, and branching on it would be a
+   * second policy about mods inside the character sheet.
+   */
+  const announced = async (actionId: string, work: () => Promise<void>): Promise<void> => {
+    const fact = screenPromptFor(MODE_VIEW_IDS[mode] ?? MODE_VIEW_IDS[0], actionId);
+    if (fact === undefined) {
+      await work();
+      return;
+    }
+    await withTerminal(
+      promptRequest(
+        fact.promptId,
+        actionId,
+        fact.extent,
+        /* Falls back to the id rather than throwing: a missing label is a mod
+         * reading a slightly worse caption, and `charsheet.test.ts` fails on it
+         * long before a player could. Refusing the rename would be worse than
+         * anything the census could get wrong. */
+        CHARSHEET_PROMPT_LABELS[fact.promptId] ?? fact.promptId,
+        term.size(),
+      ),
+      work,
+      screenFault,
+    );
+  };
+
   const host: ScreenHost = {
     invoke: async (id: string): Promise<ScreenView | undefined> => {
       if (id === "page-next") mode = (mode + 1) % INFO_SCREENS;
       else if (id === "page-prev") mode = (mode - 1 + INFO_SCREENS) % INFO_SCREENS;
-      else if (id === "rename") await doRename();
-      else if (id === "file") await doFileDump();
+      else if (id === "rename") await announced(id, doRename);
+      else if (id === "file") await announced(id, doFileDump);
       return viewFor() ?? undefined;
     },
   };

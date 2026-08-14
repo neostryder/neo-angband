@@ -159,6 +159,21 @@ now has a slot per HUD region. An exhaustive `switch` over either gets a compile
 error naming the new arm, which is the intended outcome. `ModPlugin` itself only
 gained an optional member, so no existing plugin's shape changes.
 
+Two more SDK additions, and this pair breaks nothing at all — recorded because
+the entries above establish that a shape change gets written down whether or not
+it strands anybody, and a page that only lists the painful ones stops being a
+record. `WorldFrame` and `HudFrame` each gained an **optional** `stack`
+(`readonly LiveRegion[] | undefined`), and `LiveRegion` / `RegionLayer` are now
+exported from the SDK (#261, unreleased 2026-08-14). An optional member added to
+an interface a plugin *receives* cannot break a plugin: nothing that reads a
+frame stops compiling, and a host that publishes no stack simply leaves it
+`undefined` — which the seam gives a distinct meaning to on purpose, so a front
+end must not read a missing stack as "nothing is covering me". See
+[PLUGINS.md](PLUGINS.md#knowing-when-you-are-covered-framestack). Note the
+asymmetry with the `ParsedCapability` rows above: those broke exhaustive
+`switch`es because a plugin *inspects* a capability, and nobody exhaustively
+switches over a frame.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed

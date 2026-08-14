@@ -51,6 +51,12 @@ import type { Constants } from "../constants.js";
 import type { ObjRegistry } from "./bind.js";
 import { tvalFindName } from "./bind.js";
 import type { CurseTimedFoil } from "./object.js";
+import {
+  tvalIsBodyArmor,
+  tvalIsHeadArmor,
+  tvalIsLauncher,
+  tvalIsMeleeWeapon,
+} from "./object.js";
 import { makeFakeArtifact } from "./artifact-fake.js";
 import { ODESC, objectDesc } from "./desc.js";
 import type { KnownDesc } from "./known-object.js";
@@ -734,7 +740,7 @@ export function countNonweaponAbilities(
     } else if (art.tval === TV.GLOVES) {
       randartLogf(() => `Adding ${bonus} for AC bonus - gloves\n`);
       data.artProbs[ART_IDX.GLOVE_AC]! += bonus;
-    } else if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+    } else if (tvalIsHeadArmor(art.tval)) {
       randartLogf(() => `Adding ${bonus} for AC bonus - hat\n`);
       data.artProbs[ART_IDX.HELM_AC]! += bonus;
     } else if (art.tval === TV.SHIELD) {
@@ -743,11 +749,7 @@ export function countNonweaponAbilities(
     } else if (art.tval === TV.CLOAK) {
       randartLogf(() => `Adding ${bonus} for AC bonus - cloak\n`);
       data.artProbs[ART_IDX.CLOAK_AC]! += bonus;
-    } else if (
-      art.tval === TV.SOFT_ARMOR ||
-      art.tval === TV.HARD_ARMOR ||
-      art.tval === TV.DRAG_ARMOR
-    ) {
+    } else if (tvalIsBodyArmor(art.tval)) {
       randartLogf(() => `Adding ${bonus} for AC bonus - body armor\n`);
       data.artProbs[ART_IDX.ARMOR_AC]! += bonus;
     } else {
@@ -852,7 +854,7 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
 
   /* Handle a few special cases separately. */
   if (
-    (art.tval === TV.HELM || art.tval === TV.CROWN) &&
+    tvalIsHeadArmor(art.tval) &&
     ((art.modifiers[OBJ_MOD.WIS] ?? 0) > 0 ||
       (art.modifiers[OBJ_MOD.INT] ?? 0) > 0)
   ) {
@@ -867,9 +869,7 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
       num--;
     }
   } else if (
-    (art.tval === TV.SOFT_ARMOR ||
-      art.tval === TV.HARD_ARMOR ||
-      art.tval === TV.DRAG_ARMOR) &&
+    tvalIsBodyArmor(art.tval) &&
     (art.modifiers[OBJ_MOD.CON] ?? 0) > 0
   ) {
     randartLog("Adding 1 for CON bonus on body armor.\n");
@@ -895,11 +895,7 @@ export function countModifiers(art: Artifact, data: ArtifactSetData): void {
     } else if (art.tval === TV.CLOAK) {
       randartLog("Adding 1 for stealth bonus on cloak.\n");
       data.artProbs[ART_IDX.CLOAK_STEALTH]!++;
-    } else if (
-      art.tval === TV.SOFT_ARMOR ||
-      art.tval === TV.HARD_ARMOR ||
-      art.tval === TV.DRAG_ARMOR
-    ) {
+    } else if (tvalIsBodyArmor(art.tval)) {
       randartLog("Adding 1 for stealth bonus on armor.\n");
       data.artProbs[ART_IDX.ARMOR_STEALTH]!++;
     } else {
@@ -985,11 +981,7 @@ export function countLowResists(art: Artifact, data: ArtifactSetData): void {
     if (art.tval === TV.SHIELD) {
       randartLogf(() => `Adding ${num} for low resists on shield.\n`);
       data.artProbs[ART_IDX.SHIELD_LRES]! += num;
-    } else if (
-      art.tval === TV.SOFT_ARMOR ||
-      art.tval === TV.HARD_ARMOR ||
-      art.tval === TV.DRAG_ARMOR
-    ) {
+    } else if (tvalIsBodyArmor(art.tval)) {
       if (num === 4) {
         randartLog("Adding 1 for ALL LOW RESISTS on body armor.\n");
         data.artProbs[ART_IDX.ARMOR_ALLRES]!++;
@@ -1011,11 +1003,7 @@ export function countHighResists(art: Artifact, data: ArtifactSetData): void {
   let num = 0;
 
   /* Body armor: count all high resists as an aggregate first. */
-  if (
-    art.tval === TV.SOFT_ARMOR ||
-    art.tval === TV.HARD_ARMOR ||
-    art.tval === TV.DRAG_ARMOR
-  ) {
+  if (tvalIsBodyArmor(art.tval)) {
     if ((art.elInfo[ELEM.POIS] as ElementInfo).resLevel === 1) num++;
     if (art.flags.has(OF.PROT_FEAR)) num++;
     if ((art.elInfo[ELEM.LIGHT] as ElementInfo).resLevel === 1) num++;
@@ -1051,7 +1039,7 @@ export function countHighResists(art: Artifact, data: ArtifactSetData): void {
     data.artProbs[ART_IDX.GEN_RDARK]!++;
   }
   if (art.flags.has(OF.PROT_BLIND)) {
-    if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+    if (tvalIsHeadArmor(art.tval)) {
       randartLog("Adding 1 for resist blindness - headgear.\n");
       data.artProbs[ART_IDX.HELM_RBLIND]!++;
     } else {
@@ -1135,11 +1123,7 @@ export function countAbilities(
 
   /* Hold life - do body armor separately. */
   if (art.flags.has(OF.HOLD_LIFE)) {
-    if (
-      art.tval === TV.SOFT_ARMOR ||
-      art.tval === TV.HARD_ARMOR ||
-      art.tval === TV.DRAG_ARMOR
-    ) {
+    if (tvalIsBodyArmor(art.tval)) {
       randartLog("Adding 1 for hold life on armor.\n");
       data.artProbs[ART_IDX.ARMOR_HLIFE]!++;
     } else {
@@ -1161,27 +1145,20 @@ export function countAbilities(
 
   /* See invisible - do helms/crowns separately (weapons already handled). */
   if (art.flags.has(OF.SEE_INVIS)) {
-    if (
-      !(
-        art.tval === TV.DIGGING ||
-        art.tval === TV.HAFTED ||
-        art.tval === TV.POLEARM ||
-        art.tval === TV.SWORD
-      )
-    ) {
-      if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+    if (!tvalIsMeleeWeapon(art.tval)) {
+      if (tvalIsHeadArmor(art.tval)) {
         randartLog("Adding 1 for see invisible - headgear.\n");
-      data.artProbs[ART_IDX.HELM_SINV]!++;
+        data.artProbs[ART_IDX.HELM_SINV]!++;
       } else {
         randartLog("Adding 1 for see invisible - general.\n");
-      data.artProbs[ART_IDX.GEN_SINV]!++;
+        data.artProbs[ART_IDX.GEN_SINV]!++;
       }
     }
   }
 
   /* ESP - handle helms/crowns separately. */
   if (art.flags.has(OF.TELEPATHY)) {
-    if (art.tval === TV.HELM || art.tval === TV.CROWN) {
+    if (tvalIsHeadArmor(art.tval)) {
       randartLog("Adding 1 for ESP on headgear.\n");
       data.artProbs[ART_IDX.HELM_ESP]!++;
     } else {
@@ -1261,14 +1238,9 @@ export function collectArtifactCounts(
     randartLogf(() => `Base item is ${kind.kidx}\n`);
 
     /* Count combat abilities broken up by type. */
-    if (
-      art.tval === TV.DIGGING ||
-      art.tval === TV.HAFTED ||
-      art.tval === TV.POLEARM ||
-      art.tval === TV.SWORD
-    ) {
+    if (tvalIsMeleeWeapon(art.tval)) {
       countWeaponAbilities(reg, art, data);
-    } else if (art.tval === TV.BOW) {
+    } else if (tvalIsLauncher(art.tval)) {
       countBowAbilities(reg, art, data);
     } else {
       countNonweaponAbilities(reg, art, data);

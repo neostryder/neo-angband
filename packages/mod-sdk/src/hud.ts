@@ -17,7 +17,7 @@
  * SDK while its built JavaScript continues to have no bare engine import.
  */
 
-import type { ScreenRegion, RegionCells } from "./frontend.js";
+import type { LiveRegion, ScreenRegion, RegionCells } from "./frontend.js";
 
 /**
  * The parts of the HUD a plugin may own, by role.
@@ -143,6 +143,16 @@ export interface HudFrame {
   readonly messages: HudSection;
   readonly sidebar?: HudSection;
   readonly status: HudSection;
+  /**
+   * Everything on screen, bottom to top - the same live stack
+   * `WorldFrame.stack` carries, and for the same reason.
+   *
+   * A region you own is covered by exactly the things the map is. If you draw
+   * your section outside the terminal - a DOM panel, your own canvas - find the
+   * entry whose `id` is your section's `region.name` and hide when anything
+   * after it overlaps its `cells`. ABSENT IS NOT EMPTY, as on the world frame.
+   */
+  readonly stack?: readonly LiveRegion[];
 }
 
 /**

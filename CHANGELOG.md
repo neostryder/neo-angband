@@ -1599,6 +1599,293 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   Angband's automatic player, driving the game through the same perceive/act agent
   API a third-party automation would use.
 
+### Added
+
+- **A front end is told when it is covered** (#261, commit 4).
+
+  A replacement front end could learn **where** the map is (`frame.regions`,
+  #234). It could not learn whether anything was **on top of** it — and that was
+  a live defect rather than a missing nicety. Core's screens repaint the terminal
+  *without producing a world frame*, because a screen redraws from its own key
+  loop, so `samples/blueprint-view`'s canvas sat over the middle of every screen
+  the player opened, showing a blueprint of the last dungeon it saw, with nothing
+  in the picture to say which mod was responsible. Putting the canvas on the map
+  region had moved the original cover-the-window defect inwards; it had not ended
+  it.
+
+  - `WorldFrame.stack` and `HudFrame.stack` now carry every region on screen,
+    bottom to top, including the four base tiles `regions` names. A region later
+    in the array is drawn over one earlier in it, so "is anything covering the
+    map?" is finally a question with an answer.
+  - **Absent is not empty.** `[]` means the host published a stack and nothing is
+    over you; `undefined` means it published none. A front end that collapses the
+    two decides it is uncovered on the word of a host that never answered.
+  - `onStackChanged` re-presents a mod front end's **last** frame under the new
+    stack, which is what makes a screen opening an *event* rather than something
+    discoverable only on a repaint that was never coming. The dungeon is
+    deliberately unchanged: nothing has run that could change it, and
+    re-projecting the world from a shell that is not in a repaint would be
+    inventing a frame. Core's own renderer is **never** restated — it repaints
+    from `render()` and nowhere else — because restating it would paint the
+    dungeon over the screen that had just opened, with core committing the defect
+    instead of the mod.
+  - The notification fires when the composite **changes**, not when it is
+    recomputed. `relayoutStack` runs once per frame, and a listener on every
+    recompose would double every repaint for news that had not changed.
+
+  **What this closes, and what it does not — because the design brief claimed it
+  "closes the live defect" and it does not.** The mechanism is complete and
+  correct for every screen that *declares a region*, and today that is the
+  text-screen path alone: `showTextScreen` routes through `showViewOnTerminal`
+  (`overlay.ts`), which is **the only call site in the whole shell that pushes a
+  region**. Every screen reached that way is covered — the Mods screen, the mod
+  browser's listings, the knowledge browser's pages, the help pages, the
+  equipment-comparison overlays, wizard mode's readouts.
+
+  Everything else still erases the whole terminal without telling anyone.
+  `main-regions.test.ts` enumerates 33 `term.clear()` sites across sixteen shell
+  files; the compositor's own `render()` is the frame every region is composed
+  on, and `paintViewOnTerminal` is the one that now sits in a region. The rest
+  are marked pending, and they include the ones a player meets most: the item
+  picker, the number and text prompts, the menu prompt, the level map, the
+  character sheet's two pages, the four birth screens, the store, the options
+  pages, the colour editor, the scores, the loading screen, and the monster list
+  — which cannot use `showTextScreen` at all and says so in its own source, so it
+  paints its own grid. Several files appear on both sides: `mod-browse.ts` and
+  `equip-cmp.ts` reach `showTextScreen` for their listings and still clear the
+  terminal directly elsewhere.
+
+  So a front end reading `stack` gets a true answer about the screens that push
+  regions, and "nothing is over me" about the rest. That is a real capability and
+  a partial fix, and the ratchet is what will keep the remaining count honest as
+  it comes down.
+
+  The mod SDK mirrors `RegionLayer` and `LiveRegion`, and both frame types gained
+  `stack`. `world-view.test.ts`'s mutual key-union guard is what holds the host
+  and SDK frames together: an optional field added to one side alone fails
+  `tsc -b`.
+
+  Two corrections found while building it:
+
+  - **The snapshot boundary is the only side worth asserting on.**
+    `snapshotWorldFrame` and `snapshotHudFrame` enumerate their fields *by hand*,
+    so a field added to the type is carried by the live frame and silently
+    dropped from the snapshot a mod receives, with every live-frame test still
+    green. Measured: deleting `stack` from the world snapshot leaves
+    `world-view.test.ts`'s producer assertion passing and turns three
+    `sample-blueprint.node.test.ts` assertions red. The sample's tests were
+    re-routed through `frontendWorldFrameSink`, which is where the snapshot
+    happens; they had been calling the adapter directly and would not have seen
+    it.
+  - `signatureOf` in `ui-stack.ts` first used raw NUL bytes as a delimiter, which
+    made the file **binary to git** (`git ls-files --eol` reported `w/-text`) and
+    so exempt from `.gitattributes`' `* text=auto eol=lf` normalisation
+    entirely. It is `JSON.stringify` now: collision-proof for an arbitrary
+    mod-chosen id, and plain text.
+
+- **A pack can declare its own MESSAGE TYPES as data** (#266, MOD_REACH row 20's
+  successor), so a mod's spell, blow method, summon or projection can carry its
+  own `msgt:` and still bind. `registry:message` gave a plugin
+  `messages.define(...)`, but the only door to that facade is the host a plugin's
+  `register()` is handed — and `register()` runs **384 top-level statements after
+  the bind that needs the name**. Measured, not read: `checkMsgt` resolves at
+  `mon/bind.ts:609` under `bindCore`, under `startGame` (`session/game.ts:3042`),
+  which is statement 182 of `main.ts`, while the earliest `register()` is
+  statement 561. A content-only pack, which has no `register()` at all, could not
+  reach the capability by any route — and that is most of the packs that want
+  one, because a message type is what a spell or a sound pack ships, not what a
+  systems mod ships.
+
+  The answer is the one `bindProjections` already gives: a mod's new `PROJ` code
+  works because `projection.json` is pack DATA that arrives through composition,
+  so it exists before the binder asks. `declareModMessageTypes`
+  (`packages/core/src/mod/message-declarations.ts`) appends a pack's
+  `message_type` records — name, `sound.prf` key and sample list, because a
+  content-only sound pack that could name a type and never bind a sample to it
+  would be half a capability — after the 154 compiled slots and before
+  `bindMonsters` and `bindProjections` run. `MESSAGE_ENTRIES` itself stays
+  generated from upstream's `list-message.h`: **core adds nothing.** Declarations
+  are additive, attributed to the pack that coined them from the composer's
+  `$from` stamp, idempotent across the new-game and load paths, and never throw —
+  a refused declaration loses one message type and reports it rather than taking
+  the boot down. No capability gate, deliberately: these are records, and a pack
+  can already add a projection, a monster, an artifact and an ego item ungated.
+
+- **An installed mod now records the commit SHA its tag resolved to**, not just
+  the tag's name (#134). A tag is a label its owner can move without the name
+  ever changing, so "installed v1.2.0" and "v1.2.0" a month later could quietly
+  be different code; the recorded SHA is what makes that detectable. An install
+  from before this existed has no SHA on file, which is read as **unknown** —
+  never as "confirmed unchanged" and never as "moved". A gap in old data is not
+  evidence either way.
+
+  `classifyModPin` (`mod-updates.ts`) is the comparison and `listTagRefs`
+  (`mod-discover.ts`) is the fetch. **The "Update installed mods" screen does not
+  use them yet**: `refreshOne` (`mod-refresh.ts`) still compares tag NAMES only,
+  so the one standing a player most needs to see — *what you have is not what the
+  name says* — is the one standing today's code cannot produce. Recorded here
+  rather than left to be discovered, because every piece the fix needs is now in
+  place and only the wiring is missing.
+
+### Changed
+
+- **76 raw `tval === TV.X` comparisons now go through the class predicates**
+  (#229), so a mod that widens an item class through `registry:tval` is seen by
+  the code that dispatches on it. The predicates were already a registry; these
+  sites bypassed it and answered from a hard-coded tval, which meant a mod's item
+  class could be a scroll to `desc.ts` and not to the map renderer at the same
+  time. Converted across `obj/power.ts`, `visuals/object-glyph.ts`, `obj/make.ts`,
+  `store/store.ts`, `obj/bind.ts`, `obj/randart-build.ts` and
+  `obj/randart-data.ts` — 31 call sites once multi-line OR-groups collapse.
+
+  Player-visible consequences that this fixed: an identified mod "scroll" kept
+  drawing as its unreadable title; a mod launcher scored bow multiplier 1 and was
+  undervalued in shops and mis-weighted in randart balance; a mod chest could be
+  stocked by a store; a mod currency never joined the gold table; a mod special
+  light lost its artifact activation; and a mod wearable class with
+  `registry:randart` prep and census both registered still got only the generic
+  randart ability menu, because `buildFreqTable` and `trySupercharge` were closed
+  tval dispatches that `registry:randart` never opened.
+
+  `obj/power.ts`'s header had documented the launcher checks as `tvalIsLauncher`
+  since the port while `bowMultiplier` still compared `TV.BOW`. The comment was
+  right and the code was the bug.
+
+  **No behaviour change for an unmodded game**, and it was replayed rather than
+  reasoned about: `tval-vectors.json`, `tval-kind-vectors.json`,
+  `randart-vectors.json`, `desc-vectors.json` and `rune-vectors.json` are all
+  byte-identical, RNG probes included. 32 sites deliberately keep the raw
+  comparison and are **not** a backlog: 23 slot-specific or one-off cases with no
+  class predicate (boots, gloves, shield, cloak, the One Ring's flavour, `TV.NULL`
+  as a sentinel, priestly `BLESS_WEAPON`, WIS-blesses-edged), 6 fixtures and
+  comments, the `GEN_LIGHT` ability arm (which a mod reaches by replacing the arm
+  through `registry:randart`), and the two ammo-subtype lines in `power.ts` whose
+  seam is an open design question — the entry gate uses `tvalIsAmmo` while the
+  launcher path beside it uses `KF.SHOOTS_*` kind flags. New coverage:
+  `obj/randart-build.test.ts`, plus mod-widening cases in `obj/power.test.ts` and
+  `visuals/object-glyph.test.ts`.
+
+- **The birth-screen character preview no longer lies to the type checker**
+  (#235). `previewState` (`packages/web/src/birth.ts`) fabricated its throwaway
+  `GameState` with `as unknown as GameState`, a cast that silenced **all** type
+  checking on the fields it supplies. When core's `GameState` / `PlayerActor`
+  gained fields the character-sheet renderers started reading (2026-08-06,
+  `0b2c72530`), the preview did not get them, and **(N)ew game crashed at the
+  crash reporter for five days on a green test suite**. `previewState` now
+  mirrors the handful of fields it actually supplies from the real
+  `GameState` / `PlayerActor` / `Chunk` interfaces via `Required<Pick<...>>`, and
+  the object is declared with that named type before the single, now-honest
+  `as GameState`. Renaming or removing any of `turn`, `playerState`, `runeEnv`,
+  `chunk.depth` or `actor.{player,combat,knownCombat,speed,totalEnergy,weapon}`
+  upstream is a compile error in `birth.ts` now, not a silent gap.
+
+  One blind spot, stated rather than glossed: this does **not** catch a
+  *brand-new* field added elsewhere on `GameState` that a sheet renderer starts
+  reading — so it does not fully re-prove that the 2026-08-06 incident would be
+  caught today. `birth.test.ts`'s "the sheet preview builds a usable GameState"
+  case remains the actual backstop for that class of regression and was
+  deliberately left in place. No user-visible behaviour change; 47/47 tests pass
+  unchanged.
+
+### Fixed
+
+- **A mod's screen no longer hides the game's own prompt** (#258).
+  `ScreenHost.invoke` runs the game's code for a screen's action while a
+  presenter is drawing that screen, and two of the character sheet's actions
+  PROMPT — `c` (rename) and `f` (dump to file) put a question on the faithful
+  terminal and wait for an answer underneath the mod's overlay, while the input
+  door goes on feeding them keystrokes. The rename was the worst of them: it
+  reaches `persistSave()`, so **two keystrokes, `c` then Enter, wrote the save
+  with nothing visible on the screen at all**, and Escape was the only key that
+  got out without writing it.
+
+  The fix is not a rule against prompting inside `invoke`; that would make the
+  actions a mod can offer a strict subset of the game's, which is the whole point
+  of the seam. The game now ANNOUNCES the prompt from the `SCREEN_PROMPTS` census
+  before it lands: a presenter that can stand aside is told what is coming,
+  awaited while it animates out, and given its screen back afterwards; one that
+  cannot is named once in a fault report — with the member to add spelled out in
+  the sentence — and has the prompt drawn over its overlay, which is ugly and
+  enormously better than an invisible question.
+
+  Both character-sheet call sites are wired. `core:report`'s `describe` and
+  `core:update`'s `mods` are the two remaining prompts in the census and still
+  land under an overlay; `screen-runtime.test.ts` carries a tripwire that goes
+  red the moment `main.ts` announces them, so the gap can neither close silently
+  nor stay open unnoticed. A second tripwire records that `yieldTerminal` is
+  **not yet published on `ScreenShown`** in either `screen-view.ts` or the SDK's
+  `screen.ts` — it works, and an author reading the SDK has no way to learn it
+  exists.
+
+- **The knowledge menu's store view put `Price` six columns left of the live shop
+  screen** (#264), after #257 had already fixed the *header's* alignment to this
+  screen's own data. #257's fix was self-consistent but not correct: it lined
+  "Price" up with this screen's OWN price column and never checked that column
+  against upstream's arithmetic. It did not match.
+
+  `store_display_recalc` (`ui-store.c:208-233`) computes every column from the
+  LIVE terminal (`Term_get_size`) on every repaint — `scr_places_x[LOC_WEIGHT]`
+  is `wid - 14 - 10` for a store (the `-10` reserving room for the price column
+  that follows) and `scr_places_x[LOC_PRICE]` is `wid - 14`. The live shop screen
+  (`shop.ts`'s `geom()`) reproduces that formula every paint. The knowledge
+  menu's store view cannot — its `ScreenColumn` widths are declared once, because
+  the generic table renderer deliberately does not consult the terminal width for
+  a declared column — so its name-column width needs upstream's formula evaluated
+  at the one width this whole screen-model family commits to (80). `46` was never
+  that: it was the number the pre-model code had always used, and nothing had
+  checked it against the C. At `wid=80` the correct width is 52, which moves the
+  price field from ending at column 68 to column 74 — matching the shop screen's
+  own 74 exactly — and puts the header's "Price" at column 70 rather than 64.
+
+  **Found alongside, same function, not itself named by #264:** the home's weight
+  column shared the store's name width, but `store_display_recalc` gives the home
+  a WIDER field — the `-10` applies only `if (store->feat != FEAT_HOME)`, so a
+  home's weight sits at plain `wid - 14` (66 at `wid=80`), ten columns right of a
+  store's. Reusing the store's width put the home's "Weight" header 16 columns
+  left of upstream. `HOME_STOCK_COLUMNS` now has its own `HOME_NAME_WIDTH` (62),
+  derived independently the same way rather than sliced from the store's array.
+  Both are core's to fix: a PORT disagreement with 4.2.6, not a wart 4.2.6 has.
+
+- **Nine source comments that asserted an absence which is false today** (#226,
+  #227). A comment is what the next reader greps, so a stale one regenerates the
+  error it describes — and two of these had already produced a work item apiece.
+  `store/transact.ts` claimed a deferred "store-purchase history entry": upstream
+  `do_cmd_buy` (`store.c:1646-1774`) makes no history call at all, and all four
+  of `store.c`'s history calls (`:1087`, `:1303`, `:1924`, `:1988`) are wired.
+  `player/shape-lore.ts` claimed nothing supplied the chain's last two sections:
+  `makeShapeLoreEnv` supplies both (`game/shape-inspect.ts:163-164`) and the live
+  browser uses it. `game/monster-turn.ts` called `react_to_slay` deferred (it is
+  called at `:1347`) and the timed-effect message plumbing and lore deferred
+  (sink at `:1723`, lore at `:1699-1705`). `game/ui-entry.ts` and
+  `obj/object-info.ts` cited PORT_TODO items 3.9 and 3.20, both closed, next to
+  the code that closed them. `gen/gen-monster.ts` said `spreadMonsters` was "not
+  wired to a builder yet"; the cave builders call it. `game/wizard.ts` deferred
+  the spoiler generators and Monte-Carlo collectors, which live in their own
+  modules and are invoked by the wizard shell. And `obj/object.ts`'s
+  equipped-check note was reclassified rather than deleted: no 4.2.6 caller can
+  reach that guard with an equipped object, which is the third finished state,
+  not a deferral. No executable code changed.
+
+- **Two upstream citations in `game/equip-cmp.ts` pointed at dead code while
+  naming the live functions.** `:214` cited "the six `sel_*` functions,
+  L1643-1682" and `:333` cited "`sel_exclude_src` / `sel_only_src` (L1701-1712)".
+  In 4.2.6 the live selectors are at `ui-equip-cmp.c:1657-1696`, `sel_exclude_src`
+  is at `:1715` and `sel_only_src` at `:1722`; both cited ranges open inside `#if
+  0` blocks — `:1648-1654` holds `sel_better_than` and `:1699-1712` holds
+  `sel_exclude_slot` / `sel_only_slot`, the three selectors 4.2.6 compiles out.
+  The port's code was correct throughout and implements only the four live
+  categories; what was wrong was exactly the citation that would make the next
+  upstream sweep conclude the port had lifted dead code. Comments only.
+
+- Added test coverage for the mod manager's exit-reload prompt (#161). It fires
+  only when a change was actually made during the visit, and declining it leaves
+  the change recorded in the store without touching the running game until an
+  explicit reload — rule toggles are correctly excluded, because they apply live.
+  **No behaviour change: the mechanism already existed** (since the mod manager's
+  first commit) and `packages/web/src/mods.ts` had no unit tests at all despite
+  being 2,500 lines. Each of the four new tests was proven to fail without the
+  mechanism it protects, by sabotaging `mods.ts` in place and reverting.
+
 ## [0.19.0] - 2026-08-11
 
 ### Added

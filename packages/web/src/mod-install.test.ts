@@ -16,7 +16,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { zipSync } from "fflate";
-import type { DiscoveredMod, PayloadEntry } from "./mod-discover";
+import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } from "./mod-discover";
+import { classifyModPin, classifyModTag } from "./mod-updates";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { STORE_MODS, STORE_MOD_META } from "./idb";
@@ -313,6 +314,36 @@ describe("installing from a repository: what lands", () => {
     });
   });
 
+  it("does not write a sha key when discovery could not learn one", async () => {
+    /* discovered()'s default is sha: null - the tags call failed, or the API's own
+     * entry had none. That must land as ABSENT in the record, not as a stored null,
+     * because absent is what asMeta and classifyModPin both read as "unknown" - a
+     * literal null would be a second spelling of the same fact and a way for one of
+     * them to miss it. */
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    const r = await installModFromRepo(discovered(FILES), null, env);
+
+    expect(r.ok).toBe(true);
+    const meta = stores.get(STORE_MOD_META)?.get("demo");
+    expect(meta && typeof meta === "object" && "sha" in meta).toBe(false);
+  });
+
+  it("pins the SHA the tag resolved to, when discovery found one", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    const r = await installModFromRepo(
+      discovered(FILES, { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
+      null,
+      env,
+    );
+
+    expect(r.ok).toBe(true);
+    expect(stores.get(STORE_MOD_META)?.get("demo")).toMatchObject({
+      sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+  });
+
   it("reports progress per file", async () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env } = await envFor(files);
@@ -558,6 +589,61 @@ describe("installed mods, read back", () => {
       "alpha",
       "zed",
     ]);
+  });
+
+  it("loads a record written in the OLD shape, before sha existed", async () => {
+    /* Not a fixture with sha made optional and assumed to cover this - a real object
+     * literal with no `sha` KEY at all, exactly what every install wrote before this
+     * field existed. If asMeta ever required the key, this is what would catch it. */
+    const made = fakeIdb();
+    made.stores.set(
+      STORE_MOD_META,
+      new Map([
+        [
+          "legacy",
+          {
+            id: "legacy",
+            repo: "neostryder/legacy-mod",
+            tag: "v0.9.0",
+            files: ["manifest.json"],
+            installedAt: "2025-01-01T00:00:00.000Z",
+            digests: { "manifest.json": "deadbeef" },
+          },
+        ],
+      ]),
+    );
+
+    const metas = await installedMods({ indexedDB: made.factory });
+    expect(metas).toHaveLength(1);
+    expect(metas[0]?.id).toBe("legacy");
+    expect(metas[0]?.sha).toBeUndefined();
+    /* The semantics an absent sha exists to have: cannot be told moved OR confirmed. */
+    expect(classifyModPin(metas[0]?.sha, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).toBe(
+      "unknown",
+    );
+  });
+
+  it("refuses a record whose sha field is present but not a real string", async () => {
+    /* Proves the new guard branch actually does something, rather than being dead
+     * code that happens to sit beside a passing suite. */
+    const made = fakeIdb();
+    made.stores.set(
+      STORE_MOD_META,
+      new Map([
+        [
+          "bad",
+          {
+            id: "bad",
+            repo: "a/b",
+            tag: "v1.0.0",
+            files: [],
+            installedAt: "2025-01-01T00:00:00.000Z",
+            sha: 123,
+          },
+        ],
+      ]),
+    );
+    expect(await installedMods({ indexedDB: made.factory })).toEqual([]);
   });
 
   it("uninstalling removes both the record and the files", async () => {
@@ -955,6 +1041,7 @@ function discovered(
     payload,
     bytes: 0,
     guessedPayload: false,
+    sha: null,
     ...over,
   };
 }
@@ -1487,5 +1574,98 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
     expect(await installedMods({ indexedDB: (env.scope as { indexedDB: IDBFactory }).indexedDB })).toEqual(
       [],
     );
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Catching a MOVED TAG - the whole reason this record carries a SHA.
+ *
+ * classifyModTag (mod-updates.ts) compares tag STRINGS, and it is right to call
+ * an installed "v1.2.0" against an offered "v1.2.0" `same` - a tag's NAME did not
+ * change. What can change without the name changing at all is what the tag
+ * POINTS AT: its owner can retarget it at the repository, and every player who
+ * already installed it is left running whatever it used to point to while a new
+ * player gets something else entirely, both of them looking at the same version
+ * number. This is the case discoverMod/installModFromRepo/classifyModPin exist,
+ * together, to catch - proven end to end through the real functions rather than
+ * a hand-built stand-in for any of them.
+ * ------------------------------------------------------------------ */
+
+describe("detecting a moved tag, end to end", () => {
+  const REPO = "neostryder/neo-angband-mod-demo";
+  const SHA_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const SHA_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+  /** A GitHub that has exactly one tag, v1.2.0, currently pointing at `sha`. */
+  function discoverEnvAt(sha: string): DiscoverEnv {
+    const tagsBody = JSON.stringify([{ name: "v1.2.0", commit: { sha } }]);
+    const treeBody = JSON.stringify({
+      tree: [{ path: "manifest.json", type: "blob", size: MANIFEST.length }],
+    });
+    return {
+      engineVersion: "0.18.0",
+      fetch: (url: string) => {
+        const ok = (body: string): Promise<{ ok: true; status: 200; text: () => Promise<string> }> =>
+          Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(body) });
+        if (url.includes("/tags?")) return ok(tagsBody);
+        if (url.includes("/git/trees/")) return ok(treeBody);
+        if (url.startsWith("https://raw.githubusercontent.com/")) return ok(MANIFEST);
+        return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve("") });
+      },
+    };
+  }
+
+  it("notices the repository moved v1.2.0 to a new commit - which the tag-name classifier alone cannot", async () => {
+    /* Day 1: discover and install at whatever v1.2.0 currently points to. */
+    const first = await discoverMod({ repo: REPO }, discoverEnvAt(SHA_A));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.mod.tag).toBe("v1.2.0");
+    expect(first.mod.sha).toBe(SHA_A);
+
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const installed = await installModFromRepo(first.mod, null, env);
+    expect(installed.ok).toBe(true);
+    if (!installed.ok) return;
+    expect(installed.meta.tag).toBe("v1.2.0");
+    expect(installed.meta.sha).toBe(SHA_A);
+
+    /* Day 40: the author (or an attacker with push access) retargets v1.2.0 at a
+     * different commit. The tag the player is told about never changes. */
+    const second = await discoverMod({ repo: REPO, tag: "v1.2.0" }, discoverEnvAt(SHA_B));
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.mod.tag).toBe(installed.meta.tag);
+    expect(second.mod.sha).toBe(SHA_B);
+
+    /* THE ASSERTION THIS TICKET EXISTS FOR. */
+    expect(classifyModPin(installed.meta.sha, second.mod.sha)).toBe("moved");
+
+    /* THE CONTROL, built by removing the mechanism rather than by supplying an
+     * input assumed inert: run the SAME two discoveries through the classifier
+     * that existed before this ticket, which only ever compares tag NAMES. It
+     * says "same" - proving the assertion above would not hold without
+     * classifyModPin, because nothing before it could have produced "moved". */
+    expect(classifyModTag(installed.meta.tag, second.mod.tag)).toBe("same");
+  });
+
+  it("says 'confirmed', not 'moved', when the tag genuinely has not moved", async () => {
+    const first = await discoverMod({ repo: REPO }, discoverEnvAt(SHA_A));
+    if (!first.ok) throw new Error("setup: discovery failed");
+    const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const installed = await installModFromRepo(first.mod, null, env);
+    if (!installed.ok) throw new Error("setup: install failed");
+
+    const second = await discoverMod({ repo: REPO, tag: "v1.2.0" }, discoverEnvAt(SHA_A));
+    if (!second.ok) throw new Error("setup: second discovery failed");
+
+    expect(classifyModPin(installed.meta.sha, second.mod.sha)).toBe("confirmed");
+  });
+
+  it("says 'unknown', never 'moved', when there is no recorded SHA to compare", async () => {
+    /* The backward-compatible case: an install from before pinning existed has
+     * nothing to compare against. A gap in what was recorded must not read as
+     * evidence that anything changed. */
+    expect(classifyModPin(undefined, SHA_B)).toBe("unknown");
   });
 });

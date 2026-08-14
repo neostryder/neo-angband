@@ -23,10 +23,28 @@
  *   supplied. The two were wired months apart, and while only the sell half
  *   existed a purchase left an item's runes unknown; the header said DEFERRED for
  *   both, which is how the asymmetry read as intentional.
- * - Still DEFERRED: the store-purchase history entry (PORT_TODO); obj->known is
- *   an on-demand shadow, and totalWeight, autoinscription and artifact history are live.
- * - Deliberately ABSENT: the HOME teaches nothing (do_cmd_retrieve L1783-1851 and
- *   do_cmd_stash L2009 learn nothing at all), so homeRetrieve/homeStash have no
+ * - NOT a gap: there is no purchase-side artifact-history call to port. do_cmd_buy
+ *   (store.c L1646-1774) contains no history call of any name; store.c has exactly
+ *   four, at L1087 and L1303 (store turnover / the black-market purge, both
+ *   history_lose_artifact, ported through StoreMaintContext.onArtifactLost - which
+ *   the town-return context supplies (session/game.ts:2988) and the transaction
+ *   context does NOT (:3484). Latent, not a divergence: the only storeMaint run
+ *   from here is the restock of a store that just emptied, and the two stock
+ *   creators each assert !obj->artifact (store_create_random at store.c L1197,
+ *   store_create_item at L1267), so no artifact can be in stock for those ten
+ *   passes to delete. The port enforces that invariant behaviourally rather than
+ *   by an assert - applyMagic is called with allowArtifacts=false - and
+ *   store.test.ts pins it, because an unenforced invariant is what makes the
+ *   missing field safe),
+ *   L1924 (history_find_artifact, inside do_cmd_SELL - "Update the auto-history if
+ *   selling an artifact that was previously un-IDed"), and L1988 (the store
+ *   refusing what it just bought). The sell pair is wired at session/game.ts:3621
+ *   and :3666. An earlier note here claimed a DEFERRED "store-purchase history
+ *   entry"; it named a call upstream does not make - the direction was backwards.
+ * - obj->known is an on-demand shadow, and totalWeight, autoinscription and
+ *   artifact history are live.
+ * - Deliberately ABSENT: the HOME teaches nothing (do_cmd_retrieve L1779-1848 and
+ *   do_cmd_stash L2005 learn nothing at all), so homeRetrieve/homeStash have no
  *   learn block and must not gain one.
  */
 
@@ -140,7 +158,7 @@ export interface TxnKnowledge {
 }
 
 /* ------------------------------------------------------------------ */
-/* do_cmd_buy (store.c L1650)                                          */
+/* do_cmd_buy (store.c L1646)                                          */
 /* ------------------------------------------------------------------ */
 
 /** Why a purchase could not complete. */
@@ -214,7 +232,7 @@ export interface BuyResult {
 }
 
 /**
- * do_cmd_buy (L1650): buy `amt` of the store-stock object `obj`. Copies the
+ * do_cmd_buy (L1646): buy `amt` of the store-stock object `obj`. Copies the
  * desired amount, checks pack room and affordability, pays, carries it to the
  * player, and reduces the store stock (restocking an emptied store). Learns the
  * flavour, and every rune, on the way out - the same identification do_cmd_sell
@@ -340,7 +358,7 @@ export function storeBuy(
 }
 
 /* ------------------------------------------------------------------ */
-/* do_cmd_sell (store.c L1869)                                         */
+/* do_cmd_sell (store.c L1865)                                         */
 /* ------------------------------------------------------------------ */
 
 /** Why a sale could not complete. */
@@ -389,7 +407,7 @@ export function purchaseAnalyze(price: number, value: number, guess: number): Sa
 }
 
 /**
- * do_cmd_sell (L1869): sell `amt` of the gear object at `handle` to the store.
+ * do_cmd_sell (L1865): sell `amt` of the gear object at `handle` to the store.
  * Refuses stuck equipped items and items the store will not buy, checks the
  * store has room, pays the player, detaches the items, and hands them to the
  * store. Flavor becomes known, and object_learn_unknown_rune runs (L294).
@@ -438,7 +456,7 @@ export function storeSellFloor(
 }
 
 /**
- * The shared body of do_cmd_sell (store.c L1869), after the source-specific item
+ * The shared body of do_cmd_sell (store.c L1865), after the source-specific item
  * pick and stuck guard: check the store wants it, that it has room, pay the
  * player, learn flavor, detach the sold copy from its source, hand it to the
  * store, and classify the shopkeeper reaction. `detach` removes `amt` from the
@@ -551,7 +569,7 @@ function sellObject(
 }
 
 /* ------------------------------------------------------------------ */
-/* do_cmd_retrieve (store.c L1783)                                     */
+/* do_cmd_retrieve (store.c L1779)                                     */
 /* ------------------------------------------------------------------ */
 
 /** The outcome of homeRetrieve / homeStash. */
@@ -565,7 +583,7 @@ export interface HomeResult {
 }
 
 /**
- * do_cmd_retrieve (L1783): take `amt` of a home-stock object into the pack.
+ * do_cmd_retrieve (L1779): take `amt` of a home-stock object into the pack.
  * Copies the amount, checks pack room, redistributes charges out of the home
  * stack, carries it to the player, and reduces the home stock. No gold.
  */
@@ -603,7 +621,7 @@ export function homeRetrieve(
 }
 
 /* ------------------------------------------------------------------ */
-/* do_cmd_stash / home_carry (store.c L2009 / L870)                    */
+/* do_cmd_stash / home_carry (store.c L2005 / L870)                    */
 /* ------------------------------------------------------------------ */
 
 /**

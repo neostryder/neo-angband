@@ -123,6 +123,80 @@ let ordered: readonly LiveRegion[] = [];
 let owners = new Map<LiveRegion, Entry>();
 const handles = new WeakMap<RegionHandle, Entry>();
 
+/** Who wants to hear that the composite changed, and the last thing they heard. */
+type StackListener = (stack: readonly LiveRegion[]) => void;
+let listeners: StackListener[] = [];
+let signature = "";
+let listenerFaults: RegionStackFault[] = [];
+
+/**
+ * Be told when the composite CHANGES - not when it is recomputed.
+ *
+ * WHY THE DISTINCTION IS THE WHOLE FEATURE. `relayoutStack` runs once per frame,
+ * so a listener called on every recompose would be called on every frame, and
+ * the one consumer this exists for re-presents a frame when it hears from us.
+ * That would double every repaint for a notification whose content had not
+ * changed. What a front end needs to hear is "a screen opened over you", and the
+ * only honest signal for that is the composite being different from the last one.
+ *
+ * WHY IT MATTERS AT ALL. `render()` does not run while a core screen owns the
+ * terminal - a screen repaints itself from its own key loop - so at the exact
+ * moment a replacement front end most needs to learn it is covered, no frame is
+ * coming to tell it. Without this the mod's canvas stays over the middle of the
+ * inventory until the player closes it. See `restatableWorldFrameSink`.
+ *
+ * Returns its own unsubscribe. Idempotent.
+ */
+export function onStackChanged(listener: StackListener): () => void {
+  listeners.push(listener);
+  return () => {
+    const at = listeners.indexOf(listener);
+    if (at >= 0) listeners.splice(at, 1);
+  };
+}
+
+/**
+ * The composite as a comparable value: membership, band and rectangle, in order.
+ *
+ * JSON RATHER THAN A JOINED STRING. An id is an arbitrary string a mod chose, so
+ * any separator it could itself contain is a separator two different stacks can
+ * be made to agree on - and the first draft of this reached for control
+ * characters for exactly that reason, which made the file BINARY to git
+ * (`git ls-files --eol` reported `-text`). JSON has neither problem.
+ */
+function signatureOf(stack: readonly LiveRegion[]): string {
+  return JSON.stringify(
+    stack.map((r) => [r.id, r.layer, r.cells.col, r.cells.row, r.cells.cols, r.cells.rows]),
+  );
+}
+
+/**
+ * Tell everyone, once, if there is anything to tell.
+ *
+ * A LISTENER THAT THROWS MUST NOT TAKE THE RELAYOUT WITH IT, for the same reason
+ * `place()` is called inside a try/catch: a relayout can arrive between any two
+ * keystrokes, and one bad subscriber would then break the placement of every
+ * region for the rest of the session. It is recorded rather than swallowed - see
+ * this module's header on vanishing WITH a message - and reported through
+ * `regionStackFaults` beside the regions' own.
+ *
+ * The signature is stored BEFORE the listeners run, so a listener that itself
+ * changes the stack recurses exactly as far as the change goes and no further.
+ */
+function notifyStackChanged(): void {
+  const next = signatureOf(ordered);
+  if (next === signature) return;
+  signature = next;
+  listenerFaults = [];
+  for (const listener of [...listeners]) {
+    try {
+      listener(ordered);
+    } catch (error) {
+      listenerFaults.push({ id: "onStackChanged", fault: `listener threw: ${String(error)}` });
+    }
+  }
+}
+
 function place(entry: Entry): void {
   if (grid.cols <= 0 || grid.rows <= 0) {
     entry.cells = undefined;
@@ -163,6 +237,7 @@ function recompose(): void {
   }
   ordered = orderRegions(live);
   owners = next;
+  notifyStackChanged();
 }
 
 /**
@@ -231,7 +306,11 @@ export function regionStackFaults(): readonly RegionStackFault[] {
   for (const entry of entries) {
     if (entry.fault !== undefined) out.push({ id: entry.spec.id, fault: entry.fault });
   }
-  return out;
+  /* A subscriber that threw is a fault of the same kind: something asked to be
+   * part of this composite and is not doing its job. It is listed here rather
+   * than nowhere, because the alternative is a front end that has silently
+   * stopped being told it is covered. */
+  return [...out, ...listenerFaults];
 }
 
 /** Drop everything. Tests only - the shell's stack outlives every screen in it. */
@@ -242,6 +321,9 @@ export function resetRegionStack(): void {
   baseStack = [];
   ordered = [];
   owners = new Map();
+  listeners = [];
+  listenerFaults = [];
+  signature = "";
 }
 
 /**
@@ -255,9 +337,36 @@ export function resetRegionStack(): void {
  */
 export function paintRegionStack(host: ClippableSurface): void {
   const { cols } = host.size();
-  for (const region of ordered) {
-    const entry = owners.get(region);
+  /*
+   * ONE CONSISTENT VIEW FOR THE WHOLE FRAME, and this is a fix rather than a
+   * flourish (#261 commit 5).
+   *
+   * A `paint()` may legitimately change the stack: a mod's region whose painter
+   * throws is WITHDRAWN by `region-runtime.ts`, because a region left in the
+   * composite after its painter died is a phantom occluder that keeps a
+   * replacement front end's canvas down for ever. Any such change runs
+   * `recompose()`, which builds a NEW `LiveRegion` for every entry and a new
+   * `owners` map keyed by those new objects - so from the next iteration
+   * onwards, `owners.get(region)` was looking up the PREVIOUS frame's objects
+   * in the CURRENT frame's map and getting `undefined` for every one of them.
+   *
+   * The symptom is the exact class of bug this seam exists to stop: every
+   * region ABOVE the one that changed silently misses one frame. It reproduces
+   * only when something is added or removed mid-paint, so it reads as an
+   * unrelated flicker, and the region that vanishes is never the one at fault.
+   * Found by `region-runtime.test.ts`; pinned below in this file's own terms,
+   * because the defect is here and has nothing to do with mods.
+   *
+   * `entries` is still consulted live, so a region withdrawn earlier in THIS
+   * frame is not painted afterwards. That is the half a snapshot alone would
+   * get wrong in the other direction.
+   */
+  const frame = ordered;
+  const by = owners;
+  for (const region of frame) {
+    const entry = by.get(region);
     if (!entry?.spec.paint) continue;
+    if (!entries.includes(entry)) continue;
     /* Refuse rather than draw a region this surface cannot erase honestly; the
      * alternative is erasing with spaces, which punches a hole in whatever the
      * region was floating over. See `clipSurfaceFault`. */

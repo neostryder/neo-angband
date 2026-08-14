@@ -26,6 +26,7 @@ import {
   regionSurface,
   relayoutStack,
   resetRegionStack,
+  type RegionHandle,
   type RegionSpec,
 } from "./ui-stack";
 import type { ClippableSurface } from "./region-surface";
@@ -366,6 +367,59 @@ describe("painting the stack", () => {
     expect(bad.fault()).toContain("boom");
     expect(good.fault()).toBeUndefined();
     expect(grid.row(0)).toBe("          ok");
+  });
+
+  it("keeps painting the regions ABOVE one that pops itself mid-frame (#261)", () => {
+    /* THE DEFECT, in this file's own terms because it is this file's and has
+     * nothing to do with mods. `popRegion` runs `recompose()`, which mints a
+     * fresh `LiveRegion` for every entry and a fresh `owners` map keyed by those
+     * new objects. The paint loop was walking the PREVIOUS array and looking its
+     * members up in the NEW map, so from the pop onwards every lookup missed and
+     * every region above the one that popped silently skipped a frame.
+     *
+     * It was unreachable until something could remove itself from inside a
+     * paint, which is exactly what `region-runtime.ts` does when a mod's painter
+     * throws - and it found this. The symptom would have been a flicker in an
+     * innocent region while a DIFFERENT mod was failing. */
+    const grid = new GridDouble();
+    relayoutStack({ cols: COLS, rows: ROWS, base: baseAt() });
+    /* A box, because the spec must reach a handle that does not exist until
+     * pushRegion has been given the spec - the same knot `region-runtime.ts`
+     * ties for the same reason. */
+    const held: { handle?: RegionHandle } = {};
+    held.handle = pushRegion({
+      ...windowAt("mod:leaves", { col: 0, row: 0, cols: 5, rows: 1 }),
+      paint: () => held.handle!.release(),
+    });
+    pushRegion({
+      ...windowAt("mod:stays", { col: 10, row: 0, cols: 5, rows: 1 }),
+      paint: (s) => s.print(0, 0, "ok", "#fff"),
+    });
+    paintRegionStack(grid);
+    expect(grid.row(0)).toBe("          ok");
+    expect(liveRegionStack().map((r) => r.id)).toContain("mod:stays");
+    expect(liveRegionStack().map((r) => r.id)).not.toContain("mod:leaves");
+  });
+
+  it("does not paint a region that was popped EARLIER in the same frame (#261)", () => {
+    /* The other direction, and the reason the fix is a snapshot PLUS a liveness
+     * check rather than a snapshot alone. A region removed while the frame is
+     * still running must not then be drawn by that same frame - it would leave
+     * one last picture on screen after being withdrawn, which is how a phantom
+     * outlives its owner. */
+    const grid = new GridDouble();
+    relayoutStack({ cols: COLS, rows: ROWS, base: baseAt() });
+    const held: { victim?: RegionHandle } = {};
+    pushRegion({
+      ...windowAt("mod:first", { col: 0, row: 0, cols: 5, rows: 1 }),
+      paint: () => held.victim!.release(),
+    });
+    held.victim = pushRegion({
+      ...windowAt("mod:second", { col: 10, row: 0, cols: 5, rows: 1 }),
+      paint: (s) => s.print(0, 0, "NO", "#fff"),
+    });
+    paintRegionStack(grid);
+    expect(grid.row(0)).toBe("");
   });
 });
 

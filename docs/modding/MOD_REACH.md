@@ -463,11 +463,19 @@ than the row.**
 
 *Row 21 (`SOUND_PREF_ENTRIES`) was not only a producer problem — it was an
 ORDERING problem, and that half was invisible to inspection.* `installWebSound`
-runs at `main.ts:8821`; a plugin's `register()` runs at `:10985`. A registry read
+runs at `main.ts:8845`; a plugin's `register()` runs at `:10851` (the trusted
+path, inside `installTrusted`) and `:11039` (the folder loop). A registry read
 only at install time would have been read BEFORE every mod that can write to it —
 correct-looking code that works for nobody. That is the second of #159's two
 documented failure modes, and `soundPrefRegistry.onAdd(...)` is what makes the
 engine take later contributions.
+
+> *The three line numbers in that paragraph were `:8821` and `:10985` until
+> 2026-08-14, and re-measuring them at HEAD moved every one.* The LESSON is
+> unchanged and is the part to remember — `installWebSound` still runs first, by
+> roughly two thousand statements — but a `file:line` in prose is the part of
+> this document that rots, and it rots silently. Prefer the ordering claim to
+> the coordinates.
 
 *Row 20 (`MESSAGE_ENTRIES`) was a crash, not a missing feature.* A `msgt:` naming
 a type core had not heard of threw `PARSE_ERROR_INVALID_MESSAGE` and took the
@@ -489,11 +497,56 @@ immunity, scaled damage, fear, stun, confusion, polymorph, teleport, the
 hit for exactly its dice. The corrected claim is narrower and the control that
 proves it is stronger.
 
-**One gap opened by closing these** (#266): a plugin's `register()` runs after
-`bootGame()`, so a mod can declare a message type and bind sounds to it, but
-cannot declare it early enough for its OWN records — a spell, a blow, a summon —
-to carry that `msgt` at bind time. The capability is real for a sound pack and
-does not yet reach the case that motivated it.
+**One gap opened by closing these, now closed (#266), and THE ORDER WAS
+MEASURED.** `registry:message` let a plugin declare a message type, and the only
+door to that facade is the `ModRegistryHost` a host builds for `register()`.
+Wrapping `messageTypes.lookup` and booting a real game with a monster spell
+carrying `msgt: PROBE_FLARE` put the resolution at `mon/bind.ts:609`
+(`checkMsgt`), under `bindMonsters` inside `bindCore` (`session/boot.ts`), under
+`startGame` (`session/game.ts:3042`) —
+and `startGame` did not return, it threw `PARSE_ERROR_INVALID_MESSAGE`. Parsing
+`main.ts` puts that call at top-level statement 182 (`const game = bootGame()`)
+and the earliest `register()` at statements 561 and 566, all direct children of
+the module. **384 top-level statements separate the two.** A message type
+declared in `register()` is declared after every record that could have named it.
+
+Worse than late: for a pack with no `plugin.js` there is no `register()` at all,
+so the capability was **unreachable** rather than merely mistimed — and that is
+most of the packs that want one, because a message type is what a spell or a
+sound pack ships, not what a systems mod ships.
+
+The answer is the one `bindProjections` already gives. A mod's new `PROJ` code
+works because `projection.json` is pack DATA that arrives through composition,
+not a plugin call, so it exists before the binder asks. Message types now do the
+same: `declareModMessageTypes`
+(`packages/core/src/mod/message-declarations.ts`) appends a pack's
+`message_type` records — name, `sound.prf` key, and the sample list, because a
+content-only sound pack that could name a type and never bind a sample to it
+would be half a capability — after the 154 compiled slots and before
+`bindMonsters` and `bindProjections` run. `MESSAGE_ENTRIES` itself stays
+generated from upstream's `list-message.h`: **core adds nothing.**
+
+**No capability gate, deliberately.** `registry:*` gates trusted in-process CODE.
+These are records, and a content pack can already add a projection, a monster, an
+artifact and an ego item with no capability at all; gating one record file and
+not the other twenty would be a fence with no wall attached.
+
+**Nothing in the pass throws.** Every refusal `MessageTypeRegistry` makes is a
+name that already resolves somewhere (a compiled-in `MSG_`, a numeric index, an
+earlier pack's declaration) or one that can never resolve at all, so the record
+naming it binds or fails on its own merits either way — and a message type is
+never what should stop a game from booting. A refused declaration loses one
+message type and reports it.
+
+**Two of these 21 "yes" rows have now been checked for reachability IN PRACTICE
+rather than in principle, and both were defective.** Row 21's registry was
+readable and writable and was read before anything could write to it; #266's
+capability had a door only code could open, in a family whose typical author
+ships no code. That is the measured fact and it is the whole of it — **the other
+19 are not hereby suspect**, because nothing has been measured about them. What
+it does say is that "a registry exists and a mod can call it" is a weaker claim
+than it reads as, and the two checks that were run are the only two that have
+been.
 
 **Row 25 is struck from the count, and kept in the table.** `DEBUG_MENU` is the
 wizard-mode menu. `wizard.ts:508-518` says in the source that the table must

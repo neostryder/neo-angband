@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Glyph, RenderAssetRef } from "./term";
 import type { WorldFrame as SdkWorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { LiveRegion } from "./regions";
 import {
   backgroundAssetForWorldCell,
+  buildWorldFrame,
   glyphWorldFrameSink,
   renderWorldFrame,
+  restatableWorldFrameSink,
+  snapshotWorldFrame,
   type WorldCell,
   type WorldFrame,
 } from "./world-view";
@@ -172,5 +176,109 @@ describe("the host frame and the SDK frame are the same type", () => {
       SameKeys<WorldFrame, SdkWorldFrame>,
     ] = [true, true, true];
     expect(bothWays).toEqual([true, true, true]);
+  });
+});
+
+/* ------------------------------------------------------------------------- *
+ * #261: the frame carries what is drawn OVER the map.
+ * ------------------------------------------------------------------------- */
+
+function region(id: string, layer: LiveRegion["layer"], col: number, cols: number): LiveRegion {
+  return { id, layer, cells: { col, row: 0, cols, rows: 1 }, pixels: { x: col, y: 0, width: cols, height: 1 } };
+}
+
+function framed(stack?: readonly LiveRegion[]): WorldFrame {
+  return buildWorldFrame({
+    width: 1,
+    height: 1,
+    origin: { x: 0, y: 0 },
+    size: { width: 1, height: 1 },
+    screenOrigin: { x: 0, y: 0 },
+    ...(stack ? { stack } : {}),
+    resolveCell: (grid, screen): WorldCell => ({
+      grid, screen, visibility: "seen", overlays: [], cursor: false,
+    }),
+  });
+}
+
+describe("the live region stack on a world frame", () => {
+  it("is carried through the producer, and absent is not empty", () => {
+    /* The distinction the whole feature rests on. `[]` is a host that published
+     * a stack and has nothing on screen; `undefined` is a host that published
+     * none. A producer that normalised one into the other would tell a front end
+     * it is uncovered on the word of a host that never answered. */
+    expect(framed().stack).toBeUndefined();
+    expect(framed([]).stack).toEqual([]);
+    expect(framed([region("map", "base", 0, 4)]).stack?.map((r) => r.id)).toEqual(["map"]);
+  });
+
+  it("is copied, frozen and un-aliased by the snapshot a plugin receives", () => {
+    /* THE NAMED RISK OF THIS COMMIT. `snapshotWorldFrame` enumerates its fields
+     * by hand, so a field added to the type is carried by the LIVE frame and
+     * silently dropped from the snapshot - and every test that reads the live
+     * frame keeps passing. This one reads the snapshot. */
+    const live = { col: 3, row: 0, cols: 2, rows: 1 };
+    const source: LiveRegion[] = [
+      { id: "map", layer: "base", cells: { col: 0, row: 0, cols: 8, rows: 1 } },
+      { id: "core:screen", layer: "modal", cells: live, pixels: { x: 30, y: 0, width: 20, height: 10 } },
+    ];
+    const snapshot = snapshotWorldFrame(framed(source));
+
+    expect(snapshot.stack?.map((r) => r.id)).toEqual(["map", "core:screen"]);
+    expect(snapshot.stack?.[1]).toEqual({
+      id: "core:screen",
+      layer: "modal",
+      cells: { col: 3, row: 0, cols: 2, rows: 1 },
+      pixels: { x: 30, y: 0, width: 20, height: 10 },
+    });
+    /* A region with no pixel projection keeps NOT having one, rather than
+     * gaining an `undefined` the SDK's exactOptionalPropertyTypes forbids. */
+    expect(Object.hasOwn(snapshot.stack![0]!, "pixels")).toBe(false);
+
+    expect(Object.isFrozen(snapshot.stack)).toBe(true);
+    expect(Object.isFrozen(snapshot.stack?.[1])).toBe(true);
+    expect(Object.isFrozen(snapshot.stack?.[1]?.cells)).toBe(true);
+    /* The ownership cut: ui-stack rebuilds these on every relayout, and a mod
+     * holding a frame for an animation must not watch them change under it. */
+    live.cols = 99;
+    source.push({ id: "late", layer: "system", cells: { col: 0, row: 0, cols: 1, rows: 1 } });
+    expect(snapshot.stack).toHaveLength(2);
+    expect(snapshot.stack?.[1]?.cells.cols).toBe(2);
+  });
+});
+
+describe("restatableWorldFrameSink", () => {
+  it("re-presents the last frame under a new stack, and does nothing before one", () => {
+    const seen: (readonly LiveRegion[] | undefined)[] = [];
+    const sink = restatableWorldFrameSink({ present: (f) => seen.push(f.stack) });
+
+    /* No frame yet: a stack change before the first repaint has nothing to
+     * re-present, and inventing one would mean projecting a dungeon from a
+     * shell that is not in a repaint. */
+    sink.restate([region("map", "base", 0, 4)]);
+    expect(seen).toEqual([]);
+
+    sink.present(framed([region("map", "base", 0, 4)]));
+    sink.restate([region("map", "base", 0, 4), region("core:screen", "modal", 0, 4)]);
+    expect(seen.map((s) => s?.map((r) => r.id))).toEqual([
+      ["map"],
+      ["map", "core:screen"],
+    ]);
+  });
+
+  it("restates the SAME cells - the map did not change, the stack did", () => {
+    /* Deliberate. Nothing has run that could move the dungeon; a screen opened.
+     * What the consumer needs from this call is the stack, and the cells are the
+     * ones it already drew. */
+    const frames: WorldFrame[] = [];
+    const sink = restatableWorldFrameSink({ present: (f) => frames.push(f) });
+    const first = framed([region("map", "base", 0, 4)]);
+    sink.present(first);
+    sink.restate([]);
+    expect(frames[1]?.cells).toBe(first.cells);
+    /* A NEW object, never a mutation of the one already handed out: a consumer
+     * that retained the first frame must not find its stack rewritten. */
+    expect(frames[1]).not.toBe(first);
+    expect(first.stack?.map((r) => r.id)).toEqual(["map"]);
   });
 });

@@ -59,11 +59,19 @@ deferred:
   - CLOSED (2026-08-07). apply_autoinscription is a seam at game/context.ts:259,
     applying runes_autoinscribe first, covered by game/obj-cmd.test.ts:737. The
     artifact auto-history on a sale is wired both ways: history_find_artifact
-    (store.c:1928, inside do_cmd_sell) through state.onArtifactFound, and
-    history_lose_artifact for a store that refuses the item (store.c:1992)
-    through state.onArtifactLost - both at session/game.ts:3375-3377 and
-    :3420-3422. The two remaining upstream lose-sites are store MAINTENANCE,
-    not transactions, and are ledgered with them in player-history.yaml.
+    (store.c:1924, inside do_cmd_sell, which runs :1865-2000) through
+    state.onArtifactFound, and history_lose_artifact for a store that refuses the
+    item (store.c:1988) through state.onArtifactLost - both at
+    session/game.ts:3621-3622 and :3666-3667. The two remaining upstream
+    lose-sites are store MAINTENANCE, not transactions, and are ledgered with
+    them in player-history.yaml.
+
+    Line numbers re-measured 2026-08-14 (task #228): this row read :1928 and
+    :1992, and the port-side pair had drifted from :3375/:3420. The CLASSIFICATION
+    was right the whole time and this was the only document in the stack that had
+    it right - every other page called the sale-side call a PURCHASE-side one and
+    filed a gap against it. do_cmd_buy runs store.c:1646-1774 and makes no
+    history call of any name, so there was never a purchase entry to owe.
   - The OF_STICKY guard reads the object's own flags; the curse -> flags
     propagation for live objects lands with the curse-on-object application
     path, so at the baseline only intrinsically-sticky items are refused

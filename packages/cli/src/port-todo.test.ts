@@ -176,6 +176,18 @@ describe("parity/PORT_TODO.md", () => {
   it("would notice an uncovered file (mutation check on the guard above)", () => {
     const { files } = census();
     const doc = readFileSync(TODO, "utf8");
+    /* On 2026-08-14 the appendix re-verification closed the deferral census's
+     * last two `partial` rows, so this tranche now has NO owed files and this
+     * control lost its subject. Said out loud rather than skipped: a mutation
+     * check with nothing to mutate is a green test that measures nothing, and it
+     * would leave the guard above vacuous with no sign of it. The synthetic
+     * subject still exercises the same `uncovered` path. */
+    if (files.length === 0) {
+      const absent = "packages/core/src/nowhere.ts";
+      expect(doc.includes(absent), "the sentinel must be genuinely uncited").toBe(false);
+      expect(uncovered(doc, [absent])).toEqual([absent]);
+      return;
+    }
     /* Drop one covered file's every citation and the guard must see it. No file
      * is written: the check is a pure function of the text, so the mutation can
      * be done in memory and cannot leave the tree dirty. */

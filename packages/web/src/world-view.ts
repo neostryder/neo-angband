@@ -9,7 +9,13 @@
  */
 
 import type { Glyph, GridSurface, RenderAssetRef } from "./term";
-import type { RegionCells, RegionPixels, ScreenRegion, ScreenRegions } from "./regions";
+import type {
+  LiveRegion,
+  RegionCells,
+  RegionPixels,
+  ScreenRegion,
+  ScreenRegions,
+} from "./regions";
 
 export interface WorldGrid {
   readonly x: number;
@@ -77,6 +83,31 @@ export interface WorldFrame {
    * no geometry to give - not because a front end may ignore it.
    */
   readonly regions?: ScreenRegions;
+  /**
+   * EVERYTHING ON SCREEN, bottom to top, including the four base tiles
+   * `regions` names (#261).
+   *
+   * WHY A FRONT END NEEDS IT, and the live defect it closes. `regions` answers
+   * "where is the map"; it cannot answer "is anything on top of it". A
+   * replacement front end draws into its own canvas over the map rectangle, and
+   * core's screens - the inventory, the knowledge browser, the Mods screen
+   * itself - repaint the terminal underneath that canvas without producing a
+   * world frame at all. So the mod's last map stayed floating over the middle of
+   * every screen the player opened, which is `samples/blueprint-view`'s original
+   * cover-the-window defect back at map size. `occludersOf(stack, "map")` is the
+   * question, and this field is what makes it askable.
+   *
+   * ORDERED, and the order is the answer: a region later in this array is drawn
+   * over one earlier in it (`orderRegions`). The four base tiles are always
+   * first, so anything a screen or a mod pushed is above them by construction.
+   *
+   * Optional for the same reason `regions` is - a producer with no fitted
+   * surface has no stack to give - and ABSENT IS NOT EMPTY. An empty array means
+   * this host published a stack and nothing is on screen; absent means it
+   * published none, and a front end that treats the two alike is deciding it is
+   * uncovered on the strength of a host that never answered.
+   */
+  readonly stack?: readonly LiveRegion[];
 }
 
 export interface BuildWorldFrameParams {
@@ -88,6 +119,7 @@ export interface BuildWorldFrameParams {
   readonly resolveCell: (grid: WorldGrid, screen: WorldGrid) => WorldCell;
   readonly player?: WorldPlayer;
   readonly regions?: ScreenRegions;
+  readonly stack?: readonly LiveRegion[];
 }
 
 /**
@@ -161,6 +193,7 @@ export function snapshotWorldFrame(frame: WorldFrame): WorldFrame {
     cells,
     ...(player === undefined ? {} : { player }),
     ...(frame.regions === undefined ? {} : { regions: copyRegions(frame.regions) }),
+    ...(frame.stack === undefined ? {} : { stack: copyStack(frame.stack) }),
   });
 }
 
@@ -186,6 +219,43 @@ function copyRegions(regions: ScreenRegions): ScreenRegions {
     ...(regions.sidebar === undefined ? {} : { sidebar: copyRegion(regions.sidebar) }),
     ...(regions.status === undefined ? {} : { status: copyRegion(regions.status) }),
   });
+}
+
+/**
+ * The live stack, owned by whoever receives it.
+ *
+ * SEPARATE FROM `copyRegions` even though the rectangles are the same shape,
+ * because the two carry different things: a `ScreenRegion` has a `name` from a
+ * closed set and a `LiveRegion` has an `id` any screen or mod may mint, plus the
+ * band that decides what it is drawn over. Sharing one copier would mean one of
+ * the two silently losing a field.
+ *
+ * `ui-stack.ts` rebuilds these objects on every relayout, so they are the host's
+ * mutable-in-principle values like everything else here and get the same
+ * ownership cut. Cheap: a handful of small rectangles.
+ */
+function copyStack(stack: readonly LiveRegion[]): readonly LiveRegion[] {
+  return Object.freeze(stack.map((region) =>
+    Object.freeze({
+      id: region.id,
+      layer: region.layer,
+      cells: Object.freeze({
+        col: region.cells.col,
+        row: region.cells.row,
+        cols: region.cells.cols,
+        rows: region.cells.rows,
+      }),
+      ...(region.pixels === undefined
+        ? {}
+        : {
+            pixels: Object.freeze({
+              x: region.pixels.x,
+              y: region.pixels.y,
+              width: region.pixels.width,
+              height: region.pixels.height,
+            }),
+          }),
+    })));
 }
 
 /**
@@ -225,6 +295,7 @@ export function buildWorldFrame(p: BuildWorldFrameParams): WorldFrame {
     cells,
     ...(p.player ? { player: p.player } : {}),
     ...(p.regions ? { regions: p.regions } : {}),
+    ...(p.stack ? { stack: p.stack } : {}),
   };
 }
 
@@ -281,6 +352,55 @@ export function glyphWorldFrameSink(surface: Pick<GridSurface, "put">): WorldFra
  */
 export function teeWorldFrameSink(...sinks: readonly WorldFrameSink[]): WorldFrameSink {
   return { present: (frame) => { for (const sink of sinks) sink.present(frame); } };
+}
+
+/**
+ * A sink that can be told the STACK changed when no new frame was produced.
+ *
+ * WHY THIS IS NEEDED AT ALL, and it is the half of #261 that a type alone does
+ * not close. A world frame is produced by `render()`, and `render()` does not
+ * run while a core screen owns the terminal - a screen repaints itself from its
+ * own key loop. So the exact moment a front end most needs to hear "you are
+ * covered now" is the one moment nothing is going to tell it: the mod's canvas
+ * would sit over the middle of the inventory until the player closed it, which
+ * is the live defect. Re-presenting the LAST frame with the NEW stack is what
+ * turns the stack from a fact on a frame into a notification.
+ *
+ * THE LAST FRAME IS STALE ON PURPOSE. The map has not changed - nothing has run
+ * that could change it - and inventing a fresh one would mean re-projecting the
+ * dungeon from a shell that is not in a repaint. What the consumer needs from
+ * this call is the stack; the cells are the ones it already drew.
+ */
+export interface RestatableWorldFrameSink extends WorldFrameSink {
+  /** Re-present the last frame with this stack. No-op before the first frame. */
+  restate(stack: readonly LiveRegion[]): void;
+}
+
+/**
+ * Remember each frame so it can be presented again under a new stack.
+ *
+ * NOT FOR CORE'S OWN SINK. Core repaints the map from `render()` and from
+ * nowhere else; asking the glyph painter to restate would draw the dungeon over
+ * whichever screen had just opened - the very thing the notification exists to
+ * stop, with core doing it instead of the mod. `frontendWorldFrameSink` is what
+ * decides, and it hands core's sink back unwrapped.
+ */
+export function restatableWorldFrameSink(sink: WorldFrameSink): RestatableWorldFrameSink {
+  let last: WorldFrame | undefined;
+  return {
+    present(frame) {
+      last = frame;
+      sink.present(frame);
+    },
+    restate(stack) {
+      if (last === undefined) return;
+      /* A NEW wrapper object, never a mutation of the remembered one: the frame
+       * this sink was handed belongs to the producer, and a consumer that
+       * retained the previous snapshot must not see its stack change under it. */
+      last = { ...last, stack };
+      sink.present(last);
+    },
+  };
 }
 
 function worldVisualToGlyph(visual: WorldVisual): Glyph {

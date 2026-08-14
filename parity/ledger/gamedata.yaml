@@ -494,10 +494,26 @@ notes: >-
   the compilation.
 ---
 module: packages/content/pack/old_class.json
-status: planned
+status: unreachable-in-upstream
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/old_class.txt
 notes: >-
-  Deferred: retired class data kept upstream for reference; not loaded by
-  the 4.2.6 game.
+  Closed 2026-08-14 (task #228). Shipped and never parsed, so there is nothing to
+  compile. lib/gamedata/Makefile:8 installs old_class.txt into every player's
+  data directory, and init.c registers no old_class_parser - the only other
+  mentions in 4.2.6 are src/Makefile.ibm:114 (an 8.3-FAT rename for the DOS
+  build), src/win/vs2019/Angband.vcxproj:707 and .vcxproj.filters:1657 (an MSVC
+  Text item), and comments in three tileset .prf files. That the file is
+  INSTALLED for every player while no code path reads it is the stronger evidence
+  than the DOS rename an earlier sweep leaned on. This is the third finished
+  state (owner ruling 2026-08-09), not a deferral: no path in 4.2.6 reads the
+  file, so no player can observe its absence. It was the only `status: planned`
+  row in the entire ledger, and closing it empties that status.
+verified-by:
+  - >-
+    packages/content/src/data-exactness.test.ts:788-791, the test named
+    "old_class.txt exists upstream and is not in the pack" - it asserts the
+    upstream file is present and non-empty AND that no spec named "old_class" is
+    registered. The ratchet sits on the port's spec list, which is the thing that
+    can change; compiling the file fails it.

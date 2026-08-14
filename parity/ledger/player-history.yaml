@@ -75,9 +75,20 @@ upstream:
         STANDS on - there is no on-sight discovery at a distance to reproduce,
         and the port's gate is the same one. historyFindArtifact's per-aidx
         de-dupe means the two paths cannot double-log.
-      - store.c:1928 (buying an artifact from a store calls
-        history_find_artifact) - NOT WIRED. Deferred: stores in the port do
-        not currently stock/sell artifacts.
+      - store.c:1924 (history_find_artifact) - WIRED, and the row that used to
+        sit here was wrong on THREE counts (corrected 2026-08-14, task #228). It
+        read "store.c:1928 (buying an artifact from a store calls
+        history_find_artifact) - NOT WIRED. Deferred: stores in the port do not
+        currently stock/sell artifacts." The line is 1924, not 1928; it is inside
+        do_cmd_SELL (store.c:1865-2000), not a purchase - its own comment says
+        "Update the auto-history if selling an artifact that was previously
+        un-IDed"; and it IS wired, at session/game.ts:3621 (gear handle) and
+        :3666 (floor object), with onArtifactLost beside each for store.c:1988.
+        do_cmd_buy runs store.c:1646-1774 and makes no history call of any name,
+        so the purchase-side entry this row deferred does not exist upstream:
+        UNREACHABLE IN UPSTREAM. The file's own `deferred:` block had already
+        contradicted this item - two halves of one ledger disagreeing - and
+        store-transact.yaml was right about it the whole time.
       - player-util.c:309 (death_knowledge -> history_unmask_unknown) -
         WIRED, packages/web/src/main.ts's advance() DEAD branch, before
         enterScore/the memorial screen.
@@ -85,14 +96,20 @@ upstream:
         for the C save format's own reader) - N/A: the port's save format is
         its own JSON schema (session/save.ts), not the C binary reader;
         SavedPlayer.hist round-trips the array directly instead.
-      - cmd-misc.c:115 (HIST_USER_INPUT, the "take notes" command) - NOT
-        WIRED. The port has no take-notes command; the HIST.USER_INPUT
-        constant exists (generated/history-types.ts) but nothing calls
-        historyAdd with it. Deferred until a notes command is built.
+      - cmd-misc.c:115 (HIST_USER_INPUT, the "take notes" command) - WIRED
+        (corrected 2026-08-14, task #228; this item read "NOT WIRED ... Deferred
+        until a notes command is built", and the command had been built).
+        do_cmd_note (cmd-misc.c:88) is noteCmd at packages/web/src/main.ts:4615,
+        with the "Note: " prompt at :4618 (cmd-misc.c:98), the historyAdd call
+        carrying HIST.USER_INPUT at :4642, and the ':' key binding at :8201
+        (ui-game.c:211). Test: packages/web/src/rest-steal-note.test.ts:60-80.
       - effect-handler-attack.c:1226, effect-handler-general.c:222,
-        generate.c:1387, store.c:1091/1307/1992 (six history_lose_artifact
+        generate.c:1381, store.c:1087/1303/1988 (six history_lose_artifact
         call sites: acid/disenchant destruction, an artifact abandoned when
-        a level regenerates, and selling an artifact back to a store) - NOT
+        a level regenerates, and selling an artifact back to a store; the
+        generate.c and store.c numbers re-measured 2026-08-14 - they read
+        :1387 and :1091/1307/1992, drifted the same way the buy/sell row above
+        was) - NOT
         WIRED. historyLoseArtifact/the ARTIFACT_LOST bit/the "(LOST)" suffix
         are fully implemented and unit-tested (player/history.test.ts,
         screens.test.ts), but no live game event currently calls

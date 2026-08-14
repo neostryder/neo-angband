@@ -195,8 +195,13 @@ export type {
 export { ModProject, modProject } from "./project.js";
 export type { EmittedFile, ProjectBuild } from "./project.js";
 export type {
+  LiveRegion,
+  ModRegionLayer,
   RegionCells,
+  RegionDeclaration,
+  RegionLayer,
   RegionPixels,
+  RegionSurface,
   ScreenRegion,
   ScreenRegionName,
   ScreenRegions,

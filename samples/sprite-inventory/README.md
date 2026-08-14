@@ -179,3 +179,52 @@ one *composite* row the faithful terminal would have produced — a label joined
 its value, or a padded multi-field line — reached the canvas. Then it presses
 `h` and checks that the page moved **through the host** rather than by the mod
 deciding for itself what page two is.
+
+## And it adds a region of its own
+
+Everything above is the `screen()` half: screens the game already shows, shown
+better. `regions()` is a different bargain, and the sample carries both so the
+difference is readable in one folder.
+
+A region is a rectangle that **did not exist** until this mod asked for one, and
+it is on screen while the player is walking around rather than only while a
+screen is open. This one is a right-anchored `Carried` strip that redraws the
+last listing the mod was handed, so once you have opened your pack the contents
+stay readable beside the live map.
+
+That is why it needs `ui:region.create` rather than riding on the
+`ui:screen.replace` this mod already holds — and why `ui:*.replace` would not
+have granted it either. The wildcard ranges over *which of the game's regions
+changes hands*; adding one of your own is a different sentence for a player to
+agree to, and the two are separate consents on purpose.
+
+Three things in the declaration are worth copying rather than reading past:
+
+- **`place(grid)` does arithmetic and nothing else.** It runs on every layout
+  change, which in this shell is once per frame. It is also total — every branch
+  clamps, including the terminal too short to have both a message line and a
+  status line, because an off-grid rectangle is refused with a named fault.
+- **It is anchored to the right edge.** A region whose right edge is not the
+  terminal's needs a host that can bound an erase, and a host without one refuses
+  it rather than erasing with spaces — a space is a glyph that occludes, so it
+  would punch a white hole in the map the panel is meant to float over. Upstream's
+  own `show_obj_list` right-anchors an item list for its own version of this
+  reason.
+- **`paint` calls `clear()` first, and that is what makes the panel opaque.**
+  Transparency here is not a flag and not an alpha: it is a cell that was not
+  written. `clear()` erases *this rectangle* and nothing else, so the map either
+  side of the strip is untouched and still being drawn by the game underneath.
+
+The band is `overlay`, not `modal` — furniture sits over the map and under
+anything that wants the player's attention, and a panel that outranked the game's
+own screens would still be there over the middle of the knowledge browser.
+`system` is not offered to mods at all, so that the mod manager can always be
+drawn above a mod that has gone wrong.
+
+The check is in `packages/web/src/sample-inventory-region.node.test.ts`. It loads
+**this folder** by path, installs the region through the shell's own
+`installRegions`, paints a dungeon into the cells `screenRegions` says the map
+occupies, composites the stack over it, and then asserts the map is **still
+there** everywhere the panel is not — which is the claim "beside a live map"
+actually makes. A region that had called `term.clear()`, which is what every
+screen in this shell did before #261, fails that assertion by name.

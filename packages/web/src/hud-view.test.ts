@@ -23,11 +23,12 @@ import {
   hudSections,
   paintHudFrame,
   paintHudSection,
+  snapshotHudFrame,
   type HudFrameParams,
   type HudModel,
   type HudSection,
 } from "./hud-view";
-import { screenRegions } from "./regions";
+import { screenRegions, type LiveRegion } from "./regions";
 
 /** A surface that records what was printed, in order. */
 function recorder(): {
@@ -411,5 +412,44 @@ describe("values reach the entry that was placed", () => {
      * crossed the boundary must not be the object the next repaint mutates. */
     expect(values).not.toBe(frame.sidebar!.entries[0]!.values);
     expect(Object.isFrozen(values)).toBe(true);
+  });
+});
+
+describe("what is drawn OVER the HUD (#261)", () => {
+  const stack: readonly LiveRegion[] = [
+    { id: "sidebar", layer: "base", cells: { col: 0, row: 1, cols: 13, rows: 23 } },
+    {
+      id: "core:screen",
+      layer: "modal",
+      cells: { col: 0, row: 0, cols: 80, rows: 24 },
+      pixels: { x: 0, y: 0, width: 800, height: 480 },
+    },
+  ];
+
+  it("is carried on the frame, and absent is not empty", () => {
+    /* A mod that has taken `sidebar` and draws it as a DOM panel has the map's
+     * problem in miniature: a screen opens, core repaints the terminal
+     * underneath, and no HUD frame is produced to say so. Same distinction as on
+     * the world frame - `[]` is an answer, `undefined` is silence. */
+    expect(buildHudFrame(params()).stack).toBeUndefined();
+    expect(buildHudFrame(params({ stack: [] })).stack).toEqual([]);
+    expect(buildHudFrame(params({ stack })).stack?.map((r) => r.id)).toEqual([
+      "sidebar",
+      "core:screen",
+    ]);
+  });
+
+  it("survives the snapshot a plugin receives, copied and frozen", () => {
+    /* THE NAMED RISK. `snapshotHudFrame` enumerates its fields by hand, so a
+     * field added to the type is carried by the LIVE frame and silently dropped
+     * from the snapshot - with every test that reads the live frame still
+     * passing. This one reads the snapshot, which is the only side a mod sees. */
+    const copy = snapshotHudFrame(buildHudFrame(params({ stack })));
+    expect(copy.stack?.map((r) => r.id)).toEqual(["sidebar", "core:screen"]);
+    expect(copy.stack?.[1]).toEqual(stack[1]);
+    expect(copy.stack?.[1]).not.toBe(stack[1]);
+    expect(Object.hasOwn(copy.stack![0]!, "pixels")).toBe(false);
+    expect(Object.isFrozen(copy.stack)).toBe(true);
+    expect(Object.isFrozen(copy.stack?.[1]?.cells)).toBe(true);
   });
 });

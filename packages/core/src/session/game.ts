@@ -1527,6 +1527,27 @@ function wireGame(
             polyRace(state, race, state.chunk.depth, ambientPlaceDeps),
           replaceMonster: (m, race): Monster | null =>
             polymorphMonster(state, m, race, ambientPlaceDeps),
+          /* multiply_monster, called UNCONDITIONALLY by
+           * project_monster_handler_MON_CLONE (project-mon.c:888-902). The port
+           * made it an optional hook and then never supplied it, so
+           * `ctx.hooks.multiplyMonster?.(ctx.mon)` short-circuited to undefined
+           * in every real game: a Wand of Clone Monster healed its target to
+           * full and hasted it for 50 turns and NEVER CLONED IT, and MON_MSG
+           * SPAWN could not be queued because the && never reached `ctx.seen`.
+           *
+           * This is the THIRD instance of the shape recorded four lines above
+           * for polyRace/replaceMonster and once before that for
+           * PlayerSideDeps.msg: an optional hook, a conditional spread at
+           * game/project-monster.ts:203-205, and no supplier - which reads as
+           * deliberate at every single site and is invisible to any test that
+           * asserts the registry is wired rather than that the context is
+           * whole. Found by ENUMERATING the context's fields (#259 row 7), not
+           * by reading the handler.
+           *
+           * Same ambientPlaceDeps as polyRace/replaceMonster, safe for the
+           * reason given there, and it is what gives the clone its drops. */
+          multiplyMonster: (m): boolean =>
+            multiplyMonster(state, m, ambientPlaceDeps),
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport),
@@ -3495,6 +3516,22 @@ function makeStoreApi(
     },
     maxDepth: state.actor.player.maxDepth,
     stores: state.stores ?? [],
+    /* history_lose_artifact (store.c:1087 for the turnover, :1303 for the
+     * black-market purge). storeBuy runs ten storeMaint passes when a purchase
+     * empties a shop (store.c:1753), and each one can storeDeleteRandom.
+     *
+     * LATENT, NOT LIVE: generated stock can never be an artifact, which
+     * upstream states with assert(!obj->artifact) once each in
+     * store_create_random (:1197) and store_create_item (:1267). The port
+     * documents rather than reproduces upstream asserts - five precedents, and
+     * a runtime throw where upstream has a compile-out assert would be core
+     * ADDING something. The invariant is held by a test instead.
+     *
+     * Supplied anyway because the town-return context at :2988 supplies it and
+     * this one did not, and a seam supplied to every path but one is exactly
+     * the shape that lets a mod work in town and not in the shop - the same
+     * sentence the comment below already had to write about storeWillBuy. */
+    onArtifactLost: (art): void => state.onArtifactLost?.(art),
     /* The sell path decides through storeWillBuy too, so it reads the same
      * registry the maintenance path does - a seam supplied to every path but
      * one is the shape that lets a mod work in town and not in the shop. */
@@ -3616,13 +3653,20 @@ function makeStoreApi(
           };
       const result = storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
       /* do_cmd_sell: selling an artifact reveals it (history_find_artifact,
-       * store.c L1928); if the store then discards it, it is lost (L1992). */
+       * store.c:1924); if the store then discards it, it is lost (:1988).
+       *
+       * Both line numbers were WRONG here until 2026-08-14 - :1928 and :1992,
+       * four lines late, matching a cluster of same-signed drift across store.c
+       * and obj-knowledge.c. Re-checked against reference/src/store.c, which is
+       * blob-identical to the 4.2.6 tag, so the C is ground truth and these are
+       * transcription errors rather than a baseline mismatch. */
       if (result.ok && result.sold?.artifact) {
         state.onArtifactFound?.(result.sold.artifact);
         if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
       }
-      /* apply_autoinscription (store.c:1976-1977): "Autoinscribe if we still
-       * have any" - the remaining stack, not the sold copy. */
+      /* apply_autoinscription (store.c:1971-1973): "Autoinscribe if we still
+       * have any" - the remaining stack, not the sold copy. (Cited :1976-1977
+       * until 2026-08-14; that lands on notice_stuff, a different call.) */
       if (result.ok && result.noneLeft === false) {
         const left = state.gear.store.get(handle);
         if (left) state.autoinscribeObject?.(left);

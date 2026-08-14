@@ -8,6 +8,6 @@
   "author": "neostryder",
   "license": "GPL-2.0-only",
   "repository": "https://github.com/neostryder/neo-angband",
-  "capabilities": ["ui:screen.replace"],
-  "description": "A worked example of ModPlugin.screen: it draws the inventory and equipment as a grid of item cards instead of a lettered list, built from the screen's table rows rather than from its rendered text.\n\nIt takes those two screens and declines every other one, which is what the seam is for: a presenter reimagines the screens it has a better idea for and leaves the rest alone."
+  "capabilities": ["ui:screen.replace", "ui:region.create"],
+  "description": "A worked example of ModPlugin.screen: it draws the inventory and equipment as a grid of item cards instead of a lettered list, built from the screen's table rows rather than from its rendered text.\n\nIt takes those two screens and declines every other one, which is what the seam is for: a presenter reimagines the screens it has a better idea for and leaves the rest alone.\n\nIt also declares a REGION of its own - a right-anchored \"Carried\" strip that stays on screen beside the live map, so the last inventory you opened is still readable while you play. That is a rectangle the mod ADDED rather than one of the game's it took, which is why it needs ui:region.create and why ui:*.replace would not have granted it."
 }

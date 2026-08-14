@@ -18,7 +18,7 @@
  * to these, which is what the web renderer does.
  */
 
-import { TV } from "../generated/index.js";
+import { tvalIsScroll } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 
 /** The parts of a flavour this decision needs (obj/flavor.ts AssignedFlavor). */
@@ -41,6 +41,11 @@ export interface GlyphFlavor {
  * use their own tile"). Every other flavoured kind keeps its flavour glyph
  * whether or not the player is aware, because for a potion or a ring the
  * flavour IS what the thing looks like.
+ *
+ * The tval test goes through `tvalIsScroll` rather than `=== TV.SCROLL`, so a
+ * mod that widens the scroll class through `registry:tval` gets the exception
+ * here too. `desc.ts` already asked the same question that way, and the two
+ * disagreeing meant a mod scroll read as a scroll but still DREW as its title.
  */
 export function useFlavorGlyph<F extends GlyphFlavor>(
   kind: ObjectKind,
@@ -52,7 +57,7 @@ export function useFlavorGlyph<F extends GlyphFlavor>(
    * boolean would push each of them back to a `!` or a second `!!flavor`
    * check - the duplication this module exists to remove. */
 ): flavor is F {
-  return !!flavor && !(kind.tval === TV.SCROLL && aware);
+  return !!flavor && !(tvalIsScroll(kind.tval) && aware);
 }
 
 /**

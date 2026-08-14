@@ -278,6 +278,39 @@ Nothing about a bad plugin can stop the game booting. A hand-edited manifest, a
 half-finished download, a plugin that throws at import or inside `hooks()` — each
 becomes one line the mod manager shows, and the other mods carry on.
 
+### Message types are declared as DATA, not in `register()`
+
+`register()` runs after the game has been bound — **384 top-level statements
+after**, measured rather than estimated — so a message type declared there is
+declared after every record that could have named it. And a content-only pack has
+no `register()` at all, so for the packs most likely to want one this was not
+late, it was unreachable.
+
+So if your pack's own spell, blow method, summon or projection carries a `msgt:`,
+ship the type as a `message_type` record file instead:
+
+```json
+{ "records": [
+  { "name": "SOULFIRE", "sound": "soulfire", "sounds": "sf_one sf_two" }
+] }
+```
+
+`name` is the bare `MSG_` name a `msgt:` spells, `sound` is the `sound.prf` key
+the type plays under, and `sounds` is the space-separated sample list bound to
+it — all three, because a pack that could name a type and never bind a sample to
+it would be half a capability. **No capability and no `plugin.js` are needed**: it
+is a record file like any other, and gating one record file while a pack may
+already add a projection, a monster, an artifact and an ego item ungated would be
+a fence with no wall attached.
+
+Declarations are additive, attributed to the pack that coined them, idempotent
+across the new-game and load paths, and **never throw** — a refused declaration
+loses one message type and reports it rather than taking the boot down.
+
+`host.messages.define(...)` still exists and is still the right call for a type a
+plugin coins at runtime, e.g. to re-point sounds. It is only the wrong place for
+a type your own records name.
+
 ## Front-end replacement
 
 `frontend(ctx)` is an optional `plugin.js` member. It returns a sink for the
@@ -395,6 +428,64 @@ would have had to edit the enabled set by hand.
 A front end is still *allowed* to take the whole window; an isometric or 3D view
 may want to. What the regions change is that it is now a decision, taken knowing
 what is being covered, rather than the only thing a mod could do.
+
+### Knowing when you are covered: `frame.stack`
+
+`frame.regions` says where the map is. `frame.stack` says what is on top of it:
+every region on screen, bottom to top, beginning with the four base tiles
+`regions` names. A region later in the array is drawn over one earlier in it.
+Find the entry whose `id` is `"map"`; if any entry after it overlaps its `cells`,
+hide your display.
+
+```js
+function coveredUp(frame) {
+  const stack = frame.stack;
+  if (!stack) return false;                  // this host publishes none
+  const at = stack.findIndex((r) => r.id === "map");
+  if (at < 0) return true;                   // a stack that stopped naming the map
+  const map = stack[at].cells;
+  return stack.slice(at + 1).some((r) =>
+    r.cells.col < map.col + map.cols && map.col < r.cells.col + r.cells.cols &&
+    r.cells.row < map.row + map.rows && map.row < r.cells.row + r.cells.rows);
+}
+```
+
+`samples/blueprint-view/plugin.js` ships exactly this. Core's own copy of the
+question is `occludersOf` (`packages/web/src/regions.ts:356`) — it is **not**
+exported to mods, so write your own as above; it is nine lines.
+
+**You will be told.** The game's own screens — the inventory, the knowledge
+browser, the Mods screen you would use to turn this mod off — repaint the
+terminal *without producing a world frame*, because a screen redraws from its own
+key loop. So when the stack changes with nothing behind it, the host presents
+your **last** frame again with `stack` updated. The cells will be the ones you
+already drew; that is deliberate. Re-projecting the world from a shell that is
+not in a repaint would be inventing a frame, and nothing has run that could have
+changed the dungeon. The stack is the part that changed, and it is the part to
+read.
+
+The notification fires when the composite **changes**, not every time it is
+recomputed — a listener on every recompose would double every repaint for news
+that had not changed.
+
+**There are THREE answers here, not two, and the third is the one worth writing
+down.** An empty stack, or one whose entries do not overlap you, means nothing is
+over you. A **missing** `stack` means this host publishes none — nothing is
+known, so draw, because `place()` already declines when there is no pixel
+geometry to draw into. But a stack that **is** published and does **not contain
+`"map"`** is a host that has stopped describing the map, and that is COVERED, not
+clear. Collapsing that case into "nothing is over me" is how a mod canvas ends up
+cheerfully painting over whatever replaced the map, for ever, with no error
+anywhere.
+
+A HUD region owner reads the same field on `HudFrame`, asking about its own
+section's `region.name`.
+
+**What this does not yet reach:** a mod *presenter* holding a screen does not
+push a region, so the check above answers "nothing is over me" while a
+presenter-owned screen is up. That is incompleteness, not wrongness — the
+notification is correct for every region that *is* pushed, and today the
+text-screen path is what pushes them.
 
 ## The HUD, region by region
 
@@ -705,11 +796,73 @@ A core screen occupies `core:screen` on the `modal` band and its rectangle is
 the whole terminal. **That is not a placeholder and it will not shrink.** A mod
 that wants a panel declares its own region rather than asking core to make room;
 shrinking core's screens would move pictures that upstream-cited parity tests
-pin byte for byte, for the benefit of no mod. Ask
-`occludersOf(stack, "map")` to find out whether anything is over the map before
-you draw on it — and note that answer is `undefined`, not `[]`, if you name a
-region that is not in the stack, so a typo reads as a question you cannot answer
-rather than as good news.
+pin byte for byte, for the benefit of no mod. To find out whether anything is
+over the map before you draw on it, read `frame.stack` — see
+[Knowing when you are covered](#knowing-when-you-are-covered-framestack). Core's
+own version of the question is `occludersOf` (`packages/web/src/regions.ts:356`),
+which is host-internal and returns `undefined`, not `[]`, when you name a region
+that is not in the stack, so a typo reads as a question you cannot answer rather
+than as good news. Your own copy should keep that distinction.
+
+### Standing aside for the game's own prompt
+
+A screen's `actions` are the game's own commands, and some of them ask the player
+a question on the faithful terminal underneath you. The character sheet's `c`
+(rename) opens a name prompt; its `f` (dump to file) asks for a filename. Your
+overlay is on top of that terminal. If you keep drawing, the player is answering
+a question they cannot see — and the rename reaches `persistSave()`, so **two
+keystrokes, `c` then Enter, wrote the save with nothing visible on screen at
+all.** Escape was the only key that got out without writing it.
+
+The fix is *not* a rule against prompting inside `ScreenHost.invoke`. That would
+make the actions a mod can offer a strict subset of the game's, which is the
+opposite of what this seam is for. Instead **the game announces the prompt before
+it lands**: a presenter that can stand aside is told what is coming, awaited while
+it animates out, and given its screen back afterwards.
+
+    show(view, host) {
+      return {
+        dismissed,
+        yieldTerminal(request) {
+          // request: a PromptRequest while the game needs the terminal,
+          //          null when you can take it back.
+          canvas.style.display = request === null ? "block" : "none";
+        },
+      };
+    }
+
+The request says what is being asked (`label`), which of your `actions` led there
+(`action`), a stable identity you can match on without parsing prose (`id`, e.g.
+`"charsheet:rename"`), how much of the terminal it needs (`extent`: `"line"` for a
+row-0 prompt, `"screen"` for one that clears the grid) and the rectangle it will
+land in (`clip`). A `"line"` prompt only needs row 0 — you may keep drawing
+everything below it.
+
+**Whatever you return is awaited**, so a fade-out is legitimate and the prompt
+will not land until it has finished. There is no timeout.
+
+`yieldTerminal` is optional, and omitting it is not an error — but it is reported
+once, by name, with the member to add spelled out in the sentence, and the game
+draws its prompt over your screen anyway. It never refuses to run the command:
+your actions are not a smaller set than the game's.
+
+> **Not yet on the published type (true as of 2026-08-14).** `yieldTerminal` is
+> live and is called at runtime, but it is declared on a host-local
+> `YieldingScreen` (`packages/web/src/screen-runtime.ts:278`) and **not** on
+> `ScreenShown` in either `packages/web/src/screen-view.ts` or
+> `packages/mod-sdk/src/screen.ts`. Measured, so nobody re-derives it: not
+> publishing the member does not stop a TypeScript mod implementing it —
+> `tsc` accepts `show: () => ({ dismissed, yieldTerminal })` with no cast and no
+> excess-property error. What it costs is discoverability and signature checking:
+> a `yieldTerminal(request: string)` compiles today and is handed a
+> `PromptRequest` at runtime. `screen-runtime.test.ts` carries a tripwire that
+> goes red the moment both copies gain the member, which is the signal to delete
+> `YieldingScreen` and this paragraph together.
+
+Two prompts in the `SCREEN_PROMPTS` census are still un-announced and land under
+an overlay: `core:report`'s `describe` and `core:update`'s `mods`. A tripwire in
+`screen-runtime.test.ts` goes red the moment `main.ts` announces them, so that
+gap can neither close silently nor stay open unnoticed.
 
 ### A row with a paragraph
 

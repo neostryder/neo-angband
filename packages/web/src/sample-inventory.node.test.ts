@@ -225,10 +225,19 @@ describe("samples/sprite-inventory, as the game would load it", () => {
     expect(basename(SAMPLE.replace(/[\\/]$/u, ""))).toBe(manifest.id);
   });
 
-  it("declares the ONE capability its own screen() needs, and no more", () => {
+  it("declares one capability per SEAM it uses, and never the wildcard", () => {
     /* Not the wildcard: a sample that asked for the whole interface to draw two
-     * screens would teach exactly the habit the separate grants exist to break. */
-    expect(manifest.capabilities).toEqual(["ui:screen.replace"]);
+     * screens would teach exactly the habit the separate grants exist to break.
+     *
+     * TWO NAMED GRANTS SINCE #261, and the pair is the lesson rather than a
+     * relaxation of it. `ui:screen.replace` is "draw the inventory instead of
+     * the game"; `ui:region.create` is "put a rectangle of your own on the
+     * player's screen". They are two different sentences, the wildcard covers
+     * neither the second nor both, and a sample that had collapsed them into
+     * `ui:*.replace` would be teaching authors to ask for everything. The region
+     * half is exercised in `sample-inventory-region.node.test.ts`. */
+    expect(manifest.capabilities).toEqual(["ui:screen.replace", "ui:region.create"]);
+    expect(manifest.capabilities).not.toContain("ui:*.replace");
     expect(manifest.shape).toBe("plugin");
     expect(typeof manifest.repository).toBe("string");
     expect(typeof manifest.author).toBe("string");

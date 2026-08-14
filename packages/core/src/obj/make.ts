@@ -66,6 +66,7 @@ import {
   tvalIsLauncher,
   tvalIsLight,
   tvalIsMeleeWeapon,
+  tvalIsMoney,
   tvalIsPotion,
   tvalIsRing,
   tvalIsWeapon,
@@ -339,7 +340,7 @@ export class ObjAllocState {
 
     /* init_money_svals. */
     for (const kind of reg.kinds) {
-      if (kind.tval === TV.GOLD) {
+      if (tvalIsMoney(kind.tval)) {
         this.moneyTypes.push({ name: kind.name, type: kind.sval });
       }
     }

@@ -42,7 +42,7 @@
  */
 
 import type { GridSurface } from "./term";
-import type { RegionCells, ScreenRegion, ScreenRegions } from "./regions";
+import type { LiveRegion, RegionCells, ScreenRegion, ScreenRegions } from "./regions";
 
 /** The parts of the HUD that have a name. Every one of them is core's today. */
 export type HudSectionName = "messages" | "sidebar" | "status";
@@ -141,6 +141,20 @@ export interface HudFrame {
   readonly messages: HudSection;
   readonly sidebar?: HudSection;
   readonly status: HudSection;
+  /**
+   * Everything on screen, bottom to top - the same live stack `WorldFrame.stack`
+   * carries, and carried here for the same reason (#261).
+   *
+   * A REGION OWNER IS COVERED BY EXACTLY THE SAME THINGS THE MAP IS. A mod that
+   * has taken `sidebar` and draws it as a DOM panel has the map's problem in
+   * miniature: a screen opens, core repaints the terminal underneath, and no HUD
+   * frame is produced to tell it. `occludersOf(stack, "sidebar")` is the
+   * question, and the section's own `region.name` is the id to ask it with,
+   * because `baseRegionStack` puts the four base tiles in under their names.
+   *
+   * Optional and ABSENT-IS-NOT-EMPTY, exactly as on the world frame.
+   */
+  readonly stack?: readonly LiveRegion[];
 }
 
 /** The one consumer boundary for a produced HUD frame. */
@@ -227,6 +241,8 @@ export interface HudFrameParams {
   readonly message: { readonly text: string; readonly css: string };
   readonly targeting?: HudTargeting;
   readonly regions: ScreenRegions;
+  /** The live region stack for this frame, when the host has one to publish. */
+  readonly stack?: readonly LiveRegion[];
 }
 
 /**
@@ -351,6 +367,7 @@ export function buildHudFrame(p: HudFrameParams): HudFrame {
     messages: hudMessagesSection(p),
     ...(sidebar ? { sidebar } : {}),
     status: hudStatusSection(p),
+    ...(p.stack ? { stack: p.stack } : {}),
   };
 }
 
@@ -486,6 +503,25 @@ export function snapshotHudFrame(frame: HudFrame): HudFrame {
           }
         : {}),
     });
+  /**
+   * The stack, copied region by region.
+   *
+   * BY HAND like everything else in this function, and that is the risk rather
+   * than the design: a hand-enumerated copy silently drops a field added to the
+   * type, and the live frame would keep carrying it while the snapshot a mod
+   * receives quietly did not. Every test that inspects the LIVE frame would go
+   * on passing. `hud-view.test.ts` therefore asserts this side, and
+   * `sample-blueprint.node.test.ts` asserts the world frame's through the
+   * mod-facing sink for the same reason.
+   */
+  const copyStack = (stack: readonly LiveRegion[]): readonly LiveRegion[] =>
+    Object.freeze(stack.map((region) =>
+      Object.freeze({
+        id: region.id,
+        layer: region.layer,
+        cells: copyCells(region.cells),
+        ...(region.pixels ? { pixels: Object.freeze({ ...region.pixels }) } : {}),
+      })));
   const sidebar = frame.sidebar ? copySection(frame.sidebar) : undefined;
   return Object.freeze({
     layout: frame.layout,
@@ -493,6 +529,7 @@ export function snapshotHudFrame(frame: HudFrame): HudFrame {
     messages: copySection(frame.messages),
     ...(sidebar ? { sidebar } : {}),
     status: copySection(frame.status),
+    ...(frame.stack === undefined ? {} : { stack: copyStack(frame.stack) }),
   });
 }
 

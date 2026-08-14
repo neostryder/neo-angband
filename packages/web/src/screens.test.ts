@@ -1971,13 +1971,21 @@ describe("characterGrid knowledge gate (object_flag_is_known / object_element_is
  * expectation would only ever have agreed with whichever of the two I typed it
  * from.
  *
- * ONE line is deliberately NOT the literal main.ts capture any more: the
- * header's "Price", which main.ts placed at column 62 - two short of
+ * TWO things are deliberately NOT the literal main.ts capture any more:
+ *
+ * The header's "Price", which main.ts placed at column 62 - two short of
  * `scr_places_x[LOC_PRICE] + 4` (ui-store.c L368) - a port defect fixed for
  * task #257 (see `storeKnowledgeScreen`'s own comment in screens.ts). Column 64
- * is what upstream's arithmetic gives and what this file's dedicated column
- * test below derives independently, so the padEnd below is corrected to match
- * rather than kept as a second copy of the bug.
+ * is where #257 moved it to, self-consistent with this screen's own (then
+ * 46-wide) data columns but still not upstream's real number.
+ *
+ * The name/weight/price columns themselves, widened for task #264: #257's "64"
+ * only agreed with itself, six columns left of where `store_display_recalc`
+ * (ui-store.c L208-233) actually puts the price field at wid=80 - the same
+ * six columns the live shop screen (shop.ts) already got right. Column 70 is
+ * what upstream's arithmetic gives and what this file's dedicated column test
+ * below derives independently, so the padEnd values below are corrected to
+ * match rather than kept as a second copy of the bug.
  */
 function storeKnowledgeLinesBefore(
   state: GameState,
@@ -1990,13 +1998,18 @@ function storeKnowledgeLinesBefore(
   lines.push("");
   lines.push(
     isHome
-      ? `${"Home Inventory".padEnd(52)}Weight`
-      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
+      ? `${"Home Inventory".padEnd(68)}Weight`
+      : `${"Store Inventory".padEnd(58)}${"Weight".padEnd(12)}Price`,
   );
   if (stock.length === 0) {
     lines.push("");
     lines.push(isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)");
   }
+  // Task #264: the home's name field is 10 columns wider than a store's,
+  // because store_display_recalc only reserves the store's -10 (room for a
+  // price column) `if (store->feat != FEAT_HOME)` (ui-store.c L232-233) - see
+  // STORE_NAME_WIDTH / HOME_NAME_WIDTH's comments in screens.ts.
+  const nameWidth = isHome ? 62 : 52;
   stock.forEach((obj, i) => {
     const name = describeObject(state, obj);
     const wgt = obj.weight;
@@ -2004,7 +2017,7 @@ function storeKnowledgeLinesBefore(
     const priceStr = isHome ? "" : String(o.price(obj));
     const tag = String.fromCharCode(97 + (i % 26));
     lines.push(
-      `${tag}) ${name.padEnd(46).slice(0, 46)} ${weightStr.padStart(8)}  ${priceStr.padStart(9)}`.trimEnd(),
+      `${tag}) ${name.padEnd(nameWidth).slice(0, nameWidth)} ${weightStr.padStart(8)}  ${priceStr.padStart(9)}`.trimEnd(),
     );
   });
   return lines;
@@ -2109,7 +2122,7 @@ describe("the knowledge menu's store view is a table (core:store-knowledge)", ()
 });
 
 /* ------------------------------------------------------------------ */
-/* task #257: the knowledge store's "Price" header column               */
+/* task #257 / #264: the knowledge store's "Price" header column        */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -2128,7 +2141,7 @@ describe("the knowledge menu's store view is a table (core:store-knowledge)", ()
  * a real rendered row rather than retyped - and from there the expected header
  * column follows by the same subtraction upstream's own code performs.
  */
-describe('the knowledge store\'s "Price" header column (task #257)', () => {
+describe('the knowledge store\'s "Price" header column (task #257 / #264)', () => {
   const price = (obj: GameObject): number => obj.weight * 7 + 3;
 
   it("right-justifies against the price field's own end column, matching scr_places_x[LOC_PRICE] + 4", () => {
@@ -2159,24 +2172,117 @@ describe('the knowledge store\'s "Price" header column (task #257)', () => {
     const expectedPriceHeaderCol = priceFieldEnd - ("Price".length - 1);
 
     expect(header.text.indexOf("Price")).toBe(expectedPriceHeaderCol);
-    expect(expectedPriceHeaderCol).toBe(64); // upstream: scr_places_x[LOC_PRICE] + 4
+    // Task #264: this was 64 (self-consistent with the screen's own then-46-wide
+    // name column, but NOT with upstream) before the name/weight/price columns
+    // were widened to match store_display_recalc at wid=80. It is 70 now for the
+    // reason the NEXT test checks independently: 70 is scr_places_x[LOC_PRICE] + 4
+    // computed from the upstream formula directly, not read back off this
+    // screen's own row.
+    expect(expectedPriceHeaderCol).toBe(70);
     expect(header).toEqual({
-      text: `${"Store Inventory".padEnd(52)}${"Weight".padEnd(12)}Price`,
+      text: `${"Store Inventory".padEnd(58)}${"Weight".padEnd(12)}Price`,
     });
   });
 
-  it("agrees with the live shop screen: both put \"Price\" flush against the same 9-wide field", () => {
-    // shop.ts:589 draws the number with `${String(x).padStart(9)}${suffix}` at
-    // `gm.priceX`, and shop.ts:564 draws the label at `gm.priceX + 4` - the
-    // identical "label ends where the 9-wide field ends" relationship this
-    // screen now also has. There is no shared renderer to call from here (a
-    // shop needs a live `StartedGame` and a `Term`, which is shop.ts's own
-    // fixture, not this file's), so the check is the relationship itself: the
-    // label is 4 short of the end of a 9-wide right-justified numeric field,
-    // on both screens.
-    const priceFieldWidth = 9; // upstream's "%9ld" (ui-store.c L314-316), and shop.ts's `.padStart(9)`
-    const labelOffsetFromFieldStart = 4; // scr_places_x[LOC_PRICE] + 4 (ui-store.c L368), and shop.ts's gm.priceX + 4
-    expect(labelOffsetFromFieldStart).toBe(priceFieldWidth - "Price".length);
+  /**
+   * Task #264's actual defect: the previous test only proves the header agrees
+   * with THIS SCREEN'S OWN data row, which is exactly the check that already
+   * passed at column 64 before this fix (self-consistency is not the same as
+   * correctness - #257 satisfied it while still being 6 columns off). This test
+   * instead computes `scr_places_x[LOC_PRICE] + 4` from `store_display_recalc`'s
+   * own formula (ui-store.c L219, L226) at wid=80 - the width every test in this
+   * file already renders at (`screenBodyLines(view, 80)`, and `screenBodyLines`'s
+   * own default) - with NOTHING read back from the rendered output, so it cannot
+   * pass merely because the screen agrees with itself.
+   *
+   * Without the #264 fix (STORE_NAME_WIDTH=46), this screen's header put "Price"
+   * at column 64 - this assertion of 70 would have failed. Confirmed by reverting
+   * STORE_NAME_WIDTH to 46 and re-running: `header.text.indexOf("Price")` reads 64.
+   */
+  it("matches store_display_recalc's OWN arithmetic at wid=80, not merely its own row", () => {
+    const wid = 80; // Term_get_size at the width this whole screen family renders at
+    const locPrice = wid - 14; // ui-store.c L226
+    const expectedFromUpstream = locPrice + 4; // ui-store.c L368
+    expect(expectedFromUpstream).toBe(70);
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = [addPack(state, "& Ration~ of Food", 3)];
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "General Store",
+      owner: "Bilbo the Friendly",
+      isHome: false,
+      price,
+    });
+    const header = screenBodyLines(view, 80)[2]!;
+    expect(header.text.indexOf("Price")).toBe(expectedFromUpstream);
+  });
+
+  /**
+   * The actual #264 title: "the two store screens still disagree on Price ...
+   * for a different reason". shop.ts's `geom()` computes `priceX = wid - 14`
+   * from the LIVE terminal (shop.ts:488, mirroring ui-store.c L226) and draws
+   * the label at `gm.priceX + 4` (shop.ts:564) - the identical formula the
+   * previous test derives independently from the C source. There is no shared
+   * renderer to call from here (a shop needs a live `StartedGame` and a `Term`,
+   * which is shop.ts's own fixture, not this file's), so this pins the SAME
+   * upstream-derived constant (70 at wid=80) both screens must produce, rather
+   * than an arithmetic identity (field width minus label length) that would
+   * hold regardless of which column either screen actually drew at - which is
+   * what this test used to check, and which could not have caught #264 at all:
+   * it was true at column 64 just as it is at column 70.
+   */
+  it("agrees with the live shop screen's own geom(): both put \"Price\" at column 70 for wid=80", () => {
+    const wid = 80;
+    const shopPriceHeaderCol = (wid - 14) + 4; // shop.ts:488's priceX, then shop.ts:564's priceX + 4
+    expect(shopPriceHeaderCol).toBe(70);
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = [addPack(state, "& Ration~ of Food", 3)];
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "General Store",
+      owner: "Bilbo the Friendly",
+      isHome: false,
+      price,
+    });
+    const header = screenBodyLines(view, 80)[2]!;
+    expect(header.text.indexOf("Price")).toBe(shopPriceHeaderCol);
+  });
+});
+
+/**
+ * A related defect found in passing while deriving the #264 arithmetic above:
+ * the home's weight column reused the STORE's name width (then 46, giving both
+ * screens the same shape), but `store_display_recalc` gives the home a WIDER
+ * name field than a store's - `scr_places_x[LOC_WEIGHT]` only gets the -10 that
+ * reserves room for a price column `if (store->feat != FEAT_HOME)` (ui-store.c
+ * L232-233), so the home's weight sits at plain `wid - 14` = 66 at wid=80, ten
+ * columns right of a store's 56. This was never named by #264 (which is scoped
+ * to Price, and the home has none), but it is the identical mechanism in the
+ * identical function, so it is fixed alongside rather than left as a second,
+ * now-consciously-known instance of the same mistake.
+ *
+ * Before this fix the home's "Weight" header sat at column 52 (46 + gap), 16
+ * columns left of upstream's 68 - a bigger miss than the store's ever was, and
+ * one nothing had previously measured because no test asserted the home's
+ * header column against upstream's own arithmetic; the "byte for byte" tests
+ * above only ever checked the port against ITSELF.
+ */
+describe("the knowledge store's HOME view: the weight column (found alongside #264)", () => {
+  it("matches store_display_recalc's home arithmetic at wid=80 (no price column to reserve for)", () => {
+    const wid = 80;
+    const locWeightHome = wid - 14; // ui-store.c L226; L232-233's `-10` does NOT apply to FEAT_HOME
+    const expectedFromUpstream = locWeightHome + 2; // ui-store.c L344-345 ("Weight" label, +2 into the field)
+    expect(expectedFromUpstream).toBe(68);
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const stock = [addPack(state, "& Ration~ of Food", 3)];
+    const view = storeKnowledgeScreen(state, stock, {
+      title: "Home",
+      owner: "ignored",
+      isHome: true,
+    });
+    const header = screenBodyLines(view, 80)[2]!;
+    expect(header.text.indexOf("Weight")).toBe(expectedFromUpstream);
   });
 });
 

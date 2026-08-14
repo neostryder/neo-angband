@@ -23,6 +23,7 @@ import { FeatureRegistry } from "../world/feature.js";
 import type { TerrainRecordJson } from "../world/feature.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
+import { declareModMessageTypes } from "../mod/message-declarations.js";
 import { ArtifactState, ObjAllocState } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import { bindMonsters } from "../mon/bind.js";
@@ -80,6 +81,20 @@ export interface CorePack {
   projection?: ProjectionRecordJson[];
   /** trap.json (trap kinds). Optional; without it levels have no traps. */
   trap?: TrapRecordJson[];
+  /*
+   * message_type.json (message types a pack coins, plus their sound samples).
+   * Optional; without it a pack can only name the types compiled from
+   * upstream's list-message.h. Arrives through composition rather than a
+   * plugin call, exactly as projection.json does, because a plugin's
+   * register() runs hundreds of statements AFTER bindCore - see #266.
+   *
+   * Typed as unknown[] rather than as the record shape ON PURPOSE: nothing has
+   * validated this yet. declareModMessageTypes is the validator, it takes
+   * unknown[] for that reason, and it reports refusals rather than throwing.
+   * Declaring the validated shape here would be a type asserting a check that
+   * has not happened, and would push a cast onto every caller.
+   */
+  messageTypes?: readonly unknown[];
   /**
    * names.json (random-name corpus sections). Optional; without it flavor_init
    * has no scroll-title words, so unaware scrolls fall back to the plain
@@ -153,6 +168,18 @@ export interface CoreRegistries {
 
 /** Bind a parsed pack into the full set of runtime registries. */
 export function bindCore(pack: CorePack): CoreRegistries {
+  /* A pack's own message types must resolve BEFORE anything binds a record that
+   * names one. bindMonsters resolves msgt on spells (mon/bind.ts:609) and on
+   * blow methods (:382), and bindProjections does the same; each REFUSES an
+   * unknown name, so a late declaration is not merely late, it is fatal to the
+   * record. declareModMessageTypes never throws - refusals are collected and
+   * reported, because a throw here would take the whole boot with it.
+   *
+   * MEASURED, not assumed: moving this one call below bindMonsters turns
+   * message-declarations.test.ts red on "blow method HIT: invalid msgt". The
+   * call being PRESENT is not the property that matters - its POSITION is. #266
+   */
+  declareModMessageTypes(pack.messageTypes);
   const constants = bindConstants(pack.constants);
   const features = new FeatureRegistry(pack.terrain);
   const objects = new ObjRegistry(pack.obj);

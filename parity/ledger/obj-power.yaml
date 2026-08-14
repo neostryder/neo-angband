@@ -61,9 +61,20 @@ deferred:
     number the line plainly means. Recorded rather than normalised silently,
     because this repo's default (the staircase invariant) is to keep C warts."
   - object_value_real's pricing.log (L1119-1204) stays unported and is a
-    different file from randart.log. It is inside `#ifdef PRICE_DEBUG`, which
-    is defined nowhere in the tree, so its seven file_putf sites are dead in
-    every build a player can obtain. The text census records the same fact.
+    different file from randart.log. UNREACHABLE IN UPSTREAM, not merely
+    unported (re-filed 2026-08-14, task #228): the seven file_putf sites are at
+    obj-power.c:1117, :1144, :1153, :1166, :1175 and :1197, with the #else arm at
+    :1134 and the block closing at :1206, and they are inside `#ifdef
+    PRICE_DEBUG`. PRICE_DEBUG is defined NOWHERE - not configure.ac, not any
+    Makefile, not CMakeLists.txt - so it is a hand-edit-only switch and
+    pricing.log cannot be written by any shipped 4.2.6 build. The port emits
+    nothing on this path either: obj/value.ts, the port of object_value_real,
+    contains no log call at all, and the randart-log sink is imported only by
+    power.ts, randart-build.ts, randart-data.ts and randart.ts - do_randart's
+    genuinely live log, a different file. packages/cli/src/text-census.test.ts:62-66
+    is the RATCHET and it fails in BOTH directions: if the port ever gains "Error
+    - can't open pricing.log for writing." the stale census entry must be
+    deleted, and not deleting it is the failure.
 verified-by:
   - obj/power.test.ts: a plain 1d4 melee weapon rates 6 (dice only); adding
     to_dam 4 rates 16 (no non-weapon second lot for a melee weapon); a ring with

@@ -29,6 +29,13 @@
  * well want to. The point of the regions is that it becomes a decision, taken
  * knowing what is being covered, instead of the only thing a mod could do.
  *
+ * AND WHEN IT DOES NOT DRAW. `frame.stack` is every region on screen in paint
+ * order, so this canvas can tell that a screen has opened over the map and stand
+ * itself down (`coveredUp`). Without that, placing the canvas correctly only
+ * moved the covering defect inwards - the inventory, the knowledge browser and
+ * the Mods screen were all still being drawn underneath a blueprint of the last
+ * dungeon this mod saw.
+ *
  * NO IMPORTS, deliberately. A folder plugin gets the engine passed in through
  * `ctx` and nothing else is resolvable from a mods folder.
  */
@@ -89,7 +96,10 @@ function makeSurface(doc) {
  */
 function place(canvas, frame) {
   const box = frame.regions && frame.regions.map && frame.regions.map.pixels;
-  if (!box || box.width <= 0 || box.height <= 0) {
+  /* Standing down is a DISPLAY decision, so it belongs here beside the other
+   * one: exactly one function decides whether this canvas is on screen, and
+   * both of its reasons hide it the same way. */
+  if (!box || box.width <= 0 || box.height <= 0 || coveredUp(frame)) {
     canvas.style.display = "none";
     return null;
   }
@@ -99,6 +109,55 @@ function place(canvas, frame) {
   canvas.style.width = `${box.width}px`;
   canvas.style.height = `${box.height}px`;
   return box;
+}
+
+/**
+ * Is anything drawn ABOVE the map covering it?
+ *
+ * THE DEFECT THIS ENDS, and it is the second half of the one `frame.regions`
+ * closed. Placing the canvas on the map region stopped this mod from covering
+ * the sidebar, the message row and the menus BESIDE the map. It did nothing
+ * about what covers the map ITSELF: a core screen - the inventory, the knowledge
+ * browser, the Mods screen you would use to turn this off - repaints the whole
+ * terminal underneath this canvas, and repaints it WITHOUT producing a world
+ * frame, because a screen redraws from its own key loop. So the last dungeon
+ * this mod drew stayed floating over the middle of every screen the player
+ * opened, and nothing in the picture said which mod was responsible.
+ *
+ * `frame.stack` is what makes that answerable. It is every region on screen,
+ * bottom to top, so anything AFTER `map` in it is drawn over the map, and the
+ * host re-presents the last frame whenever the stack changes - which is how this
+ * runs at all when no repaint is coming.
+ *
+ * THREE ANSWERS, NOT TWO, and the third is the one worth writing down:
+ *   - no stack at all -> this host publishes none; nothing is known, so draw.
+ *     (`place()` still declines when there is no pixel geometry.)
+ *   - a stack with no `map` in it -> DO NOT DRAW. That is a host that has
+ *     stopped describing the map, and a front end that read it as "nothing is
+ *     covering me" would paint over whatever replaced it, for ever.
+ *   - a stack with `map` in it -> overlap decides.
+ */
+function coveredUp(frame) {
+  const stack = frame.stack;
+  if (!stack) return false;
+  let at = -1;
+  for (let i = 0; i < stack.length; i++) {
+    if (stack[i].id === "map") { at = i; break; }
+  }
+  if (at < 0) return true;
+  const map = stack[at].cells;
+  for (let i = at + 1; i < stack.length; i++) {
+    const c = stack[i].cells;
+    if (
+      c.col < map.col + map.cols &&
+      map.col < c.col + c.cols &&
+      c.row < map.row + map.rows &&
+      map.row < c.row + c.rows
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The terrain codes a plan draws as solid. Names, resolved through core. */

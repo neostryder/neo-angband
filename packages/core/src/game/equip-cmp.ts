@@ -211,16 +211,27 @@ export function matchEquipCmpFilter(
 /**
  * The selector prompt_for_easy_filter installs, chosen by the property's
  * category (its `switch (j)`, ui-equip-cmp.c:1372-1425) and applied to the raw
- * value (the six sel_* functions, L1643-1682):
+ * value. The six LIVE sel_* functions this picks from are defined at
+ * ui-equip-cmp.c:1657-1696:
  *
- * - resistances:    val >= 1        (sel_at_least_resists)
- * - abilities:      val != 0        (sel_has_flag - a flag where on is wanted)
- * - hindrances:     val == 0        (sel_does_not_have_flag - INVERTED, because
- *                                   for a hindrance the desirable state is off)
+ * - resistances:    val >= 1        (sel_at_least_resists, L1657)
+ * - abilities:      val != 0        (sel_has_flag, L1671 - a flag where on is
+ *                                   wanted)
+ * - hindrances:     val == 0        (sel_does_not_have_flag, L1678 - INVERTED,
+ *                                   because for a hindrance the desirable state
+ *                                   is off)
  * - modifiers,
- *   stat_modifiers: val > 0         (sel_has_pos_mod)
+ *   stat_modifiers: val > 0         (sel_has_pos_mod, L1685)
  *
  * `not` swaps each for its complement.
+ *
+ * The range here used to read L1643-1682, which OPENS INSIDE THE DEAD CODE:
+ * ui-equip-cmp.c:1648-1654 is an `#if 0` block holding sel_better_than, one of
+ * the three selectors 4.2.6 compiles out (the others are sel_exclude_slot and
+ * sel_only_slot, in the `#if 0` at :1699-1712). Nothing below implements any of
+ * them - only the four live categories above - but a citation pointing at a
+ * `#if 0` while naming live functions is exactly what would make the next
+ * upstream sweep conclude this port lifted dead code. Corrected 2026-08-14.
  */
 export function equipCmpFilterKeeps(
   columns: readonly EquipCmpColumn[],
@@ -330,7 +341,16 @@ function gatherItems(state: GameState): GatheredItem[] {
   return out;
 }
 
-/** sel_exclude_src / sel_only_src (L1701-1712) for the easy_filt source cycle. */
+/**
+ * sel_exclude_src (ui-equip-cmp.c:1715) / sel_only_src (:1722) for the easy_filt
+ * source cycle.
+ *
+ * This cited L1701-1712 until 2026-08-14, and those lines are not those
+ * functions: :1699-1712 is an `#if 0` block holding sel_exclude_SLOT (:1700) and
+ * sel_only_SLOT (:1707), which 4.2.6 compiles out. The port has never
+ * implemented the slot pair - this switch is the SRC pair, which is live - but
+ * the citation named the live functions and pointed at the dead ones.
+ */
 function passesSourceFilter(src: EquipCmpSource, mode: StoreInclusion): boolean {
   switch (mode) {
     case "no-store":

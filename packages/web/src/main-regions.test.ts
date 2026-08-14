@@ -58,6 +58,62 @@ describe("main.ts and the region table describe the same screen", () => {
     expect(render).toMatch(/currentHudFrame\(vp, cols, rows, regions, targeting\)/u);
   });
 
+  it("publishes what is drawn OVER the map, and subscribes to it changing (#261)", () => {
+    /* THE SHIPPED PATH, which is the half a unit test cannot see. `world-view.ts`
+     * can carry a stack and `samples/blueprint-view` can stand down for one, and
+     * between them the game can still publish nothing - which is precisely the
+     * "green tests on one side, nothing on the shipped path" failure this
+     * repository keeps re-learning (#245, #246, #247).
+     *
+     * THE ORDER IS THE ASSERTION, not the presence. `relayoutStack` re-places
+     * every region for this frame; reading `liveRegionStack()` before it would
+     * hand a mod the PREVIOUS frame's composite, which is wrong in exactly the
+     * case that matters - the frame on which a screen opened. */
+    const render = bodyOf("render");
+    expect(render).toMatch(/relayoutStack\(\{ cols, rows, base: regions/u);
+    expect(render).toMatch(/stack: liveRegionStack\(\)/u);
+    expect(render.indexOf("relayoutStack(")).toBeLessThan(
+      render.indexOf("stack: liveRegionStack()"),
+    );
+    /* The HUD gets the same composite from the same relayout: a mod owning the
+     * sidebar is covered by the things the map is covered by. */
+    expect(bodyOf("currentHudFrame")).toContain("stack: liveRegionStack()");
+    /* And the notification, which is what makes a screen opening an EVENT rather
+     * than something a front end could only learn from a repaint that is not
+     * coming while that screen owns the terminal. */
+    expect(mainSource).toMatch(/onStackChanged\(\(stack\) => liveWorldSink\.restate\?\.\(stack\)\)/u);
+  });
+
+  it("paints the stack LAST in the frame, as the final statement of render() (#261)", () => {
+    /* RISK 2, and it was unguarded until now: the order was correct and nothing
+     * held it there. render() opens with term.clear(), so a stack painted
+     * anywhere before the end is erased by the very frame that was supposed to
+     * carry it. The symptom is not a missing window - it is a window that
+     * flickers ONLY WHILE THE PLAYER IS MOVING, because that is when frames
+     * come, and it reads as the mod being broken rather than the shell. A
+     * reordering that caused it would pass every other test in this repository.
+     *
+     * ASSERTED ON THE STATEMENT LIST, not on string positions. `indexOf` would
+     * be satisfied by the call appearing anywhere after the clear - including
+     * inside an `if` in the middle of the function, which is exactly the shape a
+     * well-meaning refactor produces. What has to be true is stronger and is a
+     * fact about structure: it is the LAST thing render() does. */
+    const declaration = source.statements.find(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "render",
+    );
+    const body = declaration?.body?.statements;
+    expect(body, "main.ts no longer declares render()").toBeDefined();
+    const last = body![body!.length - 1]!;
+    expect(
+      last.getText(source).trim(),
+      "paintRegionStack(term) must be the final statement of render(): render() " +
+        "opens with term.clear(), so anything painted before the end of the frame " +
+        "is erased by it, and the only symptom is a mod's region flickering while " +
+        "the player moves.",
+    ).toBe("paintRegionStack(term);");
+  });
+
   it("builds the regions from the live layout and the surface's own metrics", () => {
     const build = bodyOf("currentScreenRegions");
     /* Every rectangle comes from viewport()'s numbers... */
@@ -145,12 +201,19 @@ const TERM_CLEAR_ALLOWED: Readonly<Record<string, readonly string[]>> = {
    * what changed is that something else can now see it. */
   "overlay.ts": [
     "paintViewOnTerminal > paint",
+    /* Already a region (#261 commit 5), and the site where the risk stopped
+     * being theoretical. 'M' takes the DIRECT modal path to `showLevelMap`
+     * rather than going through `showTextScreen`, and `renderBackground()`
+     * refuses to run `render()` while a modal is up - so this erase was the one
+     * a mod could not survive and could not be told about. `showLevelMap` now
+     * pushes the screen's region and hands this painter a surface clipped to
+     * it; the body and the picture are unchanged. */
+    "paintLevelMapOnTerminal > paint",
     /* Pending. */
     "itemSelect > paint",
     "promptNumber > paint",
     "promptText > paint",
     "selectFromMenu > askTerminal > paint",
-    "showLevelMap > paint",
   ],
   "birth.ts": [
     "birthMenu > paint",
@@ -198,10 +261,52 @@ function enclosingPath(node: ts.Node): string {
   return parts.length > 0 ? parts.join(" > ") : "<module>";
 }
 
-/** Every `term.clear()` in one file, as enclosing paths. */
+/**
+ * The methods that identify a receiver as a GRID SURFACE rather than a Map, a
+ * Set, a canvas or a cache - all of which have a perfectly innocent `clear()`.
+ *
+ * This is how the guard stops being satisfiable by a rename. Matching the
+ * identifier `term` was the original approach and this file used to admit, at
+ * length, that renaming the receiver would silence it. That is not a blind spot
+ * a comment fixes: `showLevelMap(term, ...)` became `paintLevelMapOnTerminal(
+ * term, ...)` in this very commit, and a parameter rename in the same edit
+ * would have taken a full-screen erase off the books with nothing to notice it.
+ *
+ * A receiver that is `print`ed to, `prt`ed to or `eraseToEol`d is a surface
+ * whatever it is called, and a rename renames it at those call sites too - so
+ * the two move together or the guard fires. It is still source text rather than
+ * a type-checker, and the remaining way past it is to name a surface `x` and
+ * never call anything else on it in that file, which is not an accident anybody
+ * has.
+ */
+const SURFACE_METHODS = new Set(["print", "prt", "eraseToEol", "put", "eraseSpan"]);
+
+/**
+ * Every full-screen `clear()` in one file, as enclosing paths.
+ *
+ * TWO PASSES ON PURPOSE. The first learns which local names are surfaces in
+ * this file; the second flags their `clear()` calls. One pass would miss a
+ * surface whose `clear()` is written above its first `print()`, which is the
+ * ordinary shape - every painter in this repository clears before it draws.
+ */
 function termClearSites(file: string): string[] {
   const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
   const tree = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+
+  const surfaces = new Set<string>();
+  const learn = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      SURFACE_METHODS.has(node.expression.name.text) &&
+      ts.isIdentifier(node.expression.expression)
+    ) {
+      surfaces.add(node.expression.expression.text);
+    }
+    ts.forEachChild(node, learn);
+  };
+  learn(tree);
+
   const found: string[] = [];
   const walk = (node: ts.Node): void => {
     if (
@@ -210,7 +315,7 @@ function termClearSites(file: string): string[] {
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === "clear" &&
       ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "term"
+      surfaces.has(node.expression.expression.text)
     ) {
       found.push(enclosingPath(node));
     }

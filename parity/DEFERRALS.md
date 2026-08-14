@@ -1,10 +1,29 @@
 # What is not ported, and what was judged unnecessary
 
-**Dated 2026-08-04. Every deferral note in this repository has a verdict.**
-**"Genuinely not ported" re-verified against the code 2026-08-09 (task #162):
-36 claims, 3 survived.** The rest had been closed and never struck through. The
-appendix below is still dated 2026-08-04 and has NOT had the same treatment
-(task #226); the three survivors are tracked as task #227.
+**Dated 2026-08-04, re-verified end to end 2026-08-14. Every deferral note in
+this repository has a verdict.**
+
+Two passes, both of which found the page overstating what was missing:
+
+- **"Genuinely not ported" re-verified against the code 2026-08-09 (task #162):
+  36 claims, 3 survived.** The rest had been closed and never struck through.
+- **Those three re-verified 2026-08-14 (task #228), and none of them survived
+  either.** One is `unreachable-in-upstream` — upstream makes no such call — and
+  **two had been ported for some time**, each with a call site *and* a test, while
+  this page went on listing them. [Genuinely not ported](#genuinely-not-ported) is
+  now empty.
+- **The appendix re-verified the same day (task #226), all 34 divergence and
+  `partial` rows read individually.** Both `partial` rows closed — one `ported`,
+  one `unreachable-in-upstream` — so **no row in the appendix is outstanding
+  work**. 30 of the remaining 32 are deliberate divergences, 1 is `n-a`, 1 is
+  `unreachable-in-upstream`. All 68 items in [PORT_TODO.md](PORT_TODO.md) were
+  re-read in the same pass and all 68 held: 64 `ported`, 2 meta, 2
+  `unreachable-in-upstream`.
+
+**The direction of the error is worth naming, because it is the safe one and it
+still cost a week.** Every correction from both passes moved a row from *owed* to
+*finished*. Nothing was found hiding. What this page was bad at was noticing when
+work landed — a verdict is dated evidence, and nothing here re-dates itself.
 
 > **Owner ruling, 2026-08-09: a verdict is not a finish line.** "All 'deferrals'
 > must be either marked as not part of the port or as ported. I don't want
@@ -429,20 +448,48 @@ And **a failed grep for a camelCase transliteration is not evidence of absence**
 which is the mistake that produced half of this section's original contents; grep
 the C name, which this codebase cites beside its port.
 
-### Still owed (3)
+### Still owed (0) - re-verified 2026-08-14 (task #228)
 
-- **The store PURCHASE history entry** (`store/transact.ts`). Upstream writes a
-  history line when the player buys an artifact; `historyAdd` has no call site in
-  `transact.ts`. `history_find_artifact` / `history_lose_artifact` themselves ARE
-  wired (`game/context.ts:687`, `:695`, installed by `wireGame`), so this is one
-  missing call, not a missing subsystem. Find-on-sight entries remain blocked on
-  remembered floor-pile contents.
-- **There is no player notes command.** No `do_cmd_note` counterpart anywhere in
-  the port.
-- **The last two sections of the shape-lore textblock chain**
-  (`player/shape-lore.ts:258`, PORT_TODO 3.21). The chain itself is ported -
-  `shape-lore.ts` is 17 sites and `game/shape-inspect.ts` consumes it - so this
-  is a tail, not the feature.
+All three survivors of the 2026-08-09 pass are closed, and **two of them had been
+closed for some time without this page being struck through** - which is the same
+failure the 2026-08-09 pass was written to correct, recurring inside the section
+that recorded it. A verdict is dated evidence.
+
+- **The store PURCHASE history entry** - **unreachable in upstream.** There is no
+  purchase-side history call to port. `store.c` has exactly four history calls:
+  `:1087` and `:1303` (`history_lose_artifact`, store turnover and the
+  black-market purge), `:1924` (`history_find_artifact`, inside `do_cmd_sell`,
+  which begins at `:1865`, under the comment *"Update the auto-history if selling
+  an artifact that was previously un-IDed"*), and `:1988` (the store refusing what
+  it just bought). **`do_cmd_buy` runs `store.c:1646-1774` and contains no history
+  call of any name.** The earlier note named a call upstream does not make - the
+  direction was backwards - and `store/transact.ts:26-39` now records the
+  correction at the site. The sell pair is wired at `session/game.ts:3621-3622`
+  and `:3666-3667`. This duplicated PORT_TODO 2.16, which had already closed it on
+  the same evidence.
+- **The player notes command** - **ported.** `do_cmd_note` (`cmd-misc.c:88`) is
+  `noteCmd` at `web/src/main.ts:4615`, with the `"Note: "` prompt at `:4618`
+  (`cmd-misc.c:98`), `historyAdd(..., HIST.USER_INPUT, ...)` at `:4642`, and the
+  `':'` binding at `:8201` (`ui-game.c:211`).
+  `web/src/rest-steal-note.test.ts:60-80` is the test.
+- **The last two sections of the shape-lore textblock chain** - **ported.**
+  `game/shape-inspect.ts:163` and `:164` supply `changeEffectText` and
+  `triggeringSpells`; `web/src/main.ts:4164` is the live shape browser building
+  its env through `makeShapeLoreEnv`; `game/shape-inspect.test.ts:279-295` asserts
+  both tail lines reach `shapeLoreLines` for a real shipped shape. All ten of
+  `shape_lore`'s sections (`ui-knowledge.c:3035`, calls at `:3047-3056`) map
+  one-to-one onto `player/shape-lore.ts:253-267`.
+
+> **The contradiction this page was carrying, recorded rather than quietly
+> repaired (2026-08-14).** Until today the "ported" row for
+> `parity/ledger/player-history.yaml:91` in the appendix **closed a different row
+> by citing the notes command**, while the bullet above said in as many words that
+> no `do_cmd_note` counterpart existed anywhere in the port. Two sections of this
+> document disagreed about whether a whole command was written, and the appendix
+> was the half that was right. Both are corrected above; the appendix row also
+> carried a `main.ts:4557` line number that had drifted to `:4642`. Noted here
+> because a ledger that edits itself silently is worth less than one that shows
+> where it was wrong.
 
 ### Needs a verdict, not work (1)
 
@@ -451,6 +498,19 @@ the C name, which this codebase cites beside its port.
   (`monsterHitPercent` is supplied, `:553`; the fourth argument is real, `:599`).
   Whether the two remaining describers are a deliberate divergence or an
   unfinished supply has never been decided. Decide it; do not leave it here.
+
+  **Re-measured independently 2026-08-14 (task #227), and the decision is now the
+  only thing missing.** A throw-instrumented probe was injected into `spoil.ts`'s
+  own `extras` - the real producer, not a copy - and `spoilObjDesc`,
+  `spoilArtifact` and `spoilMonInfo` all completed **without consulting either
+  describer**. The instrument is demonstrably live rather than silently inert:
+  the same throwing describers, on the same
+  `objectInfo(OINFO.SPOIL)` + `makeObjectInfoDeps` path the file uses at
+  `spoil.ts:417`, fire for 5 of the 409 object kinds in the shipped pack (Elvish
+  Waybread, Whisky, Fine Wine, Orcish Liquor, Berserk Strength) - all food and
+  potion kinds neither dump describes. So the two describers are unreached by
+  every spoiler this port generates, and the open question is a verdict, not
+  work.
 
 ## Not part of the port, with the mechanism
 
@@ -467,6 +527,98 @@ the C name, which this codebase cites beside its port.
   own C" is a finished state, not an open question. This entry is the template
   the third finished state above is judged against - a `file:line`, an
   enumeration of every call site, and a ratchet on the callers.
+
+- **`RSF_BR_MANA` is declared and never used** (`list-mon-spells.h:38`,
+  `monster_spell.txt:425`). 93 `RSF(` lines minus `NONE` and `MAX` gives 91 real
+  spells; every `spells:` directive in `lib/gamedata/monster.txt` was split and
+  matched against the declared set, and **90 of the 91 appear - `BR_MANA` is the
+  only one no monster race ever sets.** The port carries the same shape exactly:
+  the enum entry (`generated/mon-spells.ts:33`, `BR_MANA: 25` at `:130`, matching
+  `list-mon-spells.h:38` minus the first `RSF(` at `:13`), the spoiler record
+  (`content/pack/monster_spell.json:720`), and a borg `case` mirroring
+  `borg-danger.c:931` / `borg-update.c:933`. `content/pack/monster.json` uses the
+  same 90 and nothing undeclared.
+  **The enum entry must NOT be removed.** `RSF` is a bit position that is
+  PERSISTED ([MOD_REACH.md](../docs/modding/MOD_REACH.md), row 22); dropping index
+  25 would shift `BOULDER` and every RSF above it and silently corrupt the monster
+  spell flagsets in every existing save, which no `SAVE_VERSION` bump can repair -
+  the old bytes would still decode against the new numbering. Only the DATA fact
+  is unreachable; the entry is load-bearing padding that happens to be faithful.
+  `packages/content/src/data-exactness.test.ts` is the ratchet: it re-parses
+  `reference/lib/gamedata/monster.txt` and diffs field by field against the pack
+  (specs registered at `content/src/specs/mon-init.ts:99` and `:62`), so a
+  `spells:BR_MANA` appearing on the port side alone fails it today. **No new test
+  was written, because there is nothing left for one to assert.**
+
+- **`old_class.txt` is shipped and never parsed** (`lib/gamedata/old_class.txt`).
+  `lib/gamedata/Makefile:8` **installs it into every player's data directory**,
+  and `init.c` registers no `old_class_parser`. The only other mentions in the
+  tree are `src/Makefile.ibm:114` (an 8.3-FAT rename for the DOS build),
+  `src/win/vs2019/Angband.vcxproj:707` and `.vcxproj.filters:1657` (an MSVC `Text`
+  item), and comments in three tileset `.prf` files. **Shipped is not reachable**,
+  and the install is the stronger sentence than the DOS rename: the file reaches
+  every player and no code path reads it.
+  `packages/content/src/data-exactness.test.ts` is the ratchet: it asserts the
+  file exists upstream and is non-empty AND that no spec named `old_class` is
+  registered, so the guard sits on the port's spec list - the thing that can
+  change - and compiling the file fails it.
+
+- **`PRICE_DEBUG`'s seven `file_putf` sites** (`obj-power.c:1117`, `:1144`,
+  `:1153`, `:1166`, `:1175`, `:1197`, the block closing at `:1206`, with the
+  `#else` arm at `:1134`). `PRICE_DEBUG` is defined **nowhere** - not
+  `configure.ac`, not any `Makefile`, not `CMakeLists.txt` - so it is a
+  hand-edit-only switch and `pricing.log` cannot be written by any shipped 4.2.6
+  build. The port emits nothing on this path: `obj/value.ts`, the port of
+  `object_value_real`, contains no log call at all, and `obj/randart-log.ts:70-78`
+  records the exclusion. The sink is imported only by `obj/power.ts`,
+  `obj/randart-build.ts`, `obj/randart-data.ts` and `obj/randart.ts` - the
+  `do_randart` path, which is upstream's genuinely live `log_obj`, a different
+  file from `pricing.log`.
+  `packages/cli/src/text-census.test.ts:62-66` is the ratchet and **it fails in
+  BOTH directions**: the two `pricing.log` strings sit under a `not-in-this-build`
+  reason key, and that file's own header says a stale entry whose text the port
+  later gains must be deleted.
+
+### Upstream `#if 0` blocks: classified, deliberately NOT ratcheted
+
+Six constructs in 4.2.6 sit inside `#if 0`, so no build can reach them. They are
+recorded here as `unreachable-in-upstream` and **no test is written for any of
+them**, for a reason that follows from the `OSTACK_LIST` template above:
+unreachability is a property of the CALLERS, and the guard belongs on the thing
+that can change. A test asserting that `#if 0` still brackets a line in
+`reference/` pins a vendored tree at a tag - the one thing here that does not
+change except by a deliberate repin, which re-runs this whole sweep anyway. Such
+a test could only ever produce a false alarm in an unrelated file.
+
+Four of the six have no port surface at all: the port replaces upstream's C
+frontends with a canvas terminal, so nothing in this repository could grow a
+caller and a test would be a tautology dressed as coverage. The two that do have
+a surface (`equip-cmp.ts`, `ui-entry.ts`) are already moved on by the existing UI
+parity tests if an arm appears, which is cheaper than a bespoke ratchet.
+
+| upstream | construct | guard |
+|---|---|---|
+| `ui-equip-cmp.c:265`, `:285`, `:287` (decls) / `:1649`, `:1700`, `:1707` (defs) | `sel_better_than`, `sel_exclude_slot`, `sel_only_slot` | `#if 0` at `:264-267`, `:284-289`, `:1648-1654`, `:1699-1712`. The other eight `sel_*` are live (`:1657-1696`, plus `sel_exclude_src` at `:1715` and `sel_only_src` at `:1722`). Port: `game/equip-cmp.ts:225-249` implements only the four live selector categories. |
+| `ui-entry.c:1292-1304` | the `OBJ_MOD_STEALTH` (`:1293`) / `OBJ_MOD_SEARCH` (`:1299`) cases in `modifier_to_skill` (`:1275`) | `#if 0` at `:1292`, `#endif` at `:1304`, with the in-file reason above it. Port: `game/ui-entry.ts:1235-1237` handles only `TUNNEL`, matching the live behaviour. |
+| `wiz-stats.c:1342-1356` | `static double total(double stat[MAX_LVL])` | the file's only `#if 0`; its comment says "Left this function unlinked for now". |
+| `main-sdl.c:995-1020` | `sdl_ButtonBankRemove` (def `:999`) | `#if 0` at `:995`, `#endif` at `:1020`; no other reference in the tree. |
+| `main-win.c:1626-1645` and `:2679-2683` | `Term_init_win` / `Term_nuke_win` (`:1631`, `:1640`) and the `init_hook` / `nuke_hook` assignments (`:2681`, `:2682`) | both blocks `#if 0`; both bodies are `/* XXX Unused */` stubs. |
+| `main-xxx.c:123-134` | `color_data[MAX_COLORS]` (`:132`) | `#if 0` - **and the whole file is dead anyway**: it is gated on `USE_XXX` (`:78`, `:749`), which its own header says is defined by "Makefile.xxx" (`:24`), and **no `Makefile.xxx` exists in the tree**. No target compiles it; `Makefile.std:189` and `Makefile.ibm:152` mention it only in comments. Cite the file, not the `#if 0`. |
+
+**A frontend excluded by a CMake default is NOT in this class**, and this is
+recorded because a sweep proposed the frontends as a finding and it would have
+been a large wrong answer. `CMakeLists.txt:72-80` is a *fallback*, not an
+exclusion - its own comment says "If none of the graphical front ends will be
+configured, configure the one for Windows if that's the target plaform or the X11
+one for anything else" - and `SUPPORT_SDL_FRONTEND`, `SUPPORT_GCU_FRONTEND` and
+the rest are
+user-settable `option()`s, and `-DSUPPORT_SDL_FRONTEND=ON` builds a working SDL
+frontend. **The test is "does a shipped artifact exist that turns this on?", not
+"is it on by default?"** That is exactly what separates `USE_XXX` (the enabling
+makefile is absent, so unreachable) and `PRICE_DEBUG` (no switch anywhere, so
+unreachable) from the frontend options (the switch ships in CMake, so reachable).
+By the same discriminator `SCORE_BORGS` is not in this class either: `#ifndef`
+means the body fires by default.
 
 ## Closed since this document was dated (2026-08-04)
 
@@ -603,7 +755,12 @@ decision.
 
 ## Judged unnecessary, with the mechanism
 
-81 rows. These are not gaps, and each names *why* rather than asserting it.
+81 rows when this section was written. These are not gaps, and each names *why*
+rather than asserting it. **Five of them moved out on 2026-08-14** into the third
+finished state — they were claims about UPSTREAM wearing `n-a`'s clothes, which
+is a claim about *this port's* platform. See
+[Not part of the port](#not-part-of-the-port-with-the-mechanism) and the appendix
+tally, which is generated and therefore always current.
 
 - **The `PU_*` / `PR_*` dirty-flag pipeline does not exist and cannot** (50 rows
   of the `n-a` set are this or a layer boundary). The front end recomputes and
@@ -622,9 +779,13 @@ decision.
   and **4.2.6 has no search command at all** — no `do_cmd_search`, no
   `CMD_SEARCH`. Those two of the twenty stub codes are correctly never replaced.
 - **`monster_index_move`** exists only to serve `arena_gen`'s `memcpy`;
-  **`expression_free`** is garbage collected; **`old_class.txt`** is retired data
-  the 4.2.6 game does not load; **`pricing.log`** is behind a `PRICE_DEBUG` that
-  upstream defines nowhere.
+  **`expression_free`** is garbage collected. Two more used to be listed here and
+  have been re-filed as `unreachable-in-upstream` (2026-08-14), because their
+  mechanism is a measurement of the C rather than a property of this platform:
+  **`old_class.txt`**, which upstream *installs into every player's data
+  directory* and never parses, and **`pricing.log`**, behind a `PRICE_DEBUG` that
+  upstream defines nowhere. Both are written out in full above, with their
+  ratchets.
 - **The panic save has no counterpart**, because the port autosaves
   continuously: there is no second artifact and no window in which one could be
   newer. Recorded on the CLI text census's `"A panic save exists.  Use it? "`.
@@ -649,10 +810,21 @@ decision.
   must match, and a cited path must exist. It is keyed on **file**, not
   `file:line`, on purpose — a line-keyed guard fails on every unrelated edit
   above a citation, and a churning test gets turned off.
-- **Known 2026-08-11 reconciliation debt:** the `port-todo.test.ts` count
-  guard is currently red. Its repair belongs to the dedicated PORT_TODO
-  reconciliation pass; this ported-verdict batch deliberately records the
-  condition without changing PORT_TODO.md or weakening the guard.
+- ~~**Known 2026-08-11 reconciliation debt:** the `port-todo.test.ts` count
+  guard is currently red.~~ **Settled 2026-08-14.** The guard was green before
+  this pass touched anything (measured, not assumed - the debt note had outlived
+  its repair, exactly like the rows above it), and it is green after:
+  PORT_TODO.md's stated totals were moved to **13 citations, 5 `real` + 8
+  `partial`** when this pass closed the deferral census's last two `partial`
+  rows. Kept struck through rather than deleted, because a note saying "this is
+  broken" that quietly disappears teaches nobody what happened to it.
+- **One guard lost its subject when the census emptied, and it says so.**
+  `port-todo.test.ts`'s mutation check picked a real owed file to hole out; with
+  zero `real`/`partial` rows left in this tranche there is no such file. It now
+  names the empty case and asserts against a synthetic path instead of passing by
+  not running - a mutation check with nothing to mutate is a green test measuring
+  nothing, and it would have left the guard it protects vacuous with no sign of
+  it.
 - **The hand-written `file:line` numbers in the prose above are the one part of
   this document that drifts, and they already have once**: rewriting the notes
   moved ten of them by a line or two, and nothing caught it until the two
@@ -668,20 +840,15 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 
 | verdict | meaning | rows |
 | --- | --- | --- |
-| `partial` | Part ported; the note must say which part is not | 2 |
-| `divergence` | Deliberately different, with the mechanism named | 32 |
-| `n-a` | Not applicable to this port, with the mechanism named | 53 |
-| `ported` | Done; the note was stale and has been rewritten | 24 |
+| `divergence` | Deliberately different, with the mechanism named | 30 |
+| `n-a` | Not applicable to this port, with the mechanism named | 49 |
+| `unreachable-in-upstream` | No path in 4.2.6 can execute it, measured in the C (the third finished state) | 7 |
+| `ported` | Done; the note was stale and has been rewritten | 25 |
 | `note-is-fix` | The wording sits inside a record of a FIX, not a gap | 83 |
 | `not-a-deferral` | Ordinary English, not a parity claim | 32 |
 | | **total** | **226** |
 
-### `partial` - Part ported; the note must say which part is not (2)
-
-- `packages/core/src/store/transact.ts:26` - gear.ts:494 and :1149 maintain totalWeight; obj-cmd.ts:935-975 supplies autoinscription; session/game.ts:1109-1131 and :3603-3614 wire artifact history and transactions. The separately ledgered store-purchase history entry remains outside this batch.
-- `parity/ledger/world-kernel.yaml:36` - session/monster-light-wiring.test.ts:120-130 boots a game and proves monsterLightSources changes the live map. world-kernel.yaml:37-41 still names square side effects as owed and map rendering as the ratified repaint divergence.
-
-### `divergence` - Deliberately different, with the mechanism named (32)
+### `divergence` - Deliberately different, with the mechanism named (30)
 
 - `packages/core/src/game/context.ts:1345` - mon-death.ts:417-418 calls monsterDeath before deleteMonster; context.ts:1351-1412 removes groups, targets, artifacts, mimics, square and slot. The only remainder is the documented repaint-layer divergence.
 - `packages/core/src/game/curse-tick.ts:98` - known-twin write; obj/known-object.ts synthesises the shadow on demand, so the object-info display reads the same value
@@ -697,7 +864,6 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `packages/core/src/game/mon-place.ts:279` - LEAD READ. Re-adjudicated from real. list_object/delist_object is oidx bookkeeping for upstream's cave->objects[] registry, and the port replaced that registry rather than omitting it: state.floor is a pile map keyed by grid, and the mon<->obj mimicry link is obj.mimickingMIdx === mon.midx, which become_aware reads and the save persists. Nothing observable depends on an oidx. Ratified in game/floor.ts:19-21
 - `packages/core/src/game/mon-place.ts:340` - LEAD READ. Same ratified substitution as mon-place.ts:267 - the pile map IS the object list
 - `packages/core/src/game/monster-turn.ts:1361` - The player-cave placeholder copy rides the knowledge subsystem, which the port models as synthesised knowledge rather than a second grid array
-- `packages/core/src/game/shape-inspect.ts:108` - Class spell effects are held as raw pack records (ClassSpell.effectsRaw, player/types.ts:151) rather than compiled into an Effect chain at parse time; game/spell-cmd.ts casts and aims off the same records. A representation difference, not a missing feature
 - `packages/core/src/gen/generate.ts:11` - The known-level ("player cave") duplicate, ratified at game/known.ts:153 - the same decision as the per-object twin, applied to terrain. Related to work item #126
 - `packages/core/src/obj/bind.ts:1367` - The known-object side is synthesised on demand (obj/known-object.ts) rather than bound as a second object
 - `packages/core/src/obj/desc.ts:15` - The header's inline DEFERRED notes are all known-twin reads, which desc.ts now takes from objectKnownShadow
@@ -709,18 +875,16 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `packages/core/src/obj/object.ts:7` - Header points at obj-model.yaml; the model's absent twin is the synthesised shadow
 - `packages/core/src/obj/object.ts:182` - Known-twin field
 - `packages/core/src/obj/object.ts:296` - The explicit statement of the divergence: no persistent twin, synthesis instead (obj/known-object.ts)
-- `packages/core/src/obj/object.ts:900` - object_similar's two object_is_equipped guards (obj-pile.c:400-403) read the global player->body. The port's Gear keeps pack, quiver and equipment as separate lists, so no caller can reach the guard: combinePack walks gear.pack only, and gear.ts:614/696 and pickup.ts:164 are pack/quiver/floor. Upstream's own combine_pack walks player->upkeep->inven, where the guard is likewise belt-and-braces
 - `packages/core/src/store/store.ts:560` - The obj->known pile is synthesised on demand (obj/known-object.ts)
 - `parity/ledger/game-gear.yaml:73` - The known twin is synthesised on demand; the line's own "NOT deferred" clause lists what is live
 - `parity/ledger/rng.yaml:40` - Rand_init's time/pid seeding is deliberately replaced: the port seeds from crypto/Math.random at the host and stores the seed in the save, which is what makes a run reproducible
 - `parity/ledger/ui-entry.yaml:107` - Synthesised on demand (obj/known-object.ts)
 - `parity/ledger/ui-entry.yaml:114` - The port folds merged curse data into the object's own flags, which the note states is equivalent
 
-### `n-a` - Not applicable to this port, with the mechanism named (53)
+### `n-a` - Not applicable to this port, with the mechanism named (49)
 
 - `packages/core/src/game/cave-square.ts:58` - Adjacent-decoy destruction on floors; no RNG, and the decoy itself is modelled
 - `packages/core/src/game/cave-square.ts:68` - Same adjacent-decoy note, no RNG
-- `packages/core/src/game/effect-general.ts:587` - The drain-mana update_smart_learn note from #125, re-matched on a different line of the same comment after that pass rewrote it. Same adjudication: upstream's call (effect-handler-general.c:992) returns at mon-util.c:794 before reaching its own body, so known_pstate.pflags is never written in any game of Angband and there is nothing to port.
 - `packages/core/src/game/known.ts:250` - The note names its own mechanism: the front end runs updateView + noteSpots after every state-changing action, so there is no dirty-flag pipeline for a PU_/PR_ bit to set
 - `packages/core/src/game/loop.ts:339` - A message on a seen trap re-arming; the port has no PR_ dirty-flag pipeline and the front end repaints unconditionally
 - `packages/core/src/game/mon-death.ts:342` - PR_MONLIST is a redraw bit with no port equivalent (the front end repaints unconditionally); the note itself records quest_check as wired
@@ -737,13 +901,12 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `packages/core/src/game/project-monster.ts:48` - The seam's suppliers are live (session/game.ts:1223)
 - `packages/core/src/game/project-player.ts:16` - Same seam discipline; supplied at session/game.ts:1289. The killer-name half is tracked separately as the MDESC_DIED_FROM gap
 - `packages/core/src/game/project-player.ts:93` - Supplied at session/game.ts:1289
+- `packages/core/src/game/shape-inspect.ts:108` - Re-verified 2026-08-14 (#226). A binding-layer boundary, not a divergence in play: class spell effects are held as raw pack records (ClassSpell.effectsRaw, player/types.ts:151) and game/spell-cmd.ts:239 casts and aims off those same records, so the raw chain is consumed for real casting.
 - `packages/core/src/game/spoil.ts:379` - seed_randart only matters under birth_randarts and this is a dev tool; the note states the condition
 - `packages/core/src/mon/project-mon.ts:45` - The seam's suppliers are live (session/game.ts:1223)
 - `packages/core/src/mon/take-hit.ts:24` - The PR_HEALTH redraw, which is the ratified repaint divergence (DIVERGENCES.md B1): the renderer is immediate-mode and has no dirty-flag to raise. The state it gates, state.healthWho, IS tracked
 - `packages/core/src/mon/timed.ts:223` - Health-bar / monster-list redraw; the front end repaints unconditionally
 - `packages/core/src/obj/desc.ts:632` - is_unknown's placeholder path belongs to the object-list screen, which the web layer draws (game/obj-list.ts + web screens)
-- `packages/core/src/obj/object.ts:916` - The two OSTACK_LIST checks are unreachable in 4.2.6 - every OSTACK_* argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR, measured call site by call site - and obj/ostack-list.test.ts is the ratchet that reopens this if a caller ever appears
-- `packages/core/src/obj/randart-log.ts:72` - object_value_real's pricing.log is guarded by #ifdef PRICE_DEBUG, which no shipped configuration defines, so its seven file_putf sites are dead in every build a player can obtain
 - `packages/core/src/player/bind.ts:15` - Layer boundary: the raw effect chain is compiled by the effects domain, which is ported (effects/effect.ts) and wired at session boot
 - `packages/core/src/player/birth.ts:395` - Kind-name refs are resolved by the session (outfitPlayer + tvalFindIdx at gear.ts:1300); the binding layer holding names is the design
 - `packages/core/src/player/birth.ts:443` - Same: "deferred references" names the binding boundary
@@ -763,16 +926,24 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `parity/ledger/game-arena.yaml:16` - monster_index_move exists only to serve arena_gen's memcpy; the port's arena builder reads state.healthWho instead
 - `parity/ledger/game-effect-detect.yaml:48` - What remains after the closures this row records is the DTRAP border and the item/monster list redraws, both the ratified repaint divergence. The row's third clause is FALSE: there are no detection sounds to defer - effect_handler_DETECT_* (effect-handler-general.c:1321-1874) uses msg() and never sound()
 - `parity/ledger/game-effect-detect.yaml:58` - The monster recall WINDOW refresh (PR_MONSTER) is the ratified repaint divergence; an immediate-mode renderer has no window to invalidate
-- `parity/ledger/game-effect-general.yaml:97` - The call this row owes is a NO-OP UPSTREAM. effect-handler-general.c:992 is update_smart_learn(mon, player, 0, PF_NO_MANA, -1), and mon-util.c:794 returns immediately when flag is 0 and the element is out of range - which is exactly that argument list. It is the ONLY one of the nine call sites in 4.2.6 that passes a pflag, so the pflag branch at mon-util.c:822-829 is unreachable and known_pstate.pflags is never written. Porting the call would reproduce a dead branch; the omission is behaviourally identical
 - `parity/ledger/game-gear.yaml:70` - Pack overflow at birth: a birth kit cannot overflow, and packOverflow itself is ported and called (obj-cmd.ts:276, session/game.ts:806)
-- `parity/ledger/gamedata.yaml:502` - old_class.txt is retired data the 4.2.6 game does not load
 - `parity/ledger/player-model.yaml:53` - Starting-inventory kind-name refs are resolved by the session; a binding boundary
 - `parity/ledger/ui-display.yaml:155` - update_topbar / SIDEBAR_TOP, the prt_*_short handlers, hp_colour_change and every Term_* positioning call are the curses term's own layout machinery. The port draws the same values on a canvas grid (game/display.test.ts covers the value formatting); there is no subterm to position
 - `parity/ledger/ui-player.yaml:68` - The resist/ability/sustain grid is ported, in the separate module the note points at (characterGrid, ui-entry.ts:1863, drawn by web charsheet.ts:270)
 - `parity/ledger/wizard-debug.yaml:163` - The action is reachable by another route already ported; upstream's separate entry point adds no behaviour
 - `parity/ledger/wizard-debug.yaml:170` - Process lifetime belongs to the shell, which owns it in this port
 
-### `ported` - Done; the note was stale and has been rewritten (24)
+### `unreachable-in-upstream` - No path in 4.2.6 can execute it, measured in the C (the third finished state) (7)
+
+- `packages/core/src/game/effect-general.ts:587` - Promoted from n-a 2026-08-14: the same upstream measurement as parity/ledger/game-effect-general.yaml:97. Upstream's call (effect-handler-general.c:992) returns at mon-util.c:794 before reaching its own body, so the pflag arm at mon-util.c:822-829 never runs and there is nothing to port.
+- `packages/core/src/obj/object.ts:900` - Re-verified 2026-08-14 (#226). object_similar's two object_is_equipped guards (obj-pile.c:400-403) read the global player->body, and object.ts:915-925 enumerates every upstream mode: no 4.2.6 caller reaches the guard with an equipped object, because combine_pack walks player->upkeep->inven and the port's pack/quiver/floor paths (gear.ts:614, :696, pickup.ts:164) cannot contain one. PORT_TODO 2.11.
+- `packages/core/src/obj/object.ts:916` - Promoted from n-a 2026-08-14: this is the TEMPLATE the third finished state is judged against, ratified by the owner 2026-08-09 (option A). Nothing in 4.2.6 ever passes OSTACK_LIST - it is declared at obj-pile.h:33, tested at obj-pile.c:409, :410 and :485 and supplied never; every OSTACK_* argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR and no arithmetic sets 0x04. obj/ostack-list.test.ts is the ratchet and it sits on the CALLERS, which are the thing that can change.
+- `packages/core/src/obj/randart-log.ts:72` - Promoted from n-a 2026-08-14 (#228), and the sites are now named. object_value_real's pricing.log is guarded by #ifdef PRICE_DEBUG at obj-power.c:1117, :1144, :1153, :1166, :1175 and :1197 (the #else arm at :1134, block closing :1206), and PRICE_DEBUG is defined nowhere - not configure.ac, not any Makefile, not CMakeLists.txt - so it is a hand-edit-only switch and pricing.log cannot be written by any shipped 4.2.6 build. The port emits nothing on this path: obj/value.ts has no log call at all. packages/cli/src/text-census.test.ts:62-66 is the ratchet and it fails in BOTH directions.
+- `packages/core/src/store/transact.ts:26` - Re-verified 2026-08-14 (#228). There is no purchase-side history call to port: do_cmd_buy runs reference/src/store.c:1646-1774 and makes no history call of any name. store.c has exactly four - :1087 and :1303 (history_lose_artifact, turnover and black-market purge), :1924 (history_find_artifact, inside do_cmd_sell at :1865), :1988 (the store refusing what it just bought) - and the sell pair is wired at session/game.ts:3621-3622 and :3666-3667. The earlier note named a call upstream does not make; the direction was backwards. transact.ts:26-39 now records the correction at the site.
+- `parity/ledger/game-effect-general.yaml:97` - Promoted from n-a 2026-08-14: the mechanism is a measurement of upstream, not of this platform. effect-handler-general.c:992 is update_smart_learn(mon, player, 0, PF_NO_MANA, -1) and mon-util.c:794 returns immediately when flag is 0 and the element is out of range - exactly that argument list. It is the ONLY one of the nine 4.2.6 call sites that passes a pflag, so the pflag arm at mon-util.c:822-829 is unreachable and known_pstate.pflags is never written in any game of Angband.
+- `parity/ledger/gamedata.yaml:502` - Promoted from n-a 2026-08-14 (#228), with the mechanism measured. old_class.txt is SHIPPED and never parsed: lib/gamedata/Makefile:8 installs it into every player's data directory and init.c registers no old_class_parser. The only other mentions in 4.2.6 are src/Makefile.ibm:114 (an 8.3-FAT rename for the DOS build), src/win/vs2019/Angband.vcxproj:707 and .filters:1657 (an MSVC Text item), and comments in three tileset .prf files. Shipped is not reachable.
+
+### `ported` - Done; the note was stale and has been rewritten (25)
 
 - `packages/core/src/game/wizard.ts:68` - spoilObjDesc / spoilArtifact / spoilMonDesc / spoilMonInfo are live at game/spoil.ts:273, :366, :480, :532; web/src/wizard.ts:373 runSpoilers reaches them through the host seam.
 - `packages/core/src/gen/gen-monster.ts:350` - spreadMonsters is exported at gen-monster.ts:353 and used by the cave builders at gen/cave.ts:1721 and :1865; gen/gen.test.ts:2175 exercises room_of_chambers.
@@ -784,8 +955,8 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `parity/ledger/game-project-cast.yaml:53` - game/effect-attack.ts:433-445 implements both handleTOUCH target branches, and game/project-cast.ts:705 delegates to the handler.
 - `parity/ledger/high-scores.yaml:96` - game/effect-attack.ts:703 and game/project-cast.ts:147 form MDESC_DIED_FROM killers; game/take-hit-hooks.ts:66-68 records diedFrom and web/src/main.ts:4990-5000 passes it to score construction.
 - `parity/ledger/player-history.yaml:46` - web/src/screens.ts:1107 exports historyLines and web/src/charsheet.ts:581 dumpCharacterFile writes the character dump through the host seam.
-- `parity/ledger/player-history.yaml:79` - session/game.ts:1113-1137 wires onArtifactFound and onArtifactLost; game/pickup.ts:305-310 invokes the find hook and game/effect-item.ts:678 invokes the loss hook. The distinct store-purchase entry remains separately owed at store/transact.ts:26.
-- `parity/ledger/player-history.yaml:91` - web/src/main.ts:4557 calls historyAdd with HIST.USER_INPUT from the note command, and web/src/rest-steal-note.test.ts:53-60 verifies the binding and history action.
+- `parity/ledger/player-history.yaml:79` - session/game.ts:1113-1137 wires onArtifactFound and onArtifactLost; game/pickup.ts:305-310 invokes the find hook and game/effect-item.ts:678 invokes the loss hook. There is no distinct store-purchase entry to owe (corrected 2026-08-14): do_cmd_buy (store.c:1646-1774) makes no history call, and store.c's only find-side call is history_find_artifact at :1924 inside do_cmd_sell.
+- `parity/ledger/player-history.yaml:91` - web/src/main.ts:4642 calls historyAdd with HIST.USER_INPUT from the note command (noteCmd at :4615, the ':' binding at :8201), and web/src/rest-steal-note.test.ts:60-80 verifies the binding, the "Note: " prompt and the history action. Line numbers re-measured 2026-08-14: the call had drifted from :4557 to :4642.
 - `parity/ledger/store-price.yaml:21` - store/store.ts:113 exports storeChooseOwner and invokes it at :129, :133 and :716 when a store is initialized or maintained.
 - `parity/ledger/ui-entry.yaml:138` - game/ui-entry.ts:2114 exports equipCmpCategories; game/equip-cmp.ts:391 consumes it and game/equip-cmp.test.ts:116 checks all categories and the combined row.
 - `parity/ledger/wizard-debug.yaml:14` - obj/make.ts:754 ArtifactState records created artifacts, and session/save.ts:1069 plus :1500 serialize artifactsCreated.
@@ -798,6 +969,7 @@ Generated from `parity/reports/deferral-census.tsv` (226 rows).
 - `parity/ledger/wizard-debug.yaml:164` - web/src/wizard.ts:2058 runChangeQuantity is reachable through the Q/q play-item action at :1923-1925.
 - `parity/ledger/wizard-debug.yaml:166` - web/src/wizard.ts:1890 runPlayItem contains the A/K/S/R/T/C/Q dispatch at :1914-1925 and uses game/wizard.ts:1520, :1575 and :1610 snapshot/reject/accept operations.
 - `parity/ledger/wizard-debug.yaml:167` - The quantity action has its live play-item shell: web/src/wizard.ts:1890 dispatches Q at :1923-1925 to runChangeQuantity (:2058).
+- `parity/ledger/world-kernel.yaml:36` - Re-verified 2026-08-14 (#226). session/game.ts:900 supplies monsterLightSources() and session/monster-light-wiring.test.ts:120-130 boots a game and proves it changes the live map; the square side effects and map rendering the row also named are the ratified repaint divergence (DIVERGENCES.md B1), not owed work. PORT_TODO 7.4.
 
 ### `note-is-fix` - The wording sits inside a record of a FIX, not a gap (83)
 

@@ -17,6 +17,11 @@
  * The classifier stays because the judgement is shared. A row that says "update" and
  * a bulk "update everything" must reach the same verdict, and two copies of one rule
  * is one copy that learns.
+ *
+ * A SECOND RULE JOINED IT: `classifyModPin`. A tag is a name its owner can move, so
+ * "the tag on disk equals the tag on offer" and "the code has not changed under this
+ * player" are different claims - `classifyModTag` only ever answered the first. See
+ * that function's own comment for what closes the gap.
  */
 
 import { compareTags } from "./mod-registry";
@@ -46,4 +51,38 @@ export function classifyModTag(
   const order = compareTags(installedTag, offeredTag);
   if (order === null) return "unorderable";
   return order > 0 ? "ahead" : "behind";
+}
+
+/**
+ * The second axis `classifyModTag` cannot see: whether the tag ITSELF still
+ * names the commit it named when this mod was installed.
+ *
+ * A tag is mutable - its owner can retarget it at the repository without the
+ * name changing at all - so `classifyModTag("v1.2.0", "v1.2.0")` correctly says
+ * "same" for an installed copy and a moved one alike; the tag string is
+ * identical in both cases and was never going to be the thing that told them
+ * apart. The SHA a tag resolves to is that thing (see mod-discover.ts's
+ * DiscoveredMod.sha and mod-install.ts's InstalledModMeta.sha, which is where
+ * the two values this compares come from).
+ *
+ *  - `confirmed`  both SHAs are known and agree. The tag names the same commit
+ *                 it did at install.
+ *  - `moved`      both SHAs are known and differ. Same tag, different bytes -
+ *                 the thing this exists to catch.
+ *  - `unknown`    either SHA is missing - an install from before this field
+ *                 existed, or a tags call that could not be read. NEVER treated
+ *                 as `moved`: a gap in what was recorded is not evidence that
+ *                 anything changed, and reporting it as tampering would be a
+ *                 false alarm manufactured from missing data rather than a
+ *                 measurement. NEVER treated as `confirmed` either, for the
+ *                 mirror reason - "cannot tell" is not "checked and fine".
+ */
+export type ModPinStanding = "confirmed" | "moved" | "unknown";
+
+export function classifyModPin(
+  recordedSha: string | null | undefined,
+  currentSha: string | null | undefined,
+): ModPinStanding {
+  if (!recordedSha || !currentSha) return "unknown";
+  return recordedSha === currentSha ? "confirmed" : "moved";
 }

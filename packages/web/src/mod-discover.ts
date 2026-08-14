@@ -105,6 +105,23 @@ export interface DiscoveredMod {
   readonly bytes: number | null;
   /** True when the payload was guessed from the tree rather than declared. */
   readonly guessedPayload: boolean;
+  /**
+   * The commit `tag` resolves to right now, or null when it could not be
+   * learned - the tags call failed (a pinned tag still installs on that
+   * failure; see the try/catch below) or the API's own entry had no SHA.
+   *
+   * THIS IS THE VALUE AN INSTALL PINS. `installModFromRepo` (mod-install.ts)
+   * carries it straight into `InstalledModMeta.sha`, so an install records not
+   * just which tag it asked for but which commit that tag named at the moment
+   * it asked - the fact a moved tag changes and a tag name alone cannot show.
+   *
+   * Optional rather than required-and-nullable like this interface's other
+   * fields, purely so a fixture built before this field existed still type-checks
+   * as a DiscoveredMod without every caller having to be revisited the day it was
+   * added. `discoverMod` itself always sets it - to a SHA or explicitly to null -
+   * so nothing this module produces ever leaves it undefined.
+   */
+  readonly sha?: string | null;
 }
 
 export type DiscoverResult =
@@ -152,29 +169,68 @@ async function getJson(url: string, what: string, env: DiscoverEnv): Promise<unk
   }
 }
 
+/**
+ * One tag from the repository's tags API, and the commit it currently names.
+ *
+ * THE SHA WAS ALWAYS IN THIS RESPONSE. GitHub's tags API returns `commit.sha`
+ * beside every `name` - already dereferenced past an annotated tag to the real
+ * commit - and until now `listTags` read the name and threw the rest of the
+ * entry away. That SHA is the one fact that tells a tag apart from itself: a
+ * tag is a label GitHub lets its owner move, so `v1.2.0` today and `v1.2.0`
+ * next week can be two different commits with the same name, and a check that
+ * only ever compares names cannot see that happen (see mod-updates.ts,
+ * classifyModPin, which is what reads this).
+ */
+export interface TagRef {
+  readonly name: string;
+  /**
+   * The commit this tag resolves to, or null when the API's own entry did not
+   * carry one. Accepted rather than refused - `classifyModPin` already has an
+   * "unknown" answer for exactly this, and a caller pinning to a mod does not
+   * get to fail an install over a field it only ever uses defensively.
+   */
+  readonly sha: string | null;
+}
+
+/** The repository's tags, newest orderable first, unorderable ones dropped - each
+ * with the commit it currently resolves to. */
+export async function listTagRefs(
+  repo: string,
+  env: DiscoverEnv,
+): Promise<readonly TagRef[]> {
+  const body = await getJson(tagsApiUrl(repo), "the list of versions", env);
+  if (!Array.isArray(body)) throw new Error("the list of versions: not a list");
+  const shas = new Map<string, string | null>();
+  for (const entry of body) {
+    const e = entry as { name?: unknown; commit?: { sha?: unknown } } | null;
+    const name = e?.name;
+    if (typeof name !== "string" || name === "") continue;
+    /* First entry for a name wins. A real response never repeats a tag name;
+     * this is only about not letting a malformed one overwrite a good SHA with
+     * a worse one further down the array. */
+    if (shas.has(name)) continue;
+    const sha = e?.commit?.sha;
+    shas.set(name, typeof sha === "string" && sha !== "" ? sha : null);
+  }
+  /* Ordered by repeatedly taking the newest, so the ordering rule lives in exactly
+   * one place (newestTag) instead of being re-derived by a comparator here. */
+  const ordered: TagRef[] = [];
+  let rest = [...shas.keys()];
+  for (;;) {
+    const top = newestTag(rest);
+    if (top === null) break;
+    ordered.push({ name: top, sha: shas.get(top) ?? null });
+    rest = rest.filter((t) => t !== top);
+  }
+  return ordered;
+}
+
 /** The repository's tags, newest orderable first, unorderable ones dropped. */
 export async function listTags(
   repo: string,
   env: DiscoverEnv,
 ): Promise<readonly string[]> {
-  const body = await getJson(tagsApiUrl(repo), "the list of versions", env);
-  if (!Array.isArray(body)) throw new Error("the list of versions: not a list");
-  const names: string[] = [];
-  for (const entry of body) {
-    const name = (entry as { name?: unknown } | null)?.name;
-    if (typeof name === "string" && name !== "") names.push(name);
-  }
-  /* Ordered by repeatedly taking the newest, so the ordering rule lives in exactly
-   * one place (newestTag) instead of being re-derived by a comparator here. */
-  const ordered: string[] = [];
-  let rest = names;
-  for (;;) {
-    const top = newestTag(rest);
-    if (top === null) break;
-    ordered.push(top);
-    rest = rest.filter((t) => t !== top);
-  }
-  return ordered;
+  return (await listTagRefs(repo, env)).map((r) => r.name);
 }
 
 /** The tree at a tag, or null when it could not be read. */
@@ -212,13 +268,14 @@ export async function discoverMod(
   try {
     /* A pinned tag is taken as given - the player named a version and is owed
      * that version, not the newest. Its tag list is still fetched, so the row can
-     * say what else exists. */
-    let allTags: readonly string[] = [];
+     * say what else exists (and so the pinned tag's own SHA can be read off it). */
+    let allRefs: readonly TagRef[] = [];
     try {
-      allTags = await listTags(ref.repo, env);
+      allRefs = await listTagRefs(ref.repo, env);
     } catch (e) {
       if (ref.tag === undefined) throw e;
     }
+    const allTags = allRefs.map((r) => r.name);
 
     /* The channel filter. A player on stable is not offered a mod's beta, for the
      * same reason the game does not offer itself a beta on stable - and it is the
@@ -250,6 +307,11 @@ export async function discoverMod(
               `update screen to install it.`,
       };
     }
+
+    /* Read off the same tags-call response the picked tag came from - a second
+     * request would be a second chance for the tag to have moved BETWEEN the two
+     * calls, which would pin a SHA that was never actually what "install" saw. */
+    const sha = allRefs.find((r) => r.name === tag)?.sha ?? null;
 
     const manifestText = await getText(
       rawAt(ref.repo, tag, "manifest.json"),
@@ -358,6 +420,7 @@ export async function discoverMod(
         payload,
         bytes,
         guessedPayload,
+        sha,
       },
     };
   } catch (e) {
