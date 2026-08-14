@@ -43,6 +43,44 @@ export interface HudRun {
   readonly css: string;
 }
 
+/**
+ * The numbers behind one entry's text.
+ *
+ * ONE CONVENTION, and reading it wrong is the only way to misuse this: `current`
+ * and `max` TOGETHER mean this field is a PROPORTION, and `current / max` is
+ * meaningful. Every other key is a plain named quantity.
+ *
+ * A field with two numbers that are not a ratio deliberately does not use those
+ * names. A stat publishes `use`, `cur` and `max` because 18/118 is an encoding
+ * where 118 means 18/100 - `use / max` would report a maxed character as 15%.
+ * A drained character's level publishes `level` and `maxLevel` for the same
+ * reason. So a generic bar-drawing consumer can safely say "if it has `current`
+ * and `max`, draw a bar; otherwise draw the runs" and never draw a wrong one.
+ *
+ * The keys per field, as core ships them:
+ *
+ * - `hp`, `sp` - `current`, `max`. The two real bars. `sp` is ABSENT for a class
+ *   with no mana, which is not the same fact as having zero.
+ * - `health` (the tracked monster) - `current`, `max`, and absent whenever the
+ *   bar reads `[----------]`: unseen, dead, or hallucinated. The game does not
+ *   know the number there, and a zero would draw as "nearly dead".
+ * - `level` - `level`, `maxLevel`.
+ * - `exp` - `exp`, `maxExp`, `advance` (what the next level still needs; 0 at
+ *   the level cap, where the field shows the total instead).
+ * - `gold` - `au`. `ac` - `ac`, `armour`, `bonus`.
+ * - `str` / `int` / `wis` / `dex` / `con` - `use`, `cur`, `max`.
+ * - `speed` - `speed`, `relative` (`speed - 110`). Published at normal speed
+ *   too, where the game's own field is deliberately blank.
+ * - `depth` - `depth` (dungeon level, 0 in town), `feet`.
+ * - `level_feeling` - `object`, `monster` (indices, not the printed digits),
+ *   `squares`, `need`.
+ *
+ * Absent always means "this display does not know", never zero. Treat an
+ * unrecognised key as data you may ignore: fields gain numbers over time, and
+ * nothing here is removed without an ABI note.
+ */
+export type HudValues = Readonly<Record<string, number>>;
+
 /** Where an entry starts, in terminal cells. */
 export interface HudPlacement {
   readonly col: number;
@@ -61,6 +99,15 @@ export interface HudEntry {
   readonly key: string;
   readonly runs: readonly HudRun[];
   readonly screen: HudPlacement;
+  /**
+   * The numbers `runs` was formatted from, where this entry has any.
+   *
+   * `runs` is the game's sentence about the field; this is what the sentence is
+   * about. Draw a health bar from `values.current / values.max`, never from
+   * parsing `"HP   20/  20"` - that string is a rendering, and it changes when
+   * somebody loads a pref file or plays the game in another language.
+   */
+  readonly values?: HudValues;
 }
 
 export interface HudSection {

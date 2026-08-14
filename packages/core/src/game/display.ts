@@ -73,11 +73,36 @@ export interface DisplayRun {
   color: number;
 }
 
+/**
+ * The numbers behind a display field, for a consumer that is not going to draw
+ * the text.
+ *
+ * Upstream has no such thing: prt_hp formats "HP   20/  20" and the number is
+ * gone. The port's runs preserved that exactly, which is right for the faithful
+ * terminal and useless to anything else - a replacement HUD that wants to draw
+ * hit points as a proportional bar had to parse a rendering, and parsing a
+ * rendering is how a mod ends up broken by a pref file (MOD_REACH gap 21).
+ *
+ * ONE CONVENTION, and it is the whole point of the type: `current` and `max`
+ * together mean THIS IS A PROPORTION and `current / max` is meaningful. A field
+ * that has two numbers which are not a ratio must not use those two names -
+ * a stat's 18/118 encoding is not 15% of anything, so it publishes `use`, `cur`
+ * and `max` and a bar-drawing consumer correctly finds no proportion to draw.
+ * Every other key is a plain named quantity, documented where it is produced.
+ *
+ * Absent means "no number here", never zero: a monster health bar reads
+ * `[----------]` when the monster is unseen, and the honest answer for its
+ * current hit points is that this display does not know them.
+ */
+export type DisplayValues = Readonly<Record<string, number>>;
+
 /** One computed sidebar field: its handler key and its ordered runs. */
 export interface SidebarField {
   /** The side_handlers[] prt_* name minus the "prt_" prefix. */
   key: string;
   runs: DisplayRun[];
+  /** The numbers this field's text was formatted from, where it has any. */
+  values?: DisplayValues;
 }
 
 /** One computed status-line indicator: its handler key and its runs. */
@@ -85,6 +110,8 @@ export interface StatusIndicator {
   /** The status_handlers[] prt_* name minus the "prt_" prefix. */
   key: string;
   runs: DisplayRun[];
+  /** The numbers this indicator's text was formatted from, where it has any. */
+  values?: DisplayValues;
 }
 
 /**
@@ -441,6 +468,23 @@ function statRuns(player: Player, stat: number, deps: ResolvedDeps): DisplayRun[
   ];
 }
 
+/**
+ * The three numbers behind one stat row.
+ *
+ * NOT `current`/`max`: `use` is the internal 18/xx encoding, where 118 means
+ * 18/100 and is one point above 117. A bar drawn from `use / max` would report
+ * an 18/100 character as 15% of a maxed one. The names say what each number is
+ * and leave the arithmetic to whoever knows what the encoding means (`cnvStat`
+ * is exported for exactly that).
+ */
+function statValues(player: Player, stat: number, deps: ResolvedDeps): DisplayValues {
+  return {
+    use: deps.statUse[stat] ?? 0,
+    cur: player.statCur[stat] ?? 0,
+    max: player.statMax[stat] ?? 0,
+  };
+}
+
 /** prt_level (ui-display.c L207). */
 function levelRuns(player: Player): DisplayRun[] {
   const value = rjust(player.lev, 6);
@@ -459,11 +503,7 @@ function levelRuns(player: Player): DisplayRun[] {
  */
 function expRuns(player: Player): DisplayRun[] {
   const levMax = player.lev === PY_MAX_LEVEL;
-  let xp = player.exp;
-  if (!levMax) {
-    const base = player_exp[player.lev - 1] ?? 0;
-    xp = Math.trunc((base * player.expFactor) / 100) - player.exp;
-  }
+  const xp = levMax ? player.exp : expAdvance(player);
   const value = rjust(xp, 8);
   const atMax = player.exp >= player.maxExp;
   const label = levMax ? (atMax ? "EXP" : "Exp") : atMax ? "NXT" : "Nxt";
@@ -471,6 +511,20 @@ function expRuns(player: Player): DisplayRun[] {
     { text: label.padEnd(4), color: COLOUR_WHITE },
     { text: value, color: atMax ? COLOUR_L_GREEN : COLOUR_YELLOW },
   ];
+}
+
+/**
+ * The experience prt_exp counts DOWN to the next level (L232-243), or 0 at
+ * PY_MAX_LEVEL where the field shows the total instead.
+ *
+ * Shared by the text and the numbers so the two cannot part: this used to be
+ * inline in expRuns, and a second copy computing it for `values` would be a
+ * transcription of the same formula sitting one screen away from the original.
+ */
+function expAdvance(player: Player): number {
+  if (player.lev === PY_MAX_LEVEL) return 0;
+  const base = player_exp[player.lev - 1] ?? 0;
+  return Math.trunc((base * player.expFactor) / 100) - player.exp;
 }
 
 /** prt_gold (ui-display.c L256). */
@@ -523,10 +577,19 @@ function hpRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
   ];
 }
 
+/**
+ * Whether this character HAS mana - prt_sp's own gate (L333-336), shared so the
+ * blank field and the absent numbers can never disagree. A warrior has no spell
+ * points, which is not the same fact as having zero of them.
+ */
+function hasMana(player: Player): boolean {
+  const magic = player.cls.magic;
+  return Boolean(magic.totalSpells) && player.lev >= magic.spellFirst;
+}
+
 /** prt_sp (ui-display.c L332): empty unless the class has mana at this level. */
 function spRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
-  const magic = player.cls.magic;
-  if (!magic.totalSpells || player.lev < magic.spellFirst) {
+  if (!hasMana(player)) {
     /* An experience-drain clear (L344) leaves the field blank either way. */
     return [];
   }
@@ -536,6 +599,23 @@ function spRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
     { text: "/", color: COLOUR_WHITE },
     { text: rjust(player.msp, 4), color: COLOUR_L_GREEN },
   ];
+}
+
+/**
+ * The tracked monster's hit points, but ONLY when the bar is showing them.
+ *
+ * prt_health_aux draws `[----------]` for a monster that is unseen, dead or
+ * being hallucinated (L433-441), and the honest answer for its current hit
+ * points in that state is that this display does not know them. Returning
+ * `{ current: 0, max: 1 }` there would draw an empty bar that reads as "nearly
+ * dead" - a wrong number is worse than an absent one.
+ */
+function healthValues(player: Player, deps: ResolvedDeps): DisplayValues | undefined {
+  const mon = deps.healthWho;
+  if (!mon) return undefined;
+  const image = (player.timed[TMD.IMAGE] ?? 0) > 0;
+  if (!monsterIsVisible(mon) || image || mon.hp < 0) return undefined;
+  return { current: mon.hp, max: mon.maxhp };
 }
 
 /** prt_health / prt_health_aux (ui-display.c L425). */
@@ -674,25 +754,55 @@ export function sidebarModel(
   const d = resolveDeps(state, deps);
   const player = state.actor.player;
   const shape = playerIsShapechanged(player);
+  const combat = state.actor.knownCombat;
+  const health = healthValues(player, d);
+  const mana = hasMana(player);
+  /* `current`/`max` ONLY where the ratio means something (see DisplayValues):
+     hp, sp and the monster health bar are proportions and nothing else here is.
+     A stat's 18/118 encoding and a drained character's level are two numbers
+     apiece that a bar would misdraw, so they publish their own names. */
   return [
     { key: "race", runs: field(shape ? "" : player.race.name) },
     { key: "title", runs: field(fmtTitle(player, d)) },
     { key: "class", runs: field(shape ? "" : player.cls.name) },
-    { key: "level", runs: levelRuns(player) },
-    { key: "exp", runs: expRuns(player) },
-    { key: "gold", runs: goldRuns(player) },
+    { key: "level", runs: levelRuns(player), values: { level: player.lev, maxLevel: player.maxLev } },
+    {
+      key: "exp",
+      runs: expRuns(player),
+      values: { exp: player.exp, maxExp: player.maxExp, advance: expAdvance(player) },
+    },
+    { key: "gold", runs: goldRuns(player), values: { au: player.au } },
     { key: "equippy", runs: equippyRuns(state, d) },
-    { key: "str", runs: statRuns(player, STAT.STR, d) },
-    { key: "int", runs: statRuns(player, STAT.INT, d) },
-    { key: "wis", runs: statRuns(player, STAT.WIS, d) },
-    { key: "dex", runs: statRuns(player, STAT.DEX, d) },
-    { key: "con", runs: statRuns(player, STAT.CON, d) },
-    { key: "ac", runs: acRuns(state) },
-    { key: "hp", runs: hpRuns(player, d) },
-    { key: "sp", runs: spRuns(player, d) },
-    { key: "health", runs: healthRuns(player, d) },
-    { key: "speed", runs: speedRuns(state, d) },
-    { key: "depth", runs: depthRuns(state) },
+    { key: "str", runs: statRuns(player, STAT.STR, d), values: statValues(player, STAT.STR, d) },
+    { key: "int", runs: statRuns(player, STAT.INT, d), values: statValues(player, STAT.INT, d) },
+    { key: "wis", runs: statRuns(player, STAT.WIS, d), values: statValues(player, STAT.WIS, d) },
+    { key: "dex", runs: statRuns(player, STAT.DEX, d), values: statValues(player, STAT.DEX, d) },
+    { key: "con", runs: statRuns(player, STAT.CON, d), values: statValues(player, STAT.CON, d) },
+    {
+      key: "ac",
+      runs: acRuns(state),
+      values: { ac: combat.ac + combat.toA, armour: combat.ac, bonus: combat.toA },
+    },
+    { key: "hp", runs: hpRuns(player, d), values: { current: player.chp, max: player.mhp } },
+    {
+      key: "sp",
+      runs: spRuns(player, d),
+      ...(mana ? { values: { current: player.csp, max: player.msp } } : {}),
+    },
+    { key: "health", runs: healthRuns(player, d), ...(health ? { values: health } : {}) },
+    {
+      key: "speed",
+      runs: speedRuns(state, d),
+      /* Published at normal speed too, where the FIELD is blank: 110 is a known
+         number, not a missing one, and a replacement that wants to show "+0" is
+         entitled to. Core's own text stays upstream's. */
+      values: { speed: state.actor.speed, relative: state.actor.speed - 110 },
+    },
+    {
+      key: "depth",
+      runs: depthRuns(state),
+      values: { depth: state.chunk.depth, feet: state.chunk.depth * 50 },
+    },
   ];
 }
 
@@ -985,7 +1095,19 @@ export function statusLineModel(
   const d = resolveDeps(state, deps);
   const player = state.actor.player;
   return [
-    { key: "level_feeling", runs: levelFeelingRuns(state, d) },
+    {
+      key: "level_feeling",
+      runs: levelFeelingRuns(state, d),
+      /* "LF:3-4" is two digits that are each an INDEX into a colour table, and
+         both are printed inverted (11 - objFeeling). A consumer that wants its
+         own wording for a feeling needs the indices, not the arithmetic. */
+      values: {
+        object: Math.trunc(state.chunk.feeling / 10),
+        monster: state.chunk.feeling % 10,
+        squares: state.chunk.feelingSquares,
+        need: d.feelingNeed,
+      },
+    },
     { key: "light", runs: lightRuns(state) },
     { key: "moves", runs: movesRuns(d) },
     { key: "unignore", runs: unignoreRuns(d) },

@@ -355,3 +355,61 @@ describe("core draws its furniture inside the regions core publishes", () => {
     }
   });
 });
+
+/**
+ * The numbers behind the text.
+ *
+ * The producer's job here is narrow and easy to lose: carry `values` from the
+ * model to the entry, unchanged, on every layout. A field's numbers going
+ * missing looks like nothing at all - the terminal never reads them, so the
+ * screen is identical and only a replacement HUD notices.
+ */
+describe("values reach the entry that was placed", () => {
+  const withValues = (key: string, values: Record<string, number>, ...texts: string[]): HudModel => ({
+    ...model(key, ...texts),
+    values,
+  });
+
+  const vitals = [
+    withValues("hp", { current: 7, max: 34 }, "HP  7/34"),
+    withValues("depth", { depth: 1, feet: 50 }, "50 feet"),
+    model("race", "Half-Troll"),
+  ];
+
+  it("carries them through the placed left sidebar", () => {
+    const frame = buildHudFrame(params({ vitals, placements: [{ key: "hp", row: 1 }] }));
+    expect(frame.sidebar?.entries[0]?.values).toEqual({ current: 7, max: 34 });
+  });
+
+  it("carries them through the flowed compact header too", () => {
+    /* Two different code paths place an entry - `placements` and `flowEntries` -
+     * and only one of them is exercised by the layout most people run. */
+    const frame = buildHudFrame(
+      params({ layout: "top", vitals, compactKeys: ["hp", "depth"] }),
+    );
+    expect(frame.sidebar?.entries.map((e) => e.values)).toEqual([
+      { current: 7, max: 34 },
+      { depth: 1, feet: 50 },
+    ]);
+  });
+
+  it("leaves a field that has no numbers without the key at all", () => {
+    /* `undefined` rather than `{}`: a consumer's "does this have a proportion"
+     * check reads a missing object, and an empty one would answer the same
+     * question a slower and less obvious way. */
+    const frame = buildHudFrame(params({ vitals, placements: [{ key: "race", row: 1 }] }));
+    expect(frame.sidebar?.entries[0]).not.toHaveProperty("values");
+  });
+
+  it("survives the snapshot, frozen, as its own object", async () => {
+    const { snapshotHudFrame } = await import("./hud-view");
+    const frame = buildHudFrame(params({ vitals, placements: [{ key: "hp", row: 1 }] }));
+    const copy = snapshotHudFrame(frame);
+    const values = copy.sidebar!.entries[0]!.values!;
+    expect(values).toEqual({ current: 7, max: 34 });
+    /* The whole reason the snapshot exists: a plugin may retain a frame, so what
+     * crossed the boundary must not be the object the next repaint mutates. */
+    expect(values).not.toBe(frame.sidebar!.entries[0]!.values);
+    expect(Object.isFrozen(values)).toBe(true);
+  });
+});

@@ -220,4 +220,5 @@ export type {
   HudRun,
   HudSection,
   HudSectionSink,
+  HudValues,
 } from "./hud.js";
