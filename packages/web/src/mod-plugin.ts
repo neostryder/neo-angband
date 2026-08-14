@@ -86,7 +86,12 @@ import type {
 /* Type-only, like every other import here: a mod's source imports this module,
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
-import type { HudOwnership, MenuPresenter, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
+import type {
+  HudOwnership,
+  MenuPresenter,
+  ScreenPresenter,
+  WorldFrameSink,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The renderer-neutral map snapshot a selected front end receives. */
 export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -419,6 +424,37 @@ export interface ModPlugin {
    */
   menu?(ctx: ModPluginContext): MenuPresenter | undefined;
   /**
+   * Show the game's full screens your own way: an inventory of sprite tiles, a
+   * character sheet as a Dragon-Quest side panel, a knowledge browser with tabs.
+   *
+   * The fourth owner seam, and the one that reaches the CONTENT rather than the
+   * frame. A screen arrives as a `ScreenView`: blocks, and a list is a `table`
+   * with columns that have stable keys, so you read `row.cells.name` instead of
+   * parsing `"a) Potion of Cure Light Wounds    12.0 lb"`. Rows carry the same
+   * `semantic` a menu choice does, so an item is the same thing to you whether the
+   * game is listing it or asking you to pick one. Gated by the single
+   * `ui:screen.replace` capability, or the wildcard "ui:*.replace".
+   *
+   * ONE GRANT, THE FINE CHOICE PER SCREEN, exactly as `menu` does it: your
+   * presenter is offered every screen and returns `undefined` from `show` for the
+   * ones you have no better way to present. Declining costs nothing.
+   *
+   * NOT EVERY SCREEN HAS A MODEL YET. `MODELLED_SCREENS` names the ones that do;
+   * the rest arrive under the shared id `core:text` with a single `lines` block of
+   * pre-wrapped rows, which is enough to reskin a frame and not enough to
+   * reimagine a listing. Check `view.id` rather than assuming.
+   *
+   * A SCREEN IS DISMISSED, NOT ANSWERED, which is why `show` declines by returning
+   * `undefined` synchronously and takes the screen by returning `{ dismissed }` -
+   * there is no answer value left to decline with once the promise means "the
+   * player closed it". Resolve `dismissed` when they are done.
+   *
+   * Throwing costs you the seam for the rest of the session, as `menu` does. If
+   * you throw while a screen is OPEN the game shows it again itself, because a
+   * player left staring at a dead overlay has no way out.
+   */
+  screen?(ctx: ModPluginContext): ScreenPresenter | undefined;
+  /**
    * Teardown, called when the mod set changes and the page is about to re-compose.
    *
    * The re-compose is what actually removes the mod - a plugin that is not
@@ -489,6 +525,9 @@ export function validateModPlugin(
   if (p.menu !== undefined && typeof p.menu !== "function") {
     return "plugin.js: menu is not a function";
   }
+  if (p.screen !== undefined && typeof p.screen !== "function") {
+    return "plugin.js: screen is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
@@ -498,7 +537,8 @@ export function validateModPlugin(
     p.controller === undefined &&
     p.frontend === undefined &&
     p.hud === undefined &&
-    p.menu === undefined
+    p.menu === undefined &&
+    p.screen === undefined
   ) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
@@ -508,7 +548,7 @@ export function validateModPlugin(
      * to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register, controller, frontend, hud or menu, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend, hud, menu or screen, so it would do nothing";
   }
   return null;
 }

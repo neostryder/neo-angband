@@ -126,9 +126,11 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
  * asks, held by one presenter that declines the questions it has no better way
  * to ask. One grant rather than one per menu id, because ~50 capability strings
  * would be a consent list nobody could read (`menu-runtime.ts` states the whole
- * argument). `ui:*.replace` covers it, as it covers the regions.
+ * argument). `screen` is the same bargain for the full-screen views - the
+ * inventory listing, the character sheet, the knowledge browser. `ui:*.replace`
+ * covers them all, as it covers the regions.
  */
-const UI_RE = /^ui:(\*|messages|sidebar|status|menu)\.replace$/;
+const UI_RE = /^ui:(\*|messages|sidebar|status|menu|screen)\.replace$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */

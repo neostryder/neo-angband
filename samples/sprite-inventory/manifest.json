@@ -1,0 +1,13 @@
+{
+  "id": "sprite-inventory",
+  "name": "Sprite Inventory",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "engine": ">=0.19.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "capabilities": ["ui:screen.replace"],
+  "description": "A worked example of ModPlugin.screen: it draws the inventory and equipment as a grid of item cards instead of a lettered list, built from the screen's table rows rather than from its rendered text.\n\nIt takes those two screens and declines every other one, which is what the seam is for: a presenter reimagines the screens it has a better idea for and leaves the rest alone."
+}

@@ -54,7 +54,17 @@ describe("the shell's HUD wiring", () => {
      * Also that the reporter is wired, because a presenter's misbehaviour that
      * reaches no player is the same as one that was never noticed. */
     expect(src).toMatch(/setMenuPresenter\(\s*\n?\s*installMenu\(/u);
-    expect(src).toContain("setMenuFaultReporter(reportDisplayFault)");
+    expect(src).toContain("setUiFaultReporter(reportDisplayFault)");
+  });
+
+  it("hands the full screens to whoever the mod boot selected", () => {
+    /* Same join as the menus above, same reason: `showTextScreen` reads a
+     * MODULE-LEVEL holder, so `screen-runtime.test.ts` fills it itself and would
+     * go on passing if the shipped boot never did. And exactly one install call -
+     * a second one would re-run every candidate's `screen()` and leave the loser
+     * of the second pass holding whatever it mounted in the first. */
+    expect(src).toMatch(/setScreenPresenter\(\s*\n?\s*installScreen\(/u);
+    expect(src.match(/installScreen\(/gu)?.length).toBe(1);
   });
 
   it("places every field with sidebarLayout rather than a running counter", () => {

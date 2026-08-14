@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
 import type { MenuPlugin } from "./menu-runtime";
-import { selectFromMenu, setMenuFaultReporter } from "./overlay";
+import { selectFromMenu, setUiFaultReporter } from "./overlay";
 import type { MenuItem } from "./overlay";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { GlyphTerm } from "./term";
@@ -122,7 +122,7 @@ async function install(doc: unknown, faults: string[] = []) {
     ({ id: "command-dial", api: 1, log: () => undefined }) as unknown as ModPluginContext;
   const installed = installMenu([candidate], context, (id, message) => faults.push(`${id}: ${message}`));
   setMenuPresenter(installed);
-  setMenuFaultReporter((id, message) => faults.push(`${id}: ${message}`));
+  setUiFaultReporter((id, message) => faults.push(`${id}: ${message}`));
   return installed;
 }
 
@@ -132,7 +132,7 @@ async function tick(): Promise<void> {
 
 afterEach(() => {
   setMenuPresenter(null);
-  setMenuFaultReporter(() => undefined);
+  setUiFaultReporter(() => undefined);
 });
 
 describe("samples/command-dial, as the game would load it", () => {

@@ -231,3 +231,18 @@ export type {
   MenuQuestion,
   MenuSemantics,
 } from "./menu.js";
+export type {
+  ScreenArtBlock,
+  ScreenBlock,
+  ScreenCell,
+  ScreenColumn,
+  ScreenLinesBlock,
+  ScreenPresenter,
+  ScreenRow,
+  ScreenRun,
+  ScreenShown,
+  ScreenTableBlock,
+  ScreenTextBlock,
+  ScreenValues,
+  ScreenView,
+} from "./screen.js";

@@ -160,7 +160,7 @@ export function describeCapability(cap: string): CapabilityDescription {
       return parsed.region === "*"
         ? {
             cap,
-            text: "Draw the whole interface around the map - your messages, your vitals, the status line and every menu all come from this mod",
+            text: "Draw the whole interface around the map - your messages, your vitals, the status line, every menu and every full screen all come from this mod",
             elevated: true,
           }
         : {
@@ -186,6 +186,11 @@ function uiRegionText(region: string): string {
        * about a rectangle. The mod may leave most of them alone; the grant is
        * still over all of them, and that is what is being consented to. */
       return "menus and choices the game offers you";
+    case "screen":
+      /* Also not a region: the inventory, the character sheet, the knowledge
+       * browser - the full-screen views. Same bargain as `menu`, and the same
+       * reason for naming what changes rather than a rectangle. */
+      return "full screens - your inventory, character sheet and the rest";
     default:
       return `"${region}" part of the interface`;
   }

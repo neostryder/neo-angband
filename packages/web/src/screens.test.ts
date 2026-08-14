@@ -96,7 +96,13 @@ import {
   magicBooks,
   packMenu,
   quiverMenu,
+  inventoryScreen,
+  equipmentScreen,
+  equipmentLines,
+  objectName,
 } from "./screens";
+import type { ScreenTableBlock } from "./screen-view";
+import { UI_DIM } from "./ui-colors";
 import type { Monster } from "@rpgm-tools/neo-angband-core";
 
 const WHITE = 1;
@@ -680,6 +686,80 @@ describe("objectWeightColumn (OLIST_WEIGHT, ui-object.c L234-239)", () => {
     expect(objectWeightColumn({ number: 1, weight: 123 } as GameObject)).toBe(
       "  12.3 lb",
     );
+  });
+});
+
+/**
+ * The two listings that have given up their models (#253 step 5).
+ *
+ * WHAT THESE PIN. `inventoryLines` is no longer a drawing - it is
+ * `screenBodyLines(inventoryScreen(state))`, so the generic table renderer now
+ * draws what the player sees. The risk that creates is silent: a column that
+ * stops clamping at 45 or a prefix that stops being three characters wide moves
+ * every weight figure on the screen while every other test goes on passing,
+ * because nothing else asserts the column stops. So the expected row is DERIVED
+ * here from `objectName` and `objectWeightColumn` at the upstream field widths,
+ * rather than copied out of the current output.
+ */
+describe("the inventory and equipment screens, and the lines they still render to", () => {
+  it("publishes rows a mod can read, with the identity the PICKER uses", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const food = objReg.kinds.find((k) => k.tval === TV.FOOD) as ObjectKind;
+    const obj = addPack(state, food.name, 2);
+    const handle = state.gear.inven![0]!;
+
+    const view = inventoryScreen(state);
+    expect(view.id).toBe("core:inventory");
+    const block = view.blocks[0] as ScreenTableBlock;
+    expect(block.rows).toHaveLength(1);
+    const row = block.rows[0]!;
+
+    /* The same id and semantic packMenu gives the same object: an inventory
+     * LISTING and an inventory PICKER are the same objects seen twice, and a mod
+     * drawing sprites for one must not need a second vocabulary for the other. */
+    expect(row.id).toBe(`core:gear:${handle}`);
+    expect(row.id).toBe(packMenu(state).items[0]!.id);
+    expect(row.semantic).toEqual({ kind: "item", ref: handle, data: { source: "inventory", slot: 0 } });
+
+    /* Addressed by column key, never by counting characters. */
+    expect(row.cells.name!.text).toBe(objectName(state, obj));
+    expect(row.cells.weight!.values).toEqual({ each: obj.weight, total: 2 * obj.weight, number: 2 });
+  });
+
+  it("renders each row on the OLIST_WEIGHT column stops it was rendered on before", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const food = objReg.kinds.find((k) => k.tval === TV.FOOD) as ObjectKind;
+    const obj = addPack(state, food.name, 2);
+
+    const expected =
+      `a) ${objectName(state, obj).padEnd(45).slice(0, 45)} ${objectWeightColumn(obj)}`;
+    expect(inventoryLines(state)[0]!.text).toBe(expected);
+  });
+
+  it("keeps an empty body slot as a ROW, disabled and with no item semantic", () => {
+    /* The screen's subject is the body: a missing shield is the thing the player
+     * came to look at, so it is a row rather than an absence - and it is marked
+     * so a presenter does not draw it as gear. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const block = (equipmentScreen(state).blocks[0] as ScreenTableBlock);
+    expect(block.rows.length).toBe(state.actor.player.body.count);
+    const empty = block.rows.find((r) => r.disabled)!;
+    expect(empty.semantic!.kind).toBe("slot");
+    expect(empty.tag).toBeUndefined();
+    expect(empty.cells.name!.text).toBe("(nothing)");
+  });
+
+  it("indents an empty slot by exactly the width of a letter, so the columns hold", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const lines = equipmentLines(state).map((l) => l.text);
+    expect(lines.every((t) => t.startsWith("   ") || /^[a-zA-Z]\) /u.test(t))).toBe(true);
+    /* And no line is padded out past where the game ends it. */
+    expect(lines.every((t) => t === t.replace(/\s+$/u, ""))).toBe(true);
+  });
+
+  it("says '(nothing carried)' with nothing carried", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    expect(inventoryLines(state)).toEqual([{ text: "(nothing carried)", color: UI_DIM }]);
   });
 });
 

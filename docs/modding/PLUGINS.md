@@ -553,6 +553,77 @@ map (`"overlay"`).
 `samples/command-dial/` is a complete worked example: it takes the game menu and
 declines every other question in the game.
 
+## `screen(ctx)` — show the game's full screens your own way
+
+The fourth owner seam, and the one that reaches the **content** rather than the
+frame. Before it, the inventory arrived as `ScreenLine[]` — a row of characters
+and a colour — so a mod wanting to draw items as sprite cards would have had to
+parse `"a) a Potion of Cure Light Wounds       4.0 lb"` back into a name and a
+weight, and would break the day a pref file changed a colour or a translation
+changed a width. A screen now arrives as a **document of blocks**.
+
+```js
+screen(ctx) {
+  return {
+    show(view) {
+      if (view.id !== "core:inventory") return undefined;        // decline
+      const table = view.blocks.find((b) => b.kind === "table");
+      drawCards(table.rows);            // row.cells.name.text, row.semantic, ...
+      return { dismissed: whenThePlayerCloses() };
+    },
+  };
+}
+```
+
+Gated by the single `ui:screen.replace` capability (or the wildcard
+`ui:*.replace`), on the same bargain as `menu`: **one grant for every screen**,
+and the fine choice made per screen by declining.
+
+**A list is a `table`, and cells are addressed by column key.** Columns have
+stable keys — `name`, `slot`, `weight`, `fail` — so you read `row.cells.name.text`
+and never count characters. `column.width` is the faithful terminal's field width
+where upstream fixed one; ignore it if you lay columns out yourself. It is
+published *beside* the data rather than baked into it as padding, which is what
+makes both renderings possible from one model.
+
+**A row means something.** `row.semantic` is the same `{kind, ref}` a `MenuChoice`
+carries, so an item is one thing to you whether the game is listing it or asking
+you to pick one — an inventory row and its picker choice share an id. An empty
+equipment slot is `{kind: "slot"}` rather than an item. `row.color` is the
+object's own attr as CSS, and `row.tag` the letter the terminal would offer.
+
+**Numbers come with the text.** `cell.values` follows the HUD's convention
+exactly: `current` + `max` *together* mean a proportion; every other key is a
+named quantity; absent means the game does not know it. A weight cell publishes
+`{each, total, number}` in tenths of a pound, so you format it your own way.
+
+**Not every screen has a model yet.** `MODELLED_SCREENS`
+(`packages/web/src/screen-view.ts`) names the ones that do — today the inventory
+and the equipment. Everything else arrives under the shared id `core:text` with a
+single `lines` block of pre-wrapped rows: enough to reskin a frame, not enough to
+reimagine a listing. **Check `view.id`.** The remaining screens are the biggest
+open piece of `MOD_REACH.md` gap 21.
+
+**A screen is dismissed, not answered**, which is the one shape difference from
+`menu`. `show` declines by returning `undefined` **synchronously** and takes the
+screen by returning `{ dismissed }`, a promise you resolve when the player closes
+it. There is no answer value left to decline with once the promise means "they
+closed it", and deciding never needs to be async anyway — you match on `view.id`.
+Resolving `dismissed` is the whole contract: a presenter that forgets is a game
+the player cannot get back to.
+
+**Throwing costs you the seam for the session**, as with `menu`. If you throw
+while a screen is *open*, or reject `dismissed`, the game reports you by name and
+**shows the screen itself** — a player left staring at a dead overlay has no way
+out. That recovery exists so a bug is not a lost character, not as a place to be
+relaxed.
+
+**A screen has no published region either.** It covers the window, for the same
+reason a floating menu does.
+
+`samples/sprite-inventory/` is a complete worked example: it draws the inventory
+and the equipment as item cards and declines every other screen.
+
 ## Capabilities
 
 The `GridSurface` rendering contract is host infrastructure, not a registry
