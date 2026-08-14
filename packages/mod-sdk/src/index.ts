@@ -222,3 +222,12 @@ export type {
   HudSectionSink,
   HudValues,
 } from "./hud.js";
+export type {
+  MenuAnswer,
+  MenuChoice,
+  MenuCommandKey,
+  MenuDetailLine,
+  MenuPresenter,
+  MenuQuestion,
+  MenuSemantics,
+} from "./menu.js";

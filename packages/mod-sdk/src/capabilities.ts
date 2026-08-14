@@ -117,9 +117,18 @@ export type ParsedCapability =
   | { kind: "ui"; region: string; action: "replace" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
-/** The HUD regions a plugin may own, plus the "*" wildcard. `map` is absent
- *  deliberately: the dungeon is display:replace's. */
-const UI_RE = /^ui:(\*|messages|sidebar|status)\.replace$/;
+/**
+ * The parts of the interface a plugin may own, plus the "*" wildcard. `map` is
+ * absent deliberately: the dungeon is display:replace's.
+ *
+ * The first three are HUD REGIONS, sold one at a time because they are three
+ * answers to three questions. `menu` is not a region - it is every menu the game
+ * asks, held by one presenter that declines the questions it has no better way
+ * to ask. One grant rather than one per menu id, because ~50 capability strings
+ * would be a consent list nobody could read (`menu-runtime.ts` states the whole
+ * argument). `ui:*.replace` covers it, as it covers the regions.
+ */
+const UI_RE = /^ui:(\*|messages|sidebar|status|menu)\.replace$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */

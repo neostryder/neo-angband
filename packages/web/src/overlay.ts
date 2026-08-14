@@ -27,6 +27,12 @@ import {
 import type { Overview, OverviewGlyph } from "./mapview";
 import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 import { menuRegistry } from "./menu-registry";
+import { buildMenuQuestion, type MenuAnswer, type MenuQuestion } from "./menu-view";
+import {
+  askInstalledPresenter,
+  currentMenuPresenter,
+  refuseMenuAnswer,
+} from "./menu-runtime";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
 export interface ScreenLine {
@@ -1268,13 +1274,12 @@ export function selectFromMenu(
   const items = (declared ? menuRegistry.transform(id, originalRows) : originalRows) as readonly MenuItem[];
   const originalIndex = new Map(originalRows.map((row, index) => [row.id, index]));
   const displayedFooter = footer ?? "[ a-z to choose, ESC to cancel ]";
-  return new Promise<number | null>((resolve) => {
-    let cursor = items.findIndex((it) => !it.disabled);
-    if (cursor < 0) cursor = 0;
-    const wanted = extra?.initialCursor;
-    if (wanted !== undefined && wanted >= 0 && wanted < items.length && !items[wanted]?.disabled) {
-      cursor = wanted;
-    }
+  /* The terminal's own way of asking, unchanged, as a function - so a mod that
+   * has taken the menus can decline THIS question and fall straight into it
+   * (menu-runtime.ts). Everything below is exactly what used to follow a bare
+   * `return new Promise(...)` here. */
+  const askTerminal = (): Promise<number | null> => new Promise<number | null>((resolve) => {
+    let cursor = initialMenuCursor(items, extra?.initialCursor);
     let top = 0;
     // Painted geometry, kept for the tap handler (a tapped screen row maps
     // back to top + (row - listTop) using exactly what the last paint drew).
@@ -1657,6 +1662,173 @@ export function selectFromMenu(
     extra?.onHighlight?.(cursor);
     paint();
   });
+
+  if (currentMenuPresenter() === null) return askTerminal();
+  return askThroughPresenter({
+    question: buildMenuQuestion({
+      id,
+      title,
+      ...(extra?.subtitle === undefined ? {} : { subtitle: extra.subtitle }),
+      footer: extra?.footer ?? displayedFooter,
+      rows: items,
+      style: extra?.overlay === true ? "overlay" : "screen",
+      cursor: initialMenuCursor(items, extra?.initialCursor),
+      browseOnly: extra?.browseOnly === true,
+      commandKeys: Object.keys(extra?.commands ?? {}),
+      ctrlCommandKeys: Object.keys(extra?.ctrlCommands ?? {}),
+      ...(extra?.optionsKey === undefined ? {} : { optionsKey: extra.optionsKey }),
+      ...(extra?.detail === undefined ? {} : { detail: extra.detail }),
+    }),
+    items,
+    originalIndex,
+    extra,
+    askTerminal,
+  });
+}
+
+/**
+ * Where the cursor starts: the caller's `initialCursor` if it names a row that
+ * can be chosen, otherwise the first row that can.
+ *
+ * Shared between the terminal's own paint loop and the question handed to a
+ * presenter, because those two disagreeing would put a reimagined menu's
+ * highlight on a different row from the one the game thinks is selected - and
+ * only on the menus where the first row is disabled, which is the worst kind of
+ * bug to go looking for.
+ */
+function initialMenuCursor(
+  items: readonly MenuItem[],
+  wanted: number | undefined,
+): number {
+  if (wanted !== undefined && wanted >= 0 && wanted < items.length && !items[wanted]?.disabled) {
+    return wanted;
+  }
+  const first = items.findIndex((it) => !it.disabled);
+  return first < 0 ? 0 : first;
+}
+
+/**
+ * Ask one question through the installed presenter, and translate its answer
+ * into what `selectFromMenu`'s callers already understand.
+ *
+ * THE COMMAND LOOP IS THE INTERESTING PART. A presenter answering `command` is
+ * doing what a player pressing that key does: the caller's own handler runs, and
+ * unless it resolved the menu the question is asked AGAIN. That is why the store
+ * can be reimagined without the presenter knowing what buying does. The handlers
+ * and their sentinels are the caller's, unchanged - `menu-answer.test.ts` drives
+ * the same command through this path and through the keydown path and asserts
+ * the two agree, because a second copy of that rule drifting is exactly the bug
+ * this shape invites.
+ *
+ * ANYTHING THE PRESENTER GETS WRONG COSTS IT THIS MENU AND NOTHING ELSE: a
+ * choice id that does not exist, a choice on a browse-only question, a command
+ * key the caller never offered. It is reported and the game asks the question
+ * itself. A presenter that THREW is out for the session, which is
+ * `askInstalledPresenter`'s business rather than this one's.
+ */
+async function askThroughPresenter(deps: {
+  question: MenuQuestion;
+  items: readonly MenuItem[];
+  originalIndex: ReadonlyMap<string, number>;
+  extra: SelectMenuOptions | undefined;
+  askTerminal: () => Promise<number | null>;
+}): Promise<number | null> {
+  const { question, items, originalIndex, extra, askTerminal } = deps;
+  const owner = currentMenuPresenter();
+  if (!owner) return askTerminal();
+  const refuse = (why: string): Promise<number | null> => {
+    refuseMenuAnswer(owner.id, question, why, reportMenuFault);
+    return askTerminal();
+  };
+  /* Bounded only by the presenter answering `command` forever, which is the same
+   * thing a player holding a command key down does. Every other answer leaves. */
+  for (;;) {
+    const answer = await askInstalledPresenter(question, reportMenuFault);
+    if (answer === undefined) return askTerminal();
+    if (answer.kind === "cancel") return null;
+    if (answer.kind === "options") {
+      if (extra?.optionsKey === undefined) return refuse("an options answer for a menu that has no options key");
+      return MENU_OPTIONS;
+    }
+    if (answer.kind === "choose") {
+      if (question.browseOnly) return refuse("a choice for a browse-only menu");
+      const row = items.find((it) => it.id === answer.choice);
+      if (!row) return refuse(`the unknown choice "${answer.choice}"`);
+      if (row.disabled) return refuse(`the disabled choice "${answer.choice}"`);
+      const source = originalIndex.get(row.id ?? "");
+      /* A row a transformer INVENTED has no caller-side action behind it. The
+       * terminal path silently ignores a pick on one for the same reason; here
+       * it is said out loud, because a presenter cannot see why nothing
+       * happened. */
+      if (source === undefined) return refuse(`"${answer.choice}", which no game action stands behind`);
+      return source;
+    }
+    const resolved = runMenuCommand(answer, deps);
+    if (resolved !== CONTINUE) return resolved === REFUSED ? refuse(`the unoffered command key "${answer.key}"`) : resolved;
+  }
+}
+
+/** `runMenuCommand` ran the handler and the question should be asked again. */
+const CONTINUE = Symbol("menu:continue");
+/** The command key was never offered by this menu. */
+const REFUSED = Symbol("menu:refused");
+
+/**
+ * Run one command answer exactly as the keydown path runs that key.
+ *
+ * The sentinel order matters and is upstream's own: MENU_REFRESH and MENU_CLOSE
+ * are checked BEFORE the "it returned a row index" branch, because they ARE
+ * numbers and treating one as a row index is a silent no-op the caller cannot
+ * tell from a key that never arrived.
+ */
+function runMenuCommand(
+  answer: Extract<MenuAnswer, { kind: "command" }>,
+  deps: {
+    question: MenuQuestion;
+    items: readonly MenuItem[];
+    originalIndex: ReadonlyMap<string, number>;
+    extra: SelectMenuOptions | undefined;
+  },
+): number | null | typeof CONTINUE | typeof REFUSED {
+  const { question, items, originalIndex, extra } = deps;
+  /* The birth screen's '=' is offered to a presenter as a command, because from
+   * its side it is one - a key that does something other than choose - even
+   * though the host answers it with its own sentinel rather than a handler. */
+  if (extra?.optionsKey !== undefined && answer.key === extra.optionsKey && answer.ctrl !== true) {
+    return MENU_OPTIONS;
+  }
+  const handler = answer.ctrl === true
+    ? extra?.ctrlCommands?.[answer.key.toLowerCase()]
+    : extra?.commands?.[answer.key] ?? extra?.commands?.[answer.key.toLowerCase()];
+  if (!handler) return REFUSED;
+  const cursor = Math.min(Math.max(answer.cursor, 0), Math.max(0, items.length - 1));
+  const result = handler(cursor);
+  if (result === MENU_REFRESH || result === MENU_CLOSE) return result;
+  if (typeof result !== "number") return CONTINUE;
+  /* `pick` semantics: a handler naming a row resolves the menu with it, unless
+   * the row cannot be chosen - in which case the keydown path does nothing and
+   * the menu stays up, so this asks again rather than resolving with null. */
+  const row = items[result];
+  if (!row || row.disabled || question.browseOnly) return CONTINUE;
+  const source = originalIndex.get(row.id ?? "");
+  return source === undefined ? CONTINUE : source;
+}
+
+/** How a presenter's misbehaviour reaches the player: the shell's own reporter. */
+let reportMenuFault: (id: string, message: string, error: unknown) => void = () => {};
+
+/**
+ * Give the menus a way to report a mod, once the shell has one.
+ *
+ * `overlay.ts` is imported by tests that boot no game and by the shell that
+ * does, so the reporter is injected rather than imported - the alternative is
+ * this module reaching into main.ts, which is the dependency that would make
+ * every overlay test boot a canvas.
+ */
+export function setMenuFaultReporter(
+  report: (id: string, message: string, error: unknown) => void,
+): void {
+  reportMenuFault = report;
 }
 
 

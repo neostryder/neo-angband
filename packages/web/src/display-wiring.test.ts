@@ -44,6 +44,19 @@ describe("the shell's HUD wiring", () => {
     expect(src).toMatch(/renderHudFrame\([\s\S]*?, liveHudSink\);/u);
   });
 
+  it("hands the menus to whoever the mod boot selected", () => {
+    /* `selectFromMenu` reads a MODULE-LEVEL holder rather than an argument, so
+     * nothing in `menu-runtime.test.ts` can tell whether the shipped boot ever
+     * fills it - the tests set it themselves. This is the join: if the install
+     * call is dropped, the seam still passes every one of its own tests and no
+     * mod is ever asked anything.
+     *
+     * Also that the reporter is wired, because a presenter's misbehaviour that
+     * reaches no player is the same as one that was never noticed. */
+    expect(src).toMatch(/setMenuPresenter\(\s*\n?\s*installMenu\(/u);
+    expect(src).toContain("setMenuFaultReporter(reportDisplayFault)");
+  });
+
   it("places every field with sidebarLayout rather than a running counter", () => {
     expect(hudFrame).toContain("sidebarLayout(rows)");
     /* The hand-placed version: a set of key names, a `y++` per field, and a

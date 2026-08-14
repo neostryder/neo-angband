@@ -160,7 +160,7 @@ export function describeCapability(cap: string): CapabilityDescription {
       return parsed.region === "*"
         ? {
             cap,
-            text: "Draw the whole interface around the map - your messages, your vitals and the status line all come from this mod",
+            text: "Draw the whole interface around the map - your messages, your vitals, the status line and every menu all come from this mod",
             elevated: true,
           }
         : {
@@ -180,6 +180,12 @@ function uiRegionText(region: string): string {
       return "vitals panel - your hit points, food, armour and depth";
     case "status":
       return "status line along the bottom of the screen";
+    case "menu":
+      /* Not a region: every menu in the game, presented by this mod - which is
+       * why the wording is about what the player will SEE change rather than
+       * about a rectangle. The mod may leave most of them alone; the grant is
+       * still over all of them, and that is what is being consented to. */
+      return "menus and choices the game offers you";
     default:
       return `"${region}" part of the interface`;
   }

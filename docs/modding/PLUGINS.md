@@ -494,6 +494,65 @@ the SDK.
 `samples/vitals-panel/` is a complete worked example: it takes `sidebar` alone
 and leaves the rest of the screen to the game.
 
+## `menu(ctx)` — ask the game's questions your own way
+
+The third owner seam, and the one that is different in kind. A HUD section is
+**drawn**; a menu is **asked**. So the boundary is not `present(frame)` but
+`ask(question) → answer`, and taking a question means taking its input too — a
+presentation that could not accept a choice would not be a presentation of a
+menu.
+
+```js
+menu(ctx) {
+  return {
+    ask(question) {
+      if (question.id !== "core:game-menu") return undefined;   // decline
+      return drawDialAndWait(question);                          // → MenuAnswer
+    },
+  };
+}
+```
+
+Gated by the single `ui:menu.replace` capability (or the wildcard
+`ui:*.replace`). **One grant for every menu**, not one per menu id: there are
+~50 of them, and 50 capability strings would be a consent list nobody could read.
+
+**Declining is the normal case, not a failure path.** Your presenter is offered
+every menu the game asks, and returns `undefined` from `ask` for the ones you
+have no better way to present — the game then asks those its own way. A radial
+dial for six command verbs genuinely has no opinion about the mod manager's
+thirty-row list. Declining costs nothing: you drew nothing, and there is no
+surface left half-owned.
+
+**Answer by the choice's stable `id`, never by an index.** An index is a fact
+about a layout, and if you have grouped the choices into the wedges of a dial you
+have no index the game would recognise. Read `choice.semantic` (`{kind, ref}`) for
+what a choice *means*, independent of its wording, and `question.id` to recognise
+which question you are being asked.
+
+The answers are `choose`, `cancel`, `command` and `options`. **`command` runs one
+of `question.commands`** — the caller's own handler, exactly as the key would —
+and the question is then asked *again* unless that handler resolved it. That is
+how a reimagined store can offer "buy" without knowing what buying does. You
+cannot invent those keys; they belong to whoever opened the menu.
+
+**Throwing costs you the seam for the session, on every menu** — unlike `hud`,
+where a fault costs one region. A presenter that throws on one question generally
+throws on all of them, and one report beats a report every time the player opens
+anything. Answers that cannot be honoured (an unknown choice id, a choice on a
+browse-only question, a command key that was never offered) cost you *that menu
+only*, and are reported.
+
+**A menu has no published region yet.** `regions.ts` names the four parts of the
+screen that tile it, and a floating menu is by definition one that overlaps —
+overlapping, ordered, mod-created regions are the next increment of
+`MOD_REACH.md` gap 21. Until then, `question.style` tells you whether the game
+would have cleared the screen (`"screen"`) or drawn a box over a still-visible
+map (`"overlay"`).
+
+`samples/command-dial/` is a complete worked example: it takes the game menu and
+declines every other question in the game.
+
 ## Capabilities
 
 The `GridSurface` rendering contract is host infrastructure, not a registry
@@ -504,6 +563,11 @@ is the same shape one level finer: a direct member because it selects an owner,
 and gated by `ui:<region>.replace` - per region, because a mod drawing hit points
 as a bar has no business taking the message log with it, and because a player
 consenting deserves to be told which part of their screen is changing hands.
+`menu` is the third, gated by `ui:menu.replace` - and deliberately NOT per menu
+id, because the unit a player can weigh is "the game's menus", not fifty
+individual screens. All three `ui:*` grants and `display:replace` are separate
+kinds in both directions: a mod holding the dungeon cannot draw the vitals, and a
+mod holding every menu cannot draw the dungeon.
 
 The live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` invokes the extracted
