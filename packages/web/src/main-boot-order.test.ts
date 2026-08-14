@@ -86,7 +86,7 @@ describe("main boot order", () => {
     expect(inMaybeTitle, "the stop is back behind one of maybeTitle's exits").toBe(false);
   });
 
-  it("initializes the frontend slot before anything that will read it", async () => {
+  it("initializes both display sinks before anything that will read them", async () => {
     const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
     const render = source.statements.find(
       (statement): statement is ts.FunctionDeclaration =>
@@ -94,46 +94,66 @@ describe("main boot order", () => {
     );
     expect(render).toBeDefined();
 
-    let renderReadsFrontend = false;
-    const visit = (node: ts.Node): void => {
-      if (ts.isIdentifier(node) && node.text === "installedFrontend") renderReadsFrontend = true;
-      ts.forEachChild(node, visit);
+    /* WHAT render() ACTUALLY READS moved (#253). It used to hold the front-end
+     * slot and build a sink from it on every frame; it now reads the two sinks
+     * directly, because rebuilding them per frame discarded their "this mod
+     * faulted, stop calling it" memory. So the reader this test follows is
+     * `liveWorldSink` / `liveHudSink`, and the TDZ chain behind each is longer
+     * by one link rather than different in kind. */
+    const readsIn = (fn: ts.Node, name: string): boolean => {
+      let found = false;
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && node.text === name) found = true;
+        ts.forEachChild(node, visit);
+      };
+      ts.forEachChild(fn, visit);
+      return found;
     };
-    ts.forEachChild(render!, visit);
-    expect(renderReadsFrontend).toBe(true);
+    expect(readsIn(render!, "liveWorldSink")).toBe(true);
+    expect(readsIn(render!, "liveHudSink")).toBe(true);
 
-    const slot = source.statements.find((statement) =>
-      ts.isVariableStatement(statement) && statement.declarationList.declarations.some(
-        (declaration) =>
-          ts.isIdentifier(declaration.name) &&
-          declaration.name.text === "installedFrontend" &&
-          declaration.initializer !== undefined &&
-          /* It used to be `null` and this test pinned that literal. It is now
-           * candidate zero - core's own renderer, selected through the same
-           * installFrontend the mod boot uses (#140) - so what matters is that
-           * it is initialized to SOMETHING before the boot render below, and
-           * specifically not back to null. */
-          declaration.initializer.kind !== ts.SyntaxKind.NullKeyword,
-      ),
-    );
-    /* The slot no longer initializes to a literal - it initializes FROM another
-     * module-level const (#140), which is a real temporal-dead-zone edge the
-     * old `= null` had no way to hit. So the source it depends on comes into
-     * the slice too, and the evaluation below is what proves the order holds. */
     const declOf = (name: string): ts.Statement | undefined =>
       source.statements.find((statement) =>
         ts.isVariableStatement(statement) && statement.declarationList.declarations.some(
           (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name,
         ),
       );
-    /* The whole chain the slot is built from: candidate zero, then the
-     * selection over it, then the slot. Each link is a real TDZ edge. */
-    const chain = ["coreWorldSink", "coreFrontendSlot"].map(declOf);
+    const initialized = (name: string): ts.Statement | undefined =>
+      source.statements.find((statement) =>
+        ts.isVariableStatement(statement) && statement.declarationList.declarations.some(
+          (declaration) =>
+            ts.isIdentifier(declaration.name) &&
+            declaration.name.text === name &&
+            declaration.initializer !== undefined &&
+            /* The slots used to be `null` and this test pinned that literal.
+             * They are now candidate zero - core's own renderer and core's own
+             * terminal, each selected through the same install the mod boot uses
+             * (#140, #253) - so what matters is that they are initialized to
+             * SOMETHING, and specifically not back to null. */
+            declaration.initializer.kind !== ts.SyntaxKind.NullKeyword,
+        ),
+      );
 
-    expect(slot).toBeDefined();
+    /* Nothing here initializes to a literal: each link initializes FROM another
+     * module-level binding, which is a real temporal-dead-zone edge the old
+     * `= null` had no way to hit. Both chains come into the slice, and the
+     * evaluation below is what proves the order holds. */
+    const chain = [
+      "coreWorldSink",
+      "coreHudSink",
+      "coreFrontendSlot",
+      "coreHudSlot",
+      "installedFrontend",
+      "installedHud",
+    ].map(declOf);
+    const sinks = ["liveWorldSink", "liveHudSink"].map(initialized);
+
+    expect(sinks.every((statement) => statement !== undefined)).toBe(true);
     expect(chain.every((statement) => statement !== undefined)).toBe(true);
     for (const link of chain) {
-      expect(link!.getStart(source)).toBeLessThan(slot!.getStart(source));
+      for (const sink of sinks) {
+        expect(link!.getStart(source)).toBeLessThan(sink!.getStart(source));
+      }
     }
 
     /*
@@ -153,19 +173,25 @@ describe("main boot order", () => {
      * every declaration whose position this test is about comes from main.ts's
      * own text, so a reordering there reaches here.
      */
-    const bootSlice = [...chain.map((statement) => statement!), slot!]
+    const bootSlice = [...chain.map((statement) => statement!), ...sinks.map((s) => s!)]
       .sort((a, b) => a.getStart(source) - b.getStart(source))
       .map((statement) => statement.getText(source))
       .concat("render();")
       .join("\n");
     const stubs = [
       "type InstalledFrontend = unknown;",
+      "type InstalledHud = unknown;",
       "const term = {};",
       "const glyphWorldFrameSink = (s: unknown): unknown => s;",
+      "const glyphHudSectionSink = (s: unknown): unknown => s;",
       "const coreOnlyFrontend = (s: unknown): unknown => s;",
+      "const coreOnlyHud = (s: unknown): unknown => s;",
+      "const frontendWorldFrameSink = (s: unknown, _r: unknown): unknown => s;",
+      "const hudFrameSink = (s: unknown, _r: unknown): unknown => s;",
+      "const reportDisplayFault = (): void => undefined;",
     ].join("\n");
     const emitted = ts.transpileModule(
-      `${stubs}\nfunction render(): unknown { return installedFrontend; }\n${bootSlice}`,
+      `${stubs}\nfunction render(): unknown { return [liveWorldSink, liveHudSink]; }\n${bootSlice}`,
       { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext } },
     ).outputText;
     const moduleUrl = `data:text/javascript;base64,${Buffer.from(emitted).toString("base64")}`;

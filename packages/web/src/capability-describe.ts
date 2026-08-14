@@ -152,6 +152,36 @@ export function describeCapability(cap: string): CapabilityDescription {
         text: "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
         elevated: true,
       };
+    case "ui":
+      /* Named, because the consent is worth exactly as much as the player's
+       * ability to picture what changes. "Replace part of the interface" tells
+       * them nothing; "your hit points, food and armour" tells them where to
+       * look when it goes wrong. Elevated either way - it is their screen. */
+      return parsed.region === "*"
+        ? {
+            cap,
+            text: "Draw the whole interface around the map - your messages, your vitals and the status line all come from this mod",
+            elevated: true,
+          }
+        : {
+            cap,
+            text: `Draw the ${uiRegionText(parsed.region)} instead of the game`,
+            elevated: true,
+          };
+  }
+}
+
+/** What a player would call one HUD region, in the consent list. */
+function uiRegionText(region: string): string {
+  switch (region) {
+    case "messages":
+      return "message line at the top of the screen";
+    case "sidebar":
+      return "vitals panel - your hit points, food, armour and depth";
+    case "status":
+      return "status line along the bottom of the screen";
+    default:
+      return `"${region}" part of the interface`;
   }
 }
 

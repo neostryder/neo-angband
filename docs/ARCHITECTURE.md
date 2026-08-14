@@ -61,6 +61,16 @@ convention. The one deliberate exception is the '?' help overlay of the targetin
 loop, which takes as many rows as it needs above the status row - upstream's
 behaviour, and a fact a replacement needs told rather than hidden.
 
+Each frame has an OWNER, and the two seams differ in how many. `frontend-runtime.ts`
+selects one owner for the map; `hud-runtime.ts` selects one **per region**, so a
+mod can take the vitals and leave the message line with the game. Both work the
+same way otherwise - core's own renderer is candidate zero in the same list under
+the same last-in-load-order rule, so the seam demonstrably expresses the display
+the game already ships, and a replacement that faults hands its work back to core
+mid-session. The HUD's recovery is per region for the same reason its grant is:
+losing your hit points because the mod drawing the status line threw would be a
+bigger blast radius than the grant.
+
 ## What changes from upstream (the five chokepoints)
 
 The C original locks behavior behind compiled code. The port dissolves each

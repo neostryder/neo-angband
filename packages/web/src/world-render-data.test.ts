@@ -137,8 +137,12 @@ describe("the production live-world data producer", () => {
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
     /* Since phase 5 the glyph sink is candidate zero of the front-end
      * selection rather than a name main passes here, so the route is via
-     * whoever holds the slot - core's own renderer unless a mod outranked it. */
-    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*installedFrontend,/);
+     * whoever holds the slot - core's own renderer unless a mod outranked it.
+     * The sink is now built ONCE per selection rather than inside render()
+     * (#253): rebuilding it per frame discarded its "this front end faulted"
+     * memory, so the two halves of the route are checked separately. */
+    expect(main).toMatch(/const frame = projectLiveWorld\(\{[\s\S]*?\}, liveWorldSink\);/);
+    expect(main).toMatch(/liveWorldSink = frontendWorldFrameSink\(\s*installedFrontend,/);
     expect(main).toMatch(/const coreWorldSink = glyphWorldFrameSink\(term\);/);
     expect(main).toContain("seen: ({ x, y }) => squareIsSeen(state.chunk, loc(x, y))");
     expect(main).toContain("terrainAt: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS)");

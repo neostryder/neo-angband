@@ -126,6 +126,33 @@ export interface HudFrameSink {
   present(frame: HudFrame): void;
 }
 
+/**
+ * The consumer boundary for ONE region.
+ *
+ * This is the unit ownership is sold in (`hud-runtime.ts`): a mod that draws hit
+ * points as a bar takes `sidebar` and leaves the message line alone. It gets the
+ * frame as well as its own section because context changes what a section means -
+ * `targeting` says the message row is a look description, `layout` says whether
+ * the vitals are a column, a header, or turned off. The section it is handed is
+ * the same object as the matching field of that frame, so `section ===
+ * frame.sidebar` holds and a consumer can use either.
+ */
+export interface HudSectionSink {
+  present(section: HudSection, frame: HudFrame): void;
+}
+
+/**
+ * What `ModPlugin.hud` returns: a sink for each region it is taking.
+ *
+ * Omit a region to leave it with the game. `{}` and `undefined` are both a
+ * decline, which is the right answer on a host you cannot draw on - and a much
+ * better one than throwing, which costs the mod its regions AND is reported as
+ * its fault when the honest answer is "not here".
+ */
+export type HudOwnership = {
+  readonly [K in HudSectionName]?: HudSectionSink;
+};
+
 /** One named model as the engine produces it, its colours already resolved. */
 export interface HudModel {
   readonly key: string;
@@ -368,6 +395,67 @@ export function paintHudFrame(surface: Pick<GridSurface, "print">, frame: HudFra
 /** The unmodded renderer's sink; it is an ordinary consumer of the live frame. */
 export function glyphHudFrameSink(surface: Pick<GridSurface, "print">): HudFrameSink {
   return { present: (frame) => paintHudFrame(surface, frame) };
+}
+
+/**
+ * The unmodded renderer as a REGION owner - candidate zero's sink, and the one a
+ * faulting replacement hands its region back to.
+ *
+ * It ignores the frame argument, because the terminal's projection of a section
+ * needs nothing but the section. A replacement generally does need it, which is
+ * why the argument is in the interface rather than shaped around this one.
+ */
+export function glyphHudSectionSink(surface: Pick<GridSurface, "print">): HudSectionSink {
+  return { present: (section) => paintHudSection(surface, section) };
+}
+
+/**
+ * Make a consumer-owned snapshot of one live frame.
+ *
+ * The mirror of `snapshotWorldFrame`, and it exists for the same reason: a
+ * plugin may retain a frame to animate from, so what crosses the boundary must
+ * not be an object the next repaint mutates. Everything here is plain data -
+ * strings, numbers, rectangles - so this is a structural copy with no opaque
+ * values to preserve, unlike the world frame's render assets.
+ *
+ * The default glyph sink keeps consuming the live frame directly; only the
+ * cross-plugin boundary pays for this.
+ */
+export function snapshotHudFrame(frame: HudFrame): HudFrame {
+  const copyRun = (run: HudRun): HudRun =>
+    Object.freeze(run.color === undefined
+      ? { text: run.text, css: run.css }
+      : { text: run.text, color: run.color, css: run.css });
+  const copyCells = (cells: RegionCells): RegionCells =>
+    Object.freeze({ col: cells.col, row: cells.row, cols: cells.cols, rows: cells.rows });
+  const copySection = (section: HudSection): HudSection =>
+    Object.freeze({
+      name: section.name,
+      entries: Object.freeze(section.entries.map((entry) =>
+        Object.freeze({
+          key: entry.key,
+          runs: Object.freeze(entry.runs.map(copyRun)),
+          screen: Object.freeze({ col: entry.screen.col, row: entry.screen.row }),
+        }))),
+      clip: copyCells(section.clip),
+      ...(section.region
+        ? {
+            region: Object.freeze({
+              name: section.region.name,
+              cells: copyCells(section.region.cells),
+              ...(section.region.pixels ? { pixels: Object.freeze({ ...section.region.pixels }) } : {}),
+            }),
+          }
+        : {}),
+    });
+  const sidebar = frame.sidebar ? copySection(frame.sidebar) : undefined;
+  return Object.freeze({
+    layout: frame.layout,
+    targeting: frame.targeting,
+    messages: copySection(frame.messages),
+    ...(sidebar ? { sidebar } : {}),
+    status: copySection(frame.status),
+  });
 }
 
 /**

@@ -18,6 +18,56 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Added
+
+- **A mod can draw the HUD — one region at a time** (#253, MOD_REACH gap 21,
+  step 2).
+
+  `ModPlugin.hud(ctx)` returns a sink for each part of the HUD it is taking, and
+  the parts it omits stay the game's and keep being drawn. That is the whole
+  difference from the map seam: `frontend` has one owner because the dungeon is
+  one thing, and the message line, the vitals and the status line are three, so a
+  mod that redraws hit points as a bar does not have to take the message log with
+  it. Each region is gated by its own capability — `ui:messages.replace`,
+  `ui:sidebar.replace`, `ui:status.replace`, or `ui:*.replace` for all three —
+  and the consent list names the part in words a player can picture ("Draw the
+  vitals panel — your hit points, food, armour and depth"). It is a separate
+  capability kind from `display:replace` in both directions: holding the dungeon
+  does not let you draw the vitals, and holding the whole interface does not let
+  you draw the dungeon.
+
+  Selection is the same rule the map already uses — last enabled claimant in load
+  order, with core's terminal as candidate zero for every region through the same
+  call any mod makes — and it happens from the *manifests*, before anybody's
+  `hud()` is invoked, so a losing candidate is never constructed and cannot mount
+  UI it will never draw into. Two consequences are stated rather than discovered:
+  a sink for a region the manifest never asked for is dropped and reported, and a
+  region a mod won and then declined goes back to the game rather than on to the
+  next claimant. A fault costs one region: a throwing status sink loses the
+  status line for the session and leaves the vitals drawing.
+
+  `samples/vitals-panel/` is the worked example, and it is loaded from disk by
+  `sample-vitals.node.test.ts` through the real selection rather than being a
+  folder nobody runs. It takes `sidebar` alone, draws on `section.region.pixels`,
+  keys on the engine's own field names and resolves colour from `run.color`
+  through `ctx.core.COLOUR_*` — asserted to never touch `run.css` or
+  `entry.screen`, which are the terminal's own projection.
+
+  One limit is named rather than worked around: an entry carries its text, not
+  its numbers (`"HP 20/20"`, no `{current, max}`), so a HUD mod can restyle the
+  vitals and cannot draw a proportional bar without parsing a rendering.
+
+### Fixed
+
+- **A faulting front end was re-entered on every repaint** (found while building
+  the HUD's copy of the mechanism).
+
+  `frontendWorldFrameSink` remembers that a replacement threw and stops calling
+  it for the rest of the session — but it was built *inside* `render()`, so that
+  memory was thrown away on the next frame. A persistently throwing mod was
+  therefore re-entered, and re-reported to the player, once per repaint instead
+  of once. Both display sinks are now built once per installed selection.
+
 ### Changed
 
 - **The HUD is a frame now, not three closures** (#253, MOD_REACH gap 21,

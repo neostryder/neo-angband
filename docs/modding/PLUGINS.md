@@ -396,12 +396,102 @@ A front end is still *allowed* to take the whole window; an isometric or 3D view
 may want to. What the regions change is that it is now a decision, taken knowing
 what is being covered, rather than the only thing a mod could do.
 
+## The HUD, region by region
+
+`hud(ctx)` is the companion to `frontend(ctx)`. `frontend` is the dungeon; `hud`
+is everything around it — the message line, the vitals, the status line — and
+unlike the map, **it is owned one region at a time**:
+
+```js
+export default {
+  api: 1,
+  hud(ctx) {
+    const canvas = makeMyPanel(globalThis.document);
+    return {
+      sidebar: {
+        present(section, frame) {
+          const box = section.region?.pixels;
+          if (!box) return;                       // no geometry: draw nothing
+          placeOn(canvas, box);
+          for (const entry of section.entries) {
+            draw(entry.key, textOf(entry), inkFor(entry.runs[0]?.color));
+          }
+        },
+      },
+    };
+  },
+};
+```
+
+Return a sink for each region you are taking and omit the rest; they stay the
+game's and keep being drawn. `undefined` or `{}` declines everything, which is
+the right answer on a host you cannot draw on — a *throwing* factory also loses
+your regions but is reported as your fault, and "there is no document here" is
+not a fault.
+
+Each region needs its own capability, or the wildcard for all three:
+
+```json
+{ "shape": "plugin", "capabilities": ["ui:sidebar.replace"] }
+```
+
+`ui:messages.replace`, `ui:sidebar.replace`, `ui:status.replace`,
+`ui:*.replace`. There is deliberately no `ui:map.replace` — the dungeon is
+`display:replace`'s, and one region answering to two capabilities would be two
+answers to "who draws this". The two do not cover each other in either
+direction: holding the map does not let you draw the vitals, and holding the
+whole interface does not let you draw the map.
+
+**The capability is the claim.** The host picks each region's owner from the
+*manifests*, before it calls anybody's `hud()`, so a mod that loses is never
+constructed and cannot mount UI it will never draw into. Two consequences follow,
+and both are worth knowing before you write the manifest:
+
+- A sink for a region you did not ask for is **dropped and reported by name**.
+- A region you won and then declined goes back to the **game**, not on to the
+  next claimant. Ask for the regions you actually draw.
+
+**What you get on every repaint** is your own `section` plus the whole `frame`,
+both frozen and structurally yours, so retaining one to animate from is safe. The
+frame is the context that changes what a section *means*: `frame.targeting` says
+the message row is a look-description rather than a message, and `frame.layout`
+(`"left" | "top" | "none"`) says whether the vitals are a column, a one-line
+header, or turned off. Under `"none"` there is no `sidebar` section at all and
+your sink is simply not called — the player turned the furniture off, which is a
+choice to respect rather than one to style.
+
+Read `entry.key` — `hp`, `sp`, `ac`, `depth`, `state`: the engine's own
+`side_handlers[]` / `status_handlers[]` name minus its `prt_` prefix — and
+`run.color`, its `COLOUR_*` attribute, which you resolve through
+`ctx.core.COLOUR_L_GREEN` and friends **by name**, never by the number it
+currently has. `run.css` and `entry.screen` are the faithful terminal's own
+projection: there for a text-mode replacement, and the thing to ignore if you are
+drawing your own.
+
+**A fault costs you one region.** If your `status` sink throws, the game resumes
+drawing the status line for the rest of the session and says so by name — your
+`sidebar` keeps drawing, and the player keeps their game.
+
+**One limit, stated rather than worked around.** An entry carries its *text*, not
+its numbers: `"HP 20/20"`, not `{ current: 20, max: 20 }`. So a HUD mod can
+restyle, recolour and re-lay-out the vitals, and cannot draw a proportional health
+bar without parsing a rendering — which is the reverse-engineering this seam
+exists to end. Values on the entries is the next increment of `MOD_REACH.md` gap
+21.
+
+`samples/vitals-panel/` is a complete worked example: it takes `sidebar` alone
+and leaves the rest of the screen to the game.
+
 ## Capabilities
 
 The `GridSurface` rendering contract is host infrastructure, not a registry
 capability. `frontend` is a direct `ModPlugin` member because it selects one
 display owner rather than registering an independent game behaviour - and it is
-gated by `display:replace`, its own capability kind, for the same reason.
+gated by `display:replace`, its own capability kind, for the same reason. `hud`
+is the same shape one level finer: a direct member because it selects an owner,
+and gated by `ui:<region>.replace` - per region, because a mod drawing hit points
+as a bar has no business taking the message log with it, and because a player
+consenting deserves to be told which part of their screen is changing hands.
 
 The live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` invokes the extracted

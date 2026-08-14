@@ -86,7 +86,7 @@ import type {
 /* Type-only, like every other import here: a mod's source imports this module,
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
-import type { WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { HudOwnership, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The renderer-neutral map snapshot a selected front end receives. */
 export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -357,6 +357,39 @@ export interface ModPlugin {
    */
   frontend?(ctx: ModPluginContext): WorldFrameSink | undefined;
   /**
+   * Draw one or more named parts of the HUD instead of the game: the message
+   * line, the vitals, the status line.
+   *
+   * The companion to `frontend`, and separate from it because they are
+   * separately ownable. `frontend` is the dungeon; this is everything around it,
+   * and OWNERSHIP IS PER REGION. Return a sink for each region you are taking
+   * and omit the rest - they stay the game's and keep being drawn. `undefined`
+   * or `{}` declines everything, which is the right answer on a host you cannot
+   * draw on; throwing costs you your regions and is reported as your fault.
+   *
+   * Each region needs its own `ui:<region>.replace` capability
+   * ("ui:sidebar.replace"), or the wildcard "ui:*.replace" for all three. THE
+   * CAPABILITY IS THE CLAIM: the host selects each region's owner from the
+   * manifests before invoking anybody, so a losing candidate is never
+   * constructed and cannot mount UI it will never draw into. Two consequences
+   * follow. A sink for a region you did not ask for is dropped and reported. And
+   * a region you won but then declined goes to the GAME, not to the next
+   * claimant - so ask for the regions you actually draw.
+   *
+   * Your sink gets a frozen, structurally owned snapshot on every HUD repaint:
+   * your own section, plus the whole frame, because `targeting` and `layout`
+   * change what a section means. Read `entry.key` (`hp`, `depth`, `state` - the
+   * engine's own handler names) and `run.color` (its COLOUR_* attribute); those
+   * are the semantic half. `entry.screen` and `run.css` are the faithful
+   * terminal's own projection, there for a text-mode replacement and ignorable
+   * by anything else. `section.region.pixels` is where to put a canvas.
+   *
+   * CORE'S OWN TERMINAL DECLARES THIS TOO, as candidate zero of the same list
+   * (hud-runtime.ts), holding whichever regions no mod outranks it for - and it
+   * is what a faulting region is handed back to, that region alone.
+   */
+  hud?(ctx: ModPluginContext): HudOwnership | undefined;
+  /**
    * Teardown, called when the mod set changes and the page is about to re-compose.
    *
    * The re-compose is what actually removes the mod - a plugin that is not
@@ -421,10 +454,19 @@ export function validateModPlugin(
   if (p.frontend !== undefined && typeof p.frontend !== "function") {
     return "plugin.js: frontend is not a function";
   }
+  if (p.hud !== undefined && typeof p.hud !== "function") {
+    return "plugin.js: hud is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
-  if (p.hooks === undefined && p.register === undefined && p.controller === undefined && p.frontend === undefined) {
+  if (
+    p.hooks === undefined &&
+    p.register === undefined &&
+    p.controller === undefined &&
+    p.frontend === undefined &&
+    p.hud === undefined
+  ) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
      * loading it and having nothing happen. `controller` counts because an
@@ -433,7 +475,7 @@ export function validateModPlugin(
      * to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register, controller or frontend, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend or hud, so it would do nothing";
   }
   return null;
 }

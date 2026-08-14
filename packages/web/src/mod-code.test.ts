@@ -325,9 +325,26 @@ describe("a broken plugin is one line, not a boot failure", () => {
     expect(problemLines(report.problems)[0]).toContain("no default export");
   });
 
-  it("rejects a default export that declares no hooks, register, controller or frontend", async () => {
+  it("rejects a default export that declares no member that does anything", async () => {
     const report = await loadDefault({ api: MOD_API_VERSION });
-    expect(problemLines(report.problems)[0]).toContain("no hooks, register, controller or frontend");
+    expect(problemLines(report.problems)[0]).toContain(
+      "no hooks, register, controller, frontend or hud",
+    );
+  });
+
+  it("accepts a plugin whose ONLY member is a hud", async () => {
+    /* Same shape as the controller case below, and for the same reason: a mod
+     * that redraws the vitals registers nothing and hooks nothing. Refusing it
+     * as "would do nothing" is exactly the mistake the controller seam already
+     * made once. */
+    const report = await loadDefault({ api: MOD_API_VERSION, hud: () => undefined });
+    expect(report.problems).toEqual([]);
+    expect(report.plugins).toHaveLength(1);
+  });
+
+  it("rejects a hud that is not a function", async () => {
+    const report = await loadDefault({ api: MOD_API_VERSION, hud: {} });
+    expect(problemLines(report.problems)[0]).toContain("hud is not a function");
   });
 
   it("accepts a plugin whose ONLY member is a controller", async () => {

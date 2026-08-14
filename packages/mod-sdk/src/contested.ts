@@ -40,7 +40,8 @@ export type ContestedLayer =
   | "behaviour" // a ModHooks member
   | "rule" // a player-facing flag name
   | "controller" // the single autoplayer slot
-  | "frontend"; // the single selected display sink
+  | "frontend" // the single selected display sink
+  | "hud"; // one named HUD region's selected sink
 
 /**
  * How a layer resolves several claims on one slot.
