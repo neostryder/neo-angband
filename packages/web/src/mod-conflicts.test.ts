@@ -32,6 +32,7 @@ function inputs(over: Partial<ConflictInputs> = {}): ConflictInputs {
     ruleDecls: [],
     controllers: [],
     frontends: [],
+    hudRegions: [],
     ...over,
   };
 }

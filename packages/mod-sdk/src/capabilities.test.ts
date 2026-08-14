@@ -93,6 +93,29 @@ describe("parseCapability: valid forms", () => {
       domain: "*",
     });
   });
+
+  it("parses ui:<region>.replace for each HUD region, and the wildcard", () => {
+    for (const region of ["messages", "sidebar", "status"] as const) {
+      expect(parseCapability(`ui:${region}.replace`)).toEqual({
+        kind: "ui",
+        region,
+        action: "replace",
+      });
+    }
+    expect(parseCapability("ui:*.replace")).toEqual({
+      kind: "ui",
+      region: "*",
+      action: "replace",
+    });
+  });
+
+  it("rejects ui:map.replace - the dungeon is display:replace's", () => {
+    /* One region answering to two capabilities would be two answers to "who
+     * draws this", and the one a mod would reach for is the wrong one. */
+    expect(() => parseCapability("ui:map.replace")).toThrow(CapabilityError);
+    expect(() => parseCapability("ui:sidebar")).toThrow(CapabilityError);
+    expect(() => parseCapability("ui:*")).toThrow(CapabilityError);
+  });
 });
 
 describe("parseCapability: rejects garbage", () => {
@@ -246,6 +269,43 @@ describe("CapabilitySet: has / check", () => {
     expect(set.has("registry:command")).toBe(true);
     expect(set.has("registry:monster")).toBe(true);
     expect(set.has("registry:vocab")).toBe(true);
+  });
+
+  it("grants one HUD region and refuses the other two", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:sidebar.replace"] }),
+    );
+    expect(set.has("ui:sidebar.replace")).toBe(true);
+    expect(set.has("ui:status.replace")).toBe(false);
+    expect(set.has("ui:messages.replace")).toBe(false);
+  });
+
+  it("ui:*.replace grants every region", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:*.replace"] }),
+    );
+    expect(set.has("ui:messages.replace")).toBe(true);
+    expect(set.has("ui:sidebar.replace")).toBe(true);
+    expect(set.has("ui:status.replace")).toBe(true);
+  });
+
+  it("the map and the HUD are two consents, in BOTH directions", () => {
+    /* Taking the dungeon is not taking the vitals, and taking the whole
+     * interface is not taking the dungeon. A mod that wants both says both. */
+    const map = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["display:replace"] }),
+    );
+    expect(map.has("ui:sidebar.replace")).toBe(false);
+    const hud = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:*.replace"] }),
+    );
+    expect(hud.has("display:replace")).toBe(false);
+    /* And the override wildcard reaches neither. */
+    const wild = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["registry:*"] }),
+    );
+    expect(wild.has("ui:sidebar.replace")).toBe(false);
+    expect(wild.has("display:replace")).toBe(false);
   });
 
   it("grants an exact network host and rejects a different host", () => {

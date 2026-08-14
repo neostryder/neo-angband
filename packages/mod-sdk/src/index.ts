@@ -211,3 +211,13 @@ export type {
   WorldVisibility,
   WorldVisual,
 } from "./frontend.js";
+export type {
+  HudEntry,
+  HudFrame,
+  HudOwnership,
+  HudPlacement,
+  HudRegionName,
+  HudRun,
+  HudSection,
+  HudSectionSink,
+} from "./hud.js";

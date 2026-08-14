@@ -35,6 +35,7 @@ import {
   type PackManifest,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { frontendClaimants } from "./frontend-runtime";
+import { hudClaimants } from "./hud-runtime";
 import { activeModCode } from "./mod-code";
 import { enabledModHookContributions } from "./mod-hooks";
 import {
@@ -61,6 +62,15 @@ export interface ConflictInputs {
   controllers: readonly string[];
   /** Enabled mods that declare a replacement front end, in load order. */
   frontends: readonly string[];
+  /**
+   * Enabled mods claiming each HUD region, in load order, per region.
+   *
+   * Per region rather than one "hud" list, because that is how the seam grants
+   * it: two mods both declaring `hud()` are only in conflict if they want the
+   * SAME part of the screen, and folding them into one line would report a
+   * contest between a vitals mod and a status-line mod that never had one.
+   */
+  hudRegions: readonly { region: string; ids: readonly string[] }[];
 }
 
 /** A pack's display name from its manifest, falling back to its id. */
@@ -162,7 +172,34 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
     ),
   );
 
+  /* HUD, one slot PER REGION. Same last-load-wins rule as the front end, applied
+   * three times, so a mod drawing the vitals and a mod drawing the status line
+   * are correctly reported as not fighting. */
+  for (const { region, ids } of inputs.hudRegions) {
+    slots.push(
+      ...contestedSlots(
+        "hud",
+        "single-slot",
+        ids.map((id) => ({
+          key: `hud:${region}`,
+          what: `a replacement ${hudRegionDescription(region)}`,
+          claim: { packId: id } as Claim,
+        })),
+      ),
+    );
+  }
+
   return slots;
+}
+
+/** What a player would call one HUD region. */
+function hudRegionDescription(region: string): string {
+  const words: Record<string, string> = {
+    messages: "message line",
+    sidebar: "vitals panel",
+    status: "status line",
+  };
+  return words[region] ?? region;
 }
 
 /** What a player would call one ModHooks member. */
@@ -246,6 +283,8 @@ export function liveConflictLines(): ConflictReportLines {
      * it here as well would tell the player two mods are fighting over the
      * display when only one of them can ever hold it. */
     frontends: frontendClaimants(activeModCode().plugins),
+    /* Same rule, per region: only mods that could actually hold one are listed. */
+    hudRegions: hudClaimants(activeModCode().plugins),
   });
 }
 

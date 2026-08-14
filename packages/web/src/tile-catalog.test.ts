@@ -505,7 +505,8 @@ describe("the game does not know or expect any particular mod", () => {
      * zero of the front-end selection, so what main routes the frame to is
      * whoever holds the slot (`installedFrontend`), which is core's own
      * renderer unless a mod outranked it. */
-    expect(main).toMatch(/projectLiveWorld\(\{[\s\S]*?\}, frontendWorldFrameSink\(\s*installedFrontend,/);
+    expect(main).toMatch(/projectLiveWorld\(\{[\s\S]*?\}, liveWorldSink\);/);
+    expect(main).toMatch(/liveWorldSink = frontendWorldFrameSink\(\s*installedFrontend,/);
     expect(main).toMatch(/const coreWorldSink = glyphWorldFrameSink\(term\);/);
     expect(main).toMatch(/coreFrontendCandidate\(coreWorldSink\)/);
   });

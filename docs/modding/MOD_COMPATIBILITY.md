@@ -151,6 +151,14 @@ gets a compile error naming the new arm. That is the intended outcome - a mod
 rendering the capability list to its own UI should be told a kind exists that it
 does not describe. Additive at runtime: an older build simply never emits it.
 
+The same thing happened once more, for the same reason and with the same
+consequence: `ParsedCapability` gained `{ kind: "ui"; region: string; action:
+"replace" }` and `ContestedLayer` gained `"hud"` (#253, unreleased 2026-08-13),
+because `ModPlugin.hud` requires `ui:<region>.replace` and the conflict report
+now has a slot per HUD region. An exhaustive `switch` over either gets a compile
+error naming the new arm, which is the intended outcome. `ModPlugin` itself only
+gained an optional member, so no existing plugin's shape changes.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed

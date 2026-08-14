@@ -35,8 +35,13 @@ describe("the shell's HUD wiring", () => {
     /* One sink, constructed once and presented to once. A second draw path for
      * the vitals is exactly what made the HUD unreplaceable, and it would not
      * look like a bug from anywhere else - the pixels would be right. */
-    expect(src.match(/glyphHudFrameSink\(/gu)?.length).toBe(1);
+    expect(src.match(/glyphHudSectionSink\(/gu)?.length).toBe(1);
     expect(src.match(/renderHudFrame\(/gu)?.length).toBe(1);
+    /* And exactly one routed sink, built once per selection rather than inside
+     * render() - a sink rebuilt per frame forgets which region's owner faulted
+     * and re-enters it on the next repaint (#253). */
+    expect(src.match(/hudFrameSink\(/gu)?.length).toBe(2); // the module default and the mod boot
+    expect(src).toMatch(/renderHudFrame\([\s\S]*?, liveHudSink\);/u);
   });
 
   it("places every field with sidebarLayout rather than a running counter", () => {

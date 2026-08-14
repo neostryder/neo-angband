@@ -80,6 +80,21 @@
  *                             wildcard grants every named game system,
  *                             which is not the same thing as owning the
  *                             screen.
+ *  - "ui:<region>.replace" - draw ONE named part of the HUD instead of the
+ *                             game (ModPlugin.hud): "ui:messages.replace" |
+ *                             "ui:sidebar.replace" | "ui:status.replace", or
+ *                             the wildcard "ui:*.replace" for all three.
+ *                             Per REGION on purpose - a mod drawing hit points
+ *                             as a bar should not have to ask for the message
+ *                             line as well, and a player consenting to it
+ *                             should be told which part of their screen is
+ *                             changing hands. There is no "ui:map.replace":
+ *                             the dungeon is "display:replace"'s, and one
+ *                             region answering to two capabilities would be
+ *                             two answers to "who draws this".
+ *                             NOT covered by "display:replace" and it does not
+ *                             cover it, in either direction: taking the map is
+ *                             not taking the vitals.
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -98,9 +113,13 @@ export type ParsedCapability =
   | { kind: "state"; domain: string; access: "read" }
   | { kind: "network"; host: string }
   | { kind: "registry"; domain: string }
-  | { kind: "display"; action: "replace" };
+  | { kind: "display"; action: "replace" }
+  | { kind: "ui"; region: string; action: "replace" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
+/** The HUD regions a plugin may own, plus the "*" wildcard. `map` is absent
+ *  deliberately: the dungeon is display:replace's. */
+const UI_RE = /^ui:(\*|messages|sidebar|status)\.replace$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
@@ -125,6 +144,10 @@ export function parseCapability(cap: string): ParsedCapability {
    * carry it, which is exactly what a separate kind buys. */
   if (cap === "display:replace") {
     return { kind: "display", action: "replace" };
+  }
+  const ui = UI_RE.exec(cap);
+  if (ui) {
+    return { kind: "ui", region: ui[1] as string, action: "replace" };
   }
   const event = EVENT_RE.exec(cap);
   if (event) {
@@ -177,6 +200,14 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
        * here, so a mod holding the override wildcard still cannot take the
        * display without asking for it by name. */
       return grant.kind === "display";
+    case "ui":
+      /* Per region, with one wildcard. A `display` grant is NOT accepted here
+       * and a `ui` grant is not accepted above: owning the dungeon and owning
+       * the vitals are two consents, and a mod that wants both says both. */
+      return (
+        grant.kind === "ui" &&
+        (grant.region === "*" || grant.region === request.region)
+      );
   }
 }
 

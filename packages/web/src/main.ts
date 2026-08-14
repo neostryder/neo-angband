@@ -240,6 +240,7 @@ import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
 import {
   glyphWorldFrameSink,
+  type WorldFrameSink,
 } from "./world-view";
 import {
   coreFrontendCandidate,
@@ -248,6 +249,13 @@ import {
   installFrontend,
   type InstalledFrontend,
 } from "./frontend-runtime";
+import {
+  coreHudCandidate,
+  coreOnlyHud,
+  hudFrameSink,
+  installHud,
+  type InstalledHud,
+} from "./hud-runtime";
 import {
   projectLiveWorld,
   type HallucinatedCell,
@@ -280,6 +288,7 @@ import {
   setModCode,
 } from "./mod-code";
 import { modOwnFiles, modPluginContext, type ModSessionFacts } from "./mod-context";
+import type { ModPluginContext } from "./mod-plugin";
 import { migrateModBags } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -334,9 +343,10 @@ import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
 import {
   buildHudFrame,
-  glyphHudFrameSink,
+  glyphHudSectionSink,
   renderHudFrame,
   type HudFrame,
+  type HudFrameSink,
   type HudModel,
 } from "./hud-view";
 import { resolveKey } from "./keymap";
@@ -1597,14 +1607,43 @@ let dead = false;
  */
 const coreWorldSink = glyphWorldFrameSink(term);
 /**
- * The HUD's consumer. Core's glyph terminal holds it outright today: #253 step 1
- * makes the vitals, the message line and the status line a MODEL, and per-region
- * ownership - who gets to be the one that consumes it - is the step after.
+ * The HUD's owners, one per region. Core's glyph terminal is candidate zero for
+ * all three and holds them until `installHud` re-selects over the loaded
+ * plugins, exactly as the map's slot works - the difference being that the
+ * message line, the vitals and the status line are separately ownable.
  */
-const coreHudSink = glyphHudFrameSink(term);
+const coreHudSink = glyphHudSectionSink(term);
 const coreFrontend = coreFrontendCandidate(coreWorldSink);
+const coreHud = coreHudCandidate(coreHudSink);
 const coreFrontendSlot: InstalledFrontend = coreOnlyFrontend(coreWorldSink);
+const coreHudSlot: InstalledHud = coreOnlyHud(coreHudSink);
 let installedFrontend: InstalledFrontend = coreFrontendSlot;
+let installedHud: InstalledHud = coreHudSlot;
+
+/**
+ * One mod-facing display fault, reported to the player and logged.
+ *
+ * Shared by both seams because the two recoveries read identically from the
+ * outside: something a mod drew stopped working, the game took that part of the
+ * screen back, and the player is told which mod and which part.
+ */
+function reportDisplayFault(id: string, problem: string, error: unknown): void {
+  reportModFault(id, `${problem}: ${faultMessage(error)}`);
+  log.error(`mod:${id}`, `${problem}:`, error);
+}
+
+/**
+ * The two live display sinks, built ONCE per installed selection rather than per
+ * frame.
+ *
+ * That is load-bearing, not tidiness. Both sinks remember a replacement that
+ * faulted and stop calling it for the rest of the session; a sink rebuilt inside
+ * `render()` forgets on the next repaint, so a persistently throwing mod would
+ * be re-entered - and re-reported - on every single frame. These are reassigned
+ * where the selection is, and nowhere else.
+ */
+let liveWorldSink: WorldFrameSink = frontendWorldFrameSink(coreFrontendSlot, reportDisplayFault);
+let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
 
 // The message log: every message the engine emits this session, for the top
 // status line and the scrollable history (Ctrl-P). state.msg is the core's
@@ -7519,21 +7558,19 @@ function render(targeting?: TargetingOverlay): void {
     monsterGlyph: composeMonster,
     playerGlyph: playerMapGlyph,
     playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
-  }, frontendWorldFrameSink(
-    installedFrontend,
-    (id, message, error) => {
-      reportModFault(id, `${message}: ${faultMessage(error)}`);
-      log.error(`mod:${id}`, "frontend display failed:", error);
-    },
-  ));
+  }, liveWorldSink);
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
 
   /* The rest of the screen, through the same shape the map goes through: a
    * frame of named sections, presented to a sink. The vitals, the message line
    * and the status line all live in it, including the two rows the targeting
-   * loop takes over while it runs (target_set_interactive owns both). */
-  renderHudFrame(currentHudFrame(vp, cols, rows, regions, targeting), coreHudSink);
+   * loop takes over while it runs (target_set_interactive owns both).
+   *
+   * ONE sink for the whole frame, not one call per region: who owns each section
+   * is `liveHudSink`'s business (hud-runtime.ts), and deciding it here would put
+   * a second copy of the ownership rule on the hot path. */
+  renderHudFrame(currentHudFrame(vp, cols, rows, regions, targeting), liveHudSink);
 
   if (!targeting) {
     // show_target / highlight_player: the between-turns map cursor. Upstream
@@ -10983,36 +11020,52 @@ for (const loaded of activeModCode().plugins) {
  * mod outranks it, and what a faulting replacement hands the map back to. A mod
  * must hold `display:replace` to be eligible at all; declaring frontend()
  * without it is reported against that mod and leaves core drawing. */
-installedFrontend = installFrontend(
-  [coreFrontend, ...activeModCode().plugins],
-  (id) => {
-    const loaded = activeModCode().plugins.find((plugin) => plugin.id === id);
-    /* Candidate zero has no pack behind it, so there are no own-files and no
-     * folder rules to hand it - but it goes through the same call, with the
-     * same session facts, because a candidate invoked differently would be the
-     * special case this list exists to remove. */
-    if (!loaded) {
-      return modPluginContext(
-        id,
-        {},
-        state,
-        {},
-        sessionFacts,
-      );
-    }
+function displayCandidateContext(id: string): ModPluginContext {
+  const loaded = activeModCode().plugins.find((plugin) => plugin.id === id);
+  /* Candidate zero has no pack behind it, so there are no own-files and no
+   * folder rules to hand it - but it goes through the same call, with the
+   * same session facts, because a candidate invoked differently would be the
+   * special case this list exists to remove. */
+  if (!loaded) {
     return modPluginContext(
       id,
-      folderRuleFlags.get(id) ?? {},
+      {},
       state,
-      modOwnFiles(loaded.data),
+      {},
       sessionFacts,
     );
-  },
-  (id, message, error) => {
-    reportModFault(id, `${message}: ${faultMessage(error)}`);
-    log.error(`mod:${id}`, "frontend() failed:", error);
-  },
+  }
+  return modPluginContext(
+    id,
+    folderRuleFlags.get(id) ?? {},
+    state,
+    modOwnFiles(loaded.data),
+    sessionFacts,
+  );
+}
+
+installedFrontend = installFrontend(
+  [coreFrontend, ...activeModCode().plugins],
+  displayCandidateContext,
+  reportDisplayFault,
 );
+liveWorldSink = frontendWorldFrameSink(installedFrontend, reportDisplayFault);
+
+/* THE HUD, region by region. Same rule, applied three times: the last enabled
+ * mod holding `ui:<region>.replace` draws that region, and everything nobody
+ * claimed stays core's and keeps being drawn. That is the difference from the
+ * map - a mod can take the vitals without taking the message line with it, and a
+ * player consenting is told which part of their screen is changing hands.
+ *
+ * Selected from the MANIFESTS before anybody is invoked, so a losing candidate
+ * never mounts UI it will never draw into. See hud-runtime.ts for why that makes
+ * the capability the claim. */
+installedHud = installHud(
+  [coreHud, ...activeModCode().plugins],
+  displayCandidateContext,
+  reportDisplayFault,
+);
+liveHudSink = hudFrameSink(installedHud, reportDisplayFault);
 
 /* The controller() half: an autoplayer mod takes over state.nextCommand.
  *

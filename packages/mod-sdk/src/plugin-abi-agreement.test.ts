@@ -66,11 +66,12 @@ describe("the host and the builder implement the same plugin ABI", () => {
      * and the two tools disagreeing about which members count is exactly how
      * this broke. Comparing the strings catches a rule change that forgets the
      * message and a message change that forgets the rule. */
-    const sentence = "declares no hooks, register, controller or frontend, so it would do nothing";
+    const sentence =
+      "declares no hooks, register, controller, frontend or hud, so it would do nothing";
     expect(hostSrc).toContain(sentence);
     expect(builderSrc).toContain(sentence);
 
-    const members = ["hooks", "register", "controller", "frontend"];
+    const members = ["hooks", "register", "controller", "frontend", "hud"];
     for (const m of members) {
       expect(hostSrc).toContain(`p.${m} === undefined`);
       expect(builderSrc).toContain(`plugin.${m} === undefined`);

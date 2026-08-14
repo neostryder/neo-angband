@@ -167,11 +167,20 @@ The `capabilities` list applies only to `shape: plugin` mods and is the
 consent surface (section 4). Content and tile packs request none.
 
 The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`,
-`network:<host>`, `registry:<domain>` and **`display:replace`**. The last of
-those is what `ModPlugin.frontend` requires - everything the player sees of the
-dungeon drawn by the mod. It stands outside `registry:` deliberately, and
-`registry:*` does not cover it: an override wildcard grants every named game
-system, which is not the same thing as owning the screen.
+`network:<host>`, `registry:<domain>`, **`display:replace`** and
+**`ui:<region>.replace`**. The last two are the screen, and they are two grants
+rather than one. `display:replace` is what `ModPlugin.frontend` requires -
+everything the player sees of the dungeon drawn by the mod. `ui:<region>.replace`
+is what `ModPlugin.hud` requires, PER REGION - `ui:messages.replace`,
+`ui:sidebar.replace`, `ui:status.replace`, or `ui:*.replace` for all three - so a
+mod that redraws the vitals does not have to ask for the message line as well,
+and a player consenting is told which part of their screen is changing hands.
+
+Both stand outside `registry:` deliberately, and `registry:*` covers neither: an
+override wildcard grants every named game system, which is not the same thing as
+owning part of the screen. They do not cover each other either. There is no
+`ui:map.replace`, because the dungeon is `display:replace`'s and one region
+answering to two capabilities would be two answers to "who draws this".
 
 ### From a git repository (today)
 
