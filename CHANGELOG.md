@@ -20,6 +20,88 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A mod can show the game's full screens — the inventory as sprites, if it
+  likes** (#253, MOD_REACH gap 21, step 5).
+
+  `ModPlugin.screen(ctx)` returns a presenter that is offered every full-screen
+  view and takes the ones it has a better idea for, gated by one capability,
+  `ui:screen.replace` (or `ui:*.replace`). This is the seam that reaches the
+  *content* rather than the frame. Before it, the inventory arrived as
+  `ScreenLine[]` — a row of characters and a colour — so a mod wanting item cards
+  would have had to parse `"a) a Potion of Cure Light Wounds       4.0 lb"` back
+  into a name and a weight, and would have broken the day a pref file changed a
+  colour or a translation changed a width.
+
+  A screen is now a document of blocks, and **a list is a `table`**: columns with
+  stable keys, rows whose cells are addressed by those keys, so a presenter reads
+  `row.cells.name.text` and never counts characters. A row carries the same
+  `{kind, ref}` semantic and the same `core:gear:<handle>` id a menu choice does,
+  because an inventory listing and an inventory picker are the same objects seen
+  twice. Cells carry `values` under the HUD's convention unchanged, so a weight
+  publishes `{each, total, number}` in tenths of a pound and the presenter
+  formats it. Column widths are published *beside* the data instead of baked into
+  it as padding, which is what lets the same model serve upstream's fixed column
+  stops and a proportional font.
+
+  **A screen is dismissed, not answered**, which is the one shape difference from
+  the menu seam: `show` declines by returning `undefined` synchronously and takes
+  the screen by returning `{ dismissed }`. A presenter that throws, returns no
+  dismissal, or dies with the screen open loses the seam for the session *and*
+  the game shows the screen itself — a player left staring at a dead overlay has
+  no way out.
+
+  Core's own painting goes through the same renderer: `inventoryLines` is now
+  `screenBodyLines(inventoryScreen(state))`, so the model and the shipped rows
+  cannot drift apart. `samples/sprite-inventory/` is the worked example, driven
+  from disk through the real `showTextScreen` by
+  `sample-inventory.node.test.ts`.
+
+  **Two screens have models so far**, named in `MODELLED_SCREENS` and derived
+  from the source by a test: the inventory and the equipment. Every other screen
+  arrives under the shared id `core:text` with pre-wrapped lines — enough to
+  reskin a frame, not enough to reimagine a listing.
+
+- **A mod can ask the game's questions its own way** (#253, MOD_REACH gap 21,
+  step 4).
+
+  `ModPlugin.menu(ctx)` returns a presenter, and every menu in the game is
+  offered to it as a `MenuQuestion` — title, subtitle, footer, choices with their
+  stable ids and semantics, the command keys the caller handles itself, the
+  initial cursor, and a live `detail(index)` for the pane under the cursor. One
+  capability covers all of them (`ui:menu.replace`, or `ui:*.replace`), because
+  ~50 capability strings would be a consent list nobody could read; the fine
+  choice is made per question, where returning `undefined` declines and the game
+  asks that one its own way. Declining is the expected case, not a failure.
+
+  A menu is **asked**, not drawn, so taking a question means taking its input,
+  and an answer names a choice's stable `id` — never an index, which is a fact
+  about a layout rather than about the game. A presenter that throws loses the
+  seam for the session; an answer that cannot be honoured loses that menu only,
+  and both are reported by name.
+
+  `samples/command-dial/` presents the game menu as a radial dial, colours the
+  quit wedge from `semantic.ref` rather than the English label, and declines
+  every other menu — including the spell book, which its test asserts is still
+  answered by the game's own lettered list.
+
+- **HUD entries carry their numbers, not only their text** (#253, MOD_REACH gap
+  21, step 3).
+
+  The limit the vitals sample named in step 2 is closed: `SidebarField` and
+  `StatusIndicator` publish `values` from core, carried unchanged to every entry
+  and through the cross-plugin snapshot. It is one convention rather than a
+  per-field API — **`current` and `max` together mean the field is a
+  proportion**, every other key is a plain named quantity — so a mod can write
+  `if (v.current !== undefined && v.max !== undefined) drawBar() else drawText()`
+  once and still be right on a field a content pack adds later.
+
+  Absent means the game does not know, never zero: the monster health bar
+  publishes nothing while it reads `[----------]`, and `sp` is absent for a class
+  with no mana rather than `0/0`. A stat publishes `use`/`cur`/`max` because 118
+  is an encoding meaning 18/100 and `use / max` would report a maxed character as
+  15%. `samples/vitals-panel/` now draws hit points and spell points as real
+  bars, coloured from the engine's own attribute and clamped.
+
 - **A mod can draw the HUD — one region at a time** (#253, MOD_REACH gap 21,
   step 2).
 

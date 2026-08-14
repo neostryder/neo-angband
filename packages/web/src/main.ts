@@ -384,10 +384,11 @@ import {
   getFile,
   getQuantity,
   getString,
-  setMenuFaultReporter,
+  setUiFaultReporter,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
+import { installScreen, setScreenPresenter } from "./screen-runtime";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
@@ -11082,9 +11083,18 @@ liveHudSink = hudFrameSink(installedHud, reportDisplayFault);
  * made per question, where a presenter declines whatever it has no better way to
  * ask. Installed into a module-level holder because `selectFromMenu` is called
  * from ~50 sites, and a mod being disabled takes effect on reload anyway. */
-setMenuFaultReporter(reportDisplayFault);
+setUiFaultReporter(reportDisplayFault);
 setMenuPresenter(
   installMenu([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
+);
+
+/* THE SCREENS. Same bargain as the menus - one grant (`ui:screen.replace`), the
+ * choice made per screen - and the same module-level holder, because
+ * `showTextScreen` is called from ~85 sites. This is the seam that reaches the
+ * CONTENT of the big views rather than the frame around them: a screen arrives as
+ * a document of blocks, so an inventory can be drawn as sprites. */
+setScreenPresenter(
+  installScreen([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
 );
 
 /* The controller() half: an autoplayer mod takes over state.nextCommand.

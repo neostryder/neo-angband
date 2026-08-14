@@ -332,11 +332,12 @@ function pluginProblem(plugin) {
     plugin.controller === undefined &&
     plugin.frontend === undefined &&
     plugin.hud === undefined &&
-    plugin.menu === undefined
+    plugin.menu === undefined &&
+    plugin.screen === undefined
   ) {
-    return "plugin.js declares no hooks, register, controller, frontend, hud or menu, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend, hud, menu or screen, so it would do nothing";
   }
-  for (const name of ["hooks", "register", "controller", "frontend", "hud", "menu", "uninstall"]) {
+  for (const name of ["hooks", "register", "controller", "frontend", "hud", "menu", "screen", "uninstall"]) {
     if (plugin[name] !== undefined && typeof plugin[name] !== "function") {
       return `plugin.js: ${name} is not a function`;
     }

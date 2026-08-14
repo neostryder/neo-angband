@@ -34,6 +34,7 @@ function inputs(over: Partial<ConflictInputs> = {}): ConflictInputs {
     frontends: [],
     hudRegions: [],
     menus: [],
+  screens: [],
     ...over,
   };
 }

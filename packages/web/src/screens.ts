@@ -103,6 +103,15 @@ import type {
   MonsterCategory,
 } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine, MenuItem } from "./overlay";
+import {
+  freezeView,
+  screenBodyLines,
+  SCREEN_FOOTER,
+  type ScreenCell,
+  type ScreenColumn,
+  type ScreenRow,
+  type ScreenView,
+} from "./screen-view";
 import { MessageLog, format as formatMessage } from "./messages";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
 
@@ -321,15 +330,6 @@ export function objectWeightColumn(obj: GameObject): string {
 }
 
 /**
- * Pad `name` to a fixed field then append the weight column, so the "Nn.n lb"
- * figures line up down the list exactly as OLIST_WEIGHT's ex_offset column does.
- */
-function withWeight(state: GameState, obj: GameObject): string {
-  const name = objectName(state, obj);
-  return `${name.padEnd(45).slice(0, 45)} ${objectWeightColumn(obj)}`;
-}
-
-/**
  * object_effect_is_known via the objectSetBaseKnown effect gate
  * (known-object.ts L188-201, from obj-knowledge.c L846-856): the player knows a
  * used object's effect when it is a flavoured kind they are aware of, an
@@ -396,46 +396,158 @@ export function deviceMenu(
   return { items, handles };
 }
 
-/** The inventory viewer lines (i): every pack item, lettered, with weight. */
-export function inventoryLines(state: GameState): ScreenLine[] {
-  const lines: ScreenLine[] = [];
-  let i = 0;
-  for (const handle of invenHandles(state)) {
-    const obj = gearGet(state.gear, handle);
-    if (!obj) continue;
-    lines.push({
-      /* all_letters_nohjkl display letter (ui-object.c L292). */
-      text: `${objLetter(i)}) ${withWeight(state, obj)}`,
-      color: objectColor(obj, state),
-    });
-    i++;
-  }
-  if (lines.length === 0) lines.push({ text: "(nothing carried)", color: DIM });
-  return lines;
+/**
+ * The NAME column of an object listing: `OLIST_WEIGHT`'s `ex_offset` field width
+ * (ui-object.c L234-239), which is what makes the weights line up down the list.
+ *
+ * Published on the column rather than baked into the text with `padEnd` - see
+ * `ScreenColumn.width`. A presenter with a proportional font ignores it; the
+ * faithful terminal needs it, because upstream's alignment is the layout.
+ */
+const OBJ_NAME_WIDTH = 45;
+/** equip_mention's field width (build_obj_list "%s%*s", 14 - u8len; L304-318). */
+const EQUIP_SLOT_WIDTH = 14;
+
+/**
+ * The columns of the two gear listings, exported because they are the CONTRACT.
+ *
+ * A presenter reads `row.cells.name`, so renaming that key breaks every mod that
+ * draws an inventory - and would otherwise break them silently, since a cell
+ * nobody asked for renders as nothing. Exporting the declaration lets
+ * `sample-inventory.node.test.ts` build its fixture from the same keys the game
+ * publishes, so the sample cannot go on passing against a vocabulary the game
+ * stopped using.
+ */
+export const INVENTORY_COLUMNS: readonly ScreenColumn[] = [
+  { key: "name", width: OBJ_NAME_WIDTH },
+  { key: "weight" },
+];
+export const EQUIPMENT_COLUMNS: readonly ScreenColumn[] = [
+  { key: "slot", width: EQUIP_SLOT_WIDTH },
+  { key: "name", width: OBJ_NAME_WIDTH },
+  { key: "weight" },
+];
+
+/** The weight column of a gear row, with the numbers it was formatted from. */
+function weightCell(obj: GameObject): ScreenCell {
+  return {
+    text: objectWeightColumn(obj),
+    /* Tenths of a pound, as the game stores them: `each` is one item's weight and
+     * `total` is the stack's, so a presenter can show either without dividing by
+     * a count it would have to find somewhere else. */
+    values: { each: obj.weight, total: obj.number * obj.weight, number: obj.number },
+  };
 }
 
-/** The equipment viewer lines (e): one row per body slot, worn item or empty. */
-export function equipmentLines(state: GameState): ScreenLine[] {
+/**
+ * The inventory (i) as a screen: every pack item, lettered, with weight.
+ *
+ * The rows carry the same identity a pack PICKER's choices do - `core:gear:<h>`
+ * and `{ kind: "item", ref: handle }` - because an inventory listing and an
+ * inventory picker are the same objects seen twice, and a mod drawing sprites for
+ * one should not need a second vocabulary for the other.
+ */
+export function inventoryScreen(state: GameState, title = "Inventory"): ScreenView {
+  const rows: ScreenRow[] = [];
+  invenHandles(state).forEach((handle, slot) => {
+    const obj = gearGet(state.gear, handle);
+    if (!obj) return;
+    rows.push({
+      id: `core:gear:${handle}`,
+      semantic: { kind: "item", ref: handle, data: { source: "inventory", slot } },
+      /* all_letters_nohjkl display letter (ui-object.c L292). */
+      tag: objLetter(rows.length),
+      color: objectColor(obj, state),
+      cells: { name: { text: objectName(state, obj) }, weight: weightCell(obj) },
+    });
+  });
+  return freezeView({
+    id: "core:inventory",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "table",
+        key: "pack",
+        tagged: true,
+        columns: INVENTORY_COLUMNS,
+        rows,
+        empty: { text: "(nothing carried)", color: DIM },
+      },
+    ],
+  });
+}
+
+/**
+ * The equipment (e) as a screen: one row per body slot, worn item or empty.
+ *
+ * An empty slot is a ROW rather than an absence, because the screen's subject is
+ * the body and a missing shield is the thing the player came to look at. It is
+ * marked `disabled` and carries no item semantic, so a presenter can draw the
+ * silhouette without mistaking it for gear.
+ */
+export function equipmentScreen(state: GameState, title = "Equipment"): ScreenView {
   const player = state.actor.player;
-  const lines: ScreenLine[] = [];
-  const slots = player.body.slots;
+  const rows: ScreenRow[] = [];
   for (let i = 0; i < player.body.count; i++) {
-    const slot = slots[i];
+    const slot = player.body.slots[i];
     const handle = player.equipment[i] ?? 0;
     const obj = handle ? gearGet(state.gear, handle) : null;
-    /* equip_mention padded to 14 (build_obj_list "%s%*s", 14 - u8len; ui-object.c L304-318). */
-    const label = (slot ? equipMention(slot) : `slot ${i}`).padEnd(14).slice(0, 14);
+    const mention = slot ? equipMention(slot) : `slot ${i}`;
     if (obj) {
-      lines.push({
+      rows.push({
+        id: `core:gear:${handle}`,
+        semantic: { kind: "item", ref: handle, data: { source: "equipment", slot: i } },
         /* all_letters_nohjkl display letter for the slot index (obj-gear.c L446). */
-        text: `${objLetter(i)}) ${label} ${withWeight(state, obj)}`,
+        tag: objLetter(i),
         color: objectColor(obj, state),
+        cells: {
+          slot: { text: mention },
+          name: { text: objectName(state, obj) },
+          weight: weightCell(obj),
+        },
       });
     } else {
-      lines.push({ text: `   ${label} (nothing)`, color: DIM });
+      rows.push({
+        id: `core:body-slot:${i}`,
+        semantic: { kind: "slot", ref: i, data: { mention } },
+        color: DIM,
+        disabled: true,
+        cells: { slot: { text: mention }, name: { text: "(nothing)" } },
+      });
     }
   }
-  return lines;
+  return freezeView({
+    id: "core:equipment",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      {
+        kind: "table",
+        key: "slots",
+        tagged: true,
+        columns: EQUIPMENT_COLUMNS,
+        rows,
+      },
+    ],
+  });
+}
+
+/**
+ * The inventory viewer lines - now the ONE renderer applied to the ONE model.
+ *
+ * Kept because ~10 callers and a dozen tests read it, but it is no longer a
+ * second drawing: if a column loses its width here it loses it on the player's
+ * screen too. That is the lesson from the HUD, where a model beside a hand-laid
+ * copy of the same rows was two transcriptions and the unwatched one rotted.
+ */
+export function inventoryLines(state: GameState): ScreenLine[] {
+  return screenBodyLines(inventoryScreen(state));
+}
+
+/** The equipment viewer lines; see `inventoryLines` on why this is a one-liner. */
+export function equipmentLines(state: GameState): ScreenLine[] {
+  return screenBodyLines(equipmentScreen(state));
 }
 
 /** Equipment-slot menu for takeoff: the filled slots only, with body index. */

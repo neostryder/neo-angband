@@ -197,7 +197,7 @@ describe("the ABI accepts the migrator", () => {
      * nothing" check to count migrateBag would be the same mistake wearing a
      * newer field name. */
     expect(validateModPlugin({ api: 1, migrateBag: () => ({}) })).toContain(
-      "no hooks, register, controller, frontend, hud or menu",
+      "no hooks, register, controller, frontend, hud, menu or screen",
     );
   });
 });

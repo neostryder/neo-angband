@@ -42,7 +42,8 @@ export type ContestedLayer =
   | "controller" // the single autoplayer slot
   | "frontend" // the single selected display sink
   | "hud" // one named HUD region's selected sink
-  | "menu"; // the single selected menu presenter
+  | "menu" // the single selected menu presenter
+  | "screen"; // the single selected screen presenter
 
 /**
  * How a layer resolves several claims on one slot.

@@ -20,7 +20,7 @@ import {
 } from "./menu-runtime";
 import type { MenuPlugin } from "./menu-runtime";
 import type { MenuAnswer, MenuPresenter, MenuQuestion } from "./menu-view";
-import { MENU_CLOSE, MENU_OPTIONS, MENU_REFRESH, selectFromMenu, setMenuFaultReporter } from "./overlay";
+import { MENU_CLOSE, MENU_OPTIONS, MENU_REFRESH, selectFromMenu, setUiFaultReporter } from "./overlay";
 import type { MenuItem, SelectMenuOptions } from "./overlay";
 import type { GlyphTerm } from "./term";
 
@@ -121,7 +121,7 @@ function ask(extra?: SelectMenuOptions): Promise<number | null> {
 
 afterEach(() => {
   setMenuPresenter(null);
-  setMenuFaultReporter(() => undefined);
+  setUiFaultReporter(() => undefined);
 });
 
 /* ------------------------------------------------------------------ */
@@ -340,7 +340,7 @@ describe("answering", () => {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const faults: string[] = [];
-      setMenuFaultReporter((id, message) => faults.push(`${id}: ${message}`));
+      setUiFaultReporter((id, message) => faults.push(`${id}: ${message}`));
       setMenuPresenter({ id: "dial", presenter: scripted(answer).presenter });
       const done = ask(extra);
       await tick();
@@ -355,7 +355,7 @@ describe("answering", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const faults: string[] = [];
-    setMenuFaultReporter((id, message) => faults.push(message));
+    setUiFaultReporter((id, message) => faults.push(message));
     setMenuPresenter({ id: "dial", presenter: scripted({ kind: "choose", choice: "x" }).presenter });
     const done = selectFromMenu(makeTerm(), "m", "M", [{ id: "x", label: "Too hard", disabled: true }]);
     await tick();
@@ -368,7 +368,7 @@ describe("answering", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const faults: string[] = [];
-    setMenuFaultReporter((id, message) => faults.push(`${id}: ${message}`));
+    setUiFaultReporter((id, message) => faults.push(`${id}: ${message}`));
     setMenuPresenter({
       id: "dial",
       presenter: {

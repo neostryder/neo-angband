@@ -37,6 +37,7 @@ import {
 import { frontendClaimants } from "./frontend-runtime";
 import { hudClaimants } from "./hud-runtime";
 import { menuClaimants } from "./menu-runtime";
+import { screenClaimants } from "./screen-runtime";
 import { activeModCode } from "./mod-code";
 import { enabledModHookContributions } from "./mod-hooks";
 import {
@@ -78,6 +79,8 @@ export interface ConflictInputs {
    * conflict even though each will end up declining questions the other takes.
    */
   menus: readonly string[];
+  /** Enabled mods claiming the SCREENS, in load order. One list, as `menus` is. */
+  screens: readonly string[];
 }
 
 /** A pack's display name from its manifest, falling back to its id. */
@@ -211,6 +214,19 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
     ),
   );
 
+  /* The screens, one slot for the lot, for the same reason the menus get one. */
+  slots.push(
+    ...contestedSlots(
+      "screen",
+      "single-slot",
+      inputs.screens.map((id) => ({
+        key: "screen",
+        what: "a replacement way of showing the game's full screens",
+        claim: { packId: id } as Claim,
+      })),
+    ),
+  );
+
   return slots;
 }
 
@@ -308,6 +324,7 @@ export function liveConflictLines(): ConflictReportLines {
     /* Same rule, per region: only mods that could actually hold one are listed. */
     hudRegions: hudClaimants(activeModCode().plugins),
     menus: menuClaimants(activeModCode().plugins),
+    screens: screenClaimants(activeModCode().plugins),
   });
 }
 

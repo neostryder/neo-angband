@@ -33,6 +33,8 @@ import {
   currentMenuPresenter,
   refuseMenuAnswer,
 } from "./menu-runtime";
+import { linesScreen, screenBodyLines, SCREEN_FOOTER, type ScreenView } from "./screen-view";
+import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
 export interface ScreenLine {
@@ -45,7 +47,7 @@ export interface ScreenLine {
    * L_GREEN / L_RED segments). `text` should still hold the concatenated
    * characters so width / scroll bookkeeping stays correct.
    */
-  runs?: { text: string; color: string }[];
+  runs?: readonly { text: string; color: string }[];
 }
 
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_CURSOR } from "./ui-colors";
@@ -118,16 +120,61 @@ export function menuNav(ev: KeyboardEvent): MenuNav | null {
 }
 
 /**
- * A scrollable full-screen text viewer (inventory, equipment, character sheet,
- * message history, help). Renders `title` at the top and `lines` below it,
- * scrolling with the arrows / PageUp-PageDown when the content is taller than
- * the screen. Any of ESC / Enter / Space closes it; resolves when dismissed.
+ * A scrollable full-screen viewer (inventory, equipment, character sheet, message
+ * history, help), offered to the installed screen presenter first.
+ *
+ * TWO WAYS TO CALL IT, and they mean different things. Handed a `ScreenView` this
+ * shows a screen that has given up its model: the presenter gets columns with
+ * stable keys, rows with semantics, and can draw the inventory as sprites. Handed
+ * a title and pre-wrapped `ScreenLine[]` it shows a page of prose - the presenter
+ * is still offered it, under the shared `core:text` id, and can reskin the frame
+ * but has nothing to reimagine. Which screens are which is not a matter of taste:
+ * `MODELLED_SCREENS` names them and a test pins the list.
+ *
+ * Either way the TERMINAL's own painting goes through `screenBodyLines`, so the
+ * model and the faithful rendering cannot part - the lesson from the HUD, where a
+ * model beside a second hand-laid drawing of the same thing was two
+ * transcriptions and the one nobody looked at was the one that rotted.
+ *
+ * Scrolls with the arrows / PageUp-PageDown when the content is taller than the
+ * screen. Any of ESC / Enter / Space closes it; resolves when dismissed.
  */
+export function showTextScreen(term: GridSurface & GridPointerInput, view: ScreenView): Promise<void>;
 export function showTextScreen(
   term: GridSurface & GridPointerInput,
   title: string,
   lines: readonly ScreenLine[],
-  footer = "[ Press ESC to return ]",
+  footer?: string,
+): Promise<void>;
+export async function showTextScreen(
+  term: GridSurface & GridPointerInput,
+  titleOrView: string | ScreenView,
+  lines?: readonly ScreenLine[],
+  footer = SCREEN_FOOTER,
+): Promise<void> {
+  const view =
+    typeof titleOrView === "string" ? linesScreen(titleOrView, lines ?? [], footer) : titleOrView;
+  const taken = showThroughPresenter(view, screenFault);
+  if (taken) {
+    try {
+      await taken;
+      return;
+    } catch (error) {
+      /* The presenter died with the screen open. It has already been reported and
+       * the seam is already out; all that is left is to show the player the screen
+       * they asked for, which the fall-through below does. */
+      if (!(error instanceof ScreenAbandoned)) throw error;
+    }
+  }
+  return showViewOnTerminal(term, view.title, screenBodyLines(view, term.size().cols), view.footer);
+}
+
+/** The faithful terminal's own way of showing a screen; see `showTextScreen`. */
+function showViewOnTerminal(
+  term: GridSurface & GridPointerInput,
+  title: string,
+  lines: readonly ScreenLine[],
+  footer: string,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let top = 0;
@@ -1737,13 +1784,13 @@ async function askThroughPresenter(deps: {
   const owner = currentMenuPresenter();
   if (!owner) return askTerminal();
   const refuse = (why: string): Promise<number | null> => {
-    refuseMenuAnswer(owner.id, question, why, reportMenuFault);
+    refuseMenuAnswer(owner.id, question, why, reportUiFault);
     return askTerminal();
   };
   /* Bounded only by the presenter answering `command` forever, which is the same
    * thing a player holding a command key down does. Every other answer leaves. */
   for (;;) {
-    const answer = await askInstalledPresenter(question, reportMenuFault);
+    const answer = await askInstalledPresenter(question, reportUiFault);
     if (answer === undefined) return askTerminal();
     if (answer.kind === "cancel") return null;
     if (answer.kind === "options") {
@@ -1815,21 +1862,29 @@ function runMenuCommand(
 }
 
 /** How a presenter's misbehaviour reaches the player: the shell's own reporter. */
-let reportMenuFault: (id: string, message: string, error: unknown) => void = () => {};
+let reportUiFault: (id: string, message: string, error: unknown) => void = () => {};
 
 /**
- * Give the menus a way to report a mod, once the shell has one.
+ * Give the menus and the screens a way to report a mod, once the shell has one.
+ *
+ * ONE reporter for both, because there is one thing being reported: a mod that
+ * took part of the interface and misbehaved with it. A second injection point
+ * would be a second thing to forget to wire, and a seam that reaches no player is
+ * the same as one that was never noticed.
  *
  * `overlay.ts` is imported by tests that boot no game and by the shell that
  * does, so the reporter is injected rather than imported - the alternative is
  * this module reaching into main.ts, which is the dependency that would make
  * every overlay test boot a canvas.
  */
-export function setMenuFaultReporter(
+export function setUiFaultReporter(
   report: (id: string, message: string, error: unknown) => void,
 ): void {
-  reportMenuFault = report;
+  reportUiFault = report;
 }
+
+const screenFault = (id: string, message: string, error: unknown): void =>
+  reportUiFault(id, message, error);
 
 
 /** One source (command_wrk) of the get_item picker: its upstream label
