@@ -193,6 +193,28 @@ export interface ScreenTextBlock {
    */
   readonly wrap?: number;
   /**
+   * WHICH of Angband's two wrap algorithms laid this prose out.
+   *
+   * 4.2.6 has two, and they are not interchangeable. Almost every prose page -
+   * the inspect pages, monster recall, object comparison, the knowledge
+   * browser's seven recalls - is a textblock shown by `textui_textblock_show`,
+   * which wraps with `textblock_calculate_lines` (z-textblock.c L238). Exactly
+   * one modelled page is not: the character sheet's history, which upstream
+   * pushes through `text_out_to_screen` (ui-output.c L279) with
+   * `text_out_wrap = 72` (ui-player.c L866).
+   *
+   * They differ in two ways a player can see. `text_out_to_screen` writes a
+   * non-space glyph only while `x < wrap - 1`, so it stops two columns short of
+   * where `textblock_calculate_lines` stops; and after a sentence's double
+   * space it never leaves the second space at the head of the next line, where
+   * the textblock rule does. Measured on the shipped pack, the two disagree on
+   * 5 of 1041 descriptions - every one of them the leading space.
+   *
+   * So this is a discriminator rather than a flag: absent means the textblock
+   * rule, which is the overwhelming majority and the right default.
+   */
+  readonly flow?: "textblock" | "text-out";
+  /**
    * The prose's default colour, for the parts no run speaks for: a paragraph
    * break, and the line-level fallback a consumer that ignores `runs` reads.
    *
@@ -475,6 +497,7 @@ function freezeBlock(block: ScreenBlock): ScreenBlock {
         ),
         ...(block.indent === undefined ? {} : { indent: block.indent }),
         ...(block.wrap === undefined ? {} : { wrap: block.wrap }),
+        ...(block.flow === undefined ? {} : { flow: block.flow }),
         ...(block.color === undefined ? {} : { color: block.color }),
       });
     case "art":
@@ -624,62 +647,180 @@ function artBlockLines(block: ScreenArtBlock, cols: number): ScreenLine[] {
   );
 }
 
-/**
- * Greedy wrap of a run stream at `cols - 1`, carrying colours across the break.
- *
- * THIS IS THE GAME'S OWN WRAPPER, moved rather than written. `wrapRuns` in
- * `screens.ts` has laid out every recall page since the port had recall pages,
- * and `screens.ts` now calls THIS through a `text` block. Reimplementing the wrap
- * here - word-greedy rather than character-greedy, say - would have been a second
- * transcription of the same rendering, and the one nobody looks at is the one
- * that rots; it would also have moved prose on the player's screen, which is the
- * port adding something. So the algorithm is preserved exactly: measure in
- * CHARACTERS, break at the last space strictly inside the run, hard-split a word
- * with no space in it at all, and drop the single space the break landed on.
- */
+/** One character of a paragraph with the colour its run gave it. */
+interface ProseChar {
+  readonly ch: string;
+  readonly color: string;
+}
+
+/** A paragraph flattened to characters, so a wrap can measure it the way the C does. */
+function proseChars(
+  paragraph: readonly ScreenRun[],
+  base: string | undefined,
+): ProseChar[] {
+  const chars: ProseChar[] = [];
+  for (const run of paragraph) {
+    const color = run.color ?? base ?? "";
+    for (const ch of run.text) chars.push({ ch, color });
+  }
+  return chars;
+}
+
+/** A `text` block's rows, by whichever of 4.2.6's two wraps laid it out. */
 function textBlockLines(block: ScreenTextBlock, cols: number): ScreenLine[] {
+  return block.flow === "text-out"
+    ? textOutLines(block, cols)
+    : textblockCalculatedLines(block, cols);
+}
+
+/**
+ * textblock_calculate_lines (z-textblock.c L238), transcribed.
+ *
+ * This is the wrap behind `textui_textblock_show` / `_place`, and so behind all
+ * but one modelled prose page. `region_calculate(SCREEN_REGION).width` is the
+ * terminal's own width (ui-output.c L35 with `{0,0,0,0}`), so `cols` IS the
+ * upstream width - not `cols - 1`, which is what this used to pass while citing
+ * `text_out_to_screen` for it.
+ *
+ * That miscitation is worth a sentence, because it cost a whole investigation.
+ * The two rules agree on every line that has a space in it, so passing width-1
+ * to the wrong algorithm was invisible: 1041 of 1041 shipped descriptions came
+ * out identical either way. They part on a line with NO space strictly inside
+ * it, where upstream packs `width` characters and a width-1 wrap packs one
+ * fewer. The longest unbroken token in the pack is 18 characters, so nothing a
+ * player reads at 80 columns could show it - but a mod re-rendering a view at
+ * 16 columns can, and did.
+ *
+ * The transcription itself: count characters, remembering the last space seen;
+ * on reaching exactly `width`, break at that space and drop it, or hard-split
+ * at `width` if the line holds no space past its own start.
+ */
+function textblockCalculatedLines(block: ScreenTextBlock, cols: number): ScreenLine[] {
   const indent = " ".repeat(block.indent ?? 0);
-  const width = Math.max(1, Math.min(block.wrap ?? cols, cols - 1 - (block.indent ?? 0)));
+  const width = Math.max(1, Math.min(block.wrap ?? cols, cols - (block.indent ?? 0)));
   const base = block.color;
   const blank: ScreenLine = base === undefined ? { text: "" } : { text: "", color: base };
   const out: ScreenLine[] = [];
+  const emit = (chars: readonly ProseChar[]): void => {
+    out.push(chars.length === 0 && indent === "" ? { ...blank } : proseLine(chars, indent, base));
+  };
   for (const paragraph of block.paragraphs) {
-    const chars: { ch: string; color: string }[] = [];
-    for (const run of paragraph) {
-      const color = run.color ?? base ?? "";
-      for (const ch of run.text) chars.push({ ch, color });
-    }
-    if (chars.length === 0) {
-      out.push({ ...blank });
-      continue;
-    }
+    const chars = proseChars(paragraph, base);
     let start = 0;
-    while (start < chars.length) {
-      let end = Math.min(start + width, chars.length);
-      /* A line that ends exactly AT the wrap column keeps its last word, because
-       * upstream's wrap is `(x >= wrap - 1) && (ch != ' ')` (ui-output.c L301):
-       * the space landing on the boundary is written rather than wrapped on, and
-       * only the next non-space triggers the break. The port scanned backwards
-       * from `end - 1` and so never saw that space, which pushed a word that fit
-       * exactly onto the next line - "one two three four five" at width 10 broke
-       * as "three" / "four five" where 4.2.6 gives "three four" / "five". */
-      if (end < chars.length && chars[end]!.ch !== " ") {
-        let brk = -1;
-        for (let i = end - 1; i > start; i--) {
-          if (chars[i]!.ch === " ") {
-            brk = i;
-            break;
+    let brk = -1;
+    let len = 0;
+    let i = 0;
+    while (i < chars.length) {
+      if (chars[i]!.ch === " ") brk = i;
+      len++;
+      if (len < width) {
+        i++;
+        continue;
+      }
+      /* `if (breaking_char_offset > current_line_start)` - a space AT the line's
+       * own start is not a break, which is what makes a carried leading space
+       * (the second of a sentence's two) hard-split rather than wrap. */
+      const end = brk > start ? brk : start + width;
+      emit(chars.slice(start, end));
+      start = brk > start ? brk + 1 : end;
+      i = start;
+      len = 0;
+    }
+    /* UNCONDITIONALLY, even when the paragraph ended exactly on a break: `new_line`
+     * has already opened the next line by then, and the C emits it. A paragraph
+     * whose last word fills the line to the column therefore gets a blank row
+     * after it, which is an upstream wart the port used to swallow. */
+    emit(chars.slice(start));
+  }
+  /* `if ((*line_lengths)[total_lines - 1] == 0) total_lines--;` - exactly one
+   * trailing empty line, which is the one the loop above always opens. */
+  if (out.length > 0 && out[out.length - 1]!.text === indent) out.pop();
+  return out;
+}
+
+/**
+ * text_out_to_screen (ui-output.c L279-347), transcribed onto a cell grid.
+ *
+ * A GRID rather than a string builder, because that is what the function is: it
+ * writes characters at terminal coordinates, and its wrap READS THEM BACK
+ * (`Term_what`, L313) to find the word to carry down. Rewriting it as a
+ * word-greedy string wrap would be a second transcription of a rendering, and
+ * the one nobody looks at is the one that rots.
+ *
+ * The behaviour that string wrap would have missed: a non-space is written only
+ * while `x < wrap - 1`, so the rightmost glyph lands two columns short of the
+ * declared wrap - the character sheet's history reaches column 70, not 72; and
+ * because the carried word is copied from `n` to `wrap - 2` and the new line
+ * starts at the indent, a space that fell on the boundary is simply never
+ * carried, which is why this rule leaves no leading space where the textblock
+ * rule does.
+ */
+function textOutLines(block: ScreenTextBlock, cols: number): ScreenLine[] {
+  const base = block.color;
+  const indent = block.indent ?? 0;
+  /* `if ((text_out_wrap > 0) && (text_out_wrap < wid)) wrap = text_out_wrap;`
+   * (L272-276) - a clamp on the terminal, never a widening of it. */
+  const wrap =
+    block.wrap !== undefined && block.wrap > 0 && block.wrap < cols ? block.wrap : cols;
+  const rows: (ProseChar | undefined)[][] = [[]];
+  let x = indent;
+  let y = 0;
+  for (const [p, paragraph] of block.paragraphs.entries()) {
+    /* Every paragraph break is one of the C's `\n` arms: back to the indent, one
+     * row down, and the row cleared. */
+    if (p > 0) {
+      x = indent;
+      rows[++y] = [];
+    }
+    for (const { ch, color } of proseChars(paragraph, base)) {
+      if (x >= wrap - 1 && ch !== " ") {
+        const row = rows[y]!;
+        let n = 0;
+        /* `if (x < wrap)` - x is clamped AT wrap once a space has been written
+         * in the last column, and then the scan is skipped and nothing is
+         * carried, because the break already fell on that space. */
+        if (x < wrap) {
+          for (let i = wrap - 2; i >= 0; i--) {
+            if ((row[i]?.ch ?? " ") === " ") break;
+            n = i;
           }
         }
-        if (brk > start) end = brk;
+        /* `if (n == 0) n = wrap;` - a word that filled the entire line has
+         * nowhere to be carried to, so it is split where it stands. */
+        if (n === 0) n = wrap;
+        const carried = row.slice(n, wrap - 1);
+        row.length = Math.min(row.length, n);
+        x = indent;
+        rows[++y] = [];
+        for (const cell of carried) {
+          rows[y]![x] = cell;
+          if (++x > wrap) x = wrap;
+        }
       }
-      out.push(proseLine(chars.slice(start, end), indent, base));
-      start = end;
-      /* Skip the single break space so the next line does not start with it. */
-      if (start < chars.length && chars[start]!.ch === " ") start++;
+      rows[y]![x] = { ch, color };
+      if (++x > wrap) x = wrap;
     }
   }
-  return out;
+  return rows.map((row) => textOutRowLine(row, base));
+}
+
+/**
+ * One grid row as a line: holes are the spaces `Term_erase` left, and trailing
+ * spaces are dropped because nothing was ever painted there.
+ */
+function textOutRowLine(
+  row: readonly (ProseChar | undefined)[],
+  base: string | undefined,
+): ScreenLine {
+  const cells = Array.from(row, (c) => c ?? { ch: " ", color: base ?? "" });
+  while (cells.length > 0 && cells[cells.length - 1]!.ch === " ") cells.pop();
+  const runs: { text: string; color: string }[] = [];
+  for (const c of cells) appendRun(runs, c.ch, c.color);
+  return {
+    text: cells.map((c) => c.ch).join(""),
+    ...(base === undefined ? {} : { color: base }),
+    runs,
+  };
 }
 
 /** One wrapped prose line: adjacent same-colour chars coalesced back into runs. */

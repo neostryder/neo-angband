@@ -351,7 +351,7 @@ describe("wrapRuns (object-info Textblock -> ScreenLine[])", () => {
         { text: "bbbb", attr: L_RED },
       ],
     };
-    /* cols = 6 -> width 5: "aaaa" fits, the break space is dropped, "bbbb"
+    /* cols = 6 -> width 6: "aaaa" fits, the break space is dropped, "bbbb"
        wraps to the next row keeping its own colour. */
     const lines = wrapRuns(tb, 6);
     expect(lines.map((l) => l.text)).toEqual(["aaaa", "bbbb"]);
@@ -359,10 +359,16 @@ describe("wrapRuns (object-info Textblock -> ScreenLine[])", () => {
     expect(lines[1]!.runs).toEqual([{ text: "bbbb", color: colorToCss(L_RED) }]);
   });
 
-  it("hard-breaks a word longer than the width", () => {
+  it("hard-breaks a word longer than the width, taking the FULL width", () => {
+    /* `adjusted_line_length = width` (z-textblock.c L292): with no breaking
+     * character on the line, upstream takes all `width` characters. The width
+     * is the region's, which is `cols` - this asserted `cols - 1` while the
+     * renderer cited the wrong upstream function, and the two mistakes hid each
+     * other on every page a player can actually reach. See
+     * `prose-wrap.upstream.test.ts`. */
     const tb: Textblock = { runs: [{ text: "abcdefgh", attr: WHITE }] };
-    const lines = wrapRuns(tb, 5); /* width 4 */
-    expect(lines.map((l) => l.text)).toEqual(["abcd", "efgh"]);
+    const lines = wrapRuns(tb, 5); /* width 5 */
+    expect(lines.map((l) => l.text)).toEqual(["abcde", "fgh"]);
   });
 });
 
