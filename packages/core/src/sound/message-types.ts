@@ -101,7 +101,9 @@ export class MessageTypeRegistry implements MessageTypeRegistryTarget {
       throw new Error(
         `message type: ${name} is already a compiled-in MSG_ ` +
           `(message_lookup_by_name is case-insensitive, so this registration ` +
-          `could never be reached) - to re-point its sound, register a sound pref`,
+          `could never be reached) - to re-point its sound, give the record a ` +
+          `"sounds" list, which is registered as a sound pref even though this ` +
+          `declaration is refused`,
       );
     }
     if (parsesAsNumber(name)) {

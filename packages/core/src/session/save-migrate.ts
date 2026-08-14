@@ -13,10 +13,10 @@
  *   That is the mechanism; a promise in a comment is not one.
  *
  * WHY A CHAIN AND NOT N CONVERTERS. Each step moves a document exactly one
- * version, so version 1 reaches version 4 by running three steps that were each
+ * version, so version 1 reaches version 5 by running four steps that were each
  * written (and tested) against the format immediately before it. Nobody has to
- * remember what version 1 looked like when version 5 is designed - only what
- * version 4 looked like.
+ * remember what version 1 looked like when version 6 is designed - only what
+ * version 5 looked like.
  *
  * WHAT A STEP MAY NOT DO. Throw. A step that meets a content id or index the
  * running pack cannot resolve DROPS that entity and records a line in `notes`;
@@ -31,7 +31,8 @@
  */
 
 import type { ContentIdResolver } from "../mod/ids.js";
-import { serializeIgnore, SAVE_VERSION } from "./save.js";
+import { FlagSet } from "../bitflag.js";
+import { serializeIgnore, serializeLoreSpells, SAVE_VERSION } from "./save.js";
 import type { IgnoreSettingsData } from "../obj/ignore.js";
 import type { SavedGame } from "./save.js";
 
@@ -441,6 +442,65 @@ const V3_TO_V4: SaveMigration = {
 };
 
 /* ------------------------------------------------------------------ *
+ * 4 -> 5: monster lore stops persisting RSF bit positions.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Is this node a lore record in the version-4 shape?
+ *
+ * `spellFlags: number[]` is NOT enough on its own - `player.spellFlags` is also
+ * a number array (the per-spell PY_SPELL bits, an entirely different thing) and
+ * rewriting it would corrupt the player's spellbook. `blowKnown` and `tkills`
+ * belong to the lore record and to nothing else in the document, so the three
+ * together name it exactly.
+ */
+function isV4Lore(node: Json): boolean {
+  return (
+    Array.isArray(node.spellFlags) &&
+    Array.isArray(node.blowKnown) &&
+    typeof node.tkills === "number"
+  );
+}
+
+/**
+ * Version 4's raw FlagSet bytes -> the RSF names version 5 stores. The bit
+ * numbering used here is THIS build's, which is the numbering the version-4
+ * save was written under: RSF has never been appended to (that is the very
+ * thing this migration unblocks), and a v4 save by definition predates any
+ * build that could have.
+ */
+function v4SpellNames(bytes: readonly unknown[]): string[] {
+  const raw = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    raw[i] = typeof b === "number" ? b & 0xff : 0;
+  }
+  return serializeLoreSpells(new FlagSet(raw));
+}
+
+const V4_TO_V5: SaveMigration = {
+  from: 4,
+  to: 5,
+  summary:
+    "monster memory records the spells you have seen BY NAME instead of by bit " +
+    "position, so game data that adds a monster spell can no longer renumber " +
+    "what you already know",
+  step(save, ids, notes) {
+    void ids;
+    void notes;
+
+    const migrated = rewriteNodes(save, (node) => {
+      if (!isV4Lore(node)) return node;
+      const { spellFlags, ...rest } = node;
+      return { ...rest, spellsKnown: v4SpellNames(spellFlags as unknown[]) };
+    }) as VersionedSave;
+
+    migrated.version = 5;
+    return migrated;
+  },
+};
+
+/* ------------------------------------------------------------------ *
  * The chain.
  * ------------------------------------------------------------------ */
 
@@ -452,6 +512,7 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
   V1_TO_V2,
   V2_TO_V3,
   V3_TO_V4,
+  V4_TO_V5,
 ];
 
 /** The oldest save version this build can read. */

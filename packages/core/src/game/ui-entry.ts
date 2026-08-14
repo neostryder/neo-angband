@@ -456,6 +456,43 @@ const SMALLEST: CombinerFuncs = {
   },
 };
 
+/**
+ * The combiner an unresolvable index or name yields: every route reports
+ * UI_ENTRY_VALUE_NOT_PRESENT, so the row renders as "nothing here" instead of
+ * taking the screen down. It is deliberately NOT in COMBINERS - it has no name,
+ * so no pack can ask for it and no index can reach it except failure.
+ *
+ * Upstream has no such combiner: ui_entry_combiner_get_funcs
+ * (ui-entry-combiner.c L111-120) returns 0 for an unknown name and both callers
+ * assert(0) (ui-entry.c L694-696, L892-894), which under NDEBUG is undefined
+ * behaviour. This port had turned that into an unconditional throw, and the
+ * PARSE path does not throw - an unknown `combine:` stores 0 (:984) and a
+ * renderer only falls back to the backend default when the backend resolved
+ * (:621-624). So a pack with a typo'd combiner name loaded CLEAN and the crash
+ * was deferred to the first value or render use: the character sheet, or the
+ * equip-comparison screen. Both are live player paths, and the failure landed
+ * far from its cause. Same shape the projection bind had before 2026-08-09
+ * (world/projection.ts L99-107); same answer - survive it.
+ */
+const ABSENT_COMBINER: CombinerFuncs = {
+  init(_v, _a, st) {
+    st.work = null;
+    st.accum = UI_ENTRY_VALUE_NOT_PRESENT;
+    st.accumAux = UI_ENTRY_VALUE_NOT_PRESENT;
+  },
+  accum(_v, _a, st) {
+    st.accum = UI_ENTRY_VALUE_NOT_PRESENT;
+    st.accumAux = UI_ENTRY_VALUE_NOT_PRESENT;
+  },
+  finish(st) {
+    st.accum = UI_ENTRY_VALUE_NOT_PRESENT;
+    st.accumAux = UI_ENTRY_VALUE_NOT_PRESENT;
+  },
+  vec() {
+    return { accum: UI_ENTRY_VALUE_NOT_PRESENT, accumAux: UI_ENTRY_VALUE_NOT_PRESENT };
+  },
+};
+
 /** combiners[], sorted alphabetically by name (ui-entry-combiner.c L83). */
 const COMBINERS: ReadonlyArray<{ name: string; funcs: CombinerFuncs }> = [
   { name: "ADD", funcs: ADD },
@@ -477,21 +514,28 @@ export function combinerLookup(name: string): number {
   return 0;
 }
 
+/**
+ * ui_entry_combiner_get_funcs: the funcs for a 1-based combiner index. An index
+ * that names nothing - 0 from a failed combinerLookup, or anything out of range
+ * - resolves to ABSENT_COMBINER rather than throwing. Its four call sites are
+ * computeObjectValues (:1314), computePlayerValues (:1550), applyRenderer
+ * (:1787) and combineEntryValues (:2198).
+ */
 function combinerFuncs(index: number): CombinerFuncs {
-  const c = COMBINERS[index - 1];
-  if (!c) throw new Error(`bad combiner index ${index}`);
-  return c.funcs;
+  return COMBINERS[index - 1]?.funcs ?? ABSENT_COMBINER;
 }
 
-/** Run a combiner over parallel arrays (its vec_func); exported for tests. */
+/**
+ * Run a combiner over parallel arrays (its vec_func); exported for tests. An
+ * unknown name gives ABSENT_COMBINER's answer - both values NOT_PRESENT - for
+ * the reason spelled out on ABSENT_COMBINER.
+ */
 export function combineValues(
   combinerName: string,
   vals: number[],
   auxs: number[],
 ): { accum: number; accumAux: number } {
-  const idx = combinerLookup(combinerName);
-  if (idx === 0) throw new Error(`unknown combiner ${combinerName}`);
-  return combinerFuncs(idx).vec(vals, auxs);
+  return combinerFuncs(combinerLookup(combinerName)).vec(vals, auxs);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2142,7 +2186,9 @@ export function equipCmpFilterLabel3(entry: UiEntry): string {
  * combine the player's own value with every equipped item's value for one
  * property entry into the equip-cmp "@" row's single combined (val, auxval).
  * Uses the entry's own (already-resolved) combinerIndex rather than looking
- * it up via the renderer - computePlayerValues does the same (L1323).
+ * it up via the renderer - computePlayerValues (:1543) does the same. An entry
+ * whose combiner never resolved yields NOT_PRESENT here rather than throwing;
+ * see ABSENT_COMBINER (:477).
  */
 export function combineEntryValues(
   entry: UiEntry,

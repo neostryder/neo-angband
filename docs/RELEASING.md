@@ -424,13 +424,13 @@ the step that reads the version below it, in
 `packages/core/src/session/save-migrate.ts`:
 
 ```ts
-const V3_TO_V4: SaveMigration = {
-  from: 3,
-  to: 4,
+const V4_TO_V5: SaveMigration = {
+  from: 4,
+  to: 5,
   summary: "one line, present tense, for the changelog and the player's message",
-  step(save, ids, notes) { /* ... */ save.version = 4; return save; },
+  step(save, ids, notes) { /* ... */ save.version = 5; return save; },
 };
-export const SAVE_MIGRATIONS = [V1_TO_V2, V2_TO_V3, V3_TO_V4];
+export const SAVE_MIGRATIONS = [V1_TO_V2, V2_TO_V3, V3_TO_V4, V4_TO_V5];
 ```
 
 Forget it and `save-migrate.test.ts` fails, naming the step it wants. That check

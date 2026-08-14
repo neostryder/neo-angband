@@ -48,7 +48,7 @@
  */
 
 import { CapabilitySet, type PackManifest, type RegionDeclaration } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { ModPluginContext } from "./mod-plugin";
+import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import { MOD_REGION_LAYERS, type ModRegionLayer } from "./regions";
 import { pushRegion, type RegionHandle, type RegionSpec, type StackGrid } from "./ui-stack";
 import type { GridSurface } from "./term";
@@ -57,32 +57,26 @@ import type { GridSurface } from "./term";
 export const REGION_CAPABILITY = "ui:region.create";
 
 /**
- * The `regions()` member, TYPED LOCALLY - on purpose, and temporarily.
+ * THE MEMBER IS PUBLISHED NOW, so this file no longer declares its own shape.
  *
- * It belongs on `ModPlugin` (`web/src/mod-plugin.ts`) and on the SDK's authoring
- * copy, and those two are not the only places: `validateModPlugin` and the
- * SDK's `bin/neo-angband-mod-build.mjs` each carry their own list of the ABI's
- * members, and `plugin-abi-agreement.test.ts` fails the moment those two lists
- * part. Adding the member is therefore a four-file change, and declaring it
- * structurally here keeps the runtime boundary local until those four move
- * together - exactly what `screen-runtime.ts` already does with
- * `YieldingScreen`, for the same reason.
+ * It used to carry a local structural `RegionDeclaring`, because `regions()`
+ * lives in four places that must move together - the `ModPlugin` interface,
+ * `validateModPlugin`'s type check and its do-nothing gate
+ * (`web/src/mod-plugin.ts`), the same gate in the SDK's
+ * `bin/neo-angband-mod-build.mjs`, and the member list plus the author-facing
+ * sentence that `plugin-abi-agreement.test.ts` holds the two in agreement on.
+ * A local type kept the runtime boundary honest until those four moved.
  *
- * `api` is required rather than decorative: with only an optional member this
- * would be a WEAK TYPE, and TypeScript refuses to assign a `ModPlugin` to a
- * weak type it shares no property with. The declaration to add to all four
- * files, verbatim, is in this commit's report.
+ * They have (#267). A mod whose ONLY member is `regions()` was refused by both
+ * validators as "would do nothing" until they did, so until now this seam was
+ * real only for a mod that also did something else - which is not a seam, it is
+ * a coincidence. `ModPlugin` is the type here from now on.
  */
-export interface RegionDeclaring {
-  readonly api: number;
-  regions?(ctx: ModPluginContext): readonly RegionDeclaration[] | undefined;
-}
-
 export interface RegionPlugin {
   readonly id: string;
   /** Read for `capabilities` only; the loader has already validated it. */
   readonly manifest: PackManifest;
-  readonly plugin: RegionDeclaring;
+  readonly plugin: ModPlugin;
 }
 
 /** One region a mod asked for and got. */

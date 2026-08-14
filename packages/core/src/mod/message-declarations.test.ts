@@ -37,7 +37,7 @@ import { messageTypes } from "../sound/message-types.js";
 import { MessageTypeRegistry } from "../sound/message-types.js";
 import { SoundPrefRegistry, soundPrefRegistry } from "../sound/sound-registry.js";
 import { createModRegistryHost } from "./registry-host.js";
-import { declareModMessageTypes } from "./message-declarations.js";
+import { declareModMessageTypes, resetModSoundBindings } from "./message-declarations.js";
 import type { MessageTypeRecordJson } from "./message-declarations.js";
 
 function loadJson<T>(name: string): T {
@@ -137,6 +137,10 @@ function boundMsgts(pack: CorePack): {
 afterEach(() => {
   messageTypes.clear();
   soundPrefRegistry.clear();
+  /* The (owner, type) guard is module-scope, matching the registry it guards.
+   * Clearing one without the other leaves the guard outliving its subject, and
+   * the next test sees a silent skip rather than a registration. */
+  resetModSoundBindings();
 });
 
 describe("#266 THE ORDERING PROOF: a declared type binds the pack's own records", () => {

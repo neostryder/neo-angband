@@ -20,6 +20,41 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A `.prf` file can carry `sound:` again, and a content pack can re-point a
+  core message's samples** (#270, MOD_REACH rows 8 and 8a).
+
+  `sound:` had no handler at all: `HANDLERS` held twelve directives and the
+  unknown-directive branch dropped the line in silence. Upstream registers
+  `parse_prefs_sound` into the same parser as the other fifteen
+  (`reference/src/ui-prefs.c:1157`), so this was a MISSING PORT rather than a
+  new capability - the port dropped it when it had no mixer, and the comment
+  justifying that claimed the bundled prf files carried `sound:` lines. Measured:
+  none of them do. The 447 such lines are in `reference/lib/customize/sound.prf`,
+  a build input, parsed by nothing at runtime.
+
+  Second half: a pack's `message_type` records registered their `sounds` only
+  inside the branch that COINED a new type, so both branches a sound pack
+  actually takes - naming one of upstream's 153, or naming a type an earlier
+  pack coined - discarded the samples. A content-only pack could bind sounds to
+  a message it had invented and to none of the game's. Samples now bind on all
+  three outcomes, with module-scope `(owner, type)` idempotence so a reload
+  cannot silently re-point a message at whichever pack bound last.
+
+- **`ModPlugin.regions?` is published, so a mod whose only contribution is a
+  region is no longer refused** (#267, MOD_REACH gap 21, milestone 6).
+
+  The region runtime, the capability, the compositing and the fault isolation
+  all shipped before this - but `regions()` was not a member of the ABI, so
+  `validateModPlugin` and the SDK's builder both refused a plugin that declared
+  nothing else as "would do nothing". The seam was therefore real only for a mod
+  that ALSO did something else, which is a coincidence rather than a capability.
+
+  The member had to move in four places at once, which is why it lagged: the
+  interface, the host's validator, the builder script the SDK ships, and the
+  author-facing sentence that `plugin-abi-agreement.test.ts` holds the two
+  validators in agreement on. `region-runtime.ts` no longer carries its own
+  structural stand-in for the type.
+
 - **Regions can overlap, and they are ordered** (#253, MOD_REACH gap 21,
   milestone 6, commits 1-2).
 
@@ -564,6 +599,29 @@ digest in the game's catalogue and must never be moved.
   One limit is named rather than worked around: an entry carries its text, not
   its numbers (`"HP 20/20"`, no `{current, max}`), so a HUD mod can restyle the
   vitals and cannot draw a proportional bar without parsing a rendering.
+
+### Changed
+
+- **Monster memory records the spells you have seen BY NAME** (#269, MOD_REACH
+  row 22). `SAVE_VERSION` is now **5**, and the step that reads a version-4
+  savefile ships with it — an existing character loads and knows exactly the
+  spells it knew.
+
+  Row 22 was the one generated table that could never be opened by appending,
+  and the reason was a single word in the save: `MON_SPELL_ENTRIES` is indexed
+  by a **bit position**, and monster lore persisted the player's spell knowledge
+  as those bits. `PROJ` and `MSG` could be opened precisely because nothing a
+  save holds indexes them by position — a message type resolves to a number at
+  message time — but adding an `RSF` slot renumbered what a saved character
+  already held, and the symptom would have been a player's monster recall
+  quietly describing other spells.
+
+  `SavedLore.spellsKnown` is a list of `RSF_` names now, which `lore.txt` has
+  always been. A name cannot be renumbered, an unknown one (a mod's spell,
+  uninstalled) is dropped rather than landing on whatever occupies its old
+  index, and a build whose table is larger or in a different order reads back
+  exactly what was written. **This does not open `RSF` to mods**; it removes the
+  thing that made opening it unsafe.
 
 ### Fixed
 

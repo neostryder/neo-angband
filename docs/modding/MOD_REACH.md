@@ -161,7 +161,7 @@ sides arrived with `registry:projection`.
 | Table | File | Entries | ADD | OVERRIDE | WRAP |
 | --- | --- | --- | --- | --- | --- |
 | `MONSTER_HANDLERS` (projection -> monster, `project-mon.c`) | `packages/core/src/mon/project-mon.ts:770` | 56 slots, 56 assigned | no (fixed length, `PROJ`-indexed) | **accidentally yes** | accidentally yes |
-| `HANDLERS` (pref-file directives) | `packages/core/src/visuals/prefs.ts:484` | 12 | no | no | no |
+| `HANDLERS` (pref-file directives) | `packages/core/src/visuals/prefs.ts:499` | 13 | **yes** (`sound:`, from disk, 2026-08-14) | n/a | n/a |
 
 **SUPERSEDED TWICE — read this before the paragraph below it.** What follows was
 written when `MONSTER_HANDLERS` was a mutable exported array. It was frozen under
@@ -397,7 +397,7 @@ mod would reach through records, not code.
 | 5 | `VocabularyRegistry` (mod-owned) | **yes**, from disk (re-measured 2026-08-08) |
 | 6 | `DungeonProfiles` builders (9) + profiles (9) | **yes** (`registry:profile`, 2026-08-08) |
 | 7 | `MONSTER_HANDLERS` (56) | **yes** (`registry:projection`, 4th side, 2026-08-14) |
-| 8 | prefs `HANDLERS` (12) | no - module-private |
+| 8 | prefs `HANDLERS` (13) | **yes** — a mod's `.prf` reaches `sound:` from disk (2026-08-14); the other 12 stay module-private |
 | 9 | monster blow effects, recording path (30) | **yes** (`registry:blow`, 2026-08-08) |
 | 10 | monster blow effects, live path (30) | **yes** — the SAME registry entry, which is the point |
 | 11 | `PROJECT_FEAT_HANDLERS` (37, keyed by `code`) | **yes** (`registry:projection`, 2026-08-09) |
@@ -411,19 +411,22 @@ mod would reach through records, not code.
 | 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today** |
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
 | 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
-| 22 | `MON_SPELL_ENTRIES` (93) | no |
+| 22 | `MON_SPELL_ENTRIES` (93) | no — but the SAVE no longer blocks it (#269) |
 | 23 | web keypress `COMMANDS` (62) | no - module-level but unexported (**was** "inside a closure"; stale) |
 | 24 | web context-menu `switch (action)` routing (6 sites) | **half**: rows yes (`registry:menu`), behaviour no |
 | 25 | web `DEBUG_MENU` (41) | no - **deep-frozen on purpose**; struck from the count, see below |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes** — the SAME registry, third side |
 | 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` + the base NAME | **yes** (`registry:tval`, 2026-08-09) |
+| 8a | `message_type` records -> sound samples (the content-pack door) | **yes** (2026-08-14) — samples now bind on the `already` and `refused` paths too, so a pack with no `plugin.js` can re-point MSG_HIT |
 
-**21 yes, 1 half, 5 no, of 27 counted** (re-counted 2026-08-14 against the code,
+**22 yes, 1 half, 4 no, of 27 counted** (re-counted 2026-08-14 against the code,
 row by row; 28 rows are listed and row 25 is struck from the count — see the
-corrections below). Rows 7, 20 and 21 closed on 2026-08-14 and the tally was
+corrections below). Rows 7, 20, 21 and 8 closed on 2026-08-14 and the tally was
 re-run in the same commit, which is the whole point of the corrections below.
-This is
+Row 8a is that same day's second half; it is LISTED rather than counted, because
+it is a door into row 21 rather than a dispatch point of its own, and counting a
+door twice is exactly how this tally drifted before. This is
 a count of the ROWS above, which is the only
 form of the tally anyone can check by reading the column; earlier versions mixed
 rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
@@ -432,6 +435,19 @@ rather than 0 - rows 9 and 10 are one capability delivered twice on purpose, two
 bodies of one dispatch, and a registry only one of them consulted would be worse
 than none, and rows 11/12/27 are one capability delivered three times for the
 same reason.
+
+**Row 8 read "no - module-private", and the reason was a stale comment.**
+`sound:` was never module-private — it was ABSENT. Upstream registers
+`parse_prefs_sound` into the same parser as the other fifteen directives
+(`reference/src/ui-prefs.c:1157`); the port dropped it because it had no mixer,
+and the comment justifying that (in `prefs.ts`'s unknown-directive branch)
+claimed the bundled prf files carried `sound:` lines. Measured 2026-08-14: **no
+`.prf` this port ships carries one.** The 447 of them live in
+`reference/lib/customize/sound.prf`, which is a BUILD input to
+`gen-sound-prefs.mjs` and which nothing parses at runtime. So restoring the
+directive is a PORT, not an addition, and the doctrine question never arose.
+The lesson generalises past this row: a census answer inherited from a comment
+is an answer about the comment.
 
 **The tally above was wrong for five days, in the same file, three lines from
 the table that disproved it.** It read "17 yes, 2 accidental, 9 no". Counting
@@ -484,9 +500,50 @@ split `PROJ` has — so a registered name resolves at index 154 and up and all f
 consumers widen at once. **No save impact, and it was verified rather than
 assumed:** `checkMsgt` returns the NAME, every consumer types it `string`, and
 resolution to a number happens at message time, so nothing a save holds is
-renumbered and disabling the mod cannot corrupt one. That is exactly what makes
-these two rows different in kind from row 22, where `RSF` is a bit position that
-IS persisted.
+renumbered and disabling the mod cannot corrupt one. That is what made these two
+rows different in kind from row 22 — where `RSF` was a bit position that IS
+persisted. **That difference is gone as of #269**; see the row 22 correction
+below.
+
+*Row 22 (`MON_SPELL_ENTRIES`) — the blocker was the SAVE, and it is removed
+(#269, 2026-08-14).* Row 22 stayed "no" while `PROJ`, `MSG` and
+`SOUND_PREF_ENTRIES` opened, and the discriminator was never the table: it was
+that monster lore persisted the player's spell knowledge as RSF **bit
+positions**, so appending a slot renumbered what an existing character already
+held. A message type resolves to a number at message time and nothing a save
+holds indexes it; an `RSF` slot IS the index. Three options went to the owner and
+**(A) was chosen** — convert the persistence, do not append. "Just append to RSF
+now" was rejected outright as silent corruption of existing characters.
+
+`SavedLore.spellFlags: number[]` (the raw `FlagSet` bytes) is now
+`SavedLore.spellsKnown: string[]` (RSF names), at `SAVE_VERSION` 5 with the
+`V4_TO_V5` step that reads every version-4 savefile. `lore.txt` had been
+name-keyed all along (`writeLoreEntries`), so this is the savefile half catching
+up rather than a new idea. A name cannot be renumbered; a name this build does
+not have is dropped rather than landing on whatever now occupies its old index;
+a build whose table is larger, smaller or reordered reads back exactly what was
+written.
+
+**The control is what makes this a measurement rather than a claim.**
+`session/lore-spells.test.ts` renumbers the RSF table by inserting one entry and
+reads the same pre-existing knowledge under both schemes: the byte-keyed read
+turns `["BR_FIRE", "HASTE"]` into `["BR_ELEC", "HOLD"]`, and the name-keyed read
+is unmoved. A round-trip test that only exercised the happy path would have
+passed against the shape this removed.
+
+**Row 22 is still "no", and the tally is unchanged.** #269 opened nothing — it
+removed the reason opening was unsafe. Appending to `MON_SPELL_ENTRIES` is now a
+question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
+expressions, the spell effect and message data a new entry would need) and no
+longer a question about whether it eats saved characters.
+
+**The same defect is still live one table over.** `SavedLore.flags`
+(`MON_RACE_FLAG_ENTRIES`, 85) and `SavedObject.flags` / `modifiers` / `elInfo`
+(`OBJECT_FLAG_ENTRIES`, 39) are still persisted as raw bytes — persisted bit
+positions, exactly what row 22 was. Neither is a counted switch row, so neither
+shows in the tally above, and both would need this same conversion before their
+tables could grow. Recorded here because the row-22 fix is the thing that makes
+them findable.
 
 *Row 7 (`MONSTER_HANDLERS`) — and the ticket's own description of it was wrong.*
 It said a mod's projection "does literally nothing to a monster". Measured, the
@@ -585,22 +642,42 @@ this correctly, so until now table (a) and the gap list contradicted each other.
 seeing it** (#260). The 32-case switch this row was written about no longer
 exists, and `ui-entry.ts` was absent from `switch-census.json` entirely — which
 read exactly like a conversion until somebody checked. It was not one:
-`COMBINERS` (`packages/core/src/game/ui-entry.ts:460`) is a 9-entry module const
-that `combinerLookup` (`:473`) linear-scans by name, and it is as shut to a mod
-as the switch it replaced. Worse than inert: `combinerLookup` returns 0 for an
-unknown name and `combinerFuncs` (`:480`) then indexes `COMBINERS[-1]` and
-throws `bad combiner index 0` — the same "not a missing feature but a crash"
-shape the projection bind had. The census now counts lookup arrays and if/else
+`COMBINERS` (`packages/core/src/game/ui-entry.ts:497`) is a 9-entry module const
+that `combinerLookup` (`:510`) linear-scans by name, and it is as shut to a mod
+as the switch it replaced. The census now counts lookup arrays and if/else
 chains as well as switches, so this row has a successor row again.
+
+**It is now shut rather than fatal, which is a different row entirely** (#271,
+2026-08-14). `combinerLookup` returning 0 for an unknown name used to reach
+`combinerFuncs`, which threw `bad combiner index 0` — and the PARSE path never
+threw, so a pack with one typo'd `combine:` line **loaded clean** and then took
+the session down on the first value or render use: the character sheet, or the
+equip-comparison screen. Upstream is no defence for that.
+`ui_entry_combiner_get_funcs` (`reference/src/ui-entry-combiner.c:111-120`) also
+returns 0 and its callers `assert(0)` (`ui-entry.c:694-696`, `:892-894`), which
+under NDEBUG is undefined behaviour, not a diagnostic; the port had converted it
+into an unconditional throw, which is strictly worse for a player. An
+unresolvable index or name now yields `ABSENT_COMBINER` (`:477`) —
+`init`/`accum`/`finish`/`vec` all `UI_ENTRY_VALUE_NOT_PRESENT` — so the row reads
+as "nothing here" and the screen still draws. Same answer the projection bind
+reached for an unknown code on 2026-08-09. Six tests hold it
+(`ui-entry-unknown-combiner.test.ts`), the fourth of which rebuilds the shipped
+`ui_entry` records with every `combine:` replaced by a name nothing knows and
+asserts `characterGrid` still returns a full grid. **The row stays "no":**
+survival is not reach, `COMBINERS` still has nine names and no mod can add a
+tenth, and no registry was built here — that waits on measured demand.
 
 **And there is an edge the widened census still cannot reach, stated rather
 than left true.** `applyRenderer` sits beside `COMBINERS` in the same file
-(`:1747-1914`) and is a **6**-arm `if (backend === UI_ENTRY_RENDERER.X)` chain,
-not 8. It is exactly as closed to a mod as an 87-case switch and it stays
-invisible, because dropping the threshold below 8 reopens a false-positive flood
-— the naive version of the detector fired on 122 rows of ordinary control flow,
-RNG tables and colour palettes. So this row is now half-derived and half read by
-hand, and it should be read as such.
+(`:1779-2010`; the arm chain is `:1793-2007`) and is a **6**-arm
+`if (backend === UI_ENTRY_RENDERER.X)` chain, not 8. It is exactly as closed to a
+mod as an 87-case switch and it stays invisible, because dropping the threshold
+below 8 reopens a false-positive flood — the naive version of the detector fired
+on 122 rows of ordinary control flow, RNG tables and colour palettes. So this row
+is now half-derived and half read by hand, and it should be read as such. Its
+fallthrough at `:2009` is the renderer-side twin of the combiner defect above: a
+renderer whose `code` matches no backend returns an empty-cell row silently,
+which survives but says nothing.
 
 **Row 19 is a parity artefact, not a gap a player can observe.** `COMMAND_INFO`
 (`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue`
