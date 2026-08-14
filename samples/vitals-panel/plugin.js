@@ -9,21 +9,25 @@
  * the message line, the status line, the map and every menu are still core's,
  * still being drawn, still readable.
  *
- * WHAT IT READS, AND WHY THAT IS THE POINT. Two fields, both semantic:
+ * WHAT IT READS, AND WHY THAT IS THE POINT. Three fields, all semantic:
  * `entry.key` - the engine's own handler name (`hp`, `sp`, `depth`, the
- * `side_handlers[]` name minus its `prt_` prefix) - and `run.color`, the
- * COLOUR_* attribute the engine assigned. It never reads `run.css` (the
- * terminal's resolved colour) or `entry.screen` (the cell the terminal would put
- * it in). Matching on the printed text or re-using the terminal's palette would
- * have been shorter and would have proved the opposite of the point: a front end
- * that has to reverse-engineer the faithful renderer is not free of it.
+ * `side_handlers[]` name minus its `prt_` prefix) - `run.color`, the COLOUR_*
+ * attribute the engine assigned, and `entry.values`, the numbers the text was
+ * formatted from. It never reads `run.css` (the terminal's resolved colour) or
+ * `entry.screen` (the cell the terminal would put it in), and it never parses a
+ * rendered string. Matching on the printed text or re-using the terminal's
+ * palette would have been shorter and would have proved the opposite of the
+ * point: a front end that has to reverse-engineer the faithful renderer is not
+ * free of it.
  *
- * WHAT IT CANNOT DO YET, said plainly because a sample is where a limit gets
- * discovered. The frame carries each field's TEXT, not its numbers: there is
- * `"HP 20/20"` and no `{current: 20, max: 20}`. So this panel can restyle,
- * recolour and re-lay-out the vitals, and it cannot draw a proportional health
- * bar without parsing the string - which is exactly the sin above. Adding values
- * to the frame is the next increment of this seam, not a workaround for here.
+ * THE BARS ARE THE POINT OF `values`. Hit points and spell points are drawn as
+ * proportional bars from `{current, max}` - never from parsing `"HP   20/  20"`,
+ * which is a rendering and changes the day somebody loads a pref file or plays
+ * in another language. The rule the panel applies is the general one: IF an
+ * entry has both `current` and `max`, it is a proportion and gets a bar;
+ * otherwise draw the runs. That is why a stat's 18/118 encoding publishes `use`,
+ * `cur` and `max` instead - this loop asks for the pair, does not find it, and
+ * correctly draws "18/100" as text rather than a bar reading 15%.
  *
  * WHERE IT DRAWS. `section.region.pixels` - the rectangle the host says the
  * vitals occupy, in CSS pixels, re-read every frame. That moves when the window
@@ -41,6 +45,8 @@ const PANEL_BG = "#161a24";
 const PANEL_EDGE = "#2f3a52";
 const LABEL = "#7f8ca6";
 const DEFAULT_INK = "#d7dde8";
+/** The empty part of a bar. */
+const TRACK = "#242b3a";
 
 /**
  * The engine's colour attributes, resolved by NAME through `ctx.core`.
@@ -153,6 +159,43 @@ function inkOf(entry, ink) {
   return DEFAULT_INK;
 }
 
+/**
+ * The entry's proportion, or null if it does not have one.
+ *
+ * The general rule, not a list of field names: `current` and `max` TOGETHER mean
+ * the field is a ratio. Everything else - a stat's `use`/`cur`/`max`, a drained
+ * character's `level`/`maxLevel` - deliberately does not use that pair, so this
+ * returns null for them and they fall through to being drawn as text. A panel
+ * that instead hard-coded `if (key === "hp")` would draw nothing for a field a
+ * content pack adds, and would draw a bar for a stat if the names ever collided.
+ *
+ * A max of 0 is not a proportion either: nothing sensible divides by it.
+ */
+function ratioOf(entry) {
+  const v = entry.values;
+  if (!v || typeof v.current !== "number" || typeof v.max !== "number") return null;
+  if (v.max <= 0) return null;
+  return Math.max(0, Math.min(1, v.current / v.max));
+}
+
+/**
+ * A bar, in the ink the engine chose for the field.
+ *
+ * The colour still comes from `run.color` - the engine already decides that hit
+ * points go yellow below the warning line and red below a tenth, and re-deciding
+ * it here would be a second opinion that disagrees with the game's own the day
+ * the player changes their hitpoint_warn option.
+ */
+function drawBar(g, x, y, w, h, fill, ink) {
+  g.fillStyle = TRACK;
+  g.fillRect(x, y, w, h);
+  g.fillStyle = ink;
+  g.fillRect(x, y, Math.round(w * fill), h);
+  g.strokeStyle = PANEL_EDGE;
+  g.lineWidth = 1;
+  g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+
 export default {
   api: 1,
 
@@ -209,9 +252,27 @@ export default {
                 g.font = `${Math.max(7, size - 3)}px sans-serif`;
                 g.fillText(label, 8, y);
               }
-              g.fillStyle = inkOf(entry, ink);
-              g.font = `bold ${size}px sans-serif`;
-              g.fillText(text, label ? 8 + Math.max(34, size * 3) : 8, y);
+              const valueX = label ? 8 + Math.max(34, size * 3) : 8;
+              const ratio = ratioOf(entry);
+              if (ratio === null) {
+                g.fillStyle = inkOf(entry, ink);
+                g.font = `bold ${size}px sans-serif`;
+                g.fillText(text, valueX, y);
+              } else {
+                /* A bar, from the numbers - and the numbers over it, so the
+                 * panel is still readable at a glance rather than merely
+                 * decorative. `entry.values` is the source for BOTH. */
+                const barW = Math.max(24, w - valueX - 8);
+                const barH = Math.max(6, Math.floor(size * 0.8));
+                drawBar(g, valueX, y - barH, barW, barH, ratio, inkOf(entry, ink));
+                g.fillStyle = DEFAULT_INK;
+                g.font = `${Math.max(7, size - 3)}px sans-serif`;
+                g.fillText(
+                  `${entry.values.current}/${entry.values.max}`,
+                  valueX + 4,
+                  y - 1,
+                );
+              }
             }
             y += step;
             if (y > h - 4) break;

@@ -745,3 +745,152 @@ describe("prt_ac reads known_state (ui-display.c:307, PORT_TODO 2.6)", () => {
     ).toBe("Cur AC    35");
   });
 });
+
+/**
+ * The numbers behind the text (MOD_REACH gap 21).
+ *
+ * A replacement HUD that wants to draw hit points as a bar had exactly one
+ * source: `"HP   20/  20"`, a rendering. Parsing it works until somebody loads a
+ * pref file, plays in another language, or a mod widens a field - so the model
+ * publishes what it formatted FROM.
+ *
+ * The convention is the thing being pinned here, not the individual numbers:
+ * `current` + `max` means proportion, and a field whose two numbers are NOT a
+ * ratio must not use those names, because a generic bar-drawing consumer keys
+ * off exactly that pair.
+ */
+describe("sidebarModel values (MOD_REACH gap 21)", () => {
+  const values = (
+    fields: SidebarField[] | StatusIndicator[],
+    key: string,
+  ): Record<string, number> | undefined => {
+    const f = fields.find((x) => x.key === key);
+    if (!f) throw new Error(`no field ${key}`);
+    return f.values as Record<string, number> | undefined;
+  };
+
+  it("publishes hit points as a proportion, beside the text it formatted", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.mhp = 80;
+    p.chp = 20;
+    const model = sidebarModel(state);
+    expect(values(model, "hp")).toEqual({ current: 20, max: 80 });
+    /* And the text is still upstream's, from the same call. If these two ever
+     * disagree the seam is worse than useless - a mod would draw a bar that
+     * contradicts the number printed next to it. */
+    expect(field(model, "hp").map((r) => r.text).join("")).toBe("HP   20/  80");
+  });
+
+  it("omits spell points for a class with no mana, rather than reporting zero", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    /* The same gate that blanks the FIELD (prt_sp, L333-336). "This character
+     * has no spell points" and "this character has 0 of 0" are different facts,
+     * and only one of them should draw an empty bar. */
+    expect(field(sidebarModel(state), "sp")).toEqual([]);
+    expect(values(sidebarModel(state), "sp")).toBeUndefined();
+
+    p.cls.magic.totalSpells = 10;
+    p.cls.magic.spellFirst = 1;
+    p.csp = 4;
+    p.msp = 9;
+    expect(values(sidebarModel(state), "sp")).toEqual({ current: 4, max: 9 });
+  });
+
+  it("omits the monster's hit points whenever the bar reads [----------]", () => {
+    const state = makeState();
+    const mon = { hp: 5, maxhp: 10, mTimed: [], mflag: new Set<number>() };
+    const visible = { ...mon, mflag: { has: () => true } };
+    const unseen = { ...mon, mflag: { has: () => false } };
+    type Deps = Parameters<typeof sidebarModel>[1];
+
+    const seen = sidebarModel(state, { healthWho: visible } as unknown as Deps);
+    expect(values(seen, "health")).toEqual({ current: 5, max: 10 });
+
+    const hidden = sidebarModel(state, { healthWho: unseen } as unknown as Deps);
+    expect(field(hidden, "health")[0]?.text).toBe("[----------]");
+    /* The display genuinely does not know. `{ current: 0, max: 10 }` here would
+     * draw an empty bar, which reads as "about to die" - a wrong number is
+     * worse than an absent one. */
+    expect(values(hidden, "health")).toBeUndefined();
+    expect(values(sidebarModel(state), "health")).toBeUndefined();
+  });
+
+  it("does NOT call a stat's two numbers current and max", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.statCur[STAT.STR] = 18 + 100;
+    p.statMax[STAT.STR] = 18 + 100;
+    const v = values(sidebarModel(state, { statUse: p.statCur }), "str")!;
+    /* 118 means 18/100, one point above 117. `use / max` would report a maxed
+     * warrior as 15% of one, so the pair a bar keys off is deliberately absent
+     * and the consumer correctly draws the text instead. */
+    expect(v["use"]).toBe(18 + 100);
+    expect(v["cur"]).toBe(18 + 100);
+    expect(v["max"]).toBe(18 + 100);
+    expect(v["current"]).toBeUndefined();
+  });
+
+  it("keeps level and experience out of the proportion convention too", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.lev = 10;
+    p.maxLev = 12;
+    const model = sidebarModel(state);
+    /* A drained character is not 83% of anything. */
+    expect(values(model, "level")).toEqual({ level: 10, maxLevel: 12 });
+    expect(values(model, "level")!["current"]).toBeUndefined();
+
+    const exp = values(model, "exp")!;
+    /* `advance` is what prt_exp counts DOWN, and it is the number on screen. */
+    expect(exp["advance"]).toBe(Number(field(model, "exp")[1]?.text));
+  });
+
+  it("publishes speed at 110, where the FIELD is deliberately blank", () => {
+    const state = makeState();
+    expect(field(sidebarModel(state), "speed")).toEqual([]);
+    /* Normal speed is a known number, not a missing one. Core's own text stays
+     * upstream's silence; a replacement that wants to show "+0" may. */
+    expect(values(sidebarModel(state), "speed")).toEqual({ speed: 110, relative: 0 });
+  });
+
+  it("gives depth both of the numbers its one string bakes together", () => {
+    const state = makeState();
+    state.chunk.depth = 0;
+    expect(field(sidebarModel(state), "depth")[0]?.text).toBe("Town");
+    expect(values(sidebarModel(state), "depth")).toEqual({ depth: 0, feet: 0 });
+
+    state.chunk.depth = 3;
+    expect(values(sidebarModel(state), "depth")).toEqual({ depth: 3, feet: 150 });
+  });
+
+  it("gives the level feeling its indices, not the digits it prints", () => {
+    const state = makeState();
+    state.chunk.depth = 5;
+    state.chunk.feeling = 34;
+    state.chunk.feelingSquares = SHIPPED_FEELING_NEED;
+    const v = values(statusLineModel(state), "level_feeling")!;
+    expect(v).toEqual({
+      object: 3,
+      monster: 4,
+      squares: SHIPPED_FEELING_NEED,
+      need: SHIPPED_FEELING_NEED,
+    });
+    /* Both halves are printed INVERTED, and by different constants: the monster
+     * digit is `10 - monFeeling` and the object digit `11 - objFeeling`
+     * (ui-display.c L1090, L1112). Neither printed digit is the index, and the
+     * index is what a consumer with its own wording for a feeling needs - which
+     * is the whole argument for publishing numbers rather than a rendering. */
+    const runs = field(statusLineModel(state), "level_feeling");
+    expect(runs[1]?.text).toBe("6");
+    expect(runs[3]?.text).toBe("8");
+  });
+
+  it("leaves a field with nothing to count without a values object at all", () => {
+    const model = sidebarModel(makeState());
+    for (const key of ["race", "title", "class", "equippy"]) {
+      expect(model.find((f) => f.key === key)?.values, key).toBeUndefined();
+    }
+  });
+});

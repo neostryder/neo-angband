@@ -68,6 +68,26 @@ export interface HudRun {
   readonly css: string;
 }
 
+/**
+ * The numbers a HUD entry's text was formatted from, where it has any.
+ *
+ * `runs` is the sentence; this is what the sentence is about. `"HP   20/  20"`
+ * is a string a replacement has to parse - and parsing it is how a mod breaks
+ * the day someone loads a pref file or plays in another language - so the same
+ * entry carries `{ current: 20, max: 20 }` beside it.
+ *
+ * ONE CONVENTION, core's own (`DisplayValues`, display.ts): `current` and `max`
+ * TOGETHER mean this is a proportion and `current / max` is meaningful. Any
+ * other key is a plain named quantity. A field with two numbers that are not a
+ * ratio - a stat's 18/118 encoding, a drained character's level - deliberately
+ * does not use those two names, so a bar-drawing consumer finds no proportion
+ * and correctly declines to draw one.
+ *
+ * Absent means "this display does not know", never zero. The monster health bar
+ * publishes nothing while it reads `[----------]`.
+ */
+export type HudValues = Readonly<Record<string, number>>;
+
 /** Where one entry starts, in terminal cells. */
 export interface HudPlacement {
   readonly col: number;
@@ -84,6 +104,8 @@ export interface HudEntry {
   readonly key: string;
   readonly runs: readonly HudRun[];
   readonly screen: HudPlacement;
+  /** The numbers behind `runs`, where this entry has any. */
+  readonly values?: HudValues;
 }
 
 export interface HudSection {
@@ -157,6 +179,7 @@ export type HudOwnership = {
 export interface HudModel {
   readonly key: string;
   readonly runs: readonly HudRun[];
+  readonly values?: HudValues;
 }
 
 /**
@@ -245,7 +268,7 @@ export function hudSidebarSection(p: HudFrameParams): HudSection | undefined {
     name: "sidebar",
     entries: p.placements.flatMap(({ key, row }) => {
       const model = byKey.get(key);
-      return model ? [{ key, runs: model.runs, screen: { col: 0, row } }] : [];
+      return model ? [hudEntry(model, { col: 0, row })] : [];
     }),
     clip: { col: 0, row: 1, cols: p.sidebarWidth, rows: p.rows - 1 },
     ...region,
@@ -355,11 +378,25 @@ export function flowEntries(
   const out: HudEntry[] = [];
   let col = start.col;
   for (const model of models) {
-    out.push({ key: model.key, runs: model.runs, screen: { col, row: start.row } });
+    out.push(hudEntry(model, { col, row: start.row }));
     for (const run of model.runs) col += run.text.length;
     col += gap;
   }
   return out;
+}
+
+/**
+ * One model placed at one spot. The single place a model becomes an entry, so a
+ * field the engine publishes numbers for cannot silently lose them on the way to
+ * a consumer - which is exactly what happened to the text for a year.
+ */
+function hudEntry(model: HudModel, screen: HudPlacement): HudEntry {
+  return {
+    key: model.key,
+    runs: model.runs,
+    screen,
+    ...(model.values ? { values: model.values } : {}),
+  };
 }
 
 /**
@@ -436,6 +473,7 @@ export function snapshotHudFrame(frame: HudFrame): HudFrame {
           key: entry.key,
           runs: Object.freeze(entry.runs.map(copyRun)),
           screen: Object.freeze({ col: entry.screen.col, row: entry.screen.row }),
+          ...(entry.values ? { values: Object.freeze({ ...entry.values }) } : {}),
         }))),
       clip: copyCells(section.clip),
       ...(section.region

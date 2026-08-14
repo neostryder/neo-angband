@@ -472,12 +472,24 @@ drawing your own.
 drawing the status line for the rest of the session and says so by name — your
 `sidebar` keeps drawing, and the player keeps their game.
 
-**One limit, stated rather than worked around.** An entry carries its *text*, not
-its numbers: `"HP 20/20"`, not `{ current: 20, max: 20 }`. So a HUD mod can
-restyle, recolour and re-lay-out the vitals, and cannot draw a proportional health
-bar without parsing a rendering — which is the reverse-engineering this seam
-exists to end. Values on the entries is the next increment of `MOD_REACH.md` gap
-21.
+**Draw bars from `entry.values`, never from the text.** An entry carries the
+numbers its text was formatted from, so hit points arrive as
+`{ current: 7, max: 34 }` beside `"HP   7/  34"`. Parsing the string works right
+up until somebody loads a pref file, plays in another language, or a content pack
+widens a field — it is the reverse-engineering this seam exists to end.
+
+The convention is one rule and it is worth reading once. **`current` and `max`
+TOGETHER mean the field is a proportion**, and `current / max` is meaningful.
+Every other key is a plain named quantity. A field with two numbers that are *not*
+a ratio deliberately avoids those names: a stat publishes `use` / `cur` / `max`,
+because `118` is an encoding meaning 18/100 and a bar over it would report a maxed
+character as 15%. So `if (v.current !== undefined && v.max !== undefined) drawBar()
+else drawText()` is safe on every field, including ones added after you shipped.
+
+Absent always means *the game does not know*, never zero — the monster health bar
+publishes nothing while it reads `[----------]`, and `sp` is absent for a class
+with no mana rather than `0/0`. The full per-field key list is on `HudValues` in
+the SDK.
 
 `samples/vitals-panel/` is a complete worked example: it takes `sidebar` alone
 and leaves the rest of the screen to the game.

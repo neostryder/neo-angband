@@ -7230,7 +7230,11 @@ function displayDeps() {
  * carries the engine's own COLOUR_* attribute alongside the css it resolves to,
  * so a replacement can re-resolve it against a palette of its own.
  */
-function hudModel(model: { key: string; runs: readonly DisplayRun[] }): HudModel {
+function hudModel(model: {
+  key: string;
+  runs: readonly DisplayRun[];
+  values?: Readonly<Record<string, number>>;
+}): HudModel {
   return {
     key: model.key,
     runs: model.runs.map((run) => ({
@@ -7238,6 +7242,10 @@ function hudModel(model: { key: string; runs: readonly DisplayRun[] }): HudModel
       color: run.color,
       css: colorToCss(run.color),
     })),
+    /* Passed through untouched. The shell resolves colours because the palette
+     * is its own; it has no business rounding, scaling or renaming a number the
+     * engine computed. */
+    ...(model.values ? { values: model.values } : {}),
   };
 }
 

@@ -66,14 +66,27 @@ does not cost you the status line, and it does not cost the player their game.
 furniture off. This sample does not put it back: that is a choice to respect,
 not one to style.
 
-## What this seam cannot do yet
+## The bars, and the rule behind them
 
-The frame carries each field's **text**, not its numbers: there is `"HP 20/20"`
-and no `{current: 20, max: 20}`. So a HUD mod can restyle, recolour and re-lay-out
-the vitals, and it cannot draw a proportional health bar without parsing that
-string — which is the reverse-engineering this seam exists to end. Putting values
-on the entries is the next increment of `MOD_REACH.md` gap 21, and this sample is
-written to make the limit obvious rather than to work around it.
+Hit points and spell points are drawn as proportional bars from `entry.values` —
+`{ current: 7, max: 34 }` — and never from parsing `"HP   7/  34"`. That string is
+a *rendering*: it changes when somebody loads a pref file, plays in another
+language, or installs a content pack that widens a field.
+
+The panel applies the general rule rather than a list of field names: **if an
+entry has both `current` and `max`, it is a proportion and gets a bar; otherwise
+draw the runs.** That is why a stat publishes `use` / `cur` / `max` instead — 118
+is an encoding meaning 18/100, so a bar over it would report a maxed character as
+15%. The loop asks for the pair, does not find it, and correctly draws text. A
+panel written as `if (entry.key === "hp")` would pass a weaker test and would draw
+nothing at all for a field a content pack adds.
+
+Two details worth copying. The bar's colour still comes from `run.color`, because
+the engine already decides that hit points go yellow below the warning line and
+red below a tenth — re-deciding it here would disagree with the game the day the
+player changes their `hitpoint_warn` option. And the fill is clamped: `chp > mhp`
+is reachable for a moment after a big heal, and an unclamped bar would paint
+outside its own region.
 
 ## Where the checks are
 

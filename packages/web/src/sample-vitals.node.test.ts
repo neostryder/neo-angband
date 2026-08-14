@@ -120,7 +120,21 @@ function frame(regions: ScreenRegions | null = REGIONS): HudFrame {
     mapOriginX: 13,
     mapCols: 4,
     vitals: [
-      { key: "hp", runs: [{ text: "HP ", color: RED, css: "#f00" }, { text: "20/20", color: L_GREEN, css: "#0f0" }] },
+      {
+        key: "hp",
+        runs: [{ text: "HP  ", color: RED, css: "#f00" }, { text: "7/20", color: L_GREEN, css: "#0f0" }],
+        /* The pair that means "proportion". The text beside it is deliberately
+         * a DIFFERENT rendering of the same fact, so a panel that quietly went
+         * back to parsing the string is visible in what it drew. */
+        values: { current: 7, max: 20 },
+      },
+      {
+        key: "str",
+        runs: [{ text: "STR:  ", color: RED, css: "#f00" }, { text: "18/100", color: L_GREEN, css: "#0f0" }],
+        /* Three numbers, none of them the `current`/`max` pair - because 118 is
+         * an encoding meaning 18/100 and a bar over it would read 15%. */
+        values: { use: 118, cur: 118, max: 118 },
+      },
       { key: "depth", runs: [{ text: "50 feet", color: L_GREEN, css: "#0f0" }] },
       /* A field with no text at all: a warrior's spell points. The panel must
        * skip it rather than drawing an empty labelled row. */
@@ -128,7 +142,8 @@ function frame(regions: ScreenRegions | null = REGIONS): HudFrame {
     ],
     placements: [
       { key: "hp", row: 2 },
-      { key: "sp", row: 3 },
+      { key: "str", row: 3 },
+      { key: "sp", row: 4 },
       { key: "depth", row: 5 },
     ],
     compactKeys: ["hp"],
@@ -210,11 +225,62 @@ describe("samples/vitals-panel, as the game would load it", () => {
     const box = REGIONS.sidebar!.pixels!;
     expect(draws.find((d) => d.op === "fillRect")?.args).toEqual([0, 0, box.width, box.height]);
 
-    /* Two fields drawn, not three: the blank `sp` is skipped rather than
+    /* Three fields drawn, not four: the blank `sp` is skipped rather than
      * rendered as an empty labelled row. Each drawn field is a label plus its
-     * value, so four fillText calls. */
+     * value. `hp` writes its numbers from `values`, so "7/20" and not the
+     * "HP  7/20" its runs spell. */
     const texts = draws.filter((d) => d.op === "fillText").map((d) => String(d.args[0]));
-    expect(texts).toEqual(["Health", "HP 20/20", "Depth", "50 feet"]);
+    expect(texts).toEqual(["Health", "7/20", "STR", "STR:  18/100", "Depth", "50 feet"]);
+  });
+
+  it("draws a bar for the field that is a proportion, and only that field", async () => {
+    /* The reason `values` exists (MOD_REACH gap 21). Before it, the only source
+     * for a bar was `"HP   20/  20"` - a rendering, and one that changes when a
+     * pref file is loaded or the game is played in another language.
+     *
+     * What is pinned is the RULE, not the field: the panel asks every entry for
+     * a `current`/`max` pair. `hp` has one and gets a bar; `str` publishes three
+     * numbers that are not a ratio and correctly gets text. A panel keyed on
+     * `entry.key === "hp"` would pass a weaker version of this test and would
+     * draw nothing for a field a content pack adds. */
+    const draws: Draw[] = [];
+    const { doc } = recordingDocument(draws);
+    hudFrameSink(await install(doc), () => undefined).present(frame());
+
+    const box = REGIONS.sidebar!.pixels!;
+    /* The panel's own ground, then exactly two bar rects: a track and a fill.
+     * The str row adds none. */
+    const rects = draws.filter((d) => d.op === "fillRect").map((d) => d.args);
+    expect(rects[0]).toEqual([0, 0, box.width, box.height]);
+    expect(rects).toHaveLength(3);
+
+    const [, track, fill] = rects as [unknown, number[], number[]];
+    /* Same origin, same height; the fill is 7/20 of the track's width. Rounded
+     * by the panel, so this is derived from the track rather than asserted as a
+     * pixel count that would move if the fixture's geometry did. */
+    expect(fill[0]).toBe(track[0]);
+    expect(fill[1]).toBe(track[1]);
+    expect(fill[3]).toBe(track[3]);
+    expect(fill[2]).toBe(Math.round(track[2]! * (7 / 20)));
+    expect(fill[2]).toBeGreaterThan(0);
+    expect(fill[2]).toBeLessThan(track[2]!);
+  });
+
+  it("clamps a proportion rather than drawing outside its own region", async () => {
+    /* `chp > mhp` is reachable: a potion of Cure Critical Wounds heals past the
+     * maximum for a moment, and prt_hp prints it happily. An unclamped fill
+     * would paint over the map - and the region seam exists to make that
+     * impossible even when a mod is careless. */
+    const draws: Draw[] = [];
+    const { doc } = recordingDocument(draws);
+    const overfull = frame();
+    const hp = overfull.sidebar!.entries.find((e) => e.key === "hp")!;
+    (hp as { values?: Record<string, number> }).values = { current: 30, max: 20 };
+    hudFrameSink(await install(doc), () => undefined).present(overfull);
+
+    const rects = draws.filter((d) => d.op === "fillRect").map((d) => d.args);
+    const [, track, fill] = rects as [unknown, number[], number[]];
+    expect(fill[2]).toBe(track[2]);
   });
 
   it("colours from the ENGINE's attribute, through its own palette", async () => {
@@ -294,6 +360,7 @@ describe("samples/vitals-panel, as the game would load it", () => {
     expect(source).not.toMatch(/\.screen\b/u);
     expect(source).toMatch(/\.key\b/u);
     expect(source).toMatch(/\.color\b/u);
+    expect(source).toMatch(/\.values\b/u);
     /* And no imports: a folder plugin gets the engine through ctx. */
     expect(source).not.toMatch(/^\s*import\s/mu);
   });
