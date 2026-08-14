@@ -93,7 +93,9 @@ import {
   knownMonsterEntries,
   autoinscriptionMenu,
   tombstoneLines,
+  tombstoneScreen,
   winnerLines,
+  winnerScreen,
   ctimeStamp,
   monsterListScreenLines,
   magicBooks,
@@ -110,7 +112,13 @@ import {
   objectName,
 } from "./screens";
 import { MessageLog } from "./messages";
-import type { ScreenTableBlock, ScreenTextBlock, ScreenView } from "./screen-view";
+import { screenBodyLines } from "./screen-view";
+import type {
+  ScreenArtField,
+  ScreenTableBlock,
+  ScreenTextBlock,
+  ScreenView,
+} from "./screen-view";
 import { UI_DIM } from "./ui-colors";
 import type { Monster } from "@rpgm-tools/neo-angband-core";
 
@@ -1462,6 +1470,85 @@ describe("winnerLines (display_winner, ui-death.c L119-156)", () => {
   it("includes the crown art body", () => {
     const text = winnerLines(80).map((l) => l.text).join("\n");
     expect(text).toContain("I came, I saw, I conquered!");
+  });
+});
+
+describe("the death screens gave up their models in step 5b-iii", () => {
+  const baseDeps = {
+    fullName: "Frodo",
+    title: "Rookie",
+    className: "Warrior",
+    level: 3,
+    exp: 42,
+    gold: 100,
+    depth: 5,
+    diedFrom: "a giant white mouse",
+    totalWinner: false,
+    deathTime: "Wed Jun 30 21:49:08 1993",
+  };
+
+  it("publishes the stone WITHOUT the epitaph written into it", () => {
+    const block = tombstoneScreen(baseDeps).blocks[0]!;
+    expect(block.kind).toBe("art");
+    if (block.kind !== "art") throw new Error("unreachable");
+    /* The whole point: the picture a presenter is handed is the picture, and
+     * the character is beside it. A model that shipped the composited art would
+     * be a rendering wearing a model's name. */
+    expect(block.lines.join("\n")).not.toContain("Frodo");
+    expect(block.lines.join("\n")).not.toContain("Level: 3");
+    expect(block.fields?.map((f) => f.key)).toEqual([
+      "name", "the", "title", "class", "level", "exp", "gold", "death", "killer", "date",
+    ]);
+  });
+
+  it("publishes the numbers as numbers, not only as formatted text", () => {
+    const block = tombstoneScreen(baseDeps).blocks[0]!;
+    if (block.kind !== "art") throw new Error("unreachable");
+    const by = (k: string): ScreenArtField => block.fields!.find((f) => f.key === k)!;
+    expect(by("level").values).toEqual({ level: 3 });
+    expect(by("exp").values).toEqual({ exp: 42 });
+    expect(by("gold").values).toEqual({ gold: 100 });
+    expect(by("death").values).toEqual({ depth: 5 });
+    /* A name is not a quantity, so it has no `values` - absent means "there is
+     * no number here", never zero. */
+    expect(by("name").values).toBeUndefined();
+    expect(by("name").text).toBe("Frodo");
+  });
+
+  it("drops the killer field entirely on retirement, rather than blanking it", () => {
+    const block = tombstoneScreen({ ...baseDeps, retired: true, diedFrom: "Retiring" })
+      .blocks[0]!;
+    if (block.kind !== "art") throw new Error("unreachable");
+    expect(block.fields?.map((f) => f.key)).not.toContain("killer");
+    expect(block.fields?.find((f) => f.key === "death")?.text).toBe("Retired on Level 5");
+  });
+
+  it("gives the winner's banner no band, which is the full-width case", () => {
+    const block = winnerScreen().blocks[0]!;
+    if (block.kind !== "art") throw new Error("unreachable");
+    expect(block.center).toBe(true);
+    expect(block.width).toBe(25);
+    const hail = block.fields![0]!;
+    expect(hail.key).toBe("hail");
+    /* put_str_centred(i, 0, wid, ...) in the C - centred on the TERMINAL, not on
+     * the crown, and one row past the picture. */
+    expect(hail.x1).toBeUndefined();
+    expect(hail.x2).toBeUndefined();
+    expect(hail.row).toBe(block.lines.length);
+  });
+
+  it("re-centres the banner when the terminal is not 80 columns", () => {
+    const view = winnerScreen();
+    const at = (cols: number): number =>
+      screenBodyLines(view, cols).at(-1)!.text.indexOf("All Hail");
+    // The banner is 28 chars: x = cols/2 - 14.
+    expect(at(80)).toBe(26);
+    expect(at(120)).toBe(46);
+  });
+
+  it("gives the two death screens distinct ids", () => {
+    expect(tombstoneScreen(baseDeps).id).toBe("core:tombstone");
+    expect(winnerScreen().id).toBe("core:winner");
   });
 });
 

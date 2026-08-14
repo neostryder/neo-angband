@@ -131,15 +131,46 @@ export interface ScreenTextBlock {
 }
 
 /**
+ * One piece of text the game writes ON TOP of the art.
+ *
+ * The tombstone is the case this exists for: upstream draws the stone and then
+ * overwrites the name, class, level, experience, gold and killing blow into a
+ * band down the middle of it, so the epitaph ends up burned into the picture.
+ * Published apart, you can draw a real gravestone with the player's own name on
+ * it instead of reading columns 8-39 of row 7 back out of ASCII.
+ *
+ * `row`/`x1`/`x2` are where the faithful terminal puts this. Ignore them and
+ * read `key`, `text` and `values`.
+ */
+export interface ScreenArtField {
+  /** Stable: `name`, `title`, `class`, `level`, `exp`, `gold`, `death`, `date`. */
+  readonly key: string;
+  readonly text: string;
+  /** The number behind the text, where the text is a formatted number. */
+  readonly values?: ScreenValues;
+  readonly row: number;
+  /** The column band it is centred in; both absent means the full width. */
+  readonly x1?: number;
+  readonly x2?: number;
+}
+
+/**
  * Decorative ASCII the game draws as a picture: the tombstone, the winner's
  * crown. Genuinely a rendering, and named so you can swap the whole thing for an
- * image rather than try to read it.
+ * image rather than try to read it - which is why anything that is DATA rather
+ * than picture leaves through `fields` instead of being drawn into `lines`.
  */
 export interface ScreenArtBlock {
   readonly kind: "art";
   readonly key: string;
   readonly lines: readonly string[];
   readonly color?: string;
+  /** Text the game writes over the art; see `ScreenArtField`. */
+  readonly fields?: readonly ScreenArtField[];
+  /** Whether the picture is centred in the terminal. The crown is; the stone is not. */
+  readonly center?: boolean;
+  /** The art's own declared width, where the file states one. */
+  readonly width?: number;
 }
 
 /** Pre-wrapped styled rows: prose the game already laid out, or a screen with no model yet. */

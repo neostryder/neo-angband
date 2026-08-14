@@ -437,8 +437,8 @@ import {
   knownMonsterEntries,
   monsterKnowledgeGroupViews,
   capRaceName,
-  tombstoneLines,
-  winnerLines,
+  tombstoneScreen,
+  winnerScreen,
   ctimeStamp,
   monsterListScreenLines,
 } from "./screens";
@@ -5785,16 +5785,11 @@ async function gameMenuOnce(): Promise<boolean> {
 async function showTombstone(diedFrom: string): Promise<void> {
   const p = state.actor.player;
   if (p.totalWinner) {
-    await showTextScreen(
-      term,
-      "",
-      winnerLines(term.size().cols),
-      "[ Press ESC to continue ]",
-    );
+    await showTextScreen(term, winnerScreen());
   }
   const title = p.cls.titles[Math.trunc((p.lev - 1) / 5)] ?? "";
   const retired = diedFrom === "Retiring";
-  const lines = tombstoneLines({
+  const view = tombstoneScreen({
     fullName: p.fullName || playerName || "",
     title,
     className: p.cls.name,
@@ -5807,7 +5802,7 @@ async function showTombstone(diedFrom: string): Promise<void> {
     retired,
     deathTime: ctimeStamp(new Date()),
   });
-  await showTextScreen(term, "", lines, "[ Press ESC to continue ]");
+  await showTextScreen(term, view);
 }
 
 /**

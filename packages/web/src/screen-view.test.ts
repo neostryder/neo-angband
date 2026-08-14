@@ -22,6 +22,7 @@ import {
   screenBodyLines,
   SCREEN_FOOTER,
   UNMODELLED_SCREEN,
+  type ScreenArtBlock,
   type ScreenRow,
   type ScreenTableBlock,
   type ScreenView,
@@ -242,6 +243,61 @@ describe("a text block publishes prose, and the wrapping is the rendering", () =
     const lines = screenBodyLines(view, 80);
     expect(lines[1]).toEqual({ text: "", color: "#abcdef" });
     expect(lines[0]!.runs).toEqual([{ text: "one", color: "#abcdef" }]);
+  });
+});
+
+describe("an art block draws the picture, then writes on it", () => {
+  const art = (block: Partial<ScreenArtBlock>): ScreenView =>
+    freezeView({
+      id: "core:tombstone",
+      title: "",
+      footer: "[ ESC ]",
+      blocks: [{ kind: "art", key: "k", lines: ["####", "####", "####"], ...block }],
+    });
+
+  it("centres a field in its band, over the art beneath it", () => {
+    /* put_str_centred: x = x1 + ((x2 - x1) / 2 - len / 2) = 0 + (2 - 1) = 1. */
+    const lines = screenBodyLines(art({ fields: [{ key: "n", text: "ab", row: 1, x1: 0, x2: 4 }] }), 80);
+    expect(lines[1]!.text).toBe("#ab#");
+    expect(lines[0]!.text).toBe("####");
+  });
+
+  it("grows the art to reach a field placed past its last row", () => {
+    /* display_winner's banner sits one row below the crown. Dropping it because
+     * the picture is too short would lose the only words on the screen. */
+    const lines = screenBodyLines(art({ fields: [{ key: "n", text: "hi", row: 4 }] }), 10);
+    expect(lines).toHaveLength(5);
+    expect(lines[3]!.text).toBe("");
+    expect(lines[4]!.text).toBe("    hi");
+  });
+
+  it("centres an unbanded field on the TERMINAL, so it moves with the width", () => {
+    const view = art({ fields: [{ key: "n", text: "hi", row: 0 }] });
+    expect(screenBodyLines(view, 20)[0]!.text.indexOf("hi")).toBe(9);
+    expect(screenBodyLines(view, 40)[0]!.text.indexOf("hi")).toBe(19);
+  });
+
+  it("shifts centred art as a block, by its declared width", () => {
+    /* By the DECLARED width, not the longest row: crown.txt states one, and a
+     * picture whose bottom row is short would otherwise drift right. */
+    const lines = screenBodyLines(art({ center: true, width: 10 }), 40);
+    for (const l of lines) expect(l.text).toBe(" ".repeat(15) + "####");
+  });
+
+  it("leaves a blank art row blank rather than padding it", () => {
+    const lines = screenBodyLines(
+      art({ center: true, width: 10, lines: ["####", "", "####"] }),
+      40,
+    );
+    expect(lines[1]!.text).toBe("");
+  });
+
+  it("freezes the fields and their values", () => {
+    const view = art({ fields: [{ key: "n", text: "hi", row: 0, values: { level: 3 } }] });
+    const block = view.blocks[0] as ScreenArtBlock;
+    expect(Object.isFrozen(block.fields)).toBe(true);
+    expect(Object.isFrozen(block.fields![0])).toBe(true);
+    expect(Object.isFrozen(block.fields![0]!.values)).toBe(true);
   });
 });
 

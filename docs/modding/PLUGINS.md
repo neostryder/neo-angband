@@ -617,15 +617,26 @@ panel of your own size means undoing the game's wrap first and guessing which
 breaks were the game's and which were the sentence's. `block.color` is the
 prose's default, for the parts no run speaks for.
 
+**Art and the writing on it are separate.** An `art` block's `lines` are the
+picture — the tombstone, the winner's crown — and its `fields` are the text the
+game writes *onto* the picture. Upstream's tombstone is one drawing with the
+character burned into columns 8–39 of it, so a presenter handed only the drawing
+would have to know that to get the name back. Instead each field carries a stable
+`key` (`name`, `title`, `class`, `level`, `exp`, `gold`, `death`, `killer`,
+`date`), its `text`, and `values` where the text is a formatted number. The
+`row`/`x1`/`x2` beside them are where the *faithful terminal* puts each one;
+ignore them and draw a real gravestone. A field with no band is centred on the
+full width, which is what upstream does for the winner's banner.
+
 **Not every screen has a model yet.** `MODELLED_SCREENS`
 (`packages/web/src/screen-view.ts`) names the ones that do — today the inventory,
 the equipment, the quiver, the object list, the message history, the player
-history, the object recall, the object comparison and the monster recall.
-Everything else arrives under the shared id `core:text` with a single `lines`
-block of pre-wrapped rows: enough to reskin a frame, not enough to reimagine a
-listing. **Check `view.id`.** The remaining screens — the character sheet, the
-knowledge browser, the spell lists and the tombstone — are the biggest open piece
-of `MOD_REACH.md` gap 21.
+history, the object recall, the object comparison, the monster recall, the
+tombstone and the winner. Everything else arrives under the shared id `core:text`
+with a single `lines` block of pre-wrapped rows: enough to reskin a frame, not
+enough to reimagine a listing. **Check `view.id`.** The remaining screens — the
+character sheet, the knowledge browser and the spell lists — are the biggest open
+piece of `MOD_REACH.md` gap 21.
 
 **A screen is dismissed, not answered**, which is the one shape difference from
 `menu`. `show` declines by returning `undefined` **synchronously** and takes the

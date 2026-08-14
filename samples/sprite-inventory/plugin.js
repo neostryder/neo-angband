@@ -40,6 +40,14 @@
  * first undoing the game's wrap and guessing which breaks were the game's and
  * which were the sentence's.
  *
+ * AND IT DRAWS THE TOMBSTONE AS A STONE. `core:tombstone` arrives as an `art`
+ * block whose `lines` are the picture and whose `fields` are the epitaph - the
+ * name, class, level, gold and killing blow, each with its number beside its
+ * text. Upstream burns those into columns 8-39 of the ASCII stone; published
+ * apart, this sample draws its own stone and writes the character onto it, and
+ * never touches `lines` at all. That is the difference between "swap the
+ * picture" and "reimagine the screen".
+ *
  * IT DECLINES THE REST. The character sheet, the knowledge browser and the
  * message history are still the game's own - and still work. That is the seam
  * working: this mod says what it has a better way to draw, and nothing else.
@@ -153,6 +161,63 @@ function drawProse(g, block, x, y, maxPx, lineH) {
   return row;
 }
 
+/** The first `art` block of a view, or null. Same rule as `tableOf`. */
+function artOf(view) {
+  for (const block of view.blocks) if (block.kind === "art") return block;
+  return null;
+}
+
+/**
+ * The tombstone as a drawn stone with the epitaph written on it - none of the
+ * ASCII, all of the character.
+ *
+ * The only reason this is possible is that `fields` arrives beside `lines`
+ * rather than inside them. Upstream burns the name into columns 8-39 of row 7
+ * of the picture; a mod handed the finished picture would have to know that,
+ * and would break the first time the stone was redrawn one column wider.
+ */
+function drawTomb(g, block, x, y, w) {
+  const at = (key) => {
+    const f = (block.fields || []).find((each) => each.key === key);
+    return f ? f.text : "";
+  };
+  const h = 260;
+  g.fillStyle = CARD;
+  g.beginPath();
+  g.moveTo(x, y + h);
+  g.lineTo(x, y + 70);
+  g.arc(x + w / 2, y + 70, w / 2, Math.PI, 0);
+  g.lineTo(x + w, y + h);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = CARD_EDGE;
+  g.lineWidth = 2;
+  g.stroke();
+
+  const mid = x + w / 2;
+  g.textAlign = "center";
+  g.font = "17px monospace";
+  g.fillStyle = INK;
+  g.fillText(at("name"), mid, y + 78);
+  g.font = "13px monospace";
+  g.fillStyle = INK_DIM;
+  g.fillText(at("title") + " " + at("class"), mid, y + 102);
+
+  /* The numbers come from `values`, not from parsing "Level: 3" back apart. */
+  const num = (key, name) => {
+    const f = (block.fields || []).find((each) => each.key === key);
+    return f && f.values && typeof f.values[name] === "number" ? f.values[name] : null;
+  };
+  g.font = "13px monospace";
+  g.fillStyle = INK;
+  g.fillText("lvl " + num("level", "level") + "  " + num("gold", "gold") + " au", mid, y + 134);
+  g.fillStyle = INK_DIM;
+  g.fillText(at("death"), mid, y + 162);
+  if (at("killer")) g.fillText(at("killer"), mid, y + 182);
+  g.fillText(at("date"), mid, y + 212);
+  g.textAlign = "left";
+}
+
 function drawCard(g, x, y, row) {
   const empty = row.semantic && row.semantic.kind === "slot";
   g.fillStyle = CARD;
@@ -215,8 +280,9 @@ export default {
     return {
       show(view) {
         const prose = READS.includes(view.id) ? textOf(view) : null;
-        const block = prose ? null : TAKES.includes(view.id) ? tableOf(view) : null;
-        if (!prose && !block) return undefined;
+        const tomb = view.id === "core:tombstone" ? artOf(view) : null;
+        const block = prose || tomb ? null : TAKES.includes(view.id) ? tableOf(view) : null;
+        if (!prose && !tomb && !block) return undefined;
         if (!mount()) return undefined;
 
         const width = (typeof window !== "undefined" && window.innerWidth) || 960;
@@ -236,6 +302,8 @@ export default {
            * game never chose and could not have pre-wrapped for. */
           g.font = "13px monospace";
           drawProse(g, prose, 24, TOP, Math.min(360, width - 48), 17);
+        } else if (tomb) {
+          drawTomb(g, tomb, Math.max(24, width / 2 - 130), TOP, 260);
         } else if (block.rows.length === 0 && block.empty) {
           g.font = "13px monospace";
           g.fillStyle = block.empty.color || INK_DIM;

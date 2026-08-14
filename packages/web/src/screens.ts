@@ -108,6 +108,7 @@ import {
   screenBodyLines,
   SCREEN_FOOTER,
   UNMODELLED_SCREEN,
+  type ScreenArtField,
   type ScreenBlock,
   type ScreenCell,
   type ScreenColumn,
@@ -1697,17 +1698,10 @@ const CROWN_ART: readonly string[] = [
 ];
 
 /**
- * put_str_centred (ui-death.c L40-56): centre `text` in the column band
- * [x1, x2] over `line`, overwriting the art beneath it (spaces are extended as
- * needed). x = x1 + ((x2 - x1) / 2 - len / 2), integer arithmetic exactly as
- * the C.
+ * The footer both death screens carry. Upstream's death screens are
+ * press-anything-to-continue rather than the browse keys `SCREEN_FOOTER` names.
  */
-function overwriteCentred(line: string, x1: number, x2: number, text: string): string {
-  const x = x1 + (Math.trunc((x2 - x1) / 2) - Math.trunc(text.length / 2));
-  const col = Math.max(0, x);
-  const padded = line.length < col ? line + " ".repeat(col - line.length) : line;
-  return padded.slice(0, col) + text + padded.slice(col + text.length);
-}
+const DEATH_FOOTER = "[ Press ESC to continue ]";
 
 /** The fields display_exit_screen centres over the tombstone. */
 export interface TombstoneDeps {
@@ -1751,45 +1745,89 @@ export function ctimeStamp(d: Date): string {
  * (name 7, "the" 8, title 9, class 11, Level 12, Exp 13, AU 14, killed 15/16,
  * date 18), each centred by put_str_centred.
  */
-export function tombstoneLines(deps: TombstoneDeps): ScreenLine[] {
-  const art = DEAD_TOMB_ART.slice();
-  const put = (row: number, text: string): void => {
-    art[row] = overwriteCentred(art[row] ?? "", 8, 8 + 31, text);
-  };
-  put(7, deps.fullName);
-  put(8, "the");
-  put(9, deps.totalWinner ? "Magnificent" : deps.title);
-  put(11, deps.className);
-  put(12, `Level: ${deps.level}`);
-  put(13, `Exp: ${deps.exp}`);
-  put(14, `AU: ${deps.gold}`);
+export function tombstoneScreen(deps: TombstoneDeps): ScreenView {
+  /* The stone is the picture; the epitaph is DATA that upstream happens to write
+   * onto the picture. Published apart, a mod can draw a real gravestone - or a
+   * death card, or a run summary - with the player's own name on it, instead of
+   * reading columns 8-39 of row 7 back out of ASCII. */
+  const fields: ScreenArtField[] = [
+    { key: "name", text: deps.fullName, row: 7, x1: 8, x2: 8 + 31 },
+    { key: "the", text: "the", row: 8, x1: 8, x2: 8 + 31 },
+    {
+      key: "title",
+      text: deps.totalWinner ? "Magnificent" : deps.title,
+      row: 9,
+      x1: 8,
+      x2: 8 + 31,
+    },
+    { key: "class", text: deps.className, row: 11, x1: 8, x2: 8 + 31 },
+    { key: "level", text: `Level: ${deps.level}`, values: { level: deps.level }, row: 12, x1: 8, x2: 8 + 31 },
+    { key: "exp", text: `Exp: ${deps.exp}`, values: { exp: deps.exp }, row: 13, x1: 8, x2: 8 + 31 },
+    { key: "gold", text: `AU: ${deps.gold}`, values: { gold: deps.gold }, row: 14, x1: 8, x2: 8 + 31 },
+  ];
   if (deps.retired) {
-    put(15, `Retired on Level ${deps.depth}`);
+    fields.push({
+      key: "death",
+      text: `Retired on Level ${deps.depth}`,
+      values: { depth: deps.depth },
+      row: 15, x1: 8, x2: 8 + 31,
+    });
   } else {
-    put(15, `Killed on Level ${deps.depth}`);
-    put(16, `by ${deps.diedFrom}.`);
+    fields.push({
+      key: "death",
+      text: `Killed on Level ${deps.depth}`,
+      values: { depth: deps.depth },
+      row: 15, x1: 8, x2: 8 + 31,
+    });
+    fields.push({ key: "killer", text: `by ${deps.diedFrom}.`, row: 16, x1: 8, x2: 8 + 31 });
   }
-  put(18, `on ${deps.deathTime.slice(0, 24)}`);
-  return art.map((text) => ({ text, color: FG }));
+  fields.push({ key: "date", text: `on ${deps.deathTime.slice(0, 24)}`, row: 18, x1: 8, x2: 8 + 31 });
+  return freezeView({
+    id: "core:tombstone",
+    title: "",
+    footer: DEATH_FOOTER,
+    blocks: [{ kind: "art", key: "core:tomb", lines: DEAD_TOMB_ART, color: FG, fields }],
+  });
+}
+
+/** The faithful terminal's rows for `tombstoneScreen`. */
+export function tombstoneLines(deps: TombstoneDeps): ScreenLine[] {
+  return screenBodyLines(tombstoneScreen(deps));
 }
 
 /**
  * display_winner (ui-death.c L119-156): the crown, centred, followed by the
  * "All Hail the Mighty Champion!" banner. Shown before the tombstone for a
  * total_winner.
+ *
+ * The banner is a FIELD with no band, which is `put_str_centred(i, 0, wid, ...)`
+ * in the C - centred on the terminal rather than on the crown, and one row past
+ * the picture. That is why an art field's band is optional.
  */
+export function winnerScreen(): ScreenView {
+  return freezeView({
+    id: "core:winner",
+    title: "",
+    footer: DEATH_FOOTER,
+    blocks: [
+      {
+        kind: "art",
+        key: "core:crown",
+        lines: CROWN_ART,
+        color: FG,
+        center: true,
+        width: 25, // crown.txt's declared width hint (first file line)
+        fields: [
+          { key: "hail", text: "All Hail the Mighty Champion!", row: CROWN_ART.length },
+        ],
+      },
+    ],
+  });
+}
+
+/** The faithful terminal's rows for `winnerScreen`. */
 export function winnerLines(cols = 80): ScreenLine[] {
-  const width = 25; // crown.txt's declared width hint (first file line)
-  const left = Math.max(0, Math.trunc(cols / 2) - Math.trunc(width / 2));
-  const pad = " ".repeat(left);
-  const lines: ScreenLine[] = CROWN_ART.map((l) => ({
-    text: l ? pad + l : "",
-    color: FG,
-  }));
-  const hail = "All Hail the Mighty Champion!";
-  const hx = Math.max(0, Math.trunc(cols / 2) - Math.trunc(hail.length / 2));
-  lines.push({ text: " ".repeat(hx) + hail, color: FG });
-  return lines;
+  return screenBodyLines(winnerScreen(), cols);
 }
 
 /* ------------------------------------------------------------------ *

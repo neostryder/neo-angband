@@ -39,7 +39,12 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
   them at 360px — a width the game never chose and could not have pre-wrapped
   for. A `lines` block is already broken at 79 characters; re-flowing that means
   undoing the game's wrap and guessing which breaks were the game's.
-- **It takes six screens and declines the rest.** The character sheet, the
+- **Art and the writing on it are separate.** The tombstone arrives as an `art`
+  block whose `lines` are the picture and whose `fields` are the epitaph — name,
+  class, `level.values.level`, `gold.values.gold`, the killing blow. Upstream
+  burns those into columns 8–39 of the ASCII stone; this sample draws its own
+  stone, writes the character onto it, and never reads `lines` at all.
+- **It takes seven screens and declines the rest.** The character sheet, the
   knowledge browser and the message history are still the game's own — and still
   work.
 - **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
@@ -62,14 +67,15 @@ be relaxed about.
 
 ## What this seam cannot do yet
 
-**The listings and the recall pages have given up their models; the rest have
-not.** `MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names the nine:
-inventory, equipment, quiver, object list, message history, player history,
-object recall, object comparison, monster recall. Everything else arrives under
-the shared id `core:text` with a single `lines` block of pre-wrapped rows —
-enough to reskin a frame, not enough to reimagine a listing. The character sheet,
-the knowledge browser, the spell lists and the tombstone are the same gap's
-biggest remaining piece.
+**The listings, the recall pages and the death screens have given up their
+models; the rest have not.** `MODELLED_SCREENS` in
+`packages/web/src/screen-view.ts` names the eleven: inventory, equipment,
+quiver, object list, message history, player history, object recall, object
+comparison, monster recall, tombstone, winner. Everything else arrives under the
+shared id `core:text` with a single `lines` block of pre-wrapped rows — enough to
+reskin a frame, not enough to reimagine a listing. The character sheet, the
+knowledge browser and the spell lists are the same gap's biggest remaining
+piece.
 
 **A screen has no published region.** It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap
@@ -89,3 +95,9 @@ For the prose panel the check is a comparison rather than a source scan: the sam
 `objectRecallScreen` view is laid out by the sample and by `screenBodyLines` at
 80 columns, and the sample's narrower panel has to produce **more** rows. A
 presenter that had quietly reused the game's own wrap could not.
+
+For the tombstone the check is what did **not** reach the canvas: the sample
+draws `"Frodo"`, and not one of the `art` block's own ASCII rows appears among
+the strings it drew. The rows are taken from the block under test rather than
+from a guess at what the stone looks like, so redrawing the art cannot quietly
+retire the assertion.
