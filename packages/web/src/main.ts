@@ -8682,9 +8682,10 @@ canvas.addEventListener("pointerdown", (ev) => {
 // Desktop: the canvas 'contextmenu' event (the browser's own right-click) is
 // the router - compute the tapped grid exactly as the pointerdown handler
 // does, then classify and dispatch (routeContextClick, context-menu.ts).
-// Touch: a long-press (pointerdown held ~450ms, cancelled by move/lift/second
-// pointer) opens the same menu at the pressed cell, since a phone has no
-// right-click.
+// Touch: a long-press (pointerdown held ~450ms, cancelled by the pressing
+// finger's own move or lift) opens the same menu at the pressed cell, since a
+// phone has no right-click. A second finger is ignored outright - it neither
+// cancels the press nor starts one of its own (#277).
 canvas.addEventListener("contextmenu", (ev) => {
   ev.preventDefault();
   if (scoresOpen || dead || modalDepth > 0) return;
@@ -8702,9 +8703,15 @@ canvas.addEventListener("contextmenu", (ev) => {
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 type LongPressTarget =
-  | { readonly kind: "core-grid"; readonly cell: { readonly col: number; readonly row: number }; readonly grid: Loc }
+  | {
+      readonly kind: "core-grid";
+      readonly pointerId: number;
+      readonly cell: { readonly col: number; readonly row: number };
+      readonly grid: Loc;
+    }
   | {
       readonly kind: "region-cell";
+      readonly pointerId: number;
       readonly cell: { readonly col: number; readonly row: number };
       readonly owner: NonNullable<ReturnType<typeof regionInputAt>>;
     };
@@ -8714,8 +8721,16 @@ function cancelLongPress(): void {
   longPressTimer = null;
   longPressTarget = null;
 }
+/* A press belongs to ONE finger, so the lift that ends it has to be that
+ * finger's. Wired bare, `cancelLongPress` cancelled on any pointer's lift, and
+ * a second finger's touch overwrote the target so the pressing finger's own
+ * drag was then compared against somebody else's cell (#277). */
+function cancelLongPressFrom(ev: PointerEvent): void {
+  if (longPressTarget?.pointerId === ev.pointerId) cancelLongPress();
+}
 canvas.addEventListener("pointerdown", (ev) => {
   if (scoresOpen || dead || modalDepth > 0 || ev.pointerType !== "touch") return;
+  if (longPressTarget) return; // a press is already running, and it is not this finger's
   const cell = term.cellAt(ev.clientX, ev.clientY);
   if (!cell) return;
   /* The tap listener above sees this same PointerEvent first. Retain its
@@ -8723,11 +8738,11 @@ canvas.addEventListener("pointerdown", (ev) => {
    * very long-press fall through to the dungeon in the later listener. */
   const owner = regionPointerOwners.get(ev) ?? regionInputAt(cell.col, cell.row);
   if (owner) {
-    longPressTarget = { kind: "region-cell", cell, owner };
+    longPressTarget = { kind: "region-cell", pointerId: ev.pointerId, cell, owner };
   } else {
     const grid = contextClickGrid(ev.clientX, ev.clientY);
     if (!grid) return;
-    longPressTarget = { kind: "core-grid", cell, grid };
+    longPressTarget = { kind: "core-grid", pointerId: ev.pointerId, cell, grid };
   }
   longPressTimer = setTimeout(() => {
     const target = longPressTarget;
@@ -8740,10 +8755,10 @@ canvas.addEventListener("pointerdown", (ev) => {
     void openModal(() => dispatchContextClick(target.grid));
   }, 450);
 });
-canvas.addEventListener("pointerup", cancelLongPress);
-canvas.addEventListener("pointercancel", cancelLongPress);
+canvas.addEventListener("pointerup", cancelLongPressFrom);
+canvas.addEventListener("pointercancel", cancelLongPressFrom);
 canvas.addEventListener("pointermove", (ev) => {
-  if (!longPressTarget) return;
+  if (!longPressTarget || longPressTarget.pointerId !== ev.pointerId) return;
   if (longPressTarget.kind === "core-grid") {
     const grid = contextClickGrid(ev.clientX, ev.clientY);
     if (!grid || grid.x !== longPressTarget.grid.x || grid.y !== longPressTarget.grid.y) {

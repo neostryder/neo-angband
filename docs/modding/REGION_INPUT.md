@@ -263,11 +263,11 @@ registration order:
 | # | Where | Event | Target | What it does |
 |---|---|---|---|---|
 | 0 | `term.ts:499` (GlyphTerm constructor) | `pointerdown` | canvas | delivers to the active `setActiveCellTap` owner; `preventDefault()` + **`stopImmediatePropagation()`** |
-| 1 | `main.ts:8623` | `pointerdown` | canvas | **tap-to-move** |
-| 2 | `main.ts:8668` | `contextmenu` | canvas | **desktop right-click → context menu** |
-| 3 | `main.ts:8683` | `pointerdown` | canvas | **touch long-press** (450 ms) → same context menu |
-| 4 | `main.ts:8694`, `:8695` | `pointerup`, `pointercancel` | canvas | cancel the long-press timer; nothing else |
-| 5 | `main.ts:8696` | `pointermove` | canvas | cancel the long-press if the finger left the cell; **no hit-testing** |
+| 1 | `main.ts:8634` | `pointerdown` | canvas | **tap-to-move** |
+| 2 | `main.ts:8689` | `contextmenu` | canvas | **desktop right-click → context menu** |
+| 3 | `main.ts:8731` | `pointerdown` | canvas | **touch long-press** (450 ms) → same context menu; a second finger while one is pending is ignored |
+| 4 | `main.ts:8758`, `:8759` | `pointerup`, `pointercancel` | canvas | cancel the long-press timer if the lifting pointer is the one that started it (#277); nothing else |
+| 5 | `main.ts:8760` | `pointermove` | canvas | for the pressing pointer only, cancel the long-press if that finger left the cell; **no hit-testing** |
 | — | `main.ts:4350`, `:4416`, `:7647` | `pointerdown` | canvas | transient per-loop taps (targeting, locate); every one raises `modalDepth` first (`main.ts:4298`) |
 | — | `main.ts:7674` | `pointerdown` | window, capture | dismiss-on-click for one transient prompt |
 | — | `main.ts:8378` and 8 others | `keydown` | `inputEvents` | keyboard; **never** the canvas |
@@ -277,8 +277,9 @@ rows 1, 2 and 3 — three listeners, two player-visible gestures, one shared
 routing decision.
 
 **Hover is OUT, and the reason is that it does not exist.** Row 5 is the only
-`pointermove` on the canvas and it is a long-press cancel: it compares the cell
-against `longPressGrid` and never asks who owns anything. There is no hover state
+`pointermove` on the canvas and it is a long-press cancel: it ignores every
+pointer but the one holding the press, then compares the cell against
+`longPressTarget`, and never asks who owns anything. There is no hover state
 anywhere in the shell — no enter, no leave, no tooltip, no highlight. Routing
 hover is therefore not *routing* at all; it is **adding a new event class**:
 enter/leave bookkeeping so a region is told when the pointer arrives and when it
