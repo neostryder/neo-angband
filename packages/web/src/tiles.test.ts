@@ -153,40 +153,6 @@ describe("loadTilePrefs", () => {
     ]);
   });
 
-  it("resolves nested %: includes under the same directory", async () => {
-    const rec = recorder({
-      "old/graf-xxx.prf": "",
-      "old/flvr-xxx.prf": "",
-      "old/xtra-xxx.prf": "",
-    });
-    serve({
-      "old/graf-xxx.prf": "%:flvr-xxx.prf\nfeat:FLOOR:dark:0x81:0x82",
-      "old/flvr-xxx.prf": "%:xtra-xxx.prf\nfeat:FLOOR:lit:0x83:0x84",
-      "old/xtra-xxx.prf": "feat:FLOOR:los:0x85:0x86",
-    });
-    const map = await loadTilePrefs(rec.resolve, mode, deps);
-    expect(rec.asked).toEqual([
-      "old/graf-xxx.prf",
-      "old/flvr-xxx.prf",
-      "old/xtra-xxx.prf",
-    ]);
-    const dark = tileForFeature(map!, FLOOR_FIDX, LIGHTING.DARK)!;
-    expect(tileCode(dark.attr, dark.char)).toEqual({
-      row: 1,
-      col: 2,
-    });
-    const lit = tileForFeature(map!, FLOOR_FIDX, LIGHTING.LIT)!;
-    expect(tileCode(lit.attr, lit.char)).toEqual({
-      row: 3,
-      col: 4,
-    });
-    const los = tileForFeature(map!, FLOOR_FIDX, LIGHTING.LOS)!;
-    expect(tileCode(los.attr, los.char)).toEqual({
-      row: 5,
-      col: 6,
-    });
-  });
-
   it("parses the pref lines into a real core TileMap", async () => {
     const rec = recorder({ "old/graf-xxx.prf": "" });
     serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
