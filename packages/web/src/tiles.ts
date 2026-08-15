@@ -275,13 +275,16 @@ export function createTileRenderer(options: TileRendererOptions): TileSet | null
  * (graf-*.prf) is fetched first; its `%:<file>` include lines
  * (ui-prefs.c process_pref_file) pull in the pack's flvr-*.prf and xtra-*.prf,
  * which are pre-fetched here so the synchronous parser's loadFile resolver can
- * satisfy them. Returns null on any fetch failure - the caller then keeps the
- * map ASCII. Never throws.
+ * satisfy them. Mod pref texts, already read and latched by the caller in
+ * enabled load order, layer over that fresh map through the same parser. Returns
+ * null on any pack fetch failure - the caller then keeps the map ASCII. Never
+ * throws.
  */
 export async function loadTilePrefs(
   resolve: PackFileResolver,
   mode: GraphicsMode,
   deps: TilePrefsDeps,
+  modPrefTexts: readonly string[] = [],
 ): Promise<TileMap | null> {
   if (!mode.pref || mode.pref === "none") return null;
   const fetchText = async (name: string): Promise<string | null> => {
@@ -311,5 +314,6 @@ export async function loadTilePrefs(
     ...deps,
     loadFile: (name: string) => includes.get(name) ?? null,
   });
+  for (const text of modPrefTexts) parseTilePrefsInto(map, text, deps);
   return map;
 }

@@ -40,6 +40,25 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A mod's `.prf` can now fix a TILE, not just an ASCII glyph** (#153). Mod
+  pref text was always parsed by the real grammar — but through
+  `glyphTableSink` into the **GlyphTable**, the ASCII attr/char table, while a
+  graphics pack's own `.prf` goes through `tileMapSink` into the **TileMap**,
+  which is what the tile blit actually draws from. A mod's tile assignment was
+  therefore parsed correctly and written where nothing draws tiles. It was never
+  a precedence bug: `parseTilePrefsInto` already does last-assignment-wins
+  within a map, and the lines simply never arrived.
+
+  Latched mod pref texts now replay into each freshly built pack TileMap, in
+  enabled load order, through that same parser — so a later mod wins a
+  conflicting assignment, with no new resource kind, conflict policy or
+  tile-patch format. The layering sits inside `loadTilePrefs` rather than at
+  mod-install time, because `resetVisualsForCharacter` rebuilds the map from the
+  pack alone once the character is known; a fix applied once at boot would have
+  passed its test and then vanished at character creation. `%:` includes in a
+  mod's own pref remain unavailable — mod-file resolution is asynchronous and
+  the parser is synchronous (#278).
+
 - **A renamed mod rule keeps the player's choice** (#280). Rule choices are
   player-persisted by FLAG NAME in the host's own store, so renaming a rule flag
   used to orphan the old key: the lookup missed, the rule fell back to its
