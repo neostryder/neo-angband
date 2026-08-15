@@ -55,6 +55,7 @@
 
 import type { MenuSemantics } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine } from "./overlay";
+import type { PromptRequest } from "./prompt-view";
 
 /** One coloured segment of text. `color` is CSS; absent means the screen's default. */
 export interface ScreenRun {
@@ -436,6 +437,26 @@ export interface ScreenPresenter {
 /** A screen a presenter has taken. */
 export interface ScreenShown {
   readonly dismissed: Promise<void>;
+  /**
+   * The game is about to write on the terminal UNDER this screen: stand aside for
+   * `request`, and take the screen back when `request` is null.
+   *
+   * WHY IT EXISTS. `ScreenHost.invoke` runs the game's own code for one of a
+   * screen's `actions`, and some of those actions PROMPT - they put a question on
+   * the faithful terminal and wait for an answer, underneath your overlay. The
+   * worst of them is the character sheet's rename, which reaches the save: a
+   * player can rename their character and write the file with nothing at all
+   * visible on the screen.
+   *
+   * AWAITED BEFORE ANYTHING IS DRAWN, so you may animate yourself out, and there
+   * is no deadline. Resolve rather than throw: a rejection is read as "cannot
+   * stand aside", and the game takes the terminal anyway.
+   *
+   * OPTIONAL, and leaving it out is not a fault - it is what a presenter written
+   * before this member existed does. The game reports it ONCE, by name, draws the
+   * prompt over your screen and does not ask again this session.
+   */
+  yieldTerminal?(request: PromptRequest | null): void | Promise<void>;
 }
 
 /**

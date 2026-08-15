@@ -497,9 +497,16 @@ function coveredUp(frame) {
 }
 ```
 
-`samples/blueprint-view/plugin.js` ships exactly this. Core's own copy of the
-question is `occludersOf` (`packages/web/src/regions.ts:356`) — it is **not**
-exported to mods, so write your own as above; it is nine lines.
+`samples/blueprint-view/plugin.js` ships exactly this. The game's own copy of the
+question is `occludersOf` in `packages/web/src/regions.ts`, with
+`regionsIntersect` — the four comparisons above — beside it. Neither is reachable
+from a mod, and that is a property of how a mod is loaded rather than an
+oversight: a module fetched from a mod folder cannot resolve a package by name,
+so `neo-angband-mod-build` marks every bare specifier external and fails the
+build on any that survive. **Types cross that line, because the build erases
+them; functions do not.** Publishing these two through the SDK would therefore
+publish a member no mod could import. So write your own as above — it is nine
+lines — and keep the `undefined` case, which is the part worth copying.
 
 **You will be told.** The game's own screens — the inventory, the knowledge
 browser, the Mods screen you would use to turn this mod off — repaint the
@@ -846,7 +853,7 @@ shrinking core's screens would move pictures that upstream-cited parity tests
 pin byte for byte, for the benefit of no mod. To find out whether anything is
 over the map before you draw on it, read `frame.stack` — see
 [Knowing when you are covered](#knowing-when-you-are-covered-framestack). Core's
-own version of the question is `occludersOf` (`packages/web/src/regions.ts:356`),
+own version of the question is `occludersOf` (`packages/web/src/regions.ts`),
 which is host-internal and returns `undefined`, not `[]`, when you name a region
 that is not in the stack, so a typo reads as a question you cannot answer rather
 than as good news. Your own copy should keep that distinction.
@@ -893,23 +900,44 @@ once, by name, with the member to add spelled out in the sentence, and the game
 draws its prompt over your screen anyway. It never refuses to run the command:
 your actions are not a smaller set than the game's.
 
-> **Not yet on the published type (true as of 2026-08-14).** `yieldTerminal` is
-> live and is called at runtime, but it is declared on a host-local
-> `YieldingScreen` (`packages/web/src/screen-runtime.ts:278`) and **not** on
-> `ScreenShown` in either `packages/web/src/screen-view.ts` or
-> `packages/mod-sdk/src/screen.ts`. Measured, so nobody re-derives it: not
-> publishing the member does not stop a TypeScript mod implementing it —
-> `tsc` accepts `show: () => ({ dismissed, yieldTerminal })` with no cast and no
-> excess-property error. What it costs is discoverability and signature checking:
-> a `yieldTerminal(request: string)` compiles today and is handed a
-> `PromptRequest` at runtime. `screen-runtime.test.ts` carries a tripwire that
-> goes red the moment both copies gain the member, which is the signal to delete
-> `YieldingScreen` and this paragraph together.
+**It is on the published type**, in both copies — `ScreenShown` in the host's
+`packages/web/src/screen-view.ts` and in the SDK's
+`packages/mod-sdk/src/screen.ts` — together with the vocabulary of the
+announcement, `PromptRequest` and `PromptExtent`. For TypeScript, take all three
+type-only from the SDK, which the build erases like any other type import:
 
-Two prompts in the `SCREEN_PROMPTS` census are still un-announced and land under
-an overlay: `core:report`'s `describe` and `core:update`'s `mods`. A tripwire in
-`screen-runtime.test.ts` goes red the moment `main.ts` announces them, so that
-gap can neither close silently nor stay open unnoticed.
+```ts
+import type {
+  PromptRequest,
+  ScreenPresenter,
+  ScreenShown,
+} from "@rpgm-tools/neo-angband-mod-sdk";
+```
+
+It was not always, and what that cost is worth knowing because it is invisible:
+until 2026-08-14 the member was declared only on a host-local `YieldingScreen`
+and the mechanism worked anyway. Not publishing a member does not stop a mod
+implementing it — `tsc` accepts `show: () => ({ dismissed, yieldTerminal })`
+against a `ScreenShown | undefined` return with no cast and no excess-property
+error. What it stops is *learning that the member exists*, and *being told when
+you get it wrong*: `yieldTerminal(request: string)` compiled and was handed a
+`PromptRequest` at runtime.
+
+`packages/mod-sdk/src/screen-abi-agreement.test.ts` holds the two copies in
+agreement — the member list, `yieldTerminal`'s signature character for character,
+the sentence above, and `PromptRequest`'s own field list and types. It reads both
+**files**; importing both types would prove nothing, because two structurally
+identical interfaces are one type to the compiler, which is the same blindness
+that let the member ship unpublished.
+
+**Every action in the `SCREEN_PROMPTS` census is announced.** `charsheet.ts`
+covers `core:character` and `core:character-flags` (`rename`, `file`); `main.ts`
+covers `core:report`'s `describe` and `core:update`'s `mods`. The last of those is
+the interesting one: `mods` opens a whole nested page (`showModUpgrades`) whose
+own screens come back round to the presenter that is *already* holding
+`core:update`. While you are stood aside you are simply not offered them — the
+game shows those itself — because re-offering would ask you to draw over the very
+terminal you just cleared.
 
 ### A row with a paragraph
 

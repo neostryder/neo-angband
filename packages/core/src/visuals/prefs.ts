@@ -67,11 +67,44 @@ export interface PrefDeps {
  * `msg` is the offending token (parser_state.msg) and `error` the enum_parser
  * error CODE, resolved to parser_error_str[]'s text by prefErrorMessage.
  *
- * An alias rather than a second declaration: upstream has ONE
- * `struct parser_state`, and the options-file grammar reports in the same shape
- * (parser.ts ParserState).
+ * `struct parser_state` plus ONE field, because upstream has one parser_state
+ * and the options-file grammar reports in the same shape (parser.ts
+ * ParserState) - so the shared part stays shared and the extra field is the one
+ * thing this grammar has that that one does not: a `%:` include.
  */
-export type PrefError = ParserState;
+export interface PrefError extends ParserState {
+  /**
+   * The `%:` file this error was raised INSIDE, absent when the file being read
+   * raised it itself (#275).
+   *
+   * WHY IT HAS TO EXIST AT ALL. Upstream runs an included file through a whole
+   * separate `process_pref_file` invocation, and two consequences fall out of
+   * that which a flat error list cannot express:
+   *
+   *  - `parse_prefs_load` discards the nested result - `(void)process_pref_file
+   *    (file, true, d->user)`, ui-prefs.c L438 - and returns PARSE_ERROR_NONE,
+   *    so `process_pref_file_named`'s `return e == PARSE_ERROR_NONE` (L1240)
+   *    reflects the file's OWN lines only;
+   *  - the nested invocation has already run `print_error(path, p)` (L1228)
+   *    with ITS path, so the message names the INCLUDED file.
+   *
+   * The port collected nested errors into the includer's array with nothing to
+   * tell them apart, and so did both: it failed the outer file and it named the
+   * outer file. This marker is what a caller reads to get upstream's answer to
+   * each question, and it is deliberately NOT a reason to drop the error -
+   * upstream still prints it, so it is still collected and still reported.
+   *
+   * The value is the name as written on the `%:` line, which is exactly the
+   * string upstream hands to `process_pref_file`. A caller that resolves names
+   * to display paths should resolve this one the same way it resolves the
+   * outer name.
+   *
+   * SET ONCE, BY THE INNERMOST READ. Two levels deep, `inner.prf`'s error is
+   * already marked when `mid.prf` carries it up, so the mark is not overwritten
+   * on the way out - upstream's print_error that fired was the innermost one's.
+   */
+  readonly fromInclude?: string;
+}
 
 /**
  * Everything a parsed pref line can change. The six glyph directives are
@@ -666,23 +699,38 @@ export function processPrefText(
     if (bypass) continue;
 
     if (dir === "%") {
+      const file = fields.join(":");
       if (depth < 8) {
-        const nested = sink.loadFile?.(fields.join(":"));
+        const nested = sink.loadFile?.(file);
         if (nested !== null && nested !== undefined) {
-          errors.push(
-            ...processPrefText(nested, deps, sink, { ...opts, depth: depth + 1 }),
-          );
+          for (const e of processPrefText(nested, deps, sink, {
+            ...opts,
+            depth: depth + 1,
+          })) {
+            /* MARKED WITH THE FILE THAT RAISED IT, and only if it does not
+             * already carry one: two levels down, the print_error upstream ran
+             * was the INNERMOST invocation's, so relabelling on the way out
+             * would name whichever include the error last passed through. */
+            errors.push(e.fromInclude === undefined ? { ...e, fromInclude: file } : e);
+          }
         }
       }
       /* A BAD LINE IN AN INCLUDED FILE DOES NOT STOP THIS ONE, and that is
        * upstream's answer rather than a convenience left behind: parse_prefs_load
-       * (ui-prefs.c L428-440) throws the nested result away - `(void)
+       * (ui-prefs.c L429-441) throws the nested result away - `(void)
        * process_pref_file(file, true, d->user)` - and returns PARSE_ERROR_NONE
        * whatever happened in there. The nested read has already stopped itself at
        * its own first bad line (it ran this same loop), and its errors are
        * carried up only so the caller can print them, exactly as the nested
        * `process_pref_file_named` would have print_error'd them on the way past.
-       * So: no stop, and deliberately no fall-through to the tail below. */
+       * So: no stop, and deliberately no fall-through to the tail below.
+       *
+       * IT MUST NOT FAIL THIS FILE EITHER (#275), which is the same sentence
+       * about the RETURN value and did not follow from the `continue` on its
+       * own: `process_pref_file_named` returns `e == PARSE_ERROR_NONE` over its
+       * own lines, and parse_prefs_load handed it PARSE_ERROR_NONE. A caller
+       * that counted this array counted the include's errors as the includer's;
+       * `fromInclude` is what lets it not. */
       continue;
     }
     /* keymap-act stores into the parser's buffer; keymap-input consumes it. */
@@ -762,9 +810,19 @@ function err(line: number, directive: string, error: number): PrefError {
   return { line, col: 1, msg: directive, error };
 }
 
-/** print_error's exact text (ui-prefs.c L1195-1202). */
+/**
+ * print_error's exact text (ui-prefs.c L1195-1202).
+ *
+ * `name` is the file being read, and an error carrying `fromInclude` overrides
+ * it with the include's name - because upstream's `print_error(path, p)` runs
+ * inside the NESTED `process_pref_file_named`, whose `path` is the included
+ * file's (#275). Done here rather than left to each caller so that the caller
+ * which forgets does not exist: every consumer of a PrefError list prints it
+ * through this one function.
+ */
 export function prefErrorMessage(name: string, e: PrefError): string {
-  return `Parse error in ${name} line ${e.line} column ${e.col}: ${e.msg}: ${parserErrorText(
+  const from = e.fromInclude ?? name;
+  return `Parse error in ${from} line ${e.line} column ${e.col}: ${e.msg}: ${parserErrorText(
     e.error,
   )}`;
 }

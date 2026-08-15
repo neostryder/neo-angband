@@ -20,8 +20,88 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **The last eight position-persisted tables record their meaning BY NAME**
+  (#274, finishing what #269 and #273 started). `SAVE_VERSION` is now **7**.
+  Monster flags and timers, trap flags, your stats, skills and timed effects,
+  and the remembered state of every dungeon grid record their meaning by name
+  instead of by position, so game data that adds any of them can no longer
+  renumber a character that already exists.
+
+  Version 6 had already shipped to Pages and the `early` channel, so this is a
+  seventh version rather than a redefinition of the sixth — a document already
+  written as v6 must keep meaning what it meant. One bump covers all of them.
+
+  **`statMap` was the trap in the set.** It is a permutation, not a magnitude:
+  `player_fix_scramble` does `newCur[statMap[i]] = statCur[i]`, so its VALUES
+  are stat indices too. Naming only the keys would have left a scrambled
+  character's strength re-pointing at their intelligence the moment the stat
+  table moved. Both halves are names now, and an unresolvable map falls back
+  WHOLE to the identity — half-applying it would leave two slots pointing at one
+  stat and silently lose another's value.
+
+  **The dungeon grids get a legend rather than names, and the reason is
+  measured.** On a real level (63x188, 11,844 grids) a name list per grid costs
+  76 KB freshly generated but **462 KB once explored — 4.7x the numeric form** —
+  because an unexplored grid averages half a set flag and `[]` beats `[0,0,0]`.
+  So `SavedGame.squareInfoLegend` carries this build's ordered SQUARE names
+  **once** (214 bytes) and every grid indexes into it. No build-dependent
+  position, because the legend travels inside the document. Upstream reached the
+  same shape by accident and stopped one step short: `save.c` already writes
+  `SQUARE_SIZE` into the file, describing its own encoding's LENGTH but not its
+  ORDER.
+
+  **An eighth field nobody had listed.** `SavedPlayer.objKnownModifiers`, the
+  pre-#13 legacy rune block, is a dense `OBJ_MOD` array that every migration
+  from 1 to 6 carried forward untouched through `...rest`, and #273 converted
+  the modern block sitting beside it and walked past this one. It is names now
+  too.
+
+  Discard-vs-error was checked per field against `reference/src/`, not assumed
+  uniform: upstream DISCARDS unsupported timed effects with a note, REFUSES a
+  save with too many stats, and has no rule at all for `m_timed` — where its
+  fixed-size read is itself an overrun waiting for a longer table.
+
+  Every control drives a real document through the real `migrateSave`, and each
+  was proven red by reverting exactly one table's conversion. Two did not go red
+  on the first pass, and both were real gaps rather than probe noise: a
+  normalise call no test could reach, and a field with no migration test at all.
+
+- **`yieldTerminal` is on the published type now, and the last two prompts are
+  announced** (#258, ABI half — the same defect #267 fixed one seam over).
+
+  The mechanism shipped working and undiscoverable. `ScreenHost.invoke` hands a
+  presenter a `yieldTerminal(request)` callback so the game can draw a prompt
+  only after the presenter has animated out — and the callback was declared on a
+  host-local `YieldingScreen`, on **neither** published copy of `ScreenShown`.
+  It worked by coincidence: `tsc` accepts a handle with an extra member against
+  a `ScreenShown | undefined` return, with no cast and no excess-property error.
+  So the member was not unusable, it was invisible — an author had no way to
+  learn it exists, and nothing checked the signature of the one they guessed.
+
+  The member is on `ScreenShown` in **both** copies now, in the same words, with
+  `PromptRequest` / `PromptExtent` published beside it. `YieldingScreen` is gone.
+
+  **The tripwire was replaced, not deleted.** `screen-abi-agreement.test.ts`
+  reads both FILES and holds them in agreement — member list, signature
+  character for character, the sentence an author reads, and `PromptRequest`'s
+  own field types. Reading files is the point: two structurally identical
+  interfaces are ONE type to the compiler, which is exactly the blindness that
+  let this ship. Proven by breaking each copy in turn.
+
+  `core:report` and `core:update`'s mod page were the last prompts landing under
+  a presenter's overlay; both go through the census now, and the per-file
+  tripwire became a TOTALITY test, so a prompting screen in a file nobody
+  thought of fails instead of passing in silence.
+
+  **`occludersOf` / `regionsIntersect` stay unexported, and the reason is now
+  written down.** Publishing them was considered and is not possible: a module
+  fetched from a mod folder cannot resolve a package by name, so the mod builder
+  marks every bare specifier external and fails on any that survive — a guard
+  with its own fixture behind it. Types cross that line because the build erases
+  them; functions do not.
+
 - **Items, learned runes and monster memory record their properties BY NAME**
-  (#273, the defect #269 left one table over). `SAVE_VERSION` is now **6**, and
+  (#273, the defect #269 left one table over). `SAVE_VERSION` was **6** here, and
   the `V5_TO_V6` step that reads a version-5 savefile ships with it — an
   existing character loads with exactly the items and exactly the monster
   memory it had.
@@ -164,8 +244,8 @@ digest in the game's catalogue and must never be moved.
   the level map, and the window is gone with no error anywhere.
 
 - **A mod's screen presenter is told when the game is about to use the terminal
-  underneath it** (#258, mechanism only — the four call sites are not yet
-  wired). Four actions a presenter can run through `ScreenHost.invoke` open a
+  underneath it** (#258 — mechanism, all four call sites, and the published
+  ABI). Four actions a presenter can run through `ScreenHost.invoke` open a
   prompt on the faithful terminal, and until now those were drawn *under* the
   mod's overlay: the player was asked a question they could not see. The
   character sheet's rename **writes the save at the end of it**.
@@ -2018,6 +2098,80 @@ Current state of the project at version `0.19.0`. High level, what exists today:
   first commit) and `packages/web/src/mods.ts` had no unit tests at all despite
   being 2,500 lines. Each of the four new tests was proven to fail without the
   mechanism it protects, by sabotaging `mods.ts` in place and reverting.
+
+### Changed
+
+- **Ten more screens declare the rectangle they erase** (#253, MOD_REACH gap
+  21). All four birth screens, both of the character sheet's own painters, and
+  all four of the mod browser's wait screens now push a `core:screen` region for
+  as long as they are up and paint through a surface clipped to it. The
+  `term.clear()` allow-list is **20 pending, down from 30**; 33 sites across 16
+  files, one of them the compositor's own frame.
+
+  Each follows `showViewOnTerminal` exactly and not one painter's body changed:
+  a `show`/`paint` split where the wrapper pushes and pops and the painter takes
+  the clipped surface. The pictures are byte-identical — the whole existing
+  suite for all three files passed unchanged — and what changed is that
+  everything else on the display can see the erase happen. A screen still covers
+  the terminal while it is open; a 4.2.6 screen is screen_save / full repaint /
+  screen_load, and shrinking core's tombstone was declined again.
+
+  **Three of the ten needed a seam moved, and each move is the kind that hides a
+  half-done conversion.** `drawBirthSheet` is a shared painter with four
+  callers, so it converts only because all four now hand it a region's surface;
+  the name stage became `nameStage`, because its picture is a sheet PLUS a
+  prompt that outlives the paint and `runBirth`'s state machine had no boundary
+  meaning "this stage" — written inline, the push and the pop would have sat in
+  two arms of a switch inside a `for (;;)`, which is precisely the shape a later
+  edit drops one half of.
+
+  **This opens no seam and gap 21 stays open.** A converted screen gives a mod
+  nothing it could not reach before; it removes a reason the screen could not
+  coexist with one.
+
+  **A region surface removes the shell's `?.` safety net**, which is worth
+  knowing before the next conversion. `selectFromMenu` calls
+  `term.setCursor?.(...)` for the hand-written doubles that omit it;
+  `clipSurface` always DEFINES `setCursor` and forwards to a host that may not
+  have one, so the optional call finds a function and throws. That surfaced as
+  `?` quietly not opening the help browser — the TypeError was swallowed by
+  `openBirthHelp`'s own `.catch`, which is exactly the silent class of failure
+  this whole task is about.
+
+  `main-regions.test.ts`'s census is three values instead of one commented list,
+  so "how many are left" is derived rather than recounted by hand, and a file
+  whose sites claim to be regions must actually call `pushRegion`. The
+  behavioural half reads the live stack through the shipped path at each stage,
+  including the control that matters: a character sheet a PRESENTER has taken
+  pushes nothing. The mod browser's four have no such test — there is no
+  `ModBrowseDeps` fake in the repository and all four sites are module-private —
+  so only the source guard covers them.
+
+### Fixed
+
+- **A bad line in a `%:`-included pref file no longer fails the file that
+  included it** (#275). Upstream's `parse_prefs_load` is
+  `(void)process_pref_file(...); return PARSE_ERROR_NONE;` — the cast to `void`
+  is the whole statement, and a failure inside an include neither stops nor
+  fails the includer. The port was returning `errors.length === 0` over a list
+  that included the nested file's errors, so one bad line four files deep failed
+  everything above it.
+
+  A nested error also named the wrong file. Upstream's `print_error(path, p)`
+  runs inside the inner call, so it names the INCLUDED path; the port named the
+  outer file with the inner file's line number — the worst of both. Measured,
+  not reasoned: pre-fix it printed `user/outer.prf line 1` for a fault in
+  `inc.prf`.
+
+  `PrefError` carries a `fromInclude` marker now, applied at the innermost read
+  so two deep names the innermost file rather than whichever include it last
+  passed through, and `prefErrorMessage` prefers it so a caller that forgets
+  cannot exist. **Nothing is discarded** — upstream still reports those errors,
+  and so do we; only the failure PROPAGATION changed. The marker is type-only,
+  because core's export ratchet fails on additions and an interface is erased.
+
+  This is parity restoration, so it lands in core unflagged and unmodded, unlike
+  #272's forgiveness limit which was an improvement and left for `qol`.
 
 ## [0.19.0] - 2026-08-11
 

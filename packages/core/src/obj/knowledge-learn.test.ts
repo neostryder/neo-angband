@@ -425,11 +425,14 @@ describe("rune knowledge in the save format", () => {
     expect(restored.objKnown.curses[2]).toBe(1);
   });
 
-  it("a legacy save (objKnownModifiers only) still loads", () => {
+  it("a legacy save (objKnownModifierValues only) still loads", () => {
     const { p } = fixture();
     p.objKnown.modifiers[3] = 1;
     const saved = serializePlayer(p, ids) as unknown as Record<string, unknown>;
-    saved.objKnownModifiers = [...p.objKnown.modifiers];
+    /* The version-1 legacy block, BY NAME as of #274 - it was the one dense
+     * OBJ_MOD array #273 left on raw indices, and V6_TO_V7 converts it. Index
+     * 3 is OBJ_MOD_DEX. */
+    saved.objKnownModifierValues = { DEX: 1 };
     delete saved.objKnown;
     const restored = deserializePlayer(
       saved as unknown as Parameters<typeof deserializePlayer>[0],

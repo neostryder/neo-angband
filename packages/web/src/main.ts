@@ -393,8 +393,10 @@ import {
   installScreen,
   setScreenPresenter,
   showThroughPresenter,
+  withTerminal,
   ScreenAbandoned,
 } from "./screen-runtime";
+import { promptRequest } from "./prompt-view";
 import { installRegions } from "./region-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
 import { showMonsterList } from "./monster-list";
@@ -456,6 +458,7 @@ import {
   REPORT_TITLE,
   UPDATE_ACTION_KEYS,
   REPORT_ACTION_KEYS,
+  screenPromptFor,
 } from "./screens";
 import { showCharacterSheet, dumpCharacterFile, dumpFileName } from "./charsheet";
 import {
@@ -9474,6 +9477,48 @@ function modBrowseDeps(): ModUpgradeDeps {
 }
 
 /**
+ * Run one of a screen's actions with whoever is holding the screen TOLD FIRST.
+ *
+ * The same shape `charsheet.ts` already uses, and shared by this file's two
+ * prompting hosts rather than written twice: `core:report`'s `describe` (three
+ * row-0 line edits) and `core:update`'s `mods` (a whole nested page). Both of
+ * those landed under a presenter's overlay until this existed, and `update:mods`
+ * is also the site the re-entrancy guard in `screen-runtime.ts` is written for -
+ * the guard only sees a presenter that has stood aside, so without this call it
+ * had nothing to guard.
+ *
+ * THE CENSUS DECIDES, not a list spelled again here. `screenPromptFor` has a row
+ * only for the actions verified to reach the terminal, so `channel`, `log-level`
+ * and `confirm` run with nothing announced and a presenter does not fade its
+ * overlay out for a page it is still holding.
+ *
+ * `label` is the action's OWN label, read off the view rather than transcribed
+ * into a second table - the wording a presenter drew on its button is the wording
+ * it should caption its standing-aside with, and two copies of it would be two
+ * things to keep in step.
+ *
+ * `withTerminal`'s `held` is deliberately dropped, exactly as `charsheet.ts`
+ * drops it: `held: false` means the holder could not stand aside, it has already
+ * been reported BY NAME through `screenFault`, and there is nothing this page
+ * would do differently.
+ */
+async function announcedAction<T>(
+  view: ScreenView,
+  actionId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const fact = screenPromptFor(view.id, actionId);
+  if (fact === undefined) return work();
+  const label = view.actions?.find((a) => a.id === actionId)?.label ?? fact.promptId;
+  const { value } = await withTerminal(
+    promptRequest(fact.promptId, actionId, fact.extent, label, term.size()),
+    work,
+    screenFault,
+  );
+  return value;
+}
+
+/**
  * The (U)pdate screen.
  *
  * DRAWN HERE, BUT NOT HIDDEN FROM MODS. `showTextScreen` cannot serve this page:
@@ -9695,7 +9740,8 @@ async function showUpdatePage(): Promise<void> {
        * presenter written against a later engine must not be able to close the
        * player's update page by asking for a command this one has not got. */
       if (pressed === undefined) return screenNow();
-      return (await act(pressed)) ? screenNow() : undefined;
+      const again = await announcedAction(screenNow(), id, () => act(pressed));
+      return again ? screenNow() : undefined;
     },
   };
 
@@ -10035,7 +10081,8 @@ async function showReportPage(): Promise<void> {
       /* An unknown id is a no-op returning the current view; see the update
        * page's host on why it is never an error. */
       if (pressed === undefined) return screenNow();
-      return (await act(pressed)) ? screenNow() : undefined;
+      const again = await announcedAction(screenNow(), id, () => act(pressed));
+      return again ? screenNow() : undefined;
     },
   };
 

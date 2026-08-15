@@ -32,6 +32,16 @@
  * `.modifierValues`, `.elementInfo`, `player.objKnown.*` and
  * `monsters[1].knownPstate*` in a mid-game document and round-trips it through
  * the real loader.
+ *
+ * #274 ADDED SEVEN MORE TABLES (MFLAG, TRF, SQUARE, MON_TMD, TMD, SKILL, STAT)
+ * at the bottom of this file - with one correction to the recipe above. Point 2
+ * as written models the OLD reader with arithmetic rather than running it, so
+ * that half of each #273 control would pass with the migration deleted; the
+ * only half that goes red is the one calling a real serializer. The #274
+ * controls that carry the weight therefore live in save-migrate.test.ts and
+ * drive a real version-6 document through the real `V6_TO_V7`; what stays here
+ * is the index-base pinning and the helper behaviour, which is what this file
+ * is uniquely able to state.
  */
 
 import { describe, expect, it } from "vitest";
@@ -39,30 +49,68 @@ import { FlagSet } from "../bitflag.js";
 import {
   ELEM,
   ELEMENT_ENTRIES,
+  MFLAG,
   MON_RACE_FLAG_ENTRIES,
+  MON_TEMP_FLAG_ENTRIES,
+  MON_TIMED_ENTRIES,
+  MON_TMD,
   OBJECT_FLAG_ENTRIES,
   OBJECT_MODIFIER_ENTRIES,
   OBJ_MOD,
   OF,
+  PLAYER_TIMED_ENTRIES,
   RF,
+  SQUARE,
+  SQUARE_FLAG_ENTRIES,
+  STAT,
+  STAT_ENTRIES,
+  TMD,
+  TRAP_FLAG_ENTRIES,
+  TRF,
 } from "../generated/index.js";
 import { ELEMENT_NAMES, OBJ_MOD_NAMES } from "../obj/bind.js";
 import { RF_FLAG_NAMES } from "../mon/lore-file.js";
 import { ELEM_MAX, OBJ_MOD_MAX, OF_SIZE, newElemInfo } from "../obj/types.js";
-import { RF_SIZE } from "../mon/types.js";
+import { MFLAG_SIZE, RF_SIZE } from "../mon/types.js";
+import { SKILL, SKILL_MAX, STAT_MAX, TMD_MAX } from "../player/types.js";
+import { SQUARE_SIZE } from "../world/chunk.js";
+import { TRF_SIZE } from "../world/trap.js";
 import type { ElementInfo } from "../obj/types.js";
 import {
+  MFLAG_NAMES,
+  MON_TMD_NAMES,
   OF_FLAG_NAMES,
+  SKILL_NAMES,
+  SQUARE_INFO_LEGEND,
+  STAT_NAMES,
+  TMD_NAMES,
+  TRF_NAMES,
+  buildSquareInfoRemap,
   deserializeElementLevels,
   deserializeLoreFlags,
+  deserializeMonsterFlags,
+  deserializeMonsterTimed,
   deserializeObjectElements,
   deserializeObjectFlags,
   deserializeObjectModifiers,
+  deserializePlayerSkills,
+  deserializePlayerTimed,
+  deserializeStatMap,
+  deserializeStatValues,
+  deserializeTrapFlags,
+  remapSquareInfo,
   serializeElementLevels,
   serializeLoreFlags,
+  serializeMonsterFlags,
+  serializeMonsterTimed,
   serializeObjectElements,
   serializeObjectFlags,
   serializeObjectModifiers,
+  serializePlayerSkills,
+  serializePlayerTimed,
+  serializeStatMap,
+  serializeStatValues,
+  serializeTrapFlags,
 } from "./save.js";
 
 /**
@@ -476,5 +524,321 @@ describe("a renumbered ELEM table", () => {
     const read = Object.keys(written).map((n) => renumbered[renumbered.indexOf(n)]);
     expect(read).toEqual(["FIRE", "POIS"]);
     expect(renumbered.indexOf("FIRE")).toBe(ELEM.FIRE + 1);
+  });
+});
+
+/* ================================================================== *
+ * #274: the seven remaining tables.
+ *
+ * WHAT THIS SECTION IS FOR, AND WHAT IT IS NOT.
+ *
+ * The weight-bearing controls for #274 live in save-migrate.test.ts, because
+ * the risk in a conversion like this is not the mapping - it is the migration
+ * step's DISCRIMINATOR silently declining to match a node, which no test of a
+ * helper can see. Those tests drive a real version-6 document through the real
+ * `V6_TO_V7`.
+ *
+ * What belongs HERE is the pair of things a document-level test cannot state:
+ *
+ *  1. THE INDEX BASE, per table, pinned against that table's OWN generated
+ *     tuple and against an independent inversion of the enum. The four #273
+ *     tables did not share a base and one of them was offset by five; these
+ *     seven do not share one either - MFLAG/TRF/SQUARE keep a NONE at [0],
+ *     MON_TMD carries its own MAX sentinel at the END, and TMD/SKILL/STAT have
+ *     no sentinel at either end.
+ *  2. THE LENGTH CONSTANTS THAT ARE HAND-WRITTEN. `SKILL_MAX` and `STAT_MAX`
+ *     are literals (10 and 5) rather than `.length` of anything, so nothing
+ *     but a test makes them agree with the enum they describe.
+ * ================================================================== */
+
+function inverted2(en: Readonly<Record<string, number>>): (string | undefined)[] {
+  const out: (string | undefined)[] = [];
+  for (const [name, value] of Object.entries(en)) out[value] = name;
+  return out;
+}
+
+function mflagSet(...flags: number[]): FlagSet {
+  const set = new FlagSet(MFLAG_SIZE);
+  for (const f of flags) set.on(f);
+  return set;
+}
+
+function trfSet(...flags: number[]): FlagSet {
+  const set = new FlagSet(TRF_SIZE);
+  for (const f of flags) set.on(f);
+  return set;
+}
+
+describe("#274: each name table is pinned at its own index base", () => {
+  it("MFLAG: MON_TEMP_FLAG_ENTRIES keeps NONE at [0], so there is NO offset", () => {
+    expect(MON_TEMP_FLAG_ENTRIES[0]!.name).toBe("NONE");
+    expect(MFLAG.VIEW).toBe(1);
+    for (let i = 0; i < MON_TEMP_FLAG_ENTRIES.length; i++) {
+      expect(MFLAG_NAMES[i], `MFLAG ${i}`).toBe(MON_TEMP_FLAG_ENTRIES[i]!.name);
+    }
+    expect(Array.from(MFLAG_NAMES)).toEqual(inverted2(MFLAG));
+    /* No MAX member: the table ends at the last real flag, and the FlagSet has
+     * unnamed padding bits above it that must never reach a save. */
+    expect(MFLAG_NAMES).toHaveLength(MON_TEMP_FLAG_ENTRIES.length);
+    expect(MFLAG_SIZE * 8).toBeGreaterThan(MFLAG_NAMES.length);
+  });
+
+  it("TRF: TRAP_FLAG_ENTRIES keeps NONE at [0], so there is NO offset", () => {
+    expect(TRAP_FLAG_ENTRIES[0]!.name).toBe("NONE");
+    expect(TRF.GLYPH).toBe(1);
+    for (let i = 0; i < TRAP_FLAG_ENTRIES.length; i++) {
+      expect(TRF_NAMES[i], `TRF ${i}`).toBe(TRAP_FLAG_ENTRIES[i]!.name);
+    }
+    expect(Array.from(TRF_NAMES)).toEqual(inverted2(TRF));
+    expect(TRF_NAMES).toHaveLength(TRAP_FLAG_ENTRIES.length);
+  });
+
+  it("SQUARE: the legend is the ENTRIES order, and it is what the save carries", () => {
+    expect(SQUARE_FLAG_ENTRIES[0]!.name).toBe("NONE");
+    expect(SQUARE.MARK).toBe(1);
+    expect([...SQUARE_INFO_LEGEND]).toEqual(
+      SQUARE_FLAG_ENTRIES.map((e) => e.name),
+    );
+    expect([...SQUARE_INFO_LEGEND]).toEqual(inverted2(SQUARE));
+    /* The legend must cover every bit a saved grid can carry, or a flag would
+     * be written with nothing in the document to name it. */
+    expect(SQUARE_SIZE * 8).toBeGreaterThanOrEqual(SQUARE_INFO_LEGEND.length);
+  });
+
+  it("MON_TMD: the sentinel is MAX at the END, not NONE at the start", () => {
+    expect(MON_TIMED_ENTRIES[0]!.name).toBe("SLEEP");
+    expect(MON_TMD.SLEEP).toBe(0);
+    for (let i = 0; i < MON_TIMED_ENTRIES.length; i++) {
+      expect(MON_TMD_NAMES[i], `MON_TMD ${i}`).toBe(MON_TIMED_ENTRIES[i]!.name);
+    }
+    expect(Array.from(MON_TMD_NAMES)).toEqual(inverted2(MON_TMD));
+    /* MON_TIMED_ENTRIES includes MAX, so its length is one MORE than the
+     * number of slots `mon.mTimed` actually has. Sizing an array from the
+     * tuple's length would allocate a slot for the sentinel. */
+    expect(MON_TMD_NAMES[MON_TMD.MAX]).toBe("MAX");
+    expect(MON_TIMED_ENTRIES).toHaveLength(MON_TMD.MAX + 1);
+  });
+
+  it("TMD: no sentinel at either end, and TMD_MAX is derived from the tuple", () => {
+    expect(PLAYER_TIMED_ENTRIES[0]!.name).toBe("FAST");
+    expect(TMD.FAST).toBe(0);
+    for (let i = 0; i < TMD_MAX; i++) {
+      expect(TMD_NAMES[i], `TMD ${i}`).toBe(PLAYER_TIMED_ENTRIES[i]!.name);
+    }
+    expect(Array.from(TMD_NAMES)).toEqual(inverted2(TMD));
+    expect(TMD_NAMES).toHaveLength(TMD_MAX);
+    expect(TMD_NAMES).not.toContain("NONE");
+    expect(TMD_NAMES).not.toContain("MAX");
+  });
+
+  /**
+   * SKILL HAS NO GENERATED TUPLE AT ALL - it is a hand-written const in
+   * player/types.ts, and `SKILL_MAX` is the literal 10 beside it. There is
+   * therefore no second derivation to pin it against, and the only thing that
+   * can fail when the two part company is this.
+   */
+  it("SKILL: the hand-written SKILL_MAX agrees with the hand-written enum", () => {
+    expect(SKILL_NAMES).toHaveLength(SKILL_MAX);
+    expect(Object.keys(SKILL)).toHaveLength(SKILL_MAX);
+    expect(Array.from(SKILL_NAMES)).toEqual(inverted2(SKILL));
+    expect(SKILL_NAMES[SKILL.DISARM_PHYS]).toBe("DISARM_PHYS");
+    expect(SKILL_NAMES[SKILL.DIGGING]).toBe("DIGGING");
+    /* Not a hole in it anywhere: a gap would serialize as an unnamed slot. */
+    expect(SKILL_NAMES.filter((n) => n === undefined)).toEqual([]);
+  });
+
+  it("STAT: five entries, and the hand-written STAT_MAX agrees with them", () => {
+    expect([...STAT_NAMES]).toEqual(STAT_ENTRIES.map((e) => e.name));
+    expect(Array.from(STAT_NAMES)).toEqual(inverted2(STAT));
+    expect(STAT_NAMES).toHaveLength(STAT_MAX);
+    expect(STAT_ENTRIES).toHaveLength(STAT_MAX);
+    expect(STAT_NAMES[0]).toBe("STR");
+  });
+});
+
+describe("#274: what each helper does with ordinary, empty and hostile input", () => {
+  it("MFLAG round-trips, drops the sentinel, and drops an unknown name", () => {
+    const before = mflagSet(MFLAG.VISIBLE, MFLAG.AWARE, MFLAG.TRACKING);
+    expect(serializeMonsterFlags(before)).toEqual([
+      "VISIBLE",
+      "AWARE",
+      "TRACKING",
+    ]);
+    const after = deserializeMonsterFlags(serializeMonsterFlags(before));
+    expect(Array.from(after.bits)).toEqual(Array.from(before.bits));
+    expect(after.size).toBe(MFLAG_SIZE);
+    expect(serializeMonsterFlags(new FlagSet(MFLAG_SIZE))).toEqual([]);
+    expect(deserializeMonsterFlags(undefined).isEmpty()).toBe(true);
+    expect(deserializeMonsterFlags(["NONE"]).isEmpty()).toBe(true);
+    expect(deserializeMonsterFlags(["MOD_FROZEN"]).isEmpty()).toBe(true);
+    /* The padding bits above the last flag name nothing and must not travel. */
+    const all = new FlagSet(MFLAG_SIZE);
+    all.setall();
+    expect(serializeMonsterFlags(all)).toHaveLength(MFLAG_NAMES.length - 1);
+  });
+
+  it("TRF round-trips, drops the sentinel, and drops an unknown name", () => {
+    const before = trfSet(TRF.TRAP, TRF.VISIBLE, TRF.WEB);
+    expect(serializeTrapFlags(before)).toEqual(["TRAP", "VISIBLE", "WEB"]);
+    const after = deserializeTrapFlags(serializeTrapFlags(before));
+    expect(Array.from(after.bits)).toEqual(Array.from(before.bits));
+    expect(after.size).toBe(TRF_SIZE);
+    expect(deserializeTrapFlags(undefined).isEmpty()).toBe(true);
+    expect(deserializeTrapFlags(["NONE"]).isEmpty()).toBe(true);
+    expect(deserializeTrapFlags(["MOD_RUNE"]).isEmpty()).toBe(true);
+    const all = new FlagSet(TRF_SIZE);
+    all.setall();
+    expect(serializeTrapFlags(all)).toHaveLength(TRF_NAMES.length - 1);
+  });
+
+  it("MON_TMD omits zeroes, and takes its LENGTH from this build", () => {
+    const timed = new Int16Array(MON_TMD.MAX);
+    timed[MON_TMD.SLEEP] = 500;
+    timed[MON_TMD.CONF] = 7;
+    expect(serializeMonsterTimed(timed)).toEqual({ SLEEP: 500, CONF: 7 });
+    expect(deserializeMonsterTimed(serializeMonsterTimed(timed))).toEqual(
+      Array.from(timed),
+    );
+    expect(deserializeMonsterTimed(undefined)).toHaveLength(MON_TMD.MAX);
+    /* A document from a longer table must not hand back a longer array, and
+     * `MAX` is a sentinel rather than a slot even though it has a NAME. */
+    expect(
+      deserializeMonsterTimed({ SLEEP: 1, MAX: 9, MOD_DAZZLED: 4 }),
+    ).toHaveLength(MON_TMD.MAX);
+    expect(deserializeMonsterTimed({ MAX: 9 })[MON_TMD.SLEEP]).toBe(0);
+    /* MON_TMD_SLEEP is index 0 and a REAL effect, not a sentinel - the same
+     * zero-index trap OBJ_MOD_STR carries. */
+    expect(serializeMonsterTimed([9])).toEqual({ SLEEP: 9 });
+  });
+
+  it("TMD omits zeroes, drops an unsupported name, and keeps this build's length", () => {
+    const timed = new Int16Array(TMD_MAX);
+    timed[TMD.BLIND] = 9;
+    timed[TMD.FAST] = 2;
+    expect(serializePlayerTimed(timed)).toEqual({ FAST: 2, BLIND: 9 });
+    expect(deserializePlayerTimed(serializePlayerTimed(timed))).toEqual(
+      Array.from(timed),
+    );
+    /* THE PARITY RULE, load.c:811-829: an unsupported timed effect is
+     * DISCARDED, not an error. */
+    expect(() => deserializePlayerTimed({ MOD_DAZED: 5 })).not.toThrow();
+    expect(deserializePlayerTimed({ MOD_DAZED: 5 })).toEqual(
+      Array.from(new Int16Array(TMD_MAX)),
+    );
+    expect(deserializePlayerTimed({ BLIND: 1, MOD_DAZED: 5 })).toHaveLength(
+      TMD_MAX,
+    );
+    /* TMD_FAST is index 0 and a real effect. */
+    expect(serializePlayerTimed([4])).toEqual({ FAST: 4 });
+  });
+
+  it("SKILL writes EVERY slot, because zero is a value here", () => {
+    const skills = new Array<number>(SKILL_MAX).fill(0);
+    skills[SKILL.STEALTH] = 5;
+    const saved = serializePlayerSkills(skills);
+    expect(Object.keys(saved)).toHaveLength(SKILL_MAX);
+    expect(saved.STEALTH).toBe(5);
+    expect(saved.DIGGING).toBe(0);
+    expect(deserializePlayerSkills(saved)).toEqual(skills);
+    expect(deserializePlayerSkills(undefined)).toHaveLength(SKILL_MAX);
+    expect(deserializePlayerSkills({ MOD_ALCHEMY: 3 })).toEqual(
+      new Array<number>(SKILL_MAX).fill(0),
+    );
+  });
+
+  it("STAT writes every stat, and a missing one keeps its blank value", () => {
+    const stats = [18 + 70, 10, 11, 12, 13];
+    const saved = serializeStatValues(stats);
+    expect(saved).toEqual({ STR: 18 + 70, INT: 10, WIS: 11, DEX: 12, CON: 13 });
+    expect(deserializeStatValues(saved)).toEqual(stats);
+    expect(deserializeStatValues(undefined)).toEqual(
+      new Array<number>(STAT_MAX).fill(0),
+    );
+    /* load.c:723-727 fails a load with MORE stats than STAT_MAX; by name there
+     * is nothing to overrun, so the extra one contributes nothing. */
+    expect(deserializeStatValues({ STR: 5, MOD_LUCK: 9 })).toHaveLength(
+      STAT_MAX,
+    );
+    expect(deserializeStatValues({ STR: 5, MOD_LUCK: 9 })[STAT.STR]).toBe(5);
+    /* STAT_STR is index 0 and a real stat. */
+    expect(serializeStatValues([3, 0, 0, 0, 0]).STR).toBe(3);
+  });
+
+  it("statMap names BOTH halves, and refuses a half-applied permutation", () => {
+    /* A scrambled character: STR and INT have swapped slots. */
+    const scrambled = [STAT.INT, STAT.STR, STAT.WIS, STAT.DEX, STAT.CON];
+    const saved = serializeStatMap(scrambled);
+    expect(saved).toEqual({
+      STR: "INT",
+      INT: "STR",
+      WIS: "WIS",
+      DEX: "DEX",
+      CON: "CON",
+    });
+    /* Every VALUE is a name. A keys-only encoding would have left these as
+     * bare stat indices and a reordered table would re-point them. */
+    for (const v of Object.values(saved)) expect(typeof v).toBe("string");
+    expect(deserializeStatMap(saved)).toEqual(scrambled);
+
+    const identity = [0, 1, 2, 3, 4];
+    expect(deserializeStatMap(undefined)).toEqual(identity);
+    expect(deserializeStatMap({})).toEqual(identity);
+    /* An unknown name on either side leaves that slot at the identity - and
+     * the result is only accepted if it is still a PERMUTATION. Here dropping
+     * `STR: "INT"` would leave two slots pointing at INT, which would make
+     * player_fix_scramble duplicate one stat and lose another, so the whole
+     * map falls back rather than half-applying. */
+    expect(deserializeStatMap({ STR: "MOD_LUCK", INT: "STR" })).toEqual(
+      identity,
+    );
+    /* A partial map that IS still a permutation is kept. */
+    expect(deserializeStatMap({ STR: "INT", INT: "STR" })).toEqual(scrambled);
+  });
+});
+
+describe("#274: the SQUARE legend, which is a legend and not a name list", () => {
+  it("is a no-op when the document agrees with this build, or says nothing", () => {
+    expect(buildSquareInfoRemap(undefined)).toBeNull();
+    expect(buildSquareInfoRemap([...SQUARE_INFO_LEGEND])).toBeNull();
+  });
+
+  it("re-points every bit when the document's table is one longer", () => {
+    /* THE CONTROL. A save written by a build with one flag inserted ahead of
+     * SQUARE_MARK: the bit that meant MARK there is the bit that means GLOW
+     * here, so an unremapped read would light the whole level. */
+    const legend = [...SQUARE_INFO_LEGEND];
+    legend.splice(1, 0, "MOD_SCORCHED");
+    const remap = buildSquareInfoRemap(legend);
+    expect(remap).not.toBeNull();
+
+    /* One grid, marked and in a room, as the OTHER build numbered it. */
+    const bytes = new Array<number>(SQUARE_SIZE).fill(0);
+    const setBit = (b: number): void => {
+      bytes[b >> 3] = (bytes[b >> 3] ?? 0) | (1 << (b & 7));
+    };
+    setBit(legend.indexOf("MARK"));
+    setBit(legend.indexOf("ROOM"));
+    setBit(legend.indexOf("MOD_SCORCHED"));
+
+    const out = remapSquareInfo(bytes, remap!);
+    const on = (b: number): boolean => (((out[b >> 3] ?? 0) >> (b & 7)) & 1) === 1;
+    expect(on(SQUARE.MARK)).toBe(true);
+    expect(on(SQUARE.ROOM)).toBe(true);
+    /* GLOW is what the raw MARK bit would have meant here. It is NOT set. */
+    expect(on(SQUARE.GLOW)).toBe(false);
+    /* And the mod's own flag, which this build has no bit for, is dropped
+     * rather than landed on whatever happens to sit at that position. */
+    let count = 0;
+    for (const byte of out) for (let k = 0; k < 8; k++) if ((byte >> k) & 1) count++;
+    expect(count).toBe(2);
+  });
+
+  it("never writes past SQUARE_SIZE, whatever the document claims", () => {
+    /* A document whose legend is far longer than this build's table: the
+     * output is still exactly the array a Chunk can restore. */
+    const legend = [...SQUARE_INFO_LEGEND, ...Array<string>(40).fill("MOD_X")];
+    const remap = buildSquareInfoRemap(legend)!;
+    const bytes = new Array<number>(12).fill(0xff);
+    expect(remapSquareInfo(bytes, remap)).toHaveLength(SQUARE_SIZE);
   });
 });

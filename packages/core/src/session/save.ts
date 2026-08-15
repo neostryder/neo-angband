@@ -97,8 +97,17 @@ import { blankMonster, GROUP_MAX } from "../mon/monster.js";
 import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
 import type { MonsterLore } from "../mon/lore.js";
 import { RF_FLAG_NAMES, RSF_FLAG_NAMES } from "../mon/lore-file.js";
-import { OF, RSF } from "../generated/index.js";
-import { RF_SIZE, RSF_SIZE } from "../mon/types.js";
+import {
+  MFLAG,
+  MON_TMD,
+  OF,
+  RSF,
+  SQUARE_FLAG_ENTRIES,
+  STAT,
+  TMD,
+  TRF,
+} from "../generated/index.js";
+import { MFLAG_SIZE, RF_SIZE, RSF_SIZE } from "../mon/types.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
@@ -106,6 +115,7 @@ import { playerQuestsReset } from "../game/quest.js";
 import type { Quest } from "../game/quest.js";
 import type { PlayerRegistry } from "../player/bind.js";
 import type { TrapKind } from "../world/trap.js";
+import { TRF_SIZE } from "../world/trap.js";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context.js";
 import { MessageLog } from "../msg.js";
 import type { Trap } from "../game/trap.js";
@@ -123,7 +133,13 @@ import type { SaveIntegrity } from "../save/integrity.js";
 import { applyCodec, findCodec, stripCodec } from "../save/compress.js";
 import type { SaveCodec } from "../save/compress.js";
 import type { ContentIdResolver } from "../mod/ids.js";
-import { PY_MAX_LEVEL, TMD_MAX } from "../player/types.js";
+import {
+  PY_MAX_LEVEL,
+  SKILL,
+  SKILL_MAX,
+  STAT_MAX,
+  TMD_MAX,
+} from "../player/types.js";
 import type {
   ModBag,
   OrphanStore,
@@ -150,6 +166,26 @@ import type {
  * OBJ_MOD indices and ELEM indices. All four tables are persisted by NAME now;
  * see "Position-free persistence" below.
  *
+ * VERSION 6'S COMMENT MADE THE SAME CLAIM, and version 7 (#274) is the count
+ * actually finishing. Seven more tables were still persisted by position, and
+ * V5_TO_V6's own discriminator comment named two of them as "out of scope":
+ *
+ *   MFLAG   `SavedMonster.mflag`        -> `mflagNames`         (bit positions)
+ *   TRF     `SavedTrap.flags`           -> `trapFlagNames`      (bit positions)
+ *   SQUARE  every chunk's per-grid info -> `squareInfoLegend`   (bit positions)
+ *   MON_TMD `SavedMonster.mTimed`       -> `monsterTimed`       (dense indices)
+ *   TMD     `SavedPlayer.timed`         -> `timedValues`        (dense indices)
+ *   SKILL   `SavedPlayer.skills`        -> `skillValues`        (dense indices)
+ *   STAT    `SavedPlayer.stat*`         -> `stat*Values` / `statMapNames`
+ *
+ * plus `SavedPlayer.objKnownModifiers`, the version-1 legacy rune block, which
+ * every migration since has carried forward untouched as a dense OBJ_MOD array
+ * (`objKnownModifierValues` now). Version 6 converted the modern spelling of
+ * that field and left the legacy one behind, which is precisely the shape of
+ * defect this ticket exists to end.
+ *
+ * SQUARE IS THE ONE THAT IS NOT A LIST OF NAMES. See `SQUARE_INFO_LEGEND`.
+ *
  * OLDER SAVES ARE MIGRATED, NOT REJECTED. Every version below this one has a
  * conversion step in session/save-migrate.ts, and `saveMigrationsAreComplete()`
  * (enforced by save-migrate.test.ts) fails the build if this constant is bumped
@@ -158,7 +194,7 @@ import type {
  * character into "Could not read the save; starting a new game", which in a
  * permadeath game reads as "your character is gone".
  */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /* ------------------------------------------------------------------ *
  * Position-free persistence for the generated tables.
@@ -169,13 +205,32 @@ export const SAVE_VERSION = 6;
  * silently re-points at a different flag; that is why `MON_SPELL_ENTRIES` could
  * not be opened to mods until #269 (MOD_REACH row 22), and it was equally true
  * of `MON_RACE_FLAG_ENTRIES`, `OBJECT_FLAG_ENTRIES`, `OBJECT_MODIFIER_ENTRIES`
- * and `ELEMENT_ENTRIES` until #273.
+ * and `ELEMENT_ENTRIES` until #273 - and of `MON_TEMP_FLAG_ENTRIES`,
+ * `TRAP_FLAG_ENTRIES`, `SQUARE_FLAG_ENTRIES`, `MON_TIMED_ENTRIES`,
+ * `PLAYER_TIMED_ENTRIES`, `SKILL` and `STAT_ENTRIES` until #274.
  *
  * Names have no position. A build whose table is larger, smaller or reordered
  * reads back exactly what was written, and a name it no longer has is DROPPED
  * rather than mis-resolved - the same rule `deserializeLore` already applies to
  * a race whose mod is gone. session/save-flag-names.test.ts is the control:
  * it renumbers each table and reads the same data under both schemes.
+ *
+ * TWO ENCODINGS, AND THE RULE FOR PICKING ONE.
+ *
+ *   A FLAG SET writes `string[]` - the set flags, ascending, so an unchanged
+ *   entity writes identical bytes. Absence is the whole meaning of an unset
+ *   flag, so there is nothing to write for one.
+ *
+ *   A DENSE VALUE ARRAY writes `Record<name, value>`. Where zero genuinely
+ *   means "no such effect" (`timed`, `mTimed`, the object modifiers) the zeroes
+ *   are omitted and the block stays proportional to what the entity HAS rather
+ *   than to the table's length. Where the vector is small and always fully
+ *   populated (`skills`, the four stat arrays) every entry is written, because
+ *   zero there is a value and not an absence; omitting it would round-trip
+ *   correctly today and read as a lie the first time someone inspects a save.
+ *
+ * AND ONE THAT IS NEITHER: see `SQUARE_INFO_LEGEND`, where a name per grid was
+ * measured and rejected.
  * ------------------------------------------------------------------ */
 
 /**
@@ -386,6 +441,384 @@ export function deserializeElementLevels(
   for (const [name, value] of Object.entries(saved ?? {})) {
     const i = ELEMENT_NAMES.indexOf(name);
     if (i >= 0 && i < out.length && typeof value === "number") out[i] = value;
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * #274: the seven remaining position-persisted tables.
+ * ------------------------------------------------------------------ */
+
+/**
+ * MFLAG_ names by flag number. [0] is upstream's MFLAG_NONE; there is no MAX
+ * member, so "has a name" is the whole bound, exactly as for RF.
+ */
+export const MFLAG_NAMES = nameTable(MFLAG);
+
+/** TRF_ names by flag number. [0] is TRF_NONE; no MAX member, as for MFLAG. */
+export const TRF_NAMES = nameTable(TRF);
+
+/**
+ * MON_TMD_ names by index. Unlike TMD, this enum DOES carry its own `MAX`
+ * member (mon-timed.h ends with MON_TMD_MAX), and `mon.mTimed` is exactly
+ * `MON_TMD.MAX` long - so index `MON_TMD.MAX` is the sentinel and never a slot.
+ */
+export const MON_TMD_NAMES = nameTable(MON_TMD);
+
+/**
+ * TMD_ names by index. The player-timed enum has NO sentinel at either end:
+ * `TMD_MAX` is `PLAYER_TIMED_ENTRIES.length` rather than an enum member, so
+ * every index in the table names a real effect.
+ */
+export const TMD_NAMES = nameTable(TMD);
+
+/** SKILL_ names by index. No sentinels; `SKILL_MAX` is a hand-written 10. */
+export const SKILL_NAMES = nameTable(SKILL);
+
+/** STAT_ names by index. No sentinels; five entries, from list-stats.h. */
+export const STAT_NAMES = nameTable(STAT);
+
+/**
+ * A FlagSet -> ascending names, bounded by "this build has a name for it".
+ * Index 0 is the NONE sentinel in every table that has one and is never set,
+ * so it costs nothing to let the name table decide.
+ */
+function flagNames(
+  flags: FlagSet,
+  names: readonly (string | undefined)[],
+): string[] {
+  const out: string[] = [];
+  for (const flag of flags) {
+    if (flag === 0) continue;
+    const name = names[flag];
+    if (name !== undefined) out.push(name);
+  }
+  return out;
+}
+
+/** The inverse. An unknown name is dropped, never landed on another bit. */
+function flagsFromNames(
+  saved: readonly string[] | undefined,
+  names: readonly (string | undefined)[],
+  size: number,
+): FlagSet {
+  const set = new FlagSet(size);
+  for (const name of saved ?? []) {
+    const flag = names.indexOf(name);
+    if (flag > 0 && flag < size * 8) set.on(flag);
+  }
+  return set;
+}
+
+/**
+ * A dense value array -> a name -> value map, ascending by index, omitting
+ * zeroes. `all` writes every named slot instead, for the vectors where zero is
+ * a value rather than an absence (see the encoding rule above).
+ */
+function valuesByName(
+  values: ArrayLike<number>,
+  names: readonly (string | undefined)[],
+  all = false,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i] ?? 0;
+    if (!all && value === 0) continue;
+    const name = names[i];
+    if (name !== undefined) out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * The inverse: a full-length array, zero where the document said nothing. The
+ * LENGTH IS THIS BUILD'S, never the document's - a save written against a
+ * longer table would otherwise hand back an array the engine's own loops run
+ * off the end of.
+ */
+function valuesFromNames(
+  saved: Readonly<Record<string, number>> | undefined,
+  names: readonly (string | undefined)[],
+  length: number,
+): number[] {
+  const out = new Array<number>(length).fill(0);
+  for (const [name, value] of Object.entries(saved ?? {})) {
+    const i = names.indexOf(name);
+    if (i >= 0 && i < length && typeof value === "number") out[i] = value;
+  }
+  return out;
+}
+
+/**
+ * MFLAG: a monster's transient flags (save.c:228-229, one byte per MFLAG_SIZE).
+ *
+ * Upstream reads exactly `mflag_size` bytes - THIS build's size, off a stream
+ * that was written with the writing build's - so a table that grew by one flag
+ * desynchronises the whole rest of the monster block rather than merely
+ * mis-naming a flag. There is no discard rule to preserve here because upstream
+ * has no notion of a flag it does not recognise; the name form gives it one.
+ */
+export function serializeMonsterFlags(flags: FlagSet): string[] {
+  return flagNames(flags, MFLAG_NAMES);
+}
+
+/** The inverse: an MFLAG_SIZE FlagSet with exactly the named flags on. */
+export function deserializeMonsterFlags(
+  names: readonly string[] | undefined,
+): FlagSet {
+  return flagsFromNames(names, MFLAG_NAMES, MFLAG_SIZE);
+}
+
+/** TRF: a trap instance's flags (save.c:275-276, rd_trap at load.c:376-377). */
+export function serializeTrapFlags(flags: FlagSet): string[] {
+  return flagNames(flags, TRF_NAMES);
+}
+
+/** The inverse: a TRF_SIZE FlagSet with exactly the named flags on. */
+export function deserializeTrapFlags(
+  names: readonly string[] | undefined,
+): FlagSet {
+  return flagsFromNames(names, TRF_NAMES, TRF_SIZE);
+}
+
+/**
+ * MON_TMD: a monster's timed effects (save.c:223-226).
+ *
+ * Zero means "not affected" everywhere `m_timed` is read, so zeroes are
+ * omitted. UPSTREAM HAS NO DISCARD RULE HERE AND THAT IS A BUG, not a
+ * behaviour to reproduce: save.c:223 writes `MON_TMD_MAX` and load.c:290-292
+ * reads that count straight into `mon->m_timed[j]`, which is `MON_TMD_MAX`
+ * long in the READING build - a longer table overruns the array. Names cannot
+ * overrun anything, so the port's reader simply drops an effect it does not
+ * have, which is what upstream's rd_player does two blocks later for the
+ * player's own timed effects and evidently meant to do here.
+ */
+export function serializeMonsterTimed(
+  timed: ArrayLike<number>,
+): Record<string, number> {
+  return valuesByName(timed, MON_TMD_NAMES);
+}
+
+/** The inverse: a MON_TMD.MAX-long array, zero where the save said nothing. */
+export function deserializeMonsterTimed(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  return valuesFromNames(saved, MON_TMD_NAMES, MON_TMD.MAX);
+}
+
+/**
+ * TMD: the player's timed effects (save.c:508-511).
+ *
+ * THE ONE FIELD WITH AN EXPLICIT UPSTREAM DISCARD RULE. load.c:811-829 reads
+ * the saved count and, when it exceeds TMD_MAX, keeps the ones it supports,
+ * strips the rest and notes "Discarded unsupported timed effects" - an extra
+ * timed effect is not an error. `valuesFromNames` drops an unrecognised name
+ * for exactly that reason, and the pre-#274 reader's `slice(0, TMD_MAX)` said
+ * the same thing positionally.
+ */
+export function serializePlayerTimed(
+  timed: ArrayLike<number>,
+): Record<string, number> {
+  return valuesByName(timed, TMD_NAMES);
+}
+
+/** The inverse: a TMD_MAX-long array, zero where the save said nothing. */
+export function deserializePlayerTimed(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  return valuesFromNames(saved, TMD_NAMES, TMD_MAX);
+}
+
+/**
+ * SKILL: the derived level-based skills.
+ *
+ * NOT AN UPSTREAM FIELD AT ALL - `grep -i skill save.c load.c` is empty, and
+ * player->state.skills is rebuilt by calc_bonuses on every load. The port
+ * persists them anyway (player/player.ts `skills`), so the same position
+ * defect applied; there is no upstream discard rule to match because there is
+ * no upstream block. Every slot is written: a skill of 0 is a value, and the
+ * whole vector is ten entries.
+ */
+export function serializePlayerSkills(
+  skills: ArrayLike<number>,
+): Record<string, number> {
+  return valuesByName(skills, SKILL_NAMES, true);
+}
+
+/** The inverse: a SKILL_MAX-long array. */
+export function deserializePlayerSkills(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  return valuesFromNames(saved, SKILL_NAMES, SKILL_MAX);
+}
+
+/**
+ * STAT: one of stat_max / stat_cur / stat_birth (save.c:443-446).
+ *
+ * Upstream's rule is NOT the timed one: load.c:723-727 reads the saved count
+ * and FAILS THE LOAD when it exceeds STAT_MAX ("Too many stats (%d)."), while
+ * a shorter count is read as far as it goes and the rest left at their blank
+ * values. So "extra" is an error there and "missing" is not. By name that
+ * becomes: a stat this build does not have contributes nothing (it has no slot
+ * to corrupt), and a stat the document does not mention keeps its blank value.
+ * Refusing the load over a name would be strictly worse than upstream, which
+ * only refuses because a longer array would overrun a fixed C buffer.
+ */
+export function serializeStatValues(
+  stats: ArrayLike<number>,
+): Record<string, number> {
+  return valuesByName(stats, STAT_NAMES, true);
+}
+
+/** The inverse: a STAT_MAX-long array. */
+export function deserializeStatValues(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  return valuesFromNames(saved, STAT_NAMES, STAT_MAX);
+}
+
+/**
+ * STAT, THE PERMUTATION. `player->stat_map` (save.c:445) is the trap in this
+ * set: it is the only one of the four stat arrays whose VALUES are themselves
+ * stat indices rather than magnitudes.
+ *
+ * player-util.c player_scramble_stats/player_fix_scramble is the authority -
+ * `new_cur[stat_map[i]] = stat_cur[i]`, so slot `i` currently holds the value
+ * that belongs to stat `stat_map[i]`, and at birth the map is the identity.
+ * Naming only the KEYS would have left every value a raw STAT index, so a
+ * reordered stat table would still have re-pointed a scrambled character's
+ * strength at their intelligence. Both halves are names: `{ STR: "INT" }` reads
+ * "the value in the STR slot really belongs to INT".
+ *
+ * A name this build does not have leaves that slot at the identity, which is
+ * what player_fix_scramble resets it to anyway.
+ */
+export function serializeStatMap(map: ArrayLike<number>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < map.length; i++) {
+    const from = STAT_NAMES[i];
+    const to = STAT_NAMES[map[i] ?? i];
+    if (from !== undefined && to !== undefined) out[from] = to;
+  }
+  return out;
+}
+
+/**
+ * The inverse, with a permutation check.
+ *
+ * A HALF-APPLIED MAP IS WORSE THAN NO MAP. Dropping one unresolvable name from
+ * a permutation leaves two slots pointing at the same stat and one at none, and
+ * player_fix_scramble would then duplicate one stat's value and lose another's
+ * - a silent, permanent stat loss. So the result is validated as a permutation
+ * of 0..STAT_MAX-1 and falls back WHOLE to the identity if it is not, which is
+ * the value the map legitimately holds for every unscrambled character.
+ */
+export function deserializeStatMap(
+  saved: Readonly<Record<string, string>> | undefined,
+): number[] {
+  const out = Array.from({ length: STAT_MAX }, (_, i) => i);
+  if (saved === undefined) return out;
+  for (const [from, to] of Object.entries(saved)) {
+    const i = STAT_NAMES.indexOf(from);
+    const j = STAT_NAMES.indexOf(to);
+    if (i >= 0 && i < STAT_MAX && j >= 0 && j < STAT_MAX) out[i] = j;
+  }
+  const seen = new Set(out);
+  if (seen.size !== STAT_MAX) return Array.from({ length: STAT_MAX }, (_, i) => i);
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * SQUARE: the one table a per-entity name list could not carry.
+ * ------------------------------------------------------------------ */
+
+/**
+ * THE MEASUREMENT, AND WHY THIS ONE IS A LEGEND.
+ *
+ * Every other table in #273/#274 belongs to an entity there are tens or
+ * hundreds of. `square.info` belongs to a GRID, and a 63x188 level is 11,844 of
+ * them - written once for the level in play, once for the Town, and once more
+ * for every level in the birth_levels_persist cache.
+ *
+ * Measured on a real generated level (seed 4242, depth 3, 11,844 grids):
+ *
+ *   numeric, 3 bytes/grid, as written today          97,731 bytes
+ *   one name list per grid, freshly generated        76,624 bytes
+ *   one name list per grid, EXPLORED                462,289 bytes  (4.7x)
+ *   one name list per grid, every flag set        2,463,553 bytes  (25x)
+ *   this build's whole ordered name list, ONCE          214 bytes
+ *
+ * The freshly-generated figure is the trap: an unexplored level averages 0.49
+ * set flags per grid, so `[]` beats `[0,0,0]` and the name form looks FREE. It
+ * is not. The instant a character walks the level, MARK / GLOW / ROOM / SEEN /
+ * VIEW land on most grids and the same encoding costs 4.7x - a third of a
+ * megabyte per level, on a web build whose storage risk is already the reason
+ * saves are compressed at all.
+ *
+ * So the per-grid payload stays numeric and the DOCUMENT carries the legend:
+ * the ordered SQUARE_ names, once, alongside the bits that index into them. The
+ * legend travels with the save, so it describes the WRITING build's numbering
+ * no matter which build reads it - which is the whole property names were
+ * bought for, at 0.2% of one level's cost instead of 470%.
+ *
+ * Upstream reached the same shape by accident and stopped one step short:
+ * save.c:967 writes `SQUARE_SIZE` into the file and load.c:1512 reads it back
+ * into a file-scope `square_size` that rd_dungeon_aux then uses as its loop
+ * bound (load.c:1306). The file already describes its own square encoding
+ * there; it just describes the LENGTH and not the ORDER, so a reordered table
+ * still lands every flag somewhere else.
+ */
+export const SQUARE_INFO_LEGEND: readonly string[] = SQUARE_FLAG_ENTRIES.map(
+  (e) => e.name,
+);
+
+/**
+ * A saved legend -> this build's bit numbering, or `null` when the two agree
+ * and every byte can be taken as-is (the overwhelmingly common case: the same
+ * build, or any build whose SQUARE table has not moved).
+ *
+ * An absent legend also reads as `null`. That is deliberate and it is safe for
+ * one reason only: `V6_TO_V7` stamps the legend onto every document it
+ * converts, and no build that could have reordered SQUARE can have written a
+ * document at version 6 or below - the same argument `savedFlagSet` rests on in
+ * save-migrate.ts.
+ */
+export function buildSquareInfoRemap(
+  legend: readonly string[] | undefined,
+): (number | undefined)[] | null {
+  if (legend === undefined) return null;
+  let moved = false;
+  const remap: (number | undefined)[] = [];
+  for (let bit = 0; bit < legend.length; bit++) {
+    const name = legend[bit];
+    const now = name === undefined ? -1 : SQUARE_INFO_LEGEND.indexOf(name);
+    remap[bit] = now < 0 ? undefined : now;
+    if (now !== bit) moved = true;
+  }
+  if (!moved && legend.length === SQUARE_INFO_LEGEND.length) return null;
+  return remap;
+}
+
+/**
+ * One grid's info bytes, re-expressed in this build's bit numbering. A bit
+ * whose name this build no longer has is dropped, exactly as an unknown flag
+ * NAME is dropped everywhere else in this file.
+ */
+export function remapSquareInfo(
+  bytes: readonly number[],
+  remap: readonly (number | undefined)[],
+): number[] {
+  const out = new Array<number>(SQUARE_SIZE).fill(0);
+  for (let b = 0; b < bytes.length; b++) {
+    const byte = bytes[b] ?? 0;
+    if (byte === 0) continue;
+    for (let k = 0; k < 8; k++) {
+      if ((byte & (1 << k)) === 0) continue;
+      const now = remap[b * 8 + k];
+      if (now === undefined) continue;
+      const target = now >> 3;
+      if (target < SQUARE_SIZE) out[target] = (out[target] ?? 0) | (1 << (now & 7));
+    }
   }
   return out;
 }
@@ -705,11 +1138,19 @@ export interface SavedMonster {
   grid: { x: number; y: number };
   hp: number;
   maxhp: number;
-  mTimed: number[];
+  /**
+   * m_timed (save.c:223-226), as a MON_TMD_ name -> turns map. Version 6 and
+   * below wrote `mTimed: number[]`, dense and indexed by the MON_TMD enum.
+   */
+  monsterTimed: Record<string, number>;
   mspeed: number;
   energy: number;
   cdis: number;
-  mflag: number[];
+  /**
+   * mflag (save.c:228-229), as MFLAG_ NAMES. Version 6 and below wrote
+   * `mflag: number[]`, the raw FlagSet bytes.
+   */
+  mflagNames: string[];
   mimickedObj: number;
   heldObj: SavedObject[];
   attr: number;
@@ -741,11 +1182,11 @@ export function serializeMonster(
     grid: { x: mon.grid.x, y: mon.grid.y },
     hp: mon.hp,
     maxhp: mon.maxhp,
-    mTimed: Array.from(mon.mTimed),
+    monsterTimed: serializeMonsterTimed(mon.mTimed),
     mspeed: mon.mspeed,
     energy: mon.energy,
     cdis: mon.cdis,
-    mflag: Array.from(mon.mflag.bits),
+    mflagNames: serializeMonsterFlags(mon.mflag),
     mimickedObj: mon.mimickedObj,
     heldObj: mon.heldObj.map((o) => serializeObject(o, ids)),
     attr: mon.attr,
@@ -781,11 +1222,11 @@ export function deserializeMonster(
   mon.grid = loc(data.grid.x, data.grid.y);
   mon.hp = data.hp;
   mon.maxhp = data.maxhp;
-  mon.mTimed.set(data.mTimed);
+  mon.mTimed.set(deserializeMonsterTimed(data.monsterTimed));
   mon.mspeed = data.mspeed;
   mon.energy = data.energy;
   mon.cdis = data.cdis;
-  mon.mflag.bits.set(data.mflag);
+  mon.mflag.copy(deserializeMonsterFlags(data.mflagNames));
   if (data.knownPstateFlagNames) {
     /* load.c:302 restores known_pstate.flags before the monster goes live. */
     mon.knownPstate.flags.copy(deserializeObjectFlags(data.knownPstateFlagNames));
@@ -841,11 +1282,25 @@ export interface SavedPlayer {
   msp: number;
   csp: number;
   cspFrac: number;
-  statMax: number[];
-  statCur: number[];
-  statMap: number[];
-  statBirth: number[];
-  timed: number[];
+  /**
+   * stat_max / stat_cur / stat_birth (save.c:443-446), as STAT_ name -> value
+   * maps. Version 6 and below wrote `statMax` / `statCur` / `statBirth`, dense
+   * arrays indexed by the STAT enum.
+   */
+  statMaxValues: Record<string, number>;
+  statCurValues: Record<string, number>;
+  statBirthValues: Record<string, number>;
+  /**
+   * stat_map (save.c:445): a PERMUTATION, so both halves are names - see
+   * `serializeStatMap`. Version 6 and below wrote `statMap: number[]`, whose
+   * values were raw STAT indices.
+   */
+  statMapNames: Record<string, string>;
+  /**
+   * timed (save.c:508-511), as a TMD_ name -> turns map, zeroes omitted.
+   * Version 6 and below wrote `timed: number[]`, dense and indexed by TMD.
+   */
+  timedValues: Record<string, number>;
   spellFlags: number[];
   spellOrder: number[];
   playerHp: number[];
@@ -907,10 +1362,20 @@ export interface SavedPlayer {
     /** Ids of the curse runes the player has learned. */
     curses: string[];
   };
-  /** Legacy (save version 1 pre-#13): modifier runes only. */
-  objKnownModifiers?: number[];
+  /**
+   * Legacy (save version 1 pre-#13): modifier runes only, and by NAME as of
+   * version 7. Version 6 and below kept this as `objKnownModifiers: number[]`,
+   * a dense OBJ_MOD array - #273 converted the modern `objKnown.modifiers` and
+   * left its legacy twin on positions, where four migrations had already
+   * carried it untouched.
+   */
+  objKnownModifierValues?: Record<string, number>;
   shapeName: string | null;
-  skills: number[];
+  /**
+   * The derived level-based skills, as a SKILL_ name -> value map (every slot,
+   * see `serializePlayerSkills`). Version 6 and below wrote `skills: number[]`.
+   */
+  skillValues: Record<string, number>;
   upkeep: { playing: boolean; newSpells: number; totalWeight: number };
   /**
    * quests (player-quest.h): the per-character quest history. Optional: absent
@@ -963,11 +1428,11 @@ export function serializePlayer(
     msp: p.msp,
     csp: p.csp,
     cspFrac: p.cspFrac,
-    statMax: [...p.statMax],
-    statCur: [...p.statCur],
-    statMap: [...p.statMap],
-    statBirth: [...p.statBirth],
-    timed: Array.from(p.timed),
+    statMaxValues: serializeStatValues(p.statMax),
+    statCurValues: serializeStatValues(p.statCur),
+    statMapNames: serializeStatMap(p.statMap),
+    statBirthValues: serializeStatValues(p.statBirth),
+    timedValues: serializePlayerTimed(p.timed),
     spellFlags: [...p.spellFlags],
     spellOrder: [...p.spellOrder],
     playerHp: [...p.playerHp],
@@ -1003,7 +1468,7 @@ export function serializePlayer(
       curses: serializeKnownCurseList(p.objKnown.curses, ids),
     },
     shapeName: p.shape ? p.shape.name : null,
-    skills: [...p.skills],
+    skillValues: serializePlayerSkills(p.skills),
     /* THE THREE DECLARED FIELDS, NAMED. `{ ...p.upkeep }` wrote whatever the live
      * object happened to hold, which is not what the type above says: `notice`,
      * `dropping`, `repeatPrevAllowed` and `lastCmdUsedFloorItem` are transients
@@ -1070,12 +1535,15 @@ export function deserializePlayer(
   p.msp = data.msp;
   p.csp = data.csp;
   p.cspFrac = data.cspFrac;
-  p.statMax = [...data.statMax];
-  p.statCur = [...data.statCur];
-  p.statMap = [...data.statMap];
-  p.statBirth = [...data.statBirth];
-  /* load.c:807-823 reads only supported timed entries and discards extras. */
-  p.timed.set(data.timed.slice(0, TMD_MAX));
+  /* load.c:723-732: a saved stat this build does not have contributes nothing,
+   * and one the save omits keeps its blank value - see serializeStatValues. */
+  p.statMax = deserializeStatValues(data.statMaxValues);
+  p.statCur = deserializeStatValues(data.statCurValues);
+  p.statMap = deserializeStatMap(data.statMapNames);
+  p.statBirth = deserializeStatValues(data.statBirthValues);
+  /* load.c:811-829 reads only supported timed entries and discards extras. By
+   * name that is a name this build does not have, dropped without complaint. */
+  p.timed.set(deserializePlayerTimed(data.timedValues));
   p.spellFlags = [...data.spellFlags];
   p.spellOrder = [...data.spellOrder];
   p.playerHp = [...data.playerHp];
@@ -1128,15 +1596,18 @@ export function deserializePlayer(
       slays: deserializeSlayList(data.objKnown.slays, objReg, ids) ?? [],
       curses: deserializeKnownCurseList(data.objKnown.curses, objReg, ids),
     };
-  } else if (data.objKnownModifiers) {
-    /* Legacy pre-#13 save: only the modifier runes were tracked. */
-    p.objKnown.modifiers = [...data.objKnownModifiers];
+  } else if (data.objKnownModifierValues) {
+    /* Legacy pre-#13 save: only the modifier runes were tracked. By name as of
+     * version 7, through the same helper the modern field uses. */
+    p.objKnown.modifiers = deserializeObjectModifiers(
+      data.objKnownModifierValues,
+    );
   }
   p.shape =
     data.shapeName !== null
       ? (players.shapes.find((s) => s.name === data.shapeName) ?? null)
       : null;
-  p.skills = [...data.skills];
+  p.skills = deserializePlayerSkills(data.skillValues);
   /* notice is NOT in the savefile, exactly as upstream's is not: it is a queue
    * of work owed within a turn, and a save can only happen with the queue
    * drained. A loaded character therefore starts it at 0 rather than at
@@ -1188,7 +1659,15 @@ export interface SavedTrap {
   grid: { x: number; y: number };
   power: number;
   timeout: number;
-  flags: number[];
+  /**
+   * TRF_ NAMES of the trap's flags. Version 6 and below wrote `flags:
+   * number[]`, the raw FlagSet bytes. Spelled `trapFlagNames` rather than
+   * `flagNames` on purpose: `SavedObject.flagNames` is an OF list, and the one
+   * thing V5_TO_V6's discriminator comment proves is that a `flags`-shaped
+   * field naming four different tables is how data gets rewritten as the wrong
+   * thing.
+   */
+  trapFlagNames: string[];
 }
 
 export interface SavedGame {
@@ -1212,6 +1691,18 @@ export interface SavedGame {
    * degenerate empty-level case.
    */
   featLegend?: Array<[number, string]>;
+  /**
+   * Square-info legend (#274): the writing build's ordered SQUARE_ flag names,
+   * ONCE for the whole document. Every per-grid `info` byte array in the
+   * document - `chunk`, `townChunk`, every `levelCache[].chunk`, and the
+   * connector `info` blocks beside them - is indexed into THIS list, not into
+   * the reading build's table. See `SQUARE_INFO_LEGEND` for the measurement
+   * that chose a legend over a name list per grid.
+   *
+   * Absent means "this build's numbering", which is true of every document at
+   * version 6 or below and is what V6_TO_V7 stamps.
+   */
+  squareInfoLegend?: string[];
   monsters?: Array<SavedMonster | null>;
   groups?: Array<MonsterGroup | null>;
   /** Floor piles in pile order (head first), keyed by grid. */
@@ -1749,7 +2240,7 @@ export function serializeGame(
         grid: { x: t.grid.x, y: t.grid.y },
         power: t.power,
         timeout: t.timeout,
-        flags: Array.from(t.flags.bits),
+        trapFlagNames: serializeTrapFlags(t.flags),
       })),
     });
   }
@@ -1781,6 +2272,10 @@ export function serializeGame(
   const runeNotes = runeNoteEntries.length > 0 ? runeNoteEntries : undefined;
   return {
     version: SAVE_VERSION,
+    /* Written unconditionally, including for a dead save that carries no
+     * chunk: a legend costs 214 bytes and a document that describes its own
+     * square encoding in only some cases is a document with two rules. */
+    squareInfoLegend: [...SQUARE_INFO_LEGEND],
     player: serializePlayer(state.actor.player, ids),
     actor: {
       grid: { x: state.actor.grid.x, y: state.actor.grid.y },
@@ -2305,7 +2800,7 @@ export function deserializeTraps(
           grid,
           power: t.power,
           timeout: t.timeout,
-          flags: new FlagSet(Uint8Array.from(t.flags)),
+          flags: deserializeTrapFlags(t.trapFlagNames),
         };
       }),
     );
@@ -2481,7 +2976,7 @@ export function serializeStoredLevel(
         grid: { x: t.grid.x, y: t.grid.y },
         power: t.power,
         timeout: t.timeout,
-        flags: Array.from(t.flags.bits),
+        trapFlagNames: serializeTrapFlags(t.flags),
       })),
     });
   }

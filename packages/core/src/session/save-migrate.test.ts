@@ -30,16 +30,36 @@ import { loadGame, saveGame, startGame } from "./game.js";
 import type { GamePack, StartedGame } from "./game.js";
 import {
   SAVE_VERSION,
+  SQUARE_INFO_LEGEND,
   deserializeElementLevels,
   deserializeIgnore,
   deserializeLoreFlags,
   deserializeLoreSpells,
+  deserializeMonsterFlags,
+  deserializeMonsterTimed,
   deserializeObjectElements,
   deserializeObjectFlags,
   deserializeObjectModifiers,
+  deserializePlayerSkills,
+  deserializePlayerTimed,
+  deserializeStatMap,
+  deserializeStatValues,
+  deserializeTrapFlags,
 } from "./save.js";
 import type { SavedGame } from "./save.js";
-import { OF, RF, RSF } from "../generated/index.js";
+import {
+  MFLAG,
+  MON_TMD,
+  OF,
+  RF,
+  RSF,
+  SQUARE,
+  STAT,
+  TMD,
+  TRF,
+} from "../generated/index.js";
+import { SKILL } from "../player/types.js";
+import { installTrap } from "../game/trap.js";
 import { getLore } from "../mon/lore.js";
 import {
   OLDEST_READABLE_SAVE,
@@ -167,6 +187,87 @@ function idsToDense(idList: unknown, index: (id: string) => number | undefined):
 }
 
 /**
+ * The current document as version 6 wrote it: the seven tables #274 named go
+ * back to the RAW POSITIONS - MFLAG/TRF FlagSet bytes, dense MON_TMD / TMD /
+ * SKILL / STAT arrays, and a `statMap` whose values are bare stat indices - and
+ * the square legend goes away entirely.
+ *
+ * Each half is the forward step's own inverse, for the same reason toV2 calls
+ * `deserializeIgnore`: two hand-written halves of one mapping can disagree, and
+ * then the round trip proves nothing.
+ */
+function toV6(save: SavedGame): Json {
+  const doc = JSON.parse(JSON.stringify(save)) as Json;
+  const back = mapNodes(doc, (node) => {
+    if (Array.isArray(node.mflagNames) || isObj(node.monsterTimed)) {
+      const { mflagNames, monsterTimed, ...rest } = node;
+      return {
+        ...rest,
+        ...(Array.isArray(mflagNames)
+          ? {
+              mflag: Array.from(
+                deserializeMonsterFlags(mflagNames as string[]).bits,
+              ),
+            }
+          : {}),
+        ...(isObj(monsterTimed)
+          ? {
+              mTimed: deserializeMonsterTimed(
+                monsterTimed as Record<string, number>,
+              ),
+            }
+          : {}),
+      };
+    }
+    if (typeof node.trapId === "string" && Array.isArray(node.trapFlagNames)) {
+      const { trapFlagNames, ...rest } = node;
+      return {
+        ...rest,
+        flags: Array.from(
+          deserializeTrapFlags(trapFlagNames as string[]).bits,
+        ),
+      };
+    }
+    if (typeof node.raceName === "string" && typeof node.clsName === "string") {
+      const {
+        statMaxValues,
+        statCurValues,
+        statBirthValues,
+        statMapNames,
+        timedValues,
+        skillValues,
+        objKnownModifierValues,
+        ...rest
+      } = node;
+      const nums = (v: unknown): Record<string, number> =>
+        (v ?? {}) as Record<string, number>;
+      return {
+        ...rest,
+        statMax: deserializeStatValues(nums(statMaxValues)),
+        statCur: deserializeStatValues(nums(statCurValues)),
+        statMap: deserializeStatMap(
+          (statMapNames ?? {}) as Record<string, string>,
+        ),
+        statBirth: deserializeStatValues(nums(statBirthValues)),
+        timed: deserializePlayerTimed(nums(timedValues)),
+        skills: deserializePlayerSkills(nums(skillValues)),
+        ...(isObj(objKnownModifierValues)
+          ? {
+              objKnownModifiers: deserializeObjectModifiers(
+                objKnownModifierValues as Record<string, number>,
+              ),
+            }
+          : {}),
+      };
+    }
+    return node;
+  }) as Json;
+  delete back.squareInfoLegend;
+  back.version = 6;
+  return back;
+}
+
+/**
  * The current document as version 5 wrote it: every object-property carrier,
  * every lore record and every monster's remembered view of the player goes back
  * to the RAW POSITIONS - OF/RF FlagSet bytes and dense OBJ_MOD / ELEM arrays -
@@ -176,7 +277,7 @@ function idsToDense(idList: unknown, index: (id: string) => number | undefined):
  * `deserializeIgnore`: two hand-written halves of one mapping can disagree, and
  * then the round trip proves nothing.
  */
-function toV5(save: SavedGame): Json {
+function toV5(save: Json): Json {
   const doc = JSON.parse(JSON.stringify(save)) as Json;
   const back = mapNodes(doc, (node) => {
     if (
@@ -521,7 +622,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
    * real loader - because the thing at risk is a player's character, not a
    * mapping.
    */
-  it("survives version 5 -> 6, keeping the flags and the items intact", () => {
+  it("survives version 5 -> 6 -> 7, keeping the flags and the items intact", () => {
     const game = startGame(pack, { seed: 4242, depth: 2 });
     playTurns(game, 12);
 
@@ -536,8 +637,8 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     const mon = game.state.monsters.find((m) => m && m.race.ridx > 0)!;
     mon.knownPstate.flags.on(OF.FREE_ACT);
 
-    const v6 = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
-    const entry = v6.lore!.find(([, l]) =>
+    const current = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const entry = current.lore!.find(([, l]) =>
       l.flagsKnown.includes("IM_FIRE"),
     )!;
     expect(entry[1].flagsKnown).toEqual(
@@ -546,7 +647,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
 
     /* Back to what version 5 actually wrote: raw positions, no OF/RF/OBJ_MOD/
      * ELEM name anywhere in the document. */
-    const v5 = toV5(v6);
+    const v5 = toV5(toV6(current));
     const record = (v5.lore as Array<[string, Json]>).find(
       ([id]) => id === entry[0],
     )![1];
@@ -560,7 +661,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(v5)).toContain('"knownPstateFlags"');
 
     const loaded = loadGame(pack, v5 as never);
-    expect(loaded.saveMigration?.applied).toHaveLength(1);
+    expect(loaded.saveMigration?.applied).toHaveLength(2);
     expect(loaded.saveMigration?.notes).toEqual([]);
     expect(Array.from(loaded.state.lore.get(race.ridx)!.flags.bits)).toEqual(
       expectedLore,
@@ -570,14 +671,14 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
      * object in the gear, on the floor, in a store, held by a monster, and in
      * the frozen-level cache went down and came back. A step that missed one
      * container would differ here. */
-    expect(migrateSave(v5 as never, resolver()).save).toEqual(v6);
+    expect(migrateSave(v5 as never, resolver()).save).toEqual(current);
   });
 
   /**
    * The one that mattered for MOD_REACH row 22: the same proof for the spells,
    * one version down.
    */
-  it("survives version 4 -> 5, keeping exactly the spells the player had seen", () => {
+  it("survives version 4 -> 5 -> 7, keeping exactly the spells the player had seen", () => {
     const game = startGame(pack, { seed: 4242, depth: 2 });
     playTurns(game, 12);
 
@@ -588,14 +689,14 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     seen.on(RSF.HASTE);
     const expected = Array.from(seen.bits);
 
-    const v6 = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
-    const entry = v6.lore!.find(([, l]) => l.spellsKnown.length > 0)!;
+    const current = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const entry = current.lore!.find(([, l]) => l.spellsKnown.length > 0)!;
     expect(new Set(entry[1].spellsKnown)).toEqual(
       new Set(["BR_FIRE", "BA_COLD", "HASTE"]),
     );
 
     /* Back to what version 4 actually wrote: raw bytes, no names anywhere. */
-    const v4 = toV4(toV5(v6));
+    const v4 = toV4(toV5(toV6(current)));
     const record = (v4.lore as Array<[string, Json]>).find(
       ([id]) => id === entry[0],
     )![1];
@@ -604,7 +705,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(v4)).not.toContain("BR_FIRE");
 
     const loaded = loadGame(pack, v4 as never);
-    expect(loaded.saveMigration?.applied).toHaveLength(2);
+    expect(loaded.saveMigration?.applied).toHaveLength(3);
     expect(loaded.saveMigration?.notes).toEqual([]);
     expect(Array.from(loaded.state.lore.get(race.ridx)!.spellFlags.bits)).toEqual(
       expected,
@@ -612,24 +713,24 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
 
     /* And every OTHER lore record came through too - a step that quietly ate
      * the records with nothing known would still pass the assertion above. */
-    expect(saveGame(loaded).lore).toHaveLength(v6.lore!.length);
+    expect(saveGame(loaded).lore).toHaveLength(current.lore!.length);
   });
 
-  it("survives version 3 -> 4, keeping every remembered kind", () => {
+  it("survives version 3 -> 4 -> 7, keeping every remembered kind", () => {
     const save = currentSave();
     const ids = resolver();
-    const back = toV3(toV4(toV5(save)) as unknown as SavedGame, ids);
+    const back = toV3(toV4(toV5(toV6(save))) as unknown as SavedGame, ids);
     expect(back.version).toBe(3);
     /* The down-converter has to have actually collapsed something, or the
      * assertion below passes vacuously. */
     expect(JSON.stringify(back)).not.toEqual(JSON.stringify(save));
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(3);
+    expect(forward.applied).toHaveLength(4);
     expect(forward.notes).toEqual([]);
 
     const widened = (forward.save as unknown as SavedGame).known!.objects;
-    const before = toV3(toV4(toV5(save)) as unknown as SavedGame, resolver()).known as {
+    const before = toV3(toV4(toV5(toV6(save))) as unknown as SavedGame, resolver()).known as {
       objects: Array<[number, { kindId?: string }]>;
     };
     expect(widened).toHaveLength(before.objects.length);
@@ -641,26 +742,26 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     }
   });
 
-  it("survives version 2 -> 3 -> 4 -> 5 -> 6", () => {
+  it("survives version 2 -> 3 -> 4 -> 5 -> 6 -> 7", () => {
     const ids = resolver();
     const save = currentSave();
     const back = toV2(
-      toV3(toV4(toV5(save)) as unknown as SavedGame, ids) as unknown as SavedGame,
+      toV3(toV4(toV5(toV6(save))) as unknown as SavedGame, ids) as unknown as SavedGame,
       ids,
     );
     expect(back.version).toBe(2);
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(4);
+    expect(forward.applied).toHaveLength(5);
     expect(forward.notes).toEqual([]);
   });
 
-  it("survives version 1 -> 2 -> 3 -> 4 -> 5 -> 6", () => {
+  it("survives version 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7", () => {
     const ids = resolver();
     const save = currentSave();
     const back = toV1(
       toV2(
-        toV3(toV4(toV5(save)) as unknown as SavedGame, ids) as unknown as SavedGame,
+        toV3(toV4(toV5(toV6(save))) as unknown as SavedGame, ids) as unknown as SavedGame,
         ids,
       ),
       ids,
@@ -672,7 +773,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(back)).toContain('"kidx"');
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(5);
+    expect(forward.applied).toHaveLength(6);
     expect(forward.notes).toEqual([]);
   });
 
@@ -681,14 +782,14 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     const original = currentSave();
     const back = toV1(
       toV2(
-        toV3(toV4(toV5(original)) as unknown as SavedGame, ids) as unknown as SavedGame,
+        toV3(toV4(toV5(toV6(original))) as unknown as SavedGame, ids) as unknown as SavedGame,
         ids,
       ),
       ids,
     );
 
     const game = loadGame(pack, back as never);
-    expect(game.saveMigration?.applied).toHaveLength(5);
+    expect(game.saveMigration?.applied).toHaveLength(6);
     expect(game.saveMigration?.notes).toEqual([]);
     /* It is a real game, not just a document that parsed. */
     playTurns(game, 3);
@@ -704,6 +805,349 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     /* The bytes on disk must survive a load, successful or not, so a later
      * build can always try again on the original. */
     expect(JSON.stringify(back)).toBe(before);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #274: version 6 -> 7, one table at a time, THROUGH THE REAL STEP.
+ *
+ * The controls in save-flag-names.test.ts exercise the serialize and
+ * deserialize helpers. The helpers were never the risk: the risk is
+ * `V6_TO_V7`'s DISCRIMINATORS, because a conjunction that fails to match a node
+ * strands that node's data on bit positions permanently and reports nothing. So
+ * every test below builds a version-6 document, runs `migrateSave` - the real
+ * chain, the real step - and reads the result. Delete one table's conversion
+ * from V6_TO_V7 and the matching test goes red on the missing field, not on a
+ * mapping that still works in isolation.
+ *
+ * Each also carries its RENUMBER control: the table with one entry inserted,
+ * showing that the positions the version-6 document held would now name
+ * something else, and that the names the migrated document holds do not move.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Each table inverted HERE, from the enum, rather than imported from save.ts -
+ * so these are a second derivation and not a restatement of the first.
+ */
+function invertedList(en: Readonly<Record<string, number>>): string[] {
+  const out: string[] = [];
+  for (const [name, value] of Object.entries(en)) out[value] = name;
+  return out;
+}
+const MFLAG_NAME_LIST = invertedList(MFLAG);
+const MON_TMD_NAME_LIST = invertedList(MON_TMD);
+const TRF_NAME_LIST = invertedList(TRF);
+const TMD_NAME_LIST = invertedList(TMD);
+const SKILL_NAME_LIST = invertedList(SKILL);
+const STAT_NAME_LIST = invertedList(STAT);
+
+/** A name list with one new entry inserted at `at`, as a mod would do. */
+function renumbered(names: readonly string[], at: number, added: string): string[] {
+  const out = [...names];
+  out.splice(at, 0, added);
+  return out;
+}
+
+/** A version-6 document from a real game, with the probes below planted. */
+function v6WithProbes(): { v6: Json; current: SavedGame } {
+  const game = startGame(pack, { seed: 4242, depth: 2 });
+  playTurns(game, 12);
+  const state = game.state;
+
+  const mon = state.monsters.find((m) => m && m.race.ridx > 0)!;
+  mon.mflag.on(MFLAG.VISIBLE);
+  mon.mflag.on(MFLAG.TRACKING);
+  mon.mTimed[MON_TMD.SLEEP] = 500;
+  mon.mTimed[MON_TMD.CONF] = 7;
+
+  const trapDeps = game.wizardBundles.trapDeps!;
+  const trapKind = trapDeps.kinds.find((k) => k?.name)!;
+  installTrap(state, state.actor.grid, trapKind.tidx, 3, trapDeps);
+
+  const p = state.actor.player;
+  p.statMax[STAT.STR] = 18 + 70;
+  p.statCur[STAT.STR] = 18 + 40;
+  p.statBirth[STAT.CON] = 16;
+  /* A SCRAMBLED character: STR and INT have swapped slots, which is the only
+   * state in which statMap is not the identity and the only state in which
+   * naming just the keys would have been wrong. */
+  p.statMap[STAT.STR] = STAT.INT;
+  p.statMap[STAT.INT] = STAT.STR;
+  p.timed[TMD.BLIND] = 9;
+  p.timed[TMD.AFRAID] = 3;
+  p.skills[SKILL.STEALTH] = 5;
+  p.skills[SKILL.DIGGING] = 0;
+
+  const current = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+  return { v6: toV6(current), current };
+}
+
+describe("version 6 -> 7 converts each table, through the real migration", () => {
+  const migrated = (): SavedGame =>
+    migrateSave(v6WithProbes().v6 as never, resolver()).save;
+
+  it("MFLAG: a monster's flags arrive as names, not as bytes", () => {
+    const { v6 } = v6WithProbes();
+    /* The version-6 document really is holding bytes, or everything below
+     * passes vacuously. */
+    const before = (v6.monsters as Json[])[1]!;
+    expect(Array.isArray(before.mflag)).toBe(true);
+    expect(before.mflagNames).toBeUndefined();
+
+    const after = migrateSave(v6 as never, resolver()).save.monsters![1]!;
+    expect(after.mflagNames).toEqual(
+      expect.arrayContaining(["VISIBLE", "TRACKING"]),
+    );
+
+    /* THE CONTROL. A build with one flag inserted at MFLAG_VIEW reads the
+     * version-6 BYTES as different flags entirely... */
+    const table = renumbered(MFLAG_NAME_LIST, 1, "MOD_FROZEN");
+    const asPositions = [MFLAG.VISIBLE, MFLAG.TRACKING].map((f) => table[f]);
+    expect(asPositions).toEqual(["MARK", "HANDLED"]);
+    /* ...and the migrated NAMES through the same renumbered table are
+     * unmoved, which is what the step bought. */
+    const asNames = after.mflagNames.map((n) => table[table.indexOf(n)]);
+    expect(asNames).toEqual(expect.arrayContaining(["VISIBLE", "TRACKING"]));
+    expect(table.indexOf("VISIBLE")).toBe(MFLAG.VISIBLE + 1);
+  });
+
+  it("MON_TMD: a monster's timers arrive keyed by name", () => {
+    const { v6 } = v6WithProbes();
+    const before = (v6.monsters as Json[])[1]!;
+    expect(Array.isArray(before.mTimed)).toBe(true);
+
+    const after = migrateSave(v6 as never, resolver()).save.monsters![1]!;
+    expect(after.monsterTimed).toEqual({ SLEEP: 500, CONF: 7 });
+
+    const table = renumbered(MON_TMD_NAME_LIST, 0, "MOD_DAZZLED");
+    /* The dense array version 6 held now reads as the WRONG effects. */
+    expect([MON_TMD.SLEEP, MON_TMD.CONF].map((i) => table[i])).toEqual([
+      "MOD_DAZZLED",
+      "STUN",
+    ]);
+    expect(Object.keys(after.monsterTimed).map((n) => table.indexOf(n))).toEqual([
+      MON_TMD.SLEEP + 1,
+      MON_TMD.CONF + 1,
+    ]);
+  });
+
+  it("TRF: a planted trap's flags arrive as names", () => {
+    const { v6 } = v6WithProbes();
+    const trap = ((v6.traps as Json[])[0]!.traps as Json[])[0]!;
+    expect(Array.isArray(trap.flags)).toBe(true);
+    expect(trap.trapFlagNames).toBeUndefined();
+
+    const after = migrateSave(v6 as never, resolver()).save.traps![0]!.traps[0]!;
+    expect(after.trapFlagNames.length).toBeGreaterThan(0);
+    expect(after.trapFlagNames).not.toContain("NONE");
+
+    const table = renumbered(TRF_NAME_LIST, 1, "MOD_RUNE");
+    for (const name of after.trapFlagNames) {
+      /* Every name still resolves, and every one has MOVED - so a positional
+       * reader would have produced a different trap. */
+      expect(table.indexOf(name)).toBeGreaterThan(0);
+      expect(table.indexOf(name)).not.toBe(TRF_NAME_LIST.indexOf(name));
+    }
+  });
+
+  it("STAT: the three magnitude arrays arrive keyed by name", () => {
+    const after = migrated().player;
+    expect(after.statMaxValues.STR).toBe(18 + 70);
+    expect(after.statCurValues.STR).toBe(18 + 40);
+    expect(after.statBirthValues.CON).toBe(16);
+    /* Every stat is written, because zero is a value here and not an absence. */
+    expect(Object.keys(after.statMaxValues)).toEqual([
+      "STR",
+      "INT",
+      "WIS",
+      "DEX",
+      "CON",
+    ]);
+
+    const table = renumbered(STAT_NAME_LIST, 0, "MOD_LUCK");
+    /* The dense array version 6 held would now credit STR's value to a
+     * modded stat and INT's to STR. */
+    expect(table[STAT.STR]).toBe("MOD_LUCK");
+    expect(table[STAT.INT]).toBe("STR");
+    expect(table.indexOf("STR")).toBe(STAT.STR + 1);
+  });
+
+  it("STAT, THE PERMUTATION: statMap arrives with BOTH halves named", () => {
+    const { v6 } = v6WithProbes();
+    const beforeMap = (v6.player as Json).statMap;
+    /* Version 6 held raw stat INDICES as the values - the trap in this set. */
+    expect(beforeMap).toEqual([STAT.INT, STAT.STR, STAT.WIS, STAT.DEX, STAT.CON]);
+
+    const after = migrateSave(v6 as never, resolver()).save.player;
+    expect(after.statMapNames).toEqual({
+      STR: "INT",
+      INT: "STR",
+      WIS: "WIS",
+      DEX: "DEX",
+      CON: "CON",
+    });
+    /* Naming only the keys would have left every VALUE a bare index, so this
+     * is the assertion that a keys-only encoding fails. */
+    for (const v of Object.values(after.statMapNames)) {
+      expect(typeof v).toBe("string");
+    }
+
+    const table = renumbered(STAT_NAME_LIST, 0, "MOD_LUCK");
+    const asPositions = (beforeMap as number[]).map((i) => table[i]);
+    expect(asPositions[0]).toBe("STR"); // was INT
+    const asNames = Object.entries(after.statMapNames).map(
+      ([k, v]) => [table[table.indexOf(k)], table[table.indexOf(v)]] as const,
+    );
+    expect(asNames[0]).toEqual(["STR", "INT"]);
+  });
+
+  it("TMD: the player's timed effects arrive keyed by name, zeroes omitted", () => {
+    const { v6 } = v6WithProbes();
+    expect(Array.isArray((v6.player as Json).timed)).toBe(true);
+
+    const after = migrateSave(v6 as never, resolver()).save.player;
+    expect(after.timedValues.BLIND).toBe(9);
+    expect(after.timedValues.AFRAID).toBe(3);
+    /* 53 slots in, only the live ones out: zero is "not active" and writes
+     * nothing. (FOOD is legitimately non-zero on any living character, which
+     * is why this counts rather than naming an exact set.) */
+    const dense = (v6.player as Json).timed as number[];
+    expect(dense).toHaveLength(TMD_NAME_LIST.length);
+    expect(Object.keys(after.timedValues).length).toBe(
+      dense.filter((v) => v !== 0).length,
+    );
+    expect(Object.keys(after.timedValues).length).toBeLessThan(dense.length);
+
+    const table = renumbered(TMD_NAME_LIST, 0, "MOD_DAZED");
+    expect(table[TMD.BLIND]).toBe("SLOW");
+    expect(table.indexOf("BLIND")).toBe(TMD.BLIND + 1);
+  });
+
+  it("SKILL: the derived skills arrive keyed by name, every slot", () => {
+    const after = migrated().player;
+    expect(after.skillValues.STEALTH).toBe(5);
+    /* Zero IS written here: unlike a timed effect, a skill of 0 is a value. */
+    expect(after.skillValues.DIGGING).toBe(0);
+    expect(Object.keys(after.skillValues)).toHaveLength(SKILL_NAME_LIST.length);
+
+    const table = renumbered(SKILL_NAME_LIST, 0, "MOD_ALCHEMY");
+    expect(table[SKILL.STEALTH]).toBe("SEARCH");
+    expect(table.indexOf("STEALTH")).toBe(SKILL.STEALTH + 1);
+  });
+
+  it("SQUARE: the document arrives carrying this build's legend", () => {
+    const { v6 } = v6WithProbes();
+    expect(v6.squareInfoLegend).toBeUndefined();
+
+    const after = migrateSave(v6 as never, resolver()).save;
+    expect(after.squareInfoLegend).toEqual([...SQUARE_INFO_LEGEND]);
+    expect(after.squareInfoLegend).toContain("MARK");
+    /* The per-grid payload is still numeric, which is the whole point of the
+     * legend - see SQUARE_INFO_LEGEND for the 4.7x measurement that chose it. */
+    expect(Array.isArray(after.chunk!.infos[0])).toBe(true);
+  });
+
+  /**
+   * THE ONE #273 WALKED PAST. `objKnownModifiers` is the version-1 rune block
+   * (pre-#13), a dense OBJ_MOD array that every step from 1 to 6 carried
+   * forward untouched - so a character old enough to have it was still having
+   * its learned modifier runes read by POSITION after #273 converted the modern
+   * spelling beside it. It cannot appear in a round trip, because no current
+   * save writes it, so it needs a document of its own.
+   */
+  it("the version-1 legacy rune block converts too", () => {
+    const { v6 } = v6WithProbes();
+    const player = v6.player as Json;
+    /* A pre-#13 save: only the modifier runes, and no objKnown at all. */
+    const legacy = new Array<number>(16).fill(0);
+    legacy[3] = 1; // OBJ_MOD_DEX
+    legacy[9] = 1; // OBJ_MOD_SPEED
+    player.objKnownModifiers = legacy;
+    delete player.objKnown;
+
+    const after = migrateSave(v6 as never, resolver()).save.player;
+    expect(after.objKnownModifierValues).toEqual({ DEX: 1, SPEED: 1 });
+    expect((after as unknown as Json).objKnownModifiers).toBeUndefined();
+  });
+
+  it("the whole document survives 6 -> 7 with nothing else changed", () => {
+    const { v6, current } = v6WithProbes();
+    const forward = migrateSave(v6 as never, resolver());
+    expect(forward.applied).toHaveLength(1);
+    expect(forward.notes).toEqual([]);
+    /* Every container: gear, floor, stores, monster-held, the frozen cache. */
+    expect(forward.save).toEqual(current);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The square legend, read by a build whose SQUARE table has MOVED.
+ * ------------------------------------------------------------------ */
+
+/** One grid's info bytes, read as names through a given legend. */
+function bitNames(bytes: readonly number[], legend: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let b = 0; b < bytes.length; b++) {
+    const byte = bytes[b] ?? 0;
+    for (let k = 0; k < 8; k++) {
+      if ((byte & (1 << k)) === 0) continue;
+      const name = legend[b * 8 + k];
+      if (name !== undefined) out.push(name);
+    }
+  }
+  return out;
+}
+
+describe("a document whose square legend is not this build's", () => {
+  it("remaps every grid, and every connector, at the CURRENT version", () => {
+    const save = currentSave();
+    const doc = JSON.parse(JSON.stringify(save)) as Json;
+    /* The document claims it was written by a build with one extra flag ahead
+     * of SQUARE_MARK, so every bit in it sits one place low relative to this
+     * build's table. Nothing about the version changes: this is two builds at
+     * version 7, which is exactly what a version number cannot express. */
+    doc.squareInfoLegend = renumbered([...SQUARE_INFO_LEGEND], 1, "MOD_SCORCHED");
+
+    const chunk = doc.chunk as Json;
+    const infos = chunk.infos as number[][];
+    /* Under the document's legend, bit 2 is MARK. Under this build's it is
+     * GLOW - so an unremapped read lights up the whole level. */
+    const marked = infos.findIndex((b) => ((b[0] ?? 0) >> 2) & 1);
+    expect(marked).toBeGreaterThanOrEqual(0);
+    /* What that grid MEANS, read through the legend the document supplied. */
+    const meant = bitNames(infos[marked]!, doc.squareInfoLegend as string[]);
+    expect(meant).toContain("MARK");
+
+    const out = migrateSave(doc as never, resolver());
+    expect(out.applied).toEqual([]);
+    const remapped = (out.save.chunk!.infos as number[][])[marked]!;
+    /* The same meaning, now in this build's numbering - every flag, not just
+     * the one the test happened to name. */
+    expect(bitNames(remapped, [...SQUARE_INFO_LEGEND])).toEqual(meant);
+    expect((remapped[0]! >> SQUARE.MARK) & 1).toBe(1);
+    /* And the document now speaks this build's numbering, so a second pass is
+     * a no-op rather than a second shift. */
+    expect(out.save.squareInfoLegend).toEqual([...SQUARE_INFO_LEGEND]);
+    const again = migrateSave(out.save as never, resolver());
+    expect((again.save.chunk!.infos as number[][])[marked]).toEqual(remapped);
+  });
+
+  it("drops a grid flag this build does not have, and says so", () => {
+    const save = currentSave();
+    const doc = JSON.parse(JSON.stringify(save)) as Json;
+    /* A build that had a mod's square flag, read here without the mod. */
+    const legend = [...SQUARE_INFO_LEGEND];
+    legend[SQUARE.GLOW] = "MOD_SCORCHED";
+    doc.squareInfoLegend = legend;
+
+    const out = migrateSave(doc as never, resolver());
+    expect(out.notes).toHaveLength(1);
+    expect(out.notes[0]).toContain("MOD_SCORCHED");
+    expect(out.notes[0]).toContain("map is otherwise intact");
+    /* GLOW is gone everywhere, and MARK - which did not move - is not. */
+    const infos = out.save.chunk!.infos as number[][];
+    expect(infos.some((b) => ((b[0] ?? 0) >> SQUARE.GLOW) & 1)).toBe(false);
+    expect(infos.some((b) => ((b[0] ?? 0) >> SQUARE.MARK) & 1)).toBe(true);
   });
 });
 

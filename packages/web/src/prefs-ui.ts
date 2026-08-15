@@ -128,8 +128,10 @@ export async function dumpPrefFile(
 /**
  * process_pref_file_named (ui-prefs.c L1212-1262) against the user directory:
  * read, parse, print every parse error, and report a missing file. Returns
- * false when the file is absent or any line failed, which is what
- * do_cmd_pref_file_hack turns into "Failed to load '%s'!".
+ * false when the file is absent (upstream's PARSE_ERROR_INTERNAL, L1219) or one
+ * of ITS OWN lines failed, which is what do_cmd_pref_file_hack turns into
+ * "Failed to load '%s'!". A line that failed inside a `%:` include does not
+ * make it false - see the two comments in the body, and #275.
  *
  * DIVERGENCE (measured): upstream's process_pref_file also searches
  * ANGBAND_DIR_CUSTOMIZE and the active graphics mode's directory, then layers
@@ -155,9 +157,23 @@ export function processPrefFile(
     ...ctx.extraSink,
   });
   const errors = processPrefText(text, ctx.prefDeps, sink);
-  for (const e of errors) ctx.say(prefErrorMessage(io.displayPath(HostDir.USER, name), e));
+  /* Both `%:`-include divergences, closed together (#275). An error raised
+   * inside an included file is named by the INCLUDE's path, because upstream's
+   * print_error runs inside the nested process_pref_file_named; and the file's
+   * own name is what the display path is built from, so the include's name is
+   * resolved the same way rather than printed raw. */
+  for (const e of errors) {
+    const at = io.displayPath(HostDir.USER, e.fromInclude ?? name);
+    ctx.say(prefErrorMessage(at, e.fromInclude === undefined ? e : { ...e, fromInclude: at }));
+  }
   ctx.afterLoad?.();
-  return errors.length === 0;
+  /* AND AN INCLUDE'S ERROR DOES NOT FAIL THIS FILE. `parse_prefs_load` discards
+   * the nested read - `(void)process_pref_file(file, true, d->user)`, ui-prefs.c
+   * L438 - and returns PARSE_ERROR_NONE, so `process_pref_file_named`'s
+   * `return e == PARSE_ERROR_NONE` (L1240) is about this file's OWN lines. The
+   * errors are still collected and still said above; only the failure changes,
+   * which is the half that is easy to "fix" by throwing them away. */
+  return !errors.some((e) => e.fromInclude === undefined);
 }
 
 /**
@@ -174,9 +190,14 @@ export function processPrefFile(
  * `%:` INCLUDES ARE NOT FOLLOWED, and that is a real limit rather than an
  * oversight. The grammar's `loadFile` is synchronous - it is called from inside
  * the parse - and a mod's files are reached through a resolver that may mint a
- * blob or read IndexedDB, neither of which can answer synchronously. An include
- * therefore produces a parse error naming the line, which is the honest outcome:
- * silently skipping it would leave the author believing a file was applied.
+ * blob or read IndexedDB, neither of which can answer synchronously.
+ *
+ * The `loadFile: () => null` below is what says so, and what it produces is a
+ * SKIPPED line, not an error: `processPrefText`'s `%` branch treats a null the
+ * way upstream treats a file it could not open under `quiet` - nothing said,
+ * nothing failed (ui-prefs.c L438's discarded result). This comment claimed a
+ * parse error until #275, which is what reading the branch corrected; the limit
+ * is real either way and a mod that needs an include has to inline it.
  */
 export function applyPrefText(
   ctx: PrefsUiCtx,
