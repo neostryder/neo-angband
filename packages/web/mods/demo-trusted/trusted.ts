@@ -49,9 +49,7 @@ export default defineTrustedPlugin({
     host.monsters.setTurnHook((mon, s) => {
       hookCalls += 1;
       if (hookCalls === 1) {
-        /* GameState.msg is optional ("absent, the messages drop" - presentation
-         * installs it); calling it bare throws in a headless context. */
-        s.msg?.("[demo-trusted] monster AI override active: monsters are frozen");
+        s.msg("[demo-trusted] monster AI override active: monsters are frozen");
       }
       // Consume the NEW vocabulary in the live turn loop: tag this monster with
       // the mod's "cursed" flag and let its "luck" feed the player's luck stat.
@@ -79,7 +77,7 @@ export default defineTrustedPlugin({
     // in the real turn loop (processPlayer looks it up in the same registry the
     // core commands live in). It emits a message so the override is observable.
     host.commands.register("demo-wave", (s) => {
-      s.msg?.("[demo-trusted] new command 'demo-wave' executed by the mod");
+      s.msg("[demo-trusted] new command 'demo-wave' executed by the mod");
       return 0;
     });
     // ... and what it is CALLED. Core's COMMAND_INFO is keyed by the closed
