@@ -1,9 +1,16 @@
 # Input routed by region
 
-**Ticket #276 — gap 21, milestone 7. A design, not a landed change.** Nothing in
-this document is built. Every line number below was read on 2026-08-14 against
-`work/parallel-2026-08-14` and four other streams were editing the same working
-tree, so verify before you rely on one.
+**Ticket #276 — gap 21, milestone 7. LANDED in `a2d8cd0ea`, 2026-08-14.** This
+design was implemented as written: `regionInputAt` in `ui-stack.ts`, the
+`RegionPointer` type and `input?` member in `frontend.ts`, and the three call
+sites in `main.ts`, all covered by `region-input.node.test.ts` and
+`main-region-input.test.ts`. What follows is now a historical design record —
+read it for the *reasoning* (the cell-opaque ruling, the cost measurement, the
+composition with `modalDepth` and `setActiveCellTap`), not as a to-do; §9's
+file-by-file plan and its RED-test listings describe a state the tree has since
+moved past. Line numbers below were read on 2026-08-14 against
+`work/parallel-2026-08-14` while four other streams edited the same tree, and
+have not been re-verified against the landed commit.
 
 ---
 
@@ -775,6 +782,10 @@ document is the reference it should point at.
 > **Note for the implementing stream:** this document was written under a
 > constraint that permitted creating this file and editing no other. Step 9 was
 > therefore not done and is not "already handled".
+>
+> **Update, post-landing:** it was done, in `a2d8cd0ea` itself — that commit
+> touched `docs/modding/MOD_REACH.md` directly rather than deferring to this
+> file, which is why this note was left uncorrected until 2026-08-15.
 
 ### Verification order
 
