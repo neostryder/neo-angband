@@ -20,6 +20,18 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **A touch long-press now belongs to the finger that started it.** The web
+  shell's long-press (hold ~450ms on the map for the context menu a phone has
+  no right-click for) recorded no pointer identity, so `cancelLongPress` ran on
+  *any* pointer's lift, cancel or move: a second finger touching down and
+  lifting killed the first finger's press outright, and a second finger's
+  touch-down overwrote the pressed cell, leaving the first timer running so the
+  menu opened on a square nobody had held. The press now records the
+  `pointerId` that began it, events from any other pointer are ignored, and a
+  second finger neither cancels the press nor starts one of its own. The
+  comment above the block had claimed the second-pointer check for as long as
+  the code went without one; it now says what the code does.
+
 - **A refused extension-field trespass can no longer survive inside a later
   permitted edit.** A pack writing another pack's declared `<owner>:<field>`
   must declare that owner as a dependency or optional dependency. When it does
