@@ -69,6 +69,10 @@ export interface RegionSpec {
   place(grid: StackGrid): RegionCells;
   /** Drawn every frame, through a surface clipped to `place()`'s rectangle. */
   paint?(surface: GridSurface): void;
+  /* Ownership is positional: drawing claims cells whether or not this handler
+   * exists. `input` only says what to do with a pointer that already landed on
+   * one of those cells. */
+  input?(pointer: { readonly col: number; readonly row: number; readonly kind: "tap" | "context" }): void;
 }
 
 /** A push, held by whoever made it so it can be undone. */
@@ -121,6 +125,12 @@ let ordered: readonly LiveRegion[] = [];
  * the same id and a Map keyed by that would lose one of them.
  */
 let owners = new Map<LiveRegion, Entry>();
+/* Which region owns each cell of the frame currently on screen, as an index
+ * into `ownershipFrame`, or -1 for nobody. An Int32Array avoids retaining one
+ * object reference per terminal cell. */
+let ownership = new Int32Array(0);
+let ownershipCols = 0;
+let ownershipFrame: readonly LiveRegion[] = [];
 const handles = new WeakMap<RegionHandle, Entry>();
 
 /** Who wants to hear that the composite changed, and the last thing they heard. */
@@ -321,6 +331,9 @@ export function resetRegionStack(): void {
   baseStack = [];
   ordered = [];
   owners = new Map();
+  ownership = new Int32Array(0);
+  ownershipCols = 0;
+  ownershipFrame = [];
   listeners = [];
   listenerFaults = [];
   signature = "";
@@ -336,7 +349,7 @@ export function resetRegionStack(): void {
  * only while the player is moving, which reads as the mod being broken.
  */
 export function paintRegionStack(host: ClippableSurface): void {
-  const { cols } = host.size();
+  const { cols, rows } = host.size();
   /*
    * ONE CONSISTENT VIEW FOR THE WHOLE FRAME, and this is a fix rather than a
    * flourish (#261 commit 5).
@@ -363,7 +376,16 @@ export function paintRegionStack(host: ClippableSurface): void {
    */
   const frame = ordered;
   const by = owners;
-  for (const region of frame) {
+  /* `paintRegionStack` and every `paint()` it calls are synchronous. JavaScript
+   * runs this task to completion before the browser dispatches another input
+   * event, so resetting this single plane before paint cannot expose a partial
+   * frame to a DOM listener. A staging buffer would add state without closing a
+   * real interleaving window. */
+  if (ownership.length !== cols * rows) ownership = new Int32Array(cols * rows);
+  ownershipCols = cols;
+  ownership.fill(-1);
+  ownershipFrame = frame;
+  for (const [index, region] of frame.entries()) {
     const entry = by.get(region);
     if (!entry?.spec.paint) continue;
     if (!entries.includes(entry)) continue;
@@ -376,12 +398,43 @@ export function paintRegionStack(host: ClippableSurface): void {
       continue;
     }
     try {
-      entry.spec.paint(clipSurface(host, region.cells));
+      entry.spec.paint(
+        clipSurface(host, region.cells, (x, y) => {
+          ownership[(region.cells.row + y) * ownershipCols + region.cells.col + x] = index;
+        }),
+      );
       entry.fault = undefined;
     } catch (error) {
       entry.fault = `paint() threw: ${String(error)}`;
     }
   }
+}
+
+/**
+ * The region that visibly owns this terminal cell, if any.
+ *
+ * The ownership plane is filled only by `clipSurface` writes, so a region's
+ * rectangle is not enough to make it opaque. The returned coordinates are
+ * local to that same surface: input (0, 0) is paint (0, 0).
+ */
+export function regionInputAt(
+  col: number,
+  row: number,
+): { readonly region: LiveRegion; readonly spec: RegionSpec; readonly local: { col: number; row: number } } | undefined {
+  if (col < 0 || row < 0 || col >= ownershipCols) return undefined;
+  const at = row * ownershipCols + col;
+  if (at < 0 || at >= ownership.length) return undefined;
+  const index = ownership[at]!;
+  if (index < 0) return undefined;
+  const region = ownershipFrame[index];
+  if (region === undefined) return undefined;
+  const entry = owners.get(region);
+  if (entry === undefined) return undefined;
+  return {
+    region,
+    spec: entry.spec,
+    local: { col: col - region.cells.col, row: row - region.cells.row },
+  };
 }
 
 /**

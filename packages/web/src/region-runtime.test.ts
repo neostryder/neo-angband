@@ -17,7 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { RegionCells, RegionDeclaration } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { RegionCells, RegionDeclaration, RegionSurface } from "@rpgm-tools/neo-angband-mod-sdk";
 import { MOD_REGION_LAYERS, REGION_LAYERS } from "./regions";
 import {
   installRegions,
@@ -27,7 +27,7 @@ import {
   REGION_CAPABILITY,
   type RegionPlugin,
 } from "./region-runtime";
-import { liveRegionStack, paintRegionStack, relayoutStack, resetRegionStack } from "./ui-stack";
+import { liveRegionStack, paintRegionStack, regionInputAt, relayoutStack, resetRegionStack } from "./ui-stack";
 import type { ClippableSurface } from "./region-surface";
 import type { Glyph, TermSize } from "./term";
 import type { ModPluginContext } from "./mod-plugin";
@@ -207,6 +207,15 @@ describe("a mod may not ask for the top band", () => {
 });
 
 describe("one bad declaration costs one region", () => {
+  it("refuses a non-function input with the declaration's own recovery", () => {
+    expect(
+      regionDeclarationFault({
+        ...strip("bad-input"),
+        input: "not a callback",
+      }),
+    ).toContain("input that is not a function");
+  });
+
   it("keeps the mod's other regions when one of them is malformed", () => {
     /* PER-REGION FAULT ISOLATION is the whole reason this runtime validates a
      * list rather than an object. A mod shipping three panels and a typo must
@@ -423,5 +432,46 @@ describe("a region that draws, and one that stops", () => {
     expect(liveRegionStack().map((r) => r.id)).toEqual(["sturdy:fine"]);
     expect(term.row(ROWS - 1)).toBe("STILL HERE");
     expect(faults.map((f) => f.id)).toEqual(["brittle"]);
+  });
+
+  it("removes only a region whose input throws, and reports it once", () => {
+    const faults: Fault[] = [];
+    const term = new GridDouble();
+    let calls = 0;
+    relayoutStack({ cols: COLS, rows: ROWS });
+    installRegions(
+      [
+        mod("brittle", [
+          {
+            id: "boom",
+            layer: "overlay",
+            place: () => ({ col: 0, row: 0, cols: 5, rows: 1 }),
+            paint: (surface: RegionSurface) => surface.print(0, 0, "INPUT", "#fff"),
+            input: () => {
+              calls++;
+              throw new Error("nope");
+            },
+          },
+        ]),
+        mod("sturdy", [strip("fine", "STILL HERE")]),
+      ],
+      contextFor,
+      faultsInto(faults),
+      { cols: COLS, rows: ROWS },
+    );
+    paintRegionStack(term);
+    const owner = regionInputAt(0, 0);
+    expect(owner?.region.id).toBe("brittle:boom");
+
+    /* This is the same wrapped handler main.ts calls after a real cell hit;
+     * calling it again checks the session latch rather than a mock's count. */
+    owner?.spec.input?.({ col: 0, row: 0, kind: "tap" });
+    owner?.spec.input?.({ col: 0, row: 0, kind: "context" });
+
+    expect(calls).toBe(1);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]!.id).toBe("brittle");
+    expect(faults[0]!.message).toContain("pointer input");
+    expect(liveRegionStack().map((region) => region.id)).toEqual(["sturdy:fine"]);
   });
 });

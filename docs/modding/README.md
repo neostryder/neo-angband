@@ -68,7 +68,7 @@ write down at all.
 | Drive the game programmatically — an autoplayer, a bot, a test harness | **Complete** | `BORG.md`, `ModPlugin.controller` |
 | Menus — add, reorder, retitle and re-tag **rows** (`registry:menu`). How a menu is **presented** is not reachable | **WIP** | gap 21 |
 | **Replace the UI** — the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
-| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own** — ordered, overlapping, transparent, composited | **WIP** | gap 21 |
+| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own** — ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21 |
 | Rebind keys, or add a gamepad — `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
 | Change the message table, the `MSG_`→sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
 | Change the monster spell table or the command table | **Not yet** | `MOD_REACH.md` rows 22, 19 |

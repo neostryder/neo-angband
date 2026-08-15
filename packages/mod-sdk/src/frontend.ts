@@ -186,6 +186,11 @@ export interface RegionSurface {
  * `paint()` is where the drawing goes, and it is called once per frame with a
  * surface clipped to whatever `place()` last returned.
  *
+ * POINTER INPUT IS POSITIONAL. `input()` hears only about cells this region
+ * drew, in the same region-local coordinates that `paint()` uses. Keyboard
+ * input is not offered: a region that took keys would be a second answer to
+ * what a player command means.
+ *
  * THERE IS NO LIST OF KEYS YOU WANT, and its absence is a decision rather than
  * an omission. A region that declared the keys it wanted would be a second
  * answer to "what does this key do" standing beside `registry:command`, and the
@@ -203,6 +208,14 @@ export interface RegionSurface {
  * wildcard ranges over which of the game's regions changes hands, and adding
  * one of your own is a different sentence for the player to agree to.
  */
+export interface RegionPointer {
+  /** Region-local: (0, 0) is this region's top-left cell. */
+  readonly col: number;
+  readonly row: number;
+  /** A click or touch, or a right-click or long-press. */
+  readonly kind: "tap" | "context";
+}
+
 export interface RegionDeclaration {
   /**
    * Your name for it, unique among YOUR regions. The host prefixes your mod id,
@@ -215,6 +228,11 @@ export interface RegionDeclaration {
   place(grid: { readonly cols: number; readonly rows: number }): RegionCells;
   /** Draw. Called once per frame, clipped to `place()`'s rectangle. */
   paint(surface: RegionSurface): void;
+  /**
+   * A pointer landed on a cell this region drew. Optional: without a handler,
+   * the region still owns and silently consumes pointers on its drawn cells.
+   */
+  input?(pointer: RegionPointer): void;
 }
 
 export interface WorldFrame {

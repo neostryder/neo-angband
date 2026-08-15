@@ -36,6 +36,9 @@ import type { Glyph, GridSpanErase, GridSurface, TermSize } from "./term";
 /** A host surface that may or may not be able to bound an erase. */
 export type ClippableSurface = GridSurface & Partial<GridSpanErase>;
 
+/** Told, in region-local cells, about every cell this surface actually writes. */
+export type CellWitness = (x: number, y: number) => void;
+
 /**
  * Why this surface cannot bound a region to this rectangle, or undefined when
  * it can.
@@ -72,7 +75,11 @@ export function clipSurfaceFault(
  * The returned object is a `GridSurface`, so anything that paints a terminal
  * paints a region instead by being handed this and nothing else.
  */
-export function clipSurface(surface: ClippableSurface, cells: RegionCells): GridSurface {
+export function clipSurface(
+  surface: ClippableSurface,
+  cells: RegionCells,
+  witness?: CellWitness,
+): GridSurface {
   /* Region-local (x, y) -> is it ours? Written against the same predicate the
    * stack uses, at the origin, so "inside a region" has one definition. */
   const inside = (x: number, y: number): boolean =>
@@ -83,6 +90,9 @@ export function clipSurface(surface: ClippableSurface, cells: RegionCells): Grid
 
   const eraseRow = (x: number, y: number): void => {
     if (y < 0 || y >= cells.rows) return;
+    if (witness) {
+      for (let x2 = Math.max(0, x); x2 < cells.cols; x2++) witness(x2, y);
+    }
     const from = cells.col + Math.max(0, x);
     if (typeof surface.eraseSpan === "function") {
       surface.eraseSpan(from, cells.row + y, spanFrom(x));
@@ -121,7 +131,8 @@ export function clipSurface(surface: ClippableSurface, cells: RegionCells): Grid
 
     setCursor(x: number, y: number): void {
       /* A cursor parked outside the region would sit on a neighbour's cell and
-       * blink there, which is a write by any other name. */
+       * blink there, which is a write by any other name. It does not witness:
+       * a cursor changes no cell's contents, so it must not claim pointer input. */
       if (!inside(x, y)) return;
       surface.setCursor(cells.col + x, cells.row + y);
     },
@@ -132,6 +143,7 @@ export function clipSurface(surface: ClippableSurface, cells: RegionCells): Grid
 
     put(x: number, y: number, glyph: Glyph): void {
       if (!inside(x, y)) return;
+      witness?.(x, y);
       surface.put(cells.col + x, cells.row + y, glyph);
     },
 
@@ -143,6 +155,9 @@ export function clipSurface(surface: ClippableSurface, cells: RegionCells): Grid
       const from = Math.max(x, 0);
       const to = Math.min(x + text.length, cells.cols);
       if (to <= from) return;
+      if (witness) {
+        for (let x2 = from; x2 < to; x2++) witness(x2, y);
+      }
       const visible = text.slice(from - x, to - x);
       surface.print(cells.col + from, cells.row + y, visible, fg, bg);
     },

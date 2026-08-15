@@ -341,7 +341,7 @@ import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./con
 import { GlyphTerm } from "./term";
 import type { RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
-import { liveRegionStack, onStackChanged, paintRegionStack, relayoutStack } from "./ui-stack";
+import { liveRegionStack, onStackChanged, paintRegionStack, regionInputAt, relayoutStack } from "./ui-stack";
 import {
   buildHudFrame,
   glyphHudSectionSink,
@@ -8620,14 +8620,24 @@ inputEvents.addEventListener("keydown", (ev) => {
 // A tap resolves to the 8-way keypad direction from the player toward the
 // tapped square and queues a single walk. A richer controller is a future mod
 // (the "intelligent controller / mobile input" idea), not core.
+const regionPointerOwners = new WeakMap<PointerEvent, NonNullable<ReturnType<typeof regionInputAt>>>();
 canvas.addEventListener("pointerdown", (ev) => {
   if (scoresOpen || dead || modalDepth > 0) return; // a modal owns input
+  const cell = term.cellAt(ev.clientX, ev.clientY);
+  if (!cell) return;
+  /* A region owns the cells it DREW. A mod's panel over the map is the mod's,
+   * and the tap stops here rather than becoming a step through it (#276). */
+  const owner = regionInputAt(cell.col, cell.row);
+  if (owner) {
+    regionPointerOwners.set(ev, owner);
+    ev.preventDefault();
+    owner.spec.input?.({ ...owner.local, kind: "tap" });
+    return;
+  }
   // ui-context.c L1002: "if (!OPT(player, mouse_movement)) return;" gates
   // click-to-move specifically (not the context menu below, which upstream
   // never gates on this option). Defaults on (normal: true).
   if (!(state.options?.get("mouse_movement") ?? true)) return;
-  const cell = term.cellAt(ev.clientX, ev.clientY);
-  if (!cell) return;
   const { col, row } = cell;
   const vp = viewport();
   const sx = col - vp.mapOriginX;
@@ -8668,35 +8678,73 @@ canvas.addEventListener("pointerdown", (ev) => {
 canvas.addEventListener("contextmenu", (ev) => {
   ev.preventDefault();
   if (scoresOpen || dead || modalDepth > 0) return;
+  const cell = term.cellAt(ev.clientX, ev.clientY);
+  if (!cell) return;
+  const owner = regionInputAt(cell.col, cell.row);
+  if (owner) {
+    owner.spec.input?.({ ...owner.local, kind: "context" });
+    return;
+  }
   const grid = contextClickGrid(ev.clientX, ev.clientY);
   if (!grid) return;
   void openModal(() => dispatchContextClick(grid));
 });
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-let longPressGrid: Loc | null = null;
+type LongPressTarget =
+  | { readonly kind: "core-grid"; readonly cell: { readonly col: number; readonly row: number }; readonly grid: Loc }
+  | {
+      readonly kind: "region-cell";
+      readonly cell: { readonly col: number; readonly row: number };
+      readonly owner: NonNullable<ReturnType<typeof regionInputAt>>;
+    };
+let longPressTarget: LongPressTarget | null = null;
 function cancelLongPress(): void {
   if (longPressTimer !== null) clearTimeout(longPressTimer);
   longPressTimer = null;
-  longPressGrid = null;
+  longPressTarget = null;
 }
 canvas.addEventListener("pointerdown", (ev) => {
   if (scoresOpen || dead || modalDepth > 0 || ev.pointerType !== "touch") return;
-  const grid = contextClickGrid(ev.clientX, ev.clientY);
-  if (!grid) return;
-  longPressGrid = grid;
+  const cell = term.cellAt(ev.clientX, ev.clientY);
+  if (!cell) return;
+  /* The tap listener above sees this same PointerEvent first. Retain its
+   * answer so a handler that releases itself after throwing cannot make this
+   * very long-press fall through to the dungeon in the later listener. */
+  const owner = regionPointerOwners.get(ev) ?? regionInputAt(cell.col, cell.row);
+  if (owner) {
+    longPressTarget = { kind: "region-cell", cell, owner };
+  } else {
+    const grid = contextClickGrid(ev.clientX, ev.clientY);
+    if (!grid) return;
+    longPressTarget = { kind: "core-grid", cell, grid };
+  }
   longPressTimer = setTimeout(() => {
-    const g = longPressGrid;
+    const target = longPressTarget;
     cancelLongPress();
-    if (g) void openModal(() => dispatchContextClick(g));
+    if (!target) return;
+    if (target.kind === "region-cell") {
+      target.owner.spec.input?.({ ...target.owner.local, kind: "context" });
+      return;
+    }
+    void openModal(() => dispatchContextClick(target.grid));
   }, 450);
 });
 canvas.addEventListener("pointerup", cancelLongPress);
 canvas.addEventListener("pointercancel", cancelLongPress);
 canvas.addEventListener("pointermove", (ev) => {
-  if (!longPressGrid) return;
-  const grid = contextClickGrid(ev.clientX, ev.clientY);
-  if (!grid || grid.x !== longPressGrid.x || grid.y !== longPressGrid.y) cancelLongPress();
+  if (!longPressTarget) return;
+  if (longPressTarget.kind === "core-grid") {
+    const grid = contextClickGrid(ev.clientX, ev.clientY);
+    if (!grid || grid.x !== longPressTarget.grid.x || grid.y !== longPressTarget.grid.y) {
+      cancelLongPress();
+    }
+    return;
+  }
+  const cell = term.cellAt(ev.clientX, ev.clientY);
+  if (!cell || cell.col !== longPressTarget.cell.col || cell.row !== longPressTarget.cell.row) {
+    cancelLongPress();
+  }
 });
 
 // On touch devices (coarse pointer), add an on-screen bar for the discrete

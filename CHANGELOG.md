@@ -20,6 +20,16 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **Region pointer input follows the painted cells** (#276, gap 21 milestone 7).
+  A region owns pointer input exactly where it drew, including the cells it
+  erased with `clear()`, so sight and touch obey one rule; cells nobody painted
+  still reach core. `RegionDeclaration.input` receives region-local `tap` and
+  `context` pointers, and a region with no handler still consumes pointers on
+  its painted cells — so a mod's own panel stops walking the player's character
+  without the mod being changed at all. A handler that throws is reported once
+  and that one region is removed for the session; the game session is not
+  tainted, because pointer input runs before a turn can be advanced.
+
 - **The last eight position-persisted tables record their meaning BY NAME**
   (#274, finishing what #269 and #273 started). `SAVE_VERSION` is now **7**.
   Monster flags and timers, trap flags, your stats, skills and timed effects,
