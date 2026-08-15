@@ -54,12 +54,14 @@ import {
   CHARACTER_ACTIONS,
   SCREEN_PROMPTS,
 } from "./screens";
-import { setScreenPresenter, type YieldingScreen } from "./screen-runtime";
+import { setScreenPresenter } from "./screen-runtime";
 import { promptRequest, type PromptRequest } from "./prompt-view";
-import { setUiFaultReporter } from "./overlay";
+import { setUiFaultReporter, SCREEN_REGION_ID } from "./overlay";
+import { liveRegionStack, resetRegionStack } from "./ui-stack";
 import {
   MODELLED_SCREENS,
   type ScreenHost,
+  type ScreenShown,
   type ScreenTableBlock,
   type ScreenTextBlock,
   type ScreenView,
@@ -489,6 +491,45 @@ describe("showCharacterSheet offers the sheet to a presenter", () => {
     expect(rec.seen).toHaveLength(1);
     expect(term.snapshot()[0]).toContain("Fred");
   });
+
+  /**
+   * #253: THE TERMINAL'S OWN SHEET DECLARES A RECTANGLE.
+   *
+   * `main-regions.test.ts` lists `paintWide` and `paintNarrow` as regions, and
+   * that list is a claim its own source-text guard cannot check per site. This
+   * is the stack, read through the shipped path, while the sheet is up.
+   *
+   * THE PRESENTER ARM IS THE CONTROL, and it is the half that would otherwise
+   * go unexamined: a push written at the top of `showCharacterSheet` instead of
+   * inside `showSheetOnTerminal` would pass the assertion below and be wrong,
+   * because a sheet a mod is DRAWING ITSELF is not a sheet covering anything.
+   * The region belongs to the erase, not to the command.
+   */
+  it("declares core:screen while the terminal paints it, and not when a mod does", async () => {
+    resetRegionStack();
+    const { state, win, term } = setup();
+    const taken = record(true);
+    const held = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    expect(liveRegionStack()).toEqual([]);
+    taken.dismiss();
+    await held;
+    expect(liveRegionStack()).toEqual([]);
+
+    const rec = record(false);
+    const open = showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    expect(rec.seen).toHaveLength(1);
+    expect(liveRegionStack().map((r) => r.id)).toEqual([SCREEN_REGION_ID]);
+    /* The whole terminal, in the modal band: a 4.2.6 screen is screen_save /
+     * full repaint / screen_load, and shrinking core's tombstone would move a
+     * picture upstream's own tests describe. What it lacked was a rectangle. */
+    expect(liveRegionStack()[0]).toMatchObject({
+      layer: "modal",
+      cells: { col: 0, row: 0, cols: 80, rows: 24 }, // makeSheetTerm's defaults
+    });
+    press(win, "Escape");
+    await open;
+    expect(liveRegionStack()).toEqual([]);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -521,12 +562,18 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
    * A presenter whose overlay COVERS the terminal until the game tells it to
    * stand aside, and covers it again when the game gives it back.
    *
-   * Typed as `YieldingScreen` because that is the only published spelling of
-   * `yieldTerminal` today - `ScreenShown` (screen-view.ts) and the SDK's copy
-   * still have only `dismissed`. MEASURED, not assumed: the handle is returned
-   * from `show` with NO cast and `tsc` accepts it, so this member is undeclared
-   * rather than unusable. `screen-runtime.test.ts` carries the tripwire for
-   * publishing it.
+   * Typed as `ScreenShown`, which is where `yieldTerminal` now lives - on both
+   * published copies, in the same words (#258). The private `YieldingScreen`
+   * this comment used to name is gone.
+   *
+   * Worth keeping the reason it existed, because it is the defect this seam
+   * taught: the member worked for a release while being declared NOWHERE a mod
+   * author could see. `tsc` accepts a handle carrying an extra member against a
+   * `ScreenShown | undefined` return with no cast and no excess-property error,
+   * so an undeclared member is not an unusable one - it is an invisible one, and
+   * nothing checked the signature of whatever an author guessed. Two structurally
+   * identical interfaces are ONE type to the compiler, so the check that holds
+   * the copies together (`screen-abi-agreement.test.ts`) reads them as FILES.
    */
   function occluding(): {
     host: () => ScreenHost;
@@ -541,7 +588,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
     const dismissed = new Promise<void>((resolve) => {
       done = resolve;
     });
-    const shown: YieldingScreen = {
+    const shown: ScreenShown = {
       dismissed,
       yieldTerminal(request) {
         received.push(request);

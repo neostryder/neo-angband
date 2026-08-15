@@ -22,9 +22,16 @@ import {
   terminalIsYielded,
   withTerminal,
 } from "./screen-runtime";
-import type { ScreenPlugin, YieldingScreen } from "./screen-runtime";
+import type { ScreenPlugin } from "./screen-runtime";
 import { promptRequest, type PromptRequest } from "./prompt-view";
-import { SCREEN_FOOTER, freezeView, type ScreenPresenter, type ScreenView } from "./screen-view";
+import {
+  SCREEN_FOOTER,
+  freezeView,
+  type ScreenPresenter,
+  type ScreenShown,
+  type ScreenView,
+} from "./screen-view";
+import { SCREEN_PROMPTS } from "./screens";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
 
@@ -374,7 +381,7 @@ function standsAside(
   const log: string[] = [];
   const received: (PromptRequest | null)[] = [];
   let resolve: () => void = () => {};
-  const shown: YieldingScreen = {
+  const shown: ScreenShown = {
     dismissed: new Promise<void>((r) => (resolve = r)),
     yieldTerminal(request) {
       received.push(request);
@@ -570,7 +577,7 @@ describe("a presenter that cannot stand aside hands the screen back", () => {
           ({
             dismissed: new Promise<void>(() => undefined),
             yieldTerminal: true,
-          }) as unknown as YieldingScreen,
+          }) as unknown as ScreenShown,
       },
     });
     expect(showThroughPresenter(VIEW, (_id, message) => void faults.push(message))).toBeNull();
@@ -649,86 +656,71 @@ describe("taking the screen back", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* TRIPWIRES: the halves of #258 that are NOT wired yet                 */
+/* WHO CALLS IT: the wiring, held from outside this module              */
 /* ------------------------------------------------------------------ */
 
 /**
  * A MECHANISM WITH NO CALLER IS A MECHANISM THAT DOES NOTHING, and the tests
  * above cannot tell the difference - every one of them calls `withTerminal`
- * itself. `SCREEN_PROMPTS` names FOUR prompting actions across THREE hosts, and
- * this file is where "who actually calls this" has to be answered, because it is
- * the module the answer is about.
+ * itself. `SCREEN_PROMPTS` is the census of every action that reaches the
+ * terminal, and this file is where "who actually calls this" has to be answered,
+ * because it is the module the answer is about.
  *
- * These are TRIPWIRES, not skips: each records the state of an unfinished wire
- * and goes RED the moment that wire lands, so the person who lands it is the one
- * who deletes the tripwire. A skip would be silent in exactly the situation the
- * whole design exists to make loud.
+ * This replaced two TRIPWIRES that recorded `main.ts` as unwired and the ABI
+ * member as unpublished. Both wires have landed, and a tripwire deleted without a
+ * replacement is a regression - so the property each one stood in for is asserted
+ * here instead, in the direction that stays true: every host announces, and the
+ * mapping from screen to host covers the whole census.
+ *
+ * TOTAL, which the tripwire it replaces was not. A fifth prompting screen in a
+ * file nobody thought of fails the first test rather than passing in silence -
+ * silence is exactly what let four prompting sites accumulate unnoticed.
  *
  * Read from source text on purpose. The alternative is booting `main.ts` in a
  * unit test to see whether a call happens, which is a canvas, a game and a
  * network away from the question being asked.
+ *
+ * WHAT IT STILL CANNOT SEE, written down rather than left for somebody to
+ * discover: a host that kept an announcing helper and stopped CALLING it would
+ * pass, because both symbols are still in the file. The negative control that
+ * kills the realistic regression is the whole wiring being reverted, and that
+ * does go red - it is the state this file recorded as a tripwire until
+ * 2026-08-14. Closing the remaining gap needs the call to be observable, which
+ * for `main.ts` means a seam that does not exist yet.
  */
-describe("#258 tripwires: the wiring that has not landed", () => {
+describe("every host of a prompting screen announces through the census", () => {
   const web = (name: string): string =>
     readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
 
   /**
-   * Every module that hosts a `SCREEN_PROMPTS` action, and whether it announces.
+   * Which module hosts each prompting screen's `ScreenHost`, followed into its
+   * `invoke` rather than guessed from the screen's name.
    *
-   * `charsheet.ts` hosts `core:character` / `core:character-flags` (`rename`,
-   * `file`) and is wired. `main.ts` hosts `core:report` (`describe`, through
-   * `showReportPage`'s `act` -> `getString`) and `core:update` (`mods`, through
-   * `showUpdatePage`'s `act` -> `showModUpgrades`) and is NOT - both of those
-   * prompts still land under a presenter's overlay today.
-   *
-   * PER FILE rather than per action because that is the granularity the evidence
-   * has: a `withTerminal` call in `main.ts` proves one of its two sites is wired
-   * and says nothing about the other. When main.ts is touched, BOTH must land,
-   * and the row is deleted rather than flipped.
+   * PER FILE, because that is the granularity source text has. What makes it
+   * strong enough is the totality test below: the census cannot grow a screen
+   * this table has not got.
    */
-  const PROMPT_HOSTS: ReadonlyArray<{ file: string; wired: boolean; sites: string[] }> = [
-    { file: "charsheet.ts", wired: true, sites: ["charsheet:rename", "charsheet:file"] },
-    { file: "main.ts", wired: false, sites: ["report:describe", "update:mods"] },
-  ];
+  const HOST_OF: Readonly<Record<string, string>> = {
+    "core:character": "charsheet.ts",
+    "core:character-flags": "charsheet.ts",
+    "core:report": "main.ts",
+    "core:update": "main.ts",
+  };
 
-  for (const host of PROMPT_HOSTS) {
-    it(`${host.file} ${host.wired ? "announces" : "does NOT yet announce"} its prompts (${host.sites.join(", ")})`, () => {
-      expect(/\bwithTerminal\s*\(/u.test(web(host.file))).toBe(host.wired);
+  it("names a host for every screen in the census, so a new one cannot slip in", () => {
+    expect(Object.keys(HOST_OF).sort()).toEqual(Object.keys(SCREEN_PROMPTS).sort());
+    /* And the census itself is not empty, so an empty scan cannot pass. */
+    expect(Object.keys(SCREEN_PROMPTS).length).toBeGreaterThan(3);
+  });
+
+  for (const file of [...new Set(Object.values(HOST_OF))].sort()) {
+    it(`${file} announces its prompts, and lets the census decide which`, () => {
+      const src = web(file);
+      /* Both halves. `withTerminal` alone would pass for a host that announced
+       * every action including the ones that never touch the terminal, which
+       * would make a presenter fade its overlay out for a page flip. */
+      expect(/\bwithTerminal\s*\(/u.test(src)).toBe(true);
+      expect(/\bscreenPromptFor\s*\(/u.test(src)).toBe(true);
     });
   }
-
-  /**
-   * THE ABI MEMBER IS NOT PUBLISHED. `YieldingScreen` is declared privately in
-   * `screen-runtime.ts` and says so; the two copies that a mod author can
-   * actually reach - `ScreenShown` in `screen-view.ts` and its twin in
-   * `packages/mod-sdk/src/screen.ts` - still have only `dismissed`.
-   *
-   * WHAT THIS DOES AND DOES NOT COST, measured rather than assumed. It is NOT
-   * that a TypeScript mod cannot implement the member - `tsc` accepts
-   * `show: () => ({ dismissed, yieldTerminal })` against a `ScreenShown |
-   * undefined` return type with no cast and no excess-property error (probed,
-   * with a deliberate type error in the same file to prove it was compiled).
-   * What it costs is everything a published member buys: an author reading the
-   * SDK has no way to LEARN the member exists, and nothing checks the signature
-   * of the one they write - a `yieldTerminal(request: string)` compiles today
-   * and is handed a `PromptRequest` at runtime.
-   *
-   * When both copies gain the member this test goes RED. Deleting it is the
-   * signal to also delete `YieldingScreen` from `screen-runtime.ts` and use
-   * `ScreenShown` there, which is what that interface's own comment asks for.
-   */
-  it("has not published yieldTerminal on ScreenShown, in either copy", () => {
-    const live = web("screen-view.ts");
-    const sdk = readFileSync(
-      new URL("../../mod-sdk/src/screen.ts", import.meta.url),
-      "utf8",
-    );
-    /* Both, not either: a member on one copy and not the other is a mod compiled
-     * against a different game, which is worse than neither having it. */
-    expect(live.includes("yieldTerminal")).toBe(false);
-    expect(sdk.includes("yieldTerminal")).toBe(false);
-    /* And the private declaration is still where it says it is, so this cannot
-     * pass by the interface having quietly moved somewhere else. */
-    expect(web("screen-runtime.ts")).toContain("interface YieldingScreen");
-  });
 });

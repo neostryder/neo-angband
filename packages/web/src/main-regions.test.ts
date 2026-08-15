@@ -176,60 +176,93 @@ describe("main.ts and the region table describe the same screen", () => {
  * not require touching this table (a stale entry is harmless and expected as the
  * conversion proceeds); adding one anywhere fails, so a new full-screen erase
  * has to be argued for rather than remembered.
+ *
+ * THE CENSUS IS IN THREE PARTS, NOT ONE LIST WITH COMMENTS (#253). Until now the
+ * difference between "this erase is a region's own" and "this erase is still
+ * loose" was carried by prose beside the entry, and the count of what is left
+ * was something a reader had to reconstruct by reading every comment in the
+ * table - which is the shape of a number that goes quietly wrong, because
+ * nothing fails when the prose stops matching the code. Splitting the table
+ * makes the state of each site a value rather than a remark: the ratchet still
+ * checks the UNION, so it is exactly as strict as it was, and "how many are
+ * left" is now derived from `TERM_CLEAR_PENDING` instead of counted by hand.
  * ------------------------------------------------------------------------- */
 
 /**
- * Every `term.clear()` call in the shell's own sources, as "file::a > b > c"
- * where the path is the named functions enclosing it. The path rather than the
- * bare function name because `paint` is the name six different overlays give
- * their painter, and a table keyed on that would let a seventh through.
- *
- * The receiver is matched syntactically on the identifier `term`, which is the
- * name every one of these uses. That is the guard's one blind spot and a
- * deliberate one: a site that renamed its surface to dodge this would be doing
- * so on purpose, and no source-text guard survives an author who means to defeat
- * it. What it catches is the accident.
+ * The compositor's own frame: the full repaint every region is composed on top
+ * of. It is not pending, it is not a region, and it is never going away.
  */
-const TERM_CLEAR_ALLOWED: Readonly<Record<string, readonly string[]>> = {
-  /* render() is the compositor's own frame, and the ONE site that is not
-   * pending: it is the full repaint every region is composed on top of. */
-  "main.ts": ["render", "showReportPage > paint", "showUpdatePage > paint"],
-  /* Already a region (#261 commit 3). `term` here is the clipped surface
-   * `showViewOnTerminal` hands its painter, so this clear() erases the screen's
-   * own rectangle - which happens to be the whole terminal, because that is
-   * what a 4.2.6 screen is. The source text is unchanged and so is the picture;
-   * what changed is that something else can now see it. */
+const TERM_CLEAR_COMPOSITOR: Readonly<Record<string, readonly string[]>> = {
+  "main.ts": ["render"],
+};
+
+/**
+ * Sites whose erase is A REGION'S OWN.
+ *
+ * The source text of these painters is unchanged and so is the picture: `term`
+ * is the clipped surface the screen's `show*` half hands them, so `clear()`
+ * erases the screen's own rectangle - which happens to be the whole terminal,
+ * because that is what a 4.2.6 screen is. What changed is that everything else
+ * on the display can now see it happen.
+ *
+ * THE ENTRY IS NOT THE EVIDENCE. Moving a line from `TERM_CLEAR_PENDING` to here
+ * is a claim, and a claim made in a table is worth nothing on its own - so the
+ * test below checks that every file named here actually declares a region
+ * (`screenRegionSpec` + `pushRegion` + `regionSurface` + `popRegion`). That is
+ * still source text and it is still coarse: it proves the file is wired to the
+ * stack, not that THIS site is. What it catches is the entry moved by optimism.
+ */
+const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
+  /* #261 commit 3, and #261 commit 5 for the level map - the site where the risk
+   * stopped being theoretical. 'M' takes the DIRECT modal path to
+   * `showLevelMap` rather than going through `showTextScreen`, and
+   * `renderBackground()` refuses to run `render()` while a modal is up, so that
+   * erase was the one a mod could neither survive nor be told about. */
+  "overlay.ts": ["paintViewOnTerminal > paint", "paintLevelMapOnTerminal > paint"],
+  /* #253. `drawBirthSheet` is the odd one: it is a shared painter rather than a
+   * screen, with four callers (quickstart, name, history, final confirm), so it
+   * is converted only because ALL FOUR now hand it a region's surface. One
+   * caller left painting the raw terminal would have made this entry a lie that
+   * no test in this file could see - which is why `nameStage` exists at all, and
+   * why `historyStage`'s callback now takes the surface instead of closing over
+   * the terminal. */
+  "birth.ts": [
+    "drawBirthSheet",
+    "paintBirthMenuOnTerminal > paint",
+    "paintPointBuyOnTerminal > paint",
+    "paintStandardRollerOnTerminal > paint",
+  ],
+  /* #253. Both painters are two halves of ONE screen - which of them runs is a
+   * width decision - so one push covers both. */
+  "charsheet.ts": [
+    "showCharacterSheet > paintSheetOnTerminal > paintNarrow",
+    "showCharacterSheet > paintSheetOnTerminal > paintWide",
+  ],
+  /* #253. All four are wait screens held across an await rather than key loops,
+   * and the install progress screen repaints several times a second at a moment
+   * the player cannot interrupt - the worst possible time to wipe a front end
+   * with no way for it to learn that it happened. */
+  "mod-browse.ts": ["installOne > result", "openRegistry", "paintWhile", "showSource"],
+};
+
+/**
+ * Sites that still erase the whole terminal without saying so. THIS IS THE
+ * NUMBER: `docs/modding/MOD_REACH.md`'s gap-21 row quotes it, and the test below
+ * pins it so that editing this table without editing that row fails here rather
+ * than being noticed by nobody.
+ */
+const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {
+  "main.ts": ["showReportPage > paint", "showUpdatePage > paint"],
   "overlay.ts": [
-    "paintViewOnTerminal > paint",
-    /* Already a region (#261 commit 5), and the site where the risk stopped
-     * being theoretical. 'M' takes the DIRECT modal path to `showLevelMap`
-     * rather than going through `showTextScreen`, and `renderBackground()`
-     * refuses to run `render()` while a modal is up - so this erase was the one
-     * a mod could not survive and could not be told about. `showLevelMap` now
-     * pushes the screen's region and hands this painter a surface clipped to
-     * it; the body and the picture are unchanged. */
-    "paintLevelMapOnTerminal > paint",
-    /* Pending. */
     "itemSelect > paint",
     "promptNumber > paint",
     "promptText > paint",
     "selectFromMenu > askTerminal > paint",
   ],
-  "birth.ts": [
-    "birthMenu > paint",
-    "drawBirthSheet",
-    "pointBuyStats > paint",
-    "standardRoller > paint",
-  ],
-  "charsheet.ts": [
-    "showCharacterSheet > showSheetOnTerminal > paintNarrow",
-    "showCharacterSheet > showSheetOnTerminal > paintWide",
-  ],
   "colors.ts": ["runColorsEditor > paint"],
   "equip-cmp.ts": ["showEquipCmp > paint"],
   "knowledge.ts": ["runGroupedBrowser > browsePanels > paint"],
   "loading.ts": ["paintScene"],
-  "mod-browse.ts": ["installOne > result", "openRegistry", "paintWhile", "showSource"],
   "monster-list.ts": ["showMonsterListOnTerminal > paint"],
   "news.ts": ["paintTitleArt"],
   "options.ts": ["optionToggleScreen > paint", "runSidebarModePage > paint"],
@@ -238,6 +271,30 @@ const TERM_CLEAR_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "shop.ts": ["runStore > paint"],
   "wizard.ts": ["drawWizItem", "paintWizItemOnTerminal"],
 };
+
+/**
+ * Every `term.clear()` call the shell is allowed to make, as "file::a > b > c"
+ * where the path is the named functions enclosing it. The path rather than the
+ * bare function name because `paint` is the name six different overlays give
+ * their painter, and a table keyed on that would let a seventh through.
+ *
+ * The union of the three parts, so the ratchet is exactly as strict as it was
+ * when they were one table: a site missing from all three fails, whatever its
+ * state is claimed to be.
+ */
+const TERM_CLEAR_ALLOWED: Readonly<Record<string, readonly string[]>> = (() => {
+  const merged: Record<string, string[]> = {};
+  for (const part of [TERM_CLEAR_COMPOSITOR, TERM_CLEAR_REGIONS, TERM_CLEAR_PENDING]) {
+    for (const [file, sites] of Object.entries(part)) {
+      (merged[file] ??= []).push(...sites);
+    }
+  }
+  return merged;
+})();
+
+function siteCount(table: Readonly<Record<string, readonly string[]>>): number {
+  return Object.values(table).reduce((n, sites) => n + sites.length, 0);
+}
 
 function enclosingName(node: ts.Node): string | undefined {
   if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) return node.name?.text;
@@ -337,6 +394,40 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
     expect(shellSources).toContain("overlay.ts");
     expect(shellSources.length).toBeGreaterThan(30);
     expect(termClearSites("main.ts")).toContain("render");
+  });
+
+  it("counts what is LEFT, and every file that claims a region has one", () => {
+    /* TWO CLAIMS, because the census and the conversion fail in different ways.
+     *
+     * THE COUNT. 33 sites, one of them the compositor's own frame. The number
+     * that matters is `TERM_CLEAR_PENDING`'s, because that is the one
+     * `docs/modding/MOD_REACH.md` quotes for gap 21, and a doc quoting a number
+     * nothing derives is a number that drifts. This does not read the doc - it
+     * pins the arithmetic, so a table edited without the doc being edited fails
+     * HERE, with the new number in the message. That is half the check and the
+     * honest half: it fires on the edit, not on the drift.
+     *
+     * THE WIRING. A file whose sites are listed as regions must actually be
+     * wired to the stack. Coarse on purpose - it is a whole-file check, not a
+     * per-site one - but an entry moved into `TERM_CLEAR_REGIONS` by optimism,
+     * with no push behind it anywhere in the file, is exactly the accident this
+     * catches, and it is the accident a table of claims invites. */
+    expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(12);
+    expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(20);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(33);
+
+    for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
+      const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+      for (const call of ["screenRegionSpec(", "pushRegion(", "regionSurface(", "popRegion("]) {
+        expect(
+          text.includes(call),
+          `${file} lists sites as regions but never calls ${call}) - the entry is a claim ` +
+            "with nothing behind it. Convert the screen (see overlay.ts's " +
+            "showViewOnTerminal) or move the entry back to TERM_CLEAR_PENDING.",
+        ).toBe(true);
+      }
+    }
   });
 
   it("has no term.clear() outside the enumerated sites", () => {

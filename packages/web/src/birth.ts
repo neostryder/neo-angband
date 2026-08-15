@@ -50,9 +50,11 @@ import {
   menuNav,
   promptText,
   promptTextInline,
+  screenRegionSpec,
   selectFromMenu,
 } from "./overlay";
 import type { ScreenLine } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { customPageDefaults, runBirthOptionsEditor } from "./options";
 import { runHelp } from "./help";
 import { log } from "./logging";
@@ -613,8 +615,26 @@ type QuickstartAction = "accept" | "redo" | "name" | "options" | "quit";
  * by a different prompt, because the slot is full.
  *
  * `sheet` is called per repaint so an option changed through '=' is reflected.
+ *
+ * A REGION for as long as it is up (#253), and the `show`/`paint` split is the
+ * shape overlay.ts's converted screens use: the painter's body is unchanged,
+ * because `regionSurface` hands it region-local coordinates and a `size()` that
+ * answers the rectangle - which here IS the terminal, because that is what a
+ * 4.2.6 screen is.
  */
 async function runQuickstart(
+  host: GridSurface & GridPointerInput,
+  sheet: () => PreviewSheet | null,
+): Promise<QuickstartAction> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  try {
+    return await paintQuickstartOnTerminal(regionSurface(host, handle.cells), sheet);
+  } finally {
+    popRegion(handle);
+  }
+}
+
+async function paintQuickstartOnTerminal(
   term: GridSurface & GridPointerInput,
   sheet: () => PreviewSheet | null,
 ): Promise<QuickstartAction> {
@@ -713,8 +733,29 @@ function birthStatRow(
  * starting gold (recalculate_stats: start_gold + 50 * points_left). Resolves
  * the chosen base-stat array (STAT_MAX values) or null if the player backed
  * out. Draws NO RNG - the allocation is deterministic.
+ *
+ * A REGION for as long as it is up (#253); see `runQuickstart` for the split.
  */
 function pointBuyStats(
+  host: GridSurface & GridPointerInput,
+  race: Named,
+  cls: Named,
+  initial?: readonly number[],
+  sheet?: (stats: readonly number[]) => PreviewSheet | null,
+): Promise<number[] | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintPointBuyOnTerminal(
+    regionSurface(host, handle.cells),
+    race,
+    cls,
+    initial,
+    sheet,
+  ).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintPointBuyOnTerminal(
   term: GridSurface & GridPointerInput,
   race: Named,
   cls: Named,
@@ -874,8 +915,29 @@ function pointBuyStats(
  * (Enter), or step back (ESC). This is the only place the birth shell draws
  * RNG; the accepted array is a natural stat set (values 8..17) applied verbatim
  * by generatePlayer's rolledStats option. Resolves the accepted stats or null.
+ *
+ * A REGION for as long as it is up (#253); see `runQuickstart` for the split.
  */
 function standardRoller(
+  host: GridSurface & GridPointerInput,
+  race: Named,
+  cls: Named,
+  rng: Rng,
+  sheet?: (roll: readonly number[]) => PreviewSheet | null,
+): Promise<number[] | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintStandardRollerOnTerminal(
+    regionSurface(host, handle.cells),
+    race,
+    cls,
+    rng,
+    sheet,
+  ).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintStandardRollerOnTerminal(
   term: GridSurface & GridPointerInput,
   race: Named,
   cls: Named,
@@ -1072,8 +1134,30 @@ function openBirthHelp(
  * (when allowed), '=' (birth options, via the caller) and '?' (help, in place),
  * ESC / left-arrow to step back,
  * and tap-to-select. Resolves a BirthMenuResult.
+ *
+ * A REGION for as long as it is up (#253); see `runQuickstart` for the split.
+ * '?' opens the help browser over this screen WITHOUT popping: the menu is still
+ * on screen underneath and comes back byte-identical, so the honest composite is
+ * both screens stacked, not this one having gone away.
  */
 function birthMenu(
+  host: GridSurface & GridPointerInput,
+  hint: string,
+  frozen: readonly FrozenColumn[],
+  active: ActiveColumn,
+): Promise<BirthMenuResult> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintBirthMenuOnTerminal(
+    regionSurface(host, handle.cells),
+    hint,
+    frozen,
+    active,
+  ).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintBirthMenuOnTerminal(
   term: GridSurface & GridPointerInput,
   hint: string,
   frozen: readonly FrozenColumn[],
@@ -1240,15 +1324,75 @@ function wrapHistory(text: string, width = 60): ScreenLine[] {
 }
 
 /**
+ * The naming stage (get_name_command, ui-birth.c:1270-1300): display_player(0),
+ * then get_character_name's prompt AT ROW 0 over that sheet - the sheet stays on
+ * screen while you type (ui-input.c:1153). Resolves the entered name, or null
+ * for ESC / BIRTH_BACK.
+ *
+ * A FUNCTION AT ALL because of #253: the picture is the sheet PLUS the prompt
+ * that outlives its paint, so the region has to span both, and `runBirth`'s
+ * state machine has no function boundary that means "this stage". Written
+ * inline, the push and the pop would sit in two arms of a switch inside a `for
+ * (;;)`, which is precisely the shape a later edit drops one half of. The
+ * neighbouring `historyStage` already had this boundary; this one now matches it.
+ */
+async function nameStage(
+  host: GridSurface & GridPointerInput,
+  sheet: PreviewSheet | null,
+  name: string,
+  randomName?: () => string,
+): Promise<string | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
+    drawBirthSheet(term, sheet);
+    return await promptTextInline(
+      term,
+      "Enter a name for your character (* for a random name): ",
+      name,
+      // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
+      31,
+      /* get_name_keypress' '*' -> player_random_name (ui-input.c L1038). */
+      randomName,
+    );
+  } finally {
+    popRegion(handle);
+  }
+}
+
+/**
  * The history-editing stage (get_history_command, ui-birth.c:1498-1540): show
  * the generated background and prompt "Accept character history?" - accept it
  * as-is, or edit it (a single-line web adaptation of edit_text via promptText).
  * Resolves the final background text, or null to step back (ESC / BIRTH_BACK).
  */
+/*
+ * A REGION for as long as the stage is up (#253).
+ *
+ * `drawSheet` NOW TAKES THE SURFACE rather than closing over the terminal, and
+ * that is the whole of the change: the caller in `runBirth` builds the preview
+ * and paints it, so it is the caller that would otherwise have gone on erasing
+ * the raw terminal from inside a screen that had just declared a rectangle. A
+ * callback that keeps its own reference to the host is the exact shape of a
+ * conversion that looks done and is not.
+ */
 async function historyStage(
+  host: GridSurface & GridPointerInput,
+  historyText: string,
+  drawSheet: (surface: GridSurface & GridPointerInput, history: string) => boolean,
+): Promise<string | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  try {
+    return await runHistoryStage(regionSurface(host, handle.cells), historyText, drawSheet);
+  } finally {
+    popRegion(handle);
+  }
+}
+
+async function runHistoryStage(
   term: GridSurface & GridPointerInput,
   historyText: string,
-  drawSheet: (history: string) => boolean,
+  drawSheet: (surface: GridSurface & GridPointerInput, history: string) => boolean,
 ): Promise<string | null> {
   let current = historyText;
   for (;;) {
@@ -1256,7 +1400,7 @@ async function historyStage(
     // player->history from row 19), so the prompt is just the question. Without
     // registry deps there is no sheet to draw, so the background is wrapped in
     // on its own - never ask someone to accept a history they cannot read.
-    if (!drawSheet(current)) {
+    if (!drawSheet(term, current)) {
       let y = 2;
       for (const line of wrapHistory(current, term.size().cols - 2)) {
         drawScreenLine(term, 1, y++, line);
@@ -1294,15 +1438,19 @@ async function historyStage(
 type ConfirmResult = "begin" | "back" | "restart";
 
 function confirmCharacter(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   sheet: PreviewSheet | null,
   fallbackTitle: string,
 ): Promise<ConfirmResult> {
   if (!sheet) {
     // No registry deps (tests / a stub pack): there is no sheet to confirm, so
     // fall back to a plain choice rather than an empty screen.
+    /* NO REGION ON THIS ARM, deliberately: nothing here erases the terminal.
+     * `selectFromMenu` is a screen in its own right and declares its own
+     * rectangle when it is converted; wrapping it here would put two identical
+     * `core:screen` entries in the stack for one picture. */
     return selectFromMenu(
-      term,
+      host,
       "core:birth-confirm",
       fallbackTitle,
       [
@@ -1314,6 +1462,17 @@ function confirmCharacter(
       { subtitle: "Please confirm your character." },
     ).then((pick) => (pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
   }
+  /* A REGION for as long as it is up (#253); see `runQuickstart` for the split. */
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  return paintConfirmOnTerminal(regionSurface(host, handle.cells), sheet).finally(() => {
+    popRegion(handle);
+  });
+}
+
+function paintConfirmOnTerminal(
+  term: GridSurface & GridPointerInput,
+  sheet: PreviewSheet,
+): Promise<ConfirmResult> {
   return new Promise<ConfirmResult>((resolve) => {
     const { cols, rows } = term.size();
     drawBirthSheet(term, sheet);
@@ -1919,7 +2078,7 @@ export async function runBirth(
         }
         // display_player(0), then get_character_name's prompt AT ROW 0 over that
         // sheet - the sheet stays on screen while you type (ui-input.c:1153).
-        drawBirthSheet(
+        const entered = await nameStage(
           term,
           buildPreview(
             races[raceIdx],
@@ -1936,14 +2095,7 @@ export async function runBirth(
             },
             term.size().cols,
           ),
-        );
-        const entered = await promptTextInline(
-          term,
-          "Enter a name for your character (* for a random name): ",
           name,
-          // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
-          31,
-          /* get_name_keypress' '*' -> player_random_name (ui-input.c L1038). */
           opts.randomName,
         );
         if (entered === null) {
@@ -1972,7 +2124,9 @@ export async function runBirth(
         const result = await historyStage(
           term,
           text,
-          (history: string) => {
+          /* Painted on the STAGE'S OWN surface, not on `term`: the stage has
+           * declared a region and this is the paint that fills it (#253). */
+          (surface, history: string) => {
             const preview = buildPreview(
                 races[raceIdx],
                 classes[classIdx],
@@ -1987,9 +2141,9 @@ export async function runBirth(
                   historyOverride: history,
                   sheetName: name || "Adventurer",
               },
-              term.size().cols,
+              surface.size().cols,
             );
-            drawBirthSheet(term, preview);
+            drawBirthSheet(surface, preview);
             return preview !== null;
           },
         );

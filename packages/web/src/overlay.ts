@@ -188,8 +188,14 @@ export const SCREEN_REGION_ID = "core:screen";
  * a mod that wants a panel declares its own region rather than asking core to
  * make room. What the screen did not have - and now does - is a rectangle at
  * all, so everything else on the display can learn it is being covered.
+ *
+ * EXPORTED because it is the shell's answer to "what rectangle is a core screen",
+ * and every screen outside this file that declares itself (birth.ts, charsheet.ts,
+ * mod-browse.ts) must give the same answer. A copy per file would be three places
+ * for one id and one policy to drift apart in, and the drift would be invisible:
+ * each copy would look right on its own.
  */
-function screenRegionSpec(): RegionSpec {
+export function screenRegionSpec(): RegionSpec {
   return {
     id: SCREEN_REGION_ID,
     layer: "modal",

@@ -26,6 +26,7 @@
  * while its built JavaScript continues to have no bare engine import.
  */
 
+import type { RegionCells } from "./frontend.js";
 import type { MenuSemantics } from "./menu.js";
 
 /** One coloured segment of text. `color` is CSS; absent means the screen's default. */
@@ -262,9 +263,62 @@ export interface ScreenHost {
   invoke(id: string): Promise<ScreenView | undefined>;
 }
 
+/**
+ * How much of the terminal the game is about to write on.
+ *
+ * TWO VALUES, because upstream's prompts are two shapes and a presenter does
+ * genuinely different things with them. `line` owns row 0 and leaves the rest of
+ * the screen alone, so a presenter can keep drawing and simply not cover the top
+ * row. `screen` clears the terminal first - an entire nested page - where there
+ * is nothing to stay out of the way OF and the honest answer is to get out of the
+ * way completely.
+ */
+export type PromptExtent = "line" | "screen";
+
+/**
+ * One announcement: the game is about to ask the player something on the
+ * terminal, underneath whatever the presenter is drawing.
+ *
+ * `id` is stable and is the prompt's identity (`charsheet:rename`), so a
+ * presenter can special-case one prompt without matching on prose. `action` is
+ * the `ScreenAction.id` that led here - the id you passed to `invoke`. `label` is
+ * the game's own wording, for a presenter that wants to caption its own standing
+ * aside. `clip` is the rectangle the prompt will land in, in the same
+ * `RegionCells` a region is measured in, so no converter sits at the seam.
+ *
+ * Frozen, including `clip`: what the game announced is not yours to alter.
+ */
+export interface PromptRequest {
+  readonly id: string;
+  readonly action: string;
+  readonly extent: PromptExtent;
+  readonly clip: RegionCells;
+  readonly label: string;
+}
+
 /** A screen you have taken. Resolve `dismissed` when the player is done with it. */
 export interface ScreenShown {
   readonly dismissed: Promise<void>;
+  /**
+   * The game is about to write on the terminal UNDER this screen: stand aside for
+   * `request`, and take the screen back when `request` is null.
+   *
+   * WHY IT EXISTS. `ScreenHost.invoke` runs the game's own code for one of a
+   * screen's `actions`, and some of those actions PROMPT - they put a question on
+   * the faithful terminal and wait for an answer, underneath your overlay. The
+   * worst of them is the character sheet's rename, which reaches the save: a
+   * player can rename their character and write the file with nothing at all
+   * visible on the screen.
+   *
+   * AWAITED BEFORE ANYTHING IS DRAWN, so you may animate yourself out, and there
+   * is no deadline. Resolve rather than throw: a rejection is read as "cannot
+   * stand aside", and the game takes the terminal anyway.
+   *
+   * OPTIONAL, and leaving it out is not a fault - it is what a presenter written
+   * before this member existed does. The game reports it ONCE, by name, draws the
+   * prompt over your screen and does not ask again this session.
+   */
+  yieldTerminal?(request: PromptRequest | null): void | Promise<void>;
 }
 
 /**

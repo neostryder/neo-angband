@@ -110,7 +110,8 @@ import {
 } from "./screen-view";
 import { ScreenAbandoned, showThroughPresenter, withTerminal } from "./screen-runtime";
 import { promptRequest } from "./prompt-view";
-import { promptText, menuNav, getFile, screenFault } from "./overlay";
+import { promptText, menuNav, getFile, screenFault, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { argForceName } from "./launch";
 import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
 import type { ScreenLine } from "./overlay";
@@ -851,8 +852,40 @@ export function showCharacterSheet(
   }
   return showSheetOnTerminal();
 
-  /** The faithful terminal's own character sheet; see `showCharacterSheet`. */
+  /**
+   * The faithful terminal's own character sheet; see `showCharacterSheet`.
+   *
+   * A REGION for as long as the sheet is up (#253). Both painters below erase
+   * the whole terminal - `paintWide` and `paintNarrow` are the two halves of one
+   * screen, and which of them runs is a width decision, so the rectangle is the
+   * same either way and one push covers both. The split into `show`/`paint` is
+   * the shape overlay.ts's converted screens use, and the painter's body is
+   * unchanged because `regionSurface` hands it region-local coordinates and a
+   * `size()` that answers the rectangle - which here IS the terminal, because
+   * that is what a 4.2.6 screen is.
+   *
+   * `onSizeChanged` IS THE TERMINAL'S, not the region's, and is carried across
+   * deliberately. A region has no size events of its own - `place()` is re-run
+   * by the compositor and reports through the handle - but this screen holds the
+   * keyboard across a resize and repaints itself when the terminal changes
+   * shape, which is exactly what crossing the wide/narrow threshold needs. A
+   * surface without it would leave the sheet in the wrong layout until a key
+   * arrived.
+   */
   function showSheetOnTerminal(): Promise<void> {
+    const handle = pushRegion(screenRegionSpec(), term.size());
+    const surface: GridSurface & GridPointerInput & SurfaceSizeEvents = {
+      ...regionSurface(term, handle.cells),
+      onSizeChanged: (listener) => term.onSizeChanged(listener),
+    };
+    return paintSheetOnTerminal(surface).finally(() => {
+      popRegion(handle);
+    });
+  }
+
+  function paintSheetOnTerminal(
+    term: GridSurface & GridPointerInput & SurfaceSizeEvents,
+  ): Promise<void> {
     return new Promise<void>((resolve) => {
       let top = 0; // scroll offset for the narrow list / mode-1 grid
       let narrow = false; // what the last paint drew, for the tap handler

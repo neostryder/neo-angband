@@ -13,6 +13,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { runBirth } from "./birth";
+import { SCREEN_REGION_ID } from "./overlay";
+import { liveRegionStack, resetRegionStack } from "./ui-stack";
 import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import type { GlyphTerm } from "./term";
 import type { BirthDeps } from "./birth";
@@ -110,6 +112,30 @@ function makeTerm(cols = 80, rows = 24): TestTerm {
         if (crow) crow[x + i] = fg ?? "";
       }
     },
+    put: (x: number, y: number, glyph: { ch: string }) => {
+      const row = grid[y];
+      if (row && x >= 0 && x < cols) row[x] = glyph.ch;
+    },
+    /* THE REST OF `GridSurface`, and their absence was not harmless (#253).
+     *
+     * This double is cast through `unknown`, so nothing made it implement the
+     * interface, and the birth screens only ever reached these four through an
+     * optional call - `term.setCursor?.(...)` in selectFromMenu's paint, which
+     * is there for exactly this kind of hand-written double. `?.` on a missing
+     * method is a silent no-op, so the gap cost nothing and stayed invisible.
+     *
+     * A REGION SURFACE TAKES THAT SAFETY NET AWAY, because `clipSurface` always
+     * defines `setCursor` - the `?.` then finds a function, and the wrapper
+     * forwards to a host that has none. The result was a TypeError thrown inside
+     * `runHelp`, swallowed by `openBirthHelp`'s own `.catch`, with the only
+     * symptom being that '?' quietly did nothing. That is the same shape as the
+     * `onCellTap` gap this double already carries a comment about, and the same
+     * lesson: a double that lies about its interface tests a different object
+     * from the one the game runs. */
+    invalidate: () => {},
+    flush: () => {},
+    setCursor: () => {},
+    hideCursor: () => {},
     snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
     colorAt: (x: number, y: number) => colors[y]?.[x] ?? "",
     /* The touch seam. It used to be absent, so every `term.onCellTap?.(...)`
@@ -1365,5 +1391,99 @@ describe("runBirth: the sheet preview builds a usable GameState", () => {
     press(win, "Escape"); await tick();
     press(win, "Escape"); await tick();
     void done;
+  });
+});
+
+/**
+ * #253: THE BIRTH SCREENS DECLARE A RECTANGLE.
+ *
+ * `main-regions.test.ts` lists these four sites as regions, and a list is a
+ * CLAIM. Its own guard is source text - it checks that birth.ts calls
+ * `pushRegion` somewhere - which cannot tell a screen that declares itself from
+ * a neighbour that does. This is the other half: the stack read through the
+ * shipped path, at each stage, while the screen is actually up.
+ *
+ * WHAT IT BUYS, stated precisely because the overclaim is easy. Birth still
+ * covers the whole terminal and still repaints itself from its own key loop, so
+ * nothing underneath it is redrawn while it is open - that is what a full-screen
+ * modal MEANS. What changes is that the covering is DECLARED, so `onStackChanged`
+ * fires and a replacement front end stands its canvas down instead of floating it
+ * over the middle of the race menu. Before this, birth was invisible to every
+ * mod on the display: it erased the terminal four screens deep and published
+ * nothing at all.
+ */
+describe("birth is a region while it is on screen (#253)", () => {
+  const ids = (): string[] => liveRegionStack().map((r) => r.id);
+
+  it("declares core:screen at every stage that erases the terminal", async () => {
+    resetRegionStack();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    expect(ids()).toEqual([]);
+
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    /* The race menu (birthMenu). The whole terminal, in the modal band - which
+     * is what a 4.2.6 screen is, and is deliberately NOT shrunk. What it lacked
+     * was a rectangle at all. */
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+    expect(liveRegionStack()[0]).toMatchObject({
+      layer: "modal",
+      cells: { col: 0, row: 0, cols: 90, rows: 24 },
+    });
+
+    press(win, "a"); await tick(); // Human -> the class menu
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+    press(win, "a"); await tick(); // Warrior -> the roller-choice menu
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+    press(win, "a"); await tick(); // Point-based -> the allocation screen
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+    /* The name stage, which is the one that has no key loop of its own: the
+     * sheet is painted by `drawBirthSheet` and the prompt outlives that paint,
+     * so the region has to span both. `nameStage` exists to be that boundary. */
+    press(win, "Enter"); await tick();
+    expect(term.snapshot()[0]).toContain("name");
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+
+    press(win, "Enter"); await tick(); // default name -> the final confirm
+    press(win, "a"); // begin
+    await done;
+    /* AND NOTHING IS LEFT BEHIND. A screen that pushed and never popped is a
+     * phantom occluder: a front end told it is covered and never told otherwise
+     * keeps its canvas down for the rest of the session, which is worse than
+     * never having been told. */
+    expect(ids()).toEqual([]);
+  });
+
+  it("declares one for the standard roller and for the history stage too", async () => {
+    resetRegionStack();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, {
+      rng: new Rng(1),
+      historyFor: () => "You are the only child of a Serf.",
+    });
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "b"); await tick(); // Standard roller -> the roll screen
+    expect(term.snapshot().join("\n")).toContain("'r' to reroll");
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+
+    press(win, "Enter"); await tick(); // accept the roll -> name
+    press(win, "Enter"); await tick(); // default name -> the history stage
+    expect(term.snapshot().join("\n")).toContain("Accept character history?");
+    /* The history stage paints through a callback the CALLER owns, and a
+     * callback that kept its own reference to the terminal would have gone on
+     * erasing it from inside a screen that had just declared a rectangle - a
+     * conversion that looks done and is not. */
+    expect(ids()).toEqual([SCREEN_REGION_ID]);
+
+    press(win, "a"); await tick(); // accept the background -> confirm
+    press(win, "a");
+    await done;
+    expect(ids()).toEqual([]);
   });
 });

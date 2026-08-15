@@ -237,6 +237,8 @@ export type {
   MenuSemantics,
 } from "./menu.js";
 export type {
+  PromptExtent,
+  PromptRequest,
   ScreenAction,
   ScreenArtBlock,
   ScreenBlock,

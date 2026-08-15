@@ -34,13 +34,23 @@ import type { ContentIdResolver } from "../mod/ids.js";
 import { FlagSet } from "../bitflag.js";
 import {
   SAVE_VERSION,
+  SQUARE_INFO_LEGEND,
+  buildSquareInfoRemap,
+  remapSquareInfo,
   serializeElementLevels,
   serializeIgnore,
   serializeLoreFlags,
   serializeLoreSpells,
+  serializeMonsterFlags,
+  serializeMonsterTimed,
   serializeObjectElements,
   serializeObjectFlags,
   serializeObjectModifiers,
+  serializePlayerSkills,
+  serializePlayerTimed,
+  serializeStatMap,
+  serializeStatValues,
+  serializeTrapFlags,
 } from "./save.js";
 import type { IgnoreSettingsData } from "../obj/ignore.js";
 import type { ElementInfo } from "../obj/types.js";
@@ -652,6 +662,260 @@ const V5_TO_V6: SaveMigration = {
 };
 
 /* ------------------------------------------------------------------ *
+ * 6 -> 7: the seven remaining persisted POSITIONS become names.
+ * ------------------------------------------------------------------ */
+
+/**
+ * THE DISCRIMINATOR PROBLEM AGAIN, and one lesson from how V5_TO_V6 solved it.
+ *
+ * That step named its nodes by fields it was ALSO rewriting (`isV5ObjectProps`
+ * tests `flags`, `modifiers` and `elInfo`, and rewrites all three). That is
+ * sound only while the writer emits every conjunct unconditionally - which
+ * version 5's did, and version 1's before it: `flags`, `modifiers` and `elInfo`
+ * were REQUIRED members of `SavedObject` and of `objKnown` in both, written
+ * with no `?:` and no conditional spread, and every step from 1 to 5 carried
+ * unknown keys through untouched via `...rest`. So no document this project can
+ * have produced fails that conjunction. IT IS STILL A COUPLING NOBODY WOULD
+ * GUESS: make one of those three optional and the predicate silently stops
+ * matching, and the objects it stops matching are stranded on bit positions
+ * with nothing reporting it. (Recorded rather than changed: rewriting a shipped
+ * step would change what a version-5 document converts to.)
+ *
+ * The steps below therefore name each node by fields they DO NOT rewrite, and
+ * convert each field independently once the node is identified. An absent field
+ * then means "nothing to convert" instead of "this node is not the one".
+ */
+
+/** The player record: `raceName`/`clsName` are required since version 1. */
+function isV6Player(node: Json): boolean {
+  return typeof node.raceName === "string" && typeof node.clsName === "string";
+}
+
+/** A trap instance: `trapId` since version 2, and nothing else in the document. */
+function isV6Trap(node: Json): boolean {
+  return typeof node.trapId === "string";
+}
+
+/**
+ * A chunk snapshot (`ChunkSquaresData`). `infos` is the field being rewritten,
+ * so `feats` + the two dimensions do the naming.
+ */
+function isChunkSquares(node: Json): boolean {
+  return (
+    Array.isArray(node.feats) &&
+    typeof node.height === "number" &&
+    typeof node.width === "number"
+  );
+}
+
+/**
+ * A stair connector (`gen/util.ts Connector`): a grid, a feature and the
+ * SQUARE_SIZE bytes save.c:850-866 copies beside them.
+ */
+function isConnector(node: Json): boolean {
+  return (
+    typeof node.x === "number" &&
+    typeof node.y === "number" &&
+    typeof node.feat === "number"
+  );
+}
+
+/** How many entries of a dense value array carried anything. */
+function nonZeroCount(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  let n = 0;
+  for (const v of value) if (typeof v === "number" && v !== 0) n++;
+  return n;
+}
+
+/** How many bits a saved FlagSet had on, excluding the index-0 sentinel. */
+function setBitCount(bytes: unknown): number {
+  if (!Array.isArray(bytes)) return 0;
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (typeof b !== "number") continue;
+    for (let k = 0; k < 8; k++) {
+      if (i === 0 && k === 0) continue;
+      if (b & (1 << k)) n++;
+    }
+  }
+  return n;
+}
+
+const V6_TO_V7: SaveMigration = {
+  from: 6,
+  to: 7,
+  summary:
+    "monster flags and timers, trap flags, your stats, skills and timed " +
+    "effects, and the remembered state of every dungeon grid record their " +
+    "meaning BY NAME instead of by position, so game data that adds any of " +
+    "them can no longer renumber a character that already exists",
+  step(save, ids, notes) {
+    void ids;
+    /* Every conversion below can DROP a name this build has no slot for. That
+     * should be impossible for a version-6 document - the tables it was written
+     * against could not be extended, which is the very defect this step ends -
+     * so a non-zero count here is evidence of something the project does not
+     * believe, and the one place it could surface is this note. Versions 5 and
+     * 6 discarded their notes argument outright and would have said nothing. */
+    let dropped = 0;
+
+    const migrated = rewriteNodes(save, (node) => {
+      /* A monster. Both names belong to the monster record and to nothing else
+       * in the document, so presence is the whole test and each converts on its
+       * own - the pattern V5_TO_V6 used for knownPstate*. */
+      if (Array.isArray(node.mflag) || Array.isArray(node.mTimed)) {
+        const { mflag, mTimed, ...rest } = node;
+        const out: Json = { ...rest };
+        if (Array.isArray(mflag)) {
+          out.mflagNames = serializeMonsterFlags(savedFlagSet(mflag));
+          dropped += setBitCount(mflag) - (out.mflagNames as string[]).length;
+        }
+        if (Array.isArray(mTimed)) {
+          out.monsterTimed = serializeMonsterTimed(savedNumbers(mTimed));
+          dropped +=
+            nonZeroCount(mTimed) -
+            Object.keys(out.monsterTimed as Json).length;
+        }
+        return out;
+      }
+
+      if (isV6Trap(node) && Array.isArray(node.flags)) {
+        const { flags, ...rest } = node;
+        const trapFlagNames = serializeTrapFlags(savedFlagSet(flags));
+        dropped += setBitCount(flags) - trapFlagNames.length;
+        return { ...rest, trapFlagNames };
+      }
+
+      if (isV6Player(node)) {
+        const {
+          statMax,
+          statCur,
+          statMap,
+          statBirth,
+          timed,
+          skills,
+          objKnownModifiers,
+          ...rest
+        } = node;
+        const out: Json = { ...rest };
+        if (Array.isArray(statMax)) {
+          out.statMaxValues = serializeStatValues(savedNumbers(statMax));
+        }
+        if (Array.isArray(statCur)) {
+          out.statCurValues = serializeStatValues(savedNumbers(statCur));
+        }
+        if (Array.isArray(statBirth)) {
+          out.statBirthValues = serializeStatValues(savedNumbers(statBirth));
+        }
+        /* The permutation. Its VALUES are stat indices, so both halves are
+         * named - see serializeStatMap. */
+        if (Array.isArray(statMap)) {
+          out.statMapNames = serializeStatMap(savedNumbers(statMap));
+        }
+        if (Array.isArray(timed)) {
+          out.timedValues = serializePlayerTimed(savedNumbers(timed));
+          dropped +=
+            nonZeroCount(timed) - Object.keys(out.timedValues as Json).length;
+        }
+        if (Array.isArray(skills)) {
+          out.skillValues = serializePlayerSkills(savedNumbers(skills));
+        }
+        /* The version-1 legacy rune block #273 walked past. */
+        if (Array.isArray(objKnownModifiers)) {
+          out.objKnownModifierValues = serializeObjectModifiers(
+            savedNumbers(objKnownModifiers),
+          );
+          dropped +=
+            nonZeroCount(objKnownModifiers) -
+            Object.keys(out.objKnownModifierValues as Json).length;
+        }
+        return out;
+      }
+
+      return node;
+    }) as VersionedSave;
+
+    /* The square-info legend. A version-6 document's per-grid bits were written
+     * against THIS build's SQUARE table - the same argument savedFlagSet rests
+     * on - so stamping the current legend describes them exactly, and every
+     * later build reads them through it instead of through its own table. */
+    migrated.squareInfoLegend = [...SQUARE_INFO_LEGEND];
+
+    if (dropped > 0) {
+      notes.push(
+        `${dropped} remembered ${dropped === 1 ? "detail" : "details"} ` +
+          `referred to game data this build does not have, and were dropped.`,
+      );
+    }
+
+    migrated.version = 7;
+    return migrated;
+  },
+};
+
+/* ------------------------------------------------------------------ *
+ * Square-info normalisation: NOT a version step.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Re-express every per-grid `info` block in this build's SQUARE bit numbering,
+ * using the legend the document carries.
+ *
+ * WHY THIS IS NOT A MIGRATION STEP. A step converts version N to version N+1
+ * and runs once. This runs on EVERY document, including one already at
+ * `SAVE_VERSION`, because the thing it corrects is not the document's age: it
+ * is that the writing build's SQUARE table may differ from the reading build's
+ * at the same save version - which is exactly the freedom #274 bought, and
+ * exactly what a version number cannot express. Names carry their own meaning
+ * and need no such pass; the square grids are numeric by measurement (see
+ * `SQUARE_INFO_LEGEND`) and this is the price of that choice.
+ *
+ * It is a no-op - and returns the document untouched, by reference - whenever
+ * the legend matches this build or is absent, which is every save this build
+ * writes and every save at version 6 or below.
+ */
+function normaliseSquareInfo(
+  save: VersionedSave,
+  notes: string[] = [],
+): VersionedSave {
+  const legend = Array.isArray(save.squareInfoLegend)
+    ? (save.squareInfoLegend.filter((n) => typeof n === "string") as string[])
+    : undefined;
+  const remap = buildSquareInfoRemap(legend);
+  if (remap === null) return save;
+
+  const lost = (legend ?? []).filter((n) => !SQUARE_INFO_LEGEND.includes(n));
+  if (lost.length > 0) {
+    notes.push(
+      `This save remembers ${lost.length} kind${lost.length === 1 ? "" : "s"} ` +
+        `of grid detail this build does not have (${lost.join(", ")}); those ` +
+        `marks were dropped and the map is otherwise intact.`,
+    );
+  }
+
+  const infoBytes = (v: unknown): number[] =>
+    remapSquareInfo(savedNumbers(v), remap);
+
+  const migrated = rewriteNodes(save, (node) => {
+    if (isChunkSquares(node) && Array.isArray(node.infos)) {
+      return { ...node, infos: node.infos.map(infoBytes) };
+    }
+    if (isConnector(node) && Array.isArray(node.info)) {
+      return { ...node, info: infoBytes(node.info) };
+    }
+    return node;
+  }) as VersionedSave;
+
+  /* The document now speaks this build's numbering, so it must say so - a
+   * legend that outlived the bits it described would re-map them a second time
+   * on the next pass. */
+  migrated.squareInfoLegend = [...SQUARE_INFO_LEGEND];
+  return migrated;
+}
+
+/* ------------------------------------------------------------------ *
  * The chain.
  * ------------------------------------------------------------------ */
 
@@ -665,6 +929,7 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
   V3_TO_V4,
   V4_TO_V5,
   V5_TO_V6,
+  V6_TO_V7,
 ];
 
 /** The oldest save version this build can read. */
@@ -730,29 +995,46 @@ export function migrateSave(
   const doc = save as VersionedSave;
   const from = typeof doc.version === "number" ? doc.version : 1;
   if (from > SAVE_VERSION) throw new SaveFromFutureError(from);
-  if (from === SAVE_VERSION) {
-    return { save: save as SavedGame, applied: [], notes: [] };
-  }
 
   const applied: string[] = [];
   const notes: string[] = [];
-  /* Work on a copy: a failed load must leave the caller's document untouched,
-   * so the bytes on disk stay exactly as written and a later build can try
-   * again. */
-  let current = structuredClone(doc);
-  for (const m of SAVE_MIGRATIONS) {
-    if (m.from < from) continue;
-    current = m.step(current, ids, notes);
-    applied.push(m.summary);
+  let current = doc;
+
+  if (from < SAVE_VERSION) {
+    /* Work on a copy: a failed load must leave the caller's document untouched,
+     * so the bytes on disk stay exactly as written and a later build can try
+     * again. */
+    current = structuredClone(doc);
+    for (const m of SAVE_MIGRATIONS) {
+      if (m.from < from) continue;
+      current = m.step(current, ids, notes);
+      applied.push(m.summary);
+    }
+    if (current.version !== SAVE_VERSION) {
+      /* Unreachable while saveMigrationsAreComplete() holds; asserted rather
+       * than assumed, because the cost of being wrong is a half-converted
+       * character. */
+      throw new Error(
+        `save migration ended at version ${String(current.version)}, expected ${SAVE_VERSION}`,
+      );
+    }
   }
 
-  if (current.version !== SAVE_VERSION) {
-    /* Unreachable while saveMigrationsAreComplete() holds; asserted rather than
-     * assumed, because the cost of being wrong is a half-converted character. */
-    throw new Error(
-      `save migration ended at version ${String(current.version)}, expected ${SAVE_VERSION}`,
-    );
-  }
+  /* ONE call site, deliberately outside the `from < SAVE_VERSION` branch.
+   *
+   * A document already at SAVE_VERSION still needs this - it may have been
+   * written by a DIFFERENT build of this version, whose SQUARE table sat in a
+   * different order, and no version number can express that. Putting the call
+   * inside the branch would have left the commonest case of it unreached and,
+   * worse, untestable: a version-6 document always arrives here carrying the
+   * legend V6_TO_V7 just stamped, so a second call there is a no-op that no
+   * test can distinguish from a missing one.
+   *
+   * It returns the document BY REFERENCE when the legend agrees or is absent,
+   * so a current save from this build comes back as the very object it went in
+   * as - which callers rely on. */
+  current = normaliseSquareInfo(current, notes);
+
   return { save: current as unknown as SavedGame, applied, notes };
 }
 

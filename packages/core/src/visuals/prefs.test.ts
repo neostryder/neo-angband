@@ -27,7 +27,7 @@ import {
   setPrefErrorPolicy,
   UPSTREAM_PREF_ERROR_POLICY,
 } from "./prefs.js";
-import type { PrefDeps, PrefsFileIO } from "./prefs.js";
+import type { PrefDeps, PrefSink, PrefsFileIO } from "./prefs.js";
 import { LIGHTING } from "./tile-prefs.js";
 
 function loadJson<T>(name: string): T {
@@ -394,6 +394,115 @@ describe("a bad line stops the file (ui-prefs.c L1225-1231)", () => {
       });
       expect(errors, `${rel} parses clean`).toEqual([]);
     }
+  });
+});
+
+/**
+ * #275: an error raised inside a `%:` include is MARKED as such, so the caller
+ * can do the two things upstream does with it and no more.
+ *
+ * `parse_prefs_load` (ui-prefs.c L429-441) is the whole argument:
+ *
+ *     file = parser_getstr(p, "file");
+ *     (void)process_pref_file(file, true, d->user);
+ *     return PARSE_ERROR_NONE;
+ *
+ * The cast to `void` IS the statement - the nested read's bool is discarded -
+ * and `process_pref_file_named`'s own `return e == PARSE_ERROR_NONE`
+ * (ui-prefs.c L1240) therefore reflects that file's OWN lines only. Meanwhile
+ * the nested invocation has already run `print_error(path, p)` (L1228) with
+ * ITS path, so the message the player sees names the included file.
+ *
+ * The port collected nested errors into the includer's array with nothing to
+ * tell them apart, so the web layer's `errors.length === 0` failed the outer
+ * file and its `prefErrorMessage(<outer path>, e)` named the wrong file. One
+ * marker answers both, WITHOUT discarding the error - upstream still prints it.
+ */
+describe("a `%` include's errors are marked, not merged (ui-prefs.c L429-441)", () => {
+  const granite = FEAT["GRANITE"] as number;
+
+  /** A sink whose `%` include resolves out of a small map of files. */
+  function sinkOver(t: GlyphTable, files: Readonly<Record<string, string>>): PrefSink {
+    return { ...glyphTableSink(t), loadFile: (n) => files[n] ?? null };
+  }
+
+  it("names the INCLUDED file, not the includer", () => {
+    const errors = processPrefText(
+      "%:bad.prf\nfeat:GRANITE:*:4:38",
+      deps,
+      sinkOver(table(), { "bad.prf": "feat:FLOOR:gloomy:4:37" }),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.fromInclude).toBe("bad.prf");
+    /* print_error names the path the nested process_pref_file_named was given. */
+    expect(prefErrorMessage("outer.prf", errors[0]!)).toBe(
+      "Parse error in bad.prf line 1 column 1: feat: invalid lighting",
+    );
+  });
+
+  it("is still COLLECTED - the marker changes propagation, never the report", () => {
+    /* The easy way to fix the return value is to drop the error, and upstream
+     * does not: the nested print_error has already put it on the message line. */
+    const errors = processPrefText(
+      "%:bad.prf",
+      deps,
+      sinkOver(table(), { "bad.prf": "feat:FLOOR:gloomy:4:37" }),
+    );
+    expect(errors.map((e) => ({ line: e.line, msg: e.msg, error: e.error }))).toEqual([
+      { line: 1, msg: "feat", error: PARSE_ERROR.INVALID_LIGHTING },
+    ]);
+  });
+
+  it("leaves a file's OWN error unmarked, so it still fails and still stops", () => {
+    const t = table();
+    const untouched = t.featGlyph(LIGHTING.LOS, granite)!;
+    const errors = processPrefText(
+      "feat:FLOOR:gloomy:4:37\nfeat:GRANITE:*:4:38",
+      deps,
+      sinkOver(t, {}),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.fromInclude).toBeUndefined();
+    /* ui-prefs.c L1229's `break`: line 2 was never read. */
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual(untouched);
+  });
+
+  it("two deep names the INNERMOST file, and the outer file still finishes", () => {
+    /* Each level runs its own process_pref_file, so the print_error that fires
+     * is the innermost one's. A marker applied on the way out would relabel it
+     * with whichever include the error passed through last. */
+    const t = table();
+    const errors = processPrefText(
+      "%:mid.prf\nfeat:GRANITE:*:4:38",
+      deps,
+      sinkOver(t, {
+        "mid.prf": "%:inner.prf\nmonster:scrawny cat:4:0x66",
+        "inner.prf": "feat:FLOOR:gloomy:4:37",
+      }),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.fromInclude).toBe("inner.prf");
+    /* mid.prf was not stopped by inner.prf's error... */
+    expect(t.monsterGlyph(reg.monsters.raceByName("scrawny cat")!.ridx)).toEqual({
+      attr: 4,
+      char: "f",
+    });
+    /* ...and neither was the outer file. */
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual({ attr: 4, char: "&" });
+  });
+
+  it("marks each error with the file it came from when two includes both fail", () => {
+    /* No policy needed: the `%` branch never reaches the stop, so a failing
+     * include does not end the includer and the second one still runs. */
+    const errors = processPrefText(
+      "%:a.prf\n%:b.prf",
+      deps,
+      sinkOver(table(), {
+        "a.prf": "feat:FLOOR:gloomy:4:37",
+        "b.prf": "monster:no such monster:4:0x66",
+      }),
+    );
+    expect(errors.map((e) => e.fromInclude)).toEqual(["a.prf", "b.prf"]);
   });
 });
 

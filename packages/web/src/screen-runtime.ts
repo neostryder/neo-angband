@@ -203,7 +203,7 @@ export function showThroughPresenter(
    * presenter can stand aside" and then takes the seam down at the worst possible
    * moment - mid-prompt, with the player waiting. Absent is fine and is the
    * ordinary shape; present-and-lying is not. */
-  const stepAside = (shown as YieldingScreen).yieldTerminal;
+  const stepAside = shown.yieldTerminal;
   if (stepAside !== undefined && typeof stepAside !== "function") {
     broken = true;
     reportFault(
@@ -218,7 +218,7 @@ export function showThroughPresenter(
     presenter: owner.presenter,
     modId: owner.id,
     screenId: view.id,
-    shown: shown as YieldingScreen,
+    shown,
     yielded: false,
     surrendered: false,
     reported: false,
@@ -253,37 +253,12 @@ export function showThroughPresenter(
 /* Standing aside for the game's own prompt                            */
 /* ------------------------------------------------------------------ */
 
-/**
- * The ABI member a presenter grows to be told about a prompt - TYPED LOCALLY,
- * on purpose and temporarily.
- *
- * The public shape belongs to `screen-view.ts` and to the SDK's `screen.ts`, and
- * those two must agree with each other or a mod compiled against the SDK is
- * compiled against a different game. Declaring it here as a structural interface
- * keeps the runtime boundary local while the two published copies are added -
- * exactly what `installScreen` already does when it re-wraps `show` rather than
- * importing the SDK's presenter type. When both copies exist, this becomes
- * `ScreenShown` and this interface goes.
- *
- * The declaration to add to BOTH, verbatim, is in this module's report.
- */
-export interface YieldingScreen {
-  readonly dismissed: Promise<void>;
-  /**
-   * The game is about to write on the terminal under this screen; stand aside
-   * for `request`, or take the screen back when it is `null`.
-   *
-   * Awaited before anything is drawn, so a presenter may animate itself out.
-   */
-  yieldTerminal?(request: PromptRequest | null): void | Promise<void>;
-}
-
 /** One screen a presenter is holding right now. */
 interface OpenScreen {
   readonly presenter: ScreenPresenter;
   readonly modId: string;
   readonly screenId: string;
-  readonly shown: YieldingScreen;
+  readonly shown: ScreenShown;
   /** Announced, and not yet released. */
   yielded: boolean;
   /** It could not be told, so the game took the terminal anyway. Permanent. */

@@ -39,7 +39,15 @@
  * wrong thing convincingly is worse than a row that says nothing.
  */
 
-import { promptText, selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
+import {
+  promptText,
+  screenRegionSpec,
+  selectFromMenu,
+  showTextScreen,
+  type MenuItem,
+  type ScreenLine,
+} from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import {
   freezeView,
   screenBodyLines,
@@ -608,14 +616,34 @@ async function installOne(
    * meta record has already been overwritten with the new tag. */
   const before = (await deps.installed()).get(m.id) ?? null;
 
-  const result = await deps.install(m, origin, (p) => {
-    const { rows } = term.size();
-    term.clear();
-    term.print(0, 1, `${before === null ? "Installing" : "Updating"} ${m.name} ${m.version}`, C_FG);
-    term.print(0, 3, `${String(p.done)} of ${String(p.total)}: ${p.path}`, C_DIM);
-    term.print(0, rows - 1, "[ please wait ]", C_DIM);
-    term.flush?.();
-  });
+  /* The progress screen is a REGION for exactly as long as the install runs
+   * (#253). It repaints on every file, so without a rectangle it was a
+   * full-screen erase arriving several times a second at a moment the player
+   * cannot interrupt - the worst possible time for a front end to be wiped with
+   * no way to learn it had happened. `screenRegionSpec` is core's own answer to
+   * what rectangle a screen occupies; see overlay.ts. */
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  const progress = regionSurface(term, handle.cells);
+  const result = await deps
+    .install(m, origin, (p) => {
+      const { rows } = progress.size();
+      progress.clear();
+      progress.print(
+        0,
+        1,
+        `${before === null ? "Installing" : "Updating"} ${m.name} ${m.version}`,
+        C_FG,
+      );
+      progress.print(0, 3, `${String(p.done)} of ${String(p.total)}: ${p.path}`, C_DIM);
+      progress.print(0, rows - 1, "[ please wait ]", C_DIM);
+      progress.flush?.();
+    })
+    /* Released before the outcome screen, which declares its own: a wait screen
+     * left in the stack would keep telling a front end it is covered by
+     * something that is no longer on screen. */
+    .finally(() => {
+      popRegion(handle);
+    });
 
   if (!result.ok) {
     await showTextScreen(term, installFailureScreen(m.name, result.problem, result.unmet));
@@ -716,13 +744,23 @@ async function showSource(
     return false;
   }
 
-  term.clear();
-  term.print(0, 1, title, C_FG);
-  term.print(0, 3, `Asking ${String(refs.length)} repositories what they hold...`, C_DIM);
-  term.flush?.();
+  /* A REGION for the length of the discovery round (#253): one pair of API calls
+   * per repository, so this screen can be up for many seconds. */
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  const waiting = regionSurface(term, handle.cells);
+  waiting.clear();
+  waiting.print(0, 1, title, C_FG);
+  waiting.print(0, 3, `Asking ${String(refs.length)} repositories what they hold...`, C_DIM);
+  waiting.flush?.();
 
   const entries: BrowseEntry[] = [];
-  for (const ref of refs) entries.push(await deps.discover(ref));
+  try {
+    for (const ref of refs) entries.push(await deps.discover(ref));
+  } finally {
+    /* Popped even when a discovery throws: the menu below never runs in that
+     * case, and a wait screen that outlives its wait is a phantom occluder. */
+    popRegion(handle);
+  }
 
   for (;;) {
     const installed = await deps.installed();
@@ -832,10 +870,15 @@ async function openRegistry(
   read: () => Promise<{ registry: ModRegistry | null; problem: string | null }>,
   deps: ModBrowseDeps,
 ): Promise<boolean> {
-  term.clear();
-  term.print(0, 1, "Reading the list...", C_DIM);
-  term.flush?.();
-  const { registry, problem } = await read();
+  /* A REGION for the length of the fetch (#253); see `showSource`. */
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  const waiting = regionSurface(term, handle.cells);
+  waiting.clear();
+  waiting.print(0, 1, "Reading the list...", C_DIM);
+  waiting.flush?.();
+  const { registry, problem } = await read().finally(() => {
+    popRegion(handle);
+  });
   if (!registry) {
     await showTextScreen(term, "Could not read that list", [
       { text: problem ?? "The list could not be read.", color: C_BAD },
@@ -1475,10 +1518,18 @@ async function paintWhile<T>(
   line: string,
   job: () => Promise<T>,
 ): Promise<T> {
-  const { cols } = term.size();
-  term.clear();
-  term.print(0, 1, title.slice(0, cols - 1), C_FG);
-  term.print(0, 3, line.slice(0, cols - 1), C_DIM);
-  term.flush?.();
-  return await job();
+  /* A REGION for the length of the job (#253). This is the shared wait screen,
+   * so converting it converts every caller of it at once. */
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  const waiting = regionSurface(term, handle.cells);
+  const { cols } = waiting.size();
+  waiting.clear();
+  waiting.print(0, 1, title.slice(0, cols - 1), C_FG);
+  waiting.print(0, 3, line.slice(0, cols - 1), C_DIM);
+  waiting.flush?.();
+  try {
+    return await job();
+  } finally {
+    popRegion(handle);
+  }
 }
