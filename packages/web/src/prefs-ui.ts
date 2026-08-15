@@ -177,6 +177,98 @@ export function processPrefFile(
 }
 
 /**
+ * How a caller reads one `%:`-included file. Async, because a mod's files are
+ * reached through a resolver that may mint a blob URL or read IndexedDB. Null
+ * means "no such file", which is a quiet skip, exactly as it is for the user
+ * directory above (parse_prefs_load discards the nested read, ui-prefs.c L438).
+ */
+export type PrefIncludeLoader = (name: string) => Promise<string | null>;
+
+/**
+ * The recursion cap `processPrefText` applies to `%` (`depth < 8`, prefs.ts).
+ * Named here because a pre-load that stopped shallower than the parse would
+ * hand the parser a file it is willing to read and cannot find.
+ */
+const PREF_INCLUDE_DEPTH = 8;
+
+/**
+ * The `%:` names one pref text asks for, tokenised EXACTLY as
+ * `processPrefText`'s loop does (prefs.ts: strip a trailing `\r`, skip empty and
+ * `#` lines, split on `:`, directive is field 0 and the file name is the rest
+ * rejoined). Written out rather than regexed so the two cannot drift on a name
+ * that contains a colon or a trailing space.
+ *
+ * IT OVER-COLLECTS, deliberately: a `%:` inside a `?:`-bypassed block is named
+ * here and fetched, then never loaded by the parse. Evaluating the bypass would
+ * mean a second copy of the expression loop, and this file has held "one parse
+ * loop" since the parser was ported. The cost is a fetch of a file the mod does
+ * ship; the alternative cost is a grammar in two places.
+ */
+function prefIncludeNames(text: string): string[] {
+  const names: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    if (line.length === 0 || line.startsWith("#")) continue;
+    const parts = line.split(":");
+    if (parts[0] !== "%") continue;
+    names.push(parts.slice(1).join(":"));
+  }
+  return names;
+}
+
+/**
+ * Read every file `text` includes, transitively, so a SYNCHRONOUS `loadFile` can
+ * answer from memory. This is the whole trick, and it is not a new one: it is
+ * what `loadTilePrefs` already does for a graphics pack's own `graf-*.prf`
+ * (tiles.ts), which is how a pack's `%:flvr-*.prf` line has always worked.
+ *
+ * A name is fetched once however many files ask for it, which is also what stops
+ * a cycle: `a.prf` including `b.prf` including `a.prf` visits each once and the
+ * frontier empties. The depth bound is the parser's own, so the last level this
+ * loads is the last level the parse will read.
+ *
+ * A loader that throws is a missing file. It is a mod's asset resolver on the
+ * other end, and one unreachable include must not cost the mod every line of the
+ * pref file that does resolve.
+ */
+export async function preloadPrefIncludes(
+  text: string,
+  load: PrefIncludeLoader,
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  let frontier = prefIncludeNames(text);
+  for (let depth = 0; depth < PREF_INCLUDE_DEPTH && frontier.length > 0; depth++) {
+    const next: string[] = [];
+    for (const name of frontier) {
+      if (files.has(name)) continue;
+      let nested: string | null;
+      try {
+        nested = await load(name);
+      } catch {
+        nested = null;
+      }
+      if (nested === null) continue;
+      files.set(name, nested);
+      next.push(...prefIncludeNames(nested));
+    }
+    frontier = next;
+  }
+  return files;
+}
+
+/**
+ * What one `applyPrefText` produced. Two things, because two callers need them:
+ * the faults belong on the contributing mod's row, and the includes belong to
+ * whoever must replay the same text later (see the note on `applyPrefText`).
+ */
+export interface AppliedPrefText {
+  /** One line per parse error, already formatted for the mod's row. */
+  readonly faults: readonly string[];
+  /** Every `%:` file that was read, for a caller that must replay this text. */
+  readonly includes: ReadonlyMap<string, string>;
+}
+
+/**
  * Apply pref-file TEXT that did not come from the user directory - a mod's
  * `prefs` resource (MOD_REACH gap 7).
  *
@@ -187,30 +279,49 @@ export function processPrefFile(
  * before there is a message line to say them on, and they belong on the
  * contributing mod's row rather than in the player's message history.
  *
- * `%:` INCLUDES ARE NOT FOLLOWED, and that is a real limit rather than an
- * oversight. The grammar's `loadFile` is synchronous - it is called from inside
- * the parse - and a mod's files are reached through a resolver that may mint a
- * blob or read IndexedDB, neither of which can answer synchronously.
+ * `%:` INCLUDES ARE FOLLOWED (#278). They were not until now, and the reason
+ * given was that the grammar's `loadFile` is synchronous while a mod's files
+ * resolve asynchronously - true, and not a reason: the fix is to do the reading
+ * BEFORE the parse rather than during it, which `loadTilePrefs` has done for a
+ * graphics pack since tiles were ported. So this is async and takes the loader,
+ * and `preloadPrefIncludes` walks the text for `%:` names, reads them
+ * transitively, and hands the parse a map it can answer from.
  *
- * The `loadFile: () => null` below is what says so, and what it produces is a
- * SKIPPED line, not an error: `processPrefText`'s `%` branch treats a null the
- * way upstream treats a file it could not open under `quiet` - nothing said,
- * nothing failed (ui-prefs.c L438's discarded result). This comment claimed a
- * parse error until #275, which is what reading the branch corrected; the limit
- * is real either way and a mod that needs an include has to inline it.
+ * THE LOADER IS REQUIRED, not optional with a silent fallback. An optional one
+ * would put the old no-op back one forgetful caller later, and a skipped
+ * directive reports nothing by construction - `processPrefText`'s `%` branch
+ * treats a null the way upstream treats a file it could not open under `quiet`
+ * (ui-prefs.c L438's discarded result), so there is no error for the author to
+ * see. Every caller here has a resolver: the mod pref loop already skips a
+ * resource whose `resolve` is null before it gets this far.
+ *
+ * An include whose name does not resolve is still a quiet skip, because that is
+ * what upstream does and what `processPrefFile` does two functions up. Errors
+ * raised by the LINES of an include are returned like any other, named by the
+ * include rather than by this file - `prefErrorMessage` reads `fromInclude`
+ * (#275).
+ *
+ * THE INCLUDES COME BACK OUT with the errors, because this is not the last thing
+ * that reads them: a mod's pref text is latched and replayed into every freshly
+ * built tile map (#153), and a replay without the includes is the very no-op
+ * this closes, one function over. Handing them back is what stops the caller
+ * either reading every include a second time or - worse, because it is silent -
+ * replaying the text alone.
  */
-export function applyPrefText(
+export async function applyPrefText(
   ctx: PrefsUiCtx,
   text: string,
   source: string,
-): string[] {
+  load: PrefIncludeLoader,
+): Promise<AppliedPrefText> {
+  const includes = await preloadPrefIncludes(text, load);
   const sink = glyphTableSink(ctx.glyphs, {
-    loadFile: () => null,
+    loadFile: (n) => includes.get(n) ?? null,
     ...ctx.extraSink,
   });
   const errors = processPrefText(text, ctx.prefDeps, sink);
   ctx.afterLoad?.();
-  return errors.map((e) => prefErrorMessage(source, e));
+  return { faults: errors.map((e) => prefErrorMessage(source, e)), includes };
 }
 
 /**

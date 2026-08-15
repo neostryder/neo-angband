@@ -270,21 +270,44 @@ export function createTileRenderer(options: TileRendererOptions): TileSet | null
 }
 
 /**
+ * One mod's pref file as the caller latched it: the bytes, and every file its
+ * `%:` lines pull in, already read.
+ *
+ * THE INCLUDES TRAVEL WITH THE TEXT rather than being fetched here, because the
+ * mod that supplied them may be long out of reach by the time a graphics mode is
+ * switched - the whole reason the text is latched at all. `includes` is required
+ * rather than optional for the reason #278 exists: an omitted map is a silently
+ * skipped directive, and a skipped `%:` reports nothing by construction. A
+ * caller with nothing to include passes an empty map and says so.
+ */
+export interface ModPrefText {
+  readonly text: string;
+  readonly includes: ReadonlyMap<string, string>;
+}
+
+/**
  * Fetch a graphics mode's pref files and parse them into a core TileMap, through
  * the same pack-relative resolver the atlas load uses. The mode's `pref`
  * (graf-*.prf) is fetched first; its `%:<file>` include lines
  * (ui-prefs.c process_pref_file) pull in the pack's flvr-*.prf and xtra-*.prf,
  * which are pre-fetched here so the synchronous parser's loadFile resolver can
  * satisfy them. Mod pref texts, already read and latched by the caller in
- * enabled load order, layer over that fresh map through the same parser. Returns
- * null on any pack fetch failure - the caller then keeps the map ASCII. Never
- * throws.
+ * enabled load order, layer over that fresh map through the same parser - each
+ * with its OWN includes, since a mod's files and a pack's files are two
+ * different directories and a name may exist in both. Returns null on any pack
+ * fetch failure - the caller then keeps the map ASCII. Never throws.
+ *
+ * The pack's own include scan below and `preloadPrefIncludes` (prefs-ui.ts) are
+ * two spellings of the same walk. They are not shared because prefs-ui pulls in
+ * the whole overlay graph and this module is reached from the render path; if a
+ * third caller appears, that is the point at which the walk moves somewhere
+ * neutral rather than being spelled a third time.
  */
 export async function loadTilePrefs(
   resolve: PackFileResolver,
   mode: GraphicsMode,
   deps: TilePrefsDeps,
-  modPrefTexts: readonly string[] = [],
+  modPrefTexts: readonly ModPrefText[] = [],
 ): Promise<TileMap | null> {
   if (!mode.pref || mode.pref === "none") return null;
   const fetchText = async (name: string): Promise<string | null> => {
@@ -314,6 +337,11 @@ export async function loadTilePrefs(
     ...deps,
     loadFile: (name: string) => includes.get(name) ?? null,
   });
-  for (const text of modPrefTexts) parseTilePrefsInto(map, text, deps);
+  for (const mod of modPrefTexts) {
+    parseTilePrefsInto(map, mod.text, {
+      ...deps,
+      loadFile: (name: string) => mod.includes.get(name) ?? null,
+    });
+  }
   return map;
 }

@@ -360,6 +360,7 @@ import {
   isTile,
   loadTilePrefs,
   tileCode,
+  type ModPrefText,
   type TileBlitter,
   type TileModeEntry,
 } from "./tiles";
@@ -1398,9 +1399,10 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
 let tileset: TileBlitter | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
-/* Read once while resources install. Every pack-map rebuild replays this in
- * enabled load order; a graphics-mode switch never needs to resolve mod files. */
-let modTilePrefTexts: readonly string[] = [];
+/* Read once while resources install - the file AND everything its `%:` lines
+ * include (#278). Every pack-map rebuild replays this in enabled load order; a
+ * graphics-mode switch never needs to resolve mod files. */
+let modTilePrefTexts: readonly ModPrefText[] = [];
 
 /**
  * How a mode's files are reached: the contributing mod's own resolver when a mod
@@ -10623,19 +10625,40 @@ async function applyModResources(): Promise<void> {
    * font because a pref file may set glyphs the font has to already be able to
    * draw. */
   const ctx = prefsUiCtx();
-  const nextTilePrefTexts: string[] = [];
+  const nextTilePrefTexts: ModPrefText[] = [];
   for (const pref of modPrefResources()) {
-    if (pref.resolve === null) continue;
-    const url = await pref.resolve(pref.resource.path);
+    const resolve = pref.resolve;
+    if (resolve === null) continue;
+    const url = await resolve(pref.resource.path);
     if (url === null) continue;
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
       const text = await res.text();
-      /* Keep the exact bytes that reach the GlyphTable so every fresh graphics
-       * map can replay the tile directives without resolving the mod again. */
-      nextTilePrefTexts.push(text);
-      for (const line of applyPrefText(ctx, text, pref.resource.path)) {
+      /* `%:` INCLUDES RESOLVE BESIDE THE INCLUDING RESOURCE (#278), which is the
+       * mod-folder reading of upstream's flat directory search: a pack's
+       * `%:flvr-x.prf` sits next to its `graf-x.prf`, and `loadTilePrefs` has
+       * always resolved one against the other's directory. Every include of
+       * every depth is resolved against the declared resource's directory, so a
+       * mod lays its pref files out in one folder rather than reasoning about
+       * which file asked. */
+      const dir = pref.resource.path.replace(/[^/]*$/u, "");
+      const applied = await applyPrefText(
+        ctx,
+        text,
+        pref.resource.path,
+        async (name) => {
+          const at = await resolve(`${dir}${name}`);
+          if (at === null) return null;
+          const r = await fetch(at);
+          return r.ok ? await r.text() : null;
+        },
+      );
+      /* Keep the exact bytes that reach the GlyphTable - and the include bytes
+       * with them - so every fresh graphics map can replay the tile directives
+       * without resolving the mod again. */
+      nextTilePrefTexts.push({ text, includes: applied.includes });
+      for (const line of applied.faults) {
         reportModFault(pref.modId, line);
       }
     } catch (e) {

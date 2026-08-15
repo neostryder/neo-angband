@@ -1234,20 +1234,33 @@ grammar over an injected `PrefSink`, `:84-90`; writer `prefsSave` `:727`;
 (`packages/web/src/userdir.ts`).
 
 A USER can load one, and since gap 7 a MOD can too: `prefs` is one of the seven
-resource kinds, and `applyPrefText` (`prefs-ui.ts:181`) runs a mod's `.prf`
+resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf`
 through the same grammar, the same sink and the same deps as a user's, returning
 the errors against the contributing mod's row rather than saying them on a
-message line that does not exist yet at boot. `%:` includes are NOT followed on
-that path, and that is a real limit rather than an oversight - the grammar's
-`loadFile` is synchronous and a mod's files resolve through a resolver that may
-mint a blob or read IndexedDB. This heading and this sentence said "not
-mod-suppliable" until 2026-08-14, which was stale by gap 7 and is exactly the
-kind of claim a reader would have believed.
+message line that does not exist yet at boot. This heading and this sentence said
+"not mod-suppliable" until 2026-08-14, which was stale by gap 7 and is exactly
+the kind of claim a reader would have believed.
+
+`%:` includes ARE followed on that path since #278. They were not, and the
+reason given was that the grammar's `loadFile` is synchronous while a mod's
+files resolve through a resolver that may mint a blob or read IndexedDB - true,
+and not a reason, because the reading can happen BEFORE the parse rather than
+during it, which is what `loadTilePrefs` has always done for a pack's own
+`%:flvr-*.prf`. `preloadPrefIncludes` walks a mod's pref text for `%:` names,
+reads them transitively to the parser's own depth bound, and hands the parse a
+map it can answer synchronously. An include resolves against the DIRECTORY OF
+THE DECLARED RESOURCE, at every depth, so a mod keeps its pref files in one
+folder; a name that does not resolve is a quiet skip, exactly as upstream's
+`parse_prefs_load` discards a nested read (ui-prefs.c L438). The bytes come back
+out of `applyPrefText` with the faults, because the same text is replayed into
+every freshly built tile map (#153) and a replay without them would be the same
+silent skip one function over.
+
 There is a recorded divergence at `prefs-ui.ts:134-139`: upstream also searches
 `ANGBAND_DIR_CUSTOMIZE` and the graphics mode's directory; the port ships no
 `lib/customize` tree and searches only the user location. Partial exception: a
 TILE pack does supply `.prf` files, which `loadTilePrefs` fetches and follows
-`%:` includes from (`tiles.ts:214-248`) - reachable only through the gated tile
+`%:` includes from (`tiles.ts`) - reachable only through the gated tile
 discovery or `?tiles=`.
 
 ### Fonts — CLOSED 2026-08-09 (what follows is the BEFORE picture)
