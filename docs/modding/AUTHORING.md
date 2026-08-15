@@ -464,6 +464,40 @@ translated. Those are worth reporting.
 
 ---
 
+## Renaming a player-toggleable rule
+
+A rule `flag` is durable PLAYER STATE, not an internal name. The player's answer
+is stored against that exact string in the host's own store, so replacing a flag
+outright orphans their answer: the lookup misses, the rule falls back to its
+declared `default`, and someone who deliberately turned your fix OFF gets it
+back ON without being told. For a bug-fixes mod, whose defaults are all on, that
+is the game quietly re-applying a change they had rejected.
+
+So do not simply replace one. Map each retired flag to its current rule under
+`renamedRuleFlags`:
+
+```json
+"renamedRuleFlags": {
+  "bug-fixes.atomic-save": "bug-fixes.save-safety",
+  "bug-fixes.atomic-crash": "bug-fixes.save-safety"
+}
+```
+
+Every destination must be one of this manifest's current `rules`. The source
+must NOT be — a flag you still declare is live, and consuming its stored choice
+as retired would destroy a setting you are still exposing. Renaming a flag to
+itself is refused for the same reason.
+
+The host migrates its saved choices when it loads your enabled mod, before it
+resolves defaults. Where several retired flags become one rule, the result is on
+if ANY of them was on: turning off a fix the player had on would reintroduce a
+bug they had chosen to be rid of, and re-enabling a sibling is the smaller
+surprise — they can still turn the whole rule off. A choice already recorded for
+the current flag wins outright, since it was made against the new release. The
+old entries are then consumed, so loading again changes nothing.
+
+---
+
 ## Knowing which mod a record came from
 
 ## Front-end groundwork

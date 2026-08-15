@@ -377,6 +377,7 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
+    ...(m.renamedRuleFlags ? { renamedRuleFlags: m.renamedRuleFlags } : {}),
     /* THE COMPATIBILITY FIELDS, and this allowlist is exactly where they would
      * have died. `sections` is what the composer gates parts on, `compat` is what
      * the conflict report and the sorter read, and `group` is how a mod sorts
@@ -874,11 +875,15 @@ export interface ModRuleDecl {
  */
 export function loadEnabledModRuleDecls(): ModRuleDecl[] {
   const mods = discoverMods();
+  const store = defaultModStore();
   const out: ModRuleDecl[] = [];
   for (const id of enabledModIds()) {
     const mod = mods.get(id);
     if (!mod) continue;
     const manifest = modManifest(mod.manifest);
+    if (manifest.renamedRuleFlags) {
+      store.migrateRuleChoices(manifest.renamedRuleFlags);
+    }
     for (const rule of manifest.rules ?? []) {
       out.push({ modId: manifest.id, modName: manifest.name, rule });
     }

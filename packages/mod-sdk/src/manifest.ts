@@ -448,6 +448,14 @@ export interface PackManifest {
    */
   rules?: PackRule[];
   /**
+   * A rule flag this pack used to declare -> its current `rules` flag. The host
+   * consumes an old saved player choice when it loads the enabled pack, folding
+   * several old choices that name one current rule with OR. A destination must
+   * be one of this manifest's current rules; an old flag is deliberately not,
+   * because it is the retired spelling this field replaces.
+   */
+  renamedRuleFlags?: Record<string, string>;
+  /**
    * Named parts of this pack (see PackSection): what a player can switch off
    * individually, what a section band can reposition, and what a compatibility
    * claim can point at. Absent means the pack is one indivisible part.
@@ -648,6 +656,7 @@ export function validateManifest(value: unknown): PackManifest {
     throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
   const ruleFlags = validateRules(m["rules"], id);
+  validateRenamedRuleFlags(m["renamedRuleFlags"], id, ruleFlags);
   const sectionIds = validateSections(m["sections"], id, ruleFlags);
   validateGroup(m["group"], id);
   validateCompat(m["compat"], id, sectionIds);
@@ -720,6 +729,47 @@ function validateRules(value: unknown, id: string): Set<string> {
     }
   }
   return seen;
+}
+
+/**
+ * Validate the optional old-rule-flag -> current-rule-flag map. The source is
+ * intentionally not a current rule: if it still were, treating its stored
+ * choice as retired would destroy the setting for a rule the manifest exposes.
+ */
+function validateRenamedRuleFlags(
+  value: unknown,
+  id: string,
+  ruleFlags: ReadonlySet<string>,
+): void {
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: renamedRuleFlags must be a map`);
+  }
+  for (const [oldFlag, newFlag] of Object.entries(value)) {
+    if (oldFlag === "") {
+      throw new ManifestError(`manifest ${id}: renamedRuleFlags old flag must be non-empty`);
+    }
+    if (typeof newFlag !== "string" || newFlag === "") {
+      throw new ManifestError(
+        `manifest ${id}: renamedRuleFlags ${oldFlag} must name a non-empty current rule flag`,
+      );
+    }
+    if (oldFlag === newFlag) {
+      throw new ManifestError(
+        `manifest ${id}: renamedRuleFlags ${oldFlag} cannot rename a flag to itself`,
+      );
+    }
+    if (ruleFlags.has(oldFlag)) {
+      throw new ManifestError(
+        `manifest ${id}: renamedRuleFlags ${oldFlag} is still declared as a current rule`,
+      );
+    }
+    if (!ruleFlags.has(newFlag)) {
+      throw new ManifestError(
+        `manifest ${id}: renamedRuleFlags ${oldFlag} targets ${newFlag}, which is not a declared rule`,
+      );
+    }
+  }
 }
 
 /**
