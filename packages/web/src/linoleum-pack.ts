@@ -88,7 +88,7 @@ import {
 } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PoolDefinition, TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PackFileResolver } from "./pack-files";
-import type { ModPrefText, TileBlitter, TileCode } from "./tiles";
+import type { TileBlitter, TileCode } from "./tiles";
 
 /** A pack's manifest.txt, parsed. */
 export interface LinoleumManifest {
@@ -570,14 +570,12 @@ async function readPackText(
  * Takes a resolver rather than a base URL so the same loader serves a pack served
  * from the site, a pack in a folder the player picked, and a pack installed from
  * GitHub - see PackFileResolver. For the plain site case pass
- * `urlBaseResolver(base)`. Mod pref texts replay over the generated slot map in
- * enabled load order, so their synthetic tile assignments override pack targets.
+ * `urlBaseResolver(base)`.
  */
 export async function loadLinoleumPack(input: {
   resolve: PackFileResolver;
   menuname: string;
   deps: TilePrefsDeps;
-  modPrefTexts?: readonly ModPrefText[];
 }): Promise<LinoleumPack | null> {
   const manifestText = await readPackText(input.resolve, "manifest.txt");
   if (manifestText === null) return null;
@@ -609,12 +607,6 @@ export async function loadLinoleumPack(input: {
   const tall = tallText === null ? new Set<string>() : parseTallFile(tallText);
 
   const index = buildLinoleumIndex({ rules, pools, families, tall, deps: input.deps });
-  for (const mod of input.modPrefTexts ?? []) {
-    parseTilePrefsInto(index.map, mod.text, {
-      ...input.deps,
-      loadFile: (name: string) => mod.includes.get(name) ?? null,
-    });
-  }
   if (index.slots.length === 0) return null;
   return new LinoleumPack({
     menuname: input.menuname,
