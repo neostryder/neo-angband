@@ -535,16 +535,21 @@ const handleENCHANT: EffectHandler = (ctx) => {
 };
 
 /**
- * EF_RECHARGE: recharge a wand or staff; strength is value.base + the dice
- * roll. High-level and highly-charged items are harder; a backfire destroys
- * one item of the stack.
+ * EF_RECHARGE: recharge a wand or staff; strength is value.base. High-level and
+ * highly-charged items are harder; a backfire destroys one item of the stack.
  */
 const handleRECHARGE: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const { state } = env;
-  const strength =
-    ctx.value.base + state.rng.damroll(ctx.value.dice, ctx.value.sides);
+  /* effect-handler-general.c:2129 is `int strength = context->value.base;` -
+   * BASE ALONE. `effect_calculate_value` (L58-79) is what folds dice/sides in,
+   * and it is called explicitly by the handlers that want it; RECHARGE is not
+   * one of them. This line used to add `damroll(dice, sides)`, which is the
+   * port adding something. Inert on 4.2.6 gamedata - every shipped RECHARGE
+   * record gives a bare base (6, $B), never XdY, so dice and sides are 0 and
+   * `damroll` returns 0 without drawing. Live only for a MOD's own record. */
+  const strength = ctx.value.base;
 
   /* Immediately obvious */
   ctx.ident = true;

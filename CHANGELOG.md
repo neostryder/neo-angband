@@ -18,6 +18,26 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`EF_TELEPORT` and `EF_RECHARGE` no longer add a dice roll upstream never
+  makes.** Both handlers computed `value.base + damroll(value.dice,
+  value.sides)`; 4.2.6 uses `value.base` alone
+  (`effect-handler-general.c:2508` and `:2129`). `effect_calculate_value`, the
+  function that folds dice and sides in, is called explicitly by the handlers
+  that want it, and neither of these is one of them. A comment in the port
+  asserted the roll was an upstream local initialiser evaluated before the
+  arena refusal; no such initialiser exists, so the comment had invented an
+  upstream roll to justify a port addition — and **the port adds nothing.**
+
+  Behaviourally inert on 4.2.6 gamedata, verified rather than assumed: every
+  shipped `TELEPORT` and `RECHARGE` record spells its value as a bare base or
+  an m_bonus (`10`, `30`, `40`, `100`, `6`, `M60`, `M80`, `M$M`, `$B`) and
+  never as `XdY`, so `dice` and `sides` are `0`; `damroll` returns `0` without
+  drawing when `sides <= 0`, so no RNG draw is lost either. The divergence was
+  live only for a MOD contributing such a record with real dice — which is
+  precisely the case the addition got wrong.
+
 ### Added
 
 - **Region pointer input follows the painted cells** (#276, gap 21 milestone 7).

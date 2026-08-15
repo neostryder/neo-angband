@@ -398,14 +398,16 @@ describe("EF_ALTER_REALITY", () => {
 
 describe("EF_TELEPORT in an arena (effect-handler-general.c:2529-2530)", () => {
   it("does not move the player", () => {
-    /* NOT ASSERTED HERE, and deliberately: upstream computes the distance
-     * damroll in a local INITIALISER (L2510-2511), so it runs before the arena
-     * refusal returns, and the port matches that. The ordering is not
-     * observable through this seam - effectSimple does its own dice work
-     * around the handler and dominates the stream - so it is recorded in
-     * effect-teleport.ts rather than covered by a fixture that cannot tell the
-     * two placements apart. Two placements were measured (28 vs 30 draws on
-     * this fixture); no assertion available here distinguishes them. */
+    /* This comment used to justify a distance damroll in the handler by saying
+     * upstream computed one in a local INITIALISER at L2510-2511, ahead of the
+     * arena refusal. It does not: effect-handler-general.c:2508 reads
+     * `int dis = context->value.base;`, and `effect_calculate_value` - the
+     * function that folds dice/sides in - is called explicitly by the handlers
+     * that want it, which TELEPORT is not. The handler's damroll was a port
+     * addition and has been struck, so there is no longer an ordering question
+     * to record. What IS asserted here is the arena refusal itself, which is
+     * real and upstream (L2529-2530). `effectSimple` still does its own dice
+     * work around the handler, so the "10+2d8" below exercises that path. */
     const arena = makeState({ playerGrid: loc(20, 12), seed: 99 });
     arena.chunk.depth = 12;
     arena.arenaLevel = true;

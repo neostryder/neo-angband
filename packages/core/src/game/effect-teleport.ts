@@ -308,17 +308,28 @@ const handleTELEPORT: EffectHandler = (ctx) => {
 
   const { state } = env;
   const tp = env.teleport ?? {};
-  const dis = ctx.value.base + state.rng.damroll(ctx.value.dice, ctx.value.sides);
+  /* effect-handler-general.c:2508 is `int dis = context->value.base;` - BASE
+   * ALONE. Upstream rolls no distance here at all: `effect_calculate_value`,
+   * which is what folds `dice`/`sides` in, is a function each handler calls
+   * explicitly (L58-79), and TELEPORT does not call it.
+   *
+   * This line used to read `base + damroll(dice, sides)`, justified by a
+   * comment asserting the damroll was a C local initialiser at L2510-2511 that
+   * upstream evaluated before the arena refusal. No such initialiser exists;
+   * the comment invented an upstream roll to explain a port addition, and the
+   * port adds nothing. Striking it is inert on 4.2.6 gamedata - every shipped
+   * TELEPORT record spells its value as a bare base or an m_bonus (10, 30, 40,
+   * 100, M60, M80, M$M, $B), never as XdY, so `dice` and `sides` are 0 - and
+   * `damroll` returns 0 without drawing when `sides <= 0`, so no RNG draw is
+   * lost either. It is live only for a MOD that contributes a TELEPORT record
+   * with real dice, which is exactly the case the addition would have got
+   * wrong. */
+  const dis = ctx.value.base;
   const perc = ctx.value.mBonus;
 
   /* No teleporting in arena levels (effect-handler-general.c:2529-2530).
-   *
-   * Position matters, and not where a reader would guess. The damroll above is
-   * a C LOCAL INITIALISER (L2510-2511), evaluated before the function body, so
-   * upstream spends the distance roll even when the arena refusal is about to
-   * return - and this refusal must too, or a single-combat scroll read would
-   * shift every RNG draw in the rest of the game. The refusal comes after
-   * ident, so the scroll still identifies. */
+   * Upstream sets ident first and refuses second (L2525-2530), so the scroll
+   * still identifies; this keeps that order. */
   if (state.arenaLevel) return true;
 
   /* is_player: not a monster source, or a monster spell that moves the player. */
