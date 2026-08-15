@@ -13,6 +13,14 @@ import { defaultExclude, defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
+    /*
+     * Generates packages/web/public/tiles when it is absent. The root `build`
+     * script is `tsc -b` and never runs sync-tiles, so the documented local
+     * gate does not supply the art two web tests need - and an established
+     * checkout only passes them because an earlier `bundle` left it behind.
+     * See tools/vitest-global-setup.mjs.
+     */
+    globalSetup: ["./tools/vitest-global-setup.mjs"],
     exclude: [
       ...defaultExclude,
       /*
