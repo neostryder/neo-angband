@@ -29,12 +29,11 @@
  */
 
 import { FlagSet } from "../bitflag.js";
-import { ORIGIN, RF, SQUARE } from "../generated/index.js";
+import { ORIGIN, RF, RSF, SQUARE } from "../generated/index.js";
 import { colorCharToAttr, colorTextToAttr } from "../color.js";
 import type { Rng } from "../rng.js";
 import type { MonsterBase, MonsterRace } from "../mon/types.js";
-import { RF_SIZE } from "../mon/types.js";
-import { rsfSize, spellIndexOf } from "../mon/spell-registry.js";
+import { RF_SIZE, RSF_SIZE } from "../mon/types.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import type { MonAllocTable } from "../mon/make.js";
 import type { Gen } from "./util.js";
@@ -92,8 +91,8 @@ function orSpellFlags(flags: FlagSet, lines: string[]): void {
     for (const raw of line.split("|")) {
       const name = raw.trim();
       if (!name) continue;
-      const value = spellIndexOf(name);
-      if (value < 0 || value === 0) {
+      const value = (RSF as Record<string, number>)[name];
+      if (value === undefined || value === 0) {
         throw new Error(`gen-monster: bad pit spell flag: ${name}`);
       }
       flags.on(value);
@@ -111,9 +110,9 @@ export function resolvePits(reg: MonsterRegistry): ResolvedPit[] {
     orRaceFlags(flags, p.flagsReq);
     const forbiddenFlags = new FlagSet(RF_SIZE);
     orRaceFlags(forbiddenFlags, p.flagsBan);
-    const spellFlags = new FlagSet(rsfSize());
+    const spellFlags = new FlagSet(RSF_SIZE);
     orSpellFlags(spellFlags, p.spellReq);
-    const forbiddenSpellFlags = new FlagSet(rsfSize());
+    const forbiddenSpellFlags = new FlagSet(RSF_SIZE);
     orSpellFlags(forbiddenSpellFlags, p.spellBan);
 
     const bases: MonsterBase[] = [];
