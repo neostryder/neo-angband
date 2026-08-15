@@ -20,6 +20,11 @@ import {
 import { flagSize } from "../bitflag.js";
 import { RSF } from "../generated/index.js";
 import type { ModExtensible } from "../mod/extension.js";
+import {
+  FIRST_MOD_SPELL_INDEX,
+  monSpells,
+  rsfMax,
+} from "./spell-registry.js";
 
 /** Byte size of a race FlagSet (upstream RF_SIZE = FLAG_SIZE(RF_MAX)). */
 export const RF_SIZE = flagSize(MON_RACE_FLAG_ENTRIES.length);
@@ -286,14 +291,28 @@ export interface PitProfile {
 /**
  * The RSF_ index whose list-mon-spells.h type expression contains any of
  * the given RST_ names (create_mon_spell_mask). Entry i of
- * MON_SPELL_ENTRIES is RSF value i.
+ * MON_SPELL_ENTRIES is RSF value i for the compiled table; mod spells
+ * registered after `FIRST_MOD_SPELL_INDEX` are read live via `typeAt`.
  */
 export function monSpellsOfTypes(...types: string[]): number[] {
   const out: number[] = [];
+  /* Compiled prefix only. The MAX sentinel sits at MON_SPELL_ENTRIES[RSF.MAX]
+   * with a numeric type (0), so it never matches a string RST_ query - and a
+   * mod's first spell reuses that same index, so the live walk below owns it. */
   for (let i = 0; i < MON_SPELL_ENTRIES.length; i++) {
     const entry = MON_SPELL_ENTRIES[i];
     if (!entry || typeof entry.type !== "string") continue;
     const parts = entry.type.split("|").map((s) => s.trim());
+    if (types.some((t) => parts.includes(t))) out.push(i);
+  }
+  /* Mod-added entries, including the first which occupies the sentinel's slot
+   * (FIRST_MOD_SPELL_INDEX === RSF.MAX). When nothing is registered rsfMax()
+   * equals RSF.MAX and this loop is empty - byte-identical to the compiled-only
+   * walk above. */
+  for (let i = FIRST_MOD_SPELL_INDEX; i < rsfMax(); i++) {
+    const type = monSpells.typeAt(i);
+    if (!type) continue;
+    const parts = type.split("|").map((s) => s.trim());
     if (types.some((t) => parts.includes(t))) out.push(i);
   }
   return out;

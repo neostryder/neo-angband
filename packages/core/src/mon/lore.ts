@@ -33,7 +33,8 @@
 import { FlagSet } from "../bitflag.js";
 import { MON_RACE_FLAG_ENTRIES, RF } from "../generated/index.js";
 import type { Rng } from "../rng.js";
-import { RF_SIZE, RSF_SIZE } from "./types.js";
+import { RF_SIZE } from "./types.js";
+import { rsfSize } from "./spell-registry.js";
 import type { MonsterRace } from "./types.js";
 import type { Monster } from "./monster.js";
 import { monsterIsVisible } from "./predicate.js";
@@ -102,7 +103,7 @@ export function newMonsterLore(race: MonsterRace): MonsterLore {
     blowTimesSeen: new Array<number>(race.blows.length).fill(0),
     blowKnown: new Array<boolean>(race.blows.length).fill(false),
     flags: new FlagSet(RF_SIZE),
-    spellFlags: new FlagSet(RSF_SIZE),
+    spellFlags: new FlagSet(rsfSize()),
     allKnown: false,
     armourKnown: false,
     dropKnown: false,
@@ -268,7 +269,7 @@ export function loreIsFullyKnown(store: LoreStore, race: MonsterRace): boolean {
   for (let i = 0; i < RF_SIZE; i++) {
     if (!lore.flags.bits[i]) return false;
   }
-  for (let i = 0; i < RSF_SIZE; i++) {
+  for (let i = 0; i < rsfSize(); i++) {
     if (lore.spellFlags.bits[i] !== race.spellFlags.bits[i]) return false;
   }
 
