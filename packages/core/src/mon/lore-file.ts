@@ -57,11 +57,20 @@ import type { LoreStore, MonsterLore } from "./lore.js";
  * A flag-number -> name table, INVERTED FROM THE ENUM rather than read off the
  * generated entry list.
  *
- * The two entry lists disagree about index 0: MON_SPELL_ENTRIES keeps upstream's
- * RSF_NONE at [0], and MON_RACE_FLAG_ENTRIES drops RF_NONE, so `ENTRIES[flag]`
- * is right for one and off by one for the other. Inverting the enum - which is
- * generated from the same header as the flags themselves - cannot be off by one
- * in either direction, and the test pins both against the reference headers.
+ * The generated entry lists do not agree on whether they carry their sentinel,
+ * so `ENTRIES[flag]` is right for some and off by one for others: MON_SPELL_
+ * ENTRIES keeps RSF_NONE at [0] and MON_RACE_FLAG_ENTRIES keeps RF_NONE at [0],
+ * while OBJECT_FLAG_ENTRIES drops OF_NONE and starts at SUST_STR - its own
+ * generated header says so ("OF_<name> == entry index + 1"). Inverting the enum
+ * - which is generated from the same header as the flags themselves - cannot be
+ * off by one in any direction, and the test pins them against the reference
+ * headers.
+ *
+ * This comment used to say MON_RACE_FLAG_ENTRIES was the list that drops its
+ * sentinel. It is not, and naming the wrong table here is how an off-by-one
+ * gets written somewhere that has no test: the code below was always right,
+ * because it never trusted either list. #273 checked all four tables against
+ * their own tuples for exactly this reason.
  */
 function nameTable(en: Readonly<Record<string, number>>): readonly (string | undefined)[] {
   const out: (string | undefined)[] = [];

@@ -13,10 +13,10 @@
  *   That is the mechanism; a promise in a comment is not one.
  *
  * WHY A CHAIN AND NOT N CONVERTERS. Each step moves a document exactly one
- * version, so version 1 reaches version 5 by running four steps that were each
+ * version, so version 1 reaches version 6 by running five steps that were each
  * written (and tested) against the format immediately before it. Nobody has to
- * remember what version 1 looked like when version 6 is designed - only what
- * version 5 looked like.
+ * remember what version 1 looked like when version 7 is designed - only what
+ * version 6 looked like.
  *
  * WHAT A STEP MAY NOT DO. Throw. A step that meets a content id or index the
  * running pack cannot resolve DROPS that entity and records a line in `notes`;
@@ -32,8 +32,18 @@
 
 import type { ContentIdResolver } from "../mod/ids.js";
 import { FlagSet } from "../bitflag.js";
-import { serializeIgnore, serializeLoreSpells, SAVE_VERSION } from "./save.js";
+import {
+  SAVE_VERSION,
+  serializeElementLevels,
+  serializeIgnore,
+  serializeLoreFlags,
+  serializeLoreSpells,
+  serializeObjectElements,
+  serializeObjectFlags,
+  serializeObjectModifiers,
+} from "./save.js";
 import type { IgnoreSettingsData } from "../obj/ignore.js";
+import type { ElementInfo } from "../obj/types.js";
 import type { SavedGame } from "./save.js";
 
 /**
@@ -463,19 +473,24 @@ function isV4Lore(node: Json): boolean {
 }
 
 /**
- * Version 4's raw FlagSet bytes -> the RSF names version 5 stores. The bit
- * numbering used here is THIS build's, which is the numbering the version-4
- * save was written under: RSF has never been appended to (that is the very
- * thing this migration unblocks), and a v4 save by definition predates any
- * build that could have.
+ * A saved `number[]` of FlagSet bytes, read back as a FlagSet. The bit
+ * numbering used here is THIS build's, which is the numbering the older save
+ * was written under: none of RSF / RF / OF has ever been appended to or
+ * reordered (that is the very thing these migrations unblock), and a save at
+ * the older version by definition predates any build that could have.
  */
-function v4SpellNames(bytes: readonly unknown[]): string[] {
+function savedFlagSet(bytes: readonly unknown[]): FlagSet {
   const raw = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
     raw[i] = typeof b === "number" ? b & 0xff : 0;
   }
-  return serializeLoreSpells(new FlagSet(raw));
+  return new FlagSet(raw);
+}
+
+/** Version 4's raw FlagSet bytes -> the RSF names version 5 stores. */
+function v4SpellNames(bytes: readonly unknown[]): string[] {
+  return serializeLoreSpells(savedFlagSet(bytes));
 }
 
 const V4_TO_V5: SaveMigration = {
@@ -501,6 +516,142 @@ const V4_TO_V5: SaveMigration = {
 };
 
 /* ------------------------------------------------------------------ *
+ * 5 -> 6: the last four persisted POSITIONS become names.
+ * ------------------------------------------------------------------ */
+
+/**
+ * THE DISCRIMINATOR PROBLEM, AND WHY NO SINGLE FIELD SOLVES IT.
+ *
+ * Version 5 wrote SIX `number[]` fields that this step must not confuse with
+ * each other, and three more it must not touch at all:
+ *
+ *   convert  object / objKnown  `flags`      OF FlagSet bytes
+ *   convert  object / objKnown  `modifiers`  dense, by OBJ_MOD index
+ *   convert  object / objKnown  `elInfo`     dense, by ELEM index (objects)
+ *   convert  lore               `flags`      RF FlagSet bytes
+ *   convert  monster            `knownPstateFlags` / `knownPstateElInfo`
+ *   LEAVE    player             `spellFlags` PY_SPELL bits - the spellbook
+ *   LEAVE    trap               `flags`      TRF FlagSet bytes (out of scope)
+ *   LEAVE    monster            `mflag`      MFLAG FlagSet bytes (out of scope)
+ *
+ * `flags: number[]` therefore names FOUR different things and is worthless as a
+ * test on its own - the same trap V4_TO_V5 hit, where `spellFlags` alone would
+ * have rewritten the player's spellbook. Each predicate below is a CONJUNCTION
+ * of fields that co-occur on exactly one kind of node.
+ */
+
+/**
+ * An object-property carrier: `SavedObject` or `SavedPlayer.objKnown`, which
+ * are the only two nodes in the document that hold all three of an OF flag set,
+ * an OBJ_MOD array and an ELEM array - and which convert identically, so one
+ * predicate serves both. (`SavedObject` also has `kindId`; requiring it would
+ * exclude `objKnown` and leave the player's learned runes on bit positions.)
+ *
+ * Nothing else comes close: a lore record has `flags` and no `modifiers`, a
+ * trap has `flags` and a `trapId`, and `player.spellFlags` is not named
+ * `flags` at all.
+ */
+function isV5ObjectProps(node: Json): boolean {
+  return (
+    Array.isArray(node.flags) &&
+    Array.isArray(node.modifiers) &&
+    Array.isArray(node.elInfo)
+  );
+}
+
+/**
+ * A lore record in the version-5 shape. `spellsKnown` arrived with version 5
+ * and belongs to the lore record and to nothing else; `blowKnown` and `tkills`
+ * were already the pair that named it for V4_TO_V5. Four fields together, and
+ * `flags` is the one being rewritten rather than the one doing the naming.
+ */
+function isV5Lore(node: Json): boolean {
+  return (
+    Array.isArray(node.flags) &&
+    Array.isArray(node.spellsKnown) &&
+    Array.isArray(node.blowKnown) &&
+    typeof node.tkills === "number"
+  );
+}
+
+/** Coerce a saved dense array to numbers; a non-number slot reads as 0. */
+function savedNumbers(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => (typeof v === "number" ? v : 0));
+}
+
+/** Coerce a saved dense el_info array; a malformed slot reads as untouched. */
+function savedElements(value: unknown): ElementInfo[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => ({
+    resLevel: isObj(v) && typeof v.resLevel === "number" ? v.resLevel : 0,
+    flags: isObj(v) && typeof v.flags === "number" ? v.flags : 0,
+  }));
+}
+
+const V5_TO_V6: SaveMigration = {
+  from: 5,
+  to: 6,
+  summary:
+    "items, learned runes and monster memory record their properties BY NAME " +
+    "instead of by bit position, so game data that adds an object flag, a " +
+    "modifier, an element or a monster flag can no longer renumber what you " +
+    "already own or already know",
+  step(save, ids, notes) {
+    void ids;
+    void notes;
+
+    const migrated = rewriteNodes(save, (node) => {
+      if (isV5ObjectProps(node)) {
+        const { flags, modifiers, elInfo, ...rest } = node;
+        return {
+          ...rest,
+          flagNames: serializeObjectFlags(savedFlagSet(flags as unknown[])),
+          modifierValues: serializeObjectModifiers(savedNumbers(modifiers)),
+          elementInfo: serializeObjectElements(savedElements(elInfo)),
+        };
+      }
+      if (isV5Lore(node)) {
+        const { flags, ...rest } = node;
+        return {
+          ...rest,
+          flagsKnown: serializeLoreFlags(savedFlagSet(flags as unknown[])),
+        };
+      }
+      /* A monster's remembered view of the player. Both fields are optional and
+       * their NAMES appear on no other node, so presence is the whole test. */
+      if (
+        Array.isArray(node.knownPstateFlags) ||
+        Array.isArray(node.knownPstateElInfo)
+      ) {
+        const { knownPstateFlags, knownPstateElInfo, ...rest } = node;
+        return {
+          ...rest,
+          ...(Array.isArray(knownPstateFlags)
+            ? {
+                knownPstateFlagNames: serializeObjectFlags(
+                  savedFlagSet(knownPstateFlags),
+                ),
+              }
+            : {}),
+          ...(Array.isArray(knownPstateElInfo)
+            ? {
+                knownPstateElementRes: serializeElementLevels(
+                  savedNumbers(knownPstateElInfo),
+                ),
+              }
+            : {}),
+        };
+      }
+      return node;
+    }) as VersionedSave;
+
+    migrated.version = 6;
+    return migrated;
+  },
+};
+
+/* ------------------------------------------------------------------ *
  * The chain.
  * ------------------------------------------------------------------ */
 
@@ -513,6 +664,7 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
   V2_TO_V3,
   V3_TO_V4,
   V4_TO_V5,
+  V5_TO_V6,
 ];
 
 /** The oldest save version this build can read. */

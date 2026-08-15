@@ -70,7 +70,8 @@ write down at all.
 | **Replace the UI** — the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
 | Own a region other than the map, with core drawing the ones you do not claim | **Not yet** | gap 21 |
 | Rebind keys, or add a gamepad — `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
-| Change the message table, the `MSG_`→sound map, the monster spell table, the command table, or the pref-file handlers | **Not yet** | `MOD_REACH.md` §(c) |
+| Change the message table, the `MSG_`→sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
+| Change the monster spell table or the command table | **Not yet** | `MOD_REACH.md` rows 22, 19 |
 | Install, update and uninstall UX — ratified in full, built in part | **WIP** | `MOD_LIFECYCLE.md` |
 
 Two things this table deliberately does not do. It does not rank surfaces by how

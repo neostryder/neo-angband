@@ -254,10 +254,18 @@ describe("the read loop of options_restore_custom (option.c:292-331)", () => {
   });
 
   it("has no error cap: every bad line in a long file is reported and the file is read to the end", () => {
-    /* run_parser's PARSE_ERROR_LIMIT does not apply, because this reader is not
-     * a parser (option.c:284-287). Upstream MASTER's replacement DOES cap at 20
-     * and BREAKS the loop there, so the good line at the end would be lost.
-     * That difference is the whole of #149 in one assertion. */
+    /* 4.2.6's customised-options reader is not a `struct parser` at all
+     * (option.c:284-287) - it is a hand-rolled `while (file_getl(...))` that
+     * `continue`s past a line it does not understand - so a bad line costs that
+     * line and nothing else. Upstream MASTER's replacement runs the file through
+     * run_parser instead, which stops on the first error, and the good line at
+     * the end would be lost. That difference is the whole of #149 in one
+     * assertion.
+     *
+     * Contrast visuals/prefs.ts, which models a DIFFERENT loop
+     * (process_pref_file_named) and does stop on the first bad line. The port
+     * briefly had a 20-error cap shared between the two; #272 removed it as an
+     * extension, and this reader was never the one that wanted it. */
     const target = OPTION_ENTRIES.find((e) => e.type === "INTERFACE" && !e.normal)!;
     const bad = Array.from({ length: 25 }, (_, i) => `option:no_such_${i}:yes`).join("\n");
     const { opts, msgs } = parse(`${bad}\noption:${target.name}:yes\n`);

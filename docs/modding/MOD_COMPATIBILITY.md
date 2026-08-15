@@ -117,18 +117,36 @@ What exists now is not a fence but a **ratchet**:
 
 #### Removals taken knowingly
 
-One row, and it is the shape the mechanism above is for.
+Five rows, and they are the shape the mechanism above is for. Four of them are
+one removal: the parse-error limit, which had no counterpart in Angband 4.2.6
+and so had no business in a port.
 
 | Version | Export | Why | What to use instead |
 |---|---|---|---|
 | unreleased (2026-08-12) | `optionFileErrorMessage` | Its whole subject is gone. The custom-options reader was a port of upstream **master**'s `struct parser` grammar; #149 rewrote it to 4.2.6's hand-rolled read loop, which has no `parser_state` to format - it emits three plain `msg()` lines instead. | `prefErrorMessage` (`visuals/prefs.ts`), which formats the identical `Parse error in %s line %d column %d: %s: %s` from the same `ParserState`. It was always the same function; this one was the duplicate. |
+| unreleased (2026-08-14) | `PARSE_ERROR_LIMIT` | The port's own cap of 20 parse errors per file. A citation sweep (#268) found no `PARSE_ERROR_LIMIT`, no `get_parser_error_limit` and no error COUNT anywhere in 4.2.6 - `process_pref_file_named` (`ui-prefs.c` L1225-1231) `break`s on the FIRST bad line - so it was an improvement the port had added, and the port adds nothing (#272). | Nothing in core: the number was never a fact about Angband. A mod that wants a cap chooses its own and passes it as `PrefErrorPolicy.reportLimit` to `setPrefErrorPolicy` (`visuals/prefs.ts`). The `qol` mod uses 20, so a player sees the familiar behaviour. |
+| unreleased (2026-08-14) | `getParserErrorLimit` | The reader for the above, including a `PARSE_ERROR_LIMIT` environment override that no upstream build has. Removed with its subject (#272). | `prefErrorPolicy()`, which answers with the policy in force - `UPSTREAM_PREF_ERROR_POLICY` unless a mod installed another. It answers a richer question, because one number could not express both "keep reading" and "keep reporting". |
+| unreleased (2026-08-14) | `setParserErrorLimit` | The test seam for the above. Nothing in the game ever called it, and its subject is gone (#272). | `setPrefErrorPolicy(policy \| null)`, which is a real seam rather than a test hook: it is the documented way a mod changes what a bad pref line costs, and `null` restores 4.2.6's behaviour. |
+| unreleased (2026-08-14) | `parseParserErrorLimitEnv` | Parsed `PARSE_ERROR_LIMIT` out of the environment with C's `strtol` rules, so a host could set the cap without owning the rule. There is no cap and no environment variable (#272). | Nothing. A mod that wants its policy configurable owns that decision, and `ctx.prefs` is where a mod keeps a player's answer to it. |
 
-`parseCustomOptionsText` survives by name but **changed shape** in the same
-commit: it returns `string[]` (the messages) rather than `ParserState[]`, and
-its fourth `errorLimit` parameter is gone, because 4.2.6's reader has no error
-cap. A plugin calling it for its own diagnostics gets a type error at build and
-a different array at runtime. Recorded here rather than aliased: there is no
-honest alias for "the same call now answers a different question."
+`parseCustomOptionsText` survives by name but **changed shape** on 2026-08-12: it
+returns `string[]` (the messages) rather than `ParserState[]`, and its fourth
+`errorLimit` parameter is gone, because 4.2.6's reader has no error cap. A plugin
+calling it for its own diagnostics gets a type error at build and a different
+array at runtime. Recorded here rather than aliased: there is no honest alias for
+"the same call now answers a different question."
+
+`ProcessPrefOptions` **changed shape** for the same reason and in the same
+direction (#272, unreleased 2026-08-14): its `errorLimit?: number` is now
+`errorPolicy?: PrefErrorPolicy`. A plugin that called
+`processPrefText(text, deps, sink, { errorLimit: 0 })` gets a type error at
+build, and the fix is `{ errorPolicy: { continueAfterError: true, reportLimit: 0 } }`.
+Not aliased, because the old field could not say what the new one has to: a
+single number conflated "stop applying the file" with "stop collecting errors",
+and the second is the one a player wants bounded. Four names arrived with it:
+`PrefErrorPolicy`, which is a type and so never appears in the surface list, and
+the three runtime exports `UPSTREAM_PREF_ERROR_POLICY`, `prefErrorPolicy()` and
+`setPrefErrorPolicy()`.
 
 `msgt(sinks, type, text)` likewise **keeps its name and signature but no longer
 touches `sinks.sound`** (#239, unreleased 2026-08-13). It used to call both

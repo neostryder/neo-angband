@@ -174,6 +174,53 @@ If you need the engine at `hooks` time for something that is not the live game �
 classifying option names, reading a constant — `ctx.core` is there and is the
 same module instance the game runs on.
 
+### Engine-wide settings you change through `ctx.core`, not through a hook
+
+A few of the engine's decisions are not taken inside a turn and have no game
+state to hang a hook on. Those are exposed as a **module-level policy** you set
+once, and `hooks(ctx)` is where you set it — it is the earliest moment your code
+runs, before `startGame`, and before boot reads anything.
+
+The one that exists today:
+
+| Call | Changes | Faithful default |
+|---|---|---|
+| `ctx.core.setPrefErrorPolicy(policy \| null)` | What a pref file does with a line it cannot parse. `{ continueAfterError, reportLimit }` — whether the rest of the file is still applied, and how many errors the player is told about. | `UPSTREAM_PREF_ERROR_POLICY`: stop at the first bad line, which is what `process_pref_file_named` does in 4.2.6. |
+
+```js
+hooks(ctx) {
+  if (ctx.flags["mymod.forgivingPrefFiles"]) {
+    ctx.core.setPrefErrorPolicy({ continueAfterError: true, reportLimit: 20 });
+  }
+  return {};
+}
+```
+
+Three rules, and they are the same rules the rest of the mod system runs on:
+
+- **Last load wins, and there is exactly one winner.** The host calls each
+  enabled mod's `hooks` in load order, so the last mod to set a policy is the one
+  that stands — the same promise the mod manager's row makes the player ("Move
+  later (loads last, wins conflicts)"). There is nothing to fold: two policies
+  cannot be merged into a third that is either of them, which is why this is not
+  a `ModHooks` member. If your mod cares, say so in its README; a player who
+  installs two mods with opinions about the same policy will get the later one.
+- **Only set it when your flag is on.** Setting the faithful default explicitly
+  is not the same as not setting it — it still makes your mod the winner, and
+  still overrides a mod loaded before you. A patch the player switched off must
+  not call at all.
+- **Turning your mod off really does take it away.** A module-level value would
+  otherwise outlive a mod being disabled — but disabling does not take effect
+  inside one process. The manager prompts to save and reloads, and after the
+  reload your `hooks` is never called, so nothing installs a policy and the
+  engine is back on its faithful default. `setPrefErrorPolicy(null)` is the same
+  seam for a test.
+
+Guard the call if your `engine` range allows a version that predates the seam:
+`typeof ctx.core.setPrefErrorPolicy === "function"`. The range is the gate; that
+check is the seatbelt, and a `ctx.log` line when it fires is what stops a mod
+being silently inert.
+
 ### `prefs`: the place for data that outlives a character
 
 Your mod has two places to put data and they are not interchangeable.
