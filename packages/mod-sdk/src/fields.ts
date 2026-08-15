@@ -145,13 +145,22 @@ export interface FieldFault {
  * dagger is not an extension field - and this layer has no way to tell a
  * misspelling of one of core's keys from a key core reads but never ships. That
  * distinction needs core's own key table; see checkUnqualified.
+ *
+ * `provenance` and `manifests` are REQUIRED, and this function is deliberately
+ * NOT re-exported from the package index. Both facts guard the same hole: with
+ * empty maps every declared key has no recorded writer, so `writersOf` answers
+ * nothing, no write is ever judged a trespass, and the gate above degrades to
+ * "strip undeclared keys" while still reporting success. Defaulting them made
+ * that the shape a caller got by omission. The maps come from composition -
+ * `fieldProvenanceOf` in compose.js - which is not public either, so the only
+ * door to this rule is composeContentPacks, which supplies both.
  */
 export function applyFieldPolicy(
   file: string,
   records: readonly Record<string, unknown>[],
   declared: ReadonlyMap<string, ResolvedField>,
-  provenance: ReadonlyMap<Record<string, unknown>, FieldProvenance> = new Map(),
-  manifests: ReadonlyMap<string, PackManifest> = new Map(),
+  provenance: ReadonlyMap<Record<string, unknown>, FieldProvenance>,
+  manifests: ReadonlyMap<string, PackManifest>,
 ): FieldFault[] {
   const faults: FieldFault[] = [];
   /* One fault per (key, reason) rather than per record: a mod that adds an

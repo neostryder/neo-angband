@@ -192,6 +192,25 @@ asymmetry with the `ParsedCapability` rows above: those broke exhaustive
 `switch`es because a plugin *inspects* a capability, and nobody exhaustively
 switches over a frame.
 
+One SDK **removal**, and it is the first on this page that removes a name rather
+than reshaping one: `applyFieldPolicy` is gone from the package index (#285,
+unreleased 2026-08-15). It arrived public by accident — the index said
+`export * from "./fields.js"` — and it was unusable and dangerous in the same
+breath. The function judges a namespace trespass from a `FieldProvenance` map
+built during composition, and the accessor that builds one (`fieldProvenanceOf`)
+was never exported. So the only form an outside caller could write was the
+three-argument one, whose defaults are empty maps: it strips undeclared keys,
+finds no recorded writer for anything, judges no write a trespass, and hands back
+a fault list indistinguishable from a clean pass. **A gate that reports success
+while checking nothing is worse than no gate**, because the caller stops looking.
+The two provenance parameters are now required as well, so the same mistake is a
+compile error inside the SDK. Nothing in this repository or in the four mod
+repositories called it, so no author is stranded; the door to the rule is
+`composeContentPacks`, which supplies both maps and always did.
+`checkUnqualified`, `declaredFields`, `fieldOwner`, `isExtensionKey` and
+`FIELD_TYPES` are unaffected, and are now named explicitly rather than swept up
+by a wildcard — which is what let this one out in the first place.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed
