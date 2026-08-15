@@ -4,7 +4,7 @@
  * Every record in the composed game is identified by a PackRef
  * ("<owner-pack>:<slug>"). Packs may:
  *  - add records (they become the owner),
- *  - patch records owned by packs they declare as dependencies
+ *  - patch records owned by packs they declare as hard or optional dependencies
  *    (deep merge: objects merge per key, arrays and scalars replace,
  *    an explicit null deletes the key),
  *  - replace such records wholesale, or
@@ -35,6 +35,56 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 export type JsonRecord = { [key: string]: JsonValue };
+
+/**
+ * The packs that wrote each top-level key of one composed record.
+ *
+ * This is composition-time bookkeeping only: loader.ts consumes it before it
+ * returns record arrays to the host, so it never reaches a binder or a save.
+ */
+export type FieldWriters = Map<string, Set<string>>;
+
+/** One top-level value a pack wrote, including an explicit deletion. */
+export interface FieldWrite {
+  readonly packId: string;
+  readonly value: JsonValue | undefined;
+}
+
+/** The transient writers and values for one record's top-level keys. */
+export interface FieldProvenance {
+  readonly writers: FieldWriters;
+  readonly writes: Map<string, FieldWrite[]>;
+}
+
+/** Start the transient field provenance for a record a pack contributes. */
+export function fieldProvenanceFor(record: JsonRecord, packId: string): FieldProvenance {
+  const provenance: FieldProvenance = { writers: new Map(), writes: new Map() };
+  noteFieldWrites(provenance, Object.keys(record), packId, record);
+  return provenance;
+}
+
+/** Record the final values for top-level keys one pack just wrote. */
+export function noteFieldWrites(
+  provenance: FieldProvenance,
+  keys: Iterable<string>,
+  packId: string,
+  record: JsonRecord,
+): void {
+  for (const key of keys) {
+    let by = provenance.writers.get(key);
+    if (by === undefined) {
+      by = new Set();
+      provenance.writers.set(key, by);
+    }
+    by.add(packId);
+    let writes = provenance.writes.get(key);
+    if (writes === undefined) {
+      writes = [];
+      provenance.writes.set(key, writes);
+    }
+    writes.push({ packId, value: record[key] });
+  }
+}
 
 /** One pack's contribution to one record file (e.g. "monster"). */
 export interface FileContribution {
@@ -96,6 +146,38 @@ export interface ComposedRecord {
   readonly defined: JsonRecord;
 }
 
+/* Deliberately outside ComposedRecord: this cannot become record data or reach
+ * a save through an incidental serializer. loader.ts consumes it before it
+ * returns the composed values. */
+const fieldProvenanceByRecord = new WeakMap<ComposedRecord, FieldProvenance>();
+
+/**
+ * The transient key provenance for a record from this composition only.
+ *
+ * Every composed record is registered where it enters the table, so a miss
+ * means a NEW path added a record without registering one. That is worth
+ * naming rather than casting away: unregistered, the record's writers are
+ * invisible, so the namespace-trespass gate stops seeing that record's writes
+ * and silently permits what it exists to refuse. Left as a cast, the symptom
+ * would instead be a TypeError from inside `noteFieldWrites`, several frames
+ * from the mistake.
+ *
+ * Deliberately NOT a ComposeError. That type is the mod-attributable channel -
+ * it carries a pack id and tells an author which line to fix - and this is our
+ * bug, not a mod's. Blaming whichever pack happened to be loading would send a
+ * reader after the wrong thing entirely.
+ */
+export function fieldProvenanceOf(record: ComposedRecord): FieldProvenance {
+  const provenance = fieldProvenanceByRecord.get(record);
+  if (provenance === undefined) {
+    throw new Error(
+      `composition bug: no field provenance for "${record.ref}" - a record ` +
+        `reached the table without registering one, so the namespace gate cannot see its writers`,
+    );
+  }
+  return provenance;
+}
+
 export class ComposeError extends Error {}
 
 /** Deep merge per the pack patch rules. Returns a new object. */
@@ -120,7 +202,11 @@ export function mergePatch(base: JsonRecord, patch: JsonRecord): JsonRecord {
 }
 
 function mayModify(m: PackManifest, ownerPack: string): boolean {
-  return ownerPack === m.id || (m.dependencies ?? {})[ownerPack] !== undefined;
+  return (
+    ownerPack === m.id ||
+    (m.dependencies ?? {})[ownerPack] !== undefined ||
+    (m.optionalDependencies ?? {})[ownerPack] !== undefined
+  );
 }
 
 function ownerOf(ref: string): string {
@@ -314,7 +400,15 @@ export function composePacks(
           );
           return;
         }
-        table.set(ref, { ref, owner: pid, modifiedBy: [], value: rec, defined: rec });
+        const added: ComposedRecord = {
+          ref,
+          owner: pid,
+          modifiedBy: [],
+          value: rec,
+          defined: rec,
+        };
+        fieldProvenanceByRecord.set(added, fieldProvenanceFor(rec, pid));
+        table.set(ref, added);
 
         /* Every other ref this record answers to becomes an alias - EXCEPT one
          * that is some record's real name. "*Healing*"'s legacy ref is plain
@@ -353,8 +447,12 @@ export function composePacks(
           const at = addressable(kind, refStr as PackRef);
           if (at === null) continue;
           const existing = table.get(at) as ComposedRecord;
-          existing.value =
-            kind === "patches" ? mergePatch(existing.value, body) : body;
+          const changed =
+            kind === "patches"
+              ? Object.keys(body)
+              : new Set([...Object.keys(existing.value), ...Object.keys(body)]);
+          existing.value = kind === "patches" ? mergePatch(existing.value, body) : body;
+          noteFieldWrites(fieldProvenanceOf(existing), changed, pid, existing.value);
           existing.modifiedBy.push(pid);
         }
       }
@@ -364,6 +462,12 @@ export function composePacks(
         if (at === null) continue;
         const existing = table.get(at) as ComposedRecord;
         existing.value = applyFieldPatch(existing.value, ops);
+        noteFieldWrites(
+          fieldProvenanceOf(existing),
+          ops.map((op) => op.path.split(".")[0] as string),
+          pid,
+          existing.value,
+        );
         existing.modifiedBy.push(pid);
       }
 

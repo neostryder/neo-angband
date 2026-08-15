@@ -115,6 +115,428 @@ describe("a declared field", () => {
   });
 });
 
+describe("the namespace-trespass gate", () => {
+  it("drops a declared field a pack writes without declaring its owner", () => {
+    const owner: LoadedPack = {
+      manifest: manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+      files: {},
+    };
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 7 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBeUndefined();
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+
+  it("drops only the trespassing field and keeps the writer's other changes", () => {
+    const owner: LoadedPack = {
+      manifest: manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+      files: {},
+    };
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [
+              { op: "set", path: "wounds:bleed", value: 7 },
+              { op: "set", path: "attack.hd", value: "1d9" },
+            ],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser]);
+    const record = dagger(composed.records["object"]);
+    expect(record["wounds:bleed"]).toBeUndefined();
+    expect(record["attack"]).toEqual({ hd: "1d9" });
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+
+  it("refuses a trespassing deletion and restores the namespace owner's value", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          patches: { "core:sword--dagger": { "wounds:bleed": 5 } },
+        },
+      },
+    } as unknown as LoadedPack;
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          patches: { "core:sword--dagger": { "wounds:bleed": null } },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser]);
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBe(5);
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+
+  it("allows a namespace owner to write its own declared field", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 7 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner]);
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBe(7);
+    expect(composed.faults).toEqual([]);
+  });
+
+  it("allows an integration that declares the namespace owner as a dependency", () => {
+    const owner: LoadedPack = {
+      manifest: manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+      files: {},
+    };
+    const integration: LoadedPack = {
+      manifest: { ...manifest("healing"), dependencies: { core: "*", wounds: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 7 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, integration]);
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBe(7);
+    expect(composed.faults).toEqual([]);
+  });
+
+  it("allows an integration that declares the namespace owner as an optional dependency", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          records: [{ name: "Wounded Dagger", type: "sword", "wounds:bleed": 1 }],
+        },
+      },
+    };
+    const integration: LoadedPack = {
+      manifest: {
+        ...manifest("healing"),
+        dependencies: { core: "*" },
+        optionalDependencies: { wounds: "*" },
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "wounds:sword--wounded-dagger": [
+              { op: "set", path: "wounds:bleed", value: 7 },
+            ],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    /* Input order puts the integration first, proving optionalDependencies
+     * supply both the permitted namespace reach and the required ordering. */
+    const composed = composeContentPacks([corePack(), integration, owner]);
+    const wounded = (composed.records["object"] as Record<string, unknown>[]).find(
+      (record) => record["name"] === "Wounded Dagger",
+    );
+    expect(wounded?.["wounds:bleed"]).toBe(7);
+    expect(composed.faults).toEqual([]);
+  });
+
+  it("rolls back later allowed nested edits computed from a trespasser's value", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "object" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: { a: 1 } }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed.a", value: 9 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+    const integration: LoadedPack = {
+      manifest: { ...manifest("healing"), dependencies: { core: "*", wounds: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed.b", value: 2 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser, integration]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toEqual({ a: 1 });
+    expect(composed.faults).toContainEqual(
+      expect.objectContaining({
+        packId: "sneaky",
+        why: expect.stringContaining("Later edits to the same field were rolled back too"),
+      }),
+    );
+  });
+
+  it("rolls back later allowed arithmetic computed from a trespasser's value", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        dependencies: { core: "*" },
+      },
+      files: { object: { patches: { "core:sword--dagger": { "wounds:bleed": 10 } } } },
+    } as unknown as LoadedPack;
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "add", path: "wounds:bleed", value: 5 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+    const integration: LoadedPack = {
+      manifest: { ...manifest("healing"), dependencies: { core: "*", wounds: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "add", path: "wounds:bleed", value: 1 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser, integration]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBe(10);
+  });
+
+  it("rolls back later allowed coarse merges containing a trespasser's sibling", () => {
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "object" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          patches: { "core:sword--dagger": { "wounds:bleed": { owner: 1 } } },
+        },
+      },
+    } as unknown as LoadedPack;
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          patches: { "core:sword--dagger": { "wounds:bleed": { sneaky: 9 } } },
+        },
+      },
+    } as unknown as LoadedPack;
+    const integration: LoadedPack = {
+      manifest: { ...manifest("healing"), dependencies: { core: "*", wounds: "*" } },
+      files: {
+        object: {
+          patches: { "core:sword--dagger": { "wounds:bleed": { healing: 2 } } },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), owner, trespasser, integration]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toEqual({ owner: 1 });
+  });
+
+  it("drops a full-key trespass that loads before the namespace owner", () => {
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 9 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+    const owner: LoadedPack = {
+      manifest: {
+        ...manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        dependencies: { core: "*" },
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 1 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), trespasser, owner]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBeUndefined();
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+
+  it("treats an optional dependency that is not installed as an undeclared field", () => {
+    const integration: LoadedPack = {
+      manifest: {
+        ...manifest("healing"),
+        dependencies: { core: "*" },
+        optionalDependencies: { wounds: "*" },
+      },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 7 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([corePack(), integration]);
+
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBeUndefined();
+    expect(composed.faults).toContainEqual(
+      expect.objectContaining({
+        packId: "healing",
+        why: expect.stringContaining("no loaded mod declares it"),
+      }),
+    );
+    expect(composed.problems.join("\n")).not.toContain("without declaring wounds");
+  });
+
+  for (const [name, contribution, target] of [
+    [
+      "a newly added record",
+      { records: [{ name: "Foreign Dagger", type: "sword", "wounds:bleed": 7 }] },
+      "Foreign Dagger",
+    ],
+    [
+      "a coarse patch",
+      { patches: { "core:sword--dagger": { "wounds:bleed": 7 } } },
+      "Dagger",
+    ],
+    [
+      "a replacement",
+      {
+        replaces: {
+          "core:sword--dagger": { name: "Dagger", type: "sword", "wounds:bleed": 7 },
+        },
+      },
+      "Dagger",
+    ],
+  ] as const) {
+    it(`catches trespass through ${name}`, () => {
+      const owner: LoadedPack = {
+        manifest: manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+        files: {},
+      };
+      const trespasser: LoadedPack = {
+        manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+        files: { object: contribution },
+      } as unknown as LoadedPack;
+
+      const composed = composeContentPacks([corePack(), owner, trespasser]);
+      const record = (composed.records["object"] as Record<string, unknown>[]).find(
+        (candidate) => candidate["name"] === target,
+      );
+      expect(record?.["wounds:bleed"]).toBeUndefined();
+      expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+    });
+  }
+
+  it("catches trespass through a passthrough file's whole-file contributor", () => {
+    const core: LoadedPack = {
+      manifest: manifest("core"),
+      files: { constants: { records: [{ version: 1 }] } },
+    } as unknown as LoadedPack;
+    const owner: LoadedPack = {
+      manifest: manifest("wounds", [{ name: "bleed", files: ["constants"], type: "number" }]),
+      files: {},
+    };
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: { constants: { records: [{ version: 2, "wounds:bleed": 7 }] } },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([core, owner, trespasser]);
+    expect((composed.records["constants"]?.[0] as Record<string, unknown>)["wounds:bleed"]).toBeUndefined();
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+
+  it("catches trespass through a passthrough file's field patch", () => {
+    const core: LoadedPack = {
+      manifest: manifest("core"),
+      files: {
+        object: {
+          records: [
+            { name: "Dagger", type: "sword" },
+            { name: "Main Gauche", type: "sword" },
+            { name: "Deep Descent", type: "scroll" },
+            { name: "Deep Descent", type: "scroll" },
+          ],
+        },
+      },
+    } as unknown as LoadedPack;
+    const owner: LoadedPack = {
+      manifest: manifest("wounds", [{ name: "bleed", files: ["object"], type: "number" }]),
+      files: {},
+    };
+    const trespasser: LoadedPack = {
+      manifest: { ...manifest("sneaky"), dependencies: { core: "*" } },
+      files: {
+        object: {
+          fieldPatches: {
+            "core:sword--dagger": [{ op: "set", path: "wounds:bleed", value: 7 }],
+          },
+        },
+      },
+    } as unknown as LoadedPack;
+
+    const composed = composeContentPacks([core, owner, trespasser]);
+    expect(dagger(composed.records["object"])["wounds:bleed"]).toBeUndefined();
+    expect(composed.faults.map((fault) => fault.packId)).toContain("sneaky");
+  });
+});
+
 describe("an undeclared field", () => {
   it("is stripped, and the problem names the mod, the file and the key", () => {
     const composed = composeContentPacks([corePack(), modWriting("gore", "gore:bleed", 1)]);

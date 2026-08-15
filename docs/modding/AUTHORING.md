@@ -18,6 +18,14 @@ SDK asks them.
 Everything on this page is in `@rpgm-tools/neo-angband-mod-sdk` and needs no
 game running.
 
+## Writing another mod's extension field
+
+Your mod may write `<owner>:<field>` only after declaring `<owner>` in
+`dependencies` or `optionalDependencies`. Without that declaration the write
+is refused, the field is rolled back, and the fault names your mod; later edits
+to that field made from the refused value are rolled back too. Declare your own
+fields under your own id as usual.
+
 ---
 
 ## The one-call version

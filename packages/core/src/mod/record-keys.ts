@@ -82,9 +82,10 @@ export const CORE_RECORD_KEYS: Readonly<Record<string, readonly string[]>> = {
  * `ext`, believe the patch worked, and never learn the real field went
  * untouched. The namespace is also what stops two mods coining the same word
  * from silently overwriting each other. The rule is enforced at composition
- * (mod-sdk fields.ts), which additionally requires the owning mod to have
- * DECLARED the field; this is the same rule at the other end, so a record that
- * reached core by some other route cannot bypass it.
+ * (mod-sdk fields.ts): the owning mod must DECLARE the field, and another pack
+ * may write it only when it declares that owner as a dependency. This is the
+ * same rule at the other end, so a record that reached core by some other route
+ * cannot bypass it.
  */
 export function extensionData(
   file: string,

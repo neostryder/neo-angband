@@ -34,6 +34,7 @@
 
 import type { PackManifest } from "./manifest.js";
 import { isReservedKey } from "./provenance.js";
+import type { FieldProvenance } from "./compose.js";
 
 /** The JSON shapes a declared field may take. "any" declines to check. */
 export type FieldType = "string" | "number" | "boolean" | "object" | "array" | "any";
@@ -118,7 +119,7 @@ function shapeOf(value: unknown): FieldType {
 
 /** One field a record carried that could not be honoured, and why. */
 export interface FieldFault {
-  /** The mod the fault is attributed to: the key's namespace, or "" if none. */
+  /** The pack whose write was refused, or the key's namespace when unknown. */
   packId: string;
   /** The pack file the record lives in. */
   file: string;
@@ -132,15 +133,13 @@ export interface FieldFault {
  * Strip every extension key that is not properly declared, in place, and return
  * one fault per stripped key.
  *
- * ATTRIBUTED TO THE NAMESPACE, NOT THE WRITER. A composed record has lost which
- * pack contributed each key - the ref says who OWNS the record, and a patch
- * from a third pack leaves no trace on the value it set. So a fault names the
- * mod whose namespace the key claims, which is the mod that would have to
- * declare it, and is the actionable half. What this therefore does NOT yet
- * enforce is a pack writing into another pack's namespace without depending on
- * it: the namespace is a boundary against COLLISION here, not yet against
- * trespass. MOD_REACH records that as the remaining half rather than letting
- * the docs imply a gate that is not there.
+ * THE NAMESPACE IS ALSO A BOUNDARY AGAINST TRESPASS. Composition carries the
+ * packs that wrote each key and the values they left here, so a pack may write
+ * another pack's declared field only after declaring that owner as a dependency
+ * (hard or optional). The owner may always write its own namespace. A refused
+ * write restores the last allowed value from before the FIRST trespass, also
+ * discarding later edits computed from poisoned input. Faults name the WRITER,
+ * which is the pack that can correct its manifest or contribution.
  *
  * UNQUALIFIED keys are left ALONE. They are core's business - `attack` on a
  * dagger is not an extension field - and this layer has no way to tell a
@@ -151,6 +150,8 @@ export function applyFieldPolicy(
   file: string,
   records: readonly Record<string, unknown>[],
   declared: ReadonlyMap<string, ResolvedField>,
+  provenance: ReadonlyMap<Record<string, unknown>, FieldProvenance> = new Map(),
+  manifests: ReadonlyMap<string, PackManifest> = new Map(),
 ): FieldFault[] {
   const faults: FieldFault[] = [];
   /* One fault per (key, reason) rather than per record: a mod that adds an
@@ -164,17 +165,57 @@ export function applyFieldPolicy(
     faults.push({ packId, file, key, message });
   };
 
+  const writersOf = (record: Record<string, unknown>, key: string): readonly string[] => {
+    const wrote = provenance.get(record)?.writers.get(key);
+    return wrote === undefined ? [] : [...wrote];
+  };
+  const restoreValueBeforeFirstTrespass = (
+    record: Record<string, unknown>,
+    key: string,
+    owner: string,
+  ): void => {
+    const writes = provenance.get(record)?.writes.get(key) ?? [];
+    const firstTrespass = writes.findIndex((write) => !mayWrite(write.packId, owner));
+    const lastAllowed =
+      firstTrespass === -1
+        ? undefined
+        : writes.slice(0, firstTrespass).reverse().find((write) => mayWrite(write.packId, owner));
+    if (lastAllowed?.value === undefined) delete record[key];
+    else record[key] = lastAllowed.value;
+  };
+  const faultWriters = (
+    record: Record<string, unknown>,
+    key: string,
+    fallback: string,
+    message: string,
+  ): void => {
+    const ids = writersOf(record, key);
+    for (const packId of ids.length === 0 ? [fallback] : ids) fault(packId, key, message);
+  };
+  const mayWrite = (packId: string, owner: string): boolean => {
+    /* A pack owning the namespace must always be able to use it. */
+    if (packId === owner) return true;
+    const manifest = manifests.get(packId);
+    return (
+      manifest?.dependencies?.[owner] !== undefined ||
+      manifest?.optionalDependencies?.[owner] !== undefined
+    );
+  };
+
   for (const record of records) {
-    for (const key of Object.keys(record)) {
+    const keys = new Set(Object.keys(record));
+    for (const key of provenance.get(record)?.writers.keys() ?? []) keys.add(key);
+    for (const key of keys) {
       if (!isExtensionKey(key)) continue;
       const owner = fieldOwner(key);
       const decl = declared.get(key);
 
       if (decl === undefined) {
         delete record[key];
-        fault(
-          owner,
+        faultWriters(
+          record,
           key,
+          owner,
           `${file}: dropped "${key}" - no loaded mod declares it. ` +
             `A field must be declared in ${owner === "" ? "its mod"
               : `${owner}'s`} manifest under "fields" before it can be written.`,
@@ -182,11 +223,27 @@ export function applyFieldPolicy(
         continue;
       }
 
+      const trespassers = writersOf(record, key).filter((packId) => !mayWrite(packId, owner));
+      if (trespassers.length > 0) {
+        restoreValueBeforeFirstTrespass(record, key, owner);
+        for (const trespasser of trespassers) {
+          fault(
+            trespasser,
+            key,
+            `${file}: dropped "${key}" - ${trespasser} wrote ${owner}'s field without ` +
+              `declaring ${owner} as a dependency or optionalDependency. Later edits to the ` +
+              `same field were rolled back too because they were computed after the refused write.`,
+          );
+        }
+        if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+      }
+
       if (!decl.files.includes(file)) {
         delete record[key];
-        fault(
-          owner,
+        faultWriters(
+          record,
           key,
+          owner,
           `${file}: dropped "${key}" - ${owner} declares it for ` +
             `${decl.files.join(", ")} and not for ${file}.`,
         );
@@ -200,7 +257,12 @@ export function applyFieldPolicy(
       const got = shapeOf(record[key]);
       if (want !== "any" && got !== want) {
         delete record[key];
-        fault(owner, key, `${file}: dropped "${key}" - declared as ${want}, got ${got}.`);
+        faultWriters(
+          record,
+          key,
+          owner,
+          `${file}: dropped "${key}" - declared as ${want}, got ${got}.`,
+        );
       }
     }
   }
