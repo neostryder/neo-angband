@@ -22,7 +22,8 @@
 import { FlagSet } from "../bitflag.js";
 import type { Rng } from "../rng.js";
 import { MFLAG, RF } from "../generated/index.js";
-import { MON_GROUP, monSpellsOfTypes, RSF_SIZE } from "./types.js";
+import { MON_GROUP, monSpellsOfTypes } from "./types.js";
+import { rsfSize } from "./spell-registry.js";
 import type { Monster } from "./monster.js";
 import { GROUP_TYPE } from "./monster.js";
 
@@ -150,7 +151,7 @@ export function monsterHasInnateSpells(mon: Monster): boolean {
 /** monster_has_non_innate_spells: any spell set that is not innate. */
 export function monsterHasNonInnateSpells(mon: Monster): boolean {
   const monSpells = mon.race.spellFlags.clone();
-  const innate = new FlagSet(RSF_SIZE);
+  const innate = new FlagSet(rsfSize());
   for (const i of monSpellsOfTypes("RST_INNATE")) innate.on(i);
   monSpells.diff(innate);
   return !monSpells.isEmpty();
