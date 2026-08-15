@@ -120,6 +120,26 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A mod's own command can now be NAMED, so its "Really ...?" prompt reads
+  right** (#284). `cmdVerb` resolved a command's verb out of `COMMAND_INFO`,
+  which is keyed by the closed `CommandCode` union — upstream's `game_cmds[]`,
+  which core keeps closed. A mod registers its command through
+  `registry:command` as a free string, so no entry could ever exist for it, and
+  `get_item_allow`'s confirmation fell through to the generic fallback: a player
+  with `!z` inscribed on a Potion of Death was asked "Really **do that with**
+  your Potion of Death?" for an action that had a perfectly good name.
+
+  `GameState.commandVerbs` is a `CommandVerbTable` seeded per game with core's
+  verbs, and a mod names its command with `host.commands.setVerb(code, verb)`
+  under the capability it already holds to register the command. `verbFor` is
+  the wrap seam, so a second mod layers over a first exactly as it layers over
+  core. Per game, never per module — one character's mod verb must not reach the
+  next character's sentences.
+
+  This is a UI **string** and nothing else. `COMMAND_INFO` is untouched and
+  stays closed, the command's behaviour still lives in the `ActionRegistry`, and
+  no dispatch table was converted.
+
 - **A mod's `.prf` can now fix a TILE, not just an ASCII glyph** (#153). Mod
   pref text was always parsed by the real grammar — but through
   `glyphTableSink` into the **GlyphTable**, the ASCII attr/char table, while a

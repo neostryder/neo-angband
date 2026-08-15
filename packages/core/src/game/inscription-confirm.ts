@@ -29,7 +29,7 @@
 import type { Player } from "../player/player.js";
 import type { GameObject } from "../obj/object.js";
 import type { Gear } from "./gear.js";
-import type { CommandCode } from "../cmd.js";
+import type { CommandVerbTable } from "../cmd.js";
 import { cmdVerb } from "../cmd.js";
 import { checkForInscrip } from "./pickup.js";
 
@@ -96,19 +96,27 @@ export interface ItemAllowPrompt {
  * `describe` is object_desc(ODESC_PREFIX | ODESC_FULL) (obj-util.c:1082); the
  * shell passes its own namer so the format string stays here, next to the C
  * line it copies.
+ *
+ * `cmd` is a plain string, not `CommandCode`: a mod registers its own command
+ * code through "registry:command" as a free string, and one of those reaching
+ * here is the ORDINARY case, not an error to cast away. `verbs` is the game's
+ * `CommandVerbTable` (GameState.commandVerbs), which answers for core's codes
+ * and for a mod's; omit it and only core's codes have a verb, which is what the
+ * fallback below is for.
  */
 export function itemAllowPrompt(
   obj: GameObject,
   key: string,
-  cmd: CommandCode | null,
+  cmd: string | null,
   isHarmless: boolean,
   describe: (obj: GameObject) => string,
+  verbs?: CommandVerbTable | null,
 ): ItemAllowPrompt | null {
   const ch = unKtrlCap(key);
   let count = checkForInscrip(obj, `!${ch}`);
   if (!isHarmless) count += checkForInscrip(obj, "!*");
   if (!count) return null;
-  const verb = (cmd ? cmdVerb(cmd) : null) ?? ITEM_ALLOW_FALLBACK_VERB;
+  const verb = (cmd ? cmdVerb(cmd, verbs) : null) ?? ITEM_ALLOW_FALLBACK_VERB;
   /* strnfmt "Really %s" (ui-object.c:667) then verify_object's "%s %s? "
    * (obj-util.c:1085) - one prompt built in two steps upstream. */
   return { prompt: `Really ${verb} ${describe(obj)}? `, count };

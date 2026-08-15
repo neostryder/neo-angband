@@ -280,9 +280,73 @@ export const COMMAND_INFO: ReadonlyMap<CommandCode, CommandInfo> = new Map<
   ["wiz-wizard-light", { verb: "wizard light the level", repeatAllowed: false, canUseEnergy: false, autoRepeatN: 0 }],
 ]);
 
-/** cmd_verb: the verb for a command, or null when unknown (as upstream). */
-export function cmdVerb(code: CommandCode): string | null {
-  return COMMAND_INFO.get(code)?.verb ?? null;
+/**
+ * Core's verbs on their own, keyed as PLAIN STRINGS - candidate zero for every
+ * verb lookup. Derived from COMMAND_INFO at load rather than written out again,
+ * so it cannot drift from the closed table it comes from.
+ */
+const CORE_COMMAND_VERBS: ReadonlyMap<string, string> = new Map(
+  [...COMMAND_INFO].map(([code, info]) => [code, info.verb] as const),
+);
+
+/**
+ * The verbs "Really <verb> <the object>? " reads from, keyed by command code.
+ *
+ * COMMAND_INFO is keyed by the closed `CommandCode` union and stays closed - it
+ * is upstream's game_cmds[] and core keeps it verbatim. But a mod registers its
+ * own command code through `ActionRegistry` ("registry:command") as a free
+ * string, so no entry can ever exist for it, and every confirmation an inscribed
+ * item owes that command fell through to `ITEM_ALLOW_FALLBACK_VERB` - the player
+ * read "Really do that with your Potion of Death?" for a named action.
+ *
+ * This is the UI STRING for a command and nothing else. It is deliberately NOT a
+ * second dispatch table: the live command seam is `ActionRegistry`, and the
+ * faithful `COMMAND_INFO` (repeat_allowed, can_use_energy, auto_repeat_n) is a
+ * parity artefact the web loop does not drive (docs/modding/MOD_REACH.md row 19).
+ *
+ * PER GAME, NEVER SHARED. Seeded with a COPY of core's verbs and published on
+ * `GameState.commandVerbs` by `wireGame`, for the same reason
+ * `ProjectionHandlerRegistry` and `BlowEffectRegistry` are: a module-level
+ * singleton would carry one character's mod verb into the next character's game.
+ *
+ * `verbFor` is also the layering seam - take what is there, register one that
+ * reads from it - so a second mod can wrap a first mod's verb exactly the way it
+ * wraps core's.
+ */
+export class CommandVerbTable {
+  private readonly verbs = new Map(CORE_COMMAND_VERBS);
+
+  /** Install (or replace) the verb for one command code. */
+  set(code: string, verb: string): void {
+    this.verbs.set(code, verb);
+  }
+
+  /** The verb currently installed for a code, or null when nothing answers. */
+  verbFor(code: string): string | null {
+    return this.verbs.get(code) ?? null;
+  }
+
+  /** Whether anything answers for this code. */
+  has(code: string): boolean {
+    return this.verbs.has(code);
+  }
+
+  /** Every code with a verb, in insertion order (core's first). */
+  codes(): readonly string[] {
+    return [...this.verbs.keys()];
+  }
+}
+
+/**
+ * cmd_verb: the verb for a command, or null when unknown (as upstream).
+ *
+ * `code` is a plain string because a mod's command code is one - it is not a
+ * member of the closed `CommandCode` union and never will be. With no `verbs`
+ * table this is exactly upstream's lookup; with one, the table answers first and
+ * core's verbs remain its floor (the table is seeded from them).
+ */
+export function cmdVerb(code: string, verbs?: CommandVerbTable | null): string | null {
+  return verbs?.verbFor(code) ?? CORE_COMMAND_VERBS.get(code) ?? null;
 }
 
 /** A typed command argument (the cmd_arg union, tagged). */

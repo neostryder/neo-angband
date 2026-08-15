@@ -38,6 +38,7 @@ import {
   EffectRegistry,
   RoomRegistry,
   ActionRegistry,
+  CommandVerbTable,
   VocabularyRegistry,
   createModRegistryHost,
   BlowEffectRegistry,
@@ -1234,6 +1235,7 @@ describe("a mod folder on disk reaches every other registry domain", () => {
            host.effects.register("overhaul:pulse", { handler: () => true, desc: "a mod effect" });
            host.rooms.register("overhaul:hall", () => true);
            host.commands.register("overhaul:dance", () => 3);
+           host.commands.setVerb("overhaul:dance", "dance with");
            host.monsters.setTurnHook(() => true);
            host.vocab.define({ kind: "stat", term: "overhaul:grit", label: "Grit" });
            host.vocab.setValue("player", "overhaul:grit", 4);
@@ -1262,12 +1264,13 @@ describe("a mod folder on disk reaches every other registry domain", () => {
     const effects = new EffectRegistry();
     const rooms = new RoomRegistry({ vaults: [], rooms: [] } as never);
     const commands = new ActionRegistry();
+    const commandVerbs = new CommandVerbTable();
     const vocab = new VocabularyRegistry();
     const state = {} as { monsterTurnHook?: unknown };
 
     const loaded = code.plugins[0];
     const host = createModRegistryHost(
-      { effects, rooms, commands, state: state as never, vocab },
+      { effects, rooms, commands, commandVerbs, state: state as never, vocab },
       CapabilitySet.fromManifest(loaded!.manifest),
     );
     loaded!.plugin.register?.(host, ctx("overhaul"));
@@ -1276,6 +1279,10 @@ describe("a mod folder on disk reaches every other registry domain", () => {
     expect(effects.isRegistered("overhaul:pulse")).toBe(true);
     expect(rooms.get("overhaul:hall")).toBeTypeOf("function");
     expect(commands.get("overhaul:dance")).toBeTypeOf("function");
+    /* ... including the verb the "Really <verb> <the object>? " confirm reads,
+     * which is what a mod command had no way to supply (#284). The sentence it
+     * produces is asserted in core (session/command-verb-wiring.test.ts). */
+    expect(commandVerbs.verbFor("overhaul:dance")).toBe("dance with");
     expect(state.monsterTurnHook).toBeTypeOf("function");
     expect(vocab.has("stat", "overhaul:grit")).toBe(true);
     expect(vocab.getValue("player", "overhaul:grit")).toBe(4);
@@ -1306,6 +1313,7 @@ describe("a mod folder on disk reaches every other registry domain", () => {
         effects,
         rooms: new RoomRegistry({ vaults: [], rooms: [] } as never),
         commands: new ActionRegistry(),
+        commandVerbs: new CommandVerbTable(),
         state: {} as never,
         vocab: new VocabularyRegistry(),
       },

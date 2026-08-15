@@ -80,7 +80,14 @@ export default defineTrustedPlugin({
       s.msg("[demo-trusted] new command 'demo-wave' executed by the mod");
       return 0;
     });
-    ctx.log(`command "demo-wave" registered=${host.commands.has("demo-wave")}`);
+    // ... and what it is CALLED. Core's COMMAND_INFO is keyed by the closed
+    // CommandCode union, so without this the "Really ...? " an item inscribed
+    // "!v" demands would read "Really do that with your Potion of Death?".
+    host.commands.setVerb("demo-wave", "wave at");
+    ctx.log(
+      `command "demo-wave" registered=${host.commands.has("demo-wave")}` +
+        ` verb=${host.commands.verbFor("demo-wave")}`,
+    );
 
     // A whole new KIND of dungeon level. The room builder above makes a room;
     // this decides which cave builder runs at a depth, which is what "my mod

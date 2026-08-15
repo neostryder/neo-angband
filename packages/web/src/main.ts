@@ -519,7 +519,6 @@ import {
   keyConfirmCount,
   KEY_CONFIRM_PROMPT,
 } from "@rpgm-tools/neo-angband-core";
-import type { CommandCode } from "@rpgm-tools/neo-angband-core";
 import { monsterIsVisible, monsterIsDestroyed } from "@rpgm-tools/neo-angband-core";
 import type { WizardDeps } from "@rpgm-tools/neo-angband-core";
 import {
@@ -2124,10 +2123,18 @@ async function allowChosenItem(
   const obj = targetRefObject(ref);
   if (!obj) return true;
   /* The shell carries command codes as plain strings (commandBuffer.push takes
-   * them that way), so narrow at this one boundary; cmdVerb returns null for
-   * anything unknown, which lands on the "do that with" fallback either way. */
-  const code = (cmdCode ?? null) as CommandCode | null;
-  const ask = itemAllowPrompt(obj, cmdKey, code, isHarmless, (o) => objectName(state, o));
+   * them that way) and so does itemAllowPrompt, because a mod's command code IS
+   * one. state.commandVerbs is what makes it answer for that code: core's verbs
+   * seeded per game, plus whatever a "registry:command" mod named. Anything with
+   * no verb at all still lands on the "do that with" fallback. */
+  const ask = itemAllowPrompt(
+    obj,
+    cmdKey,
+    cmdCode ?? null,
+    isHarmless,
+    (o) => objectName(state, o),
+    state.commandVerbs,
+  );
   if (!ask) return true;
   /* "Prompt for confirmation n times" (ui-object.c:669-674): one refusal ends it. */
   for (let i = 0; i < ask.count; i++) {
@@ -10986,6 +10993,7 @@ function installTrusted(trustedId: string): void {
           blows: state.blowEffects ?? null,
           stores: state.storeBehaviour ?? null,
           commands: registry,
+          commandVerbs: state.commandVerbs ?? null,
           state,
           projections: state.projectionHandlers ?? null,
           glyphs: booted.registries.rooms.glyphs,
@@ -11197,6 +11205,7 @@ for (const loaded of activeModCode().plugins) {
         blows: state.blowEffects ?? null,
         stores: state.storeBehaviour ?? null,
         commands: registry,
+        commandVerbs: state.commandVerbs ?? null,
         state,
         projections: state.projectionHandlers ?? null,
         glyphs: booted.registries.rooms.glyphs,

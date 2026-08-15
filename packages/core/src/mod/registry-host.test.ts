@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentCapabilityError } from "../agent/types.js";
 import { EffectRegistry } from "../effects/interpreter.js";
 import { ActionRegistry } from "../game/player-turn.js";
+import { CommandVerbTable } from "../cmd.js";
 import type { GameState } from "../game/context.js";
 import type { RoomRegistry } from "../gen/room.js";
 import { DungeonProfiles } from "../gen/cave.js";
@@ -169,6 +170,7 @@ function targets() {
     blows,
     stores,
     commands: new ActionRegistry(),
+    commandVerbs: new CommandVerbTable(),
     state,
     projections,
     menus,
@@ -198,6 +200,8 @@ describe("createModRegistryHost - trusted host (no capabilities)", () => {
     ).not.toThrow();
     expect(() => host.commands.register("mod:dance", () => 0)).not.toThrow();
     expect(host.commands.has("mod:dance")).toBe(true);
+    expect(() => host.commands.setVerb("mod:dance", "dance with")).not.toThrow();
+    expect(host.commands.verbFor("mod:dance")).toBe("dance with");
     expect(() => host.monsters.setTurnHook(() => true)).not.toThrow();
     expect(t._state.monsterTurnHook).toBeTypeOf("function");
     /* The projection domain, on all three sides. Asserted here because this
@@ -235,6 +239,9 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.commands.register("mod:dance", () => 0)).toThrow(
       /registry:command/,
     );
+    expect(() => host.commands.setVerb("mod:dance", "dance with")).toThrow(
+      /registry:command/,
+    );
     expect(() => host.monsters.setTurnHook(() => true)).toThrow(
       /registry:monster/,
     );
@@ -269,6 +276,11 @@ describe("createModRegistryHost - delegation and targets", () => {
     host.commands.register("walk", action);
     // Overriding an existing code replaces the live action.
     expect(t.commands.get("walk")).toBe(action);
+
+    // The verb is a SEPARATE live table, seeded with core's (cmd.ts).
+    expect(host.commands.verbFor("walk")).toBe("walk");
+    host.commands.setVerb("walk", "stroll");
+    expect(t.commandVerbs.verbFor("walk")).toBe("stroll");
   });
 
   it("setTurnHook(null) clears the state hook", () => {

@@ -357,6 +357,15 @@ Note the asymmetry with `ActionRegistry`: the LIVE player-command seam is a
 registry a mod can override, but the faithful `cmd.ts` `COMMAND_INFO` table (112
 entries) that the web loop does not drive is a closed constant.
 
+One field of it is separately reachable, and only one: the **verb**. `CommandVerbTable`
+(`packages/core/src/cmd.ts:316`) is seeded per game from `COMMAND_INFO`'s verbs
+and published on `GameState.commandVerbs`; `host.commands.setVerb(code, verb)`
+names a mod's own command so the `!`-inscription confirm reads "Really dance with
+your Potion of Death? " instead of the generic fallback (#284). That is a UI
+string, not an entry: `repeat_allowed`, `can_use_energy` and `auto_repeat_n`
+belong to the closed table and stay there, and `COMMAND_INFO` is still a
+`ReadonlyMap` nothing writes.
+
 #### Web UI tables — none reachable
 
 `packages/web/src` holds roughly 22 named lookup tables. None is reachable from a
@@ -408,7 +417,7 @@ mod would reach through records, not code.
 | 16 | object knowledge: `modMessage` (11) **plus five `rune.variety` switches the census could not see** | **yes** (`registry:rune`, 2026-08-09) |
 | 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
 | 18 | UI entry dispatch (**was** a 32-case switch) | no - **reshaped, not converted**; see below |
-| 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today** |
+| 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today**; its `verb` field alone is reachable (`registry:command`, `setVerb`, 2026-08-15) |
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
 | 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
 | 22 | `MON_SPELL_ENTRIES` (93) | no — but the SAVE no longer blocks it (#269) |
@@ -747,9 +756,21 @@ has NO production caller — the web shell drives `commandBuffer`
 Extending `COMMAND_INFO` today changes nothing anyone can see. It is NOT struck,
 because `game/display.ts:293` carries PORT_TODO 3.11 pointing at
 `CommandQueue.getNRepeats`: if that lands, the row becomes sharp, and a
-`registry:command` mod's code is silently dropped at `cmd.ts:479-480`
-(`if (!info) return;`) and refused at `:424`. Counted as "no" so that it stays
+`registry:command` mod's code is silently dropped at `cmd.ts:543-544`
+(`if (!info) return;`) and refused at `:488`. Counted as "no" so that it stays
 visible, and labelled so nobody scopes it as urgent.
+
+**One field of row 19 WAS observable, and is now closed** (#284). `cmd_verb`
+reads a command's verb, and `get_item_allow` puts it in the "Really %s %s? " an
+inscribed item demands (`game/inscription-confirm.ts:111`) — a path the web
+shell absolutely does drive, from `main.ts`'s `allowChosenItem`. Because
+`COMMAND_INFO` is keyed by the closed `CommandCode` union and a mod's code is a
+free string, every such prompt for a mod's command read "Really **do that with**
+your Potion of Death?". `CommandVerbTable` (`cmd.ts:316`) fixes exactly that one
+field and nothing else, and the fix was deliberately NOT a conversion of the
+command table: `CommandQueue` still has no production constructor, the dispatch
+still belongs to `ActionRegistry`, and this row stays "no" for everything but
+the verb.
 
 **Row 26 was stale for a day, and this is what that looks like.** The glyph
 decoders became a registry on 2026-08-09 and gap row 17 below said so, while
@@ -816,7 +837,7 @@ and the host constructs it for real:
 | `registry:profile` | `ProfileFacade` | `DungeonProfiles` (`gen/cave.ts:2952`) | — |
 | `registry:blow` | `BlowFacade` | `BlowEffectRegistry` (`GameState.blowEffects`, built per game in `wireGame`) | — |
 | `registry:store` | `StoreFacade` | `StoreBehaviourRegistry` (`GameState.storeBehaviour`, built per game in `wireGame`) | — |
-| `registry:command` | `CommandFacade` | `ActionRegistry.register` / `.has` | `:213-222` |
+| `registry:command` | `CommandFacade` (`:405-427`) | `ActionRegistry.register` / `.has`, plus `CommandVerbTable.set` / `.verbFor` (`GameState.commandVerbs`, built per game in `wireGame`) | `:1106-1125` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
 | `registry:projection` | `ProjectionFacade` (three sides) | `ProjectionHandlerRegistry` (`GameState.projectionHandlers`, built per game in `wireGame`) | — |
 | `registry:glyph` | `GlyphFacade` | `GlyphRegistry` (`RoomRegistry.glyphs`, `gen/glyph.ts`) | — |
