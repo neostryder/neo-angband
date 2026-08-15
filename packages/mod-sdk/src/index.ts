@@ -151,7 +151,19 @@ export type {
   Requirement,
   RequirementLevel,
 } from "./standards.js";
-export * from "./fields.js";
+/* Named rather than `export *`, and applyFieldPolicy is the name left out. Its
+ * provenance and manifest maps are built by composition and reachable no other
+ * way, so a public signature could only ever be called without them - which
+ * strips undeclared keys, judges no trespass, and returns as if it had. The
+ * gate's door is composeContentPacks. See fields.ts. */
+export {
+  checkUnqualified,
+  declaredFields,
+  FIELD_TYPES,
+  fieldOwner,
+  isExtensionKey,
+} from "./fields.js";
+export type { FieldDecl, FieldFault, FieldType, ResolvedField } from "./fields.js";
 export { RECORD_BLUEPRINTS } from "./blueprints.js";
 export type { FieldShape, RecordBlueprint } from "./blueprints.js";
 export {

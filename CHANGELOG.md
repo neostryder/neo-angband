@@ -46,6 +46,28 @@ digest in the game's catalogue and must never be moved.
   live only for a MOD contributing such a record with real dice — which is
   precisely the case the addition got wrong.
 
+### Changed
+
+- **`applyFieldPolicy` is no longer exported from the mod SDK, and its
+  provenance arguments are now required** (#285, following #157). The index did
+  `export * from "./fields.js"`, so the trespass gate's implementation was
+  public — while `fieldProvenanceOf`, the only thing that can build the
+  `FieldProvenance` map it judges trespass from, was not. The two facts
+  together meant an external caller could reach the function but never supply
+  its evidence: the three-argument form defaulted `provenance` and `manifests`
+  to empty maps, found no recorded writer for any key, judged no write a
+  trespass, and returned a fault list that looked like a clean pass. A gate
+  that reports success while checking nothing is worse than no gate, because
+  the caller believes it ran.
+
+  The two parameters are now required rather than defaulted, so omission is a
+  compile error inside the package too, and the name is gone from the index.
+  `checkUnqualified`, `declaredFields`, `fieldOwner`, `isExtensionKey` and
+  `FIELD_TYPES` are still exported, named explicitly now instead of by
+  wildcard. The gate's one door is `composeContentPacks`, which supplies both
+  maps. Recorded in `docs/modding/MOD_COMPATIBILITY.md`; nothing in this
+  repository or in the four mod repos called it.
+
 ### Added
 
 - **A mod's `.prf` can now fix a TILE, not just an ASCII glyph** (#153). Mod
