@@ -331,7 +331,7 @@ browser's database. The host composes your path with your mod's own resolver.
 | --- | --- | --- |
 | `sound` | a **directory** of samples named as `sound.prf` names them, `.mp3` or `.ogg` | the last enabled one wins |
 | `font` | a bitmap font, `{ "w", "h", "glyphs" }` — one scanline number per row | the last enabled one wins |
-| `prefs` | a `.prf` in ui-prefs.c's own grammar | **all of them apply**, in load order |
+| `prefs` | a `.prf` in ui-prefs.c's own grammar; ASCII glyphs, colours and sound prefs apply at install, and TILE assignments layer over a graphics pack's own prefs on every map build | **all of them apply**, in load order |
 | `help` | one page of plain text | per `slot` |
 | `art` | one screen of `{colour}…{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |

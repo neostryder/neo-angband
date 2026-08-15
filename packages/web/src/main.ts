@@ -1398,6 +1398,9 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
 let tileset: TileBlitter | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
+/* Read once while resources install. Every pack-map rebuild replays this in
+ * enabled load order; a graphics-mode switch never needs to resolve mod files. */
+let modTilePrefTexts: readonly string[] = [];
 
 /**
  * How a mode's files are reached: the contributing mod's own resolver when a mod
@@ -1488,7 +1491,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   const map = await loadTilePrefs(resolve, mode, {
     ...tileDeps,
     vars: playerPrefVars(),
-  });
+  }, modTilePrefTexts);
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
@@ -10605,6 +10608,7 @@ async function applyModResources(): Promise<void> {
    * font because a pref file may set glyphs the font has to already be able to
    * draw. */
   const ctx = prefsUiCtx();
+  const nextTilePrefTexts: string[] = [];
   for (const pref of modPrefResources()) {
     if (pref.resolve === null) continue;
     const url = await pref.resolve(pref.resource.path);
@@ -10612,7 +10616,11 @@ async function applyModResources(): Promise<void> {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      for (const line of applyPrefText(ctx, await res.text(), pref.resource.path)) {
+      const text = await res.text();
+      /* Keep the exact bytes that reach the GlyphTable so every fresh graphics
+       * map can replay the tile directives without resolving the mod again. */
+      nextTilePrefTexts.push(text);
+      for (const line of applyPrefText(ctx, text, pref.resource.path)) {
         reportModFault(pref.modId, line);
       }
     } catch (e) {
@@ -10622,6 +10630,7 @@ async function applyModResources(): Promise<void> {
       );
     }
   }
+  modTilePrefTexts = nextTilePrefTexts;
 
   /* TRANSLATIONS, before anything that prints. Each file was verified above -
    * valid JSON, a readable language tag, and a tag agreeing with its slot - so

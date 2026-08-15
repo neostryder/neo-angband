@@ -57,7 +57,7 @@ write down at all.
 | Random artifacts — reach the **generator**, not just ship a fixed artifact | **Complete** | gap 19 |
 | An effect of your own that the game can **describe** to the player | **Complete** | gap 18 |
 | Tile packs: register a Graphics row, ship your own art, either tile engine | **Complete** | gap 8 |
-| Sounds, fonts, splash art, help text | **Complete** | gap 7 |
+| Sounds, fonts, splash art, help text, and `.prf` effects — including classic TILE assignments layered over a graphics pack | **Complete** | gap 7 |
 | Localization — not a string table; the structural seam | **Complete** | gap 14 |
 | Have your records schema-checked before they reach the game | **Complete** | gap 12 |
 | Survive a broken mod at boot, with the fault named and attributed | **Complete** | gap 13 |

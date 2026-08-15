@@ -160,6 +160,33 @@ describe("loadTilePrefs", () => {
     expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 2, col: 3 });
   });
 
+  it("layers a mod pref's tile reassignment over the pack, while no mod keeps the pack cell", async () => {
+    const rec = recorder({ "old/graf-xxx.prf": "" });
+    serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
+
+    const withMod = await loadTilePrefs(rec.resolve, mode, deps, [
+      "feat:FLOOR:*:0x86:0x87",
+    ]);
+    const modCell = tileForFeature(withMod!, FLOOR_FIDX, LIGHTING.LIT);
+    expect(tileCode(modCell?.attr ?? 0, modCell?.char ?? 0)).toEqual({ row: 6, col: 7 });
+
+    const withoutMod = await loadTilePrefs(rec.resolve, mode, deps);
+    const packCell = tileForFeature(withoutMod!, FLOOR_FIDX, LIGHTING.LIT);
+    expect(tileCode(packCell?.attr ?? 0, packCell?.char ?? 0)).toEqual({ row: 2, col: 3 });
+  });
+
+  it("uses the later enabled mod's tile reassignment", async () => {
+    const rec = recorder({ "old/graf-xxx.prf": "" });
+    serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
+
+    const map = await loadTilePrefs(rec.resolve, mode, deps, [
+      "feat:FLOOR:*:0x84:0x85",
+      "feat:FLOOR:*:0x88:0x89",
+    ]);
+    const cell = tileForFeature(map!, FLOOR_FIDX, LIGHTING.LIT);
+    expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 8, col: 9 });
+  });
+
   it("is null when the mode has no pref file, without asking for anything", async () => {
     const rec = recorder();
     expect(await loadTilePrefs(rec.resolve, { ...mode, pref: "none" }, deps)).toBeNull();
