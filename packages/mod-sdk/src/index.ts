@@ -200,6 +200,7 @@ export type {
   RegionCells,
   RegionDeclaration,
   RegionLayer,
+  RegionPointer,
   RegionPixels,
   RegionSurface,
   ScreenRegion,

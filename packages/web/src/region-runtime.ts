@@ -193,6 +193,9 @@ export function regionDeclarationFault(declaration: unknown): string | undefined
      * being broken, because it is. */
     return `region "${d.id}" has no paint(surface); a region with no painter reserves space and draws nothing`;
   }
+  if (d.input !== undefined && typeof d.input !== "function") {
+    return `region "${d.id}" has an input that is not a function; input(pointer) must be a function when present`;
+  }
   return undefined;
 }
 
@@ -212,6 +215,8 @@ function specFor(
   handleOf: () => RegionHandle | undefined,
 ): RegionSpec {
   let broken = false;
+  let inputBroken = false;
+  const input = declaration.input;
   return {
     id: `${modId}:${declaration.id}`,
     layer: declaration.layer,
@@ -241,6 +246,32 @@ function specFor(
         handleOf()?.release();
       }
     },
+    ...(input === undefined
+      ? {}
+      : {
+          input: (pointer: { readonly col: number; readonly row: number; readonly kind: "tap" | "context" }) => {
+            if (inputBroken) return;
+            try {
+              input(pointer);
+            } catch (error) {
+              /* Pointer input runs in the DOM event path, before it can queue a
+               * walk or advance the game. Unlike a mid-turn hook, a throw here
+               * cannot leave a half-finished turn for a tail autosave to persist,
+               * so taintSession() would punish an unrelated save. Contain this
+               * synchronously, report it once, and remove only this region; the
+               * caller has already consumed this pointer and must not leak it to
+               * core as a movement or context-menu event. */
+              inputBroken = true;
+              reportFault(
+                modId,
+                `its "${declaration.id}" region failed while handling pointer input and has been removed for this session; ` +
+                  `input(pointer) must not throw`,
+                error,
+              );
+              handleOf()?.release();
+            }
+          },
+        }),
   };
 }
 
