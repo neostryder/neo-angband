@@ -192,34 +192,37 @@ hand-written inventory of switches only ever gets smaller - converting one to a
 registry gets its row updated, ADDING one gets no row at all, and the list
 quietly stops being a census while still reading like one. Several rows here
 have already gone stale that way. `node tools/switch-census.mjs` counts every
-switch of >= 8 cases in the tree (**34 switches, 463 case labels** as of
-2026-08-11) and `packages/web/src/switch-census.test.ts` fails when the tree and
-the manifest disagree, so a new dispatch cannot arrive unnoticed.
+dispatch point of >= 8 arms in the tree (**38 rows, 513 size labels** as of
+2026-08-15: 34 `SWITCH`, 2 `ARRAY_LOOKUP`, 2 `IF_CHAIN`) and
+`packages/web/src/switch-census.test.ts` fails when the tree and the manifest
+disagree, so a new dispatch cannot arrive unnoticed.
 
-**All 34 carry a verdict**, and the distribution is the useful result rather
+**All 38 carry a verdict**, and the distribution is the useful result rather
 than the raw count. This table is derived from `tools/switch-census.json`, and
 it had gone stale exactly the way the paragraph above warns a hand-written
 inventory does - it read `51 switches` and `22 CANDIDATE` until 2026-08-11,
-months after the conversions that emptied the candidate column. A count in
-prose is not a measurement; re-derive it from the JSON before quoting it:
+months after the conversions that emptied the candidate column, and then read
+`34 switches / 463 case labels / UI 12` until 2026-08-15, months after the
+widening that added six rows. A count in prose is not a measurement; re-derive it
+from the JSON before quoting it:
 
 | Class | Rows | What it means for a mod |
 | --- | --- | --- |
 | `CANDIDATE` | 0 | Content dispatch a mod cannot reach. **The backlog is empty** - see the caution below for what that does and does not mean. |
-| `UI` | 12 | Menu-action and keypress routing; rows 23/24 above own them as a class. |
+| `UI` | 14 | Menu-action and keypress routing; rows 23/24 above own them as a class. |
 | `REACHABLE` | 6 | Already behind a registry - the arm is core's registered handler, which a mod wraps through `handlerFor`. |
+| `HOST` | 4 | Host wiring: CLI flags and the host RPC. Not game content. |
 | `PARSER` | 3 | Grammars: the dice syntax and `lore.txt` directives. Deliberately closed - a mod changing dice syntax invalidates every record in every pack. |
-| `HOST` | 3 | Host wiring: CLI flags and the host RPC. Not game content. |
 | `LOCALIZATION` | 3 | Index-to-string tables. Row 14 of the gap list replaces the strings wholesale; converting the switch would not help. |
 | `CONTROL FLOW` | 3 | Numeric buckets and geometry. Not dispatch at all. |
-| `INTERNAL` | 2 | The save format's block union and the mod system's own capability vocabulary - both grow only when core does. |
+| `INTERNAL` | 3 | The save format's block union, the mod system's own capability vocabulary and its consent descriptions - all three grow only when core does. |
 | `DEBUG` | 2 | Wizard-mode menus. |
 
 The verdicts live in `tools/switch-census.json` and the class counts are
 asserted in `switch-census.test.ts` against a **closed vocabulary**, because a
 typo'd class (`CANDIDTE - `) would otherwise drop a row out of the candidate
-count without failing anything. Adjudicating the 36 is what produced rows 26-28
-above: three dispatch points this document had never listed.
+count without failing anything. Adjudicating the backlog is what produced rows
+26-28 above: three dispatch points this document had never listed.
 
 These are the significant ones:
 
@@ -236,7 +239,7 @@ These are the significant ones:
 | tval CLASS MEMBERSHIP, miscounted as naming until 2026-08-09 | `packages/core/src/obj/object.ts` | 74 |
 | ~~object knowledge~~ **now a registry a mod can write** (`RuneRegistry`, six tables keyed on `rune.variety` and OBJ_MOD, plus `contribute`; `registry:rune`) | `packages/core/src/obj/knowledge.ts` | was 43 |
 | effect info strings | `packages/core/src/effects/effect-info.ts` | 52 |
-| UI entry types | `packages/core/src/game/ui-entry.ts` | 32 |
+| ~~UI entry types~~ **now two registries a mod can write** (`UiEntryRegistry`: combiners keyed by `combine:` name, renderer backends keyed by `code:`; `registry:ui-entry`) | `packages/core/src/game/ui-entry.ts` | was 32, then 9 + 6 |
 | web UI context-menu routing | `packages/web/src/main.ts` (6 `switch (items[idx]?.action)` sites) | - |
 
 **Correction, 2026-08-09: `obj/object.ts`'s 74 cases are not naming.** They were
@@ -282,8 +285,12 @@ scored zero. So a file could leave the census by being FIXED or by being
 RESHAPED and the two looked identical. It now counts all three shapes, tagged
 `SWITCH` / `IF_CHAIN` / `ARRAY_LOOKUP`, and the ratchet asserts the difference
 directly: `project-feat.ts` has zero rows of any kind (a real conversion), while
-`ui-entry.ts` has exactly one, under a different kind (a reshape). Row 18 above
-is the worked example, including the edge that is still out of reach.
+a merely reshaped file keeps exactly one row under a different kind.
+`ui-entry.ts` was that worked example — and on 2026-08-15 (#283) it became a
+registry, so it left the census a SECOND time, this time meaning it. The ratchet
+now names `host/args.ts` and `target-loop.ts` as the still-reshaped pair, and
+asserts `ui-entry.ts` absent alongside `project-feat.ts`. Row 18 above records
+both halves.
 
 The other thing gap 16 turned up is a CALLER, not a dispatch. `runeGroupIndex`
 (`packages/web/src/knowledge.ts:545`) grouped runes for the knowledge browser and
@@ -416,7 +423,7 @@ mod would reach through records, not code.
 | 15 | object naming: `obj_desc_get_basename` (34) | **yes** (`registry:tval`, 2026-08-09) |
 | 16 | object knowledge: `modMessage` (11) **plus five `rune.variety` switches the census could not see** | **yes** (`registry:rune`, 2026-08-09) |
 | 17 | effect info switches (20 + 20 + 12 + 9 + 8 = 69) | **yes** (`registry:effect-info`, 2026-08-09) |
-| 18 | UI entry dispatch (**was** a 32-case switch) | no - **reshaped, not converted**; see below |
+| 18 | UI entry dispatch (**was** a 32-case switch, then a 9-entry lookup array + a 6-arm if-chain) | **yes** (`registry:ui-entry`, 2026-08-15) |
 | 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today**; its `verb` field alone is reachable (`registry:command`, `setVerb`, 2026-08-15) |
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
 | 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
@@ -712,13 +719,46 @@ this correctly, so until now table (a) and the gap list contradicted each other.
 seeing it** (#260). The 32-case switch this row was written about no longer
 exists, and `ui-entry.ts` was absent from `switch-census.json` entirely — which
 read exactly like a conversion until somebody checked. It was not one:
-`COMBINERS` (`packages/core/src/game/ui-entry.ts:497`) is a 9-entry module const
-that `combinerLookup` (`:510`) linear-scans by name, and it is as shut to a mod
-as the switch it replaced. The census now counts lookup arrays and if/else
-chains as well as switches, so this row has a successor row again.
+`COMBINERS` was a 9-entry module const that `combinerLookup` linear-scanned by
+name, and it was as shut to a mod as the switch it replaced. The census now
+counts lookup arrays and if/else chains as well as switches, so this row got a
+successor row.
 
-**It is now shut rather than fatal, which is a different row entirely** (#271,
-2026-08-14). `combinerLookup` returning 0 for an unknown name used to reach
+**And on 2026-08-15 it was converted for real** (#283). `UiEntryRegistry`
+(`packages/core/src/game/ui-entry-registry.ts`) is two name-keyed tables — nine
+combiners and six renderer backends — built per game in `wireGame`, published on
+`GameState.uiEntry`, and reached by a mod through `registry:ui-entry`. The
+census row is gone the way `project-feat.ts`'s went: zero rows of any of the
+three kinds, asserted in `switch-census.test.ts` rather than claimed here.
+
+Two things about the shape are worth stating, because both were traps:
+
+- **The live key is the NAME, resolved at compute/apply time.** Lookup was
+  always by name at parse, but STORAGE afterwards was by position — a 1-based
+  `combinerIndex` and a 0..5 `backendIndex` — so reordering either core table
+  silently retargeted every built config. Keeping the slot as the long-lived
+  identity would also have frozen core's tables at nine and six and made a
+  post-wire `register()` inert: a registered handler has no slot. `UiEntry`
+  carries `combinerName` and `RendererInfo` carries `backendName` /
+  `combinerName` instead. Neither index was ever written to a save — nothing
+  under `packages/core/src/save/` reads either field — so this was a code change
+  and not a save migration.
+- **Survival is preserved, not replaced.** A combiner name nothing answers for
+  still resolves to `ABSENT_COMBINER` and a backend name nothing answers for
+  still returns the empty-cell row, which is #271's guarantee. Opening a table is
+  not licence to make a typo fatal again;
+  `ui-entry-unknown-combiner.test.ts` still holds that end.
+
+The proof that a mod can reach it is `ui-entry-registry-wiring.test.ts`, which
+starts a real game, registers through the capability-gated facade AFTER the
+wiring, renders a real `characterGrid` and a real `equipCmpSummary`, and asserts
+the CELL changed — against two controls (core's combiner, and the same pack with
+nothing registered) that agree with each other, so a subject matching either
+would not have counted. It also asserts the ORDERING half: a registration made
+after the config was built still takes effect, which is the failure row 21 made.
+
+**Before that it was shut rather than fatal, which was a different row
+entirely** (#271, 2026-08-14). `combinerLookup` returning 0 for an unknown name used to reach
 `combinerFuncs`, which threw `bad combiner index 0` — and the PARSE path never
 threw, so a pack with one typo'd `combine:` line **loaded clean** and then took
 the session down on the first value or render use: the character sheet, or the
@@ -733,21 +773,24 @@ as "nothing here" and the screen still draws. Same answer the projection bind
 reached for an unknown code on 2026-08-09. Six tests hold it
 (`ui-entry-unknown-combiner.test.ts`), the fourth of which rebuilds the shipped
 `ui_entry` records with every `combine:` replaced by a name nothing knows and
-asserts `characterGrid` still returns a full grid. **The row stays "no":**
-survival is not reach, `COMBINERS` still has nine names and no mod can add a
-tenth, and no registry was built here — that waits on measured demand.
+asserts `characterGrid` still returns a full grid. **The row stayed "no" on that
+day:** survival is not reach, `COMBINERS` still had nine names and no mod could
+add a tenth. #283 is what changed the answer, and the survival behaviour above is
+unchanged by it.
 
-**And there is an edge the widened census still cannot reach, stated rather
-than left true.** `applyRenderer` sits beside `COMBINERS` in the same file
-(`:1779-2010`; the arm chain is `:1793-2007`) and is a **6**-arm
-`if (backend === UI_ENTRY_RENDERER.X)` chain, not 8. It is exactly as closed to a
-mod as an 87-case switch and it stays invisible, because dropping the threshold
-below 8 reopens a false-positive flood — the naive version of the detector fired
-on 122 rows of ordinary control flow, RNG tables and colour palettes. So this row
-is now half-derived and half read by hand, and it should be read as such. Its
-fallthrough at `:2009` is the renderer-side twin of the combiner defect above: a
-renderer whose `code` matches no backend returns an empty-cell row silently,
-which survives but says nothing.
+**The renderer half was an edge the widened census could not reach, and it went
+in the same commit.** `applyRenderer` sat beside `COMBINERS` in the same file and
+was a **6**-arm `if (backend === UI_ENTRY_RENDERER.X)` chain, not 8. It was
+exactly as closed to a mod as an 87-case switch and it stayed invisible, because
+dropping the threshold below 8 reopens a false-positive flood — the naive version
+of the detector fired on 122 rows of ordinary control flow, RNG tables and colour
+palettes. So this row was half-derived and half read by hand. The six arms are
+now six `UiEntryBackendRender` functions in `UiEntryRegistry.backends`, keyed by
+the name a renderer record's `code:` field writes. The empty-cell fallthrough
+survives, and is now the answer for a backend name nothing answers for — the
+renderer-side twin of `ABSENT_COMBINER`. **The tool's limit has not moved**; only
+this instance of it has, and a six-arm chain elsewhere in the tree is still
+invisible to the census.
 
 **Row 19 is a parity artefact, not a gap a player can observe.** `COMMAND_INFO`
 (`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue`
@@ -840,6 +883,7 @@ and the host constructs it for real:
 | `registry:command` | `CommandFacade` (`:405-427`) | `ActionRegistry.register` / `.has`, plus `CommandVerbTable.set` / `.verbFor` (`GameState.commandVerbs`, built per game in `wireGame`) | `:1106-1125` |
 | `registry:monster` | `MonsterFacade` | `GameState.monsterTurnHook` (`game/context.ts:686`) | `:223-230` |
 | `registry:projection` | `ProjectionFacade` (three sides) | `ProjectionHandlerRegistry` (`GameState.projectionHandlers`, built per game in `wireGame`) | — |
+| `registry:ui-entry` | `UiEntryFacade` (two tables) | `UiEntryRegistry` (`GameState.uiEntry`, built per game in `wireGame`) | — |
 | `registry:glyph` | `GlyphFacade` | `GlyphRegistry` (`RoomRegistry.glyphs`, `gen/glyph.ts`) | — |
 | `registry:effect-info` | `EffectInfoFacade` (four tables) | `EffectInfoRegistry` (`effects/effect-info-registry.ts`, module-level) | — |
 | `registry:randart` | `RandartFacade` (four tables) | `RandartRegistry` (`obj/randart-registry.ts`, module-level) | — |
@@ -849,8 +893,8 @@ and the host constructs it for real:
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
   `requireTarget` throws when the host did not wire that registry (`:177`).
 - The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|tval|vocab)$/`
-  (`packages/mod-sdk/src/capabilities.ts:67`); an unrecognised capability is a hard
+  `REGISTRY_RE = /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message)$/`
+  (`packages/mod-sdk/src/capabilities.ts`); an unrecognised capability is a hard
   error at parse, not a silent no-op.
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
   it with `{effects, rooms, commands, state, vocab}` and calls

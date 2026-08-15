@@ -18,12 +18,18 @@
  * entirely - nothing of that shape or size is left anywhere in the file. A
  * RESHAPE just changes the switch's clothes: an if/else chain over one
  * discriminant, or a module-level array searched by key, is exactly as closed
- * to a mod as the switch was, and scored zero either way. ui-entry.ts is the
- * proof: its 32-case switch (MOD_REACH row 18) is gone, and the file is not a
+ * to a mod as the switch was, and scored zero either way. ui-entry.ts was the
+ * proof: its 32-case switch (MOD_REACH row 18) was gone, and the file was not a
  * registry - `COMBINERS` (a 9-entry lookup array) and `applyRenderer` (a
- * 6-arm `if (backend === ...)` chain) are what replaced it, and nobody wrote
+ * 6-arm `if (backend === ...)` chain) were what replaced it, and nobody wrote
  * either down, because the tool that would have noticed only ever looked for
  * `switch`.
+ *
+ * task #283 finished that row: both are name-keyed per-game registries now
+ * (`UiEntryRegistry`), so ui-entry.ts has moved from the RESHAPED column to the
+ * FIXED one and the row the widening earned it has left the census the way a
+ * conversion is supposed to make a row leave. The distinction #260 bought is
+ * still asserted below, against files that are still reshaped.
  *
  * So this census now also counts IF_CHAIN (an if/else chain of >= threshold
  * arms testing one discriminant) and ARRAY_LOOKUP (a module-level const array
@@ -154,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 39 into a CLOSED vocabulary", () => {
+  it("classifies all 38 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 39 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 38 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -180,7 +186,10 @@ describe("the switch census", () => {
       LOCALIZATION: 3,
       PARSER: 3,
       REACHABLE: 6,
-      UI: 15,
+      /* 15 until #283. ui-entry.ts's COMBINERS row left when the array became a
+       * registry, which is the count moving DOWN on a conversion - the same
+       * mechanism, and the same honesty, as it moving UP on a wider lens. */
+      UI: 14,
     });
     /* The counts have to add up to the census, or a class went missing. */
     expect([...byClass.values()].reduce((a, b) => a + b, 0)).toBe(
@@ -192,23 +201,23 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 39 dispatch points, 520 size labels", () => {
+  it("is measuring something: 38 dispatch points, 513 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
     expect(manifest.threshold).toBe(8);
-    expect(manifest.switches.length).toBeGreaterThanOrEqual(37);
+    expect(manifest.switches.length).toBeGreaterThanOrEqual(36);
     expect(
       manifest.switches.reduce((sum, r) => sum + r.cases, 0),
-    ).toBeGreaterThanOrEqual(515);
+    ).toBeGreaterThanOrEqual(508);
     /* And it finds the biggest one we know about by name. */
     expect(manifest.switches[0]?.file).toBe("packages/web/src/wizard.ts");
   });
 
-  it("no longer lists the fifteen switches that became registries", () => {
+  it("no longer lists the switches that became registries", () => {
     /* The whole project_f / project_o / project_p family, the three
-     * room-template / vault glyph decoders, the five effect-info switches, and
-     * the four randart ones. Their absence is the census
+     * room-template / vault glyph decoders, the five effect-info switches, the
+     * four randart ones, and (as of #283) ui-entry.ts. Their absence is the census
      * agreeing with MOD_REACH rows 11, 12, 14, 17, 18 and 27 - and it is derived
      * rather than declared, which is the whole point of this file: nobody
      * edited a row to say project_p was done, the row left when the switch did.
@@ -252,6 +261,11 @@ describe("the switch census", () => {
      * is why this file's absence is worth less than it looks, and why
      * rune-registry.test.ts derives its coverage from the rune list instead. */
     expect(files.has("packages/core/src/obj/knowledge.ts")).toBe(false);
+    /* And row 18 itself. ui-entry.ts left this census twice: once in #260 by
+     * being RESHAPED (which the widened tool caught and gave a row back), and
+     * once now by being CONVERTED. Absence means the same thing here it means
+     * for project-feat.ts - zero rows of any of the three kinds. */
+    expect(files.has("packages/core/src/game/ui-entry.ts")).toBe(false);
   });
 
   it("distinguishes a dispatch that was FIXED from one that was RESHAPED", () => {
@@ -273,23 +287,32 @@ describe("the switch census", () => {
      * Zero rows of ANY kind is what a genuine conversion looks like. */
     expect(rowsFor("packages/core/src/game/project-feat.ts")).toEqual([]);
 
-    /* RESHAPED: ui-entry.ts's switch did NOT become a registry. COMBINERS (a
-     * 9-entry const array) plus combinerLookup's manual linear search is the
-     * same closed door in a different syntax, and it is still exactly one row
-     * here - tagged ARRAY_LOOKUP instead of SWITCH, with its own verdict,
-     * rather than silently absent. */
-    const uiEntryRows = rowsFor("packages/core/src/game/ui-entry.ts");
-    expect(uiEntryRows.map((r) => r.kind)).toEqual(["ARRAY_LOOKUP"]);
-    expect(uiEntryRows[0]?.cases).toBe(9);
-    expect(uiEntryRows[0]?.verdict).toContain("UI");
+    /* ALSO FIXED, and this one is the whole worked example. ui-entry.ts held
+     * exactly one ARRAY_LOOKUP row of 9 from #260 until #283 - COMBINERS plus
+     * combinerLookup's linear scan, a closed door in a different syntax. It is
+     * now a name-keyed per-game registry and the row is gone, which is the same
+     * evidence project-feat.ts offers. The asymmetry worth keeping in mind: it
+     * left this census ONCE before by being reshaped, and that absence meant
+     * nothing at all. */
+    expect(rowsFor("packages/core/src/game/ui-entry.ts")).toEqual([]);
 
-    /* ui-entry.ts's OTHER reshape, applyRenderer, is the honest limit of even
-     * the widened tool: a 6-arm `if (backend === UI_ENTRY_RENDERER.X)` chain
-     * is exactly as closed to a mod as the old switch was, and it stays below
-     * this census's 8-arm threshold - the same shape of gap as the rune.variety
-     * union noted in the "became registries" test above. It is not a row here,
-     * and MOD_REACH.md is where that remainder is recorded (see the draft note
-     * added to its row 18). */
+    /* STILL RESHAPED, so the distinction stays testable against something real:
+     * host/args.ts's 13-element option table is searched by field, and
+     * target-loop.ts is a 9-arm if/else chain over one discriminant. Both are
+     * exactly as closed as a switch, both carry a row and a verdict here
+     * rather than being silently absent, and neither is a candidate. */
+    const argRows = rowsFor("packages/core/src/host/args.ts");
+    expect(argRows.some((r) => r.kind === "ARRAY_LOOKUP" && r.cases === 13)).toBe(true);
+    const targetRows = rowsFor("packages/core/src/game/target-loop.ts");
+    expect(targetRows.map((r) => r.kind)).toEqual(["IF_CHAIN"]);
+
+    /* applyRenderer, ui-entry.ts's OTHER reshape, was the honest limit of even
+     * the widened tool: a 6-arm `if (backend === UI_ENTRY_RENDERER.X)` chain is
+     * exactly as closed to a mod as the old switch was, and it stayed below this
+     * census's 8-arm threshold - the same shape of gap as the rune.variety union
+     * noted in the "became registries" test above. It never had a row, and it
+     * was closed by hand-reading MOD_REACH row 18 rather than by this tool
+     * noticing. That limit has not changed; only this instance of it has. */
   });
 
   it("finds the reshapes task #260 widened the census to see", () => {
@@ -298,10 +321,15 @@ describe("the switch census", () => {
      * hand-verified one by one (see the task report). If a future edit to the
      * detectors stops finding one of these, that is exactly the silent-absence
      * failure mode this file exists to catch - so the find is asserted by
-     * name, not just by count. */
+     * name, not just by count.
+     *
+     * FOUR of the original five, since #283. The fifth was
+     * `ARRAY_LOOKUP|packages/core/src/game/ui-entry.ts|9`, and it is asserted
+     * ABSENT in the FIXED-vs-RESHAPED test above rather than dropped from this
+     * list quietly - a row that vanishes from a positive ratchet with no note is
+     * indistinguishable from a detector that stopped working. */
     const key = (r: Row) => `${r.kind}|${r.file}|${String(r.cases)}`;
     const keys = new Set(manifest.switches.map(key));
-    expect(keys.has("ARRAY_LOOKUP|packages/core/src/game/ui-entry.ts|9")).toBe(true);
     expect(keys.has("ARRAY_LOOKUP|packages/core/src/host/args.ts|13")).toBe(true);
     expect(keys.has("ARRAY_LOOKUP|packages/mcp/src/tools.ts|19")).toBe(true);
     expect(keys.has("IF_CHAIN|packages/core/src/game/target-loop.ts|9")).toBe(true);
@@ -386,13 +414,14 @@ describe("the widened detectors, against literal fixtures", () => {
     expect(census.ifChainsIn(differingIdents)).toEqual([]);
   });
 
-  it("flags applyRenderer's actual shape ONLY once it reaches 8 arms", () => {
-    /* ui-entry.ts's applyRenderer is genuinely 6 arms (six separate `if
-     * (backend === UI_ENTRY_RENDERER.X) { ... return ...; }` blocks, no
-     * `else`), which is below THRESHOLD and correctly invisible - the brief's
-     * framing of it as "the same shape as COMBINERS" is about closedness to a
-     * mod, not about crossing this tool's size cutoff. Adding two more arms of
-     * the identical shape is what pushes it over. */
+  it("flags applyRenderer's old shape ONLY once it reaches 8 arms", () => {
+    /* ui-entry.ts's applyRenderer WAS 6 arms (six separate `if (backend ===
+     * UI_ENTRY_RENDERER.X) { ... return ...; }` blocks, no `else`), which is
+     * below THRESHOLD and correctly invisible - #260's framing of it as "the
+     * same shape as COMBINERS" was about closedness to a mod, not about
+     * crossing this tool's size cutoff. Adding two more arms of the identical
+     * shape is what pushes it over. #283 converted the real one; the fixture
+     * stays, because the threshold it calibrates is not about that file. */
     const sixArms = `
       function applyRenderer(backend: number): string {
         if (backend === 1) { return "a"; }

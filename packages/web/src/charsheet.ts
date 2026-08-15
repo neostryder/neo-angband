@@ -512,7 +512,7 @@ function flagGridSection(state: GameState, packs?: UiEntryPackRecords): string[]
   if (!packs) return [];
   const { resistPanels } = characterGrid(
     state,
-    buildUiEntryConfig(packs),
+    buildUiEntryConfig(packs, state.uiEntry),
     liveUiEntryDeps(state),
   );
   const byKey = (k: string): UiGridPanel | undefined =>
@@ -727,7 +727,9 @@ export function showCharacterSheet(
   });
   const mkDeps = () => ({ ...charSheetDeps(state, curName), ...extraDeps() });
   /* Build the ui_entry config once (mode 1 grid); null without packs. */
-  const gridConfig = opts.uiEntryPacks ? buildUiEntryConfig(opts.uiEntryPacks) : null;
+  const gridConfig = opts.uiEntryPacks
+    ? buildUiEntryConfig(opts.uiEntryPacks, state.uiEntry)
+    : null;
   const modeOneLines = (): ScreenLine[] =>
     gridConfig ? characterGridLines(state, curName, gridConfig) : modeOnePlaceholder();
 

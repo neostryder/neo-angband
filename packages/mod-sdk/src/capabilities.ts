@@ -33,7 +33,8 @@
  *                             "registry:profile" | "registry:blow" |
  *                             "registry:store" | "registry:command" |
  *                             "registry:monster" | "registry:projection" |
- *                             "registry:glyph" | "registry:effect-info" |
+ *                             "registry:ui-entry" | "registry:glyph" |
+ *                             "registry:effect-info" |
  *                             "registry:randart" | "registry:tval" |
  *                             "registry:vocab"; or the
  *                             wildcard "registry:*"
@@ -44,6 +45,13 @@
  *                             of a room-template or vault layout means when the
  *                             level is drawn - the behaviour half of shipping a
  *                             vault with a symbol core never heard of.
+ *                             "registry:ui-entry" says what a `combine:` or an
+ *                             `entry-renderer:` `code:` MEANS on the second
+ *                             character screen and the equip-comparison screen -
+ *                             how a row's per-slot values reduce, and how a
+ *                             value becomes a cell symbol and colour. Adding a
+ *                             ui_entry ROW needs no capability; saying what its
+ *                             combiner or renderer does needs this.
  *                             "registry:effect-info" says what the game PRINTS
  *                             about an effect - its menu row, its recall
  *                             sentence, the object properties an activation
@@ -170,7 +178,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|glyph|randart|rune|tval|vocab|menu|message)$/;
+  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

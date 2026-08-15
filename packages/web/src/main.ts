@@ -2276,7 +2276,11 @@ function prefsUiCtx(): PrefsUiCtx {
       monsters: booted.registries.monsters,
       /* get_autoinscription(kind, true): only AWARE notes go to a pref file. */
       autoinscription: (kidx) => state.autoinscribe?.get(kidx, true) ?? null,
-      entryRenderers: uiEntryRendererRows(buildUiEntryConfig(uiEntryPacks)),
+      /* The SAME config object every screen uses - `buildUiEntryConfig` memoises
+       * on (packs, registry), and `uiEntryRendererCustomize` below mutates the
+       * palettes in place, so a build that omitted the registry would dump and
+       * customise a second copy nobody draws from. */
+      entryRenderers: uiEntryRendererRows(buildUiEntryConfig(uiEntryPacks, state.uiEntry)),
     }),
     extraSink: {
       addAutoinscription: (kidx, text) => state.autoinscribe?.set(kidx, text, true),
@@ -2289,7 +2293,7 @@ function prefsUiCtx(): PrefsUiCtx {
       },
       entryRenderer: (name, colors, labelColors, symbols) => {
         uiEntryRendererCustomize(
-          buildUiEntryConfig(uiEntryPacks),
+          buildUiEntryConfig(uiEntryPacks, state.uiEntry),
           name,
           colors,
           labelColors,
@@ -10996,6 +11000,7 @@ function installTrusted(trustedId: string): void {
           commandVerbs: state.commandVerbs ?? null,
           state,
           projections: state.projectionHandlers ?? null,
+          uiEntry: state.uiEntry ?? null,
           glyphs: booted.registries.rooms.glyphs,
           effectInfo: effectInfoRegistry(),
           randart: randartRegistry(),
@@ -11208,6 +11213,7 @@ for (const loaded of activeModCode().plugins) {
         commandVerbs: state.commandVerbs ?? null,
         state,
         projections: state.projectionHandlers ?? null,
+        uiEntry: state.uiEntry ?? null,
         glyphs: booted.registries.rooms.glyphs,
         effectInfo: effectInfoRegistry(),
         randart: randartRegistry(),

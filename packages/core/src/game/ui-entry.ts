@@ -52,6 +52,15 @@ import { knownDescOf } from "./describe.js";
 import type { Player } from "../player/player.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "./context.js";
+/* TYPE-ONLY, and it has to stay that way: ui-entry-registry.ts imports this
+ * module's core tables at run time, so a value import back would be a cycle
+ * whose top-level consts read each other half-initialised. */
+import type {
+  UiEntryBackend,
+  UiEntryBackendDefaults,
+  UiEntryBackendRender,
+  UiEntryRegistry,
+} from "./ui-entry-registry.js";
 
 /* ------------------------------------------------------------------ */
 /* Special values (ui-entry-combiner.h)                                */
@@ -88,13 +97,13 @@ const ENTRY_FLAG_TIMED_AUX = 1;
 /* Combiners (ui-entry-combiner.c)                                     */
 /* ------------------------------------------------------------------ */
 
-interface CombinerState {
+export interface CombinerState {
   work: number[] | null;
   accum: number;
   accumAux: number;
 }
 
-interface CombinerFuncs {
+export interface CombinerFuncs {
   init: (v: number, a: number, st: CombinerState) => void;
   accum: (v: number, a: number, st: CombinerState) => void;
   finish: (st: CombinerState) => void;
@@ -493,49 +502,99 @@ const ABSENT_COMBINER: CombinerFuncs = {
   },
 };
 
-/** combiners[], sorted alphabetically by name (ui-entry-combiner.c L83). */
-const COMBINERS: ReadonlyArray<{ name: string; funcs: CombinerFuncs }> = [
-  { name: "ADD", funcs: ADD },
-  { name: "BITWISE_OR", funcs: BITWISE_OR },
-  { name: "FIRST", funcs: FIRST },
-  { name: "LARGEST", funcs: LARGEST },
-  { name: "LAST", funcs: LAST },
-  { name: "LOGICAL_OR", funcs: LOGICAL_OR },
-  { name: "LOGICAL_OR_WITH_CANCEL", funcs: LOGICAL_OR_WITH_CANCEL },
-  { name: "RESIST_0", funcs: RESIST_0 },
-  { name: "SMALLEST", funcs: SMALLEST },
-];
+/**
+ * combiners[], sorted alphabetically by name (ui-entry-combiner.c L83) - core's
+ * nine, and the SEED of every game's `UiEntryRegistry.combiners` rather than the
+ * table anything dispatches through. A `Map` keyed by name, because the name is
+ * the identity: the 1-based slot this used to be was a coordinate into core's
+ * own array, and a mod-registered combiner has no slot at all.
+ */
+const CORE_COMBINERS: ReadonlyMap<string, CombinerFuncs> = new Map([
+  ["ADD", ADD],
+  ["BITWISE_OR", BITWISE_OR],
+  ["FIRST", FIRST],
+  ["LARGEST", LARGEST],
+  ["LAST", LAST],
+  ["LOGICAL_OR", LOGICAL_OR],
+  ["LOGICAL_OR_WITH_CANCEL", LOGICAL_OR_WITH_CANCEL],
+  ["RESIST_0", RESIST_0],
+  ["SMALLEST", SMALLEST],
+]);
 
-/** ui_entry_combiner_lookup: 1-based index, 0 if unknown. */
+/**
+ * Core's nine combiners, for `UiEntryRegistry` to seed a per-game table from.
+ * A function rather than the const itself so that game/ui-entry-registry.ts can
+ * import it without this module needing anything from that one at run time.
+ */
+export function coreUiEntryCombiners(): ReadonlyMap<string, CombinerFuncs> {
+  return CORE_COMBINERS;
+}
+
+/**
+ * ui_entry_combiner_lookup: 1-based index into CORE's nine, 0 if unknown.
+ *
+ * A PARITY ACCESSOR, not the dispatch key any more. It answers the question
+ * upstream's function answers - where in the compiled table does this name sit -
+ * which is meaningful only for core's own nine, and it deliberately does not see
+ * a mod's combiner: a registered name has no slot to report. Everything that
+ * actually dispatches goes through `resolveCombiner` on the live table.
+ */
 export function combinerLookup(name: string): number {
-  for (let i = 0; i < COMBINERS.length; i++) {
-    if (COMBINERS[i]!.name === name) return i + 1;
+  let i = 0;
+  for (const key of CORE_COMBINERS.keys()) {
+    i++;
+    if (key === name) return i;
   }
   return 0;
 }
 
 /**
- * ui_entry_combiner_get_funcs: the funcs for a 1-based combiner index. An index
- * that names nothing - 0 from a failed combinerLookup, or anything out of range
- * - resolves to ABSENT_COMBINER rather than throwing. Its four call sites are
- * computeObjectValues (:1314), computePlayerValues (:1550), applyRenderer
- * (:1787) and combineEntryValues (:2198).
+ * ui_entry_combiner_get_funcs, keyed by NAME against the live table: the game's
+ * registry when one was supplied, core's nine otherwise. A name nothing answers
+ * for - a pack typo, a mod that never registered, or the empty string an entry
+ * with no `combine:` carries - resolves to ABSENT_COMBINER rather than throwing.
+ *
+ * Its call sites are computeObjectValues, computePlayerValues,
+ * combinerForRenderer (which applyRenderer uses) and combineEntryValues.
  */
-function combinerFuncs(index: number): CombinerFuncs {
-  return COMBINERS[index - 1]?.funcs ?? ABSENT_COMBINER;
+function resolveCombiner(
+  name: string,
+  registry: UiEntryRegistry | undefined,
+): CombinerFuncs {
+  return lookupCombiner(name, registry) ?? ABSENT_COMBINER;
+}
+
+/** The combiner installed for a name right now, or null - no ABSENT fallback. */
+function lookupCombiner(
+  name: string,
+  registry: UiEntryRegistry | undefined,
+): CombinerFuncs | null {
+  if (registry) return registry.combiners.handlerFor(name);
+  return CORE_COMBINERS.get(name) ?? null;
+}
+
+/** The backend installed for a name right now, or null. */
+function lookupBackend(
+  name: string,
+  registry: UiEntryRegistry | undefined,
+): UiEntryBackend | null {
+  if (registry) return registry.backends.handlerFor(name);
+  return CORE_BACKENDS.get(name) ?? null;
 }
 
 /**
  * Run a combiner over parallel arrays (its vec_func); exported for tests. An
  * unknown name gives ABSENT_COMBINER's answer - both values NOT_PRESENT - for
- * the reason spelled out on ABSENT_COMBINER.
+ * the reason spelled out on ABSENT_COMBINER. Pass the game's registry to reach a
+ * mod's combiner; without one this sees core's nine.
  */
 export function combineValues(
   combinerName: string,
   vals: number[],
   auxs: number[],
+  registry?: UiEntryRegistry,
 ): { accum: number; accumAux: number } {
-  return combinerFuncs(combinerLookup(combinerName)).vec(vals, auxs);
+  return resolveCombiner(combinerName, registry).vec(vals, auxs);
 }
 
 /* ------------------------------------------------------------------ */
@@ -561,10 +620,22 @@ export interface UiEntryPackRecords {
 /* Renderer table (ui-entry-renderers.c)                               */
 /* ------------------------------------------------------------------ */
 
-interface RendererInfo {
+/**
+ * One configured `entry-renderer:` record.
+ *
+ * `backendName` and `combinerName` are NAMES, never slots. They used to be a
+ * 0..5 index into UI_ENTRY_RENDERER_ENTRIES and a 1-based index into COMBINERS,
+ * which meant reordering either core table silently retargeted every built
+ * config - and, worse, that a mod could never own either end, because a
+ * registered handler has no slot to be indexed at. Both are now resolved against
+ * the live `UiEntryRegistry` at apply time.
+ */
+export interface RendererInfo {
   name: string;
-  backendIndex: number; // 0..5 into UI_ENTRY_RENDERER_ENTRIES
-  combinerIndex: number;
+  /** The `code:` field verbatim - a core backend name, or a mod's. */
+  backendName: string;
+  /** The `combine:` field verbatim, or "" when the record named none. */
+  combinerName: string;
   colors: number[]; // COLOUR_* per palette slot
   labelColors: number[];
   symbols: string; // one code unit per palette slot
@@ -603,25 +674,28 @@ function augmentSymbols(defaults: string, sym: string): string {
   return sym.length < defaults.length ? sym + defaults.slice(sym.length) : sym;
 }
 
-function buildRenderers(records: Json[]): RendererInfo[] {
+function buildRenderers(records: Json[], registry: UiEntryRegistry | undefined): RendererInfo[] {
   const out: RendererInfo[] = [];
   const byName = new Map<string, number>();
   /* First pass: create renderer_info, resolving the backend. */
   for (const rec of records) {
     const name = String(rec["name"]);
     const code = String(rec["code"]);
-    const backendIndex = (UI_ENTRY_RENDERER as Record<string, number>)[code] ?? -1;
-    const backend = backendIndex >= 0 ? UI_ENTRY_RENDERER_ENTRIES[backendIndex]! : null;
+    const backend: UiEntryBackendDefaults | null = lookupBackend(code, registry)?.defaults ?? null;
 
     let colors = rec["colors"] !== undefined ? colorsFromChars(String(rec["colors"])) : [];
     let labelColors =
       rec["labelcolors"] !== undefined ? colorsFromChars(String(rec["labelcolors"])) : [];
     let symbols = rec["symbols"] !== undefined ? String(rec["symbols"]) : "";
 
-    /* finish_parse: default combiner + augment with backend defaults. */
-    let combinerIndex = rec["combine"] !== undefined ? combinerLookup(String(rec["combine"])) : 0;
+    /* finish_parse: augment the palettes with the backend's defaults. The
+     * DEFAULT COMBINER is not resolved here any more - it is applied by
+     * combinerForRenderer at apply time, so that a combiner registered after
+     * this config was built still wins over the backend's default. The
+     * observable answer is unchanged for every case the old parse handled; see
+     * combinerForRenderer for the case-by-case check. */
+    const combinerName = rec["combine"] !== undefined ? String(rec["combine"]) : "";
     if (backend) {
-      if (combinerIndex === 0) combinerIndex = combinerLookup(backend.defaultCombinerName);
       colors = augmentColors(backend.defaultColors, colors);
       labelColors = augmentColors(backend.defaultLabelColors, labelColors);
       symbols = augmentSymbols(backend.defaultSymbols, symbols);
@@ -636,8 +710,8 @@ function buildRenderers(records: Json[]): RendererInfo[] {
     byName.set(name, out.length + 1);
     out.push({
       name,
-      backendIndex,
-      combinerIndex,
+      backendName: code,
+      combinerName,
       colors,
       labelColors,
       symbols,
@@ -705,7 +779,12 @@ interface UiEntry {
   shortened: string[]; // index 0..9 -> length 1..10
   nshortened: number[];
   rendererIndex: number;
-  combinerIndex: number;
+  /**
+   * The `combine:` field verbatim, or "" when neither the record nor its
+   * template named one. Resolved against the live combiner table at compute
+   * time, never at parse - see resolveCombiner.
+   */
+  combinerName: string;
   defaultPriority: number;
   paramIndex: number;
   flags: number;
@@ -810,7 +889,7 @@ function blankEntry(name: string): UiEntry {
     shortened: new Array<string>(MAX_SHORTENED).fill(""),
     nshortened: new Array<number>(MAX_SHORTENED).fill(0),
     rendererIndex: 0,
-    combinerIndex: 0,
+    combinerName: "",
     defaultPriority: 0,
     paramIndex: -1,
     flags: 0,
@@ -972,7 +1051,7 @@ function applyRecordToEntry(
     const t = TEMPLATE_LOOKUP.get(template);
     if (t) {
       entry.rendererIndex = t.rendererIndex;
-      entry.combinerIndex = t.combinerIndex;
+      entry.combinerName = t.combinerName;
       entry.defaultPriority = t.defaultPriority;
       entry.flags = t.flags & ~0; /* TEMPLATE_ONLY is not a data flag here */
       for (const c of t.categories) addCategory(entry, c.name, entry.defaultPriority);
@@ -982,7 +1061,7 @@ function applyRecordToEntry(
   const renderer = strField(rec, "renderer");
   if (renderer !== undefined) entry.rendererIndex = rendererLookup(renderers, renderer);
   const combine = strField(rec, "combine");
-  if (combine !== undefined) entry.combinerIndex = combinerLookup(combine);
+  if (combine !== undefined) entry.combinerName = combine;
 
   const label = strField(rec, "label");
   if (label !== undefined) {
@@ -1146,22 +1225,53 @@ function bindPlayerProperties(table: Map<string, UiEntry>, records: Json[]): voi
  * ui_entry_renderer_customize mutates in place; if each caller rebuilt its own
  * copy, an `entry-renderer:` pref line would change one screen and not the next.
  */
-const UI_ENTRY_CONFIG_CACHE = new WeakMap<UiEntryPackRecords, UiEntryConfig>();
+const UI_ENTRY_CONFIG_CACHE = new WeakMap<
+  UiEntryPackRecords,
+  WeakMap<object, UiEntryConfig>
+>();
+
+/**
+ * The cache key standing in for "no registry": one module-level object, so the
+ * headless callers that pass nothing still share a config the way they always
+ * did. A registry is per GAME, so it is the second half of the key - a second
+ * character in the same session must not inherit the first character's mod
+ * backends through a config memoised on the pack alone.
+ */
+const UI_ENTRY_CORE_ONLY_KEY: object = {};
 
 /**
  * Build the whole ui_entry config from the compiled pack records, memoised on
- * the records object (see UI_ENTRY_CONFIG_CACHE).
+ * the records object and the registry (see UI_ENTRY_CONFIG_CACHE).
+ *
+ * The registry is consulted for BACKEND DEFAULTS only - the palettes, digit
+ * count and sign a renderer record inherits from the backend it names - so a
+ * mod's backend must be registered before the first screen builds a config,
+ * which `register()` running at game start already guarantees. Nothing else
+ * here resolves a handler; the combiner and the render algorithm are both
+ * looked up live, at compute and apply time.
  */
-export function buildUiEntryConfig(packs: UiEntryPackRecords): UiEntryConfig {
-  const hit = UI_ENTRY_CONFIG_CACHE.get(packs);
+export function buildUiEntryConfig(
+  packs: UiEntryPackRecords,
+  registry?: UiEntryRegistry,
+): UiEntryConfig {
+  let byRegistry = UI_ENTRY_CONFIG_CACHE.get(packs);
+  if (!byRegistry) {
+    byRegistry = new WeakMap<object, UiEntryConfig>();
+    UI_ENTRY_CONFIG_CACHE.set(packs, byRegistry);
+  }
+  const key = registry ?? UI_ENTRY_CORE_ONLY_KEY;
+  const hit = byRegistry.get(key);
   if (hit) return hit;
-  const built = buildUiEntryConfigUncached(packs);
-  UI_ENTRY_CONFIG_CACHE.set(packs, built);
+  const built = buildUiEntryConfigUncached(packs, registry);
+  byRegistry.set(key, built);
   return built;
 }
 
-function buildUiEntryConfigUncached(packs: UiEntryPackRecords): UiEntryConfig {
-  const renderers = buildRenderers(packs.uiEntryRenderer);
+function buildUiEntryConfigUncached(
+  packs: UiEntryPackRecords,
+  registry: UiEntryRegistry | undefined,
+): UiEntryConfig {
+  const renderers = buildRenderers(packs.uiEntryRenderer, registry);
 
   /* The base file's entries become the template pool. */
   TEMPLATE_LOOKUP = new Map();
@@ -1308,11 +1418,12 @@ export function computeObjectValues(
   obj: GameObject | null,
   p: Player,
   fullyKnown = false,
+  registry?: UiEntryRegistry,
 ): { val: number; auxval: number } {
   if (!obj || entry.objProps.length === 0) {
     return { val: UI_ENTRY_VALUE_NOT_PRESENT, auxval: UI_ENTRY_VALUE_NOT_PRESENT };
   }
-  const combiner = combinerFuncs(entry.combinerIndex);
+  const combiner = resolveCombiner(entry.combinerName, registry);
   const st: CombinerState = { work: null, accum: 0, accumAux: 0 };
   let first = true;
   let anyAux = false;
@@ -1547,8 +1658,9 @@ export function computePlayerValues(
   p: Player,
   deps: ResolvedUiDeps,
   cache: { untimed: FlagSet },
+  registry?: UiEntryRegistry,
 ): { val: number; auxval: number } {
-  const combiner = combinerFuncs(entry.combinerIndex);
+  const combiner = resolveCombiner(entry.combinerName, registry);
   const st: CombinerState = { work: null, accum: 0, accumAux: 0 };
   let first = true;
   const timedAux = (entry.flags & ENTRY_FLAG_TIMED_AUX) !== 0;
@@ -1760,7 +1872,7 @@ function formatInt(
 }
 
 /** Details controlling a render (the char screen always uses these values). */
-interface RenderDetails {
+export interface RenderDetails {
   knownRune: boolean;
   alternateColorFirst: boolean;
 }
@@ -1773,241 +1885,381 @@ export interface RenderedRow {
 }
 
 /**
+ * The six ported renderer backends (ui-entry-renderers.c), one function each.
+ *
+ * They were six `if (backend === UI_ENTRY_RENDERER.X)` arms inside
+ * applyRenderer, dispatched on a 0..5 index, and as shut to a mod as the
+ * 32-case switch MOD_REACH row 18 was written about - invisible to the switch
+ * census as well, because six arms sit under its eight-arm threshold. Each is
+ * now a `UiEntryBackendRender` in a name-keyed table a mod can add to, replace
+ * or wrap. The bodies below are unchanged.
+ *
+ * THE COMBINER IS AN ARGUMENT, already resolved by name against the live table.
+ * A backend that re-resolved one for itself would honour core's combiners and
+ * ignore a mod's - the same split seam that makes every caller the test.
+ */
+
+/** Palette accessors shared by the six backends, and by any a mod registers. */
+function rendererPalette(renderer: RendererInfo): {
+  sym: (paletteIndex: number) => string;
+  cellColor: (paletteIndex: number, offset: number) => number;
+} {
+  return {
+    sym: (paletteIndex) => renderer.symbols[paletteIndex] ?? " ",
+    cellColor: (paletteIndex, offset) => renderer.colors[paletteIndex + offset] ?? 1,
+  };
+}
+
+const renderCompactResistWithCombinedAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  let colorOffset = details.alternateColorFirst ? 22 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    const untimed = convertVanillaResLevel(vals[i]!);
+    const timed = convertVanillaResLevel(auxvals[i]!);
+    const pi = COMBINED_EFFECT_TBL[untimed]![timed]!;
+    cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
+    colorOffset ^= 22;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  let labelPI = 0;
+  if (details.knownRune) {
+    labelPI = COMBINED_LABEL_TBL[convertVanillaResLevel(vc)]![convertVanillaResLevel(ac)]!;
+  }
+  return {
+    cells,
+    labelColorIndex: labelPI,
+    labelColor: renderer.labelColors[labelPI] ?? 1,
+  };
+};
+
+const renderCompactFlagWithCombinedAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  let colorOffset = details.alternateColorFirst ? 5 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    let pi = 2;
+    if (vals[i] === UI_ENTRY_UNKNOWN_VALUE) pi = 0;
+    else if (vals[i] === UI_ENTRY_VALUE_NOT_PRESENT) pi = 1;
+    else if (vals[i]) pi = 3;
+    const av = auxvals[i]!;
+    if (av && av !== UI_ENTRY_UNKNOWN_VALUE && av !== UI_ENTRY_VALUE_NOT_PRESENT) {
+      if (vals[i] === 0) pi = 4;
+    }
+    cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
+    colorOffset ^= 5;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  let labelPI = 1;
+  if (!details.knownRune) labelPI = 0;
+  else if (vc && vc !== UI_ENTRY_UNKNOWN_VALUE && vc !== UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 2;
+  else if (ac && ac !== UI_ENTRY_UNKNOWN_VALUE && ac !== UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 3;
+  return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
+};
+
+const renderCompactFlagWithCancelWithCombinedAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  let colorOffset = details.alternateColorFirst ? 11 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i]!;
+    const av = auxvals[i]!;
+    let pi: number;
+    if (v === UI_ENTRY_UNKNOWN_VALUE || av === UI_ENTRY_UNKNOWN_VALUE) pi = 0;
+    else if (v === UI_ENTRY_VALUE_NOT_PRESENT && av === UI_ENTRY_VALUE_NOT_PRESENT) pi = 1;
+    else if (av === UI_ENTRY_VALUE_NOT_PRESENT || av === 0) {
+      if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 2;
+      else if (v > 0) pi = 3;
+      else pi = 4;
+    } else if (av > 0) {
+      if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 5;
+      else if (v > 0) pi = 6;
+      else pi = 7;
+    } else {
+      if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 8;
+      else if (v > 0) pi = 9;
+      else pi = 10;
+    }
+    cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
+    colorOffset ^= 11;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  let labelPI: number;
+  if (!details.knownRune) labelPI = 0;
+  else if (vc === UI_ENTRY_VALUE_NOT_PRESENT || vc === UI_ENTRY_UNKNOWN_VALUE || vc === 0) {
+    if (ac === UI_ENTRY_VALUE_NOT_PRESENT || ac === UI_ENTRY_UNKNOWN_VALUE || ac === 0) labelPI = 4;
+    else if (ac > 0) labelPI = 6;
+    else labelPI = 2;
+  } else if (vc > 0) {
+    if (ac === UI_ENTRY_VALUE_NOT_PRESENT || ac === UI_ENTRY_UNKNOWN_VALUE || ac >= 0) labelPI = 5;
+    else labelPI = 3;
+  } else labelPI = 1;
+  return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
+};
+
+const renderNumericAsSignWithCombinedAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  let colorOffset = details.alternateColorFirst ? 7 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
+    combiner.init(vals[i]!, 0, cst);
+    combiner.accum(auxvals[i]!, 0, cst);
+    combiner.finish(cst);
+    let pi: number;
+    if (vals[i] === UI_ENTRY_UNKNOWN_VALUE || (vals[i] === 0 && auxvals[i] === UI_ENTRY_UNKNOWN_VALUE)) {
+      pi = 0;
+    } else if (cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) {
+      pi = 1;
+    } else {
+      pi =
+        (cst.accum > 0 ? 5 : cst.accum < 0 ? 8 : 2) +
+        (auxvals[i]! > 0 ? 1 : auxvals[i]! < 0 ? 2 : 0);
+    }
+    cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
+    colorOffset ^= 11;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  let labelPI: number;
+  if (!details.knownRune) labelPI = 0;
+  else {
+    const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
+    combiner.init(vc, 0, cst);
+    combiner.accum(ac, 0, cst);
+    combiner.finish(cst);
+    if (cst.accum === UI_ENTRY_UNKNOWN_VALUE || cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 1;
+    else labelPI = (cst.accum > 0 ? 4 : cst.accum < 0 ? 7 : 1) + (ac > 0 ? 1 : ac < 0 ? 2 : 0);
+  }
+  return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
+};
+
+const renderNumericWithCombinedAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  const nbuf = renderer.ndigit + (renderer.sign === UI_ENTRY_NO_SIGN ? 0 : 1);
+  let colorOffset = details.alternateColorFirst ? 11 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
+    combiner.init(vals[i]!, 0, cst);
+    combiner.accum(auxvals[i]!, 0, cst);
+    combiner.finish(cst);
+    let pi: number;
+    let text: string;
+    if (vals[i] === UI_ENTRY_UNKNOWN_VALUE || (vals[i] === 0 && auxvals[i] === UI_ENTRY_UNKNOWN_VALUE)) {
+      pi = 0;
+      text = formatInt(0, false, sym(0), sym(0), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) {
+      pi = 1;
+      text = formatInt(0, false, sym(1), sym(1), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (cst.accum === 0) {
+      pi = auxvals[i]! > 0 ? 3 : auxvals[i]! < 0 ? 4 : 2;
+      text = formatInt(0, false, sym(pi), sym(pi), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (cst.accum > 0) {
+      pi = auxvals[i]! > 0 ? 6 : auxvals[i]! < 0 ? 7 : 5;
+      text = formatInt(cst.accum, false, sym(2), sym(5), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else {
+      pi = auxvals[i]! > 0 ? 9 : auxvals[i]! < 0 ? 10 : 8;
+      let vv: number;
+      let o: boolean;
+      if (vals[i] === INT_MIN) {
+        vv = -(INT_MIN + 1);
+        o = true;
+      } else {
+        vv = -vals[i]!;
+        o = false;
+      }
+      text = formatInt(vv, o, sym(2), sym(6), false, renderer.sign !== UI_ENTRY_NO_SIGN, nbuf);
+    }
+    cells.push({ symbol: text, color: cellColor(pi, colorOffset) });
+    colorOffset ^= 11;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  let labelPI: number;
+  if (!details.knownRune) labelPI = 0;
+  else {
+    const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
+    combiner.init(vc, 0, cst);
+    combiner.accum(ac, 0, cst);
+    combiner.finish(cst);
+    if (cst.accum === UI_ENTRY_UNKNOWN_VALUE || cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 1;
+    else labelPI = (cst.accum > 0 ? 4 : cst.accum < 0 ? 7 : 1) + (ac > 0 ? 1 : ac < 0 ? 2 : 0);
+  }
+  return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
+};
+
+const renderNumericWithBoolAux: UiEntryBackendRender = (
+  renderer,
+  vals,
+  auxvals,
+  details,
+  combiner,
+) => {
+  const cells: UiEntryCell[] = [];
+  const { sym, cellColor } = rendererPalette(renderer);
+  const nbuf = renderer.ndigit + (renderer.sign === UI_ENTRY_NO_SIGN ? 0 : 1);
+  let colorOffset = details.alternateColorFirst ? 8 : 0;
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i]!;
+    const av = auxvals[i]!;
+    const auxOn = av !== 0 && av !== UI_ENTRY_UNKNOWN_VALUE && av !== UI_ENTRY_VALUE_NOT_PRESENT;
+    let pi: number;
+    let text: string;
+    if (v === UI_ENTRY_UNKNOWN_VALUE || (v === 0 && av === UI_ENTRY_UNKNOWN_VALUE)) {
+      pi = 0;
+      text = formatInt(0, false, sym(0), sym(0), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (v === UI_ENTRY_VALUE_NOT_PRESENT) {
+      pi = 1;
+      text = formatInt(0, false, sym(1), sym(1), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (v > 0) {
+      pi = auxOn ? 5 : 4;
+      text = formatInt(v, false, sym(2), sym(4), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    } else if (v < 0) {
+      pi = auxOn ? 7 : 6;
+      let vv: number;
+      let o: boolean;
+      if (v === INT_MIN) {
+        vv = -(INT_MIN + 1);
+        o = true;
+      } else {
+        vv = -v;
+        o = false;
+      }
+      text = formatInt(vv, o, sym(2), sym(5), false, renderer.sign !== UI_ENTRY_NO_SIGN, nbuf);
+    } else {
+      const zerosym = auxOn ? 3 : 2;
+      pi = auxOn ? 3 : 2;
+      text = formatInt(0, false, sym(zerosym), sym(4), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
+    }
+    cells.push({ symbol: text, color: cellColor(pi, colorOffset) });
+    colorOffset ^= 8;
+  }
+  const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
+  const acbool = ac !== 0 && ac !== UI_ENTRY_UNKNOWN_VALUE && ac !== UI_ENTRY_VALUE_NOT_PRESENT;
+  let labelPI: number;
+  if (!details.knownRune) labelPI = 0;
+  else if (vc === 0 || vc === UI_ENTRY_UNKNOWN_VALUE || vc === UI_ENTRY_VALUE_NOT_PRESENT)
+    labelPI = acbool ? 6 : 5;
+  else if (vc > 0) labelPI = acbool ? 2 : 1;
+  else labelPI = acbool ? 4 : 3;
+  return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
+};
+
+/**
+ * Core's six backends, keyed by the NAME a renderer record's `code:` field
+ * writes - the seed of every game's `UiEntryRegistry.backends`. The generated
+ * `backend_info` defaults ride along, so one registry entry carries both halves
+ * a renderer record needs from a backend: the algorithm, and the palette,
+ * digit count and sign it inherits.
+ */
+function coreBackend(
+  code: keyof typeof UI_ENTRY_RENDERER,
+  render: UiEntryBackendRender,
+): [string, UiEntryBackend] {
+  const defaults = UI_ENTRY_RENDERER_ENTRIES[UI_ENTRY_RENDERER[code]]!;
+  return [defaults.name, { render, defaults }];
+}
+
+const CORE_BACKENDS: ReadonlyMap<string, UiEntryBackend> = new Map([
+  coreBackend("COMPACT_RESIST_RENDERER_WITH_COMBINED_AUX", renderCompactResistWithCombinedAux),
+  coreBackend("COMPACT_FLAG_RENDERER_WITH_COMBINED_AUX", renderCompactFlagWithCombinedAux),
+  coreBackend(
+    "COMPACT_FLAG_WITH_CANCEL_RENDERER_WITH_COMBINED_AUX",
+    renderCompactFlagWithCancelWithCombinedAux,
+  ),
+  coreBackend("NUMERIC_AS_SIGN_RENDERER_WITH_COMBINED_AUX", renderNumericAsSignWithCombinedAux),
+  coreBackend("NUMERIC_RENDERER_WITH_COMBINED_AUX", renderNumericWithCombinedAux),
+  coreBackend("NUMERIC_RENDERER_WITH_BOOL_AUX", renderNumericWithBoolAux),
+]);
+
+/**
+ * Core's six backends, for `UiEntryRegistry` to seed a per-game table from. A
+ * function rather than the const itself, for the reason coreUiEntryCombiners
+ * gives.
+ */
+export function coreUiEntryBackends(): ReadonlyMap<string, UiEntryBackend> {
+  return CORE_BACKENDS;
+}
+
+/**
+ * The combiner a renderer record uses, resolved live.
+ *
+ * finish_parse used to bake this in: an absent - or unresolvable - `combine:`
+ * was replaced by the backend's default at PARSE and stored as a slot. Doing it
+ * here instead means a combiner registered after the config was built still
+ * wins, and the answer is the same in every case the parse handled:
+ *
+ *   combine resolves                        -> that combiner, backend ignored
+ *   combine unresolvable, backend known     -> the backend's default combiner
+ *   combine absent, backend known           -> the backend's default combiner
+ *   combine unresolvable/absent, no backend -> ABSENT_COMBINER
+ */
+function combinerForRenderer(
+  renderer: RendererInfo,
+  registry: UiEntryRegistry | undefined,
+): CombinerFuncs {
+  const direct = lookupCombiner(renderer.combinerName, registry);
+  if (direct) return direct;
+  const fallback =
+    lookupBackend(renderer.backendName, registry)?.defaults.defaultCombinerName ?? "";
+  return resolveCombiner(fallback, registry);
+}
+
+/**
  * ui_entry_renderer_apply (ui-entry-renderers.c L309), DATA half: for each
  * (val, aux) pair produce a cell {symbol, color}, and colour the label by the
  * combined value. The Term drawing (positions, combined cell) is the shell's.
+ *
+ * The backend is resolved BY NAME against the live table, so a mod's renderer
+ * record - `code: "my-mod:bars"` - reaches a mod's algorithm. A name nothing
+ * answers for still returns the empty-cell row it has returned since #271: the
+ * row says nothing, and the screen still draws.
  */
 export function applyRenderer(
   renderer: RendererInfo,
   vals: number[],
   auxvals: number[],
   details: RenderDetails,
+  registry?: UiEntryRegistry,
 ): RenderedRow {
-  const backend = renderer.backendIndex;
-  const cells: UiEntryCell[] = [];
-  const combiner = combinerFuncs(renderer.combinerIndex);
-
-  const cellColor = (paletteIndex: number, offset: number): number =>
-    renderer.colors[paletteIndex + offset] ?? 1;
-  const sym = (paletteIndex: number): string => renderer.symbols[paletteIndex] ?? " ";
-
-  if (backend === UI_ENTRY_RENDERER.COMPACT_RESIST_RENDERER_WITH_COMBINED_AUX) {
-    let colorOffset = details.alternateColorFirst ? 22 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      const untimed = convertVanillaResLevel(vals[i]!);
-      const timed = convertVanillaResLevel(auxvals[i]!);
-      const pi = COMBINED_EFFECT_TBL[untimed]![timed]!;
-      cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
-      colorOffset ^= 22;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    let labelPI = 0;
-    if (details.knownRune) {
-      labelPI = COMBINED_LABEL_TBL[convertVanillaResLevel(vc)]![convertVanillaResLevel(ac)]!;
-    }
-    return {
-      cells,
-      labelColorIndex: labelPI,
-      labelColor: renderer.labelColors[labelPI] ?? 1,
-    };
-  }
-
-  if (backend === UI_ENTRY_RENDERER.COMPACT_FLAG_RENDERER_WITH_COMBINED_AUX) {
-    let colorOffset = details.alternateColorFirst ? 5 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      let pi = 2;
-      if (vals[i] === UI_ENTRY_UNKNOWN_VALUE) pi = 0;
-      else if (vals[i] === UI_ENTRY_VALUE_NOT_PRESENT) pi = 1;
-      else if (vals[i]) pi = 3;
-      const av = auxvals[i]!;
-      if (av && av !== UI_ENTRY_UNKNOWN_VALUE && av !== UI_ENTRY_VALUE_NOT_PRESENT) {
-        if (vals[i] === 0) pi = 4;
-      }
-      cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
-      colorOffset ^= 5;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    let labelPI = 1;
-    if (!details.knownRune) labelPI = 0;
-    else if (vc && vc !== UI_ENTRY_UNKNOWN_VALUE && vc !== UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 2;
-    else if (ac && ac !== UI_ENTRY_UNKNOWN_VALUE && ac !== UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 3;
-    return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
-  }
-
-  if (backend === UI_ENTRY_RENDERER.COMPACT_FLAG_WITH_CANCEL_RENDERER_WITH_COMBINED_AUX) {
-    let colorOffset = details.alternateColorFirst ? 11 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      const v = vals[i]!;
-      const av = auxvals[i]!;
-      let pi: number;
-      if (v === UI_ENTRY_UNKNOWN_VALUE || av === UI_ENTRY_UNKNOWN_VALUE) pi = 0;
-      else if (v === UI_ENTRY_VALUE_NOT_PRESENT && av === UI_ENTRY_VALUE_NOT_PRESENT) pi = 1;
-      else if (av === UI_ENTRY_VALUE_NOT_PRESENT || av === 0) {
-        if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 2;
-        else if (v > 0) pi = 3;
-        else pi = 4;
-      } else if (av > 0) {
-        if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 5;
-        else if (v > 0) pi = 6;
-        else pi = 7;
-      } else {
-        if (v === UI_ENTRY_VALUE_NOT_PRESENT || v === 0) pi = 8;
-        else if (v > 0) pi = 9;
-        else pi = 10;
-      }
-      cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
-      colorOffset ^= 11;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    let labelPI: number;
-    if (!details.knownRune) labelPI = 0;
-    else if (vc === UI_ENTRY_VALUE_NOT_PRESENT || vc === UI_ENTRY_UNKNOWN_VALUE || vc === 0) {
-      if (ac === UI_ENTRY_VALUE_NOT_PRESENT || ac === UI_ENTRY_UNKNOWN_VALUE || ac === 0) labelPI = 4;
-      else if (ac > 0) labelPI = 6;
-      else labelPI = 2;
-    } else if (vc > 0) {
-      if (ac === UI_ENTRY_VALUE_NOT_PRESENT || ac === UI_ENTRY_UNKNOWN_VALUE || ac >= 0) labelPI = 5;
-      else labelPI = 3;
-    } else labelPI = 1;
-    return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
-  }
-
-  if (backend === UI_ENTRY_RENDERER.NUMERIC_AS_SIGN_RENDERER_WITH_COMBINED_AUX) {
-    let colorOffset = details.alternateColorFirst ? 7 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
-      combiner.init(vals[i]!, 0, cst);
-      combiner.accum(auxvals[i]!, 0, cst);
-      combiner.finish(cst);
-      let pi: number;
-      if (vals[i] === UI_ENTRY_UNKNOWN_VALUE || (vals[i] === 0 && auxvals[i] === UI_ENTRY_UNKNOWN_VALUE)) {
-        pi = 0;
-      } else if (cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) {
-        pi = 1;
-      } else {
-        pi =
-          (cst.accum > 0 ? 5 : cst.accum < 0 ? 8 : 2) +
-          (auxvals[i]! > 0 ? 1 : auxvals[i]! < 0 ? 2 : 0);
-      }
-      cells.push({ symbol: sym(pi), color: cellColor(pi, colorOffset) });
-      colorOffset ^= 11;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    let labelPI: number;
-    if (!details.knownRune) labelPI = 0;
-    else {
-      const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
-      combiner.init(vc, 0, cst);
-      combiner.accum(ac, 0, cst);
-      combiner.finish(cst);
-      if (cst.accum === UI_ENTRY_UNKNOWN_VALUE || cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 1;
-      else labelPI = (cst.accum > 0 ? 4 : cst.accum < 0 ? 7 : 1) + (ac > 0 ? 1 : ac < 0 ? 2 : 0);
-    }
-    return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
-  }
-
-  if (backend === UI_ENTRY_RENDERER.NUMERIC_RENDERER_WITH_COMBINED_AUX) {
-    const nbuf = renderer.ndigit + (renderer.sign === UI_ENTRY_NO_SIGN ? 0 : 1);
-    let colorOffset = details.alternateColorFirst ? 11 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
-      combiner.init(vals[i]!, 0, cst);
-      combiner.accum(auxvals[i]!, 0, cst);
-      combiner.finish(cst);
-      let pi: number;
-      let text: string;
-      if (vals[i] === UI_ENTRY_UNKNOWN_VALUE || (vals[i] === 0 && auxvals[i] === UI_ENTRY_UNKNOWN_VALUE)) {
-        pi = 0;
-        text = formatInt(0, false, sym(0), sym(0), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) {
-        pi = 1;
-        text = formatInt(0, false, sym(1), sym(1), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (cst.accum === 0) {
-        pi = auxvals[i]! > 0 ? 3 : auxvals[i]! < 0 ? 4 : 2;
-        text = formatInt(0, false, sym(pi), sym(pi), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (cst.accum > 0) {
-        pi = auxvals[i]! > 0 ? 6 : auxvals[i]! < 0 ? 7 : 5;
-        text = formatInt(cst.accum, false, sym(2), sym(5), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else {
-        pi = auxvals[i]! > 0 ? 9 : auxvals[i]! < 0 ? 10 : 8;
-        let vv: number;
-        let o: boolean;
-        if (vals[i] === INT_MIN) {
-          vv = -(INT_MIN + 1);
-          o = true;
-        } else {
-          vv = -vals[i]!;
-          o = false;
-        }
-        text = formatInt(vv, o, sym(2), sym(6), false, renderer.sign !== UI_ENTRY_NO_SIGN, nbuf);
-      }
-      cells.push({ symbol: text, color: cellColor(pi, colorOffset) });
-      colorOffset ^= 11;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    let labelPI: number;
-    if (!details.knownRune) labelPI = 0;
-    else {
-      const cst: CombinerState = { work: null, accum: 0, accumAux: 0 };
-      combiner.init(vc, 0, cst);
-      combiner.accum(ac, 0, cst);
-      combiner.finish(cst);
-      if (cst.accum === UI_ENTRY_UNKNOWN_VALUE || cst.accum === UI_ENTRY_VALUE_NOT_PRESENT) labelPI = 1;
-      else labelPI = (cst.accum > 0 ? 4 : cst.accum < 0 ? 7 : 1) + (ac > 0 ? 1 : ac < 0 ? 2 : 0);
-    }
-    return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
-  }
-
-  if (backend === UI_ENTRY_RENDERER.NUMERIC_RENDERER_WITH_BOOL_AUX) {
-    const nbuf = renderer.ndigit + (renderer.sign === UI_ENTRY_NO_SIGN ? 0 : 1);
-    let colorOffset = details.alternateColorFirst ? 8 : 0;
-    for (let i = 0; i < vals.length; i++) {
-      const v = vals[i]!;
-      const av = auxvals[i]!;
-      const auxOn = av !== 0 && av !== UI_ENTRY_UNKNOWN_VALUE && av !== UI_ENTRY_VALUE_NOT_PRESENT;
-      let pi: number;
-      let text: string;
-      if (v === UI_ENTRY_UNKNOWN_VALUE || (v === 0 && av === UI_ENTRY_UNKNOWN_VALUE)) {
-        pi = 0;
-        text = formatInt(0, false, sym(0), sym(0), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (v === UI_ENTRY_VALUE_NOT_PRESENT) {
-        pi = 1;
-        text = formatInt(0, false, sym(1), sym(1), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (v > 0) {
-        pi = auxOn ? 5 : 4;
-        text = formatInt(v, false, sym(2), sym(4), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      } else if (v < 0) {
-        pi = auxOn ? 7 : 6;
-        let vv: number;
-        let o: boolean;
-        if (v === INT_MIN) {
-          vv = -(INT_MIN + 1);
-          o = true;
-        } else {
-          vv = -v;
-          o = false;
-        }
-        text = formatInt(vv, o, sym(2), sym(5), false, renderer.sign !== UI_ENTRY_NO_SIGN, nbuf);
-      } else {
-        const zerosym = auxOn ? 3 : 2;
-        pi = auxOn ? 3 : 2;
-        text = formatInt(0, false, sym(zerosym), sym(4), true, renderer.sign === UI_ENTRY_ALWAYS_SIGN, nbuf);
-      }
-      cells.push({ symbol: text, color: cellColor(pi, colorOffset) });
-      colorOffset ^= 8;
-    }
-    const { accum: vc, accumAux: ac } = combiner.vec(vals, auxvals);
-    const acbool = ac !== 0 && ac !== UI_ENTRY_UNKNOWN_VALUE && ac !== UI_ENTRY_VALUE_NOT_PRESENT;
-    let labelPI: number;
-    if (!details.knownRune) labelPI = 0;
-    else if (vc === 0 || vc === UI_ENTRY_UNKNOWN_VALUE || vc === UI_ENTRY_VALUE_NOT_PRESENT)
-      labelPI = acbool ? 6 : 5;
-    else if (vc > 0) labelPI = acbool ? 2 : 1;
-    else labelPI = acbool ? 4 : 3;
-    return { cells, labelColorIndex: labelPI, labelColor: renderer.labelColors[labelPI] ?? 1 };
-  }
-
-  return { cells, labelColorIndex: 0, labelColor: 1 };
+  const backend = lookupBackend(renderer.backendName, registry);
+  if (!backend) return { cells: [], labelColorIndex: 0, labelColor: 1 };
+  return backend.render(
+    renderer,
+    vals,
+    auxvals,
+    details,
+    combinerForRenderer(renderer, registry),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -2066,6 +2318,11 @@ export function characterGrid(
   const bodyCount = p.body.count;
   const rd = resolveUiDeps(p, deps);
   const untimedCache = { untimed: playerFlags(p) };
+  /* The LIVE per-game combiner / backend tables, read HERE rather than captured
+   * anywhere earlier: a mod's register() has already run by the time a screen
+   * opens, and reading the registry at the point the row is computed is what
+   * makes a registration reachable rather than merely present. */
+  const registry = state.uiEntry;
 
   const equipment: (GameObject | null)[] = [];
   for (let i = 0; i < bodyCount; i++) equipment.push(slotObject(state, i));
@@ -2090,18 +2347,18 @@ export function characterGrid(
     const vals: number[] = [];
     const auxs: number[] = [];
     for (let j = 0; j < bodyCount; j++) {
-      const r = computeObjectValues(entry, equipment[j]!, p, objFullyKnown[j] ?? false);
+      const r = computeObjectValues(entry, equipment[j]!, p, objFullyKnown[j] ?? false, registry);
       vals.push(r.val);
       auxs.push(r.auxval);
     }
-    const pr = computePlayerValues(entry, p, rd, untimedCache);
+    const pr = computePlayerValues(entry, p, rd, untimedCache, registry);
     vals.push(forcePlayerValZero ? 0 : pr.val);
     auxs.push(pr.auxval);
 
     const renderer = config.renderers[entry.rendererIndex - 1];
     const knownRune = withLabel ? isUiEntryForKnownRune(entry, p) : true;
     const rendered = renderer
-      ? applyRenderer(renderer, vals, auxs, { knownRune, alternateColorFirst: false })
+      ? applyRenderer(renderer, vals, auxs, { knownRune, alternateColorFirst: false }, registry)
       : { cells: [], labelColor: 1, labelColorIndex: 0 };
     return {
       name: entry.name,
@@ -2186,17 +2443,17 @@ export function equipCmpFilterLabel3(entry: UiEntry): string {
  * (ui-equip-cmp.c L2334-2362), condensed to the vectorized form combineValues
  * already uses: combine the player's own value with every equipped item's value
  * for one property entry into the equip-cmp "@" row's combined (val, auxval).
- * Uses the entry's own (already-resolved) combinerIndex rather than looking
- * it up via the renderer - computePlayerValues (:1543) does the same. An entry
- * whose combiner never resolved yields NOT_PRESENT here rather than throwing;
- * see ABSENT_COMBINER (:477).
+ * Uses the entry's own `combinerName` rather than looking it up via the
+ * renderer - computePlayerValues does the same. An entry whose combiner names
+ * nothing yields NOT_PRESENT here rather than throwing; see ABSENT_COMBINER.
  */
 export function combineEntryValues(
   entry: UiEntry,
   vals: number[],
   auxs: number[],
+  registry?: UiEntryRegistry,
 ): { accum: number; accumAux: number } {
-  return combinerFuncs(entry.combinerIndex).vec(vals, auxs);
+  return resolveCombiner(entry.combinerName, registry).vec(vals, auxs);
 }
 
 /* ------------------------------------------------------------------ */

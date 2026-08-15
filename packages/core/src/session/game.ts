@@ -54,6 +54,7 @@ import {
   makeTimedNotifyQueries,
 } from "../game/player-side.js";
 import { ProjectionHandlerRegistry } from "../game/projection-handlers.js";
+import { UiEntryRegistry } from "../game/ui-entry-registry.js";
 import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
 import { makeMonBlowEnv } from "../game/mon-side.js";
 import {
@@ -1436,6 +1437,13 @@ function wireGame(
      * snapshot would be a seam that ignored every mod. */
     const projectionHandlers = new ProjectionHandlerRegistry();
     state.projectionHandlers = projectionHandlers;
+    /* The second character screen's combiner and renderer-backend tables
+     * (game/ui-entry-registry.ts), seeded with core's nine and six. Per game for
+     * the same reason as the projection tables above, and published rather than
+     * passed because the two consumers - characterGrid and equipCmpSummary -
+     * both already take the live GameState and read this field at the moment
+     * they compute a row. */
+    state.uiEntry = new UiEntryRegistry();
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = {

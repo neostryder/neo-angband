@@ -58,7 +58,7 @@ import {
   resolveUiDeps,
   isUiEntryForKnownRune,
 } from "./ui-entry.js";
-import type { UiEntryConfig, UiEntryDeps, UiEntryCell } from "./ui-entry.js";
+import type { UiEntryDeps, UiEntryCell } from "./ui-entry.js";
 import { playerFlags } from "../player/calcs.js";
 
 export type EquipCmpSource = "worn" | "pack" | "floor" | "home" | "store";
@@ -259,17 +259,6 @@ export function equipCmpFilterKeeps(
   return filter.not ? !keep : keep;
 }
 
-let cachedConfig: UiEntryConfig | null = null;
-let cachedConfigKey: unknown = null;
-
-/** Memoise buildUiEntryConfig per pack (it is pure and pack-shaped, not per-call). */
-function uiEntryConfigFor(packs: Parameters<typeof buildUiEntryConfig>[0]): UiEntryConfig {
-  if (cachedConfig && cachedConfigKey === packs) return cachedConfig;
-  cachedConfig = buildUiEntryConfig(packs);
-  cachedConfigKey = packs;
-  return cachedConfig;
-}
-
 /** set_short_name (ui-equip-cmp.c L1601), truncated to 20 chars (nshortnm cap). */
 function shortName(state: GameState, obj: GameObject): string {
   const cap = 20;
@@ -402,7 +391,16 @@ export function equipCmpSummary(
   packs: Parameters<typeof buildUiEntryConfig>[0],
   opts: EquipCmpOptions = {},
 ): EquipCmpModel {
-  const config = uiEntryConfigFor(packs);
+  /* The LIVE per-game combiner / backend tables. Read here, and passed to every
+   * compute and apply call below, so a mod's combiner or renderer backend is
+   * dispatched to rather than merely registered.
+   *
+   * `buildUiEntryConfig` memoises on (packs, registry) - this used to keep a
+   * module-level one-slot cache of its own keyed on `packs` alone, which would
+   * have handed a second character in the same session the FIRST character's
+   * mod-supplied backend defaults. */
+  const registry = state.uiEntry;
+  const config = buildUiEntryConfig(packs, registry);
   const player: Player = state.actor.player;
   const source = opts.source ?? "no-store";
   const rd = resolveUiDeps(player, opts.entryDeps ?? {});
@@ -442,21 +440,27 @@ export function equipCmpSummary(
     objectFullyKnown(obj, objectKnownShadow(obj, player, state.runeEnv, knownDesc), player, state.runeEnv);
 
   const combinedCells: UiEntryCell[] = flatEntries.map((entry) => {
-    const playerVal = computePlayerValues(entry, player, rd, untimedCache);
+    const playerVal = computePlayerValues(entry, player, rd, untimedCache, registry);
     const vals = [playerVal.val];
     const auxs = [playerVal.auxval];
     for (const obj of equipped) {
-      const ov = computeObjectValues(entry, obj, player, fullyKnown(obj));
+      const ov = computeObjectValues(entry, obj, player, fullyKnown(obj), registry);
       vals.push(ov.val);
       auxs.push(ov.auxval);
     }
-    const { accum, accumAux } = combineEntryValues(entry, vals, auxs);
+    const { accum, accumAux } = combineEntryValues(entry, vals, auxs, registry);
     const renderer = config.renderers[entry.rendererIndex - 1];
     if (!renderer) return { symbol: " ", color: 1 };
-    const rendered = applyRenderer(renderer, [accum], [accumAux], {
-      knownRune: isUiEntryForKnownRune(entry, player),
-      alternateColorFirst: false,
-    });
+    const rendered = applyRenderer(
+      renderer,
+      [accum],
+      [accumAux],
+      {
+        knownRune: isUiEntryForKnownRune(entry, player),
+        alternateColorFirst: false,
+      },
+      registry,
+    );
     return rendered.cells[0] ?? { symbol: " ", color: 1 };
   });
 
@@ -465,14 +469,20 @@ export function equipCmpSummary(
     const vals: number[] = [];
     const known = fullyKnown(obj);
     const cells: UiEntryCell[] = flatEntries.map((entry) => {
-      const ov = computeObjectValues(entry, obj, player, known);
+      const ov = computeObjectValues(entry, obj, player, known, registry);
       vals.push(ov.val);
       const renderer = config.renderers[entry.rendererIndex - 1];
       if (!renderer) return { symbol: " ", color: 1 };
-      const rendered = applyRenderer(renderer, [ov.val], [ov.auxval], {
-        knownRune: isUiEntryForKnownRune(entry, player),
-        alternateColorFirst: false,
-      });
+      const rendered = applyRenderer(
+        renderer,
+        [ov.val],
+        [ov.auxval],
+        {
+          knownRune: isUiEntryForKnownRune(entry, player),
+          alternateColorFirst: false,
+        },
+        registry,
+      );
       return rendered.cells[0] ?? { symbol: " ", color: 1 };
     });
     return {

@@ -211,6 +211,21 @@ repositories called it, so no author is stranded; the door to the rule is
 `FIELD_TYPES` are unaffected, and are now named explicitly rather than swept up
 by a wildcard — which is what let this one out in the first place.
 
+Two **field renames** that the export ratchet cannot see, and that is exactly why
+they are written here (#283, unreleased 2026-08-15). The ratchet compares the set
+of exported NAMES; it says nothing about the shape of what a name hands back. The
+ui-entry config a plugin gets from `buildUiEntryConfig` changed two fields:
+
+| Was | Now | Why not aliased |
+|---|---|---|
+| `UiEntry.combinerIndex: number` (1-based into core's nine) | `UiEntry.combinerName: string` | The slot was the bug. It is a coordinate into core's own compiled table, so a combiner a mod registers has none — keeping the index would have frozen the table at nine and made `registry:ui-entry` inert. Keeping BOTH would mean two identities for one thing and a rule about which wins. |
+| `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason, and the same fix: read the name. `RendererInfo` is now an exported TYPE as well, which it was not before — a plugin writing a renderer backend needs to name it. |
+
+Nothing else about `UiEntryConfig` moved, and a plugin that only calls
+`characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is
+unaffected: every one of those gained an OPTIONAL trailing registry argument and
+behaves exactly as before when it is omitted.
+
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed

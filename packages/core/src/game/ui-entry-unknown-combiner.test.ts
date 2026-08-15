@@ -1,13 +1,12 @@
 /**
  * #271: an unknown combiner name must not take the session down.
  *
- * `combine:` is resolved by name against a 9-entry table (`COMBINERS`,
- * ui-entry.ts:497) and an unknown name resolves to 0 - at PARSE time, silently
- * (:984). Nothing throws while the pack loads. The throw used to come later,
- * from `combinerFuncs`, on the first VALUE or RENDER use: the character sheet
- * ('C') and the equip-comparison screen. So a typo in one `combine:` line of a
- * mod's ui_entry record loaded clean and then killed a live player path, far
- * from its cause.
+ * `combine:` used to be resolved by name against a 9-entry table (`COMBINERS`)
+ * at PARSE time, and an unknown name resolved to 0, silently. Nothing threw
+ * while the pack loaded. The throw came later, from `combinerFuncs`, on the
+ * first VALUE or RENDER use: the character sheet ('C') and the equip-comparison
+ * screen. So a typo in one `combine:` line of a mod's ui_entry record loaded
+ * clean and then killed a live player path, far from its cause.
  *
  * Upstream is not a defence here: ui_entry_combiner_get_funcs
  * (ui-entry-combiner.c L111-120) also returns 0, and its callers `assert(0)`
@@ -17,8 +16,12 @@
  * whose every route reports UI_ENTRY_VALUE_NOT_PRESENT, the same answer the
  * projection bind settled on for an unknown code (world/projection.ts).
  *
- * These tests are about SURVIVAL, not about naming a combiner: none of them
- * asserts that a mod's combiner can be registered, because it cannot.
+ * These tests are about SURVIVAL, and they still are after #283 opened the
+ * table: a name is now resolved against a LIVE registry rather than a frozen
+ * array, and a name nothing answers for - because no mod registered it, or
+ * because it is a typo - must still yield ABSENT_COMBINER and a drawable row
+ * rather than a crash. Opening a table is not licence to make a typo fatal
+ * again. What a mod CAN now do is the subject of ui-entry-registry.test.ts.
  */
 
 import { describe, expect, it } from "vitest";
@@ -54,10 +57,12 @@ const brokenConfig: UiEntryConfig = buildUiEntryConfig({
 });
 
 describe("an unknown combiner name is survivable (#271)", () => {
-  it("combinerLookup still reports an unknown name as 0", () => {
+  it("combinerLookup still reports a name outside core's nine as 0", () => {
     /* The lookup's contract is unchanged - it is the CONSEQUENCE that changed.
        Without this, a lookup that silently started returning 1 would make every
-       other test here pass for the wrong reason. */
+       other test here pass for the wrong reason. It reports CORE's slot and
+       nothing else, which is why a registered combiner still reads 0 here (see
+       ui-entry-registry.test.ts) - the slot is not the key any more. */
     expect(combinerLookup("NOPE")).toBe(0);
     expect(combinerLookup("ADD")).toBeGreaterThan(0);
   });
@@ -72,9 +77,13 @@ describe("an unknown combiner name is survivable (#271)", () => {
     expect(combineValues("ADD", [1, 2, 3], [0, 0, 0]).accum).toBe(6);
   });
 
-  it("a pack whose entries name an unknown combiner still builds, storing 0", () => {
+  it("a pack whose entries name an unknown combiner still builds, storing the NAME", () => {
+    /* The name is kept verbatim rather than resolved away at parse - that is
+       what lets a combiner registered after the config was built still win.
+       Before #283 this asserted `combinerIndex === 0`, which was the same fact
+       recorded as a slot that could never come back. */
     expect(brokenConfig.entries.length).toBeGreaterThan(0);
-    expect(brokenConfig.entries.every((e) => e.combinerIndex === 0)).toBe(true);
+    expect(brokenConfig.entries.every((e) => e.combinerName === "NOPE")).toBe(true);
   });
 
   it("characterGrid renders every panel with no combiner resolved", () => {
@@ -102,11 +111,11 @@ describe("an unknown combiner name is survivable (#271)", () => {
   });
 
   it("a RENDERER whose combiner never resolved renders instead of throwing", () => {
-    /* The renderer path has its own escape: an unknown `combine:` falls back to
-       the backend's default combiner - but only if the BACKEND resolved
-       (ui-entry.ts:622-624). A renderer naming an unknown `code` as well keeps
-       combinerIndex 0 all the way to applyRenderer (:1787), which is the second
-       way this used to throw. */
+    /* The renderer path has its own escape: an unresolvable `combine:` falls
+       back to the backend's default combiner - but only if the BACKEND
+       resolved. A renderer naming an unknown `code` as well resolves neither,
+       all the way into applyRenderer, which is the second way this used to
+       throw. */
     const cfg = buildUiEntryConfig({
       uiEntry: [{ name: "row", renderer: "broken" }] as never,
       uiEntryBase: [] as never,
@@ -116,13 +125,14 @@ describe("an unknown combiner name is survivable (#271)", () => {
     });
     const renderer = cfg.renderers.find((r) => r.name === "broken");
     expect(renderer).toBeDefined();
-    expect(renderer!.combinerIndex).toBe(0);
+    expect(renderer!.combinerName).toBe("NOPE");
+    expect(renderer!.backendName).toBe("NO_SUCH_RENDERER");
     const row = applyRenderer(renderer!, [1, 0], [0, 0], {
       knownRune: true,
       alternateColorFirst: false,
     });
-    /* No backend arm matched either, so this is the silent fallthrough (:2009):
-       no cells, default label colour. It is a blank row, not a crash. */
+    /* No backend answers for that name either, so this is the silent
+       fallthrough: no cells, default label colour. A blank row, not a crash. */
     expect(row.cells).toEqual([]);
     expect(row.labelColorIndex).toBe(0);
   });
