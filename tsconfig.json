@@ -7,7 +7,6 @@
     { "path": "packages/linoleum" },
     { "path": "packages/cli" },
     { "path": "packages/web" },
-    { "path": "packages/web/tsconfig.mods.json" },
     { "path": "packages/desktop" },
     { "path": "packages/mcp" }
   ]

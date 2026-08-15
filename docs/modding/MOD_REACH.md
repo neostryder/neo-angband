@@ -30,7 +30,7 @@ is not a capability - it is called out as such.
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
 | ...reachable by a mod that is NOT compiled into the web bundle | **every one**, proven by a mod folder written to disk and imported for real (`packages/web/src/mod-code.node.test.ts`) |
 | `registry:*` capabilities with real, wired, tested code | **15** (`blow`, `command`, `effect`, `effect-info`, `glyph`, `menu`, `monster`, `profile`, `projection`, `randart`, `room`, `rune`, `store`, `tval`, `vocab`) — the list is `REGISTRY_CAPABILITIES` in `mod/registry-host.ts`, which is the one source the vocabulary has |
-| Non-test callers of that registry host in a RELEASE build | **1** — `main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
+| Non-test callers of that registry host in a RELEASE build | **1** — `packages/web/src/main.ts:10256` calls it for every loaded mod plugin, which is the disk path |
 | Gamedata record files a mod can contribute to | **44** of upstream's 45 |
 | ...of those, addressable PER RECORD (patch / replace / remove) | **43** of 44 — 24 by a unique `name`, 19 by a declared key (`record-key.ts`); since 2026-08-08 the same key also decides what a record ADDED to those files is called |
 | ...whole-file-replacement only | **1** (`history`, whose records hold no field that is not a value a mod would change; an op against it is REPORTED) |
@@ -138,7 +138,7 @@ The `ActionRegistry` count was measured as 34 distinct literal
 `quaff`, `read`, `eat`, `use-staff`, `aim-wand`, `zap-rod`, `activate`, `look`,
 `search`. Registration sites are `player-turn.ts:729-736`, `cave-cmd.ts:885-1108`,
 `obj-cmd.ts:1473-1759`, `player-path.ts:1429-1433`, `ranged-cmd.ts:263-366`,
-`spell-cmd.ts:291,351`, `pickup.ts:480-481`, `steal.ts:163`, and `trap.ts:754`
+`spell-cmd.ts:291,351`, `pickup.ts:480-481`, `packages/core/src/game/steal.ts:163`, and `packages/core/src/game/trap.ts:754`
 (which re-overrides `disarm`).
 
 All four core registries are reachable through a deps bag rather than being module
@@ -382,12 +382,12 @@ mod, and two are worth naming because they are what a UI mod would want:
   `packages/web/src/main.ts:7337` (62 entries, counted over lines 7337-7429;
   it "mirrors `cmd_lookup` exactly"). It is not exported and it is declared
   INSIDE the `window.addEventListener("keydown", …)` callback that opens at
-  `main.ts:7149`, so it is re-created per keypress and unreachable from outside
-  the closure even to a bundled mod. It is scanned linearly at `main.ts:7430`.
+  `packages/web/src/main.ts:7149`, so it is re-created per keypress and unreachable from outside
+  the closure even to a bundled mod. It is scanned linearly at `packages/web/src/main.ts:7430`.
 - `DEBUG_MENU`, `packages/web/src/wizard.ts:463` (9 categories / 41 items):
   exported and not `readonly`, so a bundled mod could mutate it. Same
   accidental-seam caveat as `MONSTER_HANDLERS`. **Both claims are stale:** both
-  were frozen under gap 15 on 2026-08-08 (`deepFreezeMenu` at `wizard.ts:520`,
+  were frozen under gap 15 on 2026-08-08 (`deepFreezeMenu` at `packages/web/src/wizard.ts:520`,
   `Object.freeze` at `project-mon.ts:861`).
 - The game menu and death menu are FUNCTIONS that build rows
   (`packages/web/src/game-menu.ts:56`, `:166`), not tables, so there is nothing to
@@ -512,7 +512,7 @@ than the row.**
 
 *Row 21 (`SOUND_PREF_ENTRIES`) was not only a producer problem — it was an
 ORDERING problem, and that half was invisible to inspection.* `installWebSound`
-runs at `main.ts:8845`; a plugin's `register()` runs at `:10851` (the trusted
+runs at `packages/web/src/main.ts:8845`; a plugin's `register()` runs at `:10851` (the trusted
 path, inside `installTrusted`) and `:11039` (the folder loop). A registry read
 only at install time would have been read BEFORE every mod that can write to it —
 correct-looking code that works for nobody. That is the second of #159's two
@@ -683,7 +683,7 @@ than it reads as, and the two checks that were run are the only two that have
 been.
 
 **Row 25 is struck from the count, and kept in the table.** `DEBUG_MENU` is the
-wizard-mode menu. `wizard.ts:508-518` says in the source that the table must
+wizard-mode menu. `packages/web/src/wizard.ts:508-518` says in the source that the table must
 match the C exactly because parity tests count its letters, `switch-census.json`
 already classes both `wizard.ts` rows as DEBUG, and a mod extends wizard mode
 through the command seam instead. So the "gap" consists entirely of the project
@@ -695,7 +695,7 @@ shut*, and "removed from the table" is not one of them.
 
 **Row 23's stated blocker was stale, and the row is much cheaper than it read.**
 It said the command table is "declared INSIDE the keydown callback, re-created
-per keypress, unreachable from outside the closure" at `main.ts:7337`. That code
+per keypress, unreachable from outside the closure" at `packages/web/src/main.ts:7337`. That code
 is gone. It is now module-level and memoised — `buildCommandTable` at
 `packages/web/src/main.ts:8104`, `commandTable` at `:8288`, with a header
 comment at `:8095-8102` saying so. The row is still "no", but for a different
@@ -795,7 +795,7 @@ invisible to the census.
 **Row 19 is a parity artefact, not a gap a player can observe.** `COMMAND_INFO`
 (`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue`
 has NO production caller — the web shell drives `commandBuffer`
-(`main.ts:6053`) into the `ActionRegistry`, which row 3 already scores yes.
+(`packages/web/src/main.ts:6053`) into the `ActionRegistry`, which row 3 already scores yes.
 Extending `COMMAND_INFO` today changes nothing anyone can see. It is NOT struck,
 because `game/display.ts:293` carries PORT_TODO 3.11 pointing at
 `CommandQueue.getNRepeats`: if that lands, the row becomes sharp, and a
@@ -899,8 +899,8 @@ and the host constructs it for real:
 - Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
   it with `{effects, rooms, commands, state, vocab}` and calls
   `plugin.register(host, ctx)`. Entered via `?trusted=<id>`
-  (`main.ts:8242-8243`) OR from the persisted enabled-mod set with consent
-  (`main.ts:8303`).
+  (`packages/web/src/main.ts:8242-8243`) OR from the persisted enabled-mod set with consent
+  (`packages/web/src/main.ts:8303`).
 - Consent UI is real (`packages/web/src/capability-describe.ts` marks the four
   system domains `elevated`).
 
@@ -950,6 +950,13 @@ counted toward code override:
   (`packages/mod-sdk/src/capabilities.ts:63-65`).
 - The event bus (`packages/core/src/events.ts`, 65 event types) - emitted from
   4 sites in `msg.ts` and 1 in `main.ts:1252`. Observation, not override.
+  **CITATION NEEDS MANUAL RE-VERIFICATION (#289):** `packages/web/src/main.ts`
+  has no `.emit(` call at line 1252 today - the only two live sites are
+  `:1717` (`state.events?.emit("message", ...)`) and `:8950`
+  (`soundEvents.emit("sound", ...)`). Re-check which one this claim meant (or
+  whether the "1 site in main.ts" count itself is now stale, since two exist)
+  before correcting the citation - not corrected here because neither
+  candidate could be confirmed as the one this sentence originally meant.
 
 ---
 
@@ -1010,7 +1017,7 @@ the file (`packages/mod-sdk/src/loader.ts:131-138`).
 
 **Core is pack zero with no special casing.** `coreLoadedPack()`
 (`packages/web/src/pack.ts:61-69`) makes core a `LoadedPack` identical in shape to
-a mod's; `activePackSet()` is `[core, ...enabled content mods]` (`pack.ts:308-329`);
+a mod's; `activePackSet()` is `[core, ...enabled content mods]` (`packages/web/src/pack.ts:308-329`);
 `mayModify` (`compose.ts:94-96`) is the only gate and is
 `ownerPack === m.id || m.dependencies?.[ownerPack] !== undefined` - `"core"` is
 not special-cased anywhere, and `compose.ts:13-17` says so. So a mod declaring
@@ -1207,17 +1214,17 @@ the only way to touch one record is to replace the file.
 ### Disk vs bundled data path
 
 Both converge at `packages/web/src/pack.ts:118-124` into one `discoverMods()`
-map, and `pack.ts:323-326` casts `mod.files` straight to `LoadedPack["files"]`
+map, and `packages/web/src/pack.ts:323-326` casts `mod.files` straight to `LoadedPack["files"]`
 with no filtering of `records` / `patches` / `replaces` / `removes` /
 `fieldPatches` - so **a disk mod has identical data expressive power to a bundled
 one.** Divergences worth knowing:
 
 | | disk | bundled |
 | --- | --- | --- |
-| manifest validation | `validateManifest`, folder name must equal `manifest.id` (`disk-packs.ts:300`, `:309-312`) | none - `modManifest` just fills defaults (`pack.ts:285-305`) |
-| `load-order.json` | skipped (`disk-packs.ts:319-322`) | NOT skipped - only `manifest` is excluded (`pack.ts:105`), so it would bind as a record file named `load-order` |
-| `demo-*` filter | none | `isShippedMod` drops them in release (`pack.ts:101`) |
-| id collision | disk loses to a bundled pack of the same id, reported as a problem (`pack.ts:118-124`, `:145-148`) | wins |
+| manifest validation | `validateManifest`, folder name must equal `manifest.id` (`disk-packs.ts:300`, `:309-312`) | none - `modManifest` just fills defaults (`packages/web/src/pack.ts:285-305`) |
+| `load-order.json` | skipped (`disk-packs.ts:319-322`) | NOT skipped - only `manifest` is excluded (`packages/web/src/pack.ts:105`), so it would bind as a record file named `load-order` |
+| `demo-*` filter | none | `isShippedMod` drops them in release (`packages/web/src/pack.ts:101`) |
+| id collision | disk loses to a bundled pack of the same id, reported as a problem (`packages/web/src/pack.ts:118-124`, `:145-148`) | wins |
 | unreadable record file | one problem line, pack survives (`disk-packs.ts:326-328`) | n/a (build-time glob) |
 
 ---
@@ -1284,7 +1291,7 @@ pack was already surfaced in the mod manager by `discoverContentModManifests`
 (`pack.ts`). The bytes were reachable; only the registration was not.
 
 The non-mod escape hatch is `?tiles=<base-url>` + `?graf=<id>`
-(`tiles.ts:178-187`, `main.ts:1005-1006`), which also unlocks the full catalog
+(`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`), which also unlocks the full catalog
 (`tile-catalog.ts:109`). That is a user/URL affordance, not a mod path, and it
 cannot add a grafID.
 
@@ -1336,7 +1343,7 @@ One hardcoded bitmap font, `FONT_16X24`
 `packages/web/src/term.ts:146`. A constructor escape hatch exists -
 `bitmapFont?: BitmapFontData | null` (`term.ts:176-180`, applied `:192`) - with
 **zero production callers**: the only construction site is
-`new GlyphTerm(canvas)` (`main.ts:464`), no options object. No `setFont`, no font
+`new GlyphTerm(canvas)` (`packages/web/src/main.ts:727`), no options object. No `setFont`, no font
 fetch, no `font.prf` (mentioned only as a non-ported upstream file at
 `packages/web/src/launch.ts:33-34`), no manifest field. A mod cannot supply a
 font.
@@ -1435,7 +1442,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 10 | **Provenance survives into the running game and the save** | **CLOSED 2026-08-10** | `composeContentPacks` now stamps every composed record with the pack that ADDED it and the packs that CHANGED it (`mod-sdk/src/provenance.ts`, reserved key `$from`), and only when there is something to say: a base-game record nothing touched is still returned by reference, which is the no-op `loader.ts` promises in its header. Core reads it in `attachExt` (`core/src/mod/extension.ts`) - the ONE helper all fifteen binders already call - so every bound record type carries `from` in a single change and `extension.test.ts`'s census covers provenance for free. `brand` and `slay` were wired into that census at the same time, because a save writes brand and slay ids and the census had both uncovered; a claim that provenance reaches the save would otherwise have been wider than its mechanism. `ContentIdResolver` then namespaces PER RECORD instead of per resolver, so a mod's monster is `demo-modtest:modberry-slime` and never `core:modberry-slime`. **The `-2` suffix problem dissolved rather than being fixed**: a mod's record no longer collides with core's, so the suffix is confined to core's own duplicate names, which are frozen data. **No save-format change and no SAVE_VERSION bump.** `IdTable.index` reproduces the pre-0.19.0 id for every record and consults it only when the exact id misses, so a character carrying a mod's sword written as `core:frost-brand` still loads. It is the old algorithm run forwards, not a fuzzy match: a "same localid in any namespace" rule would hand back the wrong record exactly when two packs share a name. Proven from a real folder in CI (`packages/web/src/mod-provenance.node.test.ts`) over `demo-modtest`, which both adds a monster and patches one of core's, with an unmodded control asserting the whole game pack carries no stamp anywhere. **What this did NOT fix, now pinned as a deliberately-current test in the same file:** a localid is derived from the record's NAME, so a mod that RENAMES a core record still moves core's id - `core:grip-farmer-maggot-s-dog` becomes `core:grip-the-cyber-hound`, and a save written before that mod was installed cannot resolve it. Pre-existing, independent of provenance, and it needs a rule of its own ("a record's id is fixed by the pack that DEFINED it, and a patch cannot move it"). Tracked separately. |
 | 11 | **Load order means what the UI says it means** | **YES** (closed; re-measured 2026-08-08) | Stale in the direction that matters. `resolveLoadOrder` (`packages/mod-sdk/src/resolve.ts:73`) now keeps a per-id map of the caller's input position and breaks every Kahn tie on it - frontier seeded in input order, and re-insertion placed by the same key - with the comment stating the intent outright: deterministic "without the resolver imposing an order the player did not choose". `orderPacks` (`loader.ts:207`) hands its packs straight through. Both ends of the chain supply the player's order: the installed order is kept by `mod-store.ts`, and an external manager's `load-order.json` is read and filtered to ids that resolved (`disk-packs.ts:113`). Two tests assert the tie-break by name (`resolve.test.ts:33`, `compose.test.ts:124`). |
 | 12 | **Record schemas are validated** | **CLOSED 2026-08-09 — the mechanism existed, the reach did not** | **This row was half wrong, and the wrong half is the one worth recording.** It said `packages/mod-sdk/src/index.ts:5` claims schema validation and "no such code exists". The claim was real; so was the code. `checkRecords` over `RECORD_BLUEPRINTS` — 4,630 lines of field shapes, types, ranges and required-ness MEASURED from core's own 3,279 shipped records rather than hand-written — was fully built, exported and thoroughly tested. Its only caller was `ModProject.build`: **the mod BUILDER**, a tool nobody but the author runs. A mod installed from a zip, hand-edited in the mods folder, or produced by any other tool had never been near it, which is the same shape as a control enforced on save and not on load. The row's proposed fix — derive a key+type table from `packages/content`'s `FileSpec` — would have built a second, weaker checker beside the one already there. What was needed was a CALLER. `packages/mod-sdk/src/validate.ts` now holds the subject selection that used to live inside `ModProject.build`, and both the builder and `composeContentPacks` call it, so the two cannot disagree about what a mod is answerable for. Four decisions carry the row. (1) **A patch is checked as the record it PRODUCED.** A patch body is `{"speed": 120}` — no `name`, none of the twenty fields every core monster has — so checking patches as written would put a required-field error on every legitimate patch in existence; membership is decided by `recordRefKeys`, the identity composition itself uses, not by a second spelling of it. (2) **The base game is not reported on.** Core's own data raises 65 warnings against core's own blueprint, almost all `reference/dangling` on artifact `base-object` refs that are upstream warts the port keeps on purpose; putting those on a player's screen at every boot, with no mods installed, would bury every real line. `packs[0]` is the base game — the convention `composeDroppingBroken` already keeps. (3) **`warn` and above at load, everything in the builder.** A `hint` is drafting advice and belongs where the author is sitting in front of the draft. (4) **REPORT, NEVER REFUSE.** A blueprint is a measurement, not a specification, and its own header says a mod coining a new tval or slay code is doing something legal — so a finding costs neither the record nor the mod. Findings ride a THIRD list on `ComposedContent`, kept apart from `problems`/`faults`, because a fault is an op the composer refused and a finding is about a record that composed perfectly and will not do what its author thinks. Proof: `packages/mod-sdk/src/validate.test.ts` composes against the REAL content pack (12 cases, including that core alone is silent AND that the exclusion rather than the checker is what makes it silent, that a well-formed mod is silent, that a switched-off section is not reported on but a switched-on one is, and that the builder's warnings and the loader's are the same set); `packages/web/src/pack-records-checked.test.ts` drives `diskPackStatus()` — the reader the mod manager calls — so the line is proven to reach a row a player can read. Control run: deleting the one line in `pack.ts` that maps findings onto rows fails exactly the three reach assertions and leaves both silence controls green. **One thing running it corrected in the tests themselves**: `mod-visibility.test.ts` stood a bare `{name: "Survivor Hound"}` in for "the forty records that ARE fine", and it drew four warnings of its own. A record standing in for the ones that are fine cannot be one that is not. |
-| 13 | **A boot-time compose error is survivable** | **CLOSED 2026-08-09 — run, not claimed** | Held open since 2026-08-08 on two counts, and both are now answered by `packages/web/src/pack-survives-broken-mod.test.ts`, which drives the REAL readers (`composedRecords`, `diskPackStatus`, `presentNamespaces` — the three `main.ts` calls) rather than the module-private `composition()`. (1) The composer: a mod whose dependency is missing, two such mods at once, and a hard `ping <-> pong` cycle each leave the base game composed, the offender dropped, named on its own row, and absent from `presentNamespaces` — which matters beyond cosmetics, because that set is what `loadGame` reconciles a save's mod-lifecycle blocks against. A good mod loaded alongside a broken one survives, which is the greedy-fallback failure a coarser implementation would pass every other assertion with. Control: putting `composeContentPacks` back at the call site fails exactly those five and leaves the baseline and the six producer rows green. (2) The rest of the chain: `discoverMods` (`pack.ts:134`) reads `pack.manifest.id` with no guard and is reached from module scope, so a `DiskPack` with a non-object manifest would be a blank page one layer EARLIER than the composer. It cannot happen — both producers of a `DiskPackReport`, the mods folder and the IndexedDB installs, go through `readOnePack`, which calls `validateManifest` inside a `try` and returns null on a throw. **No guard was added at `pack.ts:134`, deliberately**: it could never fire, and a check that cannot fail reads as protection while quietly being the reason nobody re-asks. The invariant is proven at the producer instead — null, an array, a string, a number and an id-less object are each rejected and named, with a good mod in the same directory as the control. **A correction the row itself needs**: it said "install a mod with a bad patch ref", and that stopped throwing when `composePacks` gained its `onRefuse` reporter (row 198). A missing patch target now costs the patch and gets a line. What is left for `composeDroppingBroken` to catch is `resolveLoadOrder` — a missing dependency, a duplicate id, a cycle — because those are statements about the SET of enabled mods, where there is no single op to skip and dropping a pack is the only move that makes the rest loadable. The closing condition written in 2026-08-08 would have tested a path that no longer fails. |
+| 13 | **A boot-time compose error is survivable** | **CLOSED 2026-08-09 — run, not claimed** | Held open since 2026-08-08 on two counts, and both are now answered by `packages/web/src/pack-survives-broken-mod.test.ts`, which drives the REAL readers (`composedRecords`, `diskPackStatus`, `presentNamespaces` — the three `main.ts` calls) rather than the module-private `composition()`. (1) The composer: a mod whose dependency is missing, two such mods at once, and a hard `ping <-> pong` cycle each leave the base game composed, the offender dropped, named on its own row, and absent from `presentNamespaces` — which matters beyond cosmetics, because that set is what `loadGame` reconciles a save's mod-lifecycle blocks against. A good mod loaded alongside a broken one survives, which is the greedy-fallback failure a coarser implementation would pass every other assertion with. Control: putting `composeContentPacks` back at the call site fails exactly those five and leaves the baseline and the six producer rows green. (2) The rest of the chain: `discoverMods` (`packages/web/src/pack.ts:134`) reads `pack.manifest.id` with no guard and is reached from module scope, so a `DiskPack` with a non-object manifest would be a blank page one layer EARLIER than the composer. It cannot happen — both producers of a `DiskPackReport`, the mods folder and the IndexedDB installs, go through `readOnePack`, which calls `validateManifest` inside a `try` and returns null on a throw. **No guard was added at `packages/web/src/pack.ts:134`, deliberately**: it could never fire, and a check that cannot fail reads as protection while quietly being the reason nobody re-asks. The invariant is proven at the producer instead — null, an array, a string, a number and an id-less object are each rejected and named, with a good mod in the same directory as the control. **A correction the row itself needs**: it said "install a mod with a bad patch ref", and that stopped throwing when `composePacks` gained its `onRefuse` reporter (row 198). A missing patch target now costs the patch and gets a line. What is left for `composeDroppingBroken` to catch is `resolveLoadOrder` — a missing dependency, a duplicate id, a cycle — because those are statements about the SET of enabled mods, where there is no single op to skip and dropping a pack is the only move that makes the rest loadable. The closing condition written in 2026-08-08 would have tested a path that no longer fails. |
 | 14 | **Localization** | **CLOSED 2026-08-09** | The row was accurate - `grep -rn "i18n|gettext|LOCALE"` over `packages/*/src` returned one hit and it was a `localeCompare` in a sort comment - but it under-described the problem, and the owner named the missing half before the work started: *"I don't think simple string replacements will cut it for everything. Some will require structural changes."* That is exactly right, and this game has the sharpest possible case of it. **Angband does not store the words it prints; it ASSEMBLES them.** An object's name leaves `obj-desc.c` as a pattern - `"& Scroll~ titled #"` - and the rules that turn it into "3 Scrolls titled xyzzy" are English's: `~` appends `s` (or `es` after s/h/x), `&` becomes `a` or `an` by the vowel that follows, `|kni|fe|ves|` picks an irregular arm, and the count goes in front. A translator handed that pattern and asked to replace its words cannot express a Japanese counter, a German case ending, or Polish's three plural forms; a translator handed the finished English sentence has already lost the count. **So the layer has two halves** (`packages/core/src/i18n/`). MESSAGES: `t(id, english, args)`, where the English is written at the CALL SITE and is required - which keeps the sentence next to the code that prints it and makes a missing catalogue entry impossible rather than merely unlikely. The patterns are an ICU subset, chosen and not invented, so a catalogue for this game is a catalogue in the ordinary sense that ordinary translation tools already edit: `{n, plural, ...}`, `{g, select, ...}`, `{n, selectordinal, ...}`, `{n, number}`, `=0` exact arms, `#`, and ICU's `'{` quoting. **The plural CATEGORIES are not core's to know**: they come from `Intl.PluralRules`, so a Polish catalogue writes `few` and `many` and an Arabic one gets all six, while core never learns what those are. `n === 1 ? a : b` - the obvious shortcut - is wrong in most of the world's languages and is the commonest way a localization is broken from the inside. FORMS: named FUNCTIONS a locale replaces outright, a closed `TextForms` interface rather than an open record so the set is enumerable and a translator's mistake is a type error. `objectNameFormat` and `objectNamePrefix` are the first two, and `coreForms()` hands back English's implementation so a locale can WRAP rather than reimplement - the affordance `registry:blow`'s `handlerFor` already gives. **Delivery is gap 7's seam**, which is why that row landed first: `locale` is the seventh resource kind, merged by slot (the BCP 47 tag), so two mods may translate two languages and two translations of one language are settled by load order. The file is JSON and therefore carries DATA - tag, the language's own name, direction, messages - and the check refuses a file whose own `tag` disagrees with the `slot` that declared it, because the slot is what arbitrates and the tag is what the game switches to, and a file saying `de` behind a slot saying `fr` would be offered as French and read as German. A translation needing FORMS ships a `plugin.js` and calls `registerLocale` itself, through the ordinary code path with the ordinary consent, because it is code. **Parity is preserved by construction and measured**: with no locale installed, `t` returns the call-site English and `objDescNameFormat` runs the same English body it always did, and `desc-vectors.test.ts` - the golden set over the whole shipped pack - is untouched. `registerSourceForms` keeps core's own grammar in a cell `resetLocales()` cannot clear, because a reset that left the game unable to pluralise a sword would look like a bug in the seam. **And the terminal is a fixed grid**, which is a localization problem that is not about words at all: `textCells`/`truncateToCells`/`padToCells` (i18n/text.ts) count EAST ASIAN WIDTH, because an ideograph occupies two cells and a combining mark occupies none, and `String.length` counts UTF-16 units and is wrong twice over. WHAT IS DONE AND WHAT IS NOT: the layer, the delivery, the structural seam, the width arithmetic, and a first set of real call sites (the help index's labels and page titles) are done and proven from disk - the bundled `demo-resources` mod ships an `en-XA` pseudo-locale, and `mod-resources.node.test.ts` reads it off the tree, registers it, and asserts the help index comes back in it. **The port's remaining UI literals are NOT converted**, and that is a bounded, mechanical follow-up rather than a gap in the seam: an unconverted literal is a string that is not translatable yet - visible, greppable, and no worse than it was. A pseudo-locale is the tool for finding them, which is why the demo ships one: anything still in plain ASCII on a screen is a string the code forgot to route through the translator. |
 | 16 | **A mod can EXTEND a record, not only retune it** | **YES** (2026-08-08; namespacing and declaration added the same day; trespass gate 2026-08-14) | Measured on request: of the three operations an author expects - patch a value, remove a key, add a key - the first two worked end to end (a dagger patched to `1d5` really rolls it; dropping `flags` really removes THROWING) and the third did not. A new key composed cleanly, reported no problem, landed in the composed record, and was then dropped by the binder, so an author got no error and no effect. Fifteen bound record types now carry the keys core does not bind (`attachExt`, `mod/extension.ts`), frozen, absent entirely when a mod added none. Which keys are core's is DERIVED from core's own gamedata (`mod/record-keys.ts`, generated) rather than hand-listed, and its test re-derives it from the pack in both directions. `mod/extension.test.ts` is a CENSUS - it injects a sentinel into every record of each covered file and counts the survivors, because the failure this guards against is an absence, and per-type tests cannot see one. THE FIELD IS NAMESPACED, DECLARED AND PROTECTED AGAINST TRESPASS: `"gore:bleed"` is declared in the owner mod's manifest under `fields` with the files it may appear on and an optional type; another pack may write it only after declaring `gore` as a dependency or optional dependency. Undeclared, misfiled or misshapen is stripped and reported by name; a trespassing write is refused, restores the last permitted value from before the first trespass, and faults the writer - later edits to that field are also rolled back because they were computed from poisoned input (`mod-sdk/src/fields.ts`). An unqualified key core does not know is reported as a probable misspelling with core's nearest real field named, which needs core's key table and therefore runs in the host (`packages/web/src/pack.ts`). Core never reads `ext`: it is the data half of extending the game, and the behaviour half is `registry:effect` / `registry:blow`. Proven from disk, declared and undeclared, including nested, arithmetic and coarse-merge trespasses followed by permitted writes, in the same test file. |
 | 15 | **Accidental seams closed** | **YES** (closed; re-measured 2026-08-08) | Done. `MONSTER_HANDLERS` (`mon/project-mon.ts:801`) is now `readonly` and built by an IIFE, and `DEBUG_MENU` (`packages/web/src/wizard.ts:514`) is `readonly` and passed through `deepFreezeMenu`. Neither is a silent, unordered back door any more. Note the distinction this row exists to make: these were closed *as defects*. Reaching either one is a capability that must arrive as a gated, ordered, conflict-visible registry - see rows 3 and 9 - never by unfreezing these. |
