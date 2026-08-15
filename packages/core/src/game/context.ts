@@ -818,6 +818,25 @@ export interface GameState {
    */
   commandVerbs?: import("../cmd.js").CommandVerbTable;
   /**
+   * The second character screen's two ui-entry tables - the nine value
+   * COMBINERS and the six renderer BACKENDS - seeded per game and reached by a
+   * mod through ModRegistryHost.uiEntry ("registry:ui-entry").
+   *
+   * `characterGrid` and `equipCmpSummary` read this field at the moment they
+   * compute a row, and resolve BY NAME against it, so a combiner or backend
+   * installed later - from a mod's register() - is dispatched to the next time
+   * either screen opens. Nothing stores the resolved handler, and nothing
+   * stores a slot: the 1-based combiner index and 0..5 backend index this
+   * replaced were coordinates into core's own tables, which a registered
+   * handler has none of.
+   *
+   * Optional only because the headless harnesses build a GameState without one;
+   * ui-entry then resolves against core's nine and six, which is stock
+   * behaviour, and a mod can never reach that fallback because the facade
+   * refuses to register when the host wired no registry.
+   */
+  uiEntry?: import("./ui-entry-registry.js").UiEntryRegistry;
+  /**
    * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
    * the HOST from each enabled mod's manifest `rules` against their saved Fixes
    * & tweaks selections.

@@ -195,6 +195,10 @@ export * from "./game/display.js";
 export * from "./game/char-sheet.js";
 export * from "./game/lore-color.js";
 export * from "./game/ui-entry.js";
+/* The character-screen seam a mod writes combiners and renderer backends
+ * against: the per-game registry (reached through ModRegistryHost.uiEntry,
+ * "registry:ui-entry") and the handler types. See game/ui-entry-registry.ts. */
+export * from "./game/ui-entry-registry.js";
 export * from "./game/equip-cmp.js";
 export * from "./game/mon-shape.js";
 export * from "./mon/lore.js";

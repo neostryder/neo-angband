@@ -29,6 +29,13 @@
  *   (project_f), floor objects (project_o) or the player (project_p) - so a
  *   mod's own projection actually DOES something, and a core projection can be
  *   changed or wrapped. Gated by "registry:projection".
+ * - uiEntry  (UiEntryRegistry, game/ui-entry-registry.ts): the second character
+ *   screen's two closed tables - the value COMBINERS a resist / ability /
+ *   modifier row reduces its per-slot values with, and the renderer BACKENDS
+ *   that turn a (val, aux) pair into a cell symbol and colour. `ui_entry.json`
+ *   always accepted a new row; what it could not do was say what a
+ *   `combine: "MY_OR"` or `code: "MY_BARS"` on it MEANS. Gated by
+ *   "registry:ui-entry".
  * - glyphs   (GlyphRegistry, gen/glyph.ts): what one character of a room
  *   template or a vault means when the level is drawn. A mod can ship a vault
  *   with a glyph core never heard of and say what it does. Gated by
@@ -115,6 +122,12 @@ import type {
   ProjectionHandlerRegistry,
   ProjectionHandlerTable,
 } from "../game/projection-handlers.js";
+import type {
+  UiEntryBackend,
+  UiEntryNameTable,
+  UiEntryRegistry,
+} from "../game/ui-entry-registry.js";
+import type { CombinerFuncs } from "../game/ui-entry.js";
 import type { ProjectFeatHandler } from "../game/project-feat.js";
 import type { ProjectObjHandler } from "../game/project-obj.js";
 import type { PlayerSideHandler } from "../game/player-side.js";
@@ -177,6 +190,7 @@ export const REGISTRY_CAPABILITIES = {
   command: "registry:command",
   monster: "registry:monster",
   projection: "registry:projection",
+  uiEntry: "registry:ui-entry",
   glyph: "registry:glyph",
   effectInfo: "registry:effect-info",
   randart: "registry:randart",
@@ -222,6 +236,8 @@ export interface RegistryTargets {
   state?: GameState | null;
   /** The three projection handler tables (GameState.projectionHandlers). */
   projections?: ProjectionHandlerRegistry | null;
+  /** The character screen's combiner / renderer-backend tables (GameState.uiEntry). */
+  uiEntry?: UiEntryRegistry | null;
   /** The room-template / vault glyph decoders (RoomRegistry.glyphs). */
   glyphs?: GlyphRegistry | null;
   /** Everything the game says about an effect (the module-level registry). */
@@ -494,6 +510,60 @@ export interface ProjectionFacade {
    * on `registry:projection` with the other three - it is the same consent.
    */
   readonly mon: ProjectionSideFacade<MonHandler>;
+}
+
+/**
+ * One name-keyed ui-entry table: the combiners, or the renderer backends.
+ *
+ * Same shape and same two rules as ProjectionSideFacade. ONE NAME AT A TIME, so
+ * two mods each adding a combiner both keep theirs; and `handlerFor` is the wrap
+ * seam, so a mod that wants "RESIST_0 but treat a vulnerability as a resist"
+ * takes core's, installs its own, and calls through - rather than reimplementing
+ * a reduction whose NOT_PRESENT / UNKNOWN / RES_VUL handling is the whole
+ * difference between a right cell and a plausible one.
+ */
+export interface UiEntryTableFacade<H> {
+  /** Install (or replace) the handler for one name. */
+  set(name: string, handler: H): void;
+  /** The handler installed for a name right now, or null. Wrap by re-setting. */
+  handlerFor(name: string): H | null;
+  /** Whether anything answers for this name. */
+  has(name: string): boolean;
+  /** Every name with a handler, core's first. */
+  names(): readonly string[];
+}
+
+/**
+ * The ui-entry facade (gated by registry:ui-entry).
+ *
+ * TWO TABLES, NOT ONE, because the two halves are different kinds of thing. A
+ * combiner is a pure numeric reduction over the (val, aux) pairs of one row -
+ * nine of them, each a few lines. A backend is the UI algorithm that turns those
+ * pairs into cell symbols and palette colours, and it carries default palettes
+ * of its own that a renderer record inherits. A mod writing one is rarely
+ * writing the other.
+ *
+ * ORDERING. Register in `register()`, which runs with a live game and before any
+ * screen opens. `buildUiEntryConfig` reads the BACKEND table once, for the
+ * palette defaults a renderer record inherits; everything else - which reduction
+ * a row uses, which algorithm draws its cells - is resolved by name at the
+ * moment the row is computed, so a later registration still takes effect the
+ * next time the character sheet or the equip comparison is opened.
+ */
+export interface UiEntryFacade {
+  /**
+   * ui-entry-combiner.c's combiners: how a row's per-slot (val, aux) pairs
+   * reduce to the single value that colours its label - "ADD", "LOGICAL_OR",
+   * "RESIST_0", or a mod's own, named by a `combine:` line in `ui_entry.json`.
+   */
+  readonly combiners: UiEntryTableFacade<CombinerFuncs>;
+  /**
+   * ui-entry-renderers.c's backends: how one (val, aux) pair becomes a cell
+   * symbol and colour, named by an `entry-renderer:` record's `code:` field. A
+   * backend supplies its own default palettes, so a renderer record naming it
+   * need only override what it wants to differ.
+   */
+  readonly backends: UiEntryTableFacade<UiEntryBackend>;
 }
 
 /**
@@ -789,6 +859,7 @@ export interface ModRegistryHost {
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly projections: ProjectionFacade;
+  readonly uiEntry: UiEntryFacade;
   readonly glyphs: GlyphFacade;
   readonly effectInfo: EffectInfoFacade;
   readonly randart: RandartFacade;
@@ -877,6 +948,38 @@ function projectionSide<H>(
     codes(): readonly string[] {
       requireCap(capabilities, "projection");
       return table().codes();
+    },
+  };
+}
+
+/**
+ * One ui-entry table of the facade, gated. Written once and applied twice, for
+ * the reason projectionSide gives: a hand-copied second block is a second place
+ * for the capability check to go missing from.
+ */
+function uiEntryTable<H>(
+  capabilities: AgentCapabilities | undefined,
+  targets: RegistryTargets,
+  pick: (registry: UiEntryRegistry) => UiEntryNameTable<H>,
+): UiEntryTableFacade<H> {
+  const table = (): UiEntryNameTable<H> =>
+    pick(requireTarget(targets.uiEntry, "uiEntry"));
+  return {
+    set(name, handler): void {
+      requireCap(capabilities, "uiEntry");
+      table().set(name, handler);
+    },
+    handlerFor(name): H | null {
+      requireCap(capabilities, "uiEntry");
+      return table().handlerFor(name);
+    },
+    has(name): boolean {
+      requireCap(capabilities, "uiEntry");
+      return table().has(name);
+    },
+    names(): readonly string[] {
+      requireCap(capabilities, "uiEntry");
+      return table().names();
     },
   };
 }
@@ -1134,6 +1237,10 @@ export function createModRegistryHost(
       obj: projectionSide(capabilities, targets, (r) => r.obj),
       player: projectionSide(capabilities, targets, (r) => r.player),
       mon: projectionSide(capabilities, targets, (r) => r.mon),
+    },
+    uiEntry: {
+      combiners: uiEntryTable(capabilities, targets, (r) => r.combiners),
+      backends: uiEntryTable(capabilities, targets, (r) => r.backends),
     },
     glyphs: {
       set(kind, glyph, handler): void {

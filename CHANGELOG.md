@@ -140,6 +140,32 @@ digest in the game's catalogue and must never be moved.
   stays closed, the command's behaviour still lives in the `ActionRegistry`, and
   no dispatch table was converted.
 
+- **A mod can supply a character-screen COMBINER and a renderer BACKEND**
+  (#283, census row 18), through a new `registry:ui-entry`. `ui_entry.json`
+  always accepted a new row, and a pack could always write `combine: "MY_OR"` or
+  `code: "MY_BARS"` on it without a parse error — but those names selected among
+  nine pre-written reductions and six hand-written render algorithms, or they
+  selected nothing. #271 changed only the failure mode, so a typo drew a blank
+  row instead of taking the screen down; **survival is not reach**, and the row
+  said so. `UiEntryRegistry` is the seam: two name-keyed tables, seeded per game
+  in `wireGame` with core's nine combiners and six backends, published on
+  `GameState.uiEntry`, and reached one name at a time with `handlerFor` for
+  wrapping — the same shape and the same two rules as `registry:projection`.
+  Both consumers are wired: the character sheet's flags grid and the equipment
+  comparison.
+
+  **The live key is the NAME, resolved against the live table at compute and
+  apply time.** Lookup was already by name at parse; STORAGE afterwards was by
+  position — a 1-based `combinerIndex` and a 0..5 `backendIndex` — so reordering
+  either core table silently retargeted every built config, and a registered
+  handler could never have a slot to be found at. `UiEntry.combinerName` and
+  `RendererInfo.backendName` / `.combinerName` replace them. Neither index was
+  ever written to a save, so this is a code change and not a save migration.
+
+  A name nothing answers for still yields `ABSENT_COMBINER` (a "nothing here"
+  row) or the empty-cell render, unchanged from #271: opening a table is not
+  licence to make a typo fatal again.
+
 - **A mod's `.prf` can now fix a TILE, not just an ASCII glyph** (#153). Mod
   pref text was always parsed by the real grammar — but through
   `glyphTableSink` into the **GlyphTable**, the ASCII attr/char table, while a

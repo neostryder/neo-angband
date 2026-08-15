@@ -73,18 +73,18 @@
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 17,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it has grown for registry:projection, registry:glyph, registry:effect-info, registry:randart, registry:tval, registry:rune, registry:message and now registry:ui-entry. Resizing this switch is the SYMPTOM of a new domain, never a gap - a mod cannot add a capability domain, because a domain is what the host gates."
+    },
+    {
       "file": "packages/cli/src/main-stats.ts",
       "cases": 16,
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "HOST - argument parsing for the stats tool. Not shipped to players."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 16,
-      "hasDefault": true,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the mod system's own capability domains. The vocabulary grows when the mod system grows, by definition; it has grown for registry:projection, registry:glyph, registry:effect-info, registry:randart, registry:tval, registry:rune and now registry:message. Resizing this switch is the SYMPTOM of a new domain, never a gap - a mod cannot add a capability domain, because a domain is what the host gates."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",
@@ -169,13 +169,6 @@
       "hasDefault": false,
       "kind": "IF_CHAIN",
       "verdict": "UI - keypress routing in stepTargetLoop (target-selection mode), reshaped as `if (key === ...)` arms rather than a switch. A mod extending target-mode keys has no arm to land in (MOD_REACH gap 23)."
-    },
-    {
-      "file": "packages/core/src/game/ui-entry.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "ARRAY_LOOKUP",
-      "verdict": "UI - COMBINERS, the ui-entry-combiner.c table (9 combine algorithms for resist/stat panel cells), looked up by name in combinerLookup's linear scan. This is MOD_REACH row 18's 32-case switch reshaped, not converted - a mod cannot add a new combiner without patching core. Its sibling reshape, applyRenderer's 6-arm `if (backend === UI_ENTRY_RENDERER.X)` chain, stays below this census's 8-arm threshold and remains invisible to it, same as the union-type gap already noted at MOD_REACH lines 244-253."
     },
     {
       "file": "packages/core/src/obj/object.ts",
