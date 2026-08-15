@@ -32,6 +32,8 @@ import { bindMonsterCategories } from "../mon/knowledge-groups.js";
 import type { MonsterCategory, UiKnowledgeRecordJson } from "../mon/knowledge-groups.js";
 import { MonAllocTable } from "../mon/make.js";
 import type { LoreStore } from "../mon/lore.js";
+import { declareModMonsterSpells } from "../mon/spell-declarations.js";
+import { monSpells } from "../mon/spell-registry.js";
 import {
   createRoomRegistry,
   loadRoomTemplates,
@@ -95,6 +97,20 @@ export interface CorePack {
    * has not happened, and would push a cast onto every caller.
    */
   messageTypes?: readonly unknown[];
+  /*
+   * Monster-spell names a pack coins (the declaration half of row 22 / #281).
+   * Optional; without it a pack can only name the spells compiled from
+   * upstream's list-mon-spells.h. Arrives through composition rather than a
+   * plugin call, because a plugin's register() runs hundreds of statements
+   * AFTER bindCore - the same ordering trap #266 fixed for message types.
+   *
+   * Typed as unknown[] rather than as the record shape ON PURPOSE: nothing has
+   * validated this yet. declareModMonsterSpells is the validator, it takes
+   * unknown[] for that reason, and it reports refusals rather than throwing.
+   * Declaring the validated shape here would be a type asserting a check that
+   * has not happened, and would push a cast onto every caller.
+   */
+  monsterSpells?: readonly unknown[];
   /**
    * names.json (random-name corpus sections). Optional; without it flavor_init
    * has no scroll-title words, so unaware scrolls fall back to the plain
@@ -180,6 +196,13 @@ export function bindCore(pack: CorePack): CoreRegistries {
    * call being PRESENT is not the property that matters - its POSITION is. #266
    */
   declareModMessageTypes(pack.messageTypes);
+  /* Same ordering for monster spells (#281 / row 22). monSpells is module-level
+   * so one character's mods cannot leak into the next: clear first, then declare
+   * from the pack. bindMonsters resolves spell names through spellIndexOf; an
+   * undeclared name throws mon: invalid spell name and takes the boot down.
+   * declareModMonsterSpells never throws - refusals are collected. */
+  monSpells.clear();
+  declareModMonsterSpells(pack.monsterSpells);
   const constants = bindConstants(pack.constants);
   const features = new FeatureRegistry(pack.terrain);
   const objects = new ObjRegistry(pack.obj);

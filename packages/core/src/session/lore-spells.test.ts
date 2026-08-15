@@ -12,20 +12,33 @@
  * the two schemes part company: the byte-keyed read silently names different
  * spells, and the name-keyed read is unmoved. A test that only exercised the
  * happy path would pass just as well against the shape this ticket removed.
+ *
+ * #281: a mod's spell name also round-trips once registered, because the
+ * serializers resolve through spellIndexOf / spellNameAt rather than the
+ * static RSF_FLAG_NAMES array.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag.js";
 import { RSF } from "../generated/index.js";
 import { RSF_FLAG_NAMES } from "../mon/lore-file.js";
 import { RSF_SIZE } from "../mon/types.js";
+import {
+  monSpells,
+  rsfSize,
+  spellIndexOf,
+} from "../mon/spell-registry.js";
 import { deserializeLoreSpells, serializeLoreSpells } from "./save.js";
 
 function observed(...flags: number[]): FlagSet {
-  const set = new FlagSet(RSF_SIZE);
+  const set = new FlagSet(rsfSize());
   for (const f of flags) set.on(f);
   return set;
 }
+
+afterEach(() => {
+  monSpells.clear();
+});
 
 describe("serializeLoreSpells / deserializeLoreSpells", () => {
   it("writes RSF names, ascending by flag number", () => {
@@ -68,6 +81,23 @@ describe("serializeLoreSpells / deserializeLoreSpells", () => {
      * occupies it. */
     const set = deserializeLoreSpells(["BR_FIRE", "SOME_MOD_SPELL", "HASTE"]);
     expect(serializeLoreSpells(set)).toEqual(["BR_FIRE", "HASTE"]);
+  });
+
+  it("#281 a registered mod spell name round-trips through the save", () => {
+    const added = monSpells.add("MOD_LORE_SPELL", "RST_BOLT", "lore-mod");
+    expect(added.refused).toBeNull();
+    const idx = spellIndexOf("MOD_LORE_SPELL");
+    expect(idx).toBe(added.index);
+
+    const before = observed(RSF.BR_FIRE, idx);
+    const names = serializeLoreSpells(before);
+    expect(names).toContain("MOD_LORE_SPELL");
+    expect(names).toContain("BR_FIRE");
+
+    const after = deserializeLoreSpells(names);
+    expect(after.has(idx)).toBe(true);
+    expect(after.has(RSF.BR_FIRE)).toBe(true);
+    expect(serializeLoreSpells(after)).toEqual(names);
   });
 
   /**
