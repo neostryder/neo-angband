@@ -412,7 +412,7 @@ mod would reach through records, not code.
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
 | 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
 | 22 | `MON_SPELL_ENTRIES` (93) | no — but the SAVE no longer blocks it (#269) |
-| 23 | web keypress `COMMANDS` (62) | no - module-level but unexported (**was** "inside a closure"; stale) |
+| 23 | web keypress `COMMANDS` (63) | **yes** (`registry:menu`, 2026-08-14) — `core:keypress-command-table` publishes each command's label, category and bindings; the shell keeps its runnable closure |
 | 24 | web context-menu `switch (action)` routing (6 sites) | **half**: rows yes (`registry:menu`), behaviour no |
 | 25 | web `DEBUG_MENU` (41) | no - **deep-frozen on purpose**; struck from the count, see below |
 | 26 | room/vault template GLYPH decoders (23 + 16 + 13) | **yes** (`registry:glyph`, 2026-08-09) |
@@ -420,7 +420,23 @@ mod would reach through records, not code.
 | 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` + the base NAME | **yes** (`registry:tval`, 2026-08-09) |
 | 8a | `message_type` records -> sound samples (the content-pack door) | **yes** (2026-08-14) — samples now bind on the `already` and `refused` paths too, so a pack with no `plugin.js` can re-point MSG_HIT |
 
-**22 yes, 1 half, 4 no, of 27 counted** (re-counted 2026-08-14 against the code,
+**Row 23 closed through the EXISTING menu registry, not a second input
+registry** (2026-08-14). `commandTable()` keeps the memoised shell rows and
+sends a declarative projection to `registry:menu` as
+`core:keypress-command-table`: stable ordinal id, label, category, original and
+roguelike bindings, control binding. **The `act` closure never crosses that
+boundary.** A transformed known id maps back to its original closure; an
+invented id has no shell action, and rather than resolving to whichever source
+row shares its ordinal, the picker simply asks again. `chooseCommand` now calls
+`selectFromMenu` for its category and command lists, so the registry can
+retitle, reorder and re-tag what the player sees while the faithful
+scrolling-box skin survives as the terminal fallback — that is what the new
+`terminalPicker` option on `SelectMenuOptions` is for. The no-mod proof extracts
+the real `buildCommandTable` declaration out of `main.ts` by AST and EVALUATES
+it, then checks all 63 labels in order, so it measures the shipped table rather
+than a copy of it. **The row also said 62 commands; the table has 63.**
+
+**23 yes, 1 half, 3 no, of 27 counted** (re-counted 2026-08-14 against the code,
 row by row; 28 rows are listed and row 25 is struck from the count — see the
 corrections below). Rows 7, 20, 21 and 8 closed on 2026-08-14 and the tally was
 re-run in the same commit, which is the whole point of the corrections below.

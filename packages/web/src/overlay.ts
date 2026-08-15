@@ -1219,6 +1219,14 @@ export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
  * ESC exits.
  */
 export interface SelectMenuOptions {
+  /**
+   * The terminal's faithful skin for a menu whose content still travels through
+   * this selector. It receives already-transformed rows and resolves their
+   * stable id; `selectFromMenu` remains responsible for mapping that id back to
+   * the caller's original row. Used by the upstream-shaped command browser,
+   * whose scrolling boxes are deliberately unlike the normal lettered menu.
+   */
+  terminalPicker?: (items: readonly MenuItem[]) => Promise<string | null>;
   /** browse_hook: lines shown below the list for the row under the cursor. */
   detail?: (index: number) => readonly ScreenLine[];
   /**
@@ -1417,7 +1425,21 @@ export function selectFromMenu(
    * has taken the menus can decline THIS question and fall straight into it
    * (menu-runtime.ts). Everything below is exactly what used to follow a bare
    * `return new Promise(...)` here. */
-  const askTerminal = (): Promise<number | null> => new Promise<number | null>((resolve) => {
+  const askTerminal = (): Promise<number | null> => {
+    if (extra?.terminalPicker) {
+      return (async (): Promise<number | null> => {
+        /* A transformer may add a row, but the faithful shell has no action for
+         * it. Keep asking after that row is picked, as the normal picker does,
+         * rather than resolving it to whichever source row shares its ordinal. */
+        for (;;) {
+          const pickedId = await extra.terminalPicker!(items);
+          if (pickedId === null) return null;
+          const source = originalIndex.get(pickedId);
+          if (source !== undefined) return source;
+        }
+      })();
+    }
+    return new Promise<number | null>((resolve) => {
     let cursor = initialMenuCursor(items, extra?.initialCursor);
     let top = 0;
     // Painted geometry, kept for the tap handler (a tapped screen row maps
@@ -1800,7 +1822,8 @@ export function selectFromMenu(
     });
     extra?.onHighlight?.(cursor);
     paint();
-  });
+    });
+  };
 
   if (currentMenuPresenter() === null) return askTerminal();
   return askThroughPresenter({

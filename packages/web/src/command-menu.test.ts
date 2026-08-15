@@ -5,6 +5,9 @@
  * No jsdom in this repo (see help.test.ts): a fake window plus a string-grid
  * term, the same shape the other browser tests use.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   chooseCommand,
@@ -13,8 +16,11 @@ import {
   keyForKeyset,
   keypressToReadable,
   runCommandList,
+  KEYPRESS_COMMAND_TABLE_ID,
+  transformKeypressCommandTable,
 } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
+import { menuRegistry } from "./menu-registry";
 import type { GlyphTerm } from "./term";
 
 interface FakeWindow {
@@ -96,6 +102,31 @@ function cats(rogue: boolean, ran: string[] = []): CommandCategory[] {
   );
 }
 
+/**
+ * `main.ts` owns the closures, so importing it would boot the browser shell.
+ * Compile just its actual table builder and call it: every act remains an
+ * uncalled closure, while the test exercises the exact declarations the shell
+ * passes to transformKeypressCommandTable.
+ */
+function buildActualKeypressTable(): Array<{ desc: string; cat: string | null }> {
+  const path = fileURLToPath(new URL("./main.ts", import.meta.url));
+  const source = readFileSync(path, "utf8");
+  const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.ES2023, false, ts.ScriptKind.TS);
+  const declaration = parsed.statements.find(
+    (statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "buildCommandTable",
+  );
+  if (!declaration) throw new Error("main.ts no longer declares buildCommandTable");
+  const emitted = ts.transpileModule(source.slice(declaration.getFullStart(), declaration.getEnd()), {
+    compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None },
+  }).outputText;
+  const build = new Function(
+    "debugCommandCategories",
+    `${emitted}\nreturn buildCommandTable;`,
+  )(() => []);
+  return build();
+}
+
 describe("groupCommands (cmds_all -> its lists)", () => {
   it("keeps upstream's list order and drops rows with no cmd_info behind them", () => {
     const g = cats(false);
@@ -125,6 +156,165 @@ describe("groupCommands (cmds_all -> its lists)", () => {
   });
 });
 
+describe("keypress command table registry adapter", () => {
+  afterEach(() => {
+    menuRegistry.clear();
+  });
+
+  it("keeps an unmodded command table's commands, bindings, and order intact", () => {
+    const ran: string[] = [];
+    const table = [
+      { desc: "Inscribe an object", cat: "Items", o: "{", act: () => ran.push("inscribe") },
+      { desc: "Take off/unwield an item", cat: "Items", o: "t", r: "T", act: () => ran.push("take-off") },
+      { desc: "Center map", cat: "Hidden", o: null, r: "@", act: () => ran.push("center") },
+      { desc: "Debug mode commands", cat: "Hidden", o: null, r: null, ctrl: "A", act: () => ran.push("debug") },
+    ];
+
+    const actual = transformKeypressCommandTable(table, (id, rows) => {
+      expect(id).toBe(KEYPRESS_COMMAND_TABLE_ID);
+      return rows;
+    });
+
+    /* The assertion reads the adapter's actual output, including the original
+     * closures, rather than deriving an expected table by transforming input
+     * data in the test. This is the no-mod branch main.ts uses on every key. */
+    expect(
+      actual.map(({ id, desc, cat, o, r, ctrl }) => ({ id, desc, cat, o, r, ctrl })),
+    ).toEqual([
+      { id: "core:keypress-command:0", desc: "Inscribe an object", cat: "Items", o: "{", r: undefined, ctrl: undefined },
+      { id: "core:keypress-command:1", desc: "Take off/unwield an item", cat: "Items", o: "t", r: "T", ctrl: undefined },
+      { id: "core:keypress-command:2", desc: "Center map", cat: "Hidden", o: null, r: "@", ctrl: undefined },
+      { id: "core:keypress-command:3", desc: "Debug mode commands", cat: "Hidden", o: null, r: null, ctrl: "A" },
+    ]);
+    actual.forEach((command) => command.act());
+    expect(ran).toEqual(["inscribe", "take-off", "center", "debug"]);
+  });
+
+  it("keeps all 63 unmodded keypress commands in main.ts in their upstream table order", () => {
+    const actual = transformKeypressCommandTable(buildActualKeypressTable(), (_id, rows) => rows);
+
+    /* This is the live builder's output through the same transformation main.ts
+     * calls. The expected order is deliberately recorded, not reconstructed from
+     * the source rows, so removing or moving a command makes this fail. */
+    expect(actual.map((command) => command.desc)).toEqual([
+      "Inscribe an object",
+      "Uninscribe an object",
+      "Wear/wield an item",
+      "Take off/unwield an item",
+      "Examine an item",
+      "Drop an item",
+      "Fire your missile weapon",
+      "Use a staff",
+      "Aim a wand",
+      "Zap a rod",
+      "Activate an object",
+      "Eat some food",
+      "Quaff a potion",
+      "Read a scroll",
+      "Fuel your light source",
+      "Use an item",
+      "Disarm a trap or chest",
+      "Rest for a while",
+      "Look around",
+      "Swap weapon",
+      "Target monster or location",
+      "Target closest monster",
+      "Dig a tunnel",
+      "Go up staircase",
+      "Go down staircase",
+      "Open a door or a chest",
+      "Close a door",
+      "Fire at nearest target",
+      "Throw an item",
+      "Walk into a trap",
+      "Display equipment listing",
+      "Display inventory listing",
+      "Display quiver listing",
+      "Pick up objects",
+      "Ignore an item",
+      "Browse a book",
+      "Gain new spells",
+      "View abilities",
+      "Cast a spell",
+      "Full dungeon map",
+      "Toggle ignoring of items",
+      "Display visible item list",
+      "Display visible monster list",
+      "Locate player on map",
+      "Identify symbol",
+      "Character description",
+      "Check knowledge",
+      "Interact with options",
+      "Retire character and quit",
+      "Save \"screen dump\"",
+      "Take notes",
+      "Version info",
+      "Load a single pref line",
+      "Alter a grid",
+      "Steal from a monster",
+      "Walk",
+      "Start running",
+      "Stand still",
+      "Stand still (numpad)",
+      "Start exploring",
+      "Repeat previous command",
+      "Center map",
+      "Debug mode commands",
+    ]);
+  });
+
+  it("gives a mod declarations only, then applies its label, category, and binding rewrite", () => {
+    const run = () => undefined;
+    const seen: unknown[] = [];
+    menuRegistry.forOwner("key-rebinder").register(KEYPRESS_COMMAND_TABLE_ID, (_id, rows) => {
+      seen.push(rows[0]);
+      return rows.map((row) =>
+        row.label === "Inscribe an object"
+          ? {
+              ...row,
+              label: "Etch a rune",
+              semantic: {
+                ...row.semantic,
+                data: {
+                  ...row.semantic.data,
+                  category: "Runes",
+                  originalKey: "!",
+                  roguelikeUsesOriginal: false,
+                  roguelikeKey: "#",
+                },
+              },
+            }
+          : row,
+      );
+    });
+
+    const actual = transformKeypressCommandTable(
+      [{ desc: "Inscribe an object", cat: "Items", o: "{", act: run }],
+      (id, rows) => menuRegistry.transform(id, rows),
+    );
+
+    expect(seen[0]).toEqual({
+      id: "core:keypress-command:0",
+      label: "Inscribe an object",
+      semantic: {
+        kind: "keypress-command",
+        ref: 0,
+        data: {
+          category: "Items",
+          originalKey: "{",
+          roguelikeKey: null,
+          roguelikeUsesOriginal: true,
+          controlKey: null,
+        },
+      },
+    });
+    expect(seen[0]).not.toHaveProperty("act");
+    expect(actual).toMatchObject([
+      { id: "core:keypress-command:0", desc: "Etch a rune", cat: "Runes", o: "!", r: "#", act: run },
+    ]);
+  });
+});
+
 describe("commandEntryText (cmd_sub_entry, ui-context.c:1126)", () => {
   it("appends the key in parentheses, and nothing when there is none", () => {
     expect(commandEntryText({ desc: "Quaff a potion", key: "q", run: () => undefined })).toBe(
@@ -150,6 +340,7 @@ describe("commandEntryText (cmd_sub_entry, ui-context.c:1126)", () => {
 describe("chooseCommand (textui_action_menu_choose)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
+    menuRegistry.clear();
   });
 
   const open = (term: FakeTerm, rogue = false, ran: string[] = []) =>
@@ -171,6 +362,29 @@ describe("chooseCommand (textui_action_menu_choose)", () => {
     for (const line of shot) expect(line).not.toMatch(/\b[a-z]\) /u);
     press(win, "Escape");
     await done;
+  });
+
+  it("lets a mod transform the real keypress command list before the player sees it", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    /* This is the same registry facade a loaded plugin receives.  The assertion
+     * reads the actual command browser after its normal input route, rather than
+     * calling the transformer or modelling its result in the test. */
+    menuRegistry.forOwner("command-dial").register("core:keypress-command:items", (_id, rows) =>
+      rows.map((row) =>
+        row.label === "Inscribe an object ({)"
+          ? { ...row, label: "Modded inscription ({)", tag: "z" }
+          : row,
+      ),
+    );
+
+    const done = open(term);
+    press(win, "Enter"); // Items
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Modded inscription ({)");
+    press(win, "z"); // the mod's explicit tag, before positional selection
+    expect((await done)?.desc).toBe("Inscribe an object");
   });
 
   it("a category opens its commands, indented, with the category still behind", async () => {
