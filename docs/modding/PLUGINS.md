@@ -1145,7 +1145,7 @@ declare **and** the player must consent to:
 | `registry:profile` | whole-cave builders and dungeon profiles — a new *kind* of level, and which kind you get at a depth |
 | `registry:blow` | what a monster's attacks do to you, and new kinds of attack — `define()` takes one description and the engine derives both of the handlers it needs |
 | `registry:store` | what a shop will buy, and how many of a thing it stocks |
-| `registry:command` | what a player command *does* |
+| `registry:command` | what a player command *does*, and what it is CALLED — `commands.register(code, action)` for the behaviour, `commands.setVerb(code, verb)` for the verb the `!`-inscription confirm reads. Skip the verb and a player who has inscribed `!z` on a Potion of Death is asked "Really **do that with** your Potion of Death?" instead of your command's own name; `commands.verbFor(code)` returns what is installed, so a later mod can wrap an earlier one's |
 | `registry:monster` | a hook at the top of every monster's turn; return true to take the turn over |
 | `registry:projection` | what a projection does to terrain, floor items and the player — `projections.feat` / `.obj` / `.player`, one projection `code` at a time. This is the behaviour half of adding your own element: the `projection.json` record makes it exist, these three make it *do* something |
 | `registry:glyph` | what one character of a room-template or vault layout means when the level is drawn — `glyphs.set("vault", "Q", ...)`. The behaviour half of shipping a vault with a symbol core has never seen |

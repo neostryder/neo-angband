@@ -18,7 +18,9 @@
  * - commands (ActionRegistry, game/player-turn.ts): register or replace the
  *   action a player command code runs - overriding what "walk", "cast", ... do.
  *   Gated by "registry:command". (This is the live player-command seam; the
- *   cmd.ts CommandQueue is a faithful port the web loop does not drive.)
+ *   cmd.ts CommandQueue is a faithful port the web loop does not drive.) The
+ *   same facade names the command: setVerb writes GameState.commandVerbs, which
+ *   is the verb the "Really <verb> <the object>? " inscription confirm reads.
  * - monsters (GameState.monsterTurnHook, game/monster-turn.ts): install a hook
  *   consulted at the top of every monster's turn; returning true takes the turn
  *   over entirely - overriding monster AI. Gated by "registry:monster".
@@ -94,6 +96,7 @@ import type { RoomBuilder, RoomRegistry } from "../gen/room.js";
 import type { GlyphHandler, GlyphKind, GlyphRegistry } from "../gen/glyph.js";
 import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
+import type { CommandVerbTable } from "../cmd.js";
 import type { GameState } from "../game/context.js";
 import type { Monster } from "../mon/monster.js";
 import type {
@@ -209,6 +212,12 @@ export interface RegistryTargets {
   stores?: StoreBehaviourRegistry | null;
   /** The live player action registry (the decision-13 command seam). */
   commands?: ActionRegistry | null;
+  /**
+   * The verbs the inscription confirm reads (GameState.commandVerbs). Separate
+   * target, same "command" capability: naming a command is part of adding one,
+   * and a second capability string for one UI string would be noise.
+   */
+  commandVerbs?: CommandVerbTable | null;
   /** The game state, for installing the monster-AI turn hook. */
   state?: GameState | null;
   /** The three projection handler tables (GameState.projectionHandlers). */
@@ -398,6 +407,23 @@ export interface CommandFacade {
   register(code: string, action: PlayerAction): void;
   /** Whether a command code currently has an action. */
   has(code: string): boolean;
+  /**
+   * Name the command, for the one place the game says a command out loud: the
+   * "Really <verb> <the object>? " an inscribed item demands
+   * (get_item_allow, ui-object.c:664). Without this a mod's own command has no
+   * entry in core's closed COMMAND_INFO and the player reads the generic "do
+   * that with" for a named action.
+   *
+   * Lower case and no trailing space - it lands mid-sentence, so "dance with",
+   * not "Dance with ". Core's own reads "quaff", "read", "take off".
+   */
+  setVerb(code: string, verb: string): void;
+  /**
+   * The verb currently installed for a code, or null. Core's verb until some
+   * mod has replaced it, and that mod's afterwards - the wrap seam, as
+   * elsewhere.
+   */
+  verbFor(code: string): string | null;
 }
 
 /** The front-end menu facade (gated by registry:menu). */
@@ -1085,6 +1111,14 @@ export function createModRegistryHost(
       has(code): boolean {
         requireCap(capabilities, "command");
         return requireTarget(targets.commands, "command").has(code);
+      },
+      setVerb(code, verb): void {
+        requireCap(capabilities, "command");
+        requireTarget(targets.commandVerbs, "command").set(code, verb);
+      },
+      verbFor(code): string | null {
+        requireCap(capabilities, "command");
+        return requireTarget(targets.commandVerbs, "command").verbFor(code);
       },
     },
     monsters: {

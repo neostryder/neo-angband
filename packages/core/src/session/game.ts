@@ -21,6 +21,7 @@
 import { DDGRID, loc, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { MessageLog } from "../msg.js";
+import { CommandVerbTable } from "../cmd.js";
 import { PN, SKILL, STAT_MAX } from "../player/types.js";
 import { EF, ELEM, HIST, MSG, OF, PF, RF, STAT, TMD } from "../generated/index.js";
 import { bindPlayer } from "../player/bind.js";
@@ -649,6 +650,12 @@ function wireGame(
 
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
+
+  // The verbs the "Really <verb> ...? " inscription confirm reads, seeded with
+  // core's. Per game and beside the registry it belongs to, so a mod that
+  // registers a command here can name that command's verb in the same breath
+  // and neither outlives the character (cmd.ts, CommandVerbTable).
+  state.commandVerbs = new CommandVerbTable();
 
   const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
 

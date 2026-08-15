@@ -806,6 +806,18 @@ export interface GameState {
    */
   projectionHandlers?: import("./projection-handlers.js").ProjectionHandlerRegistry;
   /**
+   * The verb "Really <verb> <the object>? " uses, keyed by command code
+   * (cmd.ts). wireGame seeds one per game with core's, and a mod names the verb
+   * for its OWN command through ModRegistryHost.commands.setVerb
+   * ("registry:command") - COMMAND_INFO is keyed by the closed CommandCode
+   * union, so a mod's code could never have had one.
+   *
+   * Per game, for the same reason as blowEffects: one character's mod verb must
+   * not leak into the next character's game. A UI STRING and nothing else; the
+   * command's behaviour still lives in the ActionRegistry.
+   */
+  commandVerbs?: import("../cmd.js").CommandVerbTable;
+  /**
    * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
    * the HOST from each enabled mod's manifest `rules` against their saved Fixes
    * & tweaks selections.

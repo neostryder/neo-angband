@@ -76,6 +76,7 @@
     "CaveFinder",
     "Chunk",
     "CommandQueue",
+    "CommandVerbTable",
     "ContentIdResolver",
     "DDD",
     "DDGRID",
