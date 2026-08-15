@@ -344,8 +344,16 @@ browser's database. The host composes your path with your mod's own resolver.
 | `art` | one screen of `{colour}…{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
-Three things that will otherwise cost you an afternoon:
+Four things that will otherwise cost you an afternoon:
 
+- **A `.prf`'s `%:` includes resolve beside the file you declared.** They are
+  followed (they were silently skipped before #278), to the same depth the
+  parser allows, and every one of them — including an include's own includes —
+  is looked up in the directory of the `path` in your manifest. So
+  `prefs/colours.prf` saying `%:shared.prf` reads `prefs/shared.prf`. A name
+  that does not resolve is skipped without a message, which is what upstream
+  does; if a rule of yours is not taking effect, check the spelling of the
+  include before anything else.
 - **A `.json` resource must sit in a subdirectory.** A top-level `.json` is read
   as a record contribution, so `font.json` would be handed to the record
   composer, which has no content file by that name, and your mod would load with

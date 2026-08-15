@@ -32,6 +32,28 @@ digest in the game's catalogue and must never be moved.
   comment above the block had claimed the second-pointer check for as long as
   the code went without one; it now says what the code does.
 
+- **A mod's `.prf` now follows its `%:` include lines.** They were skipped in
+  silence: the include mechanism resolves a file through the caller's
+  `loadFile`, and the mod path passed `() => null`, so the directive was
+  neither honoured nor reported and an author's rules simply did less than the
+  same bytes did through the '=' menu. The stated reason — the grammar's
+  `loadFile` is synchronous while a mod's files resolve through a resolver that
+  may mint a blob URL or read IndexedDB — was true and was not a reason, since
+  the reading can happen BEFORE the parse rather than during it. That is what a
+  graphics pack's own `%:flvr-*.prf` has always relied on (`loadTilePrefs`), so
+  no new mechanism was invented for this. Includes are read transitively to the
+  parser's own depth bound, each name once (which is what ends a cycle), and
+  every one resolves against the directory of the declared resource. A name
+  that does not resolve is still a quiet skip, exactly as upstream's
+  `parse_prefs_load` discards a nested read.
+
+  The tile half is closed with it. A mod's pref text is latched and replayed
+  into every freshly built tile map, and replaying the text without the include
+  bytes would have left the same silent skip one function over — visible only
+  to a player with graphics on. The includes now travel with the latched text,
+  because the mod that supplied them may be unreachable by the time a graphics
+  mode is switched.
+
 - **A refused extension-field trespass can no longer survive inside a later
   permitted edit.** A pack writing another pack's declared `<owner>:<field>`
   must declare that owner as a dependency or optional dependency. When it does

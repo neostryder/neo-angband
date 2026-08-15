@@ -19,6 +19,7 @@ import { GRAPHICS_MODE_CATALOG, LIGHTING, tileForFeature } from "@rpgm-tools/neo
 import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import { createTileRenderer, isTile, loadTilePrefs, tileCode } from "./tiles";
+import type { ModPrefText } from "./tiles";
 
 /** grafID 1 (Original Tiles, `old`): a real catalog row, with a real pref file. */
 const OLD = GRAPHICS_MODE_CATALOG.find((m) => m.grafID === 1) as GraphicsMode;
@@ -116,6 +117,9 @@ describe("createTileRenderer", () => {
 describe("loadTilePrefs", () => {
   const mode: GraphicsMode = { ...OLD, directory: "old", pref: "graf-xxx.prf" };
 
+  /** A latched mod pref that includes nothing - the ordinary case. */
+  const modPref = (text: string): ModPrefText => ({ text, includes: new Map() });
+
   it("resolves the pref file UNDER the mode's directory, like the atlas", async () => {
     // The mutation this exists for: resolving `graf-xxx.prf` instead of
     // `old/graf-xxx.prf` reads a file from the pack root, which for a mod with
@@ -165,7 +169,7 @@ describe("loadTilePrefs", () => {
     serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
 
     const withMod = await loadTilePrefs(rec.resolve, mode, deps, [
-      "feat:FLOOR:*:0x86:0x87",
+      modPref("feat:FLOOR:*:0x86:0x87"),
     ]);
     const modCell = tileForFeature(withMod!, FLOOR_FIDX, LIGHTING.LIT);
     expect(tileCode(modCell?.attr ?? 0, modCell?.char ?? 0)).toEqual({ row: 6, col: 7 });
@@ -180,11 +184,30 @@ describe("loadTilePrefs", () => {
     serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
 
     const map = await loadTilePrefs(rec.resolve, mode, deps, [
-      "feat:FLOOR:*:0x84:0x85",
-      "feat:FLOOR:*:0x88:0x89",
+      modPref("feat:FLOOR:*:0x84:0x85"),
+      modPref("feat:FLOOR:*:0x88:0x89"),
     ]);
     const cell = tileForFeature(map!, FLOOR_FIDX, LIGHTING.LIT);
     expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 8, col: 9 });
+  });
+
+  it("replays a mod pref's OWN %: include, from the bytes latched with it", async () => {
+    /* #278: the mod path's includes are read once, when the pref resource is
+     * applied to the GlyphTable, and travel with the text - the mod may be
+     * unreachable by the time a graphics mode is switched. Replaying the text
+     * without them put the tile half of the same silent skip back. The pack cell
+     * is the control: it is what this assertion reads if the include is lost. */
+    const rec = recorder({ "old/graf-xxx.prf": "" });
+    serve({ "old/graf-xxx.prf": "feat:FLOOR:*:0x82:0x83" });
+
+    const map = await loadTilePrefs(rec.resolve, mode, deps, [
+      {
+        text: "%:mod-inc.prf",
+        includes: new Map([["mod-inc.prf", "feat:FLOOR:*:0x8A:0x8B"]]),
+      },
+    ]);
+    const cell = tileForFeature(map!, FLOOR_FIDX, LIGHTING.LIT);
+    expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 10, col: 11 });
   });
 
   it("is null when the mode has no pref file, without asking for anything", async () => {
