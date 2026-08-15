@@ -554,6 +554,31 @@ question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
 expressions, the spell effect and message data a new entry would need) and no
 longer a question about whether it eats saved characters.
 
+*Row 22, step one: the table exists, and the row is STILL "no" (#281, in
+progress, 2026-08-15).* `mon/spell-registry.ts` is the name table this row needs
+— compiled prefix, mod entries appended, `rsfMax()` / `rsfSize()` live, and
+`spellIndexOf` / `spellNameAt` as the one door. **It has no caller yet, so
+nothing about a mod's reach has changed**; recorded here rather than left
+unwritten because an unwired registry that nobody documents is precisely how row
+21 came to be counted before it worked. Do not move the tally until the binder
+resolves through it.
+
+The measured shape of what remains: `bindSpells` (`mon/bind.ts`) throws
+`mon: invalid spell name` on any name outside the generated `RSF`, so a mod's
+`monster_spell` record takes `startGame` down rather than being ignored — the
+same crash-not-gap that rows 20 and 21 turned out to be. Wiring means the four
+name→index sites, the 25 `RSF_SIZE` reads across nine files (a const captured at
+module evaluation, which is strictly before any mod exists), `monSpellsOfTypes`
+reading the live table, and the two lore serializers' `RSF.MAX` bounds.
+
+**The one number to check twice** is where a mod's first spell lands.
+`MON_SPELL_ENTRIES` has 93 rows for 91 spells, because row 0 is `RSF_NONE` and
+row 92 is the `RSF_MAX` end marker — so the first mod slot is **92**, the
+sentinel's own index, not 93. The inverted enum answers `"MAX"` at 92, which is
+why reading `RSF_FLAG_NAMES` by position has to stop at the callers rather than
+be corrected inside them. Both facts are pinned by
+`mon/spell-registry.test.ts`, not left to this paragraph.
+
 **The same defect one table over is fixed too (#273, 2026-08-14).**
 `SavedLore.flags` (`MON_RACE_FLAG_ENTRIES`, 85); `SavedObject.flags`,
 `SavedPlayer.objKnown.flags` and `SavedMonster.knownPstateFlags`
