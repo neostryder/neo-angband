@@ -43,6 +43,17 @@ digest in the game's catalogue and must never be moved.
   reads back exactly what was written. **This opens none of the four tables to
   mods**; it removes the thing that made opening them unsafe.
 
+  **Verified in the installed build, not only in CI** (2026-08-14, portable
+  0.19.0+#273 desktop, driven over CDP). A character born on this build,
+  descended to 50' and saved, reloaded after a COLD process restart with its
+  stats, gold and depth intact. Then the case that matters: `Negor the Dwarf
+  Paladin, Lv 12, 300' (L6)` — a save written by an EARLIER engine — loaded
+  with "Save updated to this version's format." and came back whole: nine
+  equipment slots, AC 46, HP 106/106, a drained Con still showing drained, and
+  the explored level map. Those are OF flags, `OBJ_MOD` modifiers and `ELEM`
+  resistances on real gear, which is precisely the data a position-indexed save
+  would have silently re-pointed.
+
   `session/save-flag-names.test.ts` is the control, four times over: it
   renumbers each table and reads the same pre-existing data under both schemes,
   so a +2 speed, +1 blows weapon reads as +2 tunnelling, +1 speed under the old
