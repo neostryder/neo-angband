@@ -5,28 +5,31 @@
  * WHY THIS EXISTS
  *
  * Upstream has ONE `struct parser`. Every data file, every pref file and the
- * customised-options files below all go through `parser_parse`, so they share a
- * tokeniser, an error table and an error LIMIT. The port has no single parser
- * object (each grammar is a plain function over already-read text, which is the
- * right shape for a bundled-JSON game), but the pieces those grammars must agree
- * on are still one thing, and this module is where they live.
+ * customised-options files all go through `parser_parse`, so they share a
+ * tokeniser and an error table. The port has no single parser object (each
+ * grammar is a plain function over already-read text, which is the right shape
+ * for a bundled-JSON game), but the pieces those grammars must agree on are
+ * still one thing, and this module is where they live: the `parser_state`
+ * shape, `parser_error_str[]`, `strtok` and the two little z-util predicates
+ * the read loops share.
  *
- * The error limit is the reason this file was written. `visuals/prefs.ts` had
- * carried `const limit = opts.errorLimit ?? 0` under a comment reading
- * "Upstream's default is 0 (ui-init.c / z-util), so every error is reported".
- * That was wrong, and so is the replacement it was given.
+ * WHAT USED TO BE HERE, AND WHY IT IS NOT (#272)
  *
- * WARNING - THE LIMIT HAS NO 4.2.6 COUNTERPART (citation sweep, #268). There is
- * no `PARSE_ERROR_LIMIT`, no `get_parser_error_limit` and no error COUNT
- * anywhere in Angband 4.2.6: `process_pref_file_named` (ui-prefs.c L1225-1231)
- * `break`s out of the file on the FIRST bad line, and `print_error`
- * (datafile.c L45-51) reports one error and `quit_fmt`s. The citations that
- * used to sit on the declarations below pointed at the `PARSE_T_*` enum
- * (parser.c L38) and at a range past the end of that 617-line file. So the
- * 20-error cap and its env override are a port
- * EXTENSION, not a port; they are recorded here rather than quietly deleted,
- * because removing them is a behaviour change and this file is a comment
- * sweep. See getParserErrorLimit.
+ * A `PARSE_ERROR_LIMIT = 20`, a `PARSE_ERROR_LIMIT` environment override and a
+ * getter/setter pair around them. THE LIMIT HAD NO 4.2.6 COUNTERPART (citation
+ * sweep, #268): there is no `PARSE_ERROR_LIMIT`, no `get_parser_error_limit`
+ * and no error COUNT anywhere in Angband 4.2.6. `process_pref_file_named`
+ * (ui-prefs.c L1225-1231) `break`s out of the file on the FIRST bad line, and
+ * `print_error` (ui-prefs.c L1195-1202) reports that one error. The citations
+ * that used to sit on those declarations pointed at the `PARSE_T_*` enum
+ * (parser.c L38) and at a range past the end of that 617-line file.
+ *
+ * So it was a port EXTENSION - a convenience, and the port adds nothing. The
+ * owner's ruling (2026-08-14) was "if this parse error limit is a QoL
+ * improvement, move it to the mod; if not, strike it", and it moved: core now
+ * stops at the first bad line, and `visuals/prefs.ts`'s `setPrefErrorPolicy` is
+ * the seam a mod installs the forgiving behaviour through. The four removed
+ * exports are recorded in docs/modding/MOD_COMPATIBILITY.md.
  */
 
 import { PARSER_ERROR_ENTRIES } from "./generated/index.js";
@@ -53,107 +56,6 @@ export interface ParserState {
  */
 export function parserErrorText(code: number): string {
   return PARSER_ERROR_ENTRIES[code]?.description ?? "generic error";
-}
-
-/**
- * PARSE_ERROR_LIMIT: the port's cap on how many parse errors are reported for
- * one file. Zero means "no limit". NO 4.2.6 COUNTERPART - upstream stops at the
- * first error (ui-prefs.c L1225-1231); see the file header.
- */
-export const PARSE_ERROR_LIMIT = 20;
-
-/** C's INT_MAX, the clamp the env value is held to. */
-const INT_MAX = 2147483647;
-
-let overrideLimit: number | null | undefined;
-
-/**
- * `getenv("PARSE_ERROR_LIMIT")` for a core that must also run in a browser.
- *
- * Reached through `globalThis` and a computed key ON PURPOSE. Vite rewrites the
- * literal member expression `process.env.PARSE_ERROR_LIMIT` at build time, which
- * would bake the BUILDER's environment into the shipped bundle; a computed index
- * off a `globalThis` lookup is left alone, so this reads the real environment in
- * node and in the Electron main process, and yields undefined in the renderer
- * and on the web. Undefined is the same answer an upstream build gets when the
- * variable is not set.
- */
-function getenvParseErrorLimit(): string | undefined {
-  try {
-    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
-      .process;
-    return proc?.env?.["PARSE_ERROR_LIMIT"];
-  } catch {
-    return undefined; /* a locked-down env proxy, e.g. a hardened worker */
-  }
-}
-
-/**
- * getParserErrorLimit: the environment's value if it is a whole non-negative
- * decimal integer, else the compile-time 20. Zero means no limit. NO 4.2.6
- * COUNTERPART (`get_parser_error_limit` is in no reference/ file); see the
- * file header.
- *
- * Computed ONCE and cached — a limit
- * that changed mid-run would report a different number of errors for two
- * identical files.
- */
-export function getParserErrorLimit(): number {
-  if (overrideLimit === undefined) {
-    overrideLimit = parseParserErrorLimitEnv(getenvParseErrorLimit());
-  }
-  return overrideLimit ?? PARSE_ERROR_LIMIT;
-}
-
-/**
- * Force the limit, or pass `undefined` to drop back to the cached-getenv path.
- * The seam exists for the tests that have to exercise both sides of the cap;
- * nothing in the game calls it.
- */
-export function setParserErrorLimit(limit: number | null | undefined): void {
-  overrideLimit = limit;
-}
-
-/**
- * strtol(s, &end, 10), enough of it for the env parse: leading whitespace, an
- * optional sign, then base-10 digits. `end` is the index one past the last
- * digit consumed, or 0 when no digits were found at all — C sets `end == nptr`
- * in that case, NOT the post-whitespace position, and the caller's `!*end` test
- * depends on the difference.
- */
-function strtol10(s: string): { value: number; end: number } {
-  let i = 0;
-  while (i < s.length && " \t\n\v\f\r".includes(s[i]!)) i++;
-  let sign = 1;
-  if (s[i] === "+" || s[i] === "-") {
-    if (s[i] === "-") sign = -1;
-    i++;
-  }
-  const first = i;
-  let value = 0;
-  while (i < s.length && s[i]! >= "0" && s[i]! <= "9") {
-    value = value * 10 + (s.charCodeAt(i) - 48);
-    if (value > INT_MAX) value = INT_MAX; /* LONG_MAX saturation, then clamped */
-    i++;
-  }
-  if (i === first) return { value: 0, end: 0 };
-  return { value: sign * value, end: i };
-}
-
-/**
- * The env half of getParserErrorLimit: `PARSE_ERROR_LIMIT` must be a whole
- * non-negative decimal integer with nothing after it, or it is ignored
- * (`envlimit && *envlimit && strtol(...) >= 0 && !*end`). Returns the limit to
- * install, or null to keep the compile-time default.
- *
- * Exported so the node host can parse without owning the rule.
- */
-export function parseParserErrorLimitEnv(raw: string | undefined): number | null {
-  if (raw === undefined || raw.length === 0) return null;
-  const { value, end } = strtol10(raw);
-  if (end === 0 || end !== raw.length) return null;
-  if (value < 0) return null;
-  return Math.min(value, INT_MAX);
 }
 
 /**

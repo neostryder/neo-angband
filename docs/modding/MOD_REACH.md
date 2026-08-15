@@ -24,7 +24,7 @@ is not a capability - it is called out as such.
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **7** (`packages/core/src/mod/hooks.ts:83`) |
+| `ModHooks` behaviour hooks | **8** (`packages/core/src/mod/hooks.ts:84`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE` — a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -537,13 +537,32 @@ question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
 expressions, the spell effect and message data a new entry would need) and no
 longer a question about whether it eats saved characters.
 
-**The same defect is still live one table over.** `SavedLore.flags`
-(`MON_RACE_FLAG_ENTRIES`, 85) and `SavedObject.flags` / `modifiers` / `elInfo`
-(`OBJECT_FLAG_ENTRIES`, 39) are still persisted as raw bytes — persisted bit
-positions, exactly what row 22 was. Neither is a counted switch row, so neither
-shows in the tally above, and both would need this same conversion before their
-tables could grow. Recorded here because the row-22 fix is the thing that makes
-them findable.
+**The same defect one table over is fixed too (#273, 2026-08-14).**
+`SavedLore.flags` (`MON_RACE_FLAG_ENTRIES`, 85); `SavedObject.flags`,
+`SavedPlayer.objKnown.flags` and `SavedMonster.knownPstateFlags`
+(`OBJECT_FLAG_ENTRIES`, 39); `modifiers` (`OBJECT_MODIFIER_ENTRIES` via
+`OBJ_MOD`, 16 — **not** `OBJECT_FLAG_ENTRIES`, as this paragraph previously
+said); and `elInfo` (`ELEMENT_ENTRIES`, 25) all persisted raw positions until
+`SAVE_VERSION` 6. They are names now, with the `V5_TO_V6` step that reads every
+version-5 savefile and a four-way renumber control
+(`session/save-flag-names.test.ts`).
+
+**And the tally is still unchanged.** None of the four is a counted switch row,
+and the row that does cover them — the 31 generated `as const` tables — never
+gave persistence as its blocker. Its blocker is that every one is a
+module-level closed constant with no deps-bag indirection, and #273 does not
+touch that. Removing a blocker is not opening a seam. What changed is that
+appending to or reordering `RF`, `OF`, `OBJ_MOD` or `ELEM` is now a question
+about the table and no longer a question about whether it eats saved
+characters.
+
+**Still persisted as positions, and out of #273's scope:** `SavedMonster.mflag`
+(MFLAG), `SavedTrap.flags` (TRF), `SavedMonster.mTimed` (MON_TMD),
+`SavedPlayer.timed` (TMD), `.skills`, the STAT-indexed stat arrays, and the
+square `info` flags in the chunk snapshot. **The sweep found seven more of the
+same kind than the ticket named** — #269's note said the defect was live "one
+table over" and it was live eleven tables over. Recorded here for the same
+reason the previous version of this paragraph was: findable is the point.
 
 *Row 7 (`MONSTER_HANDLERS`) — and the ticket's own description of it was wrong.*
 It said a mod's projection "does literally nothing to a monster". Measured, the
@@ -1162,7 +1181,7 @@ The non-mod escape hatch is `?tiles=<base-url>` + `?graf=<id>`
 (`tile-catalog.ts:109`). That is a user/URL affordance, not a mod path, and it
 cannot add a grafID.
 
-### Pref files (`.prf`) — parsed fully; not mod-suppliable
+### Pref files (`.prf`) — parsed fully; mod-suppliable since gap 7
 
 The `ui-prefs.c` grammar is ported: `packages/core/src/visuals/prefs.ts` (one
 grammar over an injected `PrefSink`, `:84-90`; writer `prefsSave` `:727`;
@@ -1172,7 +1191,16 @@ grammar over an injected `PrefSink`, `:84-90`; writer `prefsSave` `:727`;
 `dumpPrefFile` `:112-126`), resolving against the virtual `ANGBAND_DIR_USER`
 (`packages/web/src/userdir.ts`).
 
-A USER can load one. A MOD cannot - there is no manifest field and no discovery.
+A USER can load one, and since gap 7 a MOD can too: `prefs` is one of the seven
+resource kinds, and `applyPrefText` (`prefs-ui.ts:181`) runs a mod's `.prf`
+through the same grammar, the same sink and the same deps as a user's, returning
+the errors against the contributing mod's row rather than saying them on a
+message line that does not exist yet at boot. `%:` includes are NOT followed on
+that path, and that is a real limit rather than an oversight - the grammar's
+`loadFile` is synchronous and a mod's files resolve through a resolver that may
+mint a blob or read IndexedDB. This heading and this sentence said "not
+mod-suppliable" until 2026-08-14, which was stale by gap 7 and is exactly the
+kind of claim a reader would have believed.
 There is a recorded divergence at `prefs-ui.ts:134-139`: upstream also searches
 `ANGBAND_DIR_CUSTOMIZE` and the graphics mode's directory; the port ships no
 `lib/customize` tree and searches only the user location. Partial exception: a

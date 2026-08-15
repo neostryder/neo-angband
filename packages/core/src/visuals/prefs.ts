@@ -26,7 +26,7 @@
 import { colorCharToAttr, colorChannel, colorTextToAttr, COLOR_TABLE, BASIC_COLORS, MAX_COLORS } from "../color.js";
 import { projNameToIdx } from "../effects/effect.js";
 import { PARSE_ERROR } from "../generated/index.js";
-import { getParserErrorLimit, parserErrorText } from "../parser.js";
+import { parserErrorText } from "../parser.js";
 import type { ParserState } from "../parser.js";
 import {
   objectShortName,
@@ -512,6 +512,90 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   "entry-renderer": parseEntryRenderer,
 };
 
+/* ------------------------------------------------------------------------
+ * What the read loop does with a bad line - and the seam a mod changes it
+ * through (#272)
+ * ------------------------------------------------------------------------ */
+
+/**
+ * How `processPrefText` treats a line that fails to parse.
+ *
+ * TWO AXES, because one number could not express both and the port spent a
+ * release pretending it could. `errorLimit: 20` meant "stop applying AND stop
+ * collecting at the twentieth error", which cannot say "apply the whole file
+ * but do not flood the message line", and that second thing is the one a player
+ * actually wants. So:
+ *
+ *  - `continueAfterError` decides whether the REST OF THE FILE is applied.
+ *  - `reportLimit` decides how many errors are COLLECTED for the caller to
+ *    print. It never stops the file: a reader that quietly applied lines it had
+ *    stopped counting would be worse than either.
+ */
+export interface PrefErrorPolicy {
+  /** Keep applying the lines after a bad one. Upstream: false. */
+  readonly continueAfterError: boolean;
+  /** Collect at most this many errors; 0 means collect every one. */
+  readonly reportLimit: number;
+}
+
+/**
+ * 4.2.6's own policy, and core's default: STOP AT THE FIRST BAD LINE.
+ *
+ * `process_pref_file_named` (ui-prefs.c L1225-1231) is a `while (file_getl(...))`
+ * whose body `break`s the moment `parser_parse` returns anything but
+ * PARSE_ERROR_NONE, having called `print_error` once. There is no count, no cap
+ * and no second error - so `reportLimit` is moot here and 0 ("all of them") is
+ * the honest spelling of that.
+ */
+export const UPSTREAM_PREF_ERROR_POLICY: PrefErrorPolicy = {
+  continueAfterError: false,
+  reportLimit: 0,
+};
+
+let installedPrefErrorPolicy: PrefErrorPolicy | null = null;
+
+/**
+ * Install the policy every pref read uses, or `null` to go back to 4.2.6's.
+ *
+ * THE SEAM, and the only reason it exists: until #272, core carried a 20-error
+ * cap with an environment override, which was a convenience nobody upstream
+ * ships. Conveniences live in a mod, so the forgiving behaviour moved to `qol`
+ * and this is the door it comes back through - `ctx.core.setPrefErrorPolicy(...)`
+ * from the mod's `hooks(ctx)`.
+ *
+ * WHY MODULE-LEVEL RATHER THAN A `ModHooks` MEMBER. The three pref readers this
+ * governs - the '=' menu's "Load a user pref file", a mod's own `prefs`
+ * resource, and the graphics pack loader - none of them has a GameState in
+ * scope, and two of them run before there is one. A hook would have to be
+ * threaded through `PrefsUiCtx` and `TilePrefsDeps` by every host that builds
+ * them, and a host that forgot would leave the mod silently inert. This is the
+ * same shape as `soundPrefRegistry` / `effectInfoRegistry` / `runeRegistry`:
+ * module-level because the thing it configures is per FRONT END, not per
+ * character.
+ *
+ * COMPOSITION - LAST LOAD WINS (#197), ONE WINNER (#190). The host calls each
+ * enabled mod's `hooks(ctx)` in load order, so the last mod to call this is the
+ * one whose policy stands, which is exactly what the mod manager's row promises
+ * the player ("Move later (loads last, wins conflicts)"). There is nothing to
+ * fold: two policies cannot be merged into a third that is either of them.
+ *
+ * A DISABLED MOD'S PATCHES DO NOT EXIST. A module-level value outlives a mod
+ * being switched off within one process - but switching a mod off does not take
+ * effect within one process. Disabling prompts to save and RELOADS
+ * (docs/modding/MOD_LIFECYCLE.md), and after the reload the disabled mod's
+ * `hooks` is never called, so nothing installs a policy and core is back on
+ * `UPSTREAM_PREF_ERROR_POLICY` from the first pref read. `setPrefErrorPolicy(null)`
+ * is the same seam for a test, or for a host tearing a session down.
+ */
+export function setPrefErrorPolicy(policy: PrefErrorPolicy | null): void {
+  installedPrefErrorPolicy = policy;
+}
+
+/** The policy in force: whatever was installed, else 4.2.6's. */
+export function prefErrorPolicy(): PrefErrorPolicy {
+  return installedPrefErrorPolicy ?? UPSTREAM_PREF_ERROR_POLICY;
+}
+
 /** Options process_pref_file_named's caller controls. */
 export interface ProcessPrefOptions {
   /**
@@ -522,17 +606,13 @@ export interface ProcessPrefOptions {
    */
   vars?: PrefExprVars;
   /**
-   * get_parser_error_limit(): stop after this many bad lines (0 = no limit).
+   * Override the installed policy for THIS read only. Omitted means
+   * `prefErrorPolicy()`, which is 4.2.6's unless a mod changed it.
    *
-   * The default is **20**, not 0. This used to read "Upstream's default is 0
-   * (ui-init.c / z-util), so every error is reported" - wrong on both counts:
-   * the value is PARSE_ERROR_LIMIT (parser.c:38) and it is in neither of those
-   * files. The difference is behavioural, because the read loop this models
-   * (ui-prefs.c:1222) BREAKS on reaching the limit: upstream stops applying a
-   * pref file after its twentieth bad line, and the port applied every line to
-   * the end of the file.
+   * Replaced `errorLimit?: number` in #272; see PrefErrorPolicy for why one
+   * number could not say both of the things it was being asked to say.
    */
-  errorLimit?: number;
+  errorPolicy?: PrefErrorPolicy;
   /** Recursion guard for `%` includes; upstream relies on the filesystem. */
   depth?: number;
 }
@@ -546,6 +626,14 @@ export interface ProcessPrefOptions {
  * A `#` line is a comment, a blank line is skipped, `%` includes another file
  * through sink.loadFile, and `?` sets the bypass flag that makes every
  * following handler a no-op until the next `?`.
+ *
+ * ONE PLACE DECIDES WHAT A BAD LINE COSTS, at the bottom of the loop, and every
+ * failing directive reaches it by falling through with a non-null error code.
+ * That shape is deliberate rather than tidy: while the port capped errors at 20
+ * a branch that recorded an error and forgot to stop was INVISIBLE - twenty
+ * lines of slack hid it - and the cap is gone (#272), so at "stop on the first
+ * one" the same omission is behaviour. A branch cannot forget a stop it does
+ * not own.
  */
 export function processPrefText(
   text: string,
@@ -554,7 +642,7 @@ export function processPrefText(
   opts: ProcessPrefOptions = {},
 ): PrefError[] {
   const errors: PrefError[] = [];
-  const limit = opts.errorLimit ?? getParserErrorLimit();
+  const policy = opts.errorPolicy ?? prefErrorPolicy();
   const depth = opts.depth ?? 0;
   let bypass = false;
   let keymapAct = "";
@@ -586,6 +674,15 @@ export function processPrefText(
           );
         }
       }
+      /* A BAD LINE IN AN INCLUDED FILE DOES NOT STOP THIS ONE, and that is
+       * upstream's answer rather than a convenience left behind: parse_prefs_load
+       * (ui-prefs.c L428-440) throws the nested result away - `(void)
+       * process_pref_file(file, true, d->user)` - and returns PARSE_ERROR_NONE
+       * whatever happened in there. The nested read has already stopped itself at
+       * its own first bad line (it ran this same loop), and its errors are
+       * carried up only so the caller can print them, exactly as the nested
+       * `process_pref_file_named` would have print_error'd them on the way past.
+       * So: no stop, and deliberately no fall-through to the tail below. */
       continue;
     }
     /* keymap-act stores into the parser's buffer; keymap-input consumes it. */
@@ -594,49 +691,63 @@ export function processPrefText(
       sink.keymapAct?.(keymapAct);
       continue;
     }
+
+    /* The error this line produced, or null - ONE variable, so the stop below is
+     * unavoidable rather than remembered per branch. */
+    let e: number | null;
+
     if (dir === "keymap-input") {
       const mode = parsePrefNum(fields[0] ?? "");
       if (fields[0] === undefined || fields[1] === undefined) {
-        errors.push(err(lineNo, dir, PARSE_ERROR.MISSING_FIELD));
+        e = PARSE_ERROR.MISSING_FIELD;
       } else if (mode === null) {
-        errors.push(err(lineNo, dir, PARSE_ERROR.NOT_NUMBER));
+        e = PARSE_ERROR.NOT_NUMBER;
       } else if (mode < 0 || mode >= 2) {
         /* KEYMAP_MODE_MAX is 2 (ui-keymap.h). */
-        errors.push(err(lineNo, dir, PARSE_ERROR.OUT_OF_BOUNDS));
+        e = PARSE_ERROR.OUT_OF_BOUNDS;
       } else {
         sink.keymapInput?.(mode, fields.slice(1).join(":"), keymapAct);
+        e = null;
       }
-      if (limit && errors.length >= limit) break;
-      continue;
+    } else {
+      const handler = HANDLERS[dir];
+      /* An unknown directive is upstream's PARSE_ERROR_UNDEFINED_DIRECTIVE, and
+       * this stays SILENT about one rather than reporting it.
+       *
+       * The reason it used to give was checked and both halves were false: "the
+       * sound parser registers its own, so an unhandled one is only an error
+       * when it is not a sound line" - `sound` is a HANDLER now (parseSound) -
+       * and "the bundled prf files carry `sound:` lines this port has no mixer
+       * for" - no `.prf` this port ships carries one. Measured: the shipped
+       * packs use only `%`, `?`, `object`, `monster`, `feat`, `trap`, `GF` and
+       * `flavor`, and the 447 `sound:` lines are in
+       * `reference/lib/customize/sound.prf`, which `gen-sound-prefs.mjs` reads
+       * at BUILD time and nothing parses at runtime.
+       *
+       * With `sound` added, HANDLERS plus `%`, `?` and the two keymap
+       * directives covers all 16 registrations of `init_parse_prefs`
+       * (ui-prefs.c L1141-1156 plus register_sound_pref_parser at :1157), so
+       * the branch can now only be reached by a directive upstream does not
+       * define either. Kept silent anyway, deliberately: this is a KNOWN
+       * divergence rather than a leftover - making it an error is a behaviour
+       * change to every converted graphics pack and belongs to whoever measures
+       * that, not to this line. It matters MORE now than it did under a
+       * 20-error cap, because upstream would stop the whole file here. */
+      if (!handler) continue;
+      e = handler(fields, sink, deps);
     }
 
-    const handler = HANDLERS[dir];
-    /* An unknown directive is upstream's PARSE_ERROR_UNDEFINED_DIRECTIVE, and
-     * this stays SILENT about one rather than reporting it.
-     *
-     * The reason it used to give was checked and both halves were false: "the
-     * sound parser registers its own, so an unhandled one is only an error when
-     * it is not a sound line" - `sound` is a HANDLER now (parseSound) - and
-     * "the bundled prf files carry `sound:` lines this port has no mixer for" -
-     * no `.prf` this port ships carries one. Measured: the shipped packs use
-     * only `%`, `?`, `object`, `monster`, `feat`, `trap`, `GF` and `flavor`,
-     * and the 447 `sound:` lines are in `reference/lib/customize/sound.prf`,
-     * which `gen-sound-prefs.mjs` reads at BUILD time and nothing parses at
-     * runtime.
-     *
-     * With `sound` added, HANDLERS plus `%`, `?` and the two keymap directives
-     * covers all 16 registrations of `init_parse_prefs` (ui-prefs.c L1141-1156
-     * plus register_sound_pref_parser at :1157), so the branch can now only be
-     * reached by a directive upstream does not define either. Kept silent
-     * anyway, deliberately: this is a KNOWN divergence rather than a leftover -
-     * making it an error is a behaviour change to every converted graphics pack
-     * and belongs to whoever measures that, not to this line. */
-    if (!handler) continue;
-    const e = handler(fields, sink, deps);
-    if (e !== null) {
+    if (e === null) continue;
+    /* print_error is called once per bad line and the caller prints what it is
+     * handed, so a reportLimit that is reached stops the COLLECTING and nothing
+     * else - the file keeps being applied while continueAfterError says so. */
+    if (policy.reportLimit === 0 || errors.length < policy.reportLimit) {
       errors.push(err(lineNo, dir, e));
-      if (limit && errors.length >= limit) break;
     }
+    /* ui-prefs.c L1228: `break`. Faithful core reads no further line of this
+     * file - not "reports no more errors", READS no further line, so nothing
+     * after the bad one is applied. */
+    if (!policy.continueAfterError) break;
   }
   return errors;
 }
@@ -1033,9 +1144,18 @@ export function tileMapSink(map: TileMap, deps: TilePrefsDeps): PrefSink {
  * ones for the same entity, exactly as the C reassigns the x_attr/x_char slot.
  *
  * Parse errors are dropped rather than reported: a graphics pref is loaded by
- * reset_visuals(true) with `quiet` semantics, and an entity this build does not
- * know simply keeps its ASCII glyph. `processPrefText` returns them for the
- * user-pref path, which does print them.
+ * reset_visuals(true), which calls process_pref_file_named directly
+ * (ui-prefs.c L1411) and ignores its bool, so there is nobody to tell.
+ * `processPrefText` returns them for the user-pref path, which does print them.
+ *
+ * DROPPED IS NOT IGNORED. The same loop still stops at the first bad line, so a
+ * pack with an unresolvable entity halfway down loses everything BELOW it, not
+ * just that entity - which is exactly what reset_visuals does with the same
+ * file. Measured before #272 removed the 20-error cap: all sixteen bundled
+ * `reference/lib/tiles/**.prf` parse with ZERO errors against this build's
+ * registries, so no shipped pack is truncated by the stop. A converted
+ * third-party pack is the case that can be, and `qol`'s forgiving policy is
+ * what a player installs when it is.
  */
 export function parseTilePrefsInto(
   map: TileMap,

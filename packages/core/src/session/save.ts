@@ -41,7 +41,9 @@
  *                                    the whole record; narrowing it would be a
  *                                    SAVE_VERSION change with nothing to gain.
  *                                    The observed SPELL set is written by NAME
- *                                    as of version 5 - see SavedLore.spellsKnown.)
+ *                                    as of version 5 (SavedLore.spellsKnown) and
+ *                                    the known race FLAGS as of version 6
+ *                                    (SavedLore.flagsKnown).)
  *   wr_object_memory (save.c:377)  -> flavor.aware / .tried, everseen.kinds,
  *                                    ignore.kindAware / .kindUnaware
  *   wr_quests        (save.c:405)  -> player.quests
@@ -85,16 +87,18 @@ import type { ChunkSquaresData } from "../world/chunk.js";
 import type { GameObject } from "../obj/object.js";
 import { objectNew, tvalIsMoney } from "../obj/object.js";
 import type { ObjRegistry } from "../obj/bind.js";
+import { ELEMENT_NAMES, OBJ_MOD_NAMES } from "../obj/bind.js";
 import type { ElementInfo } from "../obj/types.js";
+import { ELEM_MAX, OBJ_MOD_MAX, OF_SIZE, newElemInfo } from "../obj/types.js";
 import type { AutoinscriptionRegistry, Rune } from "../obj/knowledge.js";
 import { buildRuneList, runeKey } from "../obj/knowledge.js";
 import type { IgnoreSettingsData } from "../obj/ignore.js";
 import { blankMonster, GROUP_MAX } from "../mon/monster.js";
 import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
 import type { MonsterLore } from "../mon/lore.js";
-import { RSF_FLAG_NAMES } from "../mon/lore-file.js";
-import { RSF } from "../generated/index.js";
-import { RSF_SIZE } from "../mon/types.js";
+import { RF_FLAG_NAMES, RSF_FLAG_NAMES } from "../mon/lore-file.js";
+import { OF, RSF } from "../generated/index.js";
+import { RF_SIZE, RSF_SIZE } from "../mon/types.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
@@ -133,11 +137,18 @@ import type {
  * load-bearing rule of the mod substrate (MOD_LIFECYCLE decision 1). Version 3
  * finished that job: `flavor`, `everseen` and `ignore` were the last blocks
  * still keyed by raw kidx/eidx, and the rune-autoinscription block of wr_ignore
- * (save.c:586-605) arrived with them. Version 5 did the same for the last
- * POSITION a save held: monster lore recorded which spells the player had seen
- * as RSF bit positions, so `MON_SPELL_ENTRIES` could never grow without
- * renumbering an existing character's memory. It is written by name now
+ * (save.c:586-605) arrived with them. Version 5 started on the POSITIONS a save
+ * held: monster lore recorded which spells the player had seen as RSF bit
+ * positions, so `MON_SPELL_ENTRIES` could never grow without renumbering an
+ * existing character's memory. It is written by name now
  * (`SavedLore.spellsKnown`).
+ *
+ * Version 5's own comment claimed that was the LAST position a save held. It was
+ * not, and version 6 (#273) finished the count: race lore still wrote RF bit
+ * positions, and every object-property carrier in the document - `SavedObject`,
+ * `SavedPlayer.objKnown`, `SavedMonster.knownPstate` - wrote OF bit positions,
+ * OBJ_MOD indices and ELEM indices. All four tables are persisted by NAME now;
+ * see "Position-free persistence" below.
  *
  * OLDER SAVES ARE MIGRATED, NOT REJECTED. Every version below this one has a
  * conversion step in session/save-migrate.ts, and `saveMigrationsAreComplete()`
@@ -147,7 +158,237 @@ import type {
  * character into "Could not read the save; starting a new game", which in a
  * permadeath game reads as "your character is gone".
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
+
+/* ------------------------------------------------------------------ *
+ * Position-free persistence for the generated tables.
+ *
+ * A save that stores a flag as its BIT POSITION - or a value at its enum's
+ * INDEX - can only be read by a build whose table has the identical length and
+ * order. Remove or reorder one entry and every existing character's data
+ * silently re-points at a different flag; that is why `MON_SPELL_ENTRIES` could
+ * not be opened to mods until #269 (MOD_REACH row 22), and it was equally true
+ * of `MON_RACE_FLAG_ENTRIES`, `OBJECT_FLAG_ENTRIES`, `OBJECT_MODIFIER_ENTRIES`
+ * and `ELEMENT_ENTRIES` until #273.
+ *
+ * Names have no position. A build whose table is larger, smaller or reordered
+ * reads back exactly what was written, and a name it no longer has is DROPPED
+ * rather than mis-resolved - the same rule `deserializeLore` already applies to
+ * a race whose mod is gone. session/save-flag-names.test.ts is the control:
+ * it renumbers each table and reads the same data under both schemes.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A flag/enum value -> name table, INVERTED FROM THE ENUM rather than read off
+ * the generated entry tuple.
+ *
+ * THE THREE ENTRY TUPLES DO NOT SHARE A BASE, and every call site that reaches
+ * for one has to know which it is holding:
+ * `MON_RACE_FLAG_ENTRIES[flag]` (RF_NONE kept at [0]), `OBJECT_FLAG_ENTRIES
+ * [flag - 1]` (OF_NONE dropped), `OBJECT_MODIFIER_ENTRIES[value - 5]` (the five
+ * list-stats.h entries come first). The enum is generated from the same header
+ * as the values themselves, so inverting it cannot be off by one in any
+ * direction - and save-flag-names.test.ts pins each inverted table against its
+ * own ENTRIES tuple AT ITS OWN BASE, because a comment claiming a base is
+ * exactly the kind of thing that has been wrong here before.
+ */
+function nameTable(
+  en: Readonly<Record<string, number>>,
+): readonly (string | undefined)[] {
+  const out: (string | undefined)[] = [];
+  for (const [name, value] of Object.entries(en)) out[value] = name;
+  return out;
+}
+
+/**
+ * OF_ names by flag number. [0] is the OF_NONE sentinel, [OF.MAX] is the "MAX"
+ * one. Nothing in the tree exported this before; RF_FLAG_NAMES and
+ * RSF_FLAG_NAMES (mon/lore-file.ts) are its siblings and are built the same way.
+ */
+export const OF_FLAG_NAMES = nameTable(OF);
+
+/*
+ * OBJ_MOD and ELEM already have exported name tables - `OBJ_MOD_NAMES` and
+ * `ELEMENT_NAMES` in obj/bind.ts, the port of the C `obj_mods[]` and
+ * `element_names[]` string arrays, both indexed by the enum VALUE. A second
+ * copy here would be a second thing to keep right, so this file uses those; the
+ * inverted enum is applied to them AS A CHECK in save-flag-names.test.ts
+ * instead, which is the only place the two derivations can be compared.
+ */
+
+/**
+ * The set object flags as OF_ names, ascending by flag number so the save is
+ * byte-stable for an unchanged object.
+ *
+ * The bound is OF.MAX for the reason serializeLoreSpells bounds on RSF.MAX:
+ * OF_SIZE rounds 39 flags up to 5 bytes, so a set has 40 addressable bits and
+ * index 39 reads back as the enum's own `"MAX"` sentinel. Writing that would
+ * put a non-flag in the save and, on the way back, set a bit no property owns.
+ */
+export function serializeObjectFlags(flags: FlagSet): string[] {
+  const out: string[] = [];
+  for (const flag of flags) {
+    if (flag >= OF.MAX) break;
+    const name = OF_FLAG_NAMES[flag];
+    if (name !== undefined) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * The inverse: an OF_SIZE FlagSet with exactly the named flags on. A name this
+ * build does not have (a mod's property, uninstalled - or the `"MAX"` sentinel)
+ * is dropped, which is how the whole scheme stays safe: an unknown NAME cannot
+ * land on some other flag's bit the way an out-of-range index would.
+ */
+export function deserializeObjectFlags(
+  names: readonly string[] | undefined,
+): FlagSet {
+  const set = new FlagSet(OF_SIZE);
+  for (const name of names ?? []) {
+    const flag = OF_FLAG_NAMES.indexOf(name);
+    if (flag > 0 && flag < OF.MAX) set.on(flag);
+  }
+  return set;
+}
+
+/**
+ * The known race flags as RF_ names, ascending.
+ *
+ * RF has NO `MAX` member - the enum stops at NO_SLOW and `RF_SIZE` is
+ * `flagSize(MON_RACE_FLAG_ENTRIES.length)`, so a set has a few unnamed padding
+ * bits above the last flag and nothing else. `RF_FLAG_NAMES[flag] === undefined`
+ * is therefore the entire bound, and it is derived from the table rather than
+ * from a hand-written constant that could part company with it.
+ */
+export function serializeLoreFlags(flags: FlagSet): string[] {
+  const out: string[] = [];
+  for (const flag of flags) {
+    const name = RF_FLAG_NAMES[flag];
+    if (name !== undefined) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * The inverse: an RF_SIZE FlagSet with exactly the named flags on. Index 0 is
+ * upstream's RF_NONE, which is never set, so `flag > 0` excludes it; every
+ * other named flag fits by construction, because RF_SIZE is sized from the very
+ * table the name was looked up in.
+ */
+export function deserializeLoreFlags(
+  names: readonly string[] | undefined,
+): FlagSet {
+  const set = new FlagSet(RF_SIZE);
+  for (const name of names ?? []) {
+    const flag = RF_FLAG_NAMES.indexOf(name);
+    if (flag > 0) set.on(flag);
+  }
+  return set;
+}
+
+/**
+ * The non-zero modifiers as an OBJ_MOD_ name -> value map, in ascending index
+ * order so an unchanged object writes identical bytes.
+ *
+ * NOT A FLAG SET: index 0 is OBJ_MOD_STR, a real modifier, so there is no
+ * sentinel to skip at either end and the `flag > 0` guard the flag helpers use
+ * would silently drop every strength bonus in the game. A zero IS the absence
+ * of a modifier everywhere it is read (`obj.modifiers[k] ?? 0`), so omitting
+ * zeroes loses nothing and keeps the block proportional to what the object
+ * actually has rather than to the table's length.
+ */
+export function serializeObjectModifiers(
+  mods: readonly number[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < mods.length; i++) {
+    const value = mods[i] ?? 0;
+    if (value === 0) continue;
+    const name = OBJ_MOD_NAMES[i];
+    if (name !== undefined) out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * The inverse: a full-length OBJ_MOD array, zero wherever the save said
+ * nothing. The length comes from THIS build's table, never from the document -
+ * a save written against a longer table hands back an array the engine's own
+ * loops would run off the end of.
+ */
+export function deserializeObjectModifiers(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  const out = new Array<number>(OBJ_MOD_MAX).fill(0);
+  for (const [name, value] of Object.entries(saved ?? {})) {
+    const i = OBJ_MOD_NAMES.indexOf(name);
+    if (i >= 0 && i < out.length && typeof value === "number") out[i] = value;
+  }
+  return out;
+}
+
+/**
+ * The element info as an ELEM_ name -> {resLevel, flags} map, ascending, with
+ * the untouched elements omitted. `flags` stays a raw number: EL_INFO_HATES /
+ * EL_INFO_IGNORE are hand-written constants in obj/types.ts, not a generated
+ * list, so nothing a mod can do renumbers them.
+ */
+export function serializeObjectElements(
+  elInfo: readonly ElementInfo[],
+): Record<string, ElementInfo> {
+  const out: Record<string, ElementInfo> = {};
+  for (let i = 0; i < elInfo.length; i++) {
+    const e = elInfo[i];
+    if (e === undefined || (e.resLevel === 0 && e.flags === 0)) continue;
+    const name = ELEMENT_NAMES[i];
+    if (name !== undefined) out[name] = { resLevel: e.resLevel, flags: e.flags };
+  }
+  return out;
+}
+
+/** The inverse: a zeroed ELEM_MAX array with the named elements filled in. */
+export function deserializeObjectElements(
+  saved: Readonly<Record<string, ElementInfo>> | undefined,
+): ElementInfo[] {
+  const out = newElemInfo();
+  for (const [name, e] of Object.entries(saved ?? {})) {
+    const i = ELEMENT_NAMES.indexOf(name);
+    if (i < 0 || i >= out.length || e === null || typeof e !== "object") continue;
+    out[i] = { resLevel: e.resLevel ?? 0, flags: e.flags ?? 0 };
+  }
+  return out;
+}
+
+/**
+ * The el_info[].res_level half on its own, for the one carrier that stores
+ * resistance levels without the EL_INFO_ flags beside them: a monster's
+ * `knownPstate.elInfo`, which is an Int16Array (mon/monster.ts).
+ */
+export function serializeElementLevels(
+  levels: ArrayLike<number>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < levels.length; i++) {
+    const value = levels[i] ?? 0;
+    if (value === 0) continue;
+    const name = ELEMENT_NAMES[i];
+    if (name !== undefined) out[name] = value;
+  }
+  return out;
+}
+
+/** The inverse: a zeroed ELEM_MAX array of resistance levels. */
+export function deserializeElementLevels(
+  saved: Readonly<Record<string, number>> | undefined,
+): number[] {
+  const out = new Array<number>(ELEM_MAX).fill(0);
+  for (const [name, value] of Object.entries(saved ?? {})) {
+    const i = ELEMENT_NAMES.indexOf(name);
+    if (i >= 0 && i < out.length && typeof value === "number") out[i] = value;
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ *
  * Objects.
@@ -172,9 +413,24 @@ export interface SavedObject {
   toA: number;
   toH: number;
   toD: number;
-  flags: number[];
-  modifiers: number[];
-  elInfo: ElementInfo[];
+  /**
+   * OF_ NAMES of the flags set on the object, not the FlagSet bytes.
+   *
+   * Version 5 and below wrote `flags: number[]` - the raw bytes, i.e. OF BIT
+   * POSITIONS - which is the defect #269 removed one table over. See
+   * serializeObjectFlags.
+   */
+  flagNames: string[];
+  /**
+   * OBJ_MOD_ name -> value, non-zero entries only. Version 5 and below wrote
+   * `modifiers: number[]`, dense and indexed by the OBJ_MOD enum.
+   */
+  modifierValues: Record<string, number>;
+  /**
+   * ELEM_ name -> element info, non-default entries only. Version 5 and below
+   * wrote `elInfo: ElementInfo[]`, dense and indexed by the ELEM enum.
+   */
+  elementInfo: Record<string, ElementInfo>;
   /** Brand ids present on the object (the sparse form of the boolean array). */
   brands: string[] | null;
   /** Slay ids present on the object. */
@@ -228,9 +484,9 @@ export function serializeObject(
     toA: obj.toA,
     toH: obj.toH,
     toD: obj.toD,
-    flags: Array.from(obj.flags.bits),
-    modifiers: [...obj.modifiers],
-    elInfo: obj.elInfo.map((e) => ({ ...e })),
+    flagNames: serializeObjectFlags(obj.flags),
+    modifierValues: serializeObjectModifiers(obj.modifiers),
+    elementInfo: serializeObjectElements(obj.elInfo),
     brands: serializeBrandList(obj.brands, ids),
     slays: serializeSlayList(obj.slays, ids),
     curses: serializeCurseList(obj.curses, ids),
@@ -342,9 +598,9 @@ export function deserializeObject(
     toA: data.toA,
     toH: data.toH,
     toD: data.toD,
-    flags: new FlagSet(Uint8Array.from(data.flags)),
-    modifiers: [...data.modifiers],
-    elInfo: data.elInfo.map((e) => ({ ...e })),
+    flags: deserializeObjectFlags(data.flagNames),
+    modifiers: deserializeObjectModifiers(data.modifierValues),
+    elInfo: deserializeObjectElements(data.elementInfo),
     brands: deserializeBrandList(data.brands, reg, ids),
     slays: deserializeSlayList(data.slays, reg, ids),
     curses: deserializeCurseList(data.curses, reg, ids),
@@ -461,10 +717,17 @@ export interface SavedMonster {
   groupInfo: MonsterGroupInfo[];
   minRange: number;
   bestRange: number;
-  /** C wr_monster's known_pstate.flags (save.c:231-232). */
-  knownPstateFlags?: number[];
-  /** C wr_monster's known_pstate.el_info[].res_level (save.c:234-235). */
-  knownPstateElInfo?: number[];
+  /**
+   * C wr_monster's known_pstate.flags (save.c:231-232), as OF_ NAMES. Version 5
+   * and below wrote `knownPstateFlags: number[]`, the raw FlagSet bytes.
+   */
+  knownPstateFlagNames?: string[];
+  /**
+   * C wr_monster's known_pstate.el_info[].res_level (save.c:234-235), as an
+   * ELEM_ name -> level map. Version 5 and below wrote `knownPstateElInfo:
+   * number[]`, dense and indexed by the ELEM enum.
+   */
+  knownPstateElementRes?: Record<string, number>;
 }
 
 export function serializeMonster(
@@ -493,8 +756,8 @@ export function serializeMonster(
     groupInfo: mon.groupInfo.map((g) => ({ ...g })),
     minRange: mon.minRange,
     bestRange: mon.bestRange,
-    knownPstateFlags: Array.from(mon.knownPstate.flags.bits),
-    knownPstateElInfo: Array.from(mon.knownPstate.elInfo),
+    knownPstateFlagNames: serializeObjectFlags(mon.knownPstate.flags),
+    knownPstateElementRes: serializeElementLevels(mon.knownPstate.elInfo),
   };
 }
 
@@ -523,13 +786,15 @@ export function deserializeMonster(
   mon.energy = data.energy;
   mon.cdis = data.cdis;
   mon.mflag.bits.set(data.mflag);
-  if (data.knownPstateFlags) {
+  if (data.knownPstateFlagNames) {
     /* load.c:302 restores known_pstate.flags before the monster goes live. */
-    mon.knownPstate.flags.bits.set(data.knownPstateFlags);
+    mon.knownPstate.flags.copy(deserializeObjectFlags(data.knownPstateFlagNames));
   }
-  if (data.knownPstateElInfo) {
+  if (data.knownPstateElementRes) {
     /* load.c:305 restores known_pstate.el_info[].res_level before live use. */
-    mon.knownPstate.elInfo.set(data.knownPstateElInfo);
+    mon.knownPstate.elInfo.set(
+      deserializeElementLevels(data.knownPstateElementRes),
+    );
   }
   mon.mimickedObj = data.mimickedObj;
   mon.heldObj = data.heldObj.map((o) => deserializeObject(o, objects, ids));
@@ -618,7 +883,8 @@ export interface SavedPlayer {
    * accepts both.
    */
   objKnown?: {
-    modifiers: number[];
+    /** OBJ_MOD_ name -> value; was `modifiers: number[]` before version 6. */
+    modifierValues: Record<string, number>;
     toA: number;
     toH: number;
     toD: number;
@@ -630,8 +896,10 @@ export interface SavedPlayer {
     dd?: number;
     ds?: number;
     ac?: number;
-    elInfo: ElementInfo[];
-    flags: number[];
+    /** ELEM_ name -> element info; was `elInfo: ElementInfo[]`. */
+    elementInfo: Record<string, ElementInfo>;
+    /** OF_ names of the known flag runes; was `flags: number[]` (the bytes). */
+    flagNames: string[];
     /** Ids of the brand runes the player has learned. */
     brands: string[];
     /** Ids of the slay runes the player has learned. */
@@ -720,15 +988,15 @@ export function serializePlayer(
     })),
     equipment: [...p.equipment],
     objKnown: {
-      modifiers: [...p.objKnown.modifiers],
+      modifierValues: serializeObjectModifiers(p.objKnown.modifiers),
       toA: p.objKnown.toA,
       toH: p.objKnown.toH,
       toD: p.objKnown.toD,
       dd: p.objKnown.dd,
       ds: p.objKnown.ds,
       ac: p.objKnown.ac,
-      elInfo: p.objKnown.elInfo.map((e) => ({ ...e })),
-      flags: Array.from(p.objKnown.flags.bits),
+      elementInfo: serializeObjectElements(p.objKnown.elInfo),
+      flagNames: serializeObjectFlags(p.objKnown.flags),
       /* The learned runes save as the ids of the known brands/slays/curses. */
       brands: serializeBrandList(p.objKnown.brands, ids) ?? [],
       slays: serializeSlayList(p.objKnown.slays, ids) ?? [],
@@ -845,7 +1113,7 @@ export function deserializePlayer(
   p.equipment = [...data.equipment];
   if (data.objKnown) {
     p.objKnown = {
-      modifiers: [...data.objKnown.modifiers],
+      modifiers: deserializeObjectModifiers(data.objKnown.modifierValues),
       toA: data.objKnown.toA,
       toH: data.objKnown.toH,
       toD: data.objKnown.toD,
@@ -854,8 +1122,8 @@ export function deserializePlayer(
       dd: data.objKnown.dd ?? 1,
       ds: data.objKnown.ds ?? 1,
       ac: data.objKnown.ac ?? 1,
-      elInfo: data.objKnown.elInfo.map((e) => ({ ...e })),
-      flags: new FlagSet(Uint8Array.from(data.objKnown.flags)),
+      elInfo: deserializeObjectElements(data.objKnown.elementInfo),
+      flags: deserializeObjectFlags(data.objKnown.flagNames),
       brands: deserializeBrandList(data.objKnown.brands, objReg, ids) ?? [],
       slays: deserializeSlayList(data.objKnown.slays, objReg, ids) ?? [],
       curses: deserializeKnownCurseList(data.objKnown.curses, objReg, ids),
@@ -1328,7 +1596,17 @@ export interface SavedLore {
   castSpell: number;
   blowTimesSeen: number[];
   blowKnown: boolean[];
-  flags: number[];
+  /**
+   * RF_ NAMES of the race flags the player has learned, not the bit vector.
+   *
+   * Version 5 and below wrote `flags: number[]`, the raw bytes of the lore
+   * FlagSet - i.e. RF BIT POSITIONS, the same defect the field below removed
+   * for RSF one version earlier and the reason `MON_RACE_FLAG_ENTRIES` could
+   * not be reordered. lore.txt has always written this line by name
+   * (`writeLoreEntries`, mon/lore-file.ts); this is the savefile half catching
+   * up, exactly as #269 was for the spells.
+   */
+  flagsKnown: string[];
   /**
    * RSF_ NAMES of the spells the player has observed, not the bit vector.
    *
@@ -1675,7 +1953,7 @@ export function serializeGame(
         castSpell: l.castSpell,
         blowTimesSeen: [...l.blowTimesSeen],
         blowKnown: [...l.blowKnown],
-        flags: Array.from(l.flags.bits),
+        flagsKnown: serializeLoreFlags(l.flags),
         spellsKnown: serializeLoreSpells(l.spellFlags),
         allKnown: l.allKnown,
         armourKnown: l.armourKnown,
@@ -1712,7 +1990,7 @@ export function deserializeLore(
       castSpell: l.castSpell,
       blowTimesSeen: [...l.blowTimesSeen],
       blowKnown: [...l.blowKnown],
-      flags: new FlagSet(Uint8Array.from(l.flags)),
+      flags: deserializeLoreFlags(l.flagsKnown),
       spellFlags: deserializeLoreSpells(l.spellsKnown),
       allKnown: l.allKnown,
       armourKnown: l.armourKnown,

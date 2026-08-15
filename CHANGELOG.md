@@ -20,6 +20,38 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **Items, learned runes and monster memory record their properties BY NAME**
+  (#273, the defect #269 left one table over). `SAVE_VERSION` is now **6**, and
+  the `V5_TO_V6` step that reads a version-5 savefile ships with it — an
+  existing character loads with exactly the items and exactly the monster
+  memory it had.
+
+  #269's own comment claimed the RSF bit position was the last POSITION a save
+  held. It was not. Race lore still wrote `SavedLore.flags` as RF **bit
+  positions**, and every object-property carrier in the document — `SavedObject`,
+  `SavedPlayer.objKnown` (the learned runes) and `SavedMonster.knownPstate` (a
+  monster's remembered view of the player) — wrote OF bit positions, `OBJ_MOD`
+  indices and `ELEM` indices. Four generated tables, on exactly the terms row 22
+  was on: remove or reorder one entry and every existing character's items and
+  monster recall silently re-point at different properties.
+
+  They are `flagsKnown`, `flagNames`, `modifierValues` and `elementInfo` now —
+  `RF_` / `OF_` / `OBJ_MOD_` / `ELEM_` names, with the unset bits and the zeroes
+  left out. A name cannot be renumbered, an unknown one (a mod's property,
+  uninstalled) is dropped rather than landing on whatever occupies its old
+  index, and a build whose table is larger, smaller or in a different order
+  reads back exactly what was written. **This opens none of the four tables to
+  mods**; it removes the thing that made opening them unsafe.
+
+  `session/save-flag-names.test.ts` is the control, four times over: it
+  renumbers each table and reads the same pre-existing data under both schemes,
+  so a +2 speed, +1 blows weapon reads as +2 tunnelling, +1 speed under the old
+  scheme and is unmoved under the new. It also pins each name table at its OWN
+  index base against its own generated tuple — `OBJECT_FLAG_ENTRIES` is offset
+  by one, `OBJECT_MODIFIER_ENTRIES` by five, `MON_RACE_FLAG_ENTRIES` and
+  `ELEMENT_ENTRIES` by nothing — because an off-by-one there writes every
+  character's flags one slot over and round-trips perfectly.
+
 - **A `.prf` file can carry `sound:` again, and a content pack can re-point a
   core message's samples** (#270, MOD_REACH rows 8 and 8a).
 
@@ -601,6 +633,38 @@ digest in the game's catalogue and must never be moved.
   vitals and cannot draw a proportional bar without parsing a rendering.
 
 ### Changed
+
+- **A pref file stops at its first bad line again, and the forgiving behaviour
+  is a `qol` toggle** (#272). Core carried a 20-error cap (`PARSE_ERROR_LIMIT`)
+  with a `PARSE_ERROR_LIMIT` environment override. The #268 citation sweep found
+  no such thing anywhere in Angband 4.2.6 — no cap, no `get_parser_error_limit`,
+  no error COUNT — because `process_pref_file_named` `break`s out of the file on
+  the FIRST bad line (`ui-prefs.c` L1225-1231) and `print_error` reports that one.
+  The citations on the port's declarations pointed at the `PARSE_T_*` enum and at
+  a range past the end of a 617-line file. So it was an improvement the port had
+  added, and the port adds nothing.
+
+  What a player sees change: a `.prf` with a typo on line 3 now applies lines 1
+  and 2 and nothing else, and reports one error. Measured before removing the
+  cap: all sixteen bundled `reference/lib/tiles/**.prf` parse with **zero**
+  errors against this build's registries, so no shipped graphics pack is
+  truncated by the stop — and a test now pins that, because the stop is only
+  invisible while nothing trips it.
+
+  `PARSE_ERROR_LIMIT`, `getParserErrorLimit`, `setParserErrorLimit` and
+  `parseParserErrorLimitEnv` are gone from `ctx.core`, and
+  `ProcessPrefOptions.errorLimit` is now `errorPolicy` — recorded in
+  `docs/modding/MOD_COMPATIBILITY.md`. `setPrefErrorPolicy` replaces them as a
+  real seam rather than a test hook, and `qol` 0.15.0's "Keep reading a pref file
+  past a mistake" is what installs it. It is **better than the cap it replaces**:
+  the old one threw away everything below the twentieth error, and the policy has
+  two axes — whether the rest of the file is applied, and how many errors you are
+  told about — because one number could not say both.
+
+  A bad line inside a `%:` include still does not stop the including file, which
+  is upstream's answer rather than a leftover: `parse_prefs_load` discards the
+  nested result (`(void) process_pref_file(...)`, `ui-prefs.c` L428-440) and
+  returns `PARSE_ERROR_NONE` regardless.
 
 - **Monster memory records the spells you have seen BY NAME** (#269, MOD_REACH
   row 22). `SAVE_VERSION` is now **5**, and the step that reads a version-4

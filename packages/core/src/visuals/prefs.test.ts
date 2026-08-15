@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { objectShortName } from "../obj/bind.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { COLOUR_RED, colorCharToAttr } from "../color.js";
 import { TV } from "../generated/index.js";
@@ -20,9 +20,12 @@ import {
   prefErrorMessage,
   prefFooter,
   prefHeader,
+  prefErrorPolicy,
   prefsSave,
   processPrefText,
   removeOldDump,
+  setPrefErrorPolicy,
+  UPSTREAM_PREF_ERROR_POLICY,
 } from "./prefs.js";
 import type { PrefDeps, PrefsFileIO } from "./prefs.js";
 import { LIGHTING } from "./tile-prefs.js";
@@ -263,6 +266,156 @@ describe("processPrefText: the glyph directives write the GlyphTable", () => {
     ]);
   });
 });
+
+/**
+ * #272: the read loop's answer to a bad line, and the seam a mod moves it with.
+ *
+ * The port used to carry a 20-error cap (`PARSE_ERROR_LIMIT`) with an
+ * environment override. There is no such thing in 4.2.6 - it stops at the FIRST
+ * bad line - so the cap was an extension and it moved to the `qol` mod.
+ */
+describe("a bad line stops the file (ui-prefs.c L1225-1231)", () => {
+  afterEach(() => setPrefErrorPolicy(null));
+
+  /** A good line, a comment, a BAD line, then two more of each. */
+  const TEXT = [
+    "monster:scrawny cat:4:0x66",
+    "# a comment",
+    "feat:FLOOR:gloomy:4:37",
+    "feat:GRANITE:*:4:38",
+    "object:frobnicator:x:4:33",
+  ].join("\n");
+
+  const granite = FEAT["GRANITE"] as number;
+  const cat = () => reg.monsters.raceByName("scrawny cat")!.ridx;
+
+  it("core's default: nothing after line 3 is applied, and ONE error is reported", () => {
+    const t = table();
+    const untouched = t.featGlyph(LIGHTING.LOS, granite)!;
+    const errors = processPrefText(TEXT, deps, glyphTableSink(t));
+
+    /* print_error runs once and the `while` breaks (L1228). */
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toEqual({
+      line: 3,
+      col: 1,
+      msg: "feat",
+      error: PARSE_ERROR.INVALID_LIGHTING,
+    });
+    /* Line 1 was read before the bad one, so it stands... */
+    expect(t.monsterGlyph(cat())).toEqual({ attr: 4, char: "f" });
+    /* ...and line 4 was never read at all. THIS is the behaviour, not the count:
+     * the loop breaks out of the file rather than merely stopping the report. */
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual(untouched);
+  });
+
+  it("the default policy is 4.2.6's, and nothing has to install it", () => {
+    expect(prefErrorPolicy()).toEqual(UPSTREAM_PREF_ERROR_POLICY);
+    expect(UPSTREAM_PREF_ERROR_POLICY).toEqual({
+      continueAfterError: false,
+      reportLimit: 0,
+    });
+  });
+
+  it("the mod seam restores the forgiving behaviour: every line applied, every error kept", () => {
+    setPrefErrorPolicy({ continueAfterError: true, reportLimit: 0 });
+    const t = table();
+    const errors = processPrefText(TEXT, deps, glyphTableSink(t));
+
+    expect(errors.map((e) => e.line)).toEqual([3, 5]);
+    expect(t.monsterGlyph(cat())).toEqual({ attr: 4, char: "f" });
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual({ attr: 4, char: "&" });
+  });
+
+  it("reportLimit caps the REPORT and never the file - the two axes are separate", () => {
+    setPrefErrorPolicy({ continueAfterError: true, reportLimit: 1 });
+    const t = table();
+    const errors = processPrefText(TEXT, deps, glyphTableSink(t));
+
+    /* One error collected, because that is all the player asked to be told... */
+    expect(errors.map((e) => e.line)).toEqual([3]);
+    /* ...and line 4 STILL applied, which is the whole difference from the cap
+     * this replaced: `errorLimit: 1` would have thrown the rest of the file
+     * away. */
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual({ attr: 4, char: "&" });
+  });
+
+  it("setPrefErrorPolicy(null) puts core back on upstream's, mid-process", () => {
+    setPrefErrorPolicy({ continueAfterError: true, reportLimit: 0 });
+    expect(processPrefText(TEXT, deps, glyphTableSink(table()))).toHaveLength(2);
+    setPrefErrorPolicy(null);
+    expect(processPrefText(TEXT, deps, glyphTableSink(table()))).toHaveLength(1);
+  });
+
+  it("a per-call errorPolicy overrides whatever is installed", () => {
+    setPrefErrorPolicy({ continueAfterError: true, reportLimit: 0 });
+    const errors = processPrefText(TEXT, deps, glyphTableSink(table()), {
+      errorPolicy: UPSTREAM_PREF_ERROR_POLICY,
+    });
+    expect(errors).toHaveLength(1);
+  });
+
+  it("a bad line in a `%` include does NOT stop the including file", () => {
+    /* parse_prefs_load (ui-prefs.c L428-440) throws the nested result away -
+     * `(void) process_pref_file(file, true, d->user)` - and returns
+     * PARSE_ERROR_NONE regardless, so the outer `while` never sees a failure. */
+    const t = table();
+    const errors = processPrefText(
+      "%:bad.prf\nfeat:GRANITE:*:4:38",
+      deps,
+      {
+        ...glyphTableSink(t),
+        loadFile: (n) =>
+          n === "bad.prf"
+            ? "monster:scrawny cat:4:0x66\nfeat:FLOOR:gloomy:4:37\nobject:frobnicator:x:4:33"
+            : null,
+      },
+    );
+
+    /* The nested file stopped itself at ITS first bad line (its line 2), so its
+     * line 3 never ran - one error, carried up only so the caller can print it. */
+    expect(errors.map((e) => e.line)).toEqual([2]);
+    expect(t.monsterGlyph(cat())).toEqual({ attr: 4, char: "f" });
+    /* And the OUTER file carried on past the `%`. */
+    expect(t.featGlyph(LIGHTING.LOS, granite)).toEqual({ attr: 4, char: "&" });
+  });
+
+  it("every bundled tileset pref still parses clean, so no pack is truncated", () => {
+    /* The stop is only invisible while nothing trips it. reset_visuals(true)
+     * loads a graf file through this same loop (ui-prefs.c L1411), so one
+     * unresolvable line would now cost a pack everything below it. */
+    for (const rel of BUNDLED_TILE_PREFS) {
+      const text = readFileSync(
+        new URL(`../../../../reference/lib/tiles/${rel}`, import.meta.url),
+        "utf8",
+      );
+      const errors = processPrefText(text, deps, glyphTableSink(table()), {
+        vars: { RACE: "Hobbit", CLASS: "Ranger" },
+      });
+      expect(errors, `${rel} parses clean`).toEqual([]);
+    }
+  });
+});
+
+/** Every `.prf` under reference/lib/tiles, the files reset_visuals(true) reads. */
+const BUNDLED_TILE_PREFS = [
+  "adam-bolt/flvr-new.prf",
+  "adam-bolt/graf-new.prf",
+  "adam-bolt/xtra-new.prf",
+  "gervais/flvr-dvg.prf",
+  "gervais/graf-dvg.prf",
+  "gervais/xtra-dvg.prf",
+  "nomad/flvr-nmd.prf",
+  "nomad/graf-nmd.prf",
+  "nomad/xtra-nmd.prf",
+  "old/flvr-xxx.prf",
+  "old/graf-xxx.prf",
+  "old/xtra-xxx.prf",
+  "shockbolt/flvr-shb.prf",
+  "shockbolt/graf-shb-dark.prf",
+  "shockbolt/graf-shb-light.prf",
+  "shockbolt/xtra-shb.prf",
+] as const;
 
 describe("the dump writers (ui-prefs.c L178-386)", () => {
   it("dump_monsters writes 0x%02X for both fields", () => {
