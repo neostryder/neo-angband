@@ -40,6 +40,17 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A mod can reshape the web keypress command table** (#259 census row 23),
+  through the `registry:menu` it already uses for other menus rather than a
+  second input registry. `core:keypress-command-table` publishes each of the 63
+  shell commands as a declarative row — label, category, original-keyset
+  binding, roguelike binding, control binding — so a mod may retitle, regroup,
+  reorder, re-tag or rebind any of them. **The runnable closure never crosses
+  that boundary**, so an invented row has no shell action and cannot execute an
+  ordinal neighbour's command by accident. The ENTER command browser now reaches
+  the same registry while keeping its upstream-shaped scrolling boxes, via a
+  `terminalPicker` seam on `selectFromMenu`.
+
 - **Region pointer input follows the painted cells** (#276, gap 21 milestone 7).
   A region owns pointer input exactly where it drew, including the cells it
   erased with `clear()`, so sight and touch obey one rule; cells nobody painted

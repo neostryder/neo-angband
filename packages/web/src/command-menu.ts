@@ -25,11 +25,15 @@
 
 import { inputEvents } from "./input-door";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
-import { menuNav } from "./overlay";
+import { menuNav, selectFromMenu } from "./overlay";
+import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_CURSOR } from "./ui-colors";
+import type { MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 
 /** One listable command: what it is called, its key, and what running it does. */
 export interface MenuCommand {
+  /** Stable source identity when this command came from the keypress table. */
+  id?: string;
   desc: string;
   /** The key in the player's current keyset, or null when it has none. */
   key: string | null;
@@ -46,6 +50,8 @@ export interface MenuCommand {
 
 /** One cmds_all list: its displayed name and its entries, in table order. */
 export interface CommandCategory {
+  /** Stable source identity, separate from the display name a mod may retitle. */
+  id?: string;
   name: string;
   commands: MenuCommand[];
 }
@@ -106,7 +112,7 @@ function rowColor(selected: boolean): string {
  */
 function runMenu(
   term: GridSurface & GridPointerInput,
-  labels: readonly string[],
+  items: readonly MenuItem[],
   box: { x0: number; y0: number; x1: number; y1: number },
   col: number,
   row: number,
@@ -116,7 +122,7 @@ function runMenu(
   return new Promise<number | null>((resolve) => {
     let cursor = 0;
     let top = 0;
-    const count = labels.length;
+    const count = items.length;
     const page = Math.max(1, Math.min(pageRows, box.y1 - row));
 
     const paint = (): void => {
@@ -132,10 +138,10 @@ function runMenu(
       if (cursor < top) top = cursor;
       if (cursor >= top + page) top = cursor - page + 1;
       for (let i = 0; i < page; i++) {
-        const label = labels[top + i];
-        if (label === undefined) break;
+        const item = items[top + i];
+        if (!item) break;
         const width = Math.max(0, Math.min(box.x1 - col, cols - 1 - col));
-        term.print(col, row + i, label.slice(0, width), rowColor(top + i === cursor));
+        term.print(col, row + i, item.label.slice(0, width), item.disabled ? UI_TEXT : rowColor(top + i === cursor));
       }
     };
 
@@ -161,15 +167,22 @@ function runMenu(
         return;
       }
       if (ev.key === "Enter") {
-        if (count > 0) finish(cursor);
+        if (count > 0 && !items[cursor]?.disabled) finish(cursor);
         return;
+      }
+      if (ev.key.length === 1) {
+        const tagged = items.findIndex((item) => item.tag === ev.key && !item.disabled);
+        if (tagged >= 0) {
+          finish(tagged);
+          return;
+        }
       }
       const nav = menuNav(ev);
       if (!nav || count === 0) return;
       /* menu_handle_keypress wraps at both ends (its is_valid_row loop turns a
        * cursor past the end into 0), the same rule the knowledge browser follows. */
-      if (nav === "up") cursor = (cursor - 1 + count) % count;
-      else if (nav === "down") cursor = (cursor + 1) % count;
+      if (nav === "up") cursor = nextEnabled(items, cursor, -1);
+      else if (nav === "down") cursor = nextEnabled(items, cursor, 1);
       else if (nav === "pageup") cursor = Math.max(0, cursor - page);
       else if (nav === "pagedown") cursor = Math.min(count - 1, cursor + page);
       else if (nav === "home") cursor = 0;
@@ -181,6 +194,44 @@ function runMenu(
     installTap();
     paint();
   });
+}
+
+function nextEnabled(items: readonly MenuItem[], from: number, direction: -1 | 1): number {
+  for (let tried = 0; tried < items.length; tried++) {
+    const next = (from + direction * (tried + 1) + items.length) % items.length;
+    if (!items[next]?.disabled) return next;
+  }
+  return from;
+}
+
+function scrollPicker(
+  term: GridSurface & GridPointerInput,
+  box: { x0: number; y0: number; x1: number; y1: number },
+  col: number,
+  row: number,
+  pageRows: number,
+  redraw: () => void,
+): (items: readonly MenuItem[]) => Promise<string | null> {
+  return async (items): Promise<string | null> => {
+    const pick = await runMenu(term, items, box, col, row, pageRows, redraw);
+    return pick === null ? null : items[pick]?.id ?? null;
+  };
+}
+
+function categoryMenuId(category: CommandCategory, fallback: number): string {
+  return category.id ?? `core:keypress-command-category:${category.name.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || fallback}`;
+}
+
+function commandListMenuId(category: CommandCategory): string {
+  return categoryMenuId(category, 0).replace("core:keypress-command-category:", "core:keypress-command:");
+}
+
+function commandItems(category: CommandCategory): MenuItem[] {
+  return category.commands.map((command, index) => ({
+    id: command.id ?? `${categoryMenuId(category, 0)}:command:${index}`,
+    label: commandEntryText(command),
+    semantic: { kind: "keypress-command", ref: command.id ?? index },
+  }));
 }
 
 /**
@@ -199,9 +250,16 @@ export async function runCommandList(
   const col = CMD_COL + 2 * level;
   const row = CMD_ROW - level;
   const box = { x0: col - 2, y0: row - 1, x1: col + 39, y1: row + CMD_ROWS };
-  const labels = category.commands.map(commandEntryText);
+  const items = commandItems(category);
   for (;;) {
-    const pick = await runMenu(term, labels, box, col, row, CMD_ROWS, redraw);
+    const pick = await selectFromMenu(
+      term,
+      commandListMenuId(category),
+      category.name,
+      items,
+      undefined,
+      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, redraw) },
+    );
     if (pick === null) return null;
     const chosen = category.commands[pick];
     if (!chosen) return null;
@@ -238,7 +296,18 @@ async function runNestedList(
     windowMake(term, parentBox.x0, parentBox.y0, parentBox.x1, parentBox.y1);
   };
   for (;;) {
-    const pick = await runMenu(term, live.map((c) => c.name), box, col, row, CMD_ROWS, under);
+    const pick = await selectFromMenu(
+      term,
+      `core:keypress-command-nested:${level}`,
+      "Commands",
+      live.map((category, index) => ({
+        id: categoryMenuId(category, index),
+        label: category.name,
+        semantic: { kind: "keypress-command-category", ref: categoryMenuId(category, index) },
+      })),
+      undefined,
+      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, under) },
+    );
     if (pick === null) return null;
     const category = live[pick];
     if (!category) return null;
@@ -264,14 +333,26 @@ export async function chooseCommand(
   const live = categories.filter((c) => c.commands.length > 0);
   if (live.length === 0) return null;
   for (;;) {
-    const gi = await runMenu(
+    const gi = await selectFromMenu(
       term,
-      live.map((c) => c.name),
-      CAT_BOX,
-      CAT_COL,
-      CAT_ROW,
-      CAT_BOX.y1 - CAT_ROW,
-      redraw,
+      "core:keypress-command-categories",
+      "Commands",
+      live.map((category, index) => ({
+        id: categoryMenuId(category, index),
+        label: category.name,
+        semantic: { kind: "keypress-command-category", ref: categoryMenuId(category, index) },
+      })),
+      undefined,
+      {
+        terminalPicker: scrollPicker(
+          term,
+          CAT_BOX,
+          CAT_COL,
+          CAT_ROW,
+          CAT_BOX.y1 - CAT_ROW,
+          redraw,
+        ),
+      },
     );
     if (gi === null) return null;
     const category = live[gi];
@@ -321,7 +402,7 @@ export function keyForKeyset(
   return key ?? null;
 }
 
-export function groupCommands<T extends { desc: string; cat: string | null }>(
+export function groupCommands<T extends { id?: string; desc: string; cat: string | null }>(
   rows: readonly T[],
   keyOf: (row: T) => string | null,
   runOf: (row: T) => () => void,
@@ -333,12 +414,13 @@ export function groupCommands<T extends { desc: string; cat: string | null }>(
     if (row.cat === null) continue;
     let cat = byName.get(row.cat);
     if (!cat) {
-      cat = { name: row.cat, commands: [] };
+      cat = { id: categoryMenuId({ name: row.cat, commands: [] }, out.length), name: row.cat, commands: [] };
       byName.set(row.cat, cat);
       out.push(cat);
     }
     const nested = nestedOf(row);
     cat.commands.push({
+      id: row.id ?? `${cat.id}:command:${cat.commands.length}`,
       desc: row.desc,
       key: keyOf(row),
       run: runOf(row),
@@ -346,4 +428,86 @@ export function groupCommands<T extends { desc: string; cat: string | null }>(
     });
   }
   return out;
+}
+
+/** The one declarative registry target for the keypress command table. */
+export const KEYPRESS_COMMAND_TABLE_ID = "core:keypress-command-table";
+
+/** The non-runnable portion of a keypress command. `act` never crosses this boundary. */
+export interface KeypressCommandRow {
+  readonly desc: string;
+  readonly cat: string | null;
+  readonly o?: string | null;
+  readonly r?: string | null;
+  readonly ctrl?: string;
+}
+
+type KeypressCommandTransformer = (
+  id: string,
+  rows: readonly MenuTransformRow[],
+) => readonly MenuTransformRow[];
+
+function keypressCommandId(index: number): string {
+  return `core:keypress-command:${index}`;
+}
+
+function keypressRows<T extends KeypressCommandRow>(commands: readonly T[]): readonly MenuTransformRow[] {
+  return commands.map((command, index) => ({
+    id: keypressCommandId(index),
+    label: command.desc,
+    semantic: {
+      kind: "keypress-command",
+      ref: index,
+      data: {
+        category: command.cat,
+        originalKey: command.o ?? null,
+        roguelikeKey: command.r ?? null,
+        roguelikeUsesOriginal: command.r === undefined,
+        controlKey: command.ctrl ?? null,
+      },
+    },
+  }));
+}
+
+function stringOrNull(
+  value: Readonly<Record<string, string | number | boolean | null>> | undefined,
+  key: string,
+  fallback: string | null,
+): string | null {
+  const next = value?.[key];
+  return typeof next === "string" || next === null ? next : fallback;
+}
+
+/**
+ * Run the actual keypress table through `registry:menu` without ever handing a
+ * mod the runnable closure. Unknown row ids have no shell action and therefore
+ * cannot become executable merely by being added to the declarative result.
+ */
+export function transformKeypressCommandTable<T extends KeypressCommandRow>(
+  commands: readonly T[],
+  transform: KeypressCommandTransformer,
+): Array<T & { id: string }> {
+  const originals = new Map(keypressRows(commands).map((row, index) => [row.id, commands[index]!]));
+  const transformed = transform(KEYPRESS_COMMAND_TABLE_ID, keypressRows(commands));
+  const output: Array<T & { id: string }> = [];
+  for (const row of transformed) {
+    const original = originals.get(row.id);
+    if (!original) continue;
+    const data = row.semantic.data;
+    const roguelikeUsesOriginal = data?.roguelikeUsesOriginal === true;
+    const roguelikeKey = roguelikeUsesOriginal
+      ? undefined
+      : stringOrNull(data, "roguelikeKey", original.r ?? null);
+    const controlKey = stringOrNull(data, "controlKey", original.ctrl ?? null);
+    output.push({
+      ...original,
+      id: row.id,
+      desc: row.label,
+      cat: stringOrNull(data, "category", original.cat),
+      o: stringOrNull(data, "originalKey", original.o ?? null),
+      ...(roguelikeKey === undefined ? {} : { r: roguelikeKey }),
+      ...(controlKey === null ? {} : { ctrl: controlKey }),
+    });
+  }
+  return output;
 }

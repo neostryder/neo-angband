@@ -549,7 +549,7 @@ import {
   modSoundBase,
 } from "./mod-resources";
 import { readStoredLocale } from "./locale-store";
-import { chooseCommand, groupCommands, keyForKeyset } from "./command-menu";
+import { chooseCommand, groupCommands, keyForKeyset, transformKeypressCommandTable } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
@@ -8096,6 +8096,8 @@ const KEYLOG_MAX = 8;
 /** keypress_to_text (ui-event.c:233) over a browser KeyboardEvent. */
 /** One row of cmds_all: what it is called, where it lives, and what runs it. */
 interface CommandRow {
+  /** Stable key for its declarative registry row; the action stays private. */
+  id?: string;
   /** cmd_info.desc (ui-game.c:116-232), verbatim. */
   desc: string;
   /** Which cmds_all list this row is in; null = a PORT ADDITION that is
@@ -8315,7 +8317,7 @@ let commandTableCache: CommandRow[] | null = null;
  * every `act` closes over module state that is not initialised until boot. */
 function commandTable(): CommandRow[] {
   commandTableCache ??= buildCommandTable();
-  return commandTableCache;
+  return transformKeypressCommandTable(commandTableCache, (id, rows) => menuRegistry.transform(id, rows));
 }
 
 function logKeypress(ev: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey">): void {
@@ -8446,6 +8448,19 @@ inputEvents.addEventListener("keydown", (ev) => {
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    /* The keypress table's one control-bound row is declarative too. Its action
+     * remains private, but a registry:menu rewrite of `controlKey` must change
+     * the real key route as well as the label the ENTER browser displays. This
+     * is before the table-external control aliases below; with no mod it is the
+     * same ^A debug branch that used to live there. */
+    const tableControl = commandTable().find(
+      (command) => command.ctrl?.toLowerCase() === ev.key.toLowerCase(),
+    );
+    if (tableControl) {
+      ev.preventDefault();
+      tableControl.act();
+      return;
+    }
     // Dig a tunnel (^T): the roguelike-keyset alias of Tunnel, whose original
     // key is the plain 'T' (ui-game.c:146 { 'T', KTRL('T') }). Roguelike 'T' is
     // Take off, so tunnel moves to ^T there; in the original keyset ^T is unbound.
@@ -8471,14 +8486,6 @@ inputEvents.addEventListener("keydown", (ev) => {
         /* player->wizard for take_hit's cheat-death gate (W2-009). */
         state.wizard = wizardMode;
       });
-      return;
-    }
-    // Debug command menu (^A, "Debug mode commands" / ui-game.c L225). Only
-    // available in wizard mode; first use runs the debug confirm + NOSCORE_DEBUG
-    // marking (15.2 / player_can_debug_prereq).
-    if (ev.key === "a" || ev.key === "A") {
-      ev.preventDefault();
-      void openModal(() => runWizardDebugMenu(wizardCtx()));
       return;
     }
     // Repeat level feeling (^F, do_cmd_feeling / ui-game.c:186): a free action.
