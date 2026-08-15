@@ -54,6 +54,26 @@ digest in the game's catalogue and must never be moved.
   because the mod that supplied them may be unreachable by the time a graphics
   mode is switched.
 
+- **The floor-stranding CONTROL test no longer fails on a busy machine.** It
+  runs 31 fixed seeds end to end through `generateLevel` and took ~1.5s alone
+  against vitest's 5s default, so a full-suite run that squeezed it lost the
+  control roughly one time in four — including once when the only source change
+  was in a package `packages/core/src/gen` cannot import. Measured before
+  changing anything: `process.cpuUsage()` around the body is flat (3.6–4.1s)
+  across concurrency levels whose wall clock spans 3.8–7.4s, every failure was
+  "Test timed out in 5000ms" with no assertion difference, and the count of
+  bodies exceeding 5000ms matched the failure count exactly. So the work is a
+  constant and the scheduling is not. Given a 20s ceiling, matching the
+  deep-profile-pool test beside it that was fixed for the same reason: under a
+  starvation harness, 12 of 36 whole-file runs failed before and 0 of 36 after,
+  and 37 of 40 failed before and 0 of 40 after at a harsher setting. The CONTROL
+  was the only test in the file that timed out in any of them, and across ten
+  full-suite runs it measured 3897-4778ms — a worst case using 96% of the
+  budget it used to be given. This one is worth
+  its own line because an intermittent CONTROL fails in both directions — a real
+  stranding regression gets dismissed as the flaky control, and a green control
+  stops being evidence the instrument works.
+
 - **A refused extension-field trespass can no longer survive inside a later
   permitted edit.** A pack writing another pack's declared `<owner>:<field>`
   must declare that owner as a dependency or optional dependency. When it does

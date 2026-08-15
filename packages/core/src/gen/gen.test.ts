@@ -611,7 +611,55 @@ describe("full level generation", () => {
     return out;
   };
 
-  it("CONTROL: faithful core strands floors, exactly as upstream 4.2.6 does", () => {
+  /* 20s, not the 5s default, and for the same reason as the deep-profile-pool
+   * test above - which is the point: this is the SECOND test in this file caught
+   * by the 5s default, and it was left behind the first time because it is the
+   * second-heaviest rather than the heaviest.
+   *
+   * Measured for #282 before changing anything, because a raised ceiling with no
+   * argument behind it is a loosened tolerance. The body is 31 generateLevel
+   * calls on 31 fixed seeds; "is deterministic for a fixed seed and depth", ~300
+   * lines up, asserts that a seed's level is a fixed object, so the WORK here is
+   * a constant. What is not constant is how long the machine takes to do it. The
+   * same body, instrumented with process.cpuUsage() around the loop, as mean
+   * over n runs:
+   *
+   *     alone            n=5    wall 1585ms (1522-1721)  cpu 2216ms (2032-2328)
+   *     12 workers       n=60   wall 4146ms (3527-4824)  cpu 3824ms (3516-4173)
+   *     20 workers       n=60   wall 5598ms (3770-7371)  cpu 3858ms (3454-4453)
+   *
+   * Between the two contended rows the CPU means are 0.9% apart while the wall
+   * means move 35%: the failure is scheduling, not work. (The step from row one
+   * to row two costs real cycles as well as real time - eight physical cores
+   * sharing cache - but that step fails nothing. The step that fails is the one
+   * where only the clock moves.) And it is a pure clock failure, never a
+   * disagreement - at 20 workers, 46 of 60 runs failed and the count of bodies
+   * whose wall exceeded 5000ms was also exactly 46, with no assertion difference
+   * in any of them. Every one reported "Test timed out in 5000ms" and nothing
+   * else. At 12 workers, 12 of 36 whole-file runs failed and the CONTROL was the
+   * only test in the file that timed out in any of the 76 whole-file runs, which
+   * is why no sibling gets a ceiling here. With this ceiling in place and the
+   * concurrency unchanged: 0 of 36, and 0 of 40 at 20 workers.
+   *
+   * What the ceiling replaces is a margin, not a safety property. Ten full-suite
+   * runs measured this body at 3897-4778ms (mean 4246ms) against the old 5000ms
+   * default - a worst case using 96% of it. None of those ten went over, so this
+   * series did not itself catch an excursion; the four sightings that opened the
+   * ticket are the evidence that it happens, and a distribution sitting that
+   * close to the bound is the evidence for why. Two tests further down this file
+   * clear 8s on every full-suite run and survive only on their 120s ceilings.
+   *
+   * That matters more than an ordinary flake because this is the CONTROL. An
+   * intermittent control fails in both directions: a real stranding regression
+   * gets waved away as "that flaky control", and a green control stops being
+   * evidence the instrument works. Vitest 4 enforces the bound on a synchronous
+   * body too - it re-checks now() - startTime after the body returns - so being
+   * sync is no protection.
+   *
+   * Note what the ceiling does NOT do: it cannot change this test's verdict.
+   * The body either completes and gives its exact answer or it does not run at
+   * all, so the bound was only ever noise. A generous one still catches a hang. */
+  it("CONTROL: faithful core strands floors, exactly as upstream 4.2.6 does", { timeout: 20_000 }, () => {
     /*
      * The wart core keeps on purpose. This is the load-bearing test of the
      * 2026-07-26 ruling ("Core must retain all warts of the reference code"): if
