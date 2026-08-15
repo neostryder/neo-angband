@@ -58,10 +58,9 @@ import type {
   PitProfile,
   SummonType,
 } from "./types.js";
-import { RF } from "../generated/index.js";
+import { RF, RSF } from "../generated/index.js";
 import { messageLookupByName } from "../sound/engine.js";
 import { attachExt } from "../mod/extension.js";
-import { rsfSize, spellIndexOf } from "./spell-registry.js";
 
 /* re-export for consumers that reach the domain through bind */
 export { MFLAG_SIZE, RF_SIZE, RSF_SIZE };
@@ -322,8 +321,8 @@ function spellFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
     for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
-      const value = spellIndexOf(name);
-      if (value < 0 || value === 0) {
+      const value = (RSF as Record<string, number>)[name];
+      if (value === undefined || value === 0) {
         throw new Error(`mon: bad monster spell flag: ${name}`);
       }
       flags.on(value);
@@ -431,8 +430,8 @@ function bindSpells(
 ): Map<number, MonsterSpell> {
   const map = new Map<number, MonsterSpell>();
   for (const rec of records) {
-    const index = spellIndexOf(rec.name);
-    if (index < 0) {
+    const index = (RSF as Record<string, number>)[rec.name];
+    if (index === undefined) {
       throw new Error(`mon: invalid spell name: ${rec.name}`);
     }
     const effects: MonsterSpellEffect[] = [];
@@ -494,14 +493,14 @@ function bindBases(
 
 /** RSF mask of innate spells (create_mon_spell_mask(RST_INNATE)). */
 function innateMask(): FlagSet {
-  const mask = new FlagSet(rsfSize());
+  const mask = new FlagSet(RSF_SIZE);
   for (const f of monSpellsOfTypes("RST_INNATE")) mask.on(f);
   return mask;
 }
 
 /** RSF mask of breath or innate spells. */
 function breathOrInnateMask(): FlagSet {
-  const mask = new FlagSet(rsfSize());
+  const mask = new FlagSet(RSF_SIZE);
   for (const f of monSpellsOfTypes("RST_BREATH", "RST_INNATE")) mask.on(f);
   return mask;
 }
@@ -513,8 +512,8 @@ function bindAltMsgs(
 ): void {
   if (!lines) return;
   for (const line of [...lines].reverse()) {
-    const index = spellIndexOf(line.spell);
-    if (index < 0 || index === 0) {
+    const index = (RSF as Record<string, number>)[line.spell];
+    if (index === undefined || index === 0) {
       throw new Error(`mon: invalid spell name in message: ${line.spell}`);
     }
     const message = line.message ?? "";
@@ -793,7 +792,7 @@ export class MonsterRegistry {
     /* depth defaults spell_power to level; spell-power overrides. */
     const spellPower = rec["spell-power"] ?? level;
 
-    const spellFlags = new FlagSet(rsfSize());
+    const spellFlags = new FlagSet(RSF_SIZE);
     if (rec.spells) {
       spellFlagsOn(spellFlags, rec.spells);
 

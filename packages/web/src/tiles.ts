@@ -35,6 +35,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import type { PackFileResolver } from "./pack-files";
+import { preloadPrefIncludes } from "./prefs-ui";
 
 // The Graphics-menu mode list, re-exported so the whole tile subsystem is
 // reachable through this module. CORE's tile sets come from the ported
@@ -297,11 +298,8 @@ export interface ModPrefText {
  * different directories and a name may exist in both. Returns null on any pack
  * fetch failure - the caller then keeps the map ASCII. Never throws.
  *
- * The pack's own include scan below and `preloadPrefIncludes` (prefs-ui.ts) are
- * two spellings of the same walk. They are not shared because prefs-ui pulls in
- * the whole overlay graph and this module is reached from the render path; if a
- * third caller appears, that is the point at which the walk moves somewhere
- * neutral rather than being spelled a third time.
+ * Pack includes use the same depth-bounded preload as mod pref resources, so a
+ * nested pack include is available to the synchronous parser just like a mod's.
  */
 export async function loadTilePrefs(
   resolve: PackFileResolver,
@@ -324,13 +322,7 @@ export async function loadTilePrefs(
   if (grafText === null) return null;
 
   // Pre-fetch every referenced include so the sync parser can resolve them.
-  const includes = new Map<string, string>();
-  for (const m of grafText.matchAll(/^%:(.+)$/gm)) {
-    const name = (m[1] ?? "").trim();
-    if (!name || includes.has(name)) continue;
-    const text = await fetchText(name);
-    if (text !== null) includes.set(name, text);
-  }
+  const includes = await preloadPrefIncludes(grafText, fetchText);
 
   const map = new TileMap();
   parseTilePrefsInto(map, grafText, {

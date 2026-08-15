@@ -30,7 +30,7 @@ import { ELEM, MON_SPELL_ENTRIES, MON_TMD, OF, PF, RSF } from "../generated/inde
 import type { RandomValue, Rng } from "../rng.js";
 import { ELEM_MAX } from "../obj/types.js";
 import type { TimedFailLike } from "../obj/object.js";
-import { rsfSize } from "./spell-registry.js";
+import { RSF_SIZE } from "./types.js";
 import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types.js";
 import type { Monster } from "./monster.js";
 import { monsterEffectLevel } from "./timed.js";
@@ -122,7 +122,7 @@ export function ignoreSpells(f: FlagSet, types: number): void {
 
 /** create_mon_spell_mask: a fresh flagset of every spell of the given type(s). */
 export function createMonSpellMask(...types: number[]): FlagSet {
-  const f = new FlagSet(rsfSize());
+  const f = new FlagSet(RSF_SIZE);
   const wanted = types.reduce((a, b) => a | b, 0);
   for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
     if ((MON_SPELL_TYPES[index]! & wanted) !== 0) f.on(index);

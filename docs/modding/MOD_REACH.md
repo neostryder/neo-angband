@@ -427,7 +427,7 @@ mod would reach through records, not code.
 | 19 | `COMMAND_INFO` faithful command table (112) | no - `ReadonlyMap`, but see the note: **parity artefact today**; its `verb` field alone is reachable (`registry:command`, `setVerb`, 2026-08-15) |
 | 20 | `MESSAGE_ENTRIES` / `MSG` (154) | **yes** (`registry:message`, 2026-08-14) |
 | 21 | `SOUND_PREF_ENTRIES` `MSG_` -> sound (149) | **yes** (`registry:message`, 2026-08-14) |
-| 22 | `MON_SPELL_ENTRIES` (93) | **yes** (`monSpells` + `declareModMonsterSpells`, #281, 2026-08-15) |
+| 22 | `MON_SPELL_ENTRIES` (93) | no — but the SAVE no longer blocks it (#269) |
 | 23 | web keypress `COMMANDS` (63) | **yes** (`registry:menu`, 2026-08-14) — `core:keypress-command-table` publishes each command's label, category and bindings; the shell keeps its runnable closure |
 | 24 | web context-menu `switch (action)` routing (6 sites) | **half**: rows yes (`registry:menu`), behaviour no |
 | 25 | web `DEBUG_MENU` (41) | no - **deep-frozen on purpose**; struck from the count, see below |
@@ -453,11 +453,10 @@ the real `buildCommandTable` declaration out of `main.ts` by AST and EVALUATES
 it, then checks all 63 labels in order, so it measures the shipped table rather
 than a copy of it. **The row also said 62 commands; the table has 63.**
 
-**24 yes, 1 half, 2 no, of 27 counted** (re-counted 2026-08-15 against the code,
+**23 yes, 1 half, 3 no, of 27 counted** (re-counted 2026-08-14 against the code,
 row by row; 28 rows are listed and row 25 is struck from the count — see the
-corrections below). Row 22 closed on 2026-08-15 (#281); rows 7, 20, 21 and 8
-closed on 2026-08-14. The tally is re-run when a row moves, which is the whole
-point of the corrections below.
+corrections below). Rows 7, 20, 21 and 8 closed on 2026-08-14 and the tally was
+re-run in the same commit, which is the whole point of the corrections below.
 Row 8a is that same day's second half; it is LISTED rather than counted, because
 it is a door into row 21 rather than a dispatch point of its own, and counting a
 door twice is exactly how this tally drifted before. This is
@@ -565,41 +564,28 @@ turns `["BR_FIRE", "HASTE"]` into `["BR_ELEC", "HOLD"]`, and the name-keyed read
 is unmoved. A round-trip test that only exercised the happy path would have
 passed against the shape this removed.
 
-**#269 left the row "no" and the tally unchanged** — it opened nothing; it
-removed the reason opening was unsafe. Appending to `MON_SPELL_ENTRIES` became
-a question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
+**Row 22 is still "no", and the tally is unchanged.** #269 opened nothing — it
+removed the reason opening was unsafe. Appending to `MON_SPELL_ENTRIES` is now a
+question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
 expressions, the spell effect and message data a new entry would need) and no
-longer a question about whether it eats saved characters. That remaining work
-is what #281 closed.
+longer a question about whether it eats saved characters.
 
-*Row 22 (`MON_SPELL_ENTRIES`) is OPEN (#281, 2026-08-15).* The name table from
-step one (`mon/spell-registry.ts`) is wired end to end:
+*Row 22, step one: the table exists, and the row is STILL "no" (#281, in
+progress, 2026-08-15).* `mon/spell-registry.ts` is the name table this row needs
+— compiled prefix, mod entries appended, `rsfMax()` / `rsfSize()` live, and
+`spellIndexOf` / `spellNameAt` as the one door. **It has no caller yet, so
+nothing about a mod's reach has changed**; recorded here rather than left
+unwritten because an unwired registry that nobody documents is precisely how row
+21 came to be counted before it worked. Do not move the tally until the binder
+resolves through it.
 
-- **Declaration step** — `mon/spell-declarations.ts` / `declareModMonsterSpells`,
-  called from `bindCore` immediately after `declareModMessageTypes` and before
-  `bindMonsters`, with `monSpells.clear()` at the head of each bind so one
-  character's mods cannot leak into the next. `CorePack.monsterSpells` is the
-  pack field (same `unknown[]` shape as `messageTypes`). Ordering is pinned by
-  `mon/spell-declarations.test.ts`.
-- **Four name→index sites** resolve through `spellIndexOf` rather than raw
-  `RSF`: `spellFlagsOn`, `bindSpells`, `bindAltMsgs` in `mon/bind.ts`, and
-  `orSpellFlags` in `gen/gen-monster.ts`.
-- **Live FlagSet sizing** — production reads of the module-captured `RSF_SIZE`
-  const are now `rsfSize()` in `gen/gen-monster.ts`, `mon/bind.ts`,
-  `mon/lore.ts`, `mon/lore-describe.ts`, `mon/lore-file.ts`, `mon/predicate.ts`,
-  `mon/spell.ts`, and `session/save.ts`. Test files that assert a fact about the
-  compiled table still import `RSF_SIZE` deliberately.
-- **`monSpellsOfTypes`** walks mod entries via `monSpells.typeAt` after the
-  compiled prefix, so `innateMask` / `breathOrInnateMask` /
-  `monsterHasNonInnateSpells` see a mod's `RST_` expression.
-- **Lore serializers** — `serializeLoreSpells` / `deserializeLoreSpells` bound
-  on `rsfMax()` and resolve through `spellNameAt` / `spellIndexOf`. A mod spell
-  name round-trips; a name this build does not have is still dropped (#269's
-  contract). Pinned by `session/lore-spells.test.ts`.
-- **End-to-end** — `mon/spell-declarations.test.ts` boots a real pack with one
-  extra `monster_spell` record and a `monsterSpells` declaration through
-  `bindCore`, and checks the race flag bit, the name round-trip, and the
-  `RST_BOLT` mask placement.
+The measured shape of what remains: `bindSpells` (`mon/bind.ts`) throws
+`mon: invalid spell name` on any name outside the generated `RSF`, so a mod's
+`monster_spell` record takes `startGame` down rather than being ignored — the
+same crash-not-gap that rows 20 and 21 turned out to be. Wiring means the four
+name→index sites, the 25 `RSF_SIZE` reads across nine files (a const captured at
+module evaluation, which is strictly before any mod exists), `monSpellsOfTypes`
+reading the live table, and the two lore serializers' `RSF.MAX` bounds.
 
 **The one number to check twice** is where a mod's first spell lands.
 `MON_SPELL_ENTRIES` has 93 rows for 91 spells, because row 0 is `RSF_NONE` and

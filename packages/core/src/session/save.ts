@@ -96,23 +96,18 @@ import type { IgnoreSettingsData } from "../obj/ignore.js";
 import { blankMonster, GROUP_MAX } from "../mon/monster.js";
 import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
 import type { MonsterLore } from "../mon/lore.js";
-import { RF_FLAG_NAMES } from "../mon/lore-file.js";
+import { RF_FLAG_NAMES, RSF_FLAG_NAMES } from "../mon/lore-file.js";
 import {
   MFLAG,
   MON_TMD,
   OF,
+  RSF,
   SQUARE_FLAG_ENTRIES,
   STAT,
   TMD,
   TRF,
 } from "../generated/index.js";
-import { MFLAG_SIZE, RF_SIZE } from "../mon/types.js";
-import {
-  rsfMax,
-  rsfSize,
-  spellIndexOf,
-  spellNameAt,
-} from "../mon/spell-registry.js";
+import { MFLAG_SIZE, RF_SIZE, RSF_SIZE } from "../mon/types.js";
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
@@ -2135,17 +2130,18 @@ export interface SavedLore {
  * The observed spell set as RSF_ names, ascending by flag number so the save is
  * byte-stable for an unchanged record.
  *
- * The bound is rsfMax() (live, including a mod's spells), not the module-load
- * RSF.MAX. spellNameAt returns null for an unknown index the same way the old
- * RSF_FLAG_NAMES array returned undefined - including the MAX sentinel when no
- * mod occupies that slot - so a non-spell never reaches the save.
+ * The bound is RSF.MAX, not "has a name": RSF_SIZE rounds up to 12 bytes, so
+ * the set has 96 addressable bits for 91 spells, and RSF_FLAG_NAMES is the
+ * INVERTED ENUM - which means index 92 reads back as the sentinel `"MAX"`.
+ * Writing that would put a non-spell in the save (and, on the way back, set a
+ * bit no spell owns), so everything at or above RSF.MAX is skipped.
  */
 export function serializeLoreSpells(spellFlags: FlagSet): string[] {
   const out: string[] = [];
   for (const flag of spellFlags) {
-    if (flag >= rsfMax()) break;
-    const name = spellNameAt(flag);
-    if (name !== null) out.push(name);
+    if (flag >= RSF.MAX) break;
+    const name = RSF_FLAG_NAMES[flag];
+    if (name !== undefined) out.push(name);
   }
   return out;
 }
@@ -2155,16 +2151,15 @@ export function serializeLoreSpells(spellFlags: FlagSet): string[] {
  * this build does not have (a mod's spell, uninstalled - or the `"MAX"`
  * sentinel) is dropped, which is how the whole scheme stays safe: an unknown
  * NAME cannot land on some other spell's bit the way an out-of-range index
- * would. spellIndexOf returns -1 for unknown, matching the existing flag > 0
- * guard's intent.
+ * would.
  */
 export function deserializeLoreSpells(
   names: readonly string[] | undefined,
 ): FlagSet {
-  const set = new FlagSet(rsfSize());
+  const set = new FlagSet(RSF_SIZE);
   for (const name of names ?? []) {
-    const flag = spellIndexOf(name);
-    if (flag > 0 && flag < rsfMax()) set.on(flag);
+    const flag = RSF_FLAG_NAMES.indexOf(name);
+    if (flag > 0 && flag < RSF.MAX) set.on(flag);
   }
   return set;
 }

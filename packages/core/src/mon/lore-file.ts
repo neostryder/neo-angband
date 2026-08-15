@@ -48,8 +48,7 @@ import { writeFlags } from "../datafile.js";
 export { writeFlags };
 import { FlagSet, flagSetall } from "../bitflag.js";
 import { RF, RSF } from "../generated/index.js";
-import { RF_SIZE } from "./types.js";
-import { rsfSize } from "./spell-registry.js";
+import { RF_SIZE, RSF_SIZE } from "./types.js";
 import type { MonsterRace } from "./types.js";
 import { loreUpdate, newMonsterLore } from "./lore.js";
 import type { LoreStore, MonsterLore } from "./lore.js";
@@ -135,7 +134,7 @@ export function writeLoreEntries(
 
     /* rsf_inter, in place, then the spell line (L1802-1805). */
     lore.spellFlags.inter(race.spellFlags);
-    out += writeFlags("spells:", lore.spellFlags, rsfSize(), RSF_NAMES);
+    out += writeFlags("spells:", lore.spellFlags, RSF_SIZE, RSF_NAMES);
 
     out += "\n";
   }
@@ -241,7 +240,7 @@ export function parseLoreFile(text: string): LoreFileParse {
           allKnown: false,
           blowTimesSeen: new Map<number, number>(),
           flags: new FlagSet(RF_SIZE),
-          spellFlags: new FlagSet(rsfSize()),
+          spellFlags: new FlagSet(RSF_SIZE),
         };
         break;
       }

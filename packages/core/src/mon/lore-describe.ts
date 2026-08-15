@@ -57,8 +57,7 @@ import {
   RST,
 } from "./spell.js";
 import type { BreathProjection } from "./spell.js";
-import { RF_SIZE } from "./types.js";
-import { rsfSize } from "./spell-registry.js";
+import { RF_SIZE, RSF_SIZE } from "./types.js";
 import type { BlowEffect, MonsterRace, MonsterSpell } from "./types.js";
 
 const SHRT_MAX = 32767;
@@ -1353,7 +1352,7 @@ function isFullyKnown(race: MonsterRace, lore: MonsterLore): boolean {
   for (let i = 0; i < RF_SIZE; i++) {
     if (!lore.flags.bits[i]) return false;
   }
-  for (let i = 0; i < rsfSize(); i++) {
+  for (let i = 0; i < RSF_SIZE; i++) {
     if (lore.spellFlags.bits[i] !== race.spellFlags.bits[i]) return false;
   }
   return true;
