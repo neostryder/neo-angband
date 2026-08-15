@@ -20,9 +20,12 @@
  *   d. FULL RESTORE - rehydrate with the mod present again empties the store and
  *      returns every entity to its collection.
  *   e. ROUND-TRIP FIDELITY - the rehydrated save deep-equals the original
- *      pre-quarantine save EXCEPT the two ratified degradations (a rehydrated
- *      monster does not rebuild group cohesion; a rehydrated equipped item
- *      returns to the pack, not the slot) - and nothing else.
+ *      pre-quarantine save EXACTLY: a rehydrated monster rejoins its group
+ *      (or the whole group comes back, if it was the group's leader), and a
+ *      rehydrated equipped item returns to its equipment slot, not just the
+ *      pack. These were both documented degradations until save-blocks.ts's
+ *      "group"/"groupMembership" orphan kinds and gearObject's equipSlots
+ *      locus closed them.
  *
  * Determinism: startGame takes a fixed seed; no wall-clock, no Math.random.
  */
@@ -177,7 +180,8 @@ const bothPresent = (): boolean => true;
  * Build a realistic "played with a mod" save: a real serialized game with one
  * frost entity injected into every id-bearing collection (live level AND the
  * frozen-level cache). Returns the original save plus the exact injected
- * payloads and the loci needed to model the two documented degradations.
+ * payloads and the loci the round-trip test asserts against (the frost
+ * group membership and the equipped slot, both now fully restored).
  */
 function buildModdedSave(): {
   original: SavedGame;
@@ -221,6 +225,14 @@ function buildModdedSave(): {
     index: frostGroupIndex,
     leader: hostMidx,
     members: [hostMidx, frostLiveMidx],
+  });
+  /* The group's LEADER is core (hostMidx), so quarantine keeps the group
+   * live and just remembers "re-add frostLiveMidx" as its own orphan -
+   * see save-blocks.ts's "groupMembership" kind. */
+  injected.push({
+    kind: "groupMembership",
+    ref: String(frostLiveMidx),
+    data: frostLiveMidx,
   });
 
   /* --- 2. A mod object held by a surviving CORE monster (appended last). --- */
@@ -393,7 +405,7 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
     }
   });
 
-  it("rehydrate fully restores the save except the two documented degradations (claims d, e)", () => {
+  it("rehydrate fully restores the save, including group cohesion and the equipped slot (claims d, e)", () => {
     const {
       original,
       hostMidx,
@@ -441,18 +453,16 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
       true,
     );
 
-    /* (e) The rehydrated save deep-equals the original EXCEPT exactly the two
-     * ratified degradations, modeled here on a clone of the original:
-     *   1. group cohesion: the frost member is not re-added to its group;
-     *   2. an equipped mod item returns to the pack, not the equipment slot.
-     * If any OTHER field differs, this toEqual surfaces it as a bug. */
-    const expected = clone(original);
-    const grp = expected.groups!.find((g) => g && g.index === frostGroupIndex)!;
-    grp.members = [hostMidx];
-    expected.player.equipment[emptySlot] = 0;
-    expected.gear.pack.push(equippedHandle);
+    /* (e) The rehydrated save deep-equals the original EXACTLY - including
+     * the frost monster rejoining its mixed group, and the equipped item
+     * landing back in its own slot rather than the pack. If any field
+     * differs, this toEqual surfaces it as a bug. */
+    const grp = rehydrated.groups!.find((g) => g && g.index === frostGroupIndex)!;
+    expect(grp.members).toEqual([hostMidx, frostLiveMidx]);
+    expect(rehydrated.player.equipment[emptySlot]).toBe(equippedHandle);
+    expect(rehydrated.gear.pack).not.toContain(equippedHandle);
 
-    expect(rehydrated).toEqual(expected);
+    expect(rehydrated).toEqual(original);
   });
 
   it("the determinism ratchet and mod bag survive a mod uninstall (step 4)", () => {

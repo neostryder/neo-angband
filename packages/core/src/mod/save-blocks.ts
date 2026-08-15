@@ -41,7 +41,12 @@
  * piles, traps, lore, created artifacts) AND the birth_levels_persist
  * frozen-level cache (save.levelCache), whose stored levels carry the same
  * monster / held-object / floor / trap collections - a mod entity frozen there
- * would otherwise reach deserializeLevelCache on load and throw (D1). Terrain
+ * would otherwise reach deserializeLevelCache on load and throw (D1). A
+ * quarantined monster's GROUP relationship and a quarantined item's EQUIPMENT
+ * SLOT are also carried as their own orphans (kinds "group"/"groupMembership",
+ * restored via the reinsert() cases of the same name) rather than dropped, so
+ * reinstalling the mod restores the group as a group and the item to the slot
+ * it was worn in, not a pack of strangers and a naked equipment array. Terrain
  * features (the chunk feat grid / legend) are deliberately NOT quarantined:
  * removing a terrain cell would tear a hole in the map, so a mod feature is a
  * separate hard-incompatibility concern, not a quarantine case. Finer
@@ -122,13 +127,23 @@ export type OrphanKind =
   | "trap"
   | "lore"
   | "artifactCreated"
+  /* A group whose LEADER was quarantined: the whole entry is frozen (not just
+   * dropped), so a mod's monster pack comes back as a pack, not loose singles.
+   * Keyed to the leader's own namespace/version - see the group-repair pass. */
+  | "group"
+  /* A plain MEMBER quarantined out of a group whose leader survived: the
+   * group entry itself is kept live and edited in place, so this just
+   * remembers "re-add this midx to that group" for when the member returns. */
+  | "groupMembership"
   /* The birth_levels_persist frozen-level cache mirrors the live level's
    * id-bearing collections (a mod entity can hide there too), so it gets its
    * own quarantine/rehydrate. These carry the cache DEPTH in their locus. */
   | "cacheMonster"
   | "cacheHeldObject"
   | "cacheFloorObject"
-  | "cacheTrap";
+  | "cacheTrap"
+  | "cacheGroup"
+  | "cacheGroupMembership";
 
 /** One quarantined entity: frozen verbatim, tagged for the stash view + rehydrate. */
 export interface OrphanEntry {
@@ -358,6 +373,10 @@ export function quarantineSave(
 
   /* --- Monsters (whole instances) + their held objects + group repair. --- */
   const removedMidx = new Set<number>();
+  /* Which namespace/version quarantined each midx, so the group-repair pass
+   * below can key a group/groupMembership orphan to the same mod that owns
+   * the monster it's tracking - see OrphanKind's "group"/"groupMembership". */
+  const removedMidxNs = new Map<number, { ns: string; version: string }>();
   const monsters = out.monsters;
   for (const [i, m] of (monsters ?? []).entries()) {
     if (!m) continue;
@@ -378,6 +397,7 @@ export function quarantineSave(
       });
       monsters![i] = null;
       removedMidx.add(m.midx);
+      removedMidxNs.set(m.midx, { ns: missing, version: versionOf(missing) });
       quarantined++;
       continue;
     }
@@ -397,11 +417,39 @@ export function quarantineSave(
       }
     }
   }
-  /* Repair groups: drop quarantined members; null a group whose leader left. */
+  /* Repair groups: a quarantined LEADER takes the whole group with it (frozen
+   * as one "group" orphan, not silently discarded, so a mod's monster pack
+   * comes back as a pack); a quarantined plain MEMBER is dropped from the
+   * live members list but remembered as a "groupMembership" orphan, since the
+   * group itself stays live and just needs that midx pushed back on return. */
   if (removedMidx.size > 0 && out.groups) {
-    out.groups = out.groups.map((g) => {
+    out.groups = out.groups.map((g, gi) => {
       if (!g) return g;
-      if (removedMidx.has(g.leader)) return null;
+      if (removedMidx.has(g.leader)) {
+        const ns = removedMidxNs.get(g.leader);
+        if (ns) {
+          stash(orphans, ns.ns, ns.version, {
+            kind: "group",
+            ref: String(g.leader),
+            data: g as unknown as JsonValue,
+            locus: gi,
+          });
+          quarantined++;
+        }
+        return null;
+      }
+      for (const mi of g.members) {
+        if (!removedMidx.has(mi)) continue;
+        const ns = removedMidxNs.get(mi);
+        if (!ns) continue;
+        stash(orphans, ns.ns, ns.version, {
+          kind: "groupMembership",
+          ref: String(mi),
+          data: mi,
+          locus: gi,
+        });
+        quarantined++;
+      }
       return { ...g, members: g.members.filter((mi) => !removedMidx.has(mi)) };
     });
   }
@@ -412,11 +460,17 @@ export function quarantineSave(
   for (const [h, o] of out.gear.store) {
     const ns = namespaceOf(o.kindId);
     if (ns !== null && !present(ns)) {
+      /* Read BEFORE player.equipment is zeroed below, so an equipped item
+       * can be put back in its own slot on return rather than only in pack. */
+      const equipSlots: number[] = [];
+      out.player.equipment.forEach((eh, si) => {
+        if (eh === h) equipSlots.push(si);
+      });
       stash(orphans, ns, versionOf(ns), {
         kind: "gearObject",
         ref: o.kindId,
         data: o as unknown as JsonValue,
-        locus: h,
+        locus: { handle: h, equipSlots },
       });
       removedHandles.add(h);
       quarantined++;
@@ -533,6 +587,7 @@ export function quarantineSave(
     for (const level of out.levelCache) {
       const depth = level.depth;
       const cacheRemovedMidx = new Set<number>();
+      const cacheRemovedMidxNs = new Map<number, { ns: string; version: string }>();
       for (let i = 0; i < level.monsters.length; i++) {
         const m = level.monsters[i];
         if (!m) continue;
@@ -553,6 +608,7 @@ export function quarantineSave(
           });
           level.monsters[i] = null;
           cacheRemovedMidx.add(m.midx);
+          cacheRemovedMidxNs.set(m.midx, { ns: missing, version: versionOf(missing) });
           quarantined++;
           continue;
         }
@@ -570,13 +626,37 @@ export function quarantineSave(
           }
         }
       }
-      /* Same group repair as the live level: drop quarantined members, null a
-       * group whose leader left. (The rehydrate degradation - a restored cache
-       * monster does not rebuild its group - is the documented live-level one.) */
+      /* Same group repair as the live level (a quarantined leader's group is
+       * frozen whole as a "cacheGroup" orphan; a quarantined plain member is
+       * remembered as a "cacheGroupMembership" orphan for that live group). */
       if (cacheRemovedMidx.size > 0) {
-        level.groups = level.groups.map((g) => {
+        level.groups = level.groups.map((g, gi) => {
           if (!g) return g;
-          if (cacheRemovedMidx.has(g.leader)) return null;
+          if (cacheRemovedMidx.has(g.leader)) {
+            const ns = cacheRemovedMidxNs.get(g.leader);
+            if (ns) {
+              stash(orphans, ns.ns, ns.version, {
+                kind: "cacheGroup",
+                ref: String(g.leader),
+                data: g as unknown as JsonValue,
+                locus: { depth, groupIndex: gi },
+              });
+              quarantined++;
+            }
+            return null;
+          }
+          for (const mi of g.members) {
+            if (!cacheRemovedMidx.has(mi)) continue;
+            const ns = cacheRemovedMidxNs.get(mi);
+            if (!ns) continue;
+            stash(orphans, ns.ns, ns.version, {
+              kind: "cacheGroupMembership",
+              ref: String(mi),
+              data: mi,
+              locus: { depth, groupIndex: gi },
+            });
+            quarantined++;
+          }
           return {
             ...g,
             members: g.members.filter((mi) => !cacheRemovedMidx.has(mi)),
@@ -654,13 +734,48 @@ function reinsert(save: SavedGame, entry: OrphanEntry): boolean {
       host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
       return true;
     }
+    case "group": {
+      if (!save.groups) return false;
+      const gi = entry.locus as number;
+      const group = entry.data as unknown as NonNullable<SavedGame["groups"]>[number];
+      if (gi >= 0 && gi < save.groups.length && save.groups[gi] === null) {
+        save.groups[gi] = group;
+      } else {
+        save.groups.push(group);
+      }
+      return true;
+    }
+    case "groupMembership": {
+      if (!save.groups) return false;
+      const groupIndex = entry.locus as number;
+      const midx = entry.data as unknown as number;
+      const group = save.groups[groupIndex];
+      if (!group) return false;
+      if (!group.members.includes(midx)) group.members.push(midx);
+      return true;
+    }
     case "gearObject": {
-      const handle = entry.locus as number;
+      const { handle, equipSlots } = entry.locus as {
+        handle: number;
+        equipSlots: number[];
+      };
       const obj = entry.data as unknown as SavedGame["gear"]["store"][number][1];
       save.gear.store.push([handle, obj]);
-      /* Return to the pack: an inert re-equip is not attempted (the slot was
-       * cleared on quarantine), so a reinstalled item comes back carried. */
-      if (!save.gear.pack.includes(handle)) save.gear.pack.push(handle);
+      /* Re-equip into the exact slot(s) it was quarantined out of, but only if
+       * nothing else has since taken that slot (still 0) - a best-effort exact
+       * restore, never displacing whatever the player equipped in the
+       * meantime. Pack and equipment are exclusive (an owned handle lives in
+       * one or the other, never both - see buildModdedSave in
+       * dehydrate-roundtrip.test.ts), so only fall back to "carried in pack"
+       * when the item was never equipped, or its slot is no longer free. */
+      let reequipped = false;
+      for (const slot of equipSlots) {
+        if (save.player.equipment[slot] === 0) {
+          save.player.equipment[slot] = handle;
+          reequipped = true;
+        }
+      }
+      if (!reequipped && !save.gear.pack.includes(handle)) save.gear.pack.push(handle);
       return true;
     }
     case "floorObject": {
@@ -721,6 +836,38 @@ function reinsert(save: SavedGame, entry: OrphanEntry): boolean {
       const host = level.monsters.find((m) => m !== null && m.midx === midx);
       if (!host) return false;
       host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
+      return true;
+    }
+    case "cacheGroup": {
+      const { depth, groupIndex } = entry.locus as {
+        depth: number;
+        groupIndex: number;
+      };
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return false;
+      const group = entry.data as unknown as (typeof level.groups)[number];
+      if (
+        groupIndex >= 0 &&
+        groupIndex < level.groups.length &&
+        level.groups[groupIndex] === null
+      ) {
+        level.groups[groupIndex] = group;
+      } else {
+        level.groups.push(group);
+      }
+      return true;
+    }
+    case "cacheGroupMembership": {
+      const { depth, groupIndex } = entry.locus as {
+        depth: number;
+        groupIndex: number;
+      };
+      const midx = entry.data as unknown as number;
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return false;
+      const group = level.groups[groupIndex];
+      if (!group) return false;
+      if (!group.members.includes(midx)) group.members.push(midx);
       return true;
     }
     case "cacheFloorObject": {

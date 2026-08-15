@@ -94,6 +94,13 @@
       "verdict": "UI - keypress routing (nav-normalised) in the equipment-compare overlay (MOD_REACH gap 23)."
     },
     {
+      "file": "packages/core/src/mod/save-blocks.ts",
+      "cases": 15,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
+    },
+    {
       "file": "packages/web/src/options.ts",
       "cases": 15,
       "hasDefault": true,
@@ -120,13 +127,6 @@
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
-    },
-    {
-      "file": "packages/core/src/mod/save-blocks.ts",
-      "cases": 11,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
     },
     {
       "file": "packages/core/src/mon/lore-file.ts",

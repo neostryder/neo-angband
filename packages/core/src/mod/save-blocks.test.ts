@@ -33,10 +33,13 @@ const manifest: SaveManifest = {
 function makeSave(): SavedGame {
   return {
     version: 2,
+    /* 40 is carried (in pack); 41 is worn (in equipment) - pack and equipment
+     * are exclusive, matching the real game's gear model (see
+     * dehydrate-roundtrip.test.ts's buildModdedSave). */
     player: { equipment: [0, 0, 41] },
     gear: {
       next: 100,
-      pack: [40, 41],
+      pack: [40],
       store: [
         [40, { kindId: "core:sword:dagger" }],
         [41, { kindId: "frost:ice-brand" }],
@@ -161,7 +164,7 @@ describe("migrateModBag", () => {
 
 describe("quarantineSave", () => {
   it("quarantines a whole mod monster and repairs its groups", () => {
-    const { save, quarantined } = quarantineSave(
+    const { save, orphans, quarantined } = quarantineSave(
       makeSave(),
       manifest,
       presentCoreOnly,
@@ -169,9 +172,19 @@ describe("quarantineSave", () => {
     /* The frost-wyrm slot is emptied; the core monsters survive. */
     expect(save.monsters![3]).toBeNull();
     expect(save.monsters![1]?.raceId).toBe("core:kobold");
-    /* Group 1 loses member 3; group 2 (frost-wyrm leader) dissolves. */
+    /* Group 1 loses member 3; group 2 (frost-wyrm leader) dissolves - in the
+     * live save. Neither is a silent loss: both are captured as orphans. */
     expect(save.groups![1]).toEqual({ index: 1, leader: 1, members: [1] });
     expect(save.groups![2]).toBeNull();
+    const frost = orphans["frost@1.2.0"] ?? [];
+    expect(frost.find((e) => e.kind === "group")?.data).toEqual({
+      index: 2,
+      leader: 3,
+      members: [3],
+    });
+    const membership = frost.find((e) => e.kind === "groupMembership");
+    expect(membership?.data).toBe(3);
+    expect(membership?.locus).toBe(1);
     expect(quarantined).toBeGreaterThan(0);
   });
 
@@ -248,7 +261,10 @@ describe("quarantineSave", () => {
     expect(restored.gear.store.some(([, o]) => o.kindId === "frost:ice-brand")).toBe(
       true,
     );
-    expect(restored.gear.pack).toContain(41);
+    /* 41 was equipped, not carried, so it returns to its slot - not the pack
+     * (pack and equipment are exclusive; see the "claim b" fix above). */
+    expect(restored.player.equipment).toEqual([0, 0, 41]);
+    expect(restored.gear.pack).toEqual([40]);
     expect(restored.monsters).toBeUndefined();
     expect(restored.floor).toBeUndefined();
     expect(restored.traps).toBeUndefined();
@@ -277,10 +293,19 @@ describe("rehydrateSave (round-trip)", () => {
     expect(restored.gear.store.some(([, o]) => o.kindId === "frost:ice-brand")).toBe(
       true,
     );
-    expect(restored.gear.pack).toContain(41);
+    /* 41 was equipped, not carried - it returns to its slot below, not pack. */
+    expect(restored.gear.pack).toEqual([40]);
     expect(restored.artifactsCreated).toContain("frost:icicle-of-doom");
     expect(restored.lore?.some(([id]) => id === "frost:frost-wyrm")).toBe(true);
     expect(restored.traps!.some((c) => c.x === 2 && c.y === 2)).toBe(true);
+    /* Groups come back as groups, not just their entities: the whole
+     * frost-wyrm-led group returns intact, and the frost-wyrm rejoins the
+     * still-live core:kobold-led group it was filtered out of. */
+    expect(restored.groups![2]).toEqual({ index: 2, leader: 3, members: [3] });
+    expect(restored.groups![1]).toEqual({ index: 1, leader: 1, members: [1, 3] });
+    /* The frost item returns to the exact slot it was equipped in, not just
+     * the pack. */
+    expect(restored.player.equipment).toEqual([0, 0, 41]);
   });
 
   it("leaves orphans quarantined while their pack is still absent", () => {
