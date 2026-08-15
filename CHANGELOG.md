@@ -60,6 +60,22 @@ digest in the game's catalogue and must never be moved.
 
 ### Changed
 
+- **The test run generates the served tilesets when they are missing, so the
+  documented local gate is the gate.** `packages/web/public/tiles` is gitignored
+  and produced by `sync-tiles.mjs`, which the root `build` (`tsc -b`) never
+  runs — only `packages/web`'s own `build`/`bundle`/`dev` do. A fresh clone that
+  followed `CLAUDE.md` exactly therefore failed `tile-catalog.test.ts` and
+  `linoleum-equivalence.test.ts` on missing art, saying nothing about the code;
+  an established checkout passed them because an earlier `bundle` had left the
+  tree behind, and CI stayed green because `ci.yml` runs `bundle` before
+  `pnpm test`. So the rule everyone was told to follow had never been the thing
+  making those tests pass. Measured both ways: with the tree removed and the
+  hook absent, `tile-catalog.test.ts` is **3 failed / 35 passed**; with the hook,
+  **38 passed** and the run reports `sync-tiles: 21 copied`. Keeping the tree
+  current stays with `sync-tiles.mjs --check` — the hook fills an absent tree and
+  deliberately does not repair a differing one, because repairing it silently
+  would hide exactly what that check exists to report.
+
 - **`applyFieldPolicy` is no longer exported from the mod SDK, and its
   provenance arguments are now required** (#285, following #157). The index did
   `export * from "./fields.js"`, so the trespass gate's implementation was
