@@ -86,8 +86,15 @@
 import type { PackManifest } from "./manifest.js";
 import { resolveLoadOrder } from "./resolve.js";
 import { expandSections } from "./sections.js";
-import { composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
-import type { FileContribution, JsonRecord, PackContent } from "./compose.js";
+import {
+  composePacks,
+  fieldProvenanceFor,
+  fieldProvenanceOf,
+  mergePatch,
+  noteFieldWrites,
+  RENAMED_HINT,
+} from "./compose.js";
+import type { FieldProvenance, FileContribution, JsonRecord, PackContent } from "./compose.js";
 import { applyFieldPatch } from "./patch.js";
 import { applyFieldPolicy, declaredFields } from "./fields.js";
 import type { ResolvedField } from "./fields.js";
@@ -279,9 +286,13 @@ function ownerOf(ref: string): string {
   return at === -1 ? "" : ref.slice(0, at);
 }
 
-/** compose.ts mayModify: a pack may only touch its own or a declared dep's records. */
+/** compose.ts mayModify: a pack may only touch its own or a declared dependency's records. */
 function mayModify(m: PackManifest, ownerPack: string): boolean {
-  return ownerPack === m.id || (m.dependencies ?? {})[ownerPack] !== undefined;
+  return (
+    ownerPack === m.id ||
+    (m.dependencies ?? {})[ownerPack] !== undefined ||
+    (m.optionalDependencies ?? {})[ownerPack] !== undefined
+  );
 }
 
 /** The four per-record op kinds, in the order composePacks applies them. */
@@ -299,6 +310,12 @@ function perRecordOps(
   }
   for (const ref of contrib.removes ?? []) out.push({ kind: "remove", ref });
   return out;
+}
+
+/** The transient key-writer sidecar for one passthrough composition. */
+interface PassthroughResult {
+  readonly records: unknown[];
+  readonly fieldProvenance: Array<FieldProvenance | undefined>;
 }
 
 const OP_VERB: Readonly<Record<OpKind, string>> = {
@@ -328,12 +345,19 @@ function applyPassthroughOps(
   providerId: string,
   baseId: string,
   refused: Refusals,
-): unknown[] {
+): PassthroughResult {
   /** Whole-file ownership with nothing layered on: the caller's array, as it was. */
-  const unmodified = (): unknown[] =>
-    providerId === baseId
-      ? (records as unknown[])
-      : records.map((r) => stampProvenance(r, providerId, [], baseId));
+  const unmodified = (): PassthroughResult => ({
+    records:
+      providerId === baseId
+        ? (records as unknown[])
+        : records.map((r) => stampProvenance(r, providerId, [], baseId)),
+    fieldProvenance: records.map((r) =>
+      typeof r === "object" && r !== null && !Array.isArray(r)
+        ? fieldProvenanceFor(r as JsonRecord, providerId)
+        : undefined,
+    ),
+  });
 
   const hasOps = ordered.some(
     (p) => p.files[file] !== undefined && perRecordOps(p.files[file] as FileContribution).length > 0,
@@ -360,6 +384,9 @@ function applyPassthroughOps(
   const spec = keySpecFor(file);
   const working: Array<JsonRecord | null> = records.map((r) =>
     typeof r === "object" && r !== null && !Array.isArray(r) ? (r as JsonRecord) : null,
+  );
+  const fieldProvenance: Array<FieldProvenance | undefined> = working.map((record) =>
+    record === null ? undefined : fieldProvenanceFor(record, providerId),
   );
 
   /* ref -> EVERY position claiming it. Kept as a list rather than resolved to a
@@ -473,18 +500,37 @@ function applyPassthroughOps(
       const at = resolve(pack, "patch", ref);
       if (at === null) continue;
       working[at] = mergePatch(working[at] as JsonRecord, body);
+      noteFieldWrites(
+        fieldProvenance[at] as FieldProvenance,
+        Object.keys(body),
+        pack.manifest.id,
+        working[at] as JsonRecord,
+      );
       modifiers[at]?.push(pack.manifest.id);
     }
     for (const [ref, body] of Object.entries(contrib.replaces ?? {})) {
       const at = resolve(pack, "replace", ref);
       if (at === null) continue;
+      const changed = new Set([...Object.keys(working[at] as JsonRecord), ...Object.keys(body)]);
       working[at] = body;
+      noteFieldWrites(
+        fieldProvenance[at] as FieldProvenance,
+        changed,
+        pack.manifest.id,
+        working[at] as JsonRecord,
+      );
       modifiers[at]?.push(pack.manifest.id);
     }
     for (const [ref, ops] of Object.entries(contrib.fieldPatches ?? {})) {
       const at = resolve(pack, "fieldPatch", ref);
       if (at === null) continue;
       working[at] = applyFieldPatch(working[at] as JsonRecord, ops);
+      noteFieldWrites(
+        fieldProvenance[at] as FieldProvenance,
+        ops.map((op) => op.path.split(".")[0] as string),
+        pack.manifest.id,
+        working[at] as JsonRecord,
+      );
       modifiers[at]?.push(pack.manifest.id);
     }
     for (const ref of contrib.removes ?? []) {
@@ -495,13 +541,15 @@ function applyPassthroughOps(
   }
 
   const out: unknown[] = [];
+  const outProvenance: Array<FieldProvenance | undefined> = [];
   working.forEach((r, i) => {
     if (removed.has(i)) return;
     out.push(
       stampProvenance(r === null ? records[i] : r, providerId, modifiers[i] ?? [], baseId, records[i]),
     );
+    outProvenance.push(fieldProvenance[i]);
   });
-  return out;
+  return { records: out, fieldProvenance: outProvenance };
 }
 
 /** Whether a passthrough file's records are name-keyed after all (mod-only file). */
@@ -571,10 +619,15 @@ export function composeContentPacks(
   const baseId = packs[0]?.manifest.id ?? "core";
 
   const out: Record<string, unknown[]> = {};
+  const keyProvenance = new Map<Record<string, unknown>, FieldProvenance>();
   for (const [file, table] of game) {
-    out[file] = [...table.values()].map((r) =>
-      stampProvenance(r.value, r.owner, r.modifiedBy, baseId, r.defined),
-    );
+    out[file] = [...table.values()].map((r) => {
+      const record = stampProvenance(r.value, r.owner, r.modifiedBy, baseId, r.defined);
+      if (typeof record === "object" && record !== null && !Array.isArray(record)) {
+        keyProvenance.set(record as Record<string, unknown>, fieldProvenanceOf(r));
+      }
+      return record;
+    });
   }
 
   /* Passthrough files, in two phases (see the header): the last provider in load
@@ -622,7 +675,26 @@ export function composeContentPacks(
       continue;
     }
 
-    out[f] = applyPassthroughOps(f, out[f] as unknown[], ordered, providerId, baseId, refused);
+    const applied = applyPassthroughOps(
+      f,
+      out[f] as unknown[],
+      ordered,
+      providerId,
+      baseId,
+      refused,
+    );
+    out[f] = applied.records;
+    applied.records.forEach((record, i) => {
+      const provenance = applied.fieldProvenance[i];
+      if (
+        provenance !== undefined &&
+        typeof record === "object" &&
+        record !== null &&
+        !Array.isArray(record)
+      ) {
+        keyProvenance.set(record as Record<string, unknown>, provenance);
+      }
+    });
   }
 
   /* THE FIELD POLICY RUNS LAST, over the composed result, because that is the
@@ -630,11 +702,12 @@ export function composeContentPacks(
    * field declared by mod A and written by a patch from mod B is legal, and
    * checking either pack in isolation would refuse it. */
   const declared = declaredFields(ordered.map((p) => p.manifest));
+  const manifests = new Map(ordered.map((p) => [p.manifest.id, p.manifest]));
   for (const [file, records] of Object.entries(out)) {
     const objects = records.filter(
       (r): r is Record<string, unknown> => r !== null && typeof r === "object" && !Array.isArray(r),
     );
-    for (const fault of applyFieldPolicy(file, objects, declared)) {
+    for (const fault of applyFieldPolicy(file, objects, declared, keyProvenance, manifests)) {
       refused.refuse(fault.packId, fault.message);
     }
   }

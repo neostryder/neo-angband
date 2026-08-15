@@ -302,6 +302,11 @@ same stroke - writing `gore:bleed` from a different mod is unambiguously an
 attempt to extend *gore's* field. It is the same rule the vocabulary registry
 already uses for terms (`gore:luck`), so there is one rule, not two.
 
+**Writing another mod's field.** To write `gore:bleed` from a mod other than
+`gore`, declare `gore` in `dependencies` or `optionalDependencies`. Otherwise
+the write is refused, the field is rolled back, and the fault names your mod;
+later edits to that field made from the refused value are rolled back too.
+
 **Why declared.** A namespaced key that no loaded mod declares is stripped at
 composition and reported by name, and so is one written onto a file the
 declaration does not list, or one whose shape does not match its `type`. The

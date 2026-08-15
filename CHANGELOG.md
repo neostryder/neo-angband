@@ -20,6 +20,14 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **A refused extension-field trespass can no longer survive inside a later
+  permitted edit.** A pack writing another pack's declared `<owner>:<field>`
+  must declare that owner as a dependency or optional dependency. When it does
+  not, composition now restores the last permitted value from before the first
+  refused write, rather than retaining a later permitted snapshot computed from
+  the trespasser's value. That deliberately rolls back later edits to the same
+  field too; their fault says so plainly.
+
 - **`EF_TELEPORT` and `EF_RECHARGE` no longer add a dice roll upstream never
   makes.** Both handlers computed `value.base + damroll(value.dice,
   value.sides)`; 4.2.6 uses `value.base` alone
