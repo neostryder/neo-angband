@@ -1463,6 +1463,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
       resolve: tileResolverFor(entry),
       menuname: entry.menuname,
       deps: { ...tileDeps, vars: playerPrefVars() },
+      modPrefTexts: modTilePrefTexts,
     });
     // Ignore a stale load if the mode changed while we were fetching.
     if (currentGrafID !== grafID) return;

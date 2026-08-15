@@ -430,6 +430,25 @@ describe("loadLinoleumPack", () => {
     expect(pool?.kind === "pool" && pool.pool.selection).toBe("index");
   });
 
+  it("layers a mod pref's synthetic tile assignment over the pack targets", async () => {
+    globalThis.fetch = serve(files);
+    const pack = await loadLinoleumPack({
+      resolve: urlBaseResolver("mods/p"),
+      menuname: "Pack P",
+      deps,
+      modPrefTexts: [
+        {
+          // Slot 2 is the pack's Farmer Maggot asset; the pack's lit FLOOR is slot 0.
+          text: "feat:FLOOR:lit:0x80:0x82",
+          includes: new Map(),
+        },
+      ],
+    });
+    const cell = tileForFeature(pack!.index.map, FLOOR_FIDX, LIGHTING.LIT);
+    expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 0, col: 2 });
+    expect(pack?.index.slots[2]).toEqual({ kind: "asset", asset: "maggot" });
+  });
+
   it("is null when the pack is not there, so the game just stays ASCII", async () => {
     globalThis.fetch = serve({});
     expect(await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps })).toBeNull();
