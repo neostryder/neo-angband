@@ -40,6 +40,19 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A renamed mod rule keeps the player's choice** (#280). Rule choices are
+  player-persisted by FLAG NAME in the host's own store, so renaming a rule flag
+  used to orphan the old key: the lookup missed, the rule fell back to its
+  declared default, and a player who had deliberately turned a fix OFF got it
+  back ON with no message. A manifest may now map retired flags to current ones
+  with `renamedRuleFlags`, and the host rewrites its saved choices when it loads
+  the enabled mod, before resolving defaults. Several old flags feeding one new
+  rule fold with **OR** — silently turning off a fix a player had on would
+  reintroduce a bug they had chosen to be rid of, which is the worse surprise.
+  An explicit choice already recorded for the new flag wins outright, and
+  consumed old keys are removed, so loading again changes nothing. A manifest
+  cannot rename a flag to itself, nor retire a flag it still declares.
+
 - **A mod can reshape the web keypress command table** (#259 census row 23),
   through the `registry:menu` it already uses for other menus rather than a
   second input registry. `core:keypress-command-table` publishes each of the 63

@@ -43,6 +43,35 @@ describe("manifest", () => {
     );
   });
 
+  it("validates retired rule flags against this manifest's current rules", () => {
+    const withRename = (renamedRuleFlags: unknown): unknown => ({
+      ...manifest("bug-fixes"),
+      rules: [{ flag: "bug-fixes.class", title: "Class", description: "", default: true }],
+      renamedRuleFlags,
+    });
+    expect(
+      validateManifest(
+        withRename({
+          "bug-fixes.atomic-a": "bug-fixes.class",
+          "bug-fixes.atomic-b": "bug-fixes.class",
+        }),
+      ).renamedRuleFlags,
+    ).toEqual({
+      "bug-fixes.atomic-a": "bug-fixes.class",
+      "bug-fixes.atomic-b": "bug-fixes.class",
+    });
+    expect(() => validateManifest(withRename([]))).toThrow(/renamedRuleFlags must be a map/);
+    expect(() => validateManifest(withRename({ "bug-fixes.atomic-a": "" }))).toThrow(
+      /must name a non-empty current rule flag/,
+    );
+    expect(() => validateManifest(withRename({ "bug-fixes.atomic-a": "bug-fixes.gone" }))).toThrow(
+      /not a declared rule/,
+    );
+    expect(() => validateManifest(withRename({ "bug-fixes.class": "bug-fixes.class" }))).toThrow(
+      /cannot rename a flag to itself/,
+    );
+  });
+
   /*
    * description is the prose the in-app mod manager puts in front of the player
    * when they highlight a mod, so it has to survive validation as-is (it is

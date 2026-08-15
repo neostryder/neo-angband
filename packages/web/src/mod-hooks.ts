@@ -130,9 +130,13 @@ function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
  * mods only. Exported for the tests, which need to prove the slicing.
  */
 export function resolveModRuleFlagsByMod(): Map<string, Record<string, boolean>> {
+  /* Loading declarations consumes any manifest-declared old flag names, so read
+   * the store only after it has done that work and before this function calls
+   * the shared resolver. */
+  const decls = loadEnabledModRuleDecls();
   const choices = defaultModStore().getRuleChoices();
   const byMod = new Map<string, Record<string, boolean>>();
-  for (const decl of loadEnabledModRuleDecls()) {
+  for (const decl of decls) {
     const flags = byMod.get(decl.modId) ?? {};
     /* One resolver for the whole host (mod-store.resolveModRules), so the flags a
      * mod is handed cannot disagree with the flags recorded on

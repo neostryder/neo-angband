@@ -12,6 +12,7 @@ import {
   ModStore,
   buildCatalog,
   consentSatisfied,
+  defaultModStore,
   isShippedMod,
   readEnabledModIds,
   resolveEnabledIds,
@@ -494,6 +495,51 @@ describe("a mod's patches exist only while its mod is enabled", () => {
     const rest = DEMO_RULES.filter((r) => r.flag !== opted);
     expect(rest.length, "set-minus-one needs a set of at least two").toBeGreaterThan(0);
     for (const { flag, on } of rest) expect(rules[flag], flag).toBe(on);
+  });
+
+  it("keeps a player's old opt-out when the enabled mod renames its rule", () => {
+    /* This deliberately starts with the browser store's OLD key, not a choices
+     * literal passed to resolveModRules. loadEnabledModRuleDecls is the real
+     * manifest/load seam, and defaultModStore().getRuleChoices is the real read
+     * immediately before the real resolver. Without a host-side migration,
+     * demo-hooks.shout falls back to its declared true default and this fails. */
+    const oldFlag = "demo-hooks.message-transform";
+    const newFlag = "demo-hooks.shout";
+    const rules = withEnabled(["demo-hooks"], () => {
+      localStorage.setItem("neo:modRuleChoices", JSON.stringify({ [oldFlag]: false }));
+      return resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
+    });
+
+    expect(rules[newFlag]).toBe(false);
+  });
+
+  it("OR-folds collapsed old flags, preserves a current choice, and stays idempotent", () => {
+    const oldA = "demo-hooks.message-transform";
+    const oldB = "demo-hooks.all-caps";
+    const newFlag = "demo-hooks.shout";
+    const result = withEnabled(["demo-hooks"], () => {
+      localStorage.setItem(
+        "neo:modRuleChoices",
+        JSON.stringify({ [oldA]: false, [oldB]: true }),
+      );
+      const folded = resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
+
+      localStorage.setItem(
+        "neo:modRuleChoices",
+        JSON.stringify({ [oldA]: true, [newFlag]: false }),
+      );
+      const decls = loadEnabledModRuleDecls();
+      const afterFirstLoad = defaultModStore().getRuleChoices();
+      const preserved = resolveModRules(decls, afterFirstLoad);
+      loadEnabledModRuleDecls();
+      const afterSecondLoad = defaultModStore().getRuleChoices();
+      return { folded, afterFirstLoad, preserved, afterSecondLoad };
+    });
+
+    expect(result.folded[newFlag]).toBe(true);
+    expect(result.afterFirstLoad).toEqual({ [newFlag]: false });
+    expect(result.preserved[newFlag]).toBe(false);
+    expect(result.afterSecondLoad).toEqual(result.afterFirstLoad);
   });
 
   it("drops the flags again when the mod goes off, but remembers the opt-out", () => {

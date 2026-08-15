@@ -618,6 +618,39 @@ export class ModStore {
     writeJson(this.storage, RULE_CHOICES_KEY, all);
   }
 
+  /**
+   * Consume retired rule-flag choices declared by an enabled mod. A current
+   * choice wins outright: it was made against the new release, so a stale old
+   * key must not clobber it. Otherwise several retired flags feeding one new
+   * flag are folded with OR.
+   */
+  migrateRuleChoices(renamedRuleFlags: Readonly<Record<string, string>>): void {
+    const choices = this.getRuleChoices();
+    const currentChoices = new Set(Object.keys(choices));
+    const folded: Record<string, boolean> = {};
+    let changed = false;
+
+    for (const [oldFlag, newFlag] of Object.entries(renamedRuleFlags)) {
+      const oldChoice = choices[oldFlag];
+      if (oldChoice === undefined) continue;
+
+      delete choices[oldFlag];
+      changed = true;
+      if (currentChoices.has(newFlag)) continue;
+
+      /* OR is intentional: silently turning OFF a fix the player had ON
+       * reintroduces a bug they had chosen to be rid of, whereas re-enabling a
+       * sibling they had off is the smaller surprise for a bug-fix mod whose
+       * defaults are all on, and they can still turn the whole class off. */
+      folded[newFlag] = (folded[newFlag] ?? false) || oldChoice;
+    }
+
+    for (const [newFlag, choice] of Object.entries(folded)) {
+      choices[newFlag] = choice;
+    }
+    if (changed) writeJson(this.storage, RULE_CHOICES_KEY, choices);
+  }
+
   /* --- Profiles ------------------------------------------------------ */
 
   getProfiles(): Record<string, ModProfile> {
