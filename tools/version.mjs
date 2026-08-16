@@ -97,7 +97,7 @@ export function versionSites() {
     {
       file: "docs/RELEASING.md",
       what: "the example push in the runbook",
-      pattern: /(git push origin master v)(\d+\.\d+\.\d+)/u,
+      pattern: /(git push origin master v)(\d+\.\d+\.\d+)()/u,
     },
   );
   return sites;
