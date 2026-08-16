@@ -255,6 +255,13 @@
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - grantCovers's dispatch on capability KIND (command/event/state/network/registry/display/ui/backup), same class as capability-describe.ts's 17-case row below: a mod cannot add a capability kind, because a kind is what the host defines. Resizing this switch is the symptom of the mod system growing a new kind (most recently backup:folder, #133), never a gap."
+    },
+    {
       "file": "packages/web/src/birth.ts",
       "cases": 8,
       "hasDefault": true,
@@ -267,6 +274,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - describeCapability's dispatch on capability KIND, the consent-text sibling of capabilities.ts's grantCovers switch above and the same reasoning as this file's own 17-case row: a mod cannot add a capability kind, so this switch resizes only when the mod system itself grows one (most recently backup:folder, #133)."
     }
   ]
 }

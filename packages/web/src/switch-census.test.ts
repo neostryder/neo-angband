@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 38 into a CLOSED vocabulary", () => {
+  it("classifies all 40 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 38 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 40 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -182,7 +182,11 @@ describe("the switch census", () => {
       "CONTROL FLOW": 3,
       DEBUG: 2,
       HOST: 4,
-      INTERNAL: 3,
+      /* 3 until #133 added backup:folder's two capability-KIND switches
+       * (capabilities.ts's grantCovers and capability-describe.ts's
+       * describeCapability) - the same class as the existing 17-case row,
+       * since a mod cannot add a capability kind either. */
+      INTERNAL: 5,
       LOCALIZATION: 3,
       PARSER: 3,
       REACHABLE: 6,
@@ -201,7 +205,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 38 dispatch points, 513 size labels", () => {
+  it("is measuring something: 40 dispatch points, 533 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
