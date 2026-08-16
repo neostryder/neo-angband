@@ -136,6 +136,35 @@ describe("parseCapability: valid forms", () => {
   });
 });
 
+describe("backup:folder (#133)", () => {
+  it("parses backup:folder as its own kind, with no domain and no wildcard", () => {
+    expect(parseCapability("backup:folder")).toEqual({
+      kind: "backup",
+      action: "folder",
+    });
+  });
+
+  it("rejects backup:file and backup:* - there is deliberately no wildcard", () => {
+    expect(() => parseCapability("backup:file")).toThrow(CapabilityError);
+    expect(() => parseCapability("backup:*")).toThrow(CapabilityError);
+  });
+
+  it("registry:* does not cover it, same as display:replace", () => {
+    const wild = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["registry:*"] }),
+    );
+    expect(wild.has("backup:folder")).toBe(false);
+  });
+
+  it("grants exactly backup:folder and nothing else", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["backup:folder"] }),
+    );
+    expect(set.has("backup:folder")).toBe(true);
+    expect(set.has("display:replace")).toBe(false);
+  });
+});
+
 describe("parseCapability: rejects garbage", () => {
   it("rejects an unknown capability kind", () => {
     expect(() => parseCapability("filesystem:read")).toThrow(CapabilityError);

@@ -103,6 +103,12 @@
  *                             NOT covered by "display:replace" and it does not
  *                             cover it, in either direction: taking the map is
  *                             not taking the vitals.
+ *  - "backup:folder"       - lets the mod write files into a folder the player
+ *                             picks; the mod never learns the folder's real
+ *                             path (the browser will not say), only that a
+ *                             write to it succeeded or failed. Its own kind,
+ *                             like "display:replace" - there is nothing to
+ *                             range over, so it has no wildcard either.
  *  - "ui:region.create"    - ADD a rectangle of your own to the player's screen
  *                             (ModPlugin.regions), rather than take one of the
  *                             game's. The only "ui:" capability whose ACTION is
@@ -135,7 +141,8 @@ export type ParsedCapability =
   | { kind: "network"; host: string }
   | { kind: "registry"; domain: string }
   | { kind: "display"; action: "replace" }
-  | { kind: "ui"; region: string; action: "replace" | "create" };
+  | { kind: "ui"; region: string; action: "replace" | "create" }
+  | { kind: "backup"; action: "folder" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -199,6 +206,13 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "display:replace") {
     return { kind: "display", action: "replace" };
   }
+  /* "backup:folder": lets the mod write files into a folder the player picks;
+   * the mod never learns the folder's real path (the browser will not say),
+   * only that a write to it succeeded or failed. Its own kind, not a registry
+   * domain: there is nothing to range over, same reasoning as display:replace. */
+  if (cap === "backup:folder") {
+    return { kind: "backup", action: "folder" };
+  }
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -260,6 +274,10 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
        * here, so a mod holding the override wildcard still cannot take the
        * display without asking for it by name. */
       return grant.kind === "display";
+    case "backup":
+      /* Exact match only, same reasoning as "display" - there is exactly one
+       * backup capability and no wildcard grant could ever cover it. */
+      return grant.kind === "backup";
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning

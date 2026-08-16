@@ -38,6 +38,7 @@ import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
 import { LAUNCH_MODULES } from "./modules.js";
 import { agentQuery } from "./agent-mode.js";
 import {
+  BACKUP_CHANNEL,
   HOST_BRIDGE_CHANNEL,
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
@@ -48,6 +49,13 @@ import {
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
+import type { BackupOp } from "./bridge-channel.js";
+import {
+  backupFolderDisplayName,
+  isBackupFileName,
+  readBackupFolder,
+  writeBackupFolder,
+} from "./backup-folder.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
 import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
 import { describeValue, formatLogLine } from "@rpgm-tools/neo-angband-core/log";
@@ -583,6 +591,61 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   installLogging();
   installUpdater();
   installModZipChannel();
+  installBackupChannel();
+}
+
+/**
+ * Ticket #133's cloud-backup folder. See BACKUP_CHANNEL's doc comment
+ * (bridge-channel.ts) for why this is a native dialog rather than the browser's
+ * `showDirectoryPicker()`.
+ *
+ * `dialog.showOpenDialog(win, ...)`, not the no-window overload: passing the
+ * window makes the native picker modal to it, matching every other dialog this
+ * process already opens (`dialog.showMessageBox(win, ...)` at the crash and
+ * load-failure sites below).
+ */
+function installBackupChannel(): void {
+  ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
+    const folder = readBackupFolder(USER_BASE);
+    switch (op as BackupOp) {
+      case "name":
+        return folder === null ? null : backupFolderDisplayName(folder);
+
+      case "choose": {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        const result = win
+          ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
+          : await dialog.showOpenDialog({ properties: ["openDirectory"] });
+        if (result.canceled || result.filePaths.length === 0) return null;
+        const chosen = result.filePaths[0] as string;
+        writeBackupFolder(USER_BASE, chosen);
+        return backupFolderDisplayName(chosen);
+      }
+
+      case "forget":
+        writeBackupFolder(USER_BASE, null);
+        return { ok: true };
+
+      case "write": {
+        const { name, text } = (arg ?? {}) as { name?: unknown; text?: unknown };
+        if (!isBackupFileName(name) || typeof text !== "string") {
+          return { ok: false };
+        }
+        if (folder === null) return { ok: false };
+        try {
+          fs.writeFileSync(path.join(folder, name), text, "utf8");
+          return { ok: true };
+        } catch {
+          /* Permission lapsed, folder removed, disk full: answered false, never
+           * thrown - the fault table's "write() resolves false without prompting". */
+          return { ok: false };
+        }
+      }
+
+      default:
+        return { ok: false, error: `unknown operation ${String(op)}` };
+    }
+  });
 }
 
 /**

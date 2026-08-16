@@ -25,6 +25,7 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 import {
+  BACKUP_CHANNEL,
   HOST_BRIDGE_CHANNEL,
   HOST_BRIDGE_GLOBAL,
   HOST_INFO_CHANNEL,
@@ -125,6 +126,22 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   archiveModZip(name: string): Promise<unknown> {
     return ipcRenderer.invoke(MOD_ZIP_CHANNEL, "archive", name) as Promise<unknown>;
+  },
+
+  /**
+   * Ticket #133's cloud-backup folder. `showDirectoryPicker()` is confirmed
+   * broken in this Electron build (see BACKUP_CHANNEL's doc comment); this is the
+   * native replacement `mod-backup.ts` calls into on the desktop platform.
+   *
+   * One operation channel, like `update`, rather than four methods: `"choose"`
+   * opens the native folder dialog and returns the chosen folder's DISPLAY NAME
+   * (never its path - the main process is the only side that ever holds that);
+   * `"name"` asks without prompting; `"forget"` clears it; `"write"` takes a
+   * LEAF file name and its text, same shape `archiveModZip` already uses for
+   * the same reason.
+   */
+  backup(op: string, arg?: unknown): Promise<unknown> {
+    return ipcRenderer.invoke(BACKUP_CHANNEL, op, arg) as Promise<unknown>;
   },
 
   /** Download progress. Returns the unsubscribe, so a closed page stops listening. */
