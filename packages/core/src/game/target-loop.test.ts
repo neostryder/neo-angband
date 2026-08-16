@@ -317,6 +317,33 @@ describe("stepTargetLoop: free-cursor direction movement", () => {
     expect(targetDirAllow("5")).toBe(5);
   });
 
+  it("targetDirAllow only maps hjkl/yubn when the roguelike keyset is live", () => {
+    expect(targetDirAllow("k")).toBe(0); // original keyset: not a direction
+    expect(targetDirAllow("k", true)).toBe(8); // roguelike: north
+    expect(targetDirAllow("h", true)).toBe(4);
+    expect(targetDirAllow("j", true)).toBe(2);
+    expect(targetDirAllow("l", true)).toBe(6);
+    expect(targetDirAllow("y", true)).toBe(7);
+    expect(targetDirAllow("u", true)).toBe(9);
+    expect(targetDirAllow("b", true)).toBe(1);
+    expect(targetDirAllow("n", true)).toBe(3);
+    expect(targetDirAllow("g", true)).toBe(0); // still unbound
+    // Digits and arrows keep working when the roguelike flag is set.
+    expect(targetDirAllow("8", true)).toBe(8);
+    expect(targetDirAllow("ArrowUp", true)).toBe(8);
+  });
+
+  it("picks the nearest interesting grid via a roguelike direction letter", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const north = addVisible(state, loc(10, 6));
+    addVisible(state, loc(14, 10));
+    const targets = targetGetMonsters(state, TARGET.KILL);
+    const ui = initTargetLoopUi(state);
+    const step = stepTargetLoop(state, targets, ui, "k", true); // north, roguelike
+    expect(step.bell).toBe(false);
+    expect(currentLoopGrid(step.ui, targets)).toEqual(north.grid);
+  });
+
   it("picks the nearest interesting grid in the pressed direction", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const north = addVisible(state, loc(10, 6));

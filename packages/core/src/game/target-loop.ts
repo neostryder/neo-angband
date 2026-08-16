@@ -29,11 +29,11 @@
  *   terrain) instead of a press-by-press walk through all of them. A player
  *   who wants full recall opens the existing lore/inventory screens.
  * - Object piles: aux_object's floor_list is scanned from the player's
- *   remembered twin chunk (square_object(player->cave, grid)); this port has
- *   no per-object known twin (game/known.ts's own ledger), so a currently
- *   SEEN grid describes the live pile (floorPile) and a remembered-but-
- *   unseen grid falls back to the knownObject glyph marker ("something" /
- *   "an object") instead of the exact remembered name/count.
+ *   remembered twin chunk (square_object(player->cave, grid)); a currently
+ *   SEEN grid describes the live pile (floorPile) and a remembered-but-unseen
+ *   grid describes game/known.ts's per-object twin (knownPile) the same way -
+ *   this used to fall back to a generic "something" / "an object" marker
+ *   before knownPile existed to name the remembered object exactly.
  * - draw_path's object/wall colours read square_object(player->cave, ...)
  *   and square_isprojectable(player->cave, ...) - the player's remembered
  *   map. The WALL half is now exact: `squareIsBelievedWall` (game/known.ts)
@@ -69,7 +69,7 @@ import { describeObject } from "./describe.js";
 import { ODESC } from "../obj/desc.js";
 import { floorPile } from "./floor.js";
 import {
-  knownObject,
+  knownPile,
   squareApparentLookInPreposition,
   squareApparentLookPrefix,
   squareApparentName,
@@ -122,9 +122,20 @@ function describeFloorAtGrid(state: GameState, grid: Loc): string | null {
     }
     return null;
   }
-  const mem = knownObject(state, grid);
-  if (!mem) return null;
-  return mem.seen ? "an object" : "something";
+  /* scan_distant_floor (obj-pile.c:1334-1359) walks the player's remembered
+   * pile (player->cave), not the live one, for an out-of-view grid - but it
+   * still names what it finds with the SAME object_desc call a currently-seen
+   * grid gets. It skips a sensed-only memory (kind unknown_item_kind: "you
+   * sense something is here" carries no further description than that) and
+   * an ignored item, same as this filter. */
+  const pile = knownPile(state, grid).filter(
+    (entry) => !entry.sensed && !state.isIgnored?.(entry.obj),
+  );
+  if (pile.length > 1) return `a pile of ${pile.length} objects`;
+  if (pile.length === 1) {
+    return describeObject(state, pile[0]!.obj, ODESC.PREFIX | ODESC.FULL);
+  }
+  return null;
 }
 
 /** The monster this description named, if any (for healthWho / lore tracking). */
@@ -340,14 +351,33 @@ export function currentLoopGrid(ui: TargetLoopUi, targets: readonly Loc[]): Loc 
     : loc(ui.x, ui.y);
 }
 
+/** Roguelike keyset direction letters (hjkl + yubn), mirroring keymap.ts's
+ * DIRS_ROGUELIKE. Duplicated rather than imported: core does not depend on
+ * the web package. */
+const ROGUELIKE_DIRS: Record<string, number> = {
+  h: 4,
+  j: 2,
+  k: 8,
+  l: 6,
+  y: 7,
+  u: 9,
+  b: 1,
+  n: 3,
+};
+
 /**
  * target_dir_allow (L95), reduced to the web's keyset: a digit 1-9 or an
- * arrow key resolves to a keypad direction, 0 otherwise. No keymaps exist on
+ * arrow key resolves to a keypad direction, 0 otherwise. When `rogueLike` is
+ * set (rogue_like_commands), the hjkl/yubn letters also resolve - upstream's
+ * keymap has already turned those into directions by the time
+ * target_dir_allow sees them (they arrive as the same keypad-direction
+ * keypresses digits and arrows do), so the port must translate them here
+ * too rather than only in ordinary movement. No keymaps otherwise exist on
  * the web, so the allow_5/allow_esc parameters never matter here - the loop
  * handles '5' and Escape directly, at the same precedence upstream gives
  * them (both are intercepted before target_dir_allow is ever called).
  */
-export function targetDirAllow(key: string): number {
+export function targetDirAllow(key: string, rogueLike = false): number {
   if (/^[1-9]$/.test(key)) return Number(key);
   switch (key) {
     case "ArrowDown":
@@ -359,6 +389,7 @@ export function targetDirAllow(key: string): number {
     case "ArrowUp":
       return 8;
     default:
+      if (rogueLike) return ROGUELIKE_DIRS[key] ?? 0;
       return 0;
   }
 }
@@ -383,6 +414,7 @@ export function stepTargetLoop(
   targets: readonly Loc[],
   ui: TargetLoopUi,
   key: string,
+  rogueLike = false,
 ): TargetLoopStep {
   const interesting = useInterestingLoopMode(ui, targets);
 
@@ -487,7 +519,7 @@ export function stepTargetLoop(
     return { ui: { ...ui, help: !ui.help }, done: false, bell: false };
   }
 
-  const dir = targetDirAllow(key);
+  const dir = targetDirAllow(key, rogueLike);
   if (!dir) {
     return { ui, done: false, bell: true };
   }
