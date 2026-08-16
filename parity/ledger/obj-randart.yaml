@@ -1,0 +1,179 @@
+module: packages/core/src/obj/randart-data.ts + randart-build.ts +
+  randart.ts (the random artifact generator)
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/obj-randart.c
+    items:
+      - artifact_power (L186) as artifactPower - builds a fake PowerObject
+        (make_fake_artifact = object_prep MAXIMISE + copy_artifact_data)
+        and calls objectPower (obj/power.ts).
+      - store_base_power (L219), count_weapon_abilities (L342),
+        count_bow_abilities (L444), count_nonweapon_abilities (L516),
+        count_modifiers (L630), count_low_resists (L764),
+        count_high_resists (L816), count_abilities (L943),
+        collect_artifact_data (L1059), rescale_freqs (L1124),
+        adjust_freqs (L1214), parse_frequencies (L1273),
+        get_base_item_tval (L1332), artifact_set_data_new (L2993) - the
+        measurement half producing the ArtifactSetData profile
+        (randart-data.ts).
+      - get_base_item (L1348), artifact_prep (L1383), build_freq_table
+        (L1505), try_supercharge (L1627), and the full add_* mutator
+        family (add_flag / resist / immunity / mod / stat / sustain /
+        low_resist / high_resist / brand / slay / damage_dice / to_hit /
+        to_dam / to_AC / weight_mod / activation L1721-L2078),
+        choose_ability (L2121), add_ability_aux (L2150),
+        remove_contradictory_activation (L2420), remove_contradictory
+        (L2530), add_ability (L2567), add_curse (L2591), make_bad (L2613)
+        - the building primitives (randart-build.ts).
+      - copy_artifact (L2676, faithful to the memcpy-then-null of
+        activation / alt_msg), artifact_gen_name (L2713), design_artifact
+        (L2751, incl. the stale-kind quirk), create_artifact_set (L2954),
+        do_randart (L3154) - the design loop and entry point (randart.ts).
+  - path: src/obj-randart.h, list-randart-properties.h
+    items:
+      - ART_IDX / RANDART_PROPERTY_ENTRIES are codegen'd
+        (generated/randart-properties.ts); MAX_TRIES / INHIBIT_STRONG
+        (one_in_(6)) / INHIBIT_WEAK (one_in_(2)) / AGGR_POWER inlined.
+notes: >-
+  doRandart(reg, seed) is pure w.r.t. the seed: it creates one quick-mode
+  Rng (upstream sets Rand_quick + seeds Rand_value), measures the
+  registry's standard set to build the generation frequencies, then
+  designs a fresh clone of every artifact into a new (Artifact|null)[],
+  leaving ObjRegistry.artifacts untouched. Fixed artifacts (The One Ring,
+  KF_QUEST_ART) are skipped and preserved. Produced by an orchestrated
+  workflow (3 sequential porter agents down the module dependency chain +
+  4 parallel adversarial fidelity auditors, all of which returned no
+  discrepancies) and then independently verified here (typecheck + the
+  determinism / integrity test suite).
+deferred:
+  - NOT DEFERRED ANY MORE, and this line said otherwise for longer than it was
+    true (PORT_TODO 5.4). artifact_gen_name's word list IS ported:
+    randname_make and build_prob are obj/randname.ts, checked against an
+    independent oracle in obj/randname.upstream.test.ts; the corpus ships as
+    names.json section 1; boot.ts:163-165 reads it into
+    CoreRegistries.nameSections (reversing each section, because init.c:1476
+    prepends); and session/game.ts:3458-3461 hands doRandart the section-1
+    list, so in-game randart names draw faithfully. The local syllable table
+    survives only as the fallback for a caller that supplies no corpus.
+  - randart.log: PORTED, all 233 emission sites (PORT_TODO 5.5, CLOSED
+    2026-08-07). "It never affects an artifact field or an RNG draw" is true
+    and was never the question -- the maintainer's disposition on 2026-08-04
+    was pursue parity, so the file is a port. do_randart opens and closes it
+    through the host (obj/randart-log.ts is the sink, one module-level static
+    because that is upstream's own shape); all 59 sites in obj-power.c and all
+    174 in obj-randart.c are written, ratcheted two-way against the C source by
+    obj/randart-log.census.test.ts so the count cannot drift in either
+    direction.
+    THE LAST ONE was invisible to that ratchet and is why this row stayed open:
+    artifact_power logs the fake artifact's own object_desc (L205-L206) with the
+    format string "%s\n", and a census matching literal spans of four characters
+    or more has nothing to match, so it was carried as UNWRITTEN_SPANLESS = 1
+    rather than hidden inside a reassuring EXPECTED_MISSING_RANDART = 0. It is
+    now written, and because no source grep can tell "emitted" from "emitted
+    wrongly", it is also asserted BEHAVIOURALLY: obj/randart.test.ts runs a real
+    generation and requires every "Evaluating" block in the log to carry a
+    non-empty description line. Verified by mutation (return an empty string:
+    the test fails).
+    What unblocked it was deleting a copy rather than adding a dependency. See
+    the make_fake_artifact row below.
+    Upstream's exit(1) on a failed open is the one deliberate divergence: the
+    message goes to the caller and generation continues, because neither
+    front end has a process to kill.
+  - make_fake_artifact (obj-make.c L728) had THREE implementations in this port
+    and now has one (2026-08-07). obj/artifact-fake.ts built a real GameObject;
+    game/spoil.ts kept a local second copy; obj/randart-data.ts kept a third,
+    makeFakeArtifactPower, which flattened the same field mapping into the
+    reduced PowerObject object_power reads. The third was the reason
+    artifact_power could not write its object_desc line -- object_desc needs a
+    whole object -- and it was also the copy that dropped copy_curses' timeout
+    roll, the divergence recorded above. Skipping object_prep is what made
+    skipping the roll look reasonable.
+    artifact_power now calls the shared builder, which made `constants` a
+    required parameter of artifactPower, storeBasePower, collectArtifactData,
+    designArtifact, createArtifactSet and doRandart -- upstream reads z_info as
+    a global, so every caller in the port has to state it. VERIFIED
+    BEHAVIOUR-PRESERVING rather than assumed: the full generated set (name,
+    tval/sval, every combat field, curses, modifiers, activation) was diffed
+    against the pre-change tree at three seeds and is byte-identical.
+    Guarded by obj/randart-fake-agreement.test.ts, which replaces the old
+    run-both-and-compare check with the property that made it unnecessary: no
+    module other than artifact-fake.ts may pair objectPrep on the MAXIMISE
+    aspect with copyArtifactData. MAXIMISE is the discriminator -- three other
+    modules pair those two calls on RANDOMISE and are make_artifact /
+    wiz_create_artifact, a different C function, so a census on the calls alone
+    would need an allowlist and would stop meaning anything.
+  - randart.txt (create_file, write_randart_entry L3040-L3215): PORTED
+    (2026-08-07). obj/randart-file.ts writes it, datafile.c's write_flags /
+    write_mods / write_elements are obj/../datafile.ts with both of their
+    upstream warts, and create_file is a REQUIRED parameter of doRandart so
+    every caller had to state its side (birth and load pass true, matching
+    player-birth.c:1286 and load.c:987; the stats harness passes false,
+    matching main-stats.c:523). All 19 file_putf(fff, ...) sites are written
+    and separately ratcheted by the TXT_SITES census.
+  - The post-generation second measurement pass (L3181-L3186): PORTED
+    (2026-08-07). Upstream measures the artifact set twice and the second
+    pass exists only for the log's closing statistics, so while randart.log
+    was full of holes there was nothing to notice its absence against.
+    Upstream leaves WHICH set implicit because create_artifact_set overwrites
+    the a_info global in place; this port generates into a fresh array, so
+    the set is now a required parameter of storeBasePower, parseFrequencies,
+    collectArtifactCounts and collectArtifactData. Guarded by three tests in
+    obj/randart.test.ts, the load-bearing one being that the second
+    store_base_power block DIFFERS from the first -- passing reg.artifacts
+    twice satisfies a count-only check and is the mistake the upstream shape
+    invites.
+  - Birth integration: PORTED. doRandart is wired into startGame through the
+    birth_randarts option (session/game.ts:2982-2989, via swapRandartSet)
+    with the seed drawn on the main stream before seed_flavor exactly as
+    player-birth.c:1285-1291 does, persisted in the save, and re-run on load
+    (game.ts:3711) as load.c:987 does. This line used to cite the
+    build-option flags (#30) as a blocker; that closed, and the citation
+    outlived it.
+  - mean / variance: PORTED for real. This line used to say they were floored
+    double arithmetic standing in for upstream's exact-rational
+    multiprecision (z-util.c L1389/L1516). They are now ported outright in
+    ../rational.ts, saturation included, and store_base_power calls them
+    through meanFloored / varianceFloored.
+  - remove_contradictory_activation (L2420): PORTED AND WIRED. This line used
+    to say it was a conservative no-op because effect_summarize_properties
+    was unported. The summarizer exists (makeActivationSummarizer) and the
+    live path supplies it -- session/game.ts:2987 passes
+    buildActivationSummarizer(pack, reg) into swapRandartSet on both the
+    birth and the load call. It stays a no-op only for a caller that supplies
+    none, which is the stats harness.
+  - FIXED 2026-08-07, and it was a live defect rather than a deferral:
+    artifact_power's fake object reaches copy_curses twice (object_prep with
+    the kind's curses, copy_artifact_data with the artifact's) and copy_curses
+    rolls randcalc(curses[i].obj->time, 0, RANDOMISE) per non-zero slot
+    (obj-curse.c:36) -- rolls that DRAW. The port skipped them because the
+    timeout never enters object_power and the standard set carries one curse;
+    both true, and beside the point, because design_artifact re-powers an
+    artifact make_bad has just cursed on every loop iteration. The streams
+    parted at the first cursed artifact, so the generated set was
+    self-consistent and not upstream's. rng is now a required parameter of
+    artifactPower. NOTE for a reader chasing a changed character: a randart
+    set is regenerated from its seed on load, so this fix changes an existing
+    birth_randarts character's artifacts -- to what 4.2.6 makes from that seed.
+  - add_brand's base-element matching reads projections[i].name (L1951) from
+    the bound table on ObjRegistry, which bindCore attaches from the pack's
+    projection.json. CLOSED 2026-08-07; this used to be a local 25-entry
+    mirror (ELEMENT_PROJ_NAMES) guarded by a test that re-derived the list
+    from reference/lib/gamedata/projection.txt. That guard proved the mirror
+    matched 4.2.6 and could not touch the cost the row itself named: a PACK
+    or MOD renaming an element would diverge at runtime, upstream ceasing to
+    match while this port carried on. A registry with no projections now
+    throws from randart rather than substituting a list, and randart.test.ts
+    renames the four base elements and asserts the generated set changes --
+    a check a mirror-reading implementation cannot pass.
+verified-by:
+  - obj/randart.test.ts (7 tests) - do_randart is deterministic (same seed
+    => identical set), seed-sensitive (different seeds differ), never
+    mutates reg.artifacts, returns a full set of valid artifacts on real
+    base kinds with sane rarity/depth (majority redesigned), and preserves
+    The One Ring; collect_artifact_data measures a sane power profile
+    (max > min, positive avg/total, base_power filled) and artifact_power
+    rates a real artifact positively.
+  - The workflow's 4 parallel adversarial auditors (measurement, mutators,
+    design loop, artifact_power integration) each reported zero fidelity
+    discrepancies against reference/src/obj-randart.c.

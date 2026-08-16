@@ -1,0 +1,36 @@
+{
+  "id": "demo-modtest",
+  "name": "Modtest Demo (deep-mod proof)",
+  "version": "1.0.0",
+  "shape": "content",
+  "dependencies": { "core": "*" },
+  "group": "content",
+  "sections": [
+    {
+      "id": "cyber-hound",
+      "title": "Grip becomes a cyber-hound",
+      "description": "Patches a core monster's name, colour and hit points.",
+      "default": true
+    },
+    {
+      "id": "slime",
+      "title": "Add the Modberry Slime",
+      "description": "Adds a brand new monster, from a `late` section so the band path is exercised too.",
+      "default": true,
+      "priority": "late"
+    }
+  ],
+  "compat": [
+    {
+      "with": "demo-hooks",
+      "claim": "prefer-mine",
+      "scope": ["cyber-hound"],
+      "because": "Both demos are about visible change; this one should be the one you see."
+    }
+  ],
+  "engine": ">=0.1.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "description": "A bundled demo content pack that proves mods reach the running game: it patches a core monster and adds a new one. Both are named SECTIONS, so it also proves a player can take half a mod, and that a section can add records as well as patch them. Disabled by default; enable with ?mods=demo-modtest."
+}

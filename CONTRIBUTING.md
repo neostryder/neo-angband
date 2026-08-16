@@ -1,159 +1,303 @@
-# Contributing to Angband
+# Contributing to Neo Angband
 
-This document is a guide to contributing to Angband.  It is largely a compilation of previous advice from various authors, updated as needed.
+Neo Angband is a modern TypeScript port of Angband 4.2.6. Thanks for helping.
+This page is the short version of how the project is built and the rules that
+keep it faithful. Read it once before your first change.
 
-## Offering your contribution to Angband
+> **Not sure yet, or stuck on something?** Come to
+> [the RPGM Tools Discord](https://discord.gg/YegtwbHTBQ) and ask. "Is this
+> worth a PR?" and "why won't this build?" are both good questions there, and
+> the answer usually arrives faster than on an issue. For anything you would
+> rather not write in public - including a security report - email
+> **strider-angband (at) rpgm.tools**; see [SECURITY.md](SECURITY.md).
+>
+> **Playing rather than building?** Everything you need is in the
+> [README](README.md), and
+> [opening an issue](https://github.com/neostryder/neo-angband/issues/new/choose)
+> needs none of what follows.
 
-When you've fixed a bug or implemented a new feature, please let us know.  The preferred way to do this is to submit a pull request on Github.
+## Prerequisites
 
-### General git knowledge
+- **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24
+  here; the two mod repositories run 22, so the `>=22` floor is exercised rather
+  than merely claimed.
+- **pnpm** `11.18.0`, the version in the root `package.json` `packageManager`
+  field. Get it with **`corepack enable pnpm`** and let that field decide - the
+  shim reads it on every run, so you never track this number by hand.
 
-git is a version control system designed to keep track of the progress of a software codebase.  This advice assumes you are using git on the command line (a terminal in Linux or MacOS, or a tool like Github's git shell for Windows).
+  Do not expect `pnpm self-update` to make the jump from 10: pnpm 11 ships a
+  different package layout, and pnpm 10 downloads it to a path it then cannot
+  find (`Failed to switch pnpm to v11.18.0 ... pnpm CLI is missing`). Once
+  `packageManager` says 11, a standalone pnpm 10 fails that way on *every*
+  command in this repo, `--help` included. `corepack enable pnpm` is the way out;
+  `npx pnpm@11.18.0 <cmd>` works in a pinch without installing anything.
 
-To create a local copy of the official angband repository, use `git clone git://github.com/angband/angband.git`.  But if you want to participate in development, it is best not to do this straight away.  Instead, get an account at ​[Github](http://github.com), go to the official angband/angband repository and click Fork. This will create a new repository at ​`https://github.com/yourlogin/angband`.  This is the one you should clone locally using `git clone git://github.com/yourlogin/angband.git`.
+This is a pnpm workspace (`pnpm-workspace.yaml`); all packages live under
+`packages/`.
 
-This will create a local repository with several branches. Use `git branch -a` to see them:
+## Setup and core commands
 
-* master
-* origin/master
-* (release branches and other things you don't need to worry about)
-
-Do NOT do your work in your master branch: this is asking for trouble.  Create a new branch using `git checkout -b newbranch`, and do your work there.  Use `git commit -a` to commit your changes to your new branch and then build and test them.
-
-Once you have tested your commits to your satisfaction, you can share them.  Assuming you have created a new branch and made your changes as described above, you can publish your changes to the world by using `git push origin newbranch` - this will make your new branch appear on Github for others to test. (It is advisable, but not essential, to use ssh keys for access to Github.)
-
-Keep your thinking clear: separate your work into different branches for different things.  Create a branch called 'docs' if you want to work on some docs.  Create one called 'stores' if you want to make changes to stores.  And so on.  There is no limit to the number of branches you can have, and you can use `git checkout branchname` to switch between branches at any time. (Ideally you should commit any changes in the current branch before switching branches, but git does not like people undoing things so read up on `git stash` if you need to switch branches and don't want to either commit or lose the current changes.)
-
-### Submitting a pull request
-
-To submit a pull request, you will need to have a Github account and a repository "forked" from the offical angband repository.  We will call the repository "yourfork" and the branch with the bugfix or new feature "yourbranch".  We assume that you have called your remote of the official repo "official".
-
-1. When you've finished and tested your work, publish it to Github using `git push origin yourbranch`.  Don't forget to rebase and fix any conflicts before pushing if necessary (`git fetch official; git rebase official/master`) - incorporating your work is much easier if it applies cleanly to the official/master branch.  Note that you must rebase before pushing, as rebase changes the commit IDs - this doesn't matter at all if the only place they exist is in your local repo. 
-
-   * Please make sure that yourbranch contains only commits you want merged to the official repository.  If you have not kept your branches separate and there are commits relating to local changes or other work in yourbranch, things will get messy.  To solve this, create a copy of master (`git checkout official/master; git checkout -b yourbranch2`) and cherry-pick the commits you actually want to offer up (this method can also be used to avoid rebase conflicts, or at least isolate which commits are causing them.)  From yourbranch2 you can use `git rebase -i yourbranch` as a sort of batch cherry-pick mechanism: it offers you a list of all the commits which are in yourbranch but not in master, and you can choose the ones to add.  Note that rebase will say "nothing to do" if yourbranch will apply cleanly (i.e. fast-forward merge) to master - so this is a good test.
-
-2. Go to your Github account in your browser and click on your fork. Don't forget to click the Branches tab and make sure you're looking at the right branch (Github will always default to the master branch).  Note that if you created yourbranch2 as described above, in order to tidy it up and offer only the right commits, then this is the one you need to look at. 
-
-3. Click the "Pull Request" button, which is up near the top-right (just below the Search box). If you don't get a screen inviting you to write a description of the pull request, something has gone wrong (maybe you were not looking at the right branch, or your push didn't work). 
-
-4. Write a description of what you're offering in the pull request. Please include details of any remaining issues (e.g. dependent on other tasks) or further related work you intend to do. Also, please include the issue number(s) (with a `#` in front of it) of any [issue](https://github.com/angband/angband/issues) that the request addresses (even if only partially).
-
-5. Click the "Send Pull Request" button.
-
-#### After you've issued the pull request
-
-Often you'll think of some important fix or change after you've submitted a pull request. Don't worry - Github handles this very cleanly.  Just commit your additional changes to the branch from which you issued the pull request (i.e. from yourbranch, or from yourbranch2 if you had to cherry-pick and tidy it up), and push again.  Github will automatically add those commits to the pull request.
-
-Please note, though, that you cannot rebase after submitting a pull request.  But that's not really your problem - once you've submitted the request, it's the Angband development team's job to review and merge it as soon as we can.  If we merge something else first, we'll fix any merge conflicts when we merge yours.
-
-After your work is merged, please don't continue working on that branch.  Even if you're continuing development of the same feature, please fetch from official/master and start a new branch from there for your next pull request (there is no limit to the number of branches you can make).  If for any reason you don't want to do this, then you must rebase your branch on official/master before pushing and offering up your next pull request.  You should use rebase instead of merging from official/master, to avoid a proliferation of merge commits.
-
-So the ideal loop is:
-
-1. `git fetch official/master`
-2. `git checkout official/master`
-3. `git checkout -b newbranch`
-4. ... do your work in newbranch ...
-5. `git fetch official/master` again (to see if it has updated while you were working) 
-   * (if it has) `git rebase official/master` (and fix any conflicts)
-6. `git push origin newbranch`
-7. Go to Github and open pull request
-8. Wait for pull request to be merged (you can push more commits while waiting)
-9. Go back to 1 and start again
-
-### General tips
-
-Don't be afraid to create and delete lots of branches.  They're totally expendable, and a new branch is a fresh start.
-
-Always update your local copy of the official repository (`git fetch official`) before pushing your work.  If possible, use `git rebase official/master` to ensure that your changes are on top of the very latest commits from the official repo - that will make them easier to merge, and is much neater than merging official branches into your branches and having the Angband development team merge them back again.  If you are nervous about trying rebase on a branch with lots of your hard work in it, create a new copy of that branch first - so if the rebase goes horribly wrong, your original branch is untouched.  Do not use rebase if you have published your branch on Github though, as this will mess up anyone who is tracking it.
-
-When submitting pull requests on Github, please ensure that you choose only the commits relevant to this request - try and avoid choosing merge commits or commits which are part of another pull request. 
-
-## Coding Guidelines
-
-This section describes what Angband code and its documentation should look like.  You may also want to read the old [Angband security guide](/src/doc/security.txt), although the default build configuration no longer uses setgid.
-
-### Rules
-
-* K&R brace style, with tabs of four spaces
-* Avoid lines over 80 characters long (not strict if there are multiple indents, but ideally they should be refactored)
-* If a function takes no parameters, it should be declared as function(void), not just as function().
-* Use const where you shouldn't be modifying a variable.
-* Avoid global variables like the plague, we already have too many.
-* Use enums where possible instead of defines, and never use magic numbers.
-* Don't use floating point.
-* Code should compile as C89 with C99 int types, and not rely on undefined behaviour.
-* Don't use the C built-in string functions, use the my_ versions instead (strcpy -> my_strcpy, sprintf -> strnfmt()).  They are safer.
-
-### Our indent style is:
-* Opening braces should be on a separate line at the start of a function, but should otherwise follow the statement which requires them ('if', 'do', 'for' et al.)
-* Closing braces for should be on separate lines, except where followed by 'while' or 'else'
-* Spaces around the mathematical, comparison, and assignment operators ('+', '-', '/', '=', '!=', '==', '>', ...).  No spaces around  increment/decrement operators ('++', '--').
-* Spaces between C identifiers like 'if', 'while' and 'for' and the opening brackets ('if (foo)', 'while (bar)', ...),
-* `do { } while ();` loops should have a newline after "do {", and the "} while ();" bit should be on the same line.
-* No spaces between function names and brackets and between brackets and function arguments (function(1, 2) instead of function ( 1, 2 )).
-* If you have an if statement whose conditionally executed code is only one statement, do not write both on the same line, except in the case of "break" or "continue" in loops.
-* `return` does not use brackets, `sizeof` does.
-* Use two indents when a functional call/conditional extends over multiple lines, not spaces.
-
-#### Example:
-```C
-    if (fridge) {
-        int i = 10;
-
-        if (i > 100) {
-            i += randint0(4);
-            bar(1, 2);
-        } else {
-            foo(buf, sizeof(buf), FLAG_UNUSED, FLAG_TIMED,
-                    FLAG_DEAD);
-        }
-      
-        do {
-            /* Only print even numbers */
-            if (i % 2) continue;
-
-            /* Be clever */
-            printf("Aha!");
-        } while (i--);
-
-        return 5;
-    }
+```sh
+pnpm install        # install the whole workspace
+pnpm build          # tsc -b: typecheck and build every package
+pnpm typecheck      # tsc -b (build is the typecheck; same command)
+pnpm test           # vitest run across all packages
+pnpm check:private  # refuse private information in a public repo (see below)
 ```
 
-Write code for humans first and execution second. Where code is unclear, comment, but e.g. the following is unneccessarily verbose and hurts readability:
-```C
-    /* Delete the object */
-    object_delete(idx);
+Enable the repository's git hooks once per clone:
+
+```sh
+git config core.hooksPath .githooks
 ```
 
-### Code modules
+That installs a `pre-commit` gate which runs `pnpm check:private` over the
+**staged** content. The same hook gates a `neo-angband-mod-*` clone if you point
+that clone's `core.hooksPath` at this one's `.githooks` - it needs no files of its
+own. See [Keeping the repository publishable](#keeping-the-repository-publishable).
 
-* You should write code as modules wherever possible, with functions and global variables inside a module with the same prefix, like "macro_".
-* If you need to initialise stuff in your module, include "init" and "free" functions and call them appropriately rather than putting module-specific stuff all over the place.
-* One day the game might not quit when a game ends, and might allow loading other games.  Keep this in mind.
+Run one area's tests by passing a path filter to the root test script:
 
-### Documentation
-
-Be careful when documenting functions to use the following design:
-```C
-    /**
-     * Provides an example of a documentation style.
-     *
-     * The purpose of the function do_something() is explained here, mentioning
-     * the name and use of every parameter (e.g. `example`).  It returns TRUE if
-     * conditions X or Y are met, and FALSE otherwise.
-     *
-     * BUG: Brief description of bug. (#12345)
-     * TODO: Feature to implement. (#54321)
-     */
-    bool do_something(void *example)
+```sh
+pnpm test packages/core          # only the core engine tests
+pnpm test packages/core/src/rng  # narrow to a file or name fragment
 ```
-#### Additional notes about the format
-* Having the brief description separated out from the remainder of the comment means that Doxygen can pull it out without needing @brief tags.
-* Variables should be referred to with surrounding backtick ('`') quotes.
-* Functions should be referred to as function_name() -- ''with'' the brackets.
-* In brief descriptions of classes and functions, use present tense (i.e. answer the question "What does this do?" with "It constructs / edits / calculates / returns...")
-* In long descriptions, use passive mood to refer to variables (i.e. "The variables are normalised." as opposed to "This normalises the variables.")
-* No UK/US spelling preference (i.e. the preference of the first commenter is adopted for that comment).
-* (from "The Elements of Style") "A sentence should contain no unnecessary words, a paragraph no unnecessary sentences, for the same reason that a drawing should have no unnecessary lines and a machine no unnecessary parts. This requires not that the writer make all his sentences short, or that he avoid all detail and treat his subjects only in outline, but that every word tell."
+
+Package-specific scripts you may need (run with `pnpm --filter <name> <script>`):
+
+- `@rpgm-tools/neo-angband-web` - `dev` (Vite dev server), `bundle` (Vite/PWA build).
+- `@rpgm-tools/neo-angband-cli` - `scenarios` (golden parity scenarios), `stats`,
+  `stats:baseline`, `spoil`.
+- `@rpgm-tools/neo-angband-content` - `compile` (build the core content pack).
+- `@rpgm-tools/neo-angband-desktop` - `start` / `dev` (Electron), `dist` (packaged app).
+- `@rpgm-tools/neo-angband-linoleum` - the `neo-linoleum` tile-pack converter.
+
+## Repository layout
+
+The full package table lives in the [README](README.md#repository-layout) and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In brief, the workspace holds:
+`core` (headless engine), `content` (Angband 4.2.6 gamedata as the core pack),
+`mod-sdk` (pack schemas, validation, tooling), `web` (web + PWA front-end),
+`cli` (terminal front-end and dev/stats harness), `desktop` (Electron wrapper),
+`linoleum` (tile-pack converter), and `borg` (the bundled autoplayer mod).
+
+## The cardinal rule: faithfulness to Angband 4.2.6
+
+The base game is a byte-faithful port of Angband 4.2.6. This is not a redesign.
+
+- The original C tree lives buildable in [`reference/`](reference/) as the
+  read-only golden-master oracle. **Never edit anything under `reference/`.**
+- Ported code cites its upstream source in doc comments as `file:line`
+  (relative to `reference/`), so any behavior can be traced back to the C that
+  it locks in.
+- When behavior and "improvement" disagree, faithfulness wins.
+
+## Faithful core vs. mods
+
+New behavior and UI-level quality-of-life do not go into the core. The base
+game stays faithful; anything that adds or changes behavior ships as a **mod**.
+
+- The base game is itself a content pack loaded through the same pipeline as
+  any third-party mod.
+- Conveniences, tweaks, and new systems live as mods - see
+  [docs/MODS.md](docs/MODS.md) and the modding guides in
+  [docs/modding/](docs/modding/).
+- The first-party `qol`, `bug-fixes` and `neo-linoleum` mods, and the `borg`
+  autoplayer, are the worked examples of this boundary. `qol` and `bug-fixes`
+  are bundled; `neo-linoleum` installs from its own repository, because its six
+  converted tile packs are the mod's art and not the game's.
+
+## Parity provenance ledger
+
+Every ported module is mapped to its upstream source in the parity ledger
+under [`parity/`](parity/README.md): one YAML file per module in
+`parity/ledger/`, pinned to the `4.2.6` baseline. Add or update an entry
+before a module's phase completes.
+
+Status vocabulary (from [parity/README.md](parity/README.md)):
+
+- `planned` - entry exists, port not started.
+- `partial` - some upstream items ported, more remain.
+- `ported` - behavior ported, not yet verified against the harness.
+- `verified` - confirmed by at least one `verified-by` harness check.
+
+New original code (UI, mod-sdk) needs no ledger entry.
+
+## Code style
+
+- **TypeScript strict** everywhere - the shared `tsconfig.base.json` turns on
+  `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`,
+  `exactOptionalPropertyTypes`, and `verbatimModuleSyntax`, among others.
+  Keep the build clean with no new errors.
+- **Formatting** per `.editorconfig`: UTF-8, LF line endings, final newline,
+  tabs at width 4 for code; 2-space indent for JSON, YAML, and Markdown.
+- **ASCII only** in source and docs - no smart quotes, no em dashes (use
+  " - "), no non-ASCII punctuation.
+- **Lint** with `pnpm lint` (ESLint + typescript-eslint, flat config in
+  `eslint.config.js`). It must report zero errors; the remaining warnings flag
+  known parity idioms and are acceptable. CI runs it as a gate.
+
+## Testing expectations
+
+- New ported behavior gets vitest coverage that cites the C lines it locks in,
+  the same way the ported code does.
+- CI (`.github/workflows/ci.yml`) runs on Node 24 and must stay green: it does
+  `pnpm build`, `pnpm lint`, the web `bundle`, `pnpm test`, and the CLI parity
+  `scenarios` as a standalone run.
+- Run `pnpm test` (and, for engine changes, `pnpm --filter @rpgm-tools/neo-angband-cli
+  scenarios`) locally before opening a pull request.
+- **Prove the test bites.** Revert your fix, confirm the new test fails, then put
+  the fix back. A test that passes either way documents nothing. (If you are
+  testing core from a web test, remember `packages/web` imports the *built*
+  core - run `npx tsc -b packages/core` first or the mutation is invisible.)
+
+## The text census
+
+`packages/cli/src/text-census.test.ts` is a CI gate on missing player-visible
+text. It reads every string literal the C hands to `msg` / `msgt` / `get_check` /
+`get_string` / `get_quantity` and fails if the port does not contain it.
+
+It exists because reviewing code does not find code that was never written: this
+port was declared complete several times and then found, by playing it, to be
+missing messages nobody could see the absence of. So if you add a message the C
+has, the gate goes quiet on its own; if you find one that is missing and *not*
+listed, that is a real find.
+
+```sh
+pnpm --filter @rpgm-tools/neo-angband-cli census    # the current list, grouped by C file
+```
+
+Everything still absent is in `KNOWN_ABSENT` with the reason - host file I/O the
+browser has no equivalent for, upstream's own malformed-gamedata diagnostics,
+dead code in the C itself, a ratified divergence, or a tracked `GAP:` with what
+it needs. The gate fails in **both** directions, so once you port a message you
+must also delete its entry.
+
+What it does not prove: that a message fires on the right event, in the right
+order, with the right message type. Presence is a floor, not parity.
+
+## The call-site census
+
+`packages/cli/src/call-census.test.ts` is the companion gate. Where the text
+census catches a message the port never says, this catches a *caller the port
+never wires*: a function that IS ported, correct and tested, whose caller does
+not exist. That is the shape of most of the bugs found by playing, because
+reviewing the ported function finds nothing wrong with it.
+
+```sh
+pnpm --filter @rpgm-tools/neo-angband-cli call-census              # tier 1, the gate
+pnpm --filter @rpgm-tools/neo-angband-cli call-census --shortfall  # + fewer-calls report
+pnpm --filter @rpgm-tools/neo-angband-cli call-census --unmatched  # + unmatched report
+```
+
+Tier 1 is "the port defines a function of this upstream name and nothing in the
+port mentions it". Everything it reports must be in `KNOWN_UNUSED` with a
+reason - `renamed` / `reduced` / `host` / `dead-in-c`, or a tracked `LEAD` that
+has not been run to ground yet. It fails in both directions, so wiring a caller
+means deleting its entry.
+
+Names are matched by stripping everything but letters and digits and
+lowercasing, so `calc_inventory` and `calcInventory` are the same key. Tiers 2
+and 3 (fewer call sites; no port symbol of that name) are reports, not gates -
+too much of both is legitimate shape difference.
+
+## Keeping the repository publishable
+
+This repository is public, and a small set of strings must never appear in it:
+the maintainer's legal name, work email or employer, private project codenames,
+paths inside the private workspace, and absolute paths that name a machine's
+user account. All of them are natural things to type while working - a code
+comment attributing a decision, a hardcoded tool path in a throwaway script -
+which is exactly why the rule needs a machine behind it.
+
+```sh
+node tools/private-scan.mjs            # every tracked file (the CI gate)
+node tools/private-scan.mjs --staged   # what is about to be committed (the hook)
+```
+
+Two rule tiers, in `tools/private-scan.mjs`:
+
+- **Always** - terms with no legitimate use here. Any hit fails.
+- **Baselined** - terms that ARE legitimate in specific places and private
+  elsewhere. One codename is also upstream Angband content: it is a syllable in
+  `names.txt` and part of an artifact description in `artifact.txt`, both of which
+  the port mirrors verbatim. Likewise an absolute path under a user profile is a
+  leak in a build script and a perfectly good invented test fixture. These are
+  accounted for per file, with a count and a reason, in
+  `tools/private-scan-baseline.json`.
+
+  (This section deliberately does not spell those terms out - it would trip the
+  scan it is describing, and baselining the documentation would put noise in the
+  file that is supposed to hold only real exceptions.)
+
+The baseline fails in **both** directions: an unlisted occurrence fails, and so
+does an entry that no longer matches. A one-way allowlist keeps passing long
+after the thing it excused is gone, and then quietly excuses whatever moved into
+the same file. Raising a count is a deliberate act - say why in the entry.
+
+`reference/**` is exempt: it is upstream Angband, vendored verbatim and never
+edited. `tools/private-scan*` is exempt too, because it has to contain the
+patterns in order to test for them - a real hole, stated rather than hidden.
+
+### The two gates cover different things
+
+`packages/cli/src/private-scan.test.ts` runs the whole-tree scan in CI, and also
+plants deliberately-bad fixtures to prove the detector still bites - a scanner
+broken to always pass would satisfy a clean-tree assertion on its own.
+
+But the whole-tree scan asks `git ls-files`, so **a brand-new file is invisible
+to it** until that file is committed - and for a public repository, "committed
+and pushed" is already too late. The `pre-commit` hook reads the staged blobs, so
+it is the only gate that sees a new file in time. Measured, not assumed: a
+fixture naming the private workspace was reported clean by the tree scan and
+caught by the hook, in the same working state. Both were correct.
+
+So neither substitutes for the other. The hook still needs enabling per clone and
+`git commit --no-verify` walks past it; the CI scan is what catches whatever got
+in around it, later.
+
+### The mod repositories use this same scanner
+
+`neo-angband-mod-*` are public too, and the terms leak into them for the same
+reasons. They do **not** get a copy of the scanner: two copies of a rule list
+drift, and the copy that quietly stops matching is the one nobody opens. Both
+gates reach them from here.
+
+The hook needs no file in the mod repository at all - point `core.hooksPath` at
+this checkout, once per clone:
+
+```sh
+git config core.hooksPath /path/to/neo-angband/.githooks
+```
+
+The hook resolves the scanner relative to itself and passes the repository being
+committed to as `--root`. If it cannot find the scanner it **fails the commit**
+rather than exiting 0: a hook that silently passes reports success forever, and
+the first anyone hears of it is after the leak.
+
+For CI, a mod repository's workflow uses the composite action, which pins the
+action and the scanner to one ref because GitHub checks this whole repository out
+to run it:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: neostryder/neo-angband/.github/actions/private-scan@master
+```
+
+Scanning another tree by hand:
+
+```sh
+node tools/private-scan.mjs --root ../neo-angband-mod-linoleum
+```
+
+The rules are shared; the **baseline is per-root**
+(`<root>/tools/private-scan-baseline.json`), because what is legitimately
+present differs by repository. A `--root` that is not a directory is refused
+outright - falling back to this repository would report a pass for a tree nobody
+asked about.
+
+## Attribution
+
+Neo Angband is built and maintained by neostryder at RPGM Tools. It is a
+community port; all honor to the upstream Angband maintainers and contributors
+whose work this builds on.

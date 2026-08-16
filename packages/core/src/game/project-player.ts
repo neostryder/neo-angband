@@ -1,0 +1,244 @@
+/**
+ * The project_p driver, ported from reference/src/project-player.c (Angband
+ * 4.2.6): project_p (L800). The player-side counterpart of project_m.
+ *
+ * It applies a projection's damage to the player: resolve seen/blind, adjust
+ * the damage for resistance / immunity / vulnerability (adjust_dam), scale
+ * self-inflicted damage, apply the player's damage reduction, and deal it with
+ * take_hit - then run the per-type side effects and any extra damage they add.
+ * It implements the onPlayer seam of project() (world/project.ts).
+ *
+ * The damage core is fully portable (adjust_dam, player_apply_damage_reduction
+ * and take_hit are ported). The per-PROJ-type side effects
+ * (project_player_handler_*) are heavily entangled with subsystems not yet
+ * modelled - inven_damage (inventory, #20), EF_DRAIN_STAT (#18), player_exp_lose
+ * (experience) - so they are injected as the onSideEffects hook, the same seam
+ * discipline as the project_m driver's deferred consequences. The killer name
+ * (monster_desc / trap name / "yourself") is resolved by the caller, since it
+ * needs the monster-description and trap systems.
+ */
+
+import { PROJ, TMD } from "../generated/index.js";
+import { locEq } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { ELEM_MAX } from "../obj/types.js";
+import {
+  playerApplyDamageReduction,
+  takeHit,
+} from "../player/take-hit.js";
+import type {
+  DamageReduction,
+  TakeHitHooks,
+  TakeHitTarget,
+} from "../player/take-hit.js";
+import { adjustDam } from "../world/projection.js";
+import type { ProjectionInfo } from "../world/projection.js";
+
+/** The player state project_p reads and damages. */
+export interface PlayerProjActor extends TakeHitTarget {
+  /** el_info[type].res_level (3 immune, -1 vulnerable, >0 resist). */
+  resistLevel(type: number): number;
+  /** state.dam_red / state.perc_dam_red. */
+  reduction: DamageReduction;
+  /**
+   * minus_ac(p) (obj-gear.c L376-438): attempt to damage a worn armour piece to
+   * an acid hit, returning whether acid damage should be halved. This is a
+   * callback, not a flag, because it has the armour-damage side effect and must
+   * fire exactly once per acid projection (project-player.c L69), so project_p
+   * calls it only inside adjust_dam's PROJ_ACID branch.
+   */
+  minusAc: () => boolean;
+}
+
+/** The projection source, resolved for the player driver. */
+export interface ProjectPlayerSource {
+  /** origin.what == SRC_PLAYER. */
+  isPlayer: boolean;
+  /** origin.what == SRC_MONSTER. */
+  isMonster: boolean;
+  /**
+   * origin.which.monster (midx), 0 when the source is not a monster. This is
+   * `cave->mon_current` for the side-effect handlers: player_inc_check gates
+   * update_smart_learn and "You resist the effect!" on it (player-timed.c:941,
+   * :946-952), so without it a breath could learn a rune but never teach the
+   * caster or say anything.
+   */
+  monster?: number;
+  /** Whether the source monster is visible (false hides the source). */
+  monsterVisible?: boolean;
+  /** The kb_str death cause ("yourself", a monster/trap name, "a bug"). */
+  killer: string;
+  /** origin_get_loc(origin): the projection's start grid (FORCE centre). */
+  grid?: Loc;
+  /** origin.what == SRC_TRAP (FORCE jitters an on-the-trap centre). */
+  isTrap?: boolean;
+}
+
+/** Context passed to the per-type side-effect hook (upstream handler context). */
+export interface ProjectPlayerSideContext {
+  origin: ProjectPlayerSource;
+  /** Distance from the blast centre. */
+  r: number;
+  grid: Loc;
+  /** The adjusted (and self-scaled) damage the handler may key effects off. */
+  dam: number;
+  typ: number;
+  /** Monster spell power (0 for non-monster sources). */
+  power: number;
+  /** Mutable: the handler clears it if the effect was not obvious. */
+  obvious: boolean;
+}
+
+/** The consequences the driver defers to the caller. */
+export interface ProjectPlayerHooks {
+  /** msg(). */
+  message?: (text: string) => void;
+  /** disturb(p). */
+  onDisturb?: () => void;
+  /**
+   * The per-PROJ-type player handler: inven damage, timed effects, stat / exp
+   * drain, etc. Returns extra damage to apply (after damage reduction).
+   */
+  onSideEffects?: (ctx: ProjectPlayerSideContext) => number;
+  /** take_hit consequences (onDeath, combatRegen, ...). */
+  takeHit?: TakeHitHooks;
+  /** OPT(player, show_damage). */
+  showDamage?: boolean;
+  /**
+   * update_smart_learn(mon, player, 0, 0, typ) (project-player.c L852): the
+   * source monster learns the player's resist to this projection type. Injected
+   * (not done in the driver) because it needs the live monster and derived
+   * player state, and the driver is deliberately state-free. The engine
+   * (updateSmartLearn, mon/spell.ts) gates every action - and every RNG draw -
+   * on birth_ai_learn, so with the option off this is a pure no-op.
+   */
+  smartLearn?: (typ: number) => void;
+  /**
+   * equip_learn_element(p, res_type) from adjust_dam(actual=true)
+   * (project-player.c L60-62): being hit by an element teaches the player the
+   * resist rune on worn gear that mitigated it (res_type is the ICE->COLD
+   * remapped type). No RNG. Injected because it needs the live player + runeEnv.
+   */
+  equipLearnElement?: (resType: number) => void;
+}
+
+/** Everything the per-grid player driver needs. */
+export interface ProjectPlayerCtx {
+  rng: Rng;
+  actor: PlayerProjActor;
+  /** The player's grid (square_isplayer check). */
+  playerGrid: Loc;
+  projections: readonly ProjectionInfo[];
+  origin: ProjectPlayerSource;
+  /** Monster spell power, passed to the side-effect handler. */
+  power: number;
+  hooks: ProjectPlayerHooks;
+}
+
+/**
+ * project_p for one grid: affect the player (if they are in `grid`) with
+ * projection `typ` for `dam` damage at distance `dist`. `self` allows the
+ * caster to be hit by their own projection (self damage is scaled down).
+ * Returns whether the effect was obvious. Suitable as the onPlayer hook of
+ * project().
+ */
+export function projectPlayer(
+  pctx: ProjectPlayerCtx,
+  dist: number,
+  grid: Loc,
+  dam: number,
+  typ: number,
+  self: boolean,
+): boolean {
+  const { rng, actor, hooks, origin } = pctx;
+
+  const blind = actor.timed[TMD.BLIND]! > 0;
+  let seen = !blind;
+
+  /* The "decoy has been hit" branch (project-player.c L822) runs before the
+   * player-here check; it is applied at the cast layer (project-cast.ts
+   * castProjection onPlayer wrapper), which has the live GameState and the
+   * decoy grid, since this driver is deliberately state-free. */
+
+  /* No player here. */
+  if (!locEq(grid, pctx.playerGrid)) return false;
+
+  /* Don't affect the projector unless explicitly allowed. */
+  if (origin.isPlayer && !self) return false;
+
+  /* A projection from an unseen monster is not seen. */
+  if (origin.isMonster && origin.monsterVisible === false) seen = false;
+
+  /* "Monster sees what is going on": the source monster learns the player's
+   * resist to this projection type (update_smart_learn, project-player.c L852).
+   * Called here in the faithful position - inside the SRC_MONSTER branch, before
+   * the blind message and adjust_dam - so the engine's birth_ai_learn RNG draws
+   * keep upstream order. The binding to the live monster / player state is
+   * injected (game/project-cast.ts) because this driver is state-free. */
+  if (origin.isMonster) hooks.smartLearn?.(typ);
+
+  /* Let the player know what is going on when they cannot see it. */
+  if (!seen) {
+    const bd = pctx.projections[typ]?.blindDesc ?? "something";
+    hooks.message?.(`You are hit by ${bd}!`);
+  }
+
+  /* Adjust damage for resistance/immunity/vulnerability (ICE uses COLD res). */
+  const resType = typ === PROJ.ICE ? PROJ.COLD : typ;
+  /* adjust_dam(actual=true) (project-player.c L60-62): learn the mitigating
+   * resist rune. Fired before the immune short-circuit, exactly as upstream. */
+  if (resType < ELEM_MAX) hooks.equipLearnElement?.(resType);
+  const resLevel = typ < ELEM_MAX ? actor.resistLevel(resType) : 0;
+  /* minus_ac(p) is consulted only inside adjust_dam's PROJ_ACID branch, after
+   * the immune short-circuit (project-player.c L65-70); calling it here fires
+   * the armour-damage side effect exactly when upstream's does. resLevel 3 is
+   * immune (RESIST_IMMUNE), which returns 0 before minus_ac in the C. */
+  const acidMinusAc =
+    typ === PROJ.ACID && resLevel !== 3 ? actor.minusAc() : false;
+  let d = adjustDam(
+    rng,
+    pctx.projections,
+    typ,
+    dam,
+    "randomise",
+    resLevel,
+    acidMinusAc,
+  );
+
+  if (d) {
+    /* Self-inflicted damage is scaled down. */
+    if (self) d = Math.trunc(d / 10);
+
+    /* Damage reduction affects only the dealt damage, not the side effects. */
+    const reduced = playerApplyDamageReduction(actor, actor.reduction, d);
+    if (reduced > 0 && hooks.showDamage) {
+      hooks.message?.(`You take ${reduced} damage.`);
+    }
+    takeHit(actor, reduced, origin.killer, hooks.takeHit);
+  }
+
+  /* Handle side effects, possibly including extra damage. */
+  const sideCtx: ProjectPlayerSideContext = {
+    origin,
+    r: dist,
+    grid,
+    dam: d,
+    typ,
+    power: pctx.power,
+    obvious: true,
+  };
+  if (!actor.isDead && hooks.onSideEffects) {
+    let xtra = hooks.onSideEffects(sideCtx);
+    xtra = playerApplyDamageReduction(actor, actor.reduction, xtra);
+    if (xtra > 0 && hooks.showDamage) {
+      hooks.message?.(`You take an extra ${xtra} damage.`);
+    }
+    takeHit(actor, xtra, origin.killer, hooks.takeHit);
+  }
+
+  /* Disturb */
+  hooks.onDisturb?.();
+
+  return sideCtx.obvious;
+}

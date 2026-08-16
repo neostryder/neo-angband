@@ -1,0 +1,50 @@
+module: packages/core/src/mon/take-hit.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/mon-util.c
+    items:
+      - mon_take_hit (L1264): inflict player damage on a monster. Wakes it and
+        clears MON_TMD_HOLD on a non-fatal blow, reveals a camouflaged mimic,
+        breaks the player's cover tracks once damage is dealt, subtracts hp, and
+        either kills the monster (hp < 0) or rolls fear. Returns whether the
+        monster died and whether it was newly frightened.
+      - monster_wake (L686): clear MON_TMD_SLEEP (message per the notify flag)
+        and set MFLAG_AWARE with the given percentage chance.
+      - monster_scared_by_damage (L1137): pain reduces, cancels, or newly causes
+        fear; the low-hp and half-current-hp fright rolls with their duration
+        formula. Returns true only when the hit newly frightens the monster.
+notes: >-
+  The shared "a monster is hurt" primitive that project_m, melee, ranged, and
+  the effect handlers all route damage through, so death / fear / waking are
+  identical regardless of the damage source. The heavy player-facing
+  consequences are injected as hooks (MonTakeHitHooks): onKill
+  (player_kill_monster - experience, drops, death messages, uniqueness, quests),
+  becomeAware (become_aware mimic reveal), and coverTracksBroken (clearing the
+  player's TMD_COVERTRACKS). This mirrors the project() driver's hook pattern so
+  the damage / fear / wake logic ships and is tested independently of routines
+  that land with the effect and command layers. Integer maths match upstream
+  (the percentage floor, the randint rolls). monsterCanBeScared is called with
+  the default group size 1 (monster groups are not tracked yet), matching a lone
+  monster exactly.
+deferred:
+  - "NOT deferred: onKill is supplied by the live session (session/game.ts
+    wires it to state.onPlayerKill) and player_kill_monster's consequences -
+    experience, drops, lore, quest completion - all run from there. The hook is
+    the seam, not a placeholder."
+  - "The arena branch is NOT omitted: MonTakeHitHooks.onArenaDeath is the
+    mon-util.c L1290 behaviour (a lethal blow in single combat signals the
+    level change instead of killing) and game callers pass it while
+    state.arenaLevel is set (PORT_TODO 4.1). PR_HEALTH has no analogue - the
+    renderer is immediate-mode - but state.healthWho is tracked."
+  - "NOT deferred: melee routes through monTakeHit. combat/melee.ts calls it
+    for both the ordinary blow and the shield bash, and game/effect-melee.ts
+    for the melee effects. Nothing applies damage inline in player-turn.ts any
+    more."
+verified-by:
+  - mon/take-hit.test.ts: monsterWake clears sleep and sets AWARE; a non-fatal
+    blow wakes, clears Hold, and reduces hp; a fatal blow runs onKill and
+    reports death; a monster survives at exactly zero hp; cover tracks break
+    only when damage is dealt; a camouflaged mimic is revealed via becomeAware;
+    a NO_FEAR monster is never frightened; and monster_scared_by_damage cures
+    small fear while only reducing larger fear on light pain.

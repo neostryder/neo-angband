@@ -1,0 +1,43 @@
+{
+  "file": "ui_entry_renderer",
+  "source": "lib/gamedata/ui_entry_renderer.txt",
+  "records": [
+    {
+      "name": "char_screen1_resist_renderer",
+      "code": "COMPACT_RESIST_RENDERER_WITH_COMBINED_AUX",
+      "colors": "wwwwwwGGGrrGGGwGrGwwrwWWWWWWGGGrrGGGWGrGWWrW",
+      "labelcolors": "swBrgwBrwBwBr",
+      "symbols": "?..+-*!^.=.%%%~!=%~+=~"
+    },
+    {
+      "name": "char_screen1_flag_renderer",
+      "code": "COMPACT_FLAG_RENDERER_WITH_COMBINED_AUX",
+      "colors": "wwwwGWWWWG",
+      "labelcolors": "swBw",
+      "symbols": "?..+!"
+    },
+    {
+      "name": "char_screen1_flag_with_cancel_renderer",
+      "code": "COMPACT_FLAG_WITH_CANCEL_RENDERER_WITH_COMBINED_AUX",
+      "colors": "wwwwwGwwGGwWWWWWGWWGGW",
+      "labelcolors": "swwwwBw",
+      "symbols": "?..+-!+-=.-"
+    },
+    {
+      "name": "char_screen1_numeric_as_sign_renderer",
+      "code": "NUMERIC_AS_SIGN_RENDERER_WITH_COMBINED_AUX",
+      "colors": "wwwGowGowGoWWWGoWGoWGo",
+      "labelcolors": "swwwBBBrrr",
+      "symbols": "?....+!+--="
+    },
+    {
+      "name": "char_screen1_stat_mod_renderer",
+      "code": "NUMERIC_RENDERER_WITH_BOOL_AUX",
+      "colors": "sdsgGgrRsdsgGgrR",
+      "labelcolors": "wwwwwww",
+      "symbols": "? .s*=",
+      "ndigit": 1,
+      "sign": "NO_SIGN"
+    }
+  ]
+}

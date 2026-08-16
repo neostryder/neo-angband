@@ -1,0 +1,115 @@
+module: packages/core/src/session/save.ts (+ saveGame / loadGame / changeLevel
+  in session/game.ts)
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/save.c, src/load.c
+    items:
+      - The savefile CONTENT model, in the port's JSON format (PORT_PLAN.md
+        decision 9 replaces the C binary blocks by design). Serialized, per
+        upstream semantics - the player (wr_player; every stat, hp/sp/exp,
+        timed array, spell flags and learn order, equipment handles, object
+        knowledge), the gear (wr_gear), the dungeon squares (wr_dungeon:
+        features, square info flags, light, occupancy), monsters
+        (wr_monsters: race, timed, flags, target, group info), traps
+        (wr_traps: kind, power, timeout, instance flags), floor objects
+        (wr_objects, pile order preserved), monster groups, the turn.
+      - wr_randomizer / rd_randomizer: the RNG state is persisted and
+        restored EXACTLY (Rng.getState/setState) - the anti-save-scum
+        posture of decisions 16/22: reloading resumes the same stream, so
+        a reload-and-reroll yields nothing new (pinned by test).
+      - References are stored as registry indices/names (kidx / eidx /
+        aidx / ridx / trap tidx / race+class names) and re-resolved against
+        the pack on load; kind-owned data (effect chains, messages,
+        activations) re-points at the bound kind.
+      - wr_monster_memory / rd_monster_memory: SavedGame.lore carries the
+        WHOLE monster-memory record per race (upstream saves only
+        pkills/thefts and keeps the rest in the user lore file; the JSON
+        save carries both, so memory survives reload). Optional - older
+        saves load with no memory. The player's target is NOT persisted,
+        as upstream.
+  - path: src/game-world.c, src/player-util.c
+    items:
+      - dungeon_change_level + prepare_next_level: StartedGame.changeLevel
+        generates a fresh level at the target depth FROM THE GAME'S OWN RNG
+        STREAM and swaps it into the same GameState object (chunk, monsters,
+        groups, floor, traps), so every installed command keeps working; the
+        player lands on the new level's spot, groups rebuild, floor piles
+        and traps instantiate, FOV refreshes. state.targetDepth carries the
+        destination (stairs +-1, trapdoors +1, EF_TELEPORT_LEVEL's choice
+        via the wired teleport.changeLevel seam).
+notes: >-
+  serializeGame produces plain JSON (proven by a JSON.stringify/parse round
+  trip in the tests); encodeSavedGame/decodeSavedGame wrap it in the
+  save/integrity.ts stamp (decision 16b) - a failed digest still loads but
+  reports verified=false (warn-and-label, not a lock). loadGame rebinds the
+  pack, restores every entity store, recomputes the derived combat state
+  from the restored player and gear (calc_bonuses), and rewires the
+  commands through the same wireGame used by startGame. The web front end
+  saves to localStorage ('S' and on every level change), resumes with
+  ?continue=1, and deletes the save on death (decision 16: death is
+  terminal). Noise/scent heatmaps are transient (upstream does not save
+  them either - known upstream issue 4605); they rebuild on the next turn.
+notes-mod-lifecycle: >-
+  Mid-game mod add/update/remove (decision 19, MOD_LIFECYCLE). loadGame ALWAYS
+  reconciles the save's mod-lifecycle blocks against the packs present now:
+  quarantineSave(rehydrateSave(saveIn, present), manifest, present) - it
+  rehydrates orphans whose pack has returned, then quarantines live entities
+  whose defining pack is now missing, so the deserializers only ever see ids the
+  present packs can resolve (game.ts ~L2599). The reconciliation is keyed
+  entirely off `present`, the set of namespaces the bound pack can resolve.
+  Robustness of each mid-game path: (1) a live rule toggle writes
+  state.modRules[flag] and modRuleEnabled reads it live, and every core guard's
+  disabled path is byte-faithful (only make_artifact draws under a guard, and it
+  short-circuits before any draw - see rng.yaml / obj-make.yaml); (2) enable /
+  disable / version-change of a whole mod routes through an autosave + reload,
+  and the reload's loadGame reconciles as above; (3) the bugfix.noiseScentSave
+  serialization-format flag is SELF-DESCRIBING on load (chunk.restoreSquares
+  reads the noise/scent arrays only when the save carried them, never off the
+  live flag), so a format written under one flag value loads correctly after the
+  flag changes across a mod add/remove; (4) per-mod private save bags and the
+  determinism ratchet survive an uninstall verbatim. WIRING FIX: the web host
+  must pass `present` = core + every enabled CONTENT mod namespace
+  (pack.presentNamespaces(), derived from the same activePackSet the pack is
+  composed from); it previously hardcoded core-only at the load call site, which
+  would have quarantined a still-enabled content mod's live world entities on the
+  first reload after enabling it. Bundled mods (qol / bug-fixes / neo-linoleum /
+  Borg) add no save-serialized content ids, so the bug was latent, but it is the
+  exact add-a-content-mod-mid-game hazard.
+deferred:
+  - "NOT deferred: the web host keeps a character ROSTER with one slot per
+    character, migrates legacy single-slot saves into it on first boot, and the
+    title screen switches between them - so the quit-to-title flow exists too.
+    Save SLOTS are a host concern and this ledger covers the format, which is
+    what carries them."
+  - "All three ARE saved now. SavedGame.stores carries every shop's current
+    stock (wr_stores, save.c:744-765); a monster's held pile round-trips as
+    heldObj and its mimicked object as mimickedObj, with the object side
+    carrying heldMIdx / mimickingMIdx so the links restore."
+  - "The mod loader landed and so did this: SavedGame.manifest is the
+    SaveManifest, carrying the pack set, the resolved load order and the
+    core-owned determinism mode the save was written with."
+  - "NOT deferred (PORT_TODO 4.3): birth_levels_persist is honoured and its
+    frozen-level cache is part of the format - SavedGame.levelCache serializes
+    every StoredLevel (wr_chunks, save.c:1001), and a save written with the
+    option off, or before the key existed, loads unchanged."
+verified-by:
+  - session/save.test.ts (6 tests) - a mid-game Mage save restores the
+    player (hp/sp/gold/spells/equipment), the derived combat state, every
+    dungeon square, every monster (timed/flags/groups verified), floor
+    piles, traps and gear exactly; the RNG stream resumes identically
+    across repeated loads (anti-scum pin); a restored game keeps playing;
+    stamped bytes verify and a flipped byte fails verification; descending
+    stairs regenerates a deeper level in place through the loop
+    (LEVEL_CHANGE -> changeLevel) and keeps playing; a save on a deeper
+    level round-trips its depth.
+  - Browser-verified: 'S' writes the stamped save to localStorage and
+    ?continue=1 resumes it and plays on with no console errors.
+  - mod/dehydrate-roundtrip.test.ts (4 tests): the full quarantine/rehydrate
+    lifecycle over a real modded save proves loadGame drops to a loadable
+    vanilla state when a content mod is removed and fully restores it when the
+    mod returns (the mid-game remove/re-add reconciliation math).
+  - web/mid-game-mods.test.ts: pins the host wiring - presentNamespaces() always
+    includes core, is core-only on a fresh (no-mod) install, and includes an
+    enabled content mod's namespace so loadGame keeps its live content instead of
+    quarantining it.

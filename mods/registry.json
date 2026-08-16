@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "Neo Angband recommended mods",
+  "about": "A curated list of mod REPOSITORIES, and nothing else. Every fact about a mod - its name, what it does, which versions exist, which builds of the game it works with - comes from that mod's own repository when the game looks it up. This file only says where to look. Anyone can point the game at their own list of the same shape, or install a single repository by URL, without going through here.",
+  "mods": [
+    { "repo": "neostryder/neo-angband-mod-qol" },
+    { "repo": "neostryder/neo-angband-mod-bug-fixes" },
+    { "repo": "neostryder/neo-angband-mod-linoleum" },
+    { "repo": "neostryder/neo-angband-mod-borg" }
+  ]
+}

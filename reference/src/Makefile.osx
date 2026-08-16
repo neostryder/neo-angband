@@ -1,0 +1,230 @@
+# File: Makefile.osx
+
+# This is a Makefile for the Mac OS X Cocoa port of Angband.
+
+# default target
+all: install
+
+# settings
+CC = clang
+LD = ld
+OPT ?= -O2
+
+# for consistency with older versions, use a lower case bundle ID
+BUNDLE_IDENTIFIER = org.rephial.angband
+
+ARCHS = x86_64 arm64
+ARCHFLAGS = $(addprefix -arch ,$(ARCHS))
+OSXVERSFLAGS = -mmacosx-version-min=10.9
+WARNINGS = -W -Wall -Wextra -Wno-unused-parameter \
+	-Wno-missing-field-initializers -Wwrite-strings -Wmissing-prototypes \
+	-Wnested-externs -Wshadow -Wunused-macros
+JUST_C = -std=c99
+OBJ_CFLAGS = -std=c99 -x objective-c -fobjc-arc
+CFLAGS = -g -I. $(WARNINGS) $(OPT) -DMACH_O_CARBON -DSOUND -DALLOW_BORG -DHAVE_MKSTEMP \
+	-fno-stack-protector $(OSXVERSFLAGS) $(ARCHFLAGS)
+LIBS = -framework Cocoa
+# Fix for bug #1663: Set the deployment target via environment variable
+# for the final link command. See http://grauonline.de/wordpress/?p=71
+# or http://stackoverflow.com/questions/5509885/creating-app-for-old-mac-from-new-mac-machine
+DEPLOYMENT_TARGET = MACOSX_DEPLOYMENT_TARGET=10.9
+
+# Import user prefs
+# If you don't want to edit this file, put your module redefinitions
+# and build flags in "./config"
+-include config
+
+# Check for autoconf.h; do not warn on nonexistence
+autoconf= $(wildcard autoconf.h)
+ifneq ($(autoconf),)
+CFLAGS += -DHAVE_CONFIG_H
+endif
+
+# Note that Makefile.inc sets VERSION, and so we must run version.sh after including Makefile.inc
+include Makefile.inc
+
+APPNAME = $(NAME).app
+EXE = $(PROGNAME)
+
+# For CFBundleShortVersionString and CFBundleVersion in Info.plist, Apple wants
+# up to three integers separated by periods.  Versions given by version.sh
+# can have extra stuff beyond that so use VERSION as set by Makefile.inc
+# for the bundle identifiers.  Use the result of version.sh for the build ID
+# compiled into the rest of the code and in the package file name.
+BUNDLE_VERSION := ${VERSION}
+VERSION := $(shell ../scripts/version.sh)
+ifeq (${VERSION},)
+	VERSION := unknown
+else
+	CFLAGS += -DBUILD_ID=${VERSION}
+endif
+
+# Include snd-cocoa.o in $(EXE).o rather than OSX_OBJS to avoid linking errors
+# with the unit test cases.
+OBJS = $(BASEOBJS) cocoa/snd-cocoa.o
+OSX_OBJS = main-cocoa.o
+
+
+
+#
+# Build the "Angband" program
+#
+
+
+$(PROGNAME).a: $(OBJS)
+	@libtool -static -o $@ $(OBJS)
+
+$(EXE): $(PROGNAME).a $(OSX_OBJS)
+	$(DEPLOYMENT_TARGET) $(CC) $(CFLAGS) $(LDFLAGS) -o $(EXE) $(OSX_OBJS) $(PROGNAME).a $(LIBS)
+
+#
+# Clean up old junk; $(EXE).o and $(addprefix $(EXE).o,$(ARCHS)) are relics
+# and are only there to clean up intermediates left by previous versions of
+# this Makefile
+#
+
+clean:
+	-$(RM) $(OBJS) $(OSX_OBJS) $(PROGNAME).a $(EXE) $(addprefix $(EXE).o.,$(ARCHS)) $(EXE).o
+
+
+#
+# Basic build rules and dependencies
+#
+
+%.o : %.m
+	@printf "%10s %-20s (objective-c)\n" CC $<
+	@$(CC) $(CFLAGS) $(OBJ_CFLAGS) -c -o $@ $<
+%.o : %.c
+	@printf "%10s %-20s\n" CC $<
+	@$(CC) $(JUST_C) $(CFLAGS) -c -o $@ $<
+
+
+#
+# Installation.
+# Application bundle -- a directory looking like an ordinary application
+#
+
+# Bundle of the game (it must be a directory whose name ends in ".app")
+APPBNDL = ../$(APPNAME)
+
+# A bundle must have these subdirectories
+APPCONT = $(APPBNDL)/Contents
+APPBIN = $(APPCONT)/MacOS
+APPRES = $(APPCONT)/Resources
+
+# Auxiliary files.
+#
+# For graphics tiles, it isn't generally safe just to convert GIF or BMP files
+# to PNG, because the Mac OS takes dpi values stored in various images quite
+# seriously.  Almost all tilesets for *band requires adjustment, with the sole
+# exception of 8x8.png for Vanilla.  Make sure setting dpi to 72, *not*
+# preserving the actual size of image.  When you have them ready, put them in
+# the subdirectories of lib/tiles and rebuild.
+PLIST = cocoa/$(NAME)-Cocoa.xml
+
+ICONFILES = cocoa/$(NAME)_Icons.icns cocoa/Save.icns cocoa/Edit.icns cocoa/Data.icns
+
+LIBFILES = \
+  ../lib/gamedata/*.txt \
+  ../lib/screens/*.txt \
+  ../lib/help/*.txt \
+  ../lib/customize/*.prf \
+
+install: $(EXE) $(ICONFILES) $(PLIST) $(LIBFILES)
+	@echo making directories...
+	@mkdir -p $(APPBNDL)
+	@mkdir -p $(APPCONT)
+	@mkdir -p $(APPBIN)
+	@mkdir -p $(APPRES)
+	@mkdir -p $(APPRES)/en.lproj
+	@mkdir -p $(APPRES)/lib/gamedata
+	@mkdir -p $(APPRES)/lib/screens
+	@mkdir -p $(APPRES)/lib/help
+	@mkdir -p $(APPRES)/lib/customize
+	@mkdir -p $(APPRES)/lib/script
+	@mkdir -p $(APPRES)/lib/tiles
+	@mkdir -p $(APPRES)/lib/sounds
+
+	@echo copying files...
+	@cp ../lib/gamedata/*.txt $(APPRES)/lib/gamedata
+	@cp ../lib/screens/*.txt $(APPRES)/lib/screens
+	@cp ../lib/help/*.txt $(APPRES)/lib/help
+	@cp ../lib/customize/*.prf $(APPRES)/lib/customize
+
+	# 'optionally' install sound and graphics tiles, if present
+	@if test -d ../lib/tiles && test -r ../lib/tiles/list.txt ; then \
+		cp ../lib/tiles/list.txt $(APPRES)/lib/tiles ; \
+		for dir in `find ../lib/tiles -type d -depth 1 -print`; do \
+			subdir=$(APPRES)/lib/tiles/`basename "$$dir"` ; \
+			mkdir -p "$$subdir" && cp "$$dir"/*.{png,prf} "$$subdir" ; \
+		done ; \
+	fi
+	-cp ../lib/sounds/*.mp3 $(APPRES)/lib/sounds
+
+	install -m 755 $(EXE) $(APPBIN)
+	install -m 644 $(ICONFILES) $(APPRES)
+	# Handle case of installing over an old version where MainMenu.nib
+	# was a directory.
+	-test -d $(APPRES)/en.lproj/MainMenu.nib && rm -r $(APPRES)/en.lproj/MainMenu.nib
+	cp cocoa/en.lproj/MainMenu.nib $(APPRES)/en.lproj/MainMenu.nib
+	cp cocoa/CommandMenu.plist $(APPRES)/CommandMenu.plist
+	sed -e 's/\$$VERSION\$$/$(BUNDLE_VERSION)/' \
+		-e 's/\$$COPYRIGHT\$$/$(COPYRIGHT)/' \
+		-e 's/\$$NAME\$$/$(NAME)/' \
+		-e 's/\$$EXECUTABLE\$$/$(EXE)/' \
+		-e 's/\$$BUNDLE_VERSION\$$/$(BUNDLE_VERSION)/' \
+		-e 's/\$$BUNDLE_IDENTIFIER\$$/$(BUNDLE_IDENTIFIER)/' \
+		$(PLIST) > $(APPCONT)/Info.plist
+
+	SetFile -a B $(APPBNDL)
+
+
+vars:
+	@echo LDFLAGS = $(LDFLAGS)
+	@echo CFLAGS = $(CFLAGS)
+	@echo BASEOBJS = $(BASEOBJS)
+
+# build a version that has separate prefs (different bundle ID) and directories (setting SAFE_DIRECTORY preprocessor flag)
+safe-install:
+	$(MAKE) -f Makefile.osx install CFLAGS="-DSAFE_DIRECTORY $(CFLAGS)"
+	sed -e 's/\$$VERSION\$$/$(BUNDLE_VERSION)/' \
+		-e 's/\$$COPYRIGHT\$$/$(COPYRIGHT)/' \
+		-e 's/\$$NAME\$$/$(NAME)/' \
+		-e 's/\$$EXECUTABLE\$$/$(EXE)/' \
+		-e 's/\$$BUNDLE_VERSION\$$/$(BUNDLE_VERSION)/' \
+		-e 's/\$$BUNDLE_IDENTIFIER\$$/$(BUNDLE_IDENTIFIER).$(BUNDLE_VERSION)/' \
+		$(PLIST) > $(APPCONT)/Info.plist
+
+
+PACKAGE_NAME = $(NAME)-$(VERSION)
+
+# In the unlikely event that tar+zip isn't enough...
+
+dist: install
+	@rm -rf disttemp*
+	mkdir -p disttemp/Docs
+	(cd ../docs/_build/html && tar -cf - .) | (cd disttemp/Docs && tar -xf -)
+	cp -R -p "$(APPBNDL)" disttemp
+	SetFile -a B disttemp/$(APPNAME)
+
+	@-rm ../"$(PACKAGE_NAME)-osx.dmg"
+
+	hdiutil create -quiet -fs HFS+ -volname $(PACKAGE_NAME) -srcfolder disttemp disttemp.dmg
+	hdiutil convert disttemp.dmg -quiet -format UDZO -imagekey zlib-level=6 -o ../"$(PACKAGE_NAME)-osx.dmg"
+
+	rm -rf disttemp*
+
+check: tests
+tests: $(PROGNAME).a
+	env CC="$(CC)" CFLAGS="$(CFLAGS) -I.. -DTEST_OVERRIDE_PATHS -Wno-write-strings" \
+		LDFLAGS="$(LDFLAGS)" LIBS="$(LIBS)" \
+		TEST_WORKING_DIRECTORY="../.." \
+		$(MAKE) -C tests all
+
+test-depgen:
+	$(MAKE) -C tests depgen
+
+test-clean:
+	$(MAKE) -C tests clean
+
+.PHONY : check tests test-clean

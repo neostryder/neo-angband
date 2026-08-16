@@ -1,0 +1,24 @@
+{
+  "id": "demo-trusted",
+  "name": "Trusted Demo (system override)",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "engine": ">=0.1.0",
+  "capabilities": [
+    "registry:effect",
+    "registry:room",
+    "registry:profile",
+    "registry:blow",
+    "registry:store",
+    "registry:command",
+    "registry:monster",
+    "registry:vocab"
+  ],
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "A framework proof, not a mod anyone plays: a TRUSTED in-process plugin that overrides game SYSTEMS rather than data. It freezes every monster by replacing the ported AI decision outright, registers a new effect, a new room builder, a new kind of monster attack, a shop rule and a new player command, and declares brand-new vocabulary the base game has no concept of - each through a capability-gated registry facade. Dev builds only; enable with ?trusted=demo-trusted.",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "author": "neostryder",
+  "license": "GPL-2.0-only"
+}

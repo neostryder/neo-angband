@@ -1,0 +1,391 @@
+/**
+ * Brand and slay selection for combat, ported VERBATIM from
+ * reference/src/obj-slays.c (Angband 4.2.6): get_monster_brand_multiplier and
+ * improve_attack_modifier, plus the small object bonus accessors from
+ * obj-util.c (object_to_hit / object_to_dam). object_weight_one now lives in
+ * obj/object.ts (its curse-aware home); combat imports it from there.
+ *
+ * These live in the combat domain rather than obj/ because they are combat
+ * math and the obj domain does not export them; obj/ owns the Brand/Slay
+ * record shapes and the bound brands[]/slays[] arrays, which are passed in.
+ *
+ * Temporary brands/slays (improve_attack_modifier's obj == NULL path and the
+ * learn helper's allow_temp path, obj-slays.c:378-406,501-503,558-560) are now
+ * ported: the player_has_temporary_brand/slay lookups (obj-slays.c:287-317)
+ * become an injected TempBrandSlay predicate, since the TMD->brand/slay binding
+ * (player_timed.txt brand:/slay:) is resolved by the caller (game layer). Only
+ * melee's py_attack_real / learn_brand_slay_from_melee consult it upstream
+ * (allow_temp = true); the launcher/throw paths pass allow_temp = false.
+ *
+ * object_to_hit / object_to_dam sum the ACTIVE CURSES' template bonuses onto the
+ * object's own (obj-util.c:296-321), and both take the bound curse table for
+ * that, exactly as objectWeightOne does (obj/object.ts:791). A caller that omits
+ * it gets the object's own bonus alone, which is right only for an object with no
+ * curses - so the live melee path threads it (MeleeOptions.curses).
+ *
+ * Note the upstream double-count this reproduces: calc_bonuses already folds a
+ * worn item's curse to_h/to_d into state->to_h/to_d (player-calcs.c:2009-2023),
+ * and then py_attack_real adds object_to_hit(weapon) on top, so a cursed WEAPON's
+ * curse bonus counts twice. Core keeps the C's warts; the bug-fixes mod is where
+ * that would be corrected.
+ */
+
+import type { Brand, Curse, Slay } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsLauncher, tvalIsWeapon } from "../obj/object.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { Player } from "../player/player.js";
+import type { RuneEnv } from "../obj/knowledge.js";
+import {
+  playerKnowsBrand,
+  playerKnowsSlay,
+  playerLearnBrand,
+  playerLearnSlay,
+} from "../obj/knowledge.js";
+
+/** The monster fields brand/slay selection reads. */
+export interface BrandSlayTarget {
+  race: MonsterRace;
+}
+
+/**
+ * player_has_temporary_brand / player_has_temporary_slay (obj-slays.c:287-317),
+ * as an injected predicate over brand/slay indices. The caller builds it from
+ * the player's active timed effects and each effect's temp_brand / temp_slay
+ * binding (player_timed.txt brand: / slay:), which combat cannot reach directly.
+ */
+export interface TempBrandSlay {
+  /** whether a temporary brand with the given index is active. */
+  hasBrand(idx: number): boolean;
+  /** whether a temporary slay with the given index is active. */
+  hasSlay(idx: number): boolean;
+}
+
+/**
+ * object_to_hit (obj-util.c:296-310): the object's to-hit bonus, plus the to_h of
+ * every active curse's template object. `curses` is upstream's global curses[]
+ * (1-based, index 0 null); omitting it yields obj.toH alone.
+ */
+export function objectToHit(
+  obj: GameObject,
+  curses?: readonly (Curse | null)[] | null,
+): number {
+  let result = obj.toH;
+  if (obj.curses && curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power) result += curses[i]?.obj?.toH ?? 0;
+    }
+  }
+  return result;
+}
+
+/**
+ * object_to_dam (obj-util.c:312-326): as objectToHit, for to_dam.
+ */
+export function objectToDam(
+  obj: GameObject,
+  curses?: readonly (Curse | null)[] | null,
+): number {
+  let result = obj.toD;
+  if (obj.curses && curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power) result += curses[i]?.obj?.toD ?? 0;
+    }
+  }
+  return result;
+}
+
+/**
+ * get_monster_brand_multiplier: the multiplicative factor for a brand hitting
+ * a monster. Elemental vulnerability doubles the extra damage; resistances are
+ * accounted for by the caller (improve_attack_modifier skips resisted brands).
+ */
+export function getMonsterBrandMultiplier(
+  mon: BrandSlayTarget,
+  b: Brand,
+  isOCombat: boolean,
+): number {
+  let mult = isOCombat ? b.oMultiplier : b.multiplier;
+
+  if (b.vulnFlag && mon.race.flags.has(b.vulnFlag)) {
+    /* Especially vulnerable: apply a factor of two to the extra damage. */
+    if (isOCombat) {
+      mult = 2 * (mult - 10) + 10;
+    } else {
+      mult *= 2;
+    }
+  }
+
+  return mult;
+}
+
+/**
+ * A best-of brand/slay selection accumulator. `brand` and `slay` are indices
+ * into the brands[]/slays[] arrays (0 = none), mirroring the upstream
+ * *brand_used / *slay_used out-parameters.
+ */
+export interface AttackModifier {
+  brand: number;
+  slay: number;
+  /** Attack verb, updated as the best brand/slay changes ("smite", etc). */
+  verb: string;
+}
+
+/**
+ * react_to_specific_slay (obj-slays.c): does this slay affect this monster?
+ */
+function reactToSpecificSlay(s: Slay, mon: BrandSlayTarget): boolean {
+  if (!s.name) return false;
+  /* Upstream also requires mon->race->base; every bound race has one. */
+  if (s.raceFlag && mon.race.flags.has(s.raceFlag)) return true;
+  if (s.base && s.base === mon.race.base.name) return true;
+  return false;
+}
+
+/**
+ * react_to_slay (obj-slays.c L435): does `obj` carry a slay that would affect
+ * `mon`? Iterates the object's slay runes and returns true on the first whose
+ * race flag or base name matches (react_to_specific_slay). Draws no RNG. Used
+ * by the thief blows (a slay-bearing item resists being stolen) and by the
+ * monster-turn item-pickup guard.
+ */
+export function reactToSlay(
+  obj: GameObject,
+  mon: BrandSlayTarget,
+  slays: readonly (Slay | null)[],
+): boolean {
+  if (!obj.slays) return false;
+  for (let i = 0; i < slays.length; i++) {
+    const s = slays[i];
+    if (s && obj.slays[i] && reactToSpecificSlay(s, mon)) return true;
+  }
+  return false;
+}
+
+/**
+ * improve_attack_modifier: fold the best applicable brand or slay for `obj`
+ * against `mon` into `mod`, updating mod.brand/mod.slay/mod.verb.
+ *
+ * Faithful to upstream, including the quirk that the brand loop sets
+ * mod.brand without clearing mod.slay (only the slay loop clears mod.brand);
+ * the damage code then prefers a set slay. When `obj` is null the loops read
+ * temporary brands/slays from `temp` (player_has_temporary_brand/slay), exactly
+ * as improve_attack_modifier(p, NULL, ...) does; passing no `temp` leaves the
+ * obj == null call a no-op (no temporary brand/slay active).
+ *
+ * \param isOCombat selects the O-combat multipliers (birth_percent_damage);
+ * the standard path passes false.
+ * \param temp temporary brand/slay predicate, consulted only when obj is null.
+ */
+export function improveAttackModifier(
+  obj: GameObject | null,
+  mon: BrandSlayTarget,
+  brands: readonly (Brand | null)[],
+  slays: readonly (Slay | null)[],
+  mod: AttackModifier,
+  range: boolean,
+  isOCombat = false,
+  temp?: TempBrandSlay,
+): void {
+  let bestMult = 1;
+
+  /* Set the current best multiplier from any already-chosen brand/slay. */
+  if (mod.brand) {
+    const b = brands[mod.brand] as Brand;
+    bestMult = Math.max(bestMult, getMonsterBrandMultiplier(mon, b, isOCombat));
+  } else if (mod.slay) {
+    const s = slays[mod.slay] as Slay;
+    const mult = isOCombat ? s.oMultiplier : s.multiplier;
+    bestMult = Math.max(bestMult, mult);
+  }
+
+  /* Brands */
+  for (let i = 1; i < brands.length; i++) {
+    const b = brands[i];
+    if (!b) continue;
+    if (obj) {
+      if (!obj.brands || !obj.brands[i]) continue;
+    } else {
+      /* Temporary brand (player_has_temporary_brand). */
+      if (!temp || !temp.hasBrand(i)) continue;
+    }
+
+    /* Is the monster vulnerable (not resistant)? */
+    if (!mon.race.flags.has(b.resistFlag)) {
+      const mult = getMonsterBrandMultiplier(mon, b, isOCombat);
+      if (bestMult < mult) {
+        bestMult = mult;
+        mod.brand = i;
+        mod.verb = range ? `${b.verb}s` : b.verb;
+      }
+    }
+  }
+
+  /* Slays */
+  for (let i = 1; i < slays.length; i++) {
+    const s = slays[i];
+    if (!s) continue;
+    if (obj) {
+      if (!obj.slays || !obj.slays[i]) continue;
+    } else {
+      /* Temporary slay (player_has_temporary_slay). */
+      if (!temp || !temp.hasSlay(i)) continue;
+    }
+
+    if (reactToSpecificSlay(s, mon)) {
+      const mult = isOCombat ? s.oMultiplier : s.multiplier;
+      if (bestMult < mult) {
+        bestMult = mult;
+        mod.brand = 0;
+        mod.slay = i;
+        mod.verb = range ? s.rangeVerb : s.meleeVerb;
+      }
+    }
+  }
+}
+
+/** The monster fields brand/slay LEARNING reads (visibility gates slays). */
+export interface BrandSlayLearnTarget extends BrandSlayTarget {
+  /** monster_is_visible(mon). */
+  visible: boolean;
+  /**
+   * The monster's lore record (mon/lore.ts getLore), for the
+   * lore_learn_flag_if_visible learns. Optional: absent (worldless
+   * tests), only the player-rune half runs.
+   */
+  lore?: import("../mon/lore.js").MonsterLore;
+}
+
+/** lore_learn_flag_if_visible over the reduced learn target. */
+function loreLearnFlag(mon: BrandSlayLearnTarget, flag: number): void {
+  if (flag && mon.lore && mon.visible) mon.lore.flags.on(flag);
+}
+
+/**
+ * learn_brand_slay_helper (obj-slays.c L463): after an attack, learn the
+ * brand/slay runes carried by the objects involved (and, for melee/throws,
+ * by off-weapon equipment) that the monster did not resist, and note the
+ * monster's resist/vulnerability flags in its lore. Slays are only
+ * learned on visible monsters; brands teach whenever they bite.
+ *
+ * `allowTemp` enables the temporary-brand/slay path (obj-slays.c:501,558):
+ * a temporary brand/slay whose rune the objects do NOT carry still teaches the
+ * monster's lore (resist/vuln/race flags), but does NOT teach the rune itself
+ * (upstream guards player_learn_* on `learn`, which stays false for temp-only).
+ */
+function learnBrandSlayHelper(
+  p: Player,
+  env: RuneEnv,
+  obj1: GameObject | null,
+  obj2: GameObject | null,
+  mon: BrandSlayLearnTarget,
+  allowOff: boolean,
+  allowTemp: boolean,
+  temp?: TempBrandSlay,
+): void {
+  /* Handle brands. */
+  for (let i = 1; i < env.brands.length; i++) {
+    const b = env.brands[i];
+    if (!b) continue;
+    let learn = Boolean(obj1?.brands?.[i]) || Boolean(obj2?.brands?.[i]);
+    if (allowOff && !learn) {
+      for (let j = 0; j < p.body.count; j++) {
+        const obj = env.slotObject(j);
+        if (
+          obj?.brands?.[i] &&
+          !tvalIsWeapon(obj.tval) &&
+          !tvalIsLauncher(obj.tval)
+        ) {
+          learn = true;
+        }
+      }
+    }
+    /* Temporary brand: relevant only if not already carried by an object. */
+    if (!learn && !(allowTemp && (temp?.hasBrand(i) ?? false))) continue;
+
+    if (!b.resistFlag || !mon.race.flags.has(b.resistFlag)) {
+      /* Learn the rune only from a real object, not a temporary brand. */
+      if (learn) playerLearnBrand(p, env, i);
+      /* Learn about the monster (the flag's known absence / presence). */
+      loreLearnFlag(mon, b.resistFlag);
+      loreLearnFlag(mon, b.vulnFlag);
+    } else if (playerKnowsBrand(p, i)) {
+      /* A known brand fizzles: learn the monster resists. */
+      loreLearnFlag(mon, b.resistFlag);
+    }
+  }
+
+  /* Handle slays. */
+  for (let i = 1; i < env.slays.length; i++) {
+    const s = env.slays[i];
+    if (!s) continue;
+    let learn = Boolean(obj1?.slays?.[i]) || Boolean(obj2?.slays?.[i]);
+    if (allowOff && !learn) {
+      for (let j = 0; j < p.body.count; j++) {
+        const obj = env.slotObject(j);
+        if (
+          obj?.slays?.[i] &&
+          !tvalIsWeapon(obj.tval) &&
+          !tvalIsLauncher(obj.tval)
+        ) {
+          learn = true;
+        }
+      }
+    }
+    /* Temporary slay: relevant only if not already carried by an object. */
+    if (!learn && !(allowTemp && (temp?.hasSlay(i) ?? false))) continue;
+
+    if (reactToSpecificSlay(s, mon)) {
+      /* Learn about the monster. */
+      loreLearnFlag(mon, s.raceFlag);
+      /* Learn the rune only from a real object on a visible monster. */
+      if (mon.visible && learn) playerLearnSlay(p, env, i);
+    } else if (playerKnowsSlay(p, i)) {
+      /* Learn about unaffected monsters. */
+      loreLearnFlag(mon, s.raceFlag);
+    }
+  }
+}
+
+/**
+ * learn_brand_slay_from_melee: weapon (or unarmed) plus off-weapon gear, plus
+ * temporary brands/slays (allow_off = true, allow_temp = true).
+ */
+export function learnBrandSlayFromMelee(
+  p: Player,
+  env: RuneEnv,
+  weapon: GameObject | null,
+  mon: BrandSlayLearnTarget,
+  temp?: TempBrandSlay,
+): void {
+  learnBrandSlayHelper(p, env, weapon, null, mon, true, true, temp);
+}
+
+/**
+ * learn_brand_slay_from_launch: missile and launcher only (allow_off = false,
+ * allow_temp = false).
+ */
+export function learnBrandSlayFromLaunch(
+  p: Player,
+  env: RuneEnv,
+  missile: GameObject,
+  launcher: GameObject | null,
+  mon: BrandSlayLearnTarget,
+): void {
+  learnBrandSlayHelper(p, env, missile, launcher, mon, false, false);
+}
+
+/**
+ * learn_brand_slay_from_throw: thrown object only (allow_off = false,
+ * allow_temp = false) - obj-slays.c:633. The previous port passed allow_off
+ * true, which wrongly taught brand/slay runes from worn off-weapon gear on a
+ * throw (gap 3.1).
+ */
+export function learnBrandSlayFromThrow(
+  p: Player,
+  env: RuneEnv,
+  missile: GameObject,
+  mon: BrandSlayLearnTarget,
+): void {
+  learnBrandSlayHelper(p, env, missile, null, mon, false, false);
+}

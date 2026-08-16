@@ -1,0 +1,263 @@
+{
+  "file": "shape",
+  "source": "lib/gamedata/shape.txt",
+  "records": [
+    {
+      "name": "normal"
+    },
+    {
+      "name": "fox",
+      "combat": {
+        "to-h": -3,
+        "to-d": -3,
+        "to-a": 3
+      },
+      "obj-flags": [
+        "FEATHER | FREE_ACT"
+      ],
+      "values": [
+        "STR[-3] | STEALTH[5] | BLOWS[1] | MOVES[1]"
+      ],
+      "blow": [
+        "bite",
+        "claw"
+      ]
+    },
+    {
+      "name": "Pukel-man",
+      "combat": {
+        "to-h": 0,
+        "to-d": 5,
+        "to-a": 20
+      },
+      "skill-save": 20,
+      "obj-flags": [
+        "SUST_STR | SUST_CON | PROT_STUN | REGEN | HOLD_LIFE"
+      ],
+      "player-flags": [
+        "ROCK"
+      ],
+      "values": [
+        "STR[4] | CON[4] | STEALTH[-2] | SPEED[-5] | RES_POIS[3] | RES_SHARD[1]",
+        "DAM_RED[10]"
+      ],
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        }
+      ],
+      "blow": [
+        "punch",
+        "crush",
+        "thump",
+        "strike"
+      ]
+    },
+    {
+      "name": "bear",
+      "combat": {
+        "to-h": 15,
+        "to-d": 15,
+        "to-a": 5
+      },
+      "skill-disarm-phys": -5,
+      "skill-disarm-magic": -10,
+      "skill-melee": 10,
+      "obj-flags": [
+        "PROT_FEAR"
+      ],
+      "values": [
+        " STR[3] | INT[-2] | CON[2] | INFRA[1] | STEALTH[-3] | BLOWS[1]"
+      ],
+      "blow": [
+        "cuff",
+        "clout",
+        "claw",
+        "hit",
+        "hit",
+        "swipe",
+        "slash"
+      ]
+    },
+    {
+      "name": "eagle",
+      "combat": {
+        "to-h": 5,
+        "to-d": 0,
+        "to-a": 10
+      },
+      "obj-flags": [
+        "SUST_WIS | PROT_BLIND | PROT_CONF | PROT_FEAR | SEE_INVIS | FREE_ACT",
+        "TRAP_IMMUNE"
+      ],
+      "values": [
+        "MOVES[3]"
+      ],
+      "blow": [
+        "peck",
+        "claw",
+        "claw",
+        "strike",
+        "tear"
+      ]
+    },
+    {
+      "name": "bat",
+      "combat": {
+        "to-h": 0,
+        "to-d": -10,
+        "to-a": 10
+      },
+      "obj-flags": [
+        "FEATHER | SEE_INVIS | PROT_BLIND"
+      ],
+      "values": [
+        "SPEED[3] | STEALTH[3] | INFRA[5]"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "5",
+          "effect-msg": [
+            "taking bat form"
+          ]
+        }
+      ],
+      "blow": [
+        "bite",
+        "scratch"
+      ]
+    },
+    {
+      "name": "warg",
+      "combat": {
+        "to-h": 5,
+        "to-d": 5,
+        "to-a": 0
+      },
+      "values": [
+        "BLOWS[2]"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d$S",
+          "expr": [
+            {
+              "name": "S",
+              "base": "PLAYER_LEVEL",
+              "expr": "+ 0"
+            }
+          ],
+          "effect-msg": [
+            "taking warg form"
+          ]
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SHERO",
+          "dice": "5+1d20"
+        }
+      ],
+      "blow": [
+        "bite",
+        "bite",
+        "claw",
+        "tear"
+      ]
+    },
+    {
+      "name": "vampire",
+      "combat": {
+        "to-h": 3,
+        "to-d": 3,
+        "to-a": -5
+      },
+      "obj-flags": [
+        "SEE_INVIS | HOLD_LIFE"
+      ],
+      "values": [
+        "LIGHT[-1] | STEALTH[5] | INFRA[5] | SPEED[5]"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_HP",
+              "expr": "/ 4"
+            }
+          ],
+          "effect-msg": [
+            "taking vampire form"
+          ]
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "ATT_VAMP",
+          "dice": "10+1d20"
+        }
+      ],
+      "blow": [
+        "bite"
+      ]
+    },
+    {
+      "name": "werewolf",
+      "combat": {
+        "to-h": 5,
+        "to-d": 5,
+        "to-a": 0
+      },
+      "obj-flags": [
+        "REGEN"
+      ],
+      "values": [
+        "BLOWS[1] | MOVES[1]"
+      ],
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "TURN_ALL",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "+ 0"
+            }
+          ]
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SHERO",
+          "dice": "5+1d20"
+        }
+      ],
+      "effect-msg": [
+        "taking werewolf form"
+      ],
+      "blow": [
+        "bite",
+        "bite",
+        "slash",
+        "tear"
+      ]
+    }
+  ]
+}

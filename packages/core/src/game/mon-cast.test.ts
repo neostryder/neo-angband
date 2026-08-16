@@ -1,0 +1,365 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { EF, ELEM, MFLAG, OF, PROJ, RF, RSF, TMD } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { objectNew } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
+import { TV } from "../generated/index.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { OptionState } from "../player/options.js";
+import { OF_SIZE, PF_SIZE } from "../player/types.js";
+import { ELEM_MAX } from "../obj/types.js";
+import type { PlayerState } from "../player/calcs.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { addMon, makeState, makeRace, monReg, plReg } from "./harness.js";
+import { buildMonsterIncHooks } from "./mon-cast.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
+import {
+  buildFailRuneEnv,
+  buildMonSpellHooks,
+  buildSpellEffectChain,
+  doMonSpell,
+} from "./mon-cast.js";
+import type { DoMonSpellDeps } from "./mon-cast.js";
+
+const projections = bindProjections(
+  JSON.parse(
+    readFileSync(
+      new URL("../../../content/pack/projection.json", import.meta.url),
+      "utf8",
+    ),
+  ).records as ProjectionRecordJson[],
+);
+
+function registry(): EffectRegistry {
+  const r = new EffectRegistry();
+  registerCoreHandlers(r);
+  registerAttackHandlers(r);
+  registerMonsterHandlers(r);
+  registerTeleportHandlers(r);
+  return r;
+}
+
+function castContext(state: GameState): CastContext {
+  return { projections, maxRange: 20, playerActor: basicPlayerActor(state) };
+}
+
+function deps(
+  state: GameState,
+  over: Partial<DoMonSpellDeps> = {},
+): DoMonSpellDeps {
+  return {
+    registry: registry(),
+    cast: castContext(state),
+    spells: monReg.spells,
+    envDeps: { timedTable: plReg.timed },
+    saveSkill: 0,
+    ...over,
+  };
+}
+
+/** A plain, non-unique caster with no fire resistance/immunity. */
+function caster(state: GameState, grid = loc(5, 6), hp = 300) {
+  const race = makeRace({ flags: [] });
+  race.spellPower = 0;
+  return addMon(state, race, grid, { hp });
+}
+
+describe("doMonSpell - casting through the effect stack", () => {
+  it("a breath spell damages the player (breath_dam-scaled)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 200;
+    const mon = caster(state);
+    const ran = doMonSpell(state, mon.midx, RSF.BR_FIRE, true, deps(state));
+    expect(ran).toBe(true);
+    expect(state.actor.player.chp).toBeLessThan(200);
+  });
+
+  it("a status spell afflicts the player", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state);
+    doMonSpell(state, mon.midx, RSF.CONF, true, deps(state));
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBeGreaterThan(0);
+  });
+
+  it("a spell with a save message is prevented by a save", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 100;
+    const mon = caster(state);
+    let saved = "";
+    let learnedRune = false;
+    doMonSpell(
+      state,
+      mon.midx,
+      RSF.MIND_BLAST,
+      true,
+      deps(state, {
+        saveSkill: 100,
+        hooks: {
+          saveMessage: (t) => (saved = t),
+          failRune: () => (learnedRune = true),
+        },
+      }),
+    );
+    expect(saved).not.toBe("");
+    expect(learnedRune).toBe(true);
+    expect(state.actor.player.chp).toBe(100); // no damage
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBe(0); // no confusion
+  });
+
+  it("the same spell lands when the save fails", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 100;
+    const mon = caster(state);
+    doMonSpell(state, mon.midx, RSF.MIND_BLAST, true, deps(state, { saveSkill: 0 }));
+    expect(state.actor.player.chp).toBeLessThan(100); // 8d8 damage landed
+  });
+
+  it("calls the message and disturb hooks with the hit result", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state);
+    let disturbed = false;
+    let sawHit: boolean | null = null;
+    doMonSpell(
+      state,
+      mon.midx,
+      RSF.BR_FIRE,
+      true,
+      deps(state, {
+        hooks: {
+          disturb: () => (disturbed = true),
+          message: (_m, _s, _seen, hits) => (sawHit = hits),
+        },
+      }),
+    );
+    expect(disturbed).toBe(true);
+    expect(sawHit).toBe(true); // BR_FIRE always hits (hit == 100)
+  });
+
+  it("returns false for an unknown spell or a missing caster", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state);
+    expect(doMonSpell(state, mon.midx, 9999, true, deps(state))).toBe(false);
+    expect(doMonSpell(state, 999, RSF.CONF, true, deps(state))).toBe(false);
+  });
+});
+
+describe("buildSpellEffectChain", () => {
+  it("binds SPELL_POWER into a spell's dice expression", () => {
+    const spell = monReg.spells.get(RSF.BOLT)!; // BOLT: $Dd7, D = SPELL_POWER/8 + 1
+    const chain = buildSpellEffectChain(spell, {
+      baseValues: { SPELL_POWER: () => 80 },
+    });
+    expect(chain).not.toBeNull();
+    expect(chain!.index).toBe(EF.BOLT);
+    expect(chain!.subtype).toBe(PROJ.ARROW);
+    // D = 80 / 8 + 1 = 11, so 11d7; maximised = 77.
+    expect(chain!.dice!.evaluate(new Rng(1), 0, "maximise")).toBe(77);
+  });
+});
+
+describe("buildMonSpellHooks (mon-spell.c L368-383 wiring)", () => {
+  it("routes the spell_message text through state.msg and disturbs the run", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    state.run = {
+      curDir: 6,
+      oldDir: 6,
+      openArea: true,
+      breakRight: false,
+      breakLeft: false,
+      running: 5,
+      firstStep: false,
+      stepCount: 0,
+    };
+    const mon = caster(state);
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    const hooks = buildMonSpellHooks(state);
+    doMonSpell(state, mon.midx, RSF.BR_FIRE, true, deps(state, { hooks }));
+
+    /* BR_FIRE message-vis is "{name} breathes fire." in monster_spell.txt. */
+    expect(messages.some((m) => m.includes("breathes fire"))).toBe(true);
+    expect(messages[0]!.startsWith("The ")).toBe(true);
+    /* disturb(player) ran (mon-spell.c L368). */
+    expect(state.run.running).toBe(0);
+  });
+
+  it("an unseen caster produces the blind-message variant", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    const mon = caster(state); /* not VISIBLE */
+
+    const hooks = buildMonSpellHooks(state);
+    doMonSpell(state, mon.midx, RSF.BR_FIRE, false, deps(state, { hooks }));
+
+    /* The blind message names nobody ("You hear..." / "Something breathes"). */
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0]!.includes("The ")).toBe(false);
+  });
+
+  it("a save shows the save message and learns the fail rune", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    const mon = caster(state);
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    let nexus = 0;
+    const incChecked: string[] = [];
+    const hooks = buildMonSpellHooks(state, {
+      failRune: {
+        learnNexus: (): void => {
+          nexus++;
+        },
+        incCheck: (name): void => {
+          incChecked.push(name);
+        },
+      },
+    });
+    /* SCARE is EF_TIMED_INC:AFRAID with a save message. */
+    doMonSpell(state, mon.midx, RSF.SCARE, true, deps(state, { saveSkill: 100, hooks }));
+
+    /* message-save:You fight off a sense of dread. (monster_spell.txt SCARE) */
+    expect(messages).toContain("You fight off a sense of dread.");
+    /* The cast line itself also fired ({name} conjures up scary horrors.). */
+    expect(messages.some((m) => m.includes("conjures up scary horrors"))).toBe(true);
+    /* spell_check_for_fail_rune: the TIMED_INC subtype was checked. */
+    expect(incChecked).toContain("AFRAID");
+    expect(nexus).toBe(0);
+
+    /* TPORT (teleport-level family): a save learns ELEM_NEXUS. */
+    const tele = monReg.spells.get(RSF.TELE_LEVEL);
+    if (tele) {
+      doMonSpell(state, mon.midx, RSF.TELE_LEVEL, true, deps(state, { saveSkill: 100, hooks }));
+      expect(nexus).toBe(1);
+    }
+  });
+});
+
+describe("smart-learn write path (update_smart_learn, player-timed.c L947)", () => {
+  /* A minimal derived state carrying the object flags / resists player_inc_check
+   * reads (its full PlayerState is calc_bonuses output, deferred here). */
+  function withPlayerFlags(state: GameState, of: number[]): void {
+    const flags = new FlagSet(OF_SIZE);
+    for (const f of of) flags.on(f);
+    state.playerState = {
+      flags,
+      pflags: new FlagSet(PF_SIZE),
+      elInfo: Array.from({ length: ELEM_MAX }, () => ({ resLevel: 0 })),
+    } as unknown as PlayerState;
+  }
+
+  /* AFRAID's fail table is fail:1:PROT_FEAR (player_timed.txt) - a
+   * TMD_FAIL_FLAG_OBJECT foil, so player_inc_check's OBJECT branch runs the
+   * monster-source update_smart_learn(mon, p, OF_PROT_FEAR, 0, -1). */
+  it("a fail-rune check teaches the caster the player's object-flag foil", () => {
+    /* Smart monster: update_smart_learn draws only the 1-in-100 fail; pick a
+     * seed where that first draw does not fire so the memory is written. */
+    let seed = 1;
+    while (new Rng(seed).oneIn(100)) seed++;
+    const state = makeState({ playerGrid: loc(5, 5), seed });
+    state.options = new OptionState({ overrides: { birth_ai_learn: true } });
+    withPlayerFlags(state, [OF.PROT_FEAR]);
+    const mon = addMon(state, makeRace({ flags: [RF.SMART] }), loc(5, 6));
+
+    buildFailRuneEnv(state, plReg.timed).incCheck("AFRAID", mon);
+    expect(mon.knownPstate.flags.has(OF.PROT_FEAR)).toBe(true);
+  });
+
+  it("learns nothing when birth_ai_learn is off (default)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    withPlayerFlags(state, [OF.PROT_FEAR]);
+    const mon = addMon(state, makeRace({ flags: [RF.SMART] }), loc(5, 6));
+
+    buildFailRuneEnv(state, plReg.timed).incCheck("AFRAID", mon);
+    expect(mon.knownPstate.flags.has(OF.PROT_FEAR)).toBe(false);
+  });
+
+  it("doMonSpell threads the caster into spell_check_for_fail_rune on a save", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state);
+    let captured: number | null = null;
+    /* SCARE (EF_TIMED_INC:AFRAID) has a save message; saveSkill 100 forces the
+     * save, taking the fail-rune branch that now receives the caster. */
+    doMonSpell(
+      state,
+      mon.midx,
+      RSF.SCARE,
+      true,
+      deps(state, {
+        saveSkill: 100,
+        hooks: {
+          failRune: (_spell, m): void => {
+            captured = m.midx;
+          },
+        },
+      }),
+    );
+    expect(captured).toBe(mon.midx);
+  });
+});
+
+describe("buildMonsterIncHooks supplies all four halves (player-timed.c:945-985)", () => {
+  it("carries equipLearnElement, which had no update_smart_learn fallback", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state, loc(5, 7));
+    const hooks = buildMonsterIncHooks(state, mon);
+
+    /* update_smart_learn calls equip_learn_flag internally (mon-util.c:797), so
+     * the OBJECT-flag arm had a fallback. The RESIST and VULN arms
+     * (player-timed.c:967, :985) call equip_learn_element and reach
+     * update_smart_learn never - so a monster spell blocked by an element
+     * resist taught the player nothing at all. */
+    expect(typeof hooks.equipLearnElement).toBe("function");
+    expect(typeof hooks.equipLearnFlag).toBe("function");
+    expect(typeof hooks.updateSmartLearn).toBe("function");
+    expect(typeof hooks.resistMessage).toBe("function");
+    expect(hooks.monsterSource).toBe(true);
+  });
+
+  it("the element hook is the real equip_learn_element", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state, loc(5, 7));
+    const p = state.actor.player;
+
+    /* Equip something that resists fire, so there IS a rune to learn. Built
+     * here rather than taken from whatever the harness happens to wear: an
+     * early return on an empty equipment list would be a test that passes by
+     * proving nothing. */
+    const kind = {
+      kidx: 78,
+      tval: TV.SOFT_ARMOR,
+      name: "Vest",
+      toH: { base: 0, dice: 0, sides: 0, mBonus: 0 },
+      base: { maxStack: 40 },
+    } as unknown as ObjectKind;
+    const obj = objectNew(kind);
+    const el = obj.elInfo[ELEM.FIRE];
+    expect(el, "fixture: the object carries element info").toBeDefined();
+    el!.resLevel = 1;
+    state.gear.store.set(92, obj);
+    p.equipment[0] = 92;
+    expect(p.objKnown.elInfo[ELEM.FIRE]?.resLevel ?? 0).toBe(0);
+
+    buildMonsterIncHooks(state, mon).equipLearnElement!("FIRE");
+    expect(p.objKnown.elInfo[ELEM.FIRE]?.resLevel ?? 0).toBeGreaterThan(0);
+  });
+});

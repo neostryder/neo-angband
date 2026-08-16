@@ -1,0 +1,107 @@
+module: packages/core/src/player/timed.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/player-timed.c
+    items:
+      - player_set_timed (L787): coerce the new duration into the effect's
+        [lower_bound, top-grade max] range, detect grade transitions and emit
+        the up / down / end / increase / decrease messages, dispatch the
+        0<->positive begin/end effect chains, store the value, and notify
+        (disturb + redraw). Returns whether the player was notified.
+      - player_inc_check (L923): walk the effect's fail conditions - object
+        flag, resist, vulnerability, player flag, active timed effect - and
+        report whether an increase is inhibited.
+      - player_inc_timed (L1050): resist gate (when check) + NONSTACKING guard,
+        then player_set_timed(old + v).
+      - player_dec_timed (L1093): player_set_timed(old - v), always notifying
+        when the effect finishes.
+      - player_clear_timed (L1123): player_set_timed(0).
+      - player_timed_grade_eq (L734) and the grade walk shared by set_timed:
+        playerTimedGrade / playerTimedGradeEq.
+  - path: src/player/bind.ts (binder extension)
+    items:
+      - bindTimed now also captures on-increase, on-decrease, the NONSTACKING
+        flag, and lower-bound from player_timed.json (the grade list, fail
+        conditions, on-end and msgt were already bound).
+notes: >-
+  The shared primitive every player status change funnels through (effect
+  handlers EF_TIMED_* / EF_CURE, the game turn's poison/cut/stun ticks, combat
+  and monster attacks), so grade transitions, messages, disturbance and the
+  NONSTACKING guard are identical regardless of source. It backs the effect
+  interpreter's TimedHost capability. The bound TimedEffect[] table is passed in
+  (no pack IO here). player_inc_check's fail conditions resolve against injected
+  PlayerIncCheckQueries because the resist / object-flag / player-flag state they
+  read is derived in the player calc layer; the TMD_FAIL_ codes (OBJECT=1,
+  RESIST=2, VULN=3, PLAYER=4, TIMED_EFFECT=5) match player-timed.h. All duration
+  and grade arithmetic matches upstream.
+deferred:
+  - CLOSED (2026-08-07). The effect layer was threaded in and the chains are
+    wired: session/game.ts:1452 supplies onTransition and :1469 picks
+    eff.onBeginEffect / eff.onEndEffect by direction, with a second supplier at
+    :1917 for the world clock. The recursion this row worried about is exactly
+    what the hook exists to break, and it does.
+  - CLOSED (2026-08-07), and the row was wrong about WHY. It said the
+    suppression "needs obj_k element/flag knowledge". The knowledge has existed
+    since PORT_TODO 2.9 and the suppression itself has been implemented all
+    along (player/timed.ts:319-336, both branches, matching
+    player-timed.c:828-839 exactly). What was missing was the SUPPLIER: nothing
+    in production built a TimedNotifyQueries, so the check was skipped and every
+    effect duplicating known player state announced itself.
+    The source comment named a supplier and named the WRONG ONE - it credited
+    makeIncCheckQueries, which builds PlayerIncCheckQueries (objectFlag /
+    resistLevel / playerFlag / timedActive), a different interface for a
+    different function. Corrected in place.
+    game/player-side.ts makeTimedNotifyQueries now builds the four reads and
+    they are supplied on all three paths: the interpreter env
+    (session/game.ts's envDeps), the world clock (state.world.timedHooks) and
+    the projection side effects. hasFlagNotTimed is player_of_has_not_timed
+    (player-timed.c:747-763): playerFlags UNION the worn slots, deliberately
+    without timers.
+    Three mutants, three kills - but the third needed a real discriminator. NO
+    shipped class carries an OF_ flag (class.txt has only player-flags), so
+    race.flags and playerFlags agree for every stock character except through
+    PF_BRAVERY_30, which promotes to OF_PROT_FEAR at level 30. That promotion is
+    the one case that can tell a race-only read apart, and it is what the test
+    asserts. The first version guarded the case with `if (classFlag !==
+    undefined)` and skipped silently.
+  - CLOSED (2026-08-07). print_custom_message's substitution is ported:
+    player/timed.ts:57 expands {name} / {kind} / {s} / {is}, and :150 carries the
+    equipped weapon it reads them off, so the message names the actual weapon.
+    "None of the ported effects substitute" stopped being true when the timed
+    registry was completed. The disturb + PR_/PU_ + handle_stuff half is the
+    ratified repaint divergence.
+  - CLOSED (2026-08-07), and reading it turned up a bigger defect than the row
+    described. The MECHANISM was never missing: player/timed.ts:237-273
+    implements all of it - equipLearnFlag, updateSmartLearn, resistMessage,
+    equipLearnElement - in upstream's order. What was missing was the SUPPLY,
+    and it was uneven across the four paths that need it. Monster melee
+    (game/mon-side.ts:254-262) had the lot. Monster casts had only
+    updateSmartLearn, which covers the object-flag arm via its own internal
+    equip_learn_flag (mon-util.c:797) but never the RESIST / VULN arms, so a
+    monster spell blocked by an element resist taught nothing. Monster
+    projections (game/player-side.ts) and the whole interpreter path - traps,
+    potions, wands, player spells - passed no hooks at all. Upstream's non-lore
+    branch runs equip_learn_flag / equip_learn_element unconditionally: the
+    source does not matter.
+    All three gaps are supplied now, through one shared builder
+    (game/player-side.ts makeIncCheckHooks). It is RNG-free, measured rather
+    than assumed, because these paths had no hooks before and a draw would have
+    moved every seeded test.
+    AND: game/player-side.ts's incTimed passed `check` to player_inc_timed while
+    supplying no incCheck hook - and player/timed.ts:391 honours `check` ONLY
+    through that hook. So on the projection path every resist gate was inert:
+    Free Action did not stop a paralysing breath, PROT_CONF did not stop
+    confusion, PROT_BLIND did not stop blindness. That is the defect this row
+    was sitting next to and did not name. Five mutants, five kills.
+verified-by:
+  - player/timed.test.ts (15 tests): the binder now captures NONSTACKING /
+    on-increase / on-decrease and STUN's graded severity; playerTimedGrade walks
+    STUN's four grades; set_timed sets a value, messages on entering a grade,
+    notifies and fires the begin transition; no-op on an unchanged value;
+    on-end message + end transition when finishing; up-grade message on STUN
+    Stun->Heavy Stun; clamps to the top grade max; inc stacks a normal effect
+    but is blocked for an active NONSTACKING effect; incCheck is honoured only
+    when check is true; dec always notifies when finishing; clear zeroes;
+    inc_check blocks PARALYZED via FREE_ACT and CONFUSED via PROT_CONF; and
+    grade_eq matches the active grade name.

@@ -1,0 +1,19 @@
+{
+  "id": "demo-sandbox",
+  "name": "Sandbox Demo Wanderer",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "engine": ">=0.1.0",
+  "capabilities": [
+    "state:player.read",
+    "state:monsters.read",
+    "command:add"
+  ],
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "A framework proof, not a mod anyone plays: an UNTRUSTED agent running in a Web Worker, which can perceive and act through the serialized agent API and reach nothing else. It proves the sandbox boundary is real - drop a capability from this manifest and the matching call throws rather than being quietly ignored. Dev builds only; enable with ?agent=demo-sandbox.",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "author": "neostryder",
+  "license": "GPL-2.0-only"
+}

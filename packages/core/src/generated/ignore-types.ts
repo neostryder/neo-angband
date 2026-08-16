@@ -1,0 +1,66 @@
+// Generated from reference/src/list-ignore-types.h by scripts/codegen-lists.mjs. Do not edit.
+
+/**
+ * Object kinds for quality/ego ignoring (obj-ignore.h ITYPE_ enum).
+ */
+
+export const IGNORE_TYPE_ENTRIES = [
+  { name: "NONE", description: "" },
+  { name: "SHARP", description: "Sharp Melee Weapons" },
+  { name: "BLUNT", description: "Blunt Melee Weapons" },
+  { name: "GREAT", description: "Great Weapons" },
+  { name: "SLING", description: "Slings" },
+  { name: "BOW", description: "Bows" },
+  { name: "CROSSBOW", description: "Crossbows" },
+  { name: "SHOT", description: "Shots and Pebbles" },
+  { name: "ARROW", description: "Arrows" },
+  { name: "BOLT", description: "Bolts" },
+  { name: "ROBE", description: "Robes" },
+  { name: "BODY_ARMOR", description: "Body Armor" },
+  { name: "BASIC_DRAGON_ARMOR", description: "Basic Dragon Scale Mail" },
+  { name: "MULTI_DRAGON_ARMOR", description: "Multi-Hued Dragon Scale Mail" },
+  { name: "HIGH_DRAGON_ARMOR", description: "High Dragon Scale Mail" },
+  { name: "BALANCE_DRAGON_ARMOR", description: "Balance Dragon Scale Mail" },
+  { name: "POWER_DRAGON_ARMOR", description: "Power Dragon Scale Mail" },
+  { name: "CLOAK", description: "Cloaks" },
+  { name: "ELVEN_CLOAK", description: "Elven Cloaks" },
+  { name: "SHIELD", description: "Shields" },
+  { name: "HEADGEAR", description: "Headgear" },
+  { name: "HANDGEAR", description: "Handgear" },
+  { name: "FEET", description: "Footgear" },
+  { name: "DIGGER", description: "Diggers" },
+  { name: "RING", description: "Rings" },
+  { name: "AMULET", description: "Amulets" },
+  { name: "LIGHT", description: "Lights" },
+] as const;
+
+/** NAME -> upstream enum value (ITYPE_ prefix upstream). */
+export const ITYPE = {
+  NONE: 0,
+  SHARP: 1,
+  BLUNT: 2,
+  GREAT: 3,
+  SLING: 4,
+  BOW: 5,
+  CROSSBOW: 6,
+  SHOT: 7,
+  ARROW: 8,
+  BOLT: 9,
+  ROBE: 10,
+  BODY_ARMOR: 11,
+  BASIC_DRAGON_ARMOR: 12,
+  MULTI_DRAGON_ARMOR: 13,
+  HIGH_DRAGON_ARMOR: 14,
+  BALANCE_DRAGON_ARMOR: 15,
+  POWER_DRAGON_ARMOR: 16,
+  CLOAK: 17,
+  ELVEN_CLOAK: 18,
+  SHIELD: 19,
+  HEADGEAR: 20,
+  HANDGEAR: 21,
+  FEET: 22,
+  DIGGER: 23,
+  RING: 24,
+  AMULET: 25,
+  LIGHT: 26,
+} as const;

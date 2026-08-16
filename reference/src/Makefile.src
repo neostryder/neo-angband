@@ -1,0 +1,359 @@
+#
+# File: Makefile.src
+#
+# A makefile which includes the current object files, hopefully includable
+# across a range of different makefiles, to cut down on maintenance.
+#
+
+NAME = Angband
+VERSION = 4.2.6
+COPYRIGHT = (c) 1995-2023 Angband contributors
+PROGNAME = angband
+
+HEADERS = \
+	angband.h \
+	cmds.h \
+	cmd-core.h \
+	config.h \
+	effects.h \
+	game-event.h \
+	guid.h \
+	h-basic.h \
+	init.h \
+	main.h \
+	option.h \
+	parser.h \
+	ui-event.h \
+	ui-menu.h \
+	wizard.h \
+	z-bitflag.h \
+	z-color.h \
+	z-dice.h \
+	z-expression.h \
+	z-file.h \
+	z-form.h \
+	z-quark.h \
+	z-queue.h \
+	z-rand.h \
+	z-type.h \
+	z-util.h \
+	z-virt.h \
+	borg/borg-attack-munchkin.h \
+	borg/borg-caution.h \
+	borg/borg-cave-light.h \
+	borg/borg-cave-util.h \
+	borg/borg-cave-view.h \
+	borg/borg-cave.h \
+	borg/borg-danger.h \
+	borg/borg-escape.h \
+	borg/borg-fight-attack.h \
+	borg/borg-fight-defend.h \
+	borg/borg-fight-perm.h \
+	borg/borg-flow-dark.h \
+	borg/borg-flow-glyph.h \
+	borg/borg-flow-kill.h \
+	borg/borg-flow-misc.h \
+	borg/borg-flow-stairs.h \
+	borg/borg-flow-take.h \
+	borg/borg-flow.h \
+	borg/borg-formulas.h \
+	borg/borg-formulas-calc.h \
+	borg/borg-home-notice.h \
+	borg/borg-home-power.h \
+	borg/borg-init.h \
+	borg/borg-inventory.h \
+	borg/borg-io.h \
+	borg/borg-item-activation.h \
+	borg/borg-item-analyze.h \
+	borg/borg-item-decurse.h \
+	borg/borg-item-enchant.h \
+	borg/borg-item-id.h \
+	borg/borg-item-use.h \
+	borg/borg-item-val.h \
+	borg/borg-item-wear.h \
+	borg/borg-item.h \
+	borg/borg-junk.h \
+	borg/borg-light.h \
+	borg/borg-log.h \
+	borg/borg-magic-play.h \
+	borg/borg-magic.h \
+	borg/borg-messages-react.h \
+	borg/borg-messages.h \
+	borg/borg-power.h \
+	borg/borg-prepared.h \
+	borg/borg-projection.h \
+	borg/borg-recover.h \
+	borg/borg-reincarnate.h \
+	borg/borg-store-buy.h \
+	borg/borg-store-sell.h \
+	borg/borg-store.h \
+	borg/borg-think-dungeon-util.h \
+	borg/borg-think-dungeon.h \
+	borg/borg-think-store.h \
+	borg/borg-think.h \
+	borg/borg-trait-swap.h \
+	borg/borg-trait.h \
+	borg/borg-update.h \
+	borg/borg-util.h \
+	borg/borg.h
+
+ZFILES = \
+	z-bitflag.o \
+	z-color.o \
+	z-dice.o \
+	z-expression.o \
+	z-file.o \
+	z-form.o \
+	z-quark.o \
+	z-queue.o \
+	z-rand.o \
+	z-textblock.o \
+	z-type.o \
+	z-util.o \
+	z-virt.o
+
+# MAINFILES is defined by autotools (or manually) to be combinations of these
+
+BASEMAINFILES = main.o
+
+GCUMAINFILES = main-gcu.o
+
+SDL2MAINFILES = \
+	main-sdl2.o \
+	sdl2/pui-ctrl.o \
+	sdl2/pui-dlg.o \
+	sdl2/pui-misc.o
+
+SDLMAINFILES = main-sdl.o
+
+SNDSDLFILES = snd-sdl.o
+
+TESTMAINFILES = main-test.o
+
+WINMAINFILES = \
+        win/$(PROGNAME).res \
+        main-win.o \
+        win/readdib.o \
+        win/readpng.o \
+        win/scrnshot.o \
+		win/win-layout.o
+
+X11MAINFILES = main-x11.o
+
+STATSMAINFILES = main-stats.o \
+        stats/db.o
+
+SPOILMAINFILES = main-spoil.o
+
+# Remember all optional intermediates so "make clean" will get all of them
+# even if the configuration has changed since a build was done.
+ALLMAINFILES = \
+	$(BASEMAINFILES) \
+	$(GCUMAINFILES) \
+	$(SDL2MAINFILES) \
+	$(SDLMAINFILES) \
+	$(SNDSDLFILES) \
+	$(TESTMAINFILES) \
+	$(WINMAINFILES) \
+	$(X11MAINFILES) \
+	$(STATSMAINFILES) \
+	$(SPOILMAINFILES)
+
+ANGFILES0 = \
+	cave.o \
+	cave-map.o \
+	cave-square.o \
+	cave-view.o \
+	cmd-cave.o \
+	cmd-core.o \
+	cmd-misc.o \
+	cmd-obj.o \
+	cmd-pickup.o \
+	cmd-spoil.o \
+	cmd-wizard.o \
+	datafile.o \
+	debug.o \
+	effect-handler-attack.o \
+	effect-handler-general.o \
+	effects.o \
+	effects-info.o \
+	game-event.o \
+	game-input.o \
+	game-world.o \
+	generate.o \
+	gen-cave.o \
+	gen-chunk.o \
+	gen-monster.o \
+	gen-room.o \
+	gen-util.o \
+	grafmode.o \
+	guid.o \
+	init.o \
+	load.o \
+	message.o \
+	mon-attack.o \
+	mon-blows.o \
+	mon-desc.o \
+	mon-group.o \
+	mon-init.o \
+	mon-list.o \
+	mon-lore.o \
+	mon-make.o \
+	mon-move.o \
+	mon-msg.o \
+	mon-predicate.o \
+	mon-spell.o \
+	mon-summon.o \
+	mon-timed.o \
+	mon-util.o \
+	obj-chest.o \
+	obj-curse.o \
+	obj-desc.o \
+	obj-gear.o \
+	obj-ignore.o \
+	obj-info.o \
+	obj-init.o \
+	obj-knowledge.o \
+	obj-list.o \
+	obj-make.o \
+	obj-pile.o \
+	obj-power.o \
+	obj-properties.o \
+	obj-randart.o \
+	obj-slays.o \
+	obj-tval.o \
+	obj-util.o \
+	option.o \
+	parser.o \
+	randname.o \
+	player-attack.o \
+	player-birth.o \
+	player-calcs.o \
+	player-class.o \
+	player-history.o \
+	player-path.o \
+	player-properties.o \
+	player-quest.o \
+	player-race.o \
+	player-spell.o \
+	player-timed.o \
+	player-util.o \
+	player.o \
+	project.o \
+	project-feat.o \
+	project-mon.o \
+	project-obj.o \
+	project-player.o \
+	save.o \
+	savefile.o \
+	save-charoutput.o \
+	score.o \
+	score-util.o \
+	sound-core.o \
+	source.o \
+	store.o \
+	target.o \
+	trap.o \
+	ui-birth.o \
+	ui-command.o \
+	ui-context.o \
+	ui-curse.o \
+	ui-death.o \
+	ui-display.o \
+	ui-effect.o \
+	ui-entry.o \
+	ui-entry-combiner.o \
+	ui-entry-renderers.o \
+	ui-equip-cmp.o \
+	ui-event.o \
+	ui-game.o \
+	ui-help.o \
+	ui-history.o \
+	ui-init.o \
+	ui-input.o \
+	ui-keymap.o \
+	ui-knowledge.o \
+	ui-map.o \
+	ui-menu.o \
+	ui-mon-list.o \
+	ui-mon-lore.o \
+	ui-obj-list.o \
+	ui-object.o \
+	ui-options.o \
+	ui-output.o \
+	ui-player-properties.o \
+	ui-player.o \
+	ui-prefs.o \
+	ui-score.o \
+	ui-signals.o \
+	ui-spell.o \
+	ui-spoil.o \
+	ui-store.o \
+	ui-target.o \
+	ui-term.o \
+	ui-visuals.o \
+	ui-wizard.o \
+	wiz-debug.o \
+	wiz-spoil.o \
+	wiz-stats.o \
+	borg/borg-attack-munchkin.o \
+	borg/borg-caution.o \
+	borg/borg-cave-light.o \
+	borg/borg-cave-util.o \
+	borg/borg-cave-view.o \
+	borg/borg-cave.o \
+	borg/borg-danger.o \
+	borg/borg-escape.o \
+	borg/borg-fight-attack.o \
+	borg/borg-fight-defend.o \
+	borg/borg-fight-perm.o \
+	borg/borg-flow-dark.o \
+	borg/borg-flow-glyph.o \
+	borg/borg-flow-kill.o \
+	borg/borg-flow-misc.o \
+	borg/borg-flow-stairs.o \
+	borg/borg-flow-take.o \
+	borg/borg-flow.o \
+	borg/borg-formulas.o \
+	borg/borg-formulas-calc.o \
+	borg/borg-home-notice.o \
+	borg/borg-home-power.o \
+	borg/borg-init.o \
+	borg/borg-inventory.o \
+	borg/borg-io.o \
+	borg/borg-item-activation.o \
+	borg/borg-item-analyze.o \
+	borg/borg-item-decurse.o \
+	borg/borg-item-enchant.o \
+	borg/borg-item-id.o \
+	borg/borg-item-use.o \
+	borg/borg-item-val.o \
+	borg/borg-item-wear.o \
+	borg/borg-item.o \
+	borg/borg-junk.o \
+	borg/borg-light.o \
+	borg/borg-log.o \
+	borg/borg-magic-play.o \
+	borg/borg-magic.o \
+	borg/borg-messages-react.o \
+	borg/borg-messages.o \
+	borg/borg-power.o \
+	borg/borg-prepared.o \
+	borg/borg-projection.o \
+	borg/borg-recover.o \
+	borg/borg-reincarnate.o \
+	borg/borg-store-buy.o \
+	borg/borg-store-sell.o \
+	borg/borg-store.o \
+	borg/borg-think-dungeon-util.o \
+	borg/borg-think-dungeon.o \
+	borg/borg-think-store.o \
+	borg/borg-think.o \
+	borg/borg-trait-swap.o \
+	borg/borg-trait.o \
+	borg/borg-update.o \
+	borg/borg-util.o \
+	borg/borg.o 
+
+buildid.o: $(ANGFILES0)
+ANGFILES = $(ANGFILES0) buildid.o

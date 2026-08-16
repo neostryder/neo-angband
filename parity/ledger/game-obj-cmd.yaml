@@ -1,0 +1,94 @@
+module: packages/core/src/game/obj-cmd.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/cmd-obj.c
+    items:
+      - check_devices (L59): empty staff/wand notice, the randint1(1000)
+        failure roll against get_use_device_chance, and the 1 / 0 / -1
+        usable / retryable / unusable result.
+      - beam_chance (L112): wand 20, rod 10.
+      - do_cmd_takeoff (L239) / do_cmd_wield (L265) / do_cmd_drop (L360):
+        the inventory commands, wield replacing an occupied slot (the ring
+        choice and the !t confirmation are UI seams), half-turn energy for
+        takeoff and drop, full turn for wield.
+      - use_aux (L407): aim resolution (unknown flavored items aim at
+        random; player_confuse_dir wrecks aim), the device check, the
+        floor-object tentative deduction with restore when the effect goes
+        unused, the effect chain run through effect_do with source_player /
+        dir / beam / boost (device skill vs item level), flavor learning
+        (single-use auto-learn, ident learn, tried), and charge / timeout /
+        single-use consumption. target_fix / target_release (L566/L576)
+        bracket the effect run, and GameEffectEnv.aimed is a live getter
+        over targetOkay + targetGet so DIR_TARGET handlers re-read the
+        target per handler (game/target.ts).
+      - do_cmd_eat_food / quaff_potion / read_scroll (USE_SINGLE),
+        use_staff / aim_wand (USE_CHARGE), zap_rod / activate (USE_TIMEOUT)
+        as registry actions with their tval filters and the obj_can_zap /
+        obj_can_activate recharge gates.
+  - path: src/obj-gear.c
+    items:
+      - inven_takeoff (L1033) / inven_wield (L931) / inven_drop (L1078):
+        de-equip to pack, wield with occupied-slot replacement (splitting a
+        stack leaves the rest in the pack, floor items are carried first),
+        drop via drop_near at the player's grid.
+  - path: src/obj-util.c
+    items:
+      - get_use_device_chance (L930), obj_needs_aim (L899, using the
+        generated effect-table aim flags), number_charging (L1020),
+        obj_can_zap (L709), player_confuse_dir (player-util.c).
+notes: >-
+  The use family runs each object's raw effect records through EffectBuilder
+  per use (binding PLAYER_LEVEL / MAX_SIGHT / DUNGEON_LEVEL bases) and
+  effect_do with a player source - the same interpreter stack monster spells
+  use, so every registered handler (heal, timed, damage, bolt/ball/breath,
+  teleport) works from items. Knowledge rides on FlavorKnowledge (#11):
+  single-use items auto-learn, devices learn on ident else get tried.
+  Commands address objects by gear handle (args.handle) or by position in
+  the pile underfoot (args.floor).
+deferred:
+  - CLOSED (2026-08-07). All three landed: game/obj-cmd.ts registers "inscribe"
+    at :1965 and "uninscribe" at :1976, and the autoinscription machinery is
+    runeAutoinscribe (:907) plus autoinscribeGround / autoinscribePack
+    (:968/:978). "Land with UI" was true when written and stopped being true
+    when the commands were registered.
+  - CLOSED (2026-08-07). do_cmd_refill is registered at game/obj-cmd.ts:1999
+    over refillLamp (:805) and bound to "F" in the shell
+    (web/src/main.ts:1836, :2509); do_cmd_cast and do_cmd_study landed with the
+    player-spell layer (#22, player-spell.yaml is fully adjudicated). The
+    do_cmd_use DISPATCHER is genuinely the shell's - it is a menu that picks
+    which command to send - and the commands it dispatches to all exist.
+  - CLOSED (2026-08-07). Traps landed (#21) and the interaction with them:
+    upstream's "Hack to make Glyph of Warding work properly" (cmd-obj.c:724-729)
+    pushes the pile off the grid after the rune is laid, and
+    game/effect-general.ts:190 does exactly that in the EF_GLYPH handler -
+    `if (floorPile(state, grid).length > 0) pushObject(state, grid)`.
+  - All three are DONE. Command repetition closed as PORT_TODO 2.12, on the
+    live repeat path. The "!t" get_check loop is wieldTakeoffConfirm
+    (obj-cmd.ts:522), asked once per inscription with any refusal aborting, and
+    the shell runs it at web/src/main.ts:2781. The ring-slot choice is
+    wieldRingChoice (:471), asked only when both hands are full, and the shell
+    runs it FIRST at main.ts:2757 - the order matters, and web/src/
+    wield-prompts.test.ts guards both the calls and their order, because "a
+    correct wieldRingChoice() that nothing calls reads exactly like a finished
+    feature". The
+    shapechange gating (player_get_resume_normal_shape) is DONE
+    (game-shape.yaml): takeoff/wield/drop and the scroll/staff/wand/rod/
+    activate family resume the normal form first (confirm seam, default
+    yes); eat/quaff stay ungated as upstream.
+  - Object descriptions are live: describeObject (game/describe.ts) is used
+    throughout this module (obj-cmd.ts:309, :398, :532 among others) with the
+    real ODESC modes. The work_obj known-COPY machinery has no port and needs
+    none - it is C's way of describing an object as the player knows it without
+    mutating the original, and the port synthesises that view on demand
+    (objectKnownShadow) instead of copying. A ratified substitution, not a gap.
+verified-by:
+  - game/obj-cmd.test.ts (13 tests): wield/takeoff round-trip; occupied-slot
+    replacement keeps the old item; drop lands on the player's grid pile;
+    quaffing Cure Light Wounds heals the live player and consumes the
+    potion; an unaware flavor becomes aware on single use; a staff use
+    consumes a charge; a rod use starts its timeout (number_charging 1);
+    a device failure spends the turn but no charge; wands need aim and
+    potions do not; chains build from raw kind records; quaff / wield /
+    takeoff / drop through processPlayer charge the upstream energy; a
+    Sleep potion paralyses through the live timed stack.

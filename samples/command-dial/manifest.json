@@ -1,0 +1,13 @@
+{
+  "id": "command-dial",
+  "name": "Command Dial",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "engine": ">=0.19.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "capabilities": ["ui:menu.replace"],
+  "description": "A worked example of ModPlugin.menu: it presents the game menu as a radial dial of wedges instead of a lettered list, laid out from the question's own choices and resolved by naming a choice's stable id.\n\nIt takes ONE question and declines every other menu in the game, which is what the seam is for: a presenter reimagines the screens it has a better idea for and leaves the rest alone."
+}

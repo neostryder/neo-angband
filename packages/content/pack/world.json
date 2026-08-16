@@ -1,0 +1,1030 @@
+{
+  "file": "world",
+  "source": "lib/gamedata/world.txt",
+  "records": [
+    {
+      "level": {
+        "depth": 0,
+        "name": "Town",
+        "up": "None",
+        "down": "Angband 1"
+      }
+    },
+    {
+      "level": {
+        "depth": 1,
+        "name": "Angband 1",
+        "up": "Town",
+        "down": "Angband 2"
+      }
+    },
+    {
+      "level": {
+        "depth": 2,
+        "name": "Angband 2",
+        "up": "Angband 1",
+        "down": "Angband 3"
+      }
+    },
+    {
+      "level": {
+        "depth": 3,
+        "name": "Angband 3",
+        "up": "Angband 2",
+        "down": "Angband 4"
+      }
+    },
+    {
+      "level": {
+        "depth": 4,
+        "name": "Angband 4",
+        "up": "Angband 3",
+        "down": "Angband 5"
+      }
+    },
+    {
+      "level": {
+        "depth": 5,
+        "name": "Angband 5",
+        "up": "Angband 4",
+        "down": "Angband 6"
+      }
+    },
+    {
+      "level": {
+        "depth": 6,
+        "name": "Angband 6",
+        "up": "Angband 5",
+        "down": "Angband 7"
+      }
+    },
+    {
+      "level": {
+        "depth": 7,
+        "name": "Angband 7",
+        "up": "Angband 6",
+        "down": "Angband 8"
+      }
+    },
+    {
+      "level": {
+        "depth": 8,
+        "name": "Angband 8",
+        "up": "Angband 7",
+        "down": "Angband 9"
+      }
+    },
+    {
+      "level": {
+        "depth": 9,
+        "name": "Angband 9",
+        "up": "Angband 8",
+        "down": "Angband 10"
+      }
+    },
+    {
+      "level": {
+        "depth": 10,
+        "name": "Angband 10",
+        "up": "Angband 9",
+        "down": "Angband 11"
+      }
+    },
+    {
+      "level": {
+        "depth": 11,
+        "name": "Angband 11",
+        "up": "Angband 10",
+        "down": "Angband 12"
+      }
+    },
+    {
+      "level": {
+        "depth": 12,
+        "name": "Angband 12",
+        "up": "Angband 11",
+        "down": "Angband 13"
+      }
+    },
+    {
+      "level": {
+        "depth": 13,
+        "name": "Angband 13",
+        "up": "Angband 12",
+        "down": "Angband 14"
+      }
+    },
+    {
+      "level": {
+        "depth": 14,
+        "name": "Angband 14",
+        "up": "Angband 13",
+        "down": "Angband 15"
+      }
+    },
+    {
+      "level": {
+        "depth": 15,
+        "name": "Angband 15",
+        "up": "Angband 14",
+        "down": "Angband 16"
+      }
+    },
+    {
+      "level": {
+        "depth": 16,
+        "name": "Angband 16",
+        "up": "Angband 15",
+        "down": "Angband 17"
+      }
+    },
+    {
+      "level": {
+        "depth": 17,
+        "name": "Angband 17",
+        "up": "Angband 16",
+        "down": "Angband 18"
+      }
+    },
+    {
+      "level": {
+        "depth": 18,
+        "name": "Angband 18",
+        "up": "Angband 17",
+        "down": "Angband 19"
+      }
+    },
+    {
+      "level": {
+        "depth": 19,
+        "name": "Angband 19",
+        "up": "Angband 18",
+        "down": "Angband 20"
+      }
+    },
+    {
+      "level": {
+        "depth": 20,
+        "name": "Angband 20",
+        "up": "Angband 19",
+        "down": "Angband 21"
+      }
+    },
+    {
+      "level": {
+        "depth": 21,
+        "name": "Angband 21",
+        "up": "Angband 20",
+        "down": "Angband 22"
+      }
+    },
+    {
+      "level": {
+        "depth": 22,
+        "name": "Angband 22",
+        "up": "Angband 21",
+        "down": "Angband 23"
+      }
+    },
+    {
+      "level": {
+        "depth": 23,
+        "name": "Angband 23",
+        "up": "Angband 22",
+        "down": "Angband 24"
+      }
+    },
+    {
+      "level": {
+        "depth": 24,
+        "name": "Angband 24",
+        "up": "Angband 23",
+        "down": "Angband 25"
+      }
+    },
+    {
+      "level": {
+        "depth": 25,
+        "name": "Angband 25",
+        "up": "Angband 24",
+        "down": "Angband 26"
+      }
+    },
+    {
+      "level": {
+        "depth": 26,
+        "name": "Angband 26",
+        "up": "Angband 25",
+        "down": "Angband 27"
+      }
+    },
+    {
+      "level": {
+        "depth": 27,
+        "name": "Angband 27",
+        "up": "Angband 26",
+        "down": "Angband 28"
+      }
+    },
+    {
+      "level": {
+        "depth": 28,
+        "name": "Angband 28",
+        "up": "Angband 27",
+        "down": "Angband 29"
+      }
+    },
+    {
+      "level": {
+        "depth": 29,
+        "name": "Angband 29",
+        "up": "Angband 28",
+        "down": "Angband 30"
+      }
+    },
+    {
+      "level": {
+        "depth": 30,
+        "name": "Angband 30",
+        "up": "Angband 29",
+        "down": "Angband 31"
+      }
+    },
+    {
+      "level": {
+        "depth": 31,
+        "name": "Angband 31",
+        "up": "Angband 30",
+        "down": "Angband 32"
+      }
+    },
+    {
+      "level": {
+        "depth": 32,
+        "name": "Angband 32",
+        "up": "Angband 31",
+        "down": "Angband 33"
+      }
+    },
+    {
+      "level": {
+        "depth": 33,
+        "name": "Angband 33",
+        "up": "Angband 32",
+        "down": "Angband 34"
+      }
+    },
+    {
+      "level": {
+        "depth": 34,
+        "name": "Angband 34",
+        "up": "Angband 33",
+        "down": "Angband 35"
+      }
+    },
+    {
+      "level": {
+        "depth": 35,
+        "name": "Angband 35",
+        "up": "Angband 34",
+        "down": "Angband 36"
+      }
+    },
+    {
+      "level": {
+        "depth": 36,
+        "name": "Angband 36",
+        "up": "Angband 35",
+        "down": "Angband 37"
+      }
+    },
+    {
+      "level": {
+        "depth": 37,
+        "name": "Angband 37",
+        "up": "Angband 36",
+        "down": "Angband 38"
+      }
+    },
+    {
+      "level": {
+        "depth": 38,
+        "name": "Angband 38",
+        "up": "Angband 37",
+        "down": "Angband 39"
+      }
+    },
+    {
+      "level": {
+        "depth": 39,
+        "name": "Angband 39",
+        "up": "Angband 38",
+        "down": "Angband 40"
+      }
+    },
+    {
+      "level": {
+        "depth": 40,
+        "name": "Angband 40",
+        "up": "Angband 39",
+        "down": "Angband 41"
+      }
+    },
+    {
+      "level": {
+        "depth": 41,
+        "name": "Angband 41",
+        "up": "Angband 40",
+        "down": "Angband 42"
+      }
+    },
+    {
+      "level": {
+        "depth": 42,
+        "name": "Angband 42",
+        "up": "Angband 41",
+        "down": "Angband 43"
+      }
+    },
+    {
+      "level": {
+        "depth": 43,
+        "name": "Angband 43",
+        "up": "Angband 42",
+        "down": "Angband 44"
+      }
+    },
+    {
+      "level": {
+        "depth": 44,
+        "name": "Angband 44",
+        "up": "Angband 43",
+        "down": "Angband 45"
+      }
+    },
+    {
+      "level": {
+        "depth": 45,
+        "name": "Angband 45",
+        "up": "Angband 44",
+        "down": "Angband 46"
+      }
+    },
+    {
+      "level": {
+        "depth": 46,
+        "name": "Angband 46",
+        "up": "Angband 45",
+        "down": "Angband 47"
+      }
+    },
+    {
+      "level": {
+        "depth": 47,
+        "name": "Angband 47",
+        "up": "Angband 46",
+        "down": "Angband 48"
+      }
+    },
+    {
+      "level": {
+        "depth": 48,
+        "name": "Angband 48",
+        "up": "Angband 47",
+        "down": "Angband 49"
+      }
+    },
+    {
+      "level": {
+        "depth": 49,
+        "name": "Angband 49",
+        "up": "Angband 48",
+        "down": "Angband 50"
+      }
+    },
+    {
+      "level": {
+        "depth": 50,
+        "name": "Angband 50",
+        "up": "Angband 49",
+        "down": "Angband 51"
+      }
+    },
+    {
+      "level": {
+        "depth": 51,
+        "name": "Angband 51",
+        "up": "Angband 50",
+        "down": "Angband 52"
+      }
+    },
+    {
+      "level": {
+        "depth": 52,
+        "name": "Angband 52",
+        "up": "Angband 51",
+        "down": "Angband 53"
+      }
+    },
+    {
+      "level": {
+        "depth": 53,
+        "name": "Angband 53",
+        "up": "Angband 52",
+        "down": "Angband 54"
+      }
+    },
+    {
+      "level": {
+        "depth": 54,
+        "name": "Angband 54",
+        "up": "Angband 53",
+        "down": "Angband 55"
+      }
+    },
+    {
+      "level": {
+        "depth": 55,
+        "name": "Angband 55",
+        "up": "Angband 54",
+        "down": "Angband 56"
+      }
+    },
+    {
+      "level": {
+        "depth": 56,
+        "name": "Angband 56",
+        "up": "Angband 55",
+        "down": "Angband 57"
+      }
+    },
+    {
+      "level": {
+        "depth": 57,
+        "name": "Angband 57",
+        "up": "Angband 56",
+        "down": "Angband 58"
+      }
+    },
+    {
+      "level": {
+        "depth": 58,
+        "name": "Angband 58",
+        "up": "Angband 57",
+        "down": "Angband 59"
+      }
+    },
+    {
+      "level": {
+        "depth": 59,
+        "name": "Angband 59",
+        "up": "Angband 58",
+        "down": "Angband 60"
+      }
+    },
+    {
+      "level": {
+        "depth": 60,
+        "name": "Angband 60",
+        "up": "Angband 59",
+        "down": "Angband 61"
+      }
+    },
+    {
+      "level": {
+        "depth": 61,
+        "name": "Angband 61",
+        "up": "Angband 60",
+        "down": "Angband 62"
+      }
+    },
+    {
+      "level": {
+        "depth": 62,
+        "name": "Angband 62",
+        "up": "Angband 61",
+        "down": "Angband 63"
+      }
+    },
+    {
+      "level": {
+        "depth": 63,
+        "name": "Angband 63",
+        "up": "Angband 62",
+        "down": "Angband 64"
+      }
+    },
+    {
+      "level": {
+        "depth": 64,
+        "name": "Angband 64",
+        "up": "Angband 63",
+        "down": "Angband 65"
+      }
+    },
+    {
+      "level": {
+        "depth": 65,
+        "name": "Angband 65",
+        "up": "Angband 64",
+        "down": "Angband 66"
+      }
+    },
+    {
+      "level": {
+        "depth": 66,
+        "name": "Angband 66",
+        "up": "Angband 65",
+        "down": "Angband 67"
+      }
+    },
+    {
+      "level": {
+        "depth": 67,
+        "name": "Angband 67",
+        "up": "Angband 66",
+        "down": "Angband 68"
+      }
+    },
+    {
+      "level": {
+        "depth": 68,
+        "name": "Angband 68",
+        "up": "Angband 67",
+        "down": "Angband 69"
+      }
+    },
+    {
+      "level": {
+        "depth": 69,
+        "name": "Angband 69",
+        "up": "Angband 68",
+        "down": "Angband 70"
+      }
+    },
+    {
+      "level": {
+        "depth": 70,
+        "name": "Angband 70",
+        "up": "Angband 69",
+        "down": "Angband 71"
+      }
+    },
+    {
+      "level": {
+        "depth": 71,
+        "name": "Angband 71",
+        "up": "Angband 70",
+        "down": "Angband 72"
+      }
+    },
+    {
+      "level": {
+        "depth": 72,
+        "name": "Angband 72",
+        "up": "Angband 71",
+        "down": "Angband 73"
+      }
+    },
+    {
+      "level": {
+        "depth": 73,
+        "name": "Angband 73",
+        "up": "Angband 72",
+        "down": "Angband 74"
+      }
+    },
+    {
+      "level": {
+        "depth": 74,
+        "name": "Angband 74",
+        "up": "Angband 73",
+        "down": "Angband 75"
+      }
+    },
+    {
+      "level": {
+        "depth": 75,
+        "name": "Angband 75",
+        "up": "Angband 74",
+        "down": "Angband 76"
+      }
+    },
+    {
+      "level": {
+        "depth": 76,
+        "name": "Angband 76",
+        "up": "Angband 75",
+        "down": "Angband 77"
+      }
+    },
+    {
+      "level": {
+        "depth": 77,
+        "name": "Angband 77",
+        "up": "Angband 76",
+        "down": "Angband 78"
+      }
+    },
+    {
+      "level": {
+        "depth": 78,
+        "name": "Angband 78",
+        "up": "Angband 77",
+        "down": "Angband 79"
+      }
+    },
+    {
+      "level": {
+        "depth": 79,
+        "name": "Angband 79",
+        "up": "Angband 78",
+        "down": "Angband 80"
+      }
+    },
+    {
+      "level": {
+        "depth": 80,
+        "name": "Angband 80",
+        "up": "Angband 79",
+        "down": "Angband 81"
+      }
+    },
+    {
+      "level": {
+        "depth": 81,
+        "name": "Angband 81",
+        "up": "Angband 80",
+        "down": "Angband 82"
+      }
+    },
+    {
+      "level": {
+        "depth": 82,
+        "name": "Angband 82",
+        "up": "Angband 81",
+        "down": "Angband 83"
+      }
+    },
+    {
+      "level": {
+        "depth": 83,
+        "name": "Angband 83",
+        "up": "Angband 82",
+        "down": "Angband 84"
+      }
+    },
+    {
+      "level": {
+        "depth": 84,
+        "name": "Angband 84",
+        "up": "Angband 83",
+        "down": "Angband 85"
+      }
+    },
+    {
+      "level": {
+        "depth": 85,
+        "name": "Angband 85",
+        "up": "Angband 84",
+        "down": "Angband 86"
+      }
+    },
+    {
+      "level": {
+        "depth": 86,
+        "name": "Angband 86",
+        "up": "Angband 85",
+        "down": "Angband 87"
+      }
+    },
+    {
+      "level": {
+        "depth": 87,
+        "name": "Angband 87",
+        "up": "Angband 86",
+        "down": "Angband 88"
+      }
+    },
+    {
+      "level": {
+        "depth": 88,
+        "name": "Angband 88",
+        "up": "Angband 87",
+        "down": "Angband 89"
+      }
+    },
+    {
+      "level": {
+        "depth": 89,
+        "name": "Angband 89",
+        "up": "Angband 88",
+        "down": "Angband 90"
+      }
+    },
+    {
+      "level": {
+        "depth": 90,
+        "name": "Angband 90",
+        "up": "Angband 89",
+        "down": "Angband 91"
+      }
+    },
+    {
+      "level": {
+        "depth": 91,
+        "name": "Angband 91",
+        "up": "Angband 90",
+        "down": "Angband 92"
+      }
+    },
+    {
+      "level": {
+        "depth": 92,
+        "name": "Angband 92",
+        "up": "Angband 91",
+        "down": "Angband 93"
+      }
+    },
+    {
+      "level": {
+        "depth": 93,
+        "name": "Angband 93",
+        "up": "Angband 92",
+        "down": "Angband 94"
+      }
+    },
+    {
+      "level": {
+        "depth": 94,
+        "name": "Angband 94",
+        "up": "Angband 93",
+        "down": "Angband 95"
+      }
+    },
+    {
+      "level": {
+        "depth": 95,
+        "name": "Angband 95",
+        "up": "Angband 94",
+        "down": "Angband 96"
+      }
+    },
+    {
+      "level": {
+        "depth": 96,
+        "name": "Angband 96",
+        "up": "Angband 95",
+        "down": "Angband 97"
+      }
+    },
+    {
+      "level": {
+        "depth": 97,
+        "name": "Angband 97",
+        "up": "Angband 96",
+        "down": "Angband 98"
+      }
+    },
+    {
+      "level": {
+        "depth": 98,
+        "name": "Angband 98",
+        "up": "Angband 97",
+        "down": "Angband 99"
+      }
+    },
+    {
+      "level": {
+        "depth": 99,
+        "name": "Angband 99",
+        "up": "Angband 98",
+        "down": "Angband 100"
+      }
+    },
+    {
+      "level": {
+        "depth": 100,
+        "name": "Angband 100",
+        "up": "Angband 99",
+        "down": "Angband 101"
+      }
+    },
+    {
+      "level": {
+        "depth": 101,
+        "name": "Angband 101",
+        "up": "Angband 100",
+        "down": "Angband 102"
+      }
+    },
+    {
+      "level": {
+        "depth": 102,
+        "name": "Angband 102",
+        "up": "Angband 101",
+        "down": "Angband 103"
+      }
+    },
+    {
+      "level": {
+        "depth": 103,
+        "name": "Angband 103",
+        "up": "Angband 102",
+        "down": "Angband 104"
+      }
+    },
+    {
+      "level": {
+        "depth": 104,
+        "name": "Angband 104",
+        "up": "Angband 103",
+        "down": "Angband 105"
+      }
+    },
+    {
+      "level": {
+        "depth": 105,
+        "name": "Angband 105",
+        "up": "Angband 104",
+        "down": "Angband 106"
+      }
+    },
+    {
+      "level": {
+        "depth": 106,
+        "name": "Angband 106",
+        "up": "Angband 105",
+        "down": "Angband 107"
+      }
+    },
+    {
+      "level": {
+        "depth": 107,
+        "name": "Angband 107",
+        "up": "Angband 106",
+        "down": "Angband 108"
+      }
+    },
+    {
+      "level": {
+        "depth": 108,
+        "name": "Angband 108",
+        "up": "Angband 107",
+        "down": "Angband 109"
+      }
+    },
+    {
+      "level": {
+        "depth": 109,
+        "name": "Angband 109",
+        "up": "Angband 108",
+        "down": "Angband 110"
+      }
+    },
+    {
+      "level": {
+        "depth": 110,
+        "name": "Angband 110",
+        "up": "Angband 109",
+        "down": "Angband 111"
+      }
+    },
+    {
+      "level": {
+        "depth": 111,
+        "name": "Angband 111",
+        "up": "Angband 110",
+        "down": "Angband 112"
+      }
+    },
+    {
+      "level": {
+        "depth": 112,
+        "name": "Angband 112",
+        "up": "Angband 111",
+        "down": "Angband 113"
+      }
+    },
+    {
+      "level": {
+        "depth": 113,
+        "name": "Angband 113",
+        "up": "Angband 112",
+        "down": "Angband 114"
+      }
+    },
+    {
+      "level": {
+        "depth": 114,
+        "name": "Angband 114",
+        "up": "Angband 113",
+        "down": "Angband 115"
+      }
+    },
+    {
+      "level": {
+        "depth": 115,
+        "name": "Angband 115",
+        "up": "Angband 114",
+        "down": "Angband 116"
+      }
+    },
+    {
+      "level": {
+        "depth": 116,
+        "name": "Angband 116",
+        "up": "Angband 115",
+        "down": "Angband 117"
+      }
+    },
+    {
+      "level": {
+        "depth": 117,
+        "name": "Angband 117",
+        "up": "Angband 116",
+        "down": "Angband 118"
+      }
+    },
+    {
+      "level": {
+        "depth": 118,
+        "name": "Angband 118",
+        "up": "Angband 117",
+        "down": "Angband 119"
+      }
+    },
+    {
+      "level": {
+        "depth": 119,
+        "name": "Angband 119",
+        "up": "Angband 118",
+        "down": "Angband 120"
+      }
+    },
+    {
+      "level": {
+        "depth": 120,
+        "name": "Angband 120",
+        "up": "Angband 119",
+        "down": "Angband 121"
+      }
+    },
+    {
+      "level": {
+        "depth": 121,
+        "name": "Angband 121",
+        "up": "Angband 120",
+        "down": "Angband 122"
+      }
+    },
+    {
+      "level": {
+        "depth": 122,
+        "name": "Angband 122",
+        "up": "Angband 121",
+        "down": "Angband 123"
+      }
+    },
+    {
+      "level": {
+        "depth": 123,
+        "name": "Angband 123",
+        "up": "Angband 122",
+        "down": "Angband 124"
+      }
+    },
+    {
+      "level": {
+        "depth": 124,
+        "name": "Angband 124",
+        "up": "Angband 123",
+        "down": "Angband 125"
+      }
+    },
+    {
+      "level": {
+        "depth": 125,
+        "name": "Angband 125",
+        "up": "Angband 124",
+        "down": "Angband 126"
+      }
+    },
+    {
+      "level": {
+        "depth": 126,
+        "name": "Angband 126",
+        "up": "Angband 125",
+        "down": "Angband 127"
+      }
+    },
+    {
+      "level": {
+        "depth": 127,
+        "name": "Angband 127",
+        "up": "Angband 126",
+        "down": "None"
+      }
+    }
+  ]
+}

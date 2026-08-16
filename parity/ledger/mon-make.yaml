@@ -1,0 +1,63 @@
+module: packages/core/src/mon/make.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/mon-make.c
+    items:
+      - init_race_allocs (level-grouped alloc table, prob1 from rarity
+        and the (1 + level / 10) depth factor; skips the <player>
+        record and, vacuously, the player-ghost slot)
+      - get_mon_num_prep (prob2 restriction hook, null clears)
+      - get_mon_num (OOD boost 1 in ood-chance by min(level / 4 + 2,
+        ood-amount); level-sorted cutoff; town monsters excluded from
+        the dungeon and dungeon monsters from town; SEASONAL gating;
+        unique cur_num/max_num rule; FORCE_DEPTH checked against the
+        placement level; 60/10 percent deeper-race rerolls; stateful
+        prob3 exactly as upstream)
+      - get_mon_race_aux (weighted pick over prob3)
+      - mon_hp (std-dev arithmetic, all aspects)
+      - place_new_monster_one, construction half only (sleep timer
+        val*2 + randint1(val*10); unique fixed avg_hp vs randomised
+        normal hp clamped to 1; speed variety rand_spread by
+        turn_energy/10 for non-uniques; random energy 0..49;
+        FORCE_SLEEP -> MFLAG_NICE; UNAWARE -> MFLAG_CAMOUFLAGE;
+        ATTR_RAND random attr; primary group info)
+notes: >-
+  RNG call order inside getMonNum and createMonster matches upstream
+  (ood roll, aux pick, percent roll, rerolls; sleep, hp, speed, energy,
+  attr) so seeded streams stay comparable. Divergences by design:
+  SEASONAL is an option flag instead of reading the wall clock;
+  turn_energy clamps speed to 0..199 where upstream indexes unchecked;
+  builder throws when a race's level breaches max-depth (upstream would
+  corrupt memory). The cross-module operations are supplied elsewhere:
+  updateMon (game/known.ts:895); drop creation at live and generation placement
+  (game/mon-place.ts:239-250, gen/util.ts:1687-1697), with monCreateDropCount
+  implemented in mon/make.ts:353 and called by game/mon-death.ts:160;
+  mimicked-object creation
+  (game/mon-place.ts:259-260, gen/util.ts:1712-1729); summon placement
+  (game/effect-summon.ts:83-91 into game/mon-place.ts:880); compactMonsters /
+  monsterIndexMove (game/loop.ts:370-376, game/world.ts:724-769); and
+  wipe_mon_list's racial-count half (game/mon-place.ts:1001-1008, called on a
+  non-persistent level change by session/game.ts:2571-2572). Town generation
+  counts (town-day/town-night) belong to level generation. NOW PORTED ELSEWHERE:
+  group and friends
+  placement (place_new_monster, place_new_monster_group, place_friends,
+  place_monster_base_okay) and pick_and_place_monster/_distant live in
+  gen/util.ts with generation-time group indices; monster_group_assign
+  and delete_monster_idx's group removal live in game/mon-group.ts +
+  game/context.ts (see game-mon-group.yaml, gen-framework.yaml).
+  LEVEL RATING was listed above as deferred and is not: it is ported end to
+  end and was when this row was written. add_to_monster_rating (mon-make.c
+  L1112-1126) is wired in game/mon-place.ts for generation AND live
+  summons/breeders, matching upstream's single place_new_monster_one;
+  place_object accumulates obj_rating in gen/util.ts; and gen/generate.ts:518
+  is upstream's own line, chunk->feeling = calc_obj_feeling(chunk, p) +
+  calc_mon_feeling(chunk) (generate.c:1241). PORT_TODO 7.3.
+verified-by:
+  - make.test.ts against the real pack (617 legal alloc entries,
+    level-sorted, prob1 formula; seeded getMonNum at depths 1/10/40/98
+    within the boosted-depth bound and never town monsters; depth-0
+    picks are town-only; prep hook excludes dead uniques; cur_num cap
+    skips uniques; rarity distribution sanity kobold vs wild cat;
+    monHp arithmetic; createMonster unique/non-unique hp, speed
+    variety bounds, sleep timer range, NICE and CAMOUFLAGE flags)

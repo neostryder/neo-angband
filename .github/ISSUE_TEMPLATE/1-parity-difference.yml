@@ -1,0 +1,100 @@
+name: It does not match Angband 4.2.6
+description: A message, a screen, a prompt or a behaviour that differs from the original
+title: "[parity] "
+labels: ["parity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is the report we want most.**
+
+        A missing message, a prompt that never appears, a screen laid out a
+        column off - those survive code review, they survive our automated
+        checks, and they are why earlier claims that this port was "complete"
+        kept turning out to be wrong. Somebody playing is the only thing that
+        finds them.
+
+        You do not need a copy of Angband to hand. "I expected X" is a
+        perfectly good report; we can check the C ourselves, and the original
+        source is in `reference/` right here in the repository.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the original does
+      description: >-
+        What you expected, and how you know - memory is fine, a side-by-side is
+        better, a line from `reference/src` is best.
+      placeholder: |
+        Quaffing an unknown potion prints "You have no more Potions of Cure
+        Light Wounds (f)." after it is used up.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What Neo Angband does instead
+      placeholder: The potion is used and no message is printed at all.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to get there
+      description: >-
+        Where you were and what you did. If you know a seed that reproduces it,
+        that turns an evening of hunting into a five-minute fix.
+      placeholder: |
+        1. New character, seed 12345, Human Warrior
+        2. Buy a potion in the general store
+        3. Quaff it with `q`
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        The number on the title screen, e.g. `0.14.0`. If you built from source,
+        the commit is even better.
+      placeholder: "0.14.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where you were playing
+      options:
+        - Desktop app (Windows)
+        - Desktop app (macOS)
+        - Desktop app (Linux)
+        - Browser
+        - Installed as a PWA
+        - Built from source (dev server)
+    validations:
+      required: true
+
+  - type: input
+    id: mods
+    attributes:
+      label: Mods enabled
+      description: >-
+        Press `=` in game to see them, or say "none". This matters more than it
+        looks: the parity target is the game with **no mods**, and qol or
+        bug-fixes changing something is usually them working as intended.
+      placeholder: none
+    validations:
+      required: true
+
+  - type: textarea
+    id: character
+    attributes:
+      label: Character and depth, and a screenshot if it is a layout question
+      description: >-
+        Race, class, level, dungeon level. A screenshot settles any argument
+        about a screen instantly - drag the image straight into this box.
+      placeholder: Human Warrior, level 7, DL 4 (200 ft)

@@ -1,0 +1,650 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { bindConstants } from "../constants.js";
+import { FEAT, OF, TV } from "../generated/index.js";
+import { gearAdd, invenCarry, newGear, objectCopyAmt } from "../game/gear.js";
+import type { Gear } from "../game/gear.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { Rng } from "../rng.js";
+import { StoreRegistry } from "./bind.js";
+import { priceItem } from "./price.js";
+import { bindStoreRuntime, storeReset } from "./store.js";
+import type { Store, StoreMaintContext } from "./store.js";
+import {
+  homeRetrieve,
+  homeStash,
+  purchaseAnalyze,
+  storeBuy,
+  storeSell,
+  storeSellFloor,
+} from "./transact.js";
+import type { StoreRecordJson } from "./types.js";
+import {
+  buildRuneList,
+  FlavorKnowledge,
+  makeRuneEnv,
+  objectRunesKnown,
+  playerKnowsRune,
+} from "../obj/knowledge.js";
+import type { FlavorAwareDeps, Rune, RuneEnv } from "../obj/knowledge.js";
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+function loadRecords<T>(name: string): T[] {
+  return loadJson<{ records: T[] }>(name).records;
+}
+
+const objPack: ObjPackJson = {
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson;
+
+const reg = new ObjRegistry(objPack);
+const constants = bindConstants(loadJson("constants"));
+const storeReg = new StoreRegistry(loadRecords<StoreRecordJson>("store"), reg);
+const players = bindPlayer({
+  races: loadRecords("p_race"),
+  classes: loadRecords("class"),
+  properties: loadRecords("player_property"),
+  timed: loadRecords("player_timed"),
+  shapes: loadRecords("shape"),
+  bodies: loadRecords("body"),
+  history: loadRecords("history"),
+  realms: loadRecords("realm"),
+});
+
+const limits: StackLimits = {
+  quiverSlotSize: constants.quiverSlotSize,
+  thrownQuiverMult: constants.thrownQuiverMult,
+};
+
+/** A fresh stocking context, a born Human Warrior, and an empty pack. */
+function setup(): {
+  ctx: StoreMaintContext;
+  stores: Store[];
+  player: Player;
+  gear: Gear;
+} {
+  const rng = new Rng(1234);
+  const deps: MakeDeps = {
+    reg,
+    alloc: new ObjAllocState(reg, constants),
+    constants,
+    artifacts: new ArtifactState(reg.artifacts.length),
+    noArtifacts: false,
+  };
+  const stores = storeReg.stores.map((b) =>
+    bindStoreRuntime(b, rng, constants.storeInvenMax),
+  );
+  const race = players.raceByName("Human")!;
+  const cls = players.classByName("Warrior")!;
+  const body = players.bodies[race.body]!;
+  const player = blankPlayer(race, cls, body);
+  return { ctx: { rng, deps, maxDepth: 0, stores }, stores, player, gear: newGear() };
+}
+
+/**
+ * inven_carry updates the burden of the player doing the carrying (obj-gear.c
+ * L845, L875), so it takes one. These blocks are about gold and stock, not the
+ * carried-weight total, so they share a throwaway carrier; the total has its own
+ * derived-ground-truth test in game/gear-weight.test.ts.
+ */
+const carrier = ((): Player => {
+  const race = players.raceByName("Human")!;
+  const cls = players.classByName("Warrior")!;
+  return blankPlayer(race, cls, players.bodies[race.body]!);
+})();
+
+/** A fresh, minimised ordinary object of a tval. */
+function makeObj(tval: number): GameObject {
+  const kind = reg.kinds.find(
+    (k) => k.tval === tval && k.kidx < reg.ordinaryKindCount,
+  );
+  if (!kind) throw new Error(`no ordinary kind for tval ${tval}`);
+  return objectPrep(new Rng(7), reg, constants, kind, 0, "minimise");
+}
+
+/**
+ * object_flag_is_known for a fixture whose player has learned nothing: every
+ * flag is unknown. Named rather than inlined so a test that means to exercise
+ * store_will_buy's buy-list branch has to say so (PORT_TODO 2.10 / 5.8).
+ */
+const NO_FLAGS_KNOWN = (): boolean => false;
+
+const NO_SELL = { aware: true, noSelling: false, flagKnown: NO_FLAGS_KNOWN };
+
+describe("storeBuy (store.c do_cmd_buy)", () => {
+  it("pays the marked price, pockets the item, and debits gold", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+
+    const item = general.stock[0]!;
+    const expected = priceItem(
+      reg,
+      general,
+      general.owner,
+      objectCopyAmt(item, 1),
+      false,
+      1,
+      true,
+      false,
+    );
+    player.au = expected + 1000;
+    const before = player.au;
+
+    const res = storeBuy(ctx, general, item, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(true);
+    expect(res.price).toBe(expected);
+    expect(player.au).toBe(before - expected);
+    expect(gear.pack.length).toBe(1);
+    expect(res.bought!.number).toBe(1);
+  });
+
+  it("refuses when the player cannot afford it (no gold spent)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+
+    player.au = 0;
+    const res = storeBuy(ctx, general, general.stock[0]!, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("cannot-afford");
+    expect(player.au).toBe(0);
+    expect(gear.pack.length).toBe(0);
+  });
+
+  it("refuses when the pack has no room", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+    const item = general.stock[0]!;
+
+    /* Fill every pack slot with a kind that cannot stack with the item. */
+    const fillTval = item.tval === TV.FOOD ? TV.POTION : TV.FOOD;
+    for (let i = 0; i < constants.packSize; i++) {
+      gear.pack.push(gearAdd(gear, makeObj(fillTval)));
+    }
+
+    player.au = 1_000_000;
+    const res = storeBuy(ctx, general, item, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("no-room");
+    expect(player.au).toBe(1_000_000);
+  });
+});
+
+describe("storeSell (store.c do_cmd_sell)", () => {
+  it("sells a sword to the weaponsmith for gold and empties the pack slot", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    player.au = 0;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(true);
+    expect(res.price!).toBeGreaterThan(0);
+    expect(player.au).toBe(res.price);
+    expect(res.noneLeft).toBe(true);
+    /* The store accepted it (do_cmd_sell L1985): drives the artifact-lost
+     * history only when this is false (store discarded it). */
+    expect(res.carried).toBe(true);
+    expect(gear.pack.length).toBe(0);
+    /* The store now holds the sold sword. */
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  /**
+   * do_cmd_sell L1946-1951: the shopkeeper appraises the item, so selling
+   * teaches its RUNES as well as its flavour -
+   *
+   *   while (!object_fully_known(obj)) { object_learn_unknown_rune(...); ... }
+   *
+   * The port had only object_flavor_aware, which is exactly the reported
+   * symptom: selling an unidentified item revealed the NAME and taught no rune.
+   */
+  describe("selling teaches the object's runes (L1946-1951)", () => {
+    /** A rune environment over the real registry tables, and its rune list. */
+    function runeSetup(): { env: RuneEnv; runes: Rune[] } {
+      const env = makeRuneEnv(
+        () => null,
+        () => false,
+        {
+          brands: reg.brands,
+          slays: reg.slays,
+          curses: reg.curses,
+          properties: reg.properties,
+        },
+      );
+      return { env, runes: buildRuneList(env) };
+    }
+
+    /**
+     * buildRuneList's order is the three COMBAT runes, then one per object
+     * modifier. The combat three are useless as a fixture: do_cmd_accept_character
+     * sets all three known at birth ("Hack - player knows all combat runes",
+     * player-birth.c L1264-1267), so a blank player already knows them. The
+     * modifier runes start unknown.
+     */
+    const MOD = (i: number): number => 3 + i;
+
+    it("learns the unknown rune, not just the flavour", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* A sword carrying one modifier: exactly one unknown rune. */
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, carrier, sword, limits);
+
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+      expect(objectRunesKnown(player, env, sword, runes)).toBe(false);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(res.ok).toBe(true);
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(true);
+    });
+
+    it("keeps learning until nothing on the object is unknown", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* Three unknown runes at once: the loop must not stop after one. */
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      sword.modifiers[1] = 3;
+      sword.modifiers[2] = 1;
+      const handle = invenCarry(gear, carrier, sword, limits);
+
+      storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(objectRunesKnown(player, env, sword, runes)).toBe(true);
+      for (const i of [0, 1, 2]) {
+        expect(playerKnowsRune(player, runes[i]!)).toBe(true);
+      }
+    });
+
+    it("learns nothing when the caller supplies no rune environment", () => {
+      /* A store-maintenance caller with no RuneEnv keeps the bare flavour learn
+       * rather than throwing - the reason learnRunes is optional. */
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, carrier, sword, limits);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+      expect(res.ok).toBe(true);
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+      void env;
+    });
+
+    it("a refused sale teaches nothing (the guard runs first)", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* The weaponsmith does not buy potions (store_will_buy, L1901). */
+      const potion = makeObj(TV.POTION);
+      potion.modifiers[0] = 2;
+      const handle = invenCarry(gear, carrier, potion, limits);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(res.failure).toBe("refused");
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+    });
+
+    it("teaches under birth_no_selling too (there is no gold gate on it)", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, carrier, sword, limits);
+
+      storeSell(ctx, weapon, handle, 1, player, gear, {
+        aware: true,
+        noSelling: true,
+        flagKnown: NO_FLAGS_KNOWN,
+        learnRunes: { env, runes },
+      });
+
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(true);
+    });
+  });
+
+  it("refuses an item not on the store's buy list (item retained)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const handle = invenCarry(gear, carrier, makeObj(TV.POTION), limits);
+    player.au = 42;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("refused");
+    expect(player.au).toBe(42);
+    expect(gear.pack.length).toBe(1);
+  });
+
+  it("under birth_no_selling gives the item away for zero gold", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    player.au = 50;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+      aware: true,
+      noSelling: true,
+      flagKnown: NO_FLAGS_KNOWN,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.price).toBe(0);
+    expect(player.au).toBe(50);
+    /* The item still leaves the pack and lands in the store. */
+    expect(gear.pack.length).toBe(0);
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("does not react under birth_no_selling (do_cmd_sell L1966)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+      aware: true,
+      noSelling: true,
+      flagKnown: NO_FLAGS_KNOWN,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.reaction).toBeUndefined();
+  });
+
+  it("a real sale sets a reaction bucket or none, never for the Home", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const home = stores.find((s) => s.feat === FEAT.HOME)!;
+
+    const h1 = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    const real = storeSell(ctx, weapon, h1, 1, player, gear, NO_SELL);
+    expect(real.ok).toBe(true);
+    /* Computed (do_cmd_sell L1972); the exact bucket is price/value/guess
+     * dependent, so assert it is a valid bucket or undefined. */
+    expect([undefined, "worthless", "bad", "good", "great"]).toContain(real.reaction);
+
+    const h2 = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    const homeSale = storeSell(ctx, home, h2, 1, player, gear, NO_SELL);
+    expect(homeSale.ok).toBe(true);
+    expect(homeSale.reaction).toBeUndefined(); // the Home never reacts
+  });
+});
+
+describe("storeSell from equipment / floor (ui-store.c L487 get_mode)", () => {
+  it("sells a worn (non-stuck) equipped item, emptying the body slot", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    const handle = gearAdd(gear, sword);
+    player.equipment[0] = handle; // worn, not in the pack list
+    player.au = 0;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(true);
+    expect(player.au).toBe(res.price);
+    /* gear_object_for_use took it off: the body slot is now empty. */
+    expect(player.equipment[0] ?? 0).toBe(0);
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("refuses a stuck (sticky-cursed) equipped item (ui-store.c L522)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    sword.flags.on(OF.STICKY);
+    const handle = gearAdd(gear, sword);
+    player.equipment[0] = handle;
+    player.au = 7;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("stuck");
+    expect(player.au).toBe(7); // no gold, still worn
+    expect(player.equipment[0]).toBe(handle);
+  });
+
+  it("storeSellFloor sells a floor-pile object via the supplied detach", () => {
+    const { ctx, stores, player } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    player.au = 0;
+    let detached = 0;
+    const res = storeSellFloor(ctx, weapon, sword, 1, player, NO_SELL, (n) => {
+      detached = n;
+      return { obj: sword, noneLeft: true };
+    });
+
+    expect(res.ok).toBe(true);
+    expect(detached).toBe(1); // floor_object_for_use was asked for the amount
+    expect(res.price!).toBeGreaterThan(0);
+    expect(player.au).toBe(res.price);
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("storeSellFloor refuses an item the store won't buy (detach never runs)", () => {
+    const { ctx, stores, player } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const potion = makeObj(TV.POTION);
+    player.au = 5;
+    let called = false;
+    const res = storeSellFloor(ctx, weapon, potion, 1, player, NO_SELL, (n) => {
+      called = true;
+      return { obj: potion, noneLeft: n >= potion.number };
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("refused");
+    expect(called).toBe(false); // refused before any floor detach
+    expect(player.au).toBe(5);
+  });
+});
+
+describe("purchase_analyze (store.c L491-508)", () => {
+  it("classifies the shopkeeper reaction from price / value / guess", () => {
+    /* value <= 0 && price > value -> worthless (bought junk). */
+    expect(purchaseAnalyze(5, 0, 0)).toBe("worthless");
+    expect(purchaseAnalyze(1, -3, 0)).toBe("worthless");
+    /* value < guess && price > value -> bad (cheaper than thought, overpaid). */
+    expect(purchaseAnalyze(50, 40, 100)).toBe("bad");
+    /* value > guess && value < 4*guess && price < value -> good bargain. */
+    expect(purchaseAnalyze(30, 60, 40)).toBe("good");
+    /* value > guess && price < value (and not the good band) -> great. */
+    expect(purchaseAnalyze(30, 500, 40)).toBe("great");
+    /* No reaction: a fair deal where value > 0, value == guess. */
+    expect(purchaseAnalyze(50, 50, 50)).toBeUndefined();
+  });
+});
+
+describe("home stash / retrieve (store.c do_cmd_stash / do_cmd_retrieve)", () => {
+  it("round-trips an item through the home with no gold changing hands", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const home = stores.find((s) => s.feat === FEAT.HOME)!;
+
+    const handle = invenCarry(gear, carrier, makeObj(TV.SWORD), limits);
+    player.au = 100;
+
+    const stash = homeStash(home, handle, 1, player, gear, constants);
+    expect(stash.ok).toBe(true);
+    expect(gear.pack.length).toBe(0);
+    expect(home.stock.length).toBe(1);
+    expect(player.au).toBe(100);
+
+    const retrieve = homeRetrieve(home, home.stock[0]!, 1, player, gear, constants);
+    expect(retrieve.ok).toBe(true);
+    expect(retrieve.noneLeft).toBe(true);
+    expect(gear.pack.length).toBe(1);
+    expect(home.stock.length).toBe(0);
+    expect(player.au).toBe(100);
+  });
+
+  it("home_carry merges compatible stacks", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const home = stores.find((s) => s.feat === FEAT.HOME)!;
+
+    const f1 = makeObj(TV.FOOD);
+    f1.number = 2;
+    homeStash(home, invenCarry(gear, carrier, f1, limits), 2, player, gear, constants);
+
+    const f2 = makeObj(TV.FOOD);
+    f2.number = 3;
+    homeStash(home, invenCarry(gear, carrier, f2, limits), 3, player, gear, constants);
+
+    expect(home.stock.length).toBe(1);
+    expect(home.stock[0]!.number).toBe(5);
+  });
+});
+
+describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
+  /** A recording FlavorAwareDeps, standing in for the ignore module + player
+   * notice (session/game.ts's flavorAwareDeps). */
+  function makeDeps(ignoredUnaware: Set<number>): {
+    deps: FlavorAwareDeps;
+    awareIgnored: number[];
+    noticeRequests: number;
+  } {
+    const rec = { deps: undefined as unknown as FlavorAwareDeps, awareIgnored: [] as number[], noticeRequests: 0 };
+    rec.deps = {
+      isIgnoredUnaware: (kidx) => ignoredUnaware.has(kidx),
+      ignoreWhenAware: (kidx) => rec.awareIgnored.push(kidx),
+      requestIgnoreNotice: () => {
+        rec.noticeRequests++;
+      },
+    };
+    return rec;
+  }
+
+  it("storeBuy carries the ignore-while-unaware bit over on first awareness", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+    const item = general.stock[0]!;
+    player.au = 1_000_000;
+
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const rec = makeDeps(new Set([item.kind.kidx]));
+    expect(flavor.isAware(item.kind)).toBe(false);
+
+    const before = ctx.rng.getState();
+    const res = storeBuy(ctx, general, item, 1, player, gear, {
+      aware: false,
+      noSelling: false,
+      flagKnown: NO_FLAGS_KNOWN,
+      flavor,
+      flavorDeps: rec.deps,
+    });
+
+    expect(res.ok).toBe(true);
+    /* object_flavor_aware fired: the kind is now aware... */
+    expect(flavor.isAware(item.kind)).toBe(true);
+    /* ...and the #89 fix carried the ignore-while-unaware bit to "aware". */
+    expect(rec.awareIgnored).toEqual([item.kind.kidx]);
+    expect(rec.noticeRequests).toBe(1);
+    /* Flavor awareness is RNG-free; the only stream draws are comment_accept
+     * (do_cmd_buy L1717: one_in_(3) then optional ONE_OF). */
+    const probe = new Rng(1);
+    probe.setState(before);
+    if (probe.oneIn(3)) probe.randint0(6);
+    expect(ctx.rng.getState()).toEqual(probe.getState());
+  });
+
+  it("storeSell fires the same ignore fix", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const sword = makeObj(TV.SWORD);
+    const handle = invenCarry(gear, carrier, sword, limits);
+    player.au = 0;
+
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const rec = makeDeps(new Set([sword.kind.kidx]));
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+      aware: false,
+      noSelling: false,
+      flagKnown: NO_FLAGS_KNOWN,
+      flavor,
+      flavorDeps: rec.deps,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(flavor.isAware(sword.kind)).toBe(true);
+    expect(rec.awareIgnored).toEqual([sword.kind.kidx]);
+    expect(rec.noticeRequests).toBe(1);
+  });
+});

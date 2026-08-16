@@ -1,0 +1,32 @@
+{
+  "name": "@rpgm-tools/neo-angband-web",
+  "version": "0.20.0",
+  "private": true,
+  "description": "Web + PWA front-end: modern glyph-first renderer on a single responsive surface",
+  "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "node scripts/sync-tiles.mjs && tsc",
+    "dev": "node scripts/sync-tiles.mjs && vite",
+    "bundle": "node scripts/sync-tiles.mjs && vite build",
+    "gen-icons": "node scripts/gen-icons.mjs",
+    "sync-tiles": "node scripts/sync-tiles.mjs"
+  },
+  "dependencies": {
+    "@rpgm-tools/neo-angband-content": "workspace:*",
+    "@rpgm-tools/neo-angband-core": "workspace:*",
+    "@rpgm-tools/neo-angband-linoleum": "workspace:*",
+    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "esbuild": "^0.28.1",
+    "pngjs": "^7.0.0",
+    "vite": "^8.2.0",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "file": "realm",
+  "source": "lib/gamedata/realm.txt",
+  "records": [
+    {
+      "name": "arcane",
+      "stat": "INT",
+      "verb": "cast",
+      "spell-noun": "spell",
+      "book-noun": "magic book"
+    },
+    {
+      "name": "divine",
+      "stat": "WIS",
+      "verb": "recite",
+      "spell-noun": "prayer",
+      "book-noun": "prayer book"
+    },
+    {
+      "name": "nature",
+      "stat": "WIS",
+      "verb": "chant",
+      "spell-noun": "verse",
+      "book-noun": "nature book"
+    },
+    {
+      "name": "shadow",
+      "stat": "INT",
+      "verb": "perform",
+      "spell-noun": "ritual",
+      "book-noun": "shadow book"
+    }
+  ]
+}

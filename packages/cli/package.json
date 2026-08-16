@@ -1,0 +1,35 @@
+{
+  "name": "@rpgm-tools/neo-angband-cli",
+  "version": "0.20.0",
+  "private": true,
+  "description": "Terminal front-end and developer harness (headless runs, stats, golden scenarios)",
+  "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./host-node": {
+      "types": "./dist/host-node.d.ts",
+      "default": "./dist/host-node.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "stats": "node dist/main-stats.js",
+    "stats:baseline": "node dist/main-baseline.js",
+    "c:import": "node dist/main-cimport.js",
+    "c:parity": "node dist/main-cparity.js",
+    "scenarios": "node dist/main-scenarios.js",
+    "spoil": "node dist/main-spoil.js",
+    "census": "node dist/main-census.js",
+    "call-census": "node dist/main-call-census.js"
+  },
+  "dependencies": {
+    "@rpgm-tools/neo-angband-core": "workspace:*"
+  }
+}

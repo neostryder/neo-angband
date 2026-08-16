@@ -1,0 +1,32 @@
+# Keep the blank-issue escape hatch. The templates below are here to make a
+# good report easy, not to make an awkward one impossible - somebody who has
+# found something real and does not fit a form should still be able to say so.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Discord - ask, chat, or just watch someone else play
+    url: https://discord.gg/YegtwbHTBQ
+    about: >-
+      The RPGM Tools server. Good for "is this supposed to happen?", getting a
+      build running, mod help, and telling us what you are playing. No GitHub
+      account needed.
+
+  - name: Is it already known?
+    url: https://github.com/neostryder/neo-angband#known-rough-edges
+    about: >-
+      The README lists the rough edges we already know about, so you do not
+      spend your evening writing up something on the list. If it is not there,
+      it is worth reporting.
+
+  - name: Something about a specific mod
+    url: https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md#where-each-mod-lives
+    about: >-
+      qol, bug-fixes, neo-linoleum and borg each have their own repository, and
+      an issue filed there reaches the person who can fix it. Not sure whether
+      it is the mod or the game? File it here and we will move it.
+
+  - name: Email, if an issue is not the right place
+    url: https://github.com/neostryder/neo-angband/blob/master/SECURITY.md
+    about: >-
+      strider-angband (at) rpgm.tools. For a security report, or anything you
+      would rather not write in public.

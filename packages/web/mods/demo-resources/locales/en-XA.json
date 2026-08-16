@@ -1,0 +1,12 @@
+{
+  "tag": "en-XA",
+  "name": "Ẽñglīsh (pśęudo)",
+  "messages": {
+    "help.commands.label": "[Ãvãilãblę çømmãñdś]",
+    "help.commands.title": "[Ãñgbãñd Hęlp - Çømmãñdś]",
+    "help.symbols.label": "[Śymbølś øñ ýøür mãp]",
+    "help.guide.label": "[Plãýīñg güīdę]",
+    "help.community.label": "[Hęlp, ãñd tęllīñg üś śømęthīñg īś wrøñg]",
+    "demo.plural": "{n, plural, =0 {[ñø śçrøllś]} one {[# śçrøll]} other {[# śçrøllś]}}"
+  }
+}

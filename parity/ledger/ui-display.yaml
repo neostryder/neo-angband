@@ -1,0 +1,166 @@
+module: packages/core/src/game/display.ts (sidebarModel / statusLineModel) +
+  packages/core/src/player/calcs.ts (player_hp_attr / player_sp_attr)
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/ui-display.c
+    items:
+      - side_handlers[] (L810) as sidebarModel - the 18 real sidebar fields in
+        table order (the four NULL spacer rows at L823/L827/L829/L830 are not
+        fields). Each field is emitted as an ordered list of coloured runs; a
+        field upstream draws blank is an EMPTY runs array. The DRAW half - the
+        row/col Term_* placement and update_sidebar's screen-size priority
+        culling (L844) - stays with each shell.
+      - status_handlers[] (L1296) as statusLineModel - the 11 status-line
+        indicators in table order. An indicator upstream returns 0 for is an
+        EMPTY runs array; the inter-indicator gap (each handler advances col by
+        strlen + 1) is a draw-half concern.
+      - prt_field (L140), prt_race/prt_class (L553/L576), prt_title +
+        fmt_title (L173/L195) as fmtTitle - COLOUR_L_BLUE name/title, wizard /
+        winner / shape / class-title cases; blank race + class while shaped.
+      - prt_level (L207), prt_exp (L226), prt_gold (L256) - label + right-
+        justified value, L_GREEN vs YELLOW by max-level / max-exp; NXT/Nxt,
+        EXP/Exp. XP-to-next uses player_exp[lev-1] * expfact / 100 - exp.
+      - prt_equippy (L269) as equippyRuns - one single-char run per body slot
+        in slot order, in the object's colour (object_attr/object_char seams).
+      - prt_stat + cnv_stat (L153/L115) as statRuns / cnvStat - stat_names vs
+        stat_names_reduced by stat_cur < stat_max, YELLOW (drained) vs
+        L_GREEN, the six-char cnv_stat value on stat_use, and the "!" natural-
+        maximum indicator overwriting label char index 3 when stat_max ==
+        18+100.
+      - prt_ac (L301) - "Cur AC " + %5d of (state.ac + state.to_a) in L_GREEN.
+      - prt_hp (L314) - chp in player_hp_attr colour, "/" white, mhp L_GREEN.
+      - prt_sp (L332) - like HP on csp/msp with player_sp_attr, EMPTY unless
+        the class has magic AND lev >= spell_first (the drain-clear branch also
+        yields blank, so it maps to empty runs).
+      - prt_health + prt_health_aux + monster_health_attr (L470/L425/L365) as
+        healthRuns / monsterHealthAttr - the 10-wide "[**...--]" bar, len =
+        pct<10?1:pct<90?pct/10+1:10, the full-health thresholds and the
+        fear/disen/command/conf/stun/sleep/hold overrides; unseen /
+        hallucinating (TMD_IMAGE) / dead -> "[----------]" in the attr colour;
+        no tracked monster -> empty runs.
+      - prt_speed + prt_speed_aux (L508/L475) as speedRuns / prtSpeedAux -
+        Fast (L_GREEN) / Slow (L_UMBER) / empty at 110, the "(%+d)" delta form
+        and the effective_speed "(%d.%dx)" multiplier form via extract_energy.
+      - prt_depth + fmt_depth (L532/L519) as fmtDepth - "Town" or
+        "<depth*50>' (L<depth>)" (using the live chunk depth).
+      - prt_level_feeling (L1053) - gated on birth_feelings AND depth>0;
+        obj_feeling = feeling/10, mon_feeling = feeling%10; "?" white while
+        feeling_squares < feeling_need; obj symbol *(0)/$(1)/11-n and colour
+        obj_feeling_color[] (L1019); mon symbol ?(0)/10-n and colour
+        mon_feeling_color[] (L1035). Both colour tables copied verbatim.
+      - prt_light (L1129) - "Light %d " YELLOW if >0 else PURPLE, on
+        square_light(cave, player.grid) = chunk.light(grid).
+      - prt_moves (L1145) - "Moves +N " / "-N " L_TEAL, empty at 0.
+      - prt_unignore (L1280), prt_recall (L925), prt_descent (L939) - white
+        one-word indicators.
+      - prt_state (L957) as stateRuns - the exact ten-char rest field
+        (I2D digit packing for >=1000/100/10/>0, and the *(REST_ALL_POINTS,
+        -1) / &(REST_COMPLETE, -2) / !(REST_SOME_POINTS, -3) fills from
+        player-util.h L53-55), else "Repeat %3d" / "Rep. %3d00".
+      - prt_study (L1226) - "Study (N)" white, L_DARK when the player carries
+        no book with unlearned spells.
+      - prt_tmd (L1251) as tmdRuns - walk timed_effects[i].grade to the grade
+        whose max >= timed[i], emit grade.name in grade.color (skip null
+        names), plus the TMD_FOOD "%d %%" meter. Each named piece carries a
+        trailing space, reproducing upstream's len += strlen + 1 internal
+        spacing.
+      - prt_dtrap (L1207) + square_isdtrap / square_dtrap_edge
+        (cave-square.c L570/L841) - "DTrap " YELLOW on a dtrap edge, else
+        L_GREEN; edge = a SQUARE_DTRAP grid with an in-bounds-fully non-dtrap
+        neighbour (S/E/N/W).
+      - prt_terrain (L1184) - the player's trap name (unless SQUARE_INVIS) or
+        feature name, capitalised (my_strcap), in its d_attr colour, "%s ".
+  - path: src/player.c
+    items:
+      - player_hp_attr (L323) as playerHpAttr, player_sp_attr (L337) as
+        playerSpAttr - L_GREEN at full, YELLOW above mhp*hitpoint_warn/10,
+        else RED. hitpoint_warn is supplied from the ported options store
+    (player/options.ts, GameState.options).
+notes: >-
+  Front-end-agnostic DATA port of the sidebar / status line: each field and
+  indicator is the ordered list of coloured runs (DisplayRun{text,color}), with
+  color a COLOUR_* value from color.ts. sidebarModel and statusLineModel always
+  return the full ordered handler tables so a shell can map field -> screen row;
+  "skipped" upstream handlers become empty runs. Number formatting (%6d, %8ld,
+  cnv_stat) bakes the printf right-justification into the run text so it is
+  visible content, while the per-field "%-11s"/"%-13s" pad of prt_speed /
+  prt_depth and the +1 inter-indicator gap are draw-half padding and are left
+  to the shell. player_is_shapechanged is a non-"normal" player.shape.
+deferred:
+  - DisplayDeps seams (defaults chosen for a freshly born headless character;
+    the session wires the real values):
+    - hitpointWarn (default 3 = DEFAULT_HITPOINT_WARN): op_ptr->hitpoint_warn;
+      the options store IS ported (player/options.ts, GameState.options).
+    - effectiveSpeed (default false): OPT(player, effective_speed).
+    - birthFeelings (default true): OPT(player, birth_feelings).
+    - feelingNeed (default SHIPPED_FEELING_NEED, the shipped constants.txt
+      world:feeling-need): z_info->feeling_need. The web shell DID NOT supply
+      this one, so prt_level_feeling read the default while ^F read the pack -
+      PORT_TODO 3.15. It is supplied now; the default remains for the worldless
+      harness and is checked against constants.txt by a test.
+    - timedEffects (default []): the timed_effects[] table (player/bind.ts,
+      TMD-indexed); [] means prt_tmd names nothing.
+    - statUse: DERIVED, not defaulted (PORT_TODO 3.5). display.ts:257 reads
+      state.playerState.statUse, so equipment and timed contributions are in.
+      The old note - "no computed player_state is stored on GameState" - had
+      stopped being true, and while it stood the sidebar showed the unequipped
+      number while the character sheet showed the real one: a +STR ring moved
+      one screen and not the other.
+    - numMoves: DERIVED (PORT_TODO 3.10). calc_bonuses computes num_moves
+      (calcs.ts) and display.ts:261 reads state.playerState.numMoves. The old
+      note's "PlayerCombatState omits num_moves" was already wrong when it was
+      written; prt_moves read a hardcoded 0 and the Moves row was blank for a
+      character with +moves.
+    - healthWho (default state.healthWho): player->upkeep->health_who.
+    - unignoring (default false): player->unignoring (not on the port Player).
+    - isResting / restingCount (defaults false / 0): player_is_resting /
+      player_resting_count. No resting seam exists in the headless core yet.
+    - nRepeats: DERIVED (PORT_TODO 3.11), and NOT from where this row pointed.
+      It named CommandQueue.getNRepeats as the available answer; that class is
+      a faithful port nothing drives, so wiring it would have produced a
+      permanent 0 by a longer route. display.ts:273 reads repeatRemaining on
+      the head of state.cmdQueue, which is what cmd_get_nrepeats() returns
+      upstream - the repeats left on the command being executed.
+    - wizard / totalWinner: DERIVED (PORT_TODO 3.12). display.ts:276-277 read
+      state.wizard and player.totalWinner. "Not on the port Player" was half
+      wrong even when written - totalWinner is on Player and is read by
+      char-sheet.ts and agent/perceive.ts - and with no supplier fmt_title's
+      wizard and ***WINNER*** markers could never appear on either screen.
+    - bookHasUnlearnedSpells (default true): player_book_has_unlearned_spells
+      (needs the spellbook pack, not on GameState).
+    - objectAttr / objectChar: object_attr / object_char, now DEFAULTED to the
+      flavour-aware answer (game/display.ts objectAttrChar, over
+      visuals/object-glyph.ts useFlavorGlyph). The old defaults read the kind
+      record and called the flavour rule "a presentation concern each shell
+      supplies" - and no shell supplied it, so prt_equippy drew every worn
+      flavoured item in the colour every flavoured kind shares, `d` (PORT_TODO
+      3.14). The pref (x_attr/x_char) override and the big-tile clear are still
+      the shell's: the seam remains for a front end with a TileMap.
+  - prt_ac reads player->known_state (ui-display.c:307) and now so does the
+    port: actor.knownCombat.ac + toA (PORT_TODO 2.6). The session derives it
+    with calc_bonuses' known_only flag beside the real state, exactly as
+    update_bonuses does. In 4.2.6 the to_a rune is granted at birth, so this
+    changes the printed number only for an unassessed worn item - the visible
+    payoff of the split is elsewhere (the recall colouring, mon-lore.yaml).
+  - update_sidebar's row selection IS ported (PORT_TODO 3.17): side_handlers[]
+    with its priorities, including the four NULL grouping rows, is SIDE_HANDLERS
+    in game/display.ts, and sidebarLayout(termRows) is L866-889 - the
+    max_priority = y - 2 cull, the row counter that a blank row advances too,
+    and the negative-priority from-bottom arm (unused by shipped data). It is in
+    core rather than the shell because it is arithmetic over the C's own table,
+    and the shell that had it walked the model top-down instead, dropping depth,
+    speed and the health bar below 24 rows while keeping the least important row
+    in the table.
+  - Still not ported, and still a draw-half concern: update_topbar / SIDEBAR_TOP
+    and the short-form handlers (prt_*_short, L561-655), hp_colour_change
+    (L897), and every Term_* / put_str / c_put_str positioning call.
+verified-by:
+  - game/display.test.ts (18 tests) - cnv_stat formatting (plain / 18/NN /
+    18/***), HP colour thresholds + hidden SP field, player_sp_attr thresholds,
+    LEVEL/Level and NXT/Nxt label+colour by max, Town vs "50' (L1)", speed
+    Fast/Slow/none, drained-stat label+colour, the tmd grade walk + TMD_FOOD
+    meter, level-feeling "?" before enough squares and the reversed
+    symbol+colours after (and birth_feelings off), the ten-char rest field and
+    repeat count, empty runs for inactive indicators, and that sidebarModel /
+    statusLineModel match side_handlers[] / status_handlers[] order.

@@ -1,0 +1,55 @@
+module: packages/core/src/world/projection.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/project.h + lib/gamedata/projection.txt
+    items:
+      - struct projection (loaded from projection.txt): the behavioural data per
+        PROJ_ type - resistance numerator / denominator, damage divisor and cap,
+        the obvious and wake flags, msgt and colour. Bound to ProjectionInfo[]
+        by bindProjections, indexed by PROJ value.
+  - path: src/project-player.c
+    items:
+      - adjust_dam (L48): scale incoming damage by the player's resistance level
+        for a projection type - immune (0), vulnerable (x4/3), or the variable
+        numerator/denominator division per resist level, with the acid-vs-armour
+        halving and the aspect-inverted denominator.
+notes: >-
+  The generated projections.ts carries only the PROJ names/enum; the behavioural
+  data lives in projection.json and is bound here. Critical ordering fact: the
+  projection.txt / .json record order does NOT match the PROJ enum order
+  (upstream matches records to slots by code at load, e.g. AWAY_UNDEAD /
+  AWAY_SPIRIT / AWAY_EVIL differ between list-projections.h and projection.txt),
+  so bindProjections places each record at its resolved PROJ[code] slot and
+  throws on an unknown code or an unfilled / duplicated slot. adjust_dam is kept
+  pure: the caller looks up the resistance level (applying the ICE->COLD remap
+  and equip_learn side effect) and passes it in, the same split project_p and
+  the attack effect handlers need. The variable-resist denominator is evaluated
+  with the aspect inverted (least damage uses the largest divisor), matching
+  upstream; integer division via Math.trunc throughout.
+deferred:
+  - NOT A DEFERRAL (2026-08-07): a module boundary, and the callers do their
+    half. adjustDam takes a resolved resistLevel and a minusAc flag because
+    world/projection.ts is pure; game/project-player.ts:191 calls
+    hooks.equipLearnElement(resType) and reads actor.resistLevel / actor.minusAc
+    right before invoking it, and mon-side.ts, player-side.ts and world.ts are
+    the other three callers. The ICE->COLD remap is resolved there too.
+  - NOT A DEFERRAL (2026-08-07): the same boundary. The cap belongs where breath
+    and ball damage are computed (the attack effect handlers) and the distance
+    falloff belongs to the geometry layer (world/project.ts), which is where
+    upstream applies them too. Binding them on the projection record so both
+    layers can read one source is the point of this module.
+  - RATIFIED DIVERGENCE (2026-08-07): the projection record carries `colour` as
+    the datafile's name and `msgt` as the MSG_ name, and the render / message
+    layers resolve them. Upstream resolves both at parse time into a terminal
+    attr and a sound index; this port has neither a fixed terminal palette nor a
+    sound table in core, so resolving early would bake a shell's choices into
+    the data.
+verified-by:
+  - world/projection.test.ts (8 tests): binds all 56 types in PROJ order despite
+    the differing record order; captures element resist data + obvious/wake and
+    the environs types' absence of a denominator/wake; adjustDam returns 0 when
+    immune, x4/3 when vulnerable, unchanged with no resist, /3 per level for
+    ACID's constant denominator (compounding at level 2), the acid-vs-armour
+    halving, and LIGHT's variable 6/denominator with the aspect correctly
+    inverted (minimise damage -> maximise divisor).

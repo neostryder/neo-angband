@@ -1,0 +1,101 @@
+module: packages/core/src/game/mon-place.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/mon-make.c
+    items:
+      - place_monster (L999) reduced to the live bookkeeping - mon_pop slot
+        reuse (first free index, else append), square occupancy,
+        monster_group_assign, the update_mon distance refresh, and the
+        racial cur_num increment. delete_monster_idx's matching decrement
+        lives in game/context.ts deleteMonster (clamped at 0 because
+        test-harness monsters register without counting).
+      - place_new_monster_one (L1079) - the occupied / player / walkability
+        / glyph / decoy refusals, the unique cur_num >= max_num gate, the
+        FORCE_DEPTH depth gate, and construction through the shared
+        mon/make.ts createMonster (upstream RNG order: sleep, hp, speed
+        variation, energy, random attr).
+      - place_new_monster_group (L1215) - breadth-first puddling over the
+        ddd neighbours up to monster_group_max.
+      - place_friends (L1283) - the dead-unique gate, the no-groups rule
+        past 4 levels OoD, the level-difference size scaling with the
+        decimal-place extra-monster roll, same-race groups in place and
+        other races scattered monster_group_dist away.
+      - place_new_monster (L1360) - fresh group index for a group-less
+        placement (the first monster leads), the friends percent/dice
+        rolls, and the friends-base escort pick through get_mon_num_prep
+        with the base + non-unique predicate.
+      - pick_and_place_monster (L1457).
+  - path: src/mon-summon.c
+    items:
+      - summon_specific (L402) - the widening scatter_ext(1..4) with
+        square_allows_summon, the call_monster branch (skipped for UNIQUE /
+        WRAITH), the summon_specific_okay table prep, get_mon_num at
+        (depth + lev) / 2 + 5, joining the summoner's summon_group with
+        MON_GROUP_SUMMON, awake group-less placement, and the delay branch
+        (energy 0 plus the MON_TMD_HOLD turns formula for faster monsters,
+        capped 32767).
+      - call_monster (L326) with can_call_monster (L308) - eligible = okay
+        for the type and NOT in LOS of the summon point; the
+        randint0(count - 1) pick (upstream quirk preserved), monster_swap,
+        monster_wake(false, 100) and energy 0.
+      - select_shape (L488) - the summon-type-filtered get_mon_num at
+        depth + 5 for monster shapechanges (consumer rides the shapes
+        batch).
+  - path: src/cave-square.c
+    items:
+      - square_isopen (L597), square_isempty (L604) and
+        square_allows_summon (L949) on the live state - floor piles from
+        state.floor, player traps / webs / wards through the injected
+        trapPredicates, the decoy from state.decoy.
+notes: >-
+  This is the live-cave twin of the generation-time family in gen/util.ts
+  (same upstream provenance); the barrel exports the live variants
+  Live-suffixed (placeNewMonsterLive, pickAndPlaceMonsterLive,
+  LiveMonPlaceDeps) to avoid colliding with the generation names. The
+  session (wireGame) builds the shared MonAllocTable and threads
+  trapPredicates and the mon-gen group constants in. Racial counts are now
+  live: placement and populateFromLevel increment, deleteMonster and the
+  level change's wipe_mon_list half (wipeMonsterCounts) decrement, and
+  loadGame recounts from the restored monster list. player_kill_monster's
+  dead-unique rule (max_num = 0) is wired in the session's onPlayerKill.
+deferred:
+  - CLOSED (2026-08-07). The monster-inventory subsystem shipped: mon.heldObj is
+    a real pile filled by monsterCarry, and MonPlaceDeps carries both makeDeps
+    (mon_create_drop at live placement - summons, breeders, ambient spawns,
+    wizard) and mimic (mon_create_mimicked_object). session/game.ts's
+    ambientPlaceDeps supplies both, so a summoned monster DOES carry loot and it
+    is stamped ORIGIN_DROP_SUMMON.
+  - All three have landed. mon_rating accumulates here and gen/generate.ts:392
+    turns it into the level feeling; cheat_hear's OOD messages are
+    mon-place.ts:415-418, reading the live option; num_repro is
+    game/context.ts:428 and decremented at :1321 on a MULTIPLY breed. The
+    PU_UPDATE_VIEW monster-light refresh is the ratified unconditional-repaint
+    divergence (game/known.ts:153), not a deferral.
+  - Killed-unique max_num zeroes SURVIVE a reload, and this row (and the
+    comment at session/game.ts:989 that echoed it) said otherwise. No
+    race-state save section was needed: the save already carries the lore, and
+    the load path re-derives maxNum = 0 for every UNIQUE with pkills > 0
+    (session/game.ts:3930-3939), which is exactly what load.c:532-535
+    rd_monster_memory does. Grip does not come back.
+  - RATIFIED DIVERGENCE (2026-08-07): compact_monsters exists upstream because
+    cave->mon_max is a fixed allocation that can fill up. This port's monster
+    list grows on demand, so there is no cap to relieve and no index to move -
+    the routine has nothing to do rather than being unwritten. wipe_mon_list's
+    remaining half is the session's store swap, which is how a level change
+    replaces the list here.
+verified-by:
+  - game/mon-place.test.ts (13 tests) - squareAllowsSummon accepts empty
+    floor and refuses walls/occupants/player/decoy/warded/trapped grids;
+    placeNewMonsterOne registers a counted, grouped monster (deleteMonster
+    uncounts), honors sleep, refuses occupied/player/wall/glyph grids,
+    enforces unique cur_num/max_num and FORCE_DEPTH; placeNewMonster
+    places a same-race friend pack sharing the leader's group and
+    wipeMonsterCounts rebalances; summonSpecific summons an eligible
+    undead within 4 grids awake, returns 0 with no eligible race, zeroes
+    energy and HOLDs only faster-than-player summons (seed sweep), and
+    call moves an out-of-LOS resident to the summon point (woken, energy
+    0, nothing created); summons join the summoner's group with the
+    SUMMON role.
+  - session/game.test.ts - the started game passes with the live counts
+    (populateFromLevel counting, the unique max_num kill rule).

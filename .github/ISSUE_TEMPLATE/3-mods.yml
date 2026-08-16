@@ -1,0 +1,85 @@
+name: A mod will not install, or two mods disagree
+description: The mod manager, the catalogue, installing from a folder, or mods conflicting
+title: "[mods] "
+labels: ["mods"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for the **mod system**: the manager screen, downloading and
+        verifying a mod, load order, or two mods fighting over the same thing.
+
+        A bug in what a specific mod *does* belongs in that mod's own
+        repository, where the person who can fix it will see it -
+        [qol](https://github.com/neostryder/neo-angband-mod-qol),
+        [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes),
+        [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
+        [borg](https://github.com/neostryder/neo-angband-mod-borg). If you
+        cannot tell which it is, file it here.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What part of it
+      options:
+        - Installing from the catalogue
+        - Installing from a folder or a zip
+        - A mod is enabled but nothing changed
+        - Two mods conflict, or the load order is wrong
+        - The mod manager screen itself
+        - Writing a mod (the SDK, the plugin API, the docs)
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: mods
+    attributes:
+      label: Which mods, and their versions
+      description: >-
+        The Mods screen lists every installed mod with its version. Paste that
+        list, or as much of it as is relevant.
+      placeholder: |
+        qol 0.11.0 (on)
+        neo-linoleum 0.11.0 (on)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Game version
+      placeholder: "0.14.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where you were playing
+      options:
+        - Desktop app (Windows)
+        - Desktop app (macOS)
+        - Desktop app (Linux)
+        - Browser
+        - Installed as a PWA
+        - Built from source (dev server)
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Anything the mod screen or the console reported
+      description: >-
+        The game names a mod that failed to load rather than skipping it
+        quietly, so there is usually a line worth copying - on the Mods screen,
+        or in the console (F12).
+      render: text

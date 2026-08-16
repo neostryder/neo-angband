@@ -1,0 +1,118 @@
+module: packages/core/src/mon/lore-describe.ts (the monster recall text)
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/mon-lore.c
+    items:
+      - lore_describe_awareness (L558), lore_describe_speed (L599),
+        lore_adjective_speed (L636), lore_multiplier_speed (L652) - the
+        awareness / speed description tables and the two speed forms.
+      - lore_monster_sex (L695), lore_pronoun_nominative (L715),
+        lore_pronoun_possessive (L744) - the sex enum and pronoun tables.
+      - lore_append_clause (L777), lore_append_spell_clause (L819) - the
+        comma / conjunction list builders (spell variant colours per spell and
+        appends damage).
+      - lore_append_kills (L867), lore_append_flavor (L943),
+        lore_append_movement (L961), lore_append_toughness (L1057),
+        lore_append_exp (L1109), lore_append_drop (L1177),
+        lore_append_abilities (L1276), lore_append_awareness (L1425),
+        lore_append_friends (L1458), lore_append_spells (L1491),
+        lore_append_attack (L1621) - the eleven recall sections. Wording,
+        punctuation, two-space sentence separators, number words and the
+        pronoun / sex logic are kept verbatim.
+  - path: src/ui-mon-lore.c
+    items:
+      - lore_title (L38) as loreTitle and lore_description (L89) as
+        loreDescription, BOTH paths. The section call order (title, kills,
+        flavor, movement, toughness, exp, drop, abilities, awareness, friends,
+        spells, attack, fully-known note, questor note) is transcribed from
+        L110-150. The title's " ('glyph')" is upstream
+        (textblock_append_pict).
+
+        The `spoilers` argument (L90) is ported as of PORT_TODO 5.6, and it
+        gates FOUR sections rather than the one the port used to assume: the
+        title (L108-112), the kill counts (L114-116), the toughness block
+        (L124-125) and the experience reward (L128-129). game/spoil.ts used to
+        pass no flag and slice the first line off the result, which removed the
+        title and left three sections upstream never prints - each of them a
+        sentence about a player the dump does not have. cheat_monster_lore
+        (L101-102) is deliberately left with the CALLER: spoil.ts already
+        reveals the lore copy it owns.
+  - path: src/mon-spell.c
+    items:
+      - mon_spell_lore_description (L681) as monSpellLoreDescription and
+        mon_spell_lore_damage (L698) as monSpellLoreDamage - the spell recall
+        text and damage number, needed by lore_append_spells.
+  - path: src/mon-make.c
+    items:
+      - mon_create_drop_count (L699), the maximize=true / specific=false path,
+        ported inline (monCreateDropCountMax) for lore_append_drop's item
+        maximum; deterministic (no RNG), sums race.drops[].max.
+notes: >-
+  The presentation logic behind the monster recall panel, ported as
+  front-end-agnostic data. Upstream's z-textblock coloured buffer is reduced to
+  a flat LoreText = LoreTextRun{text, color}[] run list (no terminal wrap /
+  indent - that is the draw layer). Every textblock_append becomes
+  LoreTextBuilder.append(text) (COLOUR_WHITE) and textblock_append_c becomes
+  append(text, COLOUR_X). Player- / world- / combat-derived inputs upstream
+  reads off the global player are injected through LoreDeps (playerLevel,
+  playerMaxDepth, playerSpeed, effectiveSpeed, the bound spells map, and the
+  optional danger-colour / hit-chance / spell-damage callbacks). Produced by a
+  porter agent and then verified here (typecheck + the recall test over real
+  races, both normal and unique, fresh and fully-known lore).
+deferred:
+  - Spell / breath damage numbers are PORTED, and this row was wrong when it
+    was written (PORT_TODO 3.4, adjudicated 2026-08-05). deps.spellLoreDamage
+    is an OVERRIDE, not the producer: absent, monSpellLoreDamage computes the
+    damage itself (lore-describe.ts:449) - monSpellNonhpDamage for ordinary
+    damaging spells with nothing injected, breathDam for breaths needing only
+    deps.breathProjection, which main.ts:3679 has supplied since bd06e3539
+    (2026-07-13). Tested with derived expectations at
+    mon/lore-describe.test.ts:110 and web/screens.test.ts:907. The web test
+    rebuilds recallDeps by hand (nothing imports main.ts), so the binding LINE
+    is read, not run.
+  - The player's melee hit chance (lore_append_toughness L1086) and the
+    monster's blow hit chance / its centidamage average (lore_append_attack
+    L1710) need the player-attack combat math + live defensive state; they are
+    the deps.meleeHitPercent / deps.monsterHitPercent callbacks, defaulting to 0
+    only when a caller omits them. Live recall supplies both, plus
+    breathProjection, in web/src/main.ts:3786-3794 and passes that object to
+    monsterRecallLines at :3807. The spoiler supplies monsterHitPercent and
+    breathProjection at game/spoil.ts:553-578 (PORT_TODO 5.6) - the dump used to
+    print 0% for every blow and a zero centidamage average with it. It
+    deliberately omits meleeHitPercent because spoilers suppress
+    lore_append_toughness, so supplying it there would be inert.
+  - spell_color (mon-lore.c L59) and blow_color (L178) read the player's
+    known_state (resists / skills / inventory) for danger colouring; defaulted
+    to the datum's base lore colour (loreColorBase), overridable via
+    deps.spellColor / deps.blowColor. game/lore-color.ts buildLoreColorState
+    supplies the real thing, and as of PORT_TODO 2.6 it reads
+    state.knownPlayerState rather than state.playerState - which is what
+    player_inc_check's `lore` argument exists to switch (player-timed.c:930-1000,
+    three checks that read known_state when lore is true and state when it is
+    not). A fire resist from a ring whose rune is unlearned no longer recolours
+    a fire breath as survivable. This is the split's most visible consequence:
+    all three combat runes are birth-granted, so the panels barely move, but
+    resists and object flags are learned by use and the recall reads both.
+  - CLOSED (2026-08-07). All three things this row grouped as "presentation
+    state not modelled" were wrong, each differently. purple_uniques is a live
+    option the map layer already honoured, and landed as PORT_TODO 3.22.
+    monster_x_attr / monster_x_char are a REAL table in the port
+    (visuals/glyph-table.ts, GlyphTable.monsterGlyph) - the same table the map
+    draw reads - so the recall title was showing the race's default glyph while
+    the map showed the override; loreTitle now takes an optional monsterGlyph
+    dep, supplied from that table at web/src/main.ts's recallDeps, and appends
+    the second pair exactly as ui-mon-lore.c L69-74 does, including the
+    `!(optional_attr & 0x80)` tile-code exemption from the violet recolour. The
+    tile-size gate is not deferred either: tile_width / tile_height are always 1
+    in this port (a ratified divergence recorded at web/src/mapview.ts:70), so
+    the gate is unconditionally true and is omitted rather than faked.
+  - A game-layer LoreDeps adapter (building the deps from GameState + the combat
+    callbacks) lands when the recall panel is wired into a shell; the module is
+    pure and deps-injected until then.
+verified-by:
+  - mon/lore-describe.test.ts (6 tests) - the LoreTextBuilder run semantics,
+    the non-unique title ("The " + name + glyph), the flavor + fresh-lore kill
+    line, the experience reward + player-level dependence, the full-knowledge
+    trailer after cheat_monster_lore, and a unique's kill line without the
+    "The " prefix - all over real pack races and the bound spell list.

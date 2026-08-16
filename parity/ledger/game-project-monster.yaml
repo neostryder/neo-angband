@@ -1,0 +1,111 @@
+module: packages/core/src/game/project-monster.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/project-mon.c
+    items:
+      - project_m (L1328): the monster projection driver - gating (walls protect
+        monsters, no-monster, never-affect-projector, PROJECT_SAFE same-race
+        skip), seen determination, PROJECT_STOP camouflage reveal, forced
+        obviousness and forced wake from the projection data, running the type
+        handler, and dispatching to the damage appliers and side effects.
+        Implements the onMonster seam of project() (world/project.ts).
+      - project_m_player_attack (L1102): player / trap damage, routed through
+        mon_take_hit so death, fear and waking match every other player attack;
+        the lethal-blow death message is shown before mon_take_hit (which gets an
+        empty note), then hurt / pain / flee messages.
+      - project_m_monster_attack (L1034): monster-vs-monster damage; uniques are
+        reduced to but not killed; direct hp subtraction, death message,
+        monster_death, removal.
+      - project_m_apply_side_effects (L1177): polymorph (save throw + replacement
+        via hook), teleport (via hook), else applying the accumulated MON_TMD
+        timers with mon_inc_timed.
+  - path: src/mon-make.c
+    items:
+      - delete_monster_idx (L314), minimal: clear the square and free the slot
+        (game/context.ts deleteMonster); walkAction's inline removal now uses it.
+notes: >-
+  The game-layer half of the monster projection, built on the pieces already
+  landed: the pure effect core (mon/project-mon.ts runMonsterHandler), the shared
+  damage primitive (mon/take-hit.ts monTakeHit), and the projection behaviour
+  data (world/projection.ts obvious/wake). mon/ must not depend on game/, so the
+  driver lives here - it mutates GameState (chunk.mon / monsters[] / removal).
+  The genuinely downstream consequences are injected as ProjectMonsterHooks, so
+  the driver ships and is tested before their subsystems exist: onKill /
+  onMonsterDeath (experience, drops, quests), polymorph (poly_race +
+  place_new_monster), teleport (effect_simple EF_TELEPORT), thrustAway
+  (thrust_away), and the becomeAware / revertShape / message / lore hooks. The
+  minimal delete_monster_idx (square clear + slot free) runs in the driver; the
+  hook does the rest. Message and update ordering follows upstream.
+deferred:
+  - The hooks are supplied for real and every subsystem the bodies needed has
+    landed. project-monster.ts:266 threads onKill into monTakeHit, and the
+    session binds it to the live player_kill_monster tail
+    (session/game.ts:983): experience from the killed FORM, the shape revert,
+    dead-uniques-stay-dead, the kill-history entry, treasure drops through
+    monsterDeath, and quest completion (PORT_TODO 4.2). Floor-object piles,
+    lore and experience are all built.
+  - CLOSED (2026-08-07), and it had stopped being true long before. Monster
+    generation shipped: get_mon_num is MonAllocTable.getMonNum and
+    place_new_monster is game/mon-place.ts. What remained was that NOTHING
+    SUPPLIED THE HOOK - project_m called hooks.polymorph and wireGame's
+    `monster:` block never set it - so in the shipped game a Wand of Polymorph
+    (two objects in object.txt carry a MON_POLY effect, plus every CHAOS source)
+    rolled its saving throw, spent the charge and reported "maintains its shape"
+    every single time.
+    poly_race (project-mon.c:45) and the delete/place swap (L1225-1229) are now
+    game/poly.ts, supplied at session/game.ts as TWO hooks - polyRace and
+    replaceMonster - because upstream queues MON_MSG_CHANGE between them
+    (L1222-1224), naming the old monster while it still exists.
+    Reading the C to wire it turned up three more divergences in the calling
+    block, all fixed with it: (1) the source race is obj->original_race ?: race
+    (L1215), so a shapechanged monster polymorphs from what it really is - the
+    port read the current race; (2) the CHANGE message was queued AFTER the
+    swap; (3) MON_MSG_APPEAR (L1232-1238), "note the appearance of the new one
+    if it is visible but the old one wasn't", was absent entirely.
+    Nine mutants. Two survived and both were informative: a fixture of two
+    structurally identical makeRace({level: 5}) could not tell originalRace from
+    race under toEqual, and the RF_FORCE_DEPTH filter (L74-75) is unreachable on
+    stock data - all five FORCE_DEPTH races are also RF_UNIQUE and the unique
+    filter returns first - so that one is documented at the line rather than
+    tested with a counter that can only ever read zero.
+    ctx.mon is NOT widened to nullable: upstream's context->mon can be NULL here
+    (square_monster on a failed placement), but making the shared context
+    nullable produced 95 type errors across handlers that all run before this
+    point, so applySideEffects returns the replacement instead.
+  - CLOSED (2026-08-07). Confirmed at the live supplier: session/game.ts:1359
+    passes teleport -> teleportMonster and :1362 thrustAway -> thrustAway, in
+    the same `monster:` hooks block as timedMessage, learnRaceFlag,
+    learnSpellFlag and revertShape. "Worldless callers still get the inert
+    defaults" is the harness contract, not a gap - see
+    an-unsupplied-optional-is-not-an-unreachable-feature.
+  - CLOSED (2026-08-07), and the held-object half was hiding a LIVE DEFECT.
+    Upstream's delete_monster_idx does not "drop" the held pile - it deletes it
+    (mon-make.c:353-382) - but before deleting it calls
+    mark_artifact_created(art, false) for any artifact the player never
+    identified, so the artifact can be generated again. The port dropped the
+    whole Monster record, which deletes the pile with it, and never un-marked
+    anything: an artifact carried by a monster that was BANISHED
+    (effect-monster.ts:120/153), teleported away (effect-teleport.ts:571),
+    cleared by project_f (project-feat.ts:117) or swept up by level cleanup
+    (world.ts:755) was gone from the game AND still flagged created, so it could
+    never come back. monster_death drops its own pile, so only the seventeen
+    non-death removals lost artifacts. Fixed at game/context.ts deleteMonster,
+    with the obj_is_known_artifact guard (obj-util.c:832) upstream has and
+    WITHOUT birth_lose_arts, which gates the DESTRUCTION path and not this one.
+    Two mutants, two kills (mon-death.test.ts). The redraw requests remain the
+    ratified repaint divergence recorded across this ledger.
+  - RATIFIED DIVERGENCE, not a deferral (2026-08-07). update_mon /
+    square_light_spot / PR_MONSTER are three upstream repaint calls; this port
+    has one immediate-mode renderer and collapses them into the onUpdate hook,
+    the same way every other repaint request in this ledger is handled. Nothing
+    is owed - see the repaint note in ui-display.yaml.
+verified-by:
+  - game/project-monster.test.ts (12 tests): misses an empty or impassable grid
+    and never affects the projector; damages a monster and reports the hit;
+    kills it, runs onKill, and removes it from monsters[] and the chunk; applies
+    a stun timer with no damage (MON_STUN); teleports via the hook for AWAY_ALL;
+    requests a thrust for PROJ_FORCE; a non-undead is skipped by SLEEP_UNDEAD; a
+    monster source kills another monster via onMonsterDeath (not onKill); a
+    same-race target is spared under PROJECT_SAFE; and a waking projection clears
+    a sleeper's SLEEP timer.

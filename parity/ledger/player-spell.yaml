@@ -1,0 +1,102 @@
+module: packages/core/src/player/spell.ts (+ packages/core/src/game/spell-cmd.ts)
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/player-spell.c
+    items:
+      - adj_mag_fail / adj_mag_stat (L49/L94): the casting-stat minimum
+        failure and failure-adjustment tables.
+      - player_spells_init (L139): the spell_flags / spell_order arrays
+        (order slots 99-filled).
+      - class_magic_realms (L167): the class's distinct casting realms.
+      - object_kind_to_book / player_object_to_book (L216/L237): book
+        lookup by numeric tval + sval.
+      - spell_by_index (L250, walking books by declared spell counts),
+        spell_collect_from_book, spell_book_count_spells, spell_okay_list
+        semantics via the testers, spell_okay_to_cast / _study / _browse.
+      - fail_adjust / min_fail / spell_chance (L382): base fail, 3x
+        effective-level and casting-stat adjustments, low-mana +5/point,
+        the ZERO_FAIL 5-percent floor, the UNLIGHT lit-square +25 (via the
+        gridIsLit hook), fear +20 before the floor, the 50 cap, stun
+        +15/+25 after, amnesia 50 + chance/2, the 95 ceiling.
+      - spell_learn (L455): LEARNED flag, learn order, remaining-count
+        message; spell_cast (L495): the fail roll, the effect chain run
+        through the interpreter with a player source and beam_chance
+        (PF_BEAM plev else plev/2), first-work WORKED flag + exp hook, and
+        mana spending with overcast-to-zero (over-exert hook).
+      - spell_needs_aim via the generated effect aim table.
+  - path: src/player-calcs.c
+    items:
+      - average_spell_stat (L1247), calc_spells (L1268; allowance from
+        adj_mag_study, the too-hard / too-many forget passes, the remember
+        pass, the learnable cap), calc_mana (L1480; effective levels,
+        adj_mag_mana, the heavy-armor drain over the class spell weight).
+  - path: src/init.c
+    items:
+      - write_book_kind (L208): spellbook object kinds are created FROM
+        the class book definitions - registerBookKinds appends a kind per
+        distinct book (tval + name dedupes books shared across classes,
+        e.g. Paladin/Priest), assigns the next sval for the tval, applies
+        book-graphics and book-properties (cost, alloc commonness and
+        min/max = level), and stamps tval/sval back onto the ClassBook.
+        Runs in startGame BEFORE level generation, so books spawn in the
+        dungeon and the caster starting kits resolve.
+  - path: src/cmd-obj.c
+    items:
+      - do_cmd_cast (L1113): player_can_cast gate (no spells / blind /
+        confused), learned-spell check, aim resolution with
+        player_confuse_dir, the target_fix / target_release bracket around
+        spell_cast (L1162/L1170; a target dying mid-spell keeps its grid
+        for the rest of the chain), full-turn energy. spell_cast backs
+        GameEffectEnv.aimed with the live targetOkay + targetGet getter
+        (game/target.ts), so DIR_TARGET spells hit the player's target.
+      - do_cmd_study (L1245): PF_CHOOSE_SPELLS picks (args.spell), other
+        classes learn a random studyable spell from the book (the
+        reservoir-sample pick), then calc_spells refreshes the allowance.
+notes: >-
+  The cast pipeline is the same interpreter stack as items / monster
+  spells / traps (buildObjectEffectChain binds PLAYER_LEVEL exprs like
+  "$Dd4 D=lev-1/5+3"). startGame sizes the spell arrays, runs calc_spells
+  and calc_mana at birth (armor weight summed over the non-weapon /
+  bow / ring / amulet / light slots) and installs cast/study; a born Mage
+  has mana, [First Spells] in the pack, and one learnable spell.
+  Book/spell selection MENUS are the UI layer's (#25) - commands take
+  args.spell / args.handle, as upstream resolves via cmd_get_spell.
+deferred:
+  - CLOSED (2026-08-07). Both halves are ported and reached. convert_mana_to_hp
+    runs inline for PF_COMBAT_REGEN casters (game/spell-cmd.ts:256-258,
+    player-spell.c L519-521), and player_over_exert is env.overExert
+    (spell-cmd.ts:276), supplied for real at session/game.ts:1689. The module
+    header has said so since it was wired; this row did not.
+  - CLOSED (2026-08-07). Both landed. TMD_FASTCAST's three-quarter turn is
+    game/spell-cmd.ts:342-344 (cmd-obj.c:1164-1168), and the get_check
+    confirmation is real in the shell: packages/web/src/main.ts:3385-3386 prints
+    "You do not have enough mana to ..." and abandons the cast unless the player
+    confirms. A UI-layer item is still an item, and this one was done.
+  - CLOSED (2026-08-07). The light model shipped and both reads are live:
+    player_can_cast's darkness gate is game/spell-cmd.ts:162 (`noLight(state)`),
+    and the PF_UNLIGHT +25 fail penalty (player/spell.ts:364) reads gridIsLit,
+    supplied at spell-cmd.ts:188 as squareIsLit(state.chunk, state.actor.grid).
+    Neither sits on a default any more.
+  - CLOSED (2026-08-07). game/spell-cmd.ts:264 awards spell.exp * spell.level
+    the first time a spell works (the PY_SPELL_WORKED branch), and expGain is
+    supplied at session/game.ts:1680 inside installSpellCommands' env - the same
+    ExpDeps hook the trap, chest and identify-by-use rewards go through.
+  - get_spell_info is PORTED, and in core rather than the shell:
+    effects/effect-info.ts:809 getSpellInfo builds the value descriptions from
+    the effect chain, and web/src/screens.ts:719 is the browse menu reading
+    it.
+verified-by:
+  - player/spell.test.ts (13 tests): registerBookKinds creates one kind
+    per distinct book with alloc/cost, dedupes Paladin/Priest shares,
+    idempotent; spellByIndex walks book boundaries; realm dedup;
+    learn order and flags; the study allowance from level/stat; the
+    spell_chance formula pinned at stat index 15 (17 percent) with
+    low-mana +5s and caps; calc_mana values and the heavy-armor drain;
+    non-casters have no mana and always fail; forgotten spells return
+    when the allowance recovers.
+  - game/spell-cmd.test.ts (4 tests): a born Mage has mana and a book; a
+    Mage studies Magic Missile through processPlayer and bolts an
+    adjacent monster through the live effect stack (mana drains, energy
+    charged per attempt, real fail chances); unlearned spells and
+    non-casters refuse; study refuses when the allowance is exhausted.

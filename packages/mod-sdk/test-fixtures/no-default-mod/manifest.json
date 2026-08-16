@@ -1,0 +1,13 @@
+{
+  "id": "no-default-mod",
+  "name": "A Mod With No Default Export",
+  "version": "0.10.0",
+  "shape": "content",
+  "facets": ["plugin"],
+  "modApi": 1,
+  "engine": ">=0.1.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "description": "A build fixture that must FAIL. It compiles cleanly and exports nothing the host can load, which is the failure that would otherwise surface as one line in a player's mod manager."
+}

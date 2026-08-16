@@ -1,0 +1,80 @@
+module: packages/core/src/store/store.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/store.c
+    items:
+      - store_reset (L340) / store_maint (L1294): the stock-refresh cycle. Sell
+        a handful of random items down toward normal_stock_max, ensure every
+        staple exists at a full stack, then restock random items up between
+        normal_stock_min+always and normal_stock_max+always. Black market first
+        purges items failing black_market_ok. store_reset runs store_maint 10x
+        per non-home store after shuffling the proprietor.
+      - store_create_random (L1156) / store_get_choice (L1146): make a random
+        object at a store-appropriate level (black market uses get_obj_num at
+        player.max_depth+5..+20; others draw from the normal table at
+        1..store_magic_level+max(max_depth-20,0)), reject damaged/cursed/
+        worthless items and (for the black market) black_market_ok failures,
+        mass_produce, and store_carry it.
+      - store_create_item (L1262): make a specific always-stocked kind.
+      - mass_produce (L696) / mass_roll (L680): stack sizes for cheap items.
+      - store_carry (L912) / store_object_absorb (L813) / store_check_num
+        (L836): add an object to a store, merging into a compatible stack
+        (OSTACK_STORE) or taking a free slot; light/charge maintenance on carry.
+      - store_delete (L989) / store_delete_random (L1040) / store_find_kind
+        (L1011): remove stock, imitating non-PC buyers (ammo and stack rules).
+      - black_market_ok (L1105): the black market only stocks what other stores
+        do not, unless ego or notably enchanted.
+      - store_choose_owner (L1478) / store_shuffle (L1493): pick the proprietor.
+      - store_is_staple (L373) / store_can_carry (L391) /
+        store_sale_should_reduce_stock (L405): stock classification.
+      - store_will_buy (L524): the buy decision - home accepts anything, normal
+        stores refuse worthless items (with the birth_no_selling unknown-item
+        exception) and honour their buy list. The buy-list flag branch reads
+        BOTH conjuncts as upstream does (store.ts:275,
+        `obj.flags.has(buy.flag) && flagKnown(buy.flag)`) - the
+        object_flag_is_known half landed with PORT_TODO 2.10. The note used to
+        say it was deferred; it has not been since. 4.2.6's shipped data uses
+        only bare tvals, so the branch is unreached at the baseline either way,
+        which is why the correction took this long to notice.
+notes: >-
+  The stocking half of the store subsystem is live: stores bind to live Store
+  instances (bindStoreRuntime) and store_reset fills them faithfully using the
+  ported object generation (makeObject/applyMagic/objectPrep + ObjAllocState)
+  and valuation (object_value_real). Model divergences, all faithful in
+  reachable states: the stock is a GameObject[] (stock_num = length,
+  stock_size = z_info->store_inven_max); there is no obj->known twin so the
+  parallel stock_k pile and obj->known assignments are dropped; player->max_depth
+  is threaded in as maxDepth (dungeon progress is not on Player yet).
+deferred:
+  - The buy/sell/stash/retrieve TRANSACTIONS (do_cmd_buy / do_cmd_sell /
+    do_cmd_retrieve / do_cmd_stash) and home_carry are now PORTED in
+    store/transact.ts (ledgered in store-transact.yaml), built on the player
+    pack model in game/gear.ts. store_carry here still always takes fresh
+    store-generated objects (the non-carried value branch); the player-carried
+    value branch (object_value on a carried object) is unreached because the
+    sell path hands store_carry a detached gear object valued the same way.
+  - store_stock_list / earlier_object: the display sort order (UI concern).
+  - The town-book expansion of alwaysBookTvals (needs class-book metadata, see
+    store-bind.yaml) so the bookseller's always list is still short by its books.
+verified-by:
+  - store/store.test.ts "store_update: the days spent in the dungeon" (3 tests,
+    5 of 5 mutations killed with game/loop.test.ts and
+    session/store-aging-wiring.test.ts): zero days changes nothing and draws NO
+    RNG, several days turn the stock over and leave the home untouched, and six
+    days differ from one - the control, because "the stock changed" alone would
+    pass a store_update that ignored the count. game/loop.test.ts asserts the
+    accrual side (once per store day below town, never in town, since
+    game-world.c:545-573 is an if/else), and
+    session/store-aging-wiring.test.ts drives a real game down and back up: a
+    zero-day return leaves the shops identical, a four-day return moves them
+    and zeroes daycount.
+
+    ONE MUTATION IS UNKILLABLE BY CONSTRUCTION and was dropped rather than
+    faked: removing store_update's `feat === HOME` skip changes nothing,
+    because store_maint opens with the same guard. Upstream has both too
+    (store.c:1430 and :1296-1298), so the redundancy is faithful, not the
+    port's.
+  - store/store.test.ts: store_reset stocks the town stores within their slot
+    cap with positive quantities, leaves the home empty, carries every staple
+    at a full stack, and is deterministic for a fixed seed.

@@ -1,0 +1,11 @@
+Sound pack
+==========
+
+These sound samples were created by Dubtrain <angband@dubtrain.com> and are
+licensed under the Creative Commons Attribution 4.0 International licence
+(https://creativecommons.org/licenses/by/4.0/). The originals are available in
+WAV format at http://www.dubtrain.com/angband/.
+
+They are bundled here (converted to MP3) as the game's default sound pack. You
+may replace them with your own pack by pointing the game at a different base
+URL with the ?sounds= query parameter.

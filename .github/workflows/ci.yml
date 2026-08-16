@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "reference/**"
+  pull_request:
+    paths-ignore:
+      - "reference/**"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # pnpm-workspace.yaml allowlists Electron's postinstall so a DEVELOPER gets
+      # the Chromium binary (without it `electron .` cannot start at all). THIS
+      # job only type-checks, lints and tests the desktop front end, so it skips
+      # the ~110 MB download rather than pay it here.
+      #
+      # CI as a whole DOES launch the game now - the `play` job below does, and
+      # deliberately does not set this. That sentence used to read "CI never
+      # launches it", which was true and was the hole a five-day birth crash went
+      # through.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v7
+      # reference-tree.test.ts compares reference/ against the Angband 4.2.6
+      # commit, and actions/checkout is shallow, so that object is not here.
+      # Fetch the one commit rather than fetch-depth: 0 - this history descends
+      # from Angband's, so a full clone is enormous and paid on every run.
+      # The test FAILS rather than skips when the object is missing, on purpose:
+      # a baseline nobody can check is a baseline nobody is keeping, which is
+      # the exact failure that test was written for.
+      - name: Fetch the 4.2.6 baseline commit
+        run: git fetch --no-tags --depth=1 origin f3082213b73f3e463e3d0d60bff4b00462beae6e
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm lint
+      # Catch Vite/PWA build breaks on PRs, not just at deploy time.
+      - run: pnpm --dir packages/web bundle
+      # The plugin builder moved to packages/mod-sdk (it ships as the
+      # neo-angband-mod-build bin, so a mod repository can build itself), and its
+      # guarantees are proven against fixtures in packages/mod-sdk/src/mod-build.test.ts
+      # under `pnpm test` below - including the failure paths, which the old step over
+      # two correct mods could not exercise. So there is no separate build step here any
+      # more; each mod repository runs the builder over its own source in its own CI.
+      # The Borg's tests are not here any more: it left for its own mod repository
+      # (neostryder/neo-angband-mod-borg), which runs all 171 of them plus a suite
+      # that drives the BUILT plugin.js. What this repository still owes it is
+      # Rng.reseed and the ModPlugin.controller seam, both covered below.
+      - run: pnpm test
+      # Parity harness (packages/cli): the parity.test.ts guard runs inside
+      # `pnpm test` above; this runs the golden scenarios as a standalone Node
+      # program too, so a break in the runnable harness (loader, entry wiring)
+      # surfaces in CI even if the vitest path stays green.
+      - run: pnpm --filter @rpgm-tools/neo-angband-cli scenarios
+      # The published-package check: packs every publishable package (the list is
+      # DERIVED by tools/publishable.mjs from `private`, not written down), extracts
+      # each into an empty directory and imports every entry point with plain Node.
+      # This is the step that would have caught 4612 extensionless import
+      # specifiers, which every test here missed because vitest resolves through
+      # Vite. See docs/RELEASING.md.
+      #
+      # It runs on npm@latest, the same npm publish-npm.yml installs, and NOT on the
+      # npm the runner happens to bundle. That is not tidiness: `npm pack --json`
+      # returns an array on npm 11 and an object keyed by package name on npm 12, and
+      # because this step ran on Node 24's bundled 11.x while only the release path
+      # ever saw 12, the checker was broken for every package with a green CI to
+      # prove otherwise. A tool whose whole job is to find out what npm actually does
+      # has to run on the npm that will do it.
+      - run: npm install -g npm@latest
+      - run: pnpm check:npm
+      # The MCP server, spawned and spoken to. Its 25 tests drive the tools
+      # directly with no transport, so nothing else here would notice a break in
+      # the stdio wiring - and a client's only symptom is a disconnect.
+      - run: node packages/mcp/tools/smoke.mjs
+
+  # PLAY THE GAME. Everything above this job can be green while the game is
+  # unplayable, and on 2026-08-06 that is exactly what happened: the birth
+  # preview began reading two GameState fields it was never given, `as unknown as
+  # GameState` silenced the compiler, and (N)ew game threw on the first keypress
+  # for five days on the early channel. All 46 birth tests omit `opts.deps`, so
+  # the one path that builds a GameState was never executed by anything here.
+  #
+  # A separate job, not a step in `test`: this one needs the ~110 MB Electron
+  # binary that `test` deliberately skips, and it must not slow the fast lane
+  # down. It is also the only job that runs the game as a player gets it - the
+  # PRODUCTION bundle, in the desktop shell.
+  play:
+    name: Play the game
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      # NOT setting ELECTRON_SKIP_BINARY_DOWNLOAD. This is the job that launches
+      # Chromium, so it is the job that needs it.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --dir packages/web bundle
+      - run: pnpm --filter @rpgm-tools/neo-angband-desktop build
+      # The smoke tool's own error filter, checked in both directions before
+      # anything launches. It decides what counts as a game error, so a loosened
+      # pattern there would silence real failures silently; this fails the job
+      # instead. Runs with and without --no-sandbox because the flag is what
+      # gates the one exemption that is conditional on it.
+      - run: node tools/play-smoke.mjs --self-check
+      - run: node tools/play-smoke.mjs --self-check --no-sandbox
+      # `xvfb-run` because a runner has no display and Electron will not open a
+      # window without one; `--no-sandbox` because Chromium's setuid sandbox is
+      # not available on the runner image.
+      - run: xvfb-run -a node tools/play-smoke.mjs --no-sandbox
+      # The screenshots are the whole diagnosis when this fails - a hash that did
+      # not change says WHICH step stopped, and the PNG says what was on screen
+      # when it did. Kept on success too, so a passing run still shows what the
+      # game looked like at that commit.
+      - if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: play-smoke-screenshots
+          path: smoke-shots/
+          if-no-files-found: warn

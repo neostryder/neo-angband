@@ -1,0 +1,13 @@
+{
+  "id": "blueprint-view",
+  "name": "Blueprint View",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "engine": ">=0.19.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "capabilities": ["display:replace"],
+  "description": "A worked example of ModPlugin.frontend: it replaces the dungeon display with a drafting-table blueprint drawn from the WorldFrame's semantic layers - walls as strokes, floors as hatch, monsters and objects as marks - and never reads a terminal glyph.\n\nIt is a sample, not a way to play. Everything below the map (messages, the sidebar, every menu) is still the game's own screen; this owns the dungeon and nothing else."
+}

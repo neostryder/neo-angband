@@ -1,0 +1,447 @@
+{
+  "file": "p_race",
+  "source": "lib/gamedata/p_race.txt",
+  "records": [
+    {
+      "name": "Human",
+      "stats": {
+        "str": 0,
+        "int": 0,
+        "wis": 0,
+        "dex": 0,
+        "con": 0
+      },
+      "skill-disarm-phys": 0,
+      "skill-disarm-magic": 0,
+      "skill-device": 0,
+      "skill-save": 0,
+      "skill-stealth": 0,
+      "skill-search": 0,
+      "skill-melee": 0,
+      "skill-shoot": 0,
+      "skill-throw": 0,
+      "skill-dig": 0,
+      "hitdie": 10,
+      "exp": 100,
+      "infravision": 0,
+      "history": 1,
+      "age": {
+        "base_age": 14,
+        "mod_age": 6
+      },
+      "height": {
+        "base_hgt": 69,
+        "mod_hgt": 10
+      },
+      "weight": {
+        "base_wgt": 165,
+        "mod_wgt": 35
+      }
+    },
+    {
+      "name": "Half-Elf",
+      "stats": {
+        "str": 0,
+        "int": 1,
+        "wis": -1,
+        "dex": 1,
+        "con": -1
+      },
+      "skill-disarm-phys": 2,
+      "skill-disarm-magic": 2,
+      "skill-device": 3,
+      "skill-save": 3,
+      "skill-stealth": 1,
+      "skill-search": 3,
+      "skill-melee": -1,
+      "skill-shoot": 5,
+      "skill-throw": 5,
+      "skill-dig": 0,
+      "hitdie": 10,
+      "exp": 120,
+      "infravision": 2,
+      "history": 4,
+      "age": {
+        "base_age": 24,
+        "mod_age": 16
+      },
+      "height": {
+        "base_hgt": 71,
+        "mod_hgt": 8
+      },
+      "weight": {
+        "base_wgt": 115,
+        "mod_wgt": 25
+      },
+      "obj-flags": [
+        "SUST_DEX"
+      ]
+    },
+    {
+      "name": "Elf",
+      "stats": {
+        "str": -1,
+        "int": 2,
+        "wis": -1,
+        "dex": 1,
+        "con": -1
+      },
+      "skill-disarm-phys": 5,
+      "skill-disarm-magic": 5,
+      "skill-device": 6,
+      "skill-save": 6,
+      "skill-stealth": 2,
+      "skill-search": 6,
+      "skill-melee": -5,
+      "skill-shoot": 15,
+      "skill-throw": 15,
+      "skill-dig": 0,
+      "hitdie": 9,
+      "exp": 120,
+      "infravision": 3,
+      "history": 5,
+      "age": {
+        "base_age": 75,
+        "mod_age": 75
+      },
+      "height": {
+        "base_hgt": 73,
+        "mod_hgt": 7
+      },
+      "weight": {
+        "base_wgt": 90,
+        "mod_wgt": 10
+      },
+      "obj-flags": [
+        "SUST_DEX"
+      ],
+      "values": [
+        "RES_LIGHT[1]"
+      ]
+    },
+    {
+      "name": "Hobbit",
+      "stats": {
+        "str": -2,
+        "int": 2,
+        "wis": 1,
+        "dex": 3,
+        "con": 2
+      },
+      "skill-disarm-phys": 15,
+      "skill-disarm-magic": 15,
+      "skill-device": 18,
+      "skill-save": 18,
+      "skill-stealth": 4,
+      "skill-search": 6,
+      "skill-melee": -10,
+      "skill-shoot": 20,
+      "skill-throw": 20,
+      "skill-dig": 0,
+      "hitdie": 7,
+      "exp": 120,
+      "infravision": 4,
+      "history": 10,
+      "age": {
+        "base_age": 21,
+        "mod_age": 12
+      },
+      "height": {
+        "base_hgt": 34,
+        "mod_hgt": 4
+      },
+      "weight": {
+        "base_wgt": 55,
+        "mod_wgt": 5
+      },
+      "obj-flags": [
+        "HOLD_LIFE"
+      ],
+      "player-flags": [
+        "KNOW_MUSHROOM"
+      ]
+    },
+    {
+      "name": "Gnome",
+      "stats": {
+        "str": -1,
+        "int": 2,
+        "wis": 0,
+        "dex": 2,
+        "con": 1
+      },
+      "skill-disarm-phys": 10,
+      "skill-disarm-magic": 10,
+      "skill-device": 22,
+      "skill-save": 12,
+      "skill-stealth": 3,
+      "skill-search": 4,
+      "skill-melee": -8,
+      "skill-shoot": 12,
+      "skill-throw": 12,
+      "skill-dig": 0,
+      "hitdie": 8,
+      "exp": 120,
+      "infravision": 4,
+      "history": 13,
+      "age": {
+        "base_age": 50,
+        "mod_age": 40
+      },
+      "height": {
+        "base_hgt": 40,
+        "mod_hgt": 5
+      },
+      "weight": {
+        "base_wgt": 80,
+        "mod_wgt": 5
+      },
+      "obj-flags": [
+        "FREE_ACT"
+      ],
+      "player-flags": [
+        "KNOW_ZAPPER"
+      ]
+    },
+    {
+      "name": "Dwarf",
+      "stats": {
+        "str": 2,
+        "int": -3,
+        "wis": 2,
+        "dex": -2,
+        "con": 2
+      },
+      "skill-disarm-phys": 2,
+      "skill-disarm-magic": 2,
+      "skill-device": 9,
+      "skill-save": 9,
+      "skill-stealth": -1,
+      "skill-search": 2,
+      "skill-melee": 15,
+      "skill-shoot": 0,
+      "skill-throw": 0,
+      "skill-dig": 40,
+      "hitdie": 11,
+      "exp": 120,
+      "infravision": 5,
+      "history": 16,
+      "age": {
+        "base_age": 35,
+        "mod_age": 15
+      },
+      "height": {
+        "base_hgt": 47,
+        "mod_hgt": 4
+      },
+      "weight": {
+        "base_wgt": 135,
+        "mod_wgt": 20
+      },
+      "obj-flags": [
+        "PROT_BLIND"
+      ],
+      "player-flags": [
+        "SEE_ORE"
+      ]
+    },
+    {
+      "name": "Half-Orc",
+      "stats": {
+        "str": 2,
+        "int": -1,
+        "wis": 0,
+        "dex": 0,
+        "con": 1
+      },
+      "skill-disarm-phys": -3,
+      "skill-disarm-magic": -3,
+      "skill-device": -3,
+      "skill-save": -3,
+      "skill-stealth": -1,
+      "skill-search": -3,
+      "skill-melee": 12,
+      "skill-shoot": -5,
+      "skill-throw": -5,
+      "skill-dig": 0,
+      "hitdie": 10,
+      "exp": 120,
+      "infravision": 3,
+      "history": 19,
+      "age": {
+        "base_age": 11,
+        "mod_age": 4
+      },
+      "height": {
+        "base_hgt": 64,
+        "mod_hgt": 2
+      },
+      "weight": {
+        "base_wgt": 135,
+        "mod_wgt": 15
+      },
+      "values": [
+        "RES_DARK[1]"
+      ]
+    },
+    {
+      "name": "Half-Troll",
+      "stats": {
+        "str": 4,
+        "int": -4,
+        "wis": -2,
+        "dex": -4,
+        "con": 3
+      },
+      "skill-disarm-phys": -5,
+      "skill-disarm-magic": -5,
+      "skill-device": -8,
+      "skill-save": -8,
+      "skill-stealth": -2,
+      "skill-search": -9,
+      "skill-melee": 20,
+      "skill-shoot": -10,
+      "skill-throw": -10,
+      "skill-dig": 0,
+      "hitdie": 12,
+      "exp": 120,
+      "infravision": 3,
+      "history": 21,
+      "age": {
+        "base_age": 20,
+        "mod_age": 10
+      },
+      "height": {
+        "base_hgt": 90,
+        "mod_hgt": 16
+      },
+      "weight": {
+        "base_wgt": 240,
+        "mod_wgt": 60
+      },
+      "obj-flags": [
+        "SUST_STR | REGEN"
+      ]
+    },
+    {
+      "name": "Dunadan",
+      "stats": {
+        "str": 1,
+        "int": 2,
+        "wis": 2,
+        "dex": 2,
+        "con": 3
+      },
+      "skill-disarm-phys": 4,
+      "skill-disarm-magic": 4,
+      "skill-device": 5,
+      "skill-save": 5,
+      "skill-stealth": 1,
+      "skill-search": 3,
+      "skill-melee": 15,
+      "skill-shoot": 10,
+      "skill-throw": 10,
+      "skill-dig": 0,
+      "hitdie": 10,
+      "exp": 120,
+      "infravision": 0,
+      "history": 1,
+      "age": {
+        "base_age": 50,
+        "mod_age": 20
+      },
+      "height": {
+        "base_hgt": 80,
+        "mod_hgt": 6
+      },
+      "weight": {
+        "base_wgt": 190,
+        "mod_wgt": 20
+      },
+      "obj-flags": [
+        "SUST_CON"
+      ]
+    },
+    {
+      "name": "High-Elf",
+      "stats": {
+        "str": 1,
+        "int": 3,
+        "wis": -1,
+        "dex": 3,
+        "con": 1
+      },
+      "skill-disarm-phys": 4,
+      "skill-disarm-magic": 4,
+      "skill-device": 20,
+      "skill-save": 20,
+      "skill-stealth": 2,
+      "skill-search": 10,
+      "skill-melee": 10,
+      "skill-shoot": 25,
+      "skill-throw": 25,
+      "skill-dig": 0,
+      "hitdie": 10,
+      "exp": 145,
+      "infravision": 4,
+      "history": 7,
+      "age": {
+        "base_age": 100,
+        "mod_age": 30
+      },
+      "height": {
+        "base_hgt": 77,
+        "mod_hgt": 6
+      },
+      "weight": {
+        "base_wgt": 190,
+        "mod_wgt": 20
+      },
+      "obj-flags": [
+        "SEE_INVIS"
+      ],
+      "values": [
+        "RES_LIGHT[1]"
+      ]
+    },
+    {
+      "name": "Kobold",
+      "stats": {
+        "str": -1,
+        "int": -1,
+        "wis": 0,
+        "dex": 2,
+        "con": 2
+      },
+      "skill-disarm-phys": 10,
+      "skill-disarm-magic": 10,
+      "skill-device": 5,
+      "skill-save": 0,
+      "skill-stealth": 3,
+      "skill-search": 10,
+      "skill-melee": -5,
+      "skill-shoot": 10,
+      "skill-throw": 10,
+      "skill-dig": 0,
+      "hitdie": 8,
+      "exp": 120,
+      "infravision": 5,
+      "history": 23,
+      "age": {
+        "base_age": 15,
+        "mod_age": 10
+      },
+      "height": {
+        "base_hgt": 37,
+        "mod_hgt": 4
+      },
+      "weight": {
+        "base_wgt": 65,
+        "mod_wgt": 5
+      },
+      "values": [
+        "RES_POIS[1]"
+      ]
+    }
+  ]
+}

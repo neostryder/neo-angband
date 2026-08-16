@@ -1,0 +1,73 @@
+module: packages/core/src/obj/make.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/obj-make.c
+    items:
+      - obj_alloc / obj_alloc_great allocation tables from kind `alloc:`
+        entries (commonness, min/max depth)
+      - get_obj_num (level, good, tval filter) with the cumulative
+        probability walk
+      - apply_magic: to-hit / to-dam / to-ac enchant levels via m_bonus
+        and the ENCH_* tables, ego selection (ego_find_random), supercharge
+      - make_object (drop pipeline: prep, apply_magic, stack generation)
+      - make_artifact (apply_magic promotion) / make_artifact_special
+        (make_object special roll), with the aup_info[] created registry
+      - make_gold (money objects)
+      - object_prep, ego application, curse application entry
+counts:
+  live-branches: [get_obj_num, apply_magic tohit/todam/toac/ego, make_object
+                  core path, make_artifact, make_artifact_special, make_gold
+                  core path, apply_magic chest branch (pick_chest_traps)]
+notes: >-
+  Determinism verified: with a seeded Rng, get_obj_num at depths 5/20/50
+  returns kinds whose alloc range includes the depth and distribution
+  tracks commonness (loose statistical bounds); apply_magic is
+  reproducible for a fixed seed and level. Artifact creation (LIVE): the
+  per-candidate OOD roll (randint0 when alloc_min>depth) then rarity roll
+  (randint1(100)) run in aidx ascending order, matching obj-make.c; the
+  shared ArtifactState (aup_info[]) is threaded into every MakeDeps and
+  serialized. This inserted the previously-missing artifact-scan draws back
+  into the stream, but no existing seeded fixture shifted (candidate draws
+  only occur on a tval+sval match or an eligible special).
+
+  Mod-guard RNG neutrality (D1=B, audit 02): make_artifact carries the only
+  RNG-drawing mod guard in core - the bug-fixes #4510 duplicate-artifact
+  re-check. Its `deps.modRules?.["bugfix.duplicateArtifact"]` test is the first
+  operand of the &&, so on the disabled path (map absent, or flag false) it
+  short-circuits before isCreated and before the guarded early return, falling
+  through to copy_artifact_data exactly as faithful 4.2.6 does - no draw is
+  added, dropped, or reordered. Only the ENABLED flag (opt-in) may skip the
+  copy_artifact_data draw. Wired live via the makeDeps modRules getter
+  (session/game.ts ~L801).
+deferred:
+  - CLOSED (2026-08-07). The guard is not inert: deps.canBrowseBook
+    (obj/make.ts:1133) carries obj_kind_can_browse and is supplied. The module's
+    own header records that this row outlived the fix - "'class)' stood here long
+    after deps.canBrowseBook was added and supplied" (:1241).
+  - CLOSED (2026-08-07). deps.noSelling (obj/make.ts:1139) drives the x5
+    inflation at :1336, and it reads the live option store at every supplier:
+    session/game.ts:1137, :2959 and :3339 all pass
+    state.options.get("birth_no_selling"). The player options this waited on
+    landed as PORT_TODO 5.3.
+  - CROSS-REFERENCE, not a second item (2026-08-07). The owed part is
+    object_value pricing the real object rather than obj->known, which is
+    tracked as `real` at obj-value.yaml:37 - the same known-twin work as the
+    auto-ignore and Remove Curse fixes. Recorded here without a second citation
+    so one piece of work is not counted twice.
+notes-chests: >-
+  pick_chest_traps (gap #49) is LIVE: apply_magic's chest branch now calls
+  obj/chest.ts's pickChestTraps, so generated chests carry a real lock/trap
+  pval instead of staying 0. See parity/ledger/game-chest.yaml (or the
+  cave-cmd / trap ledgers) for the rest of the chest domain (chest_check,
+  chest_trap, chest_death, the open/disarm commands in game/chest.ts).
+verified-by:
+  - seeded allocation tests at multiple depths (legal-range + distribution)
+  - apply_magic determinism test for fixed seed and level
+  - obj/make.test.ts: make_artifact promotion, make_artifact_special, the
+    deep make_object special-artifact roll, already-created + birth_no_art +
+    town-depth zero-RNG guards, ArtifactState snapshot/restore
+  - game/mon-death.test.ts: a level-100 QUESTOR force-drops every QUEST_ART
+  - obj/chest.test.ts: pickChestTraps determinism (golden pval sequences for
+    a level-5 and a level>45 chest across seeds), pickOneChestTrap's
+    no-re-check quirk

@@ -1,0 +1,132 @@
+module: packages/core/src/game/effect-item.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_ENCHANT (L2095) - the ENCH_ subtype dispatch into
+        enchant_spell (L373: the weapon-vs-armour tester, the carried
+        "Your"/"The" glow message, the TOBOTH-then-TOHIT-then-TODAM chain
+        and the TOAC tail, the failure message) over enchant (L319: the
+        pile-resistance prob with the ammo /20, the per-try eflag rolls)
+        and enchant_score (L268: the enchant_table, the 50% artifact
+        resist, randint1(1000) <= chance fails), all in the upstream RNG
+        order. The value is randcalc(value, depth, RANDOMISE).
+      - effect_handler_RECHARGE (L2127) - strength = base + the dice roll,
+        the tval_can_have_charges tester over inven+floor,
+        recharge_failure_chance (effects.c L563), the one_in_(i) backfire
+        destroying one item of the stack, and the (strength / (10 - ease))
+        + 1 power adding 2 + randint1(t) charges.
+      - effect_handler_REMOVE_CURSE (L1051) with uncurse_object (L179) -
+        the removable-curse tester (0 < power < 100), the permanent-curse
+        refusal, strength >= power removal with the named message,
+        fragile-marking on failure (learning the OF_FRAGILE rune), and the
+        one_in_(4) fragile destruction with 5d5 reduced damage and
+        take_hit("Failed uncursing"). get_curse's picker is the
+        chooseCurse seam (default: the first active curse).
+      - effect_handler_BRAND_WEAPON (L3233, one_in_(2) Flame/Frost on the
+        wielded weapon), BRAND_AMMO (L3251, one_in_(3)/one_in_(2)
+        Flame/Frost/Venom on chosen ammo), BRAND_BOLTS (L3284, Flame on
+        chosen bolts), all through brand_object (L427: cost/artifact/ego
+        eligibility, the "of X" ego lookup filtered by poss_items, the
+        aura message, ego_apply_magic, and the randint0(3)+4
+        hit/dam enchant).
+      - effect_handler_CURSE_ARMOR (L3103) / CURSE_WEAPON (L3167) - the
+        equipped body/weapon slot, the 50% artifact save with its message,
+        the to-a (or to-h/to-d) knock, and the randint1(3) curses at
+        10 * m_bonus(9, depth) power appended through the poss[tval]
+        filter with 20 max tries.
+      - effect_handler_CREATE_ARROWS (L3315) - the staff tester, the
+        randint1(lev) > 25 good / > 50 great rolls, staff destruction,
+        and make_object(player->lev, ..., TV_ARROW) dropped near the
+        player.
+      - effect_handler_TAP_DEVICE (L3370) - the charge tester, the
+        (5 + lev) * 3 * pval / 2 energy, the < 36 refusal, the mana top-up
+        (energy / 6, csp_frac cleared), the randint1(2) stun, and the
+        full-mana refusal with the capitalized item name.
+      - effect_handler_ACQUIRE (L2194) with acquirement (obj-make.c
+        L1240) - `value` good/great/extra-roll make_object calls at the
+        current depth, ORIGIN_ACQUIRE stamped, dropped near the player.
+      - effect_handler_IDENTIFY (L1945) - the get_item chooser with
+        item_tester_unknown (not all runes known) and
+        object_learn_unknown_rune over the rune list (obj/knowledge.ts
+        buildRuneList); cancelling leaves the effect unused.
+notes: >-
+  Registered by registerItemHandlers over the core stubs. The object
+  chooser (upstream get_item / cmd_get_item "tgtitem") is the injected
+  ItemEffectEnv.getItem seam; wireGame now supplies the ego/curse tables,
+  makeDeps AND a live chooser (getItem -> resolveTargetItem, session/
+  game.ts), so enchant / identify / recharge / remove-curse / brand-ammo /
+  create-arrows / tap-device all resolve in production and consume the
+  scroll/spell (a cancelled pick returns false unused, matching the upstream
+  cancel path). destroyOneItem covers both gear (gear_object_for_use) and
+  floor piles.
+deferred:
+  - The descriptions are LIVE, not the kind's base name: this module calls
+    describeObject with the real ODESC modes throughout (effect-item.ts:394 and
+    :445 with ODESC.BASE, :616 and :730 with ODESC.FULL). obj->known's
+    to_h/to_d/to_a "display sync" needs nothing here - the port synthesises the
+    known twin on demand from rune knowledge rather than storing a copy to
+    sync. The recharge_pow failure-RATE readout (ui-object.c:225) is the one
+    remaining piece, and it is a DIVERGENCE rather than a deferral - the reason
+    is ordering, not presentation. Upstream rolls `strength` and THEN prompts
+    (effect-handler-general.c:2130-2144), so the rate it prints is the rate that
+    will apply; this port pre-resolves the item target before the effect runs
+    (itemTargetRequest, an RNG-free probe, chosen so the effect executes exactly
+    once and the RNG stream stays faithful), so by the time `strength` exists
+    the pick is already made. The stream is identical either way - nothing
+    between the roll and the prompt draws - and showing an approximation would
+    print a number the game then does not use.
+  - CLOSED (2026-08-07). Remove Curse now reads the known twin in BOTH places
+    upstream does, and the second one was not in the row.
+    (1) item_tester_uncursable (effect-handler-general.c:162-165) reads
+    obj->known->curses. game/effect-item.ts's tester read the live object, so an
+    item whose curse was still unknown was offered as a target - which both
+    worked when it should not and TOLD the player the item was cursed by
+    accepting it.
+    (2) The picker is gated too: curse_menu lists index i only when
+    obj->known->curses[i].power is in (0,100) AND player_knows_curse(p, i)
+    (ui-curse.c:104-111). The port built its candidate list from the live
+    obj.curses, so even a correctly-offered item would list curses the player
+    had never learned. Reading the twin covers both conditions at once, because
+    objectKnownShadow already gates each entry's power on p->obj_k->curses[i] -
+    which IS player_knows_curse.
+    uncurse_object operates on the REAL curse in both implementations, and still
+    does here. Two mutants, two kills, and the first one survived its first
+    test: the effect env's getItem stub hands the object over without consulting
+    the tester, so the refusal case exercised only the picker. requestForEffect's
+    predicate is now asserted directly.
+    Three fixture conditions had to be real for the tests to mean anything, all
+    of them upstream's: the object ASSESSED, the curse rune learned, and the rune
+    env backed by the real curse table - the harness default is [null], length 1,
+    so objectKnownShadow's loop never ran and the twin could not report a curse
+    whatever the player knew. show_damage remains an option-layer item (#30).
+  - Both are wired. The total_weight upkeep is effect-item.ts:638
+    (upkeep.totalWeight += newWeight - oldWeight), and history_lose_artifact is
+    :629 - an artifact destroyed by acid or disenchantment fires
+    state.onArtifactLost, which wireGame installs.
+  - RATIFIED DIVERGENCE (2026-08-07): EVENT_INPUT_FLUSH is a terminal input-queue
+    concern with no counterpart in an event-driven shell, and the PN_COMBINE /
+    PR_ redraws are the repaint bookkeeping recorded throughout this ledger.
+  - NOT A DEFERRAL (2026-08-07): the row's own second clause settles it -
+    "upstream reaches them only through player commands too". Omitting the item
+    env from the mon-cast deps reproduces upstream's reachability rather than
+    reducing it.
+verified-by:
+  - game/effect-identify.test.ts (3 tests) - IDENTIFY learns one unknown
+    rune of the chosen item, a cancelled pick leaves the effect unused,
+    and a fully-known item fails the tester.
+  - game/effect-item.test.ts (21 tests) - enchant raises a +0 score and
+    refreshes bonuses, and cannot pass +15; EF_ENCHANT enchants a chosen
+    carried weapon (glow message) and armour to-ac, and a cancelled pick
+    leaves the scroll unused; RECHARGE recharges a drained wand, backfires
+    destroying a full wand on a weak recharge, and the failure chance
+    tightens with charges; REMOVE_CURSE lifts a weak curse with its named
+    message, marks the item fragile on a failed attempt, and can destroy a
+    fragile item (seed sweep, with the player taking damage); BRAND_WEAPON
+    egos the wielded weapon Flame/Frost with the aura message and enchant,
+    BRAND_AMMO refuses an existing ego, BRAND_BOLTS flames bolts;
+    CURSE_ARMOR/WEAPON blast worn gear's bonuses (artifact-less) and no-op
+    with nothing worn; CREATE_ARROWS consumes the staff and drops arrows
+    near the player; TAP_DEVICE drains a staff into mana with the stun,
+    refuses low-energy devices, and spares a full-mana player's charges.
