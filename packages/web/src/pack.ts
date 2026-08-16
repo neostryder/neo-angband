@@ -345,6 +345,17 @@ export function enabledModIds(): string[] {
   });
 }
 
+/**
+ * A bundled or disk-pack mod's own manifest, by id - what a hook-entry adapter
+ * needs to build THAT mod's CapabilitySet (ticket #133's `ctx.backupFolder` gate
+ * and any capability after it) without re-deriving discoverMods' own
+ * bundled-wins-over-disk precedence a second time.
+ */
+export function modManifestFor(id: string): PackManifest | undefined {
+  const found = discoverMods().get(id);
+  return found ? modManifest(found.manifest) : undefined;
+}
+
 export function modManifest(raw: unknown): PackManifest {
   const m = raw as Partial<PackManifest> & { id?: string };
   return {

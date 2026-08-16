@@ -48,7 +48,9 @@ import {
   enabledModIds,
   loadEnabledModRuleDecls,
   loadEnabledModSectionFlags,
+  modManifestFor,
 } from "./pack";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { log } from "./logging";
 import { activeModCode } from "./mod-code";
@@ -94,7 +96,17 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
       log.warn("mod-hooks", `${id}/plugin.ts: ${wrong}; skipping`);
       continue;
     }
-    byId.set(id, pluginAdapter(id, entry as ModPlugin));
+    /* register(host, ctx) has always had this mod's CapabilitySet (main.ts derives it
+     * at the same call site it derives everything else about that mod); hooks(ctx)
+     * never did, which is why ctx.backupFolder (#133) was undefined on this path.
+     * modManifestFor mirrors the lookup discoverMods() itself already does for this
+     * exact id - bundled wins over a same-id disk pack, as everywhere else. */
+    const manifest = modManifestFor(id);
+    if (!manifest) log.error("mod-hooks", `${id}: plugin.ts has no discoverable manifest`);
+    const capabilities = CapabilitySet.fromManifest(
+      manifest ?? { id, name: id, version: "0.0.0", shape: "plugin", facets: ["plugin"] },
+    );
+    byId.set(id, pluginAdapter(id, entry as ModPlugin, capabilities));
   }
   return byId;
 }
@@ -112,11 +124,11 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
  * and behaviourally absent, with nothing anywhere on screen saying so. It now also
  * reports, so the mod manager can put it on that mod's row.
  */
-function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
+function pluginAdapter(id: string, plugin: ModPlugin, capabilities: CapabilitySet): ModHookEntry {
   return (flags) => {
     if (!plugin.hooks) return undefined;
     try {
-      return plugin.hooks(modPluginContext(id, flags));
+      return plugin.hooks(modPluginContext(id, flags, undefined, {}, { capabilities }));
     } catch (e) {
       reportModFault(id, `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`);
       log.error(`mod:${id}`, `hooks() threw; contributing nothing:`, e);
@@ -255,11 +267,18 @@ function folderHookEntries(): Map<string, ModHookEntry> {
   for (const loaded of activeModCode().plugins) {
     const hooks = loaded.plugin.hooks;
     if (!hooks) continue;
+    /* loaded.manifest is already this mod's real PackManifest (mod-code.ts read it
+     * off the pack it validated the "plugin" facet against), so unlike the bundled
+     * path above there is nothing to look up - just the same fromManifest call
+     * register(host, ctx) has always made for this mod. */
+    const capabilities = CapabilitySet.fromManifest(loaded.manifest);
     out.set(loaded.id, (flags) => {
       try {
         return hooks.call(
           loaded.plugin,
-          modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data)),
+          modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data), {
+            capabilities,
+          }),
         );
       } catch (e) {
         reportModFault(
