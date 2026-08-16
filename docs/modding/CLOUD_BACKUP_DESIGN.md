@@ -1,9 +1,18 @@
 # Cloud backup via a player-chosen folder (ticket #133)
 
-**Design record — not yet implemented.** Ticket #133 is one sentence: "QoL:
-hands-off cloud backup via a player-chosen folder." This document is the rest of
-it: what defect it closes, where it lives, and the seams it needs that do not
-exist yet.
+**Status, 2026-08-15: engine side DONE, mod side BLOCKED.** Ticket #133 is one
+sentence: "QoL: hands-off cloud backup via a player-chosen folder." This
+document is the rest of it: what defect it closes, where it lives, and the
+seams it needs. `ctx.backupFolder` exists end-to-end (both platforms,
+capability-gated, `hooks(ctx)` and `register(ctx)` both see it, `persistSave`
+notifies every consenting mod) — see §"File-by-file implementation plan" steps
+0-5, all DONE. What is NOT done, and cannot be finished small: the
+`neo-angband-mod-qol` menu row that would let a player actually call
+`choose()` (step 6) is blocked on a UI-seam gap ("menu row → runs a mod's own
+callback") that this design's §3 assumed existed and does not — see the
+correction there. That gap is the same shape as `MOD_REACH.md` gap 21, and is
+deferred alongside it (neostryder's ruling, 2026-08-15: ship the alpha now,
+finish remaining seams in a later pass).
 
 ---
 
@@ -276,15 +285,40 @@ flag. Retrofitting an "action row that runs mod code" into that model breaks
 the one property that makes it safe to evaluate generically today, so this
 design does not touch it.
 
-**The existing seam that already fits: `registry:command` + `registry:menu`.**
-`docs/modding/MOD_SEAMS.md`'s worked example is verbatim the shape needed —
-`host.commands.register(code, action)` for a new player command, and
-`host.menus.register("core:game-menu", (id, rows) => [...rows, { id, label,
-semantic }])` to add it to a menu the player already opens with a keypress. The
-qol mod's `register(host, ctx)` adds one row, `"Choose cloud-backup folder..."`,
-whose action calls the SAME `BackupFolder` object it kept from `hooks(ctx)`:
+**CORRECTION (2026-08-15, verified against the code rather than assumed, the
+same discipline this doc's §"Platform truth" already used once): the seam this
+section proposed does not exist.** The paragraph below described
+`registry:command` as a generic "run this mod code from a menu row" seam. It is
+not — `CommandFacade.register(code, action)` takes a `PlayerAction`
+(`packages/core/src/game/player-turn.ts:103`: `(state: GameState, cmd:
+PlayerCommand) => number`), a real gameplay-turn action that consumes energy
+and returns an energy cost. `host.commands.register("qol:choose-backup-folder",
+async () => {...})` as written below does not type-check against that
+signature, and even forced through, nothing would call it: `core:game-menu`'s
+own row selection is resolved by `gameMenuOnce()` (`packages/web/src/main.ts`)
+switching on a small CLOSED set of hardcoded action strings, with a `default:`
+arm that silently does nothing. A `registry:menu` transformer can add a ROW
+(label, semantic tag) but nothing bridges "the player picked a mod's row" to
+"run the mod's registered command" for an invented action string — confirmed
+by reading `selectFromMenu` (`packages/web/src/overlay.ts:1416-1440`), which
+resolves a pick back to the ORIGINAL row's index and, on the faithful-shell
+picker path, explicitly keeps re-asking rather than acting on a row with no
+source index. No shipped mod (borg, bug-fixes, linoleum) uses
+`commands.register`/`menus.register` in production; only test fixtures do.
+
+So the worked example below is aspirational, not built, and building the
+missing half — a real "menu row selection dispatches to a mod's own callback"
+seam — is itself new UI-seam work of the same kind gap 21 (`MOD_REACH.md`)
+already covers and neostryder deferred past alpha on 2026-08-15. This section
+is left in place, corrected, as the plan to pick back up when that work
+resumes — not as something #133 can still finish small. What ships instead:
+`ctx.backupFolder` (§1) end-to-end and capability-gated, with no
+player-visible way to invoke `choose()` yet. A future mod update adds the
+actual trigger once the menu-dispatch seam exists.
 
 ```ts
+// ASPIRATIONAL - does not compile against the real CommandFacade, and nothing
+// would call it if it did. Kept for shape, not as instructions to implement.
 register(host, ctx) {
   host.commands.register("qol:choose-backup-folder", async () => {
     const name = await backup?.choose();
@@ -299,25 +333,23 @@ register(host, ctx) {
 }
 ```
 
-**Why this preserves the user gesture, checked against this codebase's own
-precedent rather than assumed.** `manageModFolder`
-(`packages/web/src/mods.ts:2001-2076`) already does exactly this shape today,
-in production: `await selectFromMenu(...)` resolves a row, and the very next
-line, still inside the same `async` continuation, calls `picker.pick()` →
-`pickModFolder()` → `showDirectoryPicker()` (`mod-folder.ts:184-200`). That is
-not a hypothetical — it is the live "Choose a mods folder..." row, and it is
-proof that a directory picker call reached from a resolved menu selection in
-*this* engine keeps its user activation. A command run from `core:game-menu`'s
-row-confirm is the same shape one layer further out (menu selection → command
-action → picker), so the same activation survives it for the same reason:
-Chromium's transient-activation window is time-bounded, not call-stack-bounded,
-and both paths are a handful of microtask hops from the same keypress. This is
-the one claim in this section worth a note in the implementation plan rather
-than a leap of faith, and §9 says where to check it.
+The gesture-preservation argument below is unaffected by the correction above —
+it is still true of `manageModFolder`, it just is not yet reachable from a
+generic mod seam. Kept for whoever builds the real dispatch mechanism.
 
-Two new capabilities the manifest declares for this, both already published:
-`registry:command`, `registry:menu` — no new capability beyond `backup:folder`
-itself.
+**Why a picker call reached from a resolved menu selection keeps its user
+gesture, checked against this codebase's own precedent rather than assumed.**
+`manageModFolder` (`packages/web/src/mods.ts:2001-2076`) already does exactly
+this shape today, in production: `await selectFromMenu(...)` resolves a row,
+and the very next line, still inside the same `async` continuation, calls
+`picker.pick()` → `pickModFolder()` → `showDirectoryPicker()`
+(`mod-folder.ts:184-200`). That is not a hypothetical — it is the live "Choose
+a mods folder..." row, and it is proof that a directory picker call reached
+from a resolved menu selection in *this* engine keeps its user activation.
+Whatever the real dispatch mechanism turns out to be, it should preserve the
+same shape (menu selection → action → picker, a handful of microtask hops from
+the same keypress) for the same reason: Chromium's transient-activation window
+is time-bounded, not call-stack-bounded.
 
 ---
 
@@ -483,19 +515,19 @@ lineage-stable naming rule from §"Composition with persistSave," respectively.
 builds inline (`main.ts:10330-10340`) so both call sites share it rather than
 drift.
 
-**6. `neo-angband-mod-qol`** (the mod repository, not this one):
-- `manifest.json`: add `"backup:folder"`, `"registry:command"`,
-  `"registry:menu"` to `capabilities`, and a new entry to the README's toggle
-  table is **not** added, per §3's ruling that this feature is not a boolean
-  rule — it is present/absent by whether a folder is chosen, exactly as the
-  "Mods folder" feature has no toggle of its own.
-- `plugin.ts`: `hooks(ctx)` keeps the `BackupFolder` reference and calls
-  `ctx.backupFolder?.onSave(...)`; `register(host, ctx)` adds the command and
-  menu row from §3.
-- README gains a new section in the same style as "Why remembering settings is
-  a mod and not a fix," naming the two engine seams by name
-  (`ctx.backupFolder`, `registry:command`+`registry:menu`) the way the existing
-  sections name `ModHooks.optionsChanged`/`ctx.prefs`/`ctx.newCharacter`.
+**6. `neo-angband-mod-qol`** (the mod repository, not this one) — **BLOCKED,
+2026-08-15, on §3's correction: `registry:command`+`registry:menu` do not
+provide "run this mod code from a menu row," and building that dispatch seam
+is itself new UI-seam work deferred past alpha alongside `MOD_REACH.md` gap
+21.** `hooks(ctx)` keeping the `BackupFolder` reference and calling
+`ctx.backupFolder?.onSave(...)` is unaffected and can land any time step 4 has
+— it needs no menu, no command, nothing from this step. What is blocked is
+only the player-visible TRIGGER:
+- `manifest.json`: `"backup:folder"` alone for now; `"registry:command"` and
+  `"registry:menu"` wait for the real dispatch mechanism, not this design.
+- `plugin.ts`: no `register(host, ctx)` menu row until there is a seam that
+  would actually run it.
+- README section deferred with it — nothing to name that works yet.
 
 **7. Docs.** `docs/modding/PLUGINS.md` gains a `ctx.backupFolder` entry in the
 same table as `ctx.prefs` (`PLUGINS.md`'s "What `ctx` carries" table);
