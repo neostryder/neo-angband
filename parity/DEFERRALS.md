@@ -1,836 +1,119 @@
 # What is not ported, and what was judged unnecessary
 
-**Dated 2026-08-04, re-verified end to end 2026-08-14. Every deferral note in
-this repository has a verdict.**
+This document records the gaps this project went looking for, and what each one
+turned out to be: ported, a deliberate divergence, or genuinely unreachable in
+upstream's own code. It exists so that a `deferred:` note in a ledger file or a
+source comment has somewhere to point, instead of asking a reader to trust a
+one-line claim with no evidence behind it.
 
-Two passes, both of which found the page overstating what was missing:
+**Looking for something else?**
 
-- **"Genuinely not ported" re-verified against the code 2026-08-09 (task #162):
-  36 claims, 3 survived.** The rest had been closed and never struck through.
-- **Those three re-verified 2026-08-14 (task #228), and none of them survived
-  either.** One is `unreachable-in-upstream` — upstream makes no such call — and
-  **two had been ported for some time**, each with a call site *and* a test, while
-  this page went on listing them. [Genuinely not ported](#genuinely-not-ported) is
-  now empty.
-- **The appendix re-verified the same day (task #226), all 34 divergence and
-  `partial` rows read individually.** Both `partial` rows closed — one `ported`,
-  one `unreachable-in-upstream` — so **no row in the appendix is outstanding
-  work**. 30 of the remaining 32 are deliberate divergences, 1 is `n-a`, 1 is
-  `unreachable-in-upstream`. All 68 items in [PORT_TODO.md](PORT_TODO.md) were
-  re-read in the same pass and all 68 held: 64 `ported`, 2 meta, 2
-  `unreachable-in-upstream`.
+- [DIVERGENCES.md](DIVERGENCES.md) — what is deliberately different from
+  Angband 4.2.6, gameplay-affecting or not, with the reason.
+- [PORT_TODO.md](PORT_TODO.md) — the work-item checklist, including anything
+  still genuinely open.
 
-**The direction of the error is worth naming, because it is the safe one and it
-still cost a week.** Every correction from both passes moved a row from *owed* to
-*finished*. Nothing was found hiding. What this page was bad at was noticing when
-work landed — a verdict is dated evidence, and nothing here re-dates itself.
+## The three ways a deferral note resolves
 
-> **Owner ruling, 2026-08-09: a verdict is not a finish line.** "All 'deferrals'
-> must be either marked as not part of the port or as ported. I don't want
-> anything deferred." So the tallies in the appendix are bookkeeping, not
-> progress: `n-a` and a deliberate `divergence` are finished states, and
-> **everything else on this page is work**, including every line under
-> [Genuinely not ported](#genuinely-not-ported) and every `partial`. The only
-> acceptable reason for an absence is that it does not fit this platform or
-> front end, with the mechanism named. When reporting status, lead with what a
-> player would notice — never with the adjudication count.
+Every `deferred:` note in this repository's ledger, and every `DEFERRED` /
+`TODO` comment in the source, adjudicates to one of three finished states:
 
-> **Owner ruling, 2026-08-09 (later the same day): a THIRD finished state.**
-> "I also think we can leave out orphaned code and data that will simply never
-> be used." So an item is finished when it is **ported**, when it is a deliberate
-> **divergence / n-a**, *or* when it is **unreachable in upstream's own C** —
-> no path in 4.2.6 can execute it, so no player can observe its absence. This is
-> the ruling on the long-open `OSTACK_LIST` question, answered **A**, and it
-> generalises: duplicated C functions with no caller, dead generators, data
-> records nothing reads.
->
-> Two conditions, because this state is the easy one to abuse:
->
-> 1. **Unreachability is evidence, not an impression.** Name the C `file:line`
->    and say what makes it unreachable — no caller, a constant-false guard, a
->    `#define` that is never set. "I could not find a caller" is a lead.
-> 2. **It is unreachable in UPSTREAM, not merely unreached by the port.** The
->    port skipping a call site is a port defect wearing this state's clothes.
->
-> The same ruling relaxed code parity to **gameplay parity** — refactors and a
-> different RNG stream are allowed where play feels the same. See
-> [docs/PARITY.md](../docs/PARITY.md#the-standard-is-gameplay-parity-not-code-parity-ruled-2026-08-09)
-> for the standard and for the two seams a stream change is *not* free on. What
-> did not change: the port adds no content and no features, ever.
+1. **Ported.** The note described a gap that has since closed; the code now
+   does the thing.
+2. **A deliberate divergence, or not applicable to this platform.** See
+   [DIVERGENCES.md](DIVERGENCES.md) for the gameplay-relevant cases; a purely
+   mechanical one (manual memory management, a debug-build assertion twin) is
+   simply not applicable to a garbage-collected runtime and is noted as such
+   in the ledger.
+3. **Unreachable in upstream's own C.** No path in 4.2.6 can execute the
+   construct, so there is nothing to port. This is the state most easily
+   abused, so it carries two requirements: the `file:line` and the exact
+   mechanism that makes it unreachable (no caller, a constant-false guard, a
+   `#define` set nowhere), and the unreachability must be a property of
+   *upstream*, not of what this port happens to call — a port that simply
+   never reaches a call site upstream does reach is a port defect wearing this
+   state's clothes.
 
-**Working the list?** [PORT_TODO.md](PORT_TODO.md) is the checklist derived from
-this document — the same citations, tiered, with the two items that unlock a
-dozen others first. This document is the *accounting*: why each verdict was
-reached, and what was judged unnecessary rather than missing.
+A row that cannot be dated evidence for one of these three is not resolved,
+and the tooling below treats an unadjudicated note as open work.
 
-For most of this port's life "deferred" was written in a comment by whoever was
-closing a lane, and nobody could tell afterwards which of those notes described a
-hole and which described work that had since landed. The word appeared 439 times.
-This document is the answer to "so what is actually missing", and it is backed by
-a re-runnable census rather than by recollection.
+## Not part of the port, with the mechanism
+
+These are not gaps. Each is something a reader might expect to find, that
+upstream's own 4.2.6 tree cannot reach either:
+
+- **The three `OSTACK_LIST` checks** (`obj-pile.c:409`, `:410`, `:485`).
+  Nothing in Angband 4.2.6 ever passes `OSTACK_LIST`: it is declared at
+  `obj-pile.h:33`, tested three times and supplied never — every `OSTACK_*`
+  argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR.
+  `obj/ostack-list.test.ts` ratchets the callers, which are the thing that
+  could change this.
+
+- **`RSF_BR_MANA` is declared and never used** (`list-mon-spells.h:38`,
+  `monster_spell.txt:425`). Of 91 real spell flags, 90 appear somewhere in
+  `lib/gamedata/monster.txt`; `BR_MANA` is the one no monster race ever sets.
+  The port carries the same shape — the enum entry, the spoiler record, a borg
+  case — and **the enum entry must not be removed**: `RSF` is a bit position
+  persisted in every save ([MOD_REACH.md](../docs/modding/MOD_REACH.md), row
+  22), and dropping index 25 would shift every flag above it. Only the *data*
+  fact is unreachable; the entry is load-bearing. `data-exactness.test.ts`
+  ratchets this against `reference/lib/gamedata/monster.txt`.
+
+- **`old_class.txt` is shipped and never parsed**
+  (`lib/gamedata/old_class.txt`). `lib/gamedata/Makefile:8` installs it into
+  every player's data directory, and `init.c` registers no parser for it.
+  Shipped is not the same as reachable. `data-exactness.test.ts` asserts both
+  halves: the file exists upstream, and no port spec reads it.
+
+- **`PRICE_DEBUG`'s seven `file_putf` sites** (`obj-power.c:1117` onward).
+  `PRICE_DEBUG` is defined nowhere in the build — not `configure.ac`, not any
+  `Makefile`, not `CMakeLists.txt` — so `pricing.log` cannot be written by any
+  shipped 4.2.6 build, and the port's `obj/value.ts` emits nothing on this
+  path. `text-census.test.ts` ratchets it in both directions.
+
+### Upstream `#if 0` blocks
+
+Six constructs in 4.2.6 sit inside `#if 0` and so cannot be reached by any
+build. None of these carry a test, deliberately: unreachability here is a
+property of the *callers*, and a test asserting that a vendored `reference/`
+file still brackets a line in `#if 0` would only ever produce a false alarm in
+an unrelated file when the reference tag changes.
+
+| upstream | construct |
+|---|---|
+| `ui-equip-cmp.c` | `sel_better_than`, `sel_exclude_slot`, `sel_only_slot` — the port's `game/equip-cmp.ts` implements only the live selector categories |
+| `ui-entry.c:1292-1304` | the `OBJ_MOD_STEALTH` / `OBJ_MOD_SEARCH` cases in `modifier_to_skill` |
+| `wiz-stats.c:1342-1356` | `static double total(...)`, left unlinked upstream |
+| `main-sdl.c:995-1020` | `sdl_ButtonBankRemove` |
+| `main-win.c` | `Term_init_win` / `Term_nuke_win` and their hook assignments, both `/* XXX Unused */` stubs |
+| `main-xxx.c` | `color_data[MAX_COLORS]` — the whole file is dead: gated on `USE_XXX`, defined by a `Makefile.xxx` that does not exist in the tree |
+
+A frontend excluded by a CMake *default* is not in this class: `SUPPORT_SDL_FRONTEND`
+and its siblings are user-settable options that build a working frontend when
+turned on, unlike `USE_XXX` (no enabling makefile exists) or `PRICE_DEBUG` (no
+switch anywhere). The same holds for `SCORE_BORGS`, gated by `#ifndef` rather
+than `#if 0` — its body fires by default.
+
+## Keeping the census honest
+
+The census is machine-generated from the ledger's `deferred:` fields and from
+`DEFERRED`/`TODO` comments in the source, so this document cannot drift from
+the code by hand-editing:
 
 ```
 node parity/tools/deferral-census.mjs             # rebuild the row list
 node parity/tools/deferral-triage.mjs             # add the mechanical hint column
 node parity/tools/deferral-verdict.mjs <ref> ...   # record one adjudication
 node parity/tools/deferral-report.mjs             # regenerate the appendix below
-node parity/tools/ledger-deferred-items.mjs       # the second tranche (see below)
+node parity/tools/ledger-deferred-items.mjs       # the ledger's own deferred: list items
 ```
 
-## Addendum, 2026-08-09: a class of gap this census cannot see
-
-Every row below starts from a **note** — a comment, a ledger `deferred:` entry —
-and asks whether it is still true. That finds stale excuses. It cannot find a
-seam that was declared, documented, consumed by the engine and **never written
-by the production wiring**, because such a seam has no note: it reads as
-finished from every angle except running it.
-
-Measured with a producer-form sweep over all non-test TypeScript in
-`core` / `web` / `cli` / `mcp` (both scripts are on task #160): for each optional
-member of every `*Deps` / `*Env` / `*Hooks` / `*Callbacks` / `*Ports` interface —
-85 of them — does *any* producer form exist anywhere? A literal entry, a
-mutation, a shorthand. **21 interfaces carry an optional that nothing in the
-shipped game supplies.** Closed so far:
-
-- **`GameEffectEnv.banishSymbol`.** `EF_BANISH` returned `false` on every real
-  cast, so the Banishment spell (`class.txt:429`), the Scroll (`object.txt:2776`)
-  and Staff (`object.txt:4364`) of Banishment and the artifact activation all
-  silently did nothing. The ledger called the absent seam "mirroring a cancelled
-  prompt" — an excuse that ships a dead spell.
-- **Nine of `TeleportEnv`'s sixteen members.** Dimension Door returned `false`
-  every time; the OF_NO_TELEPORT curse never blocked a teleport and its rune was
-  never learned; a teleport could land the player in lava; nexus resistance never
-  foiled a hostile teleport-level; `force_descend` targeted the current depth
-  instead of the deepest reached; the dungeon bottom was hardcoded to 128. Each
-  of these was deferred on a subsystem — `#19` monster spells, `#21` traps, `#23`
-  level change, `#24` targeting — that had **already shipped**.
-- **`TeleportEnv.targetMonster`** is no longer a dep. `monsterTargetMonster` has
-  been exported from `game/effect-mon-origin.ts` for a long time and three other
-  effect modules call it directly; the teleport handlers were the ones left
-  behind, so a monster teleporting the monster it was aiming at teleported
-  *itself*.
-
-Both fixes are guarded by tests written as the **consumer** — a real game, the
-real command, the observable outcome — with the control run recorded:
-`session/banish-symbol-wiring.test.ts` and `session/teleport-env-wiring.test.ts`.
-Removing a supply makes them fail; that was checked, not assumed.
-
-A second batch, same sweep:
-
-- **`FloorEnv.onBreak` / `onDrop`.** An item that broke on a throw, or vanished
-  because `floor_carry` had no room for it, disappeared in **silence** —
-  upstream's `floor_carry_fail` says "The Potion of Death breaks." A *third*
-  defect fell out of testing it: `installRangedCommands` passed a bare `{}` as
-  its `FloorEnv` at both `dropNear` sites, so the fired-arrow and thrown-flask
-  paths could not see the new messages, the ignore rule, *or* the trap rule.
-  Every other `dropNear` call site in the port already threaded it — a seam
-  supplied to every path but one.
-- **`SpellChanceEnv.hasPf`.** `player_has(p, pf)` reads `p->state.pflags` — race
-  ∪ class ∪ shape. With no producer, every live `spell_chance` and
-  `beam_chance` read the **class** flags alone. Identical on the shipped 4.2.6
-  data (nothing but a class grants ZERO_FAIL / UNLIGHT / BEAM) and wrong the
-  moment a mod ships a race or shape that does.
-- **`ObjectInfoDeps.inStore`.** `object_is_in_store`: a shop shows a useable
-  item's real effect even when its flavour is unknown, which is the entire point
-  of being able to read the shelf. Nothing ever set it.
-- **`ProjectMonsterHooks.onUpdate`.** `update_mon` on a monster that *survived* a
-  projection (`project-mon.c:1262`), so one that was polymorphed, knocked back,
-  woken or revealed kept its pre-projection visibility.
-
-Guarded by `session/seam-producer-wiring.test.ts`; the control strips the four
-supplies and four of its six tests fail.
-
-**Adjudicated and correctly benign** — each has a real default that reads the
-live game, so the optional is an override and not a hole:
-`PickupEnv.pickupAlways` / `pickupInven` and `FloorEnv.birthStacking` (all three
-fall through to `state.options`), `ObjCmdEnv.chooseDir` / `SpellCmdEnv.chooseDir`
-(the shell asks and rides the answer on `args.dir`, gated by the same
-`objNeedsAim` / `spellNeedsAim` predicate core reads),
-`GeneralEffectEnv.chooseDepth`, `MeleeSideDeps.healHp`,
-`LoreDeps.spellLoreDamage`, and `TakeHitHooks.onRedrawHp` (a `PR_HP` redraw flag
-has no analogue: the renderer is immediate-mode and recomputes every frame).
-Host and platform config — `SoundHooks`, `UpdateCheckDeps`, `FileSinkDeps`,
-`FreshnessDeps`, `TitleDeps`, `DesktopRefreshDeps`, `BuildScoreDeps` — is not
-game behaviour and is out of scope for this document.
-
-**`ProjectWorldEnv.protectedObj`** — upstream's "the object that created this
-projection must not be destroyed by it" (`project.c:921` passes `obj` to every
-`project_o`, and every effect handler passes `context->obj`). The port's
-`CastSource` carried no source object at all, so the exemption could never fire:
-a wand or rod lying on the floor inside its own blast burned itself. `CastSource`
-now carries `obj`, `sourceFor` reads it off the effect context, and
-`castProjection` installs it on the world env. Guarded by two identical scrolls
-on one grid, one handed to `effect_do` as `obj` — a run without the fix destroys
-both.
-
-Nothing from the sweep is left open.
-
-The lesson for this document: **"is the note still true" and "does the seam have
-a producer" are two different questions, and only the first one has ever been
-asked here.**
-
-## The headline
-
-**141 of the 367 notes were describing a state of the code that no longer held,
-and they have been rewritten.** The live census is 227 rows; five additional
-stale-documentation records were retired to the census ledger with their original
-verdicts and closure evidence, rather than silently disappearing.
-
-The notes were a fossil record of the build order, not a description of the port.
-The single most common shape: core was built as a headless library first, so a
-note says "the launcher analysis is deferred" or "calc_mana is deferred" and means
-"the world layer that does this had not been written the week I wrote this line".
-Both are ported. So is the quiver, the options menu, the target system, monster
-shapechange, `pit.txt` selection, `message_lookup_by_name`, monster-vs-monster
-melee, `react_to_slay` on the player's pack, `pack_overflow`, the fear block of
-`mon_take_hit`, `generateStats`, the store's book expansion, O-combat, temporary
-brands and slays, the elemental component of monster blows, and every one of the
-twenty command codes the base registry registers as stubs.
-
-A further 27 notes were not parity claims at all — a variable named `todo`, a
-`setTimeout` "deferred a tick past focus", one mod that "defers to" another.
-
-**What was genuinely missing was 76 citations, collapsing to 68 work items in
-[PORT_TODO.md](PORT_TODO.md)** - all of them closed as of 2026-08-07. The counts
-in this sentence have moved in both directions since it was first written, which
-is the point: re-reading the ledger finds work about as often as it kills it.
-Grouped below by what a player would notice. Two
-are architectural (`notice_stuff` / `PN_*`, and the carried-weight total nothing
-sums); the largest by volume is a debug log.
-
-### The second pass, and why a closed item does not close its row
-
-**A verdict is dated evidence exactly like the note it judges.** Closing those 68
-work items meant rewriting the notes that described them, and a note whose prose
-changes is a different row: the census keys a row on its file and the opening of
-its text. So re-running it after the closure work retired **71 rows** and
-delivered **76 with no verdict at all** — mostly the same claims, re-adjudicated
-because the sentence they were made in had been replaced.
-
-Retired rows go to `parity/reports/deferral-census-retired.tsv` with the reason
-each one left (54 rewritten, 15 deleted, 2 in files that no longer exist) rather
-than disappearing, because **44 of them had been adjudicated `real`** and a row
-that vanishes takes its claim with it. Four families were spot-checked against
-the code rather than against the retirement note: the two chest sites now call
-`equipLearnFlag(OF_TRAP_IMMUNE)` (`game/chest.ts:277`, `:362`), the two death-cause
-sites call `monsterDesc(mon, MDESC_DIED_FROM)` (`game/effect-attack.ts:694`,
-`game/project-cast.ts:136`), the knowledge browser produces `object_info`'s
-computed lines (`web/src/knowledge.ts:1000`, `:1176`), and the birth screens
-answer `?` with `runHelp`.
-
-The 76 came back mostly `note-is-fix` — a record of a repair, which is what a
-rewritten note is. Two are worth reading, and neither is what it looked like.
-
-**A whole deferred list that was already ported.** `mon-make.yaml` deferred
-`update_mon`, `mon_create_drop`, `mon_create_drop_count`, mimicked-object
-creation, summon placement and compaction. Every single one is in the tree —
-`game/known.ts:895`, `game/mon-death.ts`, `game/mon-place.ts:335`, `summonSpecific`
-via `game/effect-summon.ts:83`, and `compactMonsters` at `game/loop.ts:372` with
-`monsterIndexMove` at `game/world.ts:660`. The list described the week it was
-written.
-
-**A gap that turned out to be an upstream wart.** `game-effect-general.yaml`
-deferred `update_smart_learn(PF_NO_MANA)` in `EF_DRAIN_MANA`, and it read as the
-familiar shape — an engine that exists (`mon/spell.ts`), already wired elsewhere
-(`game/mon-cast.ts:199`), with one call site not reaching it. It is not. The
-upstream call is `update_smart_learn(mon, player, 0, PF_NO_MANA, -1)`
-(`effect-handler-general.c:992`), and `mon-util.c:794` returns immediately when
-the flag is 0 and the element is out of range — which is that argument list
-exactly. It is the **only one of the nine call sites in 4.2.6 that passes a
-pflag**, so the pflag arm at `mon-util.c:822-829` is unreachable and
-`known_pstate.pflags` is never written in any game of Angband. Porting the call
-would have reproduced a function that returns before its own body. The reason the
-port's comment gave — "rides lore (#24)" — named a blocker that was never the
-reason, which is why this took a reading of the C to settle rather than a reading
-of the note.
-
-### The third thing: a retraction that read one of its five sites
-
-**Prose is not behaviour, and that includes a comment written by the person
-checking.** One of the two rows the second pass left owed was `pile_insert_end`,
-and it had already been retracted once: an earlier pass censused all five upstream
-call sites, tested four of them, and closed the fifth by quoting the port's own
-docblock — *"`wieldAll`'s docblock already records the deferred-append
-behaviour."*
-
-It recorded something else. Upstream's `wield_all` collects each split remainder
-into a local `new_pile` with `pile_insert`, which **prepends**, and appends that
-block to the gear exactly once after the loop, so the tail reads `[last split …
-first split]`. The port pushed each remainder as it made it. What the docblock
-actually described was the deferred **scan** — the loop walks a snapshot, so a
-remainder is not re-wielded — and the sentence was read as the deferred
-**insert**. A retraction that tests four sites and reads the fifth has tested four
-sites.
-
-The consequence is bounded, and that was measured rather than assumed:
-`wield_slot` returns `-1` for ammo (obj-gear.c:341-367) and the only stacked
-WIELDABLE item in any of `class.txt`'s 52 `equip:` lines is the Wooden Torch, so
-4.2.6 creates exactly one remainder and one element reversed is itself. **A mod
-whose starting kit stacks two wieldables sees it** — the same shape as the
-element-name mirror in `add_brand`, where a guard proved the port matched 4.2.6
-and could not see the case that mattered.
-
-Fixed, and pinned by a test whose fixture is a two-stacked-wieldable kit no class
-ships, mutation-verified by dropping the `reverse()`. The sentence that fed the
-census row went too: `pile.upstream.test.ts` said "pile_insert_end has NO port
-counterpart: nothing in the live port appends", which was true of the **floor**
-and false of the port. **A claim scoped to one pile must say which pile.**
-
-### And the other owed row was not owed: a grep for a name the port never uses
-
-The second of the two survivors said `cmd_disable_repeat_floor_item` had **"no
-port equivalent (0 references)"**. It has eight: `game/repeat.ts`'s
-`cmdDisableRepeatFloorItem`, called from `game/context.ts:1276` and `:1282`,
-`game/project-obj.ts:206`, and `session/game.ts:2307`, `:2358`, `:2487`, `:2677`,
-with the flag it reads set by `repeatBeginCommand` at `game/player-turn.ts:1003`.
-
-The reference count was produced by searching for `cmd_disable_repeat_floor_item`
-— the C's `snake_case` name — in a `camelCase` codebase. It finds nothing whatever
-exists. **A count is only evidence if the thing counted is spelled the way the
-code spells it.**
-
-The ledger note that carried the claim was pre-game-loop prose ending "tracked for
-the game-loop phase". That phase happened — PORT_TODO 2.12 wired every site — and
-nobody came back to the line. It also **bundled a second, unrelated claim** (the
-interactive `cmd_get_*` prompting helpers), which is why it could not be closed:
-a row asserting two things is closable only when both resolve the same way. Split,
-and the second half classified: the port resolves every command argument in the
-shell *before* dispatch rather than lazily inside the getter, so the item picker,
-the targeting overlay and `getQuantity` are the same prompts at a different moment.
-That is a divergence with a stated cost — a command cannot decide mid-execution to
-ask for something it did not know it needed — not an absence.
-
-**With both survivors resolved, this census holds no `real` rows.** Which is worth
-one sentence of suspicion rather than a celebration: one of the two was closed by
-fixing code and the other by discovering the claim was never true, and only the
-second kind is free.
-
-### Live defects this found
-
-Both by re-reading a note that had handed its work to somebody else, and they
-share a shape: **a function or a field that exists, is correct, and is wired to
-nothing.**
-
-**A retraction first, because it is the more useful finding.** This section
-previously said *"`disturb()` has no callers"*, and that was wrong. It has eleven
-importers and 24 call sites. The claim came from greping the port for the C's own
-spelling, `disturb(player)`, which the port never writes — the same
-failed-transliteration mistake that had already cost four wrong verdicts earlier in
-this sweep, running in the opposite direction.
-
-Worse, the same mistake was in the census that produced the claim: the C writes
-both `disturb(player)` and `disturb(p)`, and greping one spelling found **38 sites
-where there are 53**. The fifteen it could not see included the player's own
-melee, a monster's blow landing or visibly missing, and the two run safety-stops
-that are the entire point of the DTrap indicator.
-
-Doing the census properly — [game/disturb-census.test.ts](../packages/core/src/game/disturb-census.test.ts),
-which now derives it from the C rather than declaring it — found **twelve genuinely
-absent sites**, all since wired:
-
-| Upstream | What was missing |
-|---|---|
-| `player-attack.c:996` | the player's own melee did not disturb |
-| `mon-attack.c:594` | a monster's blow CONNECTING (before damage, so a 0-damage effect blow was silent) |
-| `mon-attack.c:721` | a visible monster MISSING you |
-| `cmd-cave.c:1086` | a run walked the player onto their own detected traps |
-| `cmd-cave.c:1150` | a run carried the player out of the detected-traps zone |
-| `cmd-cave.c:1599`, `player-util.c:1609` | stepping onto a shop door |
-| `cmd-pickup.c:430` | autopickup — an `env.disturb?.()` seam nothing ever supplied |
-| `cave-view.c:852` | the mid-level object feeling, message and all (see below) |
-| `game-world.c:794`, `:820` | word recall and deep descent activating |
-| `game-world.c:1017` | arriving on a new level |
-
-Note which instrument found what. A grep produced three wrong answers in a row.
-The census — parse the C, count, reconcile both directions — produced the list
-above, and it fails if either side changes. That is the difference between a search
-and a measurement.
-
-**The feeling reveal is worth its own line, because the near side of the seam was
-tested.** `cave-view.c:849-853` announces the object feeling the moment the player
-uncovers enough of a level. The port turned that into `events.signal("feeling")`,
-and three tests in `world/fov.test.ts` proved it fires at exactly the right
-crossing. **Nothing subscribed to it, in either host.** The event had test
-subscribers and no production ones, so the message never reached a player and the
-run never stopped — with a green suite over it. "The event fires" is not "the game
-reacts", and a test that owns only one side of a seam cannot tell them apart.
-
-**Nothing summed the player's carried weight** — fixed. `player.upkeep.totalWeight`
-was set to 0 in `playerOutfit` and thereafter written only by the wizard's quantity
-editor (`game/wizard.ts:1470-1471`); `calc_inventory`'s weight accumulation had no
-port at all. So `calc_bonuses`' carrying-weight speed penalty
-(`player/calcs.ts:1216`) could not fire at any load, the shield bash was short by
-`trunc(totalWeight / 80)` (`combat/melee.ts:617`), and the character sheet's Burden
-line read `0.0 lb` for every character.
-
-Upstream does not recompute the total; it maintains a running one at four choke
-points in `obj-gear.c` and re-sums the whole gear on load, and that is what the port
-now does (`game/gear.ts`, plus the `load.c:1179-1185` re-sum in `session/game.ts` —
-which is also the migration, since a character saved by any earlier build has a
-stored total of zero). Proved by
-[game/gear-weight.test.ts](../packages/core/src/game/gear-weight.test.ts), which
-tests the three observable consequences rather than the accounting statements and
-derives its ground truth by summing the gear: breaking any one of the four sites
-kills at least one assertion.
-
-How it hid is the interesting part. Its note read *"the running carried-weight
-total (beyond the reset to 0); recomputing it belongs to the calc/inventory
-owner"* — a deferral that names its successor instead of itself. The calc owner
-never took it, and because the note called it an upkeep counter rather than a
-mechanic, nothing about it looked like a gameplay bug. **A handoff with no
-recipient reads as done to everyone who passes it.**
-
-**The cursed weapon's combat terms** were the other, and they are fixed.
-`object_to_hit` and `object_to_dam` (`obj-util.c:296-326`) add each **active
-curse's** template bonus to the object's own, and the port returned `obj.toH` /
-`obj.toD` alone. The comment excusing it — *"no object carries curses through
-combat yet"* — had stopped being true: `GameObject.curses` is real and `applyCurse`
-fills it during generation. Three shipped curses carry a combat penalty
-(enveloping −5/−5, irritation −15/−15, air swing −20/0), so a cursed weapon's
-to-hit and damage were wrong in play. Fixed, with the curse table threaded from
-both live melee paths (`MeleeOptions.curses`) and the expected values derived from
-the shipped pack in `combat/object-bonus-curses.test.ts`.
-
-Note what it reproduces: `calc_bonuses` already folds a worn item's curse `to_h`
-into `state->to_h`, and `py_attack_real` then adds `object_to_hit(weapon)` on top,
-so upstream counts a cursed **weapon's** penalty twice. Core keeps the C's warts;
-the `bug-fixes` mod is where that would be corrected.
-
-The ledger line that carried the stale label — `combat-melee.yaml`'s
-`object_to_hit, object_to_dam, object_weight_one (curse terms DEFERRED)` — has
-been corrected too, which is why the census fell from 228 rows to 227 and the
-`real` count from 86 to 85. Recording a verdict and leaving the lie in the file
-is not a fix.
-
-### The second tranche, measured: 331 items
-
-The census greps for deferral *wording*, and the ledger's `deferred:` **list
-items** mostly do not repeat the word:
-
-```yaml
-deferred:
-  - Curse contributions to object_to_hit/to_dam/weight.
-  - monster_attack_monster (monster-vs-monster melee).
-```
-
-Neither line was ever a census row, and both had stopped being true — the first
-was the live defect above. The bare-key exclusion was right (a field name is not a
-claim); the reasoning written next to it, that the entries underneath are "matched
-on their own text", was wrong, which is the worse of the two errors.
-
-`parity/tools/ledger-deferred-items.mjs` now scans those blocks structurally and
-finds **331 items across 72 ledger files**. The one file
-worked as a sample — `combat-melee.yaml`, 11 items — came out **ten stale, one
-real**, which is the same rate as the first tranche and the reason the live defect
-above sat unnoticed: it was in a list nobody re-read.
-
-**Progress: 135 of 331 adjudicated** — `ui-display`, `ui-player`, `ui-entry`,
-`wizard-debug`, `game-gear`, `obj-knowledge`, all four `store-*`,
-`player-history`, `obj-desc`, `mon-lore`, `mon-lore-describe`,
-`game-effect-terrain`, `game-effect-teleport`, `game-player-path` and
-`game-mon-cmd`. The rate held: **47 `ported`, 19 `stale-doc`, 13 `divergence`,
-5 `not-a-deferral`, 3 `n-a`, 2 `note-is-fix` against 28 `real` and 18
-`partial`** — two rows in three were not owed work. The owed ones are what
-matters, and they include both live defects above. 196 remain.
-
-## Genuinely not ported
-
-**Re-verified line by line 2026-08-09 (task #162), and it was mostly wrong.** Of
-the 36 claims this section carried, **three** survived reading the code. The
-rest had been closed by tasks #114-#121, #131, #132 and the PORT_TODO waves and
-never struck through here. A verdict is dated evidence; this section is what
-that costs when the date passes.
-
-Two rules for anyone editing below. **A comment saying "IS ported" is prose, not
-behaviour** - every surviving claim cites a call site, and the closed ones cite a
-call site or a test, because that is the difference between a lead and a verdict.
-And **a failed grep for a camelCase transliteration is not evidence of absence**,
-which is the mistake that produced half of this section's original contents; grep
-the C name, which this codebase cites beside its port.
-
-### Still owed (0) - re-verified 2026-08-14 (task #228)
-
-All three survivors of the 2026-08-09 pass are closed, and **two of them had been
-closed for some time without this page being struck through** - which is the same
-failure the 2026-08-09 pass was written to correct, recurring inside the section
-that recorded it. A verdict is dated evidence.
-
-- **The store PURCHASE history entry** - **unreachable in upstream.** There is no
-  purchase-side history call to port. `store.c` has exactly four history calls:
-  `:1087` and `:1303` (`history_lose_artifact`, store turnover and the
-  black-market purge), `:1924` (`history_find_artifact`, inside `do_cmd_sell`,
-  which begins at `:1865`, under the comment *"Update the auto-history if selling
-  an artifact that was previously un-IDed"*), and `:1988` (the store refusing what
-  it just bought). **`do_cmd_buy` runs `store.c:1646-1774` and contains no history
-  call of any name.** The earlier note named a call upstream does not make - the
-  direction was backwards - and `store/transact.ts:26-39` now records the
-  correction at the site. The sell pair is wired at `session/game.ts:3621-3622`
-  and `:3666-3667`. This duplicated PORT_TODO 2.16, which had already closed it on
-  the same evidence.
-- **The player notes command** - **ported.** `do_cmd_note` (`cmd-misc.c:88`) is
-  `noteCmd` at `web/src/main.ts:4615`, with the `"Note: "` prompt at `:4618`
-  (`cmd-misc.c:98`), `historyAdd(..., HIST.USER_INPUT, ...)` at `:4642`, and the
-  `':'` binding at `:8201` (`ui-game.c:211`).
-  `web/src/rest-steal-note.test.ts:60-80` is the test.
-- **The last two sections of the shape-lore textblock chain** - **ported.**
-  `game/shape-inspect.ts:163` and `:164` supply `changeEffectText` and
-  `triggeringSpells`; `web/src/main.ts:4164` is the live shape browser building
-  its env through `makeShapeLoreEnv`; `game/shape-inspect.test.ts:279-295` asserts
-  both tail lines reach `shapeLoreLines` for a real shipped shape. All ten of
-  `shape_lore`'s sections (`ui-knowledge.c:3035`, calls at `:3047-3056`) map
-  one-to-one onto `player/shape-lore.ts:253-267`.
-
-> **The contradiction this page was carrying, recorded rather than quietly
-> repaired (2026-08-14).** Until today the "ported" row for
-> `parity/ledger/player-history.yaml:91` in the appendix **closed a different row
-> by citing the notes command**, while the bullet above said in as many words that
-> no `do_cmd_note` counterpart existed anywhere in the port. Two sections of this
-> document disagreed about whether a whole command was written, and the appendix
-> was the half that was right. Both are corrected above; the appendix row also
-> carried a `main.ts:4557` line number that had drifted to `:4642`. Noted here
-> because a ledger that edits itself silently is worth less than one that shows
-> where it was wrong.
-
-### Needs a verdict, not work (1)
-
-- **`spoil.ts`'s `timedDesc` / `summonDesc`** (`game/spoil.ts:94`) are
-  "deliberately NOT supplied". PORT_TODO 5.6's other half closed
-  (`monsterHitPercent` is supplied, `:553`; the fourth argument is real, `:599`).
-  Whether the two remaining describers are a deliberate divergence or an
-  unfinished supply has never been decided. Decide it; do not leave it here.
-
-  **Re-measured independently 2026-08-14 (task #227), and the decision is now the
-  only thing missing.** A throw-instrumented probe was injected into `spoil.ts`'s
-  own `extras` - the real producer, not a copy - and `spoilObjDesc`,
-  `spoilArtifact` and `spoilMonInfo` all completed **without consulting either
-  describer**. The instrument is demonstrably live rather than silently inert:
-  the same throwing describers, on the same
-  `objectInfo(OINFO.SPOIL)` + `makeObjectInfoDeps` path the file uses at
-  `spoil.ts:417`, fire for 5 of the 409 object kinds in the shipped pack (Elvish
-  Waybread, Whisky, Fine Wine, Orcish Liquor, Berserk Strength) - all food and
-  potion kinds neither dump describes. So the two describers are unreached by
-  every spoiler this port generates, and the open question is a verdict, not
-  work.
-
-## Not part of the port, with the mechanism
-
-- **The three `OSTACK_LIST` checks** (`obj-pile.c:409`, `:410`, `:485`). Absent
-  on purpose, and the reason is a measurement rather than a judgement: **nothing
-  in Angband 4.2.6 ever passes `OSTACK_LIST`.** It is declared at
-  `obj-pile.h:33`, tested three times and supplied never; every `OSTACK_*`
-  argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR, and no
-  arithmetic anywhere sets `0x04`. `obj/ostack-list.test.ts` is the ratchet: it
-  fails the moment any port code passes the bit, which is the point at which the
-  three checks become owed. Unreachability is a property of the CALLERS, so the
-  guard sits on the thing that can change.
-  **Ratified by the owner 2026-08-09 (option A):** "unreachable in upstream's
-  own C" is a finished state, not an open question. This entry is the template
-  the third finished state above is judged against - a `file:line`, an
-  enumeration of every call site, and a ratchet on the callers.
-
-- **`RSF_BR_MANA` is declared and never used** (`list-mon-spells.h:38`,
-  `monster_spell.txt:425`). 93 `RSF(` lines minus `NONE` and `MAX` gives 91 real
-  spells; every `spells:` directive in `lib/gamedata/monster.txt` was split and
-  matched against the declared set, and **90 of the 91 appear - `BR_MANA` is the
-  only one no monster race ever sets.** The port carries the same shape exactly:
-  the enum entry (`generated/mon-spells.ts:33`, `BR_MANA: 25` at `:130`, matching
-  `list-mon-spells.h:38` minus the first `RSF(` at `:13`), the spoiler record
-  (`content/pack/monster_spell.json:720`), and a borg `case` mirroring
-  `borg-danger.c:931` / `borg-update.c:933`. `content/pack/monster.json` uses the
-  same 90 and nothing undeclared.
-  **The enum entry must NOT be removed.** `RSF` is a bit position that is
-  PERSISTED ([MOD_REACH.md](../docs/modding/MOD_REACH.md), row 22); dropping index
-  25 would shift `BOULDER` and every RSF above it and silently corrupt the monster
-  spell flagsets in every existing save, which no `SAVE_VERSION` bump can repair -
-  the old bytes would still decode against the new numbering. Only the DATA fact
-  is unreachable; the entry is load-bearing padding that happens to be faithful.
-  `packages/content/src/data-exactness.test.ts` is the ratchet: it re-parses
-  `reference/lib/gamedata/monster.txt` and diffs field by field against the pack
-  (specs registered at `content/src/specs/mon-init.ts:99` and `:62`), so a
-  `spells:BR_MANA` appearing on the port side alone fails it today. **No new test
-  was written, because there is nothing left for one to assert.**
-
-- **`old_class.txt` is shipped and never parsed** (`lib/gamedata/old_class.txt`).
-  `lib/gamedata/Makefile:8` **installs it into every player's data directory**,
-  and `init.c` registers no `old_class_parser`. The only other mentions in the
-  tree are `src/Makefile.ibm:114` (an 8.3-FAT rename for the DOS build),
-  `src/win/vs2019/Angband.vcxproj:707` and `.vcxproj.filters:1657` (an MSVC `Text`
-  item), and comments in three tileset `.prf` files. **Shipped is not reachable**,
-  and the install is the stronger sentence than the DOS rename: the file reaches
-  every player and no code path reads it.
-  `packages/content/src/data-exactness.test.ts` is the ratchet: it asserts the
-  file exists upstream and is non-empty AND that no spec named `old_class` is
-  registered, so the guard sits on the port's spec list - the thing that can
-  change - and compiling the file fails it.
-
-- **`PRICE_DEBUG`'s seven `file_putf` sites** (`obj-power.c:1117`, `:1144`,
-  `:1153`, `:1166`, `:1175`, `:1197`, the block closing at `:1206`, with the
-  `#else` arm at `:1134`). `PRICE_DEBUG` is defined **nowhere** - not
-  `configure.ac`, not any `Makefile`, not `CMakeLists.txt` - so it is a
-  hand-edit-only switch and `pricing.log` cannot be written by any shipped 4.2.6
-  build. The port emits nothing on this path: `obj/value.ts`, the port of
-  `object_value_real`, contains no log call at all, and `obj/randart-log.ts:70-78`
-  records the exclusion. The sink is imported only by `obj/power.ts`,
-  `obj/randart-build.ts`, `obj/randart-data.ts` and `obj/randart.ts` - the
-  `do_randart` path, which is upstream's genuinely live `log_obj`, a different
-  file from `pricing.log`.
-  `packages/cli/src/text-census.test.ts:62-66` is the ratchet and **it fails in
-  BOTH directions**: the two `pricing.log` strings sit under a `not-in-this-build`
-  reason key, and that file's own header says a stale entry whose text the port
-  later gains must be deleted.
-
-### Upstream `#if 0` blocks: classified, deliberately NOT ratcheted
-
-Six constructs in 4.2.6 sit inside `#if 0`, so no build can reach them. They are
-recorded here as `unreachable-in-upstream` and **no test is written for any of
-them**, for a reason that follows from the `OSTACK_LIST` template above:
-unreachability is a property of the CALLERS, and the guard belongs on the thing
-that can change. A test asserting that `#if 0` still brackets a line in
-`reference/` pins a vendored tree at a tag - the one thing here that does not
-change except by a deliberate repin, which re-runs this whole sweep anyway. Such
-a test could only ever produce a false alarm in an unrelated file.
-
-Four of the six have no port surface at all: the port replaces upstream's C
-frontends with a canvas terminal, so nothing in this repository could grow a
-caller and a test would be a tautology dressed as coverage. The two that do have
-a surface (`equip-cmp.ts`, `ui-entry.ts`) are already moved on by the existing UI
-parity tests if an arm appears, which is cheaper than a bespoke ratchet.
-
-| upstream | construct | guard |
-|---|---|---|
-| `ui-equip-cmp.c:265`, `:285`, `:287` (decls) / `:1649`, `:1700`, `:1707` (defs) | `sel_better_than`, `sel_exclude_slot`, `sel_only_slot` | `#if 0` at `:264-267`, `:284-289`, `:1648-1654`, `:1699-1712`. The other eight `sel_*` are live (`:1657-1696`, plus `sel_exclude_src` at `:1715` and `sel_only_src` at `:1722`). Port: `game/equip-cmp.ts:225-249` implements only the four live selector categories. |
-| `ui-entry.c:1292-1304` | the `OBJ_MOD_STEALTH` (`:1293`) / `OBJ_MOD_SEARCH` (`:1299`) cases in `modifier_to_skill` (`:1275`) | `#if 0` at `:1292`, `#endif` at `:1304`, with the in-file reason above it. Port: `game/ui-entry.ts:1235-1237` handles only `TUNNEL`, matching the live behaviour. |
-| `wiz-stats.c:1342-1356` | `static double total(double stat[MAX_LVL])` | the file's only `#if 0`; its comment says "Left this function unlinked for now". |
-| `main-sdl.c:995-1020` | `sdl_ButtonBankRemove` (def `:999`) | `#if 0` at `:995`, `#endif` at `:1020`; no other reference in the tree. |
-| `main-win.c:1626-1645` and `:2679-2683` | `Term_init_win` / `Term_nuke_win` (`:1631`, `:1640`) and the `init_hook` / `nuke_hook` assignments (`:2681`, `:2682`) | both blocks `#if 0`; both bodies are `/* XXX Unused */` stubs. |
-| `main-xxx.c:123-134` | `color_data[MAX_COLORS]` (`:132`) | `#if 0` - **and the whole file is dead anyway**: it is gated on `USE_XXX` (`:78`, `:749`), which its own header says is defined by "Makefile.xxx" (`:24`), and **no `Makefile.xxx` exists in the tree**. No target compiles it; `Makefile.std:189` and `Makefile.ibm:152` mention it only in comments. Cite the file, not the `#if 0`. |
-
-**A frontend excluded by a CMake default is NOT in this class**, and this is
-recorded because a sweep proposed the frontends as a finding and it would have
-been a large wrong answer. `CMakeLists.txt:72-80` is a *fallback*, not an
-exclusion - its own comment says "If none of the graphical front ends will be
-configured, configure the one for Windows if that's the target plaform or the X11
-one for anything else" - and `SUPPORT_SDL_FRONTEND`, `SUPPORT_GCU_FRONTEND` and
-the rest are
-user-settable `option()`s, and `-DSUPPORT_SDL_FRONTEND=ON` builds a working SDL
-frontend. **The test is "does a shipped artifact exist that turns this on?", not
-"is it on by default?"** That is exactly what separates `USE_XXX` (the enabling
-makefile is absent, so unreachable) and `PRICE_DEBUG` (no switch anywhere, so
-unreachable) from the frontend options (the switch ships in CMake, so reachable).
-By the same discriminator `SCORE_BORGS` is not in this class either: `#ifndef`
-means the body fires by default.
-
-## Closed since this document was dated (2026-08-04)
-
-Kept rather than deleted, because a correction that leaves no trace invites the
-same claim to be re-derived. Each line names the evidence that closed it.
-
-### It changes what happens in play
-
-- ~~Nothing sums the player's carried weight~~ - `session/game.ts:3948` sets
-  `player.upkeep.totalWeight = gearTotalWeight(gear)`; `game/gear-weight.test.ts`
-  is the test. The overload speed penalty (`player/calcs.ts:1216`) can fire.
-- ~~`square_isempty` is weaker than upstream's, at 48 call sites, and moves RNG
-  draws~~ - **wrong twice over.** The weak predicate was deleted, not repaired
-  (`game/context.ts:1257-1273`); `squareIsEmptyLive` in `game/mon-place.ts` is
-  the faithful port; and the generation-time `squareIsEmpty` in `gen/util.ts` was
-  faithful all along, "which is why the claim that this could shift level
-  generation was wrong."
-- ~~The `PN_IGNORE` notice pass is never run~~ - `game/notice.ts:37-38` tests the
-  bit and clears it. It has a consumer.
-- ~~Monster-vs-monster theft ignores `react_to_slay`~~ - `mon/steal.ts:49`
-  imports `reactToSlay` and `:263` calls it at upstream's `mon-util.c:1548`.
-- ~~`alter` (`+`) has no chest or floor-trap branch~~ - `game/cave-cmd.ts` opens
-  with both: the chest branch via `chestDeps` (`chestCheck`, `doCmdOpenChest`,
-  `doCmdDisarmChest`, imported `:53`) and the sibling floor-trap disarm action.
-- ~~The chest `OF_TRAP_IMMUNE` rune is never learned~~ - `game/chest.ts:277` and
-  `:362` both call `equipLearnFlag(..., OF.TRAP_IMMUNE)`. The branch is not empty.
-- ~~`pile_insert_end` is absent~~ - closed by #131.
-  `game/pile.upstream.test.ts:35` says the old line was wrong in as many words;
-  five upstream call sites have port counterparts (`game/gear.ts:1364`,
-  `game/known.ts:642`).
-- ~~`path_analyse`~~ - `game/known.ts` ports it, with `known.test.ts` covering it.
-- ~~The known-object shadow cave~~ - `game/floor.ts:18` states it: `state.known.objects`
-  is a remembered pile per grid and `knownObject` is `map_info`'s loop over it
-  (PORT_TODO 2.9).
-- ~~`object_flag_is_known` at the three store sites~~ - `store/store.ts:250`,
-  `:392`: `flagKnown` is `object_flag_is_known` bound to the object.
-- ~~`cmd_disable_repeat_floor_item`~~ - closed by #132; all four upstream sites
-  are ported (`game/repeat.ts:18`, `session/game.ts:2472`, `:2523`, `:2652`,
-  `:2847`).
-- ~~The monster-source decoy / target-monster branches of `EF_TOUCH`~~ -
-  `game/effect-attack.test.ts:337` is a describe block over exactly those branches.
-
-### It changes what the player is told
-
-- ~~The killer's name is a race name, not `monster_desc(MDESC_DIED_FROM)`~~ -
-  `game/effect-attack.ts:703` calls `monsterDesc(mon, MDESC_DIED_FROM)`, and the
-  comment records that it used to be the bare race name.
-- ~~Object and ego recall show no computed lines~~ - `objectFakeRecall`
-  (`web/knowledge.ts:1139`) calls `objectInfo(obj, OINFO.FAKE | OINFO.SUBJ, ...)`,
-  which is `desc_obj_fake`'s own flags (`obj-info.c:2394`), and `egoFakeRecall`
-  (`:1345`) calls `objectInfoEgo`. `artifactFakeRecall` (`:933`) is the third.
-  `web/knowledge-recall.test.ts` covers them.
-- ~~Monster spell and breath damage are not bound to the casting race, so
-  `monSpellLoreDamage` returns 0 and `(N)` is omitted at every spell~~ -
-  `mon/lore-describe.ts:440` computes the real `mon_spell_dam` by default and
-  `:390` calls it. `deps.spellLoreDamage` is a full override *only*; an
-  unsupplied optional with a working default is not an unreachable feature.
-- ~~The knowledge browser's thematic grouping columns~~ - and it is REACHABLE,
-  which is the half worth checking: `session/boot.ts:180` binds the compiled
-  `ui_knowledge.txt` categories via `bindMonsterCategories`, and
-  `web/main.ts:4060` passes `registries.monsterCategories` into
-  `monsterKnowledgeGroupViews`. `web/knowledge.ts:1431` is
-  `do_cmd_knowledge_monsters`' browser (`ui-knowledge.c:1309-1378`).
-- ~~The high-score entry cannot name the real killer~~ - `score/types.ts:60`
-  carries `died_from` as `how[32]` and `score/score.ts:266` gates it as upstream does.
-- ~~The character sheet's launcher contribution is 0~~ - `game/ui-entry.ts:1482`
-  supplies `launcher: equippedLauncher(p, state.runeEnv)`. Only the PORT_TODO
-  comment at `:1481` was stale.
-- ~~`update_sidebar`'s priority culling and from-bottom placement~~ -
-  `game/display.ts:571` is `side_handlers[]` verbatim, "all 22 rows in table
-  order with the priority update_sidebar culls on, INCLUDING the four entries
-  whose hook is NULL"; `:583` is the negative-priority print-from-bottom rule
-  (`ui-display.c:871-875`) and `:646` uses it. `display.test.ts` covers it.
-- ~~The birth screens answer help with a no-op~~ - `web/birth.ts:56` imports
-  `runHelp`, and the race/class help blocks are registry data (`:196`).
-- ~~Temporary brands/slays are not shown in object info~~ -
-  `obj/object-info.ts:265-270`: the reader is REQUIRED and reads
-  `GameState.tempBrandSlay`. The comment records that this note outlived its gap.
-- ~~The lore title does not recolour a unique with `purple_uniques`~~ -
-  `mon/lore-describe.ts:1388` is the `else if (deps.purpleUniques)` arm.
-- ~~`equip_learn_flag` has no shape branch~~ - `obj/knowledge.ts:693`, `:740`,
-  `:761` port the shape's own `to_a` / `to_h` / `to_d`
-  (`obj-knowledge.c:1992-1998`, `:2026-2032`, `:2066-2078`).
-- ~~Rune-learning messages still use the `ODESC_BASE` stand-in~~ - the seam
-  landed: `obj/knowledge.ts:252` is `env.describeBase?.(obj) ?? objBaseName(obj)`,
-  wired in `session/describe-wiring.test.ts`. `objBaseName` is now the
-  worldless-caller fallback, which is what it should be.
-
-### Whole modes that were never begun - all three are begun
-
-- ~~Arena mode~~ - closed by #119; `arenaGen` is in `gen/generate.ts`.
-- ~~The quest system~~ - closed by #120; `game/quest.ts` with `quest.test.ts`.
-- ~~Persistent levels and the town builder's full store generation~~ - closed by #121.
-
-### History, notes and files
-
-- ~~`randart.log` / `randart.txt`, the largest single item here~~ - closed by
-  #118; `obj/randart-log.ts`, with `obj/randart-log.census.test.ts`.
-- ~~`options_save_custom` / `restore_custom` / `restore_maintainer`~~ - closed by
-  #117; `player/options-file.ts` with `session/options-custom-wiring.test.ts`.
-- ~~`RANDNAME_TOLKIEN` is not loaded, so randart names come from the port's own
-  generator~~ - `obj/randart.ts:34` passes
-  `reg.nameSections.get(RANDNAME_TOLKIEN)` into `doRandart`. The corpus is supplied.
-
-### Wizard mode: nothing owed. This section was wrong.
-
-Every row here has been re-adjudicated to `ported`. **Wizard mode is built**:
-`runPlayItem` with upstream's full `A/K/S/R/T/C/Q` submenu
-(`web/src/wizard.ts:1894-1923`), `runChangeQuantity`, `runTweakItem` /
-`runRerollItem` / `runCurseItem`, `runWriteMap` over `game/dump-level.ts`,
-`runCollectObjMonStats` / `runCollectPitStats` / `runCollectDisconnectStats`,
-`runStatItem` over `wizStatItem`, `runSpoilers` over the four `spoil*`
-generators (`game/spoil.ts:255`, `:344`, `:453`, `:505`), and `ArtifactState`
-(`obj/make.ts:736`) as `aup_info[]`, serialized in the save.
-
-**Why this document said otherwise.** The verdicts rested on greps for a
-camelCase transliteration of the C name — `changeItemQuantity`, `playItem` —
-which the port never uses. A failed transliteration grep is not evidence of
-absence, and four of the eight verdicts of that shape were wrong.
-`parity/tools/deferral-crosscheck.mjs` now greps the port for the **C name**,
-which this codebase reliably cites beside its port, and its output is a list of
-leads for a reader rather than a verdict.
-
-The one thing that looked like a wizard gap and is real is the **ENTER command
-browser** (`web/wizard.ts:498`, `textui_action_menu_choose`), absent for every
-command list rather than for debug mode. `world-kernel.yaml:27` stays open as a
-decision.
-
-### Dead, and a decision rather than a task
-
-- ~~`project-path.yaml:58`: a ported function whose only caller would be an absent
-  UI branch~~ - `projectPath` has live callers at `world/project.ts:201` and
-  `:391`. Not shipped-and-unreachable.
-
-## Judged unnecessary, with the mechanism
-
-81 rows when this section was written. These are not gaps, and each names *why*
-rather than asserting it. **Five of them moved out on 2026-08-14** into the third
-finished state — they were claims about UPSTREAM wearing `n-a`'s clothes, which
-is a claim about *this port's* platform. See
-[Not part of the port](#not-part-of-the-port-with-the-mechanism) and the appendix
-tally, which is generated and therefore always current.
-
-- **The `PU_*` / `PR_*` dirty-flag pipeline does not exist and cannot** (50 rows
-  of the `n-a` set are this or a layer boundary). The front end recomputes and
-  repaints everything after every state-changing action, so there is no flag for
-  a core write to set. `game/known.ts:153` states it at the site.
-- **`obj->known` is synthesised, not stored** (31 `divergence` rows). Upstream
-  gives every object a stripped twin; the port derives an equivalent shadow on
-  demand from the player's cumulative rune knowledge
-  (`obj/known-object.ts objectKnownShadow`) and `desc.ts` reads the shadow
-  exactly where upstream reads the twin. `known-object.ts` carries the
-  equivalence argument field by field.
-- **`Rand_init`'s time/pid seeding** is deliberately replaced: the port seeds at
-  the host and stores the seed in the save, which is what makes a run
-  reproducible.
-- **Upstream's `look` is a UI function with `CMD_NULL`** (bound at `ui-game.c:143`; the function is `ui-knowledge.c:4057`),
-  and **4.2.6 has no search command at all** — no `do_cmd_search`, no
-  `CMD_SEARCH`. Those two of the twenty stub codes are correctly never replaced.
-- **`monster_index_move`** exists only to serve `arena_gen`'s `memcpy`;
-  **`expression_free`** is garbage collected. Two more used to be listed here and
-  have been re-filed as `unreachable-in-upstream` (2026-08-14), because their
-  mechanism is a measurement of the C rather than a property of this platform:
-  **`old_class.txt`**, which upstream *installs into every player's data
-  directory* and never parses, and **`pricing.log`**, behind a `PRICE_DEBUG` that
-  upstream defines nowhere. Both are written out in full above, with their
-  ratchets.
-- **The panic save has no counterpart**, because the port autosaves
-  continuously: there is no second artifact and no window in which one could be
-  newer. Recorded on the CLI text census's `"A panic save exists.  Use it? "`.
-
-## How to keep this honest
-
-- `deferral-census.mjs` merges verdicts forward by (file, collapsed line text)
-  and **names every verdict it drops**, because a dropped adjudication is
-  normally good news (the note was rewritten) and must still be visible.
-- `deferral-triage.mjs` writes a `hint`, never a verdict, and counts references
-  so a symbol that is declared and never called reads as `dead-candidate` rather
-  than as evidence of a port.
-- `deferral-verdict.mjs` exits non-zero naming any reference that matched no row.
-- The appendix below is generated. `deferral-report.test.ts` fails when it is
-  stale, so this document cannot drift from the census. It also fails on a new
-  deferral note with no verdict, and on a verdict with no evidence.
-- `ledger-deferred-items.mjs` is deliberately NOT under that ratchet yet: 331
-  items are unadjudicated, and a test asserting zero would just be turned off.
-  Adjudicate them and then bring it under the same guard.
-- `port-todo.test.ts` holds [PORT_TODO.md](PORT_TODO.md) to the same census:
-  every file with an owed row must be cited by a work item, the stated totals
-  must match, and a cited path must exist. It is keyed on **file**, not
-  `file:line`, on purpose — a line-keyed guard fails on every unrelated edit
-  above a citation, and a churning test gets turned off.
-- ~~**Known 2026-08-11 reconciliation debt:** the `port-todo.test.ts` count
-  guard is currently red.~~ **Settled 2026-08-14.** The guard was green before
-  this pass touched anything (measured, not assumed - the debt note had outlived
-  its repair, exactly like the rows above it), and it is green after:
-  PORT_TODO.md's stated totals were moved to **13 citations, 5 `real` + 8
-  `partial`** when this pass closed the deferral census's last two `partial`
-  rows. Kept struck through rather than deleted, because a note saying "this is
-  broken" that quietly disappears teaches nobody what happened to it.
-- **One guard lost its subject when the census emptied, and it says so.**
-  `port-todo.test.ts`'s mutation check picked a real owed file to hole out; with
-  zero `real`/`partial` rows left in this tranche there is no such file. It now
-  names the empty case and asserts against a synthetic path instead of passing by
-  not running - a mutation check with nothing to mutate is a green test measuring
-  nothing, and it would have left the guard it protects vacuous with no sign of
-  it.
-- **The hand-written `file:line` numbers in the prose above are the one part of
-  this document that drifts, and they already have once**: rewriting the notes
-  moved ten of them by a line or two, and nothing caught it until the two
-  documents were diffed against the census by hand. Prefer the generated
-  appendix and PORT_TODO.md's `Sites:` lines, which come from the TSV. When the
-  prose and the appendix disagree, the appendix is right.
+`deferral-report.test.ts` fails when the appendix below is stale, and fails on
+a new deferral note with no verdict or a verdict with no evidence — so this
+document cannot describe a census that has since changed. Re-run
+`ledger-deferred-items.mjs` after editing any `deferred:` bullet in a ledger
+file: the generator carries a verdict forward by the bullet's text, so a
+rewritten bullet is a new, unadjudicated row until this runs again.
 
 <!-- BEGIN GENERATED: deferral-report.mjs -->
 
