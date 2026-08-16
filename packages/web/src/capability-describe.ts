@@ -168,6 +168,12 @@ export function describeCapability(cap: string): CapabilityDescription {
         text: "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
         elevated: true,
       };
+    case "backup":
+      return {
+        cap,
+        text: "Write files into a folder you pick (it never learns the folder's real path, only whether a write succeeded)",
+        elevated: false,
+      };
     case "ui":
       /* Named, because the consent is worth exactly as much as the player's
        * ability to picture what changes. "Replace part of the interface" tells

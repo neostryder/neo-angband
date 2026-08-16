@@ -150,3 +150,31 @@ export const HOST_SHELL_LIMITS = {
  * screen needs that a leaf name does not give it.
  */
 export const MOD_ZIP_CHANNEL = "neo-mod-zip";
+
+/**
+ * Ticket #133's cloud-backup folder (`invoke`).
+ *
+ * Exists because `showDirectoryPicker()` does not: verified over CDP against the
+ * installed desktop build that the File System Access API's directory picker opens,
+ * the player can choose a folder, and the underlying promise then never resolves -
+ * this Electron build wires no permission-handler for it, so the call hangs and a
+ * second attempt fails outright with "File picker already active". Native
+ * `dialog.showOpenDialog` replaces it here, same as `UPDATE_CHANNEL` replaces a
+ * browser download for the updater.
+ *
+ * The chosen PATH never crosses this channel in either direction, on the same
+ * argument `MOD_ZIP_CHANNEL` and the updater's `staged` already establish: the
+ * main process is the only side that ever holds it, persisted to a small JSON file
+ * beside `mods/` so it survives a restart. The renderer only ever sees a display
+ * NAME (so it can render "Backing up to X") and `{ok}` booleans - never the real
+ * path, which is the same "the mod never learns the folder's real path" property
+ * `docs/modding/CLOUD_BACKUP_DESIGN.md`'s capability already promises a plugin, now
+ * true of the IPC boundary as well as the mod boundary. `write` takes a LEAF name
+ * only, checked the same way `isModZipName` checks one, for the same reason: a
+ * channel that took a path would hand a compromised renderer a write primitive over
+ * the whole disk.
+ */
+export const BACKUP_CHANNEL = "neo-backup";
+
+/** What the renderer may ask the backup channel to do. */
+export type BackupOp = "name" | "choose" | "forget" | "write";
