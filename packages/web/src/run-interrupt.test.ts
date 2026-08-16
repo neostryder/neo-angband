@@ -55,7 +55,10 @@ describe("a run can be interrupted", () => {
   });
 
   it("pumps the next step when the loop pauses", () => {
-    const body = functionBody(MAIN, "advance");
+    // Moved from advance() into continueAdvance() when the bolt/beam
+    // animation seam split the post-runGameLoop tail out so it can be
+    // deferred behind an async replay (advance() itself stays synchronous).
+    const body = functionBody(MAIN, "continueAdvance");
     expect(body).toMatch(/status === LOOP_STATUS\.PAUSE\) pumpStep\(\)/);
   });
 

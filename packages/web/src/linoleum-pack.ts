@@ -470,6 +470,21 @@ export class LinoleumPack implements TileBlitter {
   }
 
   /**
+   * Start this slot's asset loading without drawing it (TileBlitter.preload).
+   *
+   * `drawTile` already calls `request` as a side effect, so a cell already on
+   * screen warms itself the moment it is first painted - the race this exists
+   * to avoid is the frame BEFORE that: a cell not yet in view starts cold, and
+   * request() is what turns "in view" and "loaded" into the same moment
+   * instead of two, one frame apart. Calling this ahead of a cell entering
+   * view (main.ts's precacheTilesNear) gives its Image() a head start.
+   */
+  preload(code: TileCode, grid?: { x: number; y: number }): void {
+    const asset = this.assetFor(atlasToSlot(code), grid);
+    if (asset !== null) this.request(asset);
+  }
+
+  /**
    * Start (or reuse) an asset's image load. Never throws, and returns the cache
    * entry synchronously so the caller can draw ASCII for this frame.
    *

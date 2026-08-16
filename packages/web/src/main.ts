@@ -45,6 +45,8 @@ import {
   decodeSavedGame,
   runGameLoop,
   LOOP_STATUS,
+  type LoopStatus,
+  DEFAULT_DELAY_FACTOR,
   colorCharToAttr,
   colorTextToAttr,
   colorToCss,
@@ -202,6 +204,7 @@ import type {
   LoreDeps,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
+import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
 import { registerLocale, setLocale } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration } from "./save-recovery.js";
@@ -1472,6 +1475,10 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
       pack.onReady = () => repaintEverything();
       tileset = pack;
       tileMap = pack.index.map;
+      // Warm the ground around the player before the first frame draws it -
+      // a fresh load's cache is completely cold, which is exactly when the
+      // flash (#290) is most visible.
+      precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
     }
     repaintEverything();
     return;
@@ -1569,6 +1576,55 @@ function tileDrawFor(
     ...(ts.isTall(code, { x, y }) ? { tall: true } : {}),
   };
 }
+
+/**
+ * Warm a loose pack's per-asset cache for known terrain within `radius` of
+ * (cx, cy), so a tile the player is about to walk up to has already started
+ * loading rather than racing its own Image() load the first frame it is
+ * actually drawn.
+ *
+ * LinoleumPack has no single atlas to wait for - `ready` flips true as soon as
+ * its maps parse, independent of any one asset - so the FIRST time any given
+ * asset is requested, that frame draws the ASCII glyph and the tile only
+ * appears once the image's `load` event fires and the coalesced repaint runs.
+ * That is invisible for common terrain warmed in the first few frames near
+ * spawn, but a distinctive, rare feature (a staircase) can go unrequested
+ * until the player is already standing next to it - a fresh cold boot, whose
+ * cache starts empty, is exactly when this is most likely to be noticed
+ * (#290). TileSet (the tilesheet engine) has no such seam and exposes no
+ * `preload`, so this is a no-op there.
+ *
+ * Only KNOWN terrain is warmed, mirroring the same knownFeat gate the
+ * `remembered` render callback uses - there is nothing to precache for a grid
+ * the player has never seen, and asking would just be extra work every call.
+ */
+function precacheTilesNear(cx: number, cy: number, radius: number): void {
+  const ts = tileset;
+  if (!ts?.preload || !ts.ready || !tileMap) return;
+  const x0 = Math.max(0, cx - radius);
+  const x1 = Math.min(state.chunk.width - 1, cx + radius);
+  const y0 = Math.max(0, cy - radius);
+  const y1 = Math.min(state.chunk.height - 1, cy + radius);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const kf = knownFeat(state, loc(x, y));
+      if (kf < 0) continue;
+      const f = features.get(kf);
+      const disp = f.mimic !== null ? features.get(f.mimic) : f;
+      const atlas = tileForFeature(tileMap, disp.fidx, LIGHTING.LOS);
+      if (!atlas || !isTile(atlas.attr, atlas.char)) continue;
+      ts.preload(tileCode(atlas.attr, atlas.char), { x, y });
+    }
+  }
+}
+
+/**
+ * How far ahead of the viewport precacheTilesNear warms - comfortably past a
+ * full map viewport (SIDEBAR_W-trimmed 80x24 leaves roughly 66x22) so a run in
+ * any direction stays inside already-warm ground, plus slack for however far
+ * a single command can move the player (e.g. running down a corridor).
+ */
+const PRECACHE_RADIUS = 40;
 
 // The Graphics screen's rows: ASCII first (the C's hardcoded GRAPHICS_NONE
 // entry, grafmode.c L137-146), then the composed catalog. Only a mod-supplied
@@ -2431,7 +2487,12 @@ async function runContextMenuPlayer(): Promise<void> {
       await restCmd();
       break;
     case "look":
-      if (await runTargetLoop(TARGET.LOOK, false, state.actor.grid.x, state.actor.grid.y)) {
+      /* do_cmd_look always starts interactive-cycling mode, -1,-1
+       * (ui-knowledge.c:4057-4064) - passing this grid forced free-cursor
+       * mode instead (initTargetLoopUi treats any in-bounds start coords as
+       * "stay put"), so cycling never engaged and a floor object standing
+       * right here was never offered (#290). */
+      if (await runTargetLoop(TARGET.LOOK, false)) {
         say("Target Selected.");
       }
       break;
@@ -2497,7 +2558,10 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
   const dir = motionDirTo(grid);
   switch (items[idx]?.action) {
     case "look":
-      if (await runTargetLoop(TARGET.LOOK, false, grid.x, grid.y)) say("Target Selected.");
+      /* Same as the player context menu's "look" (#290): do_cmd_look always
+       * starts interactive-cycling mode regardless of entry point, so this
+       * must not pin the cursor to the clicked grid either. */
+      if (await runTargetLoop(TARGET.LOOK, false)) say("Target Selected.");
       break;
     case "recall": {
       // lore_show_interactive on the grid's monster (ui-context.c L607-615).
@@ -4316,6 +4380,11 @@ function runTargetLoop(
     modalDepth++;
     const targets = targetGetMonsters(state, mode);
     let ui = initTargetLoopUi(state, startX, startY);
+    // target_dir_allow only sees the keypad-direction keys upstream's own
+    // keymap has already translated the roguelike letters into; the port has
+    // no keymap layer ahead of the target loop, so stepTargetLoop needs the
+    // live option to do that translation itself.
+    const rogueLike = state.options?.get("rogue_like_commands") ?? false;
     // The visible monster (if any) the cursor is currently on, tracked by
     // paint()'s own describeLookGrid call (aux_monster only ever names an
     // obvious monster), so 'r' knows what to recall without recomputing it.
@@ -4394,7 +4463,7 @@ function runTargetLoop(
         return;
       }
       if (grid.x === cur.x && grid.y === cur.y) {
-        const step = stepTargetLoop(state, targets, ui, "t");
+        const step = stepTargetLoop(state, targets, ui, "t", rogueLike);
         ui = step.ui;
         if (step.bell) state.sound?.(MSG.BELL);
         if (step.done) {
@@ -4420,7 +4489,7 @@ function runTargetLoop(
         openRecall(mon);
         return;
       }
-      const step = stepTargetLoop(state, targets, ui, ev.key);
+      const step = stepTargetLoop(state, targets, ui, ev.key, rogueLike);
       ui = step.ui;
       if (step.bell) state.sound?.(MSG.BELL);
       if (step.done) {
@@ -6190,6 +6259,34 @@ async function repeatLastCommand(): Promise<void> {
     if (dir === null) return;
     cmd = withRepeatDir(cmd, slot, dir);
   }
+  /* The same low-mana confirm castSpell() asks on a fresh cast (cmd-obj.c:
+   * 1139-1152), asked again here because a repeat re-dispatches straight into
+   * the core "cast" handler and never runs through castSpell() at all - the
+   * core handler is deliberately headless-safe and casts unconditionally
+   * (spell-cmd.ts installSpellCommands). Mana can have dropped since the
+   * command first ran (a prior cast, a monster's mana-drain), so this is not
+   * merely repeating a check already passed once. */
+  if (cmd.code === "cast") {
+    const player = state.actor.player;
+    const spellIndex =
+      typeof cmd.args?.["spell"] === "number" ? cmd.args["spell"] : -1;
+    const spellData = spellIndex >= 0 ? spellByIndex(player.cls, spellIndex) : null;
+    if (spellData && spellData.mana > player.csp) {
+      const verb = spellData.realm.verb ?? "cast";
+      const noun = spellData.realm.spellNoun ?? "spell";
+      say(`You do not have enough mana to ${verb} this ${noun}.`);
+      if (!(await confirmYesNo("Attempt it anyway? "))) return;
+    }
+  }
+  /* Same reasoning as the cast case above: a repeated "walk" re-dispatches
+   * straight into the core handler and never runs through queueWalk(), so the
+   * damaging-terrain confirm (walkTerrainPrompt -> cmd-cave.c L1156-1180) has
+   * to be asked again here. The terrain under the destination grid, or the
+   * player's HP, can both have changed since the step first ran. */
+  if (cmd.code === "walk" && typeof cmd.dir === "number") {
+    const prompt = walkTerrainPrompt(state, cmd.dir);
+    if (prompt !== null && !(await confirmYesNo(prompt))) return;
+  }
   commandBuffer.push(cmd);
   advance();
 }
@@ -7574,33 +7671,38 @@ function render(targeting?: TargetingOverlay): void {
    * a second copy of the ownership rule on the hot path. */
   renderHudFrame(currentHudFrame(vp, cols, rows, regions, targeting), liveHudSink);
 
-  if (!targeting) {
-    // show_target / highlight_player: the between-turns map cursor. Upstream
-    // places it just before waiting for a command and repeats the same block at
-    // four sites (ui-display.c:2486 refresh, ui-game.c:678 pre_turn_refresh,
-    // ui-command.c:105 do_cmd_redraw, ui-input.c:1899 highlight_player in
-    // inkey) - target if show_target and target_sighted(), else the player.
-    // Painted LAST because repainting a cell erases the frame, exactly as
-    // Term_gotoxy-before-inkey does. The interactive '*' / 'l' loop owns the
-    // cursor itself, hence the targeting branch above.
-    const showTarget = state.options?.get("show_target") ?? false;
-    const cursorGrid =
-      showTarget && targetSighted(state)
-        ? targetGet(state)
-        : (state.options?.get("highlight_player") ?? false)
-          ? state.actor.grid
-          : null;
-    if (cursorGrid) {
-      const cx = mapOriginX + (cursorGrid.x - camX);
-      const cy = mapTop + (cursorGrid.y - camY);
-      if (cx >= mapOriginX && cy >= mapTop && cx < mapOriginX + mapCols && cy < mapTop + mapRows) {
-        term.setCursor(cx, cy);
-      } else {
-        term.hideCursor();
-      }
+  // The map cursor - GlyphTerm.setCursor's one-pixel gold frame, drawn last
+  // and on top of whatever the cell painted (#290). While targeting/looking,
+  // the interactive loop's own grid takes the frame; between turns it is
+  // show_target / highlight_player, exactly as before. Upstream places the
+  // between-turns cursor just before waiting for a command and repeats the
+  // same block at four sites (ui-display.c:2486 refresh, ui-game.c:678
+  // pre_turn_refresh, ui-command.c:105 do_cmd_redraw, ui-input.c:1899
+  // highlight_player in inkey) - target if show_target and target_sighted(),
+  // else the player.
+  //
+  // This used to be gated on `!targeting`, on the theory that "the
+  // interactive '*'/'l' loop owns the cursor itself" - but the loop never
+  // called setCursor at all, only ever setting `cursorBackground` (a plain
+  // glyph background fill an opaque tile draws straight over), so tile mode
+  // never showed a highlight on a Look/target grid at all.
+  const cursorGrid = targeting
+    ? targeting.cursor
+    : (state.options?.get("show_target") ?? false) && targetSighted(state)
+      ? targetGet(state)
+      : (state.options?.get("highlight_player") ?? false)
+        ? state.actor.grid
+        : null;
+  if (cursorGrid) {
+    const cx = mapOriginX + (cursorGrid.x - camX);
+    const cy = mapTop + (cursorGrid.y - camY);
+    if (cx >= mapOriginX && cy >= mapTop && cx < mapOriginX + mapCols && cy < mapTop + mapRows) {
+      term.setCursor(cx, cy);
     } else {
       term.hideCursor();
     }
+  } else {
+    term.hideCursor();
   }
 
   /* THE STACK IS PAINTED LAST, and the ordering is the whole point rather than
@@ -7935,6 +8037,99 @@ function pumpStep(): void {
   }, 0);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** bolt_pict's motion classification (ui-display.c:1524-1554), ASCII branch:
+ * the five glyphs are a fixed direction alphabet, chosen by comparing the
+ * step's old and new grid - never by the projection type, which only picks
+ * the colour. Order matches BOLT_NO_MOTION/_0/_45/_90/_135 (project.h:54-58). */
+const BOLT_CHARS = "*|/-\\";
+function boltMotionChar(from: Loc, to: Loc): string {
+  const dy = to.y - from.y;
+  const dx = to.x - from.x;
+  if (dy === 0 && dx === 0) return BOLT_CHARS[0]!;
+  if (dx === 0) return BOLT_CHARS[1]!;
+  if (dy === -dx) return BOLT_CHARS[2]!;
+  if (dy === 0) return BOLT_CHARS[3]!;
+  if (dy === dx) return BOLT_CHARS[4]!;
+  return BOLT_CHARS[0]!;
+}
+
+/** The projection's own colour (projection.txt's "color", e.g. "Slate"),
+ * matching wizard.ts's PROJ demo screen. Unbound/unknown types read white,
+ * same as colorTextToAttr's own fallback. */
+function boltColour(typ: number): string {
+  const proj = booted.registries.projections?.[typ];
+  return colorToCss(colorTextToAttr(proj?.color ?? "w"));
+}
+
+/** Draw one marker glyph at a grid, or do nothing off-panel - the port has no
+ * panels (an established reduction, e.g. target-loop.ts's module doc), so
+ * "off-panel" here means "outside the current viewport" rather than upstream's
+ * literal panel_contains. */
+function paintProjectionMarker(grid: Loc, ch: string, fg: string): void {
+  const vp = viewport();
+  const sx = vp.mapOriginX + (grid.x - vp.camX);
+  const sy = vp.mapTop + (grid.y - vp.camY);
+  if (sx < vp.mapOriginX || sy < vp.mapTop) return;
+  if (sx >= vp.mapOriginX + vp.mapCols || sy >= vp.mapTop + vp.mapRows) return;
+  term.print(sx, sy, ch, fg);
+}
+
+/**
+ * display_bolt / display_explosion (ui-display.c:1645,1559), replayed after
+ * the turn that generated them: draw each traveled grid (erasing the last
+ * marker with a fresh render() first, matching print_rel drawing straight
+ * over the previous frame), pausing delayFactor ms per step - a beam's
+ * grids stay lit as a trail behind the moving tip, matching the second,
+ * un-erased bolt_pict call display_bolt makes per beam grid.
+ */
+async function playProjectionAnimation(
+  bolts: readonly BoltEventData[],
+  blasts: readonly ExplosionEventData[],
+): Promise<void> {
+  const delayMs = state.options?.delayFactor ?? DEFAULT_DELAY_FACTOR;
+  let trail: Loc[] = [];
+  for (const b of bolts) {
+    const from = loc(b.ox, b.oy);
+    const to = loc(b.x, b.y);
+    if (trail.length > 0) {
+      const last = trail[trail.length - 1]!;
+      if (last.x !== from.x || last.y !== from.y) trail = [];
+    }
+    render();
+    const fg = boltColour(b.projType);
+    for (const t of trail) paintProjectionMarker(t, BOLT_CHARS[0]!, fg);
+    paintProjectionMarker(to, boltMotionChar(from, to), fg);
+    await sleep(delayMs);
+    if (b.beam) trail.push(to);
+    else trail = [];
+  }
+  // display_explosion (ui-display.c:1559-1640): draw the blast from inside
+  // out, flushing (and pausing) once per radius ring rather than per grid -
+  // distanceToGrid is already sorted ascending (computeProjection's own
+  // outward sort), so a ring boundary is just "the next grid's distance grew".
+  for (const e of blasts) {
+    const fg = boltColour(e.projType);
+    const drawn: Loc[] = [];
+    for (let i = 0; i < e.blastGrid.length; i++) {
+      const g = e.blastGrid[i]!;
+      if (e.playerSeesGrid[i]) drawn.push(g);
+      const atRingEnd =
+        i === e.blastGrid.length - 1 ||
+        (e.distanceToGrid[i + 1] ?? 0) > (e.distanceToGrid[i] ?? 0);
+      if (atRingEnd && drawn.length > 0) {
+        render();
+        for (const d of drawn) paintProjectionMarker(d, BOLT_CHARS[0]!, fg);
+        await sleep(delayMs);
+      }
+    }
+  }
+  render();
+}
+
 function advance(): void {
   // A key held over from a pump that ended some other way (a level change, a
   // death) must not abort the NEXT run.
@@ -7991,6 +8186,32 @@ function advance(): void {
     }
     return;
   }
+  // The turn is fully resolved (state already reflects every hit and death
+  // the projection caused) before any of this runs, so the animation plays
+  // as a REPLAY of the geometry rather than upstream's live frame-by-frame
+  // draw - see playProjectionAnimation's own doc for why. The overwhelming
+  // majority of turns queue nothing, so those keep running the rest of this
+  // function synchronously exactly as before this seam existed.
+  const bolts = pendingBolts;
+  const blasts = pendingBlasts;
+  pendingBolts = [];
+  pendingBlasts = [];
+  if (bolts.length === 0 && blasts.length === 0) {
+    continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
+    return;
+  }
+  void playProjectionAnimation(bolts, blasts).then(() => {
+    continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
+  });
+}
+
+function continueAdvance(
+  status: LoopStatus,
+  preLen: number,
+  beforeX: number,
+  beforeY: number,
+  seeFloorReq: boolean,
+): void {
   if (status === LOOP_STATUS.DEATH_CONFIRM) {
     /* take_hit suspended after the C-order died_from assignment and before
      * either final death or EVENT_CHEAT_DEATH. Keep this an in-terminal prompt
@@ -8107,6 +8328,11 @@ function advance(): void {
   // change; the explicit hold request covers standing still on items. Skipped on
   // death and level change (arrival on a new level is not a step onto its floor).
   const moved = state.actor.grid.x !== beforeX || state.actor.grid.y !== beforeY;
+  // Warm the ground around the player's new position ahead of it scrolling
+  // into view, so the loose-pack engine's per-asset cache is already a few
+  // frames old by the time a newly-approached tile (a staircase, most
+  // noticeably - #290) is actually drawn, instead of racing its own load.
+  if (moved) precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
   // EVENT_ENTER_STORE (player_handle_post_move, player-util.c:1602; do_cmd_hold,
   // cmd-cave.c:1592): stepping onto - or standing still on - a shop door opens
   // the store. Gate on the step/hold this turn (not merely "on a shop tile") so
@@ -9013,6 +9239,26 @@ state.sound = (type: number): void => {
 // negative-coordinate case); this BINDING is not, because nothing imports
 // main.ts - same as state.sound above and every other wiring line here.
 state.panelContains = (grid: Loc): boolean => panelContains(viewport(), grid);
+
+// display_bolt / display_explosion (ui-display.c:1645,1559): the traveling
+// spell-effect animation. project() (world/project.ts, via session/game.ts's
+// cast.hooks.onBolt/onBlast) fires these synchronously, once per grid, as
+// part of a single turn's core processing - there is no mid-turn await in
+// core, so the events are collected here and replayed as a short animation
+// by advance() once the turn (and everything it did) has already resolved.
+// A grid the player cannot presently see (seen/playerSeesGrid false) upstream
+// draws NOTHING for it (display_bolt's `else if (drawing)` branch never
+// fires - project.c's `drawing` local is declared `false` and never
+// reassigned in 4.2.6 itself), so unseen bolts are dropped at the door and
+// every blast grid keeps its per-grid visibility flag for playProjectionAnimation.
+let pendingBolts: BoltEventData[] = [];
+let pendingBlasts: ExplosionEventData[] = [];
+soundEvents.on("bolt", (_type, data) => {
+  if (data.seen) pendingBolts.push(data);
+});
+soundEvents.on("explosion", (_type, data) => {
+  if (data.playerSeesGrid.some(Boolean)) pendingBlasts.push(data);
+});
 
 /* First FOV after birth/load: clear only_partial left sticky by startGame
  * when updateFov was not yet wired (ui-display.c:2556-2557).

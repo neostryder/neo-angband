@@ -117,7 +117,8 @@ import {
   updateMon,
   viewerStateOf,
 } from "../game/known.js";
-import { updateView } from "../world/view.js";
+import { squareIsView, updateView } from "../world/view.js";
+import { PROJECT } from "../world/project.js";
 import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world.js";
 import { restoreMonsters } from "../game/scheduler.js";
 import {
@@ -1642,6 +1643,43 @@ function wireGame(
         onTrackMonster: (grid: Loc): void => {
           const mon = squareMonster(state, grid);
           if (mon && monsterIsVisible(mon)) state.healthWho = mon;
+        },
+        /* event_signal_bolt / event_signal_blast (project.c:724,915): the UI
+         * seam for the traveling bolt/beam glyph and the blast's inside-out
+         * flash. Declared in world/project.ts and threaded through
+         * project-cast.ts since the beginning, and never supplied here - so
+         * a host that installs a "bolt"/"explosion" listener (the web's
+         * front end, a mod) never received one. `seen`/`playerSeesGrid` are
+         * square_isview reads (panel_contains has no web equivalent, the
+         * established "no panels on the web" reduction); `drawing` is always
+         * false in 4.2.6 itself (project.c:595, never reassigned), so it is
+         * hardcoded rather than threaded through as dead plumbing. */
+        onBolt: (step, typ, beam): void => {
+          state.events?.emit("bolt", {
+            projType: typ,
+            drawing: false,
+            seen: squareIsView(state.chunk, step.to),
+            beam,
+            oy: step.from.y,
+            ox: step.from.x,
+            y: step.to.y,
+            x: step.to.x,
+          });
+        },
+        onBlast: (proj, typ): void => {
+          const blind = (state.actor.player.timed[TMD.BLIND] ?? 0) > 0;
+          const hide = (proj.flg & PROJECT.HIDE) !== 0;
+          state.events?.emit("explosion", {
+            projType: typ,
+            numGrids: proj.grids.length,
+            distanceToGrid: proj.distanceToGrid,
+            drawing: false,
+            playerSeesGrid: proj.grids.map(
+              (g) => !blind && !hide && squareIsView(state.chunk, g),
+            ),
+            blastGrid: proj.grids,
+            centre: proj.centre,
+          });
         },
       },
     };

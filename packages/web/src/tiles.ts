@@ -111,6 +111,15 @@ export interface TileBlitter {
    * different member per cell, and members may differ in height.
    */
   isTall(code: TileCode, grid?: { x: number; y: number }): boolean;
+  /**
+   * Start this code's asset loading without drawing it, so a cell the player
+   * has not reached yet can already be warm by the time it is. Optional and
+   * absent on TileSet: a tilesheet has one atlas image, loaded in full the
+   * moment the mode is chosen, so there is nothing per-tile to warm. Only
+   * LinoleumPack's lazy per-asset cache needs this (see #290's cold-boot
+   * staircase flash).
+   */
+  preload?(code: TileCode, grid?: { x: number; y: number }): void;
 }
 
 /**
