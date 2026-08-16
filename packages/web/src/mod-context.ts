@@ -15,11 +15,14 @@ import { log } from "./logging";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_API_VERSION,
+  type BackupFolder,
   type ModCoreApi,
   type ModPluginContext,
 } from "./mod-plugin";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
+import { createBackupFolder } from "./mod-backup";
+import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * `core` is the module namespace this host itself imported, so a plugin and the
@@ -44,6 +47,7 @@ export function modPluginContext(
    * rather than taken as an argument, so a plugin cannot read another mod's assets
    * by passing a different one - the id it gets is the id it was loaded under. */
   const assets = own.assetUrl;
+  const backupFolder = backupFolderFor(id, session);
   return Object.freeze({
     id,
     api: MOD_API_VERSION,
@@ -64,7 +68,26 @@ export function modPluginContext(
     log: (msg: string) => {
       log.info(`mod:${id}`, `${msg}`);
     },
+    ...(backupFolder ? { backupFolder } : {}),
   });
+}
+
+/**
+ * Ticket #133's `ctx.backupFolder`: present only when this mod's manifest
+ * declared `backup:folder` AND this front end can pick a folder at all -
+ * two independent reasons for absence (no consent, no platform support),
+ * either one degrading to `undefined` rather than a facade that throws.
+ *
+ * `session.capabilities` is this MOD's own resolved set (not a shared,
+ * mod-agnostic session fact like `newCharacter`), so every call site that
+ * builds one already has it close by - `CapabilitySet.fromManifest(manifest)`,
+ * the same value it already passes to `installSandboxedController` /
+ * `installController` / `composeModHooks` for the very same mod.
+ */
+function backupFolderFor(id: string, session: ModSessionFacts): BackupFolder | undefined {
+  if (session.backupFolder !== undefined) return session.backupFolder;
+  if (!session.capabilities?.has("backup:folder")) return undefined;
+  return createBackupFolder(id);
 }
 
 /** What the host knows about THIS session, as opposed to this mod's folder. */
@@ -73,6 +96,14 @@ export interface ModSessionFacts {
   readonly newCharacter?: boolean;
   /** Override the preference store (tests, and a front end with its own). */
   readonly prefs?: ModPrefs;
+  /**
+   * THIS mod's resolved capability grants (ticket #133's `ctx.backupFolder`
+   * gate). Absent in most call sites today - see MOD_REACH.md's own note that
+   * capability-gated ctx fields are being added one at a time.
+   */
+  readonly capabilities?: CapabilitySet;
+  /** Override backupFolder directly (tests, and a front end with its own). */
+  readonly backupFolder?: BackupFolder;
 }
 
 /**

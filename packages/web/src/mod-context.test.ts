@@ -61,11 +61,16 @@ describe("main.ts actually passes the session facts (drift guard)", () => {
   });
 
   it("hands them to EVERY context it builds, not just one", () => {
-    /* Three call sites: migrateBag, register and controller. A field passed to
-     * two of the three is a mod whose behaviour depends on which entry point it
-     * used, which is not a distinction any mod author would expect to exist. */
+    /* Four call sites: migrateBag, register, controller and candidate-zero. A
+     * field passed to some but not others is a mod whose behaviour depends on
+     * which entry point it used, which is not a distinction any mod author
+     * would expect to exist. `register`'s call site spreads sessionFacts
+     * rather than passing it bare, because it ALSO hands this mod's own
+     * CapabilitySet (ticket #133's ctx.backupFolder gate) - still every fact
+     * sessionFacts carries, plus one more, not a substitute for it. */
     const contexts = MAIN_TS_SOURCE.match(/modPluginContext\(/gu) ?? [];
-    const passed = MAIN_TS_SOURCE.match(/^\s*sessionFacts,$/gmu) ?? [];
+    const passed =
+      MAIN_TS_SOURCE.match(/^\s*(?:sessionFacts,|\{\s*\.\.\.sessionFacts,.*\},)\s*$/gmu) ?? [];
     expect(contexts.length).toBeGreaterThan(0);
     expect(passed).toHaveLength(contexts.length);
   });

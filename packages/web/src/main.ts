@@ -597,6 +597,7 @@ import {
   transferFilename,
   type TransferMeta,
 } from "./save-transfer";
+import { backupFilename, notifyBackupSinks } from "./mod-backup";
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
 
@@ -5251,6 +5252,27 @@ function metaFromState(id: string): CharMeta {
   };
 }
 
+/**
+ * The roster fields a transfer file carries, from the live game - the same
+ * object `exportCharacter` builds inline, factored out so persistSave's
+ * cloud-backup notification (#133) and a manual export share one producer
+ * rather than two copies drifting.
+ */
+function transferMetaFromState(id: string): TransferMeta {
+  const m = metaFromState(id);
+  return {
+    name: m.name,
+    race: m.race,
+    cls: m.cls,
+    sex: m.sex,
+    level: m.level,
+    depth: m.depth,
+    maxDepth: m.maxDepth,
+    turn: m.turn,
+    alive: m.alive,
+  };
+}
+
 // Latched true just before a New-character reload so the OUTGOING page's
 // pagehide autosave cannot write the (now throwaway) game into the freshly
 // allocated slot - birthPending only guards the incoming page.
@@ -5285,6 +5307,35 @@ function persistSave(deliberate = false): boolean {
      * this is the moment to ask for persistent storage - once per session, in the
      * background, never blocking the save that prompted it. */
     if (ok) ensureDurableStorage();
+    /* Ticket #133's cloud backup: every consenting mod's onSave fires on EVERY
+     * successful save, not gated on `deliberate` - a backup that only updated on
+     * a forced save would lag up to three seconds behind real play, which for a
+     * folder a sync client watches is exactly the window "hands-off" was meant
+     * to close. The file is the SAME bytes exportCharacter produces, so a
+     * backup is byte-for-byte importable through Shift-M on another install.
+     * Never allowed to affect whether the save itself is reported successful -
+     * notifyBackupSinks contains a throwing mod's own callback internally, and
+     * this call happens after `ok` is already decided. */
+    if (ok) {
+      notifyBackupSinks(
+        () => {
+          const transferMeta = transferMetaFromState(id);
+          const lineage = lineageOf(metaFromState(id));
+          return {
+            name: backupFilename(transferMeta.name, lineage),
+            text: encodeTransfer({
+              meta: transferMeta,
+              save: b64,
+              engine: ENGINE_VERSION,
+              exportedAt: new Date().toISOString(),
+              lineage,
+            }),
+          };
+        },
+        (modId, err) =>
+          reportModFault(modId, `cloud-backup write failed: ${faultMessage(err)}`),
+      );
+    }
     /* lore_save, from the saves that ARE ports of save_game_checked - the 'S'
      * command, a level change, the options screen, close_game. The throttled
      * three-second tail autosave has no upstream counterpart and does not
@@ -10338,6 +10389,9 @@ async function exportCharacter(id: string): Promise<void> {
     turn: meta.turn,
     alive: meta.alive,
   };
+  /* NOT transferMetaFromState here: this reads a ROSTER entry (any character,
+   * possibly not the one running), while that helper reads the LIVE game
+   * state for the active id - persistSave's case, not this one. */
   const name = transferFilename(transfer);
   const ok = downloadUserFile(
     name,
@@ -11233,7 +11287,10 @@ for (const loaded of activeModCode().plugins) {
         folderRuleFlags.get(loaded.id) ?? {},
         state,
         modOwnFiles(loaded.data),
-        sessionFacts,
+        /* `capabilities` gates ctx.backupFolder (#133) - this mod's OWN
+         * resolved set, the same value `createModRegistryHost` above already
+         * computed for it, not recomputed differently. */
+        { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
       ),
     );
     installedPluginIds.add(loaded.id);

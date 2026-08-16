@@ -249,6 +249,55 @@ export interface ModPluginContext {
   readonly newCharacter: boolean;
   /** Emit a diagnostic line; the host decides where it goes. */
   readonly log: (msg: string) => void;
+  /**
+   * Ticket #133's cloud-backup folder. Present only when this mod's manifest
+   * declared the `backup:folder` capability AND this front end can pick a
+   * folder at all; `undefined` otherwise, same shape `ctx.assetUrl` and
+   * `ctx.prefs` use for "this concept exists, but sometimes there is nothing
+   * behind it" - except here absence has two independent causes (no consent,
+   * no platform support), and either one degrades to `undefined` rather than a
+   * facade that throws on first use. Guard with `if (!ctx.backupFolder)
+   * return;`, the same shape `rememberSettings` uses for `ctx.core.setPrefErrorPolicy`.
+   *
+   * See docs/modding/CLOUD_BACKUP_DESIGN.md for the full design and
+   * docs/modding/MOD_SEAMS.md's "why a ctx field, not a sixth ModPlugin owner
+   * seam" argument.
+   */
+  readonly backupFolder?: BackupFolder;
+}
+
+/**
+ * Ticket #133's cloud-backup folder primitive. One instance is capable of
+ * serving any number of consenting mods - see mod-backup.ts.
+ */
+export interface BackupFolder {
+  /**
+   * The remembered folder's display name, or null if none is chosen. Never
+   * prompts - a query, like folderPermission's non-request path.
+   */
+  name(): Promise<string | null>;
+  /**
+   * Ask the player to choose (or replace) the folder. MUST be called from a
+   * user gesture (browser tab) or a menu-selection continuation (desktop) -
+   * see CLOUD_BACKUP_DESIGN.md §3. Null means the player cancelled, which is
+   * not an error and must not be reported as one (mod-folder.ts's own rule).
+   */
+  choose(): Promise<string | null>;
+  /** Forget the folder. write() becomes a silent no-op until choose() runs again. */
+  forget(): Promise<void>;
+  /**
+   * Write one file into the chosen folder, creating it if absent. False -
+   * never throws - if there is no folder, permission has lapsed, or the write
+   * failed.
+   */
+  write(name: string, text: string): Promise<boolean>;
+  /**
+   * Replace this mod's "a save just landed" callback. There is exactly one
+   * per mod; calling again replaces it, matching setPrefErrorPolicy's "last
+   * call from hooks(ctx) wins" shape. `file` is a COMPLETE, already-encoded
+   * transfer file, so the mod never touches save bytes directly.
+   */
+  onSave(fn: (file: { readonly name: string; readonly text: string }) => void): void;
 }
 
 /**
