@@ -100,9 +100,18 @@ The rule is now gate 3's rule one layer down: the line is dropped, the mod is
 told on its own row, and the rest of the store — and every other store — is
 untouched. **Core's own data still throws,** and record provenance is what
 separates them: an unresolvable entry in a store no pack has touched is core's
-mistake and fails loudly, which is every store in a modless game. Currently
-`normal` and `always` only; a bad `buy` tval, owner or entrance feature still
-takes the boot down for everyone.
+mistake and fails loudly, which is every store in a modless game.
+
+This now covers every field of a store record a patch can reach. `normal`,
+`always` and `buy` each lose the one entry that resolved to nothing. The
+`store:` entrance feature is a scalar, so there is no entry to drop and nothing
+left of the shop: the record survives with an entrance nothing matches, the shop
+cannot be entered, and the mod is told. It is not removed from the store list,
+because that list is consumed positionally — dropping a record would renumber
+every store after it and move a saved game's stock between shops. The owner list
+resolves no names at all and so has nothing to refuse; a patch that replaces it
+with the wrong *shape* is a different problem, and one every binder in the port
+shares (see below).
 
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 

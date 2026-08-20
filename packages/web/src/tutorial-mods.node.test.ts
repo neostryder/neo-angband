@@ -311,7 +311,7 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       const fault = storeReg.refused[0]!;
       expect(fault.id).toBe("tutorial-02-add-an-item");
       expect(fault.store).toBe("STORE_ARMOR");
-      expect(fault.table).toBe("normal");
+      expect(fault.field).toBe("normal");
       expect(fault.why).toContain("Padded Jerkin");
 
       /* And the Armoury is otherwise EXACTLY itself. Derived from the same store
