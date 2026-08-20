@@ -225,10 +225,11 @@ publishing account and that is enough.
 
 ## Never `git push --tags`, and never `--follow-tags`
 
-Push the one tag you just made, by name:
+Push the one tag you just made, by name — and only the tag, since
+`master` is published by `tools/publish.mjs` and not by this branch:
 
 ```bash
-git push origin master v0.18.0
+git push origin v0.18.0
 ```
 
 This repository's history **descends from Angband's own**, so every upstream tag
