@@ -112,6 +112,52 @@ another mod's, even if you both add a Padded Jerkin.
 - Give it an **ego** possibility, or a flag — find an item in the base game's
   `object.json` that has the property you want and copy the field across.
 
+## What your item joins automatically
+
+This is the part worth knowing, because it is the part you do not have to build.
+Your Padded Jerkin is a soft armour, and the game treats it as one everywhere:
+
+- **Egos, runes and brands apply to it.** An ego declares the *kinds* of item it
+  can land on, not a list of named ones — "of Resist Acid" says `soft armor`, so
+  it says your jerkin too. A **Padded Jerkin of Resist Fire** is a thing a player
+  can find, and nobody had to add it to a list.
+- **Quality enchantment applies.** It can turn up as `[5,+6]`, and its price is
+  recomputed from what it ended up being rather than from the `cost` you wrote.
+- **It is generated in the dungeon** at the depths your `alloc` names, and it is
+  in the drop tables from the moment the mod is on.
+- **Shops will buy it,** because a shop's buy list is by item kind too.
+
+## The one place this is still crude
+
+A shop will **not stock** your item on its own. That much is true of the original
+game too — a store's stock list names specific items, so a new one has to be put
+on the list.
+
+What is ours, and worth saying plainly: **there is no clean way to add one entry
+to a list yet.** `fieldPatches` can set a value, merge an object, add or remove a
+flag, and do arithmetic — but it cannot append to an array. So putting your
+jerkin in the Armoury means `set`ting that store's whole `normal` list, all
+eighteen of core's entries plus yours:
+
+```json
+{
+  "fieldPatches": {
+    "core:store-armor": [
+      { "op": "set", "path": "normal", "value": [
+        "...every entry core already has, copied out of packages/content/pack/store.json...",
+        { "tval": "soft armor", "sval": "Padded Jerkin" }
+      ] }
+    ]
+  }
+}
+```
+
+That works, and it has an obvious cost: two mods that both want something in the
+Armoury will overwrite each other, and a copied list goes stale when the base
+game changes its own. Everything else on this page composes cleanly with other
+mods; this does not. It is a known rough edge rather than the intended shape, so
+if you need it, expect it to get better.
+
 ## The finished version
 
 `samples/tutorials/tutorial-02-add-an-item/`, which is loaded and composed against the
