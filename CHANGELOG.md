@@ -46,6 +46,21 @@ digest in the game's catalogue and must never be moved.
 
 ### Fixed
 
+- **The look/target UI ran terrain prefixes into the name: "the entrance to
+  theArmoury", "You are inan open door", "somelava".** `terrain.txt` writes every
+  `look-prefix` and `look-in-preposition` without a trailing space, and upstream
+  separates them from the name in `finish_parse_feat` (`init.c` L2256-2272),
+  which appends a space to each non-empty one after the parse. The port copied
+  the data faithfully and never ported that hook, so the targeting code's
+  `<preposition><prefix><name>` concatenation had nothing between its parts.
+  Ten features, three visible strings: the eight store entrances ("the entrance
+  to the"), the open and broken doors ("in"), and lava ("some") — plus the
+  stores' "at" preposition, which the same normalisation covers. Two comments in
+  `known.ts` asserted this was upstream's own data rather than a missing hook
+  and are corrected; the assertions that had encoded the unseparated values are
+  now the test that would have caught it. A port defect rather than an upstream
+  wart — upstream renders these lines correctly — so it belongs in core, not in
+  `bug-fixes`.
 - **Three field-patch ops silently destroyed data instead of failing.** An `add`
   or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
   a number over it; a `merge` aimed at a list replaced the list with an object.

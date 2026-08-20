@@ -470,10 +470,11 @@ export function squareApparentName(state: GameState, grid: Loc): string {
 
 /**
  * square_apparent_look_prefix (cave-square.c): the indefinite article (or a
- * feature-specific override) that precedes squareApparentName. Overrides are
- * reproduced verbatim from terrain.txt, trailing space and all - stores'
- * "the entrance to the " carries one, LAVA's "some" does not (upstream data,
- * not a port bug).
+ * feature-specific override) that precedes squareApparentName. terrain.txt
+ * writes the overrides without a trailing space ("the entrance to the",
+ * "some"); finish_parse_feat appends one to every non-empty prefix, so an
+ * override arrives here already separated from the name (see
+ * ensureTrailingSpace in world/feature.ts).
  */
 export function squareApparentLookPrefix(state: GameState, grid: Loc): string {
   const f = apparentFeature(state, grid);
@@ -485,8 +486,9 @@ export function squareApparentLookPrefix(state: GameState, grid: Loc): string {
 /**
  * square_apparent_look_in_preposition (cave-square.c): the preposition (or a
  * feature-specific override) used for the player's own grid ("You are
- * <preposition><name>."). Overrides are reproduced verbatim from terrain.txt
- * (e.g. doors' "in" carries no trailing space, unlike the "on " default).
+ * <preposition><name>."). As with the prefix, terrain.txt writes the
+ * overrides bare ("in", "at") and finish_parse_feat appends the space, so
+ * they reach here in the same shape as the "on " default.
  */
 export function squareApparentLookInPreposition(state: GameState, grid: Loc): string {
   const f = apparentFeature(state, grid);
