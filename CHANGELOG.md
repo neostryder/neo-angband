@@ -139,6 +139,20 @@ digest in the game's catalogue and must never be moved.
   at core for behaviour a mod caused. The list also moved out of `main.ts` into
   `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
   which is why a list that was wrong for every content-only mod stayed green.
+- **Randart games handed out the wrong gems.** flavor.txt writes a ring or
+  amulet record's `fixed:` lines above its `flavor:` lines, and the binder bound
+  them the other way round — so the flavour list was not in the file's order.
+  That list is walked backwards by `flavor_assign_random` (it reproduces C's
+  prepend-into-a-linked-list), which makes a flavour's position in it the thing
+  that decides which ring it lands on. In an ordinary game nothing showed: a
+  fixed flavour keeps its own sval and the random assignment skips it, so the
+  random ones kept their relative order and every ring looked right. Under
+  `birth_randarts` it did show — `flavor_reset_fixed` scrubs every fixed sval but
+  the One Ring's, which drops seven more entries into the random pool at the
+  wrong end of the list. The draw COUNT is identical either way, so the RNG
+  stream never moved and no seed probe could have caught it; only the assignment
+  itself differs, and a test now runs both orders against one seed to show that
+  it does under randarts and does not without.
 - **Three field-patch ops silently destroyed data instead of failing.** An `add`
   or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
   a number over it; a `merge` aimed at a list replaced the list with an object.
