@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.20.0 && git push origin master v0.20.0
+git tag v0.21.0 && git push origin master v0.21.0
 ```
 
 > ### ⚠️ `git push origin master` is NOT how this repository publishes

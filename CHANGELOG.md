@@ -18,6 +18,12 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-19
+
+Current state of the project at version `0.21.0` - the modding-onboarding
+release. Nothing about the game's rules changed; what changed is how much you
+have to read before you can modify them.
+
 ### Added
 
 - **A `registry:store` discount-roll seam** (`StoreBehaviourRegistry.registerDiscountRoll`,
@@ -50,9 +56,20 @@ digest in the game's catalogue and must never be moved.
   than to an API reference.
 - **`AI_POLICY.md` renamed `AI_USAGE_POLICY.md`**, revised for a clearer disclosure section
   and a narrower, engineering-focused correctness claim.
+- **The item and monster tutorials now say what a mod gets for free, and what it does not.**
+  An item you add is eligible for every ego, brand, rune and quality enchantment that applies
+  to its kind, from the moment the mod is on - a *Padded Jerkin of Resist Fire* needs nothing
+  declared. A monster you add carries its own colour but inherits its glyph from its base, and
+  in a tile set it keeps drawing as a letter until a mod supplies a tile. Both are now written
+  down where the beginner meets them.
 
 ### Fixed
 
+- **The tutorials' finished mods could not be installed.** All six shipped in folders whose
+  names did not match their manifest ids, and the game refuses such a pack - so the one thing
+  a reader is most likely to try, dropping the finished article into `mods/` to compare against
+  their own, failed. The folders are renamed and the test suite now drives the game's real
+  mods-folder reader rather than assembling the packs itself.
 - **Two doc claims the code had already outgrown.** `docs/MODS.md` and
   `docs/modding/MOD_REACH.md` still said a mod installed from disk could supply data only and
   that record layering reached 24 of 44 files. Both gates closed some time ago - a mod folder
@@ -60,10 +77,16 @@ digest in the game's catalogue and must never be moved.
   from, and every record of every shipped file is addressable. The stale passages are marked
   as the before-picture rather than deleted, since the reasoning still explains the design.
 
+### Known limitations
+
+- **A mod cannot add one entry to a list.** Field patches can set, merge, add or remove a flag
+  and do arithmetic, but they cannot append to an array - so putting a new item in a shop's
+  stock means replacing that shop's whole list, and two mods cannot both do it. Everything
+  else about an added item composes cleanly with other mods; this does not.
+
 ## [0.20.0] - 2026-08-16
 
-Current state of the project at version `0.20.0` - the initial public alpha
-release.
+The initial public alpha release.
 
 ### Added
 
@@ -87,5 +110,6 @@ release.
 - **Deterministic and seeded** generation throughout, with a save format built
   to survive modular content.
 
-[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/neostryder/neo-angband/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/neostryder/neo-angband/releases/tag/v0.20.0
