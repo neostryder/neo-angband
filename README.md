@@ -180,6 +180,10 @@ you would rather not write on an issue tracker - email **strider-angband (at)
 rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting and what
 is not.
 
+**Wondering about the AI question?** [AI_USAGE_POLICY.md](AI_USAGE_POLICY.md) is
+the complete answer - what it was used for, what it was not, and how a
+contribution is judged either way.
+
 ## Reporting a difference
 
 The most useful report says **what the original C does** and **what this does**.

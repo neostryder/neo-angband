@@ -15,6 +15,11 @@ keep it faithful. Read it once before your first change.
 > [README](README.md), and
 > [opening an issue](https://github.com/neostryder/neo-angband/issues/new/choose)
 > needs none of what follows.
+>
+> **Asking about AI use, or whether it disqualifies a contribution?**
+> [AI_USAGE_POLICY.md](AI_USAGE_POLICY.md) covers it; the short version is that
+> a PR is judged by whether it is correct, tested and faithful, not by how it
+> was typed.
 
 ## Prerequisites
 
@@ -83,7 +88,10 @@ The full package table lives in the [README](README.md#repository-layout) and
 
 ## The cardinal rule: faithfulness to Angband 4.2.6
 
-The base game is a byte-faithful port of Angband 4.2.6. This is not a redesign.
+The base game is a behavioral/gameplay-faithful port of Angband 4.2.6 - not a
+redesign, and not a claim of bit-exactness. See
+[docs/PARITY.md](docs/PARITY.md) for exactly what "faithful" means here and how
+it is measured.
 
 - The original C tree lives buildable in [`reference/`](reference/) as the
   read-only golden-master oracle. **Never edit anything under `reference/`.**

@@ -133,7 +133,7 @@ that has not been settled.
 
 ## The first-party mods
 
-Four, **none of them bundled**, all OFF until enabled (see
+Five, **none of them bundled**, all OFF until enabled (see
 `DEFAULT_ENABLED_MODS` - an untouched install is faithful 4.2.6 with no mod
 loaded). Each lives in its own repository and arrives through the mod manager's
 *Install a mod...* row:
@@ -144,8 +144,9 @@ loaded). Each lives in its own repository and arrives through the mod manager's
 | `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
 | `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
 | `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. Released at `v0.1.0`. The whole port lives there now - 171 tests, plus a suite that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
+| `feature-restoration` | content | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time. Currently one: `Teleport Other`, restored to the Priest, the Paladin and the Ranger, who lost it somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it. Pure content - no `plugin.ts` - since restoring a spell that already exists elsewhere in the game is a data patch, not new behaviour. |
 
-**First-party is not a shortcut.** All four take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind three mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these four are also the reference examples - read them to learn the seams.
+**First-party is not a shortcut.** All five take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these five are also the reference examples - read them to learn the seams.
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,neo-linoleum` for a one-off.

@@ -350,7 +350,20 @@ export function massProduce(
           cost,
           massRoll: (times, max) => massRoll(rng, times, max),
         });
-  obj.number = Math.min(size, obj.kind.base.maxStack);
+  const clamped = Math.min(size, obj.kind.base.maxStack);
+
+  /* No handler registered is core's own faithful 4.2.6 behaviour: the
+   * discount roll does not exist in this port's baseline (see
+   * DiscountRollHandler), so obj.discount stays unset and the stack is
+   * exactly the clamped size, unconditionally. */
+  const discountRoll = behaviour.discountRollHandler();
+  const discount = discountRoll === null ? 0 : discountRoll({ rng, cost });
+  if (discount > 0) {
+    obj.discount = discount;
+    obj.number = clamped - Math.trunc((clamped * discount) / 100);
+  } else {
+    obj.number = clamped;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -398,6 +411,22 @@ export interface StoreWillBuyContext {
 export type WillBuyHandler = (ctx: StoreWillBuyContext) => boolean;
 
 /**
+ * What a discount roll is deciding: mass_produce's discount arm, pre-4.2.6
+ * (dropped from this port's C baseline along with obj->discount itself - no
+ * `reference/` citation exists for it, only the historical mechanism a mod's
+ * README documents). Global rather than keyed by tval, matching upstream:
+ * the roll ran once per created object regardless of type.
+ */
+export interface DiscountRollContext {
+  rng: Rng;
+  /** object_value_real(obj, 1) - the same cost band massProduce itself uses. */
+  cost: number;
+}
+
+/** Returns a discount PERCENTAGE (0, or one of the rolled tiers). */
+export type DiscountRollHandler = (ctx: DiscountRollContext) => number;
+
+/**
  * Store behaviour a mod can add to, override or wrap.
  *
  * Keyed the way each decision is actually made: stack size by TVAL, because
@@ -411,6 +440,7 @@ export type WillBuyHandler = (ctx: StoreWillBuyContext) => boolean;
 export class StoreBehaviourRegistry {
   private readonly mass = new Map<number, MassProduceHandler>();
   private readonly buy = new Map<number | typeof ANY_STORE, WillBuyHandler>();
+  private discount: DiscountRollHandler | null = null;
 
   /** Install (or replace) the stack rule for a tval. */
   registerMassProduce(tval: number, handler: MassProduceHandler): void {
@@ -435,6 +465,20 @@ export class StoreBehaviourRegistry {
   /** The buy decision installed for that key, or null. Wrap by re-registering. */
   willBuyFor(feat: number | typeof ANY_STORE): WillBuyHandler | null {
     return this.buy.get(feat) ?? null;
+  }
+
+  /**
+   * Install (or replace) the discount roll. No handler (the default, and
+   * core's own faithful behaviour) means no store ever discounts anything -
+   * see massProduce.
+   */
+  registerDiscountRoll(handler: DiscountRollHandler): void {
+    this.discount = handler;
+  }
+
+  /** The discount roll currently installed, or null. */
+  discountRollHandler(): DiscountRollHandler | null {
+    return this.discount;
   }
 }
 
