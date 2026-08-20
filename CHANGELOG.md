@@ -18,6 +18,21 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Added
+
+- **A `registry:store` discount-roll seam** (`StoreBehaviourRegistry.registerDiscountRoll`,
+  `StoreFacade.setDiscountRoll`), alongside the existing stack-size seam. Lets a mod restore
+  a store's price-discount roll; core installs no handler, so no store discounts anything
+  by default.
+- **`feature-restoration`** added to the recommended first-party mods
+  ([mods/registry.json](mods/registry.json)): restores spells and mechanics later Angband
+  versions quietly dropped, each behind its own opt-in toggle (default off).
+
+### Changed
+
+- **`AI_POLICY.md` renamed `AI_USAGE_POLICY.md`**, revised for a clearer disclosure section
+  and a narrower, engineering-focused correctness claim.
+
 ## [0.20.0] - 2026-08-16
 
 Current state of the project at version `0.20.0` - the initial public alpha

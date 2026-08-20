@@ -205,17 +205,26 @@ export function objectValue(
   aware: boolean,
   known?: ObjectValueKnowledge,
 ): number {
+  let value: number;
   /* Variable-power items are assessed by what is known about them. */
   if (tvalHasVariablePower(obj.tval)) {
     const priced = known
       ? objectKnownShadow(obj, known.p, known.env, known.deps)
       : obj;
-    return objectValueReal(reg, priced, qty);
+    value = objectValueReal(reg, priced, qty);
+  } else if (tvalCanHaveFlavor(obj.kind.tval) && aware) {
+    /* Flavoured kinds the player is aware of price at their real cost. */
+    value = objectValueReal(reg, obj, qty);
+  } else {
+    /* Otherwise, a flat base guess. */
+    value = objectValueBase(obj, aware) * qty;
   }
-  /* Flavoured kinds the player is aware of price at their real cost. */
-  if (tvalCanHaveFlavor(obj.kind.tval) && aware) {
-    return objectValueReal(reg, obj, qty);
-  }
-  /* Otherwise, a flat base guess. */
-  return objectValueBase(obj, aware) * qty;
+
+  /* obj->discount (pre-4.2.6 mass_produce): a store-rolled price cut. Applied
+   * last, over whichever branch above priced the item, matching upstream's
+   * object_value wrapping object_value_real/_base rather than living inside
+   * either. See store/store.ts's DiscountRollHandler. */
+  const discount = obj.discount ?? 0;
+  if (discount > 0) value -= Math.trunc((value * discount) / 100);
+  return value;
 }
