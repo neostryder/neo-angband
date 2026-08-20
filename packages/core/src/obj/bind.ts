@@ -1342,8 +1342,33 @@ export class ObjRegistry {
           text: entry.desc ?? "",
         });
       };
-      for (const entry of rec.flavor ?? []) bindEntry(entry);
+      /*
+       * FIXED FIRST, WHICH IS FILE ORDER. flavor.txt writes a record's
+       * `fixed:` lines above its `flavor:` lines (rings L18-30 before L32-73,
+       * amulets L90-101 before L104-117), and the parser builds one list in
+       * the order the lines arrive - so this array has to be in that order too.
+       * It is not cosmetic: `flavorInit` walks this list BACKWARDS to reproduce
+       * C's prepend-into-a-linked-list (obj/flavor.ts, flavor_assign_random),
+       * so a flavour's position in it is what decides which kind it lands on.
+       *
+       * Binding `flavor:` first was invisible in an ordinary game, because a
+       * fixed flavour keeps its own sval and `flavor_assign_random` skips it -
+       * the random ones kept their relative order and every potion looked
+       * right. Under `birth_randarts` it was not: `flavor_reset_fixed` scrubs
+       * every fixed sval but the One Ring's, which throws all eight ring and
+       * amulet `fixed:` entries into the random pool, and they were at the
+       * wrong end of the list. Same number of RNG draws either way, so the
+       * stream never moved and nothing downstream diverged - it just handed
+       * out the wrong gems.
+       *
+       * The compiled record splits the two into separate arrays, so a record
+       * that INTERLEAVED them could not be reproduced from this shape at all.
+       * Nothing shipped does, and recovering it would mean the compiler
+       * emitting one ordered list; the entry `index` cannot stand in for it,
+       * since flavor.txt's own numbering is not the order it writes them in.
+       */
       for (const entry of rec.fixed ?? []) bindEntry(entry);
+      for (const entry of rec.flavor ?? []) bindEntry(entry);
     }
   }
 
