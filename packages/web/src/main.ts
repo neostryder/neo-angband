@@ -331,6 +331,7 @@ import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
 import { discoverTrustedPlugins } from "./agents/trusted/discover";
+import { enabledModSummary } from "./mod-summary";
 import { showAbilities } from "./abilities";
 import { showEquipCmp } from "./equip-cmp";
 import {
@@ -1120,6 +1121,24 @@ try {
   /* history/URL unavailable: harmless, the params just linger */
 }
 const { state, registry, booted, players } = game;
+/* A shop line no item answers is one mod's fault, not a failed launch.
+ *
+ * `bindStore` used to throw on it, from inside `startGame`/`loadGame` at module
+ * top level - so installCrashScreen above caught it and the player got a stack
+ * trace instead of a game. The combination that reaches it needs no mistake at
+ * all from the player: mod A appends an item mod B defines to a store's stock
+ * table (samples/tutorials/tutorial-02-add-an-item does exactly this), the
+ * player disables mod B, and the appended line now names nothing. Core drops
+ * that line and records it; this is the one place that turns the record into an
+ * answer on the offending mod's row in the manager. Core's OWN bad data still
+ * throws and still lands on the crash screen, which is where it belongs.
+ *
+ * Both boot paths are covered by reading the registry rather than the call: the
+ * resume path binds its own registries inside `loadGame`, and `booted.registries`
+ * is whichever set this launch actually built. */
+for (const dropped of booted.registries.stores?.refused ?? []) {
+  reportModFault(dropped.id, dropped.why);
+}
 /* lore.txt over the store the save (or the birth) just produced, which is
  * upstream's order: lore_parser runs at startup and the savefile then supplies
  * only pkills and thefts. This is what makes monster memory outlive a character,
@@ -10251,34 +10270,6 @@ function desktopLogsDir(): string | null {
 /** The install's data folder, used only to take it back out of a report. */
 function desktopDataDir(): string | null {
   return desktopString("dataDir");
-}
-
-/**
- * The mods that are ON, with their versions.
- *
- * Wrapped in a try because a report must survive a broken mod set - which is
- * very often the reason somebody is filing one.
- */
-function enabledModSummary(): { id: string; version: string }[] {
-  try {
-    const enabled = defaultModStore().getEnabled();
-    if (enabled.length === 0) return [];
-    /* Re-read the registries rather than close over the boot-time ones: those
-     * are block-scoped inside the auto-install try, and reaching them from here
-     * would mean widening their scope for a report. Discovery is a walk over
-     * static maps, so asking again costs nothing. */
-    const sandbox = discoverPlugins();
-    const trusted = discoverTrustedPlugins();
-    return enabled.map((id) => ({
-      id,
-      /* An enabled mod whose plugin has gone is exactly the state worth
-       * reporting, so it appears in the list saying so rather than vanishing
-       * from it. */
-      version: sandbox.get(id)?.manifest.version ?? trusted.get(id)?.manifest.version ?? "(not installed)",
-    }));
-  } catch {
-    return [];
-  }
 }
 
 /**

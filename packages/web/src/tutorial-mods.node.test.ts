@@ -260,6 +260,87 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       );
       const bareArmoury = bare.stores.find((s) => s.featName === "STORE_ARMOR");
       expect(armoury!.normalTable.length).toBe(bareArmoury!.normalTable.length + 1);
+      /* And nothing was refused, which is the denominator for the test below. */
+      expect(storeReg.refused).toEqual([]);
+    });
+
+    /**
+     * And that the SHOP LINE OUTLIVING THE ITEM costs one line, not the game.
+     *
+     * This is the same tutorial's own store patch with its `object.json`
+     * withheld, which is not a contrived pack - it is what the player assembles
+     * by installing two mods and turning one off. Splitting an item mod's
+     * records across two packs is the recommended shape (`dependencies`), the
+     * `append` op exists precisely so mod A can stock mod B's item, and nothing
+     * anywhere makes disabling B refuse while A is on.
+     *
+     * Before this was fixed, `bindStore` threw `store: unknown sval` from inside
+     * `bindCore` -> `startGame`, which the host runs at module top level: the
+     * player got the crash screen and no game at all, over one line of one
+     * shop's stock table. The resilience contract's whole claim is that a mod's
+     * mistake degrades, so what has to be true is BOTH halves - a fault the
+     * manager can attribute, and a store that is otherwise exactly itself.
+     */
+    it("survives the store patch with the item's own pack absent", () => {
+      /* The tutorial's `store` file only. Its `object` file is the one being
+       * withheld, so the jerkin never reaches the object registry. */
+      const composed = composeContentPacks([
+        corePack(["object", "store"]),
+        loadTutorial("tutorial-02-add-an-item", ["store"]),
+      ]);
+      /* The COMPOSER is not where this is caught, and that is the point: the
+       * fieldPatch targets a store core really has, and a stock entry is not a
+       * ref, so composition is clean and the binder is the first reader that
+       * can possibly know. */
+      expectNoProblems(composed);
+
+      const reg = new ObjRegistry({
+        ...(objPackFiles() as object),
+        object: readJson(join(CORE_PACK, "object.json")),
+      } as never);
+      expect(
+        reg.lookupSval(TV.SOFT_ARMOR, "Padded Jerkin"),
+        "the item's pack was supposed to be absent",
+      ).toBe(-1);
+
+      /* Binds at all - this is the assertion the whole fix is about. */
+      const storeReg = new StoreRegistry(composed.records["store"] as never[], reg);
+
+      /* One fault, on the mod that appended the line, naming the line. */
+      expect(storeReg.refused.length).toBe(1);
+      const fault = storeReg.refused[0]!;
+      expect(fault.id).toBe("tutorial-02-add-an-item");
+      expect(fault.store).toBe("STORE_ARMOR");
+      expect(fault.table).toBe("normal");
+      expect(fault.why).toContain("Padded Jerkin");
+
+      /* And the Armoury is otherwise EXACTLY itself. Derived from the same store
+       * bound with no mod at all rather than from a written-in number, so a
+       * binder that quietly emptied the table would fail here. */
+      const bare = new StoreRegistry(
+        (corePack(["store"]).files["store"] as { records: never[] }).records,
+        reg,
+      );
+      const before = bare.stores.find((s) => s.featName === "STORE_ARMOR")!;
+      const after = storeReg.stores.find((s) => s.featName === "STORE_ARMOR")!;
+      expect(after.normalTable.map((k) => k.name)).toEqual(
+        before.normalTable.map((k) => k.name),
+      );
+      expect(after.alwaysTable.map((k) => k.name)).toEqual(
+        before.alwaysTable.map((k) => k.name),
+      );
+      expect(after.buy!.length).toBe(before.buy!.length);
+      expect(after.owners.length).toBe(before.owners.length);
+
+      /* And every other shop in town, which is the half of "degrade" that a
+       * per-record assertion cannot see. */
+      expect(storeReg.stores.length).toBe(bare.stores.length);
+      for (const store of bare.stores) {
+        if (store.featName === "STORE_ARMOR") continue;
+        const same = storeReg.stores.find((s) => s.featName === store.featName)!;
+        expect(same.normalTable.length).toBe(store.normalTable.length);
+        expect(same.alwaysTable.length).toBe(store.alwaysTable.length);
+      }
     });
   });
 

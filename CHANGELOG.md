@@ -42,7 +42,7 @@ digest in the game's catalogue and must never be moved.
   tile still wins.
 - Tutorial 2 now stocks its item in the Armoury, and its finished mod is checked
   against the real store binder — which is where an item name that does not
-  resolve becomes an error rather than a shop that quietly lacks it.
+  resolve is caught, rather than becoming a shop that quietly lacks it.
 
 ### Fixed
 
@@ -104,6 +104,39 @@ digest in the game's catalogue and must never be moved.
   binds `world.json`; `realm`, `shape` and `flavor` publish a list and free the
   parser, and `flavor`'s reverse order is reproduced at its reader
   (`obj/flavor.ts`).
+- **A shop line naming a missing item took the whole game down.** `bindStore`
+  threw on a stock entry it could not resolve, from inside `bindCore` →
+  `startGame`, which the host runs at module top level — so the player got the
+  crash screen and no game at all. The `append` field op made that reachable from
+  an ordinary pair of mods and an ordinary click: mod A appends an item mod B
+  defines to a store's `normal` table (tutorial 2 is exactly this patch), the
+  player disables mod B, and the appended line now names nothing. A
+  mod-contributed line that resolves to nothing is now dropped from that one
+  table and reported against the mod on its own row in the mod manager; the rest
+  of the store — its owners, its buy list, its other stock — and every other shop
+  in town are untouched. **Core's own data still fails loudly:** the tolerance is
+  decided per line from the record's provenance, so an unresolvable entry in a
+  store no pack has touched throws exactly the message it always threw, which is
+  every store in a modless game. Covers `normal` and `always`, including
+  `always`'s svalless book lines. The `buy` list, the owner list and the entrance
+  feature still throw for anyone — a mod can append to those too, and that is the
+  same defect in a different field, not yet closed.
+- **The character dump called every installed content mod "(not installed)".** The
+  `[Mods enabled]` block resolved each enabled id's version out of the two bundled
+  PLUGIN registries only, so a mod carrying no `plugin.js` — most of them, and all
+  of the tutorial mods — matched neither and printed the "(not installed)"
+  fallback. A pack in the player's own mods folder was equally invisible whether it
+  shipped code or not, since those registries glob the bundle rather than the
+  folder. Measured in the running desktop build: two tutorial content packs
+  enabled and demonstrably composed, both reported as not installed. The version
+  now also resolves through the content-pack registry — every bundled pack plus
+  everything from the mods directory, a picked folder, or a repository install —
+  and "(not installed)" is kept for an id that genuinely resolves to nothing,
+  which is a real state worth a line. This mattered because naming the mods is the
+  block's entire purpose: a dump claiming a loaded mod is absent points the reader
+  at core for behaviour a mod caused. The list also moved out of `main.ts` into
+  `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
+  which is why a list that was wrong for every content-only mod stayed green.
 - **Three field-patch ops silently destroyed data instead of failing.** An `add`
   or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
   a number over it; a `merge` aimed at a list replaced the list with an object.

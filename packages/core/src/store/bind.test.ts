@@ -105,4 +105,167 @@ describe("StoreRegistry (store.c parsing / store_at)", () => {
     expect(stores.byFeat(FEAT.STORE_MAGIC)?.featName).toBe("STORE_MAGIC");
     expect(stores.byFeat(FEAT.FLOOR)).toBeNull();
   });
+
+  it("the shipped pack refuses nothing", () => {
+    /* The denominator for every test below: with no mod loaded, no record
+     * carries provenance and the drop path is unreachable, so an entry here
+     * would mean this file had started tolerating core's own data. */
+    expect(stores.refused).toEqual([]);
+  });
+});
+
+/**
+ * A stock line that resolves to nothing: whose mistake it is decides whether the
+ * game refuses to boot.
+ *
+ * WHAT MADE THIS REACHABLE. `append` on `normal` / `always` (mod-sdk patch.ts)
+ * is the op that lets one mod stock an item in a shop, and the tutorials teach
+ * it. So "mod A stocks an item mod B defines, player disables mod B" is an
+ * ordinary pair of mods and an ordinary click, and it used to reach
+ * `store: unknown sval` out of `bindCore` - which runs inside `startGame` at the
+ * host's module top level, i.e. the whole game failing to start.
+ *
+ * Provenance is written the way `stampProvenance` writes it, because that is the
+ * shape this code reads in production: `was` carries the DEFINING pack's own
+ * value for a table a later pack changed, and it is the only thing that can tell
+ * core's line from an appended one within a single list.
+ */
+describe("bindStore: an unresolvable stock line", () => {
+  const armour = (): StoreRecordJson =>
+    JSON.parse(
+      JSON.stringify(storeRecords.find((r) => r.store === "STORE_ARMOR")),
+    ) as StoreRecordJson;
+
+  /** `{tval, sval}` naming an item no pack defines. */
+  const GHOST = { tval: "soft armor", sval: "Padded Jerkin" };
+
+  /** A record with `$from` on it, in `stampProvenance`'s shape. */
+  function stamped(
+    rec: StoreRecordJson,
+    from: { owner: string; modifiedBy?: string[]; was?: Record<string, unknown> },
+  ): StoreRecordJson {
+    return { ...rec, $from: from } as StoreRecordJson;
+  }
+
+  it("throws when nothing touched the record", () => {
+    const rec = armour();
+    rec.normal!.push(GHOST);
+    expect(() => new StoreRegistry([rec], reg)).toThrow(
+      /store: unknown sval soft armor:Padded Jerkin/,
+    );
+  });
+
+  it("drops it and names the appending mod when a mod appended it", () => {
+    const base = armour();
+    const was = { normal: base.normal!.map((it) => ({ ...it })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.normal!.push(GHOST);
+
+    const bound = new StoreRegistry([rec], reg);
+    const armoury = bound.byName("STORE_ARMOR")!;
+
+    /* The line is gone and NOTHING ELSE IS. Compared against the same store
+     * bound with no mod at all, so this cannot pass on an empty table. */
+    const bare = stores.byName("STORE_ARMOR")!;
+    expect(armoury.normalTable.length).toBe(bare.normalTable.length);
+    expect(armoury.normalTable.map((k) => k.name)).toEqual(
+      bare.normalTable.map((k) => k.name),
+    );
+    expect(armoury.alwaysTable.length).toBe(bare.alwaysTable.length);
+    expect(armoury.buy!.length).toBe(bare.buy!.length);
+
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.refused[0]!.store).toBe("STORE_ARMOR");
+    expect(bound.refused[0]!.table).toBe("normal");
+    expect(bound.refused[0]!.why).toContain("Padded Jerkin");
+    /* One modifier, so no parenthetical set - the ordinary case pays nothing. */
+    expect(bound.refused[0]!.why).not.toContain("packs touching");
+  });
+
+  it("still throws for CORE's own line in a record a mod patched", () => {
+    /* The half of the rule that keeps core honest. The mod's append is fine;
+     * core's own list is what holds the bad line, and `was.normal` is what
+     * proves it - the entry is in the definer's own value, so the definer is
+     * answerable and the definer is core. */
+    const base = armour();
+    base.normal!.push(GHOST);
+    const was = { normal: base.normal!.map((it) => ({ ...it })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.normal!.push({ tval: "boots", sval: "Pair of Leather Boots" });
+
+    expect(() => new StoreRegistry([rec], reg)).toThrow(
+      /store: unknown sval soft armor:Padded Jerkin/,
+    );
+  });
+
+  it("names every pack that touched the store when more than one did", () => {
+    const base = armour();
+    const was = { normal: base.normal!.map((it) => ({ ...it })) };
+    const rec = stamped(base, {
+      owner: "core",
+      modifiedBy: ["mod-a", "mod-b"],
+      was,
+    });
+    rec.normal!.push(GHOST);
+
+    const bound = new StoreRegistry([rec], reg);
+    /* Attributed to the LAST modifier, because load order applies patches in
+     * order and it is the only one of the two core can single out - and the set
+     * is in the sentence, so a fault on the wrong row is still traceable. */
+    expect(bound.refused[0]!.id).toBe("mod-b");
+    expect(bound.refused[0]!.why).toContain("packs touching this store: core, mod-a, mod-b");
+  });
+
+  it("drops a mod-defined store's own bad line rather than throwing", () => {
+    /* A whole store a mod added: no `was`, and the definer is not core, so
+     * every line in it is the mod's to get wrong. */
+    const rec = stamped(
+      { ...armour(), store: "STORE_ARMOR", normal: [GHOST] },
+      { owner: "mod-a" },
+    );
+
+    const bound = new StoreRegistry([rec], reg);
+    expect(bound.byName("STORE_ARMOR")!.normalTable).toEqual([]);
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+  });
+
+  it("covers the `always` table and its svalless book lines too", () => {
+    /* `always:` takes two shapes and a mod appending to it can get either
+     * wrong; only one of them being survivable would be an arbitrary line. */
+    const base = armour();
+    const was = { always: (base.always ?? []).map((it) => ({ ...it })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.always = [...(rec.always ?? []), GHOST, { tval: "no such tval" }];
+
+    const bound = new StoreRegistry([rec], reg);
+    const bare = stores.byName("STORE_ARMOR")!;
+    expect(bound.byName("STORE_ARMOR")!.alwaysTable.length).toBe(bare.alwaysTable.length);
+    expect(bound.byName("STORE_ARMOR")!.alwaysBookTvals).toEqual(bare.alwaysBookTvals);
+    expect(bound.refused.map((r) => r.table)).toEqual(["always", "always"]);
+    expect(bound.refused.every((r) => r.id === "mod-a")).toBe(true);
+    expect(bound.refused[1]!.why).toContain("unknown always tval no such tval");
+  });
+
+  it("leaves the other stores in the pack whole", () => {
+    /* The outcome the resilience contract asks for, stated on the pack rather
+     * than on one record: one bad line costs one line. */
+    const base = armour();
+    const was = { normal: base.normal!.map((it) => ({ ...it })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.normal!.push(GHOST);
+
+    const bound = new StoreRegistry(
+      storeRecords.map((r) => (r.store === "STORE_ARMOR" ? rec : r)),
+      reg,
+    );
+    expect(bound.stores.length).toBe(stores.stores.length);
+    for (const bare of stores.stores) {
+      const after = bound.byName(bare.featName)!;
+      if (bare.featName === "STORE_ARMOR") continue;
+      expect(after.normalTable.length).toBe(bare.normalTable.length);
+      expect(after.alwaysTable.length).toBe(bare.alwaysTable.length);
+    }
+  });
 });

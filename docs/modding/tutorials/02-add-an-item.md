@@ -161,8 +161,9 @@ Three things worth knowing about that patch:
   `always` means a shop keeps one on the shelf at all times, which for most
   items is not what you want.
 - **`sval` is the item's name without the `~`.** If it does not match an item
-  that exists, the game says so at load rather than starting up with a broken
-  shop — so a typo here is loud, not silent.
+  that exists, the game drops that one line from the shop's table and reports it
+  against your mod in the mod manager — so a typo costs you a line and tells you
+  which one, rather than being silent or taking the game down with it.
 
 **`append` is why two shop mods can coexist.** It adds to the list rather than
 restating it, so core's own eighteen entries stay, and a second mod appending to
@@ -173,7 +174,12 @@ reports it as a conflict and the mod that loads last wins.
 
 There is one wrinkle: your `store.json` names your item, so it only makes sense
 while your `object.json` is also loaded. Keep both in the same mod, which is what
-this tutorial does.
+this tutorial does. If you do split them — a shop mod that stocks another mod's
+item is a perfectly reasonable thing to write — then the day the other mod is
+turned off, your appended line names nothing. The shop loses that line, the mod
+manager says so on your mod's row, and everything else in the Armoury is exactly
+as it was. Declare the other mod in your `dependencies` so the player is told
+before they get there.
 
 ## The finished version
 
