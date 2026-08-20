@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 40 into a CLOSED vocabulary", () => {
+  it("classifies all 41 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 40 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 41 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -186,7 +186,10 @@ describe("the switch census", () => {
        * (capabilities.ts's grantCovers and capability-describe.ts's
        * describeCapability) - the same class as the existing 17-case row,
        * since a mod cannot add a capability kind either. */
-      INTERNAL: 5,
+      /* 5 until `append`/`removeValue` took patch.ts's op switch to 8 cases.
+       * A field op is the mod system's own vocabulary, like a capability kind:
+       * what a mod varies is the PATH it addresses, never the verb. */
+      INTERNAL: 6,
       LOCALIZATION: 3,
       PARSER: 3,
       REACHABLE: 6,

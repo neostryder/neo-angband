@@ -22,5 +22,11 @@
       ],
       "desc": ["A big brown ant with jaws that strip wood. It is not fussy about what else they strip."]
     }
-  ]
+  ],
+  "fieldPatches": {
+    "core:giant-black-ant": [
+      { "op": "add", "path": "hit-points", "value": 3 },
+      { "op": "addFlag", "path": "flags", "flag": "GROUP_AI" }
+    ]
+  }
 }

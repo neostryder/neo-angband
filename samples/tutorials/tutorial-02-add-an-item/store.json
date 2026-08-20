@@ -1,0 +1,11 @@
+{
+  "fieldPatches": {
+    "core:store-armor": [
+      {
+        "op": "append",
+        "path": "normal",
+        "values": [{ "tval": "soft armor", "sval": "Padded Jerkin" }]
+      }
+    ]
+  }
+}

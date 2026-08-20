@@ -867,6 +867,7 @@
     "featIsWall",
     "fillCircle",
     "fillRectangle",
+    "fillTilesFromKin",
     "findAnyNearbyInjuredKin",
     "findArtifact",
     "findCodec",

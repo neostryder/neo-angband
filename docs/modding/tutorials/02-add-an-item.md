@@ -127,36 +127,53 @@ Your Padded Jerkin is a soft armour, and the game treats it as one everywhere:
   in the drop tables from the moment the mod is on.
 - **Shops will buy it,** because a shop's buy list is by item kind too.
 
-## The one place this is still crude
+## Putting it in a shop
 
-A shop will **not stock** your item on its own. That much is true of the original
-game too — a store's stock list names specific items, so a new one has to be put
-on the list.
+One thing does not happen on its own: a shop will not **stock** your item. That
+is true of the original game too — a store's stock list names specific items, so
+a new one has to be put on the list.
 
-What is ours, and worth saying plainly: **there is no clean way to add one entry
-to a list yet.** `fieldPatches` can set a value, merge an object, add or remove a
-flag, and do arithmetic — but it cannot append to an array. So putting your
-jerkin in the Armoury means `set`ting that store's whole `normal` list, all
-eighteen of core's entries plus yours:
+Adding a line to a list is one op. Make a `store.json` beside your `object.json`:
 
 ```json
 {
   "fieldPatches": {
     "core:store-armor": [
-      { "op": "set", "path": "normal", "value": [
-        "...every entry core already has, copied out of packages/content/pack/store.json...",
-        { "tval": "soft armor", "sval": "Padded Jerkin" }
-      ] }
+      {
+        "op": "append",
+        "path": "normal",
+        "values": [{ "tval": "soft armor", "sval": "Padded Jerkin" }]
+      }
     ]
   }
 }
 ```
 
-That works, and it has an obvious cost: two mods that both want something in the
-Armoury will overwrite each other, and a copied list goes stale when the base
-game changes its own. Everything else on this page composes cleanly with other
-mods; this does not. It is a known rough edge rather than the intended shape, so
-if you need it, expect it to get better.
+Restart, walk into the Armoury, and your jerkin is in the rotation with
+everything else — sometimes in stock, sometimes not, at whatever enchantment the
+store rolled, priced from what it turned out to be.
+
+Three things worth knowing about that patch:
+
+- **`core:store-armor`** is the store's record id: its code, `STORE_ARMOR`,
+  lowercased with `_` turned into `-`. Every ref works that way.
+- **`normal` is the "may stock" table; `always` is the staples.** Appending to
+  `always` means a shop keeps one on the shelf at all times, which for most
+  items is not what you want.
+- **`sval` is the item's name without the `~`.** If it does not match an item
+  that exists, the game says so at load rather than starting up with a broken
+  shop — so a typo here is loud, not silent.
+
+**`append` is why two shop mods can coexist.** It adds to the list rather than
+restating it, so core's own eighteen entries stay, and a second mod appending to
+the same store keeps its entry too. Nobody has to copy a list out of the base
+game's data and watch it go stale. Its counterpart is `removeValue`, which drops
+an entry — that one *can* take out something another mod added, so the game
+reports it as a conflict and the mod that loads last wins.
+
+There is one wrinkle: your `store.json` names your item, so it only makes sense
+while your `object.json` is also loaded. Keep both in the same mod, which is what
+this tutorial does.
 
 ## The finished version
 
