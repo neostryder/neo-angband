@@ -58,6 +58,26 @@ describe("bindCore", () => {
     expect(r.rooms).toBeDefined();
     expect(r.profiles).toBeDefined();
   });
+
+  /*
+   * finish_parse_hints (init.c L4313) publishes the head of a list parse_hint
+   * built by PREPENDING (L4297), so upstream's `hints` is in reverse file
+   * order. random_hint (ui-store.c L121-129) reservoir-samples over it, so a
+   * file-ordered list draws the same number of times and picks a DIFFERENT
+   * tip - the same trap boot already avoids for names.txt.
+   */
+  it("publishes hints in upstream's list order, reverse of hints.txt", () => {
+    const raw = loadRecords<{ H?: string; text?: string }>("hints")
+      .map((rec) => rec.H ?? rec.text)
+      .filter((text): text is string => Boolean(text));
+    const r = bindCore({ ...pack, hints: loadRecords("hints") });
+    expect(r.hints.length).toBe(raw.length);
+    expect(r.hints.length).toBeGreaterThan(1);
+    expect([...r.hints]).toEqual([...raw].reverse());
+    /* The head of the list is the LAST H: line in the file, which is what
+     * random_hint starts its reservoir on. */
+    expect(r.hints[0]).toBe(raw[raw.length - 1]);
+  });
 });
 
 describe("bootLevel", () => {

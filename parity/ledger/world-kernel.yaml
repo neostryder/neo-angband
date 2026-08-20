@@ -4,6 +4,17 @@ baseline: 4.2.6
 upstream:
   - path: src/cave.h
     items: [struct feature, struct square, struct chunk (core fields)]
+  - path: src/init.c
+    items:
+      - finish_parse_feat (init.c L2248-2279) - the shopnum / store_max
+        derivation and the look-prefix / look-in-preposition trailing space,
+        both in world/feature.ts (FeatureRegistry). shopnum is assigned in FEAT
+        order to every TF_SHOP feature (L2251-2257) and their count is
+        z_info->store_max (L2275), read as shopFeats() / storeMax; the town's
+        store lots and square_shopnum (cave-square.c L1512) are the only
+        consumers. The trailing space landed 2026-08-20 (872006e4), the
+        derivation in the same session; before it the store-index to feature
+        map was a hard-coded list in gen/cave.ts.
   - path: src/cave.c
     items: [cave_new, square_set_feat (feat_count + bright glow)]
   - path: src/cave-square.c

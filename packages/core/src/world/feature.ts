@@ -8,7 +8,7 @@
  */
 
 import { FlagSet } from "../bitflag.js";
-import { FEAT, RF, TERRAIN_FLAG_ENTRIES, TF } from "../generated/index.js";
+import { FEAT, RF, TERRAIN_ENTRIES, TERRAIN_FLAG_ENTRIES, TF } from "../generated/index.js";
 import type { ModExtensible } from "../mod/extension.js";
 import { attachExt } from "../mod/extension.js";
 
@@ -40,6 +40,14 @@ export interface Feature extends ModExtensible {
   lookInPreposition: string;
   /** RF_* monster resist flag index required to enter, or 0. */
   resistFlag: number;
+  /**
+   * finish_parse_feat (init.c L2251-2256): which shop this entrance leads to,
+   * 1-based, assigned in FEAT order to every TF_SHOP feature once the terrain
+   * parse has finished; 0 for everything that is not a shop. square_shopnum
+   * (cave-square.c L1512) reads it as `shopnum - 1`, and the number of them is
+   * z_info->store_max (L2275).
+   */
+  shopnum: number;
 }
 
 /** The compiled terrain.json record shape. */
@@ -144,6 +152,8 @@ export class FeatureRegistry {
   private byIdx: (Feature | undefined)[] = [];
   private byCode = new Map<string, Feature>();
   private byName = new Map<string, Feature>();
+  /** fidx of each shop entrance, indexed by store number (shopnum - 1). */
+  private shopFeatIdx: number[] = [];
 
   constructor(records: TerrainRecordJson[]) {
     const featMap = FEAT as Record<string, number>;
@@ -171,6 +181,7 @@ export class FeatureRegistry {
         lookPrefix: ensureTrailingSpace(joinLines(rec["look-prefix"])),
         lookInPreposition: ensureTrailingSpace(joinLines(rec["look-in-preposition"])),
         resistFlag: resolveResistFlag(rec["resist-flag"]?.[0]),
+        shopnum: 0, /* assigned by the finish_parse_feat pass below */
       };
       attachExt("terrain", rec, feature);
       this.byIdx[fidx] = feature;
@@ -185,6 +196,23 @@ export class FeatureRegistry {
         if (!target) throw new Error(`terrain: mimic not found: ${rec.mimic}`);
         f.mimic = target.fidx;
       }
+    }
+    /*
+     * finish_parse_feat (init.c L2249-2257, L2275): "Assign shop index based
+     * on the order within the other terrain" - one pass in FEAT order over
+     * every feature, ++shop_idx for each TF_SHOP one, and the final count is
+     * z_info->store_max.
+     *
+     * DERIVED, not listed. The SHOP flag is data: a mod that patches a
+     * terrain record's `flags:` to add SHOP gains a store the town has to lay
+     * out, and one that clears it loses a store - which is exactly what
+     * upstream's derivation does and what a hard-coded feature list cannot.
+     */
+    for (let fidx = 0; fidx < TERRAIN_ENTRIES.length; fidx++) {
+      const f = this.byIdx[fidx];
+      if (!f || !f.flags.has(TF.SHOP)) continue;
+      this.shopFeatIdx.push(fidx);
+      f.shopnum = this.shopFeatIdx.length;
     }
   }
 
@@ -222,6 +250,23 @@ export class FeatureRegistry {
 
   count(): number {
     return this.byCode.size;
+  }
+
+  /**
+   * z_info->store_max (finish_parse_feat L2275): how many shop entrances the
+   * terrain data defines, and so how many store lots town_gen_layout builds.
+   */
+  get storeMax(): number {
+    return this.shopFeatIdx.length;
+  }
+
+  /**
+   * The shop entrances by store number (index = shopnum - 1), i.e. the
+   * `f_info[feat].shopnum == n + 1` lookup build_store (gen-cave.c L2449)
+   * does for lot `n`.
+   */
+  shopFeats(): readonly number[] {
+    return this.shopFeatIdx;
   }
 
   /** Whether the feature has a terrain flag (feat_is_* style helper). */
