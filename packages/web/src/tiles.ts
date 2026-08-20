@@ -27,6 +27,7 @@
  */
 
 import {
+  fillTilesFromKin,
   getGraphicsMode,
   GRAPHICS_NONE,
   isDoubleHeightTile,
@@ -344,5 +345,12 @@ export async function loadTilePrefs(
       loadFile: (name: string) => mod.includes.get(name) ?? null,
     });
   }
+  /*
+   * LAST, so that any tile an author actually named - the pack's own, or a
+   * mod's pref layered above - is already in place and is left alone. This only
+   * supplies what nothing assigned, which in practice means content a mod added
+   * and the tile pack has never heard of. See fillTilesFromKin.
+   */
+  fillTilesFromKin(map, deps);
   return map;
 }

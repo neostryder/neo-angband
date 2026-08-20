@@ -109,28 +109,64 @@ Your ant already has an appearance, and you only wrote half of it:
 - **The letter `a` is not yours.** It comes from `"base": "ant"`, along with
   everything else the template carries. Change the base and the letter changes.
 
-That is the whole story in ASCII. **In a tile set it is not**, and this is the
-part nobody warns you about: a tile set maps *named* monsters to pictures, and it
-has never heard of yours. Your ant keeps drawing as a coloured letter while the
-monsters around it are pictures — not a bug, and not something the game can guess
-its way out of.
+In a tile set, `base` does more than pick the letter. A tile set maps *named*
+monsters to pictures and has never heard of yours — so the game gives your ant
+the tile of a monster that shares its `base`, whichever cell that pack happens to
+draw ants in. Your carpenter ant is an ant in a tiled dungeon, in every tile set,
+without you naming a picture.
 
-Two ways to fix it, and a mod can do either:
+This is why `base` is worth choosing with care rather than filling in: it is the
+single field that decides the letter, the template, and the tile. A monster on
+`"base": "ant"` is provided for; one on a base whose family the pack does not
+draw falls back to the coloured letter, which is the honest answer rather than a
+wrong picture.
 
-- **Point at a picture that already exists.** A mod can ship pref text that gets
-  layered over the tile set the player is using, so `monster:carpenter ant` can
-  borrow the soldier ant's tile — one line, no art.
-- **Ship your own picture.** The `neo-linoleum` tile engine takes loose,
-  individually named PNGs, so a mod can carry its own art for its own monsters.
+If you want a *specific* picture instead of your family's, a mod can say so. Both
+routes are past what this tutorial covers, and they differ more than they look:
 
-Both are past what this tutorial covers — see
-[modding/README.md](../README.md) for the pref and tile-pack routes. Worth
-knowing now, though, so that a letter among the pictures reads as a thing you
-have not done yet rather than a thing that is broken.
+- **Point at a picture that already exists.** Ship a `.prf` as a `prefs`
+  resource, and its `monster:carpenter ant:<attr>:<char>` line layers over the
+  player's tile set and wins over the family tile. One line, no art — but the
+  numbers are *atlas coordinates*, so they are correct for one pack and wrong for
+  every other. Reach for this when your mod ships or requires a particular set.
+- **Ship a whole tile set.** A mod with the `tiles` facet contributes a graphics
+  mode of its own (`tilePacks`), which is how the Linoleum sets are delivered.
+  That is a set the player chooses from the Graphics menu — not one picture added
+  to somebody else's set, which nothing supports today.
 
-## The finished version
+See [modding/README.md](../README.md) for both.
 
-`samples/tutorials/tutorial-03-add-a-monster/`.
+## Changing a monster that already exists
+
+One file can both add records and patch them, and the finished mod does — so the
+mirror of [Tutorial 1](01-tweak-a-value.md) is worth seeing on a monster:
+
+```json
+{
+  "records": [ ... your carpenter ant ... ],
+  "fieldPatches": {
+    "core:giant-black-ant": [
+      { "op": "add", "path": "hit-points", "value": 3 },
+      { "op": "addFlag", "path": "flags", "flag": "GROUP_AI" }
+    ]
+  }
+}
+```
+
+Giant black ants now have a little more health and hunt in groups. Two things
+that section is teaching beyond the ops themselves:
+
+- **`add` is not `set`.** `{"op": "add", "path": "hit-points", "value": 3}` means
+  "three more than whatever it is", so it still does the right thing if the base
+  game retunes the monster, and it still does the right thing if another mod
+  changed it first. `set` would silently undo both.
+- **`addFlag` composes.** Two mods adding different flags to the same monster both
+  get their flag; neither is a conflict. That is true of `addFlag`, `removeFlag`
+  and `append`, and not true of `set`, `merge`, `add` or `mul` — for those, two
+  mods on the same field is a reported conflict and the one that loads last wins.
+
+A patched monster keeps its picture, because the tile set already knows it. Only
+the ant you *added* needed provisioning.
 
 ---
 

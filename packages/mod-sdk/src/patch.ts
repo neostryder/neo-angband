@@ -34,14 +34,37 @@ export type FieldOp =
   /** Add a number to the numeric value at path (missing = 0). */
   | { op: "add"; path: string; value: number }
   /** Multiply the numeric value at path (missing = 0). */
-  | { op: "mul"; path: string; value: number };
+  | { op: "mul"; path: string; value: number }
+  /**
+   * Append values to the array at path (missing = []), preserving what is
+   * already there. This is the op that lets a mod add ONE entry to a list -
+   * an item to a store's `normal` stock table, an owner to a store, a blow to
+   * a monster - without restating the list, so two mods can both add to the
+   * same list and neither loses. Duplicates are kept: a list is not a set, and
+   * a store's stock table uses repetition as weighting.
+   */
+  | { op: "append"; path: string; values: JsonValue[] }
+  /**
+   * Remove every entry deep-equal to `value` from the array at path. The
+   * counterpart to `append`, so a mod can take an entry OUT of a list. Unlike
+   * `append` this is order-dependent, because it can erase another pack's
+   * appended entry - which is exactly the same-resource collision load order
+   * is meant to settle, so it is reported as a conflict.
+   */
+  | { op: "removeValue"; path: string; value: JsonValue };
 
 /** An ordered list of field operations - one pack's patch of one record. */
 export type FieldPatch = FieldOp[];
 
-/** The flag ops compose as set operations; the rest are order-dependent. */
+/**
+ * Which ops compose without anybody losing a contribution. The flag ops are
+ * set operations; `append` is pure addition - two packs appending to one list
+ * both keep their entries, so a shared list is NOT a collision the way a
+ * shared scalar is. Everything else is order-dependent and a second writer
+ * means load order decides.
+ */
 function isCommutative(op: FieldOp["op"]): boolean {
-  return op === "addFlag" || op === "removeFlag";
+  return op === "addFlag" || op === "removeFlag" || op === "append";
 }
 
 /* ------------------------------------------------------------------ *
@@ -142,10 +165,14 @@ function applyOp(record: JsonRecord, op: FieldOp): void {
       return;
     case "merge": {
       const cur = getPath(record, op.path);
+      if (Array.isArray(cur)) {
+        throw new PatchError(
+          `patch: cannot merge into field ${op.path}, which is a list - ` +
+            `use "append" to add entries, or "set" to replace the whole list`,
+        );
+      }
       const base =
-        typeof cur === "object" && cur !== null && !Array.isArray(cur)
-          ? (cur as JsonRecord)
-          : {};
+        typeof cur === "object" && cur !== null ? (cur as JsonRecord) : {};
       setPath(record, op.path, mergePatch(base, op.value));
       return;
     }
@@ -165,18 +192,84 @@ function applyOp(record: JsonRecord, op: FieldOp): void {
       return;
     }
     case "add": {
-      const cur = getPath(record, op.path);
-      const n = typeof cur === "number" ? cur : 0;
+      const n = asNumber(getPath(record, op.path), op.path, "add");
       setPath(record, op.path, n + op.value);
       return;
     }
     case "mul": {
-      const cur = getPath(record, op.path);
-      const n = typeof cur === "number" ? cur : 0;
+      const n = asNumber(getPath(record, op.path), op.path, "mul");
       setPath(record, op.path, n * op.value);
       return;
     }
+    case "append": {
+      const list = asList(getPath(record, op.path), op.path, "append");
+      list.push(...op.values);
+      setPath(record, op.path, list);
+      return;
+    }
+    case "removeValue": {
+      const list = asList(getPath(record, op.path), op.path, "removeValue");
+      const target = JSON.stringify(op.value);
+      setPath(
+        record,
+        op.path,
+        list.filter((v) => JSON.stringify(v) !== target),
+      );
+      return;
+    }
+    default:
+      /*
+       * A TYPO IS NOT A NO-OP. The switch above is exhaustive over FieldOp, so
+       * TypeScript never reaches here - but a mod's ops arrive as JSON, and
+       * nothing between the file and this function checks the op NAME. Without
+       * this arm `{"op": "apend"}` fell out of the switch, changed nothing, and
+       * left `composeContentPacks` reporting no problems at all: the author's
+       * patch simply did not happen and the game said everything was fine.
+       * There are eight op names now and two of them are new, so the odds of
+       * that misspelling went up rather than down.
+       */
+      throw new PatchError(
+        `patch: unknown op ${JSON.stringify((op as { op: unknown }).op)} at ` +
+          `${JSON.stringify((op as { path?: unknown }).path ?? "")} - expected one of ` +
+          `set, merge, addFlag, removeFlag, add, mul, append, removeValue`,
+      );
   }
+}
+
+/**
+ * The numeric value at a path, treating ABSENT as 0 but refusing a value that
+ * is present and not a number. Coercing those to 0 silently destroyed data: an
+ * `add` aimed at a list path replaced the whole list with a number, and an
+ * earlier documentation example did exactly that while the composer reported no
+ * problems at all. A wrong path is now an error rather than a quiet deletion.
+ */
+function asNumber(value: JsonValue | undefined, path: string, op: string): number {
+  if (value === undefined) return 0;
+  if (typeof value !== "number") {
+    throw new PatchError(
+      `patch: cannot ${op} field ${path}, which is ${describe(value)}, not a number`,
+    );
+  }
+  return value;
+}
+
+/** The array at a path (absent = empty), copied so the base record is untouched. */
+function asList(value: JsonValue | undefined, path: string, op: string): JsonValue[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new PatchError(
+      `patch: cannot ${op} field ${path}, which is ${describe(value)}, not a list`,
+    );
+  }
+  return [...value];
+}
+
+/** A value's shape, for an error message that says what was actually there. */
+function describe(value: JsonValue): string {
+  if (Array.isArray(value)) return "a list";
+  if (value === null) return "null";
+  if (typeof value === "object") return "an object";
+  return `${typeof value} (${JSON.stringify(value)})`;
 }
 
 /** A flag field must be a string array (or absent, treated as empty). */

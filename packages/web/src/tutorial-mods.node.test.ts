@@ -31,7 +31,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { validateManifest, composeContentPacks } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { composeModHooks } from "@rpgm-tools/neo-angband-core";
+import {
+  composeModHooks,
+  ObjRegistry,
+  StoreRegistry,
+  TV,
+} from "@rpgm-tools/neo-angband-core";
 import type { ModHooks } from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 
@@ -119,6 +124,31 @@ function corePack(files: readonly string[]): LoadedPack {
   return { manifest, files: out } as LoadedPack;
 }
 
+/**
+ * Core's object-pack files OTHER than `object` itself, which the store test
+ * replaces with the composed one. An ObjRegistry needs the whole set - egos,
+ * curses, brands, properties - because binding a kind resolves against all of
+ * them, so a store test cannot get away with the one file it cares about.
+ */
+function objPackFiles(): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const files = {
+    objectBase: "object_base",
+    egoItem: "ego_item",
+    artifact: "artifact",
+    curse: "curse",
+    brand: "brand",
+    slay: "slay",
+    activation: "activation",
+    objectProperty: "object_property",
+    flavor: "flavor",
+  } as const;
+  for (const [key, file] of Object.entries(files)) {
+    out[key] = readJson(join(CORE_PACK, `${file}.json`));
+  }
+  return out;
+}
+
 /** Find one composed record by its `name`, failing loudly rather than returning undefined. */
 function record(composed: ReturnType<typeof composeContentPacks>, file: string, name: string) {
   const recs = composed.records[file] as { name?: string }[] | undefined;
@@ -167,6 +197,70 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       expect(jerkin["type"]).toBe("soft armor");
       expect((jerkin["armor"] as Record<string, unknown>)["ac"]).toBe(5);
     });
+
+    /**
+     * And that the item can be BOUGHT, not only generated.
+     *
+     * An added item with an `alloc` block turns up in the dungeon for free, but
+     * a store stocks only what its own table names, so "does my item exist" and
+     * "can a player ever see it" are two different questions - and the second
+     * one is the one that makes an item mod feel finished. The tutorial appends
+     * the jerkin to the Armoury's `normal` table, which is the case the
+     * `append` op was added for: two mods can each add a line to that list and
+     * neither has to restate it.
+     *
+     * This binds for real rather than reading the composed JSON, because the
+     * store binder is where an item name that does not resolve becomes an
+     * error - `lookupSval` miss throws "unknown sval". Reading the JSON back
+     * would assert only that the text I wrote is the text I wrote.
+     */
+    it("puts the item in the Armoury's stock table, resolved to a real kind", () => {
+      const core = corePack(["object", "store"]);
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-02-add-an-item", ["object", "store"]),
+      ]);
+      expectNoProblems(composed);
+
+      const reg = new ObjRegistry({
+        ...(objPackFiles() as object),
+        object: { records: composed.records["object"] },
+      } as never);
+      const storeReg = new StoreRegistry(
+        composed.records["store"] as never[],
+        reg,
+      );
+
+      const armoury = storeReg.stores.find((s) => s.featName === "STORE_ARMOR");
+      expect(armoury, "the composed pack lost the Armoury").toBeDefined();
+
+      /* Resolved the way the store binder resolves it, and compared by
+       * identity, so this cannot pass on a name that merely looks right. */
+      const sval = reg.lookupSval(TV.SOFT_ARMOR, "Padded Jerkin");
+      expect(sval, "the jerkin did not reach the object registry").toBeGreaterThan(-1);
+      const kind = reg.lookupKind(TV.SOFT_ARMOR, sval);
+      expect(
+        armoury!.normalTable,
+        "the Armoury's normal table does not stock the tutorial's item",
+      ).toContain(kind);
+
+      /*
+       * And core's own stock survived: exactly one entry longer than the same
+       * store bound with no mod at all. Derived from core's own data rather
+       * than a written-in number, because the count that matters is "core's
+       * list, plus mine" - a `set` that replaced the list would pass a
+       * `toContain` check and fail this one.
+       */
+      const bare = new StoreRegistry(
+        (corePack(["store"]).files["store"] as { records: never[] }).records,
+        new ObjRegistry({
+          ...(objPackFiles() as object),
+          object: readJson(join(CORE_PACK, "object.json")),
+        } as never),
+      );
+      const bareArmoury = bare.stores.find((s) => s.featName === "STORE_ARMOR");
+      expect(armoury!.normalTable.length).toBe(bareArmoury!.normalTable.length + 1);
+    });
   });
 
   describe("03 - add a monster", () => {
@@ -184,6 +278,27 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
        * it and the tutorial's reader gets a game that fails at generation. */
       const bases = (core.files["monster_base"] as { records: { name: string }[] }).records;
       expect(bases.map((b) => b.name)).toContain(ant["base"]);
+    });
+
+    /*
+     * The mirror of tutorial 1, on a monster: the same file both ADDS a record
+     * and patches an existing one, which is the half of "creature modification"
+     * that adding an ant does not demonstrate. Asserted on relative values, so
+     * this test says what the tutorial says - three MORE hit points, and a flag
+     * ADDED to whatever core already had - rather than pinning core's numbers.
+     */
+    it("also patches a core monster, relative to core's own values", () => {
+      const core = corePack(["monster", "monster_base"]);
+      const before = (
+        core.files["monster"] as { records: { name: string; "hit-points": number; flags?: string[] }[] }
+      ).records.find((r) => r.name === "giant black ant")!;
+      const composed = composeContentPacks([core, loadTutorial("tutorial-03-add-a-monster", ["monster"])]);
+      expectNoProblems(composed);
+
+      const patched = record(composed, "monster", "giant black ant");
+      expect(patched["hit-points"]).toBe(before["hit-points"] + 3);
+      /* Added, not replaced: core's own flags are all still there. */
+      expect(patched["flags"]).toEqual([...(before.flags ?? []), "GROUP_AI"]);
     });
   });
 
