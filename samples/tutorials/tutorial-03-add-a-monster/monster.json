@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "name": "carpenter ant",
+      "base": "ant",
+      "color": "u",
+      "speed": 110,
+      "hit-points": 11,
+      "hearing": 10,
+      "smell": 20,
+      "armor-class": 6,
+      "sleepiness": 40,
+      "depth": 2,
+      "rarity": 1,
+      "experience": 6,
+      "blow": [
+        {
+          "method": "BITE",
+          "effect": "HURT",
+          "damage": "1d4"
+        }
+      ],
+      "desc": ["A big brown ant with jaws that strip wood. It is not fussy about what else they strip."]
+    }
+  ]
+}

@@ -1,15 +1,25 @@
 # The Mod System
 
+> **Want to make one? [Start with the tutorials](modding/tutorials/README.md)** -
+> six short ones, the first is two files. This page is the design, not the
+> on-ramp.
+
 > STATUS: TARGET DESIGN, not a description of the current build. This page is
 > the ratified design of the mod system (PORT_PLAN.md decisions 13-21). Most of
 > it - including the matrix below - states what mods are meant to be able to do,
 > in the present tense, and a reader cannot tell from this page which rows are
 > built. For the MEASURED current state, with counts and `file:line` citations,
-> read **`docs/modding/MOD_REACH.md`**; it is deliberately blunt about what is
-> absent. In short, as of 2026-07-29: gamedata records are real and layered
-> (add / patch / replace / remove, on 24 of 44 record files), and every code and
-> resource seam that exists is reachable only by a mod compiled into the web
-> bundle. `docs/modding/MOD_SEAMS.md` documents the behaviour seam that is built.
+> read **`docs/modding/MOD_REACH.md`**, or the
+> [summary table](modding/README.md#surface-status-complete-wip-not-yet) that a
+> test keeps honest against it; both are deliberately blunt about what is absent.
+>
+> **Two limits this notice used to name are now closed**, and the old wording
+> outlived them by long enough to be worth flagging rather than quietly deleting:
+> record layering reached 24 of 44 record files and now reaches every record of
+> every shipped file except `history`; and code seams were reachable only by a
+> mod compiled into the web bundle, whereas a mod folder now ships `plugin.js`
+> and reaches them from wherever it was installed from.
+> `docs/modding/MOD_SEAMS.md` documents the behaviour seam.
 
 Neo Angband is moddable by construction: the base game is itself a pack
 loaded through the same pipeline as any third-party mod. Moddability is a
@@ -70,10 +80,15 @@ tests - file a bug about what a mod *does* there, and a bug about the mod
 | `bug-fixes` | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps ([docs](modding/BUG_FIXES.md)). |
 | `neo-linoleum` | [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine - loose packs of individually named PNGs - plus all six upstream tile sets converted to it: 9161 files of art that belongs to the mod. Not the source of the game's own tiles, which are core content ([docs](LINOLEUM.md)). |
 | `borg` | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | Angband's automatic player, ported onto the agent API ([docs](BORG_AS_MOD.md)). |
+| `feature-restoration` | [neo-angband-mod-feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Mechanics later versions of Angband dropped, brought back one switch at a time, every switch off by default ([docs](modding/FEATURE_RESTORATION.md)). |
 
 ### Writing one
 
-Start at [modding/README.md](modding/README.md). The short version: a mod is a
+**[Start with the tutorials](modding/tutorials/README.md)** - six short ones,
+each teaching a single idea, the first of which is two files and about twenty
+lines. They are the on-ramp; everything below is reference.
+
+The short version: a mod is a
 folder with a `manifest.json`, and everything else is optional - data files to
 add or patch records, PNGs for a tile pack, or a single `plugin.js` for code.
 [modding/PLUGINS.md](modding/PLUGINS.md) covers the plugin ABI and
@@ -84,7 +99,7 @@ engine promises your mod across releases.
 
 The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
 
-- **Core** is exactly two things: faithful Angband 4.2.6 parity, and the
+- **Core** is exactly two things: faithful vanilla Angband parity, and the
   mod architecture itself (the registries, composition engine, sandbox,
   save namespacing, and SDK described below). Nothing else.
 - **Everything new is a mod.** Any feature, behavior, or visual beyond
@@ -92,8 +107,8 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   quality-of-life - ships as a mod, never baked into the port. Core ships
   the extensibility SEAMS (part of the mod architecture); mods ship the
   features that ride them.
-- **NO MOD SHIPS IN THE BOX.** A fresh install is Angband 4.2.6 and nothing
-  else. The four first-party mods each live in their own repository, carry their
+- **NO MOD SHIPS IN THE BOX.** A fresh install is vanilla Angband and nothing
+  else. The first-party mods each live in their own repository, carry their
   own release tags and tests, and arrive through the mod manager's *Install a
   mod...* row - the same route, and the same digest verification, a third-party
   mod uses. See [Where each mod lives](#where-each-mod-lives) below.
@@ -101,7 +116,7 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   This is the load-bearing form of "the seams are real". A modding system whose
   author's own mods take a private path into the build is a modding system nobody
   has tested; bundling them would have hidden every defect in the install path
-  behind four mods that never used it. Emptying the bundle is what forced the
+  behind the mods that never used it. Emptying the bundle is what forced the
   download route, the folder code loader and the plugin ABI to actually work.
 - **Cheaty mods are allowed.** A mod may add, patch, replace, or remove
   anything - up to the rules that make the game Angband, or a roguelike at
@@ -120,7 +135,7 @@ and Networking are NOT core modules. Core provides only the generic
 extension surface (command queue, event bus, string-keyed registries, the
 sandboxed plugin API, save namespaces, render hooks); a MOD builds the
 NPC, dialog, quest, or networking SYSTEM on it. The only related things in
-core are the upstream parity pieces (the 4.2.6 town and its shops, the
+core are the upstream parity pieces (the vanilla town and its shops, the
 win condition), implemented through these same surfaces so mods can
 overhaul them. The matrix asserts what mods CAN do, not what core ships.
 

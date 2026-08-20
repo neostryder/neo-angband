@@ -240,6 +240,14 @@ export interface GameObject {
   originRace: number;
   /** Inscription, or null (upstream quark). */
   note: string | null;
+  /**
+   * obj->discount: a store-rolled percentage price cut (0/10/25/50/75/90),
+   * upstream's mass_produce (pre-4.2.6; the field and the roll are both absent
+   * from this port's 4.2.6 baseline). Optional and omitted by default so an
+   * existing save with no discounted stock needs no migration - see
+   * store/store.ts's DiscountRollHandler for where it is set.
+   */
+  discount?: number;
 }
 
 /** A blank object (OBJECT_NULL / object_new); kind must be set later. */
@@ -337,6 +345,7 @@ export function objectCopy(src: GameObject): GameObject {
     originDepth: src.originDepth,
     originRace: src.originRace,
     note: src.note,
+    ...(src.discount !== undefined ? { discount: src.discount } : {}),
   };
 }
 

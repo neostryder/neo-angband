@@ -43,6 +43,7 @@ import {
   characterFlagsScreen,
   CHARSHEET_PROMPT_LABELS,
   MODE_VIEW_IDS,
+  buildCharacterDump,
 } from "./charsheet";
 import {
   characterScreen,
@@ -1252,5 +1253,46 @@ describe("showCharacterSheet: RNG invariance (pure display)", () => {
     // The narrow list builder is equally pure.
     characterSheetLines(state, "Fred", 40);
     expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The character dump's [Mods enabled] block.
+ *
+ * A dump is the artefact players hand each other, and a mod's change looks
+ * exactly like a core bug in one. This block is the answer - and it is also the
+ * one thing in write_character_dump with no upstream line behind it, so both
+ * halves of the claim need pinning: that it appears when a mod is on, and that
+ * a vanilla dump is byte-for-byte what it was before this existed.
+ * ------------------------------------------------------------------ */
+describe("character dump - enabled mods", () => {
+  const dumpOf = (mods?: readonly { id: string; version: string }[]): string =>
+    buildCharacterDump(makeTestState(loc(2, 2)), "Fred", mods ? { mods } : {});
+
+  it("writes the block, one line per mod, in the order given", () => {
+    const text = dumpOf([
+      { id: "qol", version: "0.4.1" },
+      { id: "feature-restoration", version: "0.2.0" },
+    ]);
+    expect(text).toContain("  [Mods enabled]");
+    const lines = text.slice(text.indexOf("  [Mods enabled]")).split("\n");
+    expect(lines.slice(2, 4)).toEqual(["qol 0.4.1", "feature-restoration 0.2.0"]);
+  });
+
+  it("writes NOTHING when no mods are enabled, and nothing for an empty list", () => {
+    /* The parity-relevant half. An empty heading would be a line upstream never
+     * writes, in the case the parity claim actually covers - so "no mods" has to
+     * be the ABSENCE of the block, not an empty one. */
+    const vanilla = dumpOf();
+    expect(vanilla).not.toContain("[Mods enabled]");
+    expect(dumpOf([])).toBe(vanilla);
+  });
+
+  it("changes a dump in no other way than by appending that block", () => {
+    /* Guards against the block being threaded through something that also
+     * reorders or re-renders an earlier section: everything before it must be
+     * the unmodded dump, unchanged. */
+    const withMods = dumpOf([{ id: "qol", version: "0.4.1" }]);
+    expect(withMods.startsWith(dumpOf())).toBe(true);
   });
 });

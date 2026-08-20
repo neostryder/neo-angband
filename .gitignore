@@ -1,4 +1,5 @@
 node_modules/
+.claude/
 dist/
 dist-web/
 # Declarations tsc emits only so the Electron front end can join `tsc -b`; the

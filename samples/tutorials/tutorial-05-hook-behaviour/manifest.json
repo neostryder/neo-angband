@@ -1,0 +1,12 @@
+{
+  "id": "tutorial-05-hook-behaviour",
+  "name": "Tutorial 5: Hook Behaviour",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "engine": ">=0.20.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder",
+  "description": "The smallest mod that runs code rather than shipping data: eleven lines of plugin.js that make the level-up message read \"Congratulations! Welcome to level 7.\" instead of \"Welcome to level 7.\"\n\nSee docs/modding/tutorials/05-hook-behaviour.md."
+}

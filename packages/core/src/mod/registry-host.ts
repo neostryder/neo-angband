@@ -113,6 +113,7 @@ import type {
 } from "../combat/mon-melee.js";
 import { blowEffect } from "../combat/mon-melee.js";
 import type {
+  DiscountRollHandler,
   MassProduceHandler,
   StoreBehaviourRegistry,
   WillBuyHandler,
@@ -415,6 +416,14 @@ export interface StoreFacade {
   setWillBuy(feat: number | typeof ANY_STORE, handler: WillBuyHandler): void;
   /** The buy decision installed for that key, or null. Wrap by re-registering. */
   willBuyFor(feat: number | typeof ANY_STORE): WillBuyHandler | null;
+  /**
+   * Install (or replace) the discount roll (mass_produce's discount arm,
+   * dropped from this port's 4.2.6 baseline - see DiscountRollHandler). No
+   * handler installed, the default, means no store ever discounts anything.
+   */
+  setDiscountRoll(handler: DiscountRollHandler): void;
+  /** The discount roll currently installed, or null. */
+  discountRollHandler(): DiscountRollHandler | null;
 }
 
 /** The player-command facade (gated by registry:command). */
@@ -1204,6 +1213,14 @@ export function createModRegistryHost(
       willBuyFor(feat): WillBuyHandler | null {
         requireCap(capabilities, "store");
         return requireTarget(targets.stores, "store").willBuyFor(feat);
+      },
+      setDiscountRoll(handler): void {
+        requireCap(capabilities, "store");
+        requireTarget(targets.stores, "store").registerDiscountRoll(handler);
+      },
+      discountRollHandler(): DiscountRollHandler | null {
+        requireCap(capabilities, "store");
+        return requireTarget(targets.stores, "store").discountRollHandler();
       },
     },
     commands: {

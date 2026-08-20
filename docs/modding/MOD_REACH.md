@@ -918,6 +918,20 @@ and the host constructs it for real:
 - Consent UI is real (`packages/web/src/capability-describe.ts` marks the four
   system domains `elevated`).
 
+> **THE GATE BELOW IS CLOSED — what follows to the end of this section is the
+> BEFORE picture**, kept because the reasoning is still the reason the plugin ABI
+> has the shape it has. The four numbered consequences were all true and are now
+> all false. A mod folder ships `plugin.js` beside `manifest.json`; the host
+> loads it from wherever the folder actually is and calls `hooks(ctx)` and
+> `register(host, ctx)` on it, so a mod installed from a repository or picked
+> from disk reaches the capability-gated registries exactly as a bundled one
+> does. `packages/web/src/mod-plugin.ts` is the contract, `main.ts`'s
+> `activeModCode().plugins` loop is the production caller, and
+> `mod-code.node.test.ts` drives the whole path against real files and a real
+> dynamic import. The shipped `feature-restoration` mod uses it to reach
+> `registry:store` from its own repository. Consequence 4 (the CLI host) has not
+> been re-measured since and should be treated as unverified rather than false.
+
 **And now the part that matters.** Both code-discovery paths are build-time Vite
 globs over a directory inside the web package:
 
