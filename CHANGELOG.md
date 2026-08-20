@@ -61,6 +61,49 @@ digest in the game's catalogue and must never be moved.
   now the test that would have caught it. A port defect rather than an upstream
   wart — upstream renders these lines correctly — so it belongs in core, not in
   `bug-fixes`.
+- **The town laid out eight store lots no matter what the terrain data said, and
+  three other post-parse hooks were absent.** `finish_parse_feat`'s trailing-space
+  half landed above; the same hook also derives each shop entrance's `shopnum`
+  from the order of the `SHOP` flags and counts them into `z_info->store_max`
+  (`init.c` L2249-2257, L2275), and the port hard-coded that eight-feature list in
+  `town_gen_layout` instead. So a mod that flags another terrain `SHOP` got a
+  store with no door anywhere in town — unreachable for the whole game — and one
+  that cleared a `SHOP` flag left a lot leading to a shop that no longer existed.
+  `FeatureRegistry` now assigns `shopnum` in `FEAT` order and exposes
+  `storeMax` / `shopFeats()`, and the town reads those. `TOWN_STORE_FEATS` stays
+  as the shipped-data expectation with a test that fails if the two ever part.
+
+  Audited the other twelve `finish_parse_*` hooks against the port at the same
+  time. Two more were missing:
+
+  - **A bad critical-level table was accepted in silence.**
+    `finish_parse_constants` runs `check_critical_levels` (`init.c` L986-1020) over
+    the melee and ranged cutoff tables and refuses the data when the cutoffs do
+    not strictly increase, because the `power >= cutoff` walk can never reach a
+    row whose cutoff did not rise — that critical grade simply stops happening and
+    the damage multiplier is quietly wrong. `bindConstants` did no such check, and
+    `melee-critical-level` is a top-level key of the constants record that a mod
+    can replace wholesale. It now rejects, with the last row's cutoff exempt
+    exactly as upstream leaves it (which is why the shipped tables can end in
+    `-1`), and the `o-` tables unchecked exactly as upstream leaves them.
+  - **Shopkeeper tips came out in the wrong order.** `parse_hint` prepends onto a
+    list and `finish_parse_hints` publishes its head, so upstream's `hints` is in
+    reverse `hints.txt` order; `bindCore` published file order. `random_hint`
+    reservoir-samples over that list, so the draw count matched and the tip did
+    not. Reversed at boot, the way `names.txt` already is for the same reason.
+
+  The remaining ten are reproduced or have nothing to reproduce, recorded here so
+  the next audit does not repeat the reading: `player_prop`'s per-element
+  expansion and its `bindui` binding are ported (`player/abilities.ts`,
+  `game/ui-entry.ts`), `names`' list-to-array reversal (`session/boot.ts`),
+  `trap`'s list-to-array with `tidx` (`world/trap.ts`), `history`'s entry
+  reversal and successor resolution (`player/bind.ts`), `p_race`'s `ridx` and
+  `class`'s `cidx` (array index, `player/bind.ts`); `body`'s `equip_slots_max`
+  padding is a no-op for a single 12-slot body and the port carries the real slot
+  count; `world`'s level-reference validation has no port subject, since nothing
+  binds `world.json`; `realm`, `shape` and `flavor` publish a list and free the
+  parser, and `flavor`'s reverse order is reproduced at its reader
+  (`obj/flavor.ts`).
 - **Three field-patch ops silently destroyed data instead of failing.** An `add`
   or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
   a number over it; a `merge` aimed at a list replaced the list with an object.

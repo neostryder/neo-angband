@@ -55,10 +55,17 @@ deferred:
   - "town_gen: NOT a minimal open level, and has not been one since the
     faithful town landed. town_gen_layout is ported whole - the lava streamers,
     the town-sized starburst, the north-wall stair search, the lot grid, all
-    eight stores through build_store (TOWN_STORE_FEATS is the store-index to
-    feature map, Home included), lot_is_clear / lot_has_shop, build_ruin at 80%
-    per lot, the cleared street, and the day/night resident count. The RNG draw
-    order is reproduced including Angband's MIN/MAX macro re-evaluation."
+    eight stores through build_store, lot_is_clear / lot_has_shop, build_ruin at
+    80% per lot, the cleared street, and the day/night resident count. The RNG
+    draw order is reproduced including Angband's MIN/MAX macro re-evaluation.
+    The store-index to feature map is FeatureRegistry.shopFeats(), derived from
+    the terrain data's TF_SHOP flags by finish_parse_feat (init.c L2251-2257)
+    exactly as gen-cave.c L2449 reads it, and z_info->store_max is
+    FeatureRegistry.storeMax. Until 2026-08-20 both were the hard-coded
+    TOWN_STORE_FEATS list, which the row named as if it were the mapping: that
+    made a mod's SHOP terrain a store with no door anywhere in town. The list is
+    kept as the shipped-data expectation, with a test that fails if the
+    derivation and the list ever part."
   - "Persistent-level handling: LIVE (PORT_TODO 4.3, 2026-08-06), not
     unexercised. build_staircase_rooms runs under dun.persist in classic,
     modified and moria; handle_level_stairs applies the persistent minsep of 4
