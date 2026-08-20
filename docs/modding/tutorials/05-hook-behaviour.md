@@ -127,7 +127,7 @@ Turn the mod off, reload, and it reads *"Welcome to level 2."* again.
 
 ## The finished version
 
-`samples/tutorials/05-hook-behaviour/`, which really is imported and really is
+`samples/tutorials/tutorial-05-hook-behaviour/`, which really is imported and really is
 folded through the game's own hook composition on every test run — the test would
 fail if this page's code stopped working.
 

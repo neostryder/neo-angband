@@ -16,7 +16,7 @@ export default {
   api: 1,
 
   hooks(ctx) {
-    if (ctx.flags["tutorial-add-an-option.congratulate"] !== true) return {};
+    if (ctx.flags["tutorial-06-add-an-option.congratulate"] !== true) return {};
     return {
       messageText: (raw) =>
         raw.startsWith("Welcome to level ") ? `Congratulations! ${raw}` : raw,

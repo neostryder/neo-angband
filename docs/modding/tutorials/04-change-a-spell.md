@@ -108,7 +108,7 @@ Roll a Priest, learn Minor Healing, and open the spell menu. Its mana cost reads
 
 ## The finished version
 
-`samples/tutorials/04-change-a-spell/`.
+`samples/tutorials/tutorial-04-change-a-spell/`.
 
 ---
 

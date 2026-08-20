@@ -30,8 +30,10 @@ digest in the game's catalogue and must never be moved.
 - **Six modding tutorials** ([docs/modding/tutorials/](docs/modding/tutorials/README.md)),
   each teaching one idea and ending in a visible result - from changing a single value to
   running code behind a player-facing switch. Every tutorial's finished mod is a real folder
-  under `samples/tutorials/`, composed against the shipped game data on every test run, so a
-  tutorial cannot go quietly stale.
+  under `samples/tutorials/`, composed against the shipped game data on every test run and
+  checked against the game's own mods-folder reader, so a tutorial cannot go quietly stale
+  and its finished mod cannot stop being installable. Copy any of the six into `mods/` to
+  run them without typing anything.
 - **[Feature restoration](docs/modding/FEATURE_RESTORATION.md)** written up as a named
   concept: vanilla stays vanilla, and dropped mechanics come back as optional mods - with the
   research rules (name the version, respect the modern surrounding system, one switch per

@@ -108,7 +108,7 @@ game underneath is still the vanilla one.
 
 ## The finished version
 
-`samples/tutorials/01-tweak-a-value/` in this repository is exactly this mod.
+`samples/tutorials/tutorial-01-tweak-a-value/` in this repository is exactly this mod.
 It is not a copy of the tutorial — it is a mod that gets loaded and checked
 against the real game data on every test run, so if anything on this page ever
 stops being true, the build fails.
