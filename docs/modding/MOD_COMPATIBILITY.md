@@ -87,6 +87,23 @@ This is the same behaviour the *other* half of the composer has had all along:
 carried on, and 24 take a "composable" one that threw. Nobody chose that split;
 it fell out of the shape of core's own records.
 
+**A patch that applies cleanly can still name something that is not there,** and
+until 2026-08-20 that was a *worse* outcome than a missing target: the composer
+was satisfied, and the binder threw. A store's `normal` stock table is the case
+that made it ordinary — `append` exists so mod A can stock an item mod B defines,
+tutorial 2 teaches exactly that patch, and disabling mod B left an appended line
+naming nothing. `bindStore` threw `store: unknown sval` from inside `bindCore`,
+which the host runs at module top level, so one line of one shop's stock table
+produced the crash screen and no game.
+
+The rule is now gate 3's rule one layer down: the line is dropped, the mod is
+told on its own row, and the rest of the store — and every other store — is
+untouched. **Core's own data still throws,** and record provenance is what
+separates them: an unresolvable entry in a store no pack has touched is core's
+mistake and fails loudly, which is every store in a modless game. Currently
+`normal` and `always` only; a bad `buy` tval, owner or entrance feature still
+takes the boot down for everyone.
+
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,

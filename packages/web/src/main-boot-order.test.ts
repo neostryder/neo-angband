@@ -197,4 +197,26 @@ describe("main boot order", () => {
     const moduleUrl = `data:text/javascript;base64,${Buffer.from(emitted).toString("base64")}`;
     await expect(import(moduleUrl)).resolves.toBeDefined();
   });
+
+  /**
+   * Core drops a mod's unresolvable shop line and records it; THIS is where the
+   * record becomes something a player can read.
+   *
+   * Without this line the fix is a green-and-dead seam of exactly the kind this
+   * repository has shipped three times (#245, #246, #247): `StoreRegistry.refused`
+   * would be correct, tested, and read by nobody, and the observable behaviour
+   * would be a shop quietly one line short with no explanation anywhere - which
+   * is worse than the crash it replaced, because at least the crash said
+   * something. main.ts boots a game on import and cannot be imported here, so the
+   * call is asserted on its source with comments stripped: a citation must not be
+   * able to satisfy a claim about code.
+   */
+  it("reports every dropped store stock line as a mod fault", () => {
+    const noComments = mainSource
+      .replace(/\/\*[\s\S]*?\*\//gu, "")
+      .replace(/\/\/[^\n]*/gu, "");
+    const at = noComments.search(/stores\?\.refused/u);
+    expect(at, "main.ts never reads StoreRegistry.refused").toBeGreaterThan(-1);
+    expect(noComments.slice(at, at + 200)).toMatch(/reportModFault\(/u);
+  });
 });
