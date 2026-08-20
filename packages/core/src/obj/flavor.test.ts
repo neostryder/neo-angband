@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { KF, TV } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
+import { SV_UNKNOWN } from "./types.js";
 import type { ObjPackJson, ObjectKind } from "./types.js";
 import { objectNew, tvalCanHaveFlavor } from "./object.js";
 import { FlavorKnowledge } from "./knowledge.js";
@@ -221,5 +222,137 @@ describe("describeObject with flavours (obj_desc_get_basename show_flavor)", () 
 
     const name = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
     expect(name).toContain(`of ${potionKind.name}`);
+  });
+});
+
+/**
+ * THE ORDER OF THE FLAVOUR LIST, which is what decides who gets which gem.
+ *
+ * `flavor_assign_random` walks the list BACKWARDS to reproduce C's
+ * prepend-into-a-linked-list, so a flavour's index in `reg.flavors` selects it -
+ * and the list therefore has to be in flavor.txt's own line order. The binder
+ * used to bind every `flavor:` line before every `fixed:` line, which is the
+ * reverse of how the file writes a ring or amulet record.
+ *
+ * That was invisible in an ordinary game and only an ordinary game was ever
+ * measured: a fixed flavour keeps its sval, `flavor_assign_random` skips it, and
+ * the random ones kept their relative order. `birth_randarts` is the switch that
+ * exposed it - `flavor_reset_fixed` scrubs all but the One Ring's fixed sval and
+ * drops eight more entries into the random pool, at the wrong end of the list.
+ * The draw COUNT is identical either way, so no RNG probe could have caught it;
+ * only the assignment itself shows it, which is what these assert.
+ */
+describe("bindFlavors: flavor.txt line order", () => {
+  const reg = buildReg();
+
+  it("binds a record's fixed flavours before its random ones", () => {
+    /* flavor.txt: ring `fixed:` at L18-30, then `flavor:` at L32-73. */
+    const rings = reg.flavors.filter((f) => f.tval === TV.RING);
+    const fixedAt = rings.flatMap((f, i) => (f.sval !== SV_UNKNOWN ? [i] : []));
+    const randomAt = rings.flatMap((f, i) => (f.sval === SV_UNKNOWN ? [i] : []));
+    expect(fixedAt.length).toBe(4);
+    expect(randomAt.length).toBeGreaterThan(30);
+    expect(Math.max(...fixedAt)).toBeLessThan(Math.min(...randomAt));
+
+    /* The end of the list is the end of the file, and the end of the list is
+     * where the reverse walk starts - so name it rather than trusting the
+     * inequality above to have meant something. */
+    expect(rings.at(-1)!.text).toContain("Adamantite");
+    expect(rings[0]!.text).toContain("Plain Gold");
+  });
+
+  it("binds the amulet record the same way", () => {
+    const amulets = reg.flavors.filter((f) => f.tval === TV.AMULET);
+    const fixedAt = amulets.flatMap((f, i) => (f.sval !== SV_UNKNOWN ? [i] : []));
+    const randomAt = amulets.flatMap((f, i) => (f.sval === SV_UNKNOWN ? [i] : []));
+    expect(fixedAt.length).toBe(4);
+    expect(Math.max(...fixedAt)).toBeLessThan(Math.min(...randomAt));
+    expect(amulets[0]!.text).toContain("Bronze");
+    expect(amulets.at(-1)!.text).toContain("Mother-of-Pearl");
+  });
+
+  it("hands out different gems under randarts if the list order changes", () => {
+    /*
+     * THE PROOF THAT THE ORDER IS OBSERVABLE, and the only one that does not
+     * need a golden vector recorded from a build of the C game.
+     *
+     * `flavorInit` takes the flavour list as a dependency, so the binder does
+     * not have to be broken again to measure what breaking it did: the list is
+     * simply regrouped the way the old binder emitted it - every `flavor:`
+     * entry of a record before every `fixed:` one - and both are run against
+     * the same seed. Under `birth_randarts` the two assignments differ, which
+     * is the defect; with randarts off they are identical, which is why it
+     * survived every measurement that was ever taken of it.
+     */
+    const r = buildReg();
+
+    /* The old binder's order. Each flavour record is one tval and its entries
+     * are contiguous, so grouping the flat list by tval and putting the random
+     * entries of each group first reproduces it exactly. */
+    const oldOrder = [...new Set(r.flavors.map((f) => f.tval))].flatMap((tval) => {
+      const group = r.flavors.filter((f) => f.tval === tval);
+      return [
+        ...group.filter((f) => f.sval === SV_UNKNOWN),
+        ...group.filter((f) => f.sval !== SV_UNKNOWN),
+      ];
+    });
+    expect(oldOrder.length).toBe(r.flavors.length);
+    expect(oldOrder).not.toEqual(r.flavors);
+
+    const ringsAndAmulets = r.kinds.filter(
+      (k) => (k.tval === TV.RING || k.tval === TV.AMULET) && k.kidx < r.ordinaryKindCount && k.name,
+    );
+    expect(ringsAndAmulets.length).toBeGreaterThan(20);
+
+    const gems = (flavors: typeof r.flavors, birthRandarts: boolean): string[] => {
+      const assignment = flavorInit(20260820, new FlavorKnowledge(r.ordinaryKindCount), {
+        kinds: r.kinds,
+        flavors,
+        ordinaryKindCount: r.ordinaryKindCount,
+        nameSections,
+        birthRandarts,
+      });
+      return ringsAndAmulets.map((k) => assignment.text(k));
+    };
+
+    /* Ordinary game: the fixed entries are skipped either way, so the order
+     * they sit in cannot be seen. This is the half that kept it hidden. */
+    expect(gems(oldOrder, false)).toEqual(gems(r.flavors, false));
+
+    /* Randarts: seven of the eight fixed entries join the random pool, and now
+     * where they sit decides who gets them. */
+    expect(gems(oldOrder, true)).not.toEqual(gems(r.flavors, true));
+  });
+
+  it("keeps every randarts ring flavour real, unique, and seed-stable", () => {
+    const r = buildReg();
+    const draw = (): string[] => {
+      const assignment = flavorInit(20260820, new FlavorKnowledge(r.ordinaryKindCount), {
+        kinds: r.kinds,
+        flavors: r.flavors,
+        ordinaryKindCount: r.ordinaryKindCount,
+        nameSections,
+        birthRandarts: true,
+      });
+      return r.kinds
+        .filter((k) => k.tval === TV.RING && k.kidx < r.ordinaryKindCount && k.name)
+        .map((k) => assignment.text(k));
+    };
+
+    const texts = draw();
+    expect(texts.length).toBeGreaterThan(20);
+    for (const t of texts) expect(t.length).toBeGreaterThan(0);
+
+    /* No two rings share a gem, and every gem is one flavor.txt declares. */
+    expect(new Set(texts).size).toBe(texts.length);
+    const known = new Set(r.flavors.filter((f) => f.tval === TV.RING).map((f) => f.text));
+    for (const t of texts) expect(known.has(t)).toBe(true);
+
+    /* "Plain Gold" is the One Ring's and `flavor_reset_fixed` spares it, so it
+     * never reaches the random pool for an ordinary ring to be handed. */
+    expect(texts).not.toContain("Plain Gold");
+
+    /* And the same seed reproduces it, which is what seed_flavor is for. */
+    expect(draw()).toEqual(texts);
   });
 });
