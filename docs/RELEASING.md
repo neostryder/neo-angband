@@ -36,6 +36,28 @@ So the push is automated off a git tag, and nothing else does it:
 git tag v0.20.0 && git push origin master v0.20.0
 ```
 
+> ### ⚠️ `git push origin master` is NOT how this repository publishes
+>
+> That line is the npm trigger and it is written the way it would be in a normal
+> repository. This one is not normal, and the difference matters before anybody
+> types it:
+>
+> **The public `master` is a single squashed commit.** `ea5d5b3e4`, *"Squash:
+> curated tree on top of angband/angband"*, whose parent is upstream Angband's
+> own `dc40ec9e0` (`4.2.6-173`). `v0.20.0` and `v0.20.1-edge.1` both point at it.
+> The development history — over a thousand commits — has never been pushed and
+> is not meant to be. What the public repository holds is a curated *tree*, not
+> this repository's *history*.
+>
+> **Git will stop you, once.** The two histories have diverged, so a plain
+> `git push origin master` is rejected as a non-fast-forward. That rejection is
+> the last line of defence, and the obvious next move — reaching for `--force` —
+> is the one that publishes everything the squash was made to curate. Do not.
+>
+> A release therefore means building the next curated commit and pushing *that*,
+> not fast-forwarding this branch. Until the procedure below is written down,
+> ask before publishing.
+
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
 tag agrees with both `package.json` versions, and publishes. A version already on
 the registry is skipped rather than retried, so re-running a job that
