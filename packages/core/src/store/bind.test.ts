@@ -177,7 +177,7 @@ describe("bindStore: an unresolvable stock line", () => {
     expect(bound.refused.length).toBe(1);
     expect(bound.refused[0]!.id).toBe("mod-a");
     expect(bound.refused[0]!.store).toBe("STORE_ARMOR");
-    expect(bound.refused[0]!.table).toBe("normal");
+    expect(bound.refused[0]!.field).toBe("normal");
     expect(bound.refused[0]!.why).toContain("Padded Jerkin");
     /* One modifier, so no parenthetical set - the ordinary case pays nothing. */
     expect(bound.refused[0]!.why).not.toContain("packs touching");
@@ -243,7 +243,7 @@ describe("bindStore: an unresolvable stock line", () => {
     const bare = stores.byName("STORE_ARMOR")!;
     expect(bound.byName("STORE_ARMOR")!.alwaysTable.length).toBe(bare.alwaysTable.length);
     expect(bound.byName("STORE_ARMOR")!.alwaysBookTvals).toEqual(bare.alwaysBookTvals);
-    expect(bound.refused.map((r) => r.table)).toEqual(["always", "always"]);
+    expect(bound.refused.map((r) => r.field)).toEqual(["always", "always"]);
     expect(bound.refused.every((r) => r.id === "mod-a")).toBe(true);
     expect(bound.refused[1]!.why).toContain("unknown always tval no such tval");
   });
@@ -267,5 +267,140 @@ describe("bindStore: an unresolvable stock line", () => {
       expect(after.normalTable.length).toBe(bare.normalTable.length);
       expect(after.alwaysTable.length).toBe(bare.alwaysTable.length);
     }
+  });
+});
+
+/**
+ * THE SAME RULE, ON THE FIELDS THAT WERE STILL FATAL.
+ *
+ * The stock tables were closed first because `append` on `normal` is what the
+ * tutorials teach, but `buy:` and `store:` take the same patch ops from the same
+ * mods - so a rule naming a tval that is not there, or an entrance repointed at
+ * a feature that is not there, was the identical defect one field over.
+ *
+ * `store:` is the one that could not be answered the same way. It is a scalar,
+ * so there is no entry to drop and nothing left of the shop; and the store array
+ * is consumed POSITIONALLY, so removing the record would renumber the stores
+ * after it and move a saved game's stock between shops. The store therefore
+ * survives with an entrance nothing matches, which is what these assert.
+ */
+describe("bindStore: the buy list and the entrance feature", () => {
+  const armour = (): StoreRecordJson =>
+    JSON.parse(
+      JSON.stringify(storeRecords.find((r) => r.store === "STORE_ARMOR")),
+    ) as StoreRecordJson;
+
+  function stamped(
+    rec: StoreRecordJson,
+    from: { owner: string; modifiedBy?: string[]; was?: Record<string, unknown> },
+  ): StoreRecordJson {
+    return { ...rec, $from: from } as StoreRecordJson;
+  }
+
+  it("throws for a buy tval nothing touched", () => {
+    const rec = armour();
+    rec.buy!.push("no such tval");
+    expect(() => new StoreRegistry([rec], reg)).toThrow(/store: unknown buy tval no such tval/);
+  });
+
+  it("drops a mod's unresolvable buy rule and keeps the rest of the list", () => {
+    const base = armour();
+    const was = { buy: [...base.buy!] };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.buy!.push("no such tval");
+
+    const bound = new StoreRegistry([rec], reg);
+    const bare = stores.byName("STORE_ARMOR")!;
+    expect(bound.byName("STORE_ARMOR")!.buy!.map((b) => b.tval)).toEqual(
+      bare.buy!.map((b) => b.tval),
+    );
+    /* And the stock tables, which have nothing to do with it, are untouched. */
+    expect(bound.byName("STORE_ARMOR")!.normalTable.length).toBe(bare.normalTable.length);
+
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.refused[0]!.field).toBe("buy");
+    expect(bound.refused[0]!.why).toContain("buy list entry dropped");
+    expect(bound.refused[0]!.why).toContain("unknown buy tval no such tval");
+  });
+
+  it("drops a mod's buy rule naming a flag that does not exist", () => {
+    /* The other half of a buy entry. A flag-qualified rule resolves two names,
+     * and only one of them being survivable would be an arbitrary line. */
+    const base = armour();
+    const was = { buy: [...base.buy!] };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.buy!.push({ tval: "soft armor", flag: "OF_NO_SUCH_FLAG" });
+
+    const bound = new StoreRegistry([rec], reg);
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.field).toBe("buy");
+    expect(bound.refused[0]!.why).toContain("unknown buy flag OF_NO_SUCH_FLAG");
+  });
+
+  it("still throws for CORE's own buy rule in a record a mod patched", () => {
+    const base = armour();
+    base.buy!.push("no such tval");
+    const was = { buy: [...base.buy!] };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.buy!.push("light");
+
+    expect(() => new StoreRegistry([rec], reg)).toThrow(/store: unknown buy tval no such tval/);
+  });
+
+  it("throws for an entrance feature nothing touched", () => {
+    const rec = armour();
+    rec.store = "FEAT_NO_SUCH_SHOP";
+    expect(() =>
+      new StoreRegistry([rec], reg),
+    ).toThrow(/store: unknown entrance feature FEAT_NO_SUCH_SHOP/);
+  });
+
+  it("keeps a mod's mis-pointed store in the array but makes it unreachable", () => {
+    const base = armour();
+    const rec = stamped(base, {
+      owner: "core",
+      modifiedBy: ["mod-a"],
+      was: { store: "STORE_ARMOR" },
+    });
+    rec.store = "FEAT_NO_SUCH_SHOP";
+
+    const bound = new StoreRegistry(
+      storeRecords.map((r) => (r.store === "STORE_ARMOR" ? rec : r)),
+      reg,
+    );
+
+    /* POSITION HELD. Every other store is still at its own index with its own
+     * entrance, which is the whole reason the record is not removed. */
+    expect(bound.stores.length).toBe(stores.stores.length);
+    for (const [i, bare] of stores.stores.entries()) {
+      if (bare.featName === "STORE_ARMOR") continue;
+      expect(bound.stores[i]!.featName).toBe(bare.featName);
+      expect(bound.stores[i]!.feat).toBe(bare.feat);
+    }
+
+    /* And the shop itself cannot be entered, by the lookup the game uses. */
+    expect(bound.byFeat(FEAT.STORE_ARMOR)).toBeNull();
+    expect(bound.byFeat(-1)).toBeNull();
+    expect(bound.stores.find((s) => s.featName === "FEAT_NO_SUCH_SHOP")!.feat).toBe(-1);
+
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.refused[0]!.field).toBe("store");
+    expect(bound.refused[0]!.why).toContain("shop cannot be entered");
+  });
+
+  it("still throws for a mod-defined store whose own entrance is unknown", () => {
+    /* No `was`, and the definer is the mod, so the mod is answerable - the
+     * store is still dropped rather than thrown, which is the case above. What
+     * must still throw is core's, and core cannot be the definer of a record
+     * carrying no provenance at all: that is the case two tests up. This one
+     * pins the mod-defined store to the reported outcome, so a later change
+     * cannot quietly turn it back into a crash. */
+    const rec = stamped({ ...armour(), store: "FEAT_NO_SUCH_SHOP" }, { owner: "mod-a" });
+    const bound = new StoreRegistry([rec], reg);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.stores.length).toBe(1);
+    expect(bound.stores[0]!.feat).toBe(-1);
   });
 });
