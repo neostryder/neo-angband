@@ -79,6 +79,82 @@ describe("FeatureRegistry", () => {
     }
   });
 
+  /*
+   * finish_parse_feat's OTHER half (init.c L2249-2257, L2275): shopnum and
+   * z_info->store_max. The trailing-space half landed in 872006e4; this is
+   * the derivation that went with it.
+   */
+  describe("finish_parse_feat: shopnum and store_max", () => {
+    it("numbers the shops 1..store_max in FEAT order", () => {
+      const shops = terrain.records
+        .map((r) => reg.byCodeName(r.code))
+        .filter((f) => f.flags.has(TF["SHOP"]))
+        .sort((a, b) => a.fidx - b.fidx);
+      expect(shops.map((f) => f.shopnum)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(reg.storeMax).toBe(8);
+      expect(reg.shopFeats()).toEqual(shops.map((f) => f.fidx));
+    });
+
+    it("leaves shopnum 0 on everything that is not a shop", () => {
+      expect(reg.byCodeName("FLOOR").shopnum).toBe(0);
+      expect(reg.byCodeName("LAVA").shopnum).toBe(0);
+      expect(reg.byCodeName("SECRET").shopnum).toBe(0);
+    });
+
+    it("shopFeats() is the shopnum - 1 lookup square_shopnum does", () => {
+      /* cave-square.c L1512 returns f_info[feat].shopnum - 1. */
+      const feats = reg.shopFeats();
+      for (let n = 0; n < feats.length; n++) {
+        expect(reg.get(feats[n] as number).shopnum).toBe(n + 1);
+      }
+      expect(reg.get(FEAT["STORE_GENERAL"]).shopnum).toBe(1);
+      expect(reg.get(FEAT["HOME"]).shopnum).toBe(8);
+    });
+
+    it("gains a store when a mod flags another terrain SHOP", () => {
+      /* The consequence a hard-coded eight-feature list cannot have.
+       * Composition replaces a record's `flags:` array wholesale, so this is
+       * exactly the shape a mod's terrain patch arrives in. SECRET sorts
+       * (FEAT_SECRET = 15) after HOME, so it becomes store 9. */
+      const patched = terrain.records.map((r) =>
+        r.code === "SECRET"
+          ? { ...r, flags: [...(r.flags ?? []), "SHOP"] }
+          : r,
+      );
+      const modded = new FeatureRegistry(patched);
+      expect(modded.storeMax).toBe(9);
+      expect(modded.byCodeName("SECRET").shopnum).toBe(9);
+      expect(modded.shopFeats()[8]).toBe(FEAT["SECRET"]);
+      /* The eight shipped entrances keep their numbers. */
+      expect(modded.get(FEAT["HOME"]).shopnum).toBe(8);
+    });
+
+    it("renumbers from 1 when a mod clears a SHOP flag", () => {
+      /* Upstream's ++shop_idx is positional, so dropping the General Store
+       * shifts every later shop down one - the same renumbering a data-driven
+       * store_max has to accept. */
+      const patched = terrain.records.map((r) =>
+        r.code === "STORE_GENERAL"
+          ? {
+              ...r,
+              flags: (r.flags ?? []).map((line) =>
+                line
+                  .split("|")
+                  .map((t) => t.trim())
+                  .filter((t) => t !== "SHOP")
+                  .join(" | "),
+              ),
+            }
+          : r,
+      );
+      const modded = new FeatureRegistry(patched);
+      expect(modded.storeMax).toBe(7);
+      expect(modded.byCodeName("STORE_GENERAL").shopnum).toBe(0);
+      expect(modded.get(FEAT["STORE_ARMOR"]).shopnum).toBe(1);
+      expect(modded.get(FEAT["HOME"]).shopnum).toBe(7);
+    });
+  });
+
   it("resolves mimic references to feature indices", () => {
     const mimicking = terrain.records.filter((r) => r.mimic !== undefined);
     expect(mimicking.length).toBe(1);

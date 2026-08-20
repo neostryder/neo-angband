@@ -175,7 +175,8 @@ export interface CoreRegistries {
    */
   monsterCategories: MonsterCategory[];
   /**
-   * Shopkeeper tip strings (hints.txt / hints.json), in file order. Empty when
+   * Shopkeeper tip strings (hints.txt / hints.json), in upstream's list order -
+   * REVERSE file order, because parse_hint prepends. Empty when
    * the pack ships no hints.json. ui-store.c prt_welcome draws against this
    * list when non-empty.
    */
@@ -228,12 +229,17 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
   const monsterCategories = bindMonsterCategories(pack.uiKnowledge ?? []);
-  /* hints.txt: each H: line becomes a tip string (init.c parse_hints). */
+  /* hints.txt: each H: line becomes a tip string (init.c parse_hint). Reversed
+   * for the same reason names.txt is: the C handler prepends onto the list
+   * (init.c:4297) and finish_parse_hints publishes the head, so `hints` is in
+   * REVERSE file order. random_hint (ui-store.c:121-129) reservoir-samples over
+   * that list, so file order picks a different tip from the same draws. */
   const hints: string[] = [];
   for (const rec of pack.hints ?? []) {
     const text = rec.H ?? rec.text;
     if (text) hints.push(text);
   }
+  hints.reverse();
   return {
     constants,
     features,

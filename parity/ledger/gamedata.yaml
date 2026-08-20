@@ -433,8 +433,13 @@ baseline: 4.2.6
 upstream:
   - path: lib/gamedata/hints.txt
   - path: src/init.c
-    items: [init_parse_hints]
-notes: ""
+    items: [init_parse_hints, finish_parse_hints]
+notes: >-
+  The pack keeps file order; the LIST upstream builds does not. parse_hint
+  prepends (init.c:4297) and finish_parse_hints publishes the head, so
+  upstream's `hints` is in reverse file order, and random_hint
+  (ui-store.c L121-129) reservoir-samples over it - same draw count either way,
+  different tip. bindCore reverses on binding, as it already did for names.txt.
 ---
 module: packages/content/pack/ui_entry.json
 status: ported

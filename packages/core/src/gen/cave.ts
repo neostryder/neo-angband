@@ -2289,6 +2289,13 @@ export const hardCentreGen: CaveBuilder = (ctx) => {
  * The eight town entrance features, in store order: the seven shops plus the
  * player's Home. Their FEAT_* indices are the store_at keys the store runtime
  * looks a store up by.
+ *
+ * This is what the SHIPPED terrain data comes to, not the source of truth:
+ * town_gen_layout reads FeatureRegistry.shopFeats(), which derives the list
+ * from the TF_SHOP flags exactly as finish_parse_feat does, so a mod that
+ * flags another terrain SHOP gets a store lot. gen.test.ts asserts the two
+ * agree for the shipped pack, which is the only thing keeping this list
+ * honest.
  */
 export const TOWN_STORE_FEATS: readonly number[] = [
   FEAT.STORE_GENERAL,
@@ -2546,9 +2553,11 @@ function buildStore(
   /* Build an invulnerable rectangular building */
   fillRectangle(c, buildN, buildW, buildS, buildE, FEAT.PERM, SQUARE.NONE);
 
-  /* Clear previous contents, add a store door (the feature whose shopnum is
-   * n + 1; TOWN_STORE_FEATS is that store-index -> feature mapping). */
-  c.setFeat(loc(doorX, doorY), TOWN_STORE_FEATS[n]!);
+  /* Clear previous contents, add a store door: the feature whose shopnum is
+   * n + 1 (gen-cave.c L2449). FeatureRegistry.shopFeats() is that
+   * store-index -> feature mapping, derived from the terrain data's SHOP
+   * flags by finish_parse_feat rather than listed. */
+  c.setFeat(loc(doorX, doorY), c.features.shopFeats()[n]!);
 }
 
 /** build_ruin (gen-cave.c L2461): a ruined granite building spewing rubble. */
@@ -2650,7 +2659,7 @@ function townGenLayout(g: Gen): Loc {
   const rng = g.rng;
   const townWid = c.width; /* z_info->town_wid */
   const townHgt = c.height; /* z_info->town_hgt */
-  const storeMax = TOWN_STORE_FEATS.length; /* z_info->store_max */
+  const storeMax = c.features.storeMax; /* z_info->store_max */
 
   const numLava = 3 + rng.randint0(3);
   const ruinsPercent = 80;

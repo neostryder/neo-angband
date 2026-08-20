@@ -127,6 +127,73 @@ describe("parse/z-info test_m_crit_level: critical levels keep file order", () =
     );
   });
 
+  /*
+   * finish_parse_constants (init.c L1006-1020) -> check_critical_levels
+   * (L986-1004). z-info.c has no case for this - it is a whole-file check
+   * rather than a directive handler - but it is the half of the finish hook
+   * that changes what a bad pack does, so it lands here with the rest of the
+   * constants rejections.
+   *
+   * Unreachable from the shipped constants.txt (400/700/900/1300 then the -1
+   * catch-all), reachable from a mod: `melee-critical-level` is a top-level
+   * key of the constants record and composition replaces an array wholesale,
+   * so a mod can hand the game any cutoff order it likes.
+   */
+  describe("check_critical_levels: cutoffs must strictly increase", () => {
+    type Level = { cutoff: number; mult: number; add: number; msg: string };
+
+    function levels(json: ConstantsJson, name: string): Level[] {
+      const rec = json.records[0];
+      if (rec === undefined) throw new Error("constants.json has no record");
+      return rec[name] as unknown as Level[];
+    }
+
+    it("accepts the shipped tables", () => {
+      expect(() => bindConstants(freshPack())).not.toThrow();
+    });
+
+    it.each([
+      ["melee-critical-level", "melee"],
+      ["ranged-critical-level", "ranged"],
+    ])("rejects a non-increasing %s", (name, which) => {
+      const json = freshPack();
+      const rows = levels(json, name);
+      /* Make the second cutoff equal the first: `<=` is the rejection, so
+       * equal is as bad as descending. */
+      (rows[1] as Level).cutoff = (rows[0] as Level).cutoff;
+      expect(() => bindConstants(json)).toThrow(
+        `constants: the cutoffs for ${which} criticals in constants.txt are ` +
+          `not strictly increasing (PARSE_ERROR_NON_SEQUENTIAL_RECORDS)`,
+      );
+    });
+
+    it("exempts the last row's cutoff, which nothing reads", () => {
+      /* Upstream only compares a level against its predecessor while that
+       * level still has a successor, so the final cutoff is dead - which is
+       * why the shipped tables can end with -1 at all. criticalLevel
+       * (combat/hit.ts) stops at `i < last` for the same reason. */
+      const json = freshPack();
+      const rows = levels(json, "melee-critical-level");
+      const last = rows.length - 1;
+      (rows[last] as Level).cutoff = -99999;
+      expect(() => bindConstants(json)).not.toThrow();
+    });
+
+    it("does not check the o-combat tables, which have no cutoff", () => {
+      /* finish_parse_constants checks m_crit_level_head and r_crit_level_head
+       * only. The o- rows carry `chance` and are picked by a one-in-chance
+       * roll (critical_o_shot/melee), so their order is not a comparison. */
+      const json = freshPack();
+      const rows = levels(json, "o-melee-critical-level") as unknown as Array<{
+        chance: number;
+      }>;
+      const first = rows[0] as { chance: number };
+      const second = rows[1] as { chance: number };
+      second.chance = first.chance;
+      expect(() => bindConstants(json)).not.toThrow();
+    });
+  });
+
   it("keeps critical sections' negative values, unlike the scalar sections", () => {
     /* melee-critical:chance-offset is -60 in constants.txt (line 236), so
      * the critical handlers must NOT apply the value < 0 rejection the

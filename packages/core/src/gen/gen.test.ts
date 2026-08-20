@@ -1635,6 +1635,12 @@ describe("faithful town generation", () => {
       expect(c.featCount[feat] ?? 0).toBe(1);
     }
 
+    /* TOWN_STORE_FEATS is documentation; the layout reads the SHOP flags
+     * through finish_parse_feat's derivation. If the two ever part, this is
+     * the failure. */
+    expect(reg.shopFeats()).toEqual(TOWN_STORE_FEATS);
+    expect(reg.storeMax).toBe(TOWN_STORE_FEATS.length);
+
     /* Perimeter is permanent wall. */
     for (let x = 0; x < c.width; x++) {
       expect(c.isPerm(loc(x, 0))).toBe(true);
@@ -1656,6 +1662,31 @@ describe("faithful town generation", () => {
     const g = generateLevel(new Rng(7), 0, makeDeps(), { daytime: true });
     /* The 4 daytime pick_and_place_distant_monster calls seed the town. */
     expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("lays out a ninth store when a mod flags another terrain SHOP", () => {
+    /* finish_parse_feat derives shopnum and z_info->store_max from the SHOP
+     * flags, and town_gen_layout builds one lot per store (gen-cave.c L2584,
+     * L2449). With the mapping hard-coded to eight features instead, a mod's
+     * shop terrain gets no entrance anywhere in town and its store is
+     * unreachable for the whole game.
+     *
+     * SECRET is the probe because town generation never places it otherwise,
+     * so finding one in the town can only be the store door. */
+    const patched = terrain.map((r) =>
+      r.code === "SECRET" ? { ...r, flags: [...(r.flags ?? []), "SHOP"] } : r,
+    );
+    const moddedReg = new FeatureRegistry(patched);
+    expect(moddedReg.storeMax).toBe(9);
+
+    const deps = { ...makeDeps(), reg: moddedReg };
+    const g = generateLevel(new Rng(7), 0, deps, { daytime: true });
+    const c = g.c;
+
+    expect(c.featCount[FEAT.SECRET] ?? 0).toBe(1);
+    for (const feat of TOWN_STORE_FEATS) {
+      expect(c.featCount[feat] ?? 0).toBe(1);
+    }
   });
 
   it("consumes the exact RNG draw count of the faithful layout", () => {

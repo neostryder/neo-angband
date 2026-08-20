@@ -308,6 +308,39 @@ function bindSection(
   }
 }
 
+/**
+ * check_critical_levels (init.c L986-1004), run by finish_parse_constants
+ * (L1006-1020) over m_crit_level_head and r_crit_level_head once the parse has
+ * finished: "Reject if the cutoffs, except for the last one which is unused, do
+ * not strictly increase."
+ *
+ * The exemption is exact - upstream's loop only compares a level against its
+ * predecessor when that level still HAS a successor, so the final row's cutoff
+ * is never read. criticalLevel (combat/hit.ts L189-196) is the reason: it stops
+ * at `i < last`, making the last row the catch-all and its cutoff dead.
+ *
+ * Only the two non-O tables are checked, because those are the two upstream
+ * checks; the o-melee / o-ranged rows have `chance`, not a cutoff, and are
+ * selected by a one-in-chance roll rather than by comparison.
+ *
+ * A silent accept is not equivalent: with a cutoff that does not increase, the
+ * `power >= cutoff` walk can never reach the later rows, so those critical
+ * grades stop happening and the damage multiplier is quietly wrong. Upstream
+ * refuses the data instead, and so does this.
+ */
+function checkCriticalLevels(section: string, levels: readonly CriticalLevel[]): void {
+  for (let i = 1; i + 1 < levels.length; i++) {
+    const prev = levels[i - 1] as CriticalLevel;
+    const cur = levels[i] as CriticalLevel;
+    if (cur.cutoff <= prev.cutoff) {
+      throw new Error(
+        `constants: the cutoffs for ${section} criticals in constants.txt are ` +
+          `not strictly increasing (PARSE_ERROR_NON_SEQUENTIAL_RECORDS)`,
+      );
+    }
+  }
+}
+
 /** Bind the compiled constants.json into a typed Constants. */
 export function bindConstants(json: ConstantsJson): Constants {
   const rec = json.records[0];
@@ -334,6 +367,11 @@ export function bindConstants(json: ConstantsJson): Constants {
   out["rangedCritical"] = crit("ranged-critical");
   out["oMeleeCritical"] = crit("o-melee-critical");
   out["oRangedCritical"] = crit("o-ranged-critical");
+
+  /* finish_parse_constants (init.c L1009-1018): validate the two cutoff
+   * tables, in that order, before the constants are handed to the game. */
+  checkCriticalLevels("melee", (out["meleeCritical"] as MeleeCritical).levels);
+  checkCriticalLevels("ranged", (out["rangedCritical"] as RangedCritical).levels);
 
   return out as unknown as Constants;
 }
