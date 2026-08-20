@@ -21,8 +21,14 @@
  * to nothing is now DROPPED and collected in `StoreRegistry.refused`, which the
  * host turns into a per-mod fault.
  *
- * CORE'S OWN DATA STILL THROWS, and `stockOwner` below is the whole of how the
+ * CORE'S OWN DATA STILL THROWS, and `fieldOwner` below is the whole of how the
  * two are told apart.
+ *
+ * The same policy covers every field of a store record a mod can reach: both
+ * stocking tables, the `buy` list, and the `store:` entrance feature. The three
+ * list fields lose one entry each; the entrance feature is a scalar, so losing
+ * it costs the whole shop - see `NO_FEAT` for why that is done by making the
+ * store unreachable rather than by removing it.
  */
 
 import { FEAT, OF } from "../generated/index.js";
@@ -41,45 +47,49 @@ import type {
   StoreRecordJson,
 } from "./types.js";
 
-/** Resolve a FEAT_* name (the store record's `store` key) to its index. */
-function featByName(name: string): number {
-  const feat = (FEAT as Record<string, number>)[name];
-  if (feat === undefined) {
-    throw new Error(`store: unknown entrance feature ${name}`);
-  }
-  return feat;
-}
-
-/** Resolve an OF_* flag name to its index (for flag-qualified buy rules). */
-function flagByName(name: string): number {
-  const flag = (OF as Record<string, number>)[name];
-  if (flag === undefined) {
-    throw new Error(`store: unknown buy flag ${name}`);
-  }
-  return flag;
-}
-
-/** Which of a store record's two stocking tables a line came from. */
-export type StoreStockTable = "normal" | "always";
+/**
+ * Which field of a store record a refusal came from.
+ *
+ * `normal` and `always` are the two stocking tables and `buy` is the sell-to
+ * list; all three lose a single entry. `store` is the entrance feature, which
+ * is a scalar and costs the whole shop.
+ */
+export type StoreField = "normal" | "always" | "buy" | "store";
 
 /**
- * One stock line that resolved to no object kind and was dropped rather than
- * thrown, because a mod contributed it.
+ * One entry that resolved to nothing and was dropped rather than thrown,
+ * because a mod contributed it.
  *
  * ATTRIBUTED, NOT PREFIXED, the same way the host's own `ModProblem` is: the mod
  * manager has to be able to ask "what is wrong with THIS mod" and get an answer
  * without parsing punctuation, so the pack id rides beside the sentence.
  */
-export interface StoreStockRefusal {
-  /** FEAT_* name of the store whose table lost the line. */
+export interface StoreRefusal {
+  /** FEAT_* name of the store that lost the entry, as the record spells it. */
   readonly store: string;
-  /** Which table it was dropped from. */
-  readonly table: StoreStockTable;
+  /** Which field it was dropped from. */
+  readonly field: StoreField;
   /** The pack the fault is attributed to - never `core`. */
   readonly id: string;
   /** What went wrong, in the player's terms, with no id prefix. */
   readonly why: string;
 }
+
+/**
+ * The entrance feature of a store whose `store:` a mod pointed at a feature
+ * that does not exist.
+ *
+ * THE STORE STAYS IN THE ARRAY, and that is the deliberate part. `stores` is
+ * consumed positionally - `createTownStores` builds the town's shops from it in
+ * order, and a saved game restores its stock against that order - so removing a
+ * record would renumber every store after it and silently move one shop's
+ * inventory into another. A feature index nothing can equal makes `byFeat` miss
+ * instead, which is the same thing the player sees (that shop cannot be
+ * entered) with none of the renumbering. No town grid is left dangling either:
+ * generation places an entrance for a feature that exists, and this one does
+ * not.
+ */
+const NO_FEAT = -1;
 
 /** A resolved table entry, or the reason it resolved to nothing. */
 type StockResolution = { readonly kind: ObjectKind } | { readonly why: string };
@@ -106,15 +116,32 @@ function resolveKind(item: StoreItemJson, reg: ObjRegistry): StockResolution {
   return { kind };
 }
 
-/** Two table entries as the same line, compared the way the JSON spells them. */
-function sameItem(a: unknown, b: StoreItemJson): boolean {
-  if (typeof a !== "object" || a === null) return false;
-  const other = a as StoreItemJson;
-  return other.tval === b.tval && other.sval === b.sval;
+/**
+ * Two record fragments as the same entry.
+ *
+ * Structural rather than field-by-field, because the fields compared here are
+ * no longer one shape: a stock line is `{tval, sval}`, a buy entry is either a
+ * bare tval string or `{tval, flag}`, and the entrance feature is a string on
+ * its own. Key ORDER must not matter - a patched record is rebuilt by the
+ * composer, and `JSON.stringify` would call a reordered but identical entry a
+ * mod's - so this walks the keys instead of serialising.
+ */
+function sameEntry(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(
+    (k) =>
+      Object.hasOwn(b, k) &&
+      sameEntry((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
+  );
 }
 
 /**
- * The pack answerable for one stock line, or null when the base game is.
+ * The pack answerable for one entry, or null when the base game is.
  *
  * THIS IS THE WHOLE CORE-VERSUS-MOD DISTINCTION, so it is worth saying exactly
  * what each answer rests on.
@@ -125,37 +152,43 @@ function sameItem(a: unknown, b: StoreItemJson): boolean {
  *     stores in a modless game, and it is what makes "core's data fails loudly"
  *     true of the path that actually guards core - the whole test suite and
  *     every unmodded boot run through it.
- *   - `was[table]` is the DEFINING pack's own value for a table a later pack
- *     changed (mod-sdk provenance.ts). A line deep-equal to one of those entries
- *     is the definer's, so it is core's when core defined the record - and a
- *     mod's own when a mod did, which is why a mod's bad line in a store it
- *     defines itself does not throw either.
- *   - Anything else in the table arrived from a modifier. The LAST modifier is
+ *   - `was[field]` is the DEFINING pack's own value for a field a later pack
+ *     changed (mod-sdk provenance.ts). An entry deep-equal to one of those -
+ *     or, for a scalar field, to the value itself - is the definer's, so it is
+ *     core's when core defined the record, and a mod's own when a mod did,
+ *     which is why a mod's bad line in a store it defines itself does not throw
+ *     either.
+ *   - Anything else in the field arrived from a modifier. The LAST modifier is
  *     named, because load order applies patches in order and it is the only one
  *     of them core can single out; the message carries the full list so a fault
  *     landing on the wrong row is still traceable.
  *
  * THE ONE CASE THIS DECIDES IN THE MOD'S FAVOUR WITHOUT PROOF: `was` records
- * only fields the definer HAD and a patch CHANGED, so an absent `was[table]`
- * means either "core's table, which nothing changed" or "a table core never had
+ * only fields the definer HAD and a patch CHANGED, so an absent `was[field]`
+ * means either "core's field, which nothing changed" or "a field core never had
  * and a mod added outright". Provenance cannot separate those two, and this
  * returns the last modifier for both. Deciding it the other way would turn a
  * mod's added table back into a failed boot, which is the defect this file is
  * fixing; deciding it this way can only ever downgrade a broken CORE line to a
  * reported drop, and only on a record a mod has already patched.
  */
-function stockOwner(
+function fieldOwner(
   from: RecordProvenance | undefined,
-  table: StoreStockTable,
-  item: StoreItemJson,
+  field: StoreField,
+  entry: unknown,
 ): string | null {
   if (from === undefined) return null;
-  const definer = from.was?.[table];
+  const definer = from.was?.[field];
   const mods = from.modifiedBy ?? [];
-  const answerable =
-    Array.isArray(definer) && definer.some((d) => sameItem(d, item))
-      ? from.owner
-      : (mods[mods.length - 1] ?? from.owner);
+  /* A list field's `was` holds the definer's whole list, so the entry is theirs
+   * when it appears anywhere in it. A scalar field's `was` IS their value, so
+   * the entry is theirs when it still equals that - which for a scalar means a
+   * patch that put back what was already there, and the definer keeps the blame
+   * for a value they wrote. */
+  const definers = Array.isArray(definer)
+    ? definer.some((d) => sameEntry(d, entry))
+    : definer !== undefined && sameEntry(definer, entry);
+  const answerable = definers ? from.owner : (mods[mods.length - 1] ?? from.owner);
   /* Never blame core, and never excuse it. A stamped record with no modifiers is
    * a mod's own (an unmodified base-game record is not stamped at all), so this
    * guard should be unreachable - but a hand-written `$from` is a shape this
@@ -178,7 +211,7 @@ function stockOwner(
  */
 function refusalWhy(
   rec: StoreRecordJson,
-  table: StoreStockTable,
+  field: StoreField,
   why: string,
   from: RecordProvenance,
 ): string {
@@ -187,19 +220,33 @@ function refusalWhy(
     mods.length > 1
       ? ` (packs touching this store: ${[from.owner, ...mods].join(", ")})`
       : "";
-  return `${rec.store}: ${table} stock line dropped - ${why}${also}`;
+  const lost =
+    field === "store"
+      ? "shop cannot be entered"
+      : field === "buy"
+        ? "buy list entry dropped"
+        : `${field} stock line dropped`;
+  return `${rec.store}: ${lost} - ${why}${also}`;
 }
 
-/** Resolve one buy entry (bare tval string, or `{tval, flag}` object). */
-function resolveBuy(entry: StoreBuyJson): ObjectBuy {
-  if (typeof entry === "string") {
-    const tval = tvalFindIdx(entry);
-    if (tval < 0) throw new Error(`store: unknown buy tval ${entry}`);
-    return { tval, flag: 0 };
-  }
-  const tval = tvalFindIdx(entry.tval);
-  if (tval < 0) throw new Error(`store: unknown buy tval ${entry.tval}`);
-  return { tval, flag: entry.flag ? flagByName(entry.flag) : 0 };
+/** A resolved buy rule, or the reason it resolved to nothing. */
+type BuyResolution = { readonly buy: ObjectBuy } | { readonly why: string };
+
+/**
+ * Resolve one buy entry (bare tval string, or `{tval, flag}` object).
+ *
+ * Returns the miss for the same reason `resolveKind` does - whose entry it is
+ * decides whether it is fatal, and that is not visible from here. Both `why`
+ * strings are the messages this used to throw, verbatim.
+ */
+function resolveBuy(entry: StoreBuyJson): BuyResolution {
+  const name = typeof entry === "string" ? entry : entry.tval;
+  const tval = tvalFindIdx(name);
+  if (tval < 0) return { why: `unknown buy tval ${name}` };
+  if (typeof entry === "string" || !entry.flag) return { buy: { tval, flag: 0 } };
+  const flag = (OF as Record<string, number>)[entry.flag];
+  if (flag === undefined) return { why: `unknown buy flag ${entry.flag}` };
+  return { buy: { tval, flag } };
 }
 
 /**
@@ -216,8 +263,8 @@ function resolveBuy(entry: StoreBuyJson): ObjectBuy {
  * store.txt order and are looked up by feature (store_at -> byFeat), which
  * matches shopnum order for the shipped data.
  *
- * `refused` collects the mod-contributed stock lines that resolved to nothing,
- * which are dropped instead of thrown - see the file header and `stockOwner`.
+ * `refused` collects the mod-contributed entries that resolved to nothing,
+ * which are dropped instead of thrown - see the file header and `fieldOwner`.
  * Optional because a caller that passes none is not asking for a different
  * policy, only declining to listen: the drop happens either way, and
  * `StoreRegistry` is the caller that keeps the list for the host to report.
@@ -225,7 +272,7 @@ function resolveBuy(entry: StoreBuyJson): ObjectBuy {
 export function bindStore(
   rec: StoreRecordJson,
   reg: ObjRegistry,
-  refused?: StoreStockRefusal[],
+  refused?: StoreRefusal[],
 ): BoundStore {
   const owners: StoreOwner[] = rec.owner.map((o, index) => ({
     index,
@@ -239,14 +286,14 @@ export function bindStore(
    * wrong. A core-owned miss throws here with exactly the message it always
    * threw - the `store: ` prefix included.
    */
-  const stockKind = (it: StoreItemJson, table: StoreStockTable): ObjectKind | null => {
+  const stockKind = (it: StoreItemJson, table: "normal" | "always"): ObjectKind | null => {
     const res = resolveKind(it, reg);
     if ("kind" in res) return res.kind;
-    const owner = stockOwner(from, table, it);
+    const owner = fieldOwner(from, table, it);
     if (owner === null || from === undefined) throw new Error(`store: ${res.why}`);
     refused?.push({
       store: rec.store,
-      table,
+      field: table,
       id: owner,
       why: refusalWhy(rec, table, res.why, from),
     });
@@ -265,13 +312,13 @@ export function bindStore(
          * as a `{tval, sval}` miss rather than throwing on the spot, because a
          * mod appending to `always:` can get either shape wrong and only one of
          * them being survivable would be an arbitrary line. */
-        const owner = stockOwner(from, "always", it);
+        const owner = fieldOwner(from, "always", it);
         if (owner === null || from === undefined) {
           throw new Error(`store: unknown always tval ${it.tval}`);
         }
         refused?.push({
           store: rec.store,
-          table: "always",
+          field: "always",
           id: owner,
           why: refusalWhy(rec, "always", `unknown always tval ${it.tval}`, from),
         });
@@ -288,10 +335,49 @@ export function bindStore(
     const kind = stockKind(it, "normal");
     if (kind) normalTable.push(kind);
   }
-  const buy = rec.buy ? rec.buy.map(resolveBuy) : null;
+  /* The buy list, an entry at a time: a mod can append to `buy:` exactly as it
+   * appends to `normal:`, so a rule naming a tval or a flag that is not there is
+   * the same defect in a different field and gets the same answer. */
+  let buy: ObjectBuy[] | null = null;
+  if (rec.buy) {
+    buy = [];
+    for (const entry of rec.buy) {
+      const res = resolveBuy(entry);
+      if ("buy" in res) {
+        buy.push(res.buy);
+        continue;
+      }
+      const owner = fieldOwner(from, "buy", entry);
+      if (owner === null || from === undefined) throw new Error(`store: ${res.why}`);
+      refused?.push({
+        store: rec.store,
+        field: "buy",
+        id: owner,
+        why: refusalWhy(rec, "buy", res.why, from),
+      });
+    }
+  }
+
+  /* The entrance feature. A mod can repoint `store:` at a feature that does not
+   * exist, and unlike a stock line there is nothing left of the shop when it
+   * does - so the record survives carrying an index nothing matches. */
+  let feat = (FEAT as Record<string, number>)[rec.store];
+  if (feat === undefined) {
+    const owner = fieldOwner(from, "store", rec.store);
+    if (owner === null || from === undefined) {
+      throw new Error(`store: unknown entrance feature ${rec.store}`);
+    }
+    refused?.push({
+      store: rec.store,
+      field: "store",
+      id: owner,
+      why: refusalWhy(rec, "store", `unknown entrance feature ${rec.store}`, from),
+    });
+    feat = NO_FEAT;
+  }
 
   return {
-    feat: featByName(rec.store),
+    feat,
     featName: rec.store,
     owners,
     alwaysTable,
@@ -313,7 +399,7 @@ export class StoreRegistry {
   readonly stores: BoundStore[];
 
   /**
-   * The mod-contributed stock lines this bind dropped, in record order.
+   * The mod-contributed entries this bind dropped, in record order.
    *
    * ON THE REGISTRY RATHER THAN RETURNED, because `bindCore` builds a dozen
    * registries and hands back one object; a second return channel would have to
@@ -324,16 +410,23 @@ export class StoreRegistry {
    *
    * Empty for the shipped pack with no mods loaded. See `bindStore`.
    */
-  readonly refused: readonly StoreStockRefusal[];
+  readonly refused: readonly StoreRefusal[];
 
   constructor(records: StoreRecordJson[], reg: ObjRegistry) {
-    const refused: StoreStockRefusal[] = [];
+    const refused: StoreRefusal[] = [];
     this.stores = records.map((rec) => attachExt("store", rec, bindStore(rec, reg, refused)));
     this.refused = refused;
   }
 
-  /** store_at: the store whose entrance feature matches, or null. */
+  /**
+   * store_at: the store whose entrance feature matches, or null.
+   *
+   * `NO_FEAT` is refused explicitly rather than left to the comparison: a caller
+   * that has itself failed to resolve a feature would otherwise hand in -1 and
+   * be given the disabled shop.
+   */
   byFeat(feat: number): BoundStore | null {
+    if (feat === NO_FEAT) return null;
     return this.stores.find((s) => s.feat === feat) ?? null;
   }
 

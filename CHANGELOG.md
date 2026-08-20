@@ -111,16 +111,18 @@ digest in the game's catalogue and must never be moved.
   an ordinary pair of mods and an ordinary click: mod A appends an item mod B
   defines to a store's `normal` table (tutorial 2 is exactly this patch), the
   player disables mod B, and the appended line now names nothing. A
-  mod-contributed line that resolves to nothing is now dropped from that one
-  table and reported against the mod on its own row in the mod manager; the rest
-  of the store — its owners, its buy list, its other stock — and every other shop
-  in town are untouched. **Core's own data still fails loudly:** the tolerance is
-  decided per line from the record's provenance, so an unresolvable entry in a
-  store no pack has touched throws exactly the message it always threw, which is
-  every store in a modless game. Covers `normal` and `always`, including
-  `always`'s svalless book lines. The `buy` list, the owner list and the entrance
-  feature still throw for anyone — a mod can append to those too, and that is the
-  same defect in a different field, not yet closed.
+  mod-contributed entry that resolves to nothing is now dropped and reported
+  against the mod on its own row in the mod manager; the rest of the store and
+  every other shop in town are untouched. **Core's own data still fails loudly:**
+  the tolerance is decided per entry from the record's provenance, so an
+  unresolvable line in a store no pack has touched throws exactly the message it
+  always threw, which is every store in a modless game. Covers every field a
+  patch can reach: `normal`, `always` (including its svalless book lines) and
+  `buy` each lose one entry, and a `store:` entrance repointed at a feature that
+  does not exist leaves the shop unenterable rather than taking the game down —
+  the record keeps its place in the store list, because that list is read
+  positionally and renumbering it would move a saved game's stock between shops.
+  The owner list resolves no names and so has nothing to refuse.
 - **The character dump called every installed content mod "(not installed)".** The
   `[Mods enabled]` block resolved each enabled id's version out of the two bundled
   PLUGIN registries only, so a mod carrying no `plugin.js` — most of them, and all
