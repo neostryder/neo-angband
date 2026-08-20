@@ -55,8 +55,58 @@ git tag v0.20.0 && git push origin master v0.20.0
 > is the one that publishes everything the squash was made to curate. Do not.
 >
 > A release therefore means building the next curated commit and pushing *that*,
-> not fast-forwarding this branch. Until the procedure below is written down,
-> ask before publishing.
+> not fast-forwarding this branch. The procedure is **Publishing a release**,
+> immediately below.
+
+## Publishing a release
+
+**Decided 2026-08-19:** each release is **one commit parented on the previous
+public one**, so the public history accumulates a commit per release, published
+tags stay valid, and nothing is ever force-pushed. The public repository keeps
+every release from `0.20.0` onward.
+
+The tree published is this repository's tree, byte for byte. The parent is
+`origin/master`. Nothing else about local history travels — that is the whole
+trick, and `git commit-tree` does it in one call:
+
+```bash
+git fetch origin
+TREE=$(git rev-parse master^{tree})
+NEW=$(git commit-tree "$TREE" -p origin/master -F .git/RELEASE_MSG)
+git push origin "$NEW":refs/heads/master
+git tag v0.21.0 "$NEW" && git push origin v0.21.0
+```
+
+Four things about that worth knowing before running it:
+
+- **It is a fast-forward.** The parent *is* `origin/master`, so the push needs no
+  force. If git rejects it, something else moved and the answer is to re-fetch and
+  rebuild the commit — never `--force`.
+- **Verify before pushing**, because the commit is cheap and the push is not:
+  `git rev-parse "$NEW^{tree}"` must equal `$TREE`, and `git log -1 "$NEW^"` must
+  be the commit that `origin/master` pointed at.
+- **Write the message to a file** (`.git/RELEASE_MSG`) rather than passing `-m`.
+  It is the only description of the release in the public history, so it carries
+  the changelog's own summary — see the curation rule below.
+- **Author it as the pseudonym**, the same as every other commit here:
+  `git -c user.name=... -c user.email=... commit-tree` does not read those, so set
+  `GIT_AUTHOR_NAME`/`GIT_COMMITTER_NAME` (and the emails) in the environment for
+  that one call.
+
+### The changelog is the release notes
+
+The public repository is read by people who cannot see this history, so
+`CHANGELOG.md` is the only account of what changed. Every tag we push carries a
+curated section: what a player gets, what a mod author gets, what broke. Written
+for someone who has never read this file.
+
+### The `early` channel needs nothing
+
+`edge.yml` already runs on every push to `master` and publishes a prerelease
+tagged `v<next>-edge.<n>` (numbered by `github.run_number`, so a curated history
+cannot confuse it), deleting the previous one. Pushing the release commit
+therefore refreshes the early channel by itself — the `early` channel tracks the
+newest commit on `master`, which is what it is for.
 
 `.github/workflows/publish-npm.yml` then builds, verifies the tarballs, checks the
 tag agrees with both `package.json` versions, and publishes. A version already on

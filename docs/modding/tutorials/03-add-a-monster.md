@@ -100,6 +100,34 @@ Change `"base": "ant"` to `"base": "aunt"` and reload. Notice what does *and doe
 not* happen. That is the failure mode described above, and it is much easier to
 recognise later if you have seen it once on purpose.
 
+## What it looks like, and the one thing you have to ask for
+
+Your ant already has an appearance, and you only wrote half of it:
+
+- **`"color": "u"`** is yours — umber, so it draws as a brown `a` and reads as a
+  different creature from the white `a` beside it.
+- **The letter `a` is not yours.** It comes from `"base": "ant"`, along with
+  everything else the template carries. Change the base and the letter changes.
+
+That is the whole story in ASCII. **In a tile set it is not**, and this is the
+part nobody warns you about: a tile set maps *named* monsters to pictures, and it
+has never heard of yours. Your ant keeps drawing as a coloured letter while the
+monsters around it are pictures — not a bug, and not something the game can guess
+its way out of.
+
+Two ways to fix it, and a mod can do either:
+
+- **Point at a picture that already exists.** A mod can ship pref text that gets
+  layered over the tile set the player is using, so `monster:carpenter ant` can
+  borrow the soldier ant's tile — one line, no art.
+- **Ship your own picture.** The `neo-linoleum` tile engine takes loose,
+  individually named PNGs, so a mod can carry its own art for its own monsters.
+
+Both are past what this tutorial covers — see
+[modding/README.md](../README.md) for the pref and tile-pack routes. Worth
+knowing now, though, so that a letter among the pictures reads as a thing you
+have not done yet rather than a thing that is broken.
+
 ## The finished version
 
 `samples/tutorials/tutorial-03-add-a-monster/`.
