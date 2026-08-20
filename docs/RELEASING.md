@@ -54,44 +54,67 @@ git tag v0.21.0 && git push origin master v0.21.0
 > the last line of defence, and the obvious next move — reaching for `--force` —
 > is the one that publishes everything the squash was made to curate. Do not.
 >
-> A release therefore means building the next curated commit and pushing *that*,
-> not fast-forwarding this branch. The procedure is **Publishing a release**,
-> immediately below.
+> Publishing therefore means building the next public commits and pushing
+> *those*, not fast-forwarding this branch. `tools/publish.mjs` does it; the
+> procedure is **Publishing**, immediately below.
 
-## Publishing a release
+## Publishing
 
-**Decided 2026-08-19:** each release is **one commit parented on the previous
-public one**, so the public history accumulates a commit per release, published
-tags stay valid, and nothing is ever force-pushed. The public repository keeps
-every release from `0.20.0` onward.
+**Changed 2026-08-20: the public history now takes one commit per local commit.**
+Publishing used to squash everything since the last release into a single public
+commit. It no longer does — each local commit is replayed as its own public
+commit, in order, with its own message. A reader of the public repository sees an
+ordinary git history of the work, in the steps it was actually done in, and a
+push is no longer something that has to wait for a release.
 
-The tree published is this repository's tree, byte for byte. The parent is
-`origin/master`. Nothing else about local history travels — that is the whole
-trick, and `git commit-tree` does it in one call:
+What has *not* changed is the thing the squash was for: the pre-squash
+development history — over a thousand commits — still never travels, because
+nothing is ever fast-forwarded from this branch.
 
 ```bash
-git fetch origin
-TREE=$(git rev-parse master^{tree})
-NEW=$(git commit-tree "$TREE" -p origin/master -F .git/RELEASE_MSG)
-git push origin "$NEW":refs/heads/master
-git tag v0.21.0 "$NEW" && git push origin v0.21.0
+node tools/publish.mjs           # what would be published; builds nothing
+node tools/publish.mjs --build   # build the commits, print the tip, push nothing
+node tools/publish.mjs --push    # build and push to origin master
 ```
 
-Four things about that worth knowing before running it:
+How it works, and why it is not `cherry-pick`:
 
-- **It is a fast-forward.** The parent *is* `origin/master`, so the push needs no
-  force. If git rejects it, something else moved and the answer is to re-fetch and
-  rebuild the commit — never `--force`.
-- **Verify before pushing**, because the commit is cheap and the push is not:
-  `git rev-parse "$NEW^{tree}"` must equal `$TREE`, and `git log -1 "$NEW^"` must
-  be the commit that `origin/master` pointed at.
-- **Write the message to a file** (`.git/RELEASE_MSG`) rather than passing `-m`.
-  It is the only description of the release in the public history, so it carries
-  the changelog's own summary — see the curation rule below.
-- **Author it as the pseudonym**, the same as every other commit here:
-  `git -c user.name=... -c user.email=... commit-tree` does not read those, so set
-  `GIT_AUTHOR_NAME`/`GIT_COMMITTER_NAME` (and the emails) in the environment for
-  that one call.
+- **Each local commit's TREE is republished verbatim**, with `git commit-tree`,
+  parented on the public commit built before it. Nothing is checked out and no
+  patch is applied, so there is no conflict to resolve and the published tree at
+  every step is byte for byte the tree this repository had at that commit. A
+  cherry-pick would have to touch the working tree and could conflict; this
+  cannot.
+- **The anchor is found by tree, not by message or date.** The newest local
+  commit whose tree equals `origin/master`'s tree is the one already published;
+  everything after it is what has not been. If no local commit has that tree the
+  script refuses, because the two sides have drifted in a way it must not guess
+  at. Resolve that by hand, and never with `--force`.
+- **It is a fast-forward.** The first new commit's parent *is* `origin/master`,
+  so the push needs no force. If git rejects it, something else moved: re-fetch,
+  re-run, never `--force`.
+- **It verifies every step**, not just the last: each built commit must carry its
+  source commit's tree, and the built tip's tree must equal `master^{tree}`.
+- **It authors as the pseudonym.** `git -c user.name=…` is *not* read by
+  `commit-tree`, so the script sets `GIT_AUTHOR_NAME`/`GIT_COMMITTER_NAME` and
+  the emails in the environment. Author dates are carried across, so the public
+  history keeps the spacing the work had.
+- **A dirty tree is refused**, because the tree published would then not be the
+  tree anybody tested.
+
+### Tagging a release
+
+A release is a tag on the public tip, and it is a separate step from publishing:
+
+```bash
+node tools/publish.mjs --push
+git fetch origin
+git tag v0.21.0 origin/master && git push origin v0.21.0
+```
+
+Tag `origin/master` after the push rather than a local commit — the local commit
+is not in the public history, and a tag pointing at one would name an object the
+public repository does not have.
 
 ### The changelog is the release notes
 
