@@ -9,6 +9,12 @@ change between minor versions. This file is maintained going forward - each
 notable change lands in the Unreleased section and moves under a version
 heading when that version is cut.
 
+**Only work that has SHIPPED appears here.** An entry is written when the code is
+in the tree, never in advance of it: to a reader who did not write it, a
+changelog describing intentions is indistinguishable from one describing
+features, and they go looking for the feature. Work that is planned but not yet
+implemented lives in [docs/PLANNED.md](docs/PLANNED.md).
+
 `0.x` is the pre-release line and `1.0.0` is reserved for the public release.
 Semver on `0.x` means a feature release bumps the MINOR number, so `0.9.0` is
 followed by `0.10.0` rather than by `1.0.0`. The first-party mods follow the same
